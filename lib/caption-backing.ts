@@ -70,14 +70,30 @@ export function extractCitedFileIds(published: string): string[] {
 }
 
 /**
- * Flatten a capture manifest into frames, accepting BOTH shapes in the wild.
+ * Flatten a capture manifest into frames, accepting EVERY shape in the wild.
  *
  * `captures: [...]` is the shape `lib/capture-manifest.ts` documents. The
- * manifests `app-screenshot-capture` actually writes use
- * `journeys[].screenshots[]` with `step_name`, plus a sibling
- * `journeys[].duplicates[]`. A fence that only understood the documented shape
- * would silently pass every real run by finding zero frames — the failure mode
- * this whole class is about.
+ * manifests `app-screenshot-capture` actually writes are journey-grouped, and
+ * they come in two variants that must BOTH be understood:
+ *
+ *   - `journeys[].screenshots[]`, plus a sibling `journeys[].duplicates[]`;
+ *   - `journeys[].steps[]`, with `duplicate_of` inline on the entry.
+ *
+ * A fence that only understood the documented shape would silently pass every
+ * real run by finding zero frames — the failure mode this whole class is about.
+ * The `steps[]` variant was missing until ace#2104, where the inverse bit:
+ * `bednet-check-2-visit/20260902-1555` flattened to ZERO frames, so all 16
+ * per-opp citations came back `unknown-id` — including four the producer had
+ * itself written a `shows:` for. That is worse than a false pass, because
+ * `unknown-id` on every frame is an UNFIXABLE blocker: the only way to satisfy
+ * it is to drop every per-opp image, which is precisely the hollow deck
+ * ace#856's coverage gate exists to prevent. The two fences contradicted each
+ * other on every `steps[]`-shaped run.
+ *
+ * `journeys[].superseded_artifacts[]` is deliberately NOT flattened. Those are
+ * forensics from an earlier FAILED dispatch (ace#1571), not steps of the walk
+ * that shipped, so citing one is a real defect and must keep surfacing as
+ * `unknown-id`.
  */
 export function flattenManifestFrames(manifest: unknown): ManifestFrame[] {
   const out: ManifestFrame[] = [];
@@ -102,11 +118,15 @@ export function flattenManifestFrames(manifest: unknown): ManifestFrame[] {
   if (Array.isArray(m.journeys)) {
     for (const j of m.journeys) {
       if (Array.isArray(j?.screenshots)) for (const s of j.screenshots) push(s);
+      // The `steps[]` variant carries `duplicate_of` inline, so `push` reads it
+      // off the entry and no second container is involved (ace#2104).
+      if (Array.isArray(j?.steps)) for (const s of j.steps) push(s);
       // Duplicates are listed separately and normally carry no file_id (they
       // are not published). Include any that do, so citing one is still caught.
       if (Array.isArray(j?.duplicates)) {
         for (const d of j.duplicates) push(d, d?.duplicate_of ?? 'unknown');
       }
+      // NOT `superseded_artifacts` — see the docblock. Citing one is a defect.
     }
   }
   return out;
