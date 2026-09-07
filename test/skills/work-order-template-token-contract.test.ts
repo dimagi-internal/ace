@@ -206,7 +206,13 @@ describe('work-order template defines the partner on first reference (#2126)', (
 
   it('the producer skill states the convention and the unnamed-partner default', () => {
     // Without this the token exists and gets filled with something arbitrary.
-    const at = skill.indexOf('{{partner_first_reference}}');
+    // Anchor on the TOKEN-SPEC bullet, not on the first mention anywhere in
+    // the file. Prose elsewhere in SKILL.md legitimately names the token — the
+    // ace#2126 unmatched-key rule in the render step does — and `indexOf` then
+    // slices 800 chars from THAT mention and reports the convention missing.
+    // A false positive about a convention that never moved is worse than no
+    // check: it sends the reader to the wrong line.
+    const at = skill.indexOf('`{{partner_first_reference}}` —');
     expect(at, `${SKILL} does not document {{partner_first_reference}}`).toBeGreaterThanOrEqual(0);
 
     const spec = skill.slice(at, at + 800);
