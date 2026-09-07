@@ -322,3 +322,92 @@ describe('scrubOffBranchFields (#1658 defect 2 — the remedy that actually exis
     expect(report.fields.find((f) => f.field === 'slept_under_net')?.recordsScrubbed).toBe(1);
   });
 });
+
+/**
+ * dimagi-internal/ace#2201 — `auditDataset` read FLAT while `scrubOffBranchFields`
+ * resolved nested leaf paths, so the same spec + the same records disagreed
+ * about record shape.
+ *
+ * Measured on `poverty-graduation/20260905-1345` (deliver app
+ * c84cccc8c2bb4d418007ba8a95e62fb7 v10, 2,742 records, spec derived by
+ * `specFromDeliverApp`: questionsSeen 51, gatesParsed 18, unparsed []). The
+ * records handed to check 9 are `v.form_json.form`, so the GATE sits at the
+ * record's top level and every question inside a Group/FieldList is one level
+ * down. The scrub resolved all of them and cleared 7,650 off-branch values; the
+ * audit then reported 10 group children as `conditional-missing` on 2,232
+ * records each — every one of them present:
+ *
+ *   conditional-missing ppi_bread  2232   (lives at form.ppi_consumption_7d.ppi_bread)
+ *   conditional-missing ppi_sofa   2232   (lives at form.ppi_assets.ppi_sofa)
+ *   ... 10 in total
+ *
+ * Flattening the same records by leaf name left only the 4 genuinely-absent
+ * fields, so the difference was the reader, not the data.
+ */
+describe('auditDataset resolves nested records the way the scrub does (#2201)', () => {
+  const derived = () => specFromDeliverApp(APP).spec;
+
+  /** The measured shape: gate at the record's top level, gated questions inside a Group. */
+  const grouped = (consent: string, netCheck: Record<string, unknown>) => ({
+    id: 'v-1',
+    consent_confirmed: consent,
+    net_check: { ...netCheck },
+  });
+
+  it('reports ZERO violations on a grouped record whose gated fields the scrub resolves', () => {
+    const rows = [
+      grouped('yes', { slept_under_net: 'yes', net_visibly_hanging: 'yes', nets_in_household: 2 }),
+    ];
+    const spec = derived();
+
+    // The scrub's own view of these records: every field located, nothing
+    // off-branch to clear, nothing unresolved.
+    const { report } = scrubOffBranchFields(rows, spec.conditionalFields);
+    expect(report.unresolvedFields).toEqual([]);
+    expect(report.totalCleared).toBe(0);
+
+    // Pre-#2201 this returned three `conditional-missing` entries — one per
+    // group child — because `r['slept_under_net']` is undefined when the
+    // question lives at `net_check.slept_under_net`.
+    const audit = auditDataset(rows, spec);
+    expect(audit.violations).toEqual([]);
+    expect(audit.ok).toBe(true);
+  });
+
+  it('still CATCHES a real off-branch value inside the group — the fix is not a silencer', () => {
+    const rows = [grouped('no', { slept_under_net: 'yes' })];
+    const audit = auditDataset(rows, derived());
+    const offBranch = audit.violations.filter((v) => v.kind === 'conditional-off-branch');
+    expect(offBranch.map((v) => v.field)).toEqual(['slept_under_net']);
+    expect(offBranch[0].count).toBe(1);
+    // ...and the missing siblings are correctly NOT reported: the gate is off.
+    expect(audit.violations.some((v) => v.kind === 'conditional-missing')).toBe(false);
+  });
+
+  it('catches a nested out-of-bounds integer that flat reads could not see', () => {
+    const rows = [
+      grouped('yes', { slept_under_net: 'yes', net_visibly_hanging: 'yes', nets_in_household: 45 }),
+    ];
+    const audit = auditDataset(rows, derived());
+    const oob = audit.violations.filter((v) => v.kind === 'out-of-bounds');
+    expect(oob.map((v) => v.field)).toEqual(['nets_in_household']);
+  });
+
+  it('leaves a FLAT record reading exactly as it did before', () => {
+    const spec = derived();
+    const clean = [
+      { consent_confirmed: 'yes', slept_under_net: 'yes', net_visibly_hanging: 'yes', nets_in_household: 2 },
+    ];
+    expect(auditDataset(clean, spec).violations).toEqual([]);
+
+    const dirty = [
+      { consent_confirmed: 'no', slept_under_net: 'yes', net_visibly_hanging: 'no', nets_in_household: 99 },
+    ];
+    const audit = auditDataset(dirty, spec);
+    expect(audit.violations.filter((v) => v.kind === 'conditional-off-branch').map((v) => v.field).sort())
+      .toEqual(['net_visibly_hanging', 'nets_in_household', 'slept_under_net']);
+    expect(audit.violations.filter((v) => v.kind === 'out-of-bounds').map((v) => v.field)).toEqual([
+      'nets_in_household',
+    ]);
+  });
+});

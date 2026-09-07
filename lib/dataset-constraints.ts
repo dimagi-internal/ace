@@ -124,14 +124,51 @@ function compare(a: number, op: CrossFieldRule['op'], b: number): boolean {
   }
 }
 
+/**
+ * Read one spec field out of each record the way `scrubOffBranchFields` does
+ * (dimagi-internal/ace#2201).
+ *
+ * Both functions take the SAME `DatasetSpec` and the SAME records, so they must
+ * agree about record shape. Until now they did not: the scrub resolved a field
+ * by longest matching XPath suffix over a leaf-path index, while the audit read
+ * `r[field]` — flat. On any app with a `Group` / `FieldList` the scrub cleared
+ * the branch correctly and the audit then reported every group child as
+ * `conditional-missing`, because a field at `form.ppi_consumption_7d.ppi_bread`
+ * is `undefined` under `r['ppi_bread']` while its GATE, sitting at the record's
+ * top level, resolves fine.
+ *
+ * Measured on `poverty-graduation/20260905-1345` (deliver app
+ * c84cccc8c2bb4d418007ba8a95e62fb7 v10, 2,742 records, spec derived by
+ * `specFromDeliverApp`): 10 group children reported `conditional-missing` on
+ * 2,232 records each, every one of them present in the data; the same records
+ * flattened by leaf name left only the 4 genuinely-absent fields. Check 9 of
+ * `demo-data-setup-qa` reads this output, so the only ways past were a hand
+ * flatten or narrowing the spec — the second being exactly what ace#1658 exists
+ * to forbid.
+ *
+ * Tie semantics are the scrub's, unchanged: two leaves that match equally well
+ * resolve to NOTHING rather than to a guess. An unresolvable field therefore
+ * reads as `undefined` — precisely the value flat indexing produced for it
+ * before — so nothing that used to pass starts failing, and a flat record
+ * resolves to exactly the same values it always did.
+ */
+function fieldReader(rows: Row[]): (index: number, field: string, xpath?: string) => unknown {
+  const indexes = rows.map((r) => leafPaths(r as Container));
+  return (index, field, xpath) => {
+    const ref = resolveField(indexes[index], field, xpath);
+    return ref ? ref[0][ref[1]] : undefined;
+  };
+}
+
 export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   const violations: ConstraintViolation[] = [];
+  const read = fieldReader(rows);
   const add = (kind: ConstraintKind, field: string | undefined, count: number, detail: string) => {
     if (count > 0) violations.push({ kind, field, count, detail });
   };
 
   for (const f of spec.integerFields ?? []) {
-    const vals = rows.map((r) => num(r[f.field])).filter((v): v is number => v !== null);
+    const vals = rows.map((_, i) => num(read(i, f.field))).filter((v): v is number => v !== null);
     const nonInt = vals.filter((v) => !Number.isInteger(v)).length;
     add(
       'non-integer', f.field, nonInt,
@@ -146,14 +183,16 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
 
   for (const field of spec.wholeCurrencyFields ?? []) {
     const bad = rows
-      .map((r) => num(r[field]))
+      .map((_, i) => num(read(i, field)))
       .filter((v): v is number => v !== null && !Number.isInteger(v)).length;
     add('fractional-currency', field, bad, `${field} must be a whole currency unit — ${bad} record(s) are fractional`);
   }
 
   for (const c of spec.conditionalFields ?? []) {
     const offBranch = rows.filter(
-      (r) => r[c.requiredWhen.field] !== c.requiredWhen.equals && present(r[c.field]),
+      (_, i) =>
+        read(i, c.requiredWhen.field, c.requiredWhen.path) !== c.requiredWhen.equals &&
+        present(read(i, c.field, c.path)),
     ).length;
     add(
       'conditional-off-branch', c.field, offBranch,
@@ -190,8 +229,9 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   }
   for (const [field, gates] of gatesByField) {
     const missing = rows.filter(
-      (r) =>
-        gates.every((g) => r[g.requiredWhen.field] === g.requiredWhen.equals) && !present(r[field]),
+      (_, i) =>
+        gates.every((g) => read(i, g.requiredWhen.field, g.requiredWhen.path) === g.requiredWhen.equals) &&
+        !present(read(i, field, gates[0].path)),
     ).length;
     const where = gates
       .map((g) => `${g.requiredWhen.field} = ${JSON.stringify(g.requiredWhen.equals)}`)
@@ -203,9 +243,9 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   }
 
   for (const rule of spec.crossFieldRules ?? []) {
-    const bad = rows.filter((r) => {
-      const a = num(r[rule.lhs]);
-      const b = num(r[rule.rhs]);
+    const bad = rows.filter((_, i) => {
+      const a = num(read(i, rule.lhs));
+      const b = num(read(i, rule.rhs));
       return a !== null && b !== null && !compare(a, rule.op, b);
     }).length;
     add('cross-field', rule.lhs, bad, `${rule.lhs} ${rule.op} ${rule.rhs} fails on ${bad} record(s)`);
@@ -214,13 +254,13 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   for (const p of spec.uniquePairs ?? []) {
     const [first, second] = p.fields;
     const byFirst = new Map<string, Set<string>>();
-    for (const r of rows) {
-      const a = String(r[first] ?? '');
-      const b = String(r[second] ?? '');
-      if (!a) continue;
+    rows.forEach((_, i) => {
+      const a = String(read(i, first) ?? '');
+      const b = String(read(i, second) ?? '');
+      if (!a) return;
       if (!byFirst.has(a)) byFirst.set(a, new Set());
       byFirst.get(a)!.add(b);
-    }
+    });
     const offenders = [...byFirst.entries()].filter(([, set]) => set.size > p.perFirst);
     add(
       'pair-cardinality', `${first}+${second}`, offenders.length,

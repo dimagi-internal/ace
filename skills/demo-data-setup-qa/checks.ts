@@ -545,16 +545,73 @@ export interface VisitTotal {
 }
 
 /**
+ * Is this row's `visit_date` FILLED, or merely present as an unfilled built-in?
+ *
+ * The distinction is the whole fix for ace#2202. Every labs row carries every
+ * built-in column whether or not its terminal stage fills it (see
+ * `LABS_BUILTIN_ROW_COLUMNS` / ace#1701), so `'visit_date' in row` is true on
+ * an AGGREGATED pipeline as well and cannot separate the two grains. Measured
+ * live 2026-09-07 via `pipeline_preview` on opp 2232:
+ *
+ *   19166 `terminal_stage: aggregated`  → {"username":"aisha_g","visit_date":null,"total_visits":250,...}  x12
+ *   19169 `terminal_stage: visit_level` → {"username":"grace_a","visit_date":"2026-11-11T00:00:00","total_visits":0,...} x2742
+ *
+ * A filled `visit_date` is the visit_level stage's own output; a null one is a
+ * column the aggregated stage left alone.
+ */
+function hasFilledVisitDate(row: Record<string, unknown>): boolean {
+  const v = row.visit_date;
+  return v !== undefined && v !== null && v !== '';
+}
+
+/**
+ * The visit total for ONE pipeline, decided by its GRAIN (ace#2202).
+ *
+ *  - VISIT-LEVEL — rows carry a filled `visit_date` and the `total_visits`
+ *    counter is unfilled (absent, or zero on every row): one row IS one visit,
+ *    so count the rows.
+ *  - AGGREGATED — rows carry a meaningful `total_visits`: sum it.
+ *
+ * `null` when the rows are neither shape.
+ *
+ * Both signals are read, not just the first. Reading only `total_visits`
+ * presence is what #2202 was; reading only `visit_date` presence is the
+ * mirror-image bug, because an aggregated row carries `visit_date: null` (the
+ * measurement above) and would be counted as 12 visits instead of summed to
+ * 2,742. Requiring the counter to be UNFILLED as well also leaves a genuine
+ * per-day aggregate — filled `visit_date` AND a real `total_visits` — summed
+ * rather than miscounted as one visit per day.
+ */
+function pipelineVisitTotal(p: SnapshotPipeline): VisitTotal | null {
+  const rows = p.rows ?? [];
+  if (rows.length === 0) return null;
+  const alias = p.alias ?? 'pipeline';
+  const counters = rows
+    .map((r) => (typeof r.total_visits === 'number' ? r.total_visits : null))
+    .filter((n): n is number => n !== null);
+
+  if (rows.some(hasFilledVisitDate) && !counters.some((n) => n !== 0)) {
+    return { total: rows.length, basis: `row count of visit-level pipeline '${alias}'` };
+  }
+  if (counters.length > 0) {
+    return {
+      total: counters.reduce((acc, n) => acc + n, 0),
+      basis: `sum(total_visits) over ${rows.length} row(s) of '${alias}'`,
+    };
+  }
+  return null;
+}
+
+/**
  * The one aggregate every visit-shaped dashboard can be asked for.
  *
- * Two derivations, in order, both over rows check 7 already has:
- *  - an AGGREGATED (per-worker) pipeline carries labs' built-in `total_visits`
- *    counter per row → sum it;
- *  - a VISIT-LEVEL pipeline is one row per visit → count the rows.
+ * Each pipeline is classified by its own GRAIN — a visit-level pipeline is one
+ * row per visit and is counted; an aggregated one carries labs' `total_visits`
+ * counter and is summed — and the first pipeline that yields a total wins.
  *
- * Returns `null` when neither shape is present. A dashboard that cannot state a
- * visit total is reported as not-judged, never failed: a gate that fails on what
- * it cannot see is the always-fires class (ace#1026).
+ * Returns `null` when no pipeline is visit-shaped. A dashboard that cannot state
+ * a visit total is reported as not-judged, never failed: a gate that fails on
+ * what it cannot see is the always-fires class (ace#1026).
  */
 export function deriveVisitTotal(
   payload: WorkflowPayload,
@@ -568,20 +625,8 @@ export function deriveVisitTotal(
       );
 
   for (const p of pipelines) {
-    const rows = p.rows ?? [];
-    if (rows.length === 0) continue;
-    if (rows.some((r) => typeof r.total_visits === 'number')) {
-      const total = rows.reduce((acc, r) => acc + (typeof r.total_visits === 'number' ? r.total_visits : 0), 0);
-      return { total, basis: `sum(total_visits) over ${rows.length} row(s) of '${p.alias ?? 'pipeline'}'` };
-    }
-  }
-
-  for (const p of pipelines) {
-    const rows = p.rows ?? [];
-    if (rows.length === 0) continue;
-    if (rows.some((r) => r.visit_date !== undefined)) {
-      return { total: rows.length, basis: `row count of visit-level pipeline '${p.alias ?? 'pipeline'}'` };
-    }
+    const total = pipelineVisitTotal(p);
+    if (total) return total;
   }
 
   return null;

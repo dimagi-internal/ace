@@ -597,3 +597,135 @@ describe('checkCrossDashboardConsistency — one dataset, one total (#1683)', ()
     expect(r.detail).toMatch(/nothing to cross-check/);
   });
 });
+
+/**
+ * dimagi-internal/ace#2202 — check 11 false-failed whenever one dashboard was
+ * visit-level, because `deriveVisitTotal` chose its basis from the PRESENCE of
+ * a column rather than from the pipeline's grain.
+ *
+ * Every labs row carries every built-in column whether or not its terminal
+ * stage fills it (ace#1701, `LABS_BUILTIN_ROW_COLUMNS` above). So a
+ * `visit_level` row carries `total_visits: 0` — an aggregate column with no
+ * meaning at visit grain — the old `rows.some(typeof total_visits === 'number')`
+ * matched, the sum was 0, and the row-count branch below it was unreachable.
+ *
+ * Measured on `poverty-graduation/20260905-1345`, Connect opp 2232, ONE fixture
+ * of 2,742 visits, verbatim from `pipeline_preview` (2026-09-07):
+ *
+ *   19169 terminal_stage visit_level, 2742 rows:
+ *     {"id":"1001937249147668400","username":"grace_a","visit_date":"2026-11-11T00:00:00",
+ *      "total_visits":0,"approved_visits":0,...,"first_visit_date":null,...}
+ *   19166 terminal_stage aggregated, 12 rows summing to 2742:
+ *     {"id":null,"username":"aisha_g","visit_date":null,"total_visits":250,
+ *      "approved_visits":241,...,"first_visit_date":"2026-10-05",...}
+ *
+ * The aggregated row is why the grain test is a FILLED `visit_date` and not a
+ * present one: `visit_date` is a key on both shapes, and testing presence alone
+ * would count flw_kpis as 12 visits — the same bug, mirrored.
+ */
+describe('deriveVisitTotal decides the basis from GRAIN, not column presence (#2202)', () => {
+  const OPP = 2232;
+  const url = (def: number, run: number) =>
+    `https://labs.connect.dimagi.com/labs/workflow/${def}/run/?run_id=${run}&opportunity_id=${OPP}`;
+
+  /** N visit_level rows, each carrying labs' unfilled aggregate counters. */
+  const visitLevelRows = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `100${i}`,
+      username: 'grace_a',
+      visit_date: `2026-11-${String((i % 28) + 1).padStart(2, '0')}T00:00:00`,
+      total_visits: 0,
+      approved_visits: 0,
+      pending_visits: 0,
+      rejected_visits: 0,
+      flagged_visits: 0,
+      first_visit_date: null,
+      last_visit_date: null,
+      survey_outcome: 'surveyed',
+    }));
+
+  /** 12 aggregated rows summing to `n`, each carrying an unfilled `visit_date`. */
+  const aggregatedRows = (n: number) => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({
+      id: null,
+      username: `flw_${i}`,
+      visit_date: null,
+      total_visits: Math.floor(n / 12),
+      first_visit_date: '2026-10-05',
+      last_visit_date: '2026-11-15',
+    }));
+    rows[0].total_visits += n - rows.reduce((acc, r) => acc + r.total_visits, 0);
+    return rows;
+  };
+
+  const completed = (alias: string, rows: Record<string, unknown>[]): WorkflowPayload => ({
+    definition: { pipeline_sources: { [alias]: 1 } },
+    instance: {
+      status: 'completed',
+      period_start: '2026-10-05',
+      period_end: '2026-11-17',
+      snapshot: { pipelines: { [alias]: { rows } } },
+    },
+  });
+
+  it('counts rows for a visit_level pipeline whose total_visits column is all zero', () => {
+    expect(deriveVisitTotal(completed('data', visitLevelRows(2742)))).toEqual({
+      total: 2742,
+      basis: "row count of visit-level pipeline 'data'",
+    });
+  });
+
+  it('still SUMS an aggregated pipeline, whose rows carry visit_date: null', () => {
+    expect(deriveVisitTotal(completed('flw_kpis', aggregatedRows(2742)))).toEqual({
+      total: 2742,
+      basis: "sum(total_visits) over 12 row(s) of 'flw_kpis'",
+    });
+  });
+
+  it('PASSES check 11 on the two measured dashboards, which agree exactly', () => {
+    const r = checkCrossDashboardConsistency(
+      [
+        {
+          dashboard: { key: 'targeting_stage', template: 'llo_weekly_review', par_url: url(19170, 19171) },
+          payload: completed('data', visitLevelRows(2742)),
+        },
+        {
+          dashboard: { key: 'flw_review', template: 'flw_weekly_review', par_url: url(19167, 19168) },
+          payload: completed('flw_kpis', aggregatedRows(2742)),
+        },
+      ],
+      { timelineEndDate: '2026-11-16' },
+    );
+    // Pre-#2202: targeting_stage=0 vs flw_review=2742, with the period_end
+    // auto-fix offered against a window that was already correct.
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/visit totals agree/);
+  });
+
+  it('still FAILS when a visit-level dashboard genuinely holds fewer visits', () => {
+    const r = checkCrossDashboardConsistency([
+      {
+        dashboard: { key: 'targeting_stage', template: 'llo_weekly_review', par_url: url(19170, 19171) },
+        payload: completed('data', visitLevelRows(2698)),
+      },
+      {
+        dashboard: { key: 'flw_review', template: 'flw_weekly_review', par_url: url(19167, 19168) },
+        payload: completed('flw_kpis', aggregatedRows(2742)),
+      },
+    ]);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/targeting_stage=2698/);
+    expect(r.detail).toMatch(/flw_review=2742/);
+  });
+
+  it('sums a per-day aggregate — a FILLED visit_date beside a real counter is not visit grain', () => {
+    const perDay = [
+      { visit_date: '2026-11-01', total_visits: 40 },
+      { visit_date: '2026-11-02', total_visits: 35 },
+    ];
+    expect(deriveVisitTotal(completed('by_day', perDay))).toEqual({
+      total: 75,
+      basis: "sum(total_visits) over 2 row(s) of 'by_day'",
+    });
+  });
+});
