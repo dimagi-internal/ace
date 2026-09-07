@@ -50,6 +50,7 @@ import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/pha
 import { classifyCaptionBacking } from '../lib/caption-backing.js';
 import {
   summarizeReplacementCoverage,
+  summarizeBatchReplacementCoverage,
   type ReplacementCoverage,
 } from '../lib/replacement-coverage.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
@@ -3028,6 +3029,48 @@ server.tool(
   },
 );
 
+/**
+ * `slides_batch_update`, extracted so the deck half of the ace#2126 coverage
+ * report can be tested at the ATOM level with an injected client.
+ *
+ * Same reasoning as `handleDocsCopyTemplate`: the pure classifier is covered by
+ * `test/lib/replacement-coverage.test.ts`, and that suite stays green even if
+ * this atom stops calling it — which is exactly the wiring the defect escaped
+ * through the first time.
+ */
+export async function handleSlidesBatchUpdate(
+  args: { presentationId: string; requests: Array<Record<string, unknown>> },
+  slidesClient: typeof slides = slides,
+) {
+  const { presentationId, requests } = args;
+  try {
+    const resp = await slidesClient.presentations.batchUpdate({
+      presentationId,
+      requestBody: { requests },
+    });
+    // Deck text does NOT arrive via slides_copy_template's `replacements` —
+    // both deck producers copy the template bare and substitute here, via the
+    // replaceAllText requests buildSlidesRequestsV2 emits. So this batch is
+    // where the ace#2126 silent-drop class actually lives for decks: a token
+    // no stencil carries is replaced zero times, returns 200, and leaves no
+    // {{token}} behind for a rendered-deck scan to find.
+    const coverage = summarizeBatchReplacementCoverage(requests, resp.data.replies ?? []);
+    return result({
+      presentationId: resp.data.presentationId,
+      replies: resp.data.replies,
+      ...(coverage
+        ? {
+            replacementOccurrences: coverage.occurrences,
+            unmatchedReplacements: coverage.unmatchedReplacements,
+            ...(coverage.warning ? { warning: coverage.warning } : {}),
+          }
+        : {}),
+    });
+  } catch (e: any) {
+    return error(e.message);
+  }
+}
+
 // 20. Batch update a Google Slides deck (raw API)
 server.tool(
   'slides_batch_update',
@@ -3036,20 +3079,11 @@ server.tool(
     presentationId: z.string().describe('The Google Slides presentation ID'),
     requests: z.array(z.record(z.unknown())).describe('Array of Slides API request objects, e.g. [{"createSlide": {"objectId": "slide1", "slideLayoutReference": {"predefinedLayout": "TITLE_AND_BODY"}}}]'),
   },
-  async ({ presentationId, requests }) => {
-    try {
-      const resp = await slides.presentations.batchUpdate({
-        presentationId,
-        requestBody: { requests },
-      });
-      return result({
-        presentationId: resp.data.presentationId,
-        replies: resp.data.replies,
-      });
-    } catch (e: any) {
-      return error(e.message);
-    }
-  },
+  async ({ presentationId, requests }) =>
+    handleSlidesBatchUpdate({
+      presentationId,
+      requests: requests as Array<Record<string, unknown>>,
+    }),
 );
 
 // 21. Copy a Slides template into a Shared-Drive folder

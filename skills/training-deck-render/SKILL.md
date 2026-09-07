@@ -60,6 +60,33 @@ training material step before Phase 7.
 9. **Execute.** Call `slides_batch_update` — single call with all
    requests.
 
+   **Read `unmatchedReplacements` on the result — it is not decoration
+   (ace#2126).** The deck's text does not arrive through
+   `slides_copy_template`; step 6 copies the template BARE and every
+   token is substituted here, by the `replaceAllText` requests
+   `buildSlidesRequestsV2` emits. A token no stencil carries is
+   replaced zero times, the API returns 200, and **no `{{token}}`
+   survives in the rendered deck for any check to find** — so the
+   slide ships without the content and every checkpoint reads green.
+   That is the same silent-drop that put a contractual Work Order in
+   front of a partner using "the partner" ~30 times with no antecedent
+   while its QA returned 14/14 pass.
+
+   A non-empty `unmatchedReplacements` (plus a `warning`) means those
+   values were **silently dropped from the rendered deck**. It is a
+   report, not a rollback — the deck exists and looks fine. Treat any
+   entry as a **halt**, naming the unmatched tokens.
+
+   **Do not work around it by folding the value into a neighbouring
+   token.** That renders correctly once and teaches the next run
+   nothing. A dropped token means the live template gdoc no longer
+   carries the placeholder the builder targets, and the fix is to
+   re-bootstrap the template
+   (`scripts/bootstrap-training-deck-template.ts`) so the stencil has
+   the slot. `{{NOTES}}` is the likeliest first hit: the bootstrap
+   injects it into each stencil's notes page, so an unmatched
+   `{{NOTES}}` means the live template predates that step.
+
 10. **Write deck handoff** to `run_state.yaml`:
 
     ```yaml

@@ -945,14 +945,21 @@ function buildLayoutRequests(
   //
   // For this to actually surface notes in the rendered deck, the
   // template stencils must have `{{NOTES}}` as placeholder text in
-  // their notes page body. The bootstrap script that creates the
-  // stencils SHOULD add this — tracked separately as part of the
-  // template rebrand work (task #31). Until that lands, this request
-  // is a no-op (replaceAllText silently matches nothing) and
-  // `slide.notes` is effectively dropped at render time. Schema
-  // validation still accepts `notes` so generation can populate it
-  // without breaking — the renderer side catches up when the bootstrap
-  // is updated.
+  // their notes page body. This comment used to say the bootstrap
+  // "SHOULD add this — tracked as task #31", and that until it landed
+  // the request was a no-op that dropped `slide.notes` at render time.
+  // It landed: `scripts/bootstrap-training-deck-template.ts` injects
+  // `{{NOTES}}` into each stencil's notes page (see its step 4,
+  // `insertText: { text: '{{NOTES}}' }`). The stale note is worth
+  // recording because it described an ACCEPTED silent drop of exactly
+  // the ace#2126 shape, and nothing would have told us it was fixed.
+  //
+  // What the comment cannot tell you is whether the LIVE template gdoc
+  // has been re-bootstrapped since. That is now answerable at runtime
+  // rather than by reading: `slides_batch_update` reports
+  // `unmatchedReplacements`, so a `{{NOTES}}` that still matches
+  // nothing shows up in the tool result instead of vanishing. The
+  // remedy is to re-run the bootstrap, not to drop the request.
   if (slide.notes !== undefined && slide.notes !== '') {
     reqs.push(replaceAllTextV2('{{NOTES}}', slide.notes, [`${pageId}:notes`]));
   }
