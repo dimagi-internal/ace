@@ -19,6 +19,8 @@ import {
   SLIDE_W,
   SLIDE_H,
   MARGIN,
+  MOBILE_ZOOM_IMAGE,
+  MOBILE_FLOW,
 } from './training-deck-stencil-geometry.js';
 
 // ---------------------------------------------------------------------------
@@ -799,22 +801,31 @@ function buildLayoutRequests(
       );
       break;
     case 'mobile_flow': {
-      const phoneWidth = 1828800;
-      const phoneGap = 228600;
-      const phoneHeight = 3200400;
-      const phoneY = 914400;
+      const phoneWidth = MOBILE_FLOW.phoneWidth;
+      const phoneGap = MOBILE_FLOW.phoneGap;
+      const phoneHeight = MOBILE_FLOW.phoneHeight;
+      const phoneY = MOBILE_FLOW.phoneY;
       const totalSteps = slide.steps.length;
       const groupWidth =
         totalSteps * phoneWidth + (totalSteps - 1) * phoneGap;
       const startX = (SLIDE_W - groupWidth) / 2;
       // Captions are created programmatically, centered under each phone —
       // the stencil's four fixed caption boxes only line up at N=4, so they
-      // are blanked below and never receive text. Same width/y as the
-      // stencil boxes (buildMobileFlowTextBoxes in the geometry module) so
-      // the N=4 output is visually unchanged.
-      const captionW =
-        Math.round((SLIDE_W - MARGIN * 2) / 4) - 50_000;
-      const captionY = SLIDE_H - 700_000;
+      // are blanked below and never receive text.
+      //
+      // Width is derived from the PHONE PITCH, not from a quarter of the
+      // slide. The two happen to be equal at the historic phone width, so a
+      // slide-grid quarter looked correct — but it is only correct for that
+      // one width, and any change to phoneWidth silently overlapped adjacent
+      // captions.
+      //
+      // The vertical band is the ace#2190 sibling: captions used to start at
+      // SLIDE_H - 700_000 in a 500_000-tall box, leaving ~2.5 lines of room
+      // before the slide edge for captions that routinely run to four. The
+      // surplus ran off the bottom of the slide and was cut mid-word on every
+      // four-up slide in the deck.
+      const captionW = phoneWidth + phoneGap - 50_000;
+      const captionY = MOBILE_FLOW.captionY;
 
       for (let i = 0; i < 4; i++) {
         // Blank ALL stencil caption tokens regardless of step count.
@@ -838,7 +849,7 @@ function buildLayoutRequests(
                 x: Math.round(x + (phoneWidth - captionW) / 2),
                 y: captionY,
                 w: captionW,
-                h: 500000,
+                h: MOBILE_FLOW.captionH,
               },
             ),
           );
@@ -862,12 +873,27 @@ function buildLayoutRequests(
         '{{CALLOUTS}}',
         (slide.callouts ?? []).map((c) => `• ${c}`).join('\n'),
       );
+      // The phone sits in the RIGHT column, clear of both the title band and
+      // the callouts column. It used to be placed at x 2_286_000 / y 685_800,
+      // which put it INSIDE the title box (y 457_200–1_157_200) and across
+      // half the callouts column (which ends at MARGIN + 40% of SLIDE_W =
+      // 4_114_800) — so the title and every callout line were rendered under
+      // the screenshot and could not be read (ace#2190).
+      //
+      // Height is also derived from the source aspect (a phone frame is
+      // ~1080x2400, so w/h ~= 0.45) instead of the old 0.686, which stretched
+      // every screenshot horizontally.
       reqs.push(
         createImage(
           `${pageId}_img_0`,
           pageId,
           manifest.resolveImageRef(slide.image),
-          { x: 2286000, y: 685800, w: 2743200, h: 4000500 },
+          {
+            x: MOBILE_ZOOM_IMAGE.x,
+            y: MOBILE_ZOOM_IMAGE.y,
+            w: MOBILE_ZOOM_IMAGE.w,
+            h: MOBILE_ZOOM_IMAGE.h,
+          },
         ),
       );
       break;

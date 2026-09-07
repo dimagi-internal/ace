@@ -43,6 +43,48 @@ export const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255
 export const COLOR_LIGHT_GRAY = { red: 0xE6 / 255, green: 0xEA / 255, blue: 0xF2 / 255 };
 
 // ---------------------------------------------------------------------------
+// Image-placement geometry (consumed by the RENDER path, lib/training-deck-spec)
+//
+// These live here, beside the text-box builders, because an image and a text
+// box on the same stencil must be laid out against each other. They used to be
+// magic numbers inline in the render switch, which is how a phone screenshot
+// came to be drawn straight over its own title and callouts (ace#2190).
+// ---------------------------------------------------------------------------
+
+/** Right edge of the `mobile_zoom` callouts column: MARGIN + 40% of the slide. */
+export const MOBILE_ZOOM_CALLOUTS_RIGHT = MARGIN + Math.round(SLIDE_W * 0.4);
+
+/** Bottom of the standard 24pt title band, shared by every titled stencil. */
+export const TITLE_BAND_BOTTOM = MARGIN + 700_000;
+
+/**
+ * `mobile_zoom` phone frame — right column, below the title, source aspect.
+ * A phone capture is ~1080x2400 (w/h ~= 0.45); the previous 0.686 stretched
+ * every screenshot sideways.
+ */
+export const MOBILE_ZOOM_IMAGE = (() => {
+  const left = MOBILE_ZOOM_CALLOUTS_RIGHT + 485_200; // gutter clear of callouts
+  const top = TITLE_BAND_BOTTOM + 100_000;
+  const h = SLIDE_H - MARGIN - top;
+  const w = Math.round(h * 0.45);
+  return { x: left + Math.round((SLIDE_W - MARGIN - left - w) / 2), y: top, w, h };
+})();
+
+/**
+ * `mobile_flow` four-up band. `captionY` + `captionH` must land inside the
+ * slide: captions previously began at SLIDE_H - 700_000 in a 500_000-tall box,
+ * so a four-line caption ran off the bottom edge and was cut mid-word.
+ */
+export const MOBILE_FLOW = {
+  phoneWidth: 1_828_800,
+  phoneGap: 228_600,
+  phoneHeight: 2_800_000,
+  phoneY: 1_150_000,
+  captionY: 4_030_000,
+  captionH: 1_000_000,
+} as const;
+
+// ---------------------------------------------------------------------------
 // Text-box request helper
 // ---------------------------------------------------------------------------
 
