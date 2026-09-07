@@ -34,8 +34,8 @@ lands a repo change. Do not reimplement the wait inline.
 | **Required** check | **`clean-install` only** | `gh api repos/dimagi-internal/ace/branches/main/protection --jq .required_status_checks.contexts` |
 | `enforce_admins` | `true` — no `--admin` force-merge | same call, `.enforce_admins.enabled` |
 | Auto-merge | **enabled** | `gh api repos/dimagi-internal/ace --jq .allow_auto_merge` |
-| Merge queue | **none yet — a queue is being enabled** | `gh api graphql -f query='{repository(owner:"dimagi-internal",name:"ace"){mergeQueue(branch:"main"){id}}}'` — `null` means none |
-| Typical create → merge | **~70 seconds** | `gh pr list --state merged --limit 5 --json number,createdAt,mergedAt` |
+| Merge queue | **LIVE since 2026-09-07T13:58:52Z** — ruleset `main-merge-queue` (id 22456030), `MERGE` / max-merge 1 / max-build 5 / ALLGREEN | `gh api graphql -f query='{repository(owner:"dimagi-internal",name:"ace"){mergeQueue(branch:"main"){id}}}'` — `null` means none |
+| Typical create → merge | **~6 minutes through the queue** (was ~70s before it) — PR #2154, the first live queued PR: created 14:09:30Z, merged 14:15:23Z | `gh pr list --state merged --limit 5 --json number,createdAt,mergedAt` |
 
 `version-check` runs on every PR but is **not** required — a red `version-check` will not block the
 merge, so read it rather than assuming the merge is stuck on it.
@@ -51,8 +51,10 @@ false
 
 A probe that answers `null` for both states cannot distinguish them, and this one would have kept
 saying "no queue" the day after one was switched on. The GraphQL form in the table is the real
-probe (verified 2026-09-07 — `repository.mergeQueue(branch:"main")` returns `null` today, and
-`pullRequest.isMergeQueueEnabled` is the per-PR equivalent `gh` itself reads).
+probe (verified 2026-09-07 — `repository.mergeQueue(branch:"main")` returned `null` before the queue
+was created and returns the queue object after, and `pullRequest.isMergeQueueEnabled` is the per-PR
+equivalent `gh` itself reads). The false probe now answers `false` while the real one answers with a
+queue id — exactly the divergence it was retired for.
 
 ## The ACE ship loop
 
@@ -138,7 +140,7 @@ It is a backstop, not the fix: the fix is `isolation: "worktree"` on the dispatc
   Then re-enter the wait. `--rebase-first` aborts cleanly if a non-version file conflicts — those
   need human review.
 
-  **Once `main` has a merge queue, this block is wrong for a QUEUED PR** — `--disable-auto` exits 0
+  **`main` HAS a merge queue, so this block is wrong for a QUEUED PR** — `--disable-auto` exits 0
   without disabling anything, so the force-push races a merge group that is already testing the old
   head. Check `mergeQueueEntry` first, or just use `scripts/land-pr.sh`, which does. See
   § When the merge queue goes live.
@@ -214,13 +216,19 @@ It is a backstop, not the fix: the fix is `isolation: "worktree"` on the dispatc
   table: `agents/orchestrator-reference.md § The filed remedy is a lead, not an instruction`
   (ace#1900). *Enforced:* `test/skills/remedy-verification-contract.test.ts`.
 
-## When the merge queue goes live
+## The merge queue (LIVE)
 
-`main` has no merge queue today; one is being enabled to close ace#1776 (VERSION uniqueness is
-checked but never re-checked at merge time) and ace#1914 (VERSION contention is 20% of all
-`clean-install` runs). Everything below already ships, and every piece of it is **inert until a
-queue exists** — nothing here is a flag day, which matters because sessions that are already
-running keep using the copy of these files they loaded.
+**`main` has had a merge queue since 2026-09-07T13:58:52Z** — ruleset `main-merge-queue`, id
+`22456030`, `enforcement: active`. It closes ace#1776 (VERSION uniqueness is checked but never
+re-checked at merge time) and ace#1914 (VERSION contention is 20% of all `clean-install` runs):
+`clean-install` now runs against the exact base each PR lands on, so a version collision can no
+longer be a race.
+
+It was deliberately **not** a flag day — the tooling below shipped first (PR #2151, merged 13:56Z)
+and was inert until the ruleset was created two minutes later, because a session already running
+keeps using the copy of these files it loaded. Undo, if it is ever needed, is one command:
+`gh api -X DELETE repos/dimagi-internal/ace/rulesets/22456030` — and `land-pr.sh` degrades to its
+pre-queue behaviour when the queue read comes back empty, by design.
 
 **What changes for you: almost nothing.** Keep arming with `gh pr merge <N> --auto --merge` and keep
 landing with `bash scripts/land-pr.sh <pr>`. Under a queue `gh` only prints a warning
@@ -270,12 +278,57 @@ rebased on anyway.
    twice. That is ace#1776 surviving the fix. One PR per group makes the second PR's group read
    1100 against an `origin/main` already at 1100, which is correctly rejected.
 
-**Not yet observed, and only the first live queued PR can settle it.** Everything above is read from
-`gh`'s source, GitHub's documented contract, and GraphQL probes against a repo with *no* queue — no
-ACE PR has ever been enqueued. On the first one, check three things and correct this section if any
-disagrees: that `clean-install` reports against the `gh-readonly-queue/...` ref; that
-`land-pr.sh` prints `in the merge queue (entry=… position=…)` rather than rebasing; and that
-`gh pr merge --disable-auto` on it exits 0 while `autoMergeRequest` stays non-null (the no-op).
+**OBSERVED on the first live queued PR — #2154, 2026-09-07.** The three checks this section used to
+list as unsettled were run against the real queue. Two confirmed; the third turned out to be
+untestable as written, which is itself the finding.
+
+Full transition, 14:09:30Z create → 14:15:23Z merged:
+
+```
+14:09:52  state=OPEN   mergeState=BLOCKED  inQueue=false  auto=MERGE   entry=null
+14:12:17  state=OPEN   mergeState=CLEAN    inQueue=true   auto=null    entry={position:1, state:QUEUED}
+14:12:38  state=OPEN   mergeState=CLEAN    inQueue=true   auto=null    entry={position:1, state:AWAITING_CHECKS}
+14:15:23  state=MERGED                     inQueue=false  auto=null    entry=null
+```
+
+1. **`clean-install` does report against the queue ref — CONFIRMED.** A `merge_group` run of
+   `Clean install + dep check` dispatched on
+   `gh-readonly-queue/main/pr-2154-0a878af683b01c5037c320171ee99d959db7c8f9` and concluded
+   `success`. The `merge_group` trigger is load-bearing exactly as documented: without it that run
+   does not exist and the PR waits forever on `main`'s only required check.
+2. **`land-pr.sh` polls rather than rebasing — CONFIRMED**, verbatim from its log:
+   ```
+   attempt 1/5: state=OPEN mergeable=BLOCKED queue=true queued=false entry=- pos=-
+     auto-merge armed
+   attempt 2/5: state=OPEN mergeable=CLEAN queue=true queued=true entry=QUEUED pos=1
+     in the merge queue (entry=QUEUED position=1) — waiting; this attempt is not consumed
+   merged from the queue
+   ```
+   Exit 0, two attempts consumed for the whole landing, no disarm and no force-push.
+3. **The `--disable-auto` check is UNTESTABLE as it was written, because enqueueing CONSUMES the
+   auto-merge request.** `autoMergeRequest` is `MERGE` while the PR is `BLOCKED` and **`null` from
+   the moment it enters the queue** (see the transition table). The old wording — "exits 0 while
+   `autoMergeRequest` stays non-null" — presumes a live auto-merge request to leave un-disabled, and
+   on a queued PR there is none. Nothing was run against the live merge group to test it; a
+   mutating command on a real merge group is not worth a checklist tick.
+
+   **The hazard is unchanged and still stands.** `gh` returns `ErrAlreadyInMergeQueue` from
+   `inMergeQueue()` before the disable branch and maps it to `return nil` (`merge.go:543-553`,
+   `:167`), so the call exits 0 on a queued PR either way — and the destructive half was never the
+   disarm, it was the `--force-with-lease` that the hand-rolled recipe runs next, over a head whose
+   merge group is already under test. Keep using `scripts/land-pr.sh`, which reads
+   `mergeQueueEntry` first.
+
+**A practical consequence of #3 worth knowing before you debug one:** *`autoMergeRequest: null` on a
+queued PR is normal, not a PR that lost its arm.* Read `mergeQueueEntry` / `isInMergeQueue` before
+concluding a PR needs re-arming — re-arming a queued PR is the move that leads back to the
+force-push hazard above.
+
+**Still unobserved:** an *ejection* (a VERSION collision surfacing as removal from the queue rather
+than a stalled auto-merge), and any group with more than one entry. #2154 was alone in the queue at
+position 1 with zero other open PRs, so the contention path this queue was built for has not yet
+run. The rebase-on-`DIRTY` recovery above is what covers it — do not let a clean first landing
+argue for retiring it.
 
 ## MCP Tools Used
 
@@ -300,4 +353,5 @@ None. `git` + `gh` only.
 |---|---|---|
 | 2026-08-17 | Initial version. Created because ACE had no shipping skill and hand-rolled the wait every time — the canonical `until … sleep 30; done` template in `orchestrator-reference.md` prescribed a shape the harness blocks, and the fallback burned the full 10-min Bash timeout (`Exit code 143`) waiting on PRs that merge in ~70s. | ACE team |
 | 2026-09-07 | **Merge-queue aware, ahead of the queue being enabled** (prereq for ace#1914/#1776). `land-pr.sh` detects `mergeQueueEntry` and never disarms/rebases/force-pushes a queued PR — `gh pr merge --disable-auto` is a silent no-op on one (`merge.go:543`), so the old recipe would have force-pushed over a live merge group. Queued time no longer consumes a rebase attempt and reports as progress (exit 5). `clean-install.yml` gains the `merge_group` trigger it cannot function without, and its VERSION assertion now also runs on the merge group. Also corrected the repo-facts table's merge-queue re-derive, which read a field that does not exist and answered "none" unconditionally. | ACE team |
+| 2026-09-07 | **The queue went live, and the first PR through it replaced inference with measurement.** The repo-facts row said "none yet" from 13:58Z onward — a table read at the top of every ship. Corrected against ruleset `main-merge-queue` (id 22456030) plus the observed transition of PR #2154 (create 14:09:30Z → merged 14:15:23Z, ~6 min vs ~70s pre-queue). Two of the three recorded falsifiers CONFIRMED verbatim: `clean-install` dispatched on `merge_group` against `gh-readonly-queue/main/pr-2154-…` and concluded success, and `land-pr.sh` printed `in the merge queue (entry=QUEUED position=1) — waiting; this attempt is not consumed` and exited 0 without disarming or force-pushing. The third was **untestable as written**: enqueueing CONSUMES the auto-merge request (`autoMergeRequest` goes `MERGE` → `null` on entry), so there is no live arm for `--disable-auto` to leave un-disabled — added the practical corollary that `autoMergeRequest: null` on a queued PR is normal and must not be read as a lost arm, since re-arming leads back to the force-push hazard. Ejection and multi-entry groups remain unobserved and are called out as such. | ACE team |
 | 2026-08-17 | **Converted to a stub over `canopy agent-core/shipping.md`** (canopy #498). The mechanics were fleet-shared — hal, eva and ACE had each written their own copy — so they were promoted to a first-class agent-core body alongside `turn.md` / `task-tracker.md`, and `turn.md`'s duplicated block was cut (444 → 399 lines). What stays here is only what is ACE-specific: the measured Step 0 row, the version-bump loop, `/ace:update` + the MCP-restart rule, and the `--rebase-first` collision recipe. Fleet-process changes now go to canopy, not here. | ACE team |
