@@ -265,3 +265,126 @@ export function scopeOrphanQemuKills(input: OrphanScopeInput): OrphanScopeResult
     verdicts,
   };
 }
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// THE SECOND PASS — and why it must read the same decision (ace#1821, cond. 3)
+//
+// `scopeOrphanQemuKills` above is not the only place `sweepStaleEmulatorState`
+// SIGKILLs a qemu. Step 3 of that sweep probes an emulator console port, and
+// when the port is occupied it runs a NARROWER rescue: `lsof -iTCP:<port>
+// -sTCP:LISTEN` for same-user pids, verify each is a qemu, kill it. That pass
+// predates this module and consulted no session lock at all — while printing
+// "(no session lock)" as though it had. Two consecutive lines from one live
+// dispatch on a two-session host, 2026-09-06:
+//
+//   sweepStaleEmulatorState: sparing qemu pid=72277 (held-by-live-session) …
+//     Spared: killing a live peer's emulator is ace#1821.
+//   sweepStaleEmulatorState: killing same-user orphan qemu pid=72277 on
+//     port 5554 (no session lock)
+//
+// So the two passes disagreed inside one function, twenty lines apart, and the
+// second one won. The probed port defaults to 5554 — the port the FIRST
+// session on a host is allocated — so this did not bypass the fix in a rare
+// corner. It bypassed it in the single most common two-session arrangement
+// there is, which is why the fix measured as working and the symptom persisted.
+//
+// WHAT THE RESCUE IS LEGITIMATELY FOR, AND WHY IT IS NOT SIMPLY DELETED
+//
+// The broad sweep deliberately SPARES an unattributable qemu — no process
+// table row, or no `-port` in its argv — because absence of evidence is not
+// evidence of an orphan. The rescue exists to reap exactly those: an
+// `ensureAvdRunning` that spawned qemu and threw BEFORE writing its lock
+// leaves a process nothing claims and nothing can attribute. A port-specific
+// `lsof` LISTEN hit is POSITIVE evidence, so the rescue may legitimately kill
+// what the broad pass spared.
+//
+// What it may never do is override a LIVE claim. "We could not attribute it"
+// and "a living session says it is mine" are opposite findings, and only the
+// first is what the rescue's extra evidence speaks to.
+//
+// THE EXTRA EVIDENCE IS THE JOIN KEY ITSELF
+//
+// `lsof -nP -iTCP:<port> -sTCP:LISTEN -t` names the processes LISTENing on
+// that port, and an ACE emulator's console port IS its `-port <n>` (the argv
+// value `port-allocator.ts` hands it). So the caller already knows every
+// candidate's console port before any `ps` is parsed — which makes the rescue
+// STRICTLY better attributed than the broad sweep, not worse. Feeding that
+// port in is what closes the `unattributable-*` hole rather than papering over
+// it: a rescue candidate is always joinable, so it always gets a real verdict.
+//
+// One attribution, one join key, one set of reasons, two policies. Writing a
+// third contention detector here is exactly what `lib/mobile-contention.ts`'s
+// header warns against — two detectors that disagree are worse than one dead
+// one — and this defect IS that warning coming true inside a single function.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Does this reason mean a LIVE owner positively claims the pid?
+ *
+ * These are the two verdicts no pass may override, however much extra evidence
+ * it brings. Every other reason is an absence — of a row, of a `-port`, of a
+ * claim — and an absence is what a narrower pass is entitled to resolve.
+ */
+export function isClaimedByLiveOwner(reason: OrphanReason): boolean {
+  return reason === 'held-by-live-session' || reason === 'self';
+}
+
+export interface PortRescueInput extends Omit<OrphanScopeInput, 'qemuPids'> {
+  /**
+   * Pids from `lsof -nP -iTCP:<probedConsolePort> -sTCP:LISTEN -t`. The caller
+   * is still responsible for confirming each is a qemu process — `lsof` on a
+   * port can name any service, and this module has no way to tell.
+   */
+  listeningPids: readonly number[];
+  /**
+   * The console port `lsof` was asked about. Because an ACE emulator listens on
+   * the console port it was given as `-port <n>`, a LISTEN hit here IS that
+   * pid's console port — authoritative, and independent of whether the process
+   * table could be read or parsed.
+   */
+  probedConsolePort: number;
+}
+
+/**
+ * Decide which pids the console-port RESCUE pass may SIGKILL.
+ *
+ * Same attribution as `scopeOrphanQemuKills`, with the probed port supplied as
+ * the join key for any candidate the process table could not resolve. The
+ * outcome differs from the broad sweep in exactly one way, and it is the way
+ * the rescue is entitled to differ: a candidate the broad pass would have
+ * spared as *unattributable* is here joined to the probed port and judged on
+ * its merits — usually `orphan`, and killed.
+ *
+ * `held-by-live-session` and `self` are spared. That is the whole fix: before
+ * this function existed, the rescue killed them.
+ */
+export function scopePortRescueKills(input: PortRescueInput): OrphanScopeResult {
+  const resolved = new Map<number, AvdHolder>();
+  for (const p of input.processes) resolved.set(p.pid, p);
+
+  // Fill in the join key `lsof` already proved, for candidates whose process
+  // table row is missing or carries no `-port`. Nothing else about the row is
+  // invented: the synthetic entry exists only to carry the console port.
+  const processes: AvdHolder[] = [...input.processes];
+  for (const pid of input.listeningPids) {
+    const row = resolved.get(pid);
+    if (row?.consolePort != null) continue;
+    processes.push({
+      pid,
+      ppid: row?.ppid ?? 1,
+      user: row?.user ?? '',
+      readOnly: row?.readOnly ?? false,
+      consolePort: input.probedConsolePort,
+      avdName: row?.avdName ?? null,
+      startedMs: row?.startedMs ?? 0,
+    });
+  }
+
+  return scopeOrphanQemuKills({
+    qemuPids: input.listeningPids,
+    processes,
+    liveClaims: input.liveClaims,
+    selfConsolePort: input.selfConsolePort,
+  });
+}

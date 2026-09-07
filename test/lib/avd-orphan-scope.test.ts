@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { scopeOrphanQemuKills, type LiveSessionClaim } from '../../lib/avd-orphan-scope.js';
+import {
+  scopeOrphanQemuKills,
+  scopePortRescueKills,
+  isClaimedByLiveOwner,
+  type LiveSessionClaim,
+} from '../../lib/avd-orphan-scope.js';
 import { parseEmulatorProcesses, parsePsRows } from '../../lib/mobile-contention.js';
 
 /**
@@ -249,5 +254,221 @@ describe('the deleted inference stays deleted', () => {
     // `liveCount` was the variable that carried the false inference.
     expect(src).not.toMatch(/const liveCount\b/);
     expect(src).not.toMatch(/no adb devices visible/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONDITION 3 — the console-port RESCUE pass (ace#1821, second half)
+//
+// The fix above spares a live peer in Step 1 of `sweepStaleEmulatorState`.
+// Step 3 of the same function then killed it anyway, via a narrower `lsof`
+// rescue that consulted no session lock while logging "(no session lock)".
+// Captured live 2026-09-06, two consecutive lines of one dispatch:
+//
+//   sparing qemu pid=72277 (held-by-live-session) … ace#1821.
+//   killing same-user orphan qemu pid=72277 on port 5554 (no session lock)
+//
+// The fixture at the top of this file already models exactly that host: the
+// LIVE PEER is on console port 5554, which is the port the rescue probes by
+// default (`ACE_MOBILE_EMULATOR_PORT` is unset in `.env.tpl`, so
+// `mcp/mobile/backends/avd.ts` falls back to the literal 5554). So the peer is
+// not an unlucky edge case — it is the first session on any host.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** The port `lsof -iTCP:<port> -sTCP:LISTEN` probes when nothing is pinned. */
+const DEFAULT_PROBED_PORT = 5554;
+
+/**
+ * POSITIVE CONTROL — the pre-fix rescue, reproduced from
+ * `mcp/mobile/backends/avd.ts` as it stood on origin/main @ a402eabe.
+ *
+ * Every same-user pid `lsof` returned that is a qemu process dies. No lock is
+ * read; the "(no session lock)" in the log line was an assumption printed as a
+ * finding.
+ */
+function legacyRescueDecision(listeningPids: readonly number[]): number[] {
+  return [...listeningPids]; // caller's only filter was /qemu-system/ on the argv
+}
+
+describe('positive control: the pre-fix port rescue kills the live peer it just spared', () => {
+  it('kills the peer on 5554 — the port the FIRST session on a host gets', () => {
+    expect(legacyRescueDecision([PEER_PID])).toContain(PEER_PID);
+  });
+
+  it('kills it even though Step 1 had already spared it moments earlier', () => {
+    const step1 = scopeOrphanQemuKills({
+      qemuPids: QEMU_PIDS,
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    // Step 1 spares it …
+    expect(step1.spared).toContain(PEER_PID);
+    // … and the legacy Step 3 kills the very same pid. That contradiction,
+    // inside one function, is the defect.
+    expect(legacyRescueDecision([PEER_PID])).toContain(PEER_PID);
+  });
+
+  it('the fixture actually discriminates — the two decisions differ', () => {
+    const fixed = scopePortRescueKills({
+      listeningPids: [PEER_PID],
+      probedConsolePort: DEFAULT_PROBED_PORT,
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(legacyRescueDecision([PEER_PID])).toEqual([PEER_PID]);
+    expect(fixed.killable).toEqual([]);
+  });
+});
+
+describe('negative control: the rescue spares live owners and still reaps orphans', () => {
+  const rescue = (listeningPids: number[], port = DEFAULT_PROBED_PORT) =>
+    scopePortRescueKills({
+      listeningPids,
+      probedConsolePort: port,
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+
+  it('spares the live peer, naming the session that holds it', () => {
+    const r = rescue([PEER_PID]);
+    expect(r.killable).toEqual([]);
+    expect(r.spared).toEqual([PEER_PID]);
+    const v = r.verdicts.find((x) => x.pid === PEER_PID)!;
+    expect(v.reason).toBe('held-by-live-session');
+    expect(v.heldByMcpPid).toBe(40001);
+  });
+
+  it('spares our own emulator when the probed port is this session\'s own', () => {
+    const r = rescue([SELF_PID], SELF_CONSOLE_PORT);
+    expect(r.killable).toEqual([]);
+    expect(r.verdicts[0].reason).toBe('self');
+  });
+
+  it('still reaps a crashed session\'s emulator — the capability is preserved', () => {
+    const r = rescue([ORPHAN_PID], 5558);
+    expect(r.killable).toEqual([ORPHAN_PID]);
+    expect(r.verdicts[0].reason).toBe('orphan');
+  });
+});
+
+describe('the rescue reaps what the broad sweep could not attribute', () => {
+  /**
+   * The whole reason Step 3 exists: an `ensureAvdRunning` that spawned qemu
+   * and threw BEFORE writing its lock leaves a process the broad sweep must
+   * spare. An `lsof` LISTEN hit on a specific port is the positive evidence
+   * the broad sweep lacked, so the rescue may kill it — and this is where the
+   * two passes are SUPPOSED to differ.
+   */
+  const GHOST_PID = 77001; // no row in the ps capture at all
+
+  it('the broad sweep spares a pid with no process-table row', () => {
+    const broad = scopeOrphanQemuKills({
+      qemuPids: [GHOST_PID],
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(broad.killable).toEqual([]);
+    expect(broad.verdicts[0].reason).toBe('unattributable-no-ps-row');
+  });
+
+  it('the rescue kills it, because lsof supplied the console port', () => {
+    const r = scopePortRescueKills({
+      listeningPids: [GHOST_PID],
+      probedConsolePort: 5560, // no live lock claims 5560
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(r.killable).toEqual([GHOST_PID]);
+    expect(r.verdicts[0].reason).toBe('orphan');
+    expect(r.verdicts[0].consolePort).toBe(5560);
+  });
+
+  it('but NOT when a live session claims the probed port — evidence of a port is not licence to kill its owner', () => {
+    const r = scopePortRescueKills({
+      listeningPids: [GHOST_PID],
+      probedConsolePort: 5554, // the live peer's port
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(r.killable).toEqual([]);
+    expect(r.verdicts[0].reason).toBe('held-by-live-session');
+  });
+
+  it('no rescue candidate is ever left unattributable — the hole is closed, not papered over', () => {
+    const r = scopePortRescueKills({
+      listeningPids: [GHOST_PID, PEER_PID, ORPHAN_PID],
+      probedConsolePort: 5554,
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    for (const v of r.verdicts) expect(v.reason).not.toMatch(/^unattributable-/);
+  });
+
+  it('an unreadable process table cannot cost a peer its emulator', () => {
+    // `readPsRows` failing degrades to `processes: []`. The join key still
+    // comes from the probed port, so the live claim on 5554 still wins.
+    const r = scopePortRescueKills({
+      listeningPids: [PEER_PID],
+      probedConsolePort: 5554,
+      processes: [],
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(r.killable).toEqual([]);
+    expect(r.verdicts[0].reason).toBe('held-by-live-session');
+  });
+
+  it('empty input yields empty output rather than throwing', () => {
+    const r = scopePortRescueKills({
+      listeningPids: [],
+      probedConsolePort: 5554,
+      processes,
+      liveClaims: LIVE_CLAIMS,
+      selfConsolePort: SELF_CONSOLE_PORT,
+    });
+    expect(r).toEqual({ killable: [], spared: [], verdicts: [] });
+  });
+});
+
+describe('isClaimedByLiveOwner names exactly the two overridable-by-nothing reasons', () => {
+  it('is true for a live claim and for self', () => {
+    expect(isClaimedByLiveOwner('held-by-live-session')).toBe(true);
+    expect(isClaimedByLiveOwner('self')).toBe(true);
+  });
+
+  it('is false for every reason that is an ABSENCE of evidence', () => {
+    expect(isClaimedByLiveOwner('orphan')).toBe(false);
+    expect(isClaimedByLiveOwner('unattributable-no-ps-row')).toBe(false);
+    expect(isClaimedByLiveOwner('unattributable-no-console-port')).toBe(false);
+  });
+});
+
+describe('the rescue cannot go back to deciding on its own', () => {
+  it('the sweep\'s port rescue consults the shared decision', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(
+      new URL('../../mcp/mobile/backends/avd.ts', import.meta.url).pathname,
+      'utf8',
+    );
+    expect(src).toMatch(/scopePortRescueKills\(\{/);
+  });
+
+  it('no kill in the sweep asserts "no session lock" without having read one', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(
+      new URL('../../mcp/mobile/backends/avd.ts', import.meta.url).pathname,
+      'utf8',
+    );
+    // The exact string the pre-fix log line printed as a finding it had not
+    // established. It may survive only inside the prose explaining the defect.
+    const code = src.replace(/\/\*\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/\(no session lock\)/);
   });
 });
