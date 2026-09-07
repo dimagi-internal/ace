@@ -49,9 +49,52 @@ semantics drive different rules — do not try to share.)
 **Worker-facing artifacts** (`training-flw-guide`, `training-quick-reference`,
 `training-faq`) name a support channel the worker can actually reach:
 
-1. a **human** — the LLO coordinator / Partner Trainer, and
-2. the app's own in-app grievance route (the **GRM menu**), which the PDD
-   already designates as the complaint channel.
+1. a **human** — the LLO coordinator / Partner Trainer — as a labelled
+   fill-in block the LLO completes at onboarding:
+
+   ```
+   Your coordinator: ______________________   Phone: ______________________
+   Call them if: <the PDD's own escalation triggers>
+   ```
+
+   This needs nothing from the app, so it is true on every build. It is the
+   floor, not one option of two.
+
+2. an **in-app route ONLY when the run's own evidence shows one exists**
+   (dimagi-internal/ace#2106).
+   Naming a grievance/complaint menu, a "Report a problem" option, or any
+   other in-app control requires BOTH: the PDD designates it, AND you have
+   seen it in the app this run built — a `commcare_download_ccz` grep of
+   `suite.xml` + `app_strings.txt`, or a Phase 6 ui-dump. Without both,
+   **omit the bullet.** A worker sent looking for a control that is not
+   there does not fall back to the coordinator; they stop escalating.
+
+   **Assume it does NOT exist (dimagi-internal/ace#2106).** This section used
+   to read *"the app's own in-app grievance route (the **GRM menu**), which
+   the PDD already designates as the complaint channel"* — asserted as
+   settled fact, inherited by eight skills, and false twice over:
+
+   - **No PDD designates one, and none is asked to.**
+     `$ grep -cniE "grievance|\bGRM\b|complaint" templates/pdd-template.md
+     docs/examples/pdd-turmeric-market-survey.md
+     docs/examples/pdd-vaccine-hesitancy.md` → `0`, `0`, `0`. The PDD
+     template has no grievance section at all, so the justification had
+     nothing behind it on any opportunity, not merely on the one that
+     caught it.
+   - **No ACE-built app has the control.** The released Deliver CCZ of
+     `hh-poverty-targeting` (HQ app `ce668763ad6c4b48ac5f4cd4502f3f8c`,
+     domain `connect-ace-prod`) greps zero for
+     `grievance|GRM|complaint|report a problem|report an issue` across
+     `suite.xml`, `modules-0/forms-0.xml` and both `app_strings.txt`; its
+     menu is one module (`Household Visit`) and one form. Nova builds the
+     modules and forms the PDD specifies and nothing else, so there is no
+     path by which a grievance menu appears (ace#2106).
+
+   This is the existence-side twin of the predictive-guard rule
+   (`test/skills/predictive-guard-citation.test.ts`): that one refuses a
+   claim that an external system *rejects* something without a reproducer;
+   this refuses a claim that an external control *exists* without one.
+   *Enforced:* `test/skills/in-app-control-existence-claims.test.ts`.
 
 **Never print OCS credentials in a worker-facing artifact** — not the
 `openchatstudio.com` host, not the chatbot `public_id`, not the `embed_key`.

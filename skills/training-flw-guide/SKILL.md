@@ -24,7 +24,7 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona, support contact + GRM escalation route |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona, support contact + escalation triggers |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn modules + assessment threshold |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
@@ -70,7 +70,8 @@ from PDD's Evidence Model.>
 <short framing from connect.payment_units in run_state.yaml>
 
 ## Where to get help
-- To raise something formally, use the **GRM** option in the app menu.
+- Your coordinator: ______________  Phone: ______________
+  (a fill-in the LLO completes at onboarding — see § Support channel)
 - Your LLO manager: <name from connect-setup/opportunity.md>
 - For technical issues with the app, contact <support contact from PDD>
 ```
@@ -357,9 +358,10 @@ This is the **second of the per-artifact training skills**, after
 
 Follow `skills/_training-template.md § Support channel — one contract, all six
 skills` (dimagi-internal/ace#1303): this artifact is **worker-facing**, so its
-support line names a HUMAN (LLO coordinator / Partner Trainer) plus the in-app
-**GRM menu** — never the `openchatstudio.com` host, the chatbot `public_id`, or
-the `embed_key`. Those are embed credentials, not a destination a CBF can open
+support line names a HUMAN (LLO coordinator / Partner Trainer) as a labelled
+fill-in — never the `openchatstudio.com` host, the chatbot `public_id`, or the
+`embed_key`, and never an in-app control (a grievance menu, a "Report a
+problem" option) unless this run's own evidence shows one exists (ace#2106). Those are embed credentials, not a destination a CBF can open
 (the embed path live-probes 404; Connect has no per-opp widget field, CCC-301).
 Run `checkWorkerFacingSupportChannel` from `lib/support-channel-guard.ts` over
 the composed markdown before writing and rewrite any finding.
@@ -385,3 +387,4 @@ The self-eval criterion must assert duplicate handling explicitly.
 - 2026-05-15: Expand `focus-group` archetype branch (Step 4) from one-line "session-based" note to full shape spec: (1) acknowledge sentinel readiness form instead of full Learn-app walkthrough, (2) two-step session workflow (run FGD verbally → submit attestation within 24h → write gdoc within 72h), (3) add OCS chatbot subsection (primary writing-guidance surface), (4) drop form-fill pitfalls + add FGD-specific pitfalls (leading questions, premature Section 5 preview). Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observations.
 - 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`). The link form added for ace#1338 restored the WORDS but published 44 links and zero pictures; a CBF reading the guide mid-visit cannot use that. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.
+- 2026-09-07: **Dropped the in-app GRM/grievance escalation route from the worker-facing support line (ace#2106).** The shared contract in `skills/_training-template.md` asserted "the app's own in-app grievance route (the **GRM menu**), which the PDD already designates as the complaint channel" as settled fact. Both halves are false: `templates/pdd-template.md` and both shipped example PDDs grep ZERO for `grievance|GRM|complaint` (there is no PDD section that would designate one), and the released Deliver CCZ of `hh-poverty-targeting` (HQ `ce668763ad6c4b48ac5f4cd4502f3f8c`, `connect-ace-prod`) greps zero across `suite.xml`, `modules-0/forms-0.xml` and both `app_strings.txt` — its whole menu is one module and one form. A worker sent to a menu that is not there stops escalating rather than falling back. The support line is now the coordinator name + phone fill-in the LLO completes at onboarding; an in-app route may be named only when this run's own CCZ grep or ui-dump shows one. *Enforced:* `test/skills/in-app-control-existence-claims.test.ts` (corpus ratchet, `.md` + `.ts`) + `unverified-in-app-control` in `lib/support-channel-guard.ts`.

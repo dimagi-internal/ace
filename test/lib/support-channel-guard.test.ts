@@ -60,7 +60,13 @@ describe('checkWorkerFacingSupportChannel (#1303)', () => {
     expect(report.findings.map((f) => f.kind)).toContain('known-404-embed-path');
   });
 
-  it('passes a human channel plus the in-app GRM route', () => {
+  /**
+   * This case used to be the PASSING example, titled "passes a human channel
+   * plus the in-app GRM route" — the fixture enshrined the very claim ace#2106
+   * proved false, so the suite would have defended the defect against a fix.
+   * It is now the positive control for `unverified-in-app-control`.
+   */
+  it('flags an in-app grievance route — ACE-built apps have no such menu (ace#2106)', () => {
     const md = [
       '## Getting help',
       '',
@@ -69,7 +75,43 @@ describe('checkWorkerFacingSupportChannel (#1303)', () => {
       '',
     ].join('\n');
     const report = checkWorkerFacingSupportChannel(md);
+    expect(report.ok).toBe(false);
+    expect(report.findings.map((f) => f.kind)).toEqual(['unverified-in-app-control']);
+    expect(report.findings[0].line).toBe(4);
+  });
+
+  it('passes a human channel given as a coordinator fill-in — the contract now', () => {
+    const md = [
+      '## Getting help',
+      '',
+      'Your coordinator: ______________   Phone: ______________',
+      'Call them if you cannot finish a visit or something feels unsafe.',
+      '',
+    ].join('\n');
+    const report = checkWorkerFacingSupportChannel(md);
     expect(report.findings).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  /**
+   * The corrected `training-flw-guide.md` of `bednet-check-2-visit/20260902-1555`,
+   * verbatim. Telling the worker the control is absent is the REMEDY — a rule
+   * that fires on its own remedy is the always-fires-blocker class (ace#1026)
+   * and would train producers to ignore every finding this guard emits.
+   */
+  it('does NOT flag prose saying the app has no complaint menu', () => {
+    const md =
+      'Your coordinator is the help line. There is no help button and no complaint menu ' +
+      'inside these apps — they hold the training and the two visit forms, nothing else.\n';
+    const report = checkWorkerFacingSupportChannel(md);
+    expect(report.ok).toBe(true);
+  });
+
+  it('does NOT flag a formal-report route that goes through a human', () => {
+    const md =
+      'To raise something formally — a complaint, a safety concern, or anything you want on ' +
+      'the record — tell your coordinator you want it logged as a formal report.\n';
+    const report = checkWorkerFacingSupportChannel(md);
     expect(report.ok).toBe(true);
   });
 
