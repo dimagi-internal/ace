@@ -80,15 +80,30 @@ Consumers:
 
     - **≥1 negative-path / bad-input journey** — the FLW enters a value
       the instrument should reject (blank required field, out-of-range
-      count, malformed phone, a low-accuracy GPS fix where a radius is
-      specified) and experiences a clear, recoverable rejection. This is
+      count, malformed phone) and experiences a clear, recoverable
+      rejection. This is
       the journey `app-test-cases` turns into a negative-path Maestro
       recipe and `app-ux-eval § capture_robustness` grades. A journey
       set with zero negative-path journeys is a coverage gap, not a pass.
     - **A capture-fidelity expectation** in the relevant journey's pass
-      criteria — e.g. "GPS capture is rejected below the accuracy
-      threshold," "enumerable answers are picked from a list, not typed,"
-      "an 'Other' selection prompts a specify field."
+      criteria — e.g. "the captured fix's accuracy is shown to the FLW,
+      a poor fix invites a retry, and the accuracy value is submitted
+      with the record," "enumerable answers are picked from a list, not
+      typed," "an 'Other' selection prompts a specify field."
+
+      **Never write a GPS accuracy expectation as an ENFORCED gate**
+      ("rejected below the threshold", "cannot submit", "the app
+      blocks"). No such gate is buildable: Nova rejects `validate` on
+      `kind: geopoint`, the adjacent-question workaround hard-fails
+      `app-release-qa`'s constraint-locality check, and Connect's
+      verification-flags form no longer renders `gps` /
+      `gps_radius_meters` — `connect_set_verification_flags` REFUSES
+      them (ace#1006, ace#1013; `_app-component-library.md` § Mechanisms
+      a PDD must not assert, Table A, and the `gps-accuracy-capture`
+      component). Demand the observability contract instead, and where
+      the PDD deliberately sets no radius, say so as a residual rather
+      than inventing one — `pdd-to-app-journeys-eval` scores that at the
+      TOP of anchor (b), not the bottom (ace#1619).
     - **For multi-visit / follow-up designs, a persistence journey** —
       the follow-up visit records change against the existing household,
       and the change is visible/retained (the UX face of case
@@ -355,4 +370,5 @@ When `--dry-run` is active:
 | 2026-05-08 | **No QA companion.** `pdd-to-app-journeys-qa` removed (PR #160) — downstream consumers are LLM-driven; structural label-format checks gate nothing real, and the eval already covers the substantive concerns. See `skills/_qa-decisions.md` for the registry entry + revisit conditions, and `docs/learnings/2026-05-08-fake-qa-detection.md` for the heuristic. | ACE team |
 | 2026-05-15 | Accept either "FLW Requirements" (canonical, per `templates/pdd-template.md`) or "Target FLW" (legacy) as the persona section in Process step 3 + Failure Modes. Prompted by `malaria-itn-fgd/20260514-2007` where the template-conformant PDD said "FLW Requirements" and the skill halted looking for "Target FLW". See jjackson/ace#302. | ACE team |
 | 2026-05-15 | Recharacterize `focus-group` journey categories for the attestation-form-only shape (PRs #305, #306): `output-coherence` (which assumed the FLW fills 28 in-app fields with content) → `attestation-submission` (FLW fills the 5-field form at session end, no per-section content in the app). Session-setup reframed to note "no in-app interaction at session start" — the mobile form is end-of-session only. Other categories (recruitment-failure, consent-handling) reframed to note no-attestation-on-abort semantics. Coverage rule updated to reference the new category name. Prompted by `malaria-itn-fgd/20260514-2352` re-run. | ACE team |
+| 2026-09-06 | **Step 4a stops offering an unbuildable GPS gate as the capture-fidelity example (ace#1619).** The pass-criteria example was "GPS capture is rejected below the accuracy threshold" and the negative-path bullet named "a low-accuracy GPS fix where a radius is specified". No such rejection is buildable — Nova rejects `validate` on `kind: geopoint`, the adjacent-question workaround hard-fails `app-release-qa`'s constraint-locality check, and `connect_set_verification_flags` REFUSES `gps` / `gps_radius_meters` (ace#1006, ace#1013). `idea-to-pdd` § Step 4a was corrected on 2026-07-28 and forbids a PDD asserting the tolerance as enforced; this skill went on telling journey authors to demand it, so an author following Step 4a wrote a criterion the PDD is forbidden to promise and the app cannot honour. Observed inverted on `hh-poverty-targeting/20260824-1404`, whose journeys doc pushed back in writing (*"Step 4a offers 'GPS capture is rejected below the accuracy threshold' … an app that gates on accuracy fails J4"*) and was deducted by the eval anyway. Now demands the observability contract, and forbids enforced phrasing by name. Symmetric with the `pdd-to-app-journeys-eval § deployability_fitness` anchor (b) rewrite. | ACE team |
 | 2026-05-29 | **Deployability-exercising journeys (ITN post-mortem, producer↔eval symmetry).** Added Step 4a + two coverage rules: when the Evidence Model implies it, the journey set MUST include ≥1 negative-path/bad-input journey (the recoverable-rejection path that `app-test-cases` turns into a negative-path recipe and `app-ux-eval § capture_robustness` grades), capture-fidelity pass criteria (GPS accuracy gating, structured-pick over typing, other→specify), and — for multi-visit designs — a persistence journey (follow-up records change). Symmetric with the new `pdd-to-app-journeys-eval § deployability_fitness` hard-gate; PDD silence is not a waiver. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |

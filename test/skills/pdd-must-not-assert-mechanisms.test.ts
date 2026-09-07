@@ -522,3 +522,146 @@ describe('pdd-to-learn-app must not assert a fixed passing score (ace#1333)', ()
     expect(source()).toMatch(/connect-opp-setup/);
   });
 });
+
+/* ── ace#1619 — a RUBRIC must not demand a Table-A mechanism either ────────── */
+
+describe('no eval rubric demands the Table-A GPS accuracy gate (ace#1619)', () => {
+  // ace#1213 aimed this section at Phase 1: a PDD must not ASSERT an
+  // unbuildable mechanism. The mirror image went uncovered — an eval RUBRIC
+  // demanding one, which is worse in a specific way: a PDD is written once and
+  // can be corrected, whereas a rubric deducts on every location-bound
+  // opportunity, forever, with no journey set able to recover the points.
+  //
+  // The 2026-07-28 ace#1006 sweep corrected `idea-to-pdd` § Step 4a and
+  // `pdd-to-deliver-app-eval` § Capture fitness. It missed both halves of the
+  // journeys pair, so for six weeks Phase 2 was told to demand a gate that
+  // Phase 1 was forbidden to promise and Phase 3 cannot build.
+  const evalSkill = readFileSync(
+    join(REPO, 'skills', 'pdd-to-app-journeys-eval', 'SKILL.md'),
+    'utf8',
+  );
+  const producer = readFileSync(
+    join(REPO, 'skills', 'pdd-to-app-journeys', 'SKILL.md'),
+    'utf8',
+  );
+  const deliverEval = readFileSync(
+    join(REPO, 'skills', 'pdd-to-deliver-app-eval', 'SKILL.md'),
+    'utf8',
+  );
+
+  /**
+   * Everything above the Change Log. A changelog row QUOTES the retired
+   * wording on purpose — that is what makes it a record — so the ratchet must
+   * read only the instructions an LLM executes, or correcting a defect would
+   * trip the test that proves it was corrected.
+   */
+  const live = (doc: string) => doc.split(/\n#+ Change Log/)[0];
+
+  /** The single markdown table row carrying the deployability_fitness rubric. */
+  const deployabilityRow = (doc: string) =>
+    live(doc)
+      .split('\n')
+      .find((l) => /^\s*\|\s*\*\*Deployability fitness\*\*/.test(l)) ?? '';
+
+  it('Table A still declares the GPS accuracy gate closed (the premise)', () => {
+    const section = extractSection(librarySource(), SECTION);
+    const rows = tableRows(extractSection(section, TABLE_A, 3));
+    const gps = rows.find((cells) => /GPS accuracy/i.test(cells[0] ?? ''));
+
+    expect(gps, 'the GPS accuracy row must exist in Table A').toBeDefined();
+    expect(gps![1], 'it must name the Connect surface').toMatch(/gps_radius_meters/);
+    expect(gps![1], 'it must name the Nova surface').toMatch(/geopoint/);
+    // If this row is ever RETIRED because upstream restored the field, the
+    // rubric rewrite below is what must be revisited — hence the pin.
+    expect(gps![0], 'still live, not retired').not.toMatch(/retired/i);
+  });
+
+  it('anchor (b) demands observability, not a gate', () => {
+    const row = deployabilityRow(evalSkill);
+    expect(row, 'the deployability_fitness rubric row must be findable').not.toBe('');
+
+    // THE DEFECT: the demand, and the deduction exemplar built on it.
+    expect(row).not.toMatch(/\(b\) \*\*GPS accuracy-gating\*\*/);
+    expect(row).not.toMatch(/journeys must reject low-accuracy fixes/);
+    expect(row).not.toMatch(/material gap \(e\.g\. captures GPS but never gates on accuracy\)/);
+
+    // THE REPLACEMENT: the buildable contract, and an explicit do-not-deduct.
+    expect(row).toMatch(/Do NOT demand, and do NOT deduct/);
+    expect(row).toMatch(/gps_accuracy_m/);
+    expect(row, 'must cite the reproducers, not just assert').toMatch(/ace#1013/);
+    expect(row).toMatch(/ace#1006/);
+  });
+
+  it('the class-level half: every (a)-(d) deduction is checked against the tables', () => {
+    // The durable fix. Without this, the next sub-anchor someone adds
+    // reintroduces the class with a different mechanism.
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/Mechanisms a PDD must not assert/);
+    expect(row).toMatch(/Table-A/);
+    expect(row).toMatch(/Table-B/);
+  });
+
+  it('the producer stops offering the gate as its capture-fidelity example', () => {
+    // The two halves must move together: an eval that no longer demands the
+    // gate, paired with a producer that still tells authors to write one,
+    // produces journeys the corrected rubric would mark down.
+    const step = live(producer);
+    expect(step).not.toMatch(/GPS capture is rejected below the accuracy\s+threshold/);
+    expect(step).toMatch(/Never write a GPS accuracy expectation as an ENFORCED gate/);
+    expect(step).toMatch(/ace#1006/);
+  });
+
+  it('the two GPS-grading rubrics agree that enforcement is not gradeable', () => {
+    // Cross-file consistency. `pdd-to-deliver-app-eval` got this right on
+    // 2026-07-28; the drift between it and the journeys rubric is what ace#1619
+    // actually was, so the agreement is what gets pinned.
+    for (const [name, doc] of [
+      ['pdd-to-app-journeys-eval', evalSkill],
+      ['pdd-to-deliver-app-eval', deliverEval],
+    ] as const) {
+      expect(live(doc), `${name} must not credit or deduct on the gate`).toMatch(
+        /do NOT deduct/i,
+      );
+      expect(live(doc), `${name} must cite ace#1013`).toMatch(/ace#1013/);
+    }
+  });
+
+  // REGRESSION ANCHORS — the halves that must NOT move. Retargeting an anchor
+  // invites over-correction into "grade nothing here", which would delete the
+  // out-of-chain teeth the dimension exists for.
+  it('REGRESSION ANCHOR: (d) survives, and asserts no capability of its own', () => {
+    // The issue proposed generalising the fix to every refused verification
+    // flag, which would have taken duplicate detection with it. Refuted: the
+    // retired `duplicate` FLAG is one surface among several.
+    //
+    // The first draft of the fix then over-corrected, asserting duplicate
+    // detection IS buildable on Connect's `entity_id` dedup grain. A blind
+    // re-grade of hh-poverty-targeting/20260824-1404 deducted on exactly that
+    // sentence — the fix had swapped one uncited capability demand for another,
+    // which is the defect ace#1619 exists to close. So the rubric must keep (d)
+    // AND must not name a mechanism it has not verified.
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/duplicate-household\s*\n?\s*detection/);
+    expect(row).toMatch(/does NOT by itself make duplicate handling unbuildable/);
+    expect(row, 'must not re-assert the withdrawn capability claim').not.toMatch(
+      /Duplicate detection IS\s*\n?\s*buildable/,
+    );
+    expect(row, '(d) routes through the same Table check as (b)').toMatch(
+      /apply the Table-A\/Table-B check below to \(d\)/,
+    );
+  });
+
+  it('REGRESSION ANCHOR: the dimension keeps its weight, hard gate and teeth', () => {
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/\*\*Hard gate:\*\*/);
+    expect(row).toMatch(/score ≤3 and the suite verdict is `fail`/);
+    expect(row).toMatch(/EXEMPT from any deferral carve-out/);
+    expect(live(evalSkill)).toMatch(/deployability_fitness:\s*\{ weight: 0\.25 \}/);
+  });
+
+  it('REGRESSION ANCHOR: input validation and case write-back are untouched', () => {
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/\(a\) \*\*input validation\*\*/);
+    expect(row).toMatch(/\(c\) \*\*case write-back on follow-up\*\*/);
+  });
+});
