@@ -931,7 +931,8 @@ Record the Deliver leg outcome independently.
 (unconditional, #618 ground truth).** The instant the Learn leg completes,
 `mobile_capture_ui_dump` and upload it to
 `journey-deliver/00-postlearn-landing.xml` (`drive_upload_binary`,
-`mimeType: "application/xml"`). This is captured BEFORE the Deliver leg
+`mimeType: "application/xml"`, `shareAnyoneWithLink: true`; then § Step 5.8's
+readback — ace#1831). This is captured BEFORE the Deliver leg
 runs (and BEFORE any failure remediation) precisely because the device's
 post-Learn state is fragile — see the next rule. The dump tells you which
 post-Learn pathway you're on: `nsv_home_screen` → **Path A** (device on the
@@ -991,8 +992,13 @@ per-leg classifier — apply it to whichever leg failed.
   Android `uiautomator dump` output captured at the same moment as the
   PNG. When present, upload it to
   `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/<step-name>.xml`
-  via `drive_upload_binary` with `mimeType: "application/xml"`
-  (no `shareAnyoneWithLink` needed — XMLs aren't consumed by Slides).
+  via `drive_upload_binary` with `mimeType: "application/xml"` **and
+  `shareAnyoneWithLink: true`**. The old rationale here — "not needed, XMLs
+  aren't consumed by Slides" — asked the wrong question: Slides is one consumer,
+  and the manifest publishes these as run artifacts a reviewer may be sent
+  (ace#1831). **Then run § Step 5.8's readback**, which is what tells you an
+  `.xml` in particular may come back as a warning page no amount of sharing
+  fixes.
   The dumps are produced automatically by `MaestroBackend.runRecipeWithDumps`
   whenever the caller passes a `serial` to `mobile_run_recipe` (the
   default path for local-AVD invocations since 0.13.229). Absence is
@@ -1250,8 +1256,10 @@ returned path:
   deliberately re-run a leg, compare the `<epoch-ms>` prefixes and upload the
   one 5.7a did not already cover.
 - Otherwise upload it to
-  `6-qa-and-training/videos/_device/<filename>` (same mimeType; no
-  `shareAnyoneWithLink` needed — these are forensic, not presentational).
+  `6-qa-and-training/videos/_device/<filename>` (same mimeType, and
+  `shareAnyoneWithLink: true` — "forensic, not presentational" was the wrong
+  test: the manifest publishes these as run artifacts and a reviewer can be
+  handed one, ace#1831).
 
 What legitimately survives that filter is exactly what 5.7a can't see:
 the heal and registration recipes that run inside
@@ -1267,6 +1275,65 @@ touch another session's spool). It returns `{ spoolDir, cleared }` — log
 best-effort by contract, and `ACE_MOBILE_RECORD=off` disables it
 entirely. Log the count and continue — never halt a dispatch over a
 missing video.
+
+### Step 5.8: Read every upload back anonymously — by BYTES, never by 200
+
+An upload that returns a `fileId` proves the SERVICE ACCOUNT wrote something.
+It says nothing about what a reviewer receives. Before Step 6 writes the
+manifest, fetch each file this dispatch uploaded **with no credentials** and
+judge the response:
+
+```bash
+curl -sSL -D - -o body.bin --max-time 60 \
+  "https://drive.google.com/uc?export=download&id=<fileId>"
+```
+
+Pass the file name, the status, the `Content-Type` and the first bytes to
+`classifyUploadReadback` (`lib/upload-readback.ts`). Four verdicts, three of
+them failures, and they do NOT share a remedy:
+
+| verdict | what the reviewer gets | remedy |
+|---|---|---|
+| `ok` | the artifact | none |
+| `gated` | a sign-in page, or 401/403 | `drive_set_anyone_with_link({fileId})`, then re-read |
+| `interstitial` | a Google warning page at HTTP **200** | **sharing will NOT help** — see below |
+| `wrong-type` | bytes that are not the file's type | re-upload; a truncated or empty write |
+
+**Record the verdict per artifact in the Step 9 `per_item[].note`, and do not
+list a failing artifact in the manifest as if a reader could open it.** A
+readback failure is not a reason to halt the dispatch — the walk already
+happened and its evidence is real — but it IS a reason the manifest must not
+claim otherwise.
+
+**Why bytes and not `200`.** Measured anonymously on
+`hh-poverty-targeting/20260828-0702`, 2026-09-06 — all six artifacts answered
+`200`, and two of them were unreadable:
+
+```
+journey-learn.mp4            200 video/mp4               ftypisom               OK
+journey-deliver.mp4          200 video/mp4               ftypisom               OK
+journey-deliver-FAILURE.png  200 image/png               PNG                    OK
+atlas-report.yaml            200 application/octet-stream "version:"            OK
+journey-deliver-FAILURE.xml  200 text/html               "Google Drive - Virus scan warning"
+00-postlearn-landing.xml     200 text/html               "Google Drive - Virus scan warning"
+```
+
+A `200`/HEAD check — the one ace#1831 originally proposed — certifies all six.
+
+**The `.xml` case, and why `shareAnyoneWithLink` is not its fix.** Those two
+files answer `200` to an anonymous fetch, so they are already reachable; the
+warning page is what that reachability *gets you*. Sharing them again changes
+nothing (`sharingWouldNotHelp: true`). What works: upload the same dump under a
+`.txt` name alongside it, or leave the `.xml` out of the reviewer-facing link
+set and keep it as an internal forensic. Do NOT loop on `drive_set_anyone_with_link`
+— that is the wrong remedy applied to the right symptom, and it reads as
+progress while changing nothing.
+
+The auditor half of this class is already live: `classifyLink` in
+`lib/run-surface-audit.ts` returns `INTERSTITIAL` for the same shape
+(ace#1868 / PR #2040). This step is the PRODUCER half, and it exists because
+the auditor only probes links the run-summary payload emits — these artifacts
+live in the capture manifest, so no audit reaches them.
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
