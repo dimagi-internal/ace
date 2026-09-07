@@ -470,3 +470,162 @@ describe('validateIterateState', () => {
     expect(validateIterateState(null).valid).toBe(true);
   });
 });
+
+/**
+ * ace#2113 — cross-field consistency inside one phase block.
+ *
+ * Regression corpus is the real thing: on `bednet-check-2-visit/20260902-1555`,
+ * Phase 6 re-ran to `done / proceed-with-warn` and produced a 49-slide deck at
+ * 8/8 visual coverage, while the SAME run_state.yaml still carried the summary
+ * fields of the previous, failed attempt. `classify_phase_writeback`,
+ * `verify_phase_artifacts` and `verify_phase_products` all returned ok — none of
+ * the three compares a phase's fields to each other.
+ *
+ * The blocks below are trimmed from that file verbatim.
+ */
+/**
+ * The validator already emits unrelated completeness warnings (a `done` step
+ * with no artifact, a phase with no completed_at). Scope these assertions to
+ * the CONSISTENCY findings so a skeletal fixture's unrelated warning cannot
+ * make a negative test pass or fail for the wrong reason.
+ */
+function consistencyPaths(r: { warnings: { path: string; message: string }[] }): string[] {
+  return r.warnings
+    .filter((w) => /predates the phase|was NOT run, but|visual_coverage.ratio is 0 while|equals verdict_file_id/.test(w.message))
+    .map((w) => w.path);
+}
+
+describe('ace#2113: phase self-consistency', () => {
+  const REAL_PHASE_6 = {
+    phases: {
+      'qa-and-training': {
+        status: 'done',
+        verdict: 'proceed-with-warn',
+        started_at: '2026-09-07T02:30:00Z',
+        visual_coverage: {
+          expected: 4,
+          filled: 0,
+          ratio: 0,
+          gate: 'BLOCKER — no per-opp captures at all; training-deck-render was NOT run',
+        },
+        steps: {
+          'app-screenshot-capture': {
+            status: 'done',
+            verdict: 'warn',
+            artifact: '6-qa-and-training/app-screenshot-capture_manifest.yaml',
+            file_id: '1axslP1eFAyCD0EMlxIpDoN0wKByj0ABS7q28Arua3wQ',
+            verdict_file_id: '1axslP1eFAyCD0EMlxIpDoN0wKByj0ABS7q28Arua3wQ',
+            completed_at: '2026-09-05T15:57:29Z',
+          },
+          'training-deck-generate': { status: 'done', visual_coverage_ratio: 1 },
+          'training-deck-render': { status: 'done', verdict: 'pass' },
+        },
+      },
+    },
+  };
+
+  it('flags all four real contradictions', () => {
+    const r = validateRunState(REAL_PHASE_6);
+    const paths = r.warnings.map((w) => w.path);
+    // 1. a step dated to the previous attempt
+    expect(paths).toContain('phases.qa-and-training.steps.app-screenshot-capture.completed_at');
+    // 2. prose asserting a done step never ran
+    expect(paths).toContain('phases.qa-and-training.visual_coverage');
+    // 3. phase ratio 0 contradicted by its own step
+    expect(paths).toContain('phases.qa-and-training.visual_coverage.ratio');
+    // 4. artifact pointer filled in with the verdict's id
+    expect(paths).toContain('phases.qa-and-training.steps.app-screenshot-capture.file_id');
+  });
+
+  it('does NOT make the block invalid — these are warnings', () => {
+    const r = validateRunState(REAL_PHASE_6);
+    expect(r.valid).toBe(true);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('keeps classifyPhaseWriteBack at ok, so the orchestrator never re-dispatches on one', () => {
+    // Escalating to an error would return 'malformed', which the orchestrator
+    // treats as a silent-dispatch failure and re-dispatches. Re-dispatching
+    // Phase 6 attempts a fresh Learn walk, and Learn-completion is one-way per
+    // (test user, opportunity) — a stale summary string must never cost a
+    // precondition whose only restore is a new Phase 3+4.
+    expect(classifyPhaseWriteBack(REAL_PHASE_6, 'qa-and-training')).toBe('ok');
+  });
+
+  it('stays silent on the same phase once the fields are reconciled', () => {
+    const fixed = {
+      phases: {
+        'qa-and-training': {
+          status: 'done',
+          verdict: 'proceed-with-warn',
+          started_at: '2026-09-07T02:30:00Z',
+          visual_coverage: {
+            expected: 8,
+            filled: 8,
+            ratio: 1,
+            gate: 'PASS — 8/8 per-opp captures; training-deck-render produced a 49-slide deck',
+          },
+          steps: {
+            'app-screenshot-capture': {
+              status: 'done',
+              artifact: '6-qa-and-training/app-screenshot-capture_manifest.yaml',
+              file_id: '1AMkgGEWFehk0qHs3O5iWXz9yMHH90d9u9-04yuCIEyk',
+              verdict_file_id: '1axslP1eFAyCD0EMlxIpDoN0wKByj0ABS7q28Arua3wQ',
+              completed_at: '2026-09-07T03:55:00Z',
+            },
+            'training-deck-generate': { status: 'done', visual_coverage_ratio: 1 },
+            'training-deck-render': { status: 'done', verdict: 'pass' },
+          },
+        },
+      },
+    };
+    expect(consistencyPaths(validateRunState(fixed))).toEqual([]);
+  });
+
+  it('does not fire on a step that legitimately has not run yet', () => {
+    const r = validateRunState({
+      phases: {
+        'qa-and-training': {
+          status: 'in_progress',
+          started_at: '2026-09-07T02:30:00Z',
+          visual_coverage: { ratio: 0, gate: 'training-deck-render was NOT run' },
+          steps: { 'training-deck-render': { status: 'skipped' } },
+        },
+      },
+    });
+    expect(consistencyPaths(r)).toEqual([]);
+  });
+
+  it('does not fire when a step file_id equals a verdict id but the artifact IS the verdict', () => {
+    const r = validateRunState({
+      phases: {
+        p: {
+          status: 'done',
+          steps: {
+            s: {
+              status: 'done',
+              artifact: '6-qa/some-step_verdict.yaml',
+              file_id: 'same',
+              verdict_file_id: 'same',
+            },
+          },
+        },
+      },
+    });
+    expect(consistencyPaths(r)).toEqual([]);
+  });
+
+  it('does not misread a negation that is not an assertion about this run', () => {
+    const r = validateRunState({
+      phases: {
+        p: {
+          status: 'done',
+          started_at: '2026-09-07T02:30:00Z',
+          note: 'training-deck-render used to be the step that could not run; it now runs on every pass.',
+          steps: { 'training-deck-render': { status: 'done' } },
+        },
+      },
+    });
+    expect(consistencyPaths(r)).toEqual([]);
+  });
+});

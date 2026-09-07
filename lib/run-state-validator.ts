@@ -131,6 +131,193 @@ function pushWarning(
   issues.push({ path, message, severity: 'warning', expected, actual });
 }
 
+/**
+ * Cross-field consistency inside ONE phase block — the class no existing fence
+ * could see (ace#2113).
+ *
+ * `classifyPhaseWriteBack` answers "is the block well-formed?",
+ * `verify_phase_products` validates the typed handoff against its schema, and
+ * `verify_phase_artifacts` checks Drive files exist. None of the three compares
+ * a phase's fields to EACH OTHER, so a phase that re-runs and updates its
+ * `steps` while leaving the phase-level summary fields describing the previous,
+ * failed attempt passes all three cleanly.
+ *
+ * Measured on `bednet-check-2-visit/20260902-1555`: Phase 6 re-ran to
+ * `done / proceed-with-warn` with a 49-slide deck and 8/8 visual coverage, while
+ * the same file still said `visual_coverage.ratio: 0` with the gate text
+ * "BLOCKER — no per-opp captures at all; training-deck-render was NOT run", and
+ * `app-screenshot-capture.completed_at` still pointed at the failed attempt two
+ * days earlier. All three fence atoms returned ok. Every contradiction was
+ * derivable from data already inside the file.
+ *
+ * **These are WARNINGS, deliberately, and that is not timidity.** An error here
+ * would make `classifyPhaseWriteBack` return `malformed`, and the orchestrator
+ * treats `malformed` as a silent-dispatch failure and RE-DISPATCHES the phase.
+ * Re-dispatching Phase 6 attempts a fresh Learn walk, and Connect
+ * Learn-completion is one-way per (test user, opportunity) — so escalating a
+ * stale summary string would consume a precondition whose only restore is a new
+ * Phase 3+4. The finding is real; the remedy is to fix the field, never to
+ * re-run the phase. Warnings surface through `validate_run_state`, which is what
+ * the orchestrator reads when it wants the full issue list.
+ *
+ * Precision is the whole asset for a report-only check: every rule below fires
+ * only on a contradiction derivable without interpretation, and a rule that
+ * cannot be decided stays silent rather than guessing.
+ */
+function checkPhaseSelfConsistency(
+  phaseName: string,
+  block: Record<string, unknown>,
+  warnings: ValidationIssue[],
+): void {
+  const path = `phases.${phaseName}`;
+  const steps = isObject(block.steps) ? block.steps : undefined;
+
+  // ---- 1. A step's completed_at predating the phase's own started_at.
+  // A phase that re-runs sets a fresh `started_at`; a step left with an older
+  // `completed_at` was not re-run, or was re-run and its timestamp not updated.
+  // Either way the record now dates work to the wrong attempt.
+  const phaseStarted = toTime(block.started_at);
+  if (phaseStarted !== undefined && steps) {
+    for (const [stepName, stepBlock] of Object.entries(steps)) {
+      if (!isObject(stepBlock)) continue;
+      if (stepBlock.status !== 'done') continue;
+      const done = toTime(stepBlock.completed_at);
+      if (done !== undefined && done < phaseStarted) {
+        pushWarning(
+          warnings,
+          `${path}.steps.${stepName}.completed_at`,
+          `step is 'done' but its completed_at (${String(stepBlock.completed_at)}) predates the phase's own ` +
+            `started_at (${String(block.started_at)}) — the step was not re-run this attempt, or it was and the ` +
+            `timestamp still dates it to a previous one`,
+          'a completed_at at or after the phase started_at',
+          stepBlock.completed_at,
+        );
+      }
+    }
+  }
+
+  // ---- 2. Phase-level prose asserting a step did not run, while it is done.
+  // Bounded on purpose: fires only when the text names a step that EXISTS in
+  // this phase's own steps map and says it was not run. No general claim
+  // extraction, no interpretation.
+  if (steps) {
+    const doneSteps = Object.entries(steps)
+      .filter(([, v]) => isObject(v) && v.status === 'done')
+      .map(([k]) => k);
+    if (doneSteps.length > 0) {
+      for (const [field, value] of Object.entries(block)) {
+        for (const text of collectStrings(value)) {
+          for (const stepName of doneSteps) {
+            if (assertsNotRun(text, stepName)) {
+              pushWarning(
+                warnings,
+                `${path}.${field}`,
+                `says '${stepName}' was NOT run, but phases.${phaseName}.steps.${stepName}.status is 'done' — ` +
+                  `a summary field left describing a previous attempt. /ace:status and opp-eval rollups read ` +
+                  `the phase-level block, so this reports a finished phase as blocked`,
+                `text consistent with steps.${stepName}.status`,
+                text.slice(0, 160),
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ---- 3. A phase-level coverage ratio of 0 contradicted by a step's own.
+  const phaseCoverage = isObject(block.visual_coverage) ? block.visual_coverage : undefined;
+  if (phaseCoverage && steps && numOrUndef(phaseCoverage.ratio) === 0) {
+    for (const [stepName, stepBlock] of Object.entries(steps)) {
+      if (!isObject(stepBlock)) continue;
+      const stepRatio = numOrUndef(stepBlock.visual_coverage_ratio);
+      if (stepRatio !== undefined && stepRatio > 0) {
+        pushWarning(
+          warnings,
+          `${path}.visual_coverage.ratio`,
+          `phase-level visual_coverage.ratio is 0 while steps.${stepName}.visual_coverage_ratio is ${stepRatio} — ` +
+            `the phase summary still describes an attempt that captured nothing`,
+          'a phase-level ratio consistent with its steps',
+          phaseCoverage.ratio,
+        );
+      }
+    }
+  }
+
+  // ---- 4. A step whose file_id points at its own verdict while `artifact`
+  // names something else. Both fields are ids; nothing downstream can tell that
+  // the primary artifact pointer was filled in with the verdict's id.
+  if (steps) {
+    for (const [stepName, stepBlock] of Object.entries(steps)) {
+      if (!isObject(stepBlock)) continue;
+      const fileId = stepBlock.file_id;
+      const verdictId = stepBlock.verdict_file_id;
+      const artifact = stepBlock.artifact;
+      if (
+        typeof fileId === 'string' &&
+        typeof verdictId === 'string' &&
+        fileId === verdictId &&
+        typeof artifact === 'string' &&
+        !/verdict/i.test(artifact)
+      ) {
+        pushWarning(
+          warnings,
+          `${path}.steps.${stepName}.file_id`,
+          `file_id equals verdict_file_id while artifact is '${artifact}', which is not a verdict — the primary ` +
+            `artifact pointer was filled in with the verdict's id, so anything following file_id reads the ` +
+            `verdict instead of the artifact it names`,
+          "a file_id for the artifact named in `artifact`",
+          fileId,
+        );
+      }
+    }
+  }
+}
+
+/** Parse an ISO date / Date into epoch ms; undefined when not a usable date. */
+function toTime(v: unknown): number | undefined {
+  if (v instanceof Date) return v.getTime();
+  if (typeof v !== 'string') return undefined;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? undefined : t;
+}
+
+function numOrUndef(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/** Every string reachable inside a value, so nested summary blocks are covered. */
+function collectStrings(v: unknown, depth = 0): string[] {
+  if (depth > 4) return [];
+  if (typeof v === 'string') return [v];
+  if (Array.isArray(v)) return v.flatMap((x) => collectStrings(x, depth + 1));
+  if (isObject(v)) return Object.values(v).flatMap((x) => collectStrings(x, depth + 1));
+  return [];
+}
+
+/**
+ * Does `text` assert that `stepName` did not run? Matches the step name (in the
+ * hyphenated form run_state uses, or spaced) followed within a short window by a
+ * negated run/execute phrase — "training-deck-render was NOT run",
+ * "training-deck-render: not run". Deliberately narrow: a nearby unrelated
+ * negation ("... was not run BEFORE the fix, and now is") is exactly the kind of
+ * sentence a looser matcher would misread, and a false positive on a report-only
+ * check is what teaches a reader to skip it.
+ */
+function assertsNotRun(text: string, stepName: string): boolean {
+  const name = stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/-/g, '[-\\s]');
+  // The negation must be an ASSERTION: either an explicit copula immediately
+  // before it ("was NOT run"), or a label separator ("training-deck-render: not
+  // run"). A modal — "the step that COULD not run", "would not run without X" —
+  // is a statement about capability or history, not a claim that it did not run
+  // this attempt, and matching it is the false positive that makes a
+  // report-only check worth skipping.
+  const re = new RegExp(
+    `${name}[^.!?\\n]{0,40}?(?:(?:was|is|were|has\\s+been)\\s+(?:NOT|not)|[:\\-\u2014]\\s*(?:NOT|not))\\s+(?:run|executed|invoked)\\b`,
+  );
+  return re.test(text);
+}
+
 function validatePhaseBlock(
   phaseName: string,
   block: unknown,
@@ -423,6 +610,11 @@ export function validateRunState(parsed: unknown): ValidationResult {
     } else {
       for (const [phaseName, phaseBlock] of Object.entries(parsed.phases)) {
         validatePhaseBlock(phaseName, phaseBlock, errors, warnings);
+        // Cross-field consistency (ace#2113) — warnings only; see
+        // checkPhaseSelfConsistency for why an error here would be harmful.
+        if (isObject(phaseBlock)) {
+          checkPhaseSelfConsistency(phaseName, phaseBlock, warnings);
+        }
       }
     }
   }
