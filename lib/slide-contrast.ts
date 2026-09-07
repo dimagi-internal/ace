@@ -78,7 +78,8 @@ export interface StencilPanelSpec {
   build: (pageId: string) => Record<string, unknown>[];
   /**
    * Top edge of the panels in the source template slide, in EMU. Any text box
-   * placed above this straddles the panel edge and gets sliced.
+   * placed above this straddles the panel edge and gets sliced. A full-bleed
+   * background declares `0` — there is no edge to straddle.
    */
   panelTopY: number;
   /** Text-box id suffix → the tone of the panel behind it. */
@@ -87,7 +88,11 @@ export interface StencilPanelSpec {
 
 // Imported lazily at module scope: the geometry module has no dependency on
 // this one, so there is no cycle.
-import { buildTwoColumnTextBoxes } from './training-deck-stencil-geometry.js';
+import {
+  buildCoverTextBoxes,
+  buildSectionTextBoxes,
+  buildTwoColumnTextBoxes,
+} from './training-deck-stencil-geometry.js';
 
 /**
  * Panel-backed stencils. Observed from the source Dimagi template slides —
@@ -99,6 +104,24 @@ import { buildTwoColumnTextBoxes } from './training-deck-stencil-geometry.js';
  * guessed tone would be the invented-number failure this module avoids.
  */
 export const STENCIL_PANELS: Record<string, StencilPanelSpec> = {
+  /**
+   * Full-bleed dark indigo. `cover` always cloned that page; `section` used to
+   * clone a light-periwinkle divider instead and drew its 38pt title in white
+   * on it — about 2.3:1, below WCAG AA at any size, and the first thing to
+   * wash out under a projector. Re-sourcing the divider to the cover page is
+   * what makes the white title correct rather than merely intended, and this
+   * row is what stops the pair drifting apart again.
+   */
+  cover: {
+    build: buildCoverTextBoxes,
+    panelTopY: 0,
+    boxes: { title: 'dark', subtitle: 'dark', date: 'dark' },
+  },
+  section: {
+    build: buildSectionTextBoxes,
+    panelTopY: 0,
+    boxes: { title: 'dark' },
+  },
   two_column: {
     build: buildTwoColumnTextBoxes,
     panelTopY: 1_522_275,
