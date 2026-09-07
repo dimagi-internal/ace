@@ -1917,17 +1917,43 @@ that comes back without a `Remedy:` line — `as-filed` / `re-derived` /
 `Remedy: refuted` closing the issue `not planned` counts as a completed
 dispatch. ace#1900.
 
-**Open-questions doc (run-end, once).** The summary page reads
-`open-questions.md` from the run-folder root by name (it's the lone
-section with no typed `products.*` pointer). After Phase 1 completes —
-or at the first boundary fence where the PDD exists — ensure
-`<run-folder>/open-questions.md` is written, seeded from the approved
-PDD's `## Open Questions` section (one bullet per question, each naming
-its owner + where it gets answered) and appended to as later phases
-surface new ones. Idempotent: `drive_create_doc_from_markdown` with
-`findOrCreate: true` overwrites in place, so re-running the fence
-refreshes it. Without this the summary's Open-Questions section renders
-empty even on a fully-populated run.
+**Open-questions doc (run-end, once).** This run's open questions go into
+the **opp-root durable ledger** — `<opp>/open-questions.md`, section
+`## Open`. **Never write a run-folder copy** (ace#1753): nothing serves
+one. ace-web's `_read_open_questions` (`apps/opps/summary.py`) reads the
+OPP folder first and only falls back to the run folder for legacy runs
+that already wrote one, so on any real opp the run-local document is
+invisible on the very page it was written for;
+`lib/run-readme.ts` lists `open-questions.md` under `OPP_LEVEL_PATHS` and
+omits it from the run README; and `lib/artifact-manifest.ts` declares its
+path as `open-questions.md` — "Opp-level (NOT under runs/<run-id>/)".
+This paragraph used to assert the opposite, and a run that followed it
+wrote a document reachable from no link the summary emits.
+
+After Phase 1 completes — or at the first boundary fence where the PDD
+exists — ensure `<opp>/open-questions.md` carries this run's questions:
+seed from the approved PDD's `## Open Questions` section (one bullet per
+question, each naming its owner + where it gets answered) and append as
+later phases surface new ones. This is also the only route by which a
+question a later phase raises reaches the NEXT run — Phase 1 reads
+`## Open` back (§ Phase 1, dimagi-internal/ace#1201).
+
+Two constraints that come with the opp-root location, both load-bearing:
+
+- **Two sections, and resolving MOVES a row.** Write it in the
+  `## Open` / `## Archive` shape from `skills/idea-to-pdd/SKILL.md §
+  The durable open-questions doc`; a resolved question moves to
+  `## Archive` rather than being annotated in place. Appending without
+  archiving is what grew one ledger to 26,577 chars and tripped the
+  Phase 1 inline cap (dimagi-internal/ace#1487).
+- **It is a LIVING doc humans hand-edit.** Re-read it (with
+  `exportAs: 'text/markdown'` — the default export strips `##`) and
+  preserve rows this run did not raise. An operator hand-reset this
+  ledger on 2026-08-19 after six runs of ACE's own reasoning had piled
+  up (§ Step 7a); a blind overwrite is how that recurs.
+
+Idempotent: `drive_create_doc_from_markdown` with `findOrCreate: true`
+overwrites in place, so re-running the fence refreshes it.
 
 **Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
 — the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the
