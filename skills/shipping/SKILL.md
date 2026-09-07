@@ -129,7 +129,7 @@ It is a backstop, not the fix: the fix is `isolation: "worktree"` on the dispatc
   `/ace:update` + `/reload-plugins` do NOT respawn MCP subprocesses — they bind their tool list,
   schemas, and env at spawn. See `CLAUDE.md § MCP changes need a full Claude restart`. Otherwise
   `/reload-plugins` is enough.
-- **Version collision** (`mergeStateStatus: DIRTY` from a parallel worktree bump) — **disarm
+- **Version collision** (from a parallel worktree bump) — **disarm
   auto-merge FIRST, or the recovery races the merge and silently loses** (ace#1593):
   ```bash
   gh pr merge <N> --disable-auto              # STOP the race before touching the branch
@@ -139,6 +139,19 @@ It is a backstop, not the fix: the fix is `isolation: "worktree"` on the dispatc
   ```
   Then re-enter the wait. `--rebase-first` aborts cleanly if a non-version file conflicts — those
   need human review.
+
+  **Do NOT wait for `mergeStateStatus: DIRTY` — the common collision never shows it** (ace#2175).
+  Two PRs bumping to the SAME version write byte-identical VERSION files, so git merges them
+  cleanly and there is no conflict to see; `check-version-unique` catches it instead, inside
+  `clean-install`, and the PR sits at **`BLOCKED`**. Measured 2026-09-07 on #2166 (vs the older
+  #2165, both `0.13.1325`): `state=OPEN mergeState=BLOCKED auto=MERGE`, stable — while `land-pr.sh`,
+  which then keyed only on DIRTY, polled it silently for ten minutes. It now classifies a BLOCKED
+  PR before deciding: `scripts/land-pr-classify.ts` re-derives the verdict from
+  `lib/version-uniqueness.ts` (the same functions CI runs) and the rebase fires only on a positive
+  collision — never on BLOCKED alone, which also covers a red test, a pending check and a missing
+  review. *Enforced:* `test/lib/land-pr-classify.test.ts` and `test/scripts/land-pr-classify.test.ts`
+  assert both directions; `land-pr-refspec.test.ts` drives the whole disarm→rebase→push→re-arm
+  sequence on a BLOCKED collision and asserts a BLOCKED failing test is left untouched.
 
   **`main` HAS a merge queue, so this block is wrong for a QUEUED PR** — `--disable-auto` exits 0
   without disabling anything, so the force-push races a merge group that is already testing the old
