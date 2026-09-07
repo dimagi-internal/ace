@@ -69,13 +69,33 @@ wiring, the helper emits `{}` and every Nova call 401s.
 
 Tools surface in the canonical plugin namespace `mcp__plugin_nova_nova__*`.
 
-`/ace:doctor` exposes four Nova-related liveness lines:
+`/ace:doctor` exposes five Nova-related liveness lines:
 - `nova_env: NOVA_API_KEY present` (in ACE's .env)
 - `nova_shell_env: NOVA_API_KEY present in shell env` (the plugin path
   is the one that matters)
 - `net_nova_mcp: https://mcp.commcare.app/ → HTTP 4xx (reachable)`
 - `nova_auth: ace-nova authed (POST initialize → HTTP 200)` (the key
   itself is accepted by the Nova server)
+- `nova_scopes: HQ Read scope granted; an HQ key is bound in Nova
+  (N HQ domain(s) visible, incl. <ACE_HQ_DOMAIN>)` — one
+  `tools/call get_hq_connection`, run in the full doctor AND in
+  `--preflight` (ace#174). This is the line that separates *accepted*
+  from *authorized*: `nova_auth` passes on any 2xx from `initialize`,
+  which a key with no `nova.hq.read` also returns. `turmeric/20260508-1951`
+  halted at Phase 3 `app-deploy` with `error_type: scope_missing,
+  required_scope: nova.hq.read` while `nova_auth` was green, after Phase 1
+  and Step 1 of Phase 3 had already been paid for. It also catches the
+  other late failure — `configured: false`, i.e. no HQ API key bound in
+  Nova's settings, which `upload_app_to_hq` needs — and warns when
+  `ACE_HQ_DOMAIN` is not among the project spaces Nova can see.
+
+  **A green `nova_scopes` does NOT mean Nova is usable in THIS session,**
+  and the line says so on every verdict. It is a curl from the doctor
+  subprocess using the configured PAT; which credential Claude Code's own
+  MCP connection bound is a different question, answered by
+  `nova_header_readiness`, which OUTRANKS it. Measured on
+  `bednet-check-2-visit/20260823-2210`: this exact call returned
+  `configured: true` while the in-session connection was unusable.
 
 The Nova MCP server is hosted by voidcraft at `mcp.commcare.app`;
 ACE doesn't run a Nova MCP itself.
@@ -491,7 +511,10 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
   per machine. If you skip the source line, Nova calls 401 even though
   `/ace:doctor`'s `nova_auth` HTTP probe passes — the probe verifies
   the key is accepted by the server, not that Claude Code is sending
-  it. The `nova_shell_env` probe catches this mismatch.
+  it. The `nova_shell_env` probe catches this mismatch, and
+  `nova_header_readiness` gives the verdict it cannot. `nova_scopes`
+  sits on the other axis: it says what the configured key is ALLOWED to
+  do, and is deliberately silent about what this session bound.
 
 - **Stale user-scope `nova:` override from pre-1.1.0 setup.** If you
   upgraded from an ACE version before 0.13.294 without restarting
