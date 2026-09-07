@@ -292,6 +292,32 @@ appId: org.commcare.dalvik
           visibilityPercentage: 30
           centerElement: true
 
+# SETTLE BEFORE READING THE CARD (ace#2101). The scroll above is a smooth,
+# `centerElement: true` fling, and until this step nothing between it and
+# the CTA tap below waited for it to stop — only `assertVisible` and
+# `takeScreenshot`, which the splitter itself classifies as SCREEN-NEUTRAL.
+# So the Branch A/B guards could evaluate, and the tap could fire, into a
+# still-moving RecyclerView.
+#
+# That is also what defeats `retryTapIfNoChange: true` on those taps.
+# Maestro's retry fires when the hierarchy does NOT change after a tap; a
+# list that is still settling changes the hierarchy for reasons that have
+# nothing to do with the tap, so Maestro concludes the tap landed and moves
+# on. The guard is only meaningful once the surface is quiet, which is what
+# this step restores.
+#
+# The sibling `connect-claim-opp.yaml` never had this hole: its Branch A/B
+# each open with their own button-anchored `scrollUntilVisible` + screenshot
+# before tapping, which incidentally lets the list come to rest. This recipe
+# taps immediately, and had nothing.
+#
+# A WAIT, deliberately, not a scroll: connect-claim-opp.yaml's #1289/#800
+# note records that an `optional: true` scroll which misses does NOT no-op —
+# it runs its full budget to the list bottom and destroys the centered
+# viewport the CTA guards depend on. Nothing here may move the list.
+- waitForAnimationToEnd:
+    timeout: 5000
+
 # Failure stays LOUD.
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
@@ -342,10 +368,102 @@ appId: org.commcare.dalvik
               text: ".*${OPP_RUN_ID}.*"
           retryTapIfNoChange: true
 
+# --- RE-ATTEMPT ON THE RESULT (ace#2101) --------------------------------
+#
+# WHAT WENT WRONG. bednet-check-2-visit/20260902-1555: Connect had recorded
+# Learn 100% complete (`learn_complete: true`, `completed_learning_date`
+# 07-Sep-2026 03:16) and the Deliver leg was dispatched straight after. The
+# target card had not re-rendered — `journey-deliver-FAILURE.xml` shows
+# `btn_resume` "Resume" and `tv_progress_percent` "83 %" — so Branch A's
+# positive guard was true, Branch B was SKIPPED, and the terminal assert
+# below failed loud after 10s. Every /ace:run dispatches Deliver directly
+# after Learn, so this sits on the critical path of every Phase 6.
+#
+# WHY THE FILED DIAGNOSIS DOES NOT SURVIVE ITS OWN EVIDENCE. ace#2101 says
+# the recipe "tapped the Resume button of an opportunity that is
+# Learn-complete server-side. That button does nothing in that state."
+# The same issue then records that a raw tap at that button's OWN bounds
+# (`btn_resume` [89,762][320,841], centre 204,801) navigated IMMEDIATELY:
+#
+#   $ adb -s emulator-5554 shell input tap 204 801
+#   -> connect_learning_certificate_container, "Certificate",
+#      "Completed on: Sep 7, 2026", "VIEW OPPORTUNITY DETAILS"
+#
+# That is not a dead button — it is this recipe's own declared post-state
+# (see the header: the certificate overlay OR connect_learning_button).
+# So Resume is a WORKING path on a Learn-complete card, and what actually
+# failed is that MAESTRO'S tap did not take effect. Adopting the filed
+# remedy — poll for "Proceed" before branching — would therefore have been
+# wrong twice: the card never reached "Proceed" inside this run (the dump
+# taken minutes later still reads 83%), so the poll would have timed out
+# and swapped one false negative for another; and it would make Branch A
+# unreachable on exactly the cards the adb tap proves it works on.
+#
+# THE FIX IS TO BRANCH ON THE RESULT, which is CLAUDE.md's standing rule
+# for an external state transition: attempt it, and branch on the CALL
+# RESULT rather than on a flag you read. The rendered CTA label IS such a
+# flag — Connect owns the card's state and refreshes it asynchronously, so
+# reading it once and committing to a branch is the read-a-flag antipattern.
+# Below: if we are STILL on the jobs list, the transition did not happen,
+# whatever the label said. Let the surface settle and re-attempt both
+# card-scoped CTAs.
+#
+# This is robust to EITHER reading of the failure, which matters because
+# the mechanism is not fully resolved:
+#   - tap-missed  -> the second tap lands (what the adb tap demonstrates);
+#   - stale-card  -> if the card has refreshed by now, "Proceed" fires; if
+#                    it has not, the Resume re-attempt fires, and per the
+#                    adb evidence that navigates.
+#
+# NOT a blind retry loop: exactly one re-attempt, both taps still scoped to
+# the run-id card (`childOf containsChild`, #591 — no wrong-opp leak is
+# possible), and the loud terminal assert below is unchanged, so a genuinely
+# broken CTA still halts with a named failure. And no scroll in here, for
+# the reason recorded at the settle step above.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:opp-list-resume-button}"
+              childOf:
+                containsChild:
+                  text: ".*${OPP_RUN_ID}.*"
+          commands:
+            - takeScreenshot: "connect-resume-opp-cta-reattempt"
+            - tapOn:
+                id: "${SELECTOR:opp-list-resume-button}"
+                childOf:
+                  containsChild:
+                    text: ".*${OPP_RUN_ID}.*"
+                retryTapIfNoChange: true
+      - runFlow:
+          when:
+            visible:
+              text: "Proceed"
+              childOf:
+                containsChild:
+                  text: ".*${OPP_RUN_ID}.*"
+          commands:
+            - takeScreenshot: "connect-resume-opp-cta-reattempt"
+            - tapOn:
+                text: "Proceed"
+                childOf:
+                  containsChild:
+                    text: ".*${OPP_RUN_ID}.*"
+                retryTapIfNoChange: true
+
 # FAIL LOUD (#591): a correct CTA tap leaves the jobs list. If we are still
 # on connect_fragment_jobs_list, the tap was a no-op or hit the wrong
 # surface — halt here with a named failure instead of silently proceeding
 # into the wrong opp's app (the exact silent wrong-opp resume #591 reported).
+# Unchanged by ace#2101: the re-attempt above buys ONE more transition, it
+# does not soften this.
 - extendedWaitUntil:
     notVisible:
       id: "${SELECTOR:home-jobs-list}"
