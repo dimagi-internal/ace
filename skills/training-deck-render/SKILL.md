@@ -153,20 +153,28 @@ Verdict to
 `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-render_verdict.yaml`
 in the standard shape (see `lib/verdict-schema.ts`).
 
-### Post-render sweep: leftover decorative ellipse (pre-fix template)
+### Post-render sweep: leftover decorative ellipse (pre-v6.1 templates)
 
-The CURRENTLY-MINTED template still contains a 6×6pt decorative ELLIPSE
-on the `walkthrough` stencil (and `mobile_zoom` — same Dimagi source
-page), cloned from the source slide and missed by the original
-bootstrap strips. Fresh renders from that template inherit it as a
-stray blue dot on every walkthrough-derived slide until the template is
-re-minted via the (now-fixed) `scripts/bootstrap-training-deck-template.ts`.
-Until then, after rendering: `slides_get` the deck, filter pageElements
-with `isDecorativeLeftover` (`lib/training-deck-stencil-geometry.ts` —
-ELLIPSE rendered ≤ 12pt in both dimensions), and issue one
-`slides_batch_update` of `deleteObject` requests for the matches. The
-in-place re-render script (below) already runs this sweep automatically
-when it rebuilds stencils, so re-rendered decks self-clean.
+A template minted before v6.1 carries a 6×6pt decorative ELLIPSE on the
+`walkthrough` stencil (and `mobile_zoom` — same Dimagi source page),
+cloned from the source slide and missed by the bootstrap strips. Fresh
+renders from such a template inherit it as a stray blue dot on every
+walkthrough-derived slide. If `ACE_TRAINING_DECK_TEMPLATE_ID` still
+points at one, then after rendering: `slides_get` the deck, filter
+pageElements with `isDecorativeLeftover`
+(`lib/training-deck-stencil-geometry.ts` — ELLIPSE rendered ≤ 12pt in
+both dimensions), and issue one `slides_batch_update` of `deleteObject`
+requests for the matches. The in-place re-render script (below) runs
+this sweep automatically when it rebuilds stencils, so re-rendered decks
+self-clean.
+
+**v6.1 mints clean.** The bootstrap now sweeps leftovers as a SECOND
+pass over the elements that survive the strip
+(`decorativeLeftoverIds`). Shown the raw element list it did not: the
+predicate spares an ellipse whose slide also holds a LINE, and the only
+LINE on the walkthrough page is a callout leader for a mockup the same
+pass deletes — a doomed element vouching for the dot. The v6.0 mint
+shipped `mobile_zoom` with the dot for exactly that reason.
 
 ## Output
 
