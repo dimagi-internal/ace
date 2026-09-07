@@ -217,10 +217,14 @@ twin gate: dimagi-internal/ace#1604.
 
       **Do not flip the switch on to unblock a run.** The precondition is: *the
       7 camera ids in `connect-register-from-otp.yaml` are calibrated against a
-      live 2.63.2 `mobile_capture_ui_dump`, and one fresh-signup registration
-      has completed on 2.63.2*. Until both hold, per-run phones route every run
-      through a photo-capture surface whose `runFlow.when visible:` guard fails
-      SILENTLY — trading a bounded scroll cost for a total Phase 6 outage.
+      live `mobile_capture_ui_dump` on the APK baseline in force, and one
+      fresh-signup registration has completed on that same baseline*. Until both
+      hold, per-run phones route every run through a photo-capture surface whose
+      `runFlow.when visible:` guard fails SILENTLY — trading a bounded scroll
+      cost for a total Phase 6 outage. The sentence names no APK version on
+      purpose (ace#1289); at the 2.64.0 baseline both clauses are open, as
+      residuals R2 and R4 of
+      `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`.
 
       **Known caveat (unresolved):** on 2026-07-25/26 two pending invites
       (LEEP, Malaria ITN) did NOT surface on the device as claimable cards

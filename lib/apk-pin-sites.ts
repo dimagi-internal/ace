@@ -88,6 +88,14 @@ export const PIN_FORMS: readonly PinForm[] = [
   { name: 'zod-schema-default', kind: 'pin', re: /\bapkVersion\s*:\s*z\.string\(\)\.default\('([\d.]+)'\)/ },
   // `process.env.ACE_CONNECT_APK_VERSION || '2.63.2'` (scripts/probe-atlas-drift.ts)
   { name: 'env-fallback', kind: 'pin', re: /ACE_CONNECT_APK_VERSION\s*(?:\|\||\?\?)\s*'([\d.]+)'/ },
+  // `${ACE_CONNECT_APK_VERSION:-2.63.2}` — the SHELL default, in a skill's copy-paste
+  // block. Same semantics as `env-fallback`, different syntax, and it was missed for
+  // exactly that reason: `skills/app-screenshot-capture § Step 6.5` carried
+  // `--apk "${ACE_CONNECT_APK_VERSION:-2.63.2}"` straight through the 2.64.0 bump,
+  // overriding the probe's own (correctly bumped) default. `ACE_*` vars are empty in a
+  // shell, so the fallback was the operative value and Step 6.5 diffed 2.64.0 dumps
+  // against the 2.63.2 map. ace#2078.
+  { name: 'env-fallback-shell', kind: 'pin', re: /\$\{ACE_CONNECT_APK_VERSION:-([\d.]+)\}/ },
   // `ACE_CONNECT_APK_VERSION=2.63.2`                (.env.tpl)
   { name: 'env-tpl-pin', kind: 'pin', re: /^ACE_CONNECT_APK_VERSION=([\d.]+)\s*$/ },
   // `apk_version: "2.63.2"`                         (mcp/mobile/selectors/connect-<v>.yaml)

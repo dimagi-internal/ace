@@ -527,12 +527,18 @@ the tile list is O(1) instead of O(list-that-grows-forever) — this is the
 durable end of the class #1475 and #1532 only bought headroom against
 (pruning provably cannot reach the accepted In Progress section, see Step 4).
 It stays off because the fresh-signup branch routes through the photo-capture
-surface whose 7 camera ids `mcp/mobile/selectors/connect-2.63.2.yaml` records as
+surface whose 7 camera ids the selector map for the baseline in force records as
 "deliberately raw pending live calibration", inside a `runFlow.when visible:`
 guard that fails SILENTLY. **The precondition to flip it on:** *the 7 camera ids
-in `connect-register-from-otp.yaml` are calibrated against a live 2.63.2
-`mobile_capture_ui_dump`, and one fresh-signup registration has completed on
-2.63.2.*
+in `connect-register-from-otp.yaml` are calibrated against a live
+`mobile_capture_ui_dump` on the APK baseline in force, and one fresh-signup
+registration has completed on that same baseline.*
+
+The sentence names no APK version deliberately (ace#1289): it said `2.63.2`,
+`DEFAULT_APK_VERSION` moved to `2.64.0` on 2026-09-06, and every copy stayed
+behind. At the 2.64.0 baseline both clauses are still open — they are residuals
+**R2** (fresh-signup branch unwalked) and **R4** (the rebuilt camera surface
+unexamined) of `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`.
 
 ### Step 4: Run static prerequisite recipes
 
@@ -1312,9 +1318,21 @@ drift — otherwise the dumps just pile up unread.
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-atlas-drift.ts" <screenshotDir> \
-  --apk "${ACE_CONNECT_APK_VERSION:-2.63.2}" \
   --out <screenshotDir>/atlas-drift-report.md
 ```
+
+**No `--apk` flag, deliberately.** The probe reads `ACE_CONNECT_APK_VERSION`
+itself and falls back to `DEFAULT_APK` in `scripts/probe-atlas-drift.ts` — a
+pin site `lib/apk-pin-sites.ts` classifies, so it moves with every baseline
+bump. This snippet used to pass `--apk` with its OWN shell-default version
+literal, a second pin the scanner could not see (its `env-fallback` form
+matched the JS `||` syntax, not the shell `:-` one), so it sat on the old
+baseline right through the 2.64.0 upgrade. `ACE_*` vars are normally EMPTY in
+a shell — they load into MCP subprocesses, not the parent (CLAUDE.md
+§ Gotchas) — so that fallback was the operative value, and Step 6.5 diffed
+live 2.64.0 dumps against the previous baseline's map: every genuinely-new id
+read as drift, every dropped one was missed. Do not reintroduce the flag; one
+pin is the fix (ace#2078).
 
 Best-effort: a probe error never fails the phase — log it and continue.
 When the report has a **"⚠️ Drift suspects on FAILURE screens"** section,

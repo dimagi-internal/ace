@@ -44,8 +44,7 @@ export const ACE_PER_RUN_TEST_USER_FLAG = 'ACE_PER_RUN_TEST_USER';
  * `.env.tpl` and the two guarded skills, and pinned by
  * `test/skills/per-run-test-user-switch.test.ts` so it cannot drift.
  *
- * Why this gate exists: `mcp/mobile/selectors/connect-2.63.2.yaml` records that
- * the static recipes are migrated off raw ids EXCEPT
+ * Why this gate exists: the static recipes are migrated off raw ids EXCEPT
  * `connect-register-from-otp.yaml`'s 7 camera ids on the photo-capture surface,
  * "deliberately raw pending live calibration". Those ids sit inside a
  * `runFlow.when visible:` guard, so a drifted id makes the whole block silently
@@ -54,10 +53,43 @@ export const ACE_PER_RUN_TEST_USER_FLAG = 'ACE_PER_RUN_TEST_USER';
  * is the recovery path); turning per-run phones on routes EVERY run through
  * that uncalibrated surface. Flipping this flag before calibration would trade
  * a bounded, well-understood scroll cost for an unbounded silent-skip risk.
+ *
+ * ## Why the sentence names no APK version (ace#1289)
+ *
+ * It used to say "calibrated against a live **2.63.2** `mobile_capture_ui_dump`
+ * … completed on **2.63.2**", pinned verbatim into five surfaces by the test
+ * below. `DEFAULT_APK_VERSION` moved to `2.64.0` on 2026-09-06 and every copy
+ * stayed behind, because a version literal inside an English sentence is
+ * invisible to `lib/apk-pin-sites.ts` — the very module that exists so an APK
+ * bump cannot forget a knob. Its `SUSPECT_RE` requires an
+ * `apkVersion` / `APK_VERSION` / `apk_version` identifier on the line, so a
+ * scan of this repo reports these five surfaces as **0 hits**.
+ *
+ * A stale version here is not cosmetic. 2.64.0 **rebuilt the camera surface**
+ * (`camera_controls_container`, `capture_button_label`, `rectangle_overlay`, …
+ * — `mcp/mobile/selectors/connect-2.64.0.yaml` header item 3, "NOT walked this
+ * pass"), so a 2.63.2 dump is not weak evidence for the gate, it is evidence
+ * about a different screen. Read literally, the old sentence could have been
+ * satisfied against an APK ACE no longer installs.
+ *
+ * So the precondition is stated **relative to the baseline in force** —
+ * `DEFAULT_APK_VERSION` in `mcp/mobile/client.ts`, overridable by
+ * `ACE_CONNECT_APK_VERSION` — and can no longer rot. The test below forbids an
+ * APK-shaped literal in this string for exactly that reason.
+ *
+ * **Status at the current baseline (2.64.0, walked 2026-09-06):** BOTH clauses
+ * are still open, and they are that walk's own named residuals — R2
+ * ("Fresh-signup registration branch (`confirm_code_view`, photo capture)
+ * unwalked") and R4 ("The rebuilt 2.64.0 camera surface is unexamined") in
+ * `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`. The registration leg
+ * that WAS walked end to end is the RECOVERY branch, which every existing
+ * `+7426` demo user takes and which never reaches photo capture
+ * (`docs/mobile-calibration/connect-2.64.0-upgrade-verification.md` row B3).
  */
 export const PER_RUN_TEST_USER_FLIP_PRECONDITION =
   'the 7 camera ids in connect-register-from-otp.yaml are calibrated against a live ' +
-  '2.63.2 mobile_capture_ui_dump, and one fresh-signup registration has completed on 2.63.2';
+  'mobile_capture_ui_dump on the APK baseline in force, and one fresh-signup ' +
+  'registration has completed on that same baseline';
 
 /**
  * connect-id's `TEST_NUMBER_PREFIX`. Every demo behaviour upstream is a

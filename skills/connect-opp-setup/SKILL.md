@@ -1078,10 +1078,15 @@ alone makes the artifact land outside `4-connect` and fail
    ```
 
    **Do not flip the switch on to "try it".** The precondition is: *the 7 camera
-   ids in `connect-register-from-otp.yaml` are calibrated against a live 2.63.2
-   `mobile_capture_ui_dump`, and one fresh-signup registration has completed on
-   2.63.2*. Until then, per-run phones route every run through an uncalibrated
-   photo-capture surface whose `runFlow.when visible:` guard fails SILENTLY.
+   ids in `connect-register-from-otp.yaml` are calibrated against a live
+   `mobile_capture_ui_dump` on the APK baseline in force, and one fresh-signup
+   registration has completed on that same baseline*. Until then, per-run phones
+   route every run through an uncalibrated photo-capture surface whose
+   `runFlow.when visible:` guard fails SILENTLY. The sentence names no version
+   on purpose — it said `2.63.2`, the baseline moved to `2.64.0` on 2026-09-06,
+   and all five copies stayed behind (ace#1289). Both clauses remain open at
+   2.64.0: residuals R2 and R4 of
+   `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`.
 
 7.5. **Learn-app CCHQ pre-flight (Phase 6 prerequisite, idempotent).**
 
