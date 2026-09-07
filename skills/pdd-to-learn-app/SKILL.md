@@ -786,7 +786,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        items can match by construction, so a finding is always breakable. The
        shipped version tested up to `period === n`, where the cycle IS the
        key, so every bank of 6 or fewer items failed at 100% regardless of
-       content and the re-key instruction below could never be satisfied —
+       content and the re-key branch above could never be satisfied —
        seen on `bednet-check-2-visit/20260907-1126`, a 3-item pre-test keyed
        `b,c,a`. *Enforced:* `test/lib/answer-key-pattern.test.ts` § degenerate
        periods (ace#2179).
