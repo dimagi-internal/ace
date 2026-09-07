@@ -111,6 +111,20 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
    **Header + narrative (prose tokens):**
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
+     - `{{partner_first_reference}}` — § 1's first-reference DEFINITION of the
+       partner, which every later `the partner` in the document depends on.
+       Emit `<Partner name> (henceforth, referred to as "partner")` when an LLO
+       is known, and `[Partner Name] (henceforth, referred to as "partner")`
+       when one is not — the bracketed form is the sanctioned pre-partner
+       placeholder from step 3(c) above, and a Work Order drafted before a
+       partner is selected is the normal Phase 1 case. **Do not emit a bare org
+       name.** The template supplies the rest of the sentence ("… is the
+       implementing partner for the work described in this Work Order"), so the
+       value is the party plus the parenthetical and nothing else. Everything
+       after § 1 uses lowercase `the partner`; never `Partner`, `the Partner`,
+       `the vendor` or `the subcontractor` (ace#2126; the definition had nowhere
+       to land, so `pdd-to-work-order-eval § writing_style` took a guaranteed
+       strike on every rendered work order).
      - `{{background_body}}` (synthesized from PDD's Problem Statement + Intervention Design + any named downstream consumer)
      - `{{scope_intro}}` (one-sentence framing of the work, archetype-branched)
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)

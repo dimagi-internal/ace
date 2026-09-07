@@ -42,6 +42,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  checkNoScaffoldingMarkers,
+  checkNoRendererInstructions,
+} from '../../skills/pdd-to-work-order-qa/checks.js';
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const TEMPLATE = 'templates/work-order-template.md';
@@ -149,4 +154,83 @@ describe('work-order template partner-facing language', () => {
       expect(offending).toEqual([]);
     });
   }
+});
+
+/**
+ * The document names a party it never introduces (dimagi-internal/ace#2126).
+ *
+ * `pdd-to-work-order-eval § writing_style` requires that the first reference
+ * define `[Partner Name] (henceforth, referred to as "partner")` and that every
+ * later mention be lowercase `the partner`. The template gave that definition
+ * nowhere to land: the three `partner_*` tokens all sit in the SIGNATURE block,
+ * and § 1 Background was a bare `{{background_body}}` with no lead-in. So every
+ * rendered Work Order used `the partner` — thirteen times on
+ * `spark-facilitator/20260906-2233` — with no antecedent anywhere in the
+ * document, and `writing_style` (weight 0.15, bands 0/1-3/4+) took one
+ * guaranteed strike on every run the pipeline has ever produced.
+ *
+ * The strike is the cheap half. A signed agreement that obliges "the partner"
+ * thirteen times without defining who that is leaves the reader to infer the
+ * antecedent from the *Subcontractor* signature block.
+ *
+ * This is the same class as the `FLW` check above and is fixed the same way —
+ * in the bootstrap SOURCE rather than in one rendered artifact. The Phase 1
+ * operator patched the rendered gdoc by hand this run, which does nothing for
+ * the next one.
+ *
+ * The three-way token-sync tests above already force the new token into
+ * SKILL.md and the playbook contract. What they cannot see is whether the
+ * CONVENTION landed — a token named `partner_first_reference` that the producer
+ * fills with a bare org name would satisfy every one of them and still take the
+ * strike. Hence the two assertions here: the slot is positioned to be the first
+ * reference, and the producer is told what shape to put in it.
+ */
+describe('work-order template defines the partner on first reference (#2126)', () => {
+  const template = fs.readFileSync(path.join(REPO_ROOT, TEMPLATE), 'utf8');
+  const skill = fs.readFileSync(path.join(REPO_ROOT, SKILL), 'utf8');
+
+  const backgroundSection = template.match(/^## 1\. Background$[\s\S]*?(?=^## 2\.)/m)?.[0];
+
+  it('§ 1 Background carries the first-reference slot AHEAD of the background body', () => {
+    // Position is the whole point: a definition that lands after the first use
+    // is not a first reference. § 1 is the first prose in the document.
+    expect(backgroundSection, 'the § 1 Background section moved or was renamed').toBeDefined();
+
+    const slot = backgroundSection!.indexOf('{{partner_first_reference}}');
+    const body = backgroundSection!.indexOf('{{background_body}}');
+
+    expect(slot, '§ 1 Background has no {{partner_first_reference}} slot').toBeGreaterThanOrEqual(0);
+    expect(body).toBeGreaterThanOrEqual(0);
+    expect(slot, '{{partner_first_reference}} must precede {{background_body}}').toBeLessThan(body);
+  });
+
+  it('the producer skill states the convention and the unnamed-partner default', () => {
+    // Without this the token exists and gets filled with something arbitrary.
+    const at = skill.indexOf('{{partner_first_reference}}');
+    expect(at, `${SKILL} does not document {{partner_first_reference}}`).toBeGreaterThanOrEqual(0);
+
+    const spec = skill.slice(at, at + 800);
+    expect(spec, 'the henceforth convention is not stated').toMatch(
+      /henceforth, referred to as/i,
+    );
+    expect(spec, 'the unnamed-partner bracket default is not stated').toMatch(
+      /\[Partner Name\]/,
+    );
+  });
+
+  it('the rendered first reference does not trip the QA scaffolding or renderer checks', () => {
+    // The remedy, executed rather than assumed. `[Partner Name]` is the
+    // sanctioned pre-partner form (SKILL.md § Process step 3(c)) and a Work
+    // Order drafted before a partner is selected is the NORMAL Phase 1 case, so
+    // the unnamed variant is the one that has to be clean.
+    const lead = backgroundSection!.replace(
+      '{{partner_first_reference}}',
+      '[Partner Name] (henceforth, referred to as "partner")',
+    ).replace('{{background_body}}', 'Background prose.');
+
+    expect(checkNoScaffoldingMarkers(lead).pass, JSON.stringify(checkNoScaffoldingMarkers(lead)))
+      .toBe(true);
+    expect(checkNoRendererInstructions(lead).pass, JSON.stringify(checkNoRendererInstructions(lead)))
+      .toBe(true);
+  });
 });

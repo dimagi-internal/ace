@@ -45,8 +45,8 @@ The template has six real Google Docs tables (preserved through markdown→gdoc 
 
 **Bulleted regions** (each is a START anchor + body token + END anchor; the skill calls `docs_finalize_bullets` after `docs_copy_template` to apply real bullet styling and remove the anchors):
 
-- `BULLETS_SCOPE_WILL` — §2 "the Partner will" bullets
-- `BULLETS_SCOPE_WILL_NOT` — §2 "the Partner will not" bullets
+- `BULLETS_SCOPE_WILL` — §2 "the partner will" bullets
+- `BULLETS_SCOPE_WILL_NOT` — §2 "the partner will not" bullets
 - `BULLETS_VERIFIED_UNIT` — §4.2 verified-unit criteria
 - `BULLETS_REPORTING` — §4.3 weekly + end-of-pilot reporting
 - `BULLETS_PERMISSIONS` — §8.1 required permissions
@@ -61,10 +61,11 @@ Each varying cell or bullet contains one `{{snake_case}}` token. Body-token repl
 | `{{opp_title}}` | PDD H1 |
 | `{{wo_date}}` | today (ISO) |
 | `{{wo_period_of_performance}}` | `wo-period-of-performance` decision |
+| `{{partner_first_reference}}` | § 1's first-reference definition of the partner — `<Partner name> (henceforth, referred to as "partner")`, or `[Partner Name] (henceforth, referred to as "partner")` when no LLO has been selected (ace#2126) |
 | `{{background_body}}` | PDD Problem Statement + Intervention Design |
 | `{{scope_intro}}` | One-sentence framing of the work (archetype-branched) |
-| `{{scope_will_body}}` ★ | Newline-separated "the Partner will" bullet items |
-| `{{scope_will_not_body}}` ★ | Newline-separated "the Partner will not" bullet items |
+| `{{scope_will_body}}` ★ | Newline-separated "the partner will" bullet items |
+| `{{scope_will_not_body}}` ★ | Newline-separated "the partner will not" bullet items |
 | `{{geographic_coverage_body}}` | PDD Target Population |
 | `{{primary_deliverable_body}}` | PDD Success Metrics |
 | `{{verified_unit_body}}` ★ | Newline-separated verified-unit criteria (one bullet per line) |
