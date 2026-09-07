@@ -2789,6 +2789,75 @@ server.tool(
   },
 );
 
+/**
+ * `docs_copy_template`, extracted so the ace#2126 coverage report can be
+ * tested at the ATOM level with an injected client.
+ *
+ * The pure classifier is covered by `test/lib/replacement-coverage.test.ts`;
+ * that suite stays green even if this atom stops calling it, which is exactly
+ * the wiring an unmatched replacement key escaped through in the first place.
+ * Follows the `handleUpdateYamlFile` pattern.
+ */
+export async function handleDocsCopyTemplate(
+  args: {
+    templateDocId: string;
+    title: string;
+    replacements?: Record<string, string>;
+    parentFolderId?: string;
+  },
+  driveClient: typeof drive = drive,
+  docsClient: typeof docs = docs,
+) {
+  const { templateDocId, title, replacements, parentFolderId } = args;
+  try {
+    const copyMetadata: Record<string, unknown> = { name: title };
+    if (parentFolderId) {
+      copyMetadata.parents = [parentFolderId];
+    }
+    const copy = await driveClient.files.copy({
+      fileId: templateDocId,
+      requestBody: copyMetadata,
+      fields: 'id, name, webViewLink',
+      supportsAllDrives: true,
+    });
+    const newDocId = copy.data.id!;
+
+    // A key that matches nothing is a SILENT no-op: 200, no error, and no
+    // leftover {{token}} for any rendered-doc check to find (ace#2126). The
+    // reply already carries occurrencesChanged; surface it.
+    let coverage: ReplacementCoverage | undefined;
+    if (replacements && Object.keys(replacements).length > 0) {
+      const keys = Object.keys(replacements);
+      const requests = keys.map((placeholder) => ({
+        replaceAllText: {
+          containsText: { text: placeholder, matchCase: true },
+          replaceText: replacements[placeholder],
+        },
+      }));
+      const batch = await docsClient.documents.batchUpdate({
+        documentId: newDocId,
+        requestBody: { requests },
+      });
+      coverage = summarizeReplacementCoverage(keys, batch.data.replies ?? []);
+    }
+
+    return result({
+      id: newDocId,
+      title: copy.data.name,
+      webViewLink: copy.data.webViewLink,
+      ...(coverage
+        ? {
+            replacementOccurrences: coverage.occurrences,
+            unmatchedReplacements: coverage.unmatchedReplacements,
+            ...(coverage.warning ? { warning: coverage.warning } : {}),
+          }
+        : {}),
+    });
+  } catch (e: any) {
+    return error(e.message);
+  }
+}
+
 // 18. Copy a template doc and replace placeholder text
 server.tool(
   'docs_copy_template',
@@ -2799,55 +2868,7 @@ server.tool(
     replacements: z.record(z.string()).optional().describe('Key-value map of placeholder text to replace, e.g. {"{{OPP_NAME}}": "Vaccine Hesitancy Pilot", "{{LLO_NAME}}": "TestLand Health Partners"}'),
     parentFolderId: z.string().optional().describe('Destination folder ID (omit to create in same location as template)'),
   },
-  async ({ templateDocId, title, replacements, parentFolderId }) => {
-    try {
-      const copyMetadata: Record<string, unknown> = { name: title };
-      if (parentFolderId) {
-        copyMetadata.parents = [parentFolderId];
-      }
-      const copy = await drive.files.copy({
-        fileId: templateDocId,
-        requestBody: copyMetadata,
-        fields: 'id, name, webViewLink',
-        supportsAllDrives: true,
-      });
-      const newDocId = copy.data.id!;
-
-      // A key that matches nothing is a SILENT no-op: 200, no error, and no
-      // leftover {{token}} for any rendered-doc check to find (ace#2126). The
-      // reply already carries occurrencesChanged; surface it.
-      let coverage: ReplacementCoverage | undefined;
-      if (replacements && Object.keys(replacements).length > 0) {
-        const keys = Object.keys(replacements);
-        const requests = keys.map((placeholder) => ({
-          replaceAllText: {
-            containsText: { text: placeholder, matchCase: true },
-            replaceText: replacements[placeholder],
-          },
-        }));
-        const batch = await docs.documents.batchUpdate({
-          documentId: newDocId,
-          requestBody: { requests },
-        });
-        coverage = summarizeReplacementCoverage(keys, batch.data.replies ?? []);
-      }
-
-      return result({
-        id: newDocId,
-        title: copy.data.name,
-        webViewLink: copy.data.webViewLink,
-        ...(coverage
-          ? {
-              replacementOccurrences: coverage.occurrences,
-              unmatchedReplacements: coverage.unmatchedReplacements,
-              ...(coverage.warning ? { warning: coverage.warning } : {}),
-            }
-          : {}),
-      });
-    } catch (e: any) {
-      return error(e.message);
-    }
-  },
+  async (args) => handleDocsCopyTemplate(args, drive, docs),
 );
 
 server.tool(
