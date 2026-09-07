@@ -454,6 +454,28 @@ describe('learn-tap-module.yaml', () => {
 describe('connect-resume-opp.yaml', () => {
   const yaml = readRecipe('connect-resume-opp.yaml');
 
+  /**
+   * The ace#2101 result-branch block: the top-level `runFlow` whose guard is
+   * `when: visible: id: <connect_fragment_jobs_list>` — i.e. "the CTA tap did
+   * not leave the jobs list". Sliced to the next top-level step so the
+   * assertions above test the block, not the rest of the file.
+   * Returns '' when no such block exists (the pre-#2101 state).
+   */
+  function reattemptBlock(): string {
+    const lines = yaml.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (!/^- runFlow:$/.test(lines[i])) continue;
+      const guard = lines.slice(i + 1, i + 5).join('\n').replace(/\s+/g, ' ');
+      if (!guard.includes('when: visible: id: "org.commcare.dalvik:id/connect_fragment_jobs_list"')) {
+        continue;
+      }
+      let j = i + 1;
+      while (j < lines.length && !/^[-A-Za-z]/.test(lines[j])) j++;
+      return lines.slice(i, j).join('\n');
+    }
+    return '';
+  }
+
   it('scopes the CTA tap to the target card (childOf containsChild), not the leaky below:text pattern', () => {
     // Regression guard for jjackson/ace#591 (malaria-rdt/20260531-0739):
     // the prior recipe tapped `id: btn_resume, below: text: ${OPP_NAME}`,
@@ -539,6 +561,114 @@ describe('connect-resume-opp.yaml', () => {
     ).toBe(0);
     // Non-vacuity: the collector must actually be finding backs to guard.
     expect(backFlows.length).toBeGreaterThan(0);
+  });
+
+  // --- ace#2101: branch on the RESULT, not on the rendered CTA label -------
+  //
+  // bednet-check-2-visit/20260902-1555. Connect had recorded Learn 100%
+  // complete and the Deliver leg was dispatched straight after; the target
+  // card had NOT re-rendered (`journey-deliver-FAILURE.xml`: `btn_resume`
+  // "Resume", `tv_progress_percent` "83 %"). Branch A's positive guard was
+  // therefore true, Branch B was SKIPPED, and the terminal assert failed after
+  // 10s. Every /ace:run dispatches Deliver directly after Learn, so this is on
+  // the critical path of every Phase 6.
+  //
+  // The filed diagnosis — "that button does nothing in that state" — does not
+  // survive the issue's OWN evidence: a raw `adb shell input tap 204 801` at
+  // the same `btn_resume` bounds navigated immediately to
+  // `connect_learning_certificate_container` / "Completed on: Sep 7, 2026",
+  // which is this recipe's declared post-state. Resume WORKS on a
+  // Learn-complete card; what failed is that Maestro's tap did not take.
+  //
+  // So the fix is not "poll for Proceed before branching" (the card never
+  // reached Proceed in that run, so the poll would have timed out, and it
+  // would make Branch A unreachable on cards where it demonstrably works). It
+  // is CLAUDE.md's standing rule for an external state transition: attempt it,
+  // then branch on the CALL RESULT rather than on a flag you read. The
+  // rendered CTA label is exactly such a flag.
+
+  it('settles the list before the CTA guards read it', () => {
+    // The tile scroll is a smooth `centerElement: true` fling. Before #2101
+    // nothing between it and the tap waited for it to stop — only
+    // `assertVisible` and `takeScreenshot`, which the splitter itself treats
+    // as SCREEN-NEUTRAL. That is also what defeats `retryTapIfNoChange`: a
+    // settling RecyclerView changes the hierarchy for reasons unrelated to the
+    // tap, so Maestro concludes the tap landed.
+    const lastScroll = yaml.lastIndexOf('- scrollUntilVisible:');
+    const tileShot = yaml.indexOf('takeScreenshot: "connect-resume-opp-tile"');
+    expect(lastScroll, 'expected a tile scroll').toBeGreaterThan(-1);
+    expect(tileShot, 'expected the tile screenshot').toBeGreaterThan(lastScroll);
+    expect(
+      yaml.slice(lastScroll, tileShot),
+      'a `waitForAnimationToEnd` must sit between the last list scroll and the CTA ' +
+        'branches — the guards and the tap must not read a still-moving RecyclerView ' +
+        '(ace#2101)',
+    ).toMatch(/- waitForAnimationToEnd:\s*\n\s*timeout: \d+/);
+  });
+
+  it('re-attempts the CTA when the tap did not leave the jobs list (branch on result)', () => {
+    // "Still on the jobs list" IS the call result: the transition did not
+    // happen, whatever the card's label said. Robust to either reading of the
+    // failure — tap-missed (the second tap lands, as the adb tap shows) or
+    // stale-card (Proceed fires if the card refreshed; Resume if it did not,
+    // and Resume navigates).
+    const reattempt = reattemptBlock();
+    expect(
+      reattempt,
+      'expected a runFlow guarded on `visible: <jobs-list>` that re-attempts the CTA',
+    ).not.toBe('');
+    expect(
+      reattempt,
+      'the re-attempt must cover BOTH CTA labels — the card may have refreshed to ' +
+        '"Proceed" in the meantime, or may still render "Resume"',
+    ).toMatch(/btn_resume/);
+    expect(reattempt).toMatch(/text: "Proceed"/);
+  });
+
+  it('keeps the re-attempt card-scoped, so it cannot resume the wrong opp (#591)', () => {
+    // The #591 leak was an unscoped `below:`-anchored tap reaching a LATER
+    // tile's Resume button. Every CTA tap in this file — the original two and
+    // the two added by #2101 — must stay pinned to the run-id card.
+    const taps = [...yaml.matchAll(/- tapOn:\n((?:\s{8,}.*\n)+)/g)].map((m) => m[1]);
+    const ctaTaps = taps.filter((t) => /btn_resume|text: "Proceed"/.test(t));
+    expect(ctaTaps.length, 'expected 4 CTA taps after ace#2101 (2 original + 2 re-attempt)').toBe(4);
+    for (const t of ctaTaps) {
+      expect(
+        t,
+        'every CTA tap must carry `childOf: containsChild: text: ".*${OPP_RUN_ID}.*"`',
+      ).toMatch(/childOf:\s*\n\s*containsChild:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/);
+    }
+  });
+
+  it('never scrolls inside the re-attempt — a missed scroll destroys the centered viewport', () => {
+    // connect-claim-opp.yaml's #1289/#800 note is the reproducer: an
+    // `optional: true` scrollUntilVisible that misses does NOT no-op, it runs
+    // its full budget to the list bottom. Doing that here would un-centre the
+    // card the `childOf containsChild` guards depend on and turn a recoverable
+    // miss into a guaranteed failure.
+    const reattempt = reattemptBlock();
+    expect(reattempt, 'precondition: the re-attempt block exists').not.toBe('');
+    expect(
+      reattempt,
+      'the re-attempt must not move the list — wait, do not scroll (ace#2101)',
+    ).not.toMatch(/scrollUntilVisible/);
+  });
+
+  it('puts the re-attempt BEFORE the loud terminal assert, and does not soften it', () => {
+    // The re-attempt buys exactly one more transition. #591's fail-loud
+    // contract is unchanged: if we are still on the jobs list after it, halt.
+    const reattemptStart = yaml.indexOf('- runFlow:', yaml.indexOf('text: "Proceed"'));
+    const terminal = yaml.lastIndexOf('- extendedWaitUntil:');
+    expect(reattemptStart).toBeGreaterThan(-1);
+    expect(
+      terminal,
+      'the terminal notVisible assert must come AFTER the re-attempt',
+    ).toBeGreaterThan(reattemptStart);
+    expect(
+      yaml.slice(terminal),
+      'the terminal assert must still be a hard `extendedWaitUntil notVisible` on the ' +
+        'jobs list — the re-attempt must not have made it optional',
+    ).not.toMatch(/optional: true/);
   });
 
   it('fails loud if the CTA tap did not leave the jobs list (no silent wrong-opp resume)', () => {
