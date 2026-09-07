@@ -758,14 +758,38 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        the answer key, since CommCare has no correct-option primitive — and run:
 
        ```ts
-       checkAnswerKeyPattern({ key, passMark });   // lib/answer-key-pattern.ts
+       const r = checkAnswerKeyPattern({ key, passMark });  // lib/answer-key-pattern.ts
        ```
 
-       It fails when ANY fixed periodic guess (period 1-6, every phase
-       alignment) reaches the pass mark. On a hit, re-key the offending items:
-       move the correct option's TEXT to a different position and update that
-       item's calculate to match. **Do NOT simply point the calculate at a
-       different letter** — that makes a wrong answer correct.
+       It returns a `CheckOutcome` — **narrow on `r.status` before reading
+       `r.ok`.** Three outcomes, and they are three different actions:
+
+       - `status: 'unable'` — the bank has fewer than 2 items, so no period
+         fits twice and NOTHING was examined. **This is not a pass.** Record
+         `r.reason` in the build memo verbatim; do not re-key. If a Connect
+         gate depends on a bank this short, that is the finding — a 1-item
+         gate is guessable for reasons this check does not measure.
+       - `status: 'checked'`, `ok: true` — no periodic guess reaches the mark.
+       - `status: 'checked'`, `ok: false` — re-key the offending items: move
+         the correct option's TEXT to a different position and update that
+         item's calculate to match. **Do NOT simply point the calculate at a
+         different letter** — that makes a wrong answer correct. **Bounded
+         loop, max 3 iterations**, re-running the check after each; if it
+         still fails on the third, halt with `assessment-key-periodic` rather
+         than re-keying indefinitely.
+
+       It fails when any fixed periodic guess reaches the pass mark, testing
+       every phase alignment at every period up to `min(6, floor(n / 2))`.
+       **The cycle must fit in the bank at least twice** — a longer "cycle" is
+       a transcription of the key, not a pattern (ace#2179). That bound is
+       what makes a re-key ACHIEVABLE: at `period <= n / 2` at most 50% of
+       items can match by construction, so a finding is always breakable. The
+       shipped version tested up to `period === n`, where the cycle IS the
+       key, so every bank of 6 or fewer items failed at 100% regardless of
+       content and the re-key instruction below could never be satisfied —
+       seen on `bednet-check-2-visit/20260907-1126`, a 3-item pre-test keyed
+       `b,c,a`. *Enforced:* `test/lib/answer-key-pattern.test.ts` § degenerate
+       periods (ace#2179).
 
        Measured on `poverty-graduation/20260905-1345`: a 32-item gate whose key
        ran `c a d b` then `(a d c b)` seven times without deviation. Answering
