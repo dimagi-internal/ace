@@ -75,6 +75,12 @@ dotenvConfig({
   path: __aceGdrivePluginDataDir
     ? path.join(__aceGdrivePluginDataDir, '.env')
     : path.join(process.cwd(), '.env'),
+  // ace#2114 — stdout IS this process's JSON-RPC transport, so nothing
+  // diagnostic may go there. dotenv v17 prints `◇ injected env (N) …` via
+  // console.log unless silenced, and it offers no stderr option. Every
+  // diagnostic this server emits (see `[ace-plugin-data-dir]` above) is on
+  // stderr; this makes dotenv obey the same rule.
+  quiet: true,
 });
 
 const SCOPES = [
