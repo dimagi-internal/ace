@@ -463,11 +463,21 @@ Skills — No Fake Background Tasks`). Concrete budget:
         Source-usage dimension reads. Verified live on
         `bednet-check-2-visit/20260814-2019`.
 
-        Note this does NOT contradict `ocs-chatbot-eval`'s widget branch: the
-        field is expected to be *empty* on widget captures (that rubric emits
-        `[PLATFORM]` and grades body text instead). The point here is that it
-        must be read from the right path, so an empty array is an observation
-        rather than an artifact of looking in the wrong place.
+        Note this does NOT contradict `ocs-chatbot-eval`: the field is
+        expected to be *empty* on **every** channel, and the cause is the
+        PROVIDER, not the widget (ace#2027, ace#2037).
+        `AnthropicLlmService.get_output_parser` returns
+        `parse_output_for_anthropic` (`open-chat-studio`
+        `llm_service/main.py:449` -> `parsers.py:83`), which never calls
+        `extract_file_ids_from_ocs_citations`, so `LlmChatResponse.cited_files`
+        keeps its empty default. Every ACE bot is Anthropic-backed today
+        (verified 2026-09-06 on chatbot 13029 v3: `type: "anthropic"`,
+        `generate_citations: true`, `embedded_widget` + `web` + `api` all
+        exposed, `cited_files` empty on all 64 deep entries). See
+        `skills/ocs-chatbot-eval` § "FIRST -- the provider gate", which emits
+        `[PLATFORM]` and grades body text instead. The point here is that the
+        field must still be read from the right path, so an empty array is an
+        observation rather than an artifact of looking in the wrong place.
 
         **`message.tags` is the chatbot VERSION tag, not the semantic tags
         (dimagi-internal/ace#1953).** It is in the field list above, it is
@@ -578,12 +588,23 @@ Skills — No Fake Background Tasks`). Concrete budget:
      names the real failure)
    - `has_citations`: for prompts where the expected answer is KB-sourced,
      `message.metadata.cited_files` is non-empty (see Step 5.4 for the path —
-     it is NOT a top-level field). On `widget` captures this is routinely
-     empty by design; record it, but do NOT fail `structural_pass` on it
-     alone — `ocs-chatbot-eval` § Source usage owns that judgment and
-     explicitly does not apply the empty-`cited_files` cap to widget
-     captures. Failing the suite on an always-empty array manufactures the
-     ace#1298 class of false "miswired bot" gate failure.
+     it is NOT a top-level field). On an **Anthropic-backed** bot — which is
+     every ACE bot today — this is empty by construction on EVERY channel
+     (`widget`, `web`, `api`, `openai-compat` alike) and regardless of
+     `generate_citations`, because the provider's output parser never
+     populates it (ace#2027). Record it, but do NOT fail `structural_pass` on
+     it alone — `ocs-chatbot-eval` § "FIRST -- the provider gate" owns that
+     judgment and withholds the empty-`cited_files` cap whenever the provider
+     cannot populate the field. Failing the suite on an always-empty array
+     manufactures the ace#1298 class of false "miswired bot" gate failure.
+
+     **Do NOT "improve" this into a channel-conditional failure** — i.e. fail
+     `structural_pass` when `cited_files` is empty on a non-`widget` capture.
+     That is the exact misattribution ace#2027 closed, and because the cause
+     is the provider it would false-fail every `web` and `api` capture of a
+     healthy bot. If a conditional check is ever wanted here, gate it on
+     `lib/cited-files-provider-support.ts` (`citedFilesCapApplies`), never on
+     `capture_method`.
    - Set per-prompt `structural_pass: true | false` and a `structural_notes`
      string for the judge (and humans) to read
 
@@ -649,7 +670,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
      <the bot's reply, verbatim>
 
-   - **Cited files:** []                       # message.metadata.cited_files — empty on widget captures
+   - **Cited files:** []                       # message.metadata.cited_files — empty on ANY channel for an Anthropic-backed bot (ace#2027)
    - **Inline citations:** [63004, 63041]      # harvested from the body — extractInlineCitations()
    - **Tags (structured):** ["v3"]             # message.tags — the CHATBOT VERSION tag, NOT semantic
    - **Inline tags (parsed from body):** ["[product-feedback]"]   # extractInlineTags()
@@ -741,6 +762,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **The empty `cited_files` is a PROVIDER property, not a widget property (closes dimagi-internal/ace#2037; sibling of #2027/PR #2032).** Step 5.4's note, Step 6's `has_citations` check, and the Step 7 transcript schema all attributed the emptiness to the `widget` channel. It is decided in the pipeline's LLM node before any channel exists: `AnthropicLlmService.get_output_parser` returns `parse_output_for_anthropic` (`main.py:449` -> `parsers.py:83`), which never calls `extract_file_ids_from_ocs_citations`, so the field is empty by construction on `widget`, `web`, `api` and `openai-compat` alike. The observation was always right; only the cause was wrong. This skill's check is non-fatal so no grade moved — the cost was that the two files disagreed about the mechanism, and the obvious next "improvement" (fail `structural_pass` when a non-`widget` capture has no citations) would have reintroduced the ace#1298 false-gate class that #2027 closed. Step 6 now names that anti-improvement explicitly and points at `lib/cited-files-provider-support.ts` as the only correct discriminator. *Enforced:* `test/lib/cited-files-provider-support.test.ts` § "the qa skill agrees about the mechanism". | ACE team |
 | 2026-09-05 | **Name what `message.tags` actually carries, and harvest the body evidence the transcript was dropping (closes dimagi-internal/ace#1953, supports #1952).** Step 5.4 already warned that `cited_files` is at `message.metadata.cited_files`; the same trap had two more doors on the same payload. `message.tags` is the CHATBOT VERSION tag — `["v3"]` on all 64 entries of `hh-poverty-targeting/20260828-0702` — and the semantic `[training-gap]` / `[product-feedback]` / `[no tag]` markers are emitted INLINE in the response body, as is file-id citation markup on 8 of those 64 entries. Step 7's transcript schema had one flat `Tags:` field, so a harness populating it from the documented path recorded the version label as the tagging evidence. The schema now carries four fields — `Cited files:` and `Tags (structured):` for provenance, `Inline citations:` and `Inline tags:` for grading — parsed with the shared `lib/widget-body-evidence.ts` so this skill and `ocs-chatbot-eval` cannot disagree about the grammar (six citation spellings and three tag spellings were live in that one suite). *Enforced:* `test/lib/widget-body-evidence.test.ts`. | ACE team |
 | 2026-08-29 | **Corrected the EXPLANATION under the missing-`X-Embed-Key` observation (ace#1812).** The measured status codes are unchanged and still correct; only the mechanism cited for them was stale. Step 5 explained the anonymous 201 as "consistent with `start_session_public` being a genuine anonymous surface for a published bot with an empty `participant_allowlist`" — OCS deleted `is_public` and the allowlist gate in #4275 (ADR-0057, 2026-08-26). The endpoint is still a genuine anonymous surface, for a different reason: it resolves published-or-working and gates only on the team's WEB channel being enabled (#4230). Keeping a right observation attached to a deleted mechanism is what makes a future reader mis-triage it. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `9-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
