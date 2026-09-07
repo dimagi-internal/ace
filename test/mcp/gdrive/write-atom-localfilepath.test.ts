@@ -97,16 +97,23 @@ describe.each(WRITE_ATOMS)('%s takes a path handle (ace#1780)', (tool) => {
 });
 
 describe('the write-side param family stays consistent', () => {
-  it('all four text/binary write atoms use localFilePath', () => {
-    for (const tool of ['drive_update_file', 'drive_upload_binary', ...WRITE_ATOMS]) {
+  // `update_yaml_file` joined the family in ace#2184. Its payload is an
+  // OBJECT rather than a string, so it resolves via `resolveYamlPatch` instead
+  // of `resolveInlineOrLocalFile` and cannot join the describe.each above —
+  // but the NAME is the whole point of this block, and it must not diverge.
+  // Contract detail lives in test/mcp/gdrive/update-yaml-patch-from-path.test.ts.
+  const FAMILY = ['drive_update_file', 'drive_upload_binary', 'update_yaml_file', ...WRITE_ATOMS];
+
+  it('every text/binary write atom uses localFilePath', () => {
+    for (const tool of FAMILY) {
       expect(schemaKeys(tool), `${tool} should take localFilePath`).toContain('localFilePath');
     }
   });
 
   it('no write atom introduces a rival name for the same idea', () => {
-    for (const tool of ['drive_update_file', 'drive_upload_binary', ...WRITE_ATOMS]) {
+    for (const tool of FAMILY) {
       const keys = schemaKeys(tool);
-      for (const rival of ['fromPath', 'sourcePath', 'inputPath', 'readFromPath']) {
+      for (const rival of ['fromPath', 'sourcePath', 'inputPath', 'readFromPath', 'patchFromPath', 'patchLocalFilePath']) {
         expect(keys, `${tool} introduced a rival to localFilePath`).not.toContain(rival);
       }
     }
