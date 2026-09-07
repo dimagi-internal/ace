@@ -84,6 +84,75 @@ endpoints accept the Django `sessionid` cookie + CSRF token DRF's
 
 ## Data model gotchas
 
+### An unfinished opportunity has NO dashboard — Connect 302s it to the payment-unit wizard
+
+`total_budget`, `start_date` and `program_name` are rendered on exactly one
+Connect surface: the opportunity dashboard (`/a/<org>/opportunity/<id>/`). No
+form carries them — the edit form's field set is `name`, `short_description`,
+`description`, `currency`, `country`, `end_date`, `delivery_type`,
+`delivery_level`, `learn_level`, `active`, `is_test`, `users` — so if the
+dashboard does not render, those three fields are unobtainable.
+
+For an opportunity whose setup was never finished, the dashboard **never
+renders**. Upstream, `commcare_connect/opportunity/views.py`:
+
+```python
+class OpportunityDashboard(OpportunityObjectMixin, OrganizationUserMixin, DetailView):
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if not self.object.is_setup_complete:
+            messages.warning(request, "Please complete the opportunity setup to view it")
+            return redirect("opportunity:add_payment_units", org_slug=request.org.slug,
+                            opp_id=self.object.opportunity_id)
+```
+
+…and `Opportunity.is_setup_complete` (models.py) is:
+
+```python
+if not (self.paymentunit_set.exists() and self.total_budget
+        and self.start_date and self.end_date):
+    return False
+for pu in self.paymentunit_set.all():
+    if not (pu.max_total and pu.max_daily):
+        return False
+```
+
+Measured on `ai-demo-space` 2026-09-06, with the ACE session:
+
+```
+=== the 11 rows ace#1637 called `no_cards` ===
+388851ca-… dash=302->payment_units/create pu_table=200 no_payment_units=true
+…  (11 of 11 identical; 10 of the 11 have zero payment units)
+=== 6 known-good rows ===
+ed07d5b9-… dash=200  pu_table=200 no_payment_units=false
+```
+
+Three consequences worth knowing before you debug this again:
+
+1. **It is not a parse bug and never was.** `ace-connect` followed the redirect
+   (Playwright's default), so `parseOpportunityDashboard` was handed the
+   payment-unit wizard — a page with an `<h1>` and no `<h6>label</h6><p>value</p>`
+   infocards. `classifyDashboardRead` correctly called that `no_cards`; the read
+   was about the wrong page. `getOpportunity` now fetches the detail page with
+   `maxRedirects: 0` and reports `dashboard_read: 'setup_incomplete'`
+   (ace#1637). *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts`.
+2. **There is no second surface to fall back to.** `/finalize/` — the only form
+   with `total_budget` — redirects to the SAME wizard, because
+   `OpportunityFinalize.dispatch` bounces any opportunity with no payment units.
+   Verified live: `GET …/finalize/ → 302 → …/payment_units/create`.
+3. **Do NOT infer `total_budget = 0`.** `is_setup_complete` is false when ANY of
+   the four is missing, and `connect_create_opportunity` sets a budget through
+   the REST automation API without ever touching the form that requires payment
+   units. The redirect proves the setup is unfinished; it does not prove the
+   budget is null. `connect-program-setup` Step 4a therefore still counts these
+   rows as unreadable — it just names them now.
+
+The standing cost: each such row adds one `EXPECTED_OPP_BUDGET` to the Σ-unknown
+target on every program sized against that org, and only finishing or deleting
+the opportunity removes it. On `ai-demo-space` that is 11 rows, essentially all
+of them ACE's own abandoned Phase 4 runs. `sweep-connect` deactivates orphan
+opportunities but a deactivated opportunity is still listed and still unreadable.
+
 ### Deliver-unit granularity is module-level, not form-level
 
 When `connect_create_opportunity` syncs a Deliver app from CommCareHQ, it

@@ -1193,6 +1193,12 @@ export interface OpportunityDashboardFields {
  *   `ok`         — the page rendered as an opportunity dashboard AND its
  *                  infocard block parsed. A field that is still `undefined` is
  *                  genuinely not stated on the page.
+ *   `setup_incomplete` — Connect REFUSED to render the dashboard and redirected
+ *                  to the payment-unit wizard, because `is_setup_complete` is
+ *                  false (no payment units, or no total_budget / start_date /
+ *                  end_date). The dashboard-only fields are not merely unread:
+ *                  NO Connect read surface states them for this opportunity.
+ *                  This is the ace#1637 cohort, root-caused 2026-09-06.
  *   `no_cards`   — the page rendered, but the `<h6>label</h6><p>value</p>`
  *                  infocard block that carries Max Budget / Start Date / End
  *                  Date is absent. The dashboard-only fields are UNREAD, not
@@ -1205,17 +1211,68 @@ export interface OpportunityDashboardFields {
  *
  * Only `ok` licenses reading `undefined` as "absent".
  */
-export type DashboardReadStatus = 'ok' | 'no_cards' | 'not_a_dashboard' | 'not_fetched';
+export type DashboardReadStatus =
+  | 'ok'
+  | 'setup_incomplete'
+  | 'no_cards'
+  | 'not_a_dashboard'
+  | 'not_fetched';
+
+/**
+ * Connect's own name for the page an unfinalized opportunity's dashboard URL
+ * redirects to. Matched as a SUFFIX of the `Location` header so the org slug
+ * and opportunity id in the path are irrelevant.
+ *
+ * `commcare_connect/opportunity/urls.py`:
+ *   path("<slug:opp_id>/payment_units/create", view=add_payment_units,
+ *        name="add_payment_units")
+ */
+const ADD_PAYMENT_UNITS_PATH = '/payment_units/create';
 
 /**
  * Classify the dashboard read. `html` is the detail-page body, or `''`/
- * `undefined` when the fetch did not return 200.
+ * `undefined` when the fetch did not return 200. `response` carries the raw
+ * status + `Location` of that fetch, which the caller MUST make with
+ * `maxRedirects: 0` — following the redirect is what hid the root cause for
+ * two weeks (see the `setup_incomplete` branch below).
  *
- * Deliberately keyed on the SHAPE the parser depends on, not on any one field
- * being present: a dashboard for an opportunity with no program and no budget
- * is a legitimate `ok`, and must not be reported as unread.
+ * Otherwise deliberately keyed on the SHAPE the parser depends on, not on any
+ * one field being present: a dashboard for an opportunity with no program and
+ * no budget is a legitimate `ok`, and must not be reported as unread.
  */
-export function classifyDashboardRead(html: string | undefined | null): DashboardReadStatus {
+export function classifyDashboardRead(
+  html: string | undefined | null,
+  response?: { status?: number; location?: string },
+): DashboardReadStatus {
+  // ace#1637 root cause, settled against the live surface and upstream source
+  // on 2026-09-06: an opportunity whose setup is unfinished does not render a
+  // dashboard AT ALL. `OpportunityDashboard.get` redirects it:
+  //
+  //   if not self.object.is_setup_complete:
+  //       messages.warning(request, "Please complete the opportunity setup to view it")
+  //       return redirect("opportunity:add_payment_units", ...)
+  //
+  // (`commcare_connect/opportunity/views.py`, and `is_setup_complete` is
+  // `paymentunit_set.exists() and total_budget and start_date and end_date`,
+  // plus max_total/max_daily on every payment unit.)
+  //
+  // Measured on `ai-demo-space` the same day: 11 of 11 rows this function used
+  // to call `no_cards` returned `302 -> .../payment_units/create`, and 6 of 6
+  // `ok` rows returned 200. The classifier only ever saw `no_cards` because
+  // the fetch FOLLOWED the redirect and handed it the payment-unit wizard —
+  // a page with an <h1> and no infocards. So the answer looked like a parse
+  // shortfall on a dashboard when it was Connect declining to render one.
+  //
+  // This is reported as its own status because it is a FACT about the
+  // opportunity, not a failure of the read: no read surface in Connect states
+  // `total_budget` for such a row (the edit form has no budget field, and
+  // /finalize/ redirects to the same wizard — both verified live).
+  if (response?.status != null && response.status >= 300 && response.status < 400) {
+    const loc = response.location ?? '';
+    if (loc.split('?')[0].replace(/\/$/, '').endsWith(ADD_PAYMENT_UNITS_PATH)) {
+      return 'setup_incomplete';
+    }
+  }
   if (!html) return 'not_fetched';
   // The title is the one element every rendered dashboard has, and the anchor
   // the description parse already depends on.

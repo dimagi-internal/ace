@@ -115,6 +115,70 @@ describe('summarizeOpportunitiesByProgram — connect-program-setup Step 4a', ()
     expect(s.sigma_unknown_reasons.join(' ')).toMatch(/unreadable_rows/);
   });
 
+  it('counts setup_incomplete rows SEPARATELY, and still as unreadable (ace#1637)', () => {
+    // The cohort root-caused 2026-09-06: Connect 302s an unfinished
+    // opportunity's dashboard to the payment-unit wizard, so no read surface
+    // states its budget. It is named because it will never resolve by
+    // retrying — and it is still unreadable, because `is_setup_complete` is
+    // false when ANY of {payment units, total_budget, start_date, end_date} is
+    // missing, and `connect_create_opportunity` can set a budget through the
+    // automation API without payment units. Inferring 0 would be a guess.
+    const s = summarizeOpportunitiesByProgram(
+      [
+        { id: '1', program_name: 'Bednet', total_budget: 100, dashboard_read: 'ok' },
+        { id: '2', dashboard_read: 'setup_incomplete' },
+        { id: '3', dashboard_read: 'setup_incomplete' },
+        { id: '4', dashboard_read: 'no_cards' },
+      ],
+      base,
+    );
+    expect(s.unreadable_rows).toBe(3);
+    expect(s.setup_incomplete_rows).toBe(2);
+    expect(s.sigma_known).toBe(false);
+    expect(s.sigma_total_budget).toBe(100);
+    const reason = s.sigma_unknown_reasons.join(' ');
+    expect(reason).toMatch(/2 of them are setup_incomplete/);
+    expect(reason).toMatch(/Retrying cannot fix these/);
+    expect(s.dashboard_read_counts).toEqual({ ok: 1, setup_incomplete: 2, no_cards: 1 });
+  });
+
+  it('does not mention setup_incomplete when there are none', () => {
+    const s = summarizeOpportunitiesByProgram(
+      [
+        { id: '1', program_name: 'Bednet', total_budget: 100, dashboard_read: 'ok' },
+        { id: '2', dashboard_read: 'no_cards' },
+      ],
+      base,
+    );
+    expect(s.setup_incomplete_rows).toBe(0);
+    expect(s.sigma_unknown_reasons.join(' ')).not.toMatch(/setup_incomplete/);
+  });
+
+  it('reproduces the LIVE ai-demo-space split measured 2026-09-06', () => {
+    // 71 hydrated rows: 60 ok, 11 setup_incomplete (was 16 of 81 when the
+    // issue was filed, 16 of 85 four days later — the org has since been
+    // swept, the cohort has not been repaired). Each unreadable row adds one
+    // EXPECTED_OPP_BUDGET to the Σ-unknown target, so this cohort is a
+    // standing ~11×EXPECTED_OPP_BUDGET on every program sized in this org.
+    const rows = [
+      ...Array.from({ length: 60 }, (_v, i) => ({
+        id: `ok-${i}`,
+        program_name: i < 4 ? 'Bednet' : 'Other',
+        total_budget: 1_000,
+        dashboard_read: 'ok',
+      })),
+      ...Array.from({ length: 11 }, (_v, i) => ({ id: `si-${i}`, dashboard_read: 'setup_incomplete' })),
+    ];
+    const s = summarizeOpportunitiesByProgram(rows, base);
+    expect(s.total_rows).toBe(71);
+    expect(s.matched_rows).toBe(4);
+    expect(s.excluded_outside_program).toBe(56);
+    expect(s.unreadable_rows).toBe(11);
+    expect(s.setup_incomplete_rows).toBe(11);
+    expect(s.sigma_total_budget).toBe(4_000);
+    expect(s.sigma_known).toBe(false);
+  });
+
   it('treats a row with no dashboard_read at all as not_fetched, never as ok', () => {
     const s = summarizeOpportunitiesByProgram([{ id: '1', program_name: 'Bednet', total_budget: 5 }], base);
     expect(s.unreadable_rows).toBe(1);
