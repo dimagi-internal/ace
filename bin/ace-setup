@@ -24,12 +24,17 @@
 #   --force-env        re-run `op inject` even if .env covers all keys
 #   --skip-env         skip .env injection entirely
 #   --skip-doctor      skip the trailing doctor pass
+#   --print-root       resolve the plugin root, print it, exit. No side effects.
 #
 # Env overrides:
 #   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
 #                       key (default: "ACE - Google Service Account")
 #   ACE_OP_VAULT        1Password vault that holds ACE secrets (default: "Agent-Ace")
 #   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
+#   ACE_PLUGIN_REGISTRY       override ~/.claude/plugins/installed_plugins.json
+#   ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1
+#                       render .env from a root that is NOT the installed
+#                       plugin. Off by default — see ace#2091.
 #
 # Exit status: 0 on success, 1 on any FAIL the user must fix.
 set +e
@@ -41,6 +46,7 @@ FORCE_ENV=0
 SKIP_ENV=0
 SKIP_DOCTOR=0
 NO_SHELL_EDIT=0
+PRINT_ROOT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,8 +56,9 @@ while [ $# -gt 0 ]; do
     --skip-env)      SKIP_ENV=1 ;;
     --skip-doctor)   SKIP_DOCTOR=1 ;;
     --no-shell-edit) NO_SHELL_EDIT=1 ;;
+    --print-root)    PRINT_ROOT=1 ;;
     -h|--help)
-      sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "ace-setup: unknown arg: $1" >&2; exit 2 ;;
@@ -71,27 +78,148 @@ mark_fail() { EXIT_CODE=1; }
 OP_VAULT="${ACE_OP_VAULT:-Agent-Ace}"
 GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 
-# ---- plugin root detection (matches bin/ace-doctor self-mode logic)
+# ---- plugin root detection
+#
+# ORDERING IS THE WHOLE BUG (ace#2091). This script's most consequential side
+# effect is `op inject -i $ROOT/.env.tpl -o $DATA_DIR/.env` — it writes the
+# INSTALLED plugin's runtime config, which every MCP subprocess reads once at
+# startup. So the template it renders MUST come from the installed plugin.
+#
+# Until this change the walk preferred a `$PWD` ancestor over everything but
+# `CLAUDE_PLUGIN_ROOT`. Every ACE worktree on the machine is a valid match,
+# including ones parked on months-old branches, so `--force-env` run from a
+# worktree silently rewrote the machine's `.env` from THAT branch's template.
+# Measured 2026-09-06 15:05:30 on the ACE workstation: plugin_root resolved to
+# a worktree at 0.13.1173, and the installed `.env` came out with the CommCare
+# APK pin one release BEHIND what the installed `.env.tpl` declared — reverting
+# PR #2038 machine-wide, invisibly. `/ace:doctor`'s env_freshness probe
+# compares MTIME, not CONTENT, so a stale-content .env passes it clean.
+# (No literal version is written here on purpose: a pin-shaped literal in a
+# comment is indistinguishable from a real knob to lib/apk-pin-sites.ts.)
+#
+# New order — installed first, and `$PWD` is NOT a candidate at all:
+#   1. $CLAUDE_PLUGIN_ROOT      — the harness told us; believe it
+#   2. installed_plugins.json   — authoritative installPath for ace@ace
+#   3. newest plugin cache dir  — registry missing or unreadable
+#   4. $SELF_DIR                — the plugin copy this script lives in
+#
+# `$PWD` was dropped rather than demoted. `$SELF_DIR` is `dirname($0)/..`, so
+# it is ALWAYS a valid ACE root — a `$PWD` tail below it would be unreachable
+# dead code pretending to be a safety net. The one thing `$PWD` still earns is
+# an INFO line saying which checkout you are sitting in and that it was not
+# used. `commands/setup.md` already resolves the SCRIPT through the registry;
+# before this change the script threw that away and re-resolved from `$PWD`.
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+_is_ace_root() {
+  [ -n "${1:-}" ] && [ -f "$1/.claude-plugin/plugin.json" ]
+}
+
+# installPath Claude Code recorded for ace@ace. Empty when node is
+# unavailable, the registry is missing, or the entry is absent — all
+# non-fatal; the next candidate takes over.
+_registry_install_path() {
+  _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
+  [ -f "$_REG" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$_REG" 2>/dev/null
+}
+
+# Version the registry records for ace@ace. NOT the same thing as the VERSION
+# file at that installPath — see CLAUDE.md § "that prints a DIRECTORY NAME,
+# which can lie". Used only for reporting and the template-root guard.
+_registry_version() {
+  _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
+  [ -f "$_REG" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);const v=Array.isArray(e)?e[0]:e;if(v&&v.version)console.log(v.version)}catch(_){}" "$_REG" 2>/dev/null
+}
+
+_version_at() {
+  tr -d '[:space:]' < "$1/VERSION" 2>/dev/null || true
+}
+
+# Nearest ACE checkout at or above $PWD, or empty. Never fails.
+_pwd_ace_checkout() {
+  _D="$PWD"
+  while [ "$_D" != "/" ]; do
+    if [ -f "$_D/.claude-plugin/plugin.json" ] && grep -q '"name": "ace"' "$_D/.claude-plugin/plugin.json" 2>/dev/null; then
+      printf '%s\n' "$_D"; return 0
+    fi
+    _D="$(dirname "$_D")"
+  done
+  return 0
+}
+
 ROOT=""
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ]; then
-  ROOT="$CLAUDE_PLUGIN_ROOT"
+ROOT_SOURCE=""
+
+if _is_ace_root "${CLAUDE_PLUGIN_ROOT:-}"; then
+  ROOT="$CLAUDE_PLUGIN_ROOT"; ROOT_SOURCE="CLAUDE_PLUGIN_ROOT"
 fi
 if [ -z "$ROOT" ]; then
-  D="$PWD"
-  while [ "$D" != "/" ]; do
-    if [ -f "$D/.claude-plugin/plugin.json" ] && grep -q '"name": "ace"' "$D/.claude-plugin/plugin.json" 2>/dev/null; then
-      ROOT="$D"; break
-    fi
-    D="$(dirname "$D")"
-  done
+  CAND="$(_registry_install_path)"
+  if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="installed_plugins.json"; fi
 fi
-if [ -z "$ROOT" ]; then ROOT="$SELF_DIR"; fi
+if [ -z "$ROOT" ]; then
+  CAND="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
+  if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="plugin-cache-newest"; fi
+fi
+if [ -z "$ROOT" ] && _is_ace_root "$SELF_DIR"; then
+  ROOT="$SELF_DIR"; ROOT_SOURCE="script-self-dir"
+fi
+
 if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
+  if [ "$PRINT_ROOT" = "1" ]; then
+    echo "plugin_root="
+    echo "plugin_root_source=none"
+    echo "plugin_root_version="
+    echo "registry_version=$(_registry_version)"
+    exit 1
+  fi
   fail "plugin_root: could not locate ACE plugin" "run from an ACE checkout, or after /plugin install ace@ace"
   exit 1
 fi
-echo "INFO plugin_root=$ROOT"
+
+ROOT_VERSION="$(_version_at "$ROOT")"
+REG_VERSION="$(_registry_version)"
+
+if [ "$PRINT_ROOT" = "1" ]; then
+  # Resolution-only mode: no network, no npm, no op, no writes. This is the
+  # seam `test/bin/ace-setup-plugin-root.test.ts` drives, so the ordering above
+  # is testable without a 1Password session or an npm install.
+  echo "plugin_root=$ROOT"
+  echo "plugin_root_source=$ROOT_SOURCE"
+  echo "plugin_root_version=$ROOT_VERSION"
+  echo "registry_version=$REG_VERSION"
+  exit 0
+fi
+
+echo "INFO plugin_root=$ROOT (source=$ROOT_SOURCE, version=${ROOT_VERSION:-unknown})"
+
+REG_INSTALL_PATH="$(_registry_install_path)"
+if [ -n "$REG_INSTALL_PATH" ] && [ "$ROOT" != "$REG_INSTALL_PATH" ]; then
+  printf '\n'
+  printf '  !! plugin_root is NOT the installed ACE plugin.\n'
+  printf '     resolved:  %s (source=%s, version=%s)\n' "$ROOT" "$ROOT_SOURCE" "${ROOT_VERSION:-unknown}"
+  printf '     installed: %s (registry version=%s)\n' "$REG_INSTALL_PATH" "${REG_VERSION:-unknown}"
+  printf '     .env rendering is REFUSED in this state — see the env step below. (ace#2091)\n'
+  printf '\n'
+elif [ -z "$REG_INSTALL_PATH" ]; then
+  printf '\n'
+  printf '  !! No installed ACE plugin found in the registry — using %s\n' "$ROOT"
+  printf '     version: %s. This root .env.tpl WILL be rendered into the machine-wide .env.\n' "${ROOT_VERSION:-unknown}"
+  printf '     If that is not what you want: /plugin install ace@ace. (ace#2091)\n'
+  printf '\n'
+fi
+
+# Informational. Sitting in an ACE checkout that is NOT the resolved root is
+# the normal, correct state for a worktree session — say so once, rather than
+# silently preferring the checkout the way this script used to.
+PWD_CHECKOUT="$(_pwd_ace_checkout)"
+if [ -n "$PWD_CHECKOUT" ] && [ "$PWD_CHECKOUT" != "$ROOT" ]; then
+  echo "INFO cwd_is_ace_checkout=$PWD_CHECKOUT (version=$(_version_at "$PWD_CHECKOUT")) — NOT used as the .env.tpl source"
+fi
 
 # ---- data dir (per-machine, persistent across plugin updates)
 if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
@@ -280,7 +408,40 @@ fi
 ENV_OUT="$DATA_DIR/.env"
 ENV_TPL="$ROOT/.env.tpl"
 
-if [ "$SKIP_ENV" = "1" ]; then
+# Template-root guard (ace#2091). The ordering fix above makes the INSTALLED
+# plugin win the resolution, but `CLAUDE_PLUGIN_ROOT` still overrides
+# everything — and a session launched from a worktree can carry one that
+# points at the worktree. That is fine for reading skills; it is NOT fine for
+# rendering a template into the INSTALLED plugin's machine-wide data dir.
+#
+# So: refuse the write when the resolved root is not the installed plugin AND
+# an installed plugin exists. This is deliberately a refusal, not a
+# preference — the failure it prevents is SILENT (a well-formed .env carrying
+# an old branch's values, which env_freshness passes because it only compares
+# mtime), and a silent machine-wide downgrade is worse than a loud stop.
+#
+# Not a VERSION comparison: a plugin cache directory's NAME can disagree with
+# the VERSION file inside it (CLAUDE.md § the cache dir can lie), so equality
+# on version would fail spuriously. Path identity is the fact that matters.
+ENV_ROOT_REFUSED=0
+if [ -n "$REG_INSTALL_PATH" ] && [ "$ROOT" != "$REG_INSTALL_PATH" ] \
+   && [ "${ACE_SETUP_ALLOW_TEMPLATE_MISMATCH:-0}" != "1" ]; then
+  ENV_ROOT_REFUSED=1
+fi
+
+if [ "$ENV_ROOT_REFUSED" = "1" ]; then
+  fail "env: refusing to render .env from a non-installed plugin root (ace#2091)" \
+       "resolved root:  $ROOT (source=$ROOT_SOURCE, version=${ROOT_VERSION:-unknown})
+       installed root: $REG_INSTALL_PATH (registry version=${REG_VERSION:-unknown})
+       \$DATA_DIR/.env belongs to the INSTALLED plugin and is read by every MCP subprocess
+       at startup, so rendering a checkout's .env.tpl into it rolls the whole machine back
+       to that branch's values with no visible symptom. Re-run setup so it resolves the
+       installed root — e.g. unset CLAUDE_PLUGIN_ROOT, or run
+       $REG_INSTALL_PATH/bin/ace-setup --force-env.
+       If you genuinely mean to render THIS root's template, re-run with
+       ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1."
+  mark_fail
+elif [ "$SKIP_ENV" = "1" ]; then
   warn "env: skipped (--skip-env)" "re-run without --skip-env to populate $ENV_OUT"
 elif [ ! -f "$ENV_TPL" ]; then
   fail "env: .env.tpl not found at $ENV_TPL" "the plugin is corrupt; reinstall with /plugin install ace@ace"

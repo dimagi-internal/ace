@@ -25,6 +25,7 @@ One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, 
 - `--force-env` — re-run `op inject` even if `.env` already has every `.env.tpl` key
 - `--skip-env` — skip the `.env` injection step (e.g. CI environments that pre-populate the file)
 - `--skip-doctor` — skip the trailing `bin/ace-doctor` pass
+- `--print-root` — resolve the plugin root, print it, and exit. No side effects; use it to answer "which `.env.tpl` would a `--force-env` render?" without running anything.
 
 Forward `$ARGUMENTS` to the script unchanged.
 
@@ -96,6 +97,7 @@ Read the script output and tell the user:
 3. For each `WARN`, list briefly. These are non-blocking but worth resolving.
 4. **Special-case the most common first-run FAILs** with explicit hand-holding:
    - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
+   - `FAIL env: refusing to render .env from a non-installed plugin root (ace#2091)` → the script resolved a plugin root that is NOT the one the registry records as installed, and `$CLAUDE_PLUGIN_DATA/.env` belongs to the installed plugin. Quote both paths from the `fix:` block and tell the user to re-run the installed copy directly: `bash <installed root>/bin/ace-setup --force-env`. Do NOT suggest `ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1` unless they explicitly say they mean to render the other root's template — that override reinstates the exact silent machine-wide downgrade the refusal exists to stop.
    - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."
 5. **If the output contains `env: op inject wrote` — say the restart out loud, first, before anything else** (ace#880). `.env` was rewritten, and every MCP subprocess already running is now holding the previous values; they call `dotenvConfig()` at import and never re-read the file. Tell the user verbatim: *"`.env` was rewritten — fully quit and reopen Claude Code (Cmd-Q) before running anything else. `/reload-plugins` does NOT respawn MCP subprocesses."* Do not bury this under the PASS list: the failure mode is silent (an MCP that answers normally with stale values), and the operator has no other signal. If the script also printed a `WARN env_freshness` line, quote it — it names the exact stale pids.
 6. If everything passes:
