@@ -30,6 +30,31 @@ ACE_TEMPLATES_FOLDER_ID=<folder id> WORK_ORDER_BOOTSTRAP_FORCE=1 \
 
 The old template is trashed (recoverable for 30 days in Drive) and a new one is created. Record the new file_id in 1Password.
 
+## Mirror-vs-live drift
+
+`templates/work-order-template.md` is a **mirror**, not the renderer's input. `pdd-to-work-order` calls `docs_copy_template(templateDocId=$WORK_ORDER_TEMPLATE_ID, …)` — it reads the Drive document and never opens the repo file. Nothing made the two agree until ace#2126, and the gap is silent in both directions:
+
+| Direction | What happens | Why nothing caught it |
+|---|---|---|
+| **MIRROR_ONLY** — token in the repo, absent from the live gdoc | The producer emits a replacement; `replaceAllText` matches zero occurrences; the API returns 200 | There is **no leftover `{{token}}`** in the output. The ace#819 token-coverage scan looks for surviving markers and finds none, `pdd-to-work-order-qa` returned 14/14, and the computed value simply evaporates. It reads as fixed at every checkpoint. |
+| **LIVE_ONLY** — token in the live gdoc, absent from the repo | No producer fills it, so a literal `{{token}}` ships into a contract | Caught late, by the ace#819 scan on the rendered doc |
+
+ace#2126 is the MIRROR_ONLY case, measured: the fix added `{{partner_first_reference}}` to the repo mirror and to `SKILL.md`, the live gdoc never got it, and two runs shipped a Work Order that obliged "the partner" ~30 times without ever defining who that is.
+
+**Check it:**
+
+```bash
+npx tsx scripts/probe-work-order-template-drift.ts        # exit 0 in sync, 2 on drift
+# from a dev checkout, point loadPluginEnv at the installed .env:
+CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/ace-ace npx tsx scripts/probe-work-order-template-drift.ts
+```
+
+`/ace:doctor` runs the same probe as `work_order_template_drift` (WARN on drift), alongside the SA-accessibility probes. `test/skills/work-order-template-token-contract.test.ts` pins the three REPO files against each other in CI; this probe is the live half, which CI cannot run.
+
+**Fixing drift: edit the live gdoc, do NOT re-bootstrap.** `WORK_ORDER_BOOTSTRAP_FORCE=1` trashes the current template and mints a **new file id**, which (a) requires a 1Password + `.env` update everywhere and (b) discards the `docs_batch_update` style retrofit described in `skills/pdd-to-work-order/references/style-guide.md`. Apply the minimal `docs_batch_update` instead, then re-run the probe to confirm it reports `OK`.
+
+**A zero-match replacement is now visible.** `docs_copy_template` and `slides_copy_template` return `replacementOccurrences` (per-key counts), `unmatchedReplacements`, and a `warning` when any key matched nothing (`lib/replacement-coverage.ts`). Note the API omits `occurrencesChanged` rather than sending `0`, so absence — not a zero — is the signal.
+
 ## Template structure
 
 The template has six real Google Docs tables (preserved through markdown→gdoc upload) PLUS five bulleted regions delimited by `<<<BULLETS_*_START>>>` / `<<<BULLETS_*_END>>>` anchor pairs.

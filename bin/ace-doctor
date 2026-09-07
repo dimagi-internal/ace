@@ -1246,6 +1246,30 @@ if [ -n "$ENV_FILE" ]; then
         warn "${TPL_LABEL}_access: $TPL_VAR=$TPL_ID is set but the SA cannot read it ($TPL_MSG)" "share the template doc with $TPL_SA_EMAIL as Viewer, or re-point $TPL_VAR to an SA-accessible copy — otherwise $TPL_CONSUMER fails mid-run with 'File not found'"
       fi
     done
+
+    # Work-order template mirror-vs-live drift (dimagi-internal/ace#2126).
+    # The probe above proves the SA can READ the template; this one proves the
+    # template still says what the repo thinks it says. `templates/work-order-
+    # template.md` is a MIRROR — pdd-to-work-order renders from the Drive doc,
+    # never from the repo file — and nothing checked the two agree. A token in
+    # the mirror but not in the live doc makes the producer's replaceAllText
+    # match zero occurrences: 200, no error, no leftover {{token}}, so the
+    # ace#819 coverage scan and pdd-to-work-order-qa (14/14) both pass while
+    # the value evaporates. Same "configured" → "configured correctly" class as
+    # the ocs_shared_collection_team probe.
+    if [ -n "$(get_env WORK_ORDER_TEMPLATE_ID)" ]; then
+      # CLAUDE_PLUGIN_DATA is passed explicitly so the probe's loadPluginEnv
+      # finds the real .env in --here / dev-checkout mode too, where it cannot
+      # derive the data dir from its own module path.
+      WO_DRIFT_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" GOOGLE_APPLICATION_CREDENTIALS="$KEY" npx tsx scripts/probe-work-order-template-drift.ts 2>&1)"
+      WO_DRIFT_RC=$?
+      if [ "$WO_DRIFT_RC" = "0" ]; then
+        pass "work_order_template_drift: live template carries exactly the tokens templates/work-order-template.md declares"
+      elif [ "$WO_DRIFT_RC" = "2" ]; then
+        WO_DRIFT_TOKENS="$(printf '%s' "$WO_DRIFT_OUT" | sed -n 's/^ *- //p' | tr '\n' ' ')"
+        warn "work_order_template_drift: live WORK_ORDER_TEMPLATE_ID disagrees with templates/work-order-template.md ($WO_DRIFT_TOKENS)" "run 'npx tsx scripts/probe-work-order-template-drift.ts' for the full report, then apply the missing edit to the LIVE gdoc with a minimal docs_batch_update — do NOT re-bootstrap (that mints a new file id and drops the style retrofit). See playbook/integrations/work-order-template.md § Mirror-vs-live drift"
+      fi
+    fi
   fi
 
   # Content Generator API — gates the multimedia-generation skill family.
