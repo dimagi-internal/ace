@@ -64,6 +64,14 @@ function step0(doc: string): string {
   return doc.slice(start, end);
 }
 
+/** `ocs-knowledge-refresh`'s Step 4 only — the two write-backs. */
+function step4(doc: string): string {
+  const start = doc.indexOf('### Step 4:');
+  const end = doc.indexOf('## Verdict');
+  if (start < 0 || end < 0 || end <= start) return '';
+  return doc.slice(start, end);
+}
+
 describe('OCS knowledge base is refreshed after Phase 6 writes the training docs', () => {
   const phase6 = readFileSync(join(ROOT, 'agents/qa-and-training.md'), 'utf8');
   const refresh  = readFileSync(join(ROOT, 'skills/ocs-knowledge-refresh/SKILL.md'), 'utf8');
@@ -160,6 +168,54 @@ describe('OCS knowledge base is refreshed after Phase 6 writes the training docs
         `Step 0 must handle the '${branch}' case: a document edited after the last\n` +
           'refresh means the collection is stale, and appending on top of the old\n' +
           'copies is worse than not refreshing at all.',
+      ).toBe(true);
+    }
+  });
+
+  it('Step 4 verifies both write-backs by reading them back', () => {
+    // The defect (ace#2107): Step 4 writes two places, and only one of them has
+    // an enforcement surface. The `run_state.yaml` patch is schema-checked by
+    // `validateAs: {kind: 'phase-products'}`; the `ocs-agent-setup.md` edit is a
+    // free-text gdoc write that fails SILENTLY when it is skipped. On
+    // bednet-check-2-visit/20260902-1555 the 2026-09-05 pass uploaded all four
+    // documents, published v3, wrote `Status: done` — and never touched
+    // ocs-agent-setup.md, which still read "`last_reindexed_at` is absent" three
+    // days later at the revision Phase 5 had left it at.
+    //
+    // That is not a cosmetic drift. The skill designates that field as THE
+    // operator's check that the bot received its training documents, and Step 0
+    // branches on it: a later pass reads `absent`, takes the first-pass branch,
+    // and APPENDS duplicates into a collection that already holds them. So the
+    // missing write-back converts a working refresh into both a false negative
+    // for humans and a duplicate-append for the next run.
+    //
+    // The preventer is the skill's own Step 3 discipline turned on its write
+    // path: a returned write is not a written field, so read it back.
+    const s4 = step4(refresh);
+    expect(s4, 'Step 4 section must be sliceable').not.toBe('');
+    expect(
+      /read (both |them |the )?(write-backs? )?back|read.{0,40}back/i.test(s4),
+      'Step 4 must require reading the write-backs BACK. Without it the\n' +
+        'ocs-agent-setup.md half has no failure mode at all — it is free text\n' +
+        'with no schema, and skipping it produces no error (ace#2107).',
+    ).toBe(true);
+    expect(
+      /halt loud|halt/i.test(s4),
+      'a verification that does not halt is a log line. Step 4 must say the\n' +
+        'skill halts when a write-back field is missing.',
+    ).toBe(true);
+    expect(
+      s4.includes('ace#2107'),
+      'cite the run that proved this fails silently — a read-back requirement\n' +
+        'with no observed failure behind it reads as ceremony and gets dropped.',
+    ).toBe(true);
+    // Both halves, named. Enforcing only the run_state half would re-create the
+    // defect: that half was ALREADY enforced when this happened.
+    for (const target of ['ocs-agent-setup.md', 'run_state.yaml']) {
+      expect(
+        s4.includes(target),
+        `Step 4's read-back must name ${target} — the failure was one of two\n` +
+          'write-backs being skipped while the other succeeded.',
       ).toBe(true);
     }
   });
