@@ -48,6 +48,10 @@ import {
 } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import { classifyCaptionBacking } from '../lib/caption-backing.js';
+import {
+  summarizeReplacementCoverage,
+  type ReplacementCoverage,
+} from '../lib/replacement-coverage.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import {
   runDecisionsRender,
@@ -2809,25 +2813,36 @@ server.tool(
       });
       const newDocId = copy.data.id!;
 
+      // A key that matches nothing is a SILENT no-op: 200, no error, and no
+      // leftover {{token}} for any rendered-doc check to find (ace#2126). The
+      // reply already carries occurrencesChanged; surface it.
+      let coverage: ReplacementCoverage | undefined;
       if (replacements && Object.keys(replacements).length > 0) {
-        const requests = Object.entries(replacements).map(
-          ([placeholder, replacement]) => ({
-            replaceAllText: {
-              containsText: { text: placeholder, matchCase: true },
-              replaceText: replacement,
-            },
-          }),
-        );
-        await docs.documents.batchUpdate({
+        const keys = Object.keys(replacements);
+        const requests = keys.map((placeholder) => ({
+          replaceAllText: {
+            containsText: { text: placeholder, matchCase: true },
+            replaceText: replacements[placeholder],
+          },
+        }));
+        const batch = await docs.documents.batchUpdate({
           documentId: newDocId,
           requestBody: { requests },
         });
+        coverage = summarizeReplacementCoverage(keys, batch.data.replies ?? []);
       }
 
       return result({
         id: newDocId,
         title: copy.data.name,
         webViewLink: copy.data.webViewLink,
+        ...(coverage
+          ? {
+              replacementOccurrences: coverage.occurrences,
+              unmatchedReplacements: coverage.unmatchedReplacements,
+              ...(coverage.warning ? { warning: coverage.warning } : {}),
+            }
+          : {}),
       });
     } catch (e: any) {
       return error(e.message);
@@ -3037,25 +3052,36 @@ server.tool(
       });
       const presentationId = copy.data.id!;
 
+      // Same silent-no-op class as docs_copy_template above (ace#2126): a
+      // Slides replaceAllText that matches nothing returns 200 and leaves no
+      // trace. The Slides reply shape is identical.
+      let coverage: ReplacementCoverage | undefined;
       if (replacements && Object.keys(replacements).length > 0) {
-        const requests = Object.entries(replacements).map(
-          ([placeholder, replacement]) => ({
-            replaceAllText: {
-              containsText: { text: placeholder, matchCase: true },
-              replaceText: replacement,
-            },
-          }),
-        );
-        await slides.presentations.batchUpdate({
+        const keys = Object.keys(replacements);
+        const requests = keys.map((placeholder) => ({
+          replaceAllText: {
+            containsText: { text: placeholder, matchCase: true },
+            replaceText: replacements[placeholder],
+          },
+        }));
+        const batch = await slides.presentations.batchUpdate({
           presentationId,
           requestBody: { requests },
         });
+        coverage = summarizeReplacementCoverage(keys, batch.data.replies ?? []);
       }
 
       return result({
         presentationId,
         title: copy.data.name,
         webViewLink: copy.data.webViewLink,
+        ...(coverage
+          ? {
+              replacementOccurrences: coverage.occurrences,
+              unmatchedReplacements: coverage.unmatchedReplacements,
+              ...(coverage.warning ? { warning: coverage.warning } : {}),
+            }
+          : {}),
       });
     } catch (e: any) {
       return error(e.message);
