@@ -2967,6 +2967,37 @@ if [ -f "$ROOT/scripts/doctor-avd-pool.ts" ]; then
   unset AVD_POOL_OUT AVD_POOL_HEAD AVD_POOL_REST
 fi
 
+# --- Emulator temp-partition leak (dimagi-internal/ace#2092) ---
+#
+# The pool AVDs run `disk.dataPartition.path=<temp>`, so the emulator allocates
+# a fresh ~2 GiB qcow2 per boot and unlinks it only on a CLEAN shutdown. ACE
+# always cold-boots and SIGKILLs the previous emulator, so every dispatch leaks
+# one, forever: 73 files / 38.14 GiB measured on the ACE workstation
+# 2026-09-06 with zero emulators running.
+#
+# REPORT ONLY here — deletion belongs to `ace-mobile-reap`, which created the
+# orphans. This stays inside doctor's charter ("is this machine set up to run
+# ACE"): the failure mode when the volume does fill is an emulator that will
+# not boot for a reason nothing in ACE reports. The probe BORROWS the reaper's
+# own dry-run sweep rather than scanning independently, so a WARN here always
+# names exactly the files the reaper would take.
+if [ -f "$ROOT/scripts/doctor-emulator-temp.ts" ]; then
+  EMU_TMP_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-emulator-temp.ts 2>/dev/null || true)"
+  EMU_TMP_HEAD="$(printf '%s\n' "$EMU_TMP_OUT" | head -1)"
+  EMU_TMP_REST="$(printf '%s\n' "$EMU_TMP_OUT" | tail -n +2 | grep -v '^  fix: ')"
+  case "$EMU_TMP_HEAD" in
+    WARN*)
+      warn "$(printf '%s' "$EMU_TMP_HEAD" | sed 's/^WARN //')" \
+           "$(printf 'run `ace-mobile-reap` to reclaim them (`ace-mobile-reap --list` dry-runs first).\n%s' "$EMU_TMP_REST")"
+      ;;
+    PASS*)
+      pass "$(printf '%s' "$EMU_TMP_HEAD" | sed 's/^PASS //')"
+      ;;
+    *) : ;;  # SKIP / empty — no temp dir, or the read was unusable
+  esac
+  unset EMU_TMP_OUT EMU_TMP_HEAD EMU_TMP_REST
+fi
+
 # --- selector_map_currency ---
 # Phase 5 (`qa-and-training`) Maestro recipes reference logical selector
 # names via `${SELECTOR:<logical-name>}` placeholders. At resolve time

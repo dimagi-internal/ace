@@ -59,9 +59,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { mergeSessionLockContext } from '../../lib/session-opp-collision.js';
 import { surveyBootClaims, type BootClaim } from '../../lib/avd-boot-claim.js';
+import { parsePsRows, parseEmulatorProcesses } from '../../lib/mobile-contention.js';
+import {
+  planEmulatorTempSweep,
+  isEmulatorTempPartition,
+  DEFAULT_TEMP_SWEEP_GRACE_MS,
+  type EmulatorTempFile,
+  type EmulatorTempSweepPlan,
+} from '../../lib/emulator-temp-sweep.js';
 
 /**
  * Directory holding per-session mobile locks.
@@ -310,6 +318,17 @@ export interface ReapResult {
     skipped: LocklessVerdict[];
     errors: string[];
   };
+  /**
+   * Disk reclaimed from emulator temp data partitions the SIGKILL left behind
+   * (ace#2092). Opt-in via `{ emulatorTemp: true }` for the same reason
+   * `lockless` is: `reapStaleSessions` runs on the allocator hot path, which
+   * the unit suite exercises for real, and an unconditional destructive sweep
+   * of a shared `/tmp` subdirectory does not belong there. The operator CLI
+   * opts in; the allocator does not.
+   *
+   * `null` when the caller did not ask.
+   */
+  emulator_temp: EmulatorTempSweepOutcome | null;
 }
 
 /** A TCP listener as seen by `lsof`. */
@@ -982,7 +1001,9 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
  * captured in `errors` and the sweep continues; a single corrupt lock
  * file shouldn't block port allocation.
  */
-export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = {}): ReapResult {
+export function reapStaleSessions(
+  opts: { all?: boolean; lockless?: boolean; emulatorTemp?: boolean } = {},
+): ReapResult {
   const result: ReapResult = {
     reaped_locks: [],
     killed_pids: [],
@@ -990,6 +1011,7 @@ export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = 
     errors: [],
     killed_scaffold_pids: [],
     lockless: { killed: [], skipped: [], errors: [] },
+    emulator_temp: null,
   };
 
   // Defense-in-depth: orphan-scaffold sweep runs FIRST so it can clear
@@ -1014,6 +1036,17 @@ export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = 
       for (const v of sweep.killed) result.killed_pids.push(v.pid);
       for (const err of sweep.errors) {
         result.errors.push({ lock: '<lockless-sweep>', error: err });
+      }
+    }
+    // LAST, and deliberately after every kill above: a partition whose
+    // emulator we just SIGKILLed is closed by the time we look, so the same
+    // reap that orphans a file also reclaims it. Run first, it would see the
+    // fd still open and defer to the next reap — correct but a cycle late.
+    if (opts.emulatorTemp) {
+      const sweep = sweepEmulatorTempPartitions();
+      result.emulator_temp = sweep;
+      for (const err of sweep.errors) {
+        result.errors.push({ lock: '<emulator-temp-sweep>', error: err });
       }
     }
     return result;
@@ -1203,4 +1236,210 @@ export function surveyAndReapBootClaims(staleAfterMs: number): {
     if (releaseBootClaim(claim.avd_name, claim.mcp_pid)) reaped.push(claim);
   }
   return { claimed: survey.claimed, reaped, classifications: survey.classifications };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// EMULATOR TEMP-PARTITION SWEEP (ace#2092)
+//
+// The impure half of `lib/emulator-temp-sweep.ts`, which carries the design
+// argument and every decision. This file collects the three facts that module
+// needs — a directory listing, an `lsof` read, and the process table — and
+// performs the `unlink`.
+//
+// It lives HERE, in the reaper, because the reaper is what creates the
+// orphans: `mobile_ensure_avd_running`'s always-cold-boot contract SIGKILLs
+// the previous emulator, and a killed qemu never runs its own cleanup. That
+// SIGKILL is correct and does not change; reclamation is the reaper's own debt.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Directories the emulator may put a per-boot temp partition in.
+ *
+ * Measured on the ACE workstation 2026-09-06: the partitions land in
+ * `/tmp/android-$USER` — NOT in `$TMPDIR/android-$USER`, which held only a
+ * `netsimd/` directory. ace#2092 named the `$TMPDIR` form; both are swept,
+ * because the emulator's temp-dir choice is not ours to predict and a
+ * directory that does not exist costs nothing.
+ *
+ * Every path is REALPATH'd. On macOS `/tmp` is a symlink to `/private/tmp` and
+ * `lsof` reports the resolved form, so an unresolved candidate path would
+ * match nothing in the open-file set and every LIVE partition would look like
+ * an orphan. That single detail is the difference between this sweep being
+ * safe and being catastrophic.
+ *
+ * Test seam: `ACE_EMULATOR_TEMP_DIR` replaces the whole list.
+ */
+export function emulatorTempDirs(): string[] {
+  const override = process.env.ACE_EMULATOR_TEMP_DIR;
+  const raw: string[] = [];
+  if (override && override.trim()) {
+    raw.push(override.trim());
+  } else {
+    const user = process.env.USER || process.env.LOGNAME || '';
+    if (process.env.ANDROID_TMP) raw.push(process.env.ANDROID_TMP);
+    if (user) {
+      raw.push(path.join('/tmp', `android-${user}`));
+      const t = process.env.TMPDIR;
+      if (t) raw.push(path.join(t, `android-${user}`));
+    }
+  }
+  const out: string[] = [];
+  for (const d of raw) {
+    try {
+      if (!fs.existsSync(d)) continue;
+      const real = fs.realpathSync(d);
+      if (!out.includes(real)) out.push(real);
+    } catch {
+      /* unreadable — nothing to sweep there */
+    }
+  }
+  return out;
+}
+
+/**
+ * Realpaths of the given files that some live process holds open.
+ *
+ * `lsof` exits 1 when nothing matches, which is a normal answer and not a
+ * failure — only an `lsof` that could not RUN forces the refusal upstream.
+ * Chunked so a directory with thousands of entries cannot blow ARG_MAX.
+ */
+function lsofOpenPaths(paths: readonly string[]): { open: Set<string>; usable: boolean } {
+  const open = new Set<string>();
+  if (paths.length === 0) return { open, usable: true };
+  if (process.platform === 'win32') return { open, usable: false };
+
+  const CHUNK = 200;
+  for (let i = 0; i < paths.length; i += CHUNK) {
+    const chunk = paths.slice(i, i + CHUNK);
+    const res = spawnSync('lsof', ['-Fn', '--', ...chunk], {
+      encoding: 'utf8',
+      timeout: 20_000,
+      maxBuffer: 16 << 20,
+    });
+    // status 0 = matches found, 1 = none. Anything else (or a spawn error,
+    // e.g. lsof not installed) means we did not get an answer at all.
+    if (res.error || res.status === null || (res.status !== 0 && res.status !== 1)) {
+      return { open: new Set(), usable: false };
+    }
+    for (const line of (res.stdout ?? '').split('\n')) {
+      if (line.startsWith('n')) open.add(line.slice(1));
+    }
+  }
+  return { open, usable: true };
+}
+
+/**
+ * Live emulator processes, via ACE's ONE process-table detector
+ * (`parseEmulatorProcesses`, `lib/mobile-contention.ts`). Returns -1 when the
+ * process table could not be read — "unknown" must not read as "zero live
+ * emulators", which would relax the disagreement guard exactly when we can
+ * see least.
+ *
+ * Test seam: `ACE_EMULATOR_TEMP_PS_FIXTURE` points at a canned `ps` capture,
+ * mirroring `ACE_AVD_POOL_PS_FIXTURE`. Without it the collector's behaviour
+ * would depend on whether the machine running `npm test` happens to have an
+ * emulator up, which is exactly the kind of test nobody can trust.
+ */
+function liveEmulatorCount(): number {
+  if (process.platform === 'win32') return 0;
+  const fixture = process.env.ACE_EMULATOR_TEMP_PS_FIXTURE;
+  if (fixture) {
+    try {
+      return parseEmulatorProcesses(parsePsRows(fs.readFileSync(fixture, 'utf8'))).length;
+    } catch {
+      return -1;
+    }
+  }
+  try {
+    const raw = execSync('ps -eo user=,pid=,ppid=,lstart=,command= 2>/dev/null || true', {
+      encoding: 'utf8',
+      timeout: 10_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 16 << 20,
+    });
+    return parseEmulatorProcesses(parsePsRows(raw)).length;
+  } catch {
+    return -1;
+  }
+}
+
+export interface EmulatorTempSweepOutcome {
+  /** Directories actually scanned (realpaths, existing only). */
+  dirs: string[];
+  plan: EmulatorTempSweepPlan;
+  /** Files unlinked. Empty on a dry run or a refusal. */
+  deleted: string[];
+  deleted_bytes: number;
+  errors: string[];
+}
+
+/**
+ * Collect, plan, and (unless `dryRun`) unlink.
+ *
+ * Best-effort throughout: an unreadable directory, a file that vanished
+ * between the listing and the unlink, or an `lsof` that will not run all yield
+ * a smaller result or a refusal — never a throw. This runs inside the reaper,
+ * and failing a reap because a temp directory was odd would be a worse outcome
+ * than leaving the disk full.
+ */
+export function sweepEmulatorTempPartitions(
+  opts: { dryRun?: boolean; graceMs?: number } = {},
+): EmulatorTempSweepOutcome {
+  const errors: string[] = [];
+  const dirs = emulatorTempDirs();
+  const files: EmulatorTempFile[] = [];
+
+  for (const dir of dirs) {
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir);
+    } catch (e: any) {
+      errors.push(`readdir ${dir} failed: ${e?.message ?? e}`);
+      continue;
+    }
+    for (const name of names) {
+      if (!isEmulatorTempPartition(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        const st = fs.lstatSync(full);
+        // Regular files only. A symlink here is not something we created, and
+        // is not something we will follow into an unlink.
+        if (!st.isFile()) continue;
+        files.push({ path: full, sizeBytes: st.size, mtimeMs: st.mtimeMs });
+      } catch (e: any) {
+        errors.push(`stat ${full} failed: ${e?.message ?? e}`);
+      }
+    }
+  }
+
+  const { open, usable } = lsofOpenPaths(files.map((f) => f.path));
+  const emuCount = liveEmulatorCount();
+  if (emuCount < 0) errors.push('ps failed — could not count live emulators; sweep refused');
+
+  const plan = planEmulatorTempSweep({
+    files,
+    openPaths: open,
+    // An unreadable process table is treated the same as an unusable lsof:
+    // we do not have both halves, so we delete nothing.
+    lsofUsable: usable && emuCount >= 0,
+    liveEmulatorCount: emuCount < 0 ? 0 : emuCount,
+    nowMs: Date.now(),
+    graceMs: opts.graceMs ?? DEFAULT_TEMP_SWEEP_GRACE_MS,
+  });
+
+  const deleted: string[] = [];
+  let deleted_bytes = 0;
+  if (!opts.dryRun && !plan.skipped) {
+    for (const f of plan.orphans) {
+      try {
+        fs.unlinkSync(f.path);
+        deleted.push(f.path);
+        deleted_bytes += f.sizeBytes;
+      } catch (e: any) {
+        errors.push(`unlink ${f.path} failed: ${e?.message ?? e}`);
+      }
+    }
+  }
+
+  return { dirs, plan, deleted, deleted_bytes, errors };
 }
