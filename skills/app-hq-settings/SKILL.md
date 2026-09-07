@@ -544,6 +544,18 @@ deep-merge add, write the filtered list back with
 (overwrite the list). Keep the write scoped to that one key so sibling phase
 state is untouched (`app-deploy` § Step 6; jjackson/ace#572).
 
+**Pass that array through `localFilePath`, not inline (ace#2184).** The
+surviving residuals are load-bearing prose that other phases execute — a
+Phase-4 verification rule keyed on a PAYMENT predicate, XPath carrying `!=`
+and `concat(...)` — and retyping all of them to delete one sibling is the
+transport-fidelity risk ace#1795 removed from this same skill's XForm round
+trip in Step 3. So: `drive_read_file` the run_state with `writeToPath`, filter
+the list with a script, write `{"phases": {"commcare-setup": {"residuals":
+[...]}}}` to a local JSON file, and call `update_yaml_file` with
+`localFilePath` + `merge: 'deep'`. The survivors never enter the context
+window and cannot be corrupted in transit. `patch` (inline) stays correct for
+adds, where the payload really is just the diff.
+
 Do not reason about this as "deep merge cannot remove an entry" — that model is
 wrong and it is the one that caused ace#1467. `deep` REPLACES an array
 wholesale, exactly like the other modes, so it *would* remove entries; the

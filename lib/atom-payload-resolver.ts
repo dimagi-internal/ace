@@ -55,6 +55,33 @@ export function resolveUpdateFileContent(args: {
 }
 
 /**
+ * The both-or-neither rule shared by every "inline payload OR local file path"
+ * param pair in the plugin. Extracted so each resolver phrases the refusal
+ * identically by construction rather than by copy-paste — ace#2184 added a
+ * third caller whose payload is an OBJECT rather than a string, so it cannot
+ * route through {@link resolveInlineOrLocalFile} itself.
+ *
+ * @throws AtomArgUsageError when the caller supplies both or neither.
+ */
+function assertExactlyOnePayloadArg(
+  atom: string,
+  inlineParam: string,
+  hasInline: boolean,
+  hasLocalFilePath: boolean,
+): void {
+  if (hasInline && hasLocalFilePath) {
+    throw new AtomArgUsageError(
+      `${atom}: pass exactly one of ${inlineParam} or localFilePath, not both`,
+    );
+  }
+  if (!hasInline && !hasLocalFilePath) {
+    throw new AtomArgUsageError(
+      `${atom}: must supply one of ${inlineParam} or localFilePath`,
+    );
+  }
+}
+
+/**
  * The general form of "exactly one of an inline payload or a local file
  * path", shared by every text-payload write atom in the plugin.
  *
@@ -118,16 +145,7 @@ export function resolveInlineOrLocalFile(args: {
   inlineCeiling?: number;
 }): string {
   const { atom, inlineParam, inline, localFilePath, inlineCeiling } = args;
-  if (inline !== undefined && localFilePath !== undefined) {
-    throw new AtomArgUsageError(
-      `${atom}: pass exactly one of ${inlineParam} or localFilePath, not both`,
-    );
-  }
-  if (inline === undefined && localFilePath === undefined) {
-    throw new AtomArgUsageError(
-      `${atom}: must supply one of ${inlineParam} or localFilePath`,
-    );
-  }
+  assertExactlyOnePayloadArg(atom, inlineParam, inline !== undefined, localFilePath !== undefined);
   if (localFilePath !== undefined) {
     // ace#1110 F2: an arbitrary local read reaching a Drive file.
     assertNotCredentialPath(localFilePath, { atom });
@@ -141,6 +159,70 @@ export function resolveInlineOrLocalFile(args: {
     );
   }
   return inline!;
+}
+
+/**
+ * Resolve the `patch` payload for `update_yaml_file` — either the inline
+ * `patch` object or the JSON object stored at `localFilePath`, never both,
+ * never neither. Same param NAME, same both-or-neither rule and same
+ * credential-path guard as every other write atom's `localFilePath`
+ * (`drive_update_file`, `drive_upload_binary`, `drive_create_file`,
+ * `drive_create_doc_from_markdown`). It differs only in that the bytes are
+ * PARSED into the patch object rather than becoming file content, which is
+ * why it cannot just call {@link resolveInlineOrLocalFile}.
+ *
+ * Why it exists (ace#2184): arrays are replaced wholesale under every merge
+ * mode (ace#1467), so REMOVING one element of a list means resending every
+ * SURVIVING element. Inline, that routes load-bearing prose — Phase-4 payment
+ * predicates, XPath carrying `!=` and `concat(...)` — back out through the
+ * model as retyped text, which is precisely the transport-fidelity risk
+ * ace#1795 removed from the XForm round trip in the same skill. With a path
+ * the survivors never enter the context window at all.
+ *
+ * A malformed file is a TYPED refusal naming the path, never a silently
+ * merged `{}`: an empty or truncated patch file that merged as a no-op would
+ * report success while writing nothing — the worst available outcome for a
+ * state file nothing downstream validates.
+ *
+ * @throws AtomArgUsageError when the caller violates the contract, or when the
+ *   file does not parse as a single JSON object.
+ */
+export function resolveYamlPatch(args: {
+  patch?: Record<string, unknown>;
+  localFilePath?: string;
+}): Record<string, unknown> {
+  const { patch, localFilePath } = args;
+  assertExactlyOnePayloadArg(
+    'update_yaml_file',
+    'patch',
+    patch !== undefined,
+    localFilePath !== undefined,
+  );
+  if (patch !== undefined) return patch;
+  // ace#1110 F2: an arbitrary local read reaching a Drive file.
+  assertNotCredentialPath(localFilePath!, { atom: 'update_yaml_file' });
+  const raw = readFileSync(localFilePath!, 'utf-8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e: any) {
+    throw new AtomArgUsageError(
+      `invalid_patch_file: ${localFilePath} is not parseable JSON (${e.message}). ` +
+        `It must hold ONE JSON object whose top-level keys become the patch. ` +
+        `No Drive read or write happened.`,
+    );
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    const shape = parsed === null
+      ? 'null'
+      : Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`;
+    throw new AtomArgUsageError(
+      `invalid_patch_file: ${localFilePath} parsed as ${shape}, not a JSON object. ` +
+        `The top level must be an object whose keys are merged into the YAML per \`merge\`. ` +
+        `No Drive read or write happened.`,
+    );
+  }
+  return parsed as Record<string, unknown>;
 }
 
 /**
