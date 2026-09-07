@@ -447,6 +447,22 @@ Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
 `TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
 unnecessary model-output time at run start.
 
+**If `TaskCreate` does not resolve, SKIP this step and say so once —
+do not improvise, and do not halt (dimagi-internal/ace#2127).** The
+task list is an operator-facing progress view, not run state:
+`run_state.yaml` is the source of truth for phase status and the
+boundary fence verifies it four ways regardless. Measured on
+`bednet-check-2-visit/20260906-2228` — `ToolSearch
+select:TaskCreate,TaskUpdate` returned *No matching deferred tools
+found*, with no tool gating in any settings file, so the tool is
+simply absent from that session's surface. Because this step is
+written as mandatory with no fallback, the orchestrator had to invent
+one mid-run. Note the skip in `run_state.yaml.notes` and carry on; the
+same applies to `TaskUpdate` in § Phase boundary fence Turn N+1. Note
+also that `skills/turn/SKILL.md` calls this same capability
+`TodoWrite` — if one name is absent, try the other before concluding
+it is unavailable.
+
 **Run shape is structural, not flag-driven.** A fresh `/ace:run <opp>` always
 starts all 11 phases `pending` and runs them in order (above) — there is no
 `--only` / `--seed-from` flag. To start mid-pipeline with a frozen upstream
@@ -698,6 +714,36 @@ stop, up until the point of external communication.*
   was removed in 0.13.116). A `[BLOCKER]` halts immediately and
   surfaces the summary for triage. A hard error halts immediately. A
   `[WARN]` is logged but does NOT halt.
+
+  **Not every `[BLOCKER]` is a halting `[BLOCKER]` — check its CAUSE
+  (dimagi-internal/ace#2145).** `skills/_eval-template.md` § Auto-surfaced
+  severity rules requires every eval to emit `[BLOCKER]` when *"Overall score
+  is below the gate threshold (default 7.0)"*. That is a correct thing to
+  surface and a wrong thing to halt on, and reading the word alone produced a
+  live whipsaw: on `bednet-check-2-visit/20260906-2228` the Phase 1 agent
+  emitted `[BLOCKER]` at 6.62 exactly as the shared contract mandates, then
+  argued in the same summary that it was non-halting — and the orchestrator
+  stopped the run to ask a human which document to believe. Split it:
+
+  | `[BLOCKER]` cause | Orchestrator action |
+  |---|---|
+  | Composite below the gate threshold, AND the phase's producing-skill QA passed, AND the skill exited cleanly | **Surface loudly, do NOT halt.** Report the score, the failing dimensions and their notes in the boundary summary, and proceed. |
+  | Any dimension ≤ 3.0 | **Halt.** A floor score is a specific defect, not a weighted-average artifact. |
+  | A hard-deduction rule (e.g. `idea-to-pdd-eval`'s known-unbuildable-mechanism gate, ace#1213) | **Halt.** |
+  | Phase wrote `status: error`, or a precondition is genuinely unreachable | **Halt.** |
+
+  The producing-skill QA is the structural gate; the `-eval` composite is the
+  quality signal. A composite drops for reasons the phase cannot fix and the
+  next phase does not depend on — including a dimension that is *constant* for
+  the opp class being graded (ace#2137). Halting there stops a run on a number
+  no re-dispatch can move.
+
+  **This codifies what ACE already did, it does not loosen a gate.** Two prior
+  runs of the same opp scored sub-gate `fail` (`20260817-1720` at 7.14,
+  `20260828-0629` at 6.96) and both continued to later phases. The prose said
+  halt; the runs proceeded; nothing reconciled them. Per-phase carve-outs stay
+  authoritative where they exist — `agents/idea-to-design.md` § Step 3 says the
+  same thing for Phase 1 and is the phase owner's copy of this rule.
 - **Phase 6→7 transition:** **no longer a mandatory pause.** Phase 8
   publishes a passive public solicitation, not active outreach.
   **Phase 8 is publish-only by default: it does NOT email PDD-named
@@ -1632,7 +1678,7 @@ These actions are independent and MUST be batched into ONE parallel
 message:
 
 - `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
-- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress`.
+- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress` (skip if unresolvable — ace#2127).
 - `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
 
 A one-line text summary ("Phase N complete: <verdict>") may accompany
@@ -1687,6 +1733,9 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   in the run and surfaced in the cross-run view as fact, which
                   `lib/run-record.ts` calls out as worse than an absent one.
              6. TaskUpdate marking <phase> completed, next phase in_progress
+                — SKIP silently if the tool does not resolve (ace#2127); it is a
+                  progress view, not run state, and the four checks above are
+                  the actual gate
              7. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
 Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts

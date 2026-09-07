@@ -1476,7 +1476,9 @@ the worktree, and `.gws-sa-key.json`-adjacent paths — that's
 30s of latency for a value `bin/ace-doctor` already publishes as
 `env_file:` in its output.
 
-**Issue all phase TaskCreate calls in one parallel block.** When you
+**Issue all phase TaskCreate calls in one parallel block.** (If `TaskCreate`
+does not resolve in this session, skip the task list entirely and note it —
+`run_state.yaml` is the source of truth; dimagi-internal/ace#2127.) When you
 set up the run-level task list (one `TaskCreate` per phase plus the
 external-comm pause), emit them as a single assistant message with
 multiple `TaskCreate` tool-use blocks. Sequential
@@ -1838,8 +1840,8 @@ install location on Claude Code 2.1+.
 
 **Why fully-prefixed `ToolSearch`.** Empirically (2026-05-26
 bednet-spot-check + 0.13.213 e2e-malaria-rdt sessions) the bare-name
-`select:` shortcut resolves only built-in deferred tools (`TaskCreate`,
-`TaskUpdate`, `EnterPlanMode`, …) — every plugin-registered atom returns
+`select:` shortcut resolves only built-in deferred tools (`EnterPlanMode`,
+`WebFetch`, …) — every plugin-registered atom returns
 zero matches, costing a wasted ToolSearch turn every run. The
 fully-prefixed form is deterministic. Built-in deferred tools load
 alongside automatically via the same call.
