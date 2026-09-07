@@ -194,7 +194,7 @@ describe('magic-byte checks', () => {
       fileName: 'thing.ccz',
       status: 200,
       contentType: 'application/zip',
-      bytes: text('PK anything'),
+      bytes: text('PK\u0003\u0004 anything'),
     });
     expect(r.verdict).toBe('ok');
     expect(r.evidence).toContain('no signature known');
