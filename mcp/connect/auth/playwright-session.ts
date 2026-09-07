@@ -88,14 +88,7 @@ export class PlaywrightSession {
       );
       if (cchqProbe.status() !== 302) {
         // CCHQ stale even though Connect cookies are fresh. Treat as fully
-        // anonymous so the OAuth flow re-establishes both. Closing+rebuilding
-        // the context guarantees hqOAuthLogin starts from a clean slate
-        // (otherwise the existing Connect cookies would short-circuit the
-        // OAuth button discovery on `/accounts/login/`).
-        await this.context.close();
-        this.browser && (await this.browser.close());
-        this.browser = await chromium.launch({ headless: true });
-        this.context = await this.browser.newContext({ baseURL: this.opts.baseUrl });
+        // anonymous so the OAuth flow re-establishes both.
         authed = false;
       }
     }
@@ -104,6 +97,29 @@ export class PlaywrightSession {
       if (!this.opts.hqUsername || !this.opts.hqPassword) {
         throw new SessionExpiredError();
       }
+
+      // Always log in from a CLEAN slate. Whichever cookie went stale, any
+      // surviving one short-circuits the OAuth flow into a landing
+      // `hqOAuthLogin` cannot finish, and BOTH directions have bitten:
+      //
+      //   - Connect fresh + CCHQ stale — the surviving Connect cookie makes
+      //     `/accounts/login/` redirect away, so the OAuth button is absent.
+      //   - Connect stale + CCHQ fresh — the surviving CCHQ cookie means HQ
+      //     renders no login form and the flow lands straight on
+      //     `/oauth/authorize/` (landing (b)), where consent does not
+      //     complete and it throws `oauth-consent` (ace#2160). The two
+      //     cookies expire on separate clocks and Connect's is the shorter,
+      //     so this is the ordinary end-state of an idle machine — it read
+      //     as bad credentials and cost a human an interactive login.
+      //
+      // Rebuilding unconditionally here is what both paths actually wanted;
+      // the guarded rebuild that used to sit in the CCHQ-stale branch above
+      // covered only the first of them.
+      await this.context.close();
+      this.browser && (await this.browser.close());
+      this.browser = await chromium.launch({ headless: true });
+      this.context = await this.browser.newContext({ baseURL: this.opts.baseUrl });
+
       await hqOAuthLogin({
         context: this.context,
         baseUrl: this.opts.baseUrl,
