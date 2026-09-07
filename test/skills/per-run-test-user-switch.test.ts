@@ -65,6 +65,40 @@ describe('the flip precondition is stated identically everywhere (ace#1289)', ()
     expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toMatch(/calibrated/);
     expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toMatch(/fresh-signup registration has completed/);
   });
+
+  /**
+   * ace#1289 — the sentence pinned an APK version, and the pin rotted.
+   *
+   * It read "calibrated against a live **2.63.2** `mobile_capture_ui_dump` …
+   * completed on **2.63.2**", mirrored verbatim into five surfaces and pinned
+   * there by the test above. `DEFAULT_APK_VERSION` moved to `2.64.0` on
+   * 2026-09-06 and all five stayed behind — because a version literal inside an
+   * English sentence is invisible to `lib/apk-pin-sites.ts`, the module whose
+   * whole purpose is that an APK bump cannot forget a knob. Its `SUSPECT_RE`
+   * needs an `apkVersion` / `APK_VERSION` / `apk_version` identifier on the
+   * line, so `scanApkPinSites()` reports **0 hits** on every one of them.
+   *
+   * The fix is not to add a sixth place to remember. It is to make the sentence
+   * baseline-RELATIVE, so there is nothing to forget — and to fail here if
+   * anyone re-pins it. A stale version is not cosmetic: 2.64.0 rebuilt the
+   * camera surface, so a 2.63.2 dump is evidence about a different screen, and
+   * read literally the old sentence could have been satisfied against an APK
+   * ACE no longer installs.
+   */
+  it('names NO APK version — the gate is relative to the baseline in force', () => {
+    const literal = PER_RUN_TEST_USER_FLIP_PRECONDITION.match(/\b\d+\.\d+\.\d+\b/);
+    expect(
+      literal?.[0],
+      'The flip precondition must not pin an APK version. It rotted once ' +
+        `(2.63.2 -> the baseline moved to 2.64.0 and five copies stayed behind), and ` +
+        'lib/apk-pin-sites.ts cannot see a version literal inside prose, so nothing ' +
+        'would catch it a second time. Say "the APK baseline in force" instead — ' +
+        'DEFAULT_APK_VERSION in mcp/mobile/client.ts, overridable by ' +
+        'ACE_CONNECT_APK_VERSION.',
+    ).toBeUndefined();
+    // …and it must still SAY which baseline it means, or it is merely vague.
+    expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toMatch(/baseline/i);
+  });
 });
 
 describe('every guarded surface names the switch (ace#1289)', () => {

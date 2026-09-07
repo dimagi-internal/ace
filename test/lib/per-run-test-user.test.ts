@@ -204,10 +204,21 @@ describe('the gate that inverts (pre- vs post-registration)', () => {
 });
 
 describe('the flip precondition is a single greppable string', () => {
-  it('names the camera-id calibration AND the fresh-signup registration on 2.63.2', () => {
+  /**
+   * This assertion used to end `.toContain('2.63.2')` — a SIXTH place pinning
+   * the APK baseline, and the one that made the other five hard to move: the
+   * guard written to keep the precondition honest was itself holding it to a
+   * superseded version. `DEFAULT_APK_VERSION` went to `2.64.0` on 2026-09-06
+   * and this test would have failed anyone who corrected the sentence.
+   * The precondition is now baseline-RELATIVE (ace#1289), so assert the
+   * relation, never a literal. The prohibition itself lives in
+   * `test/skills/per-run-test-user-switch.test.ts`.
+   */
+  it('names the camera-id calibration AND the fresh-signup registration, baseline-relative', () => {
     expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toContain('connect-register-from-otp.yaml');
     expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toContain('mobile_capture_ui_dump');
     expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toContain('fresh-signup registration');
-    expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toContain('2.63.2');
+    expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).toContain('baseline in force');
+    expect(PER_RUN_TEST_USER_FLIP_PRECONDITION).not.toMatch(/\b\d+\.\d+\.\d+\b/);
   });
 });

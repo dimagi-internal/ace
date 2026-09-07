@@ -240,11 +240,17 @@ ACE_AVD_NAME=ACE_Pixel_API_34
 #
 # ⚠ PRECONDITION TO FLIP THIS ON — BOTH CLAUSES MUST HOLD:
 #   the 7 camera ids in connect-register-from-otp.yaml are calibrated against a
-#   live 2.63.2 mobile_capture_ui_dump, and one fresh-signup registration has
-#   completed on 2.63.2
+#   live mobile_capture_ui_dump on the APK baseline in force, and one
+#   fresh-signup registration has completed on that same baseline
 #
-# Why that gate: mcp/mobile/selectors/connect-2.63.2.yaml records those 7 camera
-# ids as "deliberately raw pending live calibration". They sit inside a
+# "The baseline in force" is DEFAULT_APK_VERSION in mcp/mobile/client.ts,
+# overridable by ACE_CONNECT_APK_VERSION below. The sentence names no version
+# ON PURPOSE: it used to say 2.63.2, the baseline moved to 2.64.0 on
+# 2026-09-06, and all five copies stayed behind — lib/apk-pin-sites.ts cannot
+# see a version literal inside an English sentence (ace#1289).
+#
+# Why that gate: the selector map for the baseline in force records those 7
+# camera ids as "deliberately raw pending live calibration". They sit inside a
 # `runFlow.when visible:` guard, so a drifted id makes the block silently SKIP
 # and the failure surfaces ~60s later at a terminal assertion. Today the
 # fresh-signup branch is exercised rarely (the phone is fixed, so steady state
@@ -252,6 +258,11 @@ ACE_AVD_NAME=ACE_Pixel_API_34
 # uncalibrated surface, trading a bounded scroll cost for an unbounded
 # silent-skip risk. Grep PER_RUN_TEST_USER_FLIP_PRECONDITION for the same
 # sentence in code, and see skills/app-screenshot-capture § Step 4.
+#
+# Status at the 2.64.0 baseline: BOTH clauses still open. They are residuals R2
+# and R4 of that walk — docs/mobile-calibration/connect-2.64.0-2026-09-06.md.
+# 2.64.0 REBUILT the camera surface, so a 2.63.2 dump would not have been
+# weak evidence for this gate; it would be evidence about a different screen.
 #
 # ACE_PER_RUN_TEST_USER=true
 

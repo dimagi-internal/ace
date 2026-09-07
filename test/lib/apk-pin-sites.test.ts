@@ -42,6 +42,10 @@ describe('pin-form classification (unit)', () => {
     ['default-parameter', "  apkVersion: string = '2.63.2',", '2.63.2'],
     ['zod-schema-default', "    apkVersion: z.string().default('2.63.2').describe('...'),", '2.63.2'],
     ['env-fallback', "const D = process.env.ACE_CONNECT_APK_VERSION || '2.63.2';", '2.63.2'],
+    // The shell form of the same thing. Added after `skills/app-screenshot-capture
+    // § Step 6.5` carried `--apk "${ACE_CONNECT_APK_VERSION:-2.63.2}"` through the
+    // 2.64.0 bump untouched, because no form matched shell `:-` (ace#2078).
+    ['env-fallback-shell', '  --apk "${ACE_CONNECT_APK_VERSION:-2.63.2}" \\', '2.63.2'],
     ['env-tpl-pin', 'ACE_CONNECT_APK_VERSION=2.63.2', '2.63.2'],
     ['selector-map-self-declaration', 'apk_version: "2.63.2"', '2.63.2'],
     ['prose-default-apk', 'the `${SELECTOR:...}` map (default APK 2.63.2) plus lint', '2.63.2'],
