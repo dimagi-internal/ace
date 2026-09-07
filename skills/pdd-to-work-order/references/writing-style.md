@@ -60,10 +60,12 @@ Bold is reserved for genuinely load-bearing terms. Aim for 5–15 bold spans per
 
 Dimagi work orders frequently include suggestions or targets that are not hard contractual requirements. Use soft commercial language to keep them distinct from binding obligations.
 
+Softening is about **certainty**, not about **voice** — a hedge stays in the third person like the rest of the document. `We think…` / `Our suggestion…` are not available here; the pronoun rules in § Pronoun and naming strategy and § Terminology preferences apply to these phrasings too. Name `Dimagi` (or leave the subject impersonal) and hedge the verb.
+
 | Softening phrase | When to use |
 |---|---|
-| `We think this could allow…` | Setting indicative scale (e.g., expected sample counts) |
-| `Our suggestion is to try to get…` | Recommending a sampling mix or coverage pattern |
+| `Dimagi expects this could allow…` | Setting indicative scale (e.g., expected sample counts) |
+| `Dimagi suggests aiming for…` | Recommending a sampling mix or coverage pattern |
 | `Though this is not a hard requirement…` | Clarifying a stated target is aspirational |
 | `For reference, the following…` | Offering options the partner can choose from |
 | `Where market availability permits` / `Where applicable` | Acknowledging field reality |
