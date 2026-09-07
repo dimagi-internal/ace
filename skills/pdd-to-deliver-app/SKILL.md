@@ -1941,7 +1941,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    # `/build/`, NOT the legacy `/apps/` route, which 404s (ace#1431).
    # Built by `novaAppUrl()` in `lib/nova-url.ts` — the single source.
    nova_app_url: https://commcare.app/build/<id-returned-by-autobuild>
-   archetype: <atomic-visit | focus-group | multi-stage>
+   archetype: <atomic-visit | longitudinal-visits | focus-group | multi-stage>
    delivery_unit: <one-line description matching the PDD>
    option_source_gaps: []   # Step 4f — one entry per PDD-declared select
                             # that still shipped as free text, with the
