@@ -25,6 +25,17 @@ const REPO_ROOT = path.resolve(
   '../..',
 );
 
+/** The catalog row for one atom's field. Throws if the atom or field is absent. */
+function fieldRow(md: string, atom: string, field: string): string {
+  const start = md.indexOf(`### \`${atom}\``);
+  if (start < 0) throw new Error(`atom section missing from the catalog: ${atom}`);
+  const nextIdx = md.indexOf('\n### ', start + 1);
+  const section = md.slice(start, nextIdx < 0 ? undefined : nextIdx);
+  const row = section.split('\n').find((l) => l.startsWith(`| \`${field}\` |`));
+  if (!row) throw new Error(`${atom} has no row for field \`${field}\``);
+  return row;
+}
+
 describe('dump-atom-schemas', () => {
   it('docs/atom-schemas.md is in sync with the current MCP server files', () => {
     const result = spawnSync(
@@ -135,18 +146,85 @@ describe('dump-atom-schemas', () => {
     expect(md).toMatch(/Drive's/);
   });
 
-  // Regression floor on the same class, catalog-wide: the parser fix took
-  // undescribed fields from 375 to 290 (the remainder genuinely have no
-  // `.describe()` in source). If a parser change pushes this back up, it is
-  // re-blanking real prose.
+  // Regression floor on the same class, catalog-wide: successive parser fixes
+  // took undescribed fields from 375 to 290 (#1278) and then to 238 (#2192,
+  // the AST rewrite). The remainder genuinely have no `.describe()` in source.
+  // If a parser change pushes this back up, it is re-blanking real prose.
   it('keeps undescribed-field count at or below the post-fix floor', () => {
     const md = fs.readFileSync(
       path.join(REPO_ROOT, 'docs/atom-schemas.md'),
       'utf-8',
     );
     const blanks = (md.match(/^\| `[^`]+` \| `[^`]+` \| [^|]+ \| _—_ \|$/gm) ?? []).length;
-    expect(blanks).toBeLessThanOrEqual(290);
+    expect(blanks).toBeLessThanOrEqual(240);
   });
+
+  // dimagi-internal/ace#2192, using the issue's own metric. A field whose Zod
+  // value WRAPS another `z.` call rendered `**required** | _—_` regardless of
+  // what it actually declared, because the type-arg pattern `\([^)]*\)` could
+  // not contain a `)` and the modifier chain matched empty. 58 rows were wrong
+  // in the most expensive direction — "required" for an optional field, in the
+  // doc CLAUDE.md tells skill authors to grep INSTEAD of reading the source.
+  //
+  // The 10 that remain are genuinely required and genuinely undescribed (e.g.
+  // `ocs_update_session_state.state`, `connect_send_flw_invite.phone_numbers`),
+  // so this is a ratchet, not a zero.
+  it('does not re-inflate the wrapped-Zod required/undescribed rows (#2192)', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const rows =
+      md.match(
+        /^\| `[^`]+` \| `z\.(?:record|array|object|union)` \| \*\*required\*\* \| _—_ \|$/gm,
+      ) ?? [];
+    expect(
+      rows.length,
+      `wrapped-Zod fields rendered required+undescribed:\n  ${rows.join('\n  ')}`,
+    ).toBeLessThanOrEqual(10);
+  });
+
+  // The wrapped-Zod fields named in #2192 must render their real contract.
+  //
+  // Two tiers, because the issue's spot-check over-stated one group: every row
+  // here is genuinely `.optional()`, but only some also carry a `.describe()`.
+  // `ocs_set_chatbot_tools.tools` (cited in the issue as having both) declares
+  // `z.array(z.string()).optional()` and NO description — so `optional | _—_`
+  // is its correct rendering, and asserting a description there would pin a
+  // claim the source does not make.
+  it('renders a wrapped-Zod field as optional (#2192)', () => {
+    const md = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    const optionalOnly: Array<[string, string]> = [
+      ['ocs_set_chatbot_tools', 'tools'],            // z.array(z.string())
+      ['ocs_set_chatbot_tools', 'mcp_tools'],
+      ['connect_create_payment_unit', 'required_deliver_units'],
+      ['mobile_run_recipe', 'envVars'],              // z.record(...)
+    ];
+    for (const [atom, field] of optionalOnly) {
+      expect(fieldRow(md, atom, field), `${atom}.${field} should be optional`).toContain(
+        '| optional |',
+      );
+    }
+  });
+
+  it('renders a wrapped-Zod field WITH its description (#2192)', () => {
+    const md = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    const described: Array<[string, string, string]> = [
+      ['update_yaml_file', 'patch', 'merged'],                  // z.record(z.unknown())
+      ['update_yaml_file', 'validateAs', 'contract guard'],     // z.object({ ... })
+      ['docs_copy_template', 'replacements', 'placeholder'],    // z.record(z.string())
+      ['commcare_create_repeater', 'configured_filter', 'UCR'], // z.record(z.unknown())
+    ];
+    for (const [atom, field, needle] of described) {
+      const row = fieldRow(md, atom, field);
+      expect(row, `${atom}.${field} should be optional`).toContain('| optional |');
+      expect(row, `${atom}.${field} should carry its description`).not.toMatch(/\| _—_ \|$/);
+      expect(row.toLowerCase(), `${atom}.${field} description looks wrong`).toContain(
+        needle.toLowerCase(),
+      );
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------

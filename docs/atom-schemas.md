@@ -39,7 +39,7 @@ Write values to a range in a Google Spreadsheet
 |-------|------|----------|-------------|
 | `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
 | `range` | `z.string` | **required** | A1 notation range, e.g. "Sheet1!A1:D10" |
-| `values` | `z.array` | **required** | _—_ |
+| `values` | `z.array` | **required** | 2D array of values to write |
 
 ### `sheets_append`
 
@@ -49,7 +49,7 @@ Append rows to the end of a sheet
 |-------|------|----------|-------------|
 | `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
 | `range` | `z.string` | **required** | Sheet name or range to append after, e.g. "Sheet1" |
-| `values` | `z.array` | **required** | _—_ |
+| `values` | `z.array` | **required** | 2D array of rows to append |
 
 ### `sheets_info`
 
@@ -66,7 +66,7 @@ Read multiple ranges from a spreadsheet in one call
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
-| `ranges` | `z.array` | **required** | _—_ |
+| `ranges` | `z.array` | **required** | Array of A1 notation ranges |
 
 ### `sheets_create_tab`
 
@@ -145,15 +145,14 @@ Patch a YAML-content Google Doc in one MCP call: the server reads the current co
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID of the YAML doc |
-| `patch` | `z.record` | **required** | _—_ |
+| `patch` | `z.record` | optional | Object whose top-level keys are merged into the existing YAML per `merge`, inline. With `merge: "shallow"` (default) each top-level key fully replaces its base counterpart; with `merge: "two-level"` object-valued top-level keys merge one level deeper, preserving sibling child keys. Provide either this OR localFilePath, not both. |
 | `localFilePath` | `z.string` | optional | Absolute path to a local file holding ONE JSON object, whose top-level keys become the patch. The server reads and parses it off disk — the payload never passes through the context window, regardless of size. Provide either this OR patch, not both. Mirrors drive_update_file's / drive_upload_binary's / drive_create_file's param of the same name. Reach for it whenever the payload is large or byte-fidelity matters, and ALWAYS when removing one element from an array: arrays are replaced wholesale (ace#1467), so the inline form makes you retype every surviving element (ace#2184). A file that is not parseable JSON, or that parses to an array/scalar/null, is refused with `invalid_patch_file` naming the path — no Drive read or write happens, and a malformed file is never silently merged as `{}`. |
 | `merge` | `z.enum` | optional | Merge strategy. Defaults to `shallow` (top-level replace) for back-compat. `two-level` merges ONE level deep (top-level-key children preserved, grandchildren replaced wholesale) — use it ONLY when you resend a phase's COMPLETE child block. `deep` recursively merges OBJECT keys at every depth (preserves sibling keys at all levels) — use it when patching a nested path like `phases.<phase>.steps.<step>` or `phases.<phase>.products.<block>` without resending the whole phase block. **ARRAYS ARE REPLACED WHOLESALE UNDER EVERY MODE, `deep` INCLUDED** — recursion only happens when the value is a plain object on both sides, so an array-valued key (e.g. `phases.<phase>.residuals`) is ASSIGNED, not merged or appended. To change one element of a list, read the list, build the full intended array, and write that array once (ace#1467). Prefer `deep` for incremental run_state.yaml writes: it eliminates the lost-update footgun where a partial `two-level` phase-child patch silently dropped the rest of the block (jjackson/ace#572). |
-| `validateAs` | `z.object` | **required** | _—_ |
-| `phase` | `z.string` | **required** | The phase whose products block this patch writes (e.g. "connect-setup", "qa-and-training"). |
+| `validateAs` | `z.object` | optional | Opt-in contract guard for a phase-products write. When set, the server validates `patch.phases.<phase>.products` against the single-source schema (`lib/phase-products-schema.ts` — the same contract ace-web's summary page reads) BEFORE the Drive merge, and rejects the call with `INVALID_PHASE_PRODUCTS` + the offending field if the shape drifted (wrong nesting like `products.opportunity` vs `products.connect.opportunity`, a malformed URL, or an unrecognized product block). No Drive write happens on rejection. Phase agents SHOULD pass this on every `phases.<phase>.products` write-back so summary-page drift fails loud at the source (jjackson/ace#705). |
 
 ### `drive_create_file`
 
-Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** \u2014 measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here. It was sequenced behind converting the producers that legitimately write above it (ace#1907); that conversion SHIPPED in ace#1918 \u2014 every measured >40,000-char producer now passes `localFilePath`, pinned by test/skills/large-artifact-localfilepath.test.ts \u2014 so what is left is the decision to turn the refusal on, not a working phase it would break (ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call's payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. **This atom ALWAYS creates a Google Doc, and it does not preserve bytes.** `text/plain; charset=utf-8` is the MEDIA type the body is decoded with on the way in (the charset hint is what makes em-dashes, accents and smart quotes decode correctly) — it is NOT the created file's type. The file lands as `application/vnd.google-apps.document`, so Drive's importer turns `#`, `**`, `>` and pipe tables into heading styles, bold runs and native tables, and a read-back returns styled text rather than the markdown you sent. That is fine for YAML and prose artifacts (readers export text and parse) and WRONG for any artifact whose purpose is byte preservation — a `.source.md` companion, most of all. For those use **`drive_upload_binary`** with `mimeType: "text/markdown"`, which uses Drive's media-upload path and lands the file as its native type. Passing `mimeType` here is REFUSED rather than silently ignored, and the refusal names that call (ace#1991). The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.
+Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** — measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here. It was sequenced behind converting the producers that legitimately write above it (ace#1907); that conversion SHIPPED in ace#1918 — every measured >40,000-char producer now passes `localFilePath`, pinned by test/skills/large-artifact-localfilepath.test.ts — so what is left is the decision to turn the refusal on, not a working phase it would break (ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call's payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. **This atom ALWAYS creates a Google Doc, and it does not preserve bytes.** `text/plain; charset=utf-8` is the MEDIA type the body is decoded with on the way in (the charset hint is what makes em-dashes, accents and smart quotes decode correctly) — it is NOT the created file's type. The file lands as `application/vnd.google-apps.document`, so Drive's importer turns `#`, `**`, `>` and pipe tables into heading styles, bold runs and native tables, and a read-back returns styled text rather than the markdown you sent. That is fine for YAML and prose artifacts (readers export text and parse) and WRONG for any artifact whose purpose is byte preservation — a `.source.md` companion, most of all. For those use **`drive_upload_binary`** with `mimeType: "text/markdown"`, which uses Drive's media-upload path and lands the file as its native type. Passing `mimeType` here is REFUSED rather than silently ignored, and the refusal names that call (ace#1991). The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -166,7 +165,7 @@ Create a new Google Doc in Drive with the given name and content, inside the giv
 
 ### `drive_create_doc_from_markdown`
 
-Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`. The body comes from exactly ONE of `markdown` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of document size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** (measured 2026-09-02 over the live Drive corpus: p95 = 29,772 chars, p99 = 60,671, and 3.5% of 1,572 text artifacts clear 40,000 \u2014 the PDD, the test prompts and the solicitation documents among them. No ceiling is enforced here; it was sequenced behind converting the producers that write above it, and that conversion shipped \u2014 ace#1907, ace#1918). A ~52 KB PDD emitted inline costs ~13k output tokens, and `idea-to-pdd` steps 6/6b require that document to be written TWICE — once rendered here and once as a `.source.md` companion via `drive_create_file` — with nothing verifying the two emissions match (ace#1780). Point both calls at the SAME local file and byte-identity is a property of the calls rather than of the author's diligence, which is what makes `run-surface-audit`'s DOC-FIDELITY check meaningful.
+Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`. The body comes from exactly ONE of `markdown` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of document size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** (measured 2026-09-02 over the live Drive corpus: p95 = 29,772 chars, p99 = 60,671, and 3.5% of 1,572 text artifacts clear 40,000 — the PDD, the test prompts and the solicitation documents among them. No ceiling is enforced here; it was sequenced behind converting the producers that write above it, and that conversion shipped — ace#1907, ace#1918). A ~52 KB PDD emitted inline costs ~13k output tokens, and `idea-to-pdd` steps 6/6b require that document to be written TWICE — once rendered here and once as a `.source.md` companion via `drive_create_file` — with nothing verifying the two emissions match (ace#1780). Point both calls at the SAME local file and byte-identity is a property of the calls rather than of the author's diligence, which is what makes `run-surface-audit`'s DOC-FIDELITY check meaningful.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -309,7 +308,7 @@ Execute raw Google Docs API batchUpdate requests. Supports all 40 request types:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `documentId` | `z.string` | **required** | The Google Doc ID |
-| `requests` | `z.array` | **required** | _—_ |
+| `requests` | `z.array` | **required** | Array of Docs API request objects, e.g. [{"insertText": {"location": {"index": 1}, "text": "Hello"}}] |
 
 ### `render_decisions_log`
 
@@ -327,12 +326,12 @@ Copy a Google Doc template and optionally replace placeholder text. Smart chips 
 |-------|------|----------|-------------|
 | `templateDocId` | `z.string` | **required** | The template Google Doc ID to copy |
 | `title` | `z.string` | **required** | Title for the new document |
-| `replacements` | `z.record` | **required** | _—_ |
+| `replacements` | `z.record` | optional | Key-value map of placeholder text to replace, e.g. {"{{OPP_NAME}}": "Vaccine Hesitancy Pilot", "{{LLO_NAME}}": "TestLand Health Partners"} |
 | `parentFolderId` | `z.string` | optional | Destination folder ID (omit to create in same location as template) |
 
 ### `docs_finalize_bullets`
 
-Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill's cell-level token replacement can emit `\ `-separated bullet items without per-bullet token slots). Idempotent — re-runs are no-ops once all anchors have been processed. Returns the count of anchor pairs processed.
+Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill's cell-level token replacement can emit `\n`-separated bullet items without per-bullet token slots). Idempotent — re-runs are no-ops once all anchors have been processed. Returns the count of anchor pairs processed.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -353,7 +352,7 @@ Execute raw Google Slides API batchUpdate requests. Supports all request types: 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `presentationId` | `z.string` | **required** | The Google Slides presentation ID |
-| `requests` | `z.array` | **required** | _—_ |
+| `requests` | `z.array` | **required** | Array of Slides API request objects, e.g. [{"createSlide": {"objectId": "slide1", "slideLayoutReference": {"predefinedLayout": "TITLE_AND_BODY"}}}] |
 
 ### `slides_copy_template`
 
@@ -364,7 +363,7 @@ Copy a Google Slides template deck into a Shared-Drive folder. Mirrors `docs_cop
 | `templatePresentationId` | `z.string` | **required** | The template Google Slides presentation ID to copy |
 | `title` | `z.string` | **required** | Title for the new presentation |
 | `parentFolderId` | `z.string` | **required** | Destination Shared-Drive folder ID. REQUIRED — Service Accounts cannot write to My Drive. |
-| `replacements` | `z.record` | **required** | _—_ |
+| `replacements` | `z.record` | optional | Optional deck-wide replaceAllText map, e.g. {"{{OPP_NAME}}": "Turmeric Survey"}. For per-slide-scoped replacements use slides_batch_update with pageObjectIds. |
 
 ### `resolve_opp_path`
 
@@ -434,7 +433,7 @@ Boundary fence: does a PUBLISHED artifact only assert over screenshots someone a
 |-------|------|----------|-------------|
 | `publishedFileId` | `z.string` | **required** | Drive fileId of the PUBLISHED artifact (the rendered Doc, or the deck spec YAML). Not the source markdown — the point is to check what shipped. |
 | `manifestFileId` | `z.string` | **required** | Drive fileId of app-screenshot-capture_manifest.yaml for the run. |
-| `poolFileIds` | `z.array` | **required** | _—_ |
+| `poolFileIds` | `z.array` | optional | fileIds legitimately outside the per-opp manifest (shared common-pool frames, committed deck-template artwork). These are counted as backed. |
 
 ### `verify_phase_artifacts`
 
@@ -453,7 +452,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runId` | `z.string` | **required** | The run-id folder name, e.g. "20260526-1334". |
-| `phaseStatus` | `z.record` | **required** | _—_ |
+| `phaseStatus` | `z.record` | optional | Optional per-phase status overrides; unspecified phases default to "pending". |
 | `runFolderFileId` | `z.string` | optional | Drive folder ID of the run (ACE/<opp>/runs/<run-id>/). When supplied, the rendered index is WRITTEN to README.md in that folder (find-or-update) and `written: true` is returned. Supply it at run-init; omit it only when you want the markdown without persisting it. |
 
 ## ace-connect
@@ -462,7 +461,7 @@ Source: `mcp/connect-server.ts` — 61 atoms
 
 ### `connect_list_programs`
 
-List the programs on an organization. `connect-program-setup` Step 2 calls this with NO `name` filter and scans the whole org (ace#1252), which in a mature org is far more prose than any consumer reads: measured on `ai-demo-space` 2026-09-01, 42 rows serialize to 57,425 chars and 43,239 of them (75.3%) are per-row `description` — enough to overflow the harness tool-result cap and return NO usable data at all (ace#1799). So an UNHYDRATED row's `description` is capped at
+List the programs on an organization. `connect-program-setup` Step 2 calls this with NO `name` filter and scans the whole org (ace#1252), which in a mature org is far more prose than any consumer reads: measured on `ai-demo-space` 2026-09-01, 42 rows serialize to 57,425 chars and 43,239 of them (75.3%) are per-row `description` — enough to overflow the harness tool-result cap and return NO usable data at all (ace#1799). So an UNHYDRATED row's `description` is capped at `PROGRAM_LIST_DESCRIPTION_SNIPPET_CHARS` chars by default and flagged `description_truncated: true`; a `description_projection` block reports how many rows were shortened. The reuse scan matches on domain + delivery type + archetype, whose signal is in the opening sentences, and Step 3a's content reconcile reads the FULL description from `connect_get_program` — not from here. Pass `full_descriptions: true` to opt out (and expect the cap), or `write_to_path` to get every field of every row on disk instead of in context. Name-filtered rows are NEVER truncated: they come back hydrated through a per-row `connect_get_program` (ace#1089) and are the targeted-lookup path. Unfiltered rows carry null, never a typed zero, for delivery_type/budget/currency/country/start_date/end_date because the list page does not render them; hydrate via `connect_get_program`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -485,7 +484,7 @@ List the programs on an organization. `connect-program-setup` Step 2 calls this 
 | `organization_slug` | `z.string` | **required** | PM-side org slug (must be a program-manager org). |
 | `name` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | **required** | _—_ |
-| `delivery_type` | `z.union` | **required** | _—_ |
+| `delivery_type` | `z.union` | **required** | Delivery type slug (preferred — e.g. "nutrition") or its int FK. The Connect REST API accepts the slug; pass the int FK only if you already resolved it via `connect_list_delivery_types`. |
 | `budget` | `z.coerce.number` | **required** | _—_ |
 | `currency` | `z.string` | **required** | ISO 4217 code (e.g. "USD"). |
 | `country` | `z.string` | **required** | Human country name as Connect renders it (e.g. "United States of America"). |
@@ -526,7 +525,7 @@ List opportunities in an organization. Walks EVERY page of Connect's paginated l
 
 ### `connect_get_opportunity`
 
-Read one opportunity from the edit form (authoritative for name/description/currency/country/end_date/active/is_test) merged with the dashboard (learn_app/deliver_app wiring, plus `total_budget`, `start_date` and `program_name`, which no form carries — ace#1550). A field the pages do not render comes back undefined: UNDEFINED MEANS UNKNOWN, NEVER ZERO. `program_id` is never populated by a read — `program_name` is the only program key any read surface carries, so scope a per-program sum by name and treat a non-unique name as unknown. Degrades to the dashboard alone on a 403/404 from the edit form (viewer tier, ace#1461). `dashboard_read` says whether the dashboard half ANSWERED, and only `ok` licenses reading an undefined field as absent. **`setup_incomplete` is not a read failure and is not worth retrying:** Connect refuses to render a dashboard for an opportunity whose setup was never finished (`OpportunityDashboard.get` -> `is_setup_complete`, i.e. payment units + total_budget + start_date + end_date) and 302s to the payment-unit wizard, so NO Connect read surface states that opportunity's budget or program \u2014 the edit form carries neither field and /finalize/ redirects to the same wizard (both verified live 2026-09-06, ace#1637). Do not read it as budget 0: `is_setup_complete` is false when ANY of the four is missing, and the automation API can set a budget without payment units.
+Read one opportunity from the edit form (authoritative for name/description/currency/country/end_date/active/is_test) merged with the dashboard (learn_app/deliver_app wiring, plus `total_budget`, `start_date` and `program_name`, which no form carries — ace#1550). A field the pages do not render comes back undefined: UNDEFINED MEANS UNKNOWN, NEVER ZERO. `program_id` is never populated by a read — `program_name` is the only program key any read surface carries, so scope a per-program sum by name and treat a non-unique name as unknown. Degrades to the dashboard alone on a 403/404 from the edit form (viewer tier, ace#1461). `dashboard_read` says whether the dashboard half ANSWERED, and only `ok` licenses reading an undefined field as absent. **`setup_incomplete` is not a read failure and is not worth retrying:** Connect refuses to render a dashboard for an opportunity whose setup was never finished (`OpportunityDashboard.get` -> `is_setup_complete`, i.e. payment units + total_budget + start_date + end_date) and 302s to the payment-unit wizard, so NO Connect read surface states that opportunity's budget or program — the edit form carries neither field and /finalize/ redirects to the same wizard (both verified live 2026-09-06, ace#1637). Do not read it as budget 0: `is_setup_complete` is false when ANY of the four is missing, and the automation API can set a budget without payment units.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -539,17 +538,15 @@ Read one opportunity from the edit form (authoritative for name/description/curr
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | PM-side org running the program. |
 | `program_id` | `z.string` | **required** | Program UUID — required (managed opportunity). |
-| `name` | `z.string` | **required** | _—_ |
-| `short_description` | `z.string` | **required** | _—_ |
-| `description` | `z.string` | **required** | _—_ |
-| `target_organization_slug` | `z.string` | optional | _—_ |
+| `name` | `z.string` | **required** | Opportunity display name. When `is_test: true` (every ACE-driven run), MUST be `"<run_id> · <PDD display name>"` — run-id `YYYYMMDD-HHMM` as a FRONT prefix, then ` · ` (space U+00B7 space), then the display name, e.g. `"20260609-0909 · Bednet Spot-Check"`. Code-enforced before the network call (INVALID_OPP_NAME_PREFIX): Phase 6 mobile recipes anchor their opp-tile match on `text: ".*${OPP_RUN_ID}.*"`, so a missing prefix deterministically breaks claim/resume. See skills/connect-opp-setup/SKILL.md § name and jjackson/ace#755. |
+| `short_description` | `z.string` | **required** | Max 50 chars — DB-enforced. Connect's `Opportunity.short_description` is `CharField(max_length=50)` but the DRF serializer is wrongly typed as `max_length=255`. A 51–255 char payload validates clean at the DRF layer, then Postgres raises `DataError: value too long for type character varying(50)` inside `transaction.atomic()`. That `DataError` is NOT caught by commcare-connect/program/api/views.py:102 (which only catches httpx errors), so it bubbles up as a Django 500 with no actionable response body. Bisected deterministically 2026-05-12 against `e62dcb06-...`: 49 chars → 201; 51 chars → 500. Tightening here so we fail-loud in Zod before the network round-trip. Upstream alignment: align serializer to model in commcare-connect (or vice versa). |
+| `description` | `z.string` | **required** | Full opportunity description. Connect's `Opportunity.description` is `TextField()` — no DB-enforced length. Earlier ACE versions claimed an intermittent ~250-char 500 threshold (jjackson/ace#106 finding 7 from leep-paint-collection 2026-05-06); that observation has not been reproduced under the bisect protocol that proved the short_description 50-char trap. Treat any "description 500" as suspect-misattribution and re-bisect before assuming a length cap. Long-form prose belongs in the opp's Drive summary doc; the headline lives here. |
+| `target_organization_slug` | `z.string` | optional | LLO org slug. Optional — if omitted, the opp is created under the PM org: the REST backend sends `organization_slug` (the program-running org) as the holding org. OMITTING DOES NOT WAIVE the accepted-application requirement — it relocates it: the HOLDING org (the PM org, when omitted) must hold an ACCEPTED ProgramApplication for this program or the create rejects with "Organization must have an accepted application for this program" (jjackson/ace#1251 — run the self-managed invite+accept round-trip first, connect-opp-setup Step 3a). The live deployment also REJECTS organization=None with "organization: This field is required" (HTTP 400, observed malaria-rdt/20260604-1604, jjackson/ace#700), so do NOT rely on a null organization. Pass this only when an LLO has an ACCEPTED program application and you want to assign FLWs to that org; Phase 9 reassigns the awarded LLO post-award. |
 | `start_date` | `z.string` | **required** | Must fit inside the program window. |
 | `end_date` | `z.string` | **required** | _—_ |
 | `total_budget` | `z.coerce.number` | **required** | Must fit inside `program.budget − Σ(other managed opps)`. |
 | `is_test` | `z.boolean` | optional | Defaults true server-side. |
-| `auto_activate` | `z.boolean` | optional | _—_ |
-| `description` | `z.string` | **required** | Required — Connect form marks it *. |
-| `passing_score` | `z.coerce.number` | **required** | _—_ |
+| `auto_activate` | `z.boolean` | optional | When true, call `activateOpportunity` after a successful create. Defaults FALSE (0.13.x / jjackson/ace#584): Connect rejects activation with "At least one payment unit must exist before activating" and rolls back the ENTIRE create when no PaymentUnit exists yet — which is always the case at create time in the documented `connect-opp-setup` flow (create → create_payment_unit → activate). So `auto_activate: true` here collapses create+activate before the PU exists and fails transactionally, leaving the caller with no opportunity_id and a confusing orphan inactive opp. With the false default, create returns a draft opp; the skill creates the payment unit(s) and then explicitly calls `connect_activate_opportunity` (idempotent). Pass true only when you have already created the payment unit(s) inline or genuinely want a one-step activate. Downstream endpoints (`sendFlwInvite` / `invite_users/`) still require the opp to be active, so the skill MUST activate after the PU. |
 | `learn_app` | `HqAppZ` | **required** | Shared schema `HqAppZ` — see its definition in the server source for the full shape. |
 | `deliver_app` | `HqAppZ` | **required** | cc_app_id MUST differ from learn_app.cc_app_id. |
 
@@ -607,8 +604,8 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | _—_ |
-| `total_budget` | `z.coerce.number` | optional | _—_ |
-| `payment_units` | `z.array` | **required** | _—_ |
+| `total_budget` | `z.coerce.number` | optional | The opportunity's total_budget (whole-currency-unit integer — the SAME value passed to connect_create_opportunity, NOT cents). When supplied, the server enforces total_budget >= Σ(max_total × (amount + org_amount)) (number_of_users >= 1) over this request BEFORE creating any PU, rejecting with opportunity_underfunded otherwise. ALWAYS pass it — this is the code-enforced funds-≥1-FLW guard (jjackson/ace#729). |
+| `payment_units` | `z.array` | **required** | Atomic batch — server validates DU assignments across the whole list and rejects the entire request if any unit is invalid. |
 
 ### `connect_create_payment_unit`
 
@@ -616,7 +613,7 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | _—_ |
-| `total_budget` | `z.coerce.number` | optional | _—_ |
+| `total_budget` | `z.coerce.number` | optional | The opportunity's total_budget (whole-currency-unit integer, NOT cents). ALWAYS pass it: the server enforces number_of_users >= 1 and rejects an underfunded opp (jjackson/ace#729). |
 | `name` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | optional | _—_ |
 | `amount` | `z.coerce.number` | **required** | _—_ |
@@ -625,8 +622,8 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 | `max_daily` | `z.coerce.number` | **required** | _—_ |
 | `start_date` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
-| `required_deliver_units` | `z.array` | **required** | _—_ |
-| `optional_deliver_units` | `z.array` | **required** | _—_ |
+| `required_deliver_units` | `z.array` | optional | _—_ |
+| `optional_deliver_units` | `z.array` | optional | _—_ |
 
 ### `connect_list_payment_units`
 
@@ -693,7 +690,7 @@ Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted`
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID slug (same shape used by connect_list_invites). |
-| `user_invite_ids` | `z.array` | **required** | _—_ |
+| `user_invite_ids` | `z.array` | **required** | Integer ids from connect_list_invites. Accepted invites in this list are silently skipped server-side. |
 
 ### `connect_add_org_member`
 
@@ -787,9 +784,8 @@ Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ v
 | `domain` | `z.string` | **required** | _—_ |
 | `tag` | `z.string` | **required** | Name for the new table (e.g. "interview_schedule"). |
 | `fields` | `z.array` | **required** | _—_ |
-| `properties` | `z.array` | **required** | _—_ |
 | `is_global` | `z.boolean` | optional | If true, table is shared across the domain (default false). |
-| `item_attributes` | `z.array` | **required** | _—_ |
+| `item_attributes` | `z.array` | optional | _—_ |
 
 ### `commcare_list_user_fields`
 
@@ -809,14 +805,7 @@ Write the full custom-user-data field definition for a domain (DESTRUCTIVE — r
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `fields` | `z.array` | **required** | _—_ |
-| `label` | `z.string` | optional | _—_ |
-| `is_required` | `z.boolean` | optional | _—_ |
-| `choices` | `z.array` | **required** | _—_ |
-| `regex` | `z.string` | optional | _—_ |
-| `regex_msg` | `z.string` | optional | _—_ |
-| `required_for` | `z.array` | **required** | _—_ |
-| `upstream_id` | `z.string` | optional | _—_ |
-| `profiles` | `z.array` | **required** | _—_ |
+| `profiles` | `z.array` | optional | Profile definitions to preserve. Default: []. Get current via list_user_fields. |
 | `purge_existing` | `z.boolean` | optional | If true, purge user_data on existing users for removed fields. Default false. |
 
 ### `commcare_list_ucr_expressions`
@@ -839,7 +828,7 @@ Create a named UCR expression or filter on a domain. POST the UCRExpressionForm 
 | `domain` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | **required** | _—_ |
 | `expression_type` | `z.enum` | **required** | _—_ |
-| `definition` | `z.record` | **required** | _—_ |
+| `definition` | `z.record` | **required** | The UCR spec JSON object (e.g. {"type": "boolean_expression", ...}). |
 | `description` | `z.string` | optional | _—_ |
 
 ### `commcare_linked_app_copy`
@@ -893,8 +882,8 @@ Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepea
 | `name` | `z.string` | optional | _—_ |
 | `request_method` | `z.enum` | optional | _—_ |
 | `format` | `z.string` | optional | Payload format slug (e.g. "form_json", "form_xml"). |
-| `configured_filter` | `z.record` | **required** | _—_ |
-| `configured_expression` | `z.record` | **required** | _—_ |
+| `configured_filter` | `z.record` | optional | UCR filter spec as a JSON object. Required for *ExpressionRepeater types. |
+| `configured_expression` | `z.record` | optional | UCR payload-expression spec as a JSON object. Required for POST/PUT *ExpressionRepeater. |
 | `url_template` | `z.string` | optional | _—_ |
 
 ### `commcare_list_connections`
@@ -980,7 +969,7 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 | `domain` | `z.string` | **required** | _—_ |
 | `user_id` | `z.string` | **required** | _—_ |
 | `field_slug` | `z.string` | **required** | User-data field slug (e.g. "cohort_id"). |
-| `value` | `z.union` | **required** | _—_ |
+| `value` | `z.union` | **required** | New value, or null to clear. |
 
 ### `commcare_get_lookup_table_rows`
 
@@ -1001,8 +990,8 @@ Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_tabl
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `table_id_or_tag` | `z.string` | **required** | _—_ |
-| `rows` | `z.array` | **required** | _—_ |
-| `item_attributes` | `z.record` | **required** | _—_ |
+| `rows` | `z.array` | **required** | List of flat row maps: each {field_name: value}. |
+| `item_attributes` | `z.record` | optional | _—_ |
 
 ### `commcare_link_domains`
 
@@ -1051,7 +1040,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `ccz_path` | `z.string` | optional | Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `mode` | `z.enum` | optional | `validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate. |
-| `entry_path` | `z.array` | **required** | _—_ |
+| `entry_path` | `z.array` | optional | `play` mode only. Menu indices to navigate to a form (default `[0, 0]` = first module → first form). For multi-module apps, invoke once per module to cover every form-init. |
 | `timeout_ms` | `z.number` | optional | Spawn timeout. validate default 60000ms; play default 30000ms. |
 
 ### `commcare_patch_xform`
@@ -1106,15 +1095,15 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `use_grid_menus` | `z.boolean` | optional | App-root "Modules Menu Display": true = grid, false = list. Defaults to true. |
-| `grid_form_menus` | `z.enum` | optional | _—_ |
+| `grid_form_menus` | `z.enum` | optional | App-level "Forms Menu Display". Defaults to "some", which is what makes per-module display_style="grid" (commcare_set_menu_display) take effect in the generated suite; at "none" per-module grid settings are inert. |
 
 ### `connect_preflight_learn_app_user`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `hq_domain` | `z.string` | **required** | _—_ |
-| `connect_username` | `z.string` | optional | _—_ |
-| `api_key` | `z.string` | **required** | _—_ |
+| `hq_domain` | `z.string` | **required** | HQ project space slug (e.g. `connect-ace-prod`). Same value that flows through `connect_create_opportunity` as `learn_app.cc_domain` / `deliver_app.cc_domain`. |
+| `connect_username` | `z.string` | optional | ConnectID username for the FLW about to claim the opp. Optional — when omitted, the probe still validates API-key auth + domain reachability (catches the most common auth/domain failure modes at near-zero cost). Supply when you have the username in hand to additionally screen for already-linked-to-different-connect-username conflicts. |
+| `api_key` | `z.string` | **required** | CCHQ REST API key. Accepts `${VAR}` syntax (same convention as `connect_create_opportunity.learn_app.api_key`); typically called as `${ACE_HQ_API_KEY}`. |
 | `hq_username` | `z.string` | **required** | CCHQ username the API key belongs to. Typically `${ACE_HQ_USERNAME}`. |
 | `base_url` | `z.string` | optional | Override CCHQ base URL. Defaults to https://www.commcarehq.org. |
 
@@ -1175,7 +1164,7 @@ Attach a timeout-trigger event to a chatbot. POST /a/<team>/chatbots/<experiment
 | `total_num_triggers` | `z.number` | optional | Number of times to fire (default 1). |
 | `trigger_from_first_message` | `z.boolean` | optional | Trigger relative to the first message vs. last interaction (default false = last). |
 | `action_type` | `z.enum` | **required** | _—_ |
-| `action_params` | `z.record` | **required** | _—_ |
+| `action_params` | `z.record` | optional | Action-type-specific params: pipeline_start needs {pipeline_id, input_type}; send_message_to_bot needs {message_to_bot}; schedule_trigger needs many; log/end_conversation need none. |
 
 ### `ocs_add_pipeline_node`
 
@@ -1186,13 +1175,11 @@ Add a node to a chatbot's pipeline graph. GET-mutate-POST the pipeline JSON at /
 | `pipeline_id` | `z.number` | **required** | _—_ |
 | `node_type` | `z.string` | **required** | OCS data.type value — e.g. "DynamicRouterNode", "PythonNode", "LLMResponseWithPrompt", "StartNode", "EndNode". |
 | `node_id` | `z.string` | optional | Explicit node id; auto-generated if omitted. |
-| `position` | `z.object` | **required** | _—_ |
-| `y` | `z.number` | **required** | _—_ |
-| `params` | `z.record` | **required** | _—_ |
+| `position` | `z.object` | optional | _—_ |
+| `params` | `z.record` | optional | Node-specific config blob, passed through into data.params verbatim. |
 | `connect_from` | `z.string` | optional | Existing node id; if set, creates edge connect_from→new_node. |
 | `connect_to` | `z.string` | optional | Existing node id; if set, creates edge new_node→connect_to. |
-| `disconnect_edge` | `z.object` | **required** | _—_ |
-| `target` | `z.string` | **required** | _—_ |
+| `disconnect_edge` | `z.object` | optional | Optional edge to remove before adding new wiring. Use with connect_from + connect_to to splice in. |
 
 ### `ocs_set_chatbot_system_prompt`
 
@@ -1211,14 +1198,14 @@ Transactional update of the LLMResponseWithPrompt node's params: prompt + collec
 |-------|------|----------|-------------|
 | `experiment_id` | `z.number` | **required** | _—_ |
 | `prompt` | `z.string` | optional | _—_ |
-| `collection_index_ids` | `z.array` | **required** | _—_ |
+| `collection_index_ids` | `z.array` | optional | _—_ |
 | `max_results` | `z.number` | optional | _—_ |
 | `generate_citations` | `z.boolean` | optional | _—_ |
 | `source_material_id` | `z.number` | optional | _—_ |
-| `tools` | `z.array` | **required** | _—_ |
-| `custom_actions` | `z.array` | **required** | _—_ |
-| `built_in_tools` | `z.array` | **required** | _—_ |
-| `mcp_tools` | `z.array` | **required** | _—_ |
+| `tools` | `z.array` | optional | _—_ |
+| `custom_actions` | `z.array` | optional | _—_ |
+| `built_in_tools` | `z.array` | optional | _—_ |
+| `mcp_tools` | `z.array` | optional | _—_ |
 
 ### `ocs_create_collection`
 
@@ -1241,9 +1228,6 @@ Upload files to an existing Collection. Each file MUST supply EXACTLY ONE source
 |-------|------|----------|-------------|
 | `collection_id` | `z.number` | **required** | _—_ |
 | `files` | `z.array` | **required** | _—_ |
-| `content` | `z.string` | optional | Base64-encoded file content. Legacy inline mode — use file_path for anything > ~1KB to avoid stalling model generation on large b64 tool_use inputs. |
-| `file_path` | `z.string` | optional | Local filesystem path. MCP reads the bytes + base64-encodes server-side, so the agent never holds the b64 in context. Pass an absolute path; relative paths resolve against the MCP subprocess CWD which is rarely predictable. Preferred for any payload > 1KB. |
-| `mime_type` | `z.string` | **required** | _—_ |
 | `chunk_size` | `z.number` | optional | Chunk size in tokens. Default 800. |
 | `chunk_overlap` | `z.number` | optional | Chunk overlap in tokens. Must be < chunk_size. Default 400. |
 
@@ -1275,10 +1259,10 @@ Configure the chatbot's tools, custom actions, built-in tools, and MCP tools.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `experiment_id` | `z.number` | **required** | _—_ |
-| `tools` | `z.array` | **required** | _—_ |
-| `custom_actions` | `z.array` | **required** | _—_ |
-| `built_in_tools` | `z.array` | **required** | _—_ |
-| `mcp_tools` | `z.array` | **required** | _—_ |
+| `tools` | `z.array` | optional | _—_ |
+| `custom_actions` | `z.array` | optional | _—_ |
+| `built_in_tools` | `z.array` | optional | _—_ |
+| `mcp_tools` | `z.array` | optional | _—_ |
 
 ### `ocs_set_source_material`
 
@@ -1382,7 +1366,7 @@ Return the chatbot's FULL denormalized config in one read-only call via OCS v2 `
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `public_id` | `z.string` | **required** | UUID public_id of the chatbot (from ocs_list_chatbots → id) |
-| `version` | `z.union` | **required** | _—_ |
+| `version` | `z.union` | optional | Optional: integer version number, or "default" for the live default. Omit for working/draft. |
 | `team_slug` | `z.string` | optional | Optional team slug to inspect (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG. |
 
 ### `ocs_list_sessions`
@@ -1461,8 +1445,8 @@ Trigger the bot to send a message to a participant on a given channel.
 | `identifier` | `z.string` | **required** | _—_ |
 | `platform` | `z.string` | **required** | _—_ |
 | `prompt_text` | `z.string` | **required** | _—_ |
-| `session_data` | `z.record` | **required** | _—_ |
-| `participant_data` | `z.record` | **required** | _—_ |
+| `session_data` | `z.record` | optional | _—_ |
+| `participant_data` | `z.record` | optional | _—_ |
 
 ### `ocs_update_participant_data`
 
@@ -1473,8 +1457,6 @@ Create or update participant data across one or more experiments.
 | `identifier` | `z.string` | **required** | _—_ |
 | `platform` | `z.string` | **required** | _—_ |
 | `data` | `z.array` | **required** | _—_ |
-| `data` | `z.record` | **required** | _—_ |
-| `schedules` | `z.array` | **required** | _—_ |
 
 ### `ocs_download_file`
 
@@ -1500,7 +1482,7 @@ Add a person to the OCS team so a linked chatbot page actually opens for them (d
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `email` | `z.string` | **required** | Email address to invite / reconcile. |
-| `group_labels` | `z.array` | **required** | _—_ |
+| `group_labels` | `z.array` | optional | Group labels exactly as OCS renders them. Default: ["Chatbot Admin"]. |
 | `replace_invite` | `z.boolean` | optional | Cancel a pending invite whose groups differ from the requested set, then re-invite. |
 
 ## ace-mobile
@@ -1512,12 +1494,7 @@ Source: `mcp/mobile-server.ts` — 18 atoms
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | _—_ |
-| `testUser` | `z.object` | optional | Full E.164 demo number. MUST keep the +7426 prefix — upstream demo behaviour (OTP skip, Play Integrity bypass) is a startswith on it. Derive via lib/per-run-test-user.ts. |
-| `phoneLocal` | `z.string` | optional | National number without the +7 country code (10 digits), as the registration recipe types it. |
-| `countryCode` | `z.string` | optional | Country code for the registration screen. Always "+7" for the demo range. |
-| `pin` | `z.string` | optional | Device PIN. Not a per-user secret in the demo range — normally omitted so ACE_E2E_PIN is used. |
-| `backupCode` | `z.string` | optional | PersonalID backup code. Normally omitted so ACE_E2E_BACKUP_CODE is used. |
-| `name` | `z.string` | optional | Display name written during registration; naming it after the run id makes the Connect workers table readable. |
+| `testUser` | `z.object` | optional | Optional per-run test-user credential override (ace#1289). Omit for the env-derived ACE_E2E_* user (the default). Local AVD backend only. |
 | `oppSlug` | `z.string` | optional | Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG. |
 | `runId` | `z.string` | optional | Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID. |
 
@@ -1562,8 +1539,8 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `recipePath` | `z.string` | **required** | _—_ |
-| `envVars` | `z.record` | **required** | _—_ |
-| `screenshotDir` | `z.string` | **required** | _—_ |
+| `envVars` | `z.record` | optional | _—_ |
+| `screenshotDir` | `z.string` | **required** | Run-scoped output ROOT. Artifacts land in <screenshotDir>/<recipeId>/ (dispatch-scoped, ace#1130); read them back from the returned screenshotsDir. |
 | `avdName` | `z.string` | optional | _—_ |
 | `captureAllBoundaries` | `z.boolean` | optional | Tier 2 of the mapping ladder. EXPENSIVE — opens an extra ui-dump window at every top-level `runFlow` boundary, not just at `takeScreenshot` (one extra `maestro test` invocation per window; measured 3→10 and 1→9 on the two calibration recipes). Default false. Only turn this on for a targeted re-walk after an atlas-report.yaml reports `classification: unmapped-surface`. |
 
