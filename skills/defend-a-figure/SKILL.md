@@ -64,9 +64,11 @@ the document, and they are right to.
    under-5 mortality across NGA/ETH/UGA/KEN/TZA leaves 7 areas selected by every
    screen against 78 selected by some — 90.3% of the under-5s in play. Name the
    contested set and say which screen was chosen and why; a reviewer who finds
-   it first will not believe the rest. **`admin_level: 2` returns zeros rather
-   than declining** — indicators resolve to ADM1 at best, so read a zero there
-   as unanswerable, never as a finding.
+   it first will not believe the rest. **At `admin_level: 2`, read
+   `countries_missing_level` first** — targeting selects on geoBoundaries, and
+   six countries (Nigeria, DR Congo, Kenya, Côte d'Ivoire, Mozambique, CAR) have
+   no ADM2 there and are dropped from the answer rather than downgraded. A screen
+   that lost them is not a screen that ruled them out.
 7. **Read the research notes for known traps** with `targeting_research`. Check
    `trust` before using anything a note says: `drifted` means re-derive,
    `unverified` means it is a lead. An age-band mismatch or a definitional
@@ -125,3 +127,4 @@ and hands the reviewer the conservative figure before they ask.
 | 2026-08-29 | Initial version — weakest-check-first rule, external validation step, method spread, three-paragraph pattern | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units` | ACE team |
 | 2026-09-07 | Added the criterion spread (`targeting_compare_criteria`) as step 6 — the tool existed but no ACE skill called it | ACE team |
+| 2026-09-07 | Corrected the ADM2 caveat: the ceiling is geoBoundaries coverage (18/55 countries), not the indicators | ACE team |

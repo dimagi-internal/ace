@@ -69,13 +69,16 @@ short `coverage` makes the figure a floor; a high `inherited_units` makes a
 name it stops believing the whole document. Naming it first is what makes the
 rest credible.
 
-**Do not promise a district-level answer.** Indicators resolve to ADM1 at best.
-Boundaries and population *are* loaded to ADM2 (1,517 units), so
-`targeting_admin_levels` will happily report 774 Nigerian LGAs that no indicator
-can be selected on: `targeting_select` takes no `admin_level` at all, and
-`targeting_compare_criteria` at `admin_level: 2` returns zeros rather than
-declining the question. Zero areas there means *unanswerable*, never *nothing
-qualified*.
+**District level works for 18 of 55 countries — check before you promise it.**
+`admin_level: 2` is real and returns 814 areas across Africa, but targeting
+selects on **geoBoundaries only**, and six countries carry an ADM2 under a
+different source and none under geoBoundaries: **Nigeria, DR Congo, Kenya, Côte
+d'Ivoire, Mozambique and CAR**. Ask `targeting_admin_levels` and read
+`selectable_by_targeting` — not `loaded`, which reports every source and will
+show you 774 Nigerian LGAs that cannot be selected on. A country with no
+boundary at the pinned level is DROPPED from the answer rather than downgraded;
+it comes back in `countries_missing_level`, so read that before treating a thin
+level-2 result as a finding.
 
 **Never take a stored note as gospel.** `targeting_research` re-runs every note's
 claims against live data and returns a `trust` verdict. `drifted` means
@@ -103,3 +106,4 @@ something better has since been published.
 | 2026-08-29 | 29 indicators; access and settlement joined malaria as families carrying counts | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units`; each indicator now names the sources that may answer it, so a method's label is literally true | ACE team |
 | 2026-09-07 | 52 indicators (was 29); ADM1 is the real resolution ceiling; `targeting_compare_criteria` wired into `defend-a-figure` | ACE team |
+| 2026-09-07 | Corrected same-day: ADM2 works for 18/55 countries — the ceiling is geoBoundaries coverage, not the indicators (connect-labs #1535) | ACE team |
