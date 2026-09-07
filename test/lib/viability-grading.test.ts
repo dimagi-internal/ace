@@ -129,14 +129,14 @@ describe('computeViabilityScores', () => {
     // Guards the arithmetic against the real verdict file: if this drifts, the
     // helper disagrees with what the corpus already recorded.
     const full = classifyViabilityGrading({ oppRootNames: REAL_ROOT });
-    const s = computeViabilityScores(RUN_20260906_SCORES, REAL_WEIGHTS, full);
+    const s = computeViabilityScores({ scores: RUN_20260906_SCORES, weights: REAL_WEIGHTS, decision: full });
     expect(s.overall_score).toBe(6.62);
     expect(s.overall_score_all_dimensions).toBe(6.62);
   });
 
   it('on a fixture, lifts 20260906-2228 over the 7.0 gate without touching any score', () => {
     const fixture = classifyViabilityGrading({ oppRootNames: FIXTURE_ROOT });
-    const s = computeViabilityScores(RUN_20260906_SCORES, REAL_WEIGHTS, fixture);
+    const s = computeViabilityScores({ scores: RUN_20260906_SCORES, weights: REAL_WEIGHTS, decision: fixture });
 
     // The unadjusted number is preserved for cross-opp comparison...
     expect(s.overall_score_all_dimensions).toBe(6.62);
@@ -152,8 +152,8 @@ describe('computeViabilityScores', () => {
     const lenient = { ...RUN_20260906_SCORES, demand_reality: 8.5 };
     const strict = { ...RUN_20260906_SCORES, demand_reality: 4.0 };
 
-    const a = computeViabilityScores(lenient, REAL_WEIGHTS, fixture);
-    const b = computeViabilityScores(strict, REAL_WEIGHTS, fixture);
+    const a = computeViabilityScores({ scores: lenient, weights: REAL_WEIGHTS, decision: fixture });
+    const b = computeViabilityScores({ scores: strict, weights: REAL_WEIGHTS, decision: fixture });
 
     // Gating score is now IDENTICAL under both readings — the ambiguity is
     // no longer able to decide pass/fail.
@@ -170,7 +170,7 @@ describe('computeViabilityScores', () => {
   it('a real opp is completely unaffected by this change', () => {
     const full = classifyViabilityGrading({ oppRootNames: REAL_ROOT });
     const lenient = { ...RUN_20260906_SCORES, demand_reality: 8.5 };
-    const s = computeViabilityScores(lenient, REAL_WEIGHTS, full);
+    const s = computeViabilityScores({ scores: lenient, weights: REAL_WEIGHTS, decision: full });
     // demand_reality still moves the gate on a real opp — that is the point.
     expect(s.overall_score).toBeGreaterThan(6.62);
     expect(s.overall_score).toBe(s.overall_score_all_dimensions);
@@ -179,8 +179,114 @@ describe('computeViabilityScores', () => {
   it('throws on a weighted dimension with no score, rather than treating it as 0', () => {
     const full = classifyViabilityGrading({ oppRootNames: REAL_ROOT });
     const { demand_reality, ...incomplete } = RUN_20260906_SCORES;
-    expect(() => computeViabilityScores(incomplete, REAL_WEIGHTS, full)).toThrow(
+    expect(() => computeViabilityScores({ scores: incomplete, weights: REAL_WEIGHTS, decision: full })).toThrow(
       /no score for weighted dimension "demand_reality"/,
     );
+  });
+});
+
+/**
+ * dimagi-internal/ace#2162 — a transposed `scores`/`weights` pair returned ONE
+ * CORRECT NUMBER and one garbage number, and the correct one validated the
+ * garbage one.
+ *
+ * `overall_score_all_dimensions` is `Σ score × weight`; multiplication
+ * commutes, so a swap leaves it EXACTLY right. `overall_score` renormalizes
+ * over a denominator built from the wrong record, so it is nonsense — and it
+ * is the GATING number (ace#2128).
+ *
+ * Measured verbatim on the `20260906-2228` corpus below, before the fix:
+ *
+ *   computeViabilityScores(SCORES, WEIGHTS, fixture)   // correct
+ *     → { overall_score: 7.36, overall_score_all_dimensions: 6.62 }
+ *   computeViabilityScores(WEIGHTS, SCORES, fixture)   // ARGS SWAPPED
+ *     → { overall_score: 0.09, overall_score_all_dimensions: 6.62 }
+ *
+ * Same 6.62 either side; the gate moved 7.36 → 0.09, i.e. across the 7.0 gate.
+ *
+ * The function has NO code caller — an LLM hand-writes the call from
+ * `skills/idea-to-pdd-eval/SKILL.md` prose, the one caller class that gets no
+ * compiler help. So the class is closed twice over, and both halves are
+ * pinned here.
+ */
+describe('computeViabilityScores: the scores/weights transposition is structurally impossible', () => {
+  it('DEFENCE 1 (static): the old positional call no longer typechecks', () => {
+    const fixture = classifyViabilityGrading({ oppRootNames: FIXTURE_ROOT });
+
+    // @ts-expect-error — ace#2162: `(scores, weights, decision)` is exactly the
+    // shape that let the two structurally-identical records be transposed. If
+    // anyone reverts to a positional signature this directive goes unused and
+    // `tsc --noEmit` fails the build ("Unused '@ts-expect-error' directive"),
+    // which is the point: CI type-checks test/**, vitest does not.
+    expect(() => computeViabilityScores(RUN_20260906_SCORES, REAL_WEIGHTS, fixture)).toThrow();
+  });
+
+  it('DEFENCE 2 (runtime): a swap INSIDE the object literal throws instead of scoring', () => {
+    const fixture = classifyViabilityGrading({ oppRootNames: FIXTURE_ROOT });
+
+    // The object param kills the positional swap, but `scores` and `weights`
+    // are still the same TYPE, so transposing the two values inside the
+    // literal still typechecks. That is the remaining hole, and this is what
+    // plugs it: nine judge scores on a 0-10 scale cannot sum to 1.0.
+    expect(() =>
+      computeViabilityScores({
+        scores: REAL_WEIGHTS,
+        weights: RUN_20260906_SCORES,
+        decision: fixture,
+      }),
+    ).toThrow(/weights must sum to 1\.0/);
+  });
+
+  it('names the transposition in the error, because that is what it almost always is', () => {
+    const fixture = classifyViabilityGrading({ oppRootNames: FIXTURE_ROOT });
+    expect(() =>
+      computeViabilityScores({
+        scores: REAL_WEIGHTS,
+        weights: RUN_20260906_SCORES,
+        decision: fixture,
+      }),
+    ).toThrow(/transposed/);
+  });
+
+  it('THE MEASURED REGRESSION: the swap used to return a CORRECT-LOOKING all-dimensions score', () => {
+    const fixture = classifyViabilityGrading({ oppRootNames: FIXTURE_ROOT });
+
+    // The correct call is unchanged by this fix — 7.36 / 6.62, verbatim.
+    const correct = computeViabilityScores({
+      scores: RUN_20260906_SCORES,
+      weights: REAL_WEIGHTS,
+      decision: fixture,
+    });
+    expect(correct.overall_score).toBe(7.36);
+    expect(correct.overall_score_all_dimensions).toBe(6.62);
+
+    // And this is why the swap was so dangerous: recomputing the commuting
+    // half by hand off the SWAPPED pair reproduces 6.62 exactly. A reviewer
+    // sanity-checking that number would have confirmed a verdict whose gating
+    // score was 0.09.
+    const commutingHalf =
+      Object.entries(RUN_20260906_SCORES).reduce(
+        (sum, [dim, score]) => sum + score * REAL_WEIGHTS[dim as keyof typeof REAL_WEIGHTS],
+        0,
+      );
+    expect(Math.round(commutingHalf * 100) / 100).toBe(6.62);
+  });
+
+  it('rejects a weight set that does not sum to 1.0 even when nothing was transposed', () => {
+    const full = classifyViabilityGrading({ oppRootNames: REAL_ROOT });
+    // 0.13.84 had to go back and fix a weight-sum bug once; this is the guard
+    // that would have caught it, independent of the transposition class.
+    const dropped = { ...REAL_WEIGHTS, demand_reality: 0.02 };
+    expect(() =>
+      computeViabilityScores({ scores: RUN_20260906_SCORES, weights: dropped, decision: full }),
+    ).toThrow(/weights must sum to 1\.0, got 0\.8/);
+  });
+
+  it('tolerates float noise in a legitimately-1.0 weight set', () => {
+    const full = classifyViabilityGrading({ oppRootNames: REAL_ROOT });
+    const noisy = { ...REAL_WEIGHTS, fallback_validates_primary: 0.09 + 0.0005 };
+    expect(() =>
+      computeViabilityScores({ scores: RUN_20260906_SCORES, weights: noisy, decision: full }),
+    ).not.toThrow();
   });
 });
