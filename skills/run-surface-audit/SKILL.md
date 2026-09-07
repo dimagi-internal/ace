@@ -194,6 +194,20 @@ doc's url. Two documents deliberately have no source and take the explicit
   cannot occur and no composed markdown exists. Its analogous preventer is
   the surviving-`{{` token scan in `skills/pdd-to-work-order` step 5.
 
+**Check the companion's `mimeType`, not just its name (ace#2102).** A
+`.source.md` that `drive_list_folder` reports as
+`application/vnd.google-apps.document` is NOT a source — it is a second
+rendered Doc wearing the source's filename, and comparing it to the published
+Doc compares two outputs of the same importer and reports a green that means
+nothing (the exact failure ace#1991 was filed for). Runs written before
+ace#2102 can carry one, because find-or-create used to land correct
+`text/markdown` bytes inside a pre-existing Doc and return success. Report
+those as `UNVERIFIED` with the observed mimeType named, the same as an absent
+source — never as a comparison. `drive_list_folder` already gives you the
+mimeType in the same call that tells you the file is there, so this costs
+nothing. A re-run of the producing skill now heals it (the mismatched file is
+binned and replaced at the right type).
+
 **On a run predating this fix the `.source.md` files simply are not there** —
 the markdown was consumed at publish time and is unrecoverable. `UNVERIFIED`
 is the correct and only honest result for those documents; do NOT reconstruct

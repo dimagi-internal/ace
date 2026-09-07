@@ -844,7 +844,7 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a file to Google Drive inside the given parent folder, landing it as its NATIVE type. Binaries (PNG, JPG, PDF, audio, video, CCZ) and — despite the name — **TEXT whose bytes must survive**: `text/markdown`, `text/csv`, `application/json`. This is the atom for every `*.source.md` companion, because `drive_create_file` always converts to a Google Doc and loses the markdown markers (ace#1991); `drive_read_file` reads a `text/*` file back verbatim via alt=media rather than as a Doc export, which is what makes `run-surface-audit`\'s DOC-FIDELITY comparison meaningful. Pair `localFilePath` here with `localFilePath` on the step-6 render, pointed at the SAME local file, and the published doc and its source companion are identical by construction (ace#1780). Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. The parent MUST be a folder on a Shared Drive.',
+  'Upload a file to Google Drive inside the given parent folder, landing it as its NATIVE type. Binaries (PNG, JPG, PDF, audio, video, CCZ) and — despite the name — **TEXT whose bytes must survive**: `text/markdown`, `text/csv`, `application/json`. This is the atom for every `*.source.md` companion, because `drive_create_file` always converts to a Google Doc and loses the markdown markers (ace#1991); `drive_read_file` reads a `text/*` file back verbatim via alt=media rather than as a Doc export, which is what makes `run-surface-audit`\'s DOC-FIDELITY comparison meaningful. Pair `localFilePath` here with `localFilePath` on the step-6 render, pointed at the SAME local file, and the published doc and its source companion are identical by construction (ace#1780). Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. **Reuse is conditional on the TYPE matching (ace#2102).** A Drive media update cannot RETYPE a file: uploading `text/markdown` into a same-name file that is already a Google Doc used to re-run the bytes through the Docs importer, return 200, and leave a Doc with every `#`/`**`/list marker converted away — which is how the ace#1991 `.source.md` fix reverted on the second run of any phase (a *create* is not an *update*). When the existing file\'s type differs from `mimeType`, that file is moved to the bin and a new one is created at the requested type; the response then carries `replacedMismatchedType: {from, to, trashedFileId}`, so the swap — and the new id — are visible rather than silent. The parent MUST be a folder on a Shared Drive.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
     contentBase64: z.string().optional().describe('File content, base64-encoded. Provide either this OR localFilePath, not both.'),
@@ -852,7 +852,7 @@ server.tool(
     mimeType: z.string().describe('MIME type the file LANDS AS. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ), and for byte-preserving text: "text/markdown", "text/csv", "application/json".'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     shareAnyoneWithLink: z.boolean().optional().describe('When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does not carry the SA\'s auth. Default: false.'),
-    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name non-folder file under the parent and REPLACE its bytes — the id and every already-shared URL survive. Otherwise always create a new sibling. Default: true. Set false only when you specifically want a separate sibling each call (e.g. timestamped captures that share a base name).'),
+    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name non-folder file under the parent and REPLACE its bytes — the id and every already-shared URL survive, PROVIDED its mimeType already matches the one you are uploading. When it does not (classically a Google Doc left by a pre-ace#1991 run under a `.source.md` name), reuse could not honour your `mimeType` at all, so the old file is binned and a fresh one created — a NEW id, reported back as `replacedMismatchedType` (ace#2102). Otherwise always create a new sibling. Default: true. Set false only when you specifically want a separate sibling each call (e.g. timestamped captures that share a base name).'),
   },
   async ({ name: fileName, contentBase64, localFilePath, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate }) => {
     try {
@@ -1872,6 +1872,66 @@ export async function handleCreateFolder(
 }
 
 /**
+ * Normalize a Drive mimeType for comparison: lowercase, parameters stripped.
+ * Drive may echo `text/markdown; charset=utf-8` where the caller sent
+ * `text/markdown`; those are the same type and must not read as a mismatch.
+ */
+export function normalizeMimeType(m: string | null | undefined): string {
+  return (m ?? '').split(';')[0]!.trim().toLowerCase();
+}
+
+/**
+ * Does a find-or-create reuse of `existing` honour the caller's requested
+ * `mimeType`, or would replacing its bytes silently keep the OLD type?
+ *
+ * ## The defect this exists to make impossible (ace#2102)
+ *
+ * `handleUploadBinary`'s reuse path calls `files.update` with `media` only.
+ * A media update NEVER changes an existing file's type: upload `text/markdown`
+ * bytes into a file that is already a Google Doc and Drive runs them back
+ * through the Docs IMPORTER, returns 200, and the file is still a Doc with
+ * every `#`, `**` and list marker converted away. Reproduced live 2026-09-07
+ * against `origin/main` (0.13.1296): `drive_upload_binary({name:
+ * 'probe.source.md', mimeType: 'text/markdown'})` over a same-name Doc
+ * returned `mimeType: application/vnd.google-apps.document, reused: true`,
+ * and the read-back was `Heading one\r\nbold and a list:` — markers gone.
+ *
+ * That is why ace#1991's remedy did not survive a re-run. #1991 repointed six
+ * `.source.md` producers at this atom, which is correct on a FIRST write into
+ * a clean folder. A re-run writes into a folder that already holds the
+ * previous run's Doc of that name, and find-or-create then lands the correct
+ * bytes inside the wrong container. A *create* is not an *update*: the fix
+ * held for exactly the path it was tested on.
+ *
+ * ## Why REPLACE and not refuse
+ *
+ * Refusing would halt every producer on every folder written before #1991 —
+ * i.e. every historical run — which is the ace#1238 deadlock class (a guard
+ * that predicts trouble and stops the work). Replacing reaches the state the
+ * caller asked for and heals the folder on the next run, which is
+ * "preconditions are restored, not adapted" applied to an artifact.
+ *
+ * Drive cannot convert a Google-native file to a binary type in place, so the
+ * only route to the requested type is a new file. The mismatched file is
+ * TRASHED (recoverable for 30 days, and excluded by the `trashed=false`
+ * lookup) BEFORE the create, so a failure between the two leaves ZERO files —
+ * which `verify_phase_artifacts` reports loudly — rather than two same-name
+ * siblings, which is the silent duplicate class #1324 closed.
+ *
+ * A missing `mimeType` on the existing file counts as a mismatch: we ask for
+ * the field explicitly, so its absence means we cannot prove the reuse is
+ * safe, and an unprovable reuse is the exact thing that shipped.
+ */
+export function reuseHonoursMimeType(
+  existingMimeType: string | null | undefined,
+  requestedMimeType: string,
+): boolean {
+  const existing = normalizeMimeType(existingMimeType);
+  if (!existing) return false;
+  return existing === normalizeMimeType(requestedMimeType);
+}
+
+/**
  * Binary-upload handler, exported for unit testing with a mocked Drive client.
  *
  * Default behavior is find-or-create, matching every other Drive create atom
@@ -1887,6 +1947,13 @@ export async function handleCreateFolder(
  * Reuse REPLACES the bytes via `files.update` and keeps the id, so every URL
  * already shared stays valid — the same contract `handleCreateFile` offers.
  * Pass `findOrCreate: false` to force a new sibling.
+ *
+ * Reuse is conditional on the TYPE matching (ace#2102): a media update cannot
+ * change an existing file's mimeType, so reusing a Google Doc for a
+ * `text/markdown` write silently re-converts the bytes and reports success.
+ * When the types differ the existing file is trashed and a new one created at
+ * the requested type; the response carries `replacedMismatchedType` so the
+ * swap is visible to the caller. See `reuseHonoursMimeType`.
  */
 export async function handleUploadBinary(
   args: {
@@ -1906,6 +1973,7 @@ export async function handleUploadBinary(
   webViewLink?: string;
   sharing: 'anyone-with-link' | 'sa-only';
   reused?: boolean;
+  replacedMismatchedType?: { from: string; to: string; trashedFileId: string };
 }> {
   const { name, buffer, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate = true } = args;
   const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
@@ -1917,17 +1985,34 @@ export async function handleUploadBinary(
   let size: string | undefined;
   let webViewLink: string | undefined;
   let reused = false;
+  let replacedMismatchedType: { from: string; to: string; trashedFileId: string } | undefined;
 
   if (findOrCreate) {
     const escaped = name.replace(/'/g, "\\'");
     const list = await driveClient.files.list({
       q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
-      fields: 'files(id, name, webViewLink)',
+      fields: 'files(id, name, webViewLink, mimeType)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     } as any);
     const existing = (list.data as any).files?.[0];
-    if (existing?.id) {
+    if (existing?.id && !reuseHonoursMimeType(existing.mimeType, mimeType)) {
+      // A media update cannot RETYPE a file, so reusing this one would land the
+      // caller's bytes inside the wrong container and still report success
+      // (ace#2102). Bin it BEFORE the create, so a failure between the two
+      // leaves ZERO files (loud) rather than two same-name siblings (silent —
+      // the ace#1324 class).
+      await driveClient.files.update({
+        fileId: existing.id,
+        requestBody: { trashed: true },
+        supportsAllDrives: true,
+      } as any);
+      replacedMismatchedType = {
+        from: normalizeMimeType(existing.mimeType) || 'unknown',
+        to: mimeType,
+        trashedFileId: existing.id,
+      };
+    } else if (existing?.id) {
       const updated = await driveClient.files.update({
         fileId: existing.id,
         media: { mimeType, body: Readable.from(buffer) },
@@ -1967,7 +2052,16 @@ export async function handleUploadBinary(
     sharing = 'anyone-with-link';
   }
 
-  return { id: fileId!, name: fileName, mimeType: outMime, size, webViewLink, sharing, reused: reused || undefined };
+  return {
+    id: fileId!,
+    name: fileName,
+    mimeType: outMime,
+    size,
+    webViewLink,
+    sharing,
+    reused: reused || undefined,
+    replacedMismatchedType,
+  };
 }
 
 /**

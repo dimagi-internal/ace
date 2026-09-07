@@ -23,7 +23,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUploadBinary } from '../../../mcp/google-drive-server.js';
 
-function fakeDrive(existing: Array<{ id: string; name: string }> = []) {
+/**
+ * `mimeType` on an `existing` row is not optional dressing — the handler now
+ * asks Drive for that field and REFUSES to reuse a file whose type differs
+ * from the one being uploaded (ace#2102), so a fake that omits it models a
+ * response Drive does not send and would make every reuse read as a mismatch.
+ * These rows carry the same `text/markdown` the calls request, which is what
+ * keeps the #1324 reuse assertions below testing reuse.
+ */
+function fakeDrive(existing: Array<{ id: string; name: string; mimeType?: string }> = []) {
   return {
     files: {
       // assertParentOnSharedDrive reads the parent's metadata first.
@@ -47,7 +55,7 @@ describe('drive_upload_binary find-or-create (#1324)', () => {
   let d: ReturnType<typeof fakeDrive>;
 
   it('replaces the bytes of a same-name sibling instead of minting a duplicate', async () => {
-    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md' }]);
+    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md', mimeType: 'text/markdown' }]);
     const r = await handleUploadBinary(args, d as any);
     expect(d.files.create).not.toHaveBeenCalled();
     expect(d.files.update).toHaveBeenCalledOnce();
@@ -64,7 +72,7 @@ describe('drive_upload_binary find-or-create (#1324)', () => {
   });
 
   it('findOrCreate:false still forces a new sibling, and skips the lookup entirely', async () => {
-    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md' }]);
+    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md', mimeType: 'text/markdown' }]);
     const r = await handleUploadBinary({ ...args, findOrCreate: false }, d as any);
     expect(d.files.list).not.toHaveBeenCalled();
     expect(d.files.create).toHaveBeenCalledOnce();
@@ -80,7 +88,7 @@ describe('drive_upload_binary find-or-create (#1324)', () => {
   });
 
   it('still applies shareAnyoneWithLink on the REUSED file', async () => {
-    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md' }]);
+    d = fakeDrive([{ id: 'EXISTING', name: 'pdd-to-app-journeys.md', mimeType: 'text/markdown' }]);
     const r = await handleUploadBinary({ ...args, shareAnyoneWithLink: true }, d as any);
     expect(d.permissions.create).toHaveBeenCalledWith(
       expect.objectContaining({ fileId: 'EXISTING' }),
