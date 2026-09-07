@@ -430,6 +430,32 @@ Skills — No Fake Background Tasks`). Concrete budget:
      `ifMatchRevisionId` (revisionVersion CAS, added 0.11.3) so the
      transcript file is durable mid-loop.
 
+   **The transcript's working copy lives on LOCAL DISK, and every Drive
+   write passes `localFilePath` (ace#1918).** Keep the whole transcript at
+   an absolute scratch path; append each entry to that file, then push the
+   file — `drive_create_file({name, localFilePath, parentFolderId})` for the
+   first write and `drive_update_file({fileId, localFilePath,
+   ifMatchRevisionId})` for every append and for the step-7 metadata flush.
+   CAS is unaffected: `ifMatchRevisionId` is orthogonal to where the bytes
+   come from.
+
+   On `--deep` this is not a preference. `drive_update_file` **refuses**
+   inline `content` above 40,000 characters with a typed
+   `oversized_inline_content` error (`UPDATE_FILE_INLINE_CEILING`,
+   `lib/atom-payload-resolver.ts`), and a deep transcript blows past that
+   mid-suite — 157,979 chars measured on
+   `bednet-check-2-visit/20260825-1310`, 224,003 in the 2026-09-02 corpus.
+   An inline append therefore starts failing partway through every deep
+   suite, on the write path whose entire purpose is surviving a kill. It is
+   also quadratic: Drive replaces whole-file content, so an inline append
+   re-emits the ENTIRE transcript per prompt.
+
+   **The deep path stays incremental — it cannot become a single-shot
+   create** (ace#1918 asked the question explicitly). Step 3's
+   resume-from-partial reads the Drive file written by the previous
+   session's appends; a single write at suite end would mean nothing exists
+   to resume from, which is the property the mode exists for.
+
    **For each prompt** (skipping any already in the partial transcript
    from Step 3 — `--deep`/`--monitor` only; `--quick` always starts
    fresh because nothing is persisted mid-loop):
@@ -518,7 +544,8 @@ Skills — No Fake Background Tasks`). Concrete budget:
      5. **Run structural checks (Step 6) on this response inline.**
      6. **Persist the entry per the write strategy:**
         - `--quick`: append to in-memory buffer.
-        - `--deep` / `--monitor`: `drive_update_file` with
+        - `--deep` / `--monitor`: append the entry to the local scratch
+          file, then `drive_update_file` with `localFilePath` +
           `ifMatchRevisionId` from the prior read. The transcript was
           created on first prompt with the `complete: false` header;
           each subsequent entry is appended in place. Update the
@@ -609,10 +636,11 @@ Skills — No Fake Background Tasks`). Concrete budget:
      string for the judge (and humans) to read
 
 7. **Final transcript write (mode-dependent):**
-   - `--quick`: **single create.** Build the full transcript in memory
-     from the in-memory buffer + completed metadata, then call
-     `drive_create_file` once with the assembled content. One Drive
-     RTT.
+   - `--quick`: **single create.** Build the full transcript from the
+     in-memory buffer + completed metadata, write it to the local scratch
+     path, then call `drive_create_file({name, localFilePath,
+     parentFolderId})` once. One Drive RTT, and no transcript through the
+     context window (ace#1918).
    - `--deep` / `--monitor`: **metadata-only flush.** Entries were
      written incrementally during Step 5 — `drive_update_file` here
      just updates the header.
@@ -735,11 +763,12 @@ Skills — No Fake Background Tasks`). Concrete budget:
   the full transcript schema. Gate on a 2xx range, not `== 200` — see the
   status table in Step 5 (ace#1298).
 - Google Drive:
-  - `drive_create_file` — Step 7 single transcript write on `--quick`;
-    Step 5 first-write on `--deep`/`--monitor`.
-  - `drive_update_file` with `ifMatchRevisionId` — Step 5 incremental
-    appends and Step 7 metadata flush on `--deep`/`--monitor` only.
-    Not used on `--quick`.
+  - `drive_create_file` with `localFilePath` — Step 7 single transcript
+    write on `--quick`; Step 5 first-write on `--deep`/`--monitor`.
+  - `drive_update_file` with `localFilePath` + `ifMatchRevisionId` — Step 5
+    incremental appends and Step 7 metadata flush on `--deep`/`--monitor`
+    only. Not used on `--quick`. Inline `content` is REFUSED above 40,000
+    chars, which a deep transcript exceeds mid-suite (ace#1918).
   - `drive_read_file` — Step 3 resume-from-partial on
     `--deep`/`--monitor` only.
 
@@ -776,3 +805,4 @@ When `--dry-run` is active:
 | 2026-08-26 | **The wrong-embed-key negative control is 401, not 403 — and a MISSING header is not rejected at all (dimagi-internal/ace#1679).** The status table shipped by the #1298 row above told authors to expect **403** on a wrong `X-Embed-Key`; live it returns **401 `{"detail":"Invalid widget embed key"}`**. That is the #1298 class from the other side: a harness written from this prose asserting `== 403` reads a healthy 401 rejection as "the negative control did not fire" — i.e. as *the embed key is not being checked* — manufacturing the exact false alarm the table was added to prevent. Step 5 now says assert a **4xx range**, for the same reason the send asserts a 2xx range. The second correction matters more: omitting `X-Embed-Key` **entirely** returns **201** and starts a session, so the control only ever proved that a *wrong* key is rejected, never that a key is *required*. That is plausibly by design — `start_session_public` is a genuine anonymous surface for a published bot with an empty `participant_allowlist` — but the doc previously let a reader infer a stronger guarantee than the endpoint offers, and a future reader could just as easily have filed the 201 as a security defect. `mcp/ocs/backends/rest.ts` needed no change: it branches on `!res.ok` and was already correct for both codes. Matching bullet corrected in `playbook/integrations/ocs-integration.md`. Observed on `spark-facilitator/20260820-0817` Phase 5. | ACE team |
 | 2026-09-05 | **Step 1 now ASSERTS the resolved bot belongs to the run being graded, and the `$OCS_GOLDEN_TEMPLATE_ID` fallback is gone from the resolution chain (dimagi-internal/ace#1950).** The three-branch chain (`experiment_id` → the run folder's `ocs-agent-setup.md` → the golden template) never checked ownership at any branch, so a graded deep verdict could describe a bot this run never built — and `llo-launch` reads that verdict as go-live clearance. Both wrong branches were observed on `hh-poverty-targeting/20260901-1932`, a Phase-7-only fork: branch 2 fired on a COPIED `ocs-agent-setup.md` and graded the source run's chatbot 13029 into the fork's folder with no warning; with no readable copy, branch 3 would have graded the pristine golden template and reported its score as the opportunity's. Step 1 now calls `assertRunOwnsChatbot(runState, resolvedExperimentId)` against `phases.ocs-setup.products.ocs_chatbot.experiment_id` and halts on mismatch or on a run with no chatbot of its own. The golden template keeps its one legitimate use — the Step 5 trace-triage DIAGNOSTIC control, where "target fails / golden passes" is real signal. *Enforced:* `lib/qa-deep-run-selection.ts` + `test/lib/qa-deep-run-selection.test.ts`. | ACE team |
 | 2026-09-05 | **The `--deep` edge-case extras are now literals, the suite size is declared, and concurrency is settled (dimagi-internal/ace#1956).** Two of the four extras were fully specified; two were not. Multi-turn was ONE bullet needing TWO messages, and Step 5's "stays on the preceding prompt's session" — read literally — rode the follow-up on the ADVERSARIAL prompt's session ("how long do they have to respond to the one you just described?" after "tell me a joke"). Non-English had no prompt, no language, no expected answer, and a condition ("if the opp targets non-English-speaking LLOs") unresolvable on any opp whose PDD leaves languages open — `hh-poverty-targeting`'s own ground truth says "the geography and languages live in Annex B, which is TBD". So two `--deep` runs of the same opp built different instruments, making `ocs-chatbot-eval` § Calibration's "inter-run score variance ≤ 0.5" unmeasurable, and with no declared N a truncated capture was undetectable. Step 4 now carries five literal edge-case prompts + one machine-checkable conditional, `N_deep = 13 + N_opp + {0,1}` recorded as `expected_prompts` in the transcript header, and Step 5 permits bounded concurrency up to 5 (each prompt keeps its own session, so ace#1645 holds; a declared `rides` pair runs sequentially). The Wall-Clock Budget now states which ceiling binds: `min(90N, 1800)` saturates at N=20, measured throughput is 23.5s/prompt, so a serial deep suite hits the cap at N≈77 — the 64-prompt `hh-poverty-targeting/20260828-0702` capture used 1503.8s of 1800s (16.5% headroom) serially and 309.1s at concurrency 5. *Enforced:* `lib/ocs-deep-suite.ts` + `test/skills/ocs-deep-suite-contract.test.ts`. | ACE team |
+| 2026-09-06 | **Large artifacts are composed to a LOCAL FILE and written with `localFilePath` (dimagi-internal/ace#1918).** On `--deep`/`--monitor` this is a live-defect fix, not a preference: `drive_update_file` REFUSES inline content above 40,000 chars (`UPDATE_FILE_INLINE_CEILING`) and a deep transcript passes that mid-suite (157,979 chars measured on `bednet-check-2-visit/20260825-1310`; 224,003 in the corpus), so the CAS append path — the one that exists to survive a kill — starts hard-failing partway through. The transcript's working copy now lives on local disk and every Drive write passes `localFilePath`; CAS is untouched. The deep path STAYS incremental — a single-shot create would leave step 3 nothing to resume from. *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`. | ACE team |

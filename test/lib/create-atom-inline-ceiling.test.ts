@@ -10,8 +10,9 @@
  *
  * This file is the measurement, made executable. It drives the REAL resolver
  * with payloads of the REAL measured lengths, so "a 40,000 ceiling refuses
- * these six producers" is a thing CI evaluates rather than a claim in a PR
- * body that goes stale.
+ * these producers" is a thing CI evaluates rather than a claim in a PR body
+ * that goes stale. Since ace#1918 converted them it evaluates the opposite,
+ * which is the point: the same assertions now show the blast radius is zero.
  *
  * ── The corpus ────────────────────────────────────────────────────────────
  * Measured 2026-09-02 by walking ACE's live Drive root, exporting every Google
@@ -20,7 +21,11 @@
  * `drive_upload_binary`, not these atoms), leaving 1,572 candidates across 20
  * opportunities and 49 run-scopes.
  *
- * The conversion this decision is sequenced behind is tracked as ace#1918.
+ * The conversion this decision was sequenced behind SHIPPED as ace#1918:
+ * every exposed producer above now passes `localFilePath` (pinned by
+ * test/skills/large-artifact-localfilepath.test.ts), and `decisions.gdoc` was
+ * re-derived as never exposed at all — it is rendered server-side by the
+ * `render_decisions_log` atom, not sent inline.
  *
  * ── NEGATIVE-CONTROL NOTE ─────────────────────────────────────────────────
  * This change adds no new source symbol — there is no fix to revert — so the
@@ -68,20 +73,22 @@ const CORPUS = {
  * `decisions_append_rows`, which do not route through this resolver.
  */
 const OVER_40K = [
-  { name: 'ocs-chatbot-qa_transcript-deep.md', max: 224_003, seen: 3, producer: 'ocs-chatbot-qa', exposed: true, converted: false },
+  { name: 'ocs-chatbot-qa_transcript-deep.md', max: 224_003, seen: 3, producer: 'ocs-chatbot-qa', exposed: true, converted: true },
   { name: 'audit_matrix.json', max: 193_788, seen: 1, producer: '(ad-hoc, not a manifest artifact)', exposed: false, converted: false },
   { name: 'run_state.yaml', max: 146_907, seen: 8, producer: 'ace-orchestrator (grown by update_yaml_file)', exposed: false, converted: false },
   { name: 'decisions.yaml', max: 73_096, seen: 8, producer: 'ace-orchestrator (grown by decisions_append_rows)', exposed: false, converted: false },
   { name: 'idea-to-pdd.md', max: 71_074, seen: 10, producer: 'idea-to-pdd', exposed: true, converted: true },
-  { name: 'decisions.gdoc', max: 63_142, seen: 5, producer: 'decisions-render', exposed: true, converted: false },
-  { name: 'pdd-to-test-prompts.md', max: 59_737, seen: 5, producer: 'pdd-to-test-prompts', exposed: true, converted: false },
-  { name: 'training-deck-spec.yaml', max: 55_719, seen: 1, producer: 'training-deck-generate', exposed: true, converted: false },
+  { name: 'decisions.gdoc', max: 63_142, seen: 5, producer: 'decisions-render (rendered server-side by render_decisions_log)', exposed: false, converted: false },
+  { name: 'pdd-to-test-prompts.md', max: 59_737, seen: 5, producer: 'pdd-to-test-prompts', exposed: true, converted: true },
+  { name: 'training-deck-spec.yaml', max: 55_719, seen: 1, producer: 'training-deck-generate', exposed: true, converted: true },
   { name: 'idea-to-pdd.source.md', max: 52_427, seen: 3, producer: 'idea-to-pdd', exposed: true, converted: true },
-  { name: 'solicitation-create_published.md', max: 51_920, seen: 3, producer: 'solicitation-create', exposed: true, converted: false },
-  { name: 'solicitation-create_draft.md', max: 49_531, seen: 3, producer: 'solicitation-create', exposed: true, converted: false },
-  { name: 'pdd-to-deliver-app-eval_verdict.yaml', max: 44_716, seen: 2, producer: 'pdd-to-deliver-app-eval', exposed: true, converted: false },
-  { name: 'app-screenshot-capture_manifest.yaml', max: 43_778, seen: 3, producer: 'app-screenshot-capture', exposed: true, converted: false },
+  { name: 'solicitation-create_published.md', max: 51_920, seen: 3, producer: 'solicitation-create', exposed: true, converted: true },
+  { name: 'solicitation-create_draft.md', max: 49_531, seen: 3, producer: 'solicitation-create', exposed: true, converted: true },
+  { name: 'pdd-to-deliver-app-eval_verdict.yaml', max: 44_716, seen: 2, producer: 'pdd-to-deliver-app-eval', exposed: true, converted: true },
+  { name: 'app-screenshot-capture_manifest.yaml', max: 43_778, seen: 3, producer: 'app-screenshot-capture', exposed: true, converted: true },
 ] as const;
+
+type CorpusRow = (typeof OVER_40K)[number];
 
 /** Would this payload length be accepted by the create atoms at `ceiling`? */
 function accepts(len: number, ceiling?: number): boolean {
@@ -133,29 +140,35 @@ describe('today: the create atoms impose NO ceiling (ace#1780, upheld by ace#190
   });
 });
 
-describe('a 40,000 ceiling: does the job, and breaks six producers', () => {
+describe('a 40,000 ceiling: does the job, and (since ace#1918) breaks nobody', () => {
   const refused = OVER_40K.filter((a) => !accepts(a.max, 40_000));
 
   it('refuses every artifact the corpus measured above 40,000', () => {
     expect(refused.map((a) => a.name).sort()).toEqual(OVER_40K.map((a) => a.name).sort());
   });
 
-  it('the refusal reaches SIX unconverted producers, across five phases', () => {
-    // These are recurring per-run artifacts, not outliers: each was measured
-    // on multiple runs. A refusal here is a hard failure in a phase that works
-    // today, which is why ace#1780 held this half back.
-    const broken = [...new Set(
-      refused.filter((a) => a.exposed && !a.converted).map((a) => a.producer),
-    )].sort();
-    expect(broken).toEqual([
-      'app-screenshot-capture',
-      'decisions-render',
-      'ocs-chatbot-qa',
-      'pdd-to-deliver-app-eval',
-      'pdd-to-test-prompts',
-      'solicitation-create',
-      'training-deck-generate',
-    ]);
+  it('no longer reaches ANY unconverted producer — the conversion shipped (ace#1918)', () => {
+    // Was seven producer names across five phases; ace#1918 converted six of
+    // them to `localFilePath` and re-derived the seventh (`decisions-render`)
+    // as never exposed in the first place. This is the sequencing gate #1907
+    // named: with this list empty, a 40,000 ceiling has a blast radius of zero
+    // on the measured corpus.
+    const unconverted: CorpusRow[] = refused.filter((a) => a.exposed && !a.converted);
+    const broken = [...new Set(unconverted.map((a) => a.producer))].sort();
+    expect(broken).toEqual([]);
+  });
+
+  it('decisions.gdoc is NOT exposed — it is rendered server-side, not sent inline', () => {
+    // The filed table (ace#1918) put `decisions.gdoc` under
+    // `drive_create_doc_from_markdown`. `skills/decisions-render` § Step 2
+    // forbids that call by name and routes the render through the
+    // `render_decisions_log` atom, which reads decisions.yaml off Drive and
+    // does read + render + clear + batchUpdate server-side. Its 63,142 chars
+    // never enter a tool argument, so no create-atom ceiling can fire on it —
+    // same category as run_state.yaml, different mechanism.
+    const d = OVER_40K.find((a) => a.name === 'decisions.gdoc');
+    expect(d, 'the decisions.gdoc row vanished — this pin needs revisiting').toBeDefined();
+    expect(d!.exposed).toBe(false);
   });
 
   it('the largest files in the corpus are NOT among them — they are grown, not created', () => {
@@ -184,11 +197,16 @@ describe('a 40,000 ceiling: does the job, and breaks six producers', () => {
 });
 
 describe('a 100,000 ceiling: nearly safe, and therefore does not do the job', () => {
-  it('exposes only ONE recurring skill producer', () => {
-    const broken = OVER_40K
-      .filter((a) => a.exposed && !a.converted && !accepts(a.max, 100_000))
+  it('exposed no recurring skill producer even before the conversion — that was the problem', () => {
+    // Pre-ace#1918 this list was ['ocs-chatbot-qa'] and everything else went
+    // inline. Post-conversion it is empty for the same reason the 40,000 list
+    // is: nothing above the threshold is still sent inline. Kept because the
+    // NEXT assertion is the one that decides between the two candidates.
+    const unconverted: CorpusRow[] = OVER_40K.filter((a) => a.exposed && !a.converted);
+    const broken = unconverted
+      .filter((a) => !accepts(a.max, 100_000))
       .map((a) => a.producer);
-    expect(broken).toEqual(['ocs-chatbot-qa']);
+    expect(broken).toEqual([]);
   });
 
   it('but lets the documents the issue was FILED about go inline', () => {

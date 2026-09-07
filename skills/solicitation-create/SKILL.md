@@ -552,6 +552,17 @@ contract.
    Include all fields from the payload as a structured YAML-frontmatter +
    prose body, so the `solicitation-create-eval` rubric can re-read it.
 
+   **Compose it to a LOCAL FILE first, then pass `localFilePath` — do not emit
+   the document inline (ace#1918).** Write the composed markdown to an absolute
+   scratch path, then call
+   `drive_create_file({name, localFilePath, parentFolderId})`; the server reads
+   the bytes off disk, so the write costs ~zero context regardless of size.
+   Both this draft and the `published.md` of step 8 carry the whole payload
+   plus the derived rubric and routinely clear 40,000 chars — measured 49,531
+   (draft) and 51,920 (published) on `bednet-check-2-visit/20260825-1310`, both
+   re-confirmed 2026-09-06. The inline `content` param still works and is fine
+   for a short EOI.
+
 5. **Resolve the labs program_id (integer).** The labs MCP expects the
    labs **integer** program ID, *not* the Connect program UUID. Despite
    the schema's `program_id: string`, labs `int()`-parses it internally
@@ -784,6 +795,13 @@ contract.
    `solicitation-review` and `solicitation-monitor` have the rubric
    without re-fetching from labs).
 
+   **Same rule as step 4: compose to a LOCAL FILE and pass `localFilePath`
+   (ace#1918).** This is the larger of the two documents (51,920 chars
+   measured). Reuse the step-4 scratch file with the returned IDs/URLs appended
+   rather than re-composing the payload from scratch — the two documents share
+   most of their body, and re-emitting it is exactly the cost this rule exists
+   to avoid.
+
 9. **Write the consolidated solicitation outputs block** to the
    current run's `run_state.yaml.phases.solicitation-management.products.solicitation`
    via `update_yaml_file` + `merge: 'deep'`:
@@ -920,3 +938,4 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 | 2026-05-22 | **(superseded — see 2026-05-22 correction below)** Align with current labs reality + document the ideal end-state (`jjackson/connect-labs#212`). Three labs-side gaps surfaced during the malaria-itn-app `20260521-1400` Phase 8 republish required inline workarounds. Three of the four "labs-side gaps" I diagnosed turned out to be ACE-side stale-schema reads, not labs bugs — see the correction entry. | ACE team |
 | 2026-05-22 | **Correction: 3 of 4 "labs gaps" in #212 were actually ACE reading a stale schema.** The labs maintainer triaged `jjackson/connect-labs#212` against the live `tools/list` and found: (a) wire-shape "drift" — NOT a labs bug; deployed schema is flat (no `data` envelope), the wrapped shape this skill called out came from ACE's stale view; (b) `evaluation_criteria[].id` undocumented — NOT a labs bug; live schema declares `evaluation_criteria.items.required: [id, name, weight]`, ACE was reading a stale schema; (c) public-detail page 302s to login — WORKING AS INTENDED; `is_public` controls marketplace listing for logged-in users, NOT anonymous readability. Only #2 (`framing` on questions) was a real ask, and it turns out the deployed schema already has `framing` as an optional property — the live MCP accepts it as a structured key. Skill rewritten to match the live schema: dropped Step 6's wire-shape fallback paragraph (call the atom as documented, flat fields); dropped the criterion-id hedge (it's documented + required); emit `framing` as a structured key (drop the `Why we're asking: <framing>\n\n<text>` inline anchor convention); dropped the "Step 7a-bis curl-the-public-URL once #212 ships" plan (won't work — `is_public` isn't anonymity). Added new **Stale-schema gotcha** under Step 6 explaining the recovery: curl `tools/list` against the live labs MCP, treat that as truth, restart Claude Code (full process restart, not `/reload-plugins`) to pick up the fresh schema. Added "live `tools/list` is the canonical contract; if this SKILL.md disagrees, the SKILL.md is wrong" at the top of Step 2. The underlying lesson: when an MCP server can evolve faster than this skill's documentation, treat the live `tools/list` as the source of truth — never trust a cached view in the local subprocess. | ACE team |
 | 2026-05-22 | **Architecture decision: ACE owns composition; labs validates.** PR #396 had floated a future labs-side `create_solicitation_from_brief` MCP tool that would compose content server-side via labs's `solicitation_agent`. Walked back — operator chose to keep composition in ACE so this skill retains full control over voice, archetype-branched scope, framing/scoring_guide quality, and decisions-log integration (all of which are ACE-context that labs would have to learn). Labs's tightened MCP (forthcoming deploy: `create_solicitation` + `update_solicitation` now validate the canonical schema and fail loudly with `INVALID_SCHEMA` + `error.details.fields` on drift) is the right server-side contribution: schema enforcement, not content generation. This skill is the long-term home for solicitation composition; Step 6's payload shape is bound to labs's `tools/list` inputSchema rather than to a future composer call. Removal of the prior "Removal criteria" line. | ACE team |
+| 2026-09-06 | **Large artifacts are composed to a LOCAL FILE and written with `localFilePath` (dimagi-internal/ace#1918).** Both `solicitation-create_draft.md` (49,531 chars) and `solicitation-create_published.md` (51,920) were measured over 40,000 on `bednet-check-2-visit/20260825-1310` and re-confirmed 2026-09-06. Step 8 now reuses step 4's scratch file rather than re-composing the shared body. *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`. | ACE team |
