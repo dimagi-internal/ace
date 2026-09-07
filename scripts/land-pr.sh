@@ -76,26 +76,125 @@
 # Measured: it succeeds with no remote-tracking ref present, and still rejects
 # when a third party moved the head first.
 #
+# ## Merge queues (verified 2026-09-07, BEFORE one was enabled here)
+#
+# `main` has no merge queue today. It is expected to get one — it is the only
+# thing that closes ace#1776's merge-time half, per `lib/version-uniqueness.ts`
+# ("the residual that only `strict = true` or a merge queue removes"). This
+# script must be correct on both sides of that switch, with no flag day, because
+# sessions already running keep using the copy they loaded.
+#
+# So it DETECTS rather than assumes. `mergeQueueEntry` is null when there is no
+# queue, so one read distinguishes both worlds. It has to be a GraphQL read:
+# `gh pr view --json` carries neither `isInMergeQueue` nor `mergeQueueEntry`
+# (checked against `gh pr view --json` on gh 2.88.1 — the field list has
+# `autoMergeRequest`, `mergeStateStatus`, `mergeable`, and nothing queue-shaped).
+#
+# What actually changes, and what does not — read from gh's own source
+# (cli/cli v2.88.1 `pkg/cmd/pr/merge/merge.go`) rather than guessed:
+#
+#   - **A queued PR must never be disarmed, rebased or force-pushed.** This is
+#     the one real hazard, and it is silent. `mergeRun` calls `inMergeQueue()`
+#     BEFORE the `--disable-auto` branch (merge.go:543-553), so on a queued PR
+#     `gh pr merge --disable-auto` returns `ErrAlreadyInMergeQueue`, which the
+#     command maps to `return nil` (merge.go:167) — it prints "already queued to
+#     merge", EXITS 0, and never calls `disableAutoMerge`. The disarm this
+#     script relies on to stop the race becomes a no-op that reports success.
+#     Force-pushing anyway would then rewrite the head of a PR whose queued
+#     merge group is already testing the OLD commit — the exact ace#1593 shape
+#     the disarm exists to prevent. Hence the queued branch below sits ahead of
+#     the DIRTY branch and takes no action at all.
+#
+#   - **Queued is PROGRESS, not a stall.** The PR stays `state: OPEN` until the
+#     queue merges it, and CI now runs on the merge GROUP, not on the PR ("The
+#     merge queue will ensure the pull request's changes pass all required
+#     status checks when applied to the latest version of the target branch and
+#     any pull requests already in the queue" — GitHub docs, managing-a-merge-queue).
+#     That is slower than a bare PR check by the depth of the queue. Waiting
+#     while queued therefore does NOT consume an attempt; it is bounded instead
+#     by its own wall-clock deadline, and it exits 5 (not 3) so "still moving"
+#     is never read as the "queued but actually stuck" handoff.
+#
+#   - **The DIRTY rebase path STAYS.** A queue rebases speculatively, but it
+#     cannot resolve a real conflict: "if there are failed required status
+#     checks or conflicts with the base branch, the pull request will be removed
+#     from the queue" (same doc). A VERSION collision is a conflict, so it still
+#     surfaces as DIRTY — it just arrives via an ejection rather than a stalled
+#     auto-merge. The path is unchanged and still correct; it simply must not
+#     run while the PR is still IN the queue.
+#
+#   - **`--auto --merge` is unchanged, deliberately.** Under a queue gh only
+#     WARNS that "The merge strategy for <branch> is set by the merge queue"
+#     and sets `payload.auto = true` regardless (merge.go:298-304) — a warning
+#     on stderr, not an error. Dropping `--merge` would be cosmetically tidier
+#     and is the wrong trade: without a queue, `--auto` with no strategy is a
+#     HARD failure in a non-interactive shell ("--merge, --rebase, or --squash
+#     required when not running interactively", merge.go:310-312), so making the
+#     flag conditional turns a false-positive queue detection into a PR that is
+#     never armed at all. One unconditional form that warns is safer than two
+#     forms where one silently strands the PR.
+#
+# Not verified here, and unverifiable until a queue exists: everything above is
+# read from gh's source, GitHub's documented contract, and a live GraphQL probe
+# against a repo with NO queue. No PR in this repo has ever been enqueued.
+# See `skills/shipping/SKILL.md § When the merge queue goes live` for the
+# falsifier to run on the first queued PR.
+#
 # ## Usage
 #
 #   bash scripts/land-pr.sh <pr-number> [max-attempts]
 #
 # Exit: 0 merged · 1 closed without merging · 2 non-version conflict (needs a
-# human) · 3 attempts exhausted. Always verify the merge state yourself after —
-# a turn that opened a PR does not close without a read merge state.
+# human) · 3 attempts exhausted · 5 STILL IN THE MERGE QUEUE when the queue wait
+# ran out — progress, not a stall; re-run or read the queue position. Always
+# verify the merge state yourself after — a turn that opened a PR does not close
+# without a read merge state.
 #
 set -uo pipefail
 
 PR="${1:?usage: land-pr.sh <pr-number> [max-attempts]}"
 MAX="${2:-5}"
 REPO="${ACE_REPO:-dimagi-internal/ace}"
-POLLS_PER_ATTEMPT=15
-POLL_SECONDS=20
+# Overridable only so the hermetic tests can drive the loop without sleeping.
+# Nothing in a real ship should set these.
+POLLS_PER_ATTEMPT="${ACE_LAND_PR_POLLS:-15}"
+POLL_SECONDS="${ACE_LAND_PR_POLL_SECONDS:-20}"
+# Wall-clock ceiling on time spent waiting while the PR is IN the merge queue.
+# Queued time does not consume an attempt (the queue is doing the work), so this
+# is what bounds it. 30 min covers a queue several PRs deep with this repo's
+# ~2-3 min `clean-install`; past that, report the position and let the caller
+# decide rather than holding the turn.
+QUEUE_WAIT_SECONDS="${ACE_LAND_PR_QUEUE_WAIT:-1800}"
 
 state() { gh pr view "$PR" -R "$REPO" --json state --jq .state 2>/dev/null; }
 mergeability() { gh pr view "$PR" -R "$REPO" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null; }
 head_ref() { gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>/dev/null; }
 head_oid() { gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null; }
+
+# Merge-queue state, in ONE GraphQL read — `gh pr view --json` exposes no
+# queue-shaped field, so this cannot fold into the helpers above. Prints four
+# space-separated tokens: <queue-enabled> <queued> <entry-state> <position>.
+#
+# Prints NOTHING on a failed read, and the caller then proceeds exactly as it
+# did before this existed (unqueued). That is the deliberate default: pre-queue
+# it is always the right answer, so a broken read can never regress today's
+# behaviour. Post-queue it is the one residual — a read that fails on a queued
+# PR would let the DIRTY path run. Named in the report; the falsifier is the
+# first live queued PR.
+queue_state() {
+  gh api graphql \
+    -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){isMergeQueueEnabled isInMergeQueue mergeQueueEntry{state position}}}}' \
+    -f o="${REPO%%/*}" -f r="${REPO##*/}" -F n="$PR" \
+    --jq '.data.repository.pullRequest | "\(.isMergeQueueEnabled) \(.isInMergeQueue) \(.mergeQueueEntry.state // "-") \(.mergeQueueEntry.position // "-")"' \
+    2>/dev/null
+}
+
+# True iff the PR is sitting in the queue right now.
+is_queued() {
+  local qe queued rest
+  read -r qe queued rest <<<"$(queue_state)" || true
+  [ "${queued:-false}" = "true" ]
+}
 
 ## Why the arm is unconditional, and why the guard had to move with it
 #
@@ -126,15 +225,31 @@ head_oid() { gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid 2>/d
 # push either way, which is what "Why disarming is load-bearing" requires.
 # `gh pr merge --auto` is idempotent, so a caller that already armed per
 # `skills/shipping` loses nothing.
-for attempt in $(seq 1 "$MAX"); do
+#
+# A `while` rather than `for attempt in $(seq ...)` because time spent QUEUED
+# must not consume an attempt: the attempt budget exists to bound how many times
+# WE rebase against a moving `main`, and a PR sitting in the queue is the queue
+# doing that work instead. Queued waiting is bounded by QUEUE_WAIT_SECONDS.
+queue_deadline=$(( $(date +%s) + QUEUE_WAIT_SECONDS ))
+attempt=0
+qenabled=false; queued=false; qstate="-"; qpos="-"
+
+while [ "$attempt" -lt "$MAX" ]; do
   s="$(state)"
   case "$s" in
-    MERGED) echo "attempt $attempt: MERGED"; exit 0 ;;
-    CLOSED) echo "attempt $attempt: CLOSED without merging"; exit 1 ;;
+    MERGED) echo "attempt $((attempt + 1)): MERGED"; exit 0 ;;
+    CLOSED) echo "attempt $((attempt + 1)): CLOSED without merging"; exit 1 ;;
   esac
 
   m="$(mergeability)"
-  echo "attempt $attempt/$MAX: state=$s mergeable=$m"
+  q="$(queue_state)"
+  if [ -z "$q" ]; then
+    qenabled=false; queued=false; qstate="-"; qpos="-"
+    echo "  merge-queue read unavailable — proceeding as unqueued (pre-queue this is always correct)"
+  else
+    read -r qenabled queued qstate qpos <<<"$q"
+  fi
+  echo "attempt $((attempt + 1))/$MAX: state=$s mergeable=$m queue=$qenabled queued=$queued entry=$qstate pos=$qpos"
 
   # Resolve the push target from the PR, never from local state — and prove this
   # checkout is the PR's work before touching auto-merge or rewriting anything.
@@ -152,6 +267,34 @@ for attempt in $(seq 1 "$MAX"); do
     echo "  Wrong worktree, or someone pushed to the PR branch. Nothing changed."
     exit 2
   fi
+
+  # QUEUED — the PR is in the merge queue. Do NOTHING to it: no disarm (gh's
+  # `--disable-auto` is a no-op that exits 0 on a queued PR, merge.go:543), no
+  # rebase, no force-push (that rewrites a head whose merge group is already
+  # under test). It is progressing on our behalf; the only correct action is to
+  # wait, and to SAY that it is progressing. This block sits ahead of the DIRTY
+  # branch for exactly that reason. See "## Merge queues" above.
+  if [ "$queued" = "true" ]; then
+    now="$(date +%s)"
+    if [ "$now" -ge "$queue_deadline" ]; then
+      echo "  PR #$PR is STILL IN THE MERGE QUEUE (entry=$qstate position=$qpos) after"
+      echo "  ${QUEUE_WAIT_SECONDS}s of queued waiting. This is PROGRESS, NOT A STALL — the queue is"
+      echo "  testing it against main plus everything ahead of it. Nothing was rebased,"
+      echo "  disarmed or pushed. Re-run this script, or watch the position."
+      exit 5
+    fi
+    echo "  in the merge queue (entry=$qstate position=$qpos) — waiting; this attempt is not consumed"
+    for _ in $(seq 1 "$POLLS_PER_ATTEMPT"); do
+      s="$(state)"
+      [ "$s" = "MERGED" ] && { echo "merged from the queue"; exit 0; }
+      [ "$s" = "CLOSED" ] && { echo "CLOSED without merging"; exit 1; }
+      is_queued || break        # ejected from the queue — re-evaluate at the top
+      sleep "$POLL_SECONDS"
+    done
+    continue                    # deliberately does NOT increment `attempt`
+  fi
+
+  attempt=$((attempt + 1))
 
   if [ "$m" = "DIRTY" ]; then
     # DISARM FIRST — see "Why disarming is load-bearing" above. Without this the
@@ -184,12 +327,17 @@ for attempt in $(seq 1 "$MAX"); do
     s="$(state)"
     [ "$s" = "MERGED" ] && { echo "attempt $attempt: MERGED"; exit 0; }
     [ "$s" = "CLOSED" ] && { echo "attempt $attempt: CLOSED without merging"; exit 1; }
-    [ "$(mergeability)" = "DIRTY" ] && break   # collided again — next attempt
+    is_queued && break                         # entered the queue — stop polling
+                                               # blind and re-read at the top
+    [ "$(mergeability)" = "DIRTY" ] && break    # collided again — next attempt
     sleep "$POLL_SECONDS"
   done
 done
 
-# Report whether auto-merge was actually armed. "OPEN CLEAN" gives the reader
-# nothing to act on; "OPEN CLEAN auto-merge=false" names the cause (ace#2004).
-echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus,autoMergeRequest --jq '.state+" "+.mergeStateStatus+" auto-merge="+(.autoMergeRequest != null | tostring)')"
+# Report whether auto-merge was actually armed AND whether a merge queue is in
+# play. "OPEN CLEAN" gives the reader nothing to act on; "OPEN CLEAN
+# auto-merge=false" names the cause (ace#2004), and "queue=true queued=false"
+# says the PR never reached the queue at all — a different problem with a
+# different fix from one that is queued and merely slow.
+echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus,autoMergeRequest --jq '.state+" "+.mergeStateStatus+" auto-merge="+(.autoMergeRequest != null | tostring)') queue=$qenabled queued=$queued entry=$qstate pos=$qpos"
 exit 3

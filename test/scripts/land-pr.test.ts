@@ -84,6 +84,78 @@ describe('scripts/land-pr.sh', () => {
     expect(guard).toBeLessThan(dirty);
   });
 
+  //
+  // Merge queues. `main` has none yet; one is about to be enabled to close
+  // ace#1776/#1914. The behavioural cases live in `land-pr-refspec.test.ts`,
+  // which models a queued PR in its `gh` stub. These pin the SHAPE those cases
+  // depend on — the same reason the arm-site ratchets above exist.
+  //
+  describe('merge queue', () => {
+    it('DETECTS the queue rather than assuming there is none', () => {
+      // `mergeQueueEntry` is null when no queue exists, so one read answers for
+      // both worlds and no flag day is needed. It has to be GraphQL:
+      // `gh pr view --json` exposes neither field (gh 2.88.1).
+      expect(CODE).toMatch(/isInMergeQueue/);
+      expect(CODE).toMatch(/mergeQueueEntry/);
+      expect(CODE).toMatch(/gh api graphql/);
+    });
+
+    it('decides queued-ness BEFORE it reaches the DIRTY rebase branch', () => {
+      // The whole hazard in one assertion. On a queued PR gh's
+      // `--disable-auto` is a no-op that exits 0 (`inMergeQueue()` runs before
+      // the disable branch, cli/cli v2.88.1 merge.go:543-553, mapped to
+      // `return nil` at merge.go:167), so a script that disarms and then
+      // force-pushes rewrites a head whose merge group is already under test.
+      // The queued branch must therefore short-circuit ahead of DIRTY.
+      const queued = CODE.indexOf('"$queued" = "true"');
+      const dirty = CODE.indexOf('"$m" = "DIRTY"');
+      expect(queued).toBeGreaterThan(-1);
+      expect(dirty).toBeGreaterThan(-1);
+      expect(queued).toBeLessThan(dirty);
+    });
+
+    it('does not spend an attempt on time the QUEUE is spending', () => {
+      // The attempt budget bounds how many times WE rebase against a moving
+      // `main`. A PR in the queue is the queue doing that work, so waiting on
+      // it must not burn the budget — otherwise a PR three deep exhausts MAX
+      // and reports a stall while it is plainly progressing. The `continue`
+      // has to come before the increment.
+      const cont = CODE.indexOf('continue');
+      const bump = CODE.indexOf('attempt=$((attempt + 1))');
+      expect(cont).toBeGreaterThan(-1);
+      expect(bump).toBeGreaterThan(-1);
+      expect(cont).toBeLessThan(bump);
+      // ...and it must still be bounded, or a permanently queued PR spins.
+      expect(CODE).toMatch(/queue_deadline/);
+    });
+
+    it('separates "still queued" from "gave up" with its own exit code', () => {
+      // CLAUDE.md calls "PR queued but actually stuck" the #1 bad handoff. A PR
+      // moving through a queue is the opposite case and must not share exit 3
+      // with it.
+      expect(CODE).toMatch(/exit 5/);
+      expect(SCRIPT).toMatch(/PROGRESS, NOT A STALL/);
+    });
+
+    it('names the queue in the give-up line, not just auto-merge', () => {
+      // "OPEN BLOCKED auto-merge=true" reads as stuck. The same line with
+      // "queue=true queued=false" says the PR never reached the queue at all —
+      // a different problem with a different fix.
+      expect(CODE).toMatch(/gave up after[\s\S]*queue=/);
+    });
+
+    it('keeps `--auto --merge` intact — the strategy flag is not the problem', () => {
+      // Under a queue gh only WARNS "The merge strategy for <branch> is set by
+      // the merge queue" and sets payload.auto anyway (merge.go:298-304).
+      // Making the flag conditional would be worse: without a queue, `--auto`
+      // with no strategy is a HARD non-interactive failure (merge.go:310-312),
+      // so a false-positive detection would leave the PR never armed. This
+      // ratchet exists because "drop --merge under a queue" is the obvious
+      // wrong fix.
+      expect(CODE).toMatch(/--auto --merge/);
+    });
+  });
+
   it('treats a non-version conflict as a human matter, not another retry', () => {
     expect(SCRIPT).toMatch(/non-version file conflicts/);
     expect(SCRIPT).toMatch(/exit 2/);
