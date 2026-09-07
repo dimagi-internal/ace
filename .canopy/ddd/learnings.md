@@ -171,3 +171,97 @@ conclusion is more dangerous than a guess, because it looks like evidence.
   `getBoundingClientRect` geometry, injected probe elements for class resolution). Reading source,
   reading class names, and reasoning from a framework's documented defaults all failed here at least
   once, on a deployment whose build silently diverges from those defaults.
+
+## Run hh-poverty-targeting-answer-quality-2026-08-29-001 (ACE Phase 7, canopy 0.2.450)
+
+### The judges agreed on the symptom and were wrong about the cause
+Thirteen of sixteen iter0 judges reported the first table row sliced under the sticky
+header and prescribed `scroll-margin-top`. The `td` ALREADY had `scrollMarginTop: 118`.
+A live geometry probe found the actual mechanism: the sticky `th`'s containing block is
+the card (an overflow-hidden ancestor), not the viewport, so `top: 58` displaced the
+header DOWN 58px from its natural position — landing 21px inside the first row on both
+dashboards. `top: 0` fixed it (`overlap: false`, verified before/after).
+**A unanimous judge consensus on a REMEDY is not evidence about the CAUSE.** They can
+only see the frame. Measure the mechanism before patching what they name.
+
+### The same probe demoted an `options` finding to `mechanical`
+Five judges across two iterations raised the clipped GPS column as `options` (needing a
+column-priority product call), because a screenshot cannot show why a column is clipped.
+Measurement showed the container was `overflow-x: hidden` with `scrollWidth ==
+clientWidth` and the headers were `white-space: nowrap`; letting headers wrap took both
+tables from 1429/1362px to exactly 1230px with zero overflow. A determinate fix existed
+the whole time and no judge could have found it.
+**When several judges independently return `options` on a LAYOUT finding, probe the
+geometry — the choice they could not make may not be a real choice.**
+
+### Preflight dirties the state the payoff depends on
+`recipe_preflight` walks scenes in order and APPLIES state-changing actions. It had
+already set the disposition, so the recorder's `select` was a no-op re-set: iter0's
+before/after frames differed by 0.12% of pixels (all cursor) and the "discriminating"
+wait_for resolved instantly because its marker was already true. **Order is
+preflight -> reset the mutated state -> record.** Never preflight after the reset.
+
+### An edit that spans a wrapped line silently does nothing
+Two spec edits no-op'd because the target phrase crossed a YAML line break; the script
+still printed success because its assert only checked that SOMETHING changed. Both were
+caught only because a deterministic checker still failed afterwards.
+**Verify an edit with the checker that motivated it, never with the edit script's own
+exit code.** Operate on the joined block, not the raw lines.
+
+### Widening one header clipped the payoff control
+Renaming a column to fix a clarity finding pushed the DECISION column — the entire
+point of the finale — out of its container. Caught by re-measuring after patching, not
+by any judge. **After a copy/label change to a fixed-width layout, re-measure the
+geometry; a text fix can be a layout regression.**
+
+### Weakest-link scoring hides real progress
+Concept/user/arc all read 2.0 at iter0 and 2.0 at iter2 while the underlying
+distribution moved a great deal (visual_polish 2->3 on ALL scenes, persona_coherence
+2->4, arc_shape 2->3, opening_and_close 3->4). Report the per-dimension movement
+alongside the overall, or a genuinely improving run reads as a stalled one.
+
+### The arc lens found what 14 per-scene judges structurally could not
+Both arc hard caps (scenes 1-2 the same surface 12px apart; 5 of 7 scenes one page at
+four scroll offsets) are invisible to a judge holding one screenshot. It also correctly
+separated a PRODUCT constraint (the ops page cannot scroll) from a DIRECTORIAL choice
+(the analysis page scrolls freely). Keep the arc judge gating.
+
+### A passing duplicate-frame check does not mean two scenes are distinct
+iter3 scenes 1-2 differ by 28.95% of pixels — comfortably past the 2% duplicate
+threshold — while `scene_1_page_text.json` and `scene_2_page_text.json` are BYTE-IDENTICAL
+including `render_id`. The page had simply shifted 12px. The pixel check measures
+whether the camera moved; only the arc judge could see that nothing NEW was shown.
+**Pair the pixel check with a page_text/render_id equality check** — identical text with
+a large pixel delta is the signature of a camera move that reveals nothing.
+
+### The duplicate-frame gate compares ADJACENT pairs only, and that is the wrong window
+This loop produced a duplicate analysis-page frame in THREE consecutive iterations —
+iter1 (6,7), iter2 (5,7) at 0.0026, iter3 (3,5) at EXACTLY 0.0000 over 1,296,000 px —
+and `duplicate_frames` reported PASS every time, because every instance was
+non-adjacent. Each of my fixes moved the duplicate to a new index instead of removing
+it. The mechanism is deterministic and index-independent: several scenes issue
+`scroll_to css:table`, which always resolves to the same offset, so any two of them
+collide by construction. Only the ARC judge caught it, all three times.
+**Run an ALL-PAIRS diff, not adjacent-only** (six lines using the module's own
+`_difference`/`_scene_pngs`), and treat a bare `scroll_to css:table` on a page that
+also has row-targeted beats as a spec smell. Filed as a DEFER finding against
+canopy's `scripts/ddd/duplicate_frames.py`.
+
+### I introduced a regression and it became the gating cap
+The `top: 58 -> top: 0` sticky fix removed the row overlap (measured, both states) and
+in doing so let the header slide under the 64px app bar when scrolled. By iter3 that
+single side effect was capping FOUR of seven concept scenes — visual_polish 2 on s3/s5
+(nav slicing the SCORE DISTRIBUTION label) and motion_friction 2 on s4/s6 (KPI numerals
+sliced, seventh row clipped) — i.e. the thing holding concept at 2.0 was my own fix.
+**After shipping a fix, check the NEXT iteration's caps for its fingerprint** rather
+than assuming the remaining caps are pre-existing.
+
+### Do not hand a judge a measurement without re-checking it still holds
+I told the iter3 arc judge the ops page was 912px against a 900px viewport (~12px of
+scroll). It measured ~66px of actual movement and said so. The 912 figure was taken
+BEFORE the header-wrap change altered the page height. A stale measurement passed to a
+judge as fact is worse than no measurement, because the judge reasons from it.
+- [2026-09-02T19:27:05Z] hh-poverty-targeting-census-sweep iter2: the arc judge VACATED its own iteration-1 structural_ceiling. It had claimed the operations dashboard fits one viewport and capped visual_variety as a PRODUCT limit; re-derived at 1440x900 it returns capped_by_ceiling=[] with all five dimensions fixable_in_spec. A ceiling claim from a stalled iteration is a hypothesis, not a fact — always re-derive it rather than carrying it forward.
+- [2026-09-02T19:27:05Z] canopy walkthrough: scroll_to centres its target unconditionally (window.scrollTo top = y + scrollY - innerHeight/2). A target near page top clamps to scrollTop 0, so the scene silently films the PREVIOUS scene frame. Two DDD iterations lost to this. Anchor a scene on content BELOW the fold-line you want, never on a section heading, and verify with an all-pairs pixel diff — the bundled duplicate_frames gate only compares CONSECUTIVE pairs.
+- [2026-09-02T19:27:05Z] DDD loop: raising video_viewport_height fixes below-the-fold findings but SHRINKS scroll range and can collapse two scenes into one frame (1359px page at 900px viewport = 459px of range). Measure scrollHeight before bumping the viewport, and re-diff all pairs after.
+- [2026-09-02T19:27:05Z] DDD concept gate: CONCEPT_GATE_MAX_DEFERRALS=1 is spent per RUN, not per iteration. A run whose iteration-1 judge round died mid-assembly still burns its deferral, so the next completed iteration opens the gate with its own mechanical findings unapplied. Worth knowing before assuming a stop_concept_change means no mechanical work is left.
