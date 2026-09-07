@@ -14,8 +14,8 @@ How Dimagi external documents *read* — the voice, tone, and language conventio
 - **Plain modal verbs.** Use `will` for commitments, `may` for permissions, `must` for hard requirements. Avoid `shall` (legal-archaic) and avoid stacking modals like `would be required to`.
 
 Example:
-- Don't write: `The Partner shall be required to ensure that all samples shall be delivered…`
-- Do write: `The Partner will deliver all samples within 72 hours…`
+- Don't write: `The partner shall be required to ensure that all samples shall be delivered…`
+- Do write: `The partner will deliver all samples within 72 hours…`
 
 ---
 

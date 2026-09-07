@@ -9,6 +9,8 @@
 
 ## 1. Background
 
+{{partner_first_reference}} is the implementing partner for the work described in this Work Order.
+
 {{background_body}}
 
 ## 2. Scope of Work
