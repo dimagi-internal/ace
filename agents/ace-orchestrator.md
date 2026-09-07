@@ -1399,11 +1399,35 @@ ever disagrees with it.
   only** — `## Archive` is never read back and never inlined (see
   `skills/idea-to-pdd/SKILL.md` for the two-section shape). Above
   `OPEN_QUESTIONS_INLINE_CAP_CHARS` (8,000 chars, exported from
-  `lib/open-questions-inline.ts`), pass the `file_id` plus the most recent open
-  rows rather than the whole section, and **name the truncation at the Phase
-  1→2 pause** so the run states what it did not read. Tripping the cap is
-  itself a signal the ledger needs pruning — resolved rows belong under
-  `## Archive`.
+  `lib/open-questions-inline.ts`), pass the `file_id` plus a **ranked** subset
+  of the open rows rather than the whole section. Tripping the cap is itself a
+  signal the ledger needs pruning — resolved rows belong under `## Archive`.
+
+  **Rank by the row's own `blocking:` field, never by recency
+  (dimagi-internal/ace#2115).** Call `selectOpenRows({ section })` from
+  `lib/open-questions-inline.ts` — do NOT hand-roll the cut. It orders rows
+  `Go/no-go` first, then `Before Phase <N>` by ascending N, then everything
+  else (`Before closeout`, `Before expansion`, `Post-pilot`, `Non-blocking`,
+  or no `blocking:` at all), using `raised_by` recency only as the
+  within-tier tiebreak, and it stops at the first row that does not fit
+  rather than squeezing smaller low-priority rows in behind it. `## Open` is
+  a live work list, so a row is OLD precisely because nobody has answered it:
+  cutting by recency drops the long-standing blockers and keeps the
+  freshly-raised detail. Measured on `spark-facilitator` (run
+  `20260906-2233`, 21 rows / 15,187 chars): recency-first dropped the
+  ledger's only `Go/no-go` row and three rows gating phases 3, 4 and 6 —
+  phases that run was about to execute — while keeping a row whose own
+  `blocking:` field says it is non-blocking for the pilot window.
+
+  **Name the returned `omittedIds` IN the inline block, and again at the
+  Phase 1→2 pause.** A row that is not inlined cannot be reconciled, and
+  ace#1201 exists to force Phase 1 to state, per pre-existing question,
+  whether this run resolves / carries forward / contradicts it — so a silent
+  omission quietly exempts exactly the rows that most needed it, with a PDD
+  emitted either way. `selectOpenRows` returns `omittedIds` for this reason;
+  paste them, with the `file_id`, so Phase 1 can say "N carried forward,
+  unreconciled — see `<file_id>`" instead of never knowing they existed. The
+  returned `reason` is written to be pasted straight into the pause summary.
 
 Each branch's `reason` string is written to be pasted straight into the Phase
 1→2 pause summary.
