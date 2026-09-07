@@ -29,6 +29,8 @@ import {
   OPEN_QUESTIONS_INLINE_CAP_CHARS,
   classifyOpenQuestionsInline,
   extractOpenSection,
+  parseOpenRows,
+  selectOpenRows,
   unescapeDriveMarkdown,
   type OpenQuestionsInlineMode,
 } from '../../lib/open-questions-inline.js';
@@ -344,5 +346,297 @@ describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)'
     const skill = read('skills/idea-to-pdd/SKILL.md');
     expect(skill, 'the skill must name the export format').toContain("exportAs: 'text/markdown'");
     expect(skill, 'the skill must name the extractor').toContain('extractOpenSection');
+  });
+});
+
+/**
+ * dimagi-internal/ace#2115 — the cap said HOW MUCH, never WHICH, and the prose
+ * that filled the gap said "the most recent open rows".
+ *
+ * `## Open` is a live work list a run only ever leaves rows on, so a question
+ * is old BECAUSE nobody has answered it. Recency-first truncation therefore
+ * cuts the long-standing blockers and keeps the freshly-raised detail — the
+ * precise inversion of what the cap should protect.
+ *
+ * The fixture below is not an invented shape: it is the VERBATIM
+ * `exportAs: 'text/markdown'` read of `ACE/spark-facilitator/open-questions.md`
+ * (file `1-ALB_Yax5xfDB6U1VpKY3eEjVFfoVjIXsvM_dopIEbo`, revision 18) taken
+ * during run `20260906-2233` — the read that produced the issue. Its `## Open`
+ * section is 15,187 chars over 21 rows, so the 8,000-char cap fires, and
+ * selecting most-recent-first drops the ledger's ONLY `Go/no-go` row while
+ * keeping `proposal-generator-boundary`, whose own `blocking:` field calls it
+ * non-blocking for the pilot window.
+ */
+describe('ranking the ## Open rows before the cut (#2115)', () => {
+  const sparkLedger = () =>
+    fs.readFileSync(
+      path.join(process.cwd(), 'test/fixtures/open-questions/spark-facilitator.text-markdown.md'),
+      'utf8',
+    );
+
+  const sparkOpenSection = () => {
+    const outcome = extractOpenSection(sparkLedger());
+    if (outcome.status !== 'ok') throw new Error(`fixture unreadable: ${outcome.status}`);
+    return outcome.section;
+  };
+
+  it('the fixture really is the over-cap, recency-hostile case (ground truth)', () => {
+    const section = sparkOpenSection();
+    expect(section.length, '## Open chars').toBeGreaterThan(OPEN_QUESTIONS_INLINE_CAP_CHARS);
+    expect(section.length).toBe(15_187);
+
+    const { rows } = parseOpenRows(section);
+    expect(rows, '21 open rows').toHaveLength(21);
+
+    // The go/no-go row is in the OLDEST cohort; the row that survived
+    // recency-first truncation is in the NEWEST one. That inversion is the bug.
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    expect(byId.get('cbf-smartphones-and-connectivity')?.tier).toBe('go-no-go');
+    expect(byId.get('cbf-smartphones-and-connectivity')?.raisedBy).toBe('20260817-1610');
+    expect(byId.get('proposal-generator-boundary')?.raisedBy).toBe('20260828-0703');
+
+    const oldest = [...rows].sort((a, b) => (a.raisedBy ?? '').localeCompare(b.raisedBy ?? ''))[0];
+    expect(oldest.raisedBy, 'the go/no-go sits in the oldest cohort').toBe('20260817-1610');
+  });
+
+  it('the Go/no-go row survives the 8,000-char cut — the regression', () => {
+    const result = selectOpenRows({ section: sparkOpenSection() });
+
+    expect(result.truncated, 'the cap fires on this ledger').toBe(true);
+    expect(result.inlined.length).toBeLessThanOrEqual(OPEN_QUESTIONS_INLINE_CAP_CHARS);
+
+    // THE assertion. Recency-first dropped this row; ranking keeps it first.
+    expect(result.includedIds, 'the go/no-go row is inlined').toContain(
+      'cbf-smartphones-and-connectivity',
+    );
+    expect(result.includedIds[0], 'and it is inlined FIRST').toBe(
+      'cbf-smartphones-and-connectivity',
+    );
+    expect(result.inlined, 'its text really is in the block').toContain(
+      'Do the CBFs who would be in the pilot have smartphones',
+    );
+  });
+
+  it('rows gating phases this run executes outrank rows that gate nothing yet', () => {
+    const result = selectOpenRows({ section: sparkOpenSection() });
+
+    // Recency-first dropped all four of these; three gate phases 3/4 that the
+    // run was about to execute.
+    for (const id of [
+      'fiyp-media-assets', // Before Phase 3
+      'gps-capture-acceptability', // Before Phase 3
+      'lookup-table-provisioning', // Before Phase 3
+      'pilot-district-and-communities', // Before Phase 4
+    ]) {
+      expect(result.includedIds, id).toContain(id);
+    }
+
+    // ...and the rows whose own blocking field defers them are the ones cut.
+    for (const id of [
+      'proposal-generator-boundary', // "Non-blocking for the Goal Setting pilot"
+      'rwanda-two-cbf-attribution', // Before expansion
+      'progression-affects-payment', // Post-pilot
+      'assessment-item-rotation', // Non-blocking
+    ]) {
+      expect(result.omittedIds, id).toContain(id);
+    }
+  });
+
+  it('every row is accounted for — nothing vanishes between the two lists', () => {
+    const section = sparkOpenSection();
+    const { rows } = parseOpenRows(section);
+    const result = selectOpenRows({ section });
+
+    expect(result.includedIds.length + result.omittedIds.length).toBe(rows.length);
+    expect(new Set([...result.includedIds, ...result.omittedIds]).size).toBe(rows.length);
+    expect(result.reason, 'the omitted ids are named in the pasteable reason').toContain(
+      'assessment-item-rotation',
+    );
+    expect(result.reason).toContain('NOT reconciled by this run');
+  });
+
+  /**
+   * The minimal shape of the same defect, so the rule is legible without the
+   * 21-row ledger: oldest row is the Go/no-go, newest is Non-blocking, and the
+   * budget only fits one.
+   */
+  const row = (id: string, raisedBy: string, blocking: string, pad = 0) =>
+    `- **id:** ${id} **question:** Q? ${'x'.repeat(pad)} **raised_by:** ${raisedBy} ` +
+    `**owner:** operator **blocking:** ${blocking}`;
+
+  it('oldest Go/no-go beats newest Non-blocking when only one fits', () => {
+    const section = [
+      '## Open',
+      '',
+      row('newest-detail', '20260901-0000', 'Non-blocking', 200),
+      '',
+      row('oldest-blocker', '20260101-0000', 'Go/no-go. The pilot cannot run otherwise.', 200),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 400 });
+    expect(result.includedIds).toEqual(['oldest-blocker']);
+    expect(result.omittedIds).toEqual(['newest-detail']);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('Before Phase N sorts ASCENDING — the phase the run reaches first wins', () => {
+    const section = [
+      '## Open',
+      '',
+      row('late', '20260901-0000', 'Before Phase 8'),
+      '',
+      row('early', '20260101-0000', 'Before Phase 3'),
+      '',
+      row('middle', '20260801-0000', 'Before Phase 6'),
+    ].join('\n');
+
+    const { includedIds } = selectOpenRows({ section, capChars: 10_000 });
+    expect(includedIds).toEqual(['early', 'middle', 'late']);
+  });
+
+  it('the full tier order is go/no-go → Before Phase N → everything else', () => {
+    const section = [
+      '## Open',
+      '',
+      row('non-blocking', '20260901-0000', 'Non-blocking'),
+      '',
+      row('post-pilot', '20260902-0000', 'Post-pilot'),
+      '',
+      row('closeout', '20260903-0000', 'Before closeout'),
+      '',
+      row('expansion', '20260904-0000', 'Before expansion'),
+      '',
+      row('phase-4', '20260101-0000', 'Before Phase 4'),
+      '',
+      row('gng', '20260102-0000', 'Go/no-go. Everything stops.'),
+    ].join('\n');
+
+    const { includedIds } = selectOpenRows({ section, capChars: 10_000 });
+    expect(includedIds.slice(0, 2)).toEqual(['gng', 'phase-4']);
+    // Within the trailing tier, recency is the tiebreak and only there.
+    expect(includedIds.slice(2)).toEqual(['expansion', 'closeout', 'post-pilot', 'non-blocking']);
+  });
+
+  it('recency is the WITHIN-tier tiebreak, newest first', () => {
+    const section = [
+      '## Open',
+      '',
+      row('older', '20260101-0000', 'Before Phase 3'),
+      '',
+      row('newer', '20260901-0000', 'Before Phase 3'),
+    ].join('\n');
+
+    expect(selectOpenRows({ section, capChars: 10_000 }).includedIds).toEqual(['newer', 'older']);
+  });
+
+  it('a row with no blocking: field lands in the trailing tier, not the front', () => {
+    const section = [
+      '## Open',
+      '',
+      '- **id:** unlabelled **question:** Q? **raised_by:** 20260901-0000 **owner:** operator',
+      '',
+      row('labelled', '20260101-0000', 'Before Phase 8'),
+    ].join('\n');
+
+    const { includedIds } = selectOpenRows({ section, capChars: 10_000 });
+    expect(includedIds).toEqual(['labelled', 'unlabelled']);
+  });
+
+  it('under the cap it is a no-op: every row inlined, nothing omitted', () => {
+    const section = ['## Open', '', row('a', '20260101-0000', 'Non-blocking')].join('\n');
+    const result = selectOpenRows({ section });
+    expect(result.truncated).toBe(false);
+    expect(result.omittedIds).toEqual([]);
+    expect(result.includedIds).toEqual(['a']);
+    expect(result.inlined).toContain('## Open');
+  });
+
+  it('the fill STOPS at the first row that does not fit — no small-row jumping', () => {
+    // A short Non-blocking row must never displace a long Before-Phase-3 one.
+    const section = [
+      '## Open',
+      '',
+      row('big-blocker', '20260101-0000', 'Before Phase 3', 400),
+      '',
+      row('tiny-trivia', '20260901-0000', 'Non-blocking'),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 200 });
+    expect(result.includedIds).toEqual([]);
+    expect(result.omittedIds).toEqual(['big-blocker', 'tiny-trivia']);
+  });
+
+  it('the ## Open heading and any preamble always ride along', () => {
+    const section = [
+      '## Open',
+      '',
+      'A note the ledger carries above its rows.',
+      '',
+      row('a', '20260101-0000', 'Go/no-go. Stop.'),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 10_000 });
+    expect(result.inlined.startsWith('## Open')).toBe(true);
+    expect(result.inlined).toContain('A note the ledger carries above its rows.');
+  });
+
+  it('a section with no rows is passed through, not mangled', () => {
+    const result = selectOpenRows({ section: '## Open\n\n_None._', capChars: 10 });
+    expect(result.inlined).toBe('## Open\n\n_None._');
+    expect(result.omittedIds).toEqual([]);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('a row with no id: is still reported when omitted — never silently dropped', () => {
+    const section = [
+      '## Open',
+      '',
+      '- **id:** kept **question:** Q? **raised_by:** 20260101-0000 **blocking:** Go/no-go. Stop.',
+      '',
+      `- **question:** ${'y'.repeat(200)} **raised_by:** 20260901-0000 **blocking:** Non-blocking`,
+    ].join('\n');
+
+    // The second bullet carries no `id:`, so it is not a row start — it folds
+    // into the first row. Give it one so it parses as its own row.
+    const withId = section.replace('- **question:**', '- **id:**  **question:**');
+    const result = selectOpenRows({ section: withId, capChars: 150 });
+    expect(result.omittedIds.some((id) => id.startsWith('<unidentified row'))).toBe(true);
+  });
+
+  it('Drive\'s escaped raised\\_by still parses (the export really escapes it)', () => {
+    const raw = sparkLedger();
+    expect(raw, 'the exporter really does escape').toContain('raised\\_by');
+    // extractOpenSection unescapes, but the field regexes tolerate both forms
+    // so a caller that hands over a raw slice is not silently mis-ranked.
+    const escaped = '## Open\n\n- **id:** a **raised\\_by:** 20260101-0000 **blocking:** Go/no-go. Stop.';
+    const { rows } = parseOpenRows(escaped);
+    expect(rows[0].raisedBy).toBe('20260101-0000');
+    expect(rows[0].tier).toBe('go-no-go');
+  });
+});
+
+describe('the executing prose ranks rather than truncating by recency (#2115)', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+
+  it('the orchestrator Phase 1 block names the ranker and drops "most recent"', () => {
+    const doc = read('agents/ace-orchestrator.md');
+    const start = doc.indexOf('### Phase 1: Idea to Design');
+    const phase1 = doc.slice(start, doc.indexOf('### Phase 2:', start));
+
+    expect(phase1, 'Phase 1 must name the selector').toContain('selectOpenRows');
+    expect(phase1, 'Phase 1 must name the sort key').toContain('blocking:');
+    expect(phase1, 'Phase 1 must require the omitted ids be named').toContain('omittedIds');
+    // The rule this replaces. "most recent" must not survive anywhere in the
+    // block, or the doc reverts the fix by being re-read.
+    expect(phase1.toLowerCase(), 'the recency rule is gone').not.toContain('most recent');
+  });
+
+  it('the classifier reason no longer prescribes recency either', () => {
+    const decision = classifyOpenQuestionsInline({
+      charCount: 26_577,
+      oppRootNames: REAL_OPP_ROOT,
+    });
+    expect(decision.reason.toLowerCase()).not.toContain('most recent');
+    expect(decision.reason).toContain('selectOpenRows');
   });
 });
