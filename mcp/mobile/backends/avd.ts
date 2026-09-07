@@ -26,7 +26,7 @@ import {
   resolveAvdPoolFreedom,
   type PsRow,
 } from '../../../lib/mobile-contention.js';
-import { scopeOrphanQemuKills } from '../../../lib/avd-orphan-scope.js';
+import { scopeOrphanQemuKills, scopePortRescueKills } from '../../../lib/avd-orphan-scope.js';
 import {
   applyBootClaims,
   planExhaustedBootClaim,
@@ -1400,6 +1400,27 @@ export class AvdBackend {
         // We additionally verify each PID is a qemu-system process
         // before killing — defensive against the unlikely case where
         // some same-user non-qemu service is bound to this port.
+        //
+        // AND IT MUST ASK THE SAME QUESTION STEP 1 ASKED (ace#1821, cond. 3).
+        // This pass used to consult no session lock at all while logging
+        // "(no session lock)" as though it had. Two consecutive lines from one
+        // live dispatch on 2026-09-06:
+        //
+        //   sparing qemu pid=72277 (held-by-live-session) … ace#1821.
+        //   killing same-user orphan qemu pid=72277 on port 5554 (no session lock)
+        //
+        // Step 1 attributed the pid to a LIVE peer and spared it; twenty lines
+        // later this pass killed it anyway. `consolePort` defaults to 5554 —
+        // the port the FIRST session on a host is allocated — so PR #2000's
+        // protection was bypassed in the most ordinary two-session arrangement
+        // rather than a rare one.
+        //
+        // `scopePortRescueKills` is the SAME attribution with exactly one rule
+        // relaxed: candidates Step 1 spared as *unattributable* are killable
+        // here, because an `lsof` LISTEN hit on a specific port is the positive
+        // ownership evidence Step 1 did not have. A LIVE claim is not an
+        // absence, so it is not the rescue's to override. See
+        // `lib/avd-orphan-scope.ts` § THE SECOND PASS.
         let killedSameUserOrphan = false;
         const lsof = await this.shell('lsof', [
           '-nP',
@@ -1413,15 +1434,53 @@ export class AvdBackend {
               .map((s) => parseInt(s.trim(), 10))
               .filter((n) => Number.isFinite(n) && n > 0)
           : [];
+        // Best-effort, exactly as in Step 1 — and unlike Step 1, a failure here
+        // cannot cost a peer its emulator. The join key comes from
+        // `probedConsolePort`, which `lsof` just proved, so an unreadable
+        // process table degrades the DETAIL of a verdict and never its
+        // correctness; `listLiveSessionLocks` is a directory read that does not
+        // depend on `ps` at all.
+        const rescuePsRows = sameUserPids.length
+          ? await this.readPsRows().catch(() => [])
+          : [];
+        const rescueSelfPort = sameUserPids.length
+          ? await this.getAllocatedPorts()
+              .then((p) => p.emulatorConsolePort)
+              .catch(() => null)
+          : null;
+        const rescueScope = scopePortRescueKills({
+          listeningPids: sameUserPids,
+          probedConsolePort: consolePort,
+          processes: parseEmulatorProcesses(rescuePsRows),
+          liveClaims: listLiveSessionLocks().map((l) => ({
+            mcpPid: l.mcp_pid,
+            consolePort: l.emulator_port,
+            avdName: l.avd_name,
+            oppSlug: l.opp_slug,
+          })),
+          selfConsolePort: rescueSelfPort,
+        });
+        const rescueVerdict = new Map(rescueScope.verdicts.map((v) => [v.pid, v]));
         for (const pid of sameUserPids) {
           const ps = await this.shell('ps', ['-p', String(pid), '-o', 'command=']).catch(
             () => null,
           );
           const cmd = ps && ps.exitCode === 0 ? ps.stdout.trim() : '';
           if (!/qemu-system/.test(cmd)) continue;
+          const v = rescueVerdict.get(pid);
+          if (v && !v.kill) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[ace-mobile] sweepStaleEmulatorState: sparing qemu pid=${pid} on port ` +
+                `${consolePort} in the port rescue (${v.reason}) — ${v.detail}`,
+            );
+            continue;
+          }
           // eslint-disable-next-line no-console
           console.warn(
-            `[ace-mobile] sweepStaleEmulatorState: killing same-user orphan qemu pid=${pid} on port ${consolePort} (no session lock)`,
+            `[ace-mobile] sweepStaleEmulatorState: killing same-user orphan qemu ` +
+              `pid=${pid} on port ${consolePort} (${v?.reason ?? 'orphan'}) — ` +
+              `${v?.detail ?? 'no live session lock claims this console port'}`,
           );
           try {
             process.kill(pid, 'SIGKILL');
