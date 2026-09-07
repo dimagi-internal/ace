@@ -462,6 +462,23 @@ if [ "$PREFLIGHT" = "1" ]; then
   # on its own. Status stays `fail` after a successful heal: MCP subprocesses
   # bind at session start, so the restart remains mandatory.
   PF_NOVA_HDR_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
+
+  # nova_scopes — ace#174. In PREFLIGHT deliberately, not only in the full
+  # doctor run: preflight is what /ace:run gates on before Phase 1, and the
+  # whole saving is catching a partially-scoped key there rather than at
+  # Phase 3 app-deploy after a ~25-minute Nova build.
+  PF_NOVA_SCOPES_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-nova-scopes.ts --format=yaml 2>/dev/null || true)"
+  if [ -z "$PF_NOVA_SCOPES_YAML" ]; then
+    PF_NOVA_SCOPES_YAML="nova_scopes:
+  status: skip
+  reason: unexpected-response
+  scope: \"probe did not run\"
+  hq_key_bound: null
+  domains: 0
+  required_scope: null
+  detail: \"probe produced no output (run /ace:update)\"
+  remediation: \"\""
+  fi
   if [ -z "$PF_NOVA_HDR_YAML" ]; then
     PF_NOVA_HDR_YAML="nova_header_readiness:
   status: skip
@@ -569,6 +586,7 @@ nova_needs_auth_cache:
   recurrence: ${PF_NOVA_CACHE_RECURRENCE}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 ${PF_NOVA_HDR_YAML}
+${PF_NOVA_SCOPES_YAML}
 ${PF_OCS_GEN_YAML}
 EOF
 
@@ -2245,6 +2263,36 @@ if [ -n "$NOVA_KEY_VAL" ]; then
   esac
 else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
+fi
+
+# 7a-ii. nova_scopes — the question nova_auth structurally cannot answer
+# (dimagi-internal/ace#174, the oldest open issue in the repo).
+#
+# `nova_auth` POSTs `initialize` and passes on any 2xx: that proves the
+# TRANSPORT accepted the bearer, not that the bearer carries the per-tool
+# scopes Phase 3 spends its budget on. `turmeric/20260508-1951` halted at
+# app-deploy with `error_type: scope_missing, required_scope: nova.hq.read` on
+# `get_hq_connection` with nova_auth green — after Phase 1 and the first step
+# of Phase 3 had already run. One ~100ms tools/call settles it up front, and
+# its `configured` flag also catches the second late failure (no HQ API key
+# bound in Nova's settings, which upload_app_to_hq needs).
+#
+# It runs AFTER nova_auth so a bad bearer is reported by the probe that owns
+# that fact, and it is SKIPPED silently when NOVA_API_KEY is unset — same
+# pattern as nova_auth.
+#
+# SCOPE, stated on every verdict rather than left to be inferred: this is a
+# curl from the doctor subprocess using the CONFIGURED key. It says nothing
+# about which credential the live session bound — measured on
+# `bednet-check-2-visit/20260823-2210`, where this exact call returned
+# `configured:true` while the in-session Nova connection was unusable. That
+# question belongs to nova_header_readiness below, which outranks this line.
+if [ -f "$ROOT/scripts/doctor-nova-scopes.ts" ]; then
+  NOVA_SCOPES_LINES="$(cd "$ROOT" && npx tsx scripts/doctor-nova-scopes.ts --format=lines 2>/dev/null || true)"
+  # Printed verbatim: the script emits the exact PASS/WARN/FAIL/INFO shape
+  # pass()/warn()/fail() produce, so the end-of-run summary counts it with no
+  # bookkeeping here — same contract as nova_header_readiness below.
+  [ -n "$NOVA_SCOPES_LINES" ] && printf '%s\n' "$NOVA_SCOPES_LINES"
 fi
 
 # 7a2. gog_auth — GOG CLI (Google services) for the ACE Gmail identity.
