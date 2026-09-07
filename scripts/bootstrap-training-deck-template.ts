@@ -72,7 +72,7 @@ import {
   chromeRequests,
   chromeLogoRequest,
   layoutMaskRequests,
-  isDecorativeLeftover,
+  decorativeLeftoverIds,
 } from '../lib/training-deck-stencil-geometry.js';
 
 // ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v6.0 — uniform chrome, dark dividers, centred bodies)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v6.1 — uniform chrome, dark dividers, centred bodies)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -268,8 +268,9 @@ async function main(): Promise<void> {
     const stripDecShapesHere = STRIP_DEC_SHAPES_ON.has(stencilKey);
     const uniformChromeHere = UNIFORM_CHROME_ON.has(stencilKey);
 
+    const elements = s2.pageElements ?? [];
     const doomed = new Set<string>();
-    for (const el of s2.pageElements ?? []) {
+    for (const el of elements) {
       if (!el.objectId) continue;
       // Text-bearing shapes: always (we re-create our own).
       if (el.shape?.text) { doomed.add(el.objectId); continue; }
@@ -292,11 +293,18 @@ async function main(): Promise<void> {
         const shapeType = el.shape.shapeType;
         if (shapeType && shapeType !== 'TEXT_BOX') { doomed.add(el.objectId); continue; }
       }
-      // Generic sweep: tiny decorative clone-leftovers on EVERY stencil (the
-      // 6x6pt Dimagi walkthrough ellipse class). Siblings are passed so
-      // connector-anchored dots are spared.
-      if (isDecorativeLeftover(el, s2.pageElements ?? [])) doomed.add(el.objectId);
     }
+
+    // Generic sweep, SECOND pass: tiny decorative clone-leftovers (the 6x6pt
+    // Dimagi walkthrough ellipse class). `isDecorativeLeftover` spares an
+    // ellipse whose slide also holds a LINE, on the theory that it is a
+    // functional diagram node — so the siblings it is shown must be the ones
+    // that SURVIVE this strip, not the ones we started with. Shown the raw
+    // list, the walkthrough page's own callout leader (itself queued for
+    // deletion two rules up) vouched for the stray dot, and mobile_zoom
+    // shipped with a floating blue dot beside its title — observed in the
+    // v6.0 mint's own render before this pass existed.
+    for (const leftoverId of decorativeLeftoverIds(elements, doomed)) doomed.add(leftoverId);
     deleteIdsByPageId.set(id, doomed);
   }
 

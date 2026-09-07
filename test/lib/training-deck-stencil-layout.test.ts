@@ -46,6 +46,7 @@ import {
   elementBounds,
   chromeRequests,
   chromeLogoRequest,
+  decorativeLeftoverIds,
   layoutMaskRequests,
   buildCoverTextBoxes,
   buildSectionTextBoxes,
@@ -422,5 +423,43 @@ describe('the two dark full-bleed stencils', () => {
     expect(b.sc_title.color).toEqual(COLOR_WHITE);
     expect(isLegibleOn(b.sc_title.color, 'dark')).toBe(true);
     expect(b.sc_title.y!).toBeGreaterThanOrEqual(WORDMARK_BOTTOM);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The connector guard has to see what SURVIVES the strip
+// ---------------------------------------------------------------------------
+
+describe('decorativeLeftoverIds', () => {
+  /**
+   * The walkthrough source page (`g157d905314c_0_17`), verbatim and reduced
+   * to the four elements that matter: the phone mockup, the callout leader
+   * that annotates it, the 6x6pt stray ellipse, and the accent bar.
+   *
+   * Both the mockup and its leader are stripped on this stencil. If the
+   * ellipse's connector guard is shown the RAW element list, the doomed
+   * leader vouches for the dot and it survives — which is what shipped on
+   * `mobile_zoom` in the v6.0 mint: a floating blue dot beside the title.
+   */
+  const dot: PageElementLike = el('ELLIPSE', 3_708_875, 1_393_800, 75_600, 75_600);
+  const leader: PageElementLike = el('LINE', 1_962_297, 1_431_600, 1_781_940, 1_103_658);
+  const mockup: PageElementLike = el('IMAGE', 1_311_025, 1_246_425, 1_682_700, 3_462_900);
+  const bar: PageElementLike = el('RECTANGLE', 67_208, 175_775, -68_400, 708_000);
+  const page = [mockup, leader, dot, bar];
+
+  it('sweeps the stray dot once its connector is itself being deleted', () => {
+    const doomed = new Set([mockup.objectId!, leader.objectId!, bar.objectId!]);
+    expect(decorativeLeftoverIds(page, doomed)).toEqual([dot.objectId]);
+  });
+
+  it('still spares a dot whose connector survives', () => {
+    // The guard's original purpose: a genuine diagram node on a slide whose
+    // connectors are staying.
+    expect(decorativeLeftoverIds(page, new Set([mockup.objectId!]))).toEqual([]);
+  });
+
+  it('never re-reports something already queued for deletion', () => {
+    const doomed = new Set([mockup.objectId!, leader.objectId!, dot.objectId!]);
+    expect(decorativeLeftoverIds(page, doomed)).toEqual([]);
   });
 });

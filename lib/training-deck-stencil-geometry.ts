@@ -901,6 +901,32 @@ export const STRIP_LINES_ON: ReadonlySet<StencilKey> = new Set<StencilKey>([
   ...STRIP_IMAGES_ON, 'timeline',
 ]);
 
+/**
+ * The decorative clone-leftovers on a page, given what is ALREADY being
+ * deleted from it.
+ *
+ * `isDecorativeLeftover` spares a small ellipse when its slide also holds a
+ * LINE — the connector guard, on the theory that a dot on a connector is a
+ * functional diagram node. That guard has to be shown the siblings that
+ * SURVIVE the strip, not the ones the page started with: on the walkthrough
+ * source page the only LINE is a callout leader for a mockup that is itself
+ * being deleted, so the raw list has a doomed element vouching for the dot.
+ * Measured on the v6.0 mint: `mobile_zoom` shipped with a floating blue dot
+ * beside its title for exactly that reason.
+ *
+ * @param elements every page element on the slide
+ * @param doomed   objectIds already queued for deletion
+ */
+export function decorativeLeftoverIds(
+  elements: PageElementLike[],
+  doomed: ReadonlySet<string>,
+): string[] {
+  const survivors = elements.filter((el) => el.objectId && !doomed.has(el.objectId));
+  return survivors
+    .filter((el) => !el.shape?.text && isDecorativeLeftover(el, survivors))
+    .map((el) => el.objectId!);
+}
+
 export const STENCIL_TEXT_BUILDERS: Record<StencilKey, (pageId: string) => Array<Record<string, unknown>>> = {
   cover: buildCoverTextBoxes,
   section: buildSectionTextBoxes,
