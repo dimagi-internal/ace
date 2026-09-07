@@ -30,6 +30,9 @@ import {
   SLIDE_H,
   MOBILE_ZOOM_CALLOUTS_RIGHT,
   TITLE_BAND_BOTTOM,
+  BODY_PT,
+  CLOSING_BODY_PT,
+  buildClosingTextBoxes,
 } from '../../lib/training-deck-stencil-geometry.js';
 
 interface Rect { id: string; page: string; kind: 'image' | 'shape'; x: number; y: number; w: number; h: number }
@@ -237,5 +240,35 @@ describe('list markers are not doubled', () => {
     expect(body).toBeDefined();
     expect(body).toContain('1.  Targeting survey (C2)');
     expect(body).not.toContain('1.  1.');
+  });
+});
+
+describe('closing slide: a long support URL must stay transcribable', () => {
+  it('sizes the closing body so a ~90-char URL does not wrap mid-token', () => {
+    const EMU_PER_PT = 12_700;
+    // The real support URL from the shipped deck.
+    const url =
+      'https://www.openchatstudio.com/a/connect-ace/chatbots/' +
+      'a7672bc2-a3b6-4211-95d4-d2caa39f8872/start/';
+
+    const boxes = buildClosingTextBoxes('p');
+    const body = boxes
+      .map((r: any) => r.createShape)
+      .filter(Boolean)
+      .find((s: any) => String(s.objectId).endsWith('_body'));
+    expect(body, 'no closing body box').toBeDefined();
+
+    const widthPt = body.elementProperties.size.width.magnitude / EMU_PER_PT;
+    // A URL is mostly narrow glyphs; ~0.48em is a fair average advance.
+    const charsPerLine = Math.floor(widthPt / (CLOSING_BODY_PT * 0.48));
+
+    expect(
+      charsPerLine,
+      `the closing column fits ~${charsPerLine} chars, so the ${url.length}-char URL ` +
+        `wraps ${Math.ceil(url.length / charsPerLine)} times — at 16pt it broke ` +
+        'mid-token as ".../ch | atbots/... | rt/", which a reader cannot transcribe',
+    ).toBeGreaterThanOrEqual(Math.ceil(url.length / 2));
+
+    expect(CLOSING_BODY_PT).toBeLessThan(BODY_PT);
   });
 });

@@ -227,6 +227,12 @@ export const BODY_H = BODY_BOTTOM - BODY_TOP;
 export const BODY_PT = 16;
 
 /**
+ * Body size for the `closing` stencil only — it renders a long unbreakable
+ * URL in a narrow column, where the deck-wide size wraps it mid-token.
+ */
+export const CLOSING_BODY_PT = 12;
+
+/**
  * Top of the title block on the two full-bleed dark stencils (`cover` and,
  * since the divider was re-sourced, `section`). Clears the source page's
  * dimagi wordmark, which spans y 1_372_350..1_652_625.
@@ -676,7 +682,15 @@ export function buildClosingTextBoxes(pageId: string): Record<string, unknown>[]
     ...textBoxRequests({
       id: `${pageId}_body`, pageId, text: '{{BODY}}',
       x: MARGIN, y: 2_100_000, w: leftW, h: BODY_BOTTOM - 2_100_000,
-      fontSize: BODY_PT, color: COLOR_GRAY, contentAlignment: 'MIDDLE',
+      // NOT the deck-wide BODY_PT. This is the contact slide, and its body
+      // carries a support URL — a single ~90-character token with nowhere to
+      // break. At BODY_PT in a 65%-wide column (the topographic artwork owns
+      // the right ~30%, so there is no width to take) the URL wrapped THREE
+      // times, mid-token, reading "…/ch / atbots/… / rt/". A reader cannot
+      // transcribe that. The closing slide is a handful of lines, so the
+      // smaller size costs nothing here and is not the dead-space case the
+      // rest of the deck was fixed for.
+      fontSize: CLOSING_BODY_PT, color: COLOR_GRAY, contentAlignment: 'MIDDLE',
     }),
   ];
 }
