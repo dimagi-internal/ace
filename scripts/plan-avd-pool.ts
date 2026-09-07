@@ -31,7 +31,12 @@ import {
   tunedConfigDelta,
   type TunedKeyDelta,
 } from '../lib/avd-pool-plan.js';
-import { MARKER_FILENAME } from '../mcp/mobile/avd-provisioned-marker.js';
+import {
+  MARKER_FILENAME,
+  markerProvesFor,
+  readProvisionedMarker,
+} from '../mcp/mobile/avd-provisioned-marker.js';
+import { resolveActiveSelectorMapId } from '../mcp/mobile/recipe-resolver.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -81,20 +86,64 @@ function listAvds(avdHome: string): string[] {
 const configPath = (avdHome: string, name: string): string =>
   path.join(avdHome, `${name}.avd`, 'config.ini');
 
-const isProven = (avdHome: string, name: string): boolean =>
-  existsSync(path.join(avdHome, `${name}.avd`, MARKER_FILENAME));
+/**
+ * Eligible as a `selectAvd` fallback — the SAME predicate the runtime applies
+ * (`mcp/mobile/backends/avd.ts:860`) and the same one `doctor-avd-pool` reports
+ * on (`lib/avd-pool-report.ts`). Borrowed, never re-derived.
+ *
+ * This used to be `existsSync(MARKER_FILENAME)` — marker PRESENCE, which is a
+ * strictly weaker question than marker VALIDITY (ace#2089). A marker written
+ * under a different selector map is not proof for this run — that is the
+ * #591/#593 drift trap, and `markerProvesFor` is the function that says so.
+ *
+ * The two answers diverged in exactly the place it costs the most. Measured on
+ * the affected host 2026-09-06, one `ACE_CONNECT_APK_VERSION` for both:
+ *
+ *     $ doctor-avd-pool
+ *     WARN avd_pool: NO AVD on this host is both provisioned and proven …
+ *       0 eligible, 2 needed
+ *       - ACE_Pixel_API_34: … the marker was recorded under a DIFFERENT
+ *         selector map — not eligible as a fallback
+ *       fix: /ace:mobile-bootstrap --pool 2
+ *
+ *     $ plan-avd-pool --size 2
+ *       reference: ACE_Pixel_API_34 (proven)
+ *       nothing to do.
+ *
+ * The doctor's own remediation is the command that then says there is nothing
+ * to do. `--pool N` never creates or boots anything itself — the command prose
+ * runs those through the MCP "for each member that is missing or `unproven`"
+ * (`commands/mobile-bootstrap.md` step 4) — so `unproven` coming back empty is
+ * not a cosmetic report bug. It is the whole instruction to re-provision, and
+ * it was being suppressed on precisely the hosts that needed it.
+ */
+const isProven = (avdHome: string, name: string, activeMap: string | undefined): boolean =>
+  markerProvesFor(readProvisionedMarker(avdHome, name), activeMap);
+
+/** Separates the two ways to fail `isProven`, because the remediation differs. */
+const unprovenDetail = (avdHome: string, name: string): string =>
+  existsSync(path.join(avdHome, `${name}.avd`, MARKER_FILENAME))
+    ? `${name} (marker recorded under a DIFFERENT selector map)`
+    : `${name} (no ${MARKER_FILENAME})`;
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const existing = listAvds(args.avdHome);
   const plan = planAvdPool(args.base, args.size, existing);
 
+  // Resolved once. It reads the selector-map file, and every member must be
+  // judged against the SAME map — a per-member resolution could in principle
+  // straddle a map change mid-run and report a pool that never existed.
+  const activeMap = resolveActiveSelectorMapId();
+
   // The reference config comes from a PROVEN member where one exists — that is
   // the AVD whose profile has actually completed an ACE bootstrap. Falling back
   // to the base member keeps a first-ever `--pool` run working on a machine
   // that has never registered a test user.
   const reference =
-    plan.present.find((m) => isProven(args.avdHome, m) && existsSync(configPath(args.avdHome, m))) ??
+    plan.present.find(
+      (m) => isProven(args.avdHome, m, activeMap) && existsSync(configPath(args.avdHome, m)),
+    ) ??
     plan.present.find((m) => existsSync(configPath(args.avdHome, m)));
 
   if (!reference) {
@@ -141,12 +190,13 @@ function main(): void {
     size: args.size,
     avd_home: args.avdHome,
     reference,
-    reference_is_proven: isProven(args.avdHome, reference),
+    active_selector_map: activeMap ?? null,
+    reference_is_proven: isProven(args.avdHome, reference, activeMap),
     system_image: systemImage,
     members: plan.members,
     present: plan.present,
     missing: plan.missing,
-    unproven: plan.present.filter((m) => !isProven(args.avdHome, m)),
+    unproven: plan.present.filter((m) => !isProven(args.avdHome, m, activeMap)),
     creates,
     config_drift: drift,
   };
@@ -162,10 +212,12 @@ function main(): void {
   console.log(`  members:   ${plan.members.join(', ')}`);
   console.log(`  present:   ${plan.present.join(', ') || '(none)'}`);
   console.log(`  missing:   ${plan.missing.join(', ') || '(none)'}`);
+  console.log(`  selector map: ${activeMap ?? '(unresolvable — every member reads as NOT proven)'}`);
   if (report.unproven.length) {
     console.log(
-      `  unproven:  ${report.unproven.join(', ')} — no ${MARKER_FILENAME}; ` +
-        `run mobile_register_test_user on each before selectAvd will use it as a fallback`,
+      `  unproven:  ${report.unproven.map((m) => unprovenDetail(args.avdHome, m)).join(', ')}\n` +
+        `             run mobile_register_test_user on each (boot → install → register) ` +
+        `before selectAvd will use it as a fallback`,
     );
   }
   for (const c of creates) console.log(`\n  create ${c.name}:\n    ${c.command}`);
@@ -176,7 +228,20 @@ function main(): void {
   if (!args.applyConfig && drift.length) {
     console.log(`\n  re-run with --apply-config to write those keys.`);
   }
-  if (!plan.missing.length && !drift.length) console.log('\n  nothing to do.');
+  // `unproven` is WORK, and it is the work `--pool` exists to surface: the
+  // command prose boots + registers "each member that is missing or
+  // `unproven`". Printing "nothing to do" over a non-empty unproven list told
+  // the operator the pool was fine while the doctor was warning that no member
+  // was eligible at all — the closed loop in ace#2089. A member counts as done
+  // only once its marker proves for the ACTIVE map.
+  if (!plan.missing.length && !drift.length && !report.unproven.length) {
+    console.log('\n  nothing to do.');
+  } else if (!plan.missing.length && !drift.length) {
+    console.log(
+      `\n  ${report.unproven.length} member(s) exist but are NOT eligible as a ` +
+        `selectAvd fallback. Nothing to create — re-provision them (step 4).`,
+    );
+  }
 }
 
 try {
