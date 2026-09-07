@@ -519,10 +519,40 @@ function extractNumberedSection(wo: string, number: string): string | null {
   const hashes = '#'.repeat(depth);
   // Accept BOTH markdown source (`### 6.1 …`) and gdoc plain-text (`6.1 …`).
   // The `##`/`###` prefix is optional.
+  //
+  // A HEADING MUST CARRY A TITLE, AND THE WHOLE MATCH MUST STAY ON ONE LINE
+  // (dimagi-internal/ace#2124). The original `^\s*…${number}(?:\.|\s)[^\n]*$`
+  // did neither: `^\s*` let a match start at a tab-indented table cell, and the
+  // `\s` alternation matched the `\r` ending a bare cell value. `.match()`
+  // returns the FIRST hit, so the Timeline table's row-number cell `6` shadowed
+  // `6. Payment Terms` 723 characters later, and `payment_unit_matches_entity_grain`
+  // (ace#1946) plus `declared_cap_reaches_contract` both went silently inert on a
+  // real work order while QA reported 14/14. The live template's Timeline table
+  // has cells 1–8, so every numbered section but § 9 was shadowable.
+  //
+  // Three constraints, each load-bearing:
+  //
+  //  1. `HS` — HORIZONTAL whitespace only, never `\s`. `\s` matches `\r` and
+  //     `\n`, so it walks off the end of a cell and onto the next line. The
+  //     obvious repair of merely appending `[A-Za-z]` does NOT close this: on
+  //     `"\n\t6\r\n\tWeeks 13–16\r"` the `\s+` crosses the newline and the
+  //     letter requirement is satisfied by the NEXT cell's `W`.
+  //  2. `[A-Za-z]` — a title must follow. A bare numeric cell has no letter on
+  //     its own line, and it also stops `6.2 Payment Schedule` from answering a
+  //     request for section `6` (the digit `2` is not a letter).
+  //  3. The dotless form (`6 Payment Terms`) requires a literal SPACE, not any
+  //     horizontal whitespace. `6\tWeeks 13–16` — a tab-separated table row — is
+  //     otherwise indistinguishable from a dotless heading. The trade is that a
+  //     heading written as `6<TAB>Payment Terms` is no longer recognised; a
+  //     numbered heading whose separator is a bare tab is not a form ACE emits,
+  //     and admitting it re-opens the class. `6.\tPayment Terms` still works —
+  //     the restriction is only on the DOTLESS branch.
+  const HS = '[^\\S\\r\\n]';
   const headingRe = new RegExp(
-    // Tolerate leading whitespace (gdoc plain-text export indents some
-    // headings with `\t` when they abut a table).
-    `^\\s*(?:${hashes}\\s+)?(?:\\*\\*)?${escapeRegExp(number)}(?:\\.|\\s)[^\\n]*$`,
+    // Tolerate leading horizontal whitespace (gdoc plain-text export indents
+    // some headings with `\t` when they abut a table).
+    `^${HS}*(?:${hashes}${HS}+)?(?:\\*\\*)?${escapeRegExp(number)}` +
+      `(?:\\.${HS}*|[ \\u00a0]+)[A-Za-z][^\\n]*$`,
     'mi',
   );
   const headingMatch = wo.match(headingRe);
