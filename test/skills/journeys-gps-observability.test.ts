@@ -32,6 +32,32 @@ const DELIVER_EVAL = readFileSync(
   join(REPO, 'skills', 'pdd-to-deliver-app-eval', 'SKILL.md'),
   'utf8',
 );
+const LIBRARY = readFileSync(join(REPO, 'skills', '_app-component-library.md'), 'utf8');
+const SECTION = 'Mechanisms a PDD must not assert';
+const TABLE_A = 'Table A — closed at the platform surface';
+
+/**
+ * Minimal local section/row readers. Deliberately NOT imported from
+ * `pdd-must-not-assert-mechanisms.test.ts`: importing a `.test.ts` module makes
+ * vitest execute that file's suites inside this one's run, double-reporting
+ * every assertion it owns.
+ */
+function section(source: string, heading: string, level = 2): string {
+  const open = new RegExp(`^#{${level}}\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+  const start = source.search(open);
+  if (start === -1) return '';
+  const rest = source.slice(start).split('\n').slice(1);
+  const end = rest.findIndex((l) => new RegExp(`^#{1,${level}}\\s`).test(l));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
+function rowsOf(md: string): string[][] {
+  return md
+    .split('\n')
+    .filter((l) => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]+\|\s*$/.test(l))
+    .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
+    .filter((cells) => cells.length > 1 && !/^\*\*?Mechanism/i.test(cells[0]));
+}
 
 /**
  * Everything ABOVE the Change Log. The negative assertions run here only: a
@@ -118,5 +144,25 @@ describe('the journeys pair grades GPS accuracy as observability, not enforcemen
     // apart again — which is the whole defect ace#1619 records.
     expect(DELIVER_EVAL).toMatch(/do NOT credit — and do NOT deduct/i);
     expect(DELIVER_EVAL).toMatch(/unbuildable on both surfaces/i);
+  });
+
+  it('the premise still holds: Table A has not RETIRED the GPS accuracy row', () => {
+    // The rewrite above rests entirely on this row being LIVE. A retired row is
+    // history, so it trips no forward must-not-assert check and nothing would
+    // re-read the rubric that leans on it — the exact stale-premise class
+    // ace#1924 records, here in its Phase-2 form. If upstream ever restores
+    // `gps_radius_meters` or Nova accepts `validate` on `kind: geopoint`, this
+    // fails and the anchor is what must be revisited.
+    //
+    // (Carried over from PR #2082, which derived this fix independently and
+    // lost a 19-second race to PR #2080; this assertion was its one unique
+    // contribution and would otherwise have been lost with it.)
+    const rows = rowsOf(section(section(LIBRARY, SECTION), TABLE_A, 3));
+    const gps = rows.find((cells) => /GPS accuracy/i.test(cells[0] ?? ''));
+
+    expect(gps, 'the GPS accuracy row must exist in Table A').toBeDefined();
+    expect(gps![1], 'it must name the Connect surface').toMatch(/gps_radius_meters/);
+    expect(gps![1], 'it must name the Nova surface').toMatch(/geopoint/);
+    expect(gps![0], 'still live, not retired').not.toMatch(/retired/i);
   });
 });
