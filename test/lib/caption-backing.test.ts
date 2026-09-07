@@ -62,10 +62,48 @@ describe('flattenManifestFrames — both shapes in the wild', () => {
     expect(f[1].duplicate_of).toBe('learn-home');
   });
 
+  it('reads the `journeys[].steps[]` shape — the other one producers write (ace#2104)', () => {
+    // bednet-check-2-visit/20260902-1555 wrote `steps[]`, not `screenshots[]`,
+    // so this flattened to ZERO frames and all 16 per-opp citations came back
+    // `unknown-id` — an UNFIXABLE blocker, since the only way to satisfy it is
+    // to drop every image, which is the hollow deck ace#856 exists to prevent.
+    const f = flattenManifestFrames({
+      journeys: [
+        {
+          journey_id: 'journey-learn-pass',
+          steps: [
+            { step_name: 'learn-home', file_id: '1LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL', shows: 'lesson menu' },
+            { step_name: 'alias', file_id: '1DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD', duplicate_of: 'learn-home' },
+          ],
+        },
+      ],
+    });
+    expect(f.map((x) => x.step)).toEqual(['learn-home', 'alias']);
+    expect(f[1].duplicate_of).toBe('learn-home');
+    expect(f[0].shows).toBe('lesson menu');
+  });
+
+  it('does NOT flatten `superseded_artifacts[]` — citing one stays a defect (ace#1571)', () => {
+    // Forensics from an EARLIER FAILED dispatch. They are not steps of the walk
+    // that shipped, so an artifact citing one must still fail as `unknown-id`.
+    const f = flattenManifestFrames({
+      journeys: [
+        {
+          steps: [{ step_name: 'real', file_id: '1RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', shows: 'the home screen' }],
+          superseded_artifacts: [
+            { step_name: 'journey-learn-FAILURE', file_id: '1SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS', superseded: true },
+          ],
+        },
+      ],
+    });
+    expect(f.map((x) => x.step)).toEqual(['real']);
+  });
+
   it('is inert on junk rather than throwing mid-phase', () => {
     expect(flattenManifestFrames(null)).toEqual([]);
     expect(flattenManifestFrames({})).toEqual([]);
     expect(flattenManifestFrames({ journeys: [{ screenshots: [{ nope: 1 }] }] })).toEqual([]);
+    expect(flattenManifestFrames({ journeys: [{ steps: [{ nope: 1 }] }] })).toEqual([]);
   });
 });
 
