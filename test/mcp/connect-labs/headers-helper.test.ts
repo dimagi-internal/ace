@@ -10,6 +10,7 @@ import {
   extractTokenFromEnv,
   buildAuthHeaders,
   resolveToken,
+  tokenKeyFor,
 } from '../../../scripts/labs-auth-headers.mjs';
 import { derivePluginDataDir as libDerivePluginDataDir } from '../../../lib/plugin-data-dir.js';
 
@@ -159,5 +160,42 @@ describe('labs-auth-headers: executable contract (stdout JSON, exit 0)', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('labs identity selection', () => {
+  const caller = '/x/scripts/labs-auth-headers.mjs';
+
+  it('maps an identity to its own env key', () => {
+    expect(tokenKeyFor('')).toBe('LABS_MCP_TOKEN');
+    expect(tokenKeyFor('jjackson')).toBe('LABS_MCP_TOKEN_JJACKSON');
+    // punctuation a human might type in an identity name must not produce an
+    // env key that can never be set
+    expect(tokenKeyFor('j.jackson-2')).toBe('LABS_MCP_TOKEN_J_JACKSON_2');
+  });
+
+  it('uses ACE token when no identity is named', () => {
+    expect(resolveToken(caller, { LABS_MCP_TOKEN: 'ACE' })).toBe('ACE');
+  });
+
+  it('uses the named identity token when one is set', () => {
+    expect(
+      resolveToken(caller, { LABS_MCP_IDENTITY: 'jjackson', LABS_MCP_TOKEN_JJACKSON: 'JJ' }),
+    ).toBe('JJ');
+  });
+
+  it('NEVER falls back to the ACE token when an identity was named', () => {
+    // The whole point. A silent fallback runs the call as ACE while the operator
+    // believes it is running as someone else — the results come back plausibly
+    // scoped to the wrong account with nothing in the transcript to say so.
+    // A labs PAT *is* the identity (MCPAccessToken.verify -> (token.user, token)),
+    // so borrowing the wrong one silently answers a different question.
+    expect(
+      resolveToken(caller, { LABS_MCP_IDENTITY: 'jjackson', LABS_MCP_TOKEN: 'ACE' }),
+    ).toBeNull();
+  });
+
+  it('emits no Authorization header rather than a bogus one when unresolved', () => {
+    expect(buildAuthHeaders(resolveToken(caller, { LABS_MCP_IDENTITY: 'nobody' }))).toEqual({});
   });
 });

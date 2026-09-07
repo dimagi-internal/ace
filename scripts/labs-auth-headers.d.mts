@@ -19,7 +19,13 @@ export function buildAuthHeaders(
   token: string | null | undefined,
 ): Record<string, string>;
 
-/** Resolve the labs token: env var → `<data-dir>/.env` → dev-root `.env`. */
+/** Env key holding the token for an identity: `LABS_MCP_TOKEN` when unset,
+ * `LABS_MCP_TOKEN_<NAME>` otherwise. A labs PAT *is* the identity. */
+export function tokenKeyFor(identity: string | null | undefined): string;
+
+/** Resolve the labs token: env var → `<data-dir>/.env` → dev-root `.env`,
+ * keyed by `LABS_MCP_IDENTITY`. Returns null rather than falling back to the
+ * default token when an identity was named. */
 export function resolveToken(
   callerPath: string,
   env?: Record<string, string | undefined>,

@@ -95,8 +95,29 @@ export function buildAuthHeaders(token) {
  *      resolution order is never narrower than doctor's.
  * Returns null when no token is found anywhere.
  */
+/**
+ * The env key holding the token for a given identity.
+ *
+ * Unset identity -> `LABS_MCP_TOKEN`, ACE's own PAT and the default for every
+ * session. A named identity -> `LABS_MCP_TOKEN_<NAME>`, e.g. `jjackson` reads
+ * `LABS_MCP_TOKEN_JJACKSON`.
+ *
+ * Labs PATs are PER USER: the server resolves the caller straight off the token
+ * (`MCPAccessToken.verify` returns `(token.user, token)`), so the token IS the
+ * identity. ACE's own PAT cannot see opportunities outside its orgs, which is
+ * correct and not something to route around -- when work genuinely needs a
+ * human's access, it borrows that human's token deliberately and briefly.
+ */
+export function tokenKeyFor(identity) {
+  if (!identity) return 'LABS_MCP_TOKEN';
+  return `LABS_MCP_TOKEN_${identity.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+}
+
 export function resolveToken(callerPath, env = process.env) {
-  if (env.LABS_MCP_TOKEN) return env.LABS_MCP_TOKEN;
+  const identity = (env.LABS_MCP_IDENTITY || '').trim();
+  const key = tokenKeyFor(identity);
+
+  if (env[key]) return env[key];
 
   const candidates = [];
   if (env.CLAUDE_PLUGIN_DATA && env.CLAUDE_PLUGIN_DATA !== '${CLAUDE_PLUGIN_DATA}') {
@@ -113,13 +134,18 @@ export function resolveToken(callerPath, env = process.env) {
   for (const candidate of candidates) {
     try {
       if (existsSync(candidate)) {
-        const tok = extractTokenFromEnv(readFileSync(candidate, 'utf8'));
+        const tok = extractTokenFromEnv(readFileSync(candidate, 'utf8'), key);
         if (tok) return tok;
       }
     } catch {
       // Unreadable candidate — keep trying the rest.
     }
   }
+  // Deliberately NO fallback to LABS_MCP_TOKEN when an identity was named.
+  // Falling back would run the call as ACE while the operator believes it is
+  // running as someone else -- answers would come back plausibly scoped to the
+  // wrong account with nothing in the transcript saying so. Failing loud costs
+  // one error; failing quiet costs a wrong conclusion about real data.
   return null;
 }
 
@@ -128,7 +154,8 @@ function main() {
   const token = resolveToken(callerPath);
   if (!token) {
     process.stderr.write(
-      '[labs-auth-headers] LABS_MCP_TOKEN not found in env or .env; emitting empty headers\n',
+      `[labs-auth-headers] ${tokenKeyFor((process.env.LABS_MCP_IDENTITY || '').trim())} ` +
+        'not found in env or .env; emitting empty headers\n',
     );
   }
   process.stdout.write(JSON.stringify(buildAuthHeaders(token)));
