@@ -19,10 +19,10 @@ Answers the question that starts a proposal: **where should this go, how many
 people is that, and what would reaching them cost?** — and then does the harder
 half, which is making the answer survive somebody who wants it to be wrong.
 
-The arithmetic lives in the Connect Labs `targeting_*` MCP tools: 29 targetable
-indicators across 55 African countries, at national, region and district level,
-with population, births, disease burden, physical access to care, rural share,
-case counts and cost scenarios. This agent is the judgement around those tools.
+The arithmetic lives in the Connect Labs `targeting_*` MCP tools: 52 targetable
+indicators across 55 African countries, at national and region level, with
+population, births, disease burden, physical access to care, rural share, case
+counts and cost scenarios. This agent is the judgement around those tools.
 
 ## When to use
 
@@ -44,7 +44,7 @@ design (that is Phase 1).
 |---|---|
 | `target-geographies` | The core loop: read prior research, establish the indicator's family and unit, select, read the honesty fields, cost it. |
 | `scan-data-sources` | Sweeps for sources that could answer an indicator, vets each on licence first, records the verdict as a durable note. |
-| `defend-a-figure` | Cross-checks against external ground truth, reports the method spread, writes the three-paragraph defence. |
+| `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`targeting_compare_criteria`), writes the three-paragraph defence. |
 | `build-targeting-model` | The Google Doc and the formula-driven Excel model with a ranked geography table. |
 
 ## How it runs
@@ -68,6 +68,14 @@ short `coverage` makes the figure a floor; a high `inherited_units` makes a
 **Lead with the weakest check.** A reviewer who finds the soft spot before you
 name it stops believing the whole document. Naming it first is what makes the
 rest credible.
+
+**Do not promise a district-level answer.** Indicators resolve to ADM1 at best.
+Boundaries and population *are* loaded to ADM2 (1,517 units), so
+`targeting_admin_levels` will happily report 774 Nigerian LGAs that no indicator
+can be selected on: `targeting_select` takes no `admin_level` at all, and
+`targeting_compare_criteria` at `admin_level: 2` returns zeros rather than
+declining the question. Zero areas there means *unanswerable*, never *nothing
+qualified*.
 
 **Never take a stored note as gospel.** `targeting_research` re-runs every note's
 claims against live data and returns a `trust` verdict. `drifted` means
@@ -94,3 +102,4 @@ something better has since been published.
 | 2026-08-29 | Initial version — four-skill agent over the Connect Labs targeting MCP | ACE team |
 | 2026-08-29 | 29 indicators; access and settlement joined malaria as families carrying counts | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units`; each indicator now names the sources that may answer it, so a method's label is literally true | ACE team |
+| 2026-09-07 | 52 indicators (was 29); ADM1 is the real resolution ceiling; `targeting_compare_criteria` wired into `defend-a-figure` | ACE team |

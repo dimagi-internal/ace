@@ -56,14 +56,25 @@ the document, and they are right to.
    6.12M births. Where that holds, say plainly that the choice of method moves
    the answer more than the data does, and name the figure a conservative
    reviewer should use.
-6. **Read the research notes for known traps** with `targeting_research`. Check
+6. **Report the criterion spread with `targeting_compare_criteria`.** Step 5 asks
+   what changes when the *method* changes; this asks what changes when the
+   *screen* changes, and it is usually the larger effect. Run the same question
+   through two to six defensible criteria and quote `unanimous`, `contested` and
+   `contested_share_of_count`. Comparing ORS coverage, diarrhoea prevalence and
+   under-5 mortality across NGA/ETH/UGA/KEN/TZA leaves 7 areas selected by every
+   screen against 78 selected by some — 90.3% of the under-5s in play. Name the
+   contested set and say which screen was chosen and why; a reviewer who finds
+   it first will not believe the rest. **`admin_level: 2` returns zeros rather
+   than declining** — indicators resolve to ADM1 at best, so read a zero there
+   as unanswerable, never as a finding.
+7. **Read the research notes for known traps** with `targeting_research`. Check
    `trust` before using anything a note says: `drifted` means re-derive,
    `unverified` means it is a lead. An age-band mismatch or a definitional
    difference that a note already records is exactly the thing a reviewer will
    find.
-7. **Write the three paragraphs**, then check every claim in them against a
+8. **Write the three paragraphs**, then check every claim in them against a
    field you actually read rather than one you remember.
-8. **Build the Sources table from the methodology's own source list.** Never
+9. **Build the Sources table from the methodology's own source list.** Never
    invent a URL. A dead or wrong link in a proposal costs more credibility than
    the figure it was supposed to support.
 
@@ -73,6 +84,7 @@ the document, and they are right to.
 - `targeting_methodology` — built
 - `targeting_research` — built
 - `targeting_select` — built (re-run per method for the spread)
+- `targeting_compare_criteria` — built (the criterion spread; step 6)
 
 ## The three paragraphs
 
@@ -112,3 +124,4 @@ and hands the reviewer the conservative figure before they ask.
 |------|--------|--------|
 | 2026-08-29 | Initial version — weakest-check-first rule, external validation step, method spread, three-paragraph pattern | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units` | ACE team |
+| 2026-09-07 | Added the criterion spread (`targeting_compare_criteria`) as step 6 — the tool existed but no ACE skill called it | ACE team |
