@@ -22,6 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildSlidesRequestsV2,
+  stripLeadingOrdinal,
   type TrainingDeckSpec,
 } from '../../lib/training-deck-spec.js';
 import {
@@ -206,5 +207,35 @@ describe('rendered slide geometry stays on the slide', () => {
     // 0.686 box, which stretched every screenshot sideways.
     expect(aspect).toBeLessThan(0.6);
     expect(aspect).toBeGreaterThan(0.3);
+  });
+});
+
+describe('list markers are not doubled', () => {
+  it('strips a leading ordinal the spec supplied, and keeps a genuine figure', () => {
+    expect(stripLeadingOrdinal('1. Targeting survey (C2)')).toBe('Targeting survey (C2)');
+    expect(stripLeadingOrdinal('2) Enrollment (C4)')).toBe('Enrollment (C4)');
+    expect(stripLeadingOrdinal('10 - Asset delivery')).toBe('Asset delivery');
+    expect(stripLeadingOrdinal('Targeting survey')).toBe('Targeting survey');
+    // A label that genuinely opens with a number keeps it.
+    expect(stripLeadingOrdinal('2026 targets')).toBe('2026 targets');
+  });
+
+  it('a pre-numbered timeline spec renders exactly one ordinal per step', () => {
+    const reqs = buildSlidesRequestsV2(
+      specWith({
+        id: 't1', layout: 'timeline', title: 'Order',
+        steps: [
+          { label: '1. Targeting survey (C2)', detail: 'Creates the record' },
+          { label: '2. Enrollment (C4)', detail: 'Consent and details' },
+        ],
+      }),
+      { stencils: STENCILS, manifest } as any,
+    );
+    const body = reqs
+      .map((r: any) => r.replaceAllText)
+      .find((r: any) => r?.containsText?.text === '{{BODY}}')?.replaceText as string;
+    expect(body).toBeDefined();
+    expect(body).toContain('1.  Targeting survey (C2)');
+    expect(body).not.toContain('1.  1.');
   });
 });

@@ -684,6 +684,18 @@ const CAPTION_FONT_SIZE_PT = 11;
  * The builder now blanks the stencil boxes and creates these instead,
  * centered under each phone.
  */
+/**
+ * Strip a leading ordinal ("1. ", "2) ", "03 - ") from a list label.
+ *
+ * The timeline and checklist renderers supply their own marker, so a label
+ * that carries one too renders it twice. Deliberately conservative: it only
+ * removes a number plus a single trailing separator, so a label that genuinely
+ * begins with a figure ("2026 targets") keeps it.
+ */
+export function stripLeadingOrdinal(label: string): string {
+  return label.replace(/^\s*\d{1,2}\s*[.)\-\u2014]\s+/, '');
+}
+
 function createCaptionBox(
   objectId: string,
   pageObjectId: string,
@@ -945,10 +957,16 @@ function buildLayoutRequests(
       // `agenda` precedent — compose the list into BODY.
       // dimagi-internal/ace#1503. Parity is now enforced by
       // STENCIL_PLACEHOLDERS + its test, so this cannot silently drift again.
+      // The RENDER owns the numbering, so a label that ALSO carries one is
+      // stripped rather than concatenated. Left alone it renders "1.  1.
+      // Targeting survey (C2)" — which is what shipped, because a spec author
+      // writing an ordered list naturally numbers the steps and nothing told
+      // them not to. Prose in the generate skill cannot enforce this; making
+      // the consumer tolerant does.
       r(
         '{{BODY}}',
         slide.steps
-          .map((step, i) => `${i + 1}.  ${step.label}  —  ${step.detail}`)
+          .map((step, i) => `${i + 1}.  ${stripLeadingOrdinal(step.label)}  —  ${step.detail}`)
           .join('\n'),
       );
       break;
