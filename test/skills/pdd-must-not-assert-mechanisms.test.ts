@@ -522,3 +522,111 @@ describe('pdd-to-learn-app must not assert a fixed passing score (ace#1333)', ()
     expect(source()).toMatch(/connect-opp-setup/);
   });
 });
+
+/* ── ace#1619 — a RUBRIC must not demand a Table-A mechanism either ────────── */
+
+describe('no eval rubric demands a Table-A mechanism (ace#1619)', () => {
+  // ace#1213 aimed this section at Phase 1: a PDD must not ASSERT an
+  // unbuildable mechanism. The mirror image went uncovered — an eval RUBRIC
+  // demanding one, which is worse in a specific way: a PDD is written once and
+  // can be corrected, whereas a rubric deducts on every location-bound
+  // opportunity, forever, and no journey set can recover the points by being
+  // written better.
+  //
+  // PR #2080 fixed the INSTANCE (deployability_fitness anchor (b), which
+  // required journeys to "reject low-accuracy fixes") and
+  // `test/skills/journeys-gps-observability.test.ts` pins that. This file pins
+  // the CLASS: the Table-A/Table-B check that runs before ANY (a)-(d)
+  // deduction, plus anchor (d), which #2080 did not touch and which is where
+  // the same mistake was available twice over — see below.
+  const evalSkill = readFileSync(
+    join(REPO, 'skills', 'pdd-to-app-journeys-eval', 'SKILL.md'),
+    'utf8',
+  );
+
+  /**
+   * Everything above the Change Log. A changelog row QUOTES retired wording on
+   * purpose — that is what makes it a record — so a ratchet that read the whole
+   * file would be tripped by the entry documenting the fix.
+   */
+  const live = (doc: string) => doc.split(/\n#+ Change Log/)[0];
+
+  /** The single markdown table row carrying the deployability_fitness rubric. */
+  const deployabilityRow = (doc: string) =>
+    live(doc)
+      .split('\n')
+      .find((l) => /^\s*\|\s*\*\*Deployability fitness\*\*/.test(l)) ?? '';
+
+  it('Table A still declares the GPS accuracy gate closed (the premise)', () => {
+    const section = extractSection(librarySource(), SECTION);
+    const rows = tableRows(extractSection(section, TABLE_A, 3));
+    const gps = rows.find((cells) => /GPS accuracy/i.test(cells[0] ?? ''));
+
+    expect(gps, 'the GPS accuracy row must exist in Table A').toBeDefined();
+    expect(gps![1], 'it must name the Connect surface').toMatch(/gps_radius_meters/);
+    expect(gps![1], 'it must name the Nova surface').toMatch(/geopoint/);
+    // If upstream restores the field and this row is RETIRED, the rubric text
+    // resting on it is what must be revisited — hence the pin.
+    expect(gps![0], 'still live, not retired').not.toMatch(/retired/i);
+  });
+
+  it('the check runs before EVERY (a)-(d) deduction, not only inside (b)', () => {
+    // The class-level half. Without it the next sub-anchor someone adds
+    // reintroduces ace#1619 with a different mechanism, and the rubric has no
+    // instruction that would catch it.
+    const row = deployabilityRow(evalSkill);
+    expect(row, 'the deployability_fitness rubric row must be findable').not.toBe('');
+
+    expect(row).toMatch(/Before deducting on ANY of \(a\)–\(d\)/);
+    expect(row).toMatch(/Mechanisms a PDD must not assert/);
+    expect(row, 'Table A: absence is not a gap').toMatch(/Table A/);
+    expect(row, 'Table B: a residual, and not to be called impossible').toMatch(/Table B/);
+    expect(row).toMatch(/do not deduct/i);
+  });
+
+  it('anchor (d) keeps the demand but asserts no capability of its own', () => {
+    // Two opposite errors were both available here, and both were made.
+    //
+    // 1. The issue proposed generalising the anchor-(b) fix to every
+    //    verification flag on the refused list. `duplicate` is on that list, so
+    //    that ratchet would have deleted duplicate-household detection — on the
+    //    false premise that a retired FLAG proves the BEHAVIOUR unbuildable.
+    //    Refuted; the demand stays.
+    // 2. A first draft of the fix then over-corrected, asserting duplicate
+    //    detection IS buildable on Connect's `entity_id` dedup grain. Whether
+    //    `entity_id` dedup catches the same household visited by a DIFFERENT
+    //    worker was never verified. A blind re-grade of
+    //    hh-poverty-targeting/20260824-1404 deducted on exactly that sentence —
+    //    the fix had swapped one uncited capability demand for another, which
+    //    is the defect ace#1619 exists to close.
+    const row = deployabilityRow(evalSkill);
+
+    expect(row, 'the demand survives').toMatch(/duplicate-household\s*\n?\s*detection/);
+    expect(row, 'error 1 named and refuted').toMatch(
+      /does NOT by itself make duplicate handling unbuildable/,
+    );
+    expect(row, 'error 2 must not come back').not.toMatch(
+      /[Dd]uplicate detection IS\s*\n?\s*buildable/,
+    );
+    expect(row, '(d) routes through the same check as (b)').toMatch(
+      /Apply the Table-A\/Table-B check below to \(d\)/,
+    );
+  });
+
+  // REGRESSION ANCHORS — retargeting an anchor invites over-correction into
+  // "grade nothing here", which would delete the out-of-chain teeth the whole
+  // dimension exists for.
+  it('REGRESSION ANCHOR: the dimension keeps its weight, hard gate and teeth', () => {
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/\*\*Hard gate:\*\*/);
+    expect(row).toMatch(/score ≤3 and the suite verdict is `fail`/);
+    expect(row).toMatch(/EXEMPT from any deferral carve-out/);
+    expect(live(evalSkill)).toMatch(/deployability_fitness:\s*\{ weight: 0\.25 \}/);
+  });
+
+  it('REGRESSION ANCHOR: input validation and case write-back are untouched', () => {
+    const row = deployabilityRow(evalSkill);
+    expect(row).toMatch(/\(a\) \*\*input validation\*\*/);
+    expect(row).toMatch(/\(c\) \*\*case write-back on follow-up\*\*/);
+  });
+});
