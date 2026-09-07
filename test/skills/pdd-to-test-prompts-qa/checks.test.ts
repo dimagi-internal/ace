@@ -12,6 +12,7 @@ import {
   checkTrainingGapPromptPresent,
   checkProductFeedbackPromptPresent,
   checkEscalationPromptPresent,
+  normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-test-prompts-qa/checks';
 
@@ -202,5 +203,75 @@ describe('CHECKS array', () => {
       'product_feedback_prompt_present',
       'escalation_prompt_present',
     ]);
+  });
+});
+
+// ── Export-format independence (dimagi-internal/ace#2169) ──────────
+//
+// `pdd-to-test-prompts` writes this artifact with `drive_create_file`, which
+// lands a Google Doc but uploads the body as `text/plain` media — so Drive
+// never runs the markdown→styles conversion and the `#` / `**` markers stay
+// LITERAL characters. `drive_read_file`'s `text/markdown` export therefore has
+// to ESCAPE them to preserve them, which deletes every anchor these checks
+// match at once.
+//
+// Measured on the real artifact for `bednet-check-2-visit/20260907-1126`
+// (fileId 1l0satmkozVVDH0A0vcjw3u6bjFQsgZs3G5OXcDb4X8E, revision 7, 58
+// prompts, structurally correct): 8/8 on the plain export, 2/8 on the markdown
+// export — 0 prompts found, and the two remaining "passes" vacuous, because an
+// empty prompt list has no missing fields and no adversarial share to fall
+// short of. SKILL.md § Process step 1 mandates `text/plain`; these tests pin
+// the CLASS — the checks must score the same document identically whichever
+// export the caller used.
+describe('export-format independence (ace#2169)', () => {
+  /**
+   * Mimic Drive's markdown exporter over a doc whose body is literal markdown:
+   * escape markdown-significant punctuation and end lines with the two-space
+   * hard break it emits. Reproduces the observed `\#\# Prompt 4  ` /
+   * `\*\*Category:\*\*` shape.
+   */
+  function asDriveMarkdownExport(doc: string): string {
+    return doc
+      .split('\n')
+      .map((line) => {
+        const escaped = line.replace(/([#*[\]_.+\-`])/g, '\\$1');
+        return escaped.trim().length > 0 ? `${escaped}  ` : escaped;
+      })
+      .join('\n');
+  }
+
+  const MD_EXPORT = asDriveMarkdownExport(VALID_DOC);
+
+  test('the fixture really is escaped the way Drive escapes it', () => {
+    expect(MD_EXPORT).toContain('\\#\\# Prompt 4');
+    expect(MD_EXPORT).toContain('\\*\\*Category:\\*\\*');
+    expect(MD_EXPORT).not.toMatch(/^## Prompt 4/m);
+  });
+
+  test('normalizeDriveExport restores every anchor the checks match', () => {
+    expect(normalizeDriveExport('\\#\\# Prompt 4')).toBe('## Prompt 4');
+    expect(normalizeDriveExport('\\*\\*Category:\\*\\*')).toBe('**Category:**');
+    // A non-punctuation escape is not a markdown escape — leave it alone.
+    expect(normalizeDriveExport('a\\nb')).toBe('a\\nb');
+  });
+
+  test('the markdown export of a healthy suite passes every check', () => {
+    const failures = CHECKS.filter(
+      (c) => !(c.run as (d: string) => { pass: boolean })(MD_EXPORT).pass,
+    ).map((c) => c.id);
+    expect(failures).toEqual([]);
+  });
+
+  test('both exports of the same document score identically', () => {
+    const score = (doc: string) =>
+      CHECKS.map((c) => `${c.id}:${(c.run as (d: string) => { pass: boolean })(doc).pass}`);
+    expect(score(MD_EXPORT)).toEqual(score(VALID_DOC));
+  });
+
+  test('a genuinely broken suite still fails under the markdown export', () => {
+    // Guard against "normalise everything into a pass": drop the heading and
+    // the check must still fail after normalisation.
+    const broken = asDriveMarkdownExport(VALID_DOC.replace('# OCS Test Prompts — Test\n', ''));
+    expect(checkHeaderWithTotalCount(broken).pass).toBe(false);
   });
 });
