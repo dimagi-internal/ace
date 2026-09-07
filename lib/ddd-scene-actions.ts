@@ -655,6 +655,101 @@ function axisWithRoom(shape: DatasetShape | undefined, failing: CardinalityAxis)
  * changes, the data is regenerated, or the author records which population the
  * surface actually lists — never silently carried past.
  */
+/**
+ * The DECLARED half of the detection floor (ace#2131).
+ *
+ * `checkSceneCardinality` enforces `DETECTION_MIN_ROWS` by reading the
+ * NARRATIVE's vocabulary. That works only when the author writes `flag`,
+ * `outlier` or `detect` — and a detection demo written in plain descriptive
+ * language matches nothing. On `bednet-check-2-visit/20260902-1555` the scenes
+ * said "Nadia R. records consent re-affirmed on all 54 of her follow-ups while
+ * the other four workers sit between 79.2% and 88.0%" over a five-worker cohort:
+ * textbook outlier detection, zero detection tokens, no finding — and Phase 7
+ * ended `stopped_not_converged` at concept 2.0/5 on exactly the objection the
+ * floor exists to pre-empt, raised independently by all five per-scene judges.
+ *
+ * Broadening the vocabulary is the wrong repair. ace#1841 PRUNED that list for
+ * precision (26 scenes matched it, 24 carried a real verb), and a report-only
+ * check that cries wolf is how the real misses get waved through (ace#1744).
+ *
+ * The fact is already stated one layer up, without inference.
+ * `demo-data-setup` writes BOTH of these into the same `source` block, before
+ * `demo-narrative` runs and long before anything renders:
+ *
+ *   source.detectable_signal   — the PDD control this demo instantiates
+ *   source.data_shape.rows     — the cohort it actually realized
+ *
+ * A declared detection control against a cohort below the floor is a
+ * contradiction knowable at authoring time, where the remedy is one manifest
+ * edit and a regenerate rather than two burnt render+judge iterations.
+ *
+ * The two checks catch opposite halves and both are worth keeping: this one
+ * catches a demo whose DATA cannot support the control it declares; the
+ * vocabulary rule catches a narrative that CLAIMS detection the data never
+ * declared.
+ *
+ * Silent when it cannot decide — an absent `detectable_signal`, the documented
+ * `none` escape (the PDD declares no verification rules), or an unstated
+ * `rows`. Guessing here would re-create the false-positive problem this design
+ * is avoiding.
+ */
+export interface DeclaredSignalSource {
+  detectable_signal?: unknown;
+  data_shape?: DatasetShape;
+}
+
+export function checkDetectionCohortFloor(
+  source: DeclaredSignalSource | undefined,
+): SceneReport {
+  const findings: SceneFinding[] = [];
+  const signal = source?.detectable_signal;
+
+  if (!declaresDetection(signal)) return { ok: true, findings };
+
+  const rows = source?.data_shape?.rows;
+  if (typeof rows !== 'number' || !Number.isFinite(rows)) return { ok: true, findings };
+
+  if (rows < DETECTION_MIN_ROWS) {
+    findings.push({
+      kind: 'insufficient-cardinality',
+      scene: '(dataset)',
+      detail:
+        `this run DECLARES a detection control (${describeSignal(signal)}) and realized a cohort of ` +
+        `${rows} row(s), below the ${DETECTION_MIN_ROWS} a detection demonstration needs to be ` +
+        `observable. A detection claims unaided scanning is not viable; that claim is false the moment ` +
+        `the whole cohort fits in one look, and a judge will say so. Fix it in the MANIFEST — raise the ` +
+        `cohort and regenerate — not in the narration: no wording makes ${rows} rows unscannable. ` +
+        `If the demo is not really about detection, drop detectable_signal or record the documented ` +
+        `\`none\` escape, and this goes quiet`,
+    });
+  }
+
+  return { ok: findings.length === 0, findings };
+}
+
+/**
+ * Is a detection control actually declared? Accepts the two shapes the skill
+ * documents — a structured block, or a string — and treats the `none` escape
+ * ("detectable_signal: none (PDD declares no verification rules)") as NOT
+ * declared, since that is the honest opt-out the authoring step provides.
+ */
+function declaresDetection(signal: unknown): boolean {
+  if (signal === undefined || signal === null) return false;
+  if (typeof signal === 'string') return !/^\s*none\b/i.test(signal.trim());
+  if (Array.isArray(signal)) return signal.length > 0;
+  if (typeof signal === 'object') return Object.keys(signal as object).length > 0;
+  return false;
+}
+
+function describeSignal(signal: unknown): string {
+  if (typeof signal === 'string') return signal.slice(0, 80);
+  if (signal && typeof signal === 'object') {
+    const c = (signal as Record<string, unknown>).pdd_control;
+    if (typeof c === 'string') return c.slice(0, 80);
+  }
+  return 'declared in source.detectable_signal';
+}
+
 export function checkSceneCardinality(
   scenes: DddScene[],
   shape: DatasetShape | undefined,

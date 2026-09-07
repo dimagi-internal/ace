@@ -798,6 +798,23 @@ own headline anomaly, a PDD does not hand you one.
       whose metrics all cluster inside one band ranks fifteen workers nobody can
       choose between — which is what the measured run shipped.
 
+   5. **Size the cohort so finding the carrier is not trivial —
+      `rows >= DETECTION_MIN_ROWS` (24).** A detection demo claims *unaided
+      scanning is not viable*: that the control finds a worker a supervisor
+      would otherwise miss. That claim is false the moment the whole cohort fits
+      in one look, and a judge will say so. `demo-data-setup-qa` check 13 fails
+      the run here, before `demo-narrative` consumes the map, by comparing the
+      `detectable_signal` you just declared against the `data_shape.rows` you
+      just realized.
+
+      **No narration fixes an under-sized cohort** — the remedy is always the
+      manifest. `bednet-check-2-visit/20260902-1555` authored a well-formed,
+      PDD-derived consent-rate outlier (100.0% against a cohort's 85.2%, a clean
+      +14.8pp separation) over **five** workers, and Phase 7 still ended
+      `stopped_not_converged` at concept 2.0/5 — all five per-scene judges
+      independently said five rows is eyeballable. The signal was right and the
+      cohort was too small for it to mean anything (ace#2131).
+
    **Never invent a fraud pattern the design does not describe.** A demo that
    fabricates a detection story is worse than a boring one: it shows a funder a
    capability the program did not specify and cannot operate. If the PDD genuinely

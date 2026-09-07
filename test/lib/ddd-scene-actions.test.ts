@@ -64,6 +64,7 @@ import {
   datasetShapeFromRecordCounts,
   MIN_CARDINALITY,
   DETECTION_MIN_ROWS,
+  checkDetectionCohortFloor,
 } from '../../lib/ddd-scene-actions.js';
 
 const scene = (over: Record<string, unknown> = {}) => ({
@@ -914,5 +915,83 @@ describe('checkSceneCardinality (#1893 — marker/markers are UI nouns, not a cl
     ].join(' ');
     const distinct = new Set([...text.matchAll(DETECTION_WORDS)].map((m) => m[0].toLowerCase()));
     expect([...distinct]).toEqual(['marker']);
+  });
+});
+
+/**
+ * ace#2131 — the DECLARED half of the detection floor.
+ *
+ * `checkSceneCardinality` reads the narrative's vocabulary, so it only fires
+ * when the author writes flag/outlier/detect. On
+ * `bednet-check-2-visit/20260902-1555` the demo was textbook outlier detection
+ * written in plain descriptive prose: zero detection tokens across the whole
+ * spec, one finding (on the unrelated comparison/groups axis), and Phase 7 ended
+ * `stopped_not_converged` at concept 2.0/5 on precisely the objection this floor
+ * exists to pre-empt.
+ *
+ * The `source` block below is that run's, verbatim from `run_state.yaml`.
+ */
+describe('ace#2131: detection floor from the DECLARED signal', () => {
+  const REAL_SOURCE = {
+    detectable_signal: {
+      pdd_control: 'Consent-rate outliers (PDD Evidence Model, Layer B)',
+      pdd_quote:
+        "Consent-rate outliers. A worker whose registration consent rate is materially above the cohort's is reviewed, as a check that the script is being read rather than assumed.",
+    },
+    data_shape: { rows: 5, periods: 4, groups: 1 },
+  };
+
+  it('catches the cohort the narrative check could not see', () => {
+    const r = checkDetectionCohortFloor(REAL_SOURCE);
+    expect(r.ok).toBe(false);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].kind).toBe('insufficient-cardinality');
+    // names the control, so the reader knows which declaration is unsupported
+    expect(r.findings[0].detail).toContain('Consent-rate outliers');
+    // points at the manifest, not the narration — no wording fixes 5 rows
+    expect(r.findings[0].detail).toMatch(/MANIFEST/);
+  });
+
+  it('passes the same declaration once the cohort clears the floor', () => {
+    const r = checkDetectionCohortFloor({
+      ...REAL_SOURCE,
+      data_shape: { ...REAL_SOURCE.data_shape, rows: DETECTION_MIN_ROWS },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('is silent when no signal is declared — a demo need not be about detection', () => {
+    expect(checkDetectionCohortFloor({ data_shape: { rows: 5 } }).ok).toBe(true);
+    expect(checkDetectionCohortFloor(undefined).ok).toBe(true);
+    expect(checkDetectionCohortFloor({}).ok).toBe(true);
+  });
+
+  it('honours the documented `none` escape rather than punishing the honest answer', () => {
+    // demo-data-setup step 1c: record `detectable_signal: none (PDD declares no
+    // verification rules)` with the quote that proves it. That is the correct
+    // outcome for such a PDD and must not read as a violation.
+    const r = checkDetectionCohortFloor({
+      detectable_signal: 'none (PDD declares no verification rules)',
+      data_shape: { rows: 5 },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('stays silent when rows is unstated — it does not guess', () => {
+    expect(checkDetectionCohortFloor({ detectable_signal: REAL_SOURCE.detectable_signal }).ok).toBe(true);
+    expect(
+      checkDetectionCohortFloor({
+        detectable_signal: REAL_SOURCE.detectable_signal,
+        data_shape: { periods: 4 },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('accepts a string declaration as well as a structured block', () => {
+    const r = checkDetectionCohortFloor({
+      detectable_signal: 'consent-rate outlier per PDD Layer B',
+      data_shape: { rows: 5 },
+    });
+    expect(r.ok).toBe(false);
   });
 });
