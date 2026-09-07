@@ -464,6 +464,62 @@ const DEMONSTRATION_VERBS: ReadonlyArray<{
      * chrome), `mark-up`/`benchmark` (word boundaries already exclude them),
      * and `signal` / `unusual` / `stands out`, which are ordinary narrative
      * prose long before they are demonstrations.
+     *
+     * **`marker` / `markers` were also in, and came back OUT (ace#1893).**
+     * They are the only NOUN forms the vocabulary ever carried, and a noun
+     * names a thing on the screen rather than an act the platform performs.
+     * Every other word here is a verb, an event, or the name of the object
+     * detection produces (`outlier`, `anomaly`); `marker` is a badge.
+     *
+     * The false positive: hh-poverty-targeting/20260901-1932's payoff scene
+     * `closing-the-window-on-the-record` claims only that *"A collection window
+     * ends in a disposition stored per worker"* — a decision beat with no
+     * detection claim in it — and matched on nothing but the word `marker`,
+     * used twice for the small "recorded on this run" badge beside a saved
+     * disposition (`show` and `features[].verify`). Reproduced by restoring the
+     * author's original wording; the live artifact says `badge` because the
+     * author renamed the noun to get past the flag, which IS the cost this
+     * check is trying not to pay.
+     *
+     * Measured before removing them, over **10 authored specs / 59 scenes** —
+     * every unified spec in Drive across 4 opps and 10 runs
+     * (hh-poverty-targeting 20260824-1404 / 20260827-0323 / 20260828-0702 /
+     * 20260901-1932, bednet-check-2-visit 20260817-1720 / 20260825-1310 /
+     * 20260828-0629, spark-facilitator 20260820-0817 / 20260828-0703,
+     * turmeric-market-study 20260807-1903), read over the same fields
+     * `sceneWords` reads:
+     *
+     * - **26 scenes match the detection vocabulary. 24 of them carry a verb
+     *   form.** Only 2 match on `marker` alone — and they are the SAME scene
+     *   (`a-different-question`) in two revisions of one narrative. Add the
+     *   reconstructed false positive and the noun forms are 1 true / 1 false
+     *   across the two distinct scenes they alone decide: **~50% precise, and
+     *   responsible for 8% of matches.**
+     * - Removing them costs one scene of recall, and that scene IS a detection
+     *   demonstration — but its `marker` hits are UI nouns too ("a
+     *   band-boundary marker whose text repeats that worker's own share"). The
+     *   check was right about it for the wrong reason: its actual detection
+     *   premise ("separates workers the operations page showed as
+     *   unremarkable") contains no vocabulary word at all. So the noun is not
+     *   the signal in the true case either.
+     * - **Spec-level recall is unchanged: 8 specs flagged before, 8 after.**
+     *   Every spec containing a noun-only scene also contains a verb-form
+     *   scene, so no spec that was flagged stops being flagged — 20260828-0702
+     *   goes 6 findings -> 5 and 20260827-0323 goes 3 -> 2, while the fork
+     *   20260901-1932 goes 1 -> 0, which is the defect. That is the metric that
+     *   decides this: `checkSceneCardinality` FLAGS a spec for its author to
+     *   resolve, and the second flag on a spec already flagged adds nothing.
+     *
+     * Two narrower repairs were measured and REJECTED rather than argued:
+     *
+     * - *Require a corroborating second vocabulary word for a noun-only match.*
+     *   **24/26 — bit-identical to deletion on all 10 specs**, because every
+     *   noun-only scene in the corpus matches on `marker` and nothing else. It
+     *   buys no recall and costs a branch.
+     * - *Exempt `features[].verify` as a test assertion rather than a claim.*
+     *   **23/26, and strictly worse:** it does NOT clear the false positive
+     *   (whose other hit is in `show`) and it silences two genuine verb-form
+     *   scenes that declare themselves only in `verify`.
      */
     axis: 'rows',
     verb: 'detection / flagging',
@@ -472,7 +528,7 @@ const DEMONSTRATION_VERBS: ReadonlyArray<{
       'The whole cohort fits in one look, so a reviewer finds the flagged row by eye before the ' +
       'flag does — the demonstration renders green and never shows the platform doing work a ' +
       'person could not',
-    pattern: /\b(flag|flags|flagged|flagging|outlier|outliers|anomaly|anomalies|anomalous|detect|detects|detected|detection|detectable|surfaces|surfaced|catches|spots|misses|missed|miss|marks|marked|marking|marker|markers)\b/i,
+    pattern: /\b(flag|flags|flagged|flagging|outlier|outliers|anomaly|anomalies|anomalous|detect|detects|detected|detection|detectable|surfaces|surfaced|catches|spots|misses|missed|miss|marks|marked|marking)\b/i,
   },
   {
     axis: 'periods',
@@ -541,6 +597,13 @@ export function datasetShapeFromRecordCounts(
  * that prose is looser than a title and a verb word can appear in it
  * incidentally. The check FLAGS rather than rejects, which is the posture that
  * makes that residual affordable.
+ *
+ * The residual came due on the very next run (ace#1893), and the repair was to
+ * the VOCABULARY, not to this surface: a noun (`marker`) names a thing prose
+ * renders, so widening the surface to prose is exactly what promotes it from
+ * harmless to load-bearing. The widening stayed — ablating it back to
+ * title + targets took the same spec from 6 findings to 0 — and the noun forms
+ * went. See `DEMONSTRATION_VERBS`' detection entry for the corpus measurement.
  */
 function sceneWords(s: DddScene): string {
   return [

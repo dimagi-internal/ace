@@ -796,3 +796,123 @@ describe('checkSceneCardinality (#1841 — detection)', () => {
     expect(f.detail).toMatch(/No other axis in the handoff has room/);
   });
 });
+
+/* ───────── #1893 — the detection vocabulary's NOUN forms fire on UI prose ───────── */
+
+describe('checkSceneCardinality (#1893 — marker/markers are UI nouns, not a claim)', () => {
+  // VERBATIM from hh-poverty-targeting/20260901-1932's payoff scene
+  // (7-synthetic/hh-poverty-targeting-census-sweep.yaml,
+  // `closing-the-window-on-the-record`), with the author's ORIGINAL noun
+  // restored. The live artifact in Drive says "badge" — because the author
+  // renamed it to get past this flag, which is precisely the cost the module
+  // says matters: "inventing a demonstration costs the author's trust in every
+  // flag after it."
+  //
+  // Read the claim, not the words: it is a DECISION beat. Nothing in it says
+  // the platform found anything. The only vocabulary hits were the word
+  // `marker`, twice, for the small "recorded on this run" badge.
+  const decisionScene = {
+    title: 'Closing the window on the record',
+    show:
+      'The review page, where Amina sets a disposition for one of her six field workers and ' +
+      'the choice is written onto the review run beside a recorded-on-this-run marker.',
+    concept_claim:
+      'A collection window ends in a disposition stored per worker, not in an unexamined ' +
+      'payment cycle.',
+    features: [
+      {
+        description:
+          'A per-worker select on the review page writing worker_states onto the workflow run, ' +
+          'offering Pending Review, Confirmed Good, Needs Audit and Task Created; it is live ' +
+          'because this run is deliberately left in_progress rather than completed.',
+        verify:
+          "Choosing a value persists it into the run's worker_states and the row re-renders " +
+          'showing the chosen disposition beside a recorded-on-this-run marker.',
+      },
+    ],
+    actions: [{ kind: 'select', target: 'testid:decision-chidi_okonkwo' }],
+  };
+
+  // The run's realized shape — six workers. Well under DETECTION_MIN_ROWS, so
+  // ANY detection match here produces a finding.
+  const FORK_SHAPE = { rows: 6, periods: 6 };
+
+  // THE DEFECT. Pre-fix this returned one `insufficient-cardinality` finding.
+  it('NEGATIVE CONTROL: a decision scene whose only hit is a UI noun stays clean', () => {
+    const r = checkSceneCardinality([decisionScene], FORK_SHAPE);
+    expect(r.ok, JSON.stringify(r.findings)).toBe(true);
+  });
+
+  it('neither noun form fires on its own, in any field sceneWords reads', () => {
+    for (const s of [
+      { title: 'The marker beside the saved row' },
+      { title: 'a scene', show: 'A recorded-on-this-run marker sits beside the disposition.' },
+      { title: 'a scene', concept_claim: 'The markers are written onto the run.' },
+      { title: 'a scene', features: [{ description: 'A status marker per row.' }] },
+      { title: 'a scene', features: [{ verify: 'The row renders a marker.' }] },
+      { title: 'a scene', actions: [{ kind: 'click', target: 'testid:row-marker' }] },
+    ]) {
+      const r = checkSceneCardinality([s], FORK_SHAPE);
+      expect(r.ok, `${JSON.stringify(s)} -> ${JSON.stringify(r.findings)}`).toBe(true);
+    }
+  });
+
+  // REGRESSION ANCHOR — the half that must NOT move. `marks` / `marked` /
+  // `marking` carry 6 of the 8 detection matches across the measured corpus,
+  // and ace#1841's own positive control is one of them.
+  it('REGRESSION ANCHOR: the verb forms still fire, alone', () => {
+    for (const s of [
+      { title: 'a scene', show: 'The column marks the one worker outside the band.' },
+      { title: 'a scene', show: 'The worker is marked outside the expected range.' },
+      { title: 'a scene', show: 'Marking a worker outside the band is the whole demonstration.' },
+    ]) {
+      const r = checkSceneCardinality([s], FORK_SHAPE);
+      expect(r.ok, `${s.show} -> ${JSON.stringify(r.findings)}`).toBe(false);
+    }
+  });
+
+  // SPEC-LEVEL RECALL — the number that decides whether the narrowing is
+  // affordable. Measured over five authored specs / 27 scenes: every spec that
+  // contained a noun-only scene ALSO contained a verb-form scene, so no spec
+  // that was flagged stops being flagged. A second flag on the same spec adds
+  // nothing the first did not; the author resolves the spec, not the scene.
+  it('a spec keeps its flag when a noun-only scene sits beside a verb-form one', () => {
+    const verbFormScene = {
+      title: 'One worker outside the expected range',
+      show:
+        "The per-worker table, where the non-payable share column marks the one worker sitting " +
+        "outside the design's 20-35% band.",
+    };
+    const r = checkSceneCardinality([decisionScene, verbFormScene], FORK_SHAPE);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.scene)).toEqual(['One worker outside the expected range']);
+  });
+
+  // The two narrower repairs the issue proposed, both measured and rejected —
+  // pinned so a future editor does not re-adopt them from the issue text.
+  //
+  // (a) "exempt features[].verify": would NOT have cleared the defect, because
+  //     the scene's other hit is in `show`.
+  it('the rejected features[].verify exemption would not have sufficed', () => {
+    const showOnly = { title: decisionScene.title, show: decisionScene.show };
+    expect(checkSceneCardinality([showOnly], FORK_SHAPE).ok).toBe(true);
+  });
+
+  // (b) "require a corroborating second vocabulary word": indistinguishable
+  //     from deletion on real text, because both noun-only scenes in the corpus
+  //     match on `marker` and nothing else. Pinned as the observation that
+  //     makes the extra branch unnecessary, not as behaviour.
+  it('a noun-only scene really does carry no second vocabulary word', () => {
+    const DETECTION_WORDS =
+      /\b(flag|flags|flagged|flagging|outlier|outliers|anomaly|anomalies|anomalous|detect|detects|detected|detection|detectable|surfaces|surfaced|catches|spots|misses|missed|miss|marks|marked|marking|marker|markers)\b/gi;
+    const text = [
+      decisionScene.title,
+      decisionScene.show,
+      decisionScene.concept_claim,
+      decisionScene.features[0].description,
+      decisionScene.features[0].verify,
+    ].join(' ');
+    const distinct = new Set([...text.matchAll(DETECTION_WORDS)].map((m) => m[0].toLowerCase()));
+    expect([...distinct]).toEqual(['marker']);
+  });
+});
