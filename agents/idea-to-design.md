@@ -98,7 +98,8 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd
   **(all in subagent context from Step 1 / Step 1.4 — do NOT re-read)**
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
-- This is the independent QUALITY grader (post-0.13.88 the rubric is quality-only — structural correctness lives in QA above). A `verdict: fail` here does NOT halt the run on its own — the Phase 1→2 gate uses the producing skill's verdict files and `[BLOCKER]` concerns pause per the orchestrator's Per-Mode Pause Matrix.
+- This is the independent QUALITY grader (post-0.13.88 the rubric is quality-only — structural correctness lives in QA above). **A `verdict: fail` here does NOT halt the run on its own, and neither does the `[BLOCKER]` that `skills/_eval-template.md` requires you to emit alongside it when the composite is below the gate threshold** (dimagi-internal/ace#2145). Those are the same event, not two, and the earlier wording — "a fail does not halt" immediately followed by "`[BLOCKER]` concerns pause" — had both clauses firing against each other at any sub-gate score. Surface the score, the failing dimensions and their notes in the phase summary, and proceed.
+- **Halt only when the `[BLOCKER]` has a cause the composite is not:** any dimension ≤ 3.0, a hard-deduction rule (the known-unbuildable-mechanism gate, ace#1213), or `idea-to-pdd-qa` itself failing irrecoverably — QA is the structural gate and it gates this eval. The orchestrator's copy of this split, with the causes table, is `agents/ace-orchestrator.md` § Modes.
 - If QA verdict was `incomplete`, this step is **skipped** (eval emits `verdict: incomplete` mirroring QA's outcome).
 
 ### Step 2: PDD → Work Order
