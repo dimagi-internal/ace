@@ -21,7 +21,7 @@ of other training skills.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules, support contact + GRM escalation route |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules, support contact + escalation triggers |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | exact required-field list (so the ref says what the form actually asks) |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` | max-per-day numbers |
 
@@ -62,7 +62,7 @@ N. **Submit**
 
 ## Need help?
 Call your LLO coordinator: <name from connect-setup/opportunity.md>
-To raise it formally: **GRM** in the app menu
+Phone: ______________  (the LLO fills this in at onboarding)
 ```
 
 ## Format rules
@@ -106,9 +106,10 @@ To raise it formally: **GRM** in the app menu
      list
    - Every "Layer-A signal" maps to an Evidence-Model rule in PDD
    - Every escalation trigger from PDD § Escalation is referenced
-   - The "Need help?" block names a real person plus the GRM menu — no
-     `openchatstudio.com` host, `public_id`, or `embed_key` (see
-     § Support channel below)
+   - The "Need help?" block names a real person and a phone fill-in — no
+     `openchatstudio.com` host, `public_id`, or `embed_key`, and no in-app
+     control (grievance menu, "Report a problem") unless this run's evidence
+     shows one exists — ace#2106 (see § Support channel below)
 
 6. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-quick-reference.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
@@ -229,9 +230,10 @@ Fourth of the per-artifact training skills.
 
 Follow `skills/_training-template.md § Support channel — one contract, all six
 skills` (dimagi-internal/ace#1303): this artifact is **worker-facing**, so its
-support line names a HUMAN (LLO coordinator / Partner Trainer) plus the in-app
-**GRM menu** — never the `openchatstudio.com` host, the chatbot `public_id`, or
-the `embed_key`. Those are embed credentials, not a destination a CBF can open
+support line names a HUMAN (LLO coordinator / Partner Trainer) as a labelled
+fill-in — never the `openchatstudio.com` host, the chatbot `public_id`, or the
+`embed_key`, and never an in-app control (a grievance menu, a "Report a
+problem" option) unless this run's own evidence shows one exists (ace#2106). Those are embed credentials, not a destination a CBF can open
 (the embed path live-probes 404; Connect has no per-opp widget field, CCC-301).
 Run `checkWorkerFacingSupportChannel` from `lib/support-channel-guard.ts` over
 the composed markdown before writing and rewrite any finding.
@@ -240,3 +242,4 @@ the composed markdown before writing and rewrite any finding.
 
 - v1 (0.10.84): Initial skill. Owns `training-quick-reference.md` only.
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`.
+- 2026-09-07: **Dropped the in-app GRM/grievance escalation route from the worker-facing support line (ace#2106).** The shared contract in `skills/_training-template.md` asserted "the app's own in-app grievance route (the **GRM menu**), which the PDD already designates as the complaint channel" as settled fact. Both halves are false: `templates/pdd-template.md` and both shipped example PDDs grep ZERO for `grievance|GRM|complaint` (there is no PDD section that would designate one), and the released Deliver CCZ of `hh-poverty-targeting` (HQ `ce668763ad6c4b48ac5f4cd4502f3f8c`, `connect-ace-prod`) greps zero across `suite.xml`, `modules-0/forms-0.xml` and both `app_strings.txt` — its whole menu is one module and one form. A worker sent to a menu that is not there stops escalating rather than falling back. The support line is now the coordinator name + phone fill-in the LLO completes at onboarding; an in-app route may be named only when this run's own CCZ grep or ui-dump shows one. *Enforced:* `test/skills/in-app-control-existence-claims.test.ts` (corpus ratchet, `.md` + `.ts`) + `unverified-in-app-control` in `lib/support-channel-guard.ts`.
