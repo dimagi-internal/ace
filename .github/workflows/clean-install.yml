@@ -3,6 +3,24 @@ name: Clean install + dep check
 on:
   pull_request:
     branches: [main]
+  # REQUIRED for a merge queue, and inert without one. A queue runs the required
+  # checks against the merge GROUP (main + everything ahead of this PR in the
+  # queue), on a `refs/heads/gh-readonly-queue/...` ref, and GitHub is explicit
+  # that the pull_request run does not count for it:
+  #
+  #   "You must use the `merge_group` event to trigger your GitHub Actions
+  #    workflow when a pull request is added to a merge queue."
+  #   "Otherwise, status checks will not be triggered when you add a pull
+  #    request to a merge queue. The merge will fail as the required status
+  #    check will not be reported."
+  #   -- GitHub docs, managing-a-merge-queue
+  #
+  # `clean-install` is main's ONLY required check, so without this line every
+  # enqueued PR would sit waiting for a check that never runs and then time out
+  # of the queue. Added ahead of the queue being enabled on purpose: it costs
+  # nothing until a queue exists (the event never fires), and it must not be a
+  # flag day.
+  merge_group:
   push:
     branches: [main]
 
@@ -103,8 +121,27 @@ jobs:
       # check is never re-run at merge time. Without these two env vars the
       # claim half no-ops SILENTLY — which is why test/lib/version-uniqueness
       # asserts this wiring rather than trusting it.
+      #
+      # ALSO on `merge_group`, and that arm is the load-bearing one under a
+      # queue (ace#1776). The default mode reads `origin/main`'s VERSION LIVE
+      # and compares it to the working tree, so on a merge-group ref it asks
+      # exactly the right question: does this group's VERSION advance past main
+      # as main stands *now*, after everything the queue already merged? That is
+      # the merge-time re-check `strict = false` never gave us.
+      #
+      # It only closes the class if each merge group holds ONE pull request.
+      # Two PRs that both bump 1099 -> 1100 make byte-identical VERSION changes,
+      # so grouped together they merge cleanly and the group's VERSION is 1100,
+      # which does advance past 1099 and PASSES — then both land and main shows
+      # 1100 twice. Set the queue's "maximum pull requests to merge" to 1 and
+      # each group is main + one PR, where the second PR's group reads 1100 vs
+      # an origin/main already at 1100 and is correctly rejected.
+      #
+      # PR_NUMBER is empty on merge_group, so the open-PR claim half skips
+      # itself with a log line (it already handles an unset PR_NUMBER). The
+      # origin/main assertion — the one that matters here — still runs.
       - name: VERSION advances past origin/main
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -125,6 +125,42 @@ describe('the gate is wired into the REQUIRED check', () => {
     expect(wf).toMatch(/--post-merge/);
     expect(wf).toMatch(/if: github\.event_name == 'push'/);
   });
+
+  //
+  // A merge queue is the fix this issue's own text proposes for the merge-time
+  // half, and `lib/version-uniqueness.ts` says the same ("the residual that only
+  // `strict = true` or a merge queue removes"). These two lines are what make a
+  // queue WORK rather than brick the repo, and both are inert until one exists,
+  // so they ship ahead of it — no flag day.
+  //
+  it('runs on merge_group, or an enqueued PR can never satisfy the required check', () => {
+    // GitHub is explicit: "You must use the `merge_group` event to trigger your
+    // GitHub Actions workflow when a pull request is added to a merge queue"
+    // and "The merge will fail as the required status check will not be
+    // reported." `clean-install` is main's ONLY required check, so without this
+    // every enqueued PR waits for a check that never runs and times out of the
+    // queue. That would be a repo-wide outage on the day the queue is enabled.
+    expect(
+      wf,
+      'clean-install.yml must add a `merge_group:` trigger BEFORE a merge queue\n' +
+        'is enabled on main, or every enqueued PR times out waiting for a check\n' +
+        'that is never dispatched.',
+    ).toMatch(/^\s*merge_group:\s*$/m);
+  });
+
+  it('asserts the VERSION advance on the merge GROUP, not only on the PR', () => {
+    // The load-bearing half under a queue. The default mode reads origin/main's
+    // VERSION LIVE, so on a merge-group ref it asks "does this group advance
+    // past main as main stands NOW, after everything the queue already merged"
+    // — which is precisely the merge-time re-check `strict = false` denies us
+    // and precisely what ace#1776 is about. Without this arm the queue
+    // serialises merges and still lets two identical VERSIONs land.
+    expect(
+      wf,
+      "the VERSION step must also run on merge_group, or enabling a queue\n" +
+        'does not actually close ace#1776 — it just reorders the same race.',
+    ).toMatch(/if: github\.event_name == 'pull_request' \|\| github\.event_name == 'merge_group'/);
+  });
 });
 
 describe('checkVersionUnclaimed — the merge-time half of ace#1593 (ace#1776)', () => {

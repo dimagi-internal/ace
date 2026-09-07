@@ -141,6 +141,16 @@ function setup() {
     path.join(stub, 'gh'),
     `#!/usr/bin/env bash
 d="$GH_STUB_DIR"
+# Merge-queue read. \`gh pr view --json\` carries no queue field, so the script
+# asks GraphQL; the file holds the four tokens its --jq template produces:
+#   <isMergeQueueEnabled> <isInMergeQueue> <entry.state> <entry.position>
+# An EMPTY file models a failed/unavailable read, which the script must treat
+# as "unqueued" so pre-queue behaviour is bit-for-bit what it was.
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  echo "$*" >> "$d/graphql.log"
+  cat "$d/queue" 2>/dev/null
+  exit 0
+fi
 if [ "$2" = "view" ]; then
   f=""; prev=""
   for a in "$@"; do [ "$prev" = "--json" ] && f="$a"; prev="$a"; done
@@ -174,12 +184,21 @@ exit 0
 
   fs.writeFileSync(path.join(stub, 'state'), 'OPEN\n');
   fs.writeFileSync(path.join(stub, 'mergeable'), 'DIRTY\n');
+  // The world as it is today: no merge queue on `main`. Every case in the first
+  // describe below therefore runs the PRE-QUEUE path unchanged — they are the
+  // regression anchors for "the queue work did not disturb the status quo".
+  fs.writeFileSync(path.join(stub, 'queue'), 'false false - -\n');
   fs.writeFileSync(path.join(stub, 'headRefName'), `${PR_BRANCH}\n`);
   fs.writeFileSync(path.join(stub, 'headRefOid'), `${remoteSha(PR_BRANCH)}\n`);
   return { work, stub };
 }
 
-function runLandPr(work: string, stub: string, timeoutMs = SPAWN_TIMEOUT_MS) {
+function runLandPr(
+  work: string,
+  stub: string,
+  timeoutMs = SPAWN_TIMEOUT_MS,
+  extraEnv: NodeJS.ProcessEnv = {},
+) {
   return spawnSync('bash', ['scripts/land-pr.sh', '1967', '1'], {
     cwd: work,
     encoding: 'utf-8',
@@ -188,6 +207,7 @@ function runLandPr(work: string, stub: string, timeoutMs = SPAWN_TIMEOUT_MS) {
       PATH: `${stub}:${process.env.PATH}`,
       GH_STUB_DIR: stub,
       ACE_REPO: 'dimagi-internal/ace',
+      ...extraEnv,
     },
     timeout: timeoutMs,
   });
@@ -327,6 +347,164 @@ describe('land-pr.sh push target', () => {
       // The whole point: no arm, no disarm, no merge call of any kind.
       expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
       expect(fs.existsSync(path.join(stub, 'armed'))).toBe(false);
+    });
+  });
+
+  //
+  // MERGE QUEUES. `main` has no queue yet; one is about to be enabled to close
+  // ace#1776/#1914. These cases model the queued world in the stub so the
+  // script is correct on BOTH sides of that switch — the change must not need a
+  // flag day, because sessions already running keep the copy they loaded.
+  //
+  // Every case above runs with `queue` = "false false - -", i.e. the world as
+  // it is today, and is therefore also the regression anchor for "detecting the
+  // queue did not disturb the pre-queue path".
+  //
+  describe('merge queue', () => {
+    /** The four tokens `queue_state()`'s --jq template produces. */
+    const setQueue = (stub: string, v: string) =>
+      fs.writeFileSync(path.join(stub, 'queue'), `${v}\n`);
+
+    it('never disarms, rebases or force-pushes a PR that is in the queue', () => {
+      // THE hazard, and it is silent. gh's `mergeRun` calls `inMergeQueue()`
+      // BEFORE the `--disable-auto` branch (cli/cli v2.88.1 merge.go:543-553),
+      // so on a queued PR `gh pr merge --disable-auto` returns
+      // ErrAlreadyInMergeQueue, which the command maps to `return nil`
+      // (merge.go:167): it prints "already queued to merge" and EXITS 0 without
+      // disabling anything. A script that reads that as "disarmed" then
+      // force-pushes over a head whose merge group is already under test — the
+      // exact ace#1593 shape the disarm exists to prevent.
+      //
+      // So: DIRTY *and* queued must produce no mutation at all.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, 'true true AWAITING_CHECKS 3');
+      const before = remoteSha(PR_BRANCH);
+      const localBefore = git(['rev-parse', 'HEAD'], work);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_QUEUE_WAIT: '0',
+      });
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(5);
+      // No merge call of ANY kind: no disarm (it would be a lie), no arm.
+      expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
+      // No rebase, no push. The remote head and the local head are untouched.
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+      expect(git(['rev-parse', 'HEAD'], work)).toBe(localBefore);
+      expect(remoteBranches()).toEqual([PR_BRANCH, 'main']);
+    });
+
+    it('reports a queued PR as progress, naming the entry state and position', () => {
+      // The reporting half. CLAUDE.md calls "PR queued but actually stuck" the
+      // #1 source of bad handoffs; a PR that is genuinely progressing through a
+      // merge queue must not read like that one. The give-up line has to say
+      // so in words, and carry the position so the reader can watch it move.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, 'true true AWAITING_CHECKS 3');
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_QUEUE_WAIT: '0',
+      });
+
+      expect(r.stdout).toMatch(/STILL IN THE MERGE QUEUE/);
+      expect(r.stdout).toMatch(/PROGRESS, NOT A STALL/);
+      expect(r.stdout).toMatch(/position=3/);
+      expect(r.stdout).toMatch(/entry=AWAITING_CHECKS/);
+      // And it must say plainly that it left the PR alone, because the reader's
+      // next decision is whether to go clean something up.
+      expect(r.stdout).toMatch(/Nothing was rebased/);
+    });
+
+    it('exits 0 when the queue merges it — queued is a wait, not a failure', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, 'true true QUEUED 1');
+      // The queue merges it while we are polling.
+      fs.writeFileSync(path.join(stub, 'state'), 'OPEN\n');
+      fs.writeFileSync(
+        path.join(stub, 'gh'),
+        fs.readFileSync(path.join(stub, 'gh'), 'utf-8').replace(
+          '    state) cat "$d/state" ;;',
+          '    state) cat "$d/state"; echo MERGED > "$d/state" ;;',
+        ),
+        { mode: 0o755 },
+      );
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+      });
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(r.stdout).toMatch(/merged from the queue/);
+      // It got there without touching the PR — no arm (it is already queued;
+      // arming is a no-op that gh short-circuits anyway) and no push.
+      expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+    });
+
+    it('falls back to the pre-queue path when the queue read is unavailable', () => {
+      // A failed GraphQL read must degrade to exactly today's behaviour, not to
+      // a refusal: pre-queue that answer is always right, so a blip can never
+      // regress the status quo. (Post-queue it is the one residual — a failed
+      // read on a genuinely queued PR would let the DIRTY path run. Named in
+      // the script header; the falsifier is the first live queued PR.)
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, '');
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(r.stdout).toMatch(/merge-queue read unavailable/);
+      // DIRTY + unreadable queue => the 2026-09-05 behaviour, unchanged.
+      expect(remoteSha(PR_BRANCH)).not.toBe(before);
+      expect(remoteSha(PR_BRANCH)).toBe(git(['rev-parse', 'HEAD'], work));
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).toMatch(/--disable-auto/);
+      expect(log).toMatch(/--auto/);
+    });
+
+    it('still rebases and arms when a queue EXISTS but this PR is not in it', () => {
+      // Queue enabled, PR not enqueued (it is DIRTY, so GitHub will not take
+      // it). The rebase path is exactly what un-sticks that, and the queue does
+      // NOT make it redundant: "if there are failed required status checks or
+      // conflicts with the base branch, the pull request will be removed from
+      // the queue" (GitHub docs). A speculative rebase cannot resolve a real
+      // conflict, so this path must survive the queue going live.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, 'true false - -');
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(remoteSha(PR_BRANCH)).not.toBe(before);
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).toMatch(/--disable-auto/);
+      expect(log).toMatch(/--auto/);
+    });
+
+    it('checks queue ownership only after the ancestry guard', () => {
+      // Same reasoning as the arm (ace#2004): nothing queue-aware may run
+      // before the script has proved this checkout owns the PR, or a
+      // wrong-worktree invocation starts reporting on a stranger's PR.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      setQueue(stub, 'true true QUEUED 1');
+      git(['checkout', '-qb', 'unrelated', 'origin/main'], work);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_QUEUE_WAIT: '0',
+      });
+
+      expect(r.status).toBe(2);
+      expect(r.stdout).toMatch(/refusing to land/);
+      expect(r.stdout).not.toMatch(/STILL IN THE MERGE QUEUE/);
     });
   });
 
