@@ -1578,8 +1578,29 @@ function isPublicChatUrl(url: string): boolean {
  * That is this week's dominant class — a check that runs, answers reassuringly,
  * and is structurally incapable of noticing the problem.
  *
- * Self-retiring: the moment the payload carries any URL on OCS's anonymous
- * `start/` route, this returns nothing.
+ * ## Satisfied by the EMBEDDED WIDGET, which is the intended answer (2026-09-07)
+ *
+ * The invitation is answered on the page itself. ace-web mounts the per-opp bot
+ * as a corner bubble (`OcsWidgetMount`, fed the `public_id` + `embed_key` this
+ * same payload carries), so an anonymous reader can ask their question without
+ * leaving the summary — and that is the product decision, not a workaround:
+ * "no need to send people elsewhere on the review surface" (Jonathan,
+ * 2026-09-07, in the same breath as confirming anonymous LLM access is wanted).
+ *
+ * So the presence of embed credentials silences this check. A reader who can
+ * chat in place is not being denied anything, and demanding a second, external
+ * link beside a working widget would be asking the page to do the one thing the
+ * owner said not to do.
+ *
+ * The anonymous `start/` URL still silences it too — it is a real, working
+ * surface (see `lib/ocs-public-chat-url.ts`, and note a COOKIELESS probe of it
+ * reads 404 on a healthy bot, which has now fooled two separate investigations:
+ * ace#1021 and ace#2140). It is simply no longer the preferred remedy, because
+ * it sends the reader away.
+ *
+ * What still fires: an assistant section offering ONLY an admin-tagged console,
+ * with no widget credentials and no public route. That reader genuinely cannot
+ * accept the invitation, which is the case this check was written for.
  */
 export function auditAssistantAccess(payload: unknown): Finding[] {
   if (!payload || typeof payload !== 'object') return [];
@@ -1587,7 +1608,13 @@ export function auditAssistantAccess(payload: unknown): Finding[] {
   if (!assistant || typeof assistant !== 'object') return []; // absence is auditCompleteness's job
   const a = assistant as Record<string, unknown>;
 
-  // Already fixed: a public chat route is on the page somewhere.
+  // The invitation is answerable IN PLACE: the widget is mounted from these two
+  // fields, so the reader can chat without following any link. Preferred remedy.
+  if (typeof a.public_id === 'string' && a.public_id && typeof a.embed_key === 'string' && a.embed_key) {
+    return [];
+  }
+
+  // Already fixed the other way: a public chat route is on the page somewhere.
   const urls = Object.entries(a)
     .filter(([k, v]) => typeof v === 'string' && (k === 'url' || /(_url|_link)$/.test(k)))
     .map(([, v]) => v as string);
@@ -1615,11 +1642,12 @@ export function auditAssistantAccess(payload: unknown): Finding[] {
           : `and no anonymous chat URL is derivable from the payload, so the reader has no way to ` +
             `accept the invitation at all`),
       fix:
-        'either render the public chat link (`access: public`) beside the console link in ace-web ' +
-        '`apps/opps/summary.py`, or change the copy so the page stops inviting a reader to use ' +
-        'something it only shows to admins. Surfacing it is a PRODUCT call (an un-authed reader ' +
-        'drives LLM spend on the per-opp bot, and the widget is not rate-limited) — this finding ' +
-        'does not make that call, it refuses to certify a page that promises what it does not deliver',
+        'serve `public_id` + `embed_key` in the assistant block so ace-web can mount the chat widget ' +
+        'on the page (`OcsWidgetMount`) — the reader then answers the invitation in place, which is ' +
+        'the intended shape: no sending anyone elsewhere on the review surface. Failing that, render ' +
+        'the anonymous chat link (`access: public`), or change the copy so the page stops inviting a ' +
+        'reader to use something it only shows to admins. Anonymous LLM access is CONFIRMED wanted ' +
+        '(Jonathan, 2026-09-07), so this is no longer an open product question — only a wiring one',
       defect: '1839',
     },
   ];
