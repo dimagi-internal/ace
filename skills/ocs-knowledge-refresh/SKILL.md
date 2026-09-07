@@ -246,6 +246,28 @@ Write the product artifact, and update `5-ocs/ocs-agent-setup.md` with
 **`last_reindexed_at` is the operator's check.** Its absence on a run whose
 Phase 6 completed means the chatbot never received the training documents.
 
+**So read both write-backs back, and halt loud if either field is missing.** A
+returned write is not a written field, and this half of Step 4 has no schema
+behind it: the `run_state.yaml` patch is checked by
+`validateAs: {kind: 'phase-products'}`, but the `ocs-agent-setup.md` edit is
+free text that fails silently when it is skipped. After writing, re-read
+`5-ocs/ocs-agent-setup.md` and assert `last_reindexed_at` is present carrying
+the timestamp you just wrote, and re-read `run_state.yaml` and assert the same
+of `phases.ocs-setup.products.ocs_chatbot.last_reindexed_at`. This is Step 3's
+`source: api`-over-page-scrape discipline applied to the write path.
+
+**Skipping it is not hypothetical, and it poisons Step 0.** On
+`bednet-check-2-visit/20260902-1555` the 2026-09-05 pass uploaded all four
+documents, published v3, and wrote `Status: done` — while
+`5-ocs/ocs-agent-setup.md` sat untouched at the revision Phase 5 left it,
+still reading *"`last_reindexed_at` is absent"* three days later. The work was
+done and the only field that records it said otherwise, so an operator reads
+"the bot never got its training documents" about a bot that has them. Worse,
+Step 0 branches on this field: a later pass reads `absent`, takes the
+first-pass branch, and **appends duplicates** into a collection that already
+holds the documents. That run escaped only because its documents had genuinely
+been rewritten, making the replace branch correct by luck. ace#2107.
+
 Then write **`knowledge_sources`** into
 `run_state.yaml` → `phases.ocs-setup.products.ocs_chatbot` — a list of short
 human-readable phrases naming what the bot was actually given:
@@ -289,7 +311,9 @@ to ~5 entries. Describe only what is **actually indexed** — a document you
 skipped (see Step 0) must not appear here.
 
 *Enforced:* `ocs_chatbot` is `.passthrough()` in `lib/phase-products-schema.ts`,
-so `validateAs` accepts the field rather than rejecting it as drift.
+so `validateAs` accepts the field rather than rejecting it as drift. The
+read-back requirement above is enforced by
+`test/skills/ocs-knowledge-refresh.test.ts`.
 
 ## Verdict
 
