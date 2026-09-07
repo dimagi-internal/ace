@@ -182,6 +182,24 @@ exit 0
     { mode: 0o755 },
   );
 
+  // Stubbed `npx` — land-pr.sh reaches its BLOCKED classifier as
+  // `npx tsx <script-dir>/land-pr-classify.ts --pr N --repo R` (ace#2175). The
+  // classifier's OWN reasoning is covered against the real script in
+  // `land-pr-classify.test.ts`; what the cases below exercise is land-pr.sh's
+  // REACTION to each verdict, which is where the bug lived.
+  fs.writeFileSync(
+    path.join(stub, 'npx'),
+    '#!/usr/bin/env bash\ncat "$GH_STUB_DIR/classify" 2>/dev/null\nexit 0\n',
+    { mode: 0o755 },
+  );
+  // Default verdict: BLOCKED because CI is still running. The safe answer, and
+  // the one every pre-existing case in this file needs.
+  fs.writeFileSync(
+    path.join(stub, 'classify'),
+    'action=wait\ncause=checks-pending\nfailing=\npending=clean-install\n' +
+      'detail=BLOCKED with checks still running (clean-install).\n',
+  );
+
   fs.writeFileSync(path.join(stub, 'state'), 'OPEN\n');
   fs.writeFileSync(path.join(stub, 'mergeable'), 'DIRTY\n');
   // The world as it is today: no merge queue on `main`. Every case in the first
@@ -347,6 +365,159 @@ describe('land-pr.sh push target', () => {
       // The whole point: no arm, no disarm, no merge call of any kind.
       expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
       expect(fs.existsSync(path.join(stub, 'armed'))).toBe(false);
+    });
+  });
+
+  //
+  // ace#2175 — the OTHER shape of a version collision, and the one the script
+  // could not see.
+  //
+  // The recovery had a single trigger: `mergeStateStatus: DIRTY`. That is right
+  // for a merge CONFLICT and wrong for the common collision, which produces no
+  // conflict at all: two PRs bumping to the same version write byte-identical
+  // VERSION files, git merges them cleanly, and the collision surfaces as
+  // `check-version-unique` failing inside `clean-install` — i.e. BLOCKED.
+  // Observed live on PR #2166 (vs the older #2165, both on `0.13.1325`):
+  // `state=OPEN mergeState=BLOCKED auto=MERGE`, stable, while the script polled
+  // silently for ten minutes and a human ran the recipe by hand.
+  //
+  // Every case here is a pair with its opposite. `BLOCKED` alone must NEVER be
+  // enough: it also covers a red unit test, a pending check and a missing
+  // review, and force-pushing any of those is worse than the hang.
+  //
+  describe('BLOCKED version collision (ace#2175)', () => {
+    const setVerdict = (stub: string, lines: string) =>
+      fs.writeFileSync(path.join(stub, 'classify'), `${lines}\n`);
+
+    it('recovers a BLOCKED PR the classifier calls a VERSION collision', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      setVerdict(stub, [
+        'action=recover',
+        'cause=version-collision',
+        'failing=clean-install',
+        'pending=',
+        'detail=VERSION 0.13.1325 is ALREADY CLAIMED by an older open PR (#2165).',
+      ].join('\n'));
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      // The full recipe, in the order the header insists on: disarm, rebase,
+      // force-push to the PR's OWN head ref, re-arm.
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).toMatch(/--disable-auto/);
+      expect(log).toMatch(/--auto/);
+      expect(log.indexOf('--disable-auto')).toBeLessThan(log.lastIndexOf('--auto --merge'));
+      expect(remoteSha(PR_BRANCH)).not.toBe(before);
+      expect(remoteSha(PR_BRANCH)).toBe(git(['rev-parse', 'HEAD'], work));
+      expect(remoteBranches()).toEqual([PR_BRANCH, 'main']);
+      // And it says WHY, naming the older PR — the silence was half the defect.
+      expect(r.stdout).toMatch(/cause=version-collision/);
+      expect(r.stdout).toMatch(/#2165/);
+      expect(r.stdout).toMatch(/recovering: VERSION collision/);
+    });
+
+    it('does NOT rebase a BLOCKED PR whose only problem is a failing test', () => {
+      // Same merge state, same "a required check is red". The one difference is
+      // the VERSION verdict. If this rebased, the script would restart CI on a
+      // failure a rebase cannot fix — and rewrite a head nobody asked it to.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      setVerdict(stub, [
+        'action=wait',
+        'cause=checks-failed',
+        'failing=unit-tests',
+        'pending=',
+        'detail=BLOCKED by FAILING checks (unit-tests), and this branch’s VERSION is fine.',
+      ].join('\n'));
+      const before = remoteSha(PR_BRANCH);
+      const localBefore = git(['rev-parse', 'HEAD'], work);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+      });
+
+      // It waits (auto-merge is the right holder here) and then reports.
+      expect(r.status).toBe(3);
+      // Nothing was rewritten: no rebase, no force-push, no disarm.
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).not.toMatch(/--disable-auto/);
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+      expect(git(['rev-parse', 'HEAD'], work)).toBe(localBefore);
+      // ...but it is LOUD about what held it, which "OPEN BLOCKED" never was.
+      expect(r.stdout).toMatch(/cause=checks-failed/);
+      expect(r.stdout).toMatch(/failing=unit-tests/);
+      expect(r.stdout).toMatch(/gave up after[\s\S]*failing=unit-tests/);
+    });
+
+    it('refuses to rebase when the classifier could not reach a verdict', () => {
+      // The only route to a WRONG recovery is a degraded read, so an absent or
+      // unreadable verdict has to fall on the wait side. Modelled by deleting
+      // the stub's canned answer: the classifier runs and says nothing.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      fs.rmSync(path.join(stub, 'classify'));
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+      });
+
+      expect(r.status).toBe(3);
+      expect(r.stdout).toMatch(/cause=classifier-unavailable/);
+      expect(r.stdout).toMatch(/refusing to rebase without a verdict/);
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+      expect(fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8')).not.toMatch(/--disable-auto/);
+    });
+
+    it('is bounded: at the rebase cap it stops loudly instead of pushing again', () => {
+      // A recovery that cannot converge must not loop. The cap is normally MAX
+      // (every rebase consumes an attempt); pinning it to 0 proves the guard
+      // exists and that hitting it names what it kept seeing.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      setVerdict(stub, [
+        'action=recover',
+        'cause=version-collision',
+        'failing=clean-install',
+        'pending=',
+        'detail=VERSION 0.13.1325 is ALREADY CLAIMED by an older open PR (#2165).',
+      ].join('\n'));
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_REBASE_MAX: '0',
+      });
+
+      expect(r.status).toBe(3);
+      expect(r.stdout).toMatch(/REBASE CAP REACHED \(0\/0\)/);
+      expect(r.stdout).toMatch(/mergeStateStatus=BLOCKED/);
+      expect(r.stdout).toMatch(/failing=clean-install/);
+      // Bounded means it touched nothing on the way out.
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+      expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
+    });
+
+    it('narrates every poll, so a wait cannot read as a hang', () => {
+      // The other half of ace#2175. The live invocation printed NOTHING for ten
+      // minutes, which is why it was killed rather than left to work.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '3',
+      });
+
+      expect(r.stdout).toMatch(/poll 1\/3: state=OPEN mergeable=BLOCKED/);
+      expect(r.stdout).toMatch(/poll 3\/3: state=OPEN mergeable=BLOCKED/);
     });
   });
 

@@ -156,6 +156,61 @@ describe('scripts/land-pr.sh', () => {
     });
   });
 
+  //
+  // ace#2175. The behavioural cases live in `land-pr-refspec.test.ts` (both
+  // directions, driven against a stubbed `gh` + classifier) and the decision
+  // rule in `test/lib/land-pr-classify.test.ts`. These pin the SHAPE those
+  // depend on — the shape a well-meaning simplification silently breaks.
+  //
+  describe('BLOCKED version collision', () => {
+    it('recovers on more than DIRTY — BLOCKED is a second, separate trigger', () => {
+      // The bug in one assertion: DIRTY was the ONLY way into the recovery, and
+      // the common version collision never produces it (identical VERSION files
+      // merge cleanly, so it lands as a failed required check => BLOCKED).
+      expect(CODE).toMatch(/"\$m" = "BLOCKED"/);
+      expect(CODE).toMatch(/classify_blocked/);
+    });
+
+    it('requires a VERDICT before rebasing — never `BLOCKED` on its own', () => {
+      // The reason the issue's one-line fix (`DIRTY || BLOCKED`) is wrong.
+      // BLOCKED also covers a red unit test, a pending check and a missing
+      // review; force-pushing any of those is worse than the hang. The rebase
+      // must be gated on the classifier answering `recover`.
+      expect(CODE).toMatch(/cls_action" = "recover"/);
+      // ...and the DIRTY branch must not have been widened in place.
+      expect(CODE).not.toMatch(/"\$m" = "DIRTY" \] \|\| \[ "\$m" = "BLOCKED"/);
+    });
+
+    it('derives the verdict from the version authority, not from CI log prose', () => {
+      // `land-pr-classify.ts` calls the same `lib/version-uniqueness.ts`
+      // functions `check-version-unique` runs. A regex over another job's log
+      // output would drift the moment that message is reworded — and would be
+      // matchable by nothing else, which is exactly the property that makes the
+      // trigger safe.
+      expect(CODE).toMatch(/land-pr-classify\.ts/);
+    });
+
+    it('defaults to WAIT when the classifier cannot answer', () => {
+      // A degraded read is the ONLY route to a wrong recovery, so it has to
+      // fall on the side of leaving the PR alone.
+      expect(CODE).toMatch(/cls_action="wait"/);
+      expect(CODE).toMatch(/classifier-unavailable/);
+    });
+
+    it('bounds the recovery and is loud at the bound', () => {
+      expect(CODE).toMatch(/REBASE_MAX/);
+      expect(SCRIPT).toMatch(/REBASE CAP REACHED/);
+    });
+
+    it('narrates each poll — a silent wait is indistinguishable from a hang', () => {
+      // Ten minutes of no output is what made ace#2175 read as a hang rather
+      // than a wait, and is why it was killed instead of left to work.
+      expect(CODE).toMatch(/poll \$poll\/\$POLLS_PER_ATTEMPT/);
+      // The give-up line must name the cause, not just the merge state.
+      expect(CODE).toMatch(/cause=\$last_cause/);
+    });
+  });
+
   it('treats a non-version conflict as a human matter, not another retry', () => {
     expect(SCRIPT).toMatch(/non-version file conflicts/);
     expect(SCRIPT).toMatch(/exit 2/);

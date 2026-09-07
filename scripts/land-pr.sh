@@ -118,10 +118,14 @@
 #   - **The DIRTY rebase path STAYS.** A queue rebases speculatively, but it
 #     cannot resolve a real conflict: "if there are failed required status
 #     checks or conflicts with the base branch, the pull request will be removed
-#     from the queue" (same doc). A VERSION collision is a conflict, so it still
-#     surfaces as DIRTY — it just arrives via an ejection rather than a stalled
-#     auto-merge. The path is unchanged and still correct; it simply must not
-#     run while the PR is still IN the queue.
+#     from the queue" (same doc). The path is unchanged and still correct; it
+#     simply must not run while the PR is still IN the queue.
+#
+#     This paragraph used to add "a VERSION collision is a conflict, so it still
+#     surfaces as DIRTY". **That was wrong, and it is the ace#2175 bug** — a
+#     collision produces no conflict at all, so an ejection for a failed
+#     `check-version-unique` lands the PR at BLOCKED with the merge-group run
+#     red, not at DIRTY. See "## A version collision usually is NOT `DIRTY`".
 #
 #   - **`--auto --merge` is unchanged, deliberately.** Under a queue gh only
 #     WARNS that "The merge strategy for <branch> is set by the merge queue"
@@ -140,15 +144,47 @@
 # See `skills/shipping/SKILL.md § When the merge queue goes live` for the
 # falsifier to run on the first queued PR.
 #
+# ## A version collision usually is NOT `DIRTY` (ace#2175)
+#
+# Until 2026-09-07 the recovery above had ONE trigger: `mergeStateStatus: DIRTY`.
+# That is right for a merge CONFLICT and wrong for the common shape of a version
+# collision, which produces no conflict at all. Two PRs that bump to the SAME
+# version write byte-identical VERSION files, so git merges them cleanly —
+# `lib/version-uniqueness.ts` says exactly that in the error it raises
+# ("Nothing will conflict — two identical VERSION files merge cleanly"). The
+# collision is caught instead by `check-version-unique` failing inside
+# `clean-install`, `main`'s only REQUIRED check, which leaves the PR `BLOCKED`.
+#
+# Measured 2026-09-07 on PR #2166 (collided with the older #2165 on `0.13.1325`):
+# `state=OPEN mergeState=BLOCKED auto=MERGE`, stable, while this script polled it
+# for ten minutes and printed nothing. A human recovered it by hand with the
+# recipe implemented ten lines away.
+#
+# **`BLOCKED` on its own must never trigger the rebase.** It is GitHub's general
+# "not mergeable yet": checks running, a check FAILED for any reason, a missing
+# review. `DIRTY || BLOCKED` would answer a red unit test by force-pushing —
+# restarting CI on a failure a rebase cannot fix. So the trigger is `BLOCKED`
+# AND a positive VERSION-collision verdict, re-derived by
+# `scripts/land-pr-classify.ts` from the SAME functions `check-version-unique`
+# runs (`lib/version-uniqueness.ts`) over live evidence. That verdict does not
+# look at CI, so no CI failure can produce it; an unreadable one is `unknown`,
+# which waits. Full argument: `lib/land-pr-classify.ts`.
+#
+# ## Silence is a defect too
+#
+# The ten minutes above printed NOTHING, which is what made a wait read as a
+# hang. Every poll now names the state it observed, every BLOCKED attempt names
+# the cause and the failing checks, and the give-up line carries them too.
+#
 # ## Usage
 #
 #   bash scripts/land-pr.sh <pr-number> [max-attempts]
 #
 # Exit: 0 merged · 1 closed without merging · 2 non-version conflict (needs a
-# human) · 3 attempts exhausted · 5 STILL IN THE MERGE QUEUE when the queue wait
-# ran out — progress, not a stall; re-run or read the queue position. Always
-# verify the merge state yourself after — a turn that opened a PR does not close
-# without a read merge state.
+# human) · 3 attempts exhausted, or the rebase cap was hit · 5 STILL IN THE MERGE
+# QUEUE when the queue wait ran out — progress, not a stall; re-run or read the
+# queue position. Always verify the merge state yourself after — a turn that
+# opened a PR does not close without a read merge state.
 #
 set -uo pipefail
 
@@ -165,6 +201,15 @@ POLL_SECONDS="${ACE_LAND_PR_POLL_SECONDS:-20}"
 # ~2-3 min `clean-install`; past that, report the position and let the caller
 # decide rather than holding the turn.
 QUEUE_WAIT_SECONDS="${ACE_LAND_PR_QUEUE_WAIT:-1800}"
+# Hard ceiling on how many times WE rewrite the PR head. Every rebase consumes an
+# attempt, so `MAX` already bounds it — this makes the bound explicit and, more
+# to the point, makes hitting it LOUD rather than another exhausted-attempts
+# line. A recovery that cannot converge must say what it kept seeing.
+REBASE_MAX="${ACE_LAND_PR_REBASE_MAX:-$MAX}"
+
+# Resolved from THIS script's own location, not from `cwd`: the classifier is a
+# sibling, and the script is routinely run from a worktree it was copied into.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 state() { gh pr view "$PR" -R "$REPO" --json state --jq .state 2>/dev/null; }
 mergeability() { gh pr view "$PR" -R "$REPO" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null; }
@@ -194,6 +239,39 @@ is_queued() {
   local qe queued rest
   read -r qe queued rest <<<"$(queue_state)" || true
   [ "${queued:-false}" = "true" ]
+}
+
+# Why this PR is BLOCKED, and whether we may rebase it (ace#2175). Sets
+# cls_action / cls_cause / cls_failing / cls_pending / cls_detail.
+#
+# The verdict comes from `land-pr-classify.ts`, which re-derives the VERSION
+# property from `lib/version-uniqueness.ts` — the same functions
+# `check-version-unique` runs inside `clean-install`. It deliberately does NOT
+# scrape CI's log text: a regex over another job's prose drifts silently, while
+# the library cannot disagree with itself.
+#
+# A classifier that does not run, or answers nothing, DEFAULTS TO WAIT. Every
+# unreadable state must fall on the side of leaving the PR alone: the cost of a
+# missed recovery is a bounded wait, the cost of a wrong one is a force-push
+# over a PR that never needed it.
+classify_blocked() {
+  cls_action=""; cls_cause=""; cls_failing=""; cls_pending=""; cls_detail=""
+  local out line
+  out="$(npx tsx "$SCRIPT_DIR/land-pr-classify.ts" --pr "$PR" --repo "$REPO" 2>/dev/null)"
+  while IFS= read -r line; do
+    case "$line" in
+      action=*)  cls_action="${line#action=}" ;;
+      cause=*)   cls_cause="${line#cause=}" ;;
+      failing=*) cls_failing="${line#failing=}" ;;
+      pending=*) cls_pending="${line#pending=}" ;;
+      detail=*)  cls_detail="${line#detail=}" ;;
+    esac
+  done <<<"$out"
+  if [ -z "$cls_action" ]; then
+    cls_action="wait"
+    cls_cause="classifier-unavailable"
+    cls_detail="could not run land-pr-classify.ts — refusing to rebase without a verdict."
+  fi
 }
 
 ## Why the arm is unconditional, and why the guard had to move with it
@@ -232,6 +310,8 @@ is_queued() {
 # doing that work instead. Queued waiting is bounded by QUEUE_WAIT_SECONDS.
 queue_deadline=$(( $(date +%s) + QUEUE_WAIT_SECONDS ))
 attempt=0
+rebases=0
+last_cause="-"; last_failing=""
 qenabled=false; queued=false; qstate="-"; qpos="-"
 
 while [ "$attempt" -lt "$MAX" ]; do
@@ -288,7 +368,7 @@ while [ "$attempt" -lt "$MAX" ]; do
       s="$(state)"
       [ "$s" = "MERGED" ] && { echo "merged from the queue"; exit 0; }
       [ "$s" = "CLOSED" ] && { echo "CLOSED without merging"; exit 1; }
-      is_queued || break        # ejected from the queue — re-evaluate at the top
+      is_queued || { echo "  ejected from the queue — re-reading at the top"; break; }
       sleep "$POLL_SECONDS"
     done
     continue                    # deliberately does NOT increment `attempt`
@@ -296,7 +376,33 @@ while [ "$attempt" -lt "$MAX" ]; do
 
   attempt=$((attempt + 1))
 
+  # WHY we would rebase, or empty for "we would not". Two ways in, and only two:
+  # a real merge conflict (DIRTY), or a BLOCKED PR whose VERSION the authority
+  # says is not viable (ace#2175). Everything else waits — see the classifier.
+  rebase_reason=""
   if [ "$m" = "DIRTY" ]; then
+    rebase_reason="merge conflict (DIRTY)"
+  elif [ "$m" = "BLOCKED" ]; then
+    classify_blocked
+    last_cause="$cls_cause"; last_failing="$cls_failing"
+    echo "  BLOCKED: cause=$cls_cause failing=${cls_failing:-none} pending=${cls_pending:-none}"
+    echo "  $cls_detail"
+    [ "$cls_action" = "recover" ] && rebase_reason="VERSION collision (BLOCKED)"
+  fi
+
+  if [ -n "$rebase_reason" ]; then
+    # Bounded, and loud at the bound. Every rebase already consumes an attempt,
+    # so this can only be reached by a recovery that keeps re-colliding — which
+    # is a human's call, not another force-push.
+    if [ "$rebases" -ge "$REBASE_MAX" ]; then
+      echo "  REBASE CAP REACHED ($rebases/$REBASE_MAX) and the PR is still blocked by: $rebase_reason"
+      echo "  Last observed: mergeStateStatus=$m cause=$last_cause failing=${last_failing:-none}"
+      echo "  Not rebasing again. Resolve it by hand, or raise ACE_LAND_PR_REBASE_MAX knowing why."
+      exit 3
+    fi
+    rebases=$((rebases + 1))
+    echo "  recovering: $rebase_reason — rebase $rebases/$REBASE_MAX"
+
     # DISARM FIRST — see "Why disarming is load-bearing" above. Without this the
     # rebase can be silently discarded by a merge that is already in flight.
     gh pr merge "$PR" -R "$REPO" --disable-auto >/dev/null 2>&1 || true
@@ -323,13 +429,21 @@ while [ "$attempt" -lt "$MAX" ]; do
   gh pr merge "$PR" -R "$REPO" --auto --merge >/dev/null 2>&1 || true
   echo "  auto-merge armed"
 
-  for _ in $(seq 1 "$POLLS_PER_ATTEMPT"); do
+  # A line PER POLL. The ten silent minutes of ace#2175 were half the defect:
+  # a wait that prints nothing is indistinguishable from a hang, and the reader
+  # kills it rather than letting it work. `mergeability` was already read here,
+  # so saying what it returned costs nothing.
+  for poll in $(seq 1 "$POLLS_PER_ATTEMPT"); do
     s="$(state)"
     [ "$s" = "MERGED" ] && { echo "attempt $attempt: MERGED"; exit 0; }
     [ "$s" = "CLOSED" ] && { echo "attempt $attempt: CLOSED without merging"; exit 1; }
-    is_queued && break                         # entered the queue — stop polling
-                                               # blind and re-read at the top
-    [ "$(mergeability)" = "DIRTY" ] && break    # collided again — next attempt
+    if is_queued; then                         # entered the queue — stop polling
+      echo "  poll $poll/$POLLS_PER_ATTEMPT: entered the merge queue — re-reading at the top"
+      break                                    # blind and re-read at the top
+    fi
+    mm="$(mergeability)"
+    echo "  poll $poll/$POLLS_PER_ATTEMPT: state=$s mergeable=$mm"
+    [ "$mm" = "DIRTY" ] && break                # collided again — next attempt
     sleep "$POLL_SECONDS"
   done
 done
@@ -340,4 +454,8 @@ done
 # says the PR never reached the queue at all — a different problem with a
 # different fix from one that is queued and merely slow.
 echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus,autoMergeRequest --jq '.state+" "+.mergeStateStatus+" auto-merge="+(.autoMergeRequest != null | tostring)') queue=$qenabled queued=$queued entry=$qstate pos=$qpos"
+# ...and WHAT was blocking it. "OPEN BLOCKED auto-merge=true" was the whole
+# report for the ten minutes of ace#2175; "cause=checks-failed failing=unit-tests"
+# is a next step. `rebases=` says whether the recovery ever ran at all.
+echo "  cause=$last_cause failing=${last_failing:-none} rebases=$rebases/$REBASE_MAX"
 exit 3
