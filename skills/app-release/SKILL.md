@@ -406,23 +406,91 @@ procedure below to rediscover.
    `connect-opp-setup` (it will re-sync) or visit the opp wizard and
    click `Sync Deliver Units` manually.
 
-   Sync URL pattern (verified 2026-04-29):
+   Sync URL pattern:
    ```
-   POST /a/<connect_org>/opportunity/<opp_int_id>/sync_deliver_units/
+   POST /a/<connect_org>/opportunity/<opp_id>/sync_deliver_units/
    X-CSRFToken: <from hx-headers in form HTML>
    ```
-   Note `opp_int_id` is Connect's internal int FK, not the UUID. To
-   discover it, GET the wizard page and read the `hx-post` attribute on
-   the Sync Deliver Units button.
+   **`opp_id` takes the opportunity UUID OR the int PK — either works**, so
+   there is nothing to discover from a wizard page. Connect resolves it with
+   `get_object_by_uuid_or_int(..., uuid_field="opportunity_id")` inside
+   `@opportunity_required`
+   (`commcare_connect/organization/decorators.py:141`,
+   `commcare_connect/utils/db.py:66-79`). The route itself is
+   `commcare_connect/opportunity/urls.py:160` under the
+   `a/<org_slug>/opportunity/` prefix (`config/urls.py:44`).
 
-8. **Verify Connect can see the release.**
-   Optional but recommended sanity check before Phase 4 starts:
+   > **Verification status (2026-09-07, ace#2185).** Route and ID-shape are
+   > verified against upstream SOURCE at the commit above; the POST was **not
+   > exercised live** (it is a state mutation and needs an existing opp).
+   > Falsified by: a 404 on that path, or a 404 from the decorator when a UUID
+   > is passed. The prior "int FK only, read it off the wizard's `hx-post`"
+   > note was over-constrained and is retired.
 
-   - GET `/a/<connect_org>/opportunity/init/` (Connect side, via ace-connect MCP context)
-   - Look at the deliver_app dropdown options for `<hq_domain>`. The option
-     text should change from `Unreleased - <name>` to `Released - <name>`
-     once the release propagates (typically immediate; Connect doesn't
-     cache).
+8. **Verify Connect's HQ credential can see the release.**
+   Optional but recommended sanity check before Phase 4 starts. Steps 5–6
+   already establish `is_released` authoritatively on the HQ side, and
+   **Connect stores no independent copy of that fact** — it re-reads the same
+   `/a/<domain>/api/v0.5/application/` endpoint. So the only *additional*
+   thing this step can tell you is whether **Connect's own stored HQ API key
+   reaches `<hq_domain>` and resolves your app as released**. That is a real
+   Phase-4 precondition (a wrong/expired key here surfaces as a confusing
+   opportunity-create failure), and it is all this step is for. It cannot
+   detect a release problem Steps 5–6 missed.
+
+   Do NOT load the wizard page and read the dropdown — the app `<select>`
+   ships as `<option value="">Loading...</option>` and is populated lazily
+   over htmx. Call the fragment endpoint directly:
+
+   ```
+   GET /users/api_keys/?hq_server=<n>                     -> <option value="<api_key_id>">…
+   GET /hq/applications/?hq_server=<n>&learn_app_domain=<hq_domain>&api_key=<api_key_id>
+   ```
+
+   `hq_server` is Connect's own FK, **not** ACE's cluster key:
+   `1` = `https://www.commcarehq.org`, `2` = `https://india.commcarehq.org`,
+   `3` = `https://eu.commcarehq.org`. Use `deliver_app_domain=` instead of
+   `learn_app_domain=` for the Deliver app; the view accepts either
+   (`commcare_connect/commcarehq/views.py`, `get_application`).
+
+   **Match by app id, never by label text.** Each `<option value>` is
+   HTML-escaped JSON `{"id": "<hq_app_id>", "name": "<label>"}`. Find the
+   option whose `id` equals the `hq_app_id` recorded in Step 5, then judge:
+
+   | Observation | Meaning |
+   |---|---|
+   | option present, label is the **bare app name** | released — PASS |
+   | option present, label starts `Unreleased - ` | **not** released — investigate Steps 5–6 |
+   | option **absent** | INCONCLUSIVE — not a failure (see below) |
+
+   **There is no `Released - ` prefix.** Connect prefixes only the negative
+   case: `app_name = f"Unreleased - {app_name}"` when no version has
+   `is_released` (`commcare_connect/utils/commcarehq_api.py:74-82`). Asserting
+   the presence of `Released - ` waits for a string the server never emits and
+   would report a correctly-released app as unreleased (ace#2185).
+
+   **Absence is inconclusive, not a failure.** `get_application` drops every
+   app already bound to an *active, unexpired* opportunity on that domain
+   (`existing_apps` in the same view). So the same app that passes here before
+   Phase 4 legitimately vanishes from this list after Phase 4 activates the
+   opportunity. Never treat a missing option as "the release did not
+   propagate", and never assert "no `Unreleased - ` prefix appears" over the
+   whole response — that passes vacuously when the option isn't there at all.
+
+   > **Verification status (2026-09-07, ace#2185).** Live-verified read-only
+   > against `connect.dimagi.com` on run `bednet-check-2-visit/20260907-1126`:
+   > the fragment returned 143 options, 19 carrying `Unreleased - `, zero
+   > carrying `Released - `, with both released app ids
+   > (`cbf35cb3…`, `0f4f2a46…`) present under bare labels and matched by
+   > option-value `id`. The `existing_apps` exclusion is verified against
+   > upstream source only, **not** observed live.
+
+   If you need the wizard page itself, it is
+   `GET /a/<connect_org>/program/<program_id>/opportunity-init` — **hyphen, no
+   trailing slash** (`commcare_connect/program/urls.py`, route name
+   `opportunity_init`; `program_id` comes from `opp.yaml`
+   `connect.program.id`). The trailing-slash and the old
+   `/a/<org>/opportunity/init/` spellings both 404.
 
 ## Connect-marker verification
 

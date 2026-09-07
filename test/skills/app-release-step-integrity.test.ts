@@ -91,8 +91,15 @@ describe('app-release § Process is one contiguous procedure', () => {
   it('keeps the Connect visibility check that was stranded in the orphan block', () => {
     // The orphan's one genuinely-unique step — it exists nowhere else, so
     // deleting the whole trailing block would have silently dropped it.
-    expect(text).toContain('Verify Connect can see the release.');
-    expect(text).toMatch(/opportunity\/init\//);
+    //
+    // ace#2185 re-pointed this step: the route it named 404s (the wizard is
+    // program-scoped and hyphenated) and the `Released - ` label it waited for
+    // never existed. The assertions below pin the step's SURVIVAL and its
+    // discriminating signal — `Unreleased - `, the one prefix Connect actually
+    // emits — not the retired URL. `connect-app-release-label-claims.test.ts`
+    // owns the correctness of what it now says.
+    expect(text).toMatch(/\*\*Verify Connect'?s? (HQ credential )?can see the release/);
+    expect(text).toMatch(/opportunity-init\b/);
     expect(text).toMatch(/Unreleased - /);
   });
 
