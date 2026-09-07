@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -15,6 +15,41 @@ import {
 } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
+
+/**
+ * These suites exercise `ensureCommCareApkCached`, which hardcodes its cache to
+ * `<os.tmpdir()>/ace-mobile-apk-cache` (`mcp/mobile/client.ts`). That is the
+ * PRODUCTION cache — the same directory a real `mobile_ensure_avd_running`
+ * installs from — so the tests cannot be pointed somewhere else without
+ * changing the code under test.
+ *
+ * Each assertion writes a 2 MB fake APK under a unique `test-*` version, and
+ * nothing used to remove them: a measured 1.4 GB (1,458 files) accumulated on
+ * one host in three days, against 2 real APKs (ace#2098). Clean up here rather
+ * than per-describe, because the two biggest producers (`test-skip-clear`,
+ * `test-no-snapshot`) live in different describe blocks than the rest.
+ *
+ * Scoped to the `commcare-test-*` prefix every test version uses, so a real
+ * cached `commcare-2.64.0.apk` is never touched — deleting one would force an
+ * unnecessary ~43 MB re-download on the next device dispatch.
+ */
+afterAll(() => {
+  const cacheDir = path.join(os.tmpdir(), 'ace-mobile-apk-cache');
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(cacheDir);
+  } catch {
+    return; // never created (or already gone) — nothing to clean.
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith('commcare-test-')) continue;
+    try {
+      fs.rmSync(path.join(cacheDir, entry), { force: true });
+    } catch {
+      /* best-effort: a cleanup failure must never fail a passing suite. */
+    }
+  }
+});
 
 // ace#1111 pinned screenshot dirs under an allow-listed root. These suites
 // build scratch dirs with `mkdtemp` under the OS temp dir, which is outside
