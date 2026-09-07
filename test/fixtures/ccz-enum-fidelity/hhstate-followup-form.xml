@@ -1,0 +1,239 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Follow-Up Visit</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/fd1216bb6a736e37" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="5" name="follow_up_visit">
+          <household_summary/>
+          <consent_check>
+            <consent_reaffirm_script/>
+            <consent_confirmed/>
+          </consent_check>
+          <net_observations>
+            <slept_under_net/>
+            <net_hanging/>
+          </net_observations>
+          <encounter_date/>
+          <last_consent_confirmed/>
+          <last_slept_under_net/>
+          <last_net_hanging/>
+          <household_state/>
+          <entity_key/>
+          <entity_label/>
+          <bednet_followup>
+            <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="bednet_followup">
+              <name>Bednet Follow-Up Visit</name>
+              <entity_id/>
+              <entity_name/>
+            </deliver>
+          </bednet_followup>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <update>
+              <consent_confirmed/>
+              <household_state/>
+              <net_hanging/>
+              <slept_under_net/>
+            </update>
+            <close/>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance src="jr://instance/casedb" id="casedb"/>
+      <instance src="jr://instance/session" id="commcaresession"/>
+      <bind nodeset="/data/household_summary"/>
+      <bind nodeset="/data/consent_check/consent_reaffirm_script"/>
+      <bind nodeset="/data/consent_check/consent_confirmed" type="xsd:string" required="true()" constraint=". = 'yes' or . = 'no'" jr:constraintMsg="jr:itext('consent_check-consent_confirmed-constraintMsg')"/>
+      <bind nodeset="/data/net_observations" relevant="/data/consent_check/consent_confirmed = 'yes'"/>
+      <bind nodeset="/data/net_observations/slept_under_net" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/net_observations/net_hanging" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/encounter_date" type="xsd:string"/>
+      <bind nodeset="/data/last_consent_confirmed" type="xsd:string" calculate="/data/consent_check/consent_confirmed"/>
+      <bind nodeset="/data/last_slept_under_net" type="xsd:string" calculate="if(/data/consent_check/consent_confirmed = 'yes', /data/net_observations/slept_under_net, '')"/>
+      <bind nodeset="/data/last_net_hanging" type="xsd:string" calculate="if(/data/consent_check/consent_confirmed = 'yes', /data/net_observations/net_hanging, '')"/>
+      <bind nodeset="/data/household_state" type="xsd:string" calculate="'checked'"/>
+      <bind nodeset="/data/entity_key" type="xsd:string" calculate="concat(instance('casedb')/casedb/case[@case_type='commcare-user'][hq_user_id=instance('commcaresession')/session/context/userid]/username, ' - ', /data/encounter_date, ' - ', /data/consent_check/consent_confirmed)"/>
+      <bind nodeset="/data/entity_label" type="xsd:string" calculate="concat('Follow-up ', /data/encounter_date, ' - consent ', /data/consent_check/consent_confirmed)"/>
+      <bind nodeset="/data/bednet_followup"/>
+      <bind nodeset="/data/bednet_followup/deliver/entity_id" calculate="/data/entity_key"/>
+      <bind nodeset="/data/bednet_followup/deliver/entity_name" calculate="/data/entity_label"/>
+      <setvalue event="xforms-ready" ref="/data/encounter_date" value="today()"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="household_summary-label">
+            <value>**Household:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_name"/>
+
+**Bednet given:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/bednet_given_date"/>
+
+**Consent at registration:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/consent_given"/>
+
+Check that this is the household in front of you before you go on.</value>
+            <value form="markdown">**Household:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_name"/>
+
+**Bednet given:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/bednet_given_date"/>
+
+**Consent at registration:** <output value="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/consent_given"/>
+
+Check that this is the household in front of you before you go on.</value>
+          </text>
+          <text id="consent_check-label">
+            <value>Consent to continue</value>
+            <value form="markdown">Consent to continue</value>
+          </text>
+          <text id="consent_check-consent_reaffirm_script-label">
+            <value>**Read this out loud to the household.**
+
+Hello again. I am back for the short follow-up visit about the bednet, to ask two quick questions about how the net is being used and to look at it. That is all I am doing today.
+
+Taking part is still your choice, and you do not have to answer.
+
+You can stop at any moment, and you can tell me afterwards, on any day, that you no longer want your answers used.
+
+What you tell me is kept private. I write down only your answers about the net and whether I can see it hanging. I do not write down anything about your health, and I do not share your answers with your neighbours.
+
+Your answers go from my phone to the organisation running this bednet programme, and a supervisor there reads visit records to check that this visit really took place.
+
+Taking part does not bring you more nets, money, food, or any other help. If you say no, you lose nothing you would otherwise get, and you keep the net you already have.
+
+May I go ahead?</value>
+            <value form="markdown">**Read this out loud to the household.**
+
+Hello again. I am back for the short follow-up visit about the bednet, to ask two quick questions about how the net is being used and to look at it. That is all I am doing today.
+
+Taking part is still your choice, and you do not have to answer.
+
+You can stop at any moment, and you can tell me afterwards, on any day, that you no longer want your answers used.
+
+What you tell me is kept private. I write down only your answers about the net and whether I can see it hanging. I do not write down anything about your health, and I do not share your answers with your neighbours.
+
+Your answers go from my phone to the organisation running this bednet programme, and a supervisor there reads visit records to check that this visit really took place.
+
+Taking part does not bring you more nets, money, food, or any other help. If you say no, you lose nothing you would otherwise get, and you keep the net you already have.
+
+May I go ahead?</value>
+          </text>
+          <text id="consent_check-consent_confirmed-label">
+            <value>Does the household agree to go on with this visit?</value>
+            <value form="markdown">Does the household agree to go on with this visit?</value>
+          </text>
+          <text id="consent_check-consent_confirmed-constraintMsg">
+            <value>Choose Yes or No on this screen to record the answer the household just gave you.</value>
+            <value form="markdown">Choose Yes or No on this screen to record the answer the household just gave you.</value>
+          </text>
+          <text id="consent_check-consent_confirmed-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="consent_check-consent_confirmed-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="net_observations-label">
+            <value>The bednet today</value>
+            <value form="markdown">The bednet today</value>
+          </text>
+          <text id="net_observations-slept_under_net-label">
+            <value>Does the household say they slept under the bednet last night?</value>
+            <value form="markdown">Does the household say they slept under the bednet last night?</value>
+          </text>
+          <text id="net_observations-net_hanging-label">
+            <value>Was the bednet visibly hanging over the sleeping area?</value>
+            <value form="markdown">Was the bednet visibly hanging over the sleeping area?</value>
+          </text>
+          <text id="net_observations-net_hanging-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+            <value form="image">jr://file/commcare/fd95029309663cf17fb21c3c604b46c2559dd0fc2def31f664d915994090d153.jpg</value>
+          </text>
+          <text id="net_observations-net_hanging-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+            <value form="image">jr://file/commcare/7730428729afe35704588f60ed9ee377a7fca95a90b324449bd83408ae3d31fb.jpg</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+      <bind nodeset="/data/case/update/consent_confirmed" calculate="/data/last_consent_confirmed" relevant="count(/data/last_consent_confirmed) &gt; 0"/>
+      <bind nodeset="/data/case/update/household_state" calculate="/data/household_state" relevant="count(/data/household_state) &gt; 0"/>
+      <bind nodeset="/data/case/update/net_hanging" calculate="/data/last_net_hanging" relevant="count(/data/last_net_hanging) &gt; 0"/>
+      <bind nodeset="/data/case/update/slept_under_net" calculate="/data/last_slept_under_net" relevant="count(/data/last_slept_under_net) &gt; 0"/>
+      <setvalue ref="/data/last_consent_confirmed" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/consent_confirmed" event="xforms-ready"/>
+      <setvalue ref="/data/last_slept_under_net" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/slept_under_net" event="xforms-ready"/>
+      <setvalue ref="/data/last_net_hanging" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/net_hanging" event="xforms-ready"/>
+      <setvalue ref="/data/household_state" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/household_state" event="xforms-ready"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+    <vellum:hashtags>{"#case/case_name":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_name","#case/bednet_given_date":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/bednet_given_date","#case/consent_given":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/consent_given"}</vellum:hashtags>
+    <vellum:hashtagTransforms>{"prefixes":{"#case/":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/"}}</vellum:hashtagTransforms>
+  </h:head>
+  <h:body>
+    <trigger ref="/data/household_summary" appearance="minimal">
+      <label ref="jr:itext('household_summary-label')"/>
+    </trigger>
+    <group ref="/data/consent_check" appearance="field-list">
+      <label ref="jr:itext('consent_check-label')"/>
+      <trigger ref="/data/consent_check/consent_reaffirm_script" appearance="minimal">
+        <label ref="jr:itext('consent_check-consent_reaffirm_script-label')"/>
+      </trigger>
+      <select1 ref="/data/consent_check/consent_confirmed">
+        <label ref="jr:itext('consent_check-consent_confirmed-label')"/>
+        <item>
+          <label ref="jr:itext('consent_check-consent_confirmed-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('consent_check-consent_confirmed-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/net_observations" appearance="field-list">
+      <label ref="jr:itext('net_observations-label')"/>
+      <select1 ref="/data/net_observations/slept_under_net">
+        <label ref="jr:itext('net_observations-slept_under_net-label')"/>
+        <item>
+          <label ref="jr:itext('consent_check-consent_confirmed-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('consent_check-consent_confirmed-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/net_observations/net_hanging">
+        <label ref="jr:itext('net_observations-net_hanging-label')"/>
+        <item>
+          <label ref="jr:itext('net_observations-net_hanging-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('net_observations-net_hanging-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+  </h:body>
+</h:html>

@@ -1,0 +1,306 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<suite version="5" descriptor="Suite File">
+  <xform>
+    <resource id="7ecbb980b61b407f8edebd0746938f7b" version="5" descriptor="Form: (Module Register Household) - Register Household">
+      <location authority="local">./modules-0/forms-0.xml</location>
+      <location authority="remote">./modules-0/forms-0.xml</location>
+    </resource>
+  </xform>
+  <xform>
+    <resource id="2368690489934d0fa56eb3069b418232" version="5" descriptor="Form: (Module Follow-Up Visit) - Follow-Up Visit">
+      <location authority="local">./modules-1/forms-0.xml</location>
+      <location authority="remote">./modules-1/forms-0.xml</location>
+    </resource>
+  </xform>
+  <locale language="default">
+    <resource id="app_default_strings" version="5" descriptor="Translations: Default Language">
+      <location authority="local">./default/app_strings.txt</location>
+      <location authority="remote">./default/app_strings.txt</location>
+    </resource>
+  </locale>
+  <locale language="en">
+    <resource id="app_en_strings" version="5" descriptor="Translations: English">
+      <location authority="local">./en/app_strings.txt</location>
+      <location authority="remote">./en/app_strings.txt</location>
+    </resource>
+  </locale>
+  <detail id="m0_case_short">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+      <sort type="string" order="1" direction="ascending">
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </sort>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_bednet_given_date_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="if(bednet_given_date = '', '', format-date(date(bednet_given_date), '%Y-%m-%d'))"/>
+        </text>
+      </template>
+      <sort type="string">
+        <text>
+          <xpath function="bednet_given_date"/>
+        </text>
+      </sort>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_calculated_property_3.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(household_state, 'registered'), $knova_text_0000000000, ''), if(selected(household_state, 'checked'), $knova_text_0000000001, ''), if(selected(household_state, 'declined'), $knova_text_0000000002, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000000">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000000"/>
+            </variable>
+            <variable name="knova_text_0000000001">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000002"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+      <sort type="string">
+        <text>
+          <xpath function="replace(join(' ', if(selected(household_state, 'registered'), $knova_text_0000000000, ''), if(selected(household_state, 'checked'), $knova_text_0000000001, ''), if(selected(household_state, 'declined'), $knova_text_0000000002, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000000">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000000"/>
+            </variable>
+            <variable name="knova_text_0000000001">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m0.case_short.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000002"/>
+            </variable>
+          </xpath>
+        </text>
+      </sort>
+    </field>
+    <select_text>
+      <text>
+        <locale id="m0_select_text"/>
+      </text>
+    </select_text>
+  </detail>
+  <detail id="m0_case_long">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_bednet_given_date_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="if(bednet_given_date = '', '', format-date(date(bednet_given_date), '%Y-%m-%d'))"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_calculated_property_3.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(household_state, 'registered'), $knova_text_0000000000, ''), if(selected(household_state, 'checked'), $knova_text_0000000001, ''), if(selected(household_state, 'declined'), $knova_text_0000000002, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000000">
+              <locale id="m0.case_long.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000000"/>
+            </variable>
+            <variable name="knova_text_0000000001">
+              <locale id="m0.case_long.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m0.case_long.case_replace(join(' ', if(selected(household_state, 'registered'), $nova_text_0000000000, ''), if(selected(household_state, 'checked'), $nova_text_0000000001, ''), if(selected(household_state, 'declined'), $nova_text_0000000002, '')), '\s+', ' ')_3.enum.knova_text_0000000002"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>
+  <detail id="m1_case_short">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_short.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_short.case_bednet_given_date_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="if(bednet_given_date = '', '', format-date(date(bednet_given_date), '%Y-%m-%d'))"/>
+        </text>
+      </template>
+      <sort type="string" order="1" direction="ascending" blanks="">
+        <text>
+          <xpath function="bednet_given_date"/>
+        </text>
+      </sort>
+    </field>
+    <select_text>
+      <text>
+        <locale id="m1_select_text"/>
+      </text>
+    </select_text>
+  </detail>
+  <detail id="m1_case_long">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_long.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_long.case_bednet_given_date_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="if(bednet_given_date = '', '', format-date(date(bednet_given_date), '%Y-%m-%d'))"/>
+        </text>
+      </template>
+    </field>
+  </detail>
+  <entry>
+    <form>http://openrosa.org/formdesigner/9c2c7e95102f359e</form>
+    <command id="m0-f0">
+      <display>
+        <text>
+          <locale id="forms.m0f0"/>
+        </text>
+        <text form="image">
+          <locale id="forms.m0f0.icon"/>
+        </text>
+      </display>
+    </command>
+    <session>
+      <datum id="case_id_new_household_0" function="uuid()"/>
+    </session>
+    <stack>
+      <create>
+        <command value="'m0'"/>
+        <datum id="case_id_new_household_0" value="uuid()"/>
+      </create>
+    </stack>
+  </entry>
+  <entry>
+    <form>http://openrosa.org/formdesigner/fd1216bb6a736e37</form>
+    <command id="m1-f0">
+      <display>
+        <text>
+          <locale id="forms.m1f0"/>
+        </text>
+        <text form="image">
+          <locale id="forms.m1f0.icon"/>
+        </text>
+      </display>
+    </command>
+    <instance id="casedb" src="jr://instance/casedb"/>
+    <instance id="commcaresession" src="jr://instance/session"/>
+    <session>
+      <datum id="case_id" nodeset="instance('casedb')/casedb/case[@case_type='household'][@status='open'][consent_given = 'yes']" value="./@case_id" detail-select="m1_case_short" detail-confirm="m1_case_long"/>
+    </session>
+    <stack>
+      <create>
+        <command value="'m1'"/>
+        <datum id="case_id" value="instance('commcaresession')/session/data/case_id"/>
+      </create>
+    </stack>
+  </entry>
+  <menu id="m0" style="grid">
+    <display>
+      <text>
+        <locale id="modules.m0"/>
+      </text>
+      <text form="image">
+        <locale id="modules.m0.icon"/>
+      </text>
+    </display>
+    <command id="m0-f0"/>
+  </menu>
+  <menu id="m1" style="grid">
+    <display>
+      <text>
+        <locale id="modules.m1"/>
+      </text>
+      <text form="image">
+        <locale id="modules.m1.icon"/>
+      </text>
+    </display>
+    <command id="m1-f0"/>
+  </menu>
+  <menu id="root" style="grid">
+    <text/>
+  </menu>
+</suite>
