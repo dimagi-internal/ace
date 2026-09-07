@@ -101,15 +101,14 @@ function planJson(home: string, size = 2): Record<string, unknown> {
     ['tsx', PLANNER, '--size', String(size), '--avd-home', home, '--json'],
     { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ACE_AVD_NAME: BASE }, timeout: 120_000 },
   );
-  // `loadPluginEnv` prints its banner on STDOUT, ahead of the JSON — and that
-  // banner contains a `{`, so slicing at the first brace lands inside it. The
-  // report is `JSON.stringify(..., null, 2)`, so its opening brace is the first
-  // line that is exactly `{`. (That the banner pollutes `--json` at all is a
-  // separate defect, noted in the PR; it is not this test's to fix.)
-  const lines = out.split('\n');
-  const start = lines.findIndex((l) => l === '{');
-  expect(start, `no JSON object found in planner stdout:\n${out}`).toBeGreaterThanOrEqual(0);
-  return JSON.parse(lines.slice(start).join('\n')) as Record<string, unknown>;
+  // Parsed WHOLE, deliberately. This used to hunt for the first line that was
+  // exactly `{`, because `loadPluginEnv` let dotenv print its banner on stdout
+  // ahead of the JSON — and since five of dotenv's eight rotating tips contain
+  // a `{`, slicing at the first brace landed inside the banner. ace#2095 moved
+  // that diagnostic to stderr where it belongs, so the workaround is gone and
+  // its absence is now the regression anchor: restore the banner and every
+  // caller of this helper fails.
+  return JSON.parse(out) as Record<string, unknown>;
 }
 
 function doctor(home: string, list: string, psFixture: string): string {
