@@ -422,7 +422,17 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-deliver-app-eval_verdict.yaml` using the shape
-   from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
+   from `skills/_eval-template.md § Verdict YAML contract`.
+
+   **Compose the YAML to a LOCAL FILE first, then pass `localFilePath` to
+   `drive_create_file` — do not emit the verdict inline (ace#1918).** The
+   server reads the bytes off disk, so the write costs ~zero context regardless
+   of size. This verdict carries per-dimension evidence for a whole app and was
+   measured at 44,716 chars in the 2026-09-02 corpus (four runs re-sampled
+   2026-09-06: 11k–26k, so the size tracks app size). The inline `content`
+   param still works for a small verdict.
+
+   Dimensions:
 
    ```yaml
    dimensions:
@@ -594,3 +604,4 @@ absorb the disagreement into a score.
 | 2026-07-31 | **Migrated every `get_form` read to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`, so the `terminology` and `consent_floor` scans named uncallable operations. Added an addressing note at § 5b: resolve uuids ONCE per run — from the build summary's `nova_uuids:` frontmatter if present, else one `get_app({app_id})` (its blueprint prints `[uuid …]` on every module/form/field), with `search_blueprint({query, app_id})` for a single semantic name — and reuse the map for every `get_form` read. `terminology`'s "ignore API index keys" carve-out now names uuids as the structural metadata to ignore. Also corrected `localization_match`'s parenthetical (`update_app` now carries only `name`); the no-itext-channel claim itself was re-verified across all 63 live tools. | ACE team |
 | 2026-08-01 | **Widened `consent_floor`'s trigger and its search surface to match the build side (ace#1137).** The dimension gated on *"when the PDD requires recorded consent"* and read *"the consent field's hint"* — narrower on BOTH counts than `_app-component-library.md § consent-script-floor`, whose trigger fires on read-aloud/spoken/announced consent **even with no consent FIELD declared**, and on photo/audio/video capture of identifiable people. Build-emit and eval-grade are deliberately symmetric in that library; they had drifted apart, so a spoken-consent build whose script lives in a `label` passed the gate **by not being checked** — exactly what shipped on `spark-facilitator/20260731-0656` (`photo_consent_script`, 4 of 6 elements, missing `confidential` and `where the data goes / who sees it`, on a programme whose photos reach an AI verification layer plus a 10% human audit sample). § 5b now carries the component's trigger verbatim, tells the grader to find the script wherever it lives (consent-field `hint` OR `label`, a read-aloud `label` node, an `embedded-bc-script` passage containing a consent ask, or a Learn-app consent passage), names (d)/(e)/(f) as the elements builds actually omit, and adds the missing-attestation-field blocker for the no-consent-field case. | ACE team |
 | 2026-08-13 | **`field_answerability` gains (d) screen composition — the dimension was blind to the wall it exists to catch.** It graded observable-before-derived, constraint locality and relevance reachability, all of which the hh-poverty-targeting/20260812-2034 Deliver build satisfied, so it scored **9.5** on a form whose instrument group rendered ten answerable questions plus a nested roster repeat on a single field-list screen. Build-emit and eval-grade are deliberately symmetric in `_app-component-library.md`; the new `screen-grouping` component had no grader, so this closes the pair. Graded mechanically via `checkScreenShape` from `lib/screen-shape.ts` — the same helper the build runs at `pdd-to-deliver-app § Step 4g`, so the two cannot drift and the judge is not eyeballing counts. Any `violation` (oversized field-list screen, or a `repeat` nested in a group) hard-gates the dimension **≤3**; an unjustified `warn` is a 1-point deduction, and a `warn` the build memo defends as one coherent set is explicitly NOT a finding. **This must never be graded as a one-question-per-screen rule** — multiple questions per screen is good design when they belong together (operator ruling, 2026-08-13). | ACE team |
+| 2026-09-06 | **Large artifacts are composed to a LOCAL FILE and written with `localFilePath` (dimagi-internal/ace#1918).** The verdict was measured at 44,716 chars in the 2026-09-02 Drive corpus. *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`. | ACE team |

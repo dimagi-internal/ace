@@ -333,6 +333,17 @@ screenshot-blocked run cannot lose it.
     written spec MUST be schema-clean for `TrainingDeckSpecSchema`
     (no `ref` modules remain).
 
+    **Compose the YAML to a LOCAL FILE first, then pass `localFilePath` — do
+    not emit the spec inline (ace#1918).** Write it to an absolute scratch
+    path, then call
+    `drive_create_file({name, localFilePath, parentFolderId})`; the server
+    reads the bytes off disk, so the write costs ~zero context regardless of
+    size. A fully-expanded spec was measured at 55,719 chars in the 2026-09-02
+    corpus (four runs re-sampled 2026-09-06 came in at 22k–27k, so the size is
+    deck-dependent, not a constant) — and the local file is worth having
+    anyway: it is what you re-read when `TrainingDeckSpecSchema` rejects a
+    leaf, instead of re-emitting the whole spec to fix one line.
+
 11. **Self-evaluate.** Five criteria — the first four are programmatic
     checks (run BEFORE the LLM judge), the fifth is the soft slide-count
     warning:
@@ -492,6 +503,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-09-06: **Step 10 composes the spec to a LOCAL FILE and writes it with `localFilePath` (dimagi-internal/ace#1918).** A fully-expanded spec was measured at 55,719 chars in the 2026-09-02 Drive corpus; emitting it inline costs ~1 output token per 4 characters, and having it on disk is also what makes a `TrainingDeckSpecSchema` rejection cheap to fix (edit one leaf, re-push the file) instead of a full re-emission. Follows the `idea-to-pdd` steps 6/6b template (ace#1780). *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`.
 - 2026-09-02: **Module labels are lifted from the Learn app, never renumbered (ace#1829).** The deck numbered the Learn suite TWO incompatible ways at once: slides 16-19 printed the app's names correctly while slides 34-39 renumbered from list position, counting the unnumbered `Pre-Assessment` tile as Module 1 and shifting every real module up by one. Slide 14 carried the contradiction beside its own evidence — an ordinal list item `4. What makes a visit payable` next to the suite-root screenshot labelling it "Module 3". Slides 34-39 are TIMED hands-on blocks, so a first-day FLW follows "Complete Learn Module 4: What Makes a Visit Payable", opens the app, finds Module 3 under that name and stalls. The step-11 slide-COUNT check could never catch it: counting confirms one practice slide per module, and the shipped deck passed that with every one of those slides carrying a wrong number — a count never reads a label. Three changes: the practice title template drops its synthesised `N` for the app's label verbatim; the `your-opportunity` Learn-preview rule says the same thing explicitly (it was only accidentally right, having no template at all); and step 11 gains a HARD GATE running `lib/deck-module-labels.ts`, whose input must include the UNNUMBERED app entries because their presence is the whole cause. *Enforced:* `test/lib/deck-module-labels.test.ts` (negative control: a position-counting detector — the bug's own logic — fails 9 of 13, inverting both controls) + `test/skills/training-deck-module-numbering.test.ts` (all 6 red against the pre-fix skill text).
 - v1: Initial skill. Replaces `training-deck-outline`. Produces
   `training-deck-spec.yaml` via template bundle + generation prompt.

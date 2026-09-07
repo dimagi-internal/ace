@@ -1264,6 +1264,14 @@ missing video.
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
+**Compose the manifest to a LOCAL FILE first, then pass `localFilePath` to
+`drive_create_file` — do not emit it inline (ace#1918).** The server reads the
+bytes off disk, so the write costs ~zero context regardless of size. This
+manifest is one row per captured step across every journey and was measured at
+43,778 chars in the 2026-09-02 corpus (four runs re-sampled 2026-09-06:
+6k–19k, so it scales with journey count). The inline `content` param still
+works for a short capture run.
+
 Link each captured PNG back to (a) its journey id (a meaningful slug
 like `journey-learn-pass` / `journey-deliver-submit` from `app-test-cases.yaml`), (b) its
 `takeScreenshot:` step label, (c) its Drive path. This is the input
@@ -1652,3 +1660,4 @@ Notes:
 | 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |
 | 2026-08-01 | **Migrated the recipe-sanity-probe's per-form field read to uuid addressing (ace#1132).** The probe's optional `fields` input was spelled as a `nova_get_form` read taking the module/form index pair; Nova has accepted no index param since its 2026-07-31 redeploy, so the call would have been rejected and the probe silently degraded to its field-blind behaviour — re-introducing the #858 false positives on label-heavy Learn apps. Now `nova_get_form({app_id, moduleUuid, formUuid})`, uuids off the `nova_get_app({app_id})` responses the probe already collects. Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-06 | **Large artifacts are composed to a LOCAL FILE and written with `localFilePath` (dimagi-internal/ace#1918).** The manifest was measured at 43,778 chars in the 2026-09-02 Drive corpus. *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`. | ACE team |

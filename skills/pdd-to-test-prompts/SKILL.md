@@ -118,7 +118,20 @@ grading directive.
      one and answer confidently.
 
 4. **Write the test prompt file** to
-   `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md`:
+   `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md`.
+
+   **Compose it to a LOCAL FILE first, then pass `localFilePath` — do not emit
+   the suite inline (ace#1918).** Write the composed markdown to an absolute
+   scratch path, then call
+   `drive_create_file({name, localFilePath, parentFolderId})`. The server reads
+   the bytes off disk, so the write costs ~zero context regardless of size.
+   This is one of the largest artifacts a run produces: measured at 66,294
+   chars on `poverty-graduation/20260905-1345` and above 40,000 in three of the
+   five runs sampled 2026-09-06 (corpus max at filing: 59,737). Emitting that
+   inline costs roughly one output token per four characters. The inline
+   `content` param still works and is fine for a short suite.
+
+   Shape:
 
    ```markdown
    # OCS Test Prompts — <opp-name>
@@ -327,3 +340,4 @@ When `--dry-run` is active:
 | 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |
 | 2026-05-15 | Recharacterize `focus-group` category list for the attestation-form-only shape (PRs #305, #306): `Output spec` → `Gdoc writing guidance` (the chatbot helps facilitators write the gdoc per PDD Output Spec); `Audio and evidence` → `Attestation form` (no audio in CommCare; 5-field form questions). `Facilitation technique` line drops the Learn-app reference (no Learn app for focus-group; OCS chatbot is the primary training surface). Prompted by `malaria-itn-fgd/20260514-2352` re-run where the Phase 2 agent surfaced these as small-tweak friction. | ACE team |
 | 2026-05-29 | **Two new adversarial categories + raised share (ITN post-mortem, producer↔eval symmetry).** Added `safety-critical` (domain-hazard scenarios; cover the domain's real hazards even if the PDD didn't enumerate them) and `ambiguous-intent` (under-specified, multiple-reading prompts) to the required adversarial set (now 7 categories), and raised the adversarial-share floor 15%→20% to match the eval's 30%-weighted `adversarial_prompt_quality` + the new `failure_mode_coverage` dim. Symmetric with `pdd-to-test-prompts-eval`. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-09-06 | **Large artifacts are composed to a LOCAL FILE and written with `localFilePath` (dimagi-internal/ace#1918).** The suite was measured at 66,294 chars on `poverty-graduation/20260905-1345` and above 40,000 in three of five runs re-sampled 2026-09-06; emitting it inline costs ~1 output token per 4 characters. Follows the `idea-to-pdd` steps 6/6b template (ace#1780). *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`. | ACE team |
