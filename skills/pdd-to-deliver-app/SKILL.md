@@ -1551,6 +1551,27 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        // 'proceed' -> resolution.source.file_id is the source
        ```
 
+       **`resolution.artifactClass` says WHAT you resolved, and it is not
+       decoration (ace#2110).** This step's premise is that the artifact it
+       diffs against is UPSTREAM of ACE — that is the whole force of "read the
+       SOURCE, never the Nova brief and never the PDD's restatement". A third
+       model-authored intermediate defeats it silently: an EXTRACTION of the
+       workbook, published into `inputs/` as the instrument. `proceed` fires
+       either way, the diff runs, and `mismatches: 0` is reported by a check
+       that compared ACE to ACE. Live on `poverty-graduation/20260905-1345`,
+       whose only instrument in `inputs[]` is a `text/markdown`
+       "(official, extracted verbatim)" file while the publisher's workbook
+       sits in a DIFFERENT opportunity's inputs.
+
+       `artifactClass: 'derived'` does NOT halt — on that run it was the only
+       instrument artifact in the frozen inputs, and halting would block a
+       build over a file that is very likely correct. It changes what you may
+       CLAIM. Carry `resolution.memo` verbatim (it already appends the caveat)
+       and record the class in Step 7's frontmatter, because a derived check is
+       real but **unfalsifiable**: an error in the extraction is reproduced
+       faithfully by the build and the diff still reads clean. Name the
+       publisher's file that would close it.
+
        Then fetch by `file_id`:
 
        ```ts
@@ -1625,7 +1646,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        the clamp to make the check pass.
 
     6. **The memo records the CHECK, not just its verdict.** Write the source
-       `file_id` and file name, the sheet / column / row range read, the number
+       `file_id` and file name, **`resolution.artifactClass` — whether the diff
+       was against the publisher's own file or against a derived extraction of
+       it (ace#2110)** — the sheet / column / row range read, the number
        of rows checked, both endpoint values as extracted, `sourceMax` vs
        `builtMax` and whether the clamp is live, and the mismatch count (`0` on
        success). Add the licence note: the published instrument is reproduced
@@ -1946,6 +1969,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # reason: an unresolvable [FIXED] source HALTS the
                             # step rather than recording a skip (ace#1648).
      source_file_id: <file_id from inputs-manifest.yaml>
+     artifact_class: published | derived
+                            # ace#2110. `resolution.artifactClass`. `published`
+                            # = the publisher's own workbook/PDF. `derived` = an
+                            # extraction of it, so the check is real but
+                            # UNFALSIFIABLE (an error in the extraction is
+                            # reproduced by the build and the diff reads clean).
+                            # A reader must be able to tell the two apart
+                            # without opening Drive.
      rows_checked: <n>      # rows actually diffed against the source
      mismatches: 0          # anything above 0 means Step 4k halted
    ---
@@ -2169,6 +2200,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |
 | 2026-09-06 | **Step 4f's partner-register handoff is RETIRED — ACE builds, binds and PROVES the register (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02 and `scripts/probe-nova-fixtures.ts` returned `both` on 2026-09-06: a select accepts a `{kind:'lookup'}` options source and `get_field` reads it back. All three routes were confirmed live — `add_fields optionsSource`, `set_field_options_source` on an existing select, and `edit_field` converting a `text` field (`set_field_options_source` refuses a `text` field outright, so the conversion is not optional). So 4f now extracts, creates, populates AND binds, and `renderRegisterCsv` is deleted along with the operator step it existed for. **The halt is narrowed, not dropped:** it still fires on an undeclared register (Phase-1 gap), an unreadable declared source, any `diffOptionRegister` finding, and — new — a bind that does not VERIFY. That last one is the point. `add_fields` answers a correctly bound lookup field with `"options": []` and no mention of the source, so the write response cannot distinguish a landed bind from a missing one in either direction; only a `get_field` read-back can, via `verifyLookupBind`. An unverified bind is the ace#1621 defect wearing a better disguise — the select renders empty to a worker while every ACE artifact reports the register shipped. *Enforced:* `test/lib/option-register.test.ts` (`verifyLookupBind`, positive + four negative controls), `test/scripts/nova-fixtures-probe.test.ts`. | ACE team |
 | 2026-09-02 | **New Step 4n — derived-chain guard check (ace#1823).** The released `hh-poverty-targeting` Deliver form guards ONE node of its derived PPI chain and leaves twelve unguarded at form root. `/data/roster` is gated on consent, so on a vacant / refused / no-eligible-respondent visit `count()` over the empty nodeset returns 0 and the form submits `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` — the 31-point band, by construction, on **1,072 non-payable doors of 3,794** (28%), on the exact field the PDD's Layer-C band-boundary fraud control groups on. `ppi_score` IS guarded (`if(visit_outcome = 'completed', …)`), which is why it survived: nothing looks wrong at the score level and the corruption sits one layer down. A `calculate` over an empty nodeset is valid XForm, so `validate_app`, `app-release-qa`, install, play and submit all pass. Phase 7 blanked the chain in the fixture and declared the deviation — the app still ships this way, so a real deployment would too. 4n runs `lib/derived-chain-guard.ts` over the Step-4a field list: taint PROPAGATES along the chain (guarding the leaf or the final score is not enough), and a conditional whose TEST reads only tainted fields is not a guard — `if(member_count <= 3, 'le3', …)` is the corruption wearing an `if()`. A finding clears by applying the payable path's own discriminator OR by a recorded justification, because a zero over an empty nodeset is sometimes exactly right; what the check forbids is silence. Placed before 4m so every structural check stays ahead of the language layer. *Enforced:* `test/lib/derived-chain-guard.test.ts` (negative control: a naive detector that ignores the inline-guard shape fails 3 assertions, incl. flagging the correct `ppi_score`) + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available ACE-direct (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |

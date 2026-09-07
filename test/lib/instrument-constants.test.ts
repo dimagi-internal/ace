@@ -22,6 +22,7 @@ import {
   compareMaxScore,
   parseSharedStrings,
   resolveInstrumentSource,
+  classifyInstrumentArtifact,
 } from '../../lib/instrument-constants.js';
 
 // ---------------------------------------------------------------------------
@@ -476,5 +477,112 @@ describe('resolveInstrumentSource (ace#1648)', () => {
     expect(result.reason).toBe('ambiguous');
     expect(result.candidates).toHaveLength(2);
     expect(result.detail).toContain('nigeria-ppi-2020-data-analysis-tool.xlsx');
+  });
+});
+
+describe('classifyInstrumentArtifact (ace#2110)', () => {
+  //
+  // The real artifact from `poverty-graduation/20260905-1345` inputs[]. It is
+  // an honest, programmatic extraction — and it is still not the publisher's
+  // file, which sits in a DIFFERENT opportunity's inputs.
+  //
+  const REAL_DERIVED = {
+    name: 'INSTRUMENT — Nigeria PPI 2020 (official, extracted verbatim).md',
+    mime_type: 'text/markdown',
+  };
+
+  it('calls the real poverty-graduation instrument entry derived', () => {
+    expect(classifyInstrumentArtifact(REAL_DERIVED)).toBe('derived');
+  });
+
+  it('calls the publisher workbook published', () => {
+    expect(
+      classifyInstrumentArtifact({
+        name: 'Nigeria 2018 PPI®_Scorecards+Look-Up Tables - Updated.xlsx',
+        mime_type:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    ).toBe('published');
+  });
+
+  it('classifies on the NAME even when the container looks published', () => {
+    // A derivation pasted into a spreadsheet is still a derivation. Without the
+    // name check this reads as `published` on its mime type alone.
+    expect(
+      classifyInstrumentArtifact({
+        name: 'PPI scorecard — transcribed from the workbook',
+        mime_type: 'application/vnd.google-apps.spreadsheet',
+      }),
+    ).toBe('derived');
+  });
+
+  it('treats an unknown container as derived, not published', () => {
+    // The asymmetry: under-claiming costs a memo line, over-claiming reports a
+    // published-source check that never happened.
+    expect(classifyInstrumentArtifact({ name: 'ppi-source' })).toBe('derived');
+  });
+
+  it('does not call a plain published PDF derived', () => {
+    expect(
+      classifyInstrumentArtifact({
+        name: 'Nigeria PPI 2020 Scorecard.pdf',
+        mime_type: 'application/pdf',
+      }),
+    ).toBe('published');
+  });
+});
+
+describe('resolveInstrumentSource carries the artifact class (ace#2110)', () => {
+  const DERIVED = {
+    file_id: '1_6cR_KN8h5wScrzjxsKUrO_XAxvNyhQa',
+    name: 'INSTRUMENT — Nigeria PPI 2020 (official, extracted verbatim).md',
+    mime_type: 'text/markdown',
+  };
+  const PUBLISHED = {
+    file_id: 'wb-1',
+    name: 'Nigeria 2018 PPI®_Scorecards+Look-Up Tables - Updated.xlsx',
+    mime_type:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+
+  it('still PROCEEDS on a derived source — this is disclosure, not a gate', () => {
+    const r = resolveInstrumentSource({ fixedInstrument: true, manifestEntry: DERIVED });
+    expect(r.disposition).toBe('proceed');
+    expect(r.source?.file_id).toBe(DERIVED.file_id);
+  });
+
+  it('reports the derived class and says so in the memo', () => {
+    const r = resolveInstrumentSource({ fixedInstrument: true, manifestEntry: DERIVED });
+    expect(r.artifactClass).toBe('derived');
+    expect(r.memo).toMatch(/DERIVED artifact/);
+    expect(r.memo).toMatch(/UNFALSIFIABLE/);
+    expect(r.memo).toMatch(/ace#2110/);
+  });
+
+  it('leaves a published-source memo free of the caveat', () => {
+    const r = resolveInstrumentSource({ fixedInstrument: true, manifestEntry: PUBLISHED });
+    expect(r.artifactClass).toBe('published');
+    expect(r.memo).not.toMatch(/DERIVED artifact/);
+  });
+
+  it('classifies a subfolder-resolved source too, not only inputs[]', () => {
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: null,
+      subfolderCandidates: [{ ...DERIVED, folder_id: 'f-1' }],
+      manifestRecordsSubfolders: true,
+    });
+    expect(r.reason).toBe('resolved-from-subfolder');
+    expect(r.artifactClass).toBe('derived');
+    expect(r.memo).toMatch(/DERIVED artifact/);
+  });
+
+  it('reports no artifact class when nothing was resolved', () => {
+    expect(
+      resolveInstrumentSource({ fixedInstrument: false }).artifactClass,
+    ).toBeNull();
+    expect(
+      resolveInstrumentSource({ fixedInstrument: true, manifestEntry: null }).artifactClass,
+    ).toBeNull();
   });
 });

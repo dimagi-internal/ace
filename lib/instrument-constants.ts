@@ -658,6 +658,82 @@ export interface InstrumentSourceCandidate {
 
 export type InstrumentSourceDisposition = 'proceed' | 'skipped' | 'halt';
 
+/**
+ * Is the resolved artifact the PUBLISHED instrument, or something ACE (or a
+ * human) derived FROM it?
+ *
+ * ace#2110. Step 4k's whole design assumes the thing it diffs against is
+ * UPSTREAM of ACE — its own text says "read the SOURCE, never the Nova brief
+ * and never the PDD's restatement: both are model-authored, and one of them is
+ * the artifact this step exists to test." It named two model-authored
+ * intermediates and was blind to a third: an extraction of the workbook,
+ * published into `inputs/` as the instrument. `resolveInstrumentSource`
+ * proceeded on the mere existence of a manifest entry, so on
+ * `poverty-graduation/20260905-1345` the check resolved a `text/markdown`
+ * "(official, extracted verbatim)" file, diffed the build against it, and
+ * reported `mismatches: 0` — a fidelity check that compared ACE to ACE, with
+ * the published workbook sitting in a DIFFERENT opportunity's inputs.
+ *
+ * That does not make the verdict wrong. It makes it **unfalsifiable**: an
+ * error in the extraction is reproduced faithfully by the build, the diff is
+ * clean, and every artifact reports fidelity to the published instrument.
+ *
+ * So the classification is recorded rather than enforced. A derived source
+ * still PROCEEDS — on that run it was the only instrument artifact in the
+ * frozen inputs, and halting would block a build over a file that is very
+ * likely correct — but the memo says which class it was, so a reader can tell
+ * a published-source check from an extraction check without opening Drive.
+ */
+export type InstrumentArtifactClass = 'published' | 'derived';
+
+/** Text-shaped containers. A statistical instrument is not published as one. */
+const DERIVED_MIME_TYPES = new Set([
+  'text/markdown',
+  'text/plain',
+  'text/x-markdown',
+  'application/vnd.google-apps.document',
+]);
+
+/** Publisher-shaped containers: a workbook or a PDF of the scorecard. */
+const PUBLISHED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.google-apps.spreadsheet',
+  'text/csv',
+]);
+
+/** Words a derived artifact uses about itself. Matched case-insensitively. */
+const DERIVATION_MARKERS = [
+  'extract',      // "extracted verbatim", "extraction"
+  'transcri',     // "transcribed", "transcription"
+  'verbatim',
+  'derived',
+  'restat',       // "restatement"
+  'summar',       // "summary of"
+  'copied from',
+];
+
+/**
+ * Classify one candidate. **Ties go to `derived`** — the asymmetry is that
+ * under-claiming costs one memo line, while over-claiming reports a
+ * published-source check that never happened.
+ */
+export function classifyInstrumentArtifact(
+  candidate: Pick<InstrumentSourceCandidate, 'name' | 'mime_type'>,
+): InstrumentArtifactClass {
+  const name = (candidate.name ?? '').toLowerCase();
+  if (DERIVATION_MARKERS.some((m) => name.includes(m))) return 'derived';
+
+  const mime = (candidate.mime_type ?? '').toLowerCase();
+  if (DERIVED_MIME_TYPES.has(mime)) return 'derived';
+  if (PUBLISHED_MIME_TYPES.has(mime)) return 'published';
+
+  // Unknown or absent mime type: no positive evidence of a publisher-shaped
+  // container, so this is not a published-source check we can claim.
+  return 'derived';
+}
+
 export type InstrumentSourceReasonKind =
   /** The PDD declares no `[FIXED]` instrument — there is genuinely nothing to check. */
   | 'no-fixed-instrument'
@@ -681,6 +757,26 @@ export interface InstrumentSourceResolution {
   detail: string;
   /** The exact `instrument_constants:` memo line Step 4k must record (ace#1648). */
   memo: string;
+  /**
+   * What class of artifact the check will diff against, when it proceeds
+   * (ace#2110). `null` on skip and halt, where nothing was resolved. Record it
+   * in the build memo and in Step 7's `instrument_constants:` frontmatter — a
+   * `derived` check is real but unfalsifiable, and a reader must be able to
+   * tell the two apart without opening Drive.
+   */
+  artifactClass: InstrumentArtifactClass | null;
+}
+
+/** The sentence a `derived` resolution appends to its memo. */
+function derivedCaveat(candidate: InstrumentSourceCandidate): string {
+  return (
+    ` — NOTE: this is a DERIVED artifact (${candidate.mime_type ?? 'unknown mime type'}), ` +
+    'not the publisher\'s own file, so the diff compares the build against an extraction ' +
+    'rather than against the published instrument. The check is real but UNFALSIFIABLE: an ' +
+    'error in the extraction is reproduced faithfully by the build and the diff still reads ' +
+    'clean. Publish the publisher\'s workbook/PDF into inputs/ (or a manifest-recorded ' +
+    'subfolder) to close this. ace#2110'
+  );
 }
 
 /**
@@ -746,10 +842,12 @@ export function resolveInstrumentSource(input: {
       candidates: [],
       detail,
       memo: `instrument_constants: skipped — ${detail}`,
+      artifactClass: null,
     };
   }
 
   if (input.manifestEntry) {
+    const artifactClass = classifyInstrumentArtifact(input.manifestEntry);
     const detail =
       `resolved ${named} from inputs-manifest.yaml inputs[] ` +
       `(${input.manifestEntry.name}, file_id ${input.manifestEntry.file_id})`;
@@ -759,12 +857,16 @@ export function resolveInstrumentSource(input: {
       source: input.manifestEntry,
       candidates: [input.manifestEntry],
       detail,
-      memo: `instrument_constants: checked — ${detail}`,
+      memo:
+        `instrument_constants: checked — ${detail}` +
+        (artifactClass === 'derived' ? derivedCaveat(input.manifestEntry) : ''),
+      artifactClass,
     };
   }
 
   if (subfolderCandidates.length === 1) {
     const hit = subfolderCandidates[0];
+    const artifactClass = classifyInstrumentArtifact(hit);
     const detail =
       `resolved ${named} by walking a manifest-recorded subfolder id one level ` +
       `(${hit.name}, file_id ${hit.file_id}${hit.folder_id ? `, in folder ${hit.folder_id}` : ''})`;
@@ -774,7 +876,10 @@ export function resolveInstrumentSource(input: {
       source: hit,
       candidates: subfolderCandidates,
       detail,
-      memo: `instrument_constants: checked — ${detail}`,
+      memo:
+        `instrument_constants: checked — ${detail}` +
+        (artifactClass === 'derived' ? derivedCaveat(hit) : ''),
+      artifactClass,
     };
   }
 
@@ -790,6 +895,7 @@ export function resolveInstrumentSource(input: {
       candidates: subfolderCandidates,
       detail,
       memo: `instrument_constants: HALT — ${detail}`,
+      artifactClass: null,
     };
   }
 
@@ -812,5 +918,6 @@ export function resolveInstrumentSource(input: {
     candidates: [],
     detail,
     memo: `instrument_constants: HALT — ${detail}`,
+    artifactClass: null,
   };
 }
