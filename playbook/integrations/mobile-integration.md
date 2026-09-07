@@ -172,6 +172,8 @@ Cloud: `/api/mobile/ensure-running` cold-boots from AMI on every call. Same cont
 
 **Demo user OTP bypass:** test phone numbers prefixed `+7426` skip SMS OTP entirely; Connect's backend recognizes the prefix and emits a snackbar `"I see you're a demo user, so we'll skip the OTP"`. The recipe pair is named `to-otp` / `from-otp` for historical reasons; today these are pre-snackbar and post-snackbar.
 
+**Cold-boot's disk cost, and who pays it back (ace#2092).** The pool AVDs run `disk.dataPartition.path=<temp>`, so the emulator allocates a fresh ~2 GiB qcow2 under `/tmp/android-$USER` per boot and unlinks it **only on a clean shutdown**. Always-cold-boot means the previous emulator is SIGKILLed, and a killed qemu never runs its cleanup — so **every dispatch leaks one ~2 GiB file, forever**. Measured on the ACE workstation 2026-09-06 with zero emulators running: 73 files, 38.1 GiB. The SIGKILL is correct and does not change; reclamation is the reaper's debt, so `ace-mobile-reap` now sweeps them (`--list` dry-runs), and `/ace:doctor`'s `emulator_temp_leak` probe reports the backlog above 10 GiB without deleting anything. A partition is deleted only when `lsof` proves no live process holds it open AND it is older than a one-hour grace window; the whole sweep refuses if `lsof` or `ps` could not be read, or if the two disagree. *Enforced:* `test/lib/emulator-temp-sweep.test.ts` (decisions) + `test/mcp/mobile/emulator-temp-collector.test.ts` (the real `lsof` read, with a live-holder negative control).
+
 ## Classifier states
 
 `classifyDeviceUserState` runs after heal to verify the precondition was reached. It's a verification step only — recovery is always cold-boot, never "adapt based on what state we found."
