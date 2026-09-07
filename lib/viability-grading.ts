@@ -167,6 +167,17 @@ export interface ViabilityScores {
   excludedFromGate: string[];
 }
 
+/** Tolerance on the `weights` sum. Generous enough for float noise in a 2dp rubric. */
+const WEIGHT_SUM_TOLERANCE = 0.001;
+
+export interface ComputeViabilityScoresInput {
+  /** Per-dimension judge scores, 0–10. */
+  scores: DimensionScores;
+  /** Per-dimension rubric weights. MUST sum to 1.0. */
+  weights: DimensionWeights;
+  decision: ViabilityGradingDecision;
+}
+
 /**
  * Compute both the gating and the unadjusted composite from per-dimension
  * scores and weights.
@@ -174,13 +185,50 @@ export interface ViabilityScores {
  * Rounded to 2dp to match what the verdict files already carry, so a verdict
  * written from this helper is byte-comparable with the hand-computed ones in
  * the existing corpus.
+ *
+ * ## Why one object param and not `(scores, weights, decision)` — ace#2162
+ *
+ * `DimensionScores` and `DimensionWeights` are the SAME structural type
+ * (`{[k: string]: number}`), so two adjacent positional params of those types
+ * are freely transposable and TypeScript cannot see it. That would be merely
+ * annoying if a swap failed loudly. It does not: `overall_score_all_dimensions`
+ * is `Σ score × weight` and multiplication commutes, so a swapped call returns
+ * that number **exactly right** while `overall_score` — which renormalizes over
+ * a denominator built from the wrong record — returns nonsense. One correct
+ * number validating one garbage number, and `overall_score` is the GATING one
+ * (ace#2128).
+ *
+ * Measured on the `bednet-check-2-visit` 20260906-2228 corpus:
+ *   correct → { overall_score: 7.36, overall_score_all_dimensions: 6.62 }
+ *   swapped → { overall_score: 0.09, overall_score_all_dimensions: 6.62 }
+ * i.e. the same all-dimensions score either side of a gating number that
+ * crossed the 7.0 gate.
+ *
+ * There is no code caller: this function is invoked by an LLM hand-writing the
+ * call from `skills/idea-to-pdd-eval/SKILL.md` prose — the one caller class
+ * that gets no compiler help at all. So it gets TWO defences, because either
+ * alone is defeatable:
+ *
+ *  1. **The named object param** kills the positional transposition outright —
+ *     a two-arg call no longer typechecks.
+ *  2. **The weight-sum assertion below** kills the remaining case, where the
+ *     two values are transposed *inside* the object literal (`{ scores: w,
+ *     weights: s }`) — which still typechecks, because the types are still
+ *     identical. Scores are 0–10 and nine of them sum nowhere near 1.0, so a
+ *     transposed payload is caught by arithmetic that has to hold anyway.
  */
-export function computeViabilityScores(
-  scores: DimensionScores,
-  weights: DimensionWeights,
-  decision: ViabilityGradingDecision,
-): ViabilityScores {
+export function computeViabilityScores(input: ComputeViabilityScoresInput): ViabilityScores {
+  const { scores, weights, decision } = input;
   const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const weightSum = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  if (Math.abs(weightSum - 1) > WEIGHT_SUM_TOLERANCE) {
+    throw new Error(
+      `computeViabilityScores: weights must sum to 1.0, got ${round2(weightSum)} over ` +
+        `${Object.keys(weights).length} dimension(s). A sum far from 1.0 usually means ` +
+        '`scores` and `weights` were transposed — scores are 0-10 (ace#2162).',
+    );
+  }
 
   const weightedMean = (w: DimensionWeights) =>
     Object.entries(w).reduce((sum, [dim, weight]) => {

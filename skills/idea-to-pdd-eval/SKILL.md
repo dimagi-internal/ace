@@ -168,7 +168,26 @@ filename rule.
    - Emit BOTH numbers: `overall_score` (gating, renormalized over the
      remaining eight weights via `renormalizeWeights` — proportional, so the
      surviving ratios are preserved) and `overall_score_all_dimensions` (the
-     raw nine-dimension mean). `computeViabilityScores` returns both.
+     raw nine-dimension mean). `computeViabilityScores` returns both. **Call it
+     with ONE named object — never three positional args:**
+
+     ```ts
+     computeViabilityScores({ scores, weights, decision })
+     ```
+
+     `scores` are the 0–10 judge scores; `weights` are the rubric weights above
+     and **must sum to 1.0**. Do not hand-compute either number instead — the
+     helper is the source of truth for the arithmetic.
+
+     **Do not swap `scores` and `weights` (dimagi-internal/ace#2162).** They are
+     the same TypeScript type, so nothing upstream of the helper can catch it.
+     A swap used to return `overall_score_all_dimensions` **exactly right**
+     (multiplication commutes) beside a garbage `overall_score` — measured
+     6.62/6.62 with the gate moving 7.36 → 0.09, i.e. across the 7.0 gate,
+     which would have shipped a plausible-looking verdict whose two numbers
+     silently disagreed. The named object plus a weight-sum assertion now make
+     that throw rather than score; if you see `weights must sum to 1.0`, you
+     transposed the two. *Enforced:* `test/lib/viability-grading.test.ts`.
    - Record `viability_grading: { mode, excluded_from_gate, reason }` in the
      verdict so the adjustment is auditable rather than silent.
 
