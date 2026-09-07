@@ -460,8 +460,14 @@ written as mandatory with no fallback, the orchestrator had to invent
 one mid-run. Note the skip in `run_state.yaml.notes` and carry on; the
 same applies to `TaskUpdate` in § Phase boundary fence Turn N+1. Note
 also that `skills/turn/SKILL.md` calls this same capability
-`TodoWrite` — if one name is absent, try the other before concluding
-it is unavailable.
+`TodoWrite`. **Probe all three names in ONE `ToolSearch`
+(`select:TaskCreate,TaskUpdate,TodoWrite`) and take the answer as
+final** — measured 2026-09-07, that call returns *No matching deferred
+tools found* for all three at once, so they are absent or present
+together and a second lookup under the other name buys nothing but a
+wasted turn. (This sentence used to say to try the other name before
+concluding it is unavailable; that produced exactly the retry it was
+meant to avoid. ace#2173.)
 
 **Run shape is structural, not flag-driven.** A fresh `/ace:run <opp>` always
 starts all 11 phases `pending` and runs them in order (above) — there is no

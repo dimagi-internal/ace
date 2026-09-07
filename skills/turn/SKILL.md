@@ -109,6 +109,30 @@ improvements ship once (a canopy PR) instead of N backports.
   **Issues filed / skills changed** line — `skill-self-check: none` is a valid outcome, an
   ABSENT line is not.
 
+  **If `TodoWrite` does not resolve, SKIP THE TODO — never the check
+  (dimagi-internal/ace#2173).** Measured in a live non-orchestrator session:
+  `ToolSearch select:TaskCreate,TaskUpdate,TodoWrite` returned *No matching deferred tools
+  found* for all three names, so the tool this step depends on is simply absent from some
+  sessions' surface — including `TaskCreate`/`TaskUpdate`, the names
+  `agents/ace-orchestrator.md` tells the orchestrator to try instead. Read the ordering
+  constraint above precisely: it bars a close-out written while the check is still
+  **pending**, not one written without a todo. With no tool, there is no pending item and
+  nothing to gate — so **do the check, write the close-out, and say once that the todo was
+  skipped because the tool did not resolve.** Do not improvise a substitute tracker, and do
+  not halt the turn.
+
+  This is deliberately the cheap half to lose. The two halves of the checkpoint are not
+  equally load-bearing: the **todo** is a reminder, while the **REQUIRED close-out line** —
+  and its `none`-vs-ABSENT distinction — is what actually makes a skipped check visible, and
+  it needs no tool at all. A turn missing the line is still detectably broken; a turn missing
+  only the todo is not. What is NOT available is dropping the check itself and reporting
+  `skill-self-check: none`: that line asserts the two questions were asked and answered
+  negatively, so emitting it without having asked them is a false claim, not a graceful
+  degradation. (Same class as ace#2127, which fixed the orchestrator's copy of this trap and
+  left this one — the file a non-orchestrator session actually loads — with no fallback at
+  all. There it dropped a progress view; here it gated the close-out, so the turn could not
+  legally finish.)
+
   *Why the ceremony:* this step was prose, and prose lost. `canopy agent-review ace` recorded
   `checklist_gap: skill-self-check` for the 2026-09-02 window — the step was skipped and the turn
   still closed green, so nothing surfaced it. That is exactly what `CLAUDE.md` predicts of an
