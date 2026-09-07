@@ -30,7 +30,7 @@
  * bindings are wrong. That is why nothing downstream noticed.
  */
 import { describe, it, expect } from 'vitest';
-import { checkDashboardBindings, normalizePipelineSources } from '../../lib/dashboard-bindings.js';
+import { checkDashboardBindings, normalizePipelineSources, resolveSnapshotInputs } from '../../lib/dashboard-bindings.js';
 
 const GOOD = {
   pipeline_sources: { flw_kpis: 5065 },
@@ -282,5 +282,81 @@ describe('checkDashboardBindings — pipeline_sources shape normalization (#1894
   it('drops array entries with no usable alias rather than inventing one', () => {
     expect(normalizePipelineSources([{ pipeline_id: 1, alias: '' } as any])).toEqual([]);
     expect(normalizePipelineSources([null as any, undefined as any])).toEqual([]);
+  });
+});
+
+/**
+ * ace#2121 — `workflow_get` nests `snapshot_inputs` under `saved_runs`.
+ *
+ * `demo-data-setup` § step 3 and `demo-data-setup-qa` both instruct the caller to
+ * feed `checkDashboardBindings` the `workflow_get` response UNCHANGED (that is the
+ * only shape carrying the resolution metadata the `pipeline-unresolvable-in-scope`
+ * check needs). But the reader looked for a TOP-LEVEL `snapshot_inputs`, which that
+ * payload never has — so every alias on every correctly-wired dashboard came back
+ * `snapshot-missing-alias`. Both dashboards on bednet-check-2-visit/20260902-1555
+ * false-positived; lifting the nested key by hand turned both to `ok: true`.
+ *
+ * The payload below is the verbatim (render_code elided) response for workflow 5469
+ * / opportunity 10056, captured live 2026-09-07 — a real shape, not a hand-built
+ * approximation of one, which is the whole reason the original reader looked right.
+ */
+const WORKFLOW_GET_5469 = {
+  id: 5469,
+  name: 'Bednet Follow-Up Delivery Overview',
+  template_type: 'llo_weekly_review',
+  render_code_version: 3,
+  pipeline_sources: [
+    {
+      pipeline_id: 5468,
+      alias: 'flw_kpis',
+      name: 'Bednet follow-up per-worker aggregates',
+      schema_summary: { field_count: 3 },
+    },
+  ],
+  saved_runs: {
+    supports_saved_runs: true,
+    source: 'definition',
+    snapshot_inputs: { pipelines: ['flw_kpis'], state_keys: ['worker_states', 'spawned_tasks'] },
+    has_build_snapshot_hook: false,
+  },
+  render_code: 'const rows = data.flw_kpis.rows; export default () => rows.length;',
+  // `workflow_get` does not return `pipelines`; the caller supplements it. Real
+  // paths from this run's deliver app — deliberately not `form.meta.*`, so the
+  // stock-template-path check stays quiet and cannot mask the assertion below.
+  pipelines: [
+    {
+      id: 5468,
+      alias: 'flw_kpis',
+      schema: [
+        { name: 'total_visits', path: 'form.hh_followup.deliver.consent_confirmed', aggregation: 'count' },
+      ],
+    },
+  ],
+} as any;
+
+describe('ace#2121: snapshot_inputs nested under saved_runs', () => {
+  it('does NOT report snapshot-missing-alias for a workflow_get payload passed through unchanged', () => {
+    const r = checkDashboardBindings(WORKFLOW_GET_5469);
+    expect(r.findings.map((f) => f.kind)).not.toContain('snapshot-missing-alias');
+  });
+
+  it('still catches a genuinely missing alias in the nested shape', () => {
+    const r = checkDashboardBindings({
+      ...WORKFLOW_GET_5469,
+      saved_runs: { ...WORKFLOW_GET_5469.saved_runs, snapshot_inputs: { pipelines: [] } },
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('snapshot-missing-alias');
+  });
+
+  it('prefers an explicit top-level snapshot_inputs over the nested one', () => {
+    const r = checkDashboardBindings({
+      ...WORKFLOW_GET_5469,
+      snapshot_inputs: { pipelines: [] },
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('snapshot-missing-alias');
+  });
+
+  it('resolveSnapshotInputs returns undefined when neither shape carries it', () => {
+    expect(resolveSnapshotInputs({})).toBeUndefined();
   });
 });

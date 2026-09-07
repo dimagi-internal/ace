@@ -91,7 +91,23 @@ export interface DashboardDef {
    * simply cannot answer the fifth question.
    */
   pipeline_sources: Record<string, number> | PipelineSourceEntry[];
+  /**
+   * Two shapes, both real — same split as {@link DashboardDef.pipeline_sources}:
+   *
+   * - top-level `snapshot_inputs` — the STORED definition.
+   * - `saved_runs.snapshot_inputs` — what `workflow_get` returns.
+   *
+   * Both are resolved by {@link resolveSnapshotInputs}. Reading only the
+   * top-level key made the documented "pass the workflow_get response through
+   * unchanged" call report `snapshot-missing-alias` for EVERY alias on every
+   * correctly-wired dashboard, because the key it looked for is never present
+   * in that payload (ace#2121).
+   */
   snapshot_inputs?: { pipelines?: string[] };
+  saved_runs?: {
+    supports_saved_runs?: boolean;
+    snapshot_inputs?: { pipelines?: string[] };
+  };
   render_code: string;
   pipelines: PipelineDef[];
 }
@@ -140,6 +156,25 @@ const UNBACKFILLED_COUNTERS = ['visit_count', 'visits_count', 'completed_visit_c
  * actually reach for returns the array. Mirrors `declaredAliases` in
  * `skills/demo-data-setup-qa/checks.ts`, which already handled both.
  */
+/**
+ * Resolve `snapshot_inputs` from either shape a caller may hand us.
+ *
+ * `workflow_get` nests it under `saved_runs` (verified live 2026-09-07 against
+ * workflow 5469 / opp 10056, whose response carries
+ * `saved_runs.snapshot_inputs.pipelines: ["flw_kpis"]` and NO top-level key),
+ * while the stored definition carries it at the top level. The top level wins
+ * when both are present, so an explicitly-passed value is never overridden.
+ *
+ * Absent in both shapes stays `undefined` — the caller then treats the snapshot
+ * set as empty, which is the pre-existing behaviour for a definition that
+ * genuinely declares none.
+ */
+export function resolveSnapshotInputs(
+  def: Pick<DashboardDef, 'snapshot_inputs' | 'saved_runs'>,
+): { pipelines?: string[] } | undefined {
+  return def.snapshot_inputs ?? def.saved_runs?.snapshot_inputs;
+}
+
 export function normalizePipelineSources(
   sources: DashboardDef['pipeline_sources'] | undefined,
 ): PipelineSourceEntry[] {
@@ -207,7 +242,7 @@ export function checkDashboardBindings(def: DashboardDef): BindingReport {
     });
   }
 
-  const snapshot = new Set(def.snapshot_inputs?.pipelines ?? []);
+  const snapshot = new Set(resolveSnapshotInputs(def)?.pipelines ?? []);
   const render = def.render_code ?? '';
 
   for (const alias of aliases) {
