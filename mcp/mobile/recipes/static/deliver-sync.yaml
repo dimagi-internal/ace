@@ -26,7 +26,9 @@ appId: org.commcare.dalvik
 # Connect is"); Deliver still had the original hole.
 #
 # WHICH STEP IS LOAD-BEARING — read this before "simplifying" the recipe.
-# It is the ASSERTION, not the sync tap.
+# On the DEVICE it is the sync-result BANNER, not the sync tap (the tap
+# no-ops when auto-send already delivered). The delivery itself is proved
+# OFF-device by `connect_get_deliver_progress` — see the header note below.
 #
 # CommCare sometimes auto-sends a finalized form when connectivity is
 # available, and sometimes does not. Both were observed live on this same
@@ -39,21 +41,23 @@ appId: org.commcare.dalvik
 # So the tap is a BELT-AND-BRACES upload that no-ops when auto-send
 # already delivered; "No forms sent to server!" is that benign no-op
 # signal, NOT a failure. What makes the leg honest either way is the
-# counter assertion below.
+# AUTHORITATIVE Connect read-back — see the header note below; the
+# on-device counter corroborates it, it does not substitute for it.
 #
 # `Daily Visits` is SERVER-DERIVED — it is 0/N until a visit actually
-# reaches Connect. Asserting it is non-zero therefore proves a round-trip
-# regardless of WHICH step performed the upload, and fails exactly the
-# reported scenario. The sync-success banner alone would not: it only
-# says the sync call returned, which it does even with an empty outbox.
+# reaches Connect. That makes it good EVIDENCE of the round-trip and a bad
+# GATE, because this recipe reads it off the DEVICE. See the "EVIDENCE,
+# NOT THE GATE" block at the foot of this file (ace#2100).
 #
-# Not a substitute for a server-side read-back (see the note below) —
-# this is still the device reporting a server-derived number.
-#
-# NOT a full substitute for a Connect-side read-back. The remaining half
-# of #1066 — reading the delivery count back from Connect via an atom,
-# mirroring `connect_get_learn_progress` — still wants an atom that does
-# not exist yet. Until it does, this recipe is the gate.
+# WHAT CHANGED UPSTREAM — this header used to end "...still wants an atom
+# that does not exist yet. Until it does, this recipe is the gate." THAT
+# PREMISE IS STALE. `connect_get_deliver_progress` SHIPPED (ace#1080,
+# closing the other half of #1066); grep `docs/atom-schemas.md` for it.
+# It is already the normative gate: `skills/app-screenshot-capture`
+# § Step 5's delimited `deliver-gate` block asserts `delivered >= 1` HARD
+# and unconditionally, pinned by
+# `test/skills/deliver-gate-duration-floor.test.ts`. The condition this
+# recipe itself set for standing down as the gate has been met.
 #
 # Composed as the LAST step of `journey-deliver.yaml`, after
 # `form-submit.yaml`. See `skills/app-test-cases/SKILL.md`.
@@ -128,21 +132,81 @@ appId: org.commcare.dalvik
     timeout: 5000
 - takeScreenshot: "deliver-sync-success"
 
-# THE LOAD-BEARING ASSERTION — three parts, all needed.
+# --- THE COUNTER: EVIDENCE, NOT THE GATE (ace#2100) --------------------
 #
-# A bare `text: ".*[1-9][0-9]*/[0-9]+.*"` would FALSE-PASS on any
-# unrelated "N/M" rendered anywhere on the surface, which is the very
-# class of defect this recipe exists to close. So:
-#   1. the counter row is actually rendered (label present), which stops
-#      part 2 from passing vacuously on a screen that failed to draw it;
-#   2. NO zero-valued counter is on screen — this is the assertion that
-#      fails the reported scenario (0/5, nothing reached Connect);
-#   3. a non-zero counter IS on screen.
+# WHAT WENT WRONG. bednet-check-2-visit/20260902-1555 walked the entire
+# Deliver leg and Connect independently held
+#   {"delivered":1,"approved":1,"rejected":0,"last_active":"07-Sep-2026 03:25"}
+# while the device's chip still read `0/1`, with "Sync Successful! Your
+# information is up to date." on the SAME screen. A one-shot
+# `assertNotVisible: "0/[0-9]+"` evaluated at that instant turned a
+# Connect-VERIFIED, payment-APPROVED delivery into `status: fail` — and
+# per `app-screenshot-capture` § Step 5 (jjackson/ace#756) a failed recipe
+# means the leg's screenshots "do not exist", so the leg could not be
+# `pass`. Every ACE opp walks Deliver through this step.
+#
+# WHY THE FIX IS NOT "JUST WAIT LONGER". A poll rescues a chip that is
+# merely LATE. It does nothing for a chip that never refreshes in this
+# session — and #2100 never observed this one reach `1/1`: the dump taken
+# AFTER the failure still read `0/1`. "The counter's post-refresh value is
+# 1/1" is an INFERENCE in that issue, not an observation, so a widened
+# wait would most likely have re-failed this same run several minutes
+# slower. Betting the leg on a value we cannot predict is the predictive
+# guard CLAUDE.md § "a guard that PREDICTS another system's rejection must
+# cite a reproducer" forbids.
+#
+# WHAT IS STILL HARD, because the DEVICE really is authoritative about it:
+# the home surface was reachable, the sync tile tapped, the sync returned
+# (the banner above), and the counter row rendered at all.
+#
+# WHAT IS NO LONGER A GATE: the chip's VALUE. Connect owns it, and
+# `connect_get_deliver_progress` reads it from the authority — see the
+# stale-premise note in the header. Standing down here does NOT reopen
+# #1066: the outbox-stranded visit this was written to catch is caught
+# STRICTLY BETTER by `delivered >= 1`, which is the authority rather than
+# a proxy for it and which separates delivered / approved / rejected. It
+# also removes an AMPLIFIER — the skill calls the authoritative read only
+# "after the Deliver recipe passes", so a false negative here SUPPRESSED
+# the very read that would have exonerated the run.
 - assertVisible:
     text: "Daily Visits"
-- assertNotVisible:
-    text: "0/[0-9]+"
-- assertVisible:
-    text: ".*[1-9][0-9]*/[0-9]+.*"
+
+# Give the server-derived chip a real window before reading it — the
+# genuine-race half of #2100. `optional: true` makes an exhausted window a
+# RESULT ("did not refresh"), routed to the evidence branch below, rather
+# than an abort. This IS the poll the issue asked for; what it is not is
+# the gate.
+- extendedWaitUntil:
+    notVisible:
+      text: "0/[0-9]+"
+    timeout: 30000
+    optional: true
+
+# REFRESHED. Assert the complementary positive. Kept INSIDE this guard on
+# purpose: a bare `.*[1-9][0-9]*/[0-9]+.*` would false-pass on any
+# unrelated "N/M" while a zero counter was still on screen, which is the
+# false-pass class the old three-part assertion existed to close. The
+# pairing survives; only its power to fail the leg is gone. Reaching this
+# branch with NO non-zero counter means the device rendered a `Daily
+# Visits` row that is neither zero nor non-zero — a surface we have never
+# seen — and failing loud there is correct.
+- runFlow:
+    when:
+      notVisible:
+        text: "0/[0-9]+"
+    commands:
+      - assertVisible:
+          text: ".*[1-9][0-9]*/[0-9]+.*"
+
+# NOT REFRESHED. Name it in a frame of its own so the operator and the
+# capture manifest can see that the device disagreed with Connect, instead
+# of the disagreement being invisible. The leg's verdict is decided by
+# `connect_get_deliver_progress`, not by this frame.
+- runFlow:
+    when:
+      visible:
+        text: "0/[0-9]+"
+    commands:
+      - takeScreenshot: "deliver-sync-counter-unrefreshed"
 
 - takeScreenshot: "deliver-sync-visit-registered"

@@ -616,28 +616,160 @@ describe('deliver-sync.yaml', () => {
     );
   });
 
-  it('fails a zero counter — the actual reported failure mode', () => {
-    // This is THE assertion. Without it the recipe passes on 0/5, which is
-    // exactly the state #1066 reported.
-    expect(yaml, 'expected assertNotVisible on a zero-valued counter').toMatch(
-      /- assertNotVisible:\s*\n\s*text: "0\/\[0-9\]\+"/,
+  // --- ace#2100: the counter is EVIDENCE, not the GATE ------------------
+  //
+  // The three-part assertion above used to end in a ONE-SHOT
+  // `assertNotVisible: "0/[0-9]+"`, evaluated the instant the sync banner
+  // appeared. On bednet-check-2-visit/20260902-1555 that turned a
+  // Connect-VERIFIED, payment-APPROVED delivery into `status: fail`:
+  // Connect held `{delivered:1, approved:1, rejected:0}` while the device
+  // chip still read `0/1` on the same screen as "Sync Successful!". Per
+  // app-screenshot-capture § Step 5 (jjackson/ace#756) a failed recipe means
+  // the leg's screenshots "do not exist", so a green end-to-end Deliver path
+  // reported as a failure — on every ACE opp, since every Deliver journey
+  // composes this palette.
+  //
+  // The filed remedy was "widen the wait". That is only half right: #2100
+  // never OBSERVED the chip reach `1/1` (the dump taken after the failure
+  // still read `0/1`), so a longer poll would most likely have re-failed the
+  // same run more slowly. The chip's VALUE is a number Connect owns and the
+  // device merely renders, and betting the leg on it is the predictive guard
+  // CLAUDE.md forbids.
+
+  it('polls the server-derived counter instead of reading it once', () => {
+    // The genuine-race half of #2100: a chip that is merely LATE must get a
+    // real window. A bare assertion gives it none.
+    expect(
+      yaml,
+      'expected an extendedWaitUntil poll on the zero-counter, not a one-shot read',
+    ).toMatch(/- extendedWaitUntil:\s*\n\s*notVisible:\s*\n\s*text: "0\/\[0-9\]\+"/);
+  });
+
+  it('cannot fail the leg on the counter — no top-level assertion on its value', () => {
+    // THE regression guard for #2100. A top-level `assertNotVisible` (or a
+    // non-optional `extendedWaitUntil`) on the counter aborts the recipe, and
+    // aborting is what suppressed the authoritative read: the skill calls
+    // `connect_get_deliver_progress` only AFTER the Deliver recipe passes.
+    expect(
+      yaml,
+      'the one-shot `assertNotVisible: "0/[0-9]+"` must not return — it fails a ' +
+        'Connect-verified delivery whenever the device chip has not refreshed (ace#2100)',
+    ).not.toMatch(/^- assertNotVisible:\s*\n\s*text: "0\/\[0-9\]\+"/m);
+    expect(
+      yaml,
+      'the counter poll must be `optional: true` so an exhausted window is a RESULT, ' +
+        'routed to the evidence branch, rather than an abort',
+    ).toMatch(
+      /- extendedWaitUntil:\s*\n\s*notVisible:\s*\n\s*text: "0\/\[0-9\]\+"\s*\n\s*timeout: \d+\s*\n\s*optional: true/,
     );
   });
 
-  it('does not rely on a bare N/M match that could false-pass', () => {
-    // A lone `.*[1-9][0-9]*/[0-9]+.*` would match ANY unrelated "N/M" on the
-    // surface — the same false-pass class this recipe exists to close. The
-    // positive match is only sound when paired with the label-present and
-    // no-zero-counter assertions above, so require all three to co-exist.
+  it('keeps the positive N/M match paired with a zero-counter guard, so it cannot false-pass', () => {
+    // Unchanged in substance from the pre-#2100 contract: a lone
+    // `.*[1-9][0-9]*/[0-9]+.*` would match ANY unrelated "N/M" on the surface.
+    // What changed is WHERE the pairing lives — the positive assert now sits
+    // inside a `runFlow` guarded on `notVisible: "0/[0-9]+"`, so it still can
+    // never run while a zero counter is on screen. Only its power to fail the
+    // leg is gone.
     const hasPositive = /text: "\.\*\[1-9\]\[0-9\]\*\/\[0-9\]\+\.\*"/.test(yaml);
-    if (hasPositive) {
-      expect(yaml, 'a bare N/M match must be paired with the label assertion').toContain(
-        'text: "Daily Visits"',
-      );
-      expect(yaml, 'a bare N/M match must be paired with the zero-counter guard').toMatch(
-        /assertNotVisible/,
-      );
+    expect(hasPositive, 'the positive N/M evidence assertion must survive').toBe(true);
+    expect(yaml, 'the positive N/M match must be paired with the label assertion').toContain(
+      'text: "Daily Visits"',
+    );
+    expect(
+      yaml,
+      'the positive N/M match must sit inside a runFlow guarded on the zero-counter ' +
+        'being absent — otherwise it can match an unrelated N/M while 0/N is rendered',
+    ).toMatch(
+      /- runFlow:\s*\n\s*when:\s*\n\s*notVisible:\s*\n\s*text: "0\/\[0-9\]\+"\s*\n\s*commands:\s*\n\s*- assertVisible:\s*\n\s*text: "\.\*\[1-9\]\[0-9\]\*\/\[0-9\]\+\.\*"/,
+    );
+  });
+
+  it('records the disagreement when the chip does NOT refresh, instead of hiding it', () => {
+    // Standing down as the gate must not mean going quiet. If the device and
+    // Connect disagree, the frame that shows it has to exist.
+    expect(
+      yaml,
+      'expected a dedicated frame for the un-refreshed counter so the device/Connect ' +
+        'disagreement is visible in the capture manifest',
+    ).toMatch(
+      /- runFlow:\s*\n\s*when:\s*\n\s*visible:\s*\n\s*text: "0\/\[0-9\]\+"\s*\n\s*commands:\s*\n\s*- takeScreenshot: "deliver-sync-counter-unrefreshed"/,
+    );
+  });
+
+  it('retires the stale "no read-back atom exists" premise the header set for standing down', () => {
+    // The header used to justify being the gate with "...still wants an atom
+    // that does not exist yet. Until it does, this recipe is the gate."
+    // `connect_get_deliver_progress` SHIPPED. Leaving that sentence in place is
+    // what let three years of readers conclude the device chip was the only
+    // available proof — the silent half of `probe-upstream-asks` (a granted
+    // request breaks nothing, so nothing prompts a re-read of the premise).
+    // Quoting the retired sentence is fine — annotating a stale citation is
+    // exactly how `probe-upstream-asks` expects an acknowledged premise to be
+    // retired. What must not survive is the claim standing UNannotated.
+    const idx = yaml.indexOf('not exist yet');
+    if (idx > -1) {
+      expect(
+        yaml.slice(Math.max(0, idx - 500), idx + 500),
+        'if the header still quotes "...does not exist yet", it must mark the claim ' +
+          'as retired — an unannotated one reads as a live constraint',
+      ).toMatch(/PREMISE IS STALE/);
     }
+    expect(
+      yaml,
+      'the header must name the atom that replaced it as the gate',
+    ).toContain('connect_get_deliver_progress');
+  });
+});
+
+// --- ace#2100 coupling preventer -----------------------------------------
+//
+// `deliver-sync.yaml` may only demote the on-device counter to non-fatal
+// evidence BECAUSE an authoritative server-side gate exists downstream. That
+// is a dependency between two files, and a dependency nothing checks is a
+// dependency that gets deleted. If someone later relaxes
+// `app-screenshot-capture` § Step 5's `delivered >= 1` — the assertion that
+// actually catches the outbox-stranded visit ace#1066 reported — the Deliver
+// leg would silently lose BOTH gates at once and go back to passing on a
+// delivery that never reached Connect.
+//
+// So: assert the pair together. This is the sibling of
+// test/skills/deliver-gate-duration-floor.test.ts, which pins the gate itself;
+// this one pins the fact that deliver-sync is relying on it.
+describe('deliver-sync stood down BECAUSE the Connect gate exists (ace#2100 / #1066)', () => {
+  const recipe = readRecipe('deliver-sync.yaml');
+  const SKILL_PATH = fileURLToPath(
+    new URL('../../../skills/app-screenshot-capture/SKILL.md', import.meta.url),
+  );
+
+  it('keeps the authoritative `delivered >= 1` gate while the device counter is non-fatal', () => {
+    const counterIsNonFatal = !/^- assertNotVisible:\s*\n\s*text: "0\/\[0-9\]\+"/m.test(recipe);
+    expect(
+      counterIsNonFatal,
+      'precondition of this test: deliver-sync no longer hard-asserts the counter',
+    ).toBe(true);
+
+    const skill = readFileSync(SKILL_PATH, 'utf8');
+    const begin = skill.indexOf('<!-- deliver-gate:begin');
+    const end = skill.indexOf('<!-- deliver-gate:end -->');
+    expect(begin, 'app-screenshot-capture must carry the delimited deliver-gate block').toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(begin);
+    const gate = skill.slice(begin, end).replace(/\s+/g, ' ');
+
+    expect(
+      gate,
+      'deliver-sync.yaml stood down as the Deliver gate on the strength of this ' +
+        'assertion. `delivered >= 1` must stay HARD and unconditional, or the Deliver ' +
+        'leg has no gate at all (ace#1066 reopens silently).',
+    ).toMatch(/`delivered >= 1` — HARD, unconditional/);
+  });
+
+  it('makes deliver-sync name the gate it defers to, so the dependency is readable', () => {
+    expect(
+      recipe,
+      'the recipe must point a reader at the assertion that replaced it',
+    ).toContain('connect_get_deliver_progress');
+    expect(recipe).toContain('app-screenshot-capture');
   });
 });
 
