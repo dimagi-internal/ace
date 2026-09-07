@@ -408,10 +408,9 @@ server.tool(
     // (e.g. inputText-scalar-with-sibling-option) with a precise
     // rule-named error before delegating to the Maestro parser, which
     // surfaces unhelpful "expected <block end>" errors for the same
-    // class. NOTE: avoid stray apostrophes in this comment block —
-    // scripts/dump-atom-schemas.ts walks chars with a string-aware but
-    // comment-unaware parser. A bare `'` here starts a phantom string
-    // and makes every subsequent atom invisible to docs/atom-schemas.md.
+    // class. (The old apostrophe ban in this comment block is retired:
+    // scripts/dump-atom-schemas.ts now parses with the TypeScript compiler
+    // API, so comments are the scanner's problem — ace#2192.)
     const { lintRecipeText } = await import('./mobile/recipe-lint.js');
     // Map-aware rules need the ACTIVE selector map. A missing/unparseable map
     // must never turn a lint pass into a hard failure — the rule abstains and
