@@ -80,14 +80,26 @@ Consumers:
 
     - **≥1 negative-path / bad-input journey** — the FLW enters a value
       the instrument should reject (blank required field, out-of-range
-      count, malformed phone, a low-accuracy GPS fix where a radius is
-      specified) and experiences a clear, recoverable rejection. This is
-      the journey `app-test-cases` turns into a negative-path Maestro
-      recipe and `app-ux-eval § capture_robustness` grades. A journey
-      set with zero negative-path journeys is a coverage gap, not a pass.
+      count, malformed phone) and experiences a clear, recoverable
+      rejection. This is the journey `app-test-cases` turns into a
+      negative-path Maestro recipe and `app-ux-eval § capture_robustness`
+      grades. A journey set with zero negative-path journeys is a
+      coverage gap, not a pass. **A low-accuracy GPS fix is NOT a member
+      of this set** — no build can reject one (dimagi-internal/ace#1006,
+      ace#1013), so a journey demanding that rejection is ungradable by
+      construction; it belongs under the capture-fidelity expectation
+      below, as an advisory the FLW sees and can act on. Before demanding
+      any enforcement a journey's pass criteria will be graded on, check
+      it against `skills/_app-component-library.md § Mechanisms a PDD
+      must not assert` — Table A (closed at the platform surface) and
+      Table B (buildable, outside ACE's toolchain today). A journey that
+      demands a Table A mechanism cannot pass, and a journey that calls a
+      Table B mechanism impossible is its own error.
     - **A capture-fidelity expectation** in the relevant journey's pass
-      criteria — e.g. "GPS capture is rejected below the accuracy
-      threshold," "enumerable answers are picked from a list, not typed,"
+      criteria — e.g. "the fix's accuracy is shown to the
+      FLW and submitted with every visit, and a reading worse than the
+      stated tolerance raises an on-screen advisory," "enumerable answers
+      are picked from a list, not typed,"
       "an 'Other' selection prompts a specify field."
     - **For multi-visit / follow-up designs, a persistence journey** —
       the follow-up visit records change against the existing household,
@@ -356,3 +368,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Accept either "FLW Requirements" (canonical, per `templates/pdd-template.md`) or "Target FLW" (legacy) as the persona section in Process step 3 + Failure Modes. Prompted by `malaria-itn-fgd/20260514-2007` where the template-conformant PDD said "FLW Requirements" and the skill halted looking for "Target FLW". See jjackson/ace#302. | ACE team |
 | 2026-05-15 | Recharacterize `focus-group` journey categories for the attestation-form-only shape (PRs #305, #306): `output-coherence` (which assumed the FLW fills 28 in-app fields with content) → `attestation-submission` (FLW fills the 5-field form at session end, no per-section content in the app). Session-setup reframed to note "no in-app interaction at session start" — the mobile form is end-of-session only. Other categories (recruitment-failure, consent-handling) reframed to note no-attestation-on-abort semantics. Coverage rule updated to reference the new category name. Prompted by `malaria-itn-fgd/20260514-2352` re-run. | ACE team |
 | 2026-05-29 | **Deployability-exercising journeys (ITN post-mortem, producer↔eval symmetry).** Added Step 4a + two coverage rules: when the Evidence Model implies it, the journey set MUST include ≥1 negative-path/bad-input journey (the recoverable-rejection path that `app-test-cases` turns into a negative-path recipe and `app-ux-eval § capture_robustness` grades), capture-fidelity pass criteria (GPS accuracy gating, structured-pick over typing, other→specify), and — for multi-visit designs — a persistence journey (follow-up records change). Symmetric with the new `pdd-to-app-journeys-eval § deployability_fitness` hard-gate; PDD silence is not a waiver. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-09-06 | **A low-accuracy GPS fix is no longer offered as a negative-path example, and the capture-fidelity example no longer says "rejected" (dimagi-internal/ace#1619).** The bad-input bullet listed "a low-accuracy GPS fix where a radius is specified" beside blank/out-of-range/malformed-phone, and the capture-fidelity bullet modelled the expectation as *"GPS capture is rejected below the accuracy threshold."* No build can do either: Nova rejects `validate` on `kind: geopoint` and Connect's verification-flags form no longer carries `gps` / `gps_radius_meters` (ace#1006, ace#1013), and `idea-to-pdd § Step 4a` FORBIDS the PDD from asserting it. So this skill was handing authors the exact phrasing Phase 1 is not allowed to write, `app-test-cases` then compiled it into a negative-path Maestro recipe that cannot pass, and `pdd-to-app-journeys-eval` graded the result against it. Both examples now model the observability contract (accuracy shown + submitted + a whole-range advisory), and the bullet points at `_app-component-library.md § Mechanisms a PDD must not assert` — the pointer `test/skills/pdd-must-not-assert-mechanisms.test.ts` already required of `idea-to-pdd` and its eval, and never of this pair. Sibling half of the same drift in `pdd-to-app-journeys-eval`; `pdd-to-deliver-app-eval § Capture fitness` received this correction on 2026-07-28 and it was not propagated here. | ACE team |
