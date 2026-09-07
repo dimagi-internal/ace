@@ -97,6 +97,52 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    - If `solicitation/invitations.md` exists: list of invitees who have
      not yet responded (match by `contact_email` or `organization_slug`).
 
+   **`0 responses` with a deadline approaching is the CORRECT and expected
+   state. Record it; do NOT escalate it.** This is the one place in ACE that
+   computes both of those numbers, so it is the one place that can manufacture
+   the urgency — an agent reading `deadline in N days, 0 responses` will reach
+   for *"this lapses unless someone acts"* and put it in front of a human.
+   Don't. Phase 8 is **publish-only by default**: `llo-invite` is a no-op
+   unless the operator explicitly opted in (`--invite-candidates` /
+   `ACE_SOLICITATION_INVITE_CANDIDATES`), so on a default run **nobody was ever
+   invited** and nothing is waiting on anyone. A lapsed run-scoped solicitation
+   costs nothing — it was an audit trail, not a procurement.
+
+   **The discriminator is whether anyone was actually emailed — and you must
+   READ the file to know, not just find it.** `llo-invite` writes
+   `8-solicitation-management/llo-invite_invitations.md` on **all three** of its
+   paths, so the file's PRESENCE tells you nothing. Open it and branch on what
+   it says:
+
+   | Contents | Meaning | Action |
+   |---|---|---|
+   | `Status: skipped (publish-only default …)` | operator never opted in | zero responses expected — tick line only |
+   | `Status: empty (long-term solicitation flow …)` | opted in, but the PDD named no candidates | zero responses expected — tick line only; the file itself says so |
+   | a `## Recipients` table with ≥1 row | real invitations went out | outstanding invitees are worth surfacing |
+
+   Only the third row can justify raising anything to a human. Reading the
+   filename instead of the contents is the failure mode this table exists to
+   prevent — it is a flag that does not mean what it looks like it means
+   (CLAUDE.md § "never let a read-back flag stand in for it").
+
+   And note what is explicitly NOT the discriminator: **"is this a test opp?"**
+   The publish-only default holds on *every* run, so a real run with no
+   invitees is exactly as expected as a test one. Do not reach for a
+   test/demo-scoped run flag to suppress this — that framing implies the same
+   state would be escalation-worthy on a live run, which would put the noise
+   straight back on real runs (ace#2171).
+
+   *Origin (2026-09-04/05).* A turn raised solicitation 17609's "deadline 12
+   Sep, zero responses" as a decision needing a human **three times across two
+   days** on `hh-poverty-targeting`. Jon: *"stop talking about the
+   solicitation, this is all just test work and its fine."* The doctrine was
+   already written down — in `skills/solicitation-create/SKILL.md`, which is
+   the skill that PUBLISHES a solicitation inside a run, and which a turn
+   polling one never loads. It is restated here because this is the file that
+   reads the numbers. `solicitation-create` remains canonical for the full
+   doctrine (multiple open solicitations per program are also expected);
+   ace#2171.
+
 4. **Append observation.** Append a single line to
    `ACE/<opp-name>/comms-log/observations.md`:
 

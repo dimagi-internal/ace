@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ConnectError,
+  REMEDIATION_ORDER,
   SessionExpiredError,
   ConnectLoginFailedError,
   CsrfTokenMissingError,
@@ -159,5 +160,69 @@ describe('HttpError uses the 5xx summarizer', () => {
     const html = '<!DOCTYPE html><html><head>...';
     const err = new HttpError(404, '/a/o/missing/', html);
     expect(err.message).toContain('<!DOCTYPE');
+  });
+});
+
+/**
+ * dimagi-internal/ace#2172 — a Connect auth failure must never ask a human to
+ * log in to Connect.
+ *
+ * ACE authenticates as a service identity through a headless OAuth-via-CCHQ
+ * flow, so every auth failure is self-remediable: re-inject the credential from
+ * 1Password and retry. `/ace:connect-login` opens a HEADED browser for a person
+ * to sign in, and it used to sit in the message as a co-equal first-line option
+ * ("Verify ... in 1Password, or run /ace:connect-login"). A co-equal option is
+ * one a reader picks, and the ask landed on Jonathan:
+ *
+ *   "wait now I'm lost, there is never a rason you should need me to login to
+ *    connect."
+ *
+ * The enforceable property is ORDER, not vocabulary — the string still names
+ * `/ace:connect-login`, because it is the correct last resort for a genuinely
+ * interactive account. What must hold is that self-remediation comes first and
+ * the human ask is for the CREDENTIAL.
+ */
+describe('ace#2172 — auth failures self-remediate before they escalate', () => {
+  it('puts the credential fix BEFORE the human-login last resort', () => {
+    const selfServe = REMEDIATION_ORDER.indexOf('/ace:setup --force-env');
+    const humanLogin = REMEDIATION_ORDER.indexOf('/ace:connect-login');
+    expect(selfServe).toBeGreaterThan(-1);
+    expect(humanLogin).toBeGreaterThan(-1);
+    expect(
+      selfServe < humanLogin,
+      'The human-login fallback now precedes (or replaces) the self-remediation ' +
+        'step. Order is the whole fix: a reader takes the first actionable option ' +
+        'offered, which is how ace#2172 put the ask on a human.',
+    ).toBe(true);
+  });
+
+  it('names retrying the headless flow, not just rotating the secret', () => {
+    // Re-injecting .env without retrying leaves the caller stuck; and without a
+    // restart the MCP subprocess keeps the stale env (CLAUDE.md § MCP restart).
+    expect(REMEDIATION_ORDER).toMatch(/retry/i);
+    expect(REMEDIATION_ORDER).toMatch(/headless/i);
+    expect(REMEDIATION_ORDER).toMatch(/restart/i);
+  });
+
+  it('forbids asking a person to authenticate on ACE\'s behalf, in words', () => {
+    // The ordering above is the mechanism; this is the rule stated outright, so
+    // a model reading the error cannot infer the human ask is merely later.
+    expect(REMEDIATION_ORDER).toMatch(/Do NOT ask a human to log in to Connect/);
+  });
+
+  it('does NOT delete the interactive last resort', () => {
+    // Over-correcting to "never mention /ace:connect-login" would strand a real
+    // SSO/MFA account with no path at all. It must survive, demoted.
+    expect(REMEDIATION_ORDER).toMatch(/last\s+resort/i);
+    expect(REMEDIATION_ORDER).toMatch(/SSO\/MFA/);
+  });
+
+  it('reaches BOTH auth error classes, not just the one that was reported', () => {
+    // SessionExpiredError carried the identical co-equal phrasing. Fixing only
+    // ConnectLoginFailedError would leave the same ask on the other path.
+    expect(new ConnectLoginFailedError('ace@dimagi-ai.com', 'hq-creds').message).toContain(
+      REMEDIATION_ORDER,
+    );
+    expect(new SessionExpiredError().message).toContain(REMEDIATION_ORDER);
   });
 });

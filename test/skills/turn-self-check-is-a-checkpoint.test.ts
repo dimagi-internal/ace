@@ -60,6 +60,77 @@ describe('turn self-check is a hard checkpoint', () => {
 });
 
 /**
+ * dimagi-internal/ace#2173 — the checkpoint must degrade, not deadlock.
+ *
+ * `TodoWrite` does not resolve in every session. Measured live in a
+ * non-orchestrator ACE session: `ToolSearch select:TaskCreate,TaskUpdate,TodoWrite`
+ * returned "No matching deferred tools found" for ALL THREE names — including the
+ * TaskCreate/TaskUpdate pair that ace#2127 pointed the orchestrator at as the
+ * alternate spelling.
+ *
+ * That turns the ordering constraint above into a deadlock: an item that can never
+ * be created can never be marked `completed`, and the close-out "may not be written
+ * while it is still `pending`". ace#2127 gave the orchestrator an explicit
+ * skip-and-note fallback for the identical shape and left this file — the one a
+ * non-orchestrator session actually loads — without one.
+ *
+ * SCOPE: the fallback must relieve the DEADLOCK without relieving the CHECK. Those
+ * are separable because the two halves are not equally load-bearing — the REQUIRED
+ * close-out line is the half that makes absence visible, and it needs no tool.
+ */
+describe('ace#2173 — the self-check survives an absent TodoWrite', () => {
+  it('states the fallback and names the issue', () => {
+    expect(
+      /If `TodoWrite` does not resolve/i.test(TURN),
+      'skills/turn/SKILL.md no longer tells a session what to do when TodoWrite ' +
+        'is absent. Without it the mandatory ordering constraint is a deadlock: ' +
+        'no todo can be created, so none can be completed, so the close-out may ' +
+        'never be written.',
+    ).toBe(true);
+    expect(TURN).toMatch(/ace#2173/);
+  });
+
+  it('drops the TODO, not the CHECK', () => {
+    // The whole risk of adding a fallback is that it reads as permission to skip
+    // the step. The check is the point; the todo is the reminder.
+    expect(
+      /SKIP THE TODO — never the check/i.test(TURN),
+      'The fallback no longer distinguishes skipping the todo from skipping the ' +
+        'self-check. Collapsing those hands every session a way out of the step ' +
+        'that produced checklist_gap: skill-self-check in the first place.',
+    ).toBe(true);
+  });
+
+  it('keeps the REQUIRED close-out line as the surviving enforcement', () => {
+    // A tool-free half has to remain, or "TodoWrite was missing" silently excuses
+    // the whole checkpoint.
+    expect(
+      /needs no tool|no tool at all/i.test(TURN),
+      'The fallback no longer records that the close-out line works without any ' +
+        'tool. That is why dropping the todo is safe; without it a reader may ' +
+        'conclude the entire checkpoint is unavailable.',
+    ).toBe(true);
+  });
+
+  it('forbids reporting `none` for a check that was never run', () => {
+    // The degradation path must not become a route to a false clean report.
+    expect(
+      /false claim/i.test(TURN),
+      'The fallback no longer forbids emitting `skill-self-check: none` without ' +
+        'having asked the questions. That line asserts a negative FINDING, not an ' +
+        'absent check — permitting it would make a skipped turn read as a clean one.',
+    ).toBe(true);
+  });
+
+  it('does not tell the turn to halt or improvise a substitute', () => {
+    // Both are the failure modes ace#2127 recorded for the orchestrator: an agent
+    // told a step is mandatory, with no fallback, invents one mid-run.
+    expect(TURN).toMatch(/not halt the turn/i);
+    expect(TURN).toMatch(/improvise a substitute/i);
+  });
+});
+
+/**
  * task-tracker must not misattribute a board outage to `canopy-gws`.
  *
  * The 2026-09-02 review proposed giving `skills/task-tracker` a degraded path
