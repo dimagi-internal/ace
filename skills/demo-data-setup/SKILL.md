@@ -807,6 +807,18 @@ own headline anomaly, a PDD does not hand you one.
       `detectable_signal` you just declared against the `data_shape.rows` you
       just realized.
 
+      **When the PROGRAMME itself is smaller than the floor**, raising the
+      cohort would misrepresent it, and stripping the signal would make the
+      dashboards less honest — so do neither. Keep `detectable_signal`, set
+      `detectable_signal.below_programme_scale` to the PDD quote that proves the
+      roster (the same cite-your-source rule obligation 3 imposes), and build the
+      demo's payoff on something this scale DOES support. bednet-check-2-visit is
+      exactly this case: its PDD specifies "3-5 front-line workers", so its
+      dashboards should carry the consent-rate signal for honesty while the
+      narrative lands on, say, the follow-up completion rate against the PDD's
+      own >=70% target — a claim that holds at any cohort size. Check 13 accepts
+      the escape only with a non-empty quote; an unevidenced flag is a silencer.
+
       **No narration fixes an under-sized cohort** — the remedy is always the
       manifest. `bednet-check-2-visit/20260902-1555` authored a well-formed,
       PDD-derived consent-rate outlier (100.0% against a cohort's 85.2%, a clean

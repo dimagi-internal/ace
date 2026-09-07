@@ -706,6 +706,23 @@ export function checkDetectionCohortFloor(
 
   if (!declaresDetection(signal)) return { ok: true, findings };
 
+  // The programme's OWN roster can sit below the floor, and then no honest demo
+  // can clear it (ace#2131 follow-up). bednet-check-2-visit specifies "3-5
+  // front-line workers"; step 1c REQUIRES instantiating a control whenever the
+  // PDD declares one; and 24 synthetic workers would misrepresent a five-worker
+  // pilot. Without this escape those three rules are jointly unsatisfiable, and
+  // the only ways out are to lie about the scale or to strip a signal the data
+  // should carry.
+  //
+  // So separate the two roles the signal plays. Carrying it in the DATA is what
+  // makes the dashboards honest and is always right. Hanging the demo's PAYOFF
+  // on unaided detection is the part that needs 24 rows. A programme below the
+  // floor declares `below_programme_scale` with the PDD quote that proves it —
+  // the same cite-your-source discipline step 1c already imposes on the signal
+  // itself — and the demo keeps the signal while building its payoff elsewhere.
+  const escape = programmeScaleEscape(signal);
+  if (escape) return { ok: true, findings };
+
   const rows = source?.data_shape?.rows;
   if (typeof rows !== 'number' || !Number.isFinite(rows)) return { ok: true, findings };
 
@@ -733,6 +750,19 @@ export function checkDetectionCohortFloor(
  * ("detectable_signal: none (PDD declares no verification rules)") as NOT
  * declared, since that is the honest opt-out the authoring step provides.
  */
+/**
+ * An explicit, EVIDENCED declaration that the programme's own roster is below
+ * `DETECTION_MIN_ROWS`, so the cohort cannot be raised without misrepresenting
+ * it. Requires a non-empty quote: an unevidenced flag would be a silencer, and
+ * this check is only worth having if turning it off costs the author the same
+ * citation step 1c asks for.
+ */
+function programmeScaleEscape(signal: unknown): boolean {
+  if (!signal || typeof signal !== 'object' || Array.isArray(signal)) return false;
+  const v = (signal as Record<string, unknown>).below_programme_scale;
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
 function declaresDetection(signal: unknown): boolean {
   if (signal === undefined || signal === null) return false;
   if (typeof signal === 'string') return !/^\s*none\b/i.test(signal.trim());
