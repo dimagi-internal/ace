@@ -992,3 +992,154 @@ describe('checkAcceptanceDefined (ace#2023)', () => {
     expect(checkAcceptanceDefined('### 6.2 Payment Schedule\n\n| 1 | Advance | 40% | On execution |\n\n## 7. Roles\n').pass).toBe(true);
   });
 });
+
+// ─── extractNumberedSection binding (dimagi-internal/ace#2124) ───────
+//
+// `extractNumberedSection(wo, '6')` bound to the TIMELINE TABLE's bare
+// row-number cell `6`, 723 characters ahead of the real `6. Payment Terms`
+// heading, on the work order rendered by `spark-facilitator/20260906-2233`
+// (doc 123vEEc_RCA9gNKUQFELSHhWgEUpK-Imn4m4aaXNFxoI, read as text/plain):
+//
+//   BOUND TO     : "\n\t6\r" offset 9783
+//   REAL HEADING : "6. Payment Terms" at offset 10506  -> 723 chars EARLY
+//   per-<unit> rate matches in the WHOLE doc: 5x "per-meeting rate"
+//
+// In the old regex `^\s*…6(?:\.|\s)[^\n]*$`, `^\s*` lets a match start at a
+// tab-indented table cell and the `\s` alternation matches the `\r` that ends
+// a bare cell value. `String.prototype.match` returns the FIRST hit, so any
+// table with a bare integer cell equal to the section number shadows the real
+// heading. The live template's Timeline table has row-number cells 1–8, so
+// every numbered section except § 9 was shadowable.
+//
+// Two checks read section 6 and BOTH degraded toward a FALSE PASS:
+// `payment_unit_matches_entity_grain` (the ace#1946 check) reported "no
+// per-<unit> rate phrasing found — not applicable" against a document quoting
+// one five times, and `declared_cap_reaches_contract` tested Timeline prose for
+// its `\b<cap>\b` needle instead of § 6. QA returned 14/14 with both inert.
+//
+// Whitespace matters here in a way that is easy to get wrong, so these fixtures
+// use the REAL `\r\n\t` gdoc-export shape rather than tidy markdown — the point
+// of the test is the whitespace. The filed remedy
+// (`(?:\.\s*|\s+)[A-Za-z]`) still matched `"\n\t6\r\n\tWeeks 13–16\r"`,
+// because `\s+` crosses the newline and picks up the NEXT cell's first letter.
+// Only a horizontal-whitespace class closes it.
+
+// A gdoc plain-text export: § 5 Timeline table with bare row-number cells,
+// then the real § 6. The `\t`-indented cells and `\r\n` line endings are what
+// Drive actually emits.
+const GDOC_TIMELINE_SHADOW = [
+  '5. Timeline and Milestones',
+  '\tWeek\r',
+  '\tDates\r',
+  '\tActivities\r',
+  '\t5\r',
+  '\tWeeks 9–12\r',
+  '\tSupervisor review continues at no less than 20 percent of records.\r',
+  '\t6\r',
+  '\tWeeks 13–16\r',
+  '\tFCAP Goal Setting starts; cohort target is 25 facilitators.\r',
+  '6. Payment Terms',
+  '6.1 Total Not-to-Exceed',
+  "Dimagi's total financial commitment under this Work Order is USD 12,000.",
+  '6.2 Payment Schedule',
+  "Dimagi will pay only for verified units at the per-meeting rate proposed in the partner's solicitation response.",
+  '7. Roles and Responsibilities',
+].join('\r\n');
+
+// The same document with the timeline row TAB-separated onto one line instead
+// of newline-separated. Both shapes are plausible plain-text exports and both
+// shadowed; the filed remedy closed neither.
+const GDOC_TIMELINE_SHADOW_TABBED = GDOC_TIMELINE_SHADOW.replace(
+  '\t6\r\n\tWeeks 13–16\r\n\tFCAP Goal Setting starts; cohort target is 25 facilitators.\r',
+  '\t6\tWeeks 13–16\tFCAP Goal Setting starts; cohort target is 25 facilitators.\r',
+);
+
+describe('extractNumberedSection does not bind to a bare table-cell number (ace#2124)', () => {
+  test.each([
+    ['newline-separated cells', GDOC_TIMELINE_SHADOW],
+    ['tab-separated row', GDOC_TIMELINE_SHADOW_TABBED],
+  ])(
+    'payment_unit_matches_entity_grain SEES the quoted rate in § 6.2 (%s)',
+    (_label, wo) => {
+      // The false pass: with the old regex the extracted "section 6" was
+      // Timeline prose, so no rate was found and the check excused itself.
+      const r = checkPaymentUnitMatchesEntityGrain(wo, { pddText: PDD_DAY_GRAIN });
+      expect(r.detail).not.toMatch(/not applicable/);
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(/per-meeting/);
+    },
+  );
+
+  test.each([
+    ['newline-separated cells', GDOC_TIMELINE_SHADOW],
+    ['tab-separated row', GDOC_TIMELINE_SHADOW_TABBED],
+  ])(
+    'declared_cap_reaches_contract tests § 6, not the timeline table (%s)',
+    (_label, wo) => {
+      // `25` appears ONLY in the Timeline activities cell. A check that finds
+      // it there is reading the wrong slice: the cap has not reached § 6, which
+      // is the whole question.
+      const r = checkDeclaredCapReachesContract(wo, {
+        decisionsYaml: 'daily_cap_per_flw: 25\n',
+      });
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(/does not appear in § 6/);
+    },
+  );
+
+  test('a cap actually stated in § 6 still passes', () => {
+    const wo = GDOC_TIMELINE_SHADOW.replace(
+      'Dimagi will pay only for verified units',
+      'No more than 25 verified units per field worker per day are payable. Dimagi will pay only for verified units',
+    );
+    expect(
+      checkDeclaredCapReachesContract(wo, { decisionsYaml: 'daily_cap_per_flw: 25\n' }).pass,
+    ).toBe(true);
+  });
+
+  // The extractor is SHARED — `checks.ts` calls it for '2', '6', '6.1' and
+  // '6.2' — so the same shadowing was live on every one of them and one fix
+  // covers all four. Section 2 escaped on the real document only by ordering
+  // luck: `2. Scope of Work` happens to sit above the Timeline table. Put a
+  // bare `2` cell above it — a header-table row number does it — and the
+  // archetype scope check reads the header cell as § 2 and reports the scope
+  // missing from a document that states it. That direction is a false FAIL, so
+  // it would at least have been noticed; the § 6 pair failed the other way.
+  test('section 2 was exposed to the same shadowing, and one fix covers both', () => {
+    const wo = [
+      'Work Order Number',
+      '\t2\r',
+      '2. Scope of Work',
+      'For each engagement, the partner will conduct one household visit and record it.',
+      '3. Geographic Coverage',
+    ].join('\r\n');
+    const r = checkArchetypeAppropriateScope(wo, 'atomic-visit');
+    expect(r.pass, JSON.stringify(r)).toBe(true);
+  });
+
+  // Positive controls. The fix requires a LETTER after the number, and for the
+  // dotless form requires a literal SPACE rather than any whitespace — a tab
+  // between a number and a title is a table cell, not a heading. Every heading
+  // form the extractor is documented to accept must survive that.
+  test.each([
+    ['markdown h2', '## 6. Payment Terms'],
+    ['bold markdown', '**6. Payment Terms**'],
+    ['gdoc plain text', '6. Payment Terms'],
+    ['tab-indented gdoc heading', '\t6. Payment Terms'],
+    ['dotless', '6 Payment Terms'],
+    ['dot then tab', '6.\tPayment Terms'],
+  ])('§ 6 is still found when the heading is %s', (_label, heading) => {
+    const wo = [
+      '5. Timeline and Milestones',
+      '\t6\r',
+      '\tWeeks 13–16\r',
+      heading,
+      '6.2 Payment Schedule',
+      "Dimagi will pay at the per-meeting rate proposed in the partner's response.",
+      '7. Roles and Responsibilities',
+    ].join('\r\n');
+    const r = checkPaymentUnitMatchesEntityGrain(wo, { pddText: PDD_DAY_GRAIN });
+    expect(r.detail).not.toMatch(/not applicable/);
+    expect(r.detail).toMatch(/per-meeting/);
+  });
+});
