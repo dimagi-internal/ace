@@ -80,3 +80,76 @@ export function summarizeReplacementCoverage(
       `scripts/probe-work-order-template-drift.ts.`,
   };
 }
+
+/**
+ * The MIXED-BATCH sibling of `summarizeReplacementCoverage`.
+ *
+ * `slides_copy_template`'s optional `replacements` map is not how ACE's decks
+ * actually get their text. `training-deck-render` and `partnership-deck-build`
+ * both copy the template BARE and then substitute every token through
+ * `slides_batch_update`, using the `replaceAllText` requests that
+ * `buildSlidesRequestsV2` emits (`lib/training-deck-spec.ts`). The atom's own
+ * description says so: "the template contains stencil slides with placeholder
+ * text like {{TITLE}} / {{BODY}} that subsequent slides_batch_update calls
+ * fill in."
+ *
+ * So wiring only the copy atoms leaves the deck producers exactly as exposed as
+ * `pdd-to-work-order` was: a token the stencil does not carry is replaced zero
+ * times, the API returns 200, no `{{token}}` survives for a rendered-deck scan
+ * to find, and the slide silently ships without the content. This is not
+ * hypothetical on this path — `lib/training-deck-spec.ts` documents a LIVE
+ * instance of it, where `{{NOTES}}` matches nothing because the stencils carry
+ * no notes-page placeholder yet, and "`slide.notes` is effectively dropped at
+ * render time."
+ *
+ * A `slides_batch_update` batch is heterogeneous (duplicateObject, createImage,
+ * updateSlidesPosition, deleteObject, replaceAllText, ...), so keys cannot be
+ * paired with replies the way the copy atoms pair them. Replies ARE positional
+ * across the whole batch, so this walks the requests, picks out the
+ * `replaceAllText` ones, and reads each one's reply at its own index.
+ *
+ * Reports; never throws. Same call ace#2167 made for the copy atoms — an
+ * over-broad request set is legitimate (a layout that omits an optional token
+ * still sends the full set), so failing the batch would break working paths.
+ */
+export function summarizeBatchReplacementCoverage(
+  requests: Array<Record<string, unknown>> | null | undefined,
+  replies: ReplaceAllTextReply[] | null | undefined,
+): ReplacementCoverage | undefined {
+  const keys: string[] = [];
+  const counts: number[] = [];
+
+  (requests ?? []).forEach((req, i) => {
+    const rat = (req as Record<string, any>)?.replaceAllText;
+    if (!rat) return;
+    const token = rat?.containsText?.text;
+    if (typeof token !== 'string') return;
+    keys.push(token);
+    counts.push(replies?.[i]?.replaceAllText?.occurrencesChanged ?? 0);
+  });
+
+  if (keys.length === 0) return undefined;
+
+  // The same token is legitimately sent once PER SLIDE — each request is
+  // scoped by `pageObjectIds`. Aggregate before judging, so a token that
+  // landed on 11 of 12 slides is not reported as unmatched.
+  const occurrences: Record<string, number> = {};
+  keys.forEach((key, i) => {
+    occurrences[key] = (occurrences[key] ?? 0) + counts[i];
+  });
+
+  const unmatchedReplacements = Object.keys(occurrences).filter((k) => occurrences[k] === 0);
+  if (unmatchedReplacements.length === 0) return { occurrences, unmatchedReplacements };
+
+  return {
+    occurrences,
+    unmatchedReplacements,
+    warning:
+      `${unmatchedReplacements.length} of ${Object.keys(occurrences).length} replaceAllText ` +
+      `token(s) in this batch matched ZERO occurrences and were silently dropped: ` +
+      `${unmatchedReplacements.join(', ')}. ` +
+      `The deck does not carry these placeholders, so the values you computed for them are ` +
+      `not in the rendered slides and no {{token}} remains to reveal it (ace#2126). ` +
+      `Check each token against the stencil its request was scoped to.`,
+  };
+}

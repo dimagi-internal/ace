@@ -126,6 +126,12 @@ Builds a `connect-pitch-partnership` Google Slides pitch deck for a prospect org
 
     Call `slides_batch_update` with all requests from step 10 — single call. Capture success/failure.
 
+    **Read `unmatchedReplacements` on the result — it is not decoration (ace#2126).** The deck's text does not arrive through `slides_copy_template`; step 8 copies the template BARE and every token is substituted here, by the `replaceAllText` requests `buildSlidesRequestsV2` emits. A token no stencil carries is replaced zero times, the API returns 200, and **no `{{token}}` survives in the rendered deck for any check to find** — so the slide ships without the content and every checkpoint reads green. That is the same silent-drop that put a contractual Work Order in front of a partner using "the partner" ~30 times with no antecedent while its QA returned 14/14 pass.
+
+    A non-empty `unmatchedReplacements` (plus a `warning`) means those values were **silently dropped from the rendered deck**. It is a report, not a rollback — the deck exists and looks fine. Treat any entry as a **halt**, naming the unmatched tokens. This deck goes to an external prospect, so a quietly-empty value is a pitch that argues for something it never shows.
+
+    **Do not work around it by folding the value into a neighbouring token.** That renders correctly once and teaches the next run nothing. A dropped token means the live template gdoc no longer carries the placeholder the builder targets, and the fix is to re-bootstrap the template (`scripts/bootstrap-training-deck-template.ts`) so the stencil has the slot.
+
 12. **Merge `deck.slides_url` into `package.yaml`.**
 
     Read the existing `package.yaml` from the run folder via `drive_read_file` (if it exists). Merge in the deck block:
