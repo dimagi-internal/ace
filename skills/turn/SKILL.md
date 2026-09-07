@@ -115,6 +115,27 @@ improvements ship once (a canopy PR) instead of N backports.
   unenforced invariant ("prose relies on the model choosing to comply, which fails under load").
   A todo is the cheapest thing here that is *visible when absent*: skipping it now costs a missing
   line in the close-out instead of costing nothing at all.
+- **What ACE has TOLD people expires too — run the counterpart-asks probe as part of the skill
+  self-check** (dimagi-internal/ace#1896). Resolve the plugin root first, as every bundled-code
+  invocation must:
+
+  ```bash
+  ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-counterpart-asks.ts"
+  ```
+
+  It scans ACE-authored SENT mail for `ace#N` citations, resolves each against `gh`, and reports
+  the ones ACE asserted as live limitations that have since CLOSED — with the thread id, the
+  recipients and the citing sentence. Report-only; the correction is a letter, so it goes through
+  `skills/inbox-triage` under the normal approval gate like any other outbound.
+
+  *Why it is a step and not a habit:* nobody ever re-reads a sent email, so a limitation asserted
+  in one never expires by itself. A partner sequenced 11 days of her own work around ace#1549
+  after it closed COMPLETED **43 minutes** after the message that told her it was deliberately
+  unfixed. `scripts/probe-upstream-asks.ts` cannot see this — its corpus is repo files, which are
+  re-read every session; this corpus is Gmail. **Not the comms-log:** those record `thread_id` +
+  `message_id` + recipients + date and a one-line gist, never the body, so the citing sentence is
+  not in Drive at all. Naming the issue number in the correction is what retires the finding.
 - **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
   `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision. Summary covers:
   **Board** (drained / not configured) · **Inbox** (per thread: sender, tier, routed run, proposed
