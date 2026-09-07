@@ -70,13 +70,24 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
    **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
    cannot verify the format without it (the bytes look identical either way).
 
-   **The sibling skill `pdd-to-work-order-qa` requires the OPPOSITE
-   (`exportAs: 'text/plain'`).** Both run in Phase 1, so do not carry this
-   skill's markdown convention across to it: its `checks.ts` matches the
-   unescaped gdoc form, and the markdown export's `1\.` / `\[` escaping
-   defeats it (dimagi-internal/ace#1609). The requirement is per-skill,
-   decided by what that skill's checks are written against — always read the
-   target skill's step 1 rather than reusing the last one you ran.
+   **Two sibling QA skills require the OPPOSITE (`exportAs: 'text/plain'`):
+   `pdd-to-work-order-qa` (ace#1609) and `pdd-to-test-prompts-qa`
+   (ace#2169).** Do not carry this skill's markdown convention across to
+   either. `pdd-to-work-order-qa` runs in the same Phase 1 and its `checks.ts`
+   matches the unescaped gdoc form, which the markdown export's `1\.` / `\[`
+   escaping defeats. `pdd-to-test-prompts-qa` runs in Phase 2 and its checks
+   want `##` and `**` — but its artifact is written by `drive_create_file`,
+   which lands a Doc whose body is LITERAL markdown, so the markdown export
+   escapes exactly the markers it needs (measured: 8/8 plain vs 2/8 markdown
+   on a correct 58-prompt suite).
+
+   The requirement is per-skill, and it follows from two readable facts: **how
+   the producer WROTE the doc** (`drive_create_doc_from_markdown` → real
+   heading/bold styles, so a plain export drops the markers; `drive_create_file`
+   → literal markdown characters, so a markdown export escapes them) and **what
+   that skill's checks match**. Always read the target skill's step 1 rather
+   than reusing the last one you ran. *Enforced:*
+   `test/skills/qa-export-format.test.ts`.
 
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.

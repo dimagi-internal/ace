@@ -13,6 +13,35 @@
  */
 
 import type { QACheck, QACheckResult } from '../../lib/qa-types';
+import { normalizeDriveExport } from '../../lib/drive-export';
+
+/**
+ * Drive-export escape normalisation, applied at the entry of every check so
+ * the reader's `exportAs` stops being load-bearing.
+ *
+ * WHY: every anchor in this file is markdown SYNTAX — `listPrompts` matches
+ * `^##\s+Prompt\s+N`, the title matches `^#\s+Test Prompts`, and every field
+ * check matches `**<Field>:**`. `pdd-to-test-prompts` writes the artifact with
+ * `drive_create_file`, which lands a Google Doc whose body was imported as
+ * `text/plain` — so those markers survive as LITERAL characters rather than
+ * becoming heading styles and bold runs. A `text/markdown` export therefore
+ * has to escape them to preserve them, and `## Prompt 4` comes back as
+ * `\#\# Prompt 4`, `**Category:**` as `\*\*Category:\*\*`.
+ *
+ * Measured on the real artifact for `bednet-check-2-visit/20260907-1126`
+ * (fileId `1l0satmkozVVDH0A0vcjw3u6bjFQsgZs3G5OXcDb4X8E`, revision 7, 58
+ * prompts, structurally correct): the `text/plain` export scored 8/8 and the
+ * `text/markdown` export scored 2/8 — 0 prompts found, six hard failures, and
+ * the two "passes" vacuous (an empty prompt list has no missing fields and no
+ * adversarial share to fall short of). The auto-fix loop cannot converge on
+ * that, because nothing is wrong with the document (dimagi-internal/ace#2169).
+ *
+ * `SKILL.md` § Process step 1 mandates `text/plain` for this skill. This is
+ * the safety net for when a caller passes the other one anyway — the same
+ * shape both siblings landed (`pdd-to-work-order-qa` ace#1609,
+ * `idea-to-pdd-qa` ace#1617), sharing the same normaliser.
+ */
+export { normalizeDriveExport } from '../../lib/drive-export';
 
 const REQUIRED_FIELDS = [
   'Category',
@@ -36,7 +65,8 @@ const ADVERSARIAL_CATEGORIES = [
 const ADVERSARIAL_SHARE_FLOOR = 0.2;
 
 /** Check 1: Has a top-level title and a "Total prompts: N" line. */
-export function checkHeaderWithTotalCount(doc: string): QACheckResult {
+export function checkHeaderWithTotalCount(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   const titleRe = /^#\s+(?:OCS\s+)?Test\s+Prompts\b/im;
   if (!titleRe.test(doc)) {
     return {
@@ -67,7 +97,8 @@ export function checkHeaderWithTotalCount(doc: string): QACheckResult {
 }
 
 /** Check 2: ≥8 prompts and ≤80 prompts. */
-export function checkPromptCountInRange(doc: string): QACheckResult {
+export function checkPromptCountInRange(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   const prompts = listPrompts(doc);
   if (prompts.length < 8) {
     return {
@@ -87,7 +118,8 @@ export function checkPromptCountInRange(doc: string): QACheckResult {
 }
 
 /** Check 3: Every prompt has all 5 required fields. */
-export function checkEachPromptHasRequiredFields(doc: string): QACheckResult {
+export function checkEachPromptHasRequiredFields(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   const failures: string[] = [];
   for (const { name, body } of listPrompts(doc)) {
     const missing: string[] = [];
@@ -112,7 +144,8 @@ export function checkEachPromptHasRequiredFields(doc: string): QACheckResult {
 }
 
 /** Check 4: All 7 adversarial categories are represented in at least one prompt. */
-export function checkAdversarialCoverage(doc: string): QACheckResult {
+export function checkAdversarialCoverage(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   const categoriesPresent = new Set<string>();
   for (const { body } of listPrompts(doc)) {
     const categoryMatch = body.match(/\*\*Category:?\*\*\s*([a-z-]+)/im);
@@ -132,7 +165,8 @@ export function checkAdversarialCoverage(doc: string): QACheckResult {
 }
 
 /** Check 5: ≥20% of prompts are in adversarial categories. */
-export function checkAdversarialShareMinimum(doc: string): QACheckResult {
+export function checkAdversarialShareMinimum(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   const prompts = listPrompts(doc);
   if (prompts.length === 0) {
     return { pass: true, detail: 'no prompts to evaluate' };
@@ -156,7 +190,8 @@ export function checkAdversarialShareMinimum(doc: string): QACheckResult {
 }
 
 /** Check 6: At least one prompt expects `[training-gap]` tag. */
-export function checkTrainingGapPromptPresent(doc: string): QACheckResult {
+export function checkTrainingGapPromptPresent(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   for (const { body } of listPrompts(doc)) {
     const tags = extractFieldValue(body, 'Expected tags');
     if (tags && /training[- ]gap/i.test(tags)) {
@@ -171,7 +206,8 @@ export function checkTrainingGapPromptPresent(doc: string): QACheckResult {
 }
 
 /** Check 7: At least one prompt expects `[product-feedback]` tag. */
-export function checkProductFeedbackPromptPresent(doc: string): QACheckResult {
+export function checkProductFeedbackPromptPresent(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   for (const { body } of listPrompts(doc)) {
     const tags = extractFieldValue(body, 'Expected tags');
     if (tags && /product[- ]feedback/i.test(tags)) {
@@ -186,7 +222,8 @@ export function checkProductFeedbackPromptPresent(doc: string): QACheckResult {
 }
 
 /** Check 8: At least one prompt expects an escalation (mentions ace@dimagi-ai.com or admin group). */
-export function checkEscalationPromptPresent(doc: string): QACheckResult {
+export function checkEscalationPromptPresent(raw: string): QACheckResult {
+  const doc = normalizeDriveExport(raw);
   for (const { body } of listPrompts(doc)) {
     const escalation = extractFieldValue(body, 'Expected escalation');
     if (escalation && (escalation.includes('@') || /admin\s+group|escal/i.test(escalation))) {
