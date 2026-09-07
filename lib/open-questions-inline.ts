@@ -49,7 +49,7 @@
  * audit trail's weight.
  */
 
-import { classifyOppRootEntry } from './opp-root-files.js';
+import { isIterateFixtureOpp } from './opp-root-files.js';
 
 /**
  * Above this many characters, the orchestrator passes the `file_id` plus a
@@ -89,13 +89,6 @@ export interface OpenQuestionsInlineDecision {
   capChars: number;
 }
 
-/** True when the opp root carries `/ace:iterate` campaign state — i.e. it is a fixture opp. */
-function isIterateFixture(oppRootNames: string[]): boolean {
-  return oppRootNames.some(
-    (name) => classifyOppRootEntry(name)?.label === 'iterate-state.yaml',
-  );
-}
-
 /**
  * Decide how much of the durable `open-questions.md` Phase 1 may inline.
  *
@@ -110,7 +103,7 @@ export function classifyOpenQuestionsInline(
 ): OpenQuestionsInlineDecision {
   const { charCount, oppRootNames } = input;
 
-  if (isIterateFixture(oppRootNames)) {
+  if (isIterateFixtureOpp(oppRootNames)) {
     return {
       mode: 'skip-fixture',
       reason:
