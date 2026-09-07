@@ -32,6 +32,51 @@
  * needs a durable per-opp file, register it here in the same PR; otherwise
  * Step 5b will migrate it and the skill will silently stop finding it on the
  * next run. Per-RUN state belongs under `runs/<run-id>/`, not here.
+ *
+ * ## Why this is still an enumeration — the authorship gate was MEASURED and rejected
+ *
+ * dimagi-internal/ace#2112 was the FOURTH instance of one class (#929
+ * `_comms-log`, #1282 `iterate-state.yaml`, #1325 `open-questions.md`, then a
+ * parked outbound draft at `ACE/spark-facilitator/`), and proposed the
+ * structural fix this header's own text asks for: stop asking "is this name
+ * registered?" and ask **"did ACE write this?"** — gate Step 5b on Drive
+ * authorship, since ACE's service account owns what ACE wrote and an operator
+ * drop is owned by a human. Better shape, if the signal were real. It is not.
+ *
+ * Measured 2026-09-07 against the live ACE Drive root
+ * (`1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz`) as the service account, reading the
+ * fields `drive_list_folder` would have to add — `owners`,
+ * `lastModifyingUser` — across 28 opps:
+ *
+ *  1. **`owners[]` is EMPTY on 68 of 68 opp-root non-folder children.** ACE's
+ *     root lives on a SHARED DRIVE (`driveId: 0AIUhETtpTlpcUk9PVA`), and a
+ *     shared-drive item is owned by the drive, not by a user. The field the
+ *     proposal turns on does not exist here — not "sometimes ambiguous",
+ *     absent.
+ *  2. **`lastModifyingUser` never resolves to a human.** Across all 132 files
+ *     read (68 opp-root + 64 under `inputs/`) it is either the service
+ *     account or `null` — never a person's address. So it cannot express
+ *     "a human put this here" either.
+ *  3. **And the weaker proxy points the WRONG WAY.** 54 of 64 files inside
+ *     `inputs/` — operator-dropped source material, the evidence pack itself —
+ *     read `lastModifyingUser == <the SA>`, the same value the ACE-authored
+ *     parked draft carries. `spark-facilitator/inputs/` is 6 for 6. An
+ *     authorship gate built on it would classify the partner's own source
+ *     documents as ACE-authored and decline to migrate them, which fails
+ *     SILENTLY and in the more damaging direction: Phase 1 would run on an
+ *     empty evidence pack.
+ *
+ * A stamp ACE writes on its own files at creation (Drive `appProperties`)
+ * WOULD be a real structural fix, but it lives on the WRITE side — every
+ * `drive_create_*` atom in `mcp/` — and it cannot retro-classify a single
+ * file that already exists, including the one that filed #2112. That is a
+ * separate change with a migration, not this one.
+ *
+ * So the enumeration stays, and the honest mitigation is the one below plus
+ * making Step 5b LOUD: it already logged every file it MOVED, and a file it
+ * DECLINED to move was invisible. Both are logged now, so a wrong entry here
+ * shows up in `run_state.yaml.notes` on the next run instead of quietly
+ * withholding an operator's brief from Phase 1.
  */
 
 export interface OppRootEntry {
@@ -112,6 +157,20 @@ export const ACE_OWNED_OPP_ROOT: OppRootEntry[] = [
       'the kill switch. Migrating it silently resets the campaign',
     ref: 'dimagi-internal/ace#1282',
     match: (name) => /^iterate-state(-legacy-\d+)?\.yaml$/.test(name),
+  },
+  {
+    label: '*parked outbound draft*',
+    kind: 'file',
+    owner: 'inbox-triage / email-communicator (review posture parks a reply)',
+    why:
+      'an outbound email ACE ITSELF drafted and parked awaiting sign-off. Migrated, ACE reads ' +
+      'its own unsent prose back as curated Phase 1 source evidence — the no-inferred-backstory ' +
+      'class through the same self-referential back door as open-questions.md. Note the ' +
+      'CONVENTION is to park a draft in the thread comms-log (skills/inbox-triage § 4b step 2), ' +
+      'which is already claimed below; this entry covers the standalone doc that gets written ' +
+      'anyway, and a false positive is now visible because Step 5b logs what it declines',
+    ref: 'dimagi-internal/ace#2112',
+    match: (name) => /\bparked\b.*\bdraft\b|\boutbound draft\b/i.test(name),
   },
   {
     label: '*_comms-log*',

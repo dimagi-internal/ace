@@ -1113,9 +1113,24 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `mimeType` is NOT `application/vnd.google-apps.folder` AND whose
      name is NOT ACE-owned (see skip-list below),
      call `drive_move_file({fileId, newParentFolderId: <inputs-folder-id>})`
-     to move it into `inputs/`. Log every move in `run_state.yaml.notes`
-     as a single line: `auto-migrated <name> from opp folder root to
-     inputs/`.
+     to move it into `inputs/`.
+
+     **Log BOTH outcomes in `run_state.yaml.notes`, one line each
+     (dimagi-internal/ace#2112).** A move was already logged; a file the
+     skip-list DECLINED to move was invisible, which is the wrong half to
+     hide — a move is at least discoverable from where the file ended up,
+     whereas a wrong skip-list entry silently withholds an operator's brief
+     from Phase 1 and the run reports green on an evidence pack that is
+     missing it. So:
+
+     - moved: `auto-migrated <name> from opp folder root to inputs/`
+     - declined: `declined to migrate <name> — ACE-owned opp-root entry
+       <label> (lib/opp-root-files.ts)`
+
+     The skip-list is a NAME registry, so a false positive is a real
+     possibility and this line is how it surfaces. If a note names a file
+     the operator actually dropped, the registry entry is too broad — fix
+     the entry, do not work around it in the run.
 
      **Skip-list — the ACE-owned opp-root registry.** The exemption
      set is `lib/opp-root-files.ts`
@@ -1129,6 +1144,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      | `opp.yaml` | connect-program-setup | the durable Connect program reference every run reuses |
      | `open-questions.md` | Phase 1 | the ace#1201 durable-questions loop — the read half looks at the opp ROOT, so a migrated file silently stops being found while a fresh one keeps being written (#1325) |
      | `iterate-state.yaml` (and `iterate-state-legacy-*.yaml`) | `/ace:iterate` | the campaign: golden pointer, pass streak and kill switch all reset (#1282) |
+     | `*parked outbound draft*` | inbox-triage / email-communicator | ACE reads its OWN unsent email back as curated Phase 1 source evidence (ace#2112). Matches a name containing `parked` … `draft`, or `outbound draft` |
      | `*_comms-log*` | email-communicator / inbox-triage | Gmail `thread_id` routing, as well as poisoning the evidence pack (ace#929) |
      | `inputs` / `runs` / `current` / `eval-calibration` / `feedback` | ACE | folders are never moved anyway; listed so doctor doesn't call them cruft |
 
@@ -1143,6 +1159,18 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `lib/opp-root-files.ts` in the same PR, or Step 5b will migrate it
      and the skill will stop finding it on the next run. Per-RUN state
      belongs under `runs/<run-id>/`.
+
+     **Do NOT re-propose gating this on Drive AUTHORSHIP.** The obvious
+     structural fix — ask "did ACE write this?" instead of "is this name
+     registered?" — was measured against the live Drive root on 2026-09-07
+     and does not work: ACE's root is a SHARED DRIVE, so `owners[]` is
+     EMPTY on 68 of 68 opp-root files, `lastModifyingUser` never resolves
+     to a human across 132 files, and 54 of 64 operator-dropped files
+     already inside `inputs/` carry the service account as last modifier —
+     the same value an ACE-authored draft carries. A gate built on it would
+     decline to migrate the partner's own source documents. Full numbers
+     and the `appProperties` alternative: `lib/opp-root-files.ts` § Why
+     this is still an enumeration (ace#2112).
    - **5c. Capture the manifest — files AND the ids of the subfolders you
      did not descend into.** List `<opp>/inputs/` via `drive_list_folder`.
      For each direct child FILE, capture `{file_id, name, mime_type}` under

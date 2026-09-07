@@ -90,3 +90,97 @@ describe('ACE-owned opp-root registry (#1282, #1325)', () => {
     }
   });
 });
+
+/**
+ * dimagi-internal/ace#2112 — the FOURTH instance of the class this file's own
+ * header calls the defect: `ACE/spark-facilitator/` carried a top-level doc,
+ * "Spark — parked outbound draft for Anne (awaiting sign-off, 2026-09-04)",
+ * that no entry matched, so Step 5b would migrate ACE's own unsent email into
+ * the Phase 1 evidence pack.
+ *
+ * The issue proposed the right-shaped fix — gate the migrate on Drive
+ * AUTHORSHIP rather than adding a fifth name matcher — and it was measured
+ * against the live Drive root on 2026-09-07 and REJECTED. ACE's root is a
+ * Shared Drive, so `owners[]` is empty on 68 of 68 opp-root files;
+ * `lastModifyingUser` never resolves to a human across 132 files; and 54 of 64
+ * operator-dropped files already inside `inputs/` carry the service account as
+ * last modifier — the same value the ACE-authored draft carries. A gate on it
+ * would decline to migrate the partner's own source documents, silently, in
+ * the more damaging direction.
+ *
+ * So the enumeration stays, and these tests lock the two things that ship
+ * instead: the narrow entry, and the LOUD decline that makes a wrong entry
+ * visible on the next run rather than invisible forever.
+ */
+describe('parked outbound drafts + the rejected authorship gate (#2112)', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+
+  it('claims the doc that filed the issue, verbatim', () => {
+    expect(
+      isAceOwnedOppRootEntry(
+        'Spark — parked outbound draft for Anne (awaiting sign-off, 2026-09-04)',
+      ),
+    ).toBe(true);
+    expect(
+      classifyOppRootEntry(
+        'Spark — parked outbound draft for Anne (awaiting sign-off, 2026-09-04)',
+      )?.ref,
+    ).toContain('2112');
+  });
+
+  it('claims the shape, not just that one filename', () => {
+    for (const name of [
+      'parked outbound draft — Anne',
+      'Parked Outbound Draft',
+      'Outbound draft — reply to the LLO',
+      'Reply to Enock (parked, awaiting sign-off) DRAFT',
+    ]) {
+      expect(isAceOwnedOppRootEntry(name), name).toBe(true);
+    }
+  });
+
+  it('stays narrow — a name registry that ate real source material would be worse', () => {
+    // Every one of these is operator-dropped source evidence Phase 1 needs.
+    for (const name of [
+      'Draft programme notes',
+      'draft.md',
+      'FCAP Structure (draft).pdf',
+      'Spark outbound programme summary',
+      'Programme notes 2026.pdf',
+    ]) {
+      expect(isAceOwnedOppRootEntry(name), name).toBe(false);
+    }
+  });
+
+  it('Step 5b logs what it DECLINES, not only what it moves', () => {
+    const doc = read('agents/ace-orchestrator.md');
+    const start = doc.indexOf('**5b. Auto-migrate top-level docs');
+    const end = doc.indexOf('**5c.', start);
+    expect(start, 'Step 5b block').toBeGreaterThan(-1);
+    const step5b = doc.slice(start, end);
+
+    expect(step5b, 'the move line stays').toContain('auto-migrated');
+    // The half that was invisible. A skipped file left no trace at all, so a
+    // too-broad registry entry could withhold an operator's brief forever.
+    expect(step5b, 'a declined move must be logged too').toContain('declined to migrate');
+    expect(step5b, 'and must name which entry declined it').toContain('lib/opp-root-files.ts');
+  });
+
+  it('the rejected authorship gate is written down where it would be re-proposed', () => {
+    // Recording a REFUTED fix is the point: #2112 is the fourth instance of
+    // this class, so the next reader will reach for the same idea.
+    const lib = read('lib/opp-root-files.ts');
+    expect(lib, 'the measurement lives with the registry').toMatch(/shared drive/i);
+    expect(lib).toContain('owners');
+    expect(lib).toContain('lastModifyingUser');
+    expect(lib, 'with the counts, not a summary').toMatch(/68 of 68/);
+    expect(lib).toMatch(/54 of 64/);
+
+    const doc = read('agents/ace-orchestrator.md');
+    const start = doc.indexOf('**5b. Auto-migrate top-level docs');
+    const step5b = doc.slice(start, doc.indexOf('**5c.', start));
+    expect(step5b, 'and the executing prose warns against re-proposing it').toMatch(
+      /authorship/i,
+    );
+  });
+});
