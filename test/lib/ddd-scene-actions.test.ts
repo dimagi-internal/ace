@@ -987,6 +987,38 @@ describe('ace#2131: detection floor from the DECLARED signal', () => {
     ).toBe(true);
   });
 
+  /**
+   * A programme whose OWN roster is below the floor (ace#2131 follow-up).
+   * bednet-check-2-visit specifies "3-5 front-line workers"; step 1c REQUIRES
+   * instantiating a control whenever the PDD declares one; 24 synthetic workers
+   * would misrepresent a five-worker pilot. Without an escape those three rules
+   * are jointly unsatisfiable and the only ways out are lying about the scale or
+   * stripping a signal the data should carry.
+   */
+  it('honours an EVIDENCED below-programme-scale declaration', () => {
+    const r = checkDetectionCohortFloor({
+      detectable_signal: {
+        ...REAL_SOURCE.detectable_signal,
+        below_programme_scale:
+          'PDD § FLW Requirements: "Recruit and manage 3-5 front-line workers (FLWs) for the duration of the engagement."',
+      },
+      data_shape: { rows: 5 },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('does NOT accept the escape without the evidence', () => {
+    // An unevidenced flag would be a silencer. Turning this check off costs the
+    // author the same citation step 1c already demands for the signal itself.
+    for (const bad of [true, '', '   ', null, 1]) {
+      const r = checkDetectionCohortFloor({
+        detectable_signal: { ...REAL_SOURCE.detectable_signal, below_programme_scale: bad },
+        data_shape: { rows: 5 },
+      } as any);
+      expect(r.ok).toBe(false);
+    }
+  });
+
   it('accepts a string declaration as well as a structured block', () => {
     const r = checkDetectionCohortFloor({
       detectable_signal: 'consent-rate outlier per PDD Layer B',
