@@ -67,10 +67,72 @@ The static check functions live at `skills/solicitation-review-qa/checks.ts` as 
 ## Process
 
 1. **Read the recommendation artifact** from Drive:
-   `drive_read_file(file_id=<solicitation-review_recommendation.md drive id>)`.
+   `drive_read_file(file_id=<solicitation-review_recommendation.md drive id>, exportAs: 'text/plain')`.
+
+   **`exportAs: 'text/plain'` is REQUIRED here, not optional** — it is also the
+   atom's default, so the requirement is "do not reach for the other one."
+   Every anchor in `checks.ts` is markdown SYNTAX: `extractSection` matches
+   `^##\s+(?:\*\*)?<heading>` (checks 1, 3, 5, 7), check 3 harvests the doc's
+   other headings with the same `^##` pattern, and checks 5/6/7 read markdown
+   PIPE TABLES via `extractAllTables` / `countTableDataRows` / `parseTableRow`,
+   which key on a literal `|`.
+
+   The producer (`solicitation-review` § Process steps 4–5) writes BOTH
+   artifacts with `drive_create_file` — the only Drive writer that skill names.
+   That atom lands a Google Doc but uploads the body as
+   `text/plain; charset=utf-8` media (`bodyMedia`, `mcp/google-drive-server.ts`),
+   so Drive never runs the markdown→styles conversion and the `#` / `**` / `|`
+   markers stay LITERAL characters in the doc. A `text/markdown` export
+   therefore has to ESCAPE them to preserve them: `## Recommendation` comes
+   back as `\#\# Recommendation`, and every anchor above is gone at once.
+   (`\#` is directly observed in a real Drive markdown export — see the
+   escaped-character census in `lib/drive-export.ts`. The exporter escapes the
+   CommonMark punctuation set, so a table row's `|` and a `resp-42` id's `-`
+   go the same way; `normalizeDriveExport` unescapes all of it uniformly, so
+   the fix does not depend on which subset Drive picks on any given day.)
+
+   Measured on a SYNTHETIC but structurally-correct recommendation + scoring
+   pair (3 responses, 4 criteria, both tables populated), running the real
+   `CHECKS` array over both exports. It is synthetic because no real one
+   exists: a Drive sweep of all 74 runs across 11 opps (2026-05-13 →
+   2026-09-07) found 18 `8-solicitation-management` folders and **zero**
+   `solicitation-review_*` artifacts in any of them — Phase 8 publishes and
+   stops, and this skill's producer is a separately-invoked, HITL-gated step
+   that has never run to completion. That is also why this instance was
+   latent rather than live. Both exports: `text/plain` scores **8/8**, `text/markdown` scores
+   **2/8** — 0 of 5 `##` headings and 0 of 19 table rows survive, six hard
+   failures, and the two remaining "passes" are **vacuous**:
+   `tie_break_resolved` passes only because it parsed *zero* scores, and
+   `no_award_action_yet` passes only because the award markers it hunts for are
+   escaped too. That second one is the load-bearing SAFETY check on this skill —
+   measured separately, a recommendation doc carrying `awarded_at: <ts>` scores
+   `pass` on `no_award_action_yet` under the markdown export. The check that
+   exists to keep QA in front of the irreversible `award_response` call goes
+   silently blind, which is a strictly worse outcome than the sibling instances,
+   where the wrong export only produced noisy false failures
+   (dimagi-internal/ace#2178).
+
+   **This is the same as what `pdd-to-work-order-qa` (ace#1609) and
+   `pdd-to-test-prompts-qa` (ace#2169) require, and the OPPOSITE of
+   `idea-to-pdd-qa`** (`text/markdown`, ace#1617). The requirement is per-skill
+   and follows from two facts, both readable: **how the producer WROTE the doc**
+   (`drive_create_doc_from_markdown` → real heading/bold styles, so a plain
+   export drops the markers entirely; `drive_create_file` → literal markdown
+   characters, so a markdown export escapes them) and **what that skill's checks
+   match**. Always read the target skill's step 1 rather than reusing the last
+   one you ran. *Enforced:* `test/skills/qa-export-format.test.ts`.
+
+   `checks.ts` also normalises markdown-export escaping defensively (via
+   `normalizeDriveExport` in `lib/drive-export.ts`, shared with all three
+   siblings), so passing the wrong format no longer produces spurious failures
+   — nor a spurious pass on check 8. That is a safety net, not a licence — pass
+   `text/plain` and keep the checks matching what they were written against.
 
 2. **Read the scoring artifact** from Drive:
-   `drive_read_file(file_id=<solicitation-review_scoring-rubric.md drive id>)`.
+   `drive_read_file(file_id=<solicitation-review_scoring-rubric.md drive id>, exportAs: 'text/plain')`.
+
+   Same mandate, same reason — it is written by the same `drive_create_file`
+   call and read by the same pipe-table matchers (checks 4, 6, 7).
 
 3. **Read the response file list** from Drive (optional — checks 4 is
    skipped with INFO if unreachable):
@@ -134,7 +196,7 @@ quality; QA's job is to ensure they have a fair input.
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_list_folder`, `drive_create_file`
+- Google Drive: `drive_read_file` — **always with `exportAs: 'text/plain'`** for BOTH the recommendation and scoring artifacts (see § Process step 1; the same as `pdd-to-work-order-qa` and `pdd-to-test-prompts-qa`, the inverse of `idea-to-pdd-qa`, which requires `text/markdown`), `drive_list_folder`, `drive_create_file`
 - Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
 
 ## Mode Behavior
@@ -157,3 +219,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-09 | Initial skill. Closes the deferred has-QA candidate row in `_qa-decisions.md` for `solicitation-review`. Eight static checks: recommendation_section_present, awardee_named, awardee_reasoning_substantive, all_responses_scored, criteria_coverage_table_populated, scoring_table_well_formed, tie_break_resolved, no_award_action_yet. The last check (no_award_action_yet) is the load-bearing one for safety: QA must run BEFORE the HITL human triggers the irreversible `award_response`, so the doc must not yet claim award. | ACE team |
+| 2026-09-07 | **Steps 1–2 now mandate `exportAs: 'text/plain'`, and `checks.ts` normalises markdown-export escaping (ace#2178).** Fourth instance of the class already fixed by name in ace#1609 / ace#1617 / ace#2169; this one was latent, not live — the atom's default happened to be the format the checks want. Derived from the producer's writer atom: `solicitation-review` writes both artifacts with `drive_create_file`, which leaves the `#` / `**` / `|` markers literal, so the markdown export escapes exactly what the checks anchor on. Measured on a correct 3-response recommendation + scoring pair: 8/8 plain vs 2/8 markdown, with `no_award_action_yet` — the safety check gating the irreversible `award_response` — passing **vacuously** on a doc that carries `awarded_at:`. *Enforced:* `test/skills/qa-export-format.test.ts` (this skill moved from `KNOWN_UNFIXED` to `MANDATED`, emptying the ratchet's allowlist). | ACE team |

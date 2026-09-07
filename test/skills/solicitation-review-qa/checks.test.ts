@@ -15,6 +15,7 @@ import {
   checkScoringTableWellFormed,
   checkTieBreakResolved,
   checkNoAwardActionYet,
+  normalizeDriveExport,
   CHECKS,
 } from '../../../skills/solicitation-review-qa/checks';
 
@@ -270,5 +271,82 @@ describe('CHECKS array', () => {
       'tie_break_resolved',
       'no_award_action_yet',
     ]);
+  });
+});
+
+describe('export-format independence (ace#2178)', () => {
+  /**
+   * Mimic Drive's markdown exporter over a doc whose body is literal markdown:
+   * escape markdown-significant punctuation and end lines with the two-space
+   * hard break it emits. Reproduces the observed `\#\# Recommendation` /
+   * `\|` shape. Pipe cells matter here in a way they did not for the
+   * test-prompts sibling: checks 5, 6 and 7 all parse markdown TABLES.
+   */
+  function asDriveMarkdownExport(doc: string): string {
+    return doc
+      .split('\n')
+      .map((line) => {
+        const escaped = line.replace(/([#*[\]_.+\-`|>])/g, '\\$1');
+        return escaped.trim().length > 0 ? `${escaped}  ` : escaped;
+      })
+      .join('\n');
+  }
+
+  const REC_MD = asDriveMarkdownExport(REC_FULL);
+  const SCORING_MD = asDriveMarkdownExport(SCORING_FULL);
+  const CTX = { scoring: SCORING_FULL, responseFiles: ['resp-42.json'] };
+  const CTX_MD = { scoring: SCORING_MD, responseFiles: ['resp-42.json'] };
+
+  test('the fixture really is escaped the way Drive escapes it', () => {
+    expect(REC_MD).toContain('\\#\\# Recommendation');
+    expect(REC_MD).not.toMatch(/^## Recommendation/m);
+    expect(SCORING_MD).toContain('\\| resp\\-42 ');
+    expect(SCORING_MD).not.toMatch(/^\| resp-42/m);
+  });
+
+  test('normalizeDriveExport restores every anchor the checks match', () => {
+    expect(normalizeDriveExport('\\#\\# Recommendation')).toBe('## Recommendation');
+    expect(normalizeDriveExport('\\*\\*Awardee\\*\\*')).toBe('**Awardee**');
+    expect(normalizeDriveExport('\\| resp\\-42 \\| 8.5 \\|')).toBe('| resp-42 | 8.5 |');
+    // A non-punctuation escape is not a markdown escape — leave it alone.
+    expect(normalizeDriveExport('a\\nb')).toBe('a\\nb');
+  });
+
+  test('the markdown export of a healthy pair passes every check', () => {
+    const failures = CHECKS.filter(
+      (c) => !(c.run as (d: string, x?: unknown) => { pass: boolean })(REC_MD, CTX_MD).pass,
+    ).map((c) => c.id);
+    expect(failures).toEqual([]);
+  });
+
+  test('both exports of the same document score identically', () => {
+    const score = (rec: string, ctx: unknown) =>
+      CHECKS.map(
+        (c) =>
+          `${c.id}:${(c.run as (d: string, x?: unknown) => { pass: boolean })(rec, ctx).pass}`,
+      );
+    expect(score(REC_MD, CTX_MD)).toEqual(score(REC_FULL, CTX));
+  });
+
+  test('a genuinely broken doc still fails under the markdown export', () => {
+    // Guard against "normalise everything into a pass": drop the heading and
+    // the check must still fail after normalisation.
+    const broken = asDriveMarkdownExport(REC_FULL.replace('## Recommendation', '## Notes'));
+    expect(checkRecommendationSectionPresent(broken).pass).toBe(false);
+  });
+
+  test('the SAFETY check is not blinded by the wrong export (the ace#2178 bite)', () => {
+    // `no_award_action_yet` gates the irreversible award_response call. Under
+    // the markdown export, `awarded_at:` escapes to `awarded\_at\:` and the
+    // unnormalised pattern misses it — reporting `pass` on a doc that DOES
+    // claim an award. Normalisation is what keeps it honest.
+    const premature = REC_FULL.replace(
+      'response_id: resp-42',
+      'response_id: resp-42\nawarded_at: 2026-09-07T14:02:00Z',
+    );
+    expect(checkNoAwardActionYet(premature).pass).toBe(false);
+    const prematureMd = asDriveMarkdownExport(premature);
+    expect(prematureMd).not.toContain('awarded_at:');
+    expect(checkNoAwardActionYet(prematureMd).pass).toBe(false);
   });
 });

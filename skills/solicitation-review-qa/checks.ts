@@ -25,6 +25,49 @@
  */
 
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
+import { normalizeDriveExport } from '../../lib/drive-export';
+
+/**
+ * Drive-export escape normalisation, applied at the entry of every check so
+ * the reader's `exportAs` stops being load-bearing.
+ *
+ * WHY: every anchor in this file is markdown SYNTAX. `extractSection` matches
+ * `^##\s+(?:\*\*)?<heading>`, check 3 harvests the doc's other headings with
+ * the same `^##` pattern, and checks 5/6/7 read markdown PIPE TABLES via
+ * `extractAllTables` / `countTableDataRows` / `parseTableRow`, which key on a
+ * literal `|`.
+ *
+ * `solicitation-review` (§ MCP Tools Used; it names no other Drive writer)
+ * writes BOTH artifacts this file reads — `solicitation-review_recommendation.md`
+ * and `solicitation-review_scoring-rubric.md` — with `drive_create_file`. That
+ * atom lands a Google Doc but uploads the body as `text/plain; charset=utf-8`
+ * media (`bodyMedia`, `mcp/google-drive-server.ts`), so Drive never runs the
+ * markdown->styles conversion and the `#` / `**` / `|` markers survive as
+ * LITERAL characters. A `text/markdown` export therefore has to ESCAPE them to
+ * preserve them: `## Recommendation` comes back as `\#\# Recommendation`,
+ * `**Awardee**` as `\*\*Awardee\*\*`, and a table row's `|` as `\|` — every
+ * anchor above is gone at once.
+ *
+ * `SKILL.md` § Process step 1 mandates `text/plain` for this skill. This is
+ * the safety net for when a caller passes the other one anyway — the same
+ * shape all three siblings landed (`pdd-to-work-order-qa` ace#1609,
+ * `idea-to-pdd-qa` ace#1617, `pdd-to-test-prompts-qa` ace#2169), sharing the
+ * same normaliser (dimagi-internal/ace#2178).
+ */
+export { normalizeDriveExport } from '../../lib/drive-export';
+
+/**
+ * Normalise the context's Drive-sourced text too. `scoring` is read out of
+ * Drive by the same step that reads the recommendation, so it carries the same
+ * escaping; `responseFiles` are filenames from `drive_list_folder` and are not
+ * an export.
+ */
+function normalizeCtx(ctx?: QACheckContext): SolicitationReviewQAContext | undefined {
+  const c = ctx as SolicitationReviewQAContext | undefined;
+  if (!c) return c;
+  if (typeof c.scoring !== 'string') return c;
+  return { ...c, scoring: normalizeDriveExport(c.scoring) };
+}
 
 export interface SolicitationReviewQAContext extends QACheckContext {
   /** Text of the scoring-rubric.md artifact. */
@@ -41,7 +84,8 @@ export interface SolicitationReviewQAContext extends QACheckContext {
  * Tolerates case variation, bold-wrapping, and trailing parentheticals,
  * matching the `idea-to-pdd-qa` heading-tolerance contract.
  */
-export function checkRecommendationSectionPresent(rec: string): QACheckResult {
+export function checkRecommendationSectionPresent(raw: string): QACheckResult {
+  const rec = normalizeDriveExport(raw);
   if (/^##\s+(?:\*\*)?Recommendation\b/im.test(rec)) {
     return { pass: true };
   }
@@ -64,7 +108,8 @@ export function checkRecommendationSectionPresent(rec: string): QACheckResult {
  */
 const PLACEHOLDER_AWARDEE = /^(?:tbd|tba|n\/a|none|unknown|placeholder|<.*>|\?+|the\s+top\s+response)$/i;
 
-export function checkAwardeeNamed(rec: string): QACheckResult {
+export function checkAwardeeNamed(raw: string): QACheckResult {
+  const rec = normalizeDriveExport(raw);
   const recBlock = extractSection(rec, 'Recommendation') ?? rec;
 
   // response_id: <something>  OR  awardee: <slug>  OR org_slug: <slug>
@@ -103,7 +148,8 @@ export function checkAwardeeNamed(rec: string): QACheckResult {
  * Heuristic — anchored against the doc's own headings rather than a hardcoded
  * list, because criteria are PDD-defined and vary per opp.
  */
-export function checkAwardeeReasoningSubstantive(rec: string): QACheckResult {
+export function checkAwardeeReasoningSubstantive(raw: string): QACheckResult {
+  const rec = normalizeDriveExport(raw);
   const recBlock = extractSection(rec, 'Recommendation');
   if (recBlock === null) {
     return {
@@ -160,8 +206,8 @@ export function checkAwardeeReasoningSubstantive(rec: string): QACheckResult {
  * the doc in isolation), surface as INFO-skip via `pass: true` with a detail
  * note — this matches the contract documented in the SKILL.md table.
  */
-export function checkAllResponsesScored(rec: string, ctx?: QACheckContext): QACheckResult {
-  const c = ctx as SolicitationReviewQAContext | undefined;
+export function checkAllResponsesScored(_rec: string, ctx?: QACheckContext): QACheckResult {
+  const c = normalizeCtx(ctx);
   const responseFiles = c?.responseFiles;
   const scoring = c?.scoring;
 
@@ -205,7 +251,8 @@ export function checkAllResponsesScored(rec: string, ctx?: QACheckContext): QACh
  * Check 5: A `## Criteria Coverage` table exists with at least one populated
  * data row. Tolerates "Criteria Coverage", "Criterion Coverage", trailing punctuation.
  */
-export function checkCriteriaCoverageTablePopulated(rec: string): QACheckResult {
+export function checkCriteriaCoverageTablePopulated(raw: string): QACheckResult {
+  const rec = normalizeDriveExport(raw);
   const body = extractSection(rec, 'Criteri(?:on|a)\\s+Coverage');
   if (body === null) {
     return {
@@ -237,7 +284,7 @@ export function checkCriteriaCoverageTablePopulated(rec: string): QACheckResult 
 const SCORING_REQUIRED_COLS = ['response_id', 'score', 'rationale'] as const;
 
 export function checkScoringTableWellFormed(_rec: string, ctx?: QACheckContext): QACheckResult {
-  const c = ctx as SolicitationReviewQAContext | undefined;
+  const c = normalizeCtx(ctx);
   const scoring = c?.scoring;
   if (!scoring) {
     return {
@@ -307,8 +354,9 @@ export function checkScoringTableWellFormed(_rec: string, ctx?: QACheckContext):
  * Reads scores from the scoring-rubric context. If scoring isn't provided,
  * passes with INFO (consistent with check 4's graceful degrade).
  */
-export function checkTieBreakResolved(rec: string, ctx?: QACheckContext): QACheckResult {
-  const c = ctx as SolicitationReviewQAContext | undefined;
+export function checkTieBreakResolved(raw: string, ctx?: QACheckContext): QACheckResult {
+  const rec = normalizeDriveExport(raw);
+  const c = normalizeCtx(ctx);
   const scoring = c?.scoring;
   if (!scoring) {
     return {
@@ -379,7 +427,8 @@ const AWARD_ACTION_PATTERNS: RegExp[] = [
   /\baward(?:ed)?\s+confirmed\b/i,
 ];
 
-export function checkNoAwardActionYet(rec: string): QACheckResult {
+export function checkNoAwardActionYet(raw: string): QACheckResult {
+  const rec = normalizeDriveExport(raw);
   for (const re of AWARD_ACTION_PATTERNS) {
     const m = rec.match(re);
     if (m) {
