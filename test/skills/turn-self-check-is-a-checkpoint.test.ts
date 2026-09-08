@@ -79,9 +79,13 @@ describe('turn self-check is a hard checkpoint', () => {
  * close-out line is the half that makes absence visible, and it needs no tool.
  */
 describe('ace#2173 — the self-check survives an absent TodoWrite', () => {
-  it('states the fallback and names the issue', () => {
+  it('states what to do when the tool is absent, and names the issue', () => {
+    // ace#2210 inverted the DEFAULT (absent is normal since Claude Code
+    // 2.1.233), so the wording moved from a conditional fallback to the
+    // primary path. The guarantee is unchanged: a session meeting no tool has
+    // an unambiguous instruction and never deadlocks.
     expect(
-      /If `TodoWrite` does not resolve/i.test(TURN),
+      /do the check, write the close-out/i.test(TURN) && /do not halt the turn/i.test(TURN),
       'skills/turn/SKILL.md no longer tells a session what to do when TodoWrite ' +
         'is absent. Without it the mandatory ordering constraint is a deadlock: ' +
         'no todo can be created, so none can be completed, so the close-out may ' +
@@ -91,14 +95,29 @@ describe('ace#2173 — the self-check survives an absent TodoWrite', () => {
   });
 
   it('drops the TODO, not the CHECK', () => {
-    // The whole risk of adding a fallback is that it reads as permission to skip
-    // the step. The check is the point; the todo is the reminder.
+    // The whole risk of a fallback (now: of the tool simply being gone) is that
+    // it reads as permission to skip the step. The check is the point; the todo
+    // is the reminder.
     expect(
-      /SKIP THE TODO — never the check/i.test(TURN),
+      /The todo is optional; the check\s+never is/i.test(TURN),
       'The fallback no longer distinguishes skipping the todo from skipping the ' +
         'self-check. Collapsing those hands every session a way out of the step ' +
         'that produced checklist_gap: skill-self-check in the first place.',
     ).toBe(true);
+  });
+
+  it('records the root cause, so absence is not re-investigated a fourth time', () => {
+    // ace#2127, #2173 and #2210 each re-derived "the tool is gone" from
+    // scratch. The cause is model-gated and opt-in-able, not permanent.
+    expect(TURN).toMatch(/2\.1\.233/);
+    expect(TURN).toMatch(/CLAUDE_CODE_ENABLE_TODO_TOOLS/);
+    expect(TURN).toMatch(/ace#2210/);
+  });
+
+  it('does not require a per-turn "todo was skipped" disclosure', () => {
+    // The noise ace#2210 removes: narrating the documented default every turn
+    // reads as an anomaly report.
+    expect(TURN).toMatch(/do NOT announce that a todo was skipped/i);
   });
 
   it('keeps the REQUIRED close-out line as the surviving enforcement', () => {

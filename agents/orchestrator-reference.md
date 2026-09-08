@@ -1476,16 +1476,13 @@ the worktree, and `.gws-sa-key.json`-adjacent paths — that's
 30s of latency for a value `bin/ace-doctor` already publishes as
 `env_file:` in its output.
 
-**Issue all phase TaskCreate calls in one parallel block.** (If `TaskCreate`
-does not resolve in this session, skip the task list entirely and note it —
-`run_state.yaml` is the source of truth; dimagi-internal/ace#2127.) When you
-set up the run-level task list (one `TaskCreate` per phase plus the
-external-comm pause), emit them as a single assistant message with
-multiple `TaskCreate` tool-use blocks. Sequential
-`TaskCreate → TaskCreate → TaskCreate` over 7+ turns burns ~30s of
-unnecessary model-output time at run start. The whole task list is
-known up-front from the workflow below — there's no dependency on
-prior responses.
+**There is no run-level task list to batch.** `run_state.yaml` is the
+run-progress mechanism (`ace-orchestrator.md § Pre-flight Step 4`), and
+the Claude Code to-do tools are withheld by default on every current
+model since Claude Code 2.1.233 — so the batching rule this paragraph
+used to carry optimised the call pattern of a tool that never loads.
+Nothing to emit, nothing to note. (dimagi-internal/ace#2127, #2173,
+#2210.)
 
 ### Don't summarize and continue
 
@@ -1840,11 +1837,20 @@ install location on Claude Code 2.1+.
 
 **Why fully-prefixed `ToolSearch`.** Empirically (2026-05-26
 bednet-spot-check + 0.13.213 e2e-malaria-rdt sessions) the bare-name
-`select:` shortcut resolves only built-in deferred tools (`EnterPlanMode`,
-`WebFetch`, …) — every plugin-registered atom returns
+`select:` shortcut resolves only built-in deferred tools (`WebFetch`,
+`WebSearch`, …) — every plugin-registered atom returns
 zero matches, costing a wasted ToolSearch turn every run. The
 fully-prefixed form is deterministic. Built-in deferred tools load
 alongside automatically via the same call.
+
+**Pick the examples carefully — "built-in" does not mean "always
+present".** This line names `WebFetch`/`WebSearch` because both were
+verified to resolve via `select:` on 2026-09-07. It used to name
+`TaskCreate`/`TaskUpdate`, which resolve on no current model (ace#2127),
+and then `EnterPlanMode`, which did not resolve either in a subagent
+session probed the same day (ace#2210). The built-in deferred set varies
+by model and by dispatch depth, so an example here is a claim that needs
+a probe behind it.
 
 ## Run shape rationale
 

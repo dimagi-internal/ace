@@ -69,51 +69,95 @@ describe('ace#2145 — a sub-gate eval composite must not read as a halting BLOC
 });
 
 /**
- * dimagi-internal/ace#2127 — `TaskCreate`/`TaskUpdate` resolve in no session,
- * while the orchestrator makes them a mandatory pre-flight step (Step 4) and a
- * mandatory boundary-fence step (Turn N+1 step 6), with no fallback.
+ * dimagi-internal/ace#2127 / #2173 / #2210 — the Claude Code to-do tools
+ * (`TaskCreate`/`TaskUpdate`/`TodoWrite`) and ACE's progress reporting.
  *
- * Measured on `bednet-check-2-visit/20260906-2228`: `ToolSearch
- * select:TaskCreate,TaskUpdate` returned "No matching deferred tools found",
- * with no tool gating in any settings file. The orchestrator had to invent a
- * fallback mid-run. An orchestrator silently dropping a step it was told was
- * mandatory is the shape that hides a real omission later.
+ * #2127 and #2173 fixed the SYMPTOM: a mandatory step whose tool is absent,
+ * with no fallback, deadlocks the executor. That guarantee is preserved below
+ * and must not be deleted.
+ *
+ * #2210 fixed the FRAMING. Claude Code 2.1.233 withheld TodoWrite/TaskCreate/
+ * TaskGet/TaskUpdate/TaskList from Opus 4.8, Sonnet 5, Fable 5, Mythos 5 and
+ * newer unless the operator sets CLAUDE_CODE_ENABLE_TODO_TOOLS=1. So absence
+ * is the documented DEFAULT, not an anomaly — and both prior issues recorded
+ * the wrong premise ("resolve in no session"), which is why the same ground
+ * was investigated three times. The docs must now carry the cause.
  */
-describe('ace#2127 — a mandatory step whose tool may be absent must state its fallback', () => {
-  it('Step 4 tells the orchestrator to skip-and-note rather than improvise or halt', () => {
-    expect(ORCH).toMatch(/If `TaskCreate` does not resolve, SKIP this step/);
+describe('ace#2127/#2173/#2210 — the to-do list is optional legacy, not the default', () => {
+  it('run_state.yaml is stated as THE run-progress mechanism, not a fallback', () => {
+    const step4 = ORCH.slice(ORCH.indexOf('**Step 4 —'), ORCH.indexOf('**Step 5 —'));
+    expect(step4).toMatch(/`run_state\.yaml` is \*\*the\*\* run-progress mechanism/i);
+    expect(step4).toMatch(/optional legacy/i);
+  });
+
+  it('a step whose tool may be absent still never halts and never improvises', () => {
+    // THE GUARANTEE FROM #2127/#2173. Inverting the default must not reopen
+    // the deadlock those issues closed: an executor meeting an absent tool
+    // still needs an unambiguous instruction.
+    const step4 = ORCH.slice(ORCH.indexOf('**Step 4 —'), ORCH.indexOf('**Step 5 —'));
+    expect(step4).toMatch(/Never halt, never improvise a substitute tracker/i);
     expect(ORCH).toMatch(/ace#2127/);
-    expect(ORCH).toMatch(/do not improvise, and do not halt/i);
   });
 
-  it('the fallback names run_state.yaml as the actual source of truth', () => {
-    // The reason the skip is safe. Without it the rule reads as "silently drop
-    // a mandatory step", which is the thing we do not want normalised.
-    expect(ORCH).toMatch(/progress view, not run state/i);
+  it('the docs record the ROOT CAUSE, so a fourth investigation is not needed', () => {
+    // The absence of this fact is what cost #2127, #2173 and a third
+    // investigation: each re-derived "the tool is gone" and none could say why
+    // or whether it would come back.
+    const step4 = ORCH.slice(ORCH.indexOf('**Step 4 —'), ORCH.indexOf('**Step 5 —'));
+    expect(step4).toMatch(/2\.1\.233/);
+    expect(step4).toMatch(/CLAUDE_CODE_ENABLE_TODO_TOOLS/);
+    // Model-gated, not permanent — the premise both prior issues got wrong.
+    expect(step4).toMatch(/Opus 4\.7|older models/i);
   });
 
-  it('the boundary-fence TaskUpdate step carries the same fallback', () => {
-    // Step 4 and the fence are two separate mandatory sites; fixing only one
-    // leaves the run to improvise at every phase boundary instead of once.
+  it('the per-run "task list skipped" disclosure is explicitly NOT required', () => {
+    // The noise #2210 targets. Absence is the documented normal case, so
+    // narrating it every run is a false signal of anomaly.
+    const step4 = ORCH.slice(ORCH.indexOf('**Step 4 —'), ORCH.indexOf('**Step 5 —'));
+    expect(step4).toMatch(/is\s+noise\s+—\s+omit it/i);
+  });
+
+  it('ACE records that it deliberately does NOT enable the env var, and why', () => {
+    // Operator decision. Without the rationale the next reader "fixes" this by
+    // turning the tools back on, re-adding per-turn context cost.
+    const step4 = ORCH.slice(ORCH.indexOf('**Step 4 —'), ORCH.indexOf('**Step 5 —'));
+    expect(step4).toMatch(/does not set `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, deliberately/i);
+    expect(step4).toMatch(/run-summary page|README\.md/);
+  });
+
+  it('the dead batching guidance for a tool no current model has is gone', () => {
+    // Advice optimising the call pattern of a tool that never loads. Not
+    // reworded — removed.
+    expect(ORCH).not.toMatch(/Issue all phase `TaskCreate` calls in one parallel block/);
+    expect(ORCH).not.toMatch(/emit a 2nd sequential `TaskCreate`/);
+    expect(REFERENCE).not.toMatch(/Issue all phase TaskCreate calls in one parallel block\.\*\*/);
+    // The ~30s-of-model-output rationale went with it.
+    expect(ORCH).not.toMatch(/`TaskCreate → TaskCreate/);
+  });
+
+  it('the boundary fence keeps its four-way gate and treats TaskUpdate as optional', () => {
     const fence = ORCH.slice(ORCH.indexOf('## Phase boundary fence'));
-    expect(fence).toMatch(/SKIP silently if the tool does not resolve/);
-    expect(fence).toMatch(/ace#2127/);
+    expect(fence).toMatch(/optional legacy/i);
+    // The actual gate must still be named, or "optional" reads as "ungated".
+    expect(fence).toMatch(/the four checks above are/i);
   });
 
-  it('points at the alternate name the rest of the repo uses', () => {
-    // skills/turn/SKILL.md calls the same capability TodoWrite, pinned by
-    // test/skills/turn-self-check-is-a-checkpoint.test.ts. An orchestrator that
-    // only knows one name concludes "unavailable" too early.
-    expect(ORCH).toMatch(/`TodoWrite`/);
-  });
-
-  it('the reference doc no longer asserts TaskCreate resolves via select:', () => {
-    // orchestrator-reference.md:1841 used to state this as fact, and it is the
-    // justification for the fully-prefixed ToolSearch form — so a reader
-    // trusts it. Verified false: EnterPlanMode resolves, TaskCreate does not.
-    const claim = REFERENCE.slice(REFERENCE.indexOf('shortcut resolves only built-in'));
-    const sentence = claim.slice(0, 200);
-    expect(sentence).not.toMatch(/TaskCreate/);
-    expect(sentence).toMatch(/EnterPlanMode/);
+  it('NEITHER doc asserts TaskCreate resolves via the bare-name select: shortcut', () => {
+    // #2127 fixed this in orchestrator-reference.md and missed the identical
+    // claim in ace-orchestrator.md — the file the orchestrator executes. The
+    // old test only looked at REFERENCE, so it passed while the claim was live
+    // (ace#2210). Check both.
+    for (const [name, doc] of [['ORCH', ORCH], ['REFERENCE', REFERENCE]] as const) {
+      // Both docs hard-wrap, so the phrase spans a newline in one of them.
+      const idx = doc.search(/shortcut\s+resolves only built-in/);
+      expect(idx, `${name} lost the select: guidance entirely`).toBeGreaterThan(-1);
+      const sentence = doc.slice(idx, idx + 200);
+      expect(sentence, `${name} still names TaskCreate as select:-resolvable`).not.toMatch(
+        /TaskCreate|TaskUpdate|TodoWrite/,
+      );
+      // The rule itself survives — the examples are what changed. WebFetch was
+      // verified to resolve via select: on 2026-09-07; EnterPlanMode was not.
+      expect(sentence).toMatch(/WebFetch/);
+    }
   });
 });
