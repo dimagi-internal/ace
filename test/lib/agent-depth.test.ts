@@ -7,17 +7,12 @@
  * since v2.1.219). `lib/agent-depth.ts` carries the reasoning; this file is the
  * mechanical half.
  *
- * The check matters because the failure mode INVERTED. Under the old rule a
- * too-deep dispatch errored — loud, immediate, and how the Nova migration
- * regression was caught. Under the new one, Claude Code withholds the `Agent`
- * tool at the limit and the subagent "does its delegated work itself and returns
- * one summary." Nothing errors. A Phase 7 run whose per-scene `canopy:visual-judge`
- * dispatches got silently folded into a single context still produces a full set
- * of verdicts — they are just correlated, self-graded, and wrong in the optimistic
- * direction. That is the same shape as the collapsed QA/eval pair in
- * dimagi-internal/ace#1203, and it is not visible in any artifact ACE writes.
+ * The budget is pinned in `~/.claude/settings.json`, so the moving side is the
+ * GRAPH, not the runtime. This file is the ratchet on that side: it holds the
+ * declared topology to the pinned number, so adding a level to a chain — another
+ * subagent under the DDD loop, say — fails CI here instead of in production.
  *
- * So the invariant is now numeric, and something has to hold the number.
+ * So the invariant is numeric, and something has to hold the number.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -184,9 +179,7 @@ describe('depth budget', () => {
     expect(
       deepest,
       `A dispatch chain descends ${deepest} levels, past the budget of ` +
-        `${MAX_SUBAGENT_SPAWN_DEPTH}. At the limit Claude Code withholds the Agent ` +
-        `tool and the leaf does the work itself — so this does NOT error at runtime, ` +
-        `it silently collapses whatever fan-out sits at the bottom.\n\n` +
+        `${MAX_SUBAGENT_SPAWN_DEPTH}.\n\n` +
         `Either restore an inline node on the offending chain, or raise ` +
         `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH in settings.json AND ` +
         `MAX_SUBAGENT_SPAWN_DEPTH here, deliberately.\n\nChains:\n${formatChains()}`,

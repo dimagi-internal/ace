@@ -39,9 +39,8 @@ the PDD → app → Connect lifecycle.
    dispatch `Agent(demo)` — it is a procedure doc, not a subagent (`CLAUDE.md §
    Agent topology`): it dispatches the `canopy:ddd` agent, whose render loop fans
    out per-scene judges of its own. Running `demo` inline costs no dispatch depth,
-   which keeps that chain well inside the budget. Past the budget the `Agent`
-   tool is withheld silently, so the loop would degrade rather than fail;
-   `lib/agent-depth.ts` has the arithmetic.
+   which keeps that chain well inside the budget; `lib/agent-depth.ts` has the
+   arithmetic.
 
    Thread through: `source`, `brief`, `name`, `pinMonday`, `render`.
 

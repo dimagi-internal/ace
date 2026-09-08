@@ -84,8 +84,8 @@ describe('agent topology — declared form matches the docs', () => {
   it('accounts for every Agent( dispatch a subagent doc makes', () => {
     // Superseded the old absolute ban (see the header). A subagent may dispatch
     // now; what it may not do is dispatch something the depth arithmetic has
-    // never heard of, because that is how a chain silently outgrows the budget
-    // and a fan-out collapses without erroring.
+    // never heard of, because an uncounted edge is how the graph outgrows the
+    // pinned budget without the depth test noticing.
     const declared = new Map(DISPATCH_GRAPH.map((n) => [n.name, n]));
 
     const violations = docs

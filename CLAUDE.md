@@ -39,21 +39,12 @@ context. A `subagent` is dispatched via `Agent(...)` and descends one level.
 `/design-review`, `/review` and `/qa` via the `Agent` tool, and `/review` dispatches
 one more subagent of its own. Put
 `{"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "5"}}` in `~/.claude/settings.json`
-and restart. Unset, the value comes from a remote feature flag that is not
-guaranteed to match across a team; `/ace:doctor`'s `agent_dispatch_depth` probe
-reports what this machine actually supplies.
+and restart.
 
-**Why the graph is still machine-checked: exceeding the budget does not error.**
-At the limit Claude Code *withholds* the `Agent` tool and the subagent at the floor
-does the delegated work itself and returns one summary. Where ACE fans out for
-independence rather than speed, that is silently wrong rather than slow —
-`ddd-concept-eval` dispatches `canopy:visual-judge` as a deliberately fresh
-subagent per scene, and its rubric docks every dimension by 1 if that independence
-isn't real, so a collapsed fan-out still emits a full set of verdicts, just
-correlated and optimistic. `lib/agent-depth.ts` declares the graph;
-`test/lib/agent-depth.test.ts` fails CI if a chain outgrows the budget, if an
-`Agent(...)` target appears in the repo without being counted, or if an inline node
-stops justifying its inline-ness.
+*Enforced:* `lib/agent-depth.ts` declares the graph and `test/lib/agent-depth.test.ts`
+fails CI if a chain outgrows the budget, if an `Agent(...)` target appears in the repo
+without being counted, or if an inline node stops justifying its inline-ness. That
+ratchet is what keeps the declared graph inside the pinned budget as the graph grows.
 
 **The inline nodes are inline for the human gate, not for depth.**
 `AskUserQuestion` *is* withheld from every subagent — that constraint is live.
