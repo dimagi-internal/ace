@@ -950,10 +950,12 @@ explicitly halts the run), the resume mechanism is:
   skill, useful for retrying a specific failure or backfilling a step
   that was previously inlined or skipped.
 
-Phase agents 3–9 are subagents (each gets a fresh context window per
-dispatch). The one inline node left in a run is Phase 7
-(`synthetic-data-and-workflows`), which keeps the `canopy:ddd` fan-out —
-per-scene judges and specialist fixers — comfortably inside the depth budget.
+Every phase agent 1–10 is a subagent (each gets a fresh context window per
+dispatch), Phase 7 (`synthetic-data-and-workflows`) included: its `canopy:ddd`
+fan-out — per-scene judges and specialist fixers — still sits comfortably inside
+the depth budget, at depth 4 of 5 (`lib/agent-depth.ts`). No node in a run is
+inline except this orchestrator itself, which stays inline for the `review`-mode
+`AskUserQuestion` checkpoints, not for depth.
 
 (The context-exhaustion shortcut anti-pattern lives in
 § Anti-patterns and discipline → Procedure discipline.)
@@ -1665,17 +1667,17 @@ whose rows have already run together.
 
 ### Phase 7: Synthetic Data and Workflows
 
-**Dispatch:** **inline procedure-doc `agents/synthetic-data-and-workflows.md`** — do NOT call `Agent(synthetic-data-and-workflows)`. Level-0 constraint, see Notes.
+**Dispatch:** `Agent(synthetic-data-and-workflows)`.
 
 **Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`.
 
-**Atoms / skills used (orchestrator-visible only):** read + execute `agents/synthetic-data-and-workflows.md` inline. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
+**Atoms / skills used (orchestrator-visible only):** none directly — the phase agent owns them. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
 **Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`7-synthetic/synthetic-summary.md`).
 
 **Gate:** **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
-**Notes:** **Depth constraint — Phase 7 is a procedure doc, not a subagent.** Its Step 3 dispatches `Agent(canopy:ddd)`, which fans out per-scene judges of its own: the deepest chain in ACE. Running Phase 7 inline puts that chain at depth 2 inside a budget of 3. When `spark-facilitator/20260813-2126` ran it as a subagent, the nested dispatch was unreachable under the Claude Code of the time, so only a single render+judge pass executed — no loop, no convergence rule, no stopping rule — and a human halted it after four hand-driven iterations. Nesting is permitted now, but the failure mode is worse: past the budget the `Agent` tool is silently withheld and the per-scene judging collapses into one context while still emitting full verdicts. Keep it inline unless `lib/agent-depth.ts` says the chain still fits. Same reasoning as Phase 3.
+**Notes:** **Depth constraint — Phase 7 is a subagent, and the chain below it is the deepest ACE has.** Its Step 3 dispatches `Agent(canopy:ddd)`, which fans out per-scene judges and specialist fixers of its own. As a subagent the chain computes to depth 4 inside a budget of 5 (`lib/agent-depth.ts`), which buys the heaviest remaining phase its own context window. It had been a procedure doc while the budget could not carry that; the budget, not the form, was the constraint. When `spark-facilitator/20260813-2126` ran it as a subagent, the nested dispatch was unreachable under the Claude Code of the time, so only a single render+judge pass executed — no loop, no convergence rule, no stopping rule — and a human halted it after four hand-driven iterations. That cause was an insufficient depth budget, now pinned at 5. The hazard past the budget is unchanged and is worse than an error: the `Agent` tool is silently WITHHELD and the per-scene judging collapses into one context while still emitting full verdicts. That is why the graph stays machine-checked — `test/lib/agent-depth.test.ts`. Same reasoning as Phase 3.
 
 **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 

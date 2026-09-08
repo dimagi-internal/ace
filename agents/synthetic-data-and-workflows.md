@@ -15,26 +15,28 @@ skills:
   - { name: demo-narrative,     has_judge: false } # canopy scripts.ddd.validate is the gate
 ---
 
-# Synthetic Data and Workflows (Phase 7 Procedure Document)
+# Synthetic Data and Workflows (Phase 7)
 
-**This file is read and executed inline by the top-level Claude Code session — it
-is NOT dispatched as a subagent.** Step 3 dispatches `canopy:ddd`, which fans out
-per-scene judges of its own — the deepest chain in ACE. Running inline costs no
-dispatch depth, which is what keeps that chain at depth 2 inside a budget of 3
-(`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the arithmetic).
+**This file is dispatched as a subagent — `Agent(synthetic-data-and-workflows)`.**
+It had been read inline by the top-level session while the depth budget could not
+carry the chain below it; that is no longer the constraint. Step 3 dispatches
+`canopy:ddd`, which fans out per-scene judges and specialist fixers of its own —
+still the deepest chain in ACE. As a subagent that chain computes to depth 4
+inside a budget of 5 (`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the
+arithmetic), and this phase gets its own context window instead of inflating the
+orchestrator's.
 
-The constraint is a budget, not a ban: dispatching this node is legal, it just
-spends a level that its own fan-out below can use. Past the budget the `Agent`
-tool is withheld silently rather than erroring — the per-scene judging collapses
-into one context and still emits a full set of verdicts, correlated and
-optimistic.
+The constraint is a budget, not a ban. Past the budget the `Agent` tool is
+withheld silently rather than erroring — the per-scene judging collapses into one
+context and still emits a full set of verdicts, correlated and optimistic. That
+hazard is unchanged and is why the graph stays machine-checked.
 
 Keep the `Agent(canopy:ddd)` dispatch below intact. When that branch is
 unreachable the only executable path is a single render+judge with no loop, no
 convergence rule and no stopping rule — the failure behind
 `spark-facilitator/20260813-2126`, hand-driven for four iterations and ~2M tokens
-before a human called a halt. The frontmatter is retained for tooling
-introspection (`/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs`).
+before a human called a halt. The cause there was an insufficient depth budget,
+now pinned at 5.
 
 You run the synthetic-data + demo phase between training (Phase 6) and solicitation
 (Phase 8). By phase start, Phases 1–5 have produced an approved PDD, deployed

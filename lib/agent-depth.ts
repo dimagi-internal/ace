@@ -111,12 +111,18 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
   { name: 'qa-and-training', form: 'subagent', owner: 'ace', dispatches: [] },
   {
     name: 'synthetic-data-and-workflows',
-    form: 'inline',
+    form: 'subagent',
     owner: 'ace',
     dispatches: ['canopy:ddd'],
     why:
-      'Step 3 dispatches the DDD render+converge loop, which fans out per-scene ' +
-      'judges of its own. This is the deepest chain in ACE and sets the budget.',
+      'Step 3 dispatches the DDD render+converge loop — render, dual-judge, ' +
+      'specialist fixers, converge, video, upload. A subagent so the heaviest ' +
+      'remaining phase in the pipeline gets its own context window instead of ' +
+      'inflating the orchestrator at level 0. The chain it starts lands at ' +
+      'depth 4 inside a budget of 5. It was inline only while the budget could ' +
+      'not carry it; nothing about the approval model turns on this — the DDD ' +
+      "loop's two pause gates (concept_change, external_release) poll " +
+      'canopy-web for a human click rather than using `AskUserQuestion`.',
   },
   { name: 'solicitation-management', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'execution-manager', form: 'subagent', owner: 'ace', dispatches: [] },
