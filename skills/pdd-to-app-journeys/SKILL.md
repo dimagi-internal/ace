@@ -137,13 +137,46 @@ QA) will later grade against, so getting them right for the archetype
 matters: an FGD opp graded against atomic-visit-shaped journeys
 produces false-positive failures in the deep app eval.
 
+### How to read a branch count
+
+Each branch below states a **DELIVER-SIDE** journey count. Three things sit
+outside it, and reading the count as a total is how it goes wrong:
+
+1. **The Learn smoke is additive.** Coverage rule 4 makes
+   `training-completion-smoke` (`app: learn`, `is_smoke: true`) mandatory for
+   every archetype that has a Learn app — i.e. all of them except
+   `focus-group`. It is not one of the branch categories and does not consume a
+   slot in the branch count.
+2. **The count's FLOOR moves down on PDD deferral.** Coverage rule 1 permits
+   skipping a category whose surface the PDD explicitly defers (no eligibility
+   rules → no `eligibility-edge`; no photo or GPS → no photo-quality
+   `data-quality-error`), marked `[INFO]` in the coverage self-check.
+   `visit-flow` or its per-archetype equivalent is always required.
+3. **The count's CEILING is the branch's own category list, including the
+   conditional ones.** `longitudinal-visits` reads 4–6 rather than 4–5 because
+   `registration` is emitted whenever the entity is registered in-app, which is
+   the common case.
+
+**These numbers are derived, not chosen — re-derive them when you add a
+category.** Every branch count here was smaller than the coverage rules
+mandated until 2026-09-08 (`longitudinal-visits` said 3–5 against a compliant
+floor of 6, `atomic-visit` 2–4 against 5), because Coverage rule 4 was added in
+2026-05 and no branch count moved with it. That made both ranges unsatisfiable
+while complying with the same file's blocking rules, and every longitudinal and
+atomic run paid the reconciliation. Third instance of the class in this file
+family after ace#1545; ace#2274 for this one. *Enforced:*
+`test/skills/journey-count-consistency.test.ts`.
+
 ### `atomic-visit` (default)
 
 The PDD describes one FLW visit producing one structured delivery
 (photo + GPS + form). Examples: turmeric market survey, household data
 collection.
 
-Generate **2–4 journeys** covering:
+Generate **2–4 DELIVER-SIDE journeys** covering the categories below. **The
+mandatory Learn smoke from Coverage rule 4 is ADDITIONAL to this count** — a
+two-app opp therefore emits 3–5 journeys in total. See § How to read a branch
+count.
 
 - **visit-flow** — the happy-path walk through Connect → Deliver app
   → form fill → submit → confirmation. The FLW completes one full
@@ -162,9 +195,11 @@ Generate **2–4 journeys** covering:
 ### `longitudinal-visits`
 
 The PDD describes repeat visits to a durable entity over time.
-Generate **3–5 journeys**. Keep `visit-flow` and `data-quality-error`
-from `atomic-visit`, and add the journeys that only exist once there is
-a case:
+Generate **4–6 DELIVER-SIDE journeys**. **The mandatory Learn smoke from
+Coverage rule 4 is ADDITIONAL to this count** — a two-app opp therefore emits
+5–7 journeys in total. See § How to read a branch count. Keep `visit-flow` and
+`data-quality-error` from `atomic-visit`, and add the journeys that only exist
+once there is a case:
 
 - **case-selection** — the FLW opens the Deliver app, finds the right
   entity in the case list (search / filter), and sees enough state on
@@ -190,7 +225,9 @@ The gdoc is written separately, hours-to-days later, with no
 `gdoc_link` field on the form. See
 `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
-Generate **2–4 journeys** covering:
+Generate **2–4 DELIVER-SIDE journeys** covering the categories below. There is
+**no Learn app for `focus-group`**, so Coverage rule 4 adds nothing here and
+this count is also the total. See § How to read a branch count.
 
 - **session-setup** — the FLW arrives at the venue, runs through the
   consent step verbally with participants per the consent script
@@ -369,3 +406,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Recharacterize `focus-group` journey categories for the attestation-form-only shape (PRs #305, #306): `output-coherence` (which assumed the FLW fills 28 in-app fields with content) → `attestation-submission` (FLW fills the 5-field form at session end, no per-section content in the app). Session-setup reframed to note "no in-app interaction at session start" — the mobile form is end-of-session only. Other categories (recruitment-failure, consent-handling) reframed to note no-attestation-on-abort semantics. Coverage rule updated to reference the new category name. Prompted by `malaria-itn-fgd/20260514-2352` re-run. | ACE team |
 | 2026-05-29 | **Deployability-exercising journeys (ITN post-mortem, producer↔eval symmetry).** Added Step 4a + two coverage rules: when the Evidence Model implies it, the journey set MUST include ≥1 negative-path/bad-input journey (the recoverable-rejection path that `app-test-cases` turns into a negative-path recipe and `app-ux-eval § capture_robustness` grades), capture-fidelity pass criteria (GPS accuracy gating, structured-pick over typing, other→specify), and — for multi-visit designs — a persistence journey (follow-up records change). Symmetric with the new `pdd-to-app-journeys-eval § deployability_fitness` hard-gate; PDD silence is not a waiver. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
 | 2026-09-06 | **A low-accuracy GPS fix is no longer offered as a negative-path example, and the capture-fidelity example no longer says "rejected" (dimagi-internal/ace#1619).** The bad-input bullet listed "a low-accuracy GPS fix where a radius is specified" beside blank/out-of-range/malformed-phone, and the capture-fidelity bullet modelled the expectation as *"GPS capture is rejected below the accuracy threshold."* No build can do either: Nova rejects `validate` on `kind: geopoint` and Connect's verification-flags form no longer carries `gps` / `gps_radius_meters` (ace#1006, ace#1013), and `idea-to-pdd § Step 4a` FORBIDS the PDD from asserting it. So this skill was handing authors the exact phrasing Phase 1 is not allowed to write, `app-test-cases` then compiled it into a negative-path Maestro recipe that cannot pass, and `pdd-to-app-journeys-eval` graded the result against it. Both examples now model the observability contract (accuracy shown + submitted + a whole-range advisory), and the bullet points at `_app-component-library.md § Mechanisms a PDD must not assert` — the pointer `test/skills/pdd-must-not-assert-mechanisms.test.ts` already required of `idea-to-pdd` and its eval, and never of this pair. Sibling half of the same drift in `pdd-to-app-journeys-eval`; `pdd-to-deliver-app-eval § Capture fitness` received this correction on 2026-07-28 and it was not propagated here. | ACE team |
+| 2026-09-08 | **Every archetype branch's journey COUNT was smaller than the file's own blocking coverage rules mandate (dimagi-internal/ace#2274).** `longitudinal-visits` declared 3–5 against a compliant floor of 6 and `atomic-visit` declared 2–4 against 5, because Coverage rule 4 (2026-05-18) made a Learn smoke journey mandatory and no branch count moved with it — so both ranges were unsatisfiable while complying with the same file's blocking rules, and every longitudinal and atomic run paid the reconciliation. Counts are now explicitly DELIVER-SIDE with the Learn smoke stated as additive, `longitudinal-visits` is 4–6 so the conditional `registration` journey fits, and a new § How to read a branch count records the derivation. Third instance of the count-drifts-behind-the-mandate class in this file family after ace#1545. Observed on `bednet-check-2-visit/20260908-1544`, where the compliant set was 7 journeys against a declared ceiling of 5. *Enforced:* `test/skills/journey-count-consistency.test.ts` (ratchet with controls — the ceiling must cover the branch's own bullets plus any it keeps from another branch). | ACE team |
