@@ -33,6 +33,46 @@
 #                  than the whole cell text; case-list columns routinely carry
 #                  trilingual or truncated values.
 #
+# ── THE CASE LIST IS UNBOUNDED, SO IT MUST BE SCROLLED (ace#2226) ───────────
+#
+# Maestro's `tapOn` does NOT scroll a ListView to find its target, and
+# `childOf` only SCOPES the search — it does not extend it past the rendered
+# viewport. So a tap alone can only ever reach a case that happens to be above
+# the fold, and the case list is not bounded: every /ace:run files new
+# `community` cases against the SAME Deliver app and the SAME
+# `${ACE_E2E_PHONE}` test user, and nothing prunes them.
+#
+# Live on spark-facilitator/20260907-1120 (2026-09-08, emulator-5556, APK
+# 2.64.0, dispatch 1788846503180-rdidkk): the viewport was filled by SIX
+# `Chilanga - Thandiwe Banda` rows left behind by prior runs, this run's own
+# `Kunthembwe 1120` case was never rendered, and the tap failed
+# `Element not found: Text matching regex: Kunthembwe.*`. Leg B never ran, so
+# the payable meeting was never filed and `connect_get_deliver_progress` stayed
+# `delivered: 0`.
+#
+# Same structural driver as the tile-list scroll ace#1289 added to
+# `connect-claim-opp.yaml` / `connect-resume-opp.yaml` (there it is
+# accumulated `OpportunityAccess` rows; here it is accumulated cases). The
+# case list simply never got the same treatment.
+#
+# BUDGET PROVENANCE — `speed: 30`, `timeout: 30000`, `visibilityPercentage: 30`,
+# `centerElement: true`. These are the values run ON-DEVICE against that exact
+# screen (ace#2226, dispatch 1788846850150-8e2lrl): the scroll reported
+# COMPLETED and the follow-up `assertVisible` on the target case COMPLETED.
+# They are NOT the tile budget — that constant belongs to the two
+# tile-discovery recipes and was proven on a different surface, so it is not
+# copied here. Per #1289's direction note, depth is bought with `timeout`, not
+# with `speed`: a faster fling overshoots the matcher between samples. If the
+# case list ever outgrows 30s, raise the timeout and cite the run that showed
+# it.
+#
+# NOT `optional: true`, and deliberately no fallback re-hunt. Unlike the tile
+# recipes there is nowhere to re-hunt FROM — the case list is freshly rendered
+# at the top when this recipe is entered, so the target can never be ABOVE the
+# starting position, and a DOWN scroll that exhausts its budget has genuinely
+# walked the whole list. Letting it fail names the missing case at the scroll
+# rather than one step later at the tap.
+#
 # ── WHY THIS EXISTS (dimagi-internal/ace#1138 Gap 2) ────────────────────────
 #
 # A `followup` form renders its case list BETWEEN the form row and the first
@@ -85,7 +125,34 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:case-list-container}"
     timeout: 20000
+# Captured BEFORE the scroll on purpose: this frame records the list AS FIRST
+# RENDERED, which is the evidence that diagnosed ace#2226 (six prior-run rows
+# filling the viewport). The post-selection state is covered by
+# `deliver-case-select-selected` below.
 - takeScreenshot: "deliver-case-select-list"
+
+# Bring the target case into the viewport (ace#2226). See § THE CASE LIST IS
+# UNBOUNDED in the header for the budget's device provenance.
+#
+# The stop condition is scoped `childOf: ${SELECTOR:case-list-container}` for
+# the same reason the tap below is (§ THE SCOPING RULE): the column-header
+# strip renders the SAME `entity_view_text` id the data rows use, and the
+# toolbar carries the MODULE name. Maestro's `scrollUntilVisible.element` is a
+# full element selector — the same `YamlElementSelector` type `tapOn` takes,
+# `childOf` included (read off Maestro 2.5.1's own
+# `maestro.orchestra.yaml.YamlScrollUntilVisible` / `YamlElementSelector`), so
+# this is the identical matcher, not a looser one that happens to precede a
+# strict tap.
+- scrollUntilVisible:
+    element:
+      text: "${CASE_NAME}"
+      childOf:
+        id: "${SELECTOR:case-list-container}"
+    direction: DOWN
+    speed: 30
+    timeout: 30000
+    visibilityPercentage: 30
+    centerElement: true
 
 # Tap the case row by name, scoped to the list body so neither the toolbar
 # title (module name) nor a column-header cell can satisfy the match.

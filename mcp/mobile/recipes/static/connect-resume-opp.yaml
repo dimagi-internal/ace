@@ -155,11 +155,82 @@ appId: org.commcare.dalvik
 # app home, per the #1032 and ace#1848 captures. If a future landing
 # surface does exit early, the final assert names it rather than silently
 # walking into the launcher.
+#
+# --- THE ONE SURFACE BACK CANNOT LEAVE: "Exit Form?" (ace#2227) ---------
+#
+# Every landing above is one a back press can pop. CommCare's modal form-exit
+# confirmation is not: it is raised PRECISELY to intercept the back that would
+# otherwise discard form state, so pressing back against it is the one gesture
+# guaranteed to be swallowed. All five guarded backs are then absorbed, the
+# jobs-list assert fails, and the Deliver leg is wedged for the rest of the
+# session.
+#
+# Live on spark-facilitator/20260907-1120 (2026-09-08, emulator-5556, APK
+# 2.64.0, dispatch 1788846422055-6u3mqf): five backs, then
+# `journey-deliver-FAILURE.xml` showing a modal choice dialog and nothing else
+# — `dialog_title_text` "Exit Form?", `choice_dialog_panel` "STAY IN FORM" and
+# "EXIT WITHOUT SAVING".
+#
+# This does NOT break the first attempt. It breaks every RETRY after one,
+# which is exactly when a Deliver leg is being repaired — and
+# `skills/app-screenshot-capture/SKILL.md` correctly forbids recovering a
+# Deliver-leg failure with a cold boot or `/ace:mobile-bootstrap` (that resets
+# the device PIN and destroys the post-Learn state). So until this branch
+# existed, a mid-form Deliver failure had NO legal recovery path at all.
+#
+# WHY THE DISMISSAL SITS INSIDE EVERY BACK FLOW, not once before the loop.
+# The dialog reaches this recipe two different ways and only one of them is
+# visible at entry:
+#   1. LEFT UP by the previous dispatch, which died inside a form. This is the
+#      ace#2227 case — the device-proven probe (dispatch 1788846487712-xl07rk)
+#      ran a bare `when: visible` guard as its FIRST step, the guard fired, one
+#      tap cleared it, and the next full dispatch got through this prefix,
+#      `deliver-launch` and leg A to submission.
+#   2. RAISED BY OUR OWN BACK PRESS, when the device is sitting in a form with
+#      no dialog yet. `connect-2.64.0.yaml`'s `form-exit-dialog-button` row
+#      records exactly this ("what a back-press lands on when form-submit did
+#      not finalize"), observed live on the spark-facilitator/20260813-2126
+#      Deliver smoke. A dismissal placed only BEFORE the loop is a no-op here,
+#      back #1 then raises the dialog, and backs #2–5 are absorbed — i.e. still
+#      wedged.
+# Guarding each iteration covers both with one shape, and is a no-op on every
+# run where no dialog is present.
+#
+# THE BACK BUDGET IS UNCHANGED, and that is not a coincidence. The dismissal
+# consumes no back of its own: the flow that clears the dialog then presses
+# back from the post-exit landing, so the sequence is byte-for-byte the one
+# device-proven above — dialog cleared, then five guarded backs to the jobs
+# list.
+#
+# SELECTOR: `id` + `text` together, which is what `form-exit-dialog-button`'s
+# own map entry prescribes — TWO buttons share that one resource-id with no
+# numeric suffix, so the id alone is ambiguous and the text is what
+# disambiguates. Both were observed together on the failing device above. The
+# row exists from the 2.63.2 map onward (this is historical — it was
+# calibrated there and re-verified on `connect-2.64.0.yaml`, the runtime
+# default); on an older map the placeholder does not resolve, the guard simply
+# never fires, and the recipe degrades to its pre-ace#2227 behaviour rather
+# than to a new failure.
 - runFlow:
     when:
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
+      # ace#2227 — back cannot dismiss CommCare's modal "Exit Form?"; it is
+      # the gesture that dialog exists to swallow. Clear it first, then the
+      # back below acts on the surface underneath. No-op when absent.
+      # See § THE ONE SURFACE BACK CANNOT LEAVE in the header.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-exit-dialog-button}"
+              text: "EXIT WITHOUT SAVING"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-exit-dialog-button}"
+                text: "EXIT WITHOUT SAVING"
+            - waitForAnimationToEnd:
+                timeout: 8000
       - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
@@ -168,6 +239,21 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
+      # ace#2227 — back cannot dismiss CommCare's modal "Exit Form?"; it is
+      # the gesture that dialog exists to swallow. Clear it first, then the
+      # back below acts on the surface underneath. No-op when absent.
+      # See § THE ONE SURFACE BACK CANNOT LEAVE in the header.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-exit-dialog-button}"
+              text: "EXIT WITHOUT SAVING"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-exit-dialog-button}"
+                text: "EXIT WITHOUT SAVING"
+            - waitForAnimationToEnd:
+                timeout: 8000
       - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
@@ -176,6 +262,21 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
+      # ace#2227 — back cannot dismiss CommCare's modal "Exit Form?"; it is
+      # the gesture that dialog exists to swallow. Clear it first, then the
+      # back below acts on the surface underneath. No-op when absent.
+      # See § THE ONE SURFACE BACK CANNOT LEAVE in the header.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-exit-dialog-button}"
+              text: "EXIT WITHOUT SAVING"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-exit-dialog-button}"
+                text: "EXIT WITHOUT SAVING"
+            - waitForAnimationToEnd:
+                timeout: 8000
       - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
@@ -184,6 +285,21 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
+      # ace#2227 — back cannot dismiss CommCare's modal "Exit Form?"; it is
+      # the gesture that dialog exists to swallow. Clear it first, then the
+      # back below acts on the surface underneath. No-op when absent.
+      # See § THE ONE SURFACE BACK CANNOT LEAVE in the header.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-exit-dialog-button}"
+              text: "EXIT WITHOUT SAVING"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-exit-dialog-button}"
+                text: "EXIT WITHOUT SAVING"
+            - waitForAnimationToEnd:
+                timeout: 8000
       - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
@@ -192,6 +308,21 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
+      # ace#2227 — back cannot dismiss CommCare's modal "Exit Form?"; it is
+      # the gesture that dialog exists to swallow. Clear it first, then the
+      # back below acts on the surface underneath. No-op when absent.
+      # See § THE ONE SURFACE BACK CANNOT LEAVE in the header.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-exit-dialog-button}"
+              text: "EXIT WITHOUT SAVING"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-exit-dialog-button}"
+                text: "EXIT WITHOUT SAVING"
+            - waitForAnimationToEnd:
+                timeout: 8000
       - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
