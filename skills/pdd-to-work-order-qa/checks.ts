@@ -182,6 +182,49 @@ export function checkPeriodOfPerformanceComplete(raw: string): QACheckResult {
  * mixed. Section 6.2 might be `### 6.2 Payment Schedule` (subsection of § 6) so
  * the extractor matches either heading level.
  */
+/**
+ * The percentages in § 6.2 that are actually MILESTONE SHARES.
+ *
+ * ## Why this is not a blind scrape (dimagi-internal/ace#2270)
+ *
+ * This used to be `body.match(/(\d{1,3})\s*%/g)` over the whole § 6.2 body,
+ * summing every percentage it found. That treats any percentage appearing
+ * anywhere in the section as a milestone share, and § 6.2 legitimately carries
+ * others: a Trigger cell naming the Learn gate ("has completed the Connect
+ * Learn app at 100%"), or closing prose stating a quality threshold ("a field
+ * worker below 80% back-check agreement is coached"). Both are ordinary
+ * contract language, and both made a CORRECT 40/60 split read as 200% / 180%.
+ *
+ * Measured on bednet-check-2-visit/20260908-1544: QA returned 13/14 with the
+ * milestone split correct on both attempts, and the `auto_fix_hint` told the
+ * producer to "adjust the milestone percentages" — pointing at the two numbers
+ * that were already right. The failure is worse than noise because the hint
+ * misdirects the auto-fix loop away from the actual cause.
+ *
+ * A milestone share occupies its OWN table cell, so it is a cell whose entire
+ * content is a percentage. Cells arrive in two shapes and both are handled:
+ * a gdoc plain-text export puts each cell on its own tab-prefixed line, while
+ * markdown source puts them pipe-delimited on one line.
+ *
+ * **Falls back to the blind scrape when no percentage-only cell exists**, so a
+ * schedule written as prose ("40% on mobilization, 60% on reconciliation")
+ * keeps working — the docstring above promises tolerance of "table cells,
+ * prose, or mixed", and narrowing to cells alone would have broken the prose
+ * form to fix the table one.
+ */
+function milestonePercentages(body: string): string[] {
+  const PCT_ONLY = /^(\d{1,3})(?:\.\d+)?\s*%$/;
+  const cells: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    // Markdown table row → pipe-delimited cells; anything else → one cell.
+    const parts = line.includes('|') ? line.split('|') : [line];
+    for (const part of parts) cells.push(part.trim());
+  }
+  const cellShares = cells.filter((c) => PCT_ONLY.test(c));
+  if (cellShares.length > 0) return cellShares;
+  return body.match(/(\d{1,3})\s*%/g) ?? [];
+}
+
 export function checkPaymentScheduleSumsTo100(raw: string): QACheckResult {
   const wo = normalizeDriveExport(raw);
   const body = extractNumberedSection(wo, '6.2');
@@ -193,7 +236,7 @@ export function checkPaymentScheduleSumsTo100(raw: string): QACheckResult {
         'add a `### 6.2 Payment Schedule` section with a table of milestones, each row showing % of total; percentages must sum to 100',
     };
   }
-  const matches = body.match(/(\d{1,3})\s*%/g) || [];
+  const matches = milestonePercentages(body);
   if (matches.length === 0) {
     return {
       pass: false,
