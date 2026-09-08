@@ -1190,7 +1190,7 @@ For each opened frame add a one-line `shows:` to its manifest entry — what is
 actually on screen, not the step name restated:
 
 ```yaml
-  - step_name: journey-learn-posttest-result
+  - step: journey-learn-posttest-result
     file_id: …
     shows: "Post-test lesson tile with a '1 form sent to server!' toast. NO score."
 ```
@@ -1352,6 +1352,37 @@ shape the per-artifact training skills (`training-flw-guide`,
 `training-deck-generate`) consume. Steps flagged by the Step 5.5
 distinctness check carry `duplicate_of: <first-step-name>` instead of
 being listed as distinct captures.
+
+**Write the container and key EXACTLY as below — the consumers key off both
+names.** Until ace#2224 this step specified the manifest's content and never
+its container, and the only worked example spelled the key `step_name`; a
+structurally reasonable manifest (`screenshots:` at the top level, keyed by
+`step_name`) then satisfied NEITHER consumer, and `verify_caption_backing`
+returned `unknown-id` for all 9 cited frames on
+`bednet-check-2-visit/20260907-1126` until it was rewritten. Write:
+
+```yaml
+captures:
+  - journey_id: journey-learn-pass          # slug from app-test-cases.yaml
+    step: journey-learn-posttest-result     # the takeScreenshot: label
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-posttest-result.png
+    file_id: <drive fileId>
+    md5: <content hash from Step 5.5>
+    shows: "…"                              # Step 5.6, on every frame you opened
+  - journey_id: journey-learn-pass
+    step: journey-learn-final
+    file_id: <drive fileId>
+    duplicate_of: journey-learn-posttest-result   # Step 5.5 alias — NOT a distinct moment
+```
+
+One flat `captures:` list, one row per captured step across every journey, with
+`journey_id` on the row. The journey-grouped variants
+(`journeys[].steps[]`, `journeys[].screenshots[]` + `journeys[].duplicates[]`)
+and `step_name` as an alias for `step` are all still READ —
+`collectCaptureEntries` in `lib/capture-manifest.ts` is the one reader every
+consumer goes through — but write the shape above so there is one thing to
+read. Any other container name is invisible to every consumer, and a consumer
+that finds nothing reports **clean**, not empty.
 
 The manifest also carries a `videos:` block so the training skills and the
 run-summary page can find the recordings without re-listing Drive:
