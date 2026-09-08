@@ -247,6 +247,35 @@ paraphrase the schema here — read the model / schema and validate.
    Run `checkScrollFraming` from `lib/demo-frame-legibility.ts` over the spec —
    `demo-data-setup-qa` check 14 is the backstop that runs it again.
 
+   **Then judge the deck as a SEQUENCE, not scene by scene.** Run
+   `checkSceneVariety` from `lib/demo-scene-variety.ts` over the same spec. The
+   arc judge is the only lens in the DDD loop that can see repetition, and two
+   of its five dimensions are capped by rules that are decidable from the scene
+   table before anything is rendered:
+
+   - **`visual_variety`** — *"more than half the scenes are the same surface at
+     different scroll offsets"*.
+   - **`escalation`** — *"two scenes showing the same surface with only a scroll
+     between them"*.
+
+   On `spark-facilitator/20260907-1120` both fired: 4 of 7 scenes were the
+   payment ledger at four offsets, and scenes 2, 3 and 4 each followed the
+   previous one with nothing but a scroll. The judge's verdict was that the run
+   *"contains exactly two shapes across seven frames"*, and of scene 2 that *"the
+   panel it narrates is already fully readable in scene 1's frame, so it adds
+   voiceover, not a new thing to look at"*. Arc scored 2 of 5, `fail`.
+
+   **The loop cannot recover from this and will stop rather than fix it** —
+   collapsing or reordering scenes is a narrative change behind the
+   `concept_change` gate, so an unattended run reports it and terminates
+   `stopped_not_converged`. Catching it here costs one edit. Catching it after
+   the render costs the phase.
+
+   A scene that shows the viewer something the previous frame already contained
+   is voiceover with a picture attached: fold it into the scene before it, or
+   give it an action that changes what the page shows — a filter, a selection, a
+   drill-in. `demo-data-setup-qa` check 17 is the backstop that runs this again.
+
    These are the halves decidable from the SPEC. The runtime halves —
    resolving an ambiguous target to the interactive node, comparing a gate
    against the captured before-frame, replaying restores — belong in

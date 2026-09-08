@@ -106,8 +106,18 @@ export interface LegibilitySpec {
 }
 
 /**
- * A column or row label as it RENDERS on a dashboard — the caller enumerates
- * these off the render code it is about to upload.
+ * A coined term as it RENDERS on a dashboard — the caller enumerates these off
+ * the render code it is about to upload.
+ *
+ * **Enumerate every coined term a lay viewer MEETS on a frame, not only the
+ * column headers.** KPI subtitles, panel body prose and the explainer panel
+ * itself all render into frames a judge scores. On
+ * `spark-facilitator/20260907-1120` this check passed both dashboards — 13 and
+ * 11 labels judged, zero findings — while the user-artifact judge capped
+ * `clarity` at 2 on "a repeated entity key", which six of seven judges cited
+ * independently. That phrase was not a column label. It was body prose inside
+ * the "How to read the columns" panel, which is to say: inside the very surface
+ * whose job is to remove jargon. Nobody enumerated it, so nothing judged it.
  */
 export interface DashboardTerm {
   /** The label verbatim, as a viewer sees it. */
