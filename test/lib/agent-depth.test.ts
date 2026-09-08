@@ -218,7 +218,7 @@ describe('depth budget', () => {
       budget: MAX_SUBAGENT_SPAWN_DEPTH,
       deepestChain: deepest.path.join(' → '),
     }).toEqual({
-      maxDepth: 3,
+      maxDepth: 4,
       budget: 5,
       deepestChain:
         'ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → ' +

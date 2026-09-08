@@ -23,7 +23,7 @@ context. A `subagent` is dispatched via `Agent(...)` and descends one level.
 | `connect-setup` (P4) | subagent | — | `Agent(connect-setup)` |
 | `ocs-setup` (P5) | subagent | — | `Agent(ocs-setup)` |
 | `qa-and-training` (P6) | subagent | — | `Agent(qa-and-training)` |
-| `synthetic-data-and-workflows` (P7) | inline | `canopy:ddd` | orchestrator reads it inline |
+| `synthetic-data-and-workflows` (P7) | subagent | `canopy:ddd` | `Agent(synthetic-data-and-workflows)` |
 | `solicitation-management` (P8) | subagent | — | `Agent(solicitation-management)` |
 | `execution-manager` (P9) | subagent | — | `Agent(execution-manager)` |
 | `closeout` (P10) | subagent | — | `Agent(closeout)` |
@@ -33,7 +33,7 @@ context. A `subagent` is dispatched via `Agent(...)` and descends one level.
 | `iterate-loop` | inline | one fix+ship subagent | `/ace:iterate` reads it inline |
 | `ocs-tester` | subagent | — | `Agent(ocs-tester)` ad-hoc |
 
-**Required depth: 3. Pin the budget to 5.** The deepest chain is
+**Required depth: 4. Pin the budget to 5.** The deepest chain is
 `ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → gstack:design-fixer
 → gstack:review-followup` — canopy's DDD loop routes PRODUCT findings to
 `/design-review`, `/review` and `/qa` via the `Agent` tool, and `/review` dispatches
@@ -85,7 +85,7 @@ ACE is a fleet agent on canopy's agent operating model (spec: `docs/superpowers/
 
 ## Layout
 
-- `agents/` — two procedure docs (`ace-orchestrator`, `synthetic-data-and-workflows`) executed inline + the phase subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
+- `agents/` — one procedure doc (`ace-orchestrator`) executed inline + the phase subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
 - `skills/` — one dir per skill (`SKILL.md`); `ls skills/ | wc -l` for the live count. Stateless; per-opp state lives in Drive `ACE/<opp-name>/`. See `skills/README.md` for the author contract, the `## QA vs Eval` two-phase pattern, and `opp-eval` aggregator. Per-skill `-eval` rubrics calibrated against ground truth — see `skills/eval-calibration/SKILL.md`.
 - `commands/` — slash commands. Core: `run`, `step`, `turn`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`. Auth/setup: `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `mobile-backend`, `ocs-bootstrap-template`, `ace-web-pat-mint`. Specialized flows: `sweep`, `program-update`, `video-from-program-page`, `partnership-video` (research a prospect → propose 3 narrative angles → produce video + pitch deck), `demo` (standalone live labs-dashboard demo for a funder meeting — `demo-data-setup` → `demo-narrative` → canopy DDD loop; parameterized on data source: `denovo` shipped, `clone` = Plan B, `ace-run` = Phase 7 convergence Plan C; spec+plan in `docs/superpowers/{specs,plans}/2026-07-20-*`), `interview-cohort-create`, `interview-domain-bootstrap`, `interview-opp-verify`.
 - `mcp/` — 5 MCP servers wired inline in `.claude-plugin/plugin.json` `mcpServers` (inline to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427)). Atom signatures live in `docs/atom-schemas.md` (generated, always-accurate) — grep there rather than trusting counts:
