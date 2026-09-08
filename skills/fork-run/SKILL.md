@@ -68,6 +68,27 @@ POST ${ACE_WEB_BASE_URL}/api/w/<workspace_slug>/opps/<slug>/fork
 
 Exactly one of `fork_at_phase` / `fork_at_skill` — neither or both is a 422.
 
+**What a fork does NOT carry: a pre-fork phase's `screenshots/` and
+`videos/`.** Device-walk evidence from a phase STRICTLY BEFORE the fork point
+is left in the source run (ace-web#758). It is not lost — a fork never deletes
+from the source, and the training deck references those images by Drive FILE
+ID, so a deck copied into the fork still renders them. Nothing at or after
+Phase 7 consumes them: the manifest's consumers for the Phase 6 screenshot
+artifacts are all Phase 6 skills.
+
+The reason is that copying them made a deep fork fail. Forking
+`spark-facilitator/20260907-1120` at Phase 7 queued 178 Drive copies; Phase 6's
+`screenshots/journey-deliver/` alone held 35 of them, and the fork died at file
+50 on a `userRateLimitExceeded`, stranding a half-populated run as the opp's
+LATEST — which is what `source_run_id` defaults to. Copy volume grows with
+phase depth, so the most valuable forks were the most likely to die. A skill
+fork of the walk's OWN phase still keeps its media; the skip is strictly
+upstream.
+
+`copy_file` also retries a 429 now (five attempts, 2/4/8/16s) and still does
+NOT retry a 5xx: a rate limit proves the write never ran, a 5xx does not, and
+retrying that duplicates.
+
 **How a skill fork trims.** Phases before the fork skill's phase copy whole;
 phases after are empty. Within the fork skill's own phase, an artifact is kept
 iff the skill that produced it has a lower ordinal. Attribution comes from
