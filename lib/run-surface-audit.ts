@@ -2318,12 +2318,32 @@ export function auditReviewerMembership(
         continue;
       }
       if (!known[reviewer]) {
+        // An ADMIN-tagged link is a different promise from a reviewer-facing
+        // one. The page labels it `admin`, so a reviewer who cannot open it
+        // has been told as much up front — that is the tag doing its job, not
+        // a wall they were walked into (Jon, 2026-09-08). Blocking the share
+        // on it would mean either granting console access nobody needs, or
+        // stripping links that legitimately document what the run built.
+        //
+        // What this does NOT relax is the case #1060 was filed for: a link
+        // presented as reviewer-facing (`public` / `member`) that 404s for the
+        // named reviewer stays `broken`, because there the page's own label is
+        // what turns out to be untrue.
+        const isAdminLink = l.declaredAccess === 'admin';
         out.push({
-          code: 'MEMBER-MISSING',
-          severity: 'broken',
+          code: isAdminLink ? 'ADMIN-LINK-NOT-MEMBER' : 'MEMBER-MISSING',
+          severity: isAdminLink ? 'improvement' : 'broken',
           where: `${l.label} → ${reviewer}`,
-          detail: `${reviewer} is NOT a member on ${surface} and will get a flat 404 on ${l.url}`,
-          fix: 'grant access first (skills/share-run-access), or do not present this link to them as reviewer-facing',
+          detail: isAdminLink
+            ? `${reviewer} is NOT a member on ${surface}, so ${l.url} will 404 for them. ` +
+              `The page tags it \`admin\`, so this is expected and does not block sharing — ` +
+              `recorded so nobody reports it back as a broken link`
+            : `${reviewer} is NOT a member on ${surface} and will get a flat 404 on ${l.url}`,
+          fix: isAdminLink
+            ? 'nothing required. Grant access via skills/share-run-access only if this reviewer ' +
+              'genuinely needs the admin surface — for the per-opp chatbot the anonymous chat URL ' +
+              'is the reviewer-facing route and is already on the page'
+            : 'grant access first (skills/share-run-access), or do not present this link to them as reviewer-facing',
         });
       }
     }

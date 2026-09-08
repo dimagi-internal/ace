@@ -346,6 +346,44 @@ describe('defect 4 — a link an outsider cannot open must say so', () => {
     expect(ok).toEqual([]);
   });
 
+  it('does NOT block the share when the unopenable link is tagged `admin`', () => {
+    // Jon, 2026-09-08: an admin-tagged link a reviewer cannot open is the tag
+    // doing its job, not a wall they were walked into. Blocking on it would
+    // mean granting console access nobody needs, or stripping links that
+    // legitimately document what the run built. Live case: the per-opp OCS
+    // console on poverty-graduation/20260905-1345, where the reviewer-facing
+    // route (the anonymous chat URL) was already on the same page and worked.
+    const adminLink = probed({
+      url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13068/',
+      cls: 'MEMBER-GATED',
+      declaredAccess: 'admin',
+    });
+    const found = auditReviewerMembership([adminLink], ['sophie@example.org'], {
+      ocs: { 'sophie@example.org': false },
+    });
+    expect(codes(found)).toEqual(['ADMIN-LINK-NOT-MEMBER']);
+    // Still SURFACED — so nobody reports it back to us as a broken link —
+    // but it must not gate the share.
+    expect(found.every(isBlocking)).toBe(false);
+  });
+
+  it('still blocks when a link the page presents as REVIEWER-FACING 404s for that reviewer', () => {
+    // The #1060 case is untouched by the admin carve-out above: here the
+    // page's own label is what turns out to be untrue.
+    for (const declaredAccess of ['public', 'member', null]) {
+      const link = probed({
+        url: 'https://www.commcarehq.org/a/dom/apps/view/x/',
+        cls: 'MEMBER-GATED',
+        declaredAccess,
+      });
+      const found = auditReviewerMembership([link], ['sophie@example.org'], {
+        hq: { 'sophie@example.org': false },
+      });
+      expect(codes(found), `declaredAccess=${declaredAccess}`).toEqual(['MEMBER-MISSING']);
+      expect(found.every(isBlocking), `declaredAccess=${declaredAccess}`).toBe(true);
+    }
+  });
+
   it('does not mistake a labs dashboard for a membership-gated Connect page', () => {
     // `labs.connect.dimagi.com` CONTAINS `connect.dimagi.com`; its /labs/ pages
     // are merely login-gated. The path prefix is load-bearing.
