@@ -130,6 +130,76 @@ describe('checkPaymentScheduleSumsTo100', () => {
     const r = checkPaymentScheduleSumsTo100(MISSING_SECTIONS_WO);
     expect(r.pass).toBe(false);
   });
+
+  // ace#2270: a percentage that is not a milestone share must not be summed as
+  // one. Both controls below carry a CORRECT 40/60 split; only the surrounding
+  // prose differs. Measured on bednet-check-2-visit/20260908-1544, where the
+  // first shape produced "milestones sum to 200%" and an auto_fix_hint pointing
+  // at the two percentages that were already right.
+  const SCHEDULE_40_60 = (trigger: string, closing: string) => `
+## 6. Payment Terms
+
+### 6.2 Payment Schedule
+
+| # | Milestone | % of Cap | Amount (USD) | Trigger / Deliverable | Expected Timing |
+|---|---|---|---|---|---|
+| 1 | Mobilization advance | 40% | [Amount derived from the agreed cap] | ${trigger} | Within 15 days |
+| 2 | Final reconciliation | 60% | [Amount derived from the agreed cap] | Acceptance of the report. | Within 30 days |
+
+${closing}
+
+## 7. Roles and Responsibilities
+`;
+
+  test('ignores a percentage inside a Trigger cell (ace#2270)', () => {
+    const r = checkPaymentScheduleSumsTo100(
+      SCHEDULE_40_60(
+        'Contract execution, and confirmation that every field worker has completed the Connect Learn app at 100%.',
+        'The payable unit is a verified follow-up day.',
+      ),
+    );
+    expect(r.pass).toBe(true);
+    expect(r.detail).toContain('100%');
+  });
+
+  test('ignores a quality threshold in § 6.2 closing prose (ace#2270)', () => {
+    const r = checkPaymentScheduleSumsTo100(
+      SCHEDULE_40_60(
+        'Contract execution.',
+        'A field worker below 80% back-check agreement is coached before further units accrue.',
+      ),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('still catches a genuinely wrong split when prose percentages are present', () => {
+    const r = checkPaymentScheduleSumsTo100(
+      SCHEDULE_40_60('Contract execution.', 'Coaching applies below 80% agreement.').replace(
+        '| 60% |',
+        '| 50% |',
+      ),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('90');
+  });
+
+  test('falls back to a prose-only schedule with no percentage-only cell', () => {
+    const prose = `
+## 6. Payment Terms
+
+### 6.2 Payment Schedule
+
+Dimagi will pay 40% on mobilization and 60% on acceptance of the final report.
+
+## 7. Roles and Responsibilities
+`;
+    expect(checkPaymentScheduleSumsTo100(prose).pass).toBe(true);
+
+    const broken = prose.replace('60% on acceptance', '50% on acceptance');
+    const r = checkPaymentScheduleSumsTo100(broken);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('90');
+  });
 });
 
 describe('checkTotalNtePresent', () => {
