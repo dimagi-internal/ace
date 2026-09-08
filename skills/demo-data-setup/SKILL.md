@@ -99,7 +99,16 @@ front half (how the labs-only opp + its data come to exist) differs.
   audit:                           # auditDataset AFTER the scrub
     total: <int>
     violations: [{kind, field, count}]
+  declared_omissions:              # step 2c.4 — residuals labs CANNOT emit (ace#2225)
+    - field: <leaf name>           # exempts this field's conditional-missing
+      reason: "<the mechanism — a REPEAT group the flat generator cannot
+                produce, a Trigger label CommCare submits no value for, an
+                image with no labs ImageConfig corpus>"
   ```
+  An entry with a blank `reason` exempts nothing and is named in check 9's
+  failure — the escape costs the same citation `checkDetectionCohortFloor`
+  asks of `below_programme_scale`, and it never covers an off-branch value, an
+  integrality violation or an `unparsed[]` gate.
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.source` — the seam contract, populated:
   ```yaml
   source:
@@ -141,7 +150,8 @@ front half (how the labs-only opp + its data come to exist) differs.
       unparsed_expressions: <int>      # >0 means gates this run did not audit
       off_branch_cleared: <int>        # branch scrub, 0 is a MEASURED zero
       scrub_applied: true
-      violations: <int>
+      violations: <int>                # UNEXEMPTED violations
+      declared_omissions: <int>        # step 2c.4, each with a reason (ace#2225)
       report_ref: 7-synthetic/branch-scrub_report.yaml
   ```
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.demo-data-setup.status: done` (+ `artifact` path)
@@ -382,9 +392,36 @@ front half (how the labs-only opp + its data come to exist) differs.
        a stated 1 CBF per community. A measured zero and an asserted zero read
        the same in `run_state.yaml`; only one of them is true (ace#1346).
 
+    4. **Declare — with a reason — the residuals labs STRUCTURALLY cannot
+       emit (ace#2225).** Some fields the app declares can never appear in a
+       generated set, however correct the spec and the scrub are. Three
+       recurring classes, all measured on `poverty-graduation/20260908-0510`:
+
+       | class | why no value can exist |
+       |---|---|
+       | a per-member **REPEAT group** (`member_name`, `member_confirmed`, `member_is_counted`) | the generator emits one flat object per visit, not an array, so a roster row has nowhere to live and `member_count` is drawn directly |
+       | a **`Trigger`** read-aloud label (`roster_intro`, `ppi_intro`) | CommCare submits no value for one at all |
+       | an image with **no labs corpus** (`dwelling_photo`) | labs `ImageConfig` ships MUAC and scale corpora only |
+
+       Write each as a `{field, reason}` entry in `declared_omissions[]` in
+       `branch-scrub_report.yaml`. Check 9 then exempts that field's
+       `conditional-missing` violation and its `unresolvedFields` entry — and
+       **only** those two: an off-branch value, an integrality violation and an
+       `unparsed[]` gate are never exempt, because each names a value that IS
+       present and wrong, which the scrub or an added spec entry can fix.
+
+       **The reason is required and is the whole point.** An entry with a blank
+       reason exempts nothing and is named in the failure, the same way
+       `checkDetectionCohortFloor` refuses an unevidenced `below_programme_scale`.
+       Name the mechanism, not the symptom: *"labs ImageConfig ships MUAC and
+       scale corpora only"* is a reason; *"cannot be generated"* is the
+       spec-narrowing this gate exists to prevent, spelled differently. The
+       exemptions are echoed into check 9's own detail string, so they reach
+       the run summary rather than disappearing into a green verdict.
+
     Products: `7-synthetic/branch-scrub_report.yaml` (the derivation +
-    scrub + audit ledger, schema in § Products) and the
-    `source.dataset_constraints` block written in step 5.
+    scrub + audit ledger + `declared_omissions[]`, schema in § Products) and
+    the `source.dataset_constraints` block written in step 5.
 
 3. **Author each planned dashboard dynamically.** Loop over the Step-0
    `dashboards[]`; for **each**, run the ADAPT-or-SCRATCH flow from
@@ -1105,6 +1142,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **New step 2c.4: declare, with a reason, the residuals labs STRUCTURALLY cannot emit (ace#2225).** Check 9 had no evidenced escape, so a run whose only residual violations were such fields could reach green only by narrowing the spec — the behaviour ace#1658 built the derivation to prevent — or not at all. Both runs of `poverty-graduation` took the permanent `fail`. Three recurring classes, all measured on `20260908-0510`: a per-member REPEAT group the flat generator cannot produce, a `Trigger` read-aloud label CommCare submits no value for, and an image with no labs `ImageConfig` corpus. New `declared_omissions[]` block in `branch-scrub_report.yaml`; the reason is required, and a blank one exempts nothing. | ACE team |
 | 2026-09-07 | **New step 3d: enumerate every coined label and prove its definition is reachable FROM the label (ace#2219).** This skill had ZERO guidance on legibility — `grep -niE "jargon|coined|define|glossar|legib|projector"` returned nothing — while the DDD user judge runs a `jargon visible to non-technical users, max 2` hard cap on every scene. On `poverty-graduation/20260905-1345` it fired independently on six of seven scenes over `31-point band`, `Surveys in the 31-point band`, `Mean likelihood below the line` and `Payable`/`Non-payable`; iteration 2 added a glossary panel, the judge recorded it VERIFIED PRESENT and correct, and the cap fired on six of seven scenes again because the panel sits below the fold of every frame that uses the vocabulary. New product `7-synthetic/dashboard-terms.yaml` + `checkCoinedTerms` in `lib/demo-frame-legibility.ts`, backstopped by `demo-data-setup-qa` check 15. The remedy is rename-or-gloss-at-the-label, never another panel. | ACE team |
 | 2026-08-27 | **Step 3c narrowed to CAPABILITY gaps, and gap prose is no longer scanned (ace#1762).** Measured against the real artifacts rather than its fixtures, the narrative pass ran at ~44% precision: 9 findings on `hh-poverty-targeting/20260827-0323`, of which 3 were a DECISION gap firing on claims that merely NAME thresholds (its own proposed remedy, not a contradiction) and 1 was one gap's `proposed_action` naming another gap's subject. Both are subtractions: `constraining` is now CAPABILITY only — the RESEARCH carve-out's reasoning covers DECISION verbatim, since both forbid a *qualified* claim and no keyword match can tell that from naming the subject — and `narrativeSources()` no longer emits `why_brief.gaps[]` at all, replacing the narrower self-exemption (`exemptGapId` removed as dead). Measured after: 9 → 5 findings over 4 distinct strings, all genuine `area` / `adjudication` CAPABILITY hits. Precision is the whole asset for a report-only check — a gate that cries wolf is how the real misses get waved through (ace#1744). | ACE team |
 | 2026-08-27 | **Step 3c also reads the NARRATIVE artifacts, not just dashboard `render_code` (ace#1759).** The same run's why-brief contradicted a gap it itself declared — `decisions-are-recorded` asserts the disposition is recorded "with its reason" while `adjudication-log-is-run-state-not-a-register` declares no durable register and no reason field. Only a post-render judge caught it, on iteration 2. `checkGapCopy`'s `sources` now takes already-prose entries alongside render_code, and `narrativeSources()` builds them from `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail, proposed_action}` and `unified_spec.scenes[].{concept_claim, show, narrative}`, each labelled by origin. A gap is exempt from its OWN detail/proposed_action. Still report-only; still term matching, so an inverted claim (scene 4's low-variance→fabrication converse) is not caught. | ACE team |

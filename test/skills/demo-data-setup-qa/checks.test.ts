@@ -729,3 +729,193 @@ describe('deriveVisitTotal decides the basis from GRAIN, not column presence (#2
     });
   });
 });
+
+// ── #2225: the declared-omission escape ─────────────────────────────
+
+/**
+ * Check 9 had no evidenced escape, so a dataset whose only residual violations
+ * are fields labs STRUCTURALLY cannot simulate could never pass it.
+ *
+ * Measured on `poverty-graduation/20260908-0510` (provider `ace-run`, Connect
+ * opp 2232), verbatim from the postprocess report:
+ *
+ *     records 2742 | dropped cross-form leaves 172746 | scrub cleared 7650
+ *     unresolved [ roster_intro, member_name, member_confirmed, ppi_intro,
+ *                  member_is_counted ]
+ *     audit ok false [conditional-missing roster_intro 2232, member_name 2232,
+ *                     member_confirmed 2232, ppi_intro 2232, dwelling_photo 2087,
+ *                     member_is_counted 2232]
+ *     unparsed 0 questionsSeen 51 gatesParsed 18
+ *
+ * Zero off-branch, zero integrality, empty `unparsed[]`. All six residuals are
+ * one of three things the labs generator cannot emit: a REPEAT-group roster
+ * (the generator emits one flat object, not an array, so `member_count` is
+ * drawn directly), a `Trigger` read-aloud label (CommCare submits no value for
+ * one), and an image with no corpus in labs `ImageConfig`.
+ *
+ * The only two routes to green were to narrow the spec — the exact behaviour
+ * ace#1346 / ace#1658 built this check to prevent — or to accept a permanent
+ * `fail`, and a permanently-red check is one nobody reads (the ace#1744
+ * argument). So it takes the check-13 shape: an EVIDENCED escape, rejected
+ * when unevidenced, scoped to `conditional-missing` and to the scrub's
+ * `unresolvedFields`, and reported rather than silent.
+ *
+ * Note the run trips BOTH halves — `unresolvedFields` names five of the six
+ * fields and the audit names all six — so exempting only the audit half would
+ * have left the check just as permanently red.
+ */
+describe('checkDatasetObeysPddConstraints declared omissions (#2225)', () => {
+  const OMISSIONS = [
+    { field: 'roster_intro', reason: 'Trigger (read-aloud label) question - CommCare submits no value for one' },
+    { field: 'member_name', reason: 'per-member roster is a REPEAT group; the generator emits one flat object' },
+    { field: 'member_confirmed', reason: 'per-member roster is a REPEAT group; the generator emits one flat object' },
+    { field: 'ppi_intro', reason: 'Trigger (read-aloud label) question - CommCare submits no value for one' },
+    { field: 'dwelling_photo', reason: 'labs ImageConfig ships MUAC and scale corpora only; no dwelling-exterior corpus' },
+    { field: 'member_is_counted', reason: 'per-member roster is a REPEAT group; member_count is drawn directly' },
+  ];
+  const RUN_DERIVATION = { unparsed: [], questionsSeen: 51, gatesParsed: 18 };
+  const RUN_SCRUB = {
+    records: 2742,
+    fields: [],
+    totalCleared: 7650,
+    unresolvedFields: ['roster_intro', 'member_name', 'member_confirmed', 'ppi_intro', 'member_is_counted'],
+  };
+  const RUN_REPORT: ConstraintReport = {
+    ok: false,
+    total: 2742,
+    violations: [
+      { kind: 'conditional-missing', field: 'roster_intro', count: 2232, detail: 'missing on branch' },
+      { kind: 'conditional-missing', field: 'member_name', count: 2232, detail: 'missing on branch' },
+      { kind: 'conditional-missing', field: 'member_confirmed', count: 2232, detail: 'missing on branch' },
+      { kind: 'conditional-missing', field: 'ppi_intro', count: 2232, detail: 'missing on branch' },
+      { kind: 'conditional-missing', field: 'dwelling_photo', count: 2087, detail: 'missing on branch' },
+      { kind: 'conditional-missing', field: 'member_is_counted', count: 2232, detail: 'missing on branch' },
+    ],
+  };
+
+  it('still FAILS this run when nothing is declared — the escape is opt-in, never a default', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: RUN_DERIVATION,
+      scrub: RUN_SCRUB,
+      report: RUN_REPORT,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/could not locate roster_intro/);
+    expect(r.detail).toMatch(/6 constraint class\(es\) violated/);
+  });
+
+  it('PASSES the run once every residual carries a reason — both the audit and the scrub half', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: RUN_DERIVATION,
+      scrub: RUN_SCRUB,
+      report: RUN_REPORT,
+      declaredOmissions: OMISSIONS,
+    });
+    expect(r.pass).toBe(true);
+    // The exemption is REPORTED, never silent — a reader of the run summary
+    // must see which fields went unmeasured and why.
+    expect(r.detail).toMatch(/6 declared omission\(s\) exempted/);
+    expect(r.detail).toMatch(/dwelling_photo/);
+    expect(r.detail).toMatch(/REPEAT group/);
+  });
+
+  it('REJECTS an unevidenced exemption, as check 13 rejects an unevidenced below_programme_scale', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: RUN_DERIVATION,
+      scrub: RUN_SCRUB,
+      report: RUN_REPORT,
+      declaredOmissions: OMISSIONS.map((o) =>
+        o.field === 'dwelling_photo' ? { field: o.field, reason: '   ' } : o,
+      ),
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/dwelling_photo/);
+    expect(r.detail).toMatch(/no reason|unevidenced/i);
+  });
+
+  it('never exempts an OFF-BRANCH value — an omission is about absence, not a value that cannot exist', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: RUN_DERIVATION,
+      report: {
+        ok: false,
+        total: 2742,
+        violations: [
+          { kind: 'conditional-off-branch', field: 'dwelling_photo', count: 41, detail: 'off branch' },
+        ],
+      },
+      declaredOmissions: OMISSIONS,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/conditional-off-branch/);
+    expect(r.auto_fix_hint).toMatch(/scrubOffBranchFields/);
+  });
+
+  it('never exempts an integrality violation, however thoroughly the field is declared', () => {
+    for (const kind of ['non-integer', 'out-of-bounds', 'fractional-currency'] as const) {
+      const r = checkDatasetObeysPddConstraints({
+        derivation: RUN_DERIVATION,
+        report: {
+          ok: false,
+          total: 2742,
+          violations: [{ kind, field: 'member_count', count: 251, detail: 'fractional people' }],
+        },
+        declaredOmissions: [{ field: 'member_count', reason: 'the generator draws it continuously' }],
+      });
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(new RegExp(kind));
+    }
+  });
+
+  it('never exempts an unparsed gate — an unaudited gate is not an omission anyone declared', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: {
+        unparsed: [
+          {
+            kind: 'relevant',
+            field: 'dwelling_photo',
+            path: '/data/ppi/dwelling_photo',
+            expression: "selected(/data/ppi/ppi_consent, 'yes')",
+            reason: 'not an equality',
+          },
+        ],
+        questionsSeen: 51,
+        gatesParsed: 18,
+      },
+      report: { ok: true, total: 2742, violations: [] },
+      declaredOmissions: OMISSIONS,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/were NOT audited/);
+  });
+
+  it('never lets a declaration stand in for a derivation', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: null,
+      report: { ok: true, total: 2742, violations: [] },
+      declaredOmissions: OMISSIONS,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no spec derivation/);
+  });
+
+  it('fails an UNDECLARED conditional-missing even when its siblings are declared', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: RUN_DERIVATION,
+      report: {
+        ok: false,
+        total: 2742,
+        violations: [
+          { kind: 'conditional-missing', field: 'member_name', count: 2232, detail: 'missing' },
+          { kind: 'conditional-missing', field: 'meeting_conducted', count: 12, detail: 'missing' },
+        ],
+      },
+      declaredOmissions: OMISSIONS,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/meeting_conducted/);
+    // member_name is exempted, so it is REPORTED as an exemption and never
+    // counted as a violation.
+    expect(r.detail).toMatch(/1 constraint class\(es\) violated/);
+    expect(r.detail).not.toMatch(/\[conditional-missing\] 2232 of 2742 — member_name/);
+  });
+});

@@ -390,6 +390,25 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
  *
  * An unparsed `relevant` is a FINDING, not a silent pass: an expression the
  * derivation could not read is a gate this check cannot prove was audited.
+ *
+ * 3. **It had no evidenced escape** (ace#2225), so a dataset whose only
+ *    residual violations were fields labs STRUCTURALLY cannot simulate could
+ *    never pass. On `poverty-graduation/20260908-0510` all six residuals were
+ *    a REPEAT-group roster (the generator emits one flat object, not an
+ *    array), a `Trigger` read-aloud label (CommCare submits no value for one),
+ *    or an image with no labs `ImageConfig` corpus — with zero off-branch,
+ *    zero integrality and an empty `unparsed[]`. The only two routes to green
+ *    were to narrow the spec, which is the behaviour defect 1 exists to
+ *    prevent, or to accept a permanent `fail` — and a permanently-red check is
+ *    one nobody reads, which is how the real misses get waved through
+ *    (ace#1744). So it takes the shape `checkDetectionCohortFloor` already
+ *    uses for `below_programme_scale`: an EVIDENCED escape, refused when
+ *    unevidenced, reported rather than silent, and scoped to the two halves a
+ *    structural absence actually shows up in — a `conditional-missing`
+ *    violation and the scrub's `unresolvedFields`. An off-branch value, an
+ *    integrality violation and an unparsed gate stay unexemptible: each names
+ *    a value that IS present and wrong, which the scrub or an added spec entry
+ *    can repair.
  */
 export interface DatasetConstraintCheckInput {
   /**
@@ -403,6 +422,21 @@ export interface DatasetConstraintCheckInput {
   scrub?: ScrubReport;
   /** `auditDataset` over the records as they now stand. */
   report: ConstraintReport;
+  /**
+   * `declared_omissions[]` from `7-synthetic/branch-scrub_report.yaml` — the
+   * fields the labs generator STRUCTURALLY cannot emit, each with the reason
+   * (ace#2225). Exempts that field's `conditional-missing` violation and its
+   * `unresolvedFields` entry, and nothing else. An entry with a blank reason
+   * exempts nothing and is named in the failure.
+   */
+  declaredOmissions?: DeclaredOmission[];
+}
+
+/** One `{field, reason}` entry of the producer's `declared_omissions[]`. */
+export interface DeclaredOmission {
+  field: string;
+  /** Why labs cannot emit this field. Blank means the exemption is refused. */
+  reason: string;
 }
 
 const SCRUB_HINT =
@@ -417,9 +451,47 @@ const SCRUB_HINT =
   'Declaring relevance_groups here is inert: a run that declared it still emitted 36 off-branch values. ' +
   'Do declare it on a schema-backed opp, where it works (dimagi-internal/ace#1658, #1833).';
 
+/**
+ * The evidenced half of the declared-omission escape (ace#2225).
+ *
+ * A field only earns an exemption when its entry carries a non-empty reason —
+ * the same cite-your-source discipline `checkDetectionCohortFloor` imposes on
+ * `below_programme_scale`. An unevidenced entry is a silencer, and an escape
+ * is only worth having if turning the gate off costs the author the citation.
+ */
+function partitionOmissions(declared: DeclaredOmission[] | undefined): {
+  evidenced: Map<string, string>;
+  unevidenced: Set<string>;
+} {
+  const evidenced = new Map<string, string>();
+  const unevidenced = new Set<string>();
+  for (const o of declared ?? []) {
+    const field = typeof o?.field === 'string' ? o.field.trim() : '';
+    if (!field) continue;
+    const reason = typeof o?.reason === 'string' ? o.reason.trim() : '';
+    if (reason) evidenced.set(field, reason);
+    else unevidenced.add(field);
+  }
+  return { evidenced, unevidenced };
+}
+
+const OMISSION_HINT =
+  'A residual the labs generator STRUCTURALLY cannot emit is declared, not narrowed away: add a ' +
+  '{field, reason} entry to declared_omissions[] in 7-synthetic/branch-scrub_report.yaml naming why the ' +
+  'value cannot exist (a REPEAT-group roster the flat generator cannot produce, a Trigger read-aloud label ' +
+  'CommCare submits no value for, an image with no labs ImageConfig corpus). The reason is REQUIRED — an ' +
+  'unevidenced entry exempts nothing. This escape covers conditional-missing and an unresolved scrub field ' +
+  'only: an off-branch value, an integrality violation and an unparsed gate are never exempt, because each ' +
+  'of those is a dataset defect the scrub or an added spec entry can actually fix (dimagi-internal/ace#2225).';
+
 export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInput): QACheckResult {
   const problems: string[] = [];
   const hints: string[] = [];
+  const { evidenced, unevidenced } = partitionOmissions(input.declaredOmissions);
+  const exempted: string[] = [];
+  const noteExempt = (field: string) => {
+    if (!exempted.includes(field)) exempted.push(field);
+  };
 
   if (!input.derivation) {
     if (!input.noDeliverAppReason?.trim()) {
@@ -454,9 +526,20 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
     );
   }
 
-  if (input.scrub?.unresolvedFields.length) {
+  // A field labs cannot emit is also a field the scrub cannot locate, so the
+  // escape has to cover BOTH halves or the check stays permanently red. On
+  // `poverty-graduation/20260908-0510` five of the six residuals appeared here
+  // as well as in the audit below (ace#2225).
+  const unresolved = (input.scrub?.unresolvedFields ?? []).filter((f) => {
+    if (evidenced.has(f)) {
+      noteExempt(f);
+      return false;
+    }
+    return true;
+  });
+  if (unresolved.length) {
     problems.push(
-      `the branch scrub could not locate ${input.scrub.unresolvedFields.join(', ')} in any record, so those ` +
+      `the branch scrub could not locate ${unresolved.join(', ')} in any record, so those ` +
         'fields were never scrubbed',
     );
     hints.push(
@@ -465,13 +548,48 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
     );
   }
 
-  if (!input.report.ok) {
+  // `conditional-missing` is the ONLY exemptible class: it is the one that can
+  // record an absence the generator was never able to produce. Every other
+  // class names a value that IS present and wrong, which the scrub or an added
+  // spec entry can actually repair — so none of them takes an escape.
+  const violations = input.report.violations.filter((v) => {
+    if (v.kind !== 'conditional-missing' || !v.field) return true;
+    if (evidenced.has(v.field)) {
+      noteExempt(v.field);
+      return false;
+    }
+    return true;
+  });
+  if (violations.length) {
     problems.push(
-      `${input.report.violations.length} constraint class(es) violated across ${input.report.total} records: ` +
-        input.report.violations.map((v) => `[${v.kind}] ${v.count} of ${input.report.total} — ${v.field}`).join('; '),
+      `${violations.length} constraint class(es) violated across ${input.report.total} records: ` +
+        violations.map((v) => `[${v.kind}] ${v.count} of ${input.report.total} — ${v.field}`).join('; '),
     );
     hints.push(SCRUB_HINT);
   }
+
+  // Name the refused declarations explicitly. Silently ignoring one would read
+  // to the author as "the escape does not work", and send them back to the
+  // spec-narrowing this check exists to prevent.
+  const refused = [...unevidenced].filter(
+    (f) =>
+      input.report.violations.some((v) => v.kind === 'conditional-missing' && v.field === f) ||
+      (input.scrub?.unresolvedFields ?? []).includes(f),
+  );
+  if (refused.length) {
+    problems.push(
+      `declared_omissions carries no reason for ${refused.join(', ')} — an unevidenced exemption is ` +
+        'rejected, so those residuals still count',
+    );
+  }
+  if (refused.length || violations.some((v) => v.kind === 'conditional-missing') || unresolved.length) {
+    hints.push(OMISSION_HINT);
+  }
+
+  const exemptNote = exempted.length
+    ? `; ${exempted.length} declared omission(s) exempted — ` +
+      exempted.map((f) => `${f}: ${evidenced.get(f)}`).join('; ')
+    : '';
 
   if (problems.length === 0) {
     const derivedNote = input.derivation
@@ -482,11 +600,17 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
       : '';
     return {
       pass: true,
-      detail: `0 violations across ${input.report.total} records (measured) — ${derivedNote}${scrubNote}`,
+      detail:
+        `0 unexempted violations across ${input.report.total} records (measured) — ` +
+        `${derivedNote}${scrubNote}${exemptNote}`,
     };
   }
 
-  return { pass: false, detail: problems.join('; '), auto_fix_hint: hints.join(' ') };
+  return {
+    pass: false,
+    detail: problems.join('; ') + exemptNote,
+    auto_fix_hint: hints.join(' '),
+  };
 }
 
 // ── #1683: two dashboards over ONE dataset must report the same total ──
