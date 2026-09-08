@@ -138,7 +138,7 @@ paraphrase the schema here — read the model / schema and validate.
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
 
-3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1660).**
+3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1660, #2219).**
    Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`,
    **and `checkSceneCardinality(scenes, shape)` from the same module** — the
    executable form of Step 2b, which re-reads the authored scenes rather than
@@ -181,6 +181,44 @@ paraphrase the schema here — read the model / schema and validate.
      `restore:` block — and note it must run before **every** render **and
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
+
+   A fourth, on a different axis — the scene is well-formed and demonstrates
+   the right thing, and **the frame nobody can read it in** (ace#2219):
+
+   - **`pixel-scroll-framing`** — a `kind: scroll` carrying a raw pixel `value`
+     decides how a judged still is framed, and a pixel offset is a guess about
+     how a page this spec does not own renders. It is right for one viewport,
+     one row count and one font stack, and reports nothing when it stops being
+     right. `poverty-graduation/20260905-1345` used `kind: scroll` five times
+     (`'400'`, `'1280'`, `'bottom'`, `'320'`, `'top'`) against one `scroll_to`;
+     scene 5's landed a twelve-row table one row short, and row twelve — Umar
+     Bello — rendered *"sliced through its middle at the bottom edge with its
+     badge truncated mid-word"*, which the judge said *"spoils scene 6 without
+     being readable"*, while the same scroll put the title, the simulated-data
+     disclosure and all four KPI cards off the top. `projector_test: false` and
+     `five_second_read_correct: false` on **7 of 7** scenes; the run ended at
+     concept 2.0/5. **The remedy is `scroll_to` naming the element the frame is
+     about** — canopy resolves and centres it live, so it holds at any page
+     length. If the header block and the whole table cannot co-exist in one
+     frame, split the beat into two scenes rather than compromising both. Park
+     the cursor outside the content column before a hold, too: on the same run
+     it occluded the chart subtitle in scene 2 and the header in scene 5.
+   - `top` / `bottom` are **reported, not rejected**. They name a landmark the
+     page defines and survive a layout change, but they decide only one edge of
+     the frame — scene 4's `bottom` guillotined two histogram bars at the top
+     edge, dropping their value labels and rendering bars differing by 140
+     households at identical heights, while the panel the scene was about sat
+     fully framed below. Right whenever the frame's subject IS the page's first
+     or last content; confirm that it is.
+
+   **This is NOT the retracted ace#1660 check, and it adds no `offset:`.** That
+   check flagged `scroll_to` for LACKING an offset — the exact inverse. Here
+   `scroll_to` is the remedy, written as canopy declares it: `kind` + `target`
+   and nothing else. Worth saying because the judge's own remedy on this run
+   reads *"offset so no partial histogram sits above it"*, which is the
+   retracted syntax verbatim and makes the spec fail validation if followed.
+   Run `checkScrollFraming` from `lib/demo-frame-legibility.ts` over the spec —
+   `demo-data-setup-qa` check 14 is the backstop that runs it again.
 
    The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
    A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
