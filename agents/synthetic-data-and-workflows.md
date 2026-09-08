@@ -26,11 +26,6 @@ inside a budget of 5 (`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds 
 arithmetic), and this phase gets its own context window instead of inflating the
 orchestrator's.
 
-The constraint is a budget, not a ban. Past the budget the `Agent` tool is
-withheld silently rather than erroring — the per-scene judging collapses into one
-context and still emits a full set of verdicts, correlated and optimistic. That
-hazard is unchanged and is why the graph stays machine-checked.
-
 Keep the `Agent(canopy:ddd)` dispatch below intact. When that branch is
 unreachable the only executable path is a single render+judge with no loop, no
 convergence rule and no stopping rule — the failure behind

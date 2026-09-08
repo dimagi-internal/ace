@@ -8,23 +8,13 @@
  * `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) caps simultaneous fan-out.
  * Nothing in ACE needs to be inline in order to dispatch.
  *
- * ## Why the graph is still declared and machine-checked
+ * ## Why the graph is declared and machine-checked
  *
- * Because exceeding the budget does not error. At the limit Claude Code
- * *withholds* the `Agent` tool, and the subagent at the floor does the delegated
- * work itself and returns one summary. That degradation is invisible in every
- * artifact ACE writes.
- *
- * It is expensive where ACE fans out for independence rather than for speed.
- * `ddd-concept-eval` dispatches `canopy:visual-judge` as a deliberately *fresh*
- * subagent per scene — its rubric docks every dimension by 1 if that independence
- * isn't real — so a collapsed fan-out still emits a full set of verdicts, just
- * correlated and optimistic.
- *
- * So the topology is declared here and `test/lib/agent-depth.test.ts` asserts
- * (a) the declaration matches the `Agent(...)` dispatches actually written in the
- * repo, and (b) no chain exceeds the budget. `scripts/doctor-agent-depth.ts`
- * checks the other half — what the machine actually supplies.
+ * The budget is pinned, so the job of the declaration is to keep the GRAPH
+ * inside it as the graph grows. The topology is declared here and
+ * `test/lib/agent-depth.test.ts` asserts (a) the declaration matches the
+ * `Agent(...)` dispatches actually written in the repo, and (b) no chain exceeds
+ * the budget — so adding a level to a chain fails CI rather than shipping.
  *
  * ## Depth accounting
  *
@@ -41,10 +31,8 @@
  * Levels of subagent nesting ACE requires the runtime to supply.
  *
  * Pin it explicitly — `{"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "5"}}` in
- * `~/.claude/settings.json` — rather than inheriting a default. Unset, the value
- * comes from a remote feature flag that is not guaranteed to be the same for two
- * people on one team, and a machine that supplies less than ACE needs degrades
- * silently. 5 leaves real headroom over the deepest chain the graph computes.
+ * `~/.claude/settings.json` — rather than inheriting a default. 5 leaves real
+ * headroom over the deepest chain the graph computes.
  */
 export const MAX_SUBAGENT_SPAWN_DEPTH = 5;
 

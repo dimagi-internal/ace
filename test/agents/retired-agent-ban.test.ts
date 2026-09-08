@@ -118,10 +118,9 @@ describe('the retired "Agent is level-0 only" ban', () => {
       'A live doc asserts the RETIRED rule that the `Agent` tool is unavailable ' +
         'below level 0. Subagents may dispatch subagents; the constraint is a ' +
         'depth BUDGET (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH), not a ban.\n\n' +
-        'State the current behaviour instead: past the budget the Agent tool is ' +
-        'withheld SILENTLY, so a fan-out collapses rather than erroring. If the ' +
-        'doc means the human gate, say AskUserQuestion — that one really is ' +
-        'withheld from every subagent.\n\n' +
+        'State the current behaviour instead: the constraint is a depth budget, ' +
+        'pinned in settings.json. If the doc means the human gate, say ' +
+        'AskUserQuestion — that one really is withheld from every subagent.\n\n' +
         'See CLAUDE.md § Agent topology.\n\n' +
       violations.join('\n'),
     ).toEqual([]);
