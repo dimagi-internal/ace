@@ -307,6 +307,19 @@ front half (how the labs-only opp + its data come to exist) differs.
        This is a declared, reproducible generator post-step — not hand-patching
        records — and on this path it is the only remedy that works.
 
+       **The write-back must preserve `visit.id` as an integer, byte-for-byte
+       (ace#2249).** The labs generator mints `visit.id` as a 60-bit integer —
+       comfortably over JS `Number.MAX_SAFE_INTEGER` (2^53-1) — so a plain
+       `JSON.parse` of the fixture text silently rounds it (measured: 490 of
+       505 ids changed on one real run) before `scrubOffBranchFields` ever
+       runs. Read and write with `parseJsonPreservingBigInts` /
+       `stringifyJsonPreservingBigInts` (`lib/dataset-constraints.ts`) instead
+       of `JSON.parse`/`JSON.stringify` on BOTH ends of this step — they carry
+       any out-of-safe-range integer as a `bigint` through the round trip.
+       `scrubOffBranchFields` itself deep-copies with `structuredClone`, so it
+       no longer corrupts (or throws on) an id you hand it losslessly; getting
+       the surrounding read/write right is still on the caller.
+
        **The manifest DOES carry a relevance primitive; it is inert here.**
        `BeneficiaryCohort.relevance_groups: dict[str, RelevanceRule]`
        (`connect_labs/labs/synthetic/generator/fixtures/manifest.py:300`) shipped
@@ -1142,6 +1155,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **Step 2c.2's write-back must preserve `visit.id` losslessly (ace#2249).** The labs generator mints `visit.id` as a 60-bit integer, over JS `Number.MAX_SAFE_INTEGER`, so a plain `JSON.parse`/`JSON.stringify` round trip silently rewrote 490 of 505 ids on a live run while every gate stayed green (`auditDataset` judges values, not keys). Fixed at two points in `lib/dataset-constraints.ts`: `scrubOffBranchFields`'s internal deep copy now uses `structuredClone` instead of `JSON.parse(JSON.stringify(...))`, and new `parseJsonPreservingBigInts` / `stringifyJsonPreservingBigInts` helpers (an out-of-safe-range integer literal round-trips as a `bigint`) replace `JSON.parse`/`JSON.stringify` on both ends of the caller's own read/write. | ACE team |
 | 2026-09-08 | **New step 2c.4: declare, with a reason, the residuals labs STRUCTURALLY cannot emit (ace#2225).** Check 9 had no evidenced escape, so a run whose only residual violations were such fields could reach green only by narrowing the spec — the behaviour ace#1658 built the derivation to prevent — or not at all. Both runs of `poverty-graduation` took the permanent `fail`. Three recurring classes, all measured on `20260908-0510`: a per-member REPEAT group the flat generator cannot produce, a `Trigger` read-aloud label CommCare submits no value for, and an image with no labs `ImageConfig` corpus. New `declared_omissions[]` block in `branch-scrub_report.yaml`; the reason is required, and a blank one exempts nothing. | ACE team |
 | 2026-09-07 | **New step 3d: enumerate every coined label and prove its definition is reachable FROM the label (ace#2219).** This skill had ZERO guidance on legibility — `grep -niE "jargon|coined|define|glossar|legib|projector"` returned nothing — while the DDD user judge runs a `jargon visible to non-technical users, max 2` hard cap on every scene. On `poverty-graduation/20260905-1345` it fired independently on six of seven scenes over `31-point band`, `Surveys in the 31-point band`, `Mean likelihood below the line` and `Payable`/`Non-payable`; iteration 2 added a glossary panel, the judge recorded it VERIFIED PRESENT and correct, and the cap fired on six of seven scenes again because the panel sits below the fold of every frame that uses the vocabulary. New product `7-synthetic/dashboard-terms.yaml` + `checkCoinedTerms` in `lib/demo-frame-legibility.ts`, backstopped by `demo-data-setup-qa` check 15. The remedy is rename-or-gloss-at-the-label, never another panel. | ACE team |
 | 2026-08-27 | **Step 3c narrowed to CAPABILITY gaps, and gap prose is no longer scanned (ace#1762).** Measured against the real artifacts rather than its fixtures, the narrative pass ran at ~44% precision: 9 findings on `hh-poverty-targeting/20260827-0323`, of which 3 were a DECISION gap firing on claims that merely NAME thresholds (its own proposed remedy, not a contradiction) and 1 was one gap's `proposed_action` naming another gap's subject. Both are subtractions: `constraining` is now CAPABILITY only — the RESEARCH carve-out's reasoning covers DECISION verbatim, since both forbid a *qualified* claim and no keyword match can tell that from naming the subject — and `narrativeSources()` no longer emits `why_brief.gaps[]` at all, replacing the narrower self-exemption (`exemptGapId` removed as dead). Measured after: 9 → 5 findings over 4 distinct strings, all genuine `area` / `adjudication` CAPABILITY hits. Precision is the whole asset for a report-only check — a gate that cries wolf is how the real misses get waved through (ace#1744). | ACE team |

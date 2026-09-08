@@ -34,7 +34,13 @@
  * arithmetic the whole demo exists to make credible.
  */
 import { describe, it, expect } from 'vitest';
-import { auditDataset, formatConstraintReport } from '../../lib/dataset-constraints.js';
+import {
+  auditDataset,
+  formatConstraintReport,
+  scrubOffBranchFields,
+  parseJsonPreservingBigInts,
+  stringifyJsonPreservingBigInts,
+} from '../../lib/dataset-constraints.js';
 
 const SPEC = {
   integerFields: [
@@ -166,5 +172,67 @@ describe('auditDataset (#1346)', () => {
 
   it('is inert on an empty spec rather than inventing rules', () => {
     expect(auditDataset(CLEAN, {}).ok).toBe(true);
+  });
+});
+
+describe('scrubOffBranchFields preserves 60-bit fixture ids (ace#2249)', () => {
+  // Real value from bednet-check-2-visit/20260907-1126 (labs opp 10058). It
+  // exceeds Number.MAX_SAFE_INTEGER (9007199254740991), so it cannot even be
+  // WRITTEN as a JS number literal without already losing precision — the
+  // only lossless representations are `bigint` or `string`. The labs
+  // generator mints `visit.id` as exactly this shape of integer on purpose
+  // (connect_labs/labs/synthetic/generator/fixtures/engine.py).
+  const REAL_ID = 1151582223307334984n;
+
+  it('does not corrupt an already-lossless id passed through the deep copy', () => {
+    // Pre-fix, `scrubOffBranchFields`'s internal
+    // `JSON.parse(JSON.stringify(records))` deep copy throws
+    // "Do not know how to serialize a BigInt" the instant a record carries a
+    // bigint id — so a caller that got the read side right (bigint-safe
+    // parse) still cannot get a scrubbed set back.
+    const rows = [{ id: REAL_ID, consent_confirmed: 'no', slept_under_net: 'yes' }];
+    const { records } = scrubOffBranchFields(rows, [
+      {
+        field: 'slept_under_net',
+        path: '/data/net_check/slept_under_net',
+        requiredWhen: { field: 'consent_confirmed', equals: 'yes' },
+      },
+    ]);
+    expect(records[0].id).toBe(REAL_ID);
+    // The scrub itself still ran correctly — the id survives WHILE the
+    // off-branch field is still cleared.
+    expect(records[0].slept_under_net).toBeUndefined();
+  });
+
+  it('round-trips the id byte-identical through read text -> parse -> scrub -> serialize -> write text', () => {
+    // This is the actual demo-data-setup § 2c.2 workflow: a labs fixture is
+    // read as TEXT off Drive (drive_read_file), parsed into records, scrubbed,
+    // then serialized back to TEXT for the write-back (drive_update_file). A
+    // plain `JSON.parse`/`JSON.stringify` at either end rounds the literal
+    // before any application code — including `scrubOffBranchFields` — ever
+    // sees the real digits.
+    const rawFixtureText =
+      '[{"id":1151582223307334984,"consent_confirmed":"no","slept_under_net":"yes"}]';
+
+    const records = parseJsonPreservingBigInts(rawFixtureText) as Array<Record<string, unknown>>;
+    expect(records[0].id).toBe(REAL_ID);
+
+    const { records: scrubbed } = scrubOffBranchFields(records, [
+      {
+        field: 'slept_under_net',
+        path: '/data/net_check/slept_under_net',
+        requiredWhen: { field: 'consent_confirmed', equals: 'yes' },
+      },
+    ]);
+
+    const writtenBackText = stringifyJsonPreservingBigInts(scrubbed);
+    expect(writtenBackText).toContain('"id":1151582223307334984');
+    expect(writtenBackText).not.toContain('1151582223307334900'); // the corrupted value #2249 measured
+  });
+
+  it('demonstrates the corruption class a plain JSON round-trip still has, for contrast', () => {
+    const rawFixtureText = '[{"id":1151582223307334984}]';
+    const lossy = JSON.parse(rawFixtureText);
+    expect(JSON.stringify(lossy)).not.toContain('1151582223307334984'); // already rounded on the way IN
   });
 });

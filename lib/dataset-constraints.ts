@@ -671,7 +671,22 @@ export function scrubOffBranchFields<T extends Container>(
   records: T[],
   conditionalFields: ConditionalFieldSpec[] = [],
 ): { records: T[]; report: ScrubReport } {
-  const scrubbed: T[] = JSON.parse(JSON.stringify(records ?? []));
+  // Deep copy WITHOUT re-parsing values as JSON text (ace#2249). The old
+  // `JSON.parse(JSON.stringify(records))` deep copy re-derives every number
+  // from its printed decimal form, which is where a 60-bit fixture id (the
+  // labs generator mints `visit.id` this way on purpose — see
+  // `connect_labs/labs/synthetic/generator/fixtures/engine.py`) silently loses
+  // precision: JS numbers only carry 53 bits of integer precision. Worse, it
+  // THROWS outright if a caller already holds the id losslessly as a
+  // `bigint` (`JSON.stringify` does not know how to serialize one), so even a
+  // caller that got the read side right could not get a scrubbed set back.
+  // `structuredClone` copies values structurally — it never turns a number or
+  // a bigint into text and back, so both cases are inert here. This closes
+  // the corruption at the COPY; it does not by itself make the CALLER's own
+  // `JSON.parse` of the raw fixture text lossless — that half is
+  // `parseJsonPreservingBigInts` / `stringifyJsonPreservingBigInts` below,
+  // which a caller must use on the read and write ends of the same workflow.
+  const scrubbed: T[] = structuredClone(records ?? []);
   const fields: ScrubFieldReport[] = [];
   let totalCleared = 0;
 
@@ -764,4 +779,96 @@ export function formatScrubReport(report: ScrubReport): string {
     );
   }
   return lines.join('\n');
+}
+
+/**
+ * Bigint-preserving JSON parse / serialize pair — the caller-facing half of
+ * ace#2249. `structuredClone` (above) stops `scrubOffBranchFields` from
+ * corrupting a value it is HANDED losslessly, but a plain `JSON.parse` of the
+ * raw fixture text is already lossy before that: it rounds any integer
+ * literal above `Number.MAX_SAFE_INTEGER` (2^53-1) to the nearest
+ * representable double, and no reviver can recover the original digits —
+ * by the time a reviver runs, the value is already a rounded `number`. The
+ * labs synthetic generator mints `visit.id` as a 60-bit integer on purpose
+ * (`connect_labs/labs/synthetic/generator/fixtures/engine.py`), which is
+ * comfortably outside that range.
+ *
+ * A caller doing the `demo-data-setup` § 2c.2 workflow — read fixture TEXT
+ * off Drive, scrub, write TEXT back — must use `parseJsonPreservingBigInts`
+ * in place of `JSON.parse` and `stringifyJsonPreservingBigInts` in place of
+ * `JSON.stringify` on BOTH ends, or the id is already wrong before
+ * `scrubOffBranchFields` ever sees it.
+ *
+ * Mechanism (no new dependency — a hand-rolled reviver over a text rewrite,
+ * not a real tokenizing parser): before handing text to `JSON.parse`, every
+ * bare (non-string) JSON integer literal outside the safe range is rewritten
+ * as a quoted string carrying an `ace-bigint:` sentinel prefix, so
+ * `JSON.parse` treats it as an ordinary string; a reviver then turns each
+ * tagged string into a real `bigint`. The rewrite only ever touches text
+ * OUTSIDE existing JSON string literals — text is first split into
+ * `"…string…"` spans versus everything else, and only the "everything else"
+ * spans are scanned for number tokens — so a fixture field that happens to
+ * contain a long digit run in a STRING value is never touched, and a real
+ * fixture field would have to contain the literal substring `ace-bigint:` to
+ * collide with the sentinel (undeclared, but not a shape labs fixtures use).
+ * `stringifyJsonPreservingBigInts` reverses it: a `bigint` anywhere in the
+ * structure is emitted as the raw (unquoted) digits it holds, exactly as the
+ * literal appeared in the original fixture.
+ *
+ * Only bare integer literals are affected. Strings, booleans, null, floats,
+ * and safe-range integers pass through exactly as `JSON.parse`/
+ * `JSON.stringify` would produce them.
+ */
+const BIGINT_SENTINEL = 'ace-bigint:';
+
+/** A complete JSON string literal, OR a run of text that contains none. */
+const STRING_OR_OTHER = /"(?:[^"\\]|\\.)*"|[^"]+/g;
+
+/** A complete JSON number token (integer, float, or exponent form) — never a partial one. */
+const JSON_NUMBER_TOKEN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+function isUnsafeIntegerLiteral(literal: string): boolean {
+  const digits = literal.startsWith('-') ? literal.slice(1) : literal;
+  // Number.MAX_SAFE_INTEGER (9007199254740991) has 16 digits. Anything
+  // shorter is always representable exactly; anything longer never is; at
+  // exactly 16 digits, same-length decimal strings compare lexicographically
+  // the same as numerically (JSON forbids leading zeros on numbers).
+  if (digits.length < 16) return false;
+  if (digits.length > 16) return true;
+  return digits > '9007199254740991';
+}
+
+function tagUnsafeIntegerLiterals(text: string): string {
+  let out = '';
+  for (const piece of text.match(STRING_OR_OTHER) ?? []) {
+    if (piece.startsWith('"')) {
+      out += piece; // an existing JSON string literal — never rewritten
+      continue;
+    }
+    out += piece.replace(JSON_NUMBER_TOKEN, (token) => {
+      if (token.includes('.') || /[eE]/.test(token)) return token; // float/exponent — not an integer PK
+      return isUnsafeIntegerLiteral(token) ? `"${BIGINT_SENTINEL}${token}"` : token;
+    });
+  }
+  return out;
+}
+
+/** Parse JSON text, preserving any out-of-safe-range integer literal as a `bigint`. */
+export function parseJsonPreservingBigInts(text: string): unknown {
+  return JSON.parse(tagUnsafeIntegerLiterals(text), (_key, value) =>
+    typeof value === 'string' && value.startsWith(BIGINT_SENTINEL)
+      ? BigInt(value.slice(BIGINT_SENTINEL.length))
+      : value,
+  );
+}
+
+/** Serialize to JSON text, emitting any `bigint` as the raw digits it holds. */
+export function stringifyJsonPreservingBigInts(value: unknown, space?: string | number): string {
+  const tagged = JSON.stringify(
+    value,
+    (_key, v) => (typeof v === 'bigint' ? `${BIGINT_SENTINEL}${v.toString()}` : v),
+    space,
+  );
+  const sentinelPattern = new RegExp(`"${BIGINT_SENTINEL}(-?\\d+)"`, 'g');
+  return (tagged ?? '').replace(sentinelPattern, (_match, digits: string) => digits);
 }
