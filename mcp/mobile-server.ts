@@ -50,6 +50,7 @@ import {
 } from './mobile/recipe-resolver.js';
 import { logInfo, logError } from './mobile/logging.js';
 import { resolveBackend } from './mobile/backend-toggle.js';
+import { installToolErrorGuard, serializeMobileToolError } from './mobile/tool-error.js';
 
 // A bare `new MobileClient()` resolves its palette dir via
 // `resolveStaticRecipesDir()`, so it honours `ACE_MOBILE_STATIC_RECIPES_DIR`
@@ -100,6 +101,27 @@ try {
 }
 
 const server = new McpServer({ name: 'ace-mobile', version: '0.9.0' });
+
+// EVERY atom registered below this line is error-guarded (ace#2223).
+//
+// (Written without naming the registration call literally: the oracle in
+// `test/lib/atom-schema-parser.test.ts` counts registrations with a plain
+// regex over the file, so the phrase in a COMMENT reads to it as a
+// nineteenth atom and reddens CI. The parser under test is comment-aware
+// since #2192; its test's own control is not.)
+//
+// Without it, a tool callback that throws is caught by the SDK, which answers
+// with `createToolError(error.message)` — the message and nothing else. Every
+// MobileError in `mcp/mobile/errors.ts` authors a `remediation` that IS the
+// diagnosis, and all of it was being discarded here. On
+// spark-facilitator/20260907-1120 that turned an AVD-contention halt into a
+// cause-free string, and routed the operator to `/ace:mobile-bootstrap` when
+// the code had already written the pool/contention answer.
+//
+// Installed on the SERVER, not per call site, so an atom added later is
+// covered whether or not its author knows this exists. MUST stay above the
+// first registration.
+installToolErrorGuard(server);
 
 server.tool(
   'mobile_ensure_avd_running',
@@ -302,29 +324,22 @@ server.tool(
       // skill's "screenshots come ONLY from a `status: pass` execution in
       // THIS run" rule discards the directory, and the obvious response —
       // re-run the leg — is impossible.
+      //
+      // The `status`/`message`/`code`/`remediation`/`diagnostics` half of this
+      // envelope is the shared serializer (ace#2223) — this handler used to
+      // build it by hand and, exactly like the SDK's own fallback, omitted
+      // `remediation`. What stays local is the part only this atom knows: the
+      // partial result and the note about it.
       const partial = (e as { partialResult?: unknown }).partialResult;
       const forensics = (e as { failureForensics?: unknown }).failureForensics;
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(
-            {
-              status: 'error',
-              message: e instanceof Error ? e.message : String(e),
-              code: (e as { code?: string }).code,
-              ...(partial && typeof partial === 'object' ? partial : {}),
-              failureForensics: forensics,
-              note:
-                'The dispatch THREW. Any screenshots/videos listed above were genuinely captured ' +
-                'before the failure and are on disk at screenshotsDir — do not assume the run ' +
-                'produced nothing (ace#1822).',
-            },
-            null,
-            2,
-          ),
-        }],
-        isError: true,
-      };
+      return serializeMobileToolError(e, {
+        ...(partial && typeof partial === 'object' ? partial : {}),
+        failureForensics: forensics,
+        note:
+          'The dispatch THREW. Any screenshots/videos listed above were genuinely captured ' +
+          'before the failure and are on disk at screenshotsDir — do not assume the run ' +
+          'produced nothing (ace#1822).',
+      });
     }
   },
 );
@@ -438,7 +453,11 @@ server.tool(
       await backend.validateRecipe(tmp);
       return { content: [{ type: 'text', text: JSON.stringify({ ok: true, valid: true }, null, 2) }] };
     } catch (e: any) {
-      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, valid: false, error: e.message }, null, 2) }], isError: true };
+      // Superset of the old `{ok, valid, error}` shape — existing consumers
+      // read the same keys, and an authored `remediation` now rides along
+      // instead of being dropped here the way it was at the SDK boundary
+      // (ace#2223).
+      return serializeMobileToolError(e, { ok: false, valid: false, error: e.message });
     } finally {
       try { fs.unlinkSync(tmp); } catch {}
     }
@@ -469,11 +488,13 @@ server.tool(
         isError: r.unresolved.length > 0,
       };
     } catch (e: unknown) {
+      // Same superset treatment as mobile_validate_recipe (ace#2223). This one
+      // matters concretely: a bad ACE_MOBILE_STATIC_RECIPES_DIR raises
+      // STATIC_RECIPES_DIR_INVALID, whose remediation names the exact palette
+      // directory to point at — the one thing an operator live-validating a
+      // staged palette fix needs, and could not previously see.
       const msg = e instanceof Error ? e.message : String(e);
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ ok: false, error: msg }, null, 2) }],
-        isError: true,
-      };
+      return serializeMobileToolError(e, { ok: false, error: msg });
     }
   },
 );
