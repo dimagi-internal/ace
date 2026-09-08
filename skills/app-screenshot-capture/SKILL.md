@@ -1377,12 +1377,37 @@ captures:
 
 One flat `captures:` list, one row per captured step across every journey, with
 `journey_id` on the row. The journey-grouped variants
-(`journeys[].steps[]`, `journeys[].screenshots[]` + `journeys[].duplicates[]`)
-and `step_name` as an alias for `step` are all still READ —
-`collectCaptureEntries` in `lib/capture-manifest.ts` is the one reader every
-consumer goes through — but write the shape above so there is one thing to
-read. Any other container name is invisible to every consumer, and a consumer
-that finds nothing reports **clean**, not empty.
+(`journeys[].steps[]`, `journeys[].screenshots[]` + `journeys[].duplicates[]`),
+a top-level `screenshots[]`, and `step_name` as an alias for `step` are all
+still READ — `collectCaptureEntries` in `lib/capture-manifest.ts` is the one
+reader every consumer goes through — but write the shape above so there is one
+thing to read. Any other container name is invisible to every consumer, and a
+consumer that finds nothing reports **clean**, not empty.
+
+**Then assert the manifest reads back, before you write it (ace#2236).** This
+is a required step, not advice — the prose above has been correct since
+ace#2224 and the very next run wrote 60 frames under a top-level
+`screenshots:` anyway (`spark-facilitator/20260907-1120`), where
+`collectCaptureEntries` saw **zero**. Nothing reported it, because the
+asymmetry here is vicious: a malformed manifest costs nothing at write time and
+produces *reassuring* output downstream. Run this over the object you are about
+to serialise:
+
+```ts
+import { assertManifestReadable } from '../../lib/capture-manifest';
+const readback = assertManifestReadable(manifest, { expectedCount: framesCaptured });
+```
+
+`ok: false` is a halt, not a warning. Two reasons:
+
+| reason | meaning | fix |
+|---|---|---|
+| `unread-container` | `path` names a container holding capture-shaped rows that no consumer reads | move those rows into `captures:` — do NOT ask for the reader to be widened again |
+| `count-mismatch` | the reader sees a different number of frames than this dispatch captured | find the rows that went missing; every consumer sees the reader's number |
+
+Rows the reader deliberately ignores — `journeys[].superseded_artifacts[]`
+(forensics from a failed dispatch, ace#1571) and the `videos:` block — are not
+findings.
 
 The manifest also carries a `videos:` block so the training skills and the
 run-summary page can find the recordings without re-listing Drive:

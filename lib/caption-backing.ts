@@ -23,7 +23,12 @@
 // reader can see is what gets checked.
 //
 
-import { collectCaptureEntries, type CaptureManifestLike } from './capture-manifest.js';
+import {
+  assertManifestReadable,
+  collectCaptureEntries,
+  type CaptureManifestLike,
+  type ManifestReadabilityReport,
+} from './capture-manifest.js';
 
 export interface CaptionBackingFinding {
   /** Drive fileId as it appears in the published document. */
@@ -42,6 +47,20 @@ export interface CaptionBackingReport {
   cited_distinct: number;
   backed: number;
   findings: CaptionBackingFinding[];
+  /**
+   * Citable frames the shared reader found in the manifest (ace#2236).
+   *
+   * Read this BEFORE reading `findings`. Zero here with a non-empty `findings`
+   * means the manifest is unreadable, not that the producer cited wrong ids —
+   * the failure presents as universal `unknown-id` and gets triaged at the
+   * wrong artifact every time.
+   */
+  manifest_frames: number;
+  /**
+   * Present only when the manifest does not read back cleanly. Carries the
+   * container the producer actually wrote to, by name.
+   */
+  manifest_readability?: ManifestReadabilityReport;
 }
 
 interface ManifestFrame {
@@ -117,6 +136,13 @@ export function flattenManifestFrames(manifest: unknown): ManifestFrame[] {
  * A document citing NO frames is `ok` — a text-only artifact asserts nothing
  * over a screen, which is the honest outcome this check exists to make
  * available. Failing it would push producers toward decorative citations.
+ *
+ * It also fails when the MANIFEST does not read back (ace#2236). This is the
+ * boundary that carries the loudness because it is the only required step that
+ * already holds both halves — the published artifact and the manifest — and
+ * `_training-template.md` calls it the one that decides. The pre-write helpers
+ * cannot carry it: their failure mode on an unreadable manifest is silence, and
+ * that silence IS the defect, not a symptom of it.
  */
 export function classifyCaptionBacking(args: {
   published: string;
@@ -161,11 +187,15 @@ export function classifyCaptionBacking(args: {
     backed++;
   }
 
+  const readability = assertManifestReadable(args.manifest as CaptureManifestLike);
+
   return {
-    ok: findings.length === 0,
+    ok: findings.length === 0 && readability.ok,
     cited_total: cited.length,
     cited_distinct: seen.size,
     backed,
     findings,
+    manifest_frames: frames.length,
+    ...(readability.ok ? {} : { manifest_readability: readability }),
   };
 }

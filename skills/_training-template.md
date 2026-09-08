@@ -175,6 +175,16 @@ and fails on `no-shows` (cited but nobody recorded what it shows),
 non-empty `findings` is a blocker: fix the caption or drop the image — do not
 record it as a WARN and ship.**
 
+**Read `manifest_frames` before you read `findings` (ace#2236).** Zero there
+means the manifest itself is unreadable, and the failure presents as
+`unknown-id` on *every* citation — which reads as "this producer cited bad ids"
+and gets triaged at the wrong artifact. `manifest_readability` names the
+container the capture producer actually wrote to; that is an
+`app-screenshot-capture` defect, not yours, and the run's images cannot be
+trusted until it is fixed. On `spark-facilitator/20260907-1120` this shape cost
+a deck and an FLW guide their entire image audit: 60 real frames, zero visible
+to any consumer, every guard reporting clean.
+
 It takes the published document rather than a list you assemble, on purpose.
 The first attempt at this check was a helper you called with your own list of
 citations:
