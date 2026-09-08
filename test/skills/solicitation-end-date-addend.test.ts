@@ -146,6 +146,105 @@ describe('solicitation-create § Step 2 states the scoped addend', () => {
   });
 });
 
+/**
+ * ace#2231 — the INVERSE case: a PDD whose `## Timeline` clock starts at AWARD.
+ *
+ * #1858's ceiling subtracted the solicitation window unconditionally, which is
+ * right only when the total CONTAINS that window. `poverty-graduation`'s § 17
+ * opens with "Partner onboarding and FLW recruitment", so its 18-week total is
+ * entirely post-award — Step 2 correctly subtracts nothing, and the
+ * unconditional ceiling then rejects the value Step 2 just computed. Complying
+ * publishes an end date two weeks SHORT of the programme's declared stages.
+ *
+ * Both PDD shapes are legal: `templates/pdd-template.md § Timeline` asks a PDD
+ * to state where its clock starts precisely because the convention is not pinned.
+ */
+const AWARD_ANCHORED_RUN = {
+  publishedOn: '2026-09-08',
+  applicationDeadline: '2026-09-22',
+  contractingAllowanceDays: 14,
+  expectedStartDate: '2026-10-06',
+  /** PDD § 17 rows, tops of bands. There is NO solicitation-open row. */
+  timelineWeeks: {
+    onboardingAndRecruitment: 3,
+    targetingSurvey: 8,
+    eligibilityDecision: 2,
+    enrollmentAndDelivery: 5,
+  },
+  /** What Step 2 computes, and what shipped on solicitation 19188. */
+  correctEndDate: '2027-02-09',
+  /** What an unconditionally-subtracted ceiling would force instead. */
+  truncatedEndDate: '2027-01-26',
+};
+
+describe('solicitation-create § Step 7a span ceiling is conditional (ace#2231)', () => {
+  const t = AWARD_ANCHORED_RUN.timelineWeeks;
+  const total = Object.values(t).reduce((a, b) => a + b, 0);
+  const days = (a: string, b: string) =>
+    (new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / 86_400_000;
+  const windowUsed = days(AWARD_ANCHORED_RUN.applicationDeadline, AWARD_ANCHORED_RUN.publishedOn);
+  const span = days(AWARD_ANCHORED_RUN.correctEndDate, AWARD_ANCHORED_RUN.expectedStartDate);
+
+  it('the timeline is 18 weeks with no solicitation-open row to subtract', () => {
+    expect(total).toBe(18);
+    expect(Object.keys(t)).not.toContain('solicitationOpen');
+  });
+
+  it('Step 2 subtracts nothing, giving the date that shipped', () => {
+    expect(addWeeks(AWARD_ANCHORED_RUN.expectedStartDate, total)).toBe(
+      AWARD_ANCHORED_RUN.correctEndDate,
+    );
+    expect(span).toBe(total * 7);
+  });
+
+  it('the UNCONDITIONAL ceiling rejects that correct date', () => {
+    const unconditional = total * 7 - windowUsed;
+    expect(unconditional).toBe(112);
+    expect(span).toBeGreaterThan(unconditional);
+  });
+
+  it('obeying the unconditional ceiling truncates the listing by the solicitation window', () => {
+    expect(addWeeks(AWARD_ANCHORED_RUN.expectedStartDate, total)).toBe(
+      AWARD_ANCHORED_RUN.correctEndDate,
+    );
+    expect(
+      days(AWARD_ANCHORED_RUN.correctEndDate, AWARD_ANCHORED_RUN.truncatedEndDate),
+    ).toBe(windowUsed);
+  });
+
+  it('the CONDITIONAL ceiling (subtrahend 0 when no solicitation row) accepts it', () => {
+    const conditional = total * 7; // nothing to subtract
+    expect(span).toBeLessThanOrEqual(conditional);
+  });
+
+  it('and still rejects the #1858 whole-total overshoot, which DOES contain the window', () => {
+    // Regression guard: making the ceiling conditional must not blunt the original catch.
+    const bednetTotal = 18;
+    const bednetWindow = days(RUN.applicationDeadline, RUN.publishedOn);
+    const bednetCeiling = bednetTotal * 7 - bednetWindow; // solicitation-open row present
+    expect(days(RUN.wrongEndDate, RUN.expectedStartDate)).toBeGreaterThan(bednetCeiling);
+  });
+});
+
+describe('solicitation-create § the ceiling PROSE states the condition', () => {
+  const text = fs.readFileSync(SKILL, 'utf8');
+  const step7a = text.slice(text.indexOf('**Engagement span'));
+
+  it('says the subtrahend is conditional, not unconditional', () => {
+    expect(/subtrahend is CONDITIONAL/i.test(step7a)).toBe(true);
+  });
+
+  it('names the award-anchored case and tells you to subtract nothing', () => {
+    expect(/starts at award/i.test(step7a)).toBe(true);
+    expect(/subtract nothing/i.test(step7a)).toBe(true);
+  });
+
+  it('Step 2 rule (1) states the has-none case, so the two steps read alike', () => {
+    const endRow = text.split('\n').find((l) => l.includes('| `expected_end_date` | string')) ?? '';
+    expect(/If the timeline has none/i.test(endRow)).toBe(true);
+  });
+});
+
 describe('templates/pdd-template.md § Timeline names its own convention', () => {
   it('asks the PDD to say where its clock starts', () => {
     const text = fs.readFileSync(PDD_TEMPLATE, 'utf8');
