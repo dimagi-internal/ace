@@ -1994,6 +1994,23 @@ handoff — `templates/pdd-template.md § Program Parameters`) via
   `inputs/`, resolved through `inputs-manifest.yaml`, and brief from it rather
   than from the PDD's summary table. The canonical register was one document
   away on `spark-facilitator/20260820-0817` and the brief never reached for it.
+- **`source` names a document that does NOT contain the declared states → brief
+  from the PDD's declared table and record a provenance finding. Do NOT halt,
+  and do NOT treat the citation as evidence** (ace#2276). `parseStateTaxonomy`
+  extracts the `[source: ...]` annotation but nothing verifies it, so a PDD can
+  cite a document that carries no state vocabulary at all — and then the rule
+  above has no satisfiable branch. Grep the cited document for the declared
+  values before briefing from it; on a miss the values are **model-authored**,
+  which is legitimate content but NOT sourced provenance, and the summary must
+  say so rather than repeating the citation. Halting here would be spurious (a
+  validly declared, non-overlapping taxonomy is present); silently falling back
+  would drain the precedence rule of meaning for the next run whose citation is
+  real. Live: `bednet-check-2-visit/20260908-1544`, whose § 12 cites
+  `idea.md § Connect Deliver app` for three `snake_case` states that appear
+  0 times in that document and 4 times in the PDD. This is the inverse of
+  ace#1564 — there the taxonomy was absent and the architect invented the
+  vocabulary; here the vocabulary is fine and its PROVENANCE is fabricated,
+  which is the more dangerous shape because it reads as partner-published.
 - **`problems` non-empty → HALT.** Overlapping step ranges, duplicate values,
   or duplicate labels make the picker non-deterministic; fix the PDD, do not
   resolve the ambiguity by choosing.

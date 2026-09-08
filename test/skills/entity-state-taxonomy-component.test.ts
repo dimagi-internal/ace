@@ -121,6 +121,43 @@ describe('entity-state-taxonomy component (ace#1564)', () => {
     // the run's own frozen inputs — the canonical register was one file away.
     expect(section).toMatch(/inputs-manifest\.yaml/);
   });
+
+  // ace#2276 — `parseStateTaxonomy` extracts the `[source: ...]` annotation but
+  // nothing verifies it, so a PDD can cite a document containing no state
+  // vocabulary at all. Without an explicit branch the read-the-source rule has
+  // no satisfiable outcome, and both improvised outcomes are silent: a spurious
+  // HALT on a validly declared taxonomy, or a quiet fallback that drains the
+  // precedence rule of meaning for the next run whose citation IS real.
+  it('handles a cited source that does not contain the declared states', () => {
+    const section = componentSection();
+
+    expect(
+      section,
+      'The component must name the unbacked-citation case explicitly — ' +
+        'that a cited document may not contain the declared states.',
+    ).toMatch(/does NOT contain|not contain the declared/i);
+
+    // It must resolve to: brief from the PDD table, record provenance, no halt.
+    expect(
+      section,
+      'An unbacked citation must NOT halt — a validly declared, non-overlapping ' +
+        'taxonomy is present, so halting on an annotation blocks Phase 3 for nothing.',
+    ).toMatch(/Do NOT halt/i);
+    expect(
+      section,
+      'The component must say the citation is not evidence, so the summary ' +
+        'reports model-authored values rather than repeating the citation.',
+    ).toMatch(/NOT treat the citation as evidence|not sourced provenance/i);
+    expect(section).toMatch(/provenance finding/i);
+
+    // And it must stay distinguishable from ace#1564, which is the opposite
+    // shape: absent taxonomy -> invented vocabulary.
+    expect(
+      section,
+      'The unbacked-citation branch must cite its own issue so the two ' +
+        'taxonomy failure shapes stay separable.',
+    ).toMatch(/ace#2276/);
+  });
 });
 
 describe('the derive-or-halt contract is wired into the build surface', () => {
