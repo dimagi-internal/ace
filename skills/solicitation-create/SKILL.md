@@ -295,6 +295,36 @@ contract.
    PDD is the operator's source of truth and they need to know it
    needs scrubbing.
 
+   **Internal-vocabulary scan — run it in the same breath as the PII
+   scan, and before `is_public: true`.** You compose `description`,
+   `scope_of_work`, `questions[].text`, `questions[].framing` and
+   `evaluation_criteria[].{description,scoring_guide}` out of the PDD
+   and work order — documents saturated with ACE's own build-time
+   vocabulary. Nothing downstream catches a leak: Step 7a's round-trip
+   verifier asserts only lengths, counts, types and date ordering, and
+   `solicitation-create-eval` sees the prose only AFTER publication.
+
+   Run `scanSolicitationProse` from `lib/applicant-facing-jargon.ts`
+   over the composed payload. On any hit, halt with the `[BLOCKER]`
+   that `formatJargonScan` renders and rewrite the offending field in
+   the reader's language. Do not suppress it and do not publish.
+
+   Two things about this check that are load-bearing:
+
+   - **`framing` is respondent-facing.** Labs's public-detail template
+     renders it directly above the prompt (see line ~480 below), so a
+     note-to-self written there ships to the applicant. That is exactly
+     how solicitation 19201 published *"This is the archetype-specific
+     question…"* — `archetype` is ACE taxonomy and means nothing to an
+     LLO (ace#2264).
+   - **Product vocabulary is NOT a leak.** `CommCare HQ`, `Connect`,
+     `payment unit` and `deliver unit` are terms a respondent must
+     learn to do the work, and the denylist deliberately excludes
+     them — the first draft flagged three such passages on the real
+     record before they were removed. If you find yourself wanting to
+     add a term, check it against a published listing first; the
+     helper's header explains why each exclusion is there.
+
    **Scope-of-work composition** — derive from the work order, NOT from
    PDD-section concatenation. The work order is the comprehensive,
    opinionated program brief; this skill transforms it into a public-
