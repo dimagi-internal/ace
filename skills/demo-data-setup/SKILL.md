@@ -51,6 +51,23 @@ front half (how the labs-only opp + its data come to exist) differs.
 - `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs
 - `<demo-run>/7-synthetic/realized.json` — **the handoff**: a **FLAT** `${var}` map (DDD substitutes `${var}` verbatim — keep it flat, no nesting). One `<key>_par_url` per dashboard the demo builds, plus `primary_par_url` (the dashboard the walkthrough opens on) and any `<name>_url` drills. E.g. `{ "primary_par_url": ..., "program_admin_par_url": ..., "child_recovery_par_url": ..., "audit_good_url": ... }`
 - `<demo-run>/7-synthetic/demo-data-setup.md` — run summary (labs opp id, record counts, one par_url per dashboard, warnings)
+- `<demo-run>/7-synthetic/dashboard-terms.yaml` — the step-3d legibility
+  enumeration, one block per dashboard, so what a lay viewer must read and what
+  the page tells them survives the run rather than living in a claim (ace#2219):
+  ```yaml
+  dashboards:
+    - key: flw_review
+      terms:                       # coined column/row labels a viewer meets
+        - label: Surveys in the 31-point band
+          surface: column header
+          prominent: true          # renders on a surface a frame shows alone
+      definitions:                 # what the page tells them, and from where
+        - term: Surveys in the 31-point band
+          at_point_of_use: true    # reachable FROM the label, not a panel elsewhere
+          where: info affordance on the column header
+  ```
+  An EMPTY `terms` list is a legitimate answer and must still be written — a
+  recorded empty list is evidence, an omitted one is not.
 - `<demo-run>/7-synthetic/branch-scrub_report.yaml` — the step-2c ledger, so
   the numbers survive the run rather than living in a claim (ace#1658):
   ```yaml
@@ -632,6 +649,59 @@ front half (how the labs-only opp + its data come to exist) differs.
    proportions, so no term match can separate them. The check narrows the class;
    it does not close it, and the post-render judge is still the backstop.
 
+3d. **Every coined label carries a definition a reader can reach FROM the label
+   (ace#2219).** A dashboard is read on a projector by someone who has never
+   seen it. A column or row label the programme invented — `31-point band`,
+   `Surveys in the 31-point band`, `Mean likelihood below the line`,
+   `Payable` / `Non-payable` — is unreadable to them unless the page says what
+   it means, at the place they meet it.
+
+   Enumerate two lists off the `render_code` you just uploaded, and write them
+   to `dashboard-terms.yaml`:
+
+   - **`terms[]`** — every coined column and row label, with the `surface` it
+     renders on. Write the list even when it is empty; `demo-data-setup-qa`
+     check 15 cannot tell a plain-language dashboard from an un-enumerated one,
+     and only one of those is a pass.
+   - **`definitions[]`** — what the page defines, and crucially **whether a
+     reader of the label can reach it from the label** (`at_point_of_use`). An
+     info control on the header, a tooltip, an adjacent plain-language lead line
+     with the statistics demoted behind it — yes. A glossary panel elsewhere on
+     the page — no.
+
+   Then run `checkCoinedTerms(terms, definitions)` from
+   `lib/demo-frame-legibility.ts` before minting the run.
+
+   **That last distinction is the whole finding, and it cost an iteration.** On
+   `poverty-graduation/20260905-1345` the jargon hard cap (*"jargon visible to
+   non-technical users, max 2"*) fired independently on six of seven scenes.
+   Iteration 2 added a *"What each column means"* panel defining all seven
+   review-table columns; the judge recorded it **VERIFIED PRESENT** and correct,
+   with PPI expanded, MAD expanded and the disavowal sentence in place — and the
+   cap fired on **six of seven scenes again**, because *"the panel is BELOW THE
+   FOLD of every frame that uses the vocabulary"*:
+
+   > Expanding an acronym is not the same as glossing it, and moving a
+   > definition on-screen is not the same as moving it to the point of use.
+
+   So the remedy is not another panel. Two moves, in this order:
+
+   1. **Rename the label so it needs no gloss, where that is available.**
+      *"Surveys in the 31-point band"* → *"Small-household surveys (≤3
+      members)"* deletes the term AND the disavowal sentence the glossary had to
+      carry (the band has nothing to do with the cohort median of 31.4, which
+      the panel had to say out loud).
+   2. **Otherwise put the gloss on the label** — the reader OPENS it. Per the
+      objective-data standing rule these are disclosure, not on-chart captions
+      and never a takeaway line.
+
+   Two neighbours in the same class, both from the same judge pass, both fixable
+   here and only here: a percentage column that **silently switches denominator**
+   part-way down a table needs its blocks split with each denominator stated;
+   and a chart series carrying **no number** reads as padding — scene 2's
+   five-second read came out as *"steady ~460 submissions a week"* instead of
+   the point of the scene because the grey segment was unlabelled.
+
 4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
    `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
    where `<scope>` is the dashboard's OWNING scope:
@@ -1035,6 +1105,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-07 | **New step 3d: enumerate every coined label and prove its definition is reachable FROM the label (ace#2219).** This skill had ZERO guidance on legibility — `grep -niE "jargon|coined|define|glossar|legib|projector"` returned nothing — while the DDD user judge runs a `jargon visible to non-technical users, max 2` hard cap on every scene. On `poverty-graduation/20260905-1345` it fired independently on six of seven scenes over `31-point band`, `Surveys in the 31-point band`, `Mean likelihood below the line` and `Payable`/`Non-payable`; iteration 2 added a glossary panel, the judge recorded it VERIFIED PRESENT and correct, and the cap fired on six of seven scenes again because the panel sits below the fold of every frame that uses the vocabulary. New product `7-synthetic/dashboard-terms.yaml` + `checkCoinedTerms` in `lib/demo-frame-legibility.ts`, backstopped by `demo-data-setup-qa` check 15. The remedy is rename-or-gloss-at-the-label, never another panel. | ACE team |
 | 2026-08-27 | **Step 3c narrowed to CAPABILITY gaps, and gap prose is no longer scanned (ace#1762).** Measured against the real artifacts rather than its fixtures, the narrative pass ran at ~44% precision: 9 findings on `hh-poverty-targeting/20260827-0323`, of which 3 were a DECISION gap firing on claims that merely NAME thresholds (its own proposed remedy, not a contradiction) and 1 was one gap's `proposed_action` naming another gap's subject. Both are subtractions: `constraining` is now CAPABILITY only — the RESEARCH carve-out's reasoning covers DECISION verbatim, since both forbid a *qualified* claim and no keyword match can tell that from naming the subject — and `narrativeSources()` no longer emits `why_brief.gaps[]` at all, replacing the narrower self-exemption (`exemptGapId` removed as dead). Measured after: 9 → 5 findings over 4 distinct strings, all genuine `area` / `adjudication` CAPABILITY hits. Precision is the whole asset for a report-only check — a gate that cries wolf is how the real misses get waved through (ace#1744). | ACE team |
 | 2026-08-27 | **Step 3c also reads the NARRATIVE artifacts, not just dashboard `render_code` (ace#1759).** The same run's why-brief contradicted a gap it itself declared — `decisions-are-recorded` asserts the disposition is recorded "with its reason" while `adjudication-log-is-run-state-not-a-register` declares no durable register and no reason field. Only a post-render judge caught it, on iteration 2. `checkGapCopy`'s `sources` now takes already-prose entries alongside render_code, and `narrativeSources()` builds them from `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail, proposed_action}` and `unified_spec.scenes[].{concept_claim, show, narrative}`, each labelled by origin. A gap is exempt from its OWN detail/proposed_action. Still report-only; still term matching, so an inverted claim (scene 4's low-variance→fabrication converse) is not caught. | ACE team |
 | 2026-08-27 | **Step 3c: check dashboard COPY against the why-brief's declared gaps (ace#1750).** The narrative was gated against `gaps[]` and the dashboard prose was not, so `hh-poverty-targeting/20260827-0323` shipped four on-screen assertions of exactly what its own gap list declared unsupported — across two dashboards, one contradicting the same page's leave-one-out definition two lines above it. In all four the narration was clean and the UI copy was the offender, so every instance had to be caught by a post-render LLM judge. New `checkGapCopy` in `lib/gap-copy-check.ts`, report-only. Catches subject-term repetition, not semantic equivalence — a coverage claim phrased without the gap's nouns still slips. | ACE team |

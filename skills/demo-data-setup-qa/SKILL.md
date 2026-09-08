@@ -28,6 +28,8 @@ auto-fix protocol, static-vs-LLM rules).
 | live labs | `pipeline_get` + `pipeline_preview` per authored pipeline | check 12: the DECLARED field list, and a fresh extraction to judge it against |
 | live labs | `workflow_get` per authored workflow, scoped to its OWNING opp/program | check 10: the definition, plus the `pipeline_sources[].{name, schema_summary}` that says whether each declared id resolves in that scope (ace#1894) |
 | `demo-data-setup` | `<demo-run>/7-synthetic/branch-scrub_report.yaml` | check 9: the spec derivation (incl. `unparsed[]`), the branch-scrub ledger, and the post-scrub audit |
+| `demo-narrative` | `<demo-run>/7-synthetic/<demo-slug>.yaml` | check 14: the authored scenes' `actions[]`, read for the framing of every judged still |
+| `demo-data-setup` | `<demo-run>/7-synthetic/dashboard-terms.yaml` | check 15: the coined column/row labels each dashboard renders, and the definition affordance each one carries (written by the producer's step 3d) |
 
 ## Products
 
@@ -57,6 +59,8 @@ auto-fix protocol, static-vs-LLM rules).
 
 | 12 | `authored_pipeline_fields_extract` | static | **Every field an authored pipeline DECLARES actually extracts something, judged from a FRESH preview.** For each pipeline the run authored (read the schema with `pipeline_get`, not the columns that came back), call `mcp__connect-labs__synthetic_reload_fixtures(<labs_opp_id>)` once, then `mcp__connect-labs__pipeline_preview(pipeline_id, opportunity_id, sample_size >= 10)`, and pass `{pipeline_id, declared: schema.fields, rows, from_cache: per_opp_metadata[<opp>].from_cache, fields_all_null}` to `checkPipelineFieldsExtract` (`lib/pipeline-field-extraction.ts`). Fails on: a preview served `from_cache: true` (warm rows are not evidence about the saved schema); a declared field no returned row carries; and a declared field that is null/zero for EVERY row with no `filter_path` to explain it. An all-zero **filtered** count is reported, not failed — a filter may legitimately match nothing. Zero-for-SOME-rows is data and is never flagged. The preview's own `fields_all_null` is folded in so this can never fall below labs' detector. | Re-point the named field at a path the fixture actually writes, `synthetic_reload_fixtures`, re-`pipeline_update_schema`, and re-preview until `from_cache: false` AND the column is non-dead on at least one row. **Do not delete the field to clear the check** — the render binds it, so a removed column is the same dead demo |
 | 13 | `declared_detection_has_a_cohort` | static | **A demo that DECLARES a detection control must have realized a cohort that makes detection non-trivial.** Runs `checkDetectionCohortFloor` (`lib/ddd-scene-actions.ts`) over the producer's own `source` block: fails when `source.detectable_signal` names a control (step 1c's required authoring output) and `source.data_shape.rows` is below `DETECTION_MIN_ROWS` (24). Silent when no signal is declared, when `detectable_signal.below_programme_scale` carries a PDD quote proving the programme's own roster is under the floor (raising the cohort would misrepresent it, and stripping the signal would make the dashboards less honest — an unevidenced flag is rejected), when the documented `none` escape is recorded ("the PDD declares no verification rules"), or when `rows` is unstated — it never guesses. Zero network calls; both fields are written by step 1c/2b before this gate runs. | **Raise the cohort in the MANIFEST and regenerate** — no narration fixes it, because a detection claims unaided scanning is not viable and that is false the moment the whole cohort fits in one look. If the demo is not really about detection, drop `detectable_signal` or record the `none` escape. Complements `checkSceneCardinality`'s vocabulary rule, which catches the opposite half (a narrative CLAIMING detection the data never declared) — that rule is keyed on words like `flag`/`outlier`/`detect`, so a detection demo written in plain descriptive prose evades it entirely: on `bednet-check-2-visit/20260902-1555` the spec carried ZERO detection tokens over a 5-row cohort, the vocabulary rule found nothing, and Phase 7 ended `stopped_not_converged` at concept 2.0/5 on exactly that objection, raised independently by all five per-scene judges (ace#2131) |
+| 14 | `scroll_framing_is_anchored` | static | **Every judged frame is framed by something the PAGE owns, not by a pixel guess.** Runs `checkScrollFraming` (`lib/demo-frame-legibility.ts`) over the authored spec's `scenes[]`. A `kind: scroll` is judged only when a still is actually written at the position it set — a `hold` or `snapshot` follows it, or it ends the scene (the scene's end frame is the canonical still); a scroll the spec navigates away from before any capture is transient and is not judged. **Fails** on a raw pixel `value`. `top` / `bottom` are REPORTED, not failed — they name a landmark the page defines and survive a layout change, but they decide only one edge of the frame. Runs only once `demo-narrative` has written the spec; before that this row is not-yet-judged, and `demo-narrative` § Step 3b runs the same function inline at authoring time. This row is the backstop that does not depend on anyone remembering. | Replace the pixel scroll with a `scroll_to` action naming the element the frame is about — canopy resolves and centres it live, so it holds at any page length. **Write only `kind` and `target` on it.** There is no framing key to add: `_ActionBase` sets `extra="forbid"`, which is why the ace#1660 check that demanded one was retracted, and why today's judge remedy ("offset so no partial histogram sits above it") breaks the spec if followed literally. If the header block and the whole table cannot co-exist in one frame, split the beat into two scenes rather than compromising both |
+| 15 | `coined_terms_are_defined_on_page` | static | **A label a lay viewer cannot read carries an on-page definition they can reach FROM the label.** Runs `checkCoinedTerms(dashboardTerms, definedTerms)` (`lib/demo-frame-legibility.ts`) over the two lists the producer's step 3d enumerates off the render code it uploaded. Fails on a coined label with no definition anywhere, and on one whose only definition sits in a glossary panel elsewhere on the page (`at_point_of_use` not `true`) while the label renders on a hero surface. An orphan definition matching no label is reported. An EMPTY enumeration is reported, never a silent pass — this check cannot tell a plain-language dashboard from an un-enumerated one, and only one of those is a pass. Deliberately keyed on the ARTIFACT, not on a jargon word list: a vocabulary rule is what ace#1841 pruned for precision and ace#2131 then evaded. | Put the gloss at the point of use — an info affordance on the column header carrying that column's one-line plain read, or a plain-language lead line with the statistics demoted behind it. **Adding another panel is not the fix**, measured: iteration 2 of `poverty-graduation/20260905-1345` added a "What each column means" panel, the judge recorded it VERIFIED PRESENT and correct, and the jargon cap fired on six of seven scenes anyway because the panel is below the fold of every frame that uses the vocabulary. Renaming the label so it needs no gloss is better still where it is available — "Surveys in the 31-point band" → "Small-household surveys (≤3 members)" deletes both the term and the disavowal sentence the glossary had to carry |
 
 All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 `fail`; else `pass`.
@@ -216,10 +220,86 @@ and looked perfect. Rows that were not computed against the schema now saved are
 not evidence about it, and `synthetic_reload_fixtures` (ace#1860) makes a fresh
 one one call away — so a cached preview fails rather than passing.
 
+## Why checks 14 and 15 exist — thirteen checks about DATA, none about READING (ace#2219)
+
+Checks 1–13 are all about whether the numbers are right: bindings, pipelines,
+extraction, totals, constraints, cohort size. Not one of them asks whether a
+viewer can read those numbers off the frame the render produces. That is not a
+gap in any individual check — it is a whole missing tier, and it is the tier
+that has now produced five Phase 7 runs at concept **2.0/5**.
+
+The first three (**ace#1841**) were fixed by adding a DETECTION verb to
+`checkSceneCardinality`, keyed on the narrative's **vocabulary**. The fourth
+(**ace#2131**) evaded that by being written in plain descriptive prose, and was
+fixed by `checkDetectionCohortFloor`, keyed on a **declared field**. The fifth,
+`poverty-graduation/20260905-1345`, came from a third and unrelated cause that
+neither rule can see, because it is not about the data at all:
+
+> The narration is strong throughout; **the frames under-carry it.**
+
+`verdict-user.yaml` returned `projector_test: false` and
+`five_second_read_correct: false` on **7 of 7** scenes. Two mechanisms, both
+decidable before a single frame is recorded.
+
+**Framing (check 14).** The spec used `kind: scroll` five times — `'400'`,
+`'1280'`, `'bottom'`, `'320'`, `'top'` — and `scroll_to` once. Three of the five
+are raw pixel guesses about how a page the spec does not own renders at a
+viewport it does not control. Scene 5's landed a twelve-row table one row short:
+row twelve, Umar Bello, *"sliced through its middle at the bottom edge with its
+badge truncated mid-word"* — which, in the judge's words, *"spoils scene 6
+without being readable"* — while the same scroll *"puts the title, the
+simulated-data disclosure and all four KPI cards off the top"*. Scene 4's
+`bottom` *"guillotines the two modal histogram bars (627 and 487) at the frame's
+top edge — value labels gone, the two bars rendering at identical heights when
+they differ by 140 households"*, while the panel the scene was actually about
+sat fully framed below.
+
+This is CLAUDE.md's *"don't guess at what another system owns"*, in the one place
+nothing was checking for it. `scroll_to` names an element and lets canopy's
+recorder find and centre it; a pixel offset is correct for one row count and one
+font stack and reports nothing when it stops being correct.
+
+**This is NOT the retracted ace#1660 check, and it adds no `offset`.** That
+check flagged `scroll_to` for LACKING an offset and told authors to write
+`offset: 96`, which `_ActionBase`'s `extra="forbid"` REFUSES — following it
+turned a passing spec into one canopy rejects. Check 14 inverts it: `scroll_to`
+is the remedy, taken exactly as canopy declares it (`kind` + `target`, nothing
+else), and what gets flagged is the other action. Worth stating because today's
+judge remedy reads *"offset so no partial histogram sits above it"* — literally
+the retracted syntax. `test/lib/demo-frame-legibility.test.ts` pins every
+remediation string against canopy's own action fields so the class cannot come
+back a third time.
+
+**Jargon (check 15).** The `'jargon visible to non-technical users, max 2'` hard
+cap fired **independently on six of the seven scenes** — `31-point band`,
+`10-point band`, `Surveys in the 31-point band`, `Mean likelihood below the
+line`, `Payable` / `Non-payable`, *"coined terms defined nowhere on the page"* —
+and *"one percentage column silently switches denominator at row 5"*. The
+five-second read of scene 2 came out as *"steady ~460 submissions a week"*
+rather than the point of the scene, because *"the grey series carries no number
+and reads as chart padding"*.
+
+The second iteration is the measurement that matters. A *"What each column
+means"* panel was added; the judge recorded it **VERIFIED PRESENT** and correct,
+defining all seven review-table columns; and the cap fired on six of seven
+scenes **anyway**, because *"the panel is BELOW THE FOLD of every frame that
+uses the vocabulary"*. So check 15 does not ask whether a definition exists on
+the page — it asks whether a reader of the LABEL can reach it from the label.
+In the judge's own words:
+
+> Expanding an acronym is not the same as glossing it, and moving a definition
+> on-screen is not the same as moving it to the point of use.
+
+Both checks take DATA and decide from the artifact. Neither is keyed on a word
+list, deliberately: ace#1841 pruned that list FOR precision and ace#2131 evaded
+it anyway, so a third vocabulary rule would be the third instance of the same
+mistake.
+
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-07 | **New checks 14 `scroll_framing_is_anchored` + 15 `coined_terms_are_defined_on_page` — the LEGIBILITY tier (ace#2219, successor to ace#1841 and ace#2131).** The thirteen checks above are all about DATA; none asks whether a rendered frame can be READ, and that is where the fifth Phase 7 run at concept 2.0/5 came from. `poverty-graduation/20260905-1345` returned `projector_test: false` and `five_second_read_correct: false` on 7 of 7 scenes with the judge's headline "the frames under-carry it" — three raw pixel scrolls slicing a row in half and pushing four KPI cards off the top, and a jargon hard cap firing on six of seven scenes over coined column labels whose glossary panel sat below the fold. `checkScrollFraming` + `checkCoinedTerms` in `lib/demo-frame-legibility.ts` (+ `test/lib/demo-frame-legibility.test.ts`, whose fixtures are the run's own spec values and the judges' own quoted terms). Both read the ARTIFACT, not narrative vocabulary — the two prior fixes were each keyed narrowly and each evaded by the next run. Neither re-adds the retracted ace#1660 check and neither writes `offset`, which is pinned by a test. | ACE team |
 | 2026-09-07 | **New check 13 `declared_detection_has_a_cohort` (ace#2131)** — the detection floor was enforced only through `checkSceneCardinality`, which reads the NARRATIVE's vocabulary, so a textbook outlier-detection demo written in plain descriptive language matched nothing. `bednet-check-2-visit/20260902-1555` carried zero detection tokens across its whole spec over a 5-worker cohort; the only cardinality finding was on the unrelated comparison/groups axis, and Phase 7 ended `stopped_not_converged` at 2.0/5 on the very objection the floor exists to pre-empt. Broadening the vocabulary was rejected — ace#1841 pruned that list FOR precision, and a report-only check that cries wolf is how real misses get waved through (ace#1744). The fact was already stated one layer up, without inference: `source.detectable_signal` and `source.data_shape.rows` are written by the same skill into the same block, before `demo-narrative` runs and long before anything renders. `checkDetectionCohortFloor` compares them. | ACE team |
 | 2026-09-06 | **New check 12 `authored_pipeline_fields_extract` (ace#1864)** — the first check that judges an authored pipeline's DECLARED field list against a FRESH extraction, rather than a rendered payload's returned columns. Pipeline 5414 declared `records` on a path the fixture never wrote; `count` of nothing is `0`, so labs' null-only `fields_all_null` stayed silent, check 7 saw a warm-cached good snapshot, and the demo's below-floor filter matched 0 of 12 with every gate green. `checkPipelineFieldsExtract` in `lib/pipeline-field-extraction.ts` (+ `test/lib/pipeline-field-extraction.test.ts`), fed by one `pipeline_preview` per authored pipeline. Counts zero as dead, enumerates from the declaration, refuses a `from_cache: true` preview, and folds in `fields_all_null` so it can never fall below the upstream detector. | ACE team |
 | 2026-08-26 | **New check 11 `cross_dashboard_totals_agree` (ace#1683)** — the first check that compares dashboards to EACH OTHER rather than inspecting one at a time. Two dashboards over labs opp 10047 disagreed by 51 visits / 29 completed because the snapshotted run's `period_end` equalled the fixture's last `visit_date` and the bound is exclusive; all ten existing checks passed and only the DDD concept judge caught it, after the render. `checkCrossDashboardConsistency` + `deriveVisitTotal` in `checks.ts`, operating on the payloads check 7 already fetches. Excludes program-scoped rollups by construction and honours an explicit `period_scope: 'partial'` declaration, so an intended sub-window is declared rather than silently tolerated. | ACE team |
