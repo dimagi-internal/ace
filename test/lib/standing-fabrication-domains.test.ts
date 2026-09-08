@@ -27,6 +27,9 @@ import {
   extractAntiFabricationSection,
   auditComposedPrompt,
   formatStandingDomainReport,
+  CONTACT_EXACTNESS_OBLIGATIONS,
+  auditContactExactness,
+  extractContactProtectionBlocks,
 } from '../../lib/standing-fabrication-domains.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -49,8 +52,21 @@ Safety exception: if someone describes a situation involving immediate danger, h
 
 Every answer you give ends with a tag line.`;
 
-/** The same section as the union of (PDD open questions) + (standing set). */
-const PROMPT_FIXED_SECTION = `## Do not invent operational specifics
+/**
+ * dimagi-internal/ace#2216 — the union of (PDD open questions) + (standing
+ * set), and NO contact-exactness clause. This is the shape that shipped on
+ * `spark-facilitator/20260907-1120`: all four standing domains present, zero
+ * `@` anywhere in the prompt, exit 0 under the four-assertion audit. The bot
+ * then answered prompt 1 of the 3-prompt quick gate with
+ * *"For escalation beyond that, reach out to ace@dimagi.com."*
+ *
+ * The golden template owned that protection — it names the exact address AND
+ * forbids the wrong spelling by name — but Step 8's `ocs_set_chatbot_pipeline`
+ * sets `patch.prompt` wholesale (`mcp/ocs/backends/playwright.ts`), so the
+ * composed prompt REPLACES it rather than extending it and no per-opp bot ever
+ * serves the guard.
+ */
+const PROMPT_NO_CONTACT_CLAUSE = `## Do not invent operational specifics
 
 Several things about this pilot are genuinely undecided:
 
@@ -65,6 +81,25 @@ These domains are off-limits on every opportunity, whatever the design says:
 - **Medical or legal instruction** — never supply one.
 
 ## Mandatory closing step — tagging`;
+
+/**
+ * The exactness clause `ocs-agent-setup` § Step 7 mandates. It names NO
+ * address: the value still comes from retrieval (ace#1665). What it carries is
+ * the golden guard's load-bearing half — quote it verbatim, never from general
+ * knowledge, never vary the spelling.
+ */
+const CONTACT_CLAUSE =
+  "Contacts for this opportunity — the ACE admin group's escalation address " +
+  'and every named contact — are in the opportunity knowledge base. Quote them ' +
+  'verbatim from there. If a contact you need is not published, say the ' +
+  'programme has not published one and offer the ACE admin group; never supply ' +
+  'an address from general knowledge or vary the spelling of one.';
+
+/** The same prompt with the contact-exactness clause restored. */
+const PROMPT_FIXED_SECTION = PROMPT_NO_CONTACT_CLAUSE.replace(
+  '## Mandatory closing step — tagging',
+  `## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n## Mandatory closing step — tagging`,
+);
 
 describe('the standing set is well-formed', () => {
   it('carries the four domains the class requires, with stable ids', () => {
@@ -156,6 +191,211 @@ describe('auditComposedPrompt — a prompt carrying the union', () => {
     expect(a.sectionPresent).toBe(false);
     expect(a.missing).toHaveLength(STANDING_FABRICATION_DOMAINS.length);
     expect(formatStandingDomainReport(a)).toContain('no "## Do not invent operational specifics"');
+  });
+});
+
+/**
+ * dimagi-internal/ace#2216 — the FIFTH assertion.
+ *
+ * The four standing domains live INSIDE `## Do not invent operational
+ * specifics`. The protection the golden template owned does not: it is a
+ * contact-exactness clause, and it is the half that the composed prompt
+ * silently dropped. `ocs-agent-setup` § Step 7 asserted the golden guard
+ * "stays as written — it is the cold-start fallback" and told authors not to
+ * restate it; Step 8 sets `patch.prompt` wholesale, so it survives only in the
+ * window before the publish, i.e. only while nobody is talking to the bot.
+ *
+ * The class is NOT "the prompt said ace@dimagi.com". It is "the composed
+ * prompt dropped a protection the template owned", so the audit asserts the
+ * three load-bearing halves of that protection and never a literal address —
+ * a check that greps one wrong spelling passes the next variant, and the same
+ * class has already produced an invented `pm@dimagi-ai.com`
+ * (hh-poverty-targeting/20260824-1404).
+ */
+describe('the contact-exactness obligations are well-formed', () => {
+  it('carries the three halves of the protection, with stable ids', () => {
+    expect(CONTACT_EXACTNESS_OBLIGATIONS.map((o) => o.id)).toEqual([
+      'quote-verbatim',
+      'no-general-knowledge',
+      'no-spelling-variation',
+    ]);
+  });
+
+  it('gives every obligation a label and a reason', () => {
+    for (const o of CONTACT_EXACTNESS_OBLIGATIONS) {
+      expect(o.label.length, `${o.id} needs a label`).toBeGreaterThan(0);
+      expect(o.why.length, `${o.id} needs a rationale`).toBeGreaterThan(40);
+    }
+  });
+
+  it('names no email address — the value comes from retrieval (ace#1665)', () => {
+    for (const o of CONTACT_EXACTNESS_OBLIGATIONS) {
+      expect(o.pattern.source, `${o.id} must not hardcode an address`).not.toMatch(/@/);
+    }
+  });
+});
+
+describe('extractContactProtectionBlocks', () => {
+  it('returns the blocks that actually talk about contacts', () => {
+    const blocks = extractContactProtectionBlocks(PROMPT_FIXED_SECTION);
+    expect(blocks.join('\n')).toContain('escalation address');
+  });
+
+  it('finds none in the ace#2216 fixture — that is the defect', () => {
+    expect(extractContactProtectionBlocks(PROMPT_NO_CONTACT_CLAUSE)).toEqual([]);
+  });
+
+  it('does not let a verbatim rule about something ELSE count as contact cover', () => {
+    // A blanket "quote verbatim" about payment amounts is not a contact
+    // protection, and scoping is what stops it reading as one.
+    const decoy = [
+      'Never state a payment amount unless it appears verbatim in the knowledge',
+      'base, and never supply one from general knowledge or vary the spelling.',
+      '',
+      'The escalation address is in the knowledge base.',
+    ].join('\n');
+    expect(auditContactExactness(decoy).ok).toBe(false);
+  });
+});
+
+describe('auditComposedPrompt — the ace#2216 contact-exactness gap', () => {
+  it('the fixture really is the shape that shipped: four domains, no address', () => {
+    expect(PROMPT_NO_CONTACT_CLAUSE).not.toContain('@');
+    expect(auditComposedPrompt(PROMPT_NO_CONTACT_CLAUSE).missing).toEqual([]);
+  });
+
+  it('FAILS it — a complete standing half no longer buys an exit 0', () => {
+    const audit = auditComposedPrompt(PROMPT_NO_CONTACT_CLAUSE);
+    expect(audit.ok).toBe(false);
+    expect(audit.contactExactness.ok).toBe(false);
+    expect(audit.contactExactness.missing.map((o) => o.id)).toEqual(
+      CONTACT_EXACTNESS_OBLIGATIONS.map((o) => o.id),
+    );
+  });
+
+  it('names every missing obligation in the operator report', () => {
+    const report = formatStandingDomainReport(auditComposedPrompt(PROMPT_NO_CONTACT_CLAUSE));
+    for (const o of CONTACT_EXACTNESS_OBLIGATIONS) expect(report).toContain(o.label);
+  });
+
+  it('PASSES once the clause Step 7 mandates is present', () => {
+    const audit = auditComposedPrompt(PROMPT_FIXED_SECTION);
+    expect(audit.ok).toBe(true);
+    expect(audit.contactExactness.missing).toEqual([]);
+  });
+
+  it('is not satisfied by inlining the RIGHT address', () => {
+    // ace#1665: an address the prompt carries and the corpus does not is
+    // reproduced from recall. Inlining the value is not the protection, and
+    // must not buy a pass.
+    const inlined = PROMPT_NO_CONTACT_CLAUSE.replace(
+      '## Mandatory closing step',
+      'Escalate to the ACE admin group at ace@dimagi-ai.com.\n\n## Mandatory closing step',
+    );
+    expect(auditComposedPrompt(inlined).ok).toBe(false);
+  });
+
+  it('is not a grep for one wrong domain either', () => {
+    // The literal-string fix the issue warns against: banning the one spelling
+    // that drifted. It says nothing about the next variant.
+    const oneDomain = PROMPT_NO_CONTACT_CLAUSE.replace(
+      '## Mandatory closing step',
+      'Never use the address ace@dimagi.com.\n\n## Mandatory closing step',
+    );
+    expect(auditComposedPrompt(oneDomain).ok).toBe(false);
+  });
+
+  it('requires all three halves — dropping any ONE fails', () => {
+    const ablations: [string, string, string][] = [
+      ['quote-verbatim', 'Quote them verbatim from there.', 'Quote them from there.'],
+      [
+        'no-general-knowledge',
+        'never supply an address from general knowledge or vary the spelling of one',
+        'never vary the spelling of one',
+      ],
+      [
+        'no-spelling-variation',
+        'never supply an address from general knowledge or vary the spelling of one',
+        'never supply an address from general knowledge',
+      ],
+    ];
+    for (const [id, from, to] of ablations) {
+      const weakened = PROMPT_FIXED_SECTION.replace(from, to);
+      expect(weakened, `ablation for ${id} must actually change the prompt`).not.toBe(
+        PROMPT_FIXED_SECTION,
+      );
+      const audit = auditComposedPrompt(weakened);
+      expect(audit.ok, `dropping ${id} must fail the audit`).toBe(false);
+      expect(audit.contactExactness.missing.map((o) => o.id)).toEqual([id]);
+    }
+  });
+});
+
+/**
+ * The strongest available control that the audit measures the protection the
+ * TEMPLATE owned rather than a phrasing invented here: run it against the
+ * golden template's own guard, read off disk. If that guard ever loses one of
+ * the three halves this fails, which is the right outcome — the composed
+ * prompt is only being asked to carry what the template carried.
+ */
+describe('the golden template guard satisfies the audit (ace#2216)', () => {
+  const bootstrap = readFileSync(`${ROOT}scripts/bootstrap-ocs-golden-template.ts`, 'utf8');
+  const literal = /const GOLDEN_TEMPLATE_PROMPT = `([\s\S]*?)\n`;/.exec(bootstrap);
+
+  it('the golden prompt is still extractable from the bootstrap script', () => {
+    expect(literal, 'GOLDEN_TEMPLATE_PROMPT literal not found').not.toBeNull();
+    expect(literal![1]).toContain('any other spelling');
+  });
+
+  it('carries all three halves of the contact protection', () => {
+    const audit = auditContactExactness(literal![1]);
+    expect(audit.missing.map((o) => o.id)).toEqual([]);
+    expect(audit.ok).toBe(true);
+  });
+});
+
+/**
+ * ace#2216 — Step 7 is where the false claim lived, and a doc that misstates
+ * the mechanism is part of the defect: the composer only skipped the
+ * protection because Step 7 said it was already there.
+ */
+describe('ocs-agent-setup § Step 7 states the replacement fact (ace#2216)', () => {
+  it('never claims the golden guard is a cold-start fallback without retracting it', () => {
+    // The phrase may still APPEAR — Step 7 quotes the retracted wording so a
+    // future reader recognises it, and the 2026-08-26 changelog row is
+    // history. What must not survive is an un-retracted claim: Step 8 sets
+    // `patch.prompt` wholesale, so the guard is live only before the publish,
+    // i.e. only while nobody is talking to the bot.
+    const RETRACTION = /(ace#2216|was false|is superseded|superseded by)/i;
+    for (let i = agentSetup.indexOf('cold-start fallback'); i !== -1; ) {
+      const window = agentSetup.slice(Math.max(0, i - 500), i + 500);
+      expect(
+        RETRACTION.test(window),
+        `"cold-start fallback" at offset ${i} is stated without a retraction ` +
+          'nearby. The golden guard does not survive Step 8\'s publish.',
+      ).toBe(true);
+      i = agentSetup.indexOf('cold-start fallback', i + 1);
+    }
+  });
+
+  it('says the publish REPLACES the prompt, and names the call that does it', () => {
+    const step7 = agentSetup.slice(
+      agentSetup.indexOf('7. **Compose the system prompt'),
+      agentSetup.indexOf('7.5.'),
+    );
+    expect(step7).toMatch(/REPLACE/i);
+    expect(step7).toContain('ocs_set_chatbot_pipeline');
+  });
+
+  it('mandates a clause that itself passes the audit — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, as two obligations:');
+    expect(start, 'Step 7 must still mandate the obligations verbatim').toBeGreaterThan(-1);
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('- **Carry a `## Do not invent'));
+    const audit = auditContactExactness(mandated);
+    expect(
+      audit.missing.map((o) => o.label),
+      'the text Step 7 tells the composer to write must satisfy Step 7.5',
+    ).toEqual([]);
   });
 });
 

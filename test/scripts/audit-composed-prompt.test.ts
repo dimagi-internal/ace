@@ -25,7 +25,10 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STANDING_FABRICATION_DOMAINS } from '../../lib/standing-fabrication-domains.js';
+import {
+  STANDING_FABRICATION_DOMAINS,
+  CONTACT_EXACTNESS_OBLIGATIONS,
+} from '../../lib/standing-fabrication-domains.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = join(REPO_ROOT, 'scripts/audit-composed-prompt.ts');
@@ -50,8 +53,26 @@ Safety exception: if someone describes a situation involving immediate danger, h
 Every answer you give ends with a tag line.
 `;
 
-/** The same prompt with the standing half added — the union Step 7 mandates. */
-const PROMPT_FIXED = PROMPT_V3.replace(
+/**
+ * The contact-exactness clause `ocs-agent-setup` § Step 7 mandates
+ * (dimagi-internal/ace#2216). It names NO address — the value comes from
+ * retrieval (ace#1665); what it carries is the golden guard's load-bearing
+ * half.
+ */
+const CONTACT_CLAUSE =
+  "Contacts for this opportunity — the ACE admin group's escalation address " +
+  'and every named contact — are in the opportunity knowledge base. Quote them ' +
+  'verbatim from there. If a contact you need is not published, say the ' +
+  'programme has not published one and offer the ACE admin group; never supply ' +
+  'an address from general knowledge or vary the spelling of one.';
+
+/**
+ * The same prompt with the STANDING half added — the union Step 7 mandates,
+ * and nothing else. ace#2216's fixture: this is the shape that shipped on
+ * `spark-facilitator/20260907-1120` and exited 0 under the four-assertion
+ * audit, with zero `@` characters anywhere in it.
+ */
+const PROMPT_STANDING_ONLY = PROMPT_V3.replace(
   'Safety exception:',
   [
     'These domains are off-limits on every opportunity, whatever the design says:',
@@ -65,6 +86,12 @@ const PROMPT_FIXED = PROMPT_V3.replace(
     '',
     'Safety exception:',
   ].join('\n'),
+);
+
+/** Publishable: the standing half AND the contact-exactness clause. */
+const PROMPT_FIXED = PROMPT_STANDING_ONLY.replace(
+  '## Mandatory closing step — tagging',
+  `## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n## Mandatory closing step — tagging`,
 );
 
 let tmp: string;
@@ -108,6 +135,60 @@ describe('scripts/audit-composed-prompt.ts — the two controls', () => {
 
   it('NON-INERTNESS: the two controls differ, so the gate is not exit-0-always', () => {
     expect(runOn(PROMPT_V3).code).not.toBe(runOn(PROMPT_FIXED).code);
+  });
+});
+
+describe('scripts/audit-composed-prompt.ts — the ace#2216 fixture', () => {
+  // The composed prompt this repo actually published: four standing domains,
+  // zero `@`, exit 0. The bot then answered prompt 1 of the 3-prompt quick
+  // gate with "For escalation beyond that, reach out to ace@dimagi.com." —
+  // with the right address indexed and retrievable. The golden template owned
+  // that protection and Step 8's publish replaces it wholesale.
+  it('the fixture really is the shipped shape: no address anywhere in it', () => {
+    expect(PROMPT_STANDING_ONLY).not.toContain('@');
+  });
+
+  it('POSITIVE CONTROL: exits 1 naming the contact obligations, not a domain', () => {
+    const { code, stderr } = runOn(PROMPT_STANDING_ONLY);
+    expect(code).toBe(1);
+    expect(stderr).toContain('[CONTACT-EXACTNESS]');
+    for (const o of CONTACT_EXACTNESS_OBLIGATIONS) expect(stderr).toContain(o.label);
+    expect(stderr, 'the standing half is complete here').not.toContain('standing domain(s) missing');
+    expect(stderr).toContain('DO NOT publish this prompt');
+  });
+
+  it('NEGATIVE CONTROL: adding the clause — and nothing else — flips it to 0', () => {
+    const { code, stdout } = runOn(PROMPT_FIXED);
+    expect(code).toBe(0);
+    expect(stdout).toContain('contact-exactness obligations present');
+  });
+
+  it('NON-INERTNESS: the two differ only by that clause and differ in exit code', () => {
+    expect(PROMPT_FIXED.replace(`## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n`, '')).toBe(
+      PROMPT_STANDING_ONLY,
+    );
+    expect(runOn(PROMPT_STANDING_ONLY).code).not.toBe(runOn(PROMPT_FIXED).code);
+  });
+
+  it('inlining the right address does not buy a pass (ace#1665 stays intact)', () => {
+    const inlined = PROMPT_STANDING_ONLY.replace(
+      '## Mandatory closing step — tagging',
+      'Escalate to the ACE admin group at ace@dimagi-ai.com.\n\n## Mandatory closing step — tagging',
+    );
+    expect(runOn(inlined).code).toBe(1);
+  });
+
+  it('--json carries the contact verdict for machine consumers', () => {
+    const { code, stdout } = runOn(PROMPT_STANDING_ONLY, ['--json']);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.missing).toEqual([]);
+    expect(parsed.contact_exactness.ok).toBe(false);
+    expect(parsed.contact_exactness.blocks_present).toBe(false);
+    expect(parsed.contact_exactness.missing.map((m: { id: string }) => m.id)).toEqual(
+      CONTACT_EXACTNESS_OBLIGATIONS.map((o) => o.id),
+    );
   });
 });
 
@@ -201,5 +282,6 @@ describe('scripts/audit-composed-prompt.ts — the other input paths', () => {
     expect(parsed.missing.map((m: { id: string }) => m.id).sort()).toEqual(
       STANDING_FABRICATION_DOMAINS.map((d) => d.id).sort(),
     );
+    expect(parsed.contact_exactness.ok).toBe(false);
   });
 });

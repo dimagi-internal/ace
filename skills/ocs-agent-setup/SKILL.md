@@ -464,12 +464,39 @@ round-trip gate in Step 11.5 below.
      to look one up: internal file names are retrieval plumbing and the
      reader has no way to open them. If you cannot retrieve a contact,
      say so plainly — do not substitute a file name for an answer."*
-     The golden template's own inline address
-     (`scripts/bootstrap-ocs-golden-template.ts`, the ace#1142
-     anti-fabrication guard) stays as written — it is the cold-start
-     fallback for the window before the collection is attached and
-     indexed, and `00-program-contacts.md` is the retrievable
-     corroboration for it. Do not edit that guard.
+
+     **Those two obligations are mandatory, and Step 7.5 asserts the
+     exactness half of the first one — because the golden template's
+     guard does NOT survive into this bot
+     (dimagi-internal/ace#2216).** Step 8's
+     `ocs_set_chatbot_pipeline` sets `patch.prompt = args.prompt`
+     (`mcp/ocs/backends/playwright.ts`) — a wholesale **REPLACEMENT** of
+     the `LLMResponseWithPrompt` node's prompt, not an extension of it.
+     So the ace#1142 guard in
+     `scripts/bootstrap-ocs-golden-template.ts` — which names the exact
+     address *and* forbids the wrong spelling by name — is live only in
+     the window between the clone and the publish, i.e. only while
+     nobody is talking to the bot. Every answer a real user ever gets
+     comes from the prompt composed here.
+
+     An earlier version of this step said that guard *"stays as written
+     — it is the cold-start fallback"* and used that as the reason not to
+     carry the protection here. It was false for every per-opp bot, and
+     it cost a gate: on `spark-facilitator/20260907-1120` the composed
+     prompt carried all four standing domains, **zero `@` characters**,
+     and passed Step 7.5; the bot then answered prompt 1 of the 3-prompt
+     quick gate with *"For escalation beyond that, reach out to
+     ace@dimagi.com."* — with `00-program-contacts.md` present, indexed
+     and carrying the right address. **That domain resolves**, so a
+     supervisor writing to it gets silence, not a bounce. 2.33/3 FAIL;
+     3.0/3 after the prompt was patched.
+
+     Do not edit the golden guard — it is still the template's own
+     protection, and `00-program-contacts.md` is the retrievable
+     corroboration for it. Carry the protection **here** as well. And
+     note what this does NOT change: restating the exactness RULE is not
+     restating the VALUE. The address itself still comes from retrieval,
+     never from this prompt (ace#1665).
    - **Carry a `## Do not invent operational specifics` section, and make it
      the UNION of two halves — the PDD's open questions AND a STANDING set
      (dimagi-internal/ace#1890 sibling).** The first half is per-opportunity
@@ -615,9 +642,9 @@ round-trip gate in Step 11.5 below.
      `[product-feedback]` means real limitation reports go unrouted once
      LLOs are on the bot.
 
-7.5. **Standing-domain gate (mandatory; halts the phase —
-   dimagi-internal/ace#2015).** Write the composed prompt to a file and audit
-   it BEFORE Step 8 publishes it:
+7.5. **Composed-prompt gate (mandatory; halts the phase —
+   dimagi-internal/ace#2015, extended by #2216).** Write the composed prompt
+   to a file and audit it BEFORE Step 8 publishes it:
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
@@ -626,17 +653,32 @@ round-trip gate in Step 11.5 below.
 
    The script calls `auditComposedPrompt` from
    `lib/standing-fabrication-domains.ts` — the module whose labels Step 7
-   mandates — and exits **0** when the `## Do not invent operational
-   specifics` section carries all four standing domains, **1** when the
-   section or any domain is missing, **2** on a harness error (no file,
-   unreadable, empty — not a verdict either way; fix the invocation and
+   mandates — and exits **0** only when BOTH halves hold: the
+   `## Do not invent operational specifics` section carries all four
+   standing domains, AND the prompt carries the **contact-exactness**
+   protection (quote contacts verbatim from the KB, never from general
+   knowledge, never vary the spelling — the three load-bearing halves of the
+   guard Step 8's publish replaces). It exits **1** when the section, any
+   domain, or any contact obligation is missing, **2** on a harness error (no
+   file, unreadable, empty — not a verdict either way; fix the invocation and
    re-run).
 
    **On exit 1, do NOT call `ocs_set_chatbot_pipeline`.** The report names
-   each missing domain and why inventing there is expensive. Add the
-   domain(s) to the section per Step 7, rewrite the file, and re-run the
-   audit until it exits 0. On exit 2, re-run; never proceed on an unread
-   verdict.
+   each missing domain or obligation and why dropping it is expensive. Add
+   the missing text per Step 7, rewrite the file, and re-run the audit until
+   it exits 0. On exit 2, re-run; never proceed on an unread verdict.
+
+   **Why the fifth assertion is not a grep for `ace@dimagi.com`
+   (dimagi-internal/ace#2216).** The class is *the composed prompt dropped a
+   protection the golden template owned*, not *the prompt named one wrong
+   domain* — the same class has already produced a second spelling (an
+   invented `pm@dimagi-ai.com`, `hh-poverty-targeting/20260824-1404`), so a
+   one-string ban passes the next variant. The audit therefore asserts the
+   three obligations and never an address literal, which also keeps it
+   compatible with ace#1665: none of the three requires this prompt to be the
+   authority for the value. The control is the golden guard itself — read off
+   disk, it satisfies all three, so the composed prompt is only being asked
+   to carry what the template carried.
 
    **Why here and not after the publish.** Step 8 is the only write that
    puts a prompt on the bot, and BOTH entry paths reach it through Step 7 —
@@ -946,6 +988,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-07 | **Step 7.5 gains a FIFTH assertion — the contact-exactness protection, because the golden template guard does not survive the publish (closes dimagi-internal/ace#2216).** Step 7 forbade restating the escalation address on the stated belief that the ace#1142 guard in `scripts/bootstrap-ocs-golden-template.ts` — which names `ace@dimagi-ai.com` exactly and forbids `ace@dimagi.com` by name — "stays as written, it is the cold-start fallback". It does not: Step 8's `ocs_set_chatbot_pipeline` sets `patch.prompt = args.prompt` (`mcp/ocs/backends/playwright.ts`), a wholesale REPLACEMENT, so the guard is live only between the clone and the publish — i.e. only while nobody is talking to the bot. Step 7 already stated that replacement fact for the standing domains (ace#2015) and asserted the opposite two bullets earlier for the address; both could not be true, and **the doc is what caused the miss** — the composer skipped a protection because the instruction said it was already there. Cost: on `spark-facilitator/20260907-1120` the composed prompt carried all four standing domains, **zero `@` characters**, exited 0, and the bot answered prompt **1 of the 3-prompt quick gate** with *"For escalation beyond that, reach out to ace@dimagi.com."* — with `00-program-contacts.md` present, indexed (file 63608, collection 577) and carrying the right address. That domain RESOLVES, so a supervisor writing to it gets silence, not a bounce; 2.33/3 FAIL, 3.0/3 after a prompt patch. `auditComposedPrompt` now also asserts the three load-bearing halves of the protection — quote contacts **verbatim** from the KB, never from **general knowledge**, never **vary the spelling** — matched only inside blocks that actually talk about contacts, so the anti-fabrication section's own blanket `verbatim` rule cannot stand in for a contact protection the prompt never states. Deliberately **not** a grep for `ace@dimagi.com`: the class is *a dropped protection*, not *one wrong spelling*, and it has already produced a second variant (invented `pm@dimagi-ai.com`, `hh-poverty-targeting/20260824-1404`). It also stays compatible with ace#1665 — no obligation requires the prompt to be the AUTHORITY for the value, and inlining the right address does not buy a pass. *Enforced:* `test/scripts/audit-composed-prompt.test.ts` spawns the real gate on the shipped shape (four domains + no clause → exit 1, was exit 0) with a non-inertness case pinning that the two fixtures differ only by the clause; `test/lib/standing-fabrication-domains.test.ts` adds per-obligation ablations, the inline-the-right-address and ban-one-domain negative controls, a control that the GOLDEN GUARD read off disk satisfies all three halves, and a doc-vs-gate check that the sentence Step 7 mandates verbatim itself passes Step 7.5. | ACE team |
 | 2026-09-06 | **New Step 7.5 — the standing-domain preventer now has a runtime caller with halt semantics (closes dimagi-internal/ace#2015).** `61e7a785` shipped `auditComposedPrompt()` as the preventer for the ace#1142 fabrication class and **nothing ever called it** — `grep -rn "auditComposedPrompt" bin/ scripts/ hooks/ commands/ agents/ mcp/` returned nothing, and the only caller in the repo was its own test. What that test could pin is that THIS DOCUMENT lists the four labels; it cannot see the prompt any given run composes, because that prompt is authored at run time by an agent reading this document and pushed straight to `ocs_set_chatbot_pipeline`. So the invariant reduced to "the agent followed the checklist" — the prose-does-not-bind mode 61e7a785 was written to escape, and the same one `ocs-chatbot-eval` has now answered five times with deterministic passes (ace#1646, #1890, #1891, #1935, #1955). The cost is on the record: `hh-poverty-targeting` chatbot 13029 shipped with the emergency-number ban in **neither** place — the composed prompt REPLACES the golden template's text rather than extending it, and its replacement was seeded from PDD open questions alone, which for that PDD name no emergency-number question — and invented *"Nigeria emergency: 112 or 199"* on opp-46 of a live deep run, zero corpus hits for `112`, `199` or "emergency" across all 23 documents of collection 570. Step 7.5 writes the composed prompt to a file and runs `scripts/audit-composed-prompt.ts` **between composition and publish**: exit 0 = all four domains present, exit 1 = do NOT call `ocs_set_chatbot_pipeline`, exit 2 = harness error and never a verdict either way. Placed before the publish because Step 8 is the only write that puts a prompt on the bot and BOTH entry paths reach it through Step 7 — a fresh setup and a `--prompt-patch` re-run, which Step 0 now states explicitly is not exempt. *Enforced:* `test/scripts/audit-composed-prompt.test.ts` spawns the real script for both controls (positive = the verbatim v3 section that shipped with zero standing domains → exit 1; negative = the same section carrying the union → exit 0; plus a non-inertness case asserting the two differ, and the ace#2015 fixture dropping only `Safeguarding and emergency escalation`), and `test/lib/standing-fabrication-domains.test.ts` § "the skill wires the gate in" pins the invocation, its ORDER relative to Step 8, its halt wording, and the `--prompt-patch` exemption. | ACE team |
 | 2026-09-02 | **Step 7's anti-fabrication list is now the UNION of the PDD's open questions and a STANDING set of four high-cost domains (dimagi-internal/ace#1890 sibling).** Seeded from the PDD alone, the `## Do not invent operational specifics` section bars invention exactly where the PDD happened to be uncertain and is silent where fabricating costs a field worker the most. On `spark-facilitator/20260828-0703` the generated section carried five bullets, all five genuine PDD open questions (LLO award, districts, smartphones, supervision ratios, in-addition-vs-instead-of); Stage A scored **8.03**, cleared the 7.0 bar, and the `--deep` gate still returned `iterate` on two `[FABRICATED-OPERATIONAL-SPECIFIC]` Fails — **opp-50**, an improvised cash-handover pathway through a community treasurer and a "savings register" the design is silent on, and **opp-56**, an invented device-loss / PersonalID-recovery chain ("contact her coordinator - account resets need to be handled from the backend") the PDD does not specify at all. Neither cash custody nor account recovery is an open question in that PDD, so neither was listed; patching those two topics into one opportunity's prompt clears two entries and leaves the class open. The standing half — money movement and payment logistics, account and credential recovery, safeguarding and emergency escalation, medical or legal instruction — is not derived from the PDD and ships on every opportunity. Matched by LABEL rather than by keyword on purpose: the v3 prompt's closing safety paragraph contains "safeguarding" and "harm" while forbidding no invention, and a topic scan reads that as covered. The safety INSTINCT is explicitly preserved (the standing set forbids the invented procedure, not the instinct), and the golden-template guard is untouched. Same step also adds the stored-value vs what-actually-happened entry to `## Rules people commonly get wrong`: **opp-48** scored 5.8 and inverted the mechanic, telling a supervisor a misreported meeting is caught when the predicate reads the stored value and it therefore passes and pays. *Enforced:* `lib/standing-fabrication-domains.ts` + `test/lib/standing-fabrication-domains.test.ts`, whose negative-control fixture is the verbatim v3 section that shipped. | ACE team |
 | 2026-09-01 | **Never name the contacts FILE to a user (dimagi-internal/ace#1891).** Step 7 told the bot to quote contacts *from a named file*, which invites the model to name the file: across the 68-prompt deep run on `spark-facilitator/20260828-0703` the bot routed escalation to `00-program-contacts.md` in **7 entries** (opp-20, opp-29, opp-42, opp-46, opp-52, opp-57, cg-2) — a file a field supervisor cannot open — and in 2 of those emitted the wrong domain from recall while doing it. The generated file STAYS (ace#1665: an address the prompt carries and the corpus does not is reproduced from recall, and the same run still drifted to `ace@dimagi.com` on opp-29/opp-38 from prompt recall alone — inlining the address would be more of that, not less). What changes is presentation: the composed prompt now carries a second obligation — give the reader the contact ITSELF, never a file/document/collection/config name, and say so plainly when retrieval comes up empty rather than substituting a filename for an answer. The generated page's own preamble carries the same rule, so retrieval reinforces it. *Enforced on the eval side:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts` cap any response naming an internal artifact at <=6, with the seven verbatim responses as the fixture. | ACE team |
@@ -955,5 +998,5 @@ Each row this skill writes uses `phase: 5-ocs` and
 | 2026-05-15 | Add `2-scenarios/pdd-to-test-prompts.md` to the canonical KB recipe (Step 5); add archetype-aware "primary vs supplementary surface" line to the system-prompt composition checklist (Step 7) — for `focus-group`, the chatbot is the primary facilitator training + post-session writing surface. Make `6-qa-and-training/*` reads tolerant of missing files (Phase 6 may not have run yet in `/ace:run` flow). Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 agent observations. | ACE team |
 | 2026-08-18 | **New Step 3.5 — post-clone liveness gate, with a golden-template control.** Probe the fresh clone before building the collection; on failure probe `$OCS_GOLDEN_TEMPLATE_ID` too and branch on the 2×2 (both fail = team LLM key, the ace#743 class; clone fails + golden passes = the clone mechanism, ace#1492 — do NOT touch prompt or collections). Previously a dead clone surfaced only at the Phase 5 quick gate, *after* the 5–10 min collection build, and presented as a *quality* failure — so the documented remedy (`--prompt-patch` → re-run qa+eval) aimed the retry loop at the prompt, which cannot be the cause. On `bednet-check-2-visit/20260817-1720` that cost the whole phase budget before a virgin-clone control found it. Observing gate, not a predictive guard. | ACE team |
 | 2026-08-25 | **Step 7: tagging is now a mandatory closing step with the two triggers stated as tests (dimagi-internal/ace#1646).** The composition checklist carried tagging as a single descriptive bullet ("use [training-gap] and [product-feedback] tags per the golden template conventions") with no obligation attached, and it is the one behaviour in that checklist that came back weak: 5.0/10 on the deep rubric's 15%-weighted Tagging dimension, 5 of 8 expected tags missed on a 51-prompt suite where content scored 49 Pass / 2 Warn / 0 Fail. Sharpest miss: two answers that correctly volunteered a known product limitation and did not tag it — the bot reached for `[product-feedback]` on a *reported* bug but not on a *volunteered* limitation, so both halves of that trigger are now spelled out. Validate with `--prompt-patch` (no re-index) plus a deep re-run. Observed on `bednet-check-2-visit/20260825-1310` Phase 5. | ACE team |
-| 2026-08-26 | **Step 5 generates `00-program-contacts.md` into the KB; Step 7 points at it instead of restating the escalation address (dimagi-internal/ace#1665).** The recipe carried no file naming the programme's contacts, so `ace@dimagi-ai.com` lived only in the composed prompt — reproduced from recall, with no retrievable anchor for retrieval to correct. On `hh-poverty-targeting/20260824-1404` (experiment 13014, collection 566) a 73-prompt deep run emitted `ace@dimagi.com` twice and an invented `pm@dimagi-ai.com` once against 27 correct entries; under `ocs-chatbot-eval` § `fabricated_operational_specifics` each clamps to Fail. The contacts page sources the admin address from `config/agent.json` and OMITS any row whose authoritative source is absent in this run (usually the `selected_llo` rows, since Phase 5 precedes Phase 8) rather than filling a placeholder. The ace#1142 anti-fabrication guard in `scripts/bootstrap-ocs-golden-template.ts` is untouched and remains the cold-start fallback. Pinned by `test/skills/kb-contacts-present.test.ts`. | ACE team |
+| 2026-08-26 | **Step 5 generates `00-program-contacts.md` into the KB; Step 7 points at it instead of restating the escalation address (dimagi-internal/ace#1665).** The recipe carried no file naming the programme's contacts, so `ace@dimagi-ai.com` lived only in the composed prompt — reproduced from recall, with no retrievable anchor for retrieval to correct. On `hh-poverty-targeting/20260824-1404` (experiment 13014, collection 566) a 73-prompt deep run emitted `ace@dimagi.com` twice and an invented `pm@dimagi-ai.com` once against 27 correct entries; under `ocs-chatbot-eval` § `fabricated_operational_specifics` each clamps to Fail. The contacts page sources the admin address from `config/agent.json` and OMITS any row whose authoritative source is absent in this run (usually the `selected_llo` rows, since Phase 5 precedes Phase 8) rather than filling a placeholder. The ace#1142 anti-fabrication guard in `scripts/bootstrap-ocs-golden-template.ts` is untouched and remains the cold-start fallback. **That last clause was false and is superseded by dimagi-internal/ace#2216** — Step 8 replaces the prompt wholesale, so the guard is live only before the publish; the composed prompt must carry the exactness protection itself, and Step 7.5 now asserts it. Pinned by `test/skills/kb-contacts-present.test.ts`. | ACE team |
 | 2026-09-01 | **Step 5: third upload constraint — strip embedded `data:` payloads before uploading (dimagi-internal/ace#1827).** `exportAs: 'text/markdown'` inlines every embedded image in a native gdoc as base64, so an illustrated document reaches the RAG index at 8-28x its prose size; on `bednet-check-2-visit/20260828-0629` the training pack was 91% base64 by volume and the FLW guide was 264,538 bytes for ~9 KB of prose. Every downloaded file now goes through `scripts/strip-inline-data-uris.ts` (pure helper `lib/inline-data-uri.ts`) before the first upload call. Note the export shape is a link-reference DEFINITION (`[image1]: <data:...>` + `![][image1]`), not the inline `![alt](data:...)` the issue proposed matching — that regex matches zero of the 16 payloads in the specimen. Pinned by `test/skills/ocs-upload-strips-data-uris.test.ts`. | ACE team |
