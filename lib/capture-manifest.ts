@@ -29,6 +29,17 @@
 // ONE reader — `collectCaptureEntries` — and `flattenManifestFrames` calls it,
 // so the two cannot disagree again.
 //
+// ace#2236: widening the reader once is not a fix, it is a move in a game the
+// producer keeps winning. #2224 taught it `journeys[].{screenshots,steps,
+// duplicates}[]`; on the very next run the producer wrote 60 frames under a
+// TOP-LEVEL `screenshots:` and the reader saw zero again
+// (spark-facilitator/20260907-1120). So two things ship together here: the
+// reader learns that container too — it is unambiguous and it strands real,
+// uploaded, citable frames — and `assertManifestReadable` names ANY
+// capture-shaped container the reader does NOT read, whatever it is called.
+// The widening handles the instance; the detector is what ends the treadmill,
+// because the next misspelling is one nobody has thought of yet.
+//
 
 export interface CaptureEntry {
   step: string;
@@ -90,6 +101,8 @@ export interface RawJourneyLike {
 
 export interface CaptureManifestLike {
   captures?: readonly RawCaptureEntry[];
+  /** The top-level variant the producer wrote on spark-facilitator (ace#2236). */
+  screenshots?: readonly RawCaptureEntry[];
   journeys?: readonly RawJourneyLike[];
   [k: string]: unknown;
 }
@@ -102,6 +115,7 @@ export interface CaptureManifestLike {
  * Containers accepted, in the order a manifest lists them:
  *
  *   - `captures[]` — the shape this file's docs describe;
+ *   - `screenshots[]` at the TOP level (ace#2236);
  *   - `journeys[].screenshots[]`, plus its sibling `journeys[].duplicates[]`;
  *   - `journeys[].steps[]`, carrying `duplicate_of` inline on the entry.
  *
@@ -147,6 +161,7 @@ export function collectCaptureEntries(
   };
 
   if (Array.isArray(m.captures)) for (const c of m.captures) push(c);
+  if (Array.isArray(m.screenshots)) for (const s of m.screenshots) push(s);
 
   if (Array.isArray(m.journeys)) {
     for (const j of m.journeys as RawJourneyLike[]) {
@@ -160,6 +175,156 @@ export function collectCaptureEntries(
 }
 
 const entries = collectCaptureEntries;
+
+// ---------------------------------------------------------------------------
+// Is the manifest a producer just wrote actually READABLE? (ace#2236)
+// ---------------------------------------------------------------------------
+
+/** Containers `collectCaptureEntries` reads, as normalised dotted paths. */
+const READ_CONTAINERS = new Set([
+  'captures',
+  'screenshots',
+  'journeys[].screenshots',
+  'journeys[].steps',
+  'journeys[].duplicates',
+]);
+
+/**
+ * Containers that are capture-shaped but deliberately unread. Forensics from
+ * an earlier FAILED dispatch are not steps of the walk that shipped, so citing
+ * one is a real defect (ace#1571) — and stranding them is correct, not a
+ * finding.
+ */
+const IGNORED_CONTAINERS = new Set(['superseded_artifacts']);
+
+export type ManifestReadabilityReason =
+  /** Capture-shaped rows sit in a container no consumer reads. */
+  | 'unread-container'
+  /** The reader came back with a different number of frames than were captured. */
+  | 'count-mismatch';
+
+export interface ManifestReadabilityFinding {
+  reason: ManifestReadabilityReason;
+  /** Dotted path of the container, array indices collapsed: `journeys[].frames`. */
+  path: string;
+  /** Capture-shaped rows stranded there (`unread-container`) or read (`count-mismatch`). */
+  count: number;
+  detail: string;
+}
+
+export interface ManifestReadabilityReport {
+  ok: boolean;
+  /** What `collectCaptureEntries` — the reader every consumer uses — sees. */
+  read_entries: number;
+  /** What the caller said it captured, when it said. */
+  expected_entries?: number;
+  findings: ManifestReadabilityFinding[];
+}
+
+/** A row that represents an actual frame someone could cite. */
+function isCaptureShaped(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  const named =
+    (typeof r.step === 'string' && r.step.trim() !== '') ||
+    (typeof r.step_name === 'string' && r.step_name.trim() !== '');
+  if (!named) return false;
+  // Requiring a FILE is what keeps this from crying wolf over the manifest's
+  // bookkeeping blocks (`repairs_applied_by_phase6`, `forensics`, …), which
+  // also carry step names but no frame. A row with a name and a file is
+  // exactly the thing a training artifact can cite.
+  return (
+    (typeof r.file_id === 'string' && r.file_id.trim() !== '') ||
+    (typeof r.drive_path === 'string' && r.drive_path.trim() !== '')
+  );
+}
+
+/**
+ * Does the manifest this producer just wrote read back?
+ *
+ * Why this exists, and why it is not simply "widen the reader again": on
+ * spark-facilitator/20260907-1120 the manifest held 60 uploaded, file_id-bearing
+ * frames under a top-level `screenshots:` key and `collectCaptureEntries`
+ * returned ZERO. Nothing reported it. Every downstream guard the training
+ * skills are required to run — `framesCitedWithoutShows`,
+ * `findDuplicateCitations`, `canonicalCaptures` — returned clean, because they
+ * had nothing to find anything in. **A consumer that finds nothing reports
+ * clean, not empty**, so the deck and the FLW guide for that run were graded
+ * against a manifest that was, to the tooling, empty.
+ *
+ * The asymmetry is what makes a structural check worth it rather than another
+ * doc line: a malformed manifest costs nothing at write time and produces
+ * *reassuring* output downstream. Step 6 of `app-screenshot-capture` has
+ * spelled the container correctly in prose since ace#2224 — prose is exactly
+ * what did not hold.
+ *
+ * So this walks the WHOLE document for arrays of capture-shaped rows and names
+ * every one the reader does not read, by whatever key the producer invented.
+ * That is the half that survives the next misspelling; teaching the reader one
+ * more container name only ever fixes the last one.
+ *
+ * Pure, allocation-cheap, and never throws — a producer runs it over the object
+ * it is about to serialise, and a consuming fence runs it over the object it
+ * just parsed.
+ */
+export function assertManifestReadable(
+  manifest: CaptureManifestLike | undefined | null,
+  opts?: { expectedCount?: number },
+): ManifestReadabilityReport {
+  const readEntries = entries(manifest).length;
+  const findings: ManifestReadabilityFinding[] = [];
+
+  // Collect stranded containers: path -> count of capture-shaped rows.
+  const stranded = new Map<string, number>();
+  const walk = (node: unknown, path: string, depth: number) => {
+    if (depth > 8 || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      const shaped = node.filter(isCaptureShaped).length;
+      const key = path.split('.').pop() ?? '';
+      if (shaped > 0 && !READ_CONTAINERS.has(path) && !IGNORED_CONTAINERS.has(key)) {
+        stranded.set(path, (stranded.get(path) ?? 0) + shaped);
+      }
+      for (const item of node) walk(item, `${path}[]`, depth + 1);
+      return;
+    }
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      walk(v, path ? `${path}.${k}` : k, depth + 1);
+    }
+  };
+  walk(manifest ?? {}, '', 0);
+
+  for (const [path, count] of [...stranded].sort((a, b) => a[0].localeCompare(b[0]))) {
+    findings.push({
+      reason: 'unread-container',
+      path,
+      count,
+      detail:
+        `${count} capture-shaped row(s) sit under \`${path}\`, which ` +
+        `collectCaptureEntries does not read. No consumer can see them, and ` +
+        `every caption guard will report CLEAN over them. Write them under ` +
+        `\`captures:\` (app-screenshot-capture § Step 6).`,
+    });
+  }
+
+  const expected = opts?.expectedCount;
+  if (typeof expected === 'number' && expected !== readEntries) {
+    findings.push({
+      reason: 'count-mismatch',
+      path: '(manifest)',
+      count: readEntries,
+      detail:
+        `${expected} frame(s) were captured but collectCaptureEntries reads ` +
+        `${readEntries}. Every consumer sees the second number.`,
+    });
+  }
+
+  return {
+    ok: findings.length === 0,
+    read_entries: readEntries,
+    ...(typeof expected === 'number' ? { expected_entries: expected } : {}),
+    findings,
+  };
+}
 
 /**
  * Only the captures that show a distinct moment. Select images through this
