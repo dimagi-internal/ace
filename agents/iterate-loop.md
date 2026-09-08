@@ -436,9 +436,17 @@ effect. Treat a missing value as "never validated", not as "valid".
 with a non-null `fix_pr`), halt-and-surface — don't churn versions on a fix
 that isn't landing the class.
 
-Dispatch ONE `Agent` (a level-1 fix+ship subagent) with the failing verdict's
-Drive `fileId` + the transcript excerpt **inline** (do NOT paraphrase — see
+Dispatch ONE `Agent` (a level-1 fix+ship subagent) **with
+`isolation: "worktree"`** and with the failing verdict's Drive `fileId` +
+the transcript excerpt **inline** (do NOT paraphrase — see
 `orchestrator-reference.md § On phase retry, pass the verdict fileId inline`).
+
+The flag is not optional here and the header above is why: this loop runs
+"always local, against the ACE checkout", so an un-isolated subagent branches,
+`git add -A`s and bumps VERSION in the loop's own worktree while the loop is
+still driving runs from it. See `orchestrator-reference.md § Dispatch it into
+its OWN worktree` (ace#2001, recurrence ace#2233).
+
 The subagent:
 
 1. Root-causes via the `investigate` skill (Iron Law: no fix without root
