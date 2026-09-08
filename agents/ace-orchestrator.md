@@ -531,7 +531,9 @@ brief, and `run_state.yaml` at level 0; piping them down avoids 3–5 Drive
 round-trips per phase. The Drive copy stays canonical (audit trail);
 phases write back to Drive at completion. If a phase agent finds the
 inline content is stale (e.g. an operator edited the PDD mid-run),
-it MAY re-fetch — but the default is "trust the inline copy."
+it MAY re-fetch — but the default is "trust the inline copy." An
+artifact too large to inline is passed **by reference** rather than
+dropped or paraphrased — see the guard below.
 
 **Write artifacts to Drive incrementally — do NOT batch all writes to
 phase end.** A phase agent should write each artifact (recipe,
@@ -556,7 +558,9 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 
 ## Inline artifacts (do not re-fetch unless explicitly stale)
 ### PDD
-<full PDD body>
+<full PDD body — or, when it exceeds the 40,000-char inline cap, the
+ by-reference block: path, fileId, total_length, and an explicit
+ "read it with drive_read_file(fileId, writeToPath='<abs local path>')">
 
 ### Previous-phase verdicts (if any)
 <concatenation of `<phase>/<producer>-qa_result.yaml` and
@@ -570,19 +574,46 @@ Run your full Phase N workflow per your agent definition.
 <any phase-specific context the agent needs but that its definition doesn't contain>
 ```
 
-**Inline the artifact BODY, never a placeholder for it.** Before
-sending the dispatch, re-read the prompt's `## Inline artifacts`
-section and confirm each `<full … body>` slot holds the actual
-artifact text — not a template token (`PDD_BODY_PLACEHOLDER`,
-`<full PDD body>`, `{{PDD}}`) left unsubstituted. A stub that survives
-to dispatch silently inverts the contract: the prompt says "do not
-re-fetch" while carrying nothing to read, and large artifacts (a 68 KB
-PDD) exceed the MCP `drive_read_file` result cap, so the agent's
-fallback fetch is degraded too. Phase-agent side of the same guard: if
-an inline block is a bare placeholder token, treat the artifact as NOT
-inlined and read it from Drive (targeted reads under the result cap)
-before proceeding. (Live incident hh-poverty-targeting/20260730-2210
-Phase 2; jjackson/ace#1103.)
+**Inline the artifact BODY, or pass it BY REFERENCE — never a
+placeholder for either.** Before sending the dispatch, re-read the
+prompt's `## Inline artifacts` section and confirm each `<full … body>`
+slot holds the actual artifact text, or an honest by-reference block —
+not a template token (`PDD_BODY_PLACEHOLDER`, `<full PDD body>`,
+`{{PDD}}`) left unsubstituted. A stub that survives to dispatch
+silently inverts the contract: the prompt says "do not re-fetch" while
+carrying nothing to read. (Live incident
+hh-poverty-targeting/20260730-2210 Phase 2; jjackson/ace#1103.)
+
+- **Under the inline cap → inline the body**, as today. `drive_read_file`
+  returns a whole document inline up to 40,000 characters
+  (`DEFAULT_INLINE_MAX_CHARS`, `mcp/google-drive-server.ts`), which covers
+  most artifacts.
+- **Over the cap → pass it BY REFERENCE.** Above 40,000 characters the
+  read is refused with a typed `oversized_document`, so L0 physically
+  cannot obtain the body in one call — and ACE's PRIMARY artifacts are
+  exactly the ones that clear it (the PDD, test prompts, the solicitation
+  draft, the training-deck spec, a deep OCS transcript). A by-reference
+  block names the artifact path, its Drive `fileId`, its `total_length`,
+  and instructs the agent to read it with
+  `drive_read_file(fileId, writeToPath='<absolute local path>')`, which
+  writes the COMPLETE document to disk and returns a handle with **no**
+  content, at zero context cost regardless of size. That is a
+  full-fidelity read, not a degraded one. Do **not** prescribe
+  `offset`/`limit` paging as the fallback: paging a document to
+  completion spends its full size in context, and `writeToPath` spends
+  none.
+- **A by-reference block must never masquerade as a body.** Say plainly
+  that the artifact is passed by reference and name the `fileId`. The
+  hazard this guard exists to catch is an agent with *nothing to read* —
+  an unsubstituted token — not bytes that live on Drive with a working
+  handle to them.
+
+Phase-agent side of the same guard: if an inline block is a bare
+placeholder token, treat the artifact as NOT inlined and read it from
+Drive with `drive_read_file(fileId, writeToPath='<absolute local path>')`
+before proceeding. (dimagi-internal/ace#2221 — the rule previously
+claimed the Drive fallback was itself capped and degraded, and pointed
+at paging, which is the more expensive of the two fallbacks.)
 
 **Scope rule: the dispatch prompt MUST NOT narrow the agent's workflow.**
 The `## Your task` section tells the agent which phase to run and passes
@@ -1434,7 +1465,7 @@ When invoked with an opportunity, execute these phases in order.
 - **Write-back.** Every phase writes `phases.<phase-name>.{status, started_at, completed_at, verdict, summary_artifact, steps}` per [§ Phase Write-Back Contract](orchestrator-reference.md#phase-write-back-contract). The boundary fence (§ Phase boundary fence below) governs WHEN.
 - **Gate baseline.** Any `[BLOCKER]` from the phase's eval verdicts halts the run, regardless of mode. The per-phase `Gate:` field below only lists *additional* named pause points or phase-specific gate behavior beyond that baseline; absence of a `Gate:` field means "BLOCKER-only, no named pause point in default mode" — see [§ Pause Points](orchestrator-reference.md#pause-points) for the full table.
 
-`Inputs (inline at handoff)` items are passed via the prompt template in § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff".
+`Inputs (inline at handoff)` items are passed via the prompt template in § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff". Read the label as *passed at handoff*, not as *inline bytes required*: an input over the 40,000-char inline cap — most often the PDD — is passed **by reference** (fileId + `total_length` + a `drive_read_file(fileId, writeToPath=…)` instruction) per that section's guard.
 
 ### Phase 1: Idea to Design
 
