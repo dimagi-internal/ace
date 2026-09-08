@@ -43,7 +43,32 @@ export interface ScreenshotProvenance {
    */
   device_serial?: string;
   written_at_epoch_ms: number;
+  /**
+   * Set when a LATER dispatch observed this artifact still sitting in the
+   * screenshot dir: the id of that later dispatch. `dispatch_id` above stays
+   * the PRODUCING dispatch's, which is the whole point — see
+   * `resolveArtifactProvenance` (dimagi-internal/ace#2237).
+   */
+  superseded_by?: string;
+  /** Epoch ms at which the superseding dispatch observed the artifact. */
+  superseded_at_epoch_ms?: number;
+  /**
+   * True iff this artifact predates the dispatch that last observed it —
+   * i.e. it survived that dispatch's screenshot-dir wipe (`00-*` ground
+   * truth, `*-FAILURE.*` forensics) rather than being produced by it.
+   */
+  carried_over?: boolean;
 }
+
+/**
+ * `dispatch_id` recorded for a carried-over artifact whose PRODUCING dispatch
+ * is unknowable — it carries no sidecar, e.g. because it was written by an
+ * ACE version that predates forensics stamping. Deliberately not a valid
+ * dispatch id (`^\d{13}-[a-z0-9]{6}$`), so the documented consumer
+ * comparison (`prov.dispatch_id !== currentDispatch`) classifies it as stale
+ * rather than silently claiming the current dispatch produced it.
+ */
+export const UNKNOWN_PRIOR_DISPATCH_ID = 'unknown-prior-dispatch';
 
 export function sidecarPathFor(pngPath: string): string {
   return `${pngPath}.meta.json`;
@@ -187,4 +212,126 @@ export function getAceVersion(): string {
  */
 export function _resetAceVersionCacheForTests(): void {
   cachedAceVersion = null;
+}
+
+/**
+ * Decide what provenance an artifact should carry after THIS dispatch has
+ * observed it — the fix for dimagi-internal/ace#2237.
+ *
+ * The screenshot-dir wipe is deliberately selective (ace#1034): `00-*`
+ * ground truth and `*-FAILURE.*` forensics survive it, so a leg that fails
+ * once and then passes leaves the PRIOR attempt's frames sitting next to the
+ * retry's captures. The stamper runs at harvest time over everything in the
+ * dir, so it used to overwrite those preserved files with the CURRENT
+ * dispatch's id — defeating the one comparison the stamp exists for. Observed
+ * on spark-facilitator/20260907-1120: a `journey-deliver-FAILURE.png` captured
+ * ~6h earlier, on a different plugin version and a different emulator serial,
+ * came back carrying the current dispatch's id, version and serial.
+ *
+ * The rule: **mtime decides.** The wipe means an artifact older than this
+ * dispatch's start cannot have been produced by it — so its provenance is
+ * kept (or, absent a sidecar, honestly marked unknown) and only annotated
+ * with `superseded_by`. Anything the dispatch actually wrote (including a
+ * fresh `*-FAILURE.png` that overwrote a preserved one of the same name) has
+ * a current mtime and is stamped as this dispatch's, even if a stale sidecar
+ * from the prior attempt is still lying next to it.
+ *
+ * Consequence worth stating: a `00-*` ground-truth frame written by the
+ * calling SKILL just before `runRecipe` also predates the dispatch, so it is
+ * now marked `carried_over` with no dispatch id rather than claiming this
+ * dispatch produced it. That is the honest reading — the dispatch didn't
+ * produce it — and it is what the `#756` freshness contract already means.
+ */
+export function resolveArtifactProvenance(args: {
+  /** Sidecar already next to the artifact, if any. */
+  existing?: ScreenshotProvenance;
+  /** Provenance built for the dispatch doing the stamping. */
+  current: ScreenshotProvenance;
+  /** Artifact mtime. Undefined when unstattable — then `existing` decides. */
+  fileMtimeEpochMs?: number;
+  /** Epoch ms at which the current dispatch began (before the dir wipe). */
+  dispatchStartedAtEpochMs: number;
+}): ScreenshotProvenance {
+  const { existing, current, fileMtimeEpochMs, dispatchStartedAtEpochMs } = args;
+
+  const producedByCurrent =
+    fileMtimeEpochMs !== undefined
+      ? fileMtimeEpochMs >= dispatchStartedAtEpochMs
+      : existing === undefined || existing.dispatch_id === current.dispatch_id;
+
+  if (producedByCurrent) return current;
+
+  const origin: ScreenshotProvenance = existing ?? {
+    recipe_id: current.recipe_id,
+    dispatch_id: UNKNOWN_PRIOR_DISPATCH_ID,
+    // Not `current`'s version/serial: the artifact was written by a dispatch
+    // we know nothing about, and inventing plausible context is precisely the
+    // failure #2237 reports.
+    ace_version: 'unknown',
+    written_at_epoch_ms: fileMtimeEpochMs ?? current.written_at_epoch_ms,
+  };
+
+  return {
+    ...origin,
+    carried_over: true,
+    superseded_by: current.dispatch_id,
+    superseded_at_epoch_ms: current.written_at_epoch_ms,
+  };
+}
+
+/**
+ * Whether an artifact's provenance says it was NOT produced by the dispatch
+ * asking. The comparison the module header documents, as a function so
+ * consumers stop hand-rolling it (and so `carried_over` can't be missed).
+ */
+export function isCarryover(
+  prov: ScreenshotProvenance | undefined,
+  currentDispatchId: string,
+): boolean {
+  if (!prov) return true;
+  return prov.dispatch_id !== currentDispatchId;
+}
+
+/** Anything with a host path that can carry a provenance sidecar. */
+export interface StampableArtifact {
+  path: string;
+  provenance?: ScreenshotProvenance;
+}
+
+/**
+ * Stamp a batch of harvested artifacts, preserving the provenance of any that
+ * this dispatch did not produce. Writes the sidecar AND sets `.provenance` on
+ * each entry, so the atom result and the on-disk sidecar can never disagree.
+ *
+ * Best-effort per artifact: a write failure is reported through `onError` and
+ * never throws — provenance is forensics, not a load-bearing invariant.
+ */
+export function stampArtifactProvenance(args: {
+  artifacts: StampableArtifact[];
+  current: ScreenshotProvenance;
+  dispatchStartedAtEpochMs: number;
+  onError?: (artifactPath: string, err: unknown) => void;
+}): void {
+  for (const a of args.artifacts) {
+    try {
+      const resolved = resolveArtifactProvenance({
+        existing: readProvenanceSidecar(a.path),
+        current: args.current,
+        fileMtimeEpochMs: artifactMtimeEpochMs(a.path),
+        dispatchStartedAtEpochMs: args.dispatchStartedAtEpochMs,
+      });
+      writeProvenanceSidecar(a.path, resolved);
+      a.provenance = resolved;
+    } catch (e) {
+      args.onError?.(a.path, e);
+    }
+  }
+}
+
+function artifactMtimeEpochMs(p: string): number | undefined {
+  try {
+    return fs.statSync(p).mtimeMs;
+  } catch {
+    return undefined;
+  }
 }

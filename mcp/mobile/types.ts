@@ -465,7 +465,20 @@ export interface ScreenshotEntry {
     dispatch_id: string;
     ace_version: string;
     git_sha?: string;
+    device_serial?: string;
     written_at_epoch_ms: number;
+    /**
+     * Present iff this frame is CARRIED OVER — the screenshot-dir wipe
+     * spared it (`00-*` ground truth, `*-FAILURE.*` forensics) and a later
+     * dispatch harvested it. `dispatch_id` stays the producing dispatch's
+     * (or `unknown-prior-dispatch` when that is unknowable) and
+     * `superseded_by` names the dispatch that observed it. A consumer must
+     * not read such a frame as evidence from the current dispatch
+     * (dimagi-internal/ace#2237).
+     */
+    carried_over?: boolean;
+    superseded_by?: string;
+    superseded_at_epoch_ms?: number;
   };
 }
 
