@@ -152,7 +152,7 @@ describe('checkScrollFraming — a pixel offset guesses at a page it does not ow
     expect(checkScrollFraming({ scenes: [] }).judged).toBe(0);
   });
 
-  it('CONTROL — a spec that anchors every frame passes clean', () => {
+  it('CONTROL — a spec that anchors every frame passes, and says what it did not judge', () => {
     const r = checkScrollFraming({
       scenes: [
         {
@@ -165,8 +165,72 @@ describe('checkScrollFraming — a pixel offset guesses at a page it does not ow
         },
       ],
     });
+    // Still a pass — scroll_to is this module's remedy, not its target.
     expect(r.pass).toBe(true);
+    expect(r.judged).toBe(0);
+    // But the pass is about the ABSENCE of pixel scrolls, and it says so.
+    expect(kinds(r.findings)).toEqual(['scroll-to-framing-unjudged']);
+    expect(blocking(r.findings)).toEqual([]);
+  });
+
+  // ace#2253. spark-facilitator/20260907-1120 read `pass: true, judged: 0` off a
+  // spec whose five framing actions were all scroll_to, and reported it as
+  // "check 14 passed". It had approved nothing: three of those scroll_to actions
+  // silently no-opped on the live page, and the render replaced them with pixel
+  // scrolls. A pass earned over zero evaluations must not read like a verdict.
+  it('says so when the whole pass rests on zero evaluations', () => {
+    const r = checkScrollFraming({
+      scenes: [
+        {
+          id: 'the-test-a-record-has-to-pass',
+          actions: [
+            { kind: 'scroll_to', target: 'text:The payment test.' },
+            { kind: 'hold', seconds: 4 },
+          ],
+        },
+        {
+          id: 'three-below-the-target',
+          actions: [
+            { kind: 'scroll_to', target: 'css:[data-testid=shortfall-panel]' },
+            { kind: 'hold', seconds: 4 },
+          ],
+        },
+      ],
+    });
+
+    expect(r.pass).toBe(true);
+    expect(r.judged).toBe(0);
+    const unjudged = r.findings.filter((f) => f.kind === 'scroll-to-framing-unjudged');
+    expect(unjudged).toHaveLength(1);
+    expect(unjudged[0].blocking).toBe(false);
+    // It counts what it declined to look at, so the gap is measured.
+    expect(unjudged[0].detail).toContain('2');
+  });
+
+  it('stays quiet once it has actually judged something', () => {
+    // A mixed spec: one pixel scroll judged, one scroll_to unjudged. The report
+    // is not misleading here — it evaluated a frame and failed it — so adding a
+    // finding on every mixed spec would be noise, which is the checkGapCopy
+    // precision failure (ace#1744, ace#1762).
+    const r = checkScrollFraming({
+      scenes: [
+        { id: 'pixel', actions: [{ kind: 'scroll', value: '430' }, { kind: 'hold', seconds: 2 }] },
+        {
+          id: 'anchored',
+          actions: [{ kind: 'scroll_to', target: 'testid:t' }, { kind: 'hold', seconds: 2 }],
+        },
+      ],
+    });
+    expect(kinds(r.findings)).toEqual(['pixel-scroll-framing']);
+  });
+
+  it('does not fire on a spec that frames nothing by scrolling at all', () => {
+    // Nothing was judged and nothing was declined — there is no gap to report.
+    const r = checkScrollFraming({
+      scenes: [{ id: 'static', actions: [{ kind: 'goto', target: '${par}' }, { kind: 'hold' }] }],
+    });
     expect(r.findings).toEqual([]);
+    expect(r.judged).toBe(0);
   });
 
   it('ignores a scroll that no judged frame follows', () => {
@@ -331,6 +395,9 @@ describe('remediation vocabulary is expressible in canopy (ace#1660)', () => {
       ],
     ).findings,
     ...checkCoinedTerms([], []).findings,
+    ...checkScrollFraming({
+      scenes: [{ id: 'anchored', actions: [{ kind: 'scroll_to', target: 'testid:t' }] }],
+    }).findings,
   ];
 
   it('generates at least one finding of every kind it can emit', () => {
@@ -342,6 +409,7 @@ describe('remediation vocabulary is expressible in canopy (ace#1660)', () => {
         'definition-not-at-point-of-use',
         'orphan-definition',
         'no-terms-enumerated',
+        'scroll-to-framing-unjudged',
       ]),
     );
   });
