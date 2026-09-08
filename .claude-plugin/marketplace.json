@@ -6,21 +6,13 @@
     "url": "https://github.com/dimagi-internal"
   },
   "metadata": {
-<<<<<<< HEAD
-    "version": "0.13.1355"
-=======
     "version": "0.13.1356"
->>>>>>> 6c8d3813 (fix(run-surface-audit): an admin-tagged link a reviewer cannot open is not a broken link)
   },
   "plugins": [
     {
       "name": "ace",
       "source": "./",
-<<<<<<< HEAD
-      "version": "0.13.1355",
-=======
       "version": "0.13.1356",
->>>>>>> 6c8d3813 (fix(run-surface-audit): an admin-tagged link a reviewer cannot open is not a broken link)
       "description": "AI Connect Engine — orchestrates the ACE lifecycle from idea through app building, Connect setup, LLO management, and closeout"
     }
   ]
