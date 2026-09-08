@@ -477,6 +477,18 @@ front half (how the labs-only opp + its data come to exist) differs.
    Fixing it is one `pipeline_update_schema` here; discovering it after the
    render costs a whole iteration.
 
+   **Enumerate coined terms from EVERYWHERE a frame will show them, not only
+   the column headers.** Check 15's input is a list you write, so an
+   under-enumerated list passes vacuously — the enumeration IS the check. On
+   `spark-facilitator/20260907-1120` it passed both dashboards (13 and 11 labels
+   judged, 0 findings) while the user judge capped `clarity` at 2 on *"a repeated
+   entity key"*, cited independently by six of seven judges. That phrase was body
+   prose inside the *How to read the columns* panel — inside the very surface
+   whose job is to remove jargon — so nobody enumerated it and nothing judged it.
+   Sweep the render code for KPI subtitles, column subtitles and every explainer
+   sentence, and write the panel itself in programme language: a reader who needs
+   the glossary cannot be sent to a glossary that needs one.
+
    **Match the aggregation to the noun the COLUMN HEADER promises, and declare
    the relations between columns.** `count` counts RECORDS; `count_distinct`
    counts THINGS. Rendering one against the other as if they were the same noun
