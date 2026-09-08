@@ -111,6 +111,37 @@ It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest 
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
 
+### Step 3.0: Restore the labs session (FIRST, unconditionally)
+
+The render authenticates to labs with a stored Playwright `storageState`, and that
+session expires (~6 days). **Restore it before dispatching — never probe first, and
+never assume a prior phase left one behind.** Plan C retired the
+`synthetic-walkthrough-*` skills that used to make this call and did not re-home it,
+so for a while nothing in the converged path ran it at all (ace#2255).
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
+  --connect-base-url https://connect.dimagi.com \
+  --labs-base-url https://labs.connect.dimagi.com
+# → rewrites ~/.ace/labs-session.json; that path is what canopy gets as
+#   `record_video --storage-state`.
+```
+
+Needs `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD`. If the `bin/ace-labs-walkthrough-login`
+wrapper dies on a non-shell-safe `.env`, export the two creds by safe parse
+(`sed -n 's/^ACE_HQ_USERNAME=//p' <plugin-data>/.env`) and run the `tsx` above —
+never `source`. `labs probe returned 302 — running OAuth flow` in the output means
+the stored session **was** stale and has just been replaced; that is the normal,
+healthy path, not a warning.
+
+**Why this is a step and not a checkbox.** A stale labs session fails silently, not
+loudly: labs renders the context selector ("No organizations found") and strips
+`?opportunity_id=`, so every scene captures a plausible-looking wrong page and each
+judge scores it as though it were the dashboard (ace#842 § failure mode 2).
+`Agent(canopy:ddd)` cannot cover for you — canopy is handed a storage-state path,
+not a way to mint one.
+
 ### Step 3: Render + converge — canopy DDD
 
 **Dispatch `Agent(canopy:ddd)`** — the full converge → video → upload loop. This is
@@ -196,9 +227,9 @@ phases:
   (Phase 4 ran this run) — the opp + apps the manifest is derived from.
 - [ ] `LABS_MCP_TOKEN` set in `${CLAUDE_PLUGIN_DATA}/.env`.
 - [ ] Labs gdrive parent shared with the ACE SA (fixture verification).
-- [ ] For Step 3 render: labs browser session (ACE self-logins per `agents/demo.md §
-  Preconditions`; needs shell-safe `.env` + `ACE_HQ_USERNAME/PASSWORD`), canopy
-  checkout + `uv` reachable.
+- [ ] For Step 3 render: `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` readable, canopy
+  checkout + `uv` reachable. The labs browser session itself is **not** a
+  precondition to check — Step 3.0 restores it unconditionally every time.
 
 ## Re-runnability
 
