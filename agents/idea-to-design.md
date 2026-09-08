@@ -83,7 +83,7 @@ Invoke the `idea-to-pdd` skill.
 
 ### Step 1.4: Idea-to-PDD QA (structural pass/fail)
 
-Invoke the `idea-to-pdd-qa` skill — runs 6 static structural checks against the produced PDD (sections present, archetype declared, stress-test appendix, success-metrics table populated, evidence-model layered, reviewer-comment table if referenced).
+Invoke the `idea-to-pdd-qa` skill — runs 10 static structural checks against the produced PDD. **Read that skill's own checks table for the list; do not work from an enumeration here.** Three of them shape the PDD's content and are easy to miss: `program_parameters_coherent` (a `## Program Parameters` table must exist and its numbers must not contradict each other), `payment_unit_matches_entity_grain` (a rate unit FINER than `entity_id_grain` is rejected — ace#1420), and `entity_state_taxonomy_declared_for_longitudinal` (a `longitudinal-visits` PDD needs a parseable `entity_state_taxonomy` row, or Phase 3 HALTs — ace#1783).
 
 - Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-qa_result.yaml`
@@ -115,7 +115,7 @@ Invoke the `pdd-to-work-order` skill.
 
 ### Step 2.4: PDD-to-Work-Order QA (structural pass/fail)
 
-Invoke the `pdd-to-work-order-qa` skill — runs 8 static structural checks against the produced work order.
+Invoke the `pdd-to-work-order-qa` skill — runs 14 static structural checks against the produced work order. Read that skill's own checks table for the list.
 
 - Input:
   - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (latest)

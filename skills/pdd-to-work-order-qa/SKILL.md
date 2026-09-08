@@ -11,7 +11,7 @@ disable-model-invocation: false
 
 # PDD-to-Work-Order QA
 
-Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. Ten static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 14 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, auto-fix protocol, static-vs-LLM rules).
 

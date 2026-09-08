@@ -9,7 +9,7 @@ disable-model-invocation: false
 
 # Idea-to-PDD QA
 
-Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. Six static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 10 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 This is the canonical first migration to the QA/Eval split (PR #146). The companion `idea-to-pdd-eval` was slimmed to quality-only dimensions in this same PR; structural completeness now lives here.
 
