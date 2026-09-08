@@ -1659,6 +1659,325 @@ describe('deliver-case-select.yaml (ace#1138 Gap 2)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The case list is UNBOUNDED, so it must be SCROLLED (dimagi-internal/ace#2226).
+//
+// `tapOn` does not scroll a ListView, and `childOf` only SCOPES the search —
+// it does not extend it past the rendered viewport. Every /ace:run files new
+// cases against the SAME Deliver app and the SAME `${ACE_E2E_PHONE}` test
+// user and nothing prunes them, so a tap-only recipe fails on a schedule.
+//
+// Live on spark-facilitator/20260907-1120 (2026-09-08, APK 2.64.0): six
+// `Chilanga - Thandiwe Banda` rows from prior runs filled the viewport, this
+// run's own case was never rendered, and the tap failed
+// `Element not found`. Leg B never ran, so the payable meeting was never filed
+// and `connect_get_deliver_progress` stayed `delivered: 0`.
+//
+// The sibling tile lists got exactly this treatment in #1289; the case list
+// never did. Pinned here so the two cannot diverge again the way #1289's two
+// tile recipes did.
+// ---------------------------------------------------------------------------
+
+/** The budget run ON-DEVICE against the failing case list (ace#2226). */
+const DEVICE_PROVEN_CASE_SCROLL = {
+  direction: 'DOWN',
+  speed: 30,
+  timeout: 30000,
+  visibilityPercentage: 30,
+  centerElement: true,
+} as const;
+
+/** Every `scrollUntilVisible` body in a recipe, nested ones included. */
+function collectScrolls(yamlText: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const walk = (nodes: unknown): void => {
+    if (!Array.isArray(nodes)) return;
+    for (const step of nodes) {
+      if (!step || typeof step !== 'object') continue;
+      for (const [key, value] of Object.entries(step as Record<string, unknown>)) {
+        if (key === 'scrollUntilVisible' && value && typeof value === 'object') {
+          out.push(value as Record<string, unknown>);
+        } else if (key === 'runFlow' && value && typeof value === 'object') {
+          walk((value as { commands?: unknown }).commands);
+        }
+      }
+    }
+  };
+  walk(parseSteps(yamlText));
+  return out;
+}
+
+describe('deliver-case-select.yaml scrolls the unbounded case list (ace#2226)', () => {
+  const map = selectorMap(CASE_LIST_APK).selectors;
+  const yaml = readRecipeAt('deliver-case-select.yaml', CASE_LIST_APK);
+  const containerId = map['case-list-container'].value;
+
+  it('hunts ${CASE_NAME}, scoped to the case-list body like the tap it precedes', () => {
+    const scrolls = collectScrolls(yaml);
+    expect(
+      scrolls.length,
+      'deliver-case-select.yaml must scroll the case list — `tapOn` cannot reach a row ' +
+        'below the fold, and the list grows one case per /ace:run (ace#2226)',
+    ).toBe(1);
+
+    const el = scrolls[0].element as Record<string, unknown> | undefined;
+    expect(el?.text, 'the stop condition must hunt the caller-supplied ${CASE_NAME}').toBe(
+      '${CASE_NAME}',
+    );
+    // Same scoping rule as the tap: the column-header strip renders the SAME
+    // `entity_view_text` id the rows use, and the toolbar carries the MODULE
+    // name. A looser stop condition than the tap that follows it would be a
+    // second, weaker matcher for the same surface.
+    expect(
+      (el?.childOf as Record<string, unknown> | undefined)?.id,
+      'the scroll stop condition must be scoped childOf the case-list container',
+    ).toBe(containerId);
+  });
+
+  it('carries the device-proven budget, not the tile budget', () => {
+    // The tile constant was proven on the opp-list surface and belongs to the
+    // two tile recipes. This one was run on THIS screen (ace#2226 probe:
+    // scroll COMPLETED, follow-up assertVisible on the target case COMPLETED).
+    const s = collectScrolls(yaml)[0];
+    expect({
+      direction: s.direction,
+      speed: s.speed,
+      timeout: s.timeout,
+      visibilityPercentage: s.visibilityPercentage,
+      centerElement: s.centerElement,
+    }).toEqual(DEVICE_PROVEN_CASE_SCROLL);
+  });
+
+  it('is NOT optional — an absent case must fail AT the scroll, naming it', () => {
+    // The tile recipes make their primary scroll optional because each has a
+    // fallback re-hunt to fall through to. There is nowhere to re-hunt from
+    // here: the case list is freshly rendered at the top on entry, so the
+    // target can never be ABOVE the start and a DOWN scroll that exhausts its
+    // budget has walked the whole list.
+    expect(collectScrolls(yaml)[0].optional ?? false).toBe(false);
+  });
+
+  it('scrolls BEFORE the row tap (a scroll after it is inert)', () => {
+    const steps = parseSteps(yaml);
+    const scrollIdx = steps.findIndex(
+      (s) => s && typeof s === 'object' && 'scrollUntilVisible' in (s as object),
+    );
+    const tapIdx = steps.findIndex(
+      (s) =>
+        s &&
+        typeof s === 'object' &&
+        typeof (s as Record<string, unknown>).tapOn === 'object' &&
+        ((s as Record<string, { text?: unknown }>).tapOn.text as unknown) === '${CASE_NAME}',
+    );
+    expect(scrollIdx, 'expected a top-level case scroll').toBeGreaterThan(-1);
+    expect(tapIdx, 'expected the top-level ${CASE_NAME} tap').toBeGreaterThan(-1);
+    expect(scrollIdx).toBeLessThan(tapIdx);
+  });
+
+  it('keeps the pre-scroll list screenshot, which is what diagnosed ace#2226', () => {
+    // `deliver-case-select-list` records the list AS FIRST RENDERED. That
+    // frame is what showed six prior-run rows filling the viewport; moving it
+    // after the scroll would have hidden the cause.
+    const steps = parseSteps(yaml);
+    const shotIdx = steps.findIndex(
+      (s) =>
+        s &&
+        typeof s === 'object' &&
+        (s as Record<string, unknown>).takeScreenshot === 'deliver-case-select-list',
+    );
+    const scrollIdx = steps.findIndex(
+      (s) => s && typeof s === 'object' && 'scrollUntilVisible' in (s as object),
+    );
+    expect(shotIdx, 'expected the deliver-case-select-list frame').toBeGreaterThan(-1);
+    expect(shotIdx).toBeLessThan(scrollIdx);
+  });
+
+  it('the invariant is NON-VACUOUS — the pre-fix tap-only shape is rejected', () => {
+    const preFix = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- extendedWaitUntil:',
+      '    visible:',
+      `      id: "${containerId}"`,
+      '    timeout: 20000',
+      '- tapOn:',
+      '    text: "${CASE_NAME}"',
+      '    childOf:',
+      `      id: "${containerId}"`,
+      '',
+    ].join('\n');
+    expect(
+      collectScrolls(preFix).length,
+      'the shipped-before-#2226 recipe had no scroll at all — the collector must see that',
+    ).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Back cannot dismiss CommCare's "Exit Form?" (dimagi-internal/ace#2227).
+//
+// `connect-resume-opp.yaml` returns to the jobs list by pressing back in a
+// guarded loop. CommCare's modal form-exit confirmation is raised PRECISELY to
+// intercept the back that would discard form state, so back is the one gesture
+// it is guaranteed to swallow: all five presses are absorbed, the jobs-list
+// assert fails, and the Deliver leg is wedged.
+//
+// Live on spark-facilitator/20260907-1120 (2026-09-08, APK 2.64.0, dispatch
+// 1788846422055-6u3mqf) — five backs, then a FAILURE dump holding a modal
+// choice dialog and nothing else.
+//
+// It does not break the FIRST attempt; it breaks every retry after one, which
+// is exactly when a Deliver leg is being repaired — and
+// `skills/app-screenshot-capture` rightly forbids recovering with a cold boot
+// (that resets the device PIN and destroys the post-Learn state). So the two
+// rules together left a mid-form Deliver failure with no legal recovery path.
+//
+// The dismissal is asserted INSIDE every back flow, not once before the loop,
+// because the dialog arrives two ways: left up by the previous dispatch (the
+// #2227 case), or RAISED BY OUR OWN back press when the device sits in a form
+// with no dialog yet — which is what the `form-exit-dialog-button` map row
+// itself records. A pre-loop-only dismissal is a no-op in the second case, and
+// backs #2-5 are then absorbed exactly as before.
+// ---------------------------------------------------------------------------
+describe('connect-resume-opp.yaml clears "Exit Form?" before every back (ace#2227)', () => {
+  // Resolved at the RUNTIME default map, which is where the dialog row was
+  // re-verified. The older blocks in this file resolve at 2.63.0, one map
+  // behind, which predates this row (the same reason the case-list block
+  // resolves at its own APK).
+  const EXIT_APK = '2.64.0';
+  const map = selectorMap(EXIT_APK).selectors;
+  const yaml = readRecipeAt('connect-resume-opp.yaml', EXIT_APK);
+  const EXIT_TEXT = 'EXIT WITHOUT SAVING';
+
+  it('the runtime-default map carries a live-verified form-exit dialog row', () => {
+    const row = map['form-exit-dialog-button'];
+    expect(row, `connect-${EXIT_APK}.yaml must define form-exit-dialog-button`).toBeDefined();
+    expect(
+      row.unverified,
+      'the dialog row was read off a live dump — it must not be flagged unverified',
+    ).toBeUndefined();
+  });
+
+  const dialogId = map['form-exit-dialog-button'].value;
+
+  /**
+   * True when `cmd` is a CONDITIONAL dismissal of the form-exit dialog: a
+   * runFlow guarded on the dialog being visible whose body taps it.
+   *
+   * Both the guard and the tap must carry `id` AND `text`. The id is shared by
+   * BOTH buttons on that dialog with no numeric suffix — "STAY IN FORM" is the
+   * other one — so an id-only matcher can resolve to the button that keeps us
+   * exactly where we are stuck.
+   */
+  function isDialogDismissal(cmd: unknown): boolean {
+    if (!cmd || typeof cmd !== 'object') return false;
+    const flow = (cmd as Record<string, unknown>).runFlow as
+      | { when?: { visible?: Record<string, unknown> }; commands?: unknown[] }
+      | undefined;
+    if (!flow || typeof flow !== 'object') return false;
+    const vis = flow.when?.visible;
+    if (!vis || vis.id !== dialogId || vis.text !== EXIT_TEXT) return false;
+    return (flow.commands ?? []).some((c) => {
+      const tap = (c as Record<string, unknown>)?.tapOn as Record<string, unknown> | undefined;
+      return !!tap && tap.id === dialogId && tap.text === EXIT_TEXT;
+    });
+  }
+
+  /** The `commands` list of every runFlow that directly presses back. */
+  function backFlowBodies(yamlText: string): unknown[][] {
+    const out: unknown[][] = [];
+    const walk = (nodes: unknown): void => {
+      if (!Array.isArray(nodes)) return;
+      for (const step of nodes) {
+        if (!step || typeof step !== 'object') continue;
+        for (const [key, value] of Object.entries(step as Record<string, unknown>)) {
+          if (key !== 'runFlow' || !value || typeof value !== 'object') continue;
+          const cmds = (value as { commands?: unknown }).commands;
+          if (
+            Array.isArray(cmds) &&
+            cmds.some((c) => (c as Record<string, unknown>)?.pressKey === 'back')
+          ) {
+            out.push(cmds);
+          }
+          walk(cmds);
+        }
+      }
+    };
+    walk(parseSteps(yamlText));
+    return out;
+  }
+
+  it('every guarded back flow clears the dialog BEFORE it presses back', () => {
+    const bodies = backFlowBodies(yaml);
+    expect(bodies.length, 'expected the guarded back flows').toBe(5);
+
+    const missing = bodies.filter((cmds) => {
+      const backIdx = cmds.findIndex((c) => (c as Record<string, unknown>)?.pressKey === 'back');
+      const dismissIdx = cmds.findIndex(isDialogDismissal);
+      return dismissIdx === -1 || dismissIdx > backIdx;
+    });
+    expect(
+      missing.length,
+      'every `pressKey: back` must be preceded, in its OWN flow, by a conditional tap on ' +
+        `"${EXIT_TEXT}". A dismissal placed only before the loop is a no-op when our own ` +
+        'back press is what raises the dialog, and backs #2-5 are then absorbed (ace#2227).',
+    ).toBe(0);
+  });
+
+  it('disambiguates the shared choice-dialog id by TEXT, never by id alone', () => {
+    // Both buttons share `choice_dialog_panel` with no numeric suffix, so an
+    // id-only tap can land on "STAY IN FORM" — which leaves us on the exact
+    // surface the branch exists to escape, and does it silently.
+    const steps = parseSteps(yaml);
+    const idOnly: string[] = [];
+    const walk = (nodes: unknown): void => {
+      if (!Array.isArray(nodes)) return;
+      for (const step of nodes) {
+        if (!step || typeof step !== 'object') continue;
+        for (const [key, value] of Object.entries(step as Record<string, unknown>)) {
+          if (key === 'tapOn' && value && typeof value === 'object') {
+            const sel = value as Record<string, unknown>;
+            if (sel.id === dialogId && sel.text === undefined) idOnly.push(JSON.stringify(sel));
+          } else if (key === 'runFlow' && value && typeof value === 'object') {
+            walk((value as { commands?: unknown }).commands);
+          }
+        }
+      }
+    };
+    walk(steps);
+    expect(idOnly, 'a form-exit dialog button must always be matched by id AND text').toEqual([]);
+  });
+
+  it('the dismissal consumes no back — the ace#1848 budget is untouched', () => {
+    // The flow that clears the dialog then presses back from the post-exit
+    // landing, which reproduces byte-for-byte the sequence #2227 proved
+    // on-device (dialog tapped away, then the 5-back prefix walked green).
+    expect(collectGuardedBackFlows(parseSteps(yaml)).length).toBe(5);
+  });
+
+  it('the invariant is NON-VACUOUS — a bare back loop is rejected', () => {
+    const preFix = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      `        id: "${map['home-jobs-list'].value}"`,
+      '    commands:',
+      '      - pressKey: back',
+      '      - waitForAnimationToEnd:',
+      '          timeout: 3000',
+      '',
+    ].join('\n');
+    const bodies = backFlowBodies(preFix);
+    expect(bodies.length, 'the collector must see the pre-fix back flow').toBe(1);
+    expect(
+      bodies[0].some(isDialogDismissal),
+      'the pre-ace#2227 shape carried no dismissal — the predicate must say so',
+    ).toBe(false);
+  });
+});
+
 describe('deliver-form-walk.yaml composes the case list in the right ORDER (ace#1138)', () => {
   const yaml = readRecipeAt('deliver-form-walk.yaml', CASE_LIST_APK);
 
