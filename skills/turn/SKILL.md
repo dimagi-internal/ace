@@ -102,24 +102,32 @@ improvements ship once (a canopy PR) instead of N backports.
   end, don't fix silently. Also ask: did I repeat work by hand that SHOULD be a skill (or an
   issue)?
 
-  **Mechanism — do this, don't just intend it.** At turn START, before the inbox pull, add a
-  `TodoWrite` item literally named **`skill-self-check`**. It stays `pending` for the whole turn.
-  The close-out (below) may not be written while it is still `pending`: mark it `completed` only
-  after you have actually asked both questions above, and report the outcome on the
-  **Issues filed / skills changed** line — `skill-self-check: none` is a valid outcome, an
-  ABSENT line is not.
+  **Mechanism — do this, don't just intend it.** The obligation is the **REQUIRED close-out
+  line**: report the outcome on the **Issues filed / skills changed** line —
+  `skill-self-check: none` is a valid outcome, an ABSENT line is not. That line needs no tool
+  at all, and it is what makes a skipped check visible.
 
-  **If `TodoWrite` does not resolve, SKIP THE TODO — never the check
-  (dimagi-internal/ace#2173).** Measured in a live non-orchestrator session:
-  `ToolSearch select:TaskCreate,TaskUpdate,TodoWrite` returned *No matching deferred tools
-  found* for all three names, so the tool this step depends on is simply absent from some
-  sessions' surface — including `TaskCreate`/`TaskUpdate`, the names
-  `agents/ace-orchestrator.md` tells the orchestrator to try instead. Read the ordering
-  constraint above precisely: it bars a close-out written while the check is still
-  **pending**, not one written without a todo. With no tool, there is no pending item and
-  nothing to gate — so **do the check, write the close-out, and say once that the todo was
-  skipped because the tool did not resolve.** Do not improvise a substitute tracker, and do
-  not halt the turn.
+  **The todo is an optional reminder on top of it, and on current models there isn't one.**
+  Claude Code **2.1.233** withheld `TodoWrite`, `TaskCreate`, `TaskGet`, `TaskUpdate` and
+  `TaskList` from Opus 4.8, Sonnet 5, Fable 5, Mythos 5 and newer unless the operator sets
+  `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` — Anthropic's reason being that those models track
+  multi-step work without a written checklist and the tool definitions cost context
+  ([tools-reference § Task tool availability](https://code.claude.com/docs/en/tools-reference#task-tool-availability)).
+  ACE deliberately does not opt in. So absent is the normal case, not an anomaly:
+  **do the check, write the close-out, and do NOT announce that a todo was skipped**
+  (ace#2210 — that per-turn disclosure was the noise this framing removes).
+  **The todo is optional; the check never is** — the distinction ace#2173 drew as
+  "SKIP THE TODO, never the check", which inverting the default does not soften.
+  Never improvise a substitute tracker, and do not halt the turn.
+
+  **If `TodoWrite` DOES resolve** (an older model, an opted-in operator, or a background /
+  web session, which serve the same tools on every model), you may add an item literally
+  named **`skill-self-check`** at turn START, before the inbox pull, and keep it `pending`
+  for the whole turn. Then the ordering constraint applies as written:
+  the close-out may not be written while it is still `pending` —
+  mark it `completed` only after you have actually asked both questions above.
+  Read that constraint precisely; it bars a close-out written while a check is still
+  pending, not one written without a todo.
 
   This is deliberately the cheap half to lose. The two halves of the checkpoint are not
   equally load-bearing: the **todo** is a reminder, while the **REQUIRED close-out line** —
@@ -137,8 +145,10 @@ improvements ship once (a canopy PR) instead of N backports.
   `checklist_gap: skill-self-check` for the 2026-09-02 window — the step was skipped and the turn
   still closed green, so nothing surfaced it. That is exactly what `CLAUDE.md` predicts of an
   unenforced invariant ("prose relies on the model choosing to comply, which fails under load").
-  A todo is the cheapest thing here that is *visible when absent*: skipping it now costs a missing
-  line in the close-out instead of costing nothing at all.
+  The **close-out line** is the cheapest thing here that is *visible when absent*: skipping the
+  check now costs a missing line in the close-out instead of costing nothing at all. The todo was
+  originally cast in that role, which only worked while the tool existed — hence the inversion
+  above (ace#2210): the enforceable half had to be the half that survives an absent tool.
 - **What ACE has TOLD people expires too — run the counterpart-asks probe as part of the skill
   self-check** (dimagi-internal/ace#1896). Resolve the plugin root first, as every bundled-code
   invocation must:

@@ -45,7 +45,6 @@ prose, this list owns the scannable "what the rule says."
 - **Don't dispatch two `Agent` calls in one message.** Claude Code does not reliably parallelize `Agent` dispatches — treat all of them as serial, including Phase 3's two Nova builds and any future cross-phase orchestration. Bug class: silently-dropped second dispatch. See [reference § Per-phase batching, env, and Agent-serial rules](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
 - **Do batch independent tool calls.** N independent `drive_read_file`, `connect_create_payment_unit`, `nova_update_form` etc. in a single assistant message. Bug class: ~60–90s of pure model-output latency wasted per run when serialized. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
 - **Don't fan out env probes.** Resolve `.env` in ONE bash invocation (or `bin/ace-doctor --preflight`'s `env_file:` output) — not 3–4 separate `ls`/`test -f` probes. Bug class: 30s of latency for a value doctor already publishes. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
-- **Issue all phase `TaskCreate` calls in one parallel block.** The per-phase task list is known up-front; emit one message with N `TaskCreate` tool-uses, not N sequential turns. Bug class: ~30s of unnecessary model-output time at run start. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
 - **≥3 same-class BLOCKER retries within one phase → halt the run.** Write `phases.<phase>.status: error` + `verdict: blocker-retry-cap`, surface `[BLOCKER]`, and stop. Phase agents must not auto-redispatch identical payloads. Bug class: deterministic-failure thrashing (turmeric Phase 4 50-char trap, leep Phase 6 `runner_service_state=failed`). See [reference § BLOCKER retry caps](orchestrator-reference.md#blocker-retry-caps).
 - **When a phase blocks on an infra/contract bug, don't debug at L0.** Dispatch a single `general-purpose` subagent with "find root cause, propose patch, return diff." The orchestrator's job is run flow, not bisect. Bug class: hundreds of lines of bisect noise polluting orchestrator context (leep run 20260512-0418: 1325 lines of L0 ace-web debug). See [reference § Cross-repo debug belongs in a subagent](orchestrator-reference.md#cross-repo-debug-belongs-in-a-subagent).
 
@@ -257,8 +256,10 @@ ToolSearch select:mcp__plugin_ace_ace-gdrive__drive_read_file,mcp__plugin_ace_ac
 ```
 
 **Use the fully-prefixed form** — the bare-name `select:` shortcut
-resolves only built-in deferred tools (`TaskCreate`, `TaskUpdate`,
-…), not plugin-registered atoms. Do NOT fall back to keyword search
+resolves only built-in deferred tools (`WebFetch`, `WebSearch`,
+…), not plugin-registered atoms. Both of those examples were verified
+to resolve via `select:` on 2026-09-07; the line used to name
+`TaskCreate`/`TaskUpdate`, which resolve on no current model (§ Step 4). Do NOT fall back to keyword search
 (`ToolSearch query:"docs_get"`); fuzzy-match silently misses prefixed
 atoms. Do NOT issue additional `ToolSearch` calls mid-run as you
 encounter each atom — fold any miss into this literal next time you
@@ -427,47 +428,54 @@ a plausible-looking ID. A fabricated ID propagates silently into every
 downstream write (`parentFolderId`, `summary_artifact`, …) and the
 whole phase lands in a fictional folder tree.
 
-**Step 4 — Build the run-level task list in ONE parallel `TaskCreate`
-block.** The workflow is fixed and known up-front; splat all 11 in
-one message:
+**Step 4 — Run progress lives in `run_state.yaml`. There is no task-list
+step to perform.**
 
-1. `Phase 1 — idea-to-design`
-2. `Phase 2 — scenarios-and-acceptance`
-3. `Phase 3 — commcare-setup`
-4. `Phase 4 — connect-setup`
-5. `Phase 5 — ocs-setup`
-6. `Phase 6 — qa-and-training`
-7. `Phase 7 — synthetic-data-and-workflows`
-8. `Phase 8 — solicitation-management`
-9. `PAUSE: solicitation-review (HITL — populate selected_llo)`
-10. `Phase 9 — execution-management`
-11. `Phase 10 — closeout`
+`run_state.yaml` is **the** run-progress mechanism, not a fallback for
+one. It is the source of truth for phase status, the boundary fence
+verifies it four ways at every transition (§ Phase boundary fence), and
+three operator-facing surfaces render from it: the auto-refreshed run
+`README.md`, `/ace:status`, and the ace-web run-summary page. Nothing
+about progress reporting requires a tool call here.
 
-Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
-`TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
-unnecessary model-output time at run start.
+**The Claude Code to-do list is optional legacy.** If — and only if —
+`TaskCreate` resolves, you may mirror the workflow into it as a
+convenience view. Probe all three names in ONE `ToolSearch`
+(`select:TaskCreate,TaskUpdate,TodoWrite`) and take the answer as final;
+they are absent or present together, so a second lookup under the other
+name buys nothing but a wasted turn (ace#2173). The list, if you build
+one, is the 11 items in § Workflow: Phases 1–8, the
+`PAUSE: solicitation-review (HITL — populate selected_llo)` checkpoint,
+then Phases 9–10.
 
-**If `TaskCreate` does not resolve, SKIP this step and say so once —
-do not improvise, and do not halt (dimagi-internal/ace#2127).** The
-task list is an operator-facing progress view, not run state:
-`run_state.yaml` is the source of truth for phase status and the
-boundary fence verifies it four ways regardless. Measured on
-`bednet-check-2-visit/20260906-2228` — `ToolSearch
-select:TaskCreate,TaskUpdate` returned *No matching deferred tools
-found*, with no tool gating in any settings file, so the tool is
-simply absent from that session's surface. Because this step is
-written as mandatory with no fallback, the orchestrator had to invent
-one mid-run. Note the skip in `run_state.yaml.notes` and carry on; the
-same applies to `TaskUpdate` in § Phase boundary fence Turn N+1. Note
-also that `skills/turn/SKILL.md` calls this same capability
-`TodoWrite`. **Probe all three names in ONE `ToolSearch`
-(`select:TaskCreate,TaskUpdate,TodoWrite`) and take the answer as
-final** — measured 2026-09-07, that call returns *No matching deferred
-tools found* for all three at once, so they are absent or present
-together and a second lookup under the other name buys nothing but a
-wasted turn. (This sentence used to say to try the other name before
-concluding it is unavailable; that produced exactly the retry it was
-meant to avoid. ace#2173.)
+**Absent is the DEFAULT, not an anomaly — do not disclose it.** Claude
+Code **2.1.233** withheld `TodoWrite`, `TaskCreate`, `TaskGet`,
+`TaskUpdate` and `TaskList` from Opus 4.8, Sonnet 5, Fable 5, Mythos 5
+and every later model unless the operator opts in with
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`. Anthropic's stated reason
+([tools-reference § Task tool availability](https://code.claude.com/docs/en/tools-reference#task-tool-availability)):
+*"Those models keep track of multi-step work without a written
+checklist, and the tools' definitions and reminders take up context, so
+Claude Code leaves them out."* So a tool that does not resolve is the
+documented normal case, and **a per-run "task list skipped" note is
+noise — omit it.** Never halt, never improvise a substitute tracker, and
+never treat the absence as a finding worth filing (ace#2127, ace#2173
+and ace#2210 each re-derived it; that is what this paragraph exists to
+stop).
+
+**ACE does not set `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, deliberately.**
+Standing operator decision: the three surfaces above are already better
+progress views than an in-session checklist, and the tools' definitions
+and per-turn reminders cost context on ACE's most context-hungry runs.
+Do not recommend enabling it, and do not edit any machine settings file
+to do so.
+
+Two nuances worth knowing before concluding anything from a probe. The
+tools **do** resolve on older models (Opus 4.7 and similar), and — per
+the same doc — background sessions and Claude Code on the web serve the
+same tools on every model, listed or not. So "unavailable" is
+session-scoped and model-gated; it is not a permanent property of the
+harness.
 
 **Run shape is structural, not flag-driven.** A fresh `/ace:run <opp>` always
 starts all 11 phases `pending` and runs them in order (above) — there is no
@@ -507,7 +515,6 @@ phase handoff" below).
 
 **Stop signs.** If you find yourself about to:
 
-- emit a 2nd sequential `TaskCreate` in a fresh turn → batch with Step 4.
 - issue a 2nd `ToolSearch` because you forgot an atom → fold the missing atom into Step 2's literal.
 - fire a `drive_create_file` followed by another `drive_create_file` in the next turn → batch them.
 - run a 2nd Bash to check an env var → it was already in Step 1's output.
@@ -675,8 +682,8 @@ The L0 atom literal is Pre-flight Step 2; phase subagents run their own
 `ToolSearch` for phase-specific atoms (named in their agent definitions),
 so the orchestrator doesn't maintain a per-phase atom list here.
 
-Batching, env resolution, parallel-`TaskCreate`, and serial `Agent`
-dispatch rules are catalogued in § Anti-patterns and discipline.
+Batching, env resolution, and serial `Agent` dispatch rules are
+catalogued in § Anti-patterns and discipline.
 
 ## Modes — default, review, auto
 
@@ -1089,10 +1096,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      *"Just checking if ACE is still working on this?"*, sent while the run had
      been running two days and had completed its last phase hours earlier.
 
-     **Rebuild the TaskList from the loaded statuses** (one parallel
-     `TaskCreate` block, as in Step 4): `done`/`skipped` → `completed`
-     (skipped phases carry a one-word "skipped" note), every `pending` phase →
-     `pending`, and the **first** `pending` phase → `in_progress`.
+     **The loaded `run_state.yaml` statuses ARE the resumed run's progress
+     record** — there is nothing to rebuild. Only if `TaskCreate` resolves
+     (§ Step 4 — it does not on any current model) may you optionally mirror
+     them: `done`/`skipped` → `completed` (skipped phases carry a one-word
+     "skipped" note), every `pending` phase → `pending`, and the **first**
+     `pending` phase → `in_progress`.
 
      **Structural precondition check (before dispatching each `pending`
      phase).** Confirm the phase's required input artifacts (per
@@ -1677,14 +1686,13 @@ is § Modes:
 
 The verifier's actions happen as the **IMMEDIATE next assistant
 message** after the `Agent(<phase>)` tool_result returns. Not after a
-solo "Phase X complete" status text in a separate turn. Not after a
-solo `TaskUpdate` in a separate turn.
+solo "Phase X complete" status text in a separate turn.
 
 These actions are independent and MUST be batched into ONE parallel
 message:
 
 - `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
-- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress` (skip if unresolvable — ace#2127).
+- (Optional legacy, and a no-op on every current model — § Step 4.) If `TaskUpdate` resolves, mark the current phase `completed` and the next `in_progress`. Its absence is the default; do not note it.
 - `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
 
 A one-line text summary ("Phase N complete: <verdict>") may accompany
@@ -1693,7 +1701,7 @@ separate turn.
 
 **Anti-pattern** (each a separate assistant turn — ~4 wasted turns ×
 8 boundaries ≈ 1–3 min latency per `/ace:run`): a solo "Phase N
-complete" text turn, then `drive_read_file`, then `TaskUpdate`, then
+complete" text turn, then `drive_read_file`, then
 `Skill(decisions-render)`, then `Agent(<next-phase>)` — all in separate
 turns instead of one batched message.
 
@@ -1738,9 +1746,10 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   before ace#2002 a malformed top-level key passed every fence
                   in the run and surfaced in the cross-run view as fact, which
                   `lib/run-record.ts` calls out as worse than an absent one.
-             6. TaskUpdate marking <phase> completed, next phase in_progress
-                — SKIP silently if the tool does not resolve (ace#2127); it is a
-                  progress view, not run state, and the four checks above are
+             6. (optional legacy) TaskUpdate marking <phase> completed, next
+                  phase in_progress — omit entirely unless the tool resolves,
+                  which it does not on any current model (§ Step 4). It is a
+                  convenience view, not run state; the four checks above are
                   the actual gate
              7. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
