@@ -1082,18 +1082,45 @@ export function buildSlidesRequestsV2(
  * layouts. `two_column` halves are optional, so a slide may contribute 0–2.
  */
 export function imageRefsOnSlide(slide: SlideSpec_v2): string[] {
-  switch (slide.layout) {
+  return imageRefsOnUnvalidatedSlide(slide);
+}
+
+/**
+ * The same walk, over a slide that has NOT been through
+ * `TrainingDeckSpecSchema` — a plain object off `yaml.load`.
+ *
+ * `verify_caption_backing` needs this: it reads a spec as PUBLISHED, which may
+ * be malformed in ways the schema would reject, and a fence that throws on the
+ * artifact it is meant to judge is no fence. It is deliberately the SAME
+ * function rather than a second copy — `collectCaptureEntries` (ace#2104,
+ * ace#2224) is the standing lesson on what happens when one walk over the same
+ * shape exists twice: both copies drifted, in opposite directions, and each
+ * silently reported clean for months.
+ */
+export function imageRefsOnUnvalidatedSlide(slide: unknown): string[] {
+  if (!slide || typeof slide !== 'object') return [];
+  const s = slide as Record<string, any>;
+  const out: string[] = [];
+  const push = (v: unknown) => {
+    if (typeof v === 'string' && v.trim()) out.push(v);
+  };
+  switch (s.layout) {
     case 'walkthrough':
     case 'web_screen':
     case 'mobile_zoom':
-      return [slide.image];
+      push(s.image);
+      break;
     case 'mobile_flow':
-      return slide.steps.map((s) => s.image);
+      if (Array.isArray(s.steps)) for (const step of s.steps) push(step?.image);
+      break;
     case 'two_column':
-      return [slide.left.image, slide.right.image].filter((x): x is string => Boolean(x));
+      push(s.left?.image);
+      push(s.right?.image);
+      break;
     default:
-      return [];
+      break;
   }
+  return out;
 }
 
 export interface VisualCoverage {

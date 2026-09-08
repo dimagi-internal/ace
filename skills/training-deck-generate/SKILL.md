@@ -178,7 +178,18 @@ screenshot-blocked run cannot lose it.
      against it (see `skills/_training-template.md`) — it reads the
      PUBLISHED artifact and fails on any cited frame nobody described, so
      there is no list to curate. A non-empty `findings` is a BLOCKER: fix
-     the caption or drop the image. As a cheap pre-write check you can
+     the caption or drop the image.
+
+     **On a deck spec the gate counts what the SLIDES place, not the
+     resolution map (ace#2238).** `manifest.opp` is an INVENTORY — every
+     alias the deck *could* place. Keeping the full pool in it is correct
+     and costs nothing: the citations are the slides' `@alias` refs
+     resolved through the map, so a finding always names a frame some
+     slide actually carries. Do NOT trim `manifest.opp` to silence
+     findings, and do NOT back-fill `shows:` onto frames nobody cites —
+     both were the only ways to satisfy this gate before the fix, and on
+     `spark-facilitator/20260907-1120` it reported 66 `no-shows` over a
+     deck that places 10 images. As a cheap pre-write check you can
      also call `framesCitedWithoutShows(manifest, citedSteps)`
      (`lib/capture-manifest.ts`): it returns every step this deck cites
      that carries no `shows:` — the one-line record of what is actually
@@ -503,6 +514,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-09-08: **`verify_caption_backing` counts the slides' citations, not `manifest.opp`'s inventory (dimagi-internal/ace#2238).** Step 5 builds the resolution map from the whole capture pool and step 5 then makes the caption gate a BLOCKER — and the gate extracted every Drive fileId in the published artifact, which for a deck spec includes the map. On `spark-facilitator/20260907-1120` that read 91 citations over a deck that places 10 images and reported 66 `no-shows` + 12 `duplicate-cited`, every one naming a frame no slide cites. The two instructions were mutually unsatisfiable for any deck that does not place every captured frame, i.e. for every deck. The fix is in `lib/caption-backing.ts`, not here: for a document that parses as a deck spec, the citations are the slides' image refs resolved through `manifest.*`, and everything else in the spec is still read the way a rendered document is read. Trimming the map is no longer needed (and would break nothing but honesty about what was available). *Enforced:* `test/lib/caption-backing.test.ts § a deck spec cites what its SLIDES place`, with negative controls proving an undescribed, aliased or unknown frame a slide really does place still fails.
 - 2026-09-06: **Step 10 composes the spec to a LOCAL FILE and writes it with `localFilePath` (dimagi-internal/ace#1918).** A fully-expanded spec was measured at 55,719 chars in the 2026-09-02 Drive corpus; emitting it inline costs ~1 output token per 4 characters, and having it on disk is also what makes a `TrainingDeckSpecSchema` rejection cheap to fix (edit one leaf, re-push the file) instead of a full re-emission. Follows the `idea-to-pdd` steps 6/6b template (ace#1780). *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`.
 - 2026-09-02: **Module labels are lifted from the Learn app, never renumbered (ace#1829).** The deck numbered the Learn suite TWO incompatible ways at once: slides 16-19 printed the app's names correctly while slides 34-39 renumbered from list position, counting the unnumbered `Pre-Assessment` tile as Module 1 and shifting every real module up by one. Slide 14 carried the contradiction beside its own evidence — an ordinal list item `4. What makes a visit payable` next to the suite-root screenshot labelling it "Module 3". Slides 34-39 are TIMED hands-on blocks, so a first-day FLW follows "Complete Learn Module 4: What Makes a Visit Payable", opens the app, finds Module 3 under that name and stalls. The step-11 slide-COUNT check could never catch it: counting confirms one practice slide per module, and the shipped deck passed that with every one of those slides carrying a wrong number — a count never reads a label. Three changes: the practice title template drops its synthesised `N` for the app's label verbatim; the `your-opportunity` Learn-preview rule says the same thing explicitly (it was only accidentally right, having no template at all); and step 11 gains a HARD GATE running `lib/deck-module-labels.ts`, whose input must include the UNNUMBERED app entries because their presence is the whole cause. *Enforced:* `test/lib/deck-module-labels.test.ts` (negative control: a position-counting detector — the bug's own logic — fails 9 of 13, inverting both controls) + `test/skills/training-deck-module-numbering.test.ts` (all 6 red against the pre-fix skill text).
 - v1: Initial skill. Replaces `training-deck-outline`. Produces
