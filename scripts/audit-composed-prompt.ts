@@ -10,10 +10,12 @@
  *
  * Exit codes:
  *   0 — the `## Do not invent operational specifics` section exists and
- *       carries every standing domain. Safe to publish.
- *   1 — the section is missing, or one or more standing domains are absent.
- *       The composed prompt MUST NOT be published. `ocs-agent-setup`
- *       § Step 7.5 halts the phase on this.
+ *       carries every standing domain, AND the prompt carries the
+ *       contact-exactness protection (ace#2216). Safe to publish.
+ *   1 — the section is missing, one or more standing domains are absent, or
+ *       the contact-exactness protection is absent. The composed prompt MUST
+ *       NOT be published. `ocs-agent-setup` § Step 7.5 halts the phase on
+ *       this.
  *   2 — harness error (no argument, unreadable file, empty prompt). Not a
  *       verdict about the prompt; do not treat it as a pass OR as a miss.
  *
@@ -43,17 +45,21 @@ import {
   formatStandingDomainReport,
   ANTI_FABRICATION_HEADING,
   STANDING_FABRICATION_DOMAINS,
+  CONTACT_EXACTNESS_OBLIGATIONS,
 } from '../lib/standing-fabrication-domains.js';
 
 const USAGE = `Usage:
   npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json]
   npx tsx scripts/audit-composed-prompt.ts --stdin [--json]
 
-Audits a composed OCS system prompt for the STANDING half of its
-"## ${ANTI_FABRICATION_HEADING}" section (${STANDING_FABRICATION_DOMAINS.length} domains).
+Audits a composed OCS system prompt for two things:
+  - the STANDING half of its "## ${ANTI_FABRICATION_HEADING}"
+    section (${STANDING_FABRICATION_DOMAINS.length} domains), and
+  - the contact-exactness protection the publish replaces
+    (${CONTACT_EXACTNESS_OBLIGATIONS.length} obligations, dimagi-internal/ace#2216).
 
-Exit 0 = every standing domain present (safe to publish).
-Exit 1 = section missing or a domain missing (DO NOT publish).
+Exit 0 = both present (safe to publish).
+Exit 1 = a standing domain or a contact obligation is missing (DO NOT publish).
 Exit 2 = harness error.`;
 
 export interface AuditCliArgs {
@@ -121,6 +127,16 @@ function main(argv: string[]): number {
           section_present: audit.sectionPresent,
           covered: audit.covered,
           missing: audit.missing.map((d) => ({ id: d.id, label: d.label, why: d.why })),
+          contact_exactness: {
+            ok: audit.contactExactness.ok,
+            blocks_present: audit.contactExactness.blocksPresent,
+            covered: audit.contactExactness.covered,
+            missing: audit.contactExactness.missing.map((o) => ({
+              id: o.id,
+              label: o.label,
+              why: o.why,
+            })),
+          },
         },
         null,
         2,
@@ -132,7 +148,8 @@ function main(argv: string[]): number {
     if (!parsed.json) {
       process.stdout.write(
         `[STANDING-DOMAINS] OK — all ${STANDING_FABRICATION_DOMAINS.length} standing domains ` +
-          `present in "## ${ANTI_FABRICATION_HEADING}".\n`,
+          `present in "## ${ANTI_FABRICATION_HEADING}", and all ` +
+          `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present.\n`,
       );
     }
     return 0;
@@ -141,7 +158,8 @@ function main(argv: string[]): number {
   process.stderr.write(`${formatStandingDomainReport(audit)}\n`);
   process.stderr.write(
     '\nDO NOT publish this prompt. Add the missing domain(s) to the ' +
-      `"## ${ANTI_FABRICATION_HEADING}" section per ` +
+      `"## ${ANTI_FABRICATION_HEADING}" section, and/or the missing contact ` +
+      'obligation(s) to the escalation/contacts passage, per ' +
       '`skills/ocs-agent-setup/SKILL.md` § Step 7, then re-run this audit.\n',
   );
   return 1;
