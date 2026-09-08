@@ -1371,6 +1371,16 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
       "Step 2c's ledger for the dataset's own legality: the DatasetSpec derived from the deliver app (every question's `relevant` / `constraint`), every expression the derivation could NOT read (`unparsed[]` — a gate this run did not audit), the branch scrub that removed the off-branch values the labs manifest has no primitive to avoid, and `auditDataset` over the records as they now stand. Optional because the `denovo` provider has no deliver app to derive from; when it is absent, `demo-data-setup-qa` check 9 requires a stated reason rather than accepting a hand-declared spec (ace#1658).",
   },
   {
+    path: '7-synthetic/dashboard-terms.yaml',
+    producedBy: 'demo-data-setup',
+    role: 'manifest',
+    consumedBy: ['demo-data-setup-qa'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      "Step 3d's legibility enumeration, per dashboard: every coined column/row label a lay viewer meets on the rendered page, and every definition the page carries — each marked with whether a reader of the LABEL can reach it from the label (`at_point_of_use`) or only from a glossary panel elsewhere. `demo-data-setup-qa` check 15 judges the two lists against each other. An EMPTY `terms` list is a legitimate answer and must still be written: the check cannot tell a plain-language dashboard from an un-enumerated one, and only one of those is a pass (ace#2219).",
+  },
+  {
     path: '7-synthetic/demo-data-setup-qa_result.yaml',
     producedBy: 'demo-data-setup-qa',
     role: 'qa-result',
