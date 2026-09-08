@@ -70,6 +70,27 @@ Same pass, same draft. Not an appendix, not a follow-up.
   restart the session?"* Seven of eight human corrections that window were tagged `confusion`
   rather than direction. Fleet-general → candidate for promotion into `canopy:agent-turn-review`
   §C, alongside 7a/7b.)
+- **An outbound message is judged on USABILITY as well as accuracy — every other check in this
+  file tests whether the reply is TRUE, none tests whether it is usable.** A reply can pass §A–§E
+  and §F clean and still fail, because correctness and legibility are different properties. Before
+  sending, apply the recipient test: after ONE read, can they name (a) what changed, (b) the ONE
+  thing to look at first, and (c) what is being asked of them? If not, **reorder — do not add.**
+  **Length is evidence, not the defect:** a reply that runs long usually does so because ordering
+  was never decided, so the reader is made to do the prioritising the sender skipped. For a message
+  ASKING someone to review something, the shape that works is three explicit blocks: an OVERVIEW
+  surface (one link, time-boxed — "about five minutes"), a SPECIFIC list in DEPENDENCY order (the
+  item whose answer changes the most downstream first), and an explicit **"not worth your time
+  right now"** list. That third block is what makes the second credible: without it every item
+  reads as equally urgent, and naming what you are NOT asking for is the cheapest way to show the
+  list was actually prioritised rather than dumped. (Origin: 2026-09-08,
+  `poverty-graduation/20260908-0510` — a reply to an external design author passed the full review
+  clean at ~1,180 words: fidelity verified against every open ask, all done-claims read back
+  against live systems, rendering dry-run checked, recipients derived structurally. The operator's
+  verdict was *"this email is quite bad … Be very clear on what you thnk she should review as an
+  overview and then what you think she should review specifically before we iterate on a next
+  run."* Nothing in it was untrue; the reader simply could not tell what to do. Rewritten into the
+  three blocks above it came to 798 words. Fleet-general for every turn-based agent → candidate for
+  promotion into `canopy:agent-turn-review` §C, alongside 7a/7b.)
 - **Every claim about EXTERNAL SYSTEM STATE must be read back before the send — no exceptions.**
   Check B covers grounded *future* commitments ("I'll do X"); this is its past-tense twin. Any
   sentence asserting the world is now in some state — *"access is set up"*, *"you'll see a pending
