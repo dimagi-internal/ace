@@ -28,7 +28,9 @@ import {
   isAutoNamedCapture,
   assignCanonicalDuplicates,
   framesCitedWithoutShows,
+  collectCaptureEntries,
 } from '../../lib/capture-manifest.js';
+import { flattenManifestFrames } from '../../lib/caption-backing.js';
 
 /** The live shape from the run in the issue (aliases + their canonicals). */
 const MANIFEST = {
@@ -236,5 +238,149 @@ describe('framesCitedWithoutShows — the content check nothing else does', () =
     expect(framesCitedWithoutShows(incident, ['journey-learn-posttest-result'])).toEqual([
       'journey-learn-posttest-result',
     ]);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2224 — the guards were reading a container the producer
+ * does not write, so they returned empty and reported clean.
+ *
+ * This is the "configured vs configured *correctly*" gap in its worst form.
+ * `flattenManifestFrames` (lib/caption-backing.ts) was taught the real shapes
+ * in ace#2104; the helpers in this file were not, and nothing noticed, because
+ * a reader that finds nothing raises nothing. `skills/_training-template.md`
+ * instructs `training-flw-guide`, `training-llo-guide` and
+ * `training-deck-generate` to run `canonicalCaptures` + `findDuplicateCitations`
+ * before writing, and each self-eval scores duplicate handling on the strength
+ * of them — so on `bednet-check-2-visit/20260907-1126` three producers passed a
+ * check that had inspected zero frames.
+ *
+ * So these assert NON-ZERO on the producer's own shape. A test that only says
+ * "does not throw" would have passed throughout the whole defect.
+ */
+describe('every container in the wild reaches the guards (ace#2224)', () => {
+  /** The four shapes a real `app-screenshot-capture_manifest.yaml` uses. */
+  const SHAPES: Record<string, unknown> = {
+    'captures[] (the documented shape)': {
+      captures: [
+        { step: 'learn-home', file_id: 'ID_A', shows: 'lesson menu' },
+        { step: 'learn-home-again', file_id: 'ID_A', duplicate_of: 'learn-home' },
+      ],
+    },
+    'journeys[].steps[] (ace#2104, and the ace#2224 repro)': {
+      journeys: [
+        {
+          journey_id: 'journey-learn',
+          steps: [
+            { step: 'learn-home', file_id: 'ID_A', shows: 'lesson menu' },
+            { step: 'learn-home-again', file_id: 'ID_A', duplicate_of: 'learn-home' },
+          ],
+        },
+      ],
+    },
+    'journeys[].screenshots[] + journeys[].duplicates[]': {
+      journeys: [
+        {
+          journey_id: 'journey-learn',
+          screenshots: [{ step: 'learn-home', file_id: 'ID_A', shows: 'lesson menu' }],
+          duplicates: [{ step: 'learn-home-again', file_id: 'ID_A', duplicate_of: 'learn-home' }],
+        },
+      ],
+    },
+    'step_name spelling (the only worked example in the producer SKILL)': {
+      journeys: [
+        {
+          journey_id: 'journey-learn',
+          steps: [
+            { step_name: 'learn-home', file_id: 'ID_A', shows: 'lesson menu' },
+            { step_name: 'learn-home-again', file_id: 'ID_A', duplicate_of: 'learn-home' },
+          ],
+        },
+      ],
+    },
+  };
+
+  for (const [name, manifest] of Object.entries(SHAPES)) {
+    describe(name, () => {
+      it('canonicalCaptures sees the canonical frame — not an empty list', () => {
+        expect(canonicalCaptures(manifest as never).map((c) => c.step)).toEqual(['learn-home']);
+      });
+
+      it('findDuplicateCitations catches the alias the artifact cited', () => {
+        expect(findDuplicateCitations(manifest as never, ['learn-home-again'])).toEqual([
+          { step: 'learn-home-again', canonical: 'learn-home' },
+        ]);
+      });
+
+      it('framesCitedWithoutShows names the undescribed frame', () => {
+        expect(framesCitedWithoutShows(manifest as never, ['learn-home'])).toEqual([]);
+        expect(framesCitedWithoutShows(manifest as never, ['learn-home-again'])).toEqual([
+          'learn-home-again',
+        ]);
+      });
+
+      it('resolveCanonicalStep maps the alias back', () => {
+        expect(resolveCanonicalStep(manifest as never, 'learn-home-again')).toBe('learn-home');
+      });
+
+      it('agrees with lib/caption-backing.ts on the frame set — the drift check', () => {
+        // The two readers disagreeing is the whole defect. Pin them together so
+        // a future fix cannot land on one side only.
+        expect(collectCaptureEntries(manifest as never).map((c) => c.step)).toEqual(
+          flattenManifestFrames(manifest).map((f) => f.step),
+        );
+      });
+    });
+  }
+
+  it('THE REPRO, verbatim from the issue', () => {
+    const m = {
+      journeys: [
+        {
+          journey_id: 'journey-learn',
+          steps: [
+            { step: 'a', file_id: 'ID_A', shows: 'a real description' },
+            { step: 'b', file_id: 'ID_A', duplicate_of: 'a' },
+          ],
+        },
+      ],
+    };
+    expect(flattenManifestFrames(m)).toHaveLength(2); // was already 2 (#2104)
+    expect(canonicalCaptures(m as never)).toHaveLength(1); // was 0
+    expect(framesCitedWithoutShows(m as never, ['b'])).toEqual(['b']); // was []
+    expect(findDuplicateCitations(m as never, ['b'])).toEqual([
+      { step: 'b', canonical: 'a' },
+    ]); // was []
+  });
+
+  it('an entry in duplicates[] is an alias even when it names no canonical', () => {
+    // The container is the claim. Reading such an entry as a distinct moment is
+    // how an alias gets captioned as its own state.
+    const m = { journeys: [{ duplicates: [{ step: 'orphan-alias', file_id: 'ID_X' }] }] };
+    expect(canonicalCaptures(m as never)).toEqual([]);
+    expect(findDuplicateCitations(m as never, ['orphan-alias'])).toEqual([
+      { step: 'orphan-alias', canonical: 'unknown' },
+    ]);
+  });
+
+  it('still refuses superseded_artifacts[] — citing one stays a defect (ace#1571)', () => {
+    const m = {
+      journeys: [
+        {
+          steps: [{ step: 'real', file_id: 'ID_R', shows: 'the home screen' }],
+          superseded_artifacts: [{ step: 'journey-learn-FAILURE', file_id: 'ID_S' }],
+        },
+      ],
+    };
+    expect(collectCaptureEntries(m as never).map((c) => c.step)).toEqual(['real']);
+    expect(resolveCanonicalStep(m as never, 'journey-learn-FAILURE')).toBeUndefined();
+  });
+
+  it('is inert on junk rather than throwing mid-phase', () => {
+    expect(collectCaptureEntries(undefined)).toEqual([]);
+    expect(collectCaptureEntries({} as never)).toEqual([]);
+    expect(collectCaptureEntries({ journeys: 'nope' } as never)).toEqual([]);
+    expect(collectCaptureEntries({ journeys: [{ steps: [{ nope: 1 }] }] } as never)).toEqual([]);
+    expect(collectCaptureEntries({ captures: [null, 7, 'x'] } as never)).toEqual([]);
   });
 });

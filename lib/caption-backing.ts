@@ -23,6 +23,8 @@
 // reader can see is what gets checked.
 //
 
+import { collectCaptureEntries, type CaptureManifestLike } from './capture-manifest.js';
+
 export interface CaptionBackingFinding {
   /** Drive fileId as it appears in the published document. */
   file_id: string;
@@ -70,64 +72,39 @@ export function extractCitedFileIds(published: string): string[] {
 }
 
 /**
- * Flatten a capture manifest into frames, accepting EVERY shape in the wild.
+ * Flatten a capture manifest into the frames a PUBLISHED artifact could cite.
  *
- * `captures: [...]` is the shape `lib/capture-manifest.ts` documents. The
- * manifests `app-screenshot-capture` actually writes are journey-grouped, and
- * they come in two variants that must BOTH be understood:
+ * The walk over the containers in the wild — `captures[]`,
+ * `journeys[].screenshots[]`, `journeys[].steps[]`, `journeys[].duplicates[]`,
+ * with `step_name` accepted as an alias for `step` — lives in
+ * `collectCaptureEntries` (`lib/capture-manifest.ts`), and this is the only
+ * thing this function adds on top: a frame must carry a `file_id`, because a
+ * citation is a fileId and an entry without one cannot be cited.
  *
- *   - `journeys[].screenshots[]`, plus a sibling `journeys[].duplicates[]`;
- *   - `journeys[].steps[]`, with `duplicate_of` inline on the entry.
- *
- * A fence that only understood the documented shape would silently pass every
- * real run by finding zero frames — the failure mode this whole class is about.
- * The `steps[]` variant was missing until ace#2104, where the inverse bit:
- * `bednet-check-2-visit/20260902-1555` flattened to ZERO frames, so all 16
- * per-opp citations came back `unknown-id` — including four the producer had
- * itself written a `shows:` for. That is worse than a false pass, because
- * `unknown-id` on every frame is an UNFIXABLE blocker: the only way to satisfy
- * it is to drop every per-opp image, which is precisely the hollow deck
- * ace#856's coverage gate exists to prevent. The two fences contradicted each
- * other on every `steps[]`-shaped run.
- *
- * `journeys[].superseded_artifacts[]` is deliberately NOT flattened. Those are
- * forensics from an earlier FAILED dispatch (ace#1571), not steps of the walk
- * that shipped, so citing one is a real defect and must keep surfacing as
- * `unknown-id`.
+ * It reads through the shared reader because it used to own a SECOND copy of
+ * that walk, and the copies drifted in both directions. ace#2104 taught this
+ * one `journeys[].steps[]` after `bednet-check-2-visit/20260902-1555` flattened
+ * to ZERO frames and all 16 per-opp citations came back `unknown-id` —
+ * including four the producer had itself written a `shows:` for, an UNFIXABLE
+ * blocker whose only remedy is dropping every image, i.e. the hollow deck
+ * ace#856's coverage gate exists to prevent. `capture-manifest.ts` was not
+ * taught the same thing, so for four months its guards silently returned empty
+ * on every real manifest and reported clean (ace#2224). One reader, so neither
+ * failure can recur on one side only.
  */
 export function flattenManifestFrames(manifest: unknown): ManifestFrame[] {
   const out: ManifestFrame[] = [];
-  const m = manifest as Record<string, any> | null | undefined;
-  if (!m || typeof m !== 'object') return out;
-
-  const push = (raw: any, dup?: string) => {
-    if (!raw || typeof raw !== 'object') return;
-    const step = raw.step ?? raw.step_name;
-    const fileId = raw.file_id;
-    if (typeof step !== 'string' || typeof fileId !== 'string' || !fileId) return;
+  for (const e of collectCaptureEntries(manifest as CaptureManifestLike)) {
+    // Duplicates are normally listed WITHOUT a file_id (they are not
+    // published); the ones that carry one are kept so citing them is caught.
+    const fileId = e.file_id;
+    if (typeof fileId !== 'string' || !fileId) continue;
     out.push({
-      step,
+      step: e.step,
       file_id: fileId,
-      shows: typeof raw.shows === 'string' ? raw.shows : undefined,
-      duplicate_of: dup ?? (typeof raw.duplicate_of === 'string' ? raw.duplicate_of : undefined),
+      shows: typeof e.shows === 'string' ? e.shows : undefined,
+      duplicate_of: typeof e.duplicate_of === 'string' ? e.duplicate_of : undefined,
     });
-  };
-
-  if (Array.isArray(m.captures)) for (const c of m.captures) push(c);
-
-  if (Array.isArray(m.journeys)) {
-    for (const j of m.journeys) {
-      if (Array.isArray(j?.screenshots)) for (const s of j.screenshots) push(s);
-      // The `steps[]` variant carries `duplicate_of` inline, so `push` reads it
-      // off the entry and no second container is involved (ace#2104).
-      if (Array.isArray(j?.steps)) for (const s of j.steps) push(s);
-      // Duplicates are listed separately and normally carry no file_id (they
-      // are not published). Include any that do, so citing one is still caught.
-      if (Array.isArray(j?.duplicates)) {
-        for (const d of j.duplicates) push(d, d?.duplicate_of ?? 'unknown');
-      }
-      // NOT `superseded_artifacts` — see the docblock. Citing one is a defect.
-    }
   }
   return out;
 }

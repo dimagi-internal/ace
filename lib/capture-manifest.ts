@@ -17,6 +17,18 @@
 // back canonical captures: a producer that selects images through
 // `canonicalCaptures` cannot reference an alias by construction.
 //
+// ace#2224: for four months the helpers below read ONLY `manifest.captures[]`,
+// which is not the container `app-screenshot-capture` writes. On a real
+// journey-grouped manifest every one of them returned empty — so the
+// duplicate-detection and no-shows guards three training skills are instructed
+// to run reported clean because they saw NOTHING, not because there was
+// nothing. That is strictly worse than not having them: a guard whose failure
+// mode is silence launders an unchecked artifact into a checked-looking one.
+// `lib/caption-backing.ts` had learned the real shapes (ace#2104) and this file
+// had not, which is the drift a second reader guarantees. There is now exactly
+// ONE reader — `collectCaptureEntries` — and `flattenManifestFrames` calls it,
+// so the two cannot disagree again.
+//
 
 export interface CaptureEntry {
   step: string;
@@ -53,15 +65,101 @@ export function isAutoNamedCapture(step: string): boolean {
   return /^step-\d{1,4}-/.test(step);
 }
 
-export interface CaptureManifestLike {
-  captures?: CaptureEntry[];
+/**
+ * A capture entry as it appears ON DISK, before normalisation.
+ *
+ * Deliberately looser than `CaptureEntry`: the producer's worked example names
+ * the key `step_name`, and both spellings are in the wild.
+ */
+export interface RawCaptureEntry {
+  step?: unknown;
+  step_name?: unknown;
+  file_id?: unknown;
+  duplicate_of?: unknown;
+  shows?: unknown;
   [k: string]: unknown;
 }
 
-function entries(manifest: CaptureManifestLike | undefined | null): CaptureEntry[] {
-  const list = manifest?.captures;
-  return Array.isArray(list) ? list.filter((c) => c && typeof c.step === 'string') : [];
+export interface RawJourneyLike {
+  journey_id?: unknown;
+  screenshots?: readonly RawCaptureEntry[];
+  steps?: readonly RawCaptureEntry[];
+  duplicates?: readonly RawCaptureEntry[];
+  [k: string]: unknown;
 }
+
+export interface CaptureManifestLike {
+  captures?: readonly RawCaptureEntry[];
+  journeys?: readonly RawJourneyLike[];
+  [k: string]: unknown;
+}
+
+/**
+ * THE reader for a capture manifest. Every consumer goes through this —
+ * including `flattenManifestFrames` in `lib/caption-backing.ts`, which used to
+ * carry a second, better-informed copy of this walk (ace#2224).
+ *
+ * Containers accepted, in the order a manifest lists them:
+ *
+ *   - `captures[]` — the shape this file's docs describe;
+ *   - `journeys[].screenshots[]`, plus its sibling `journeys[].duplicates[]`;
+ *   - `journeys[].steps[]`, carrying `duplicate_of` inline on the entry.
+ *
+ * `step_name` is accepted as an alias for `step` and normalised to `step`, so
+ * downstream code compares one key. An entry in `journeys[].duplicates[]` is an
+ * alias by virtue of the container it sits in, so it gets `duplicate_of` even
+ * when it names no canonical — `'unknown'` — rather than being read as a
+ * distinct moment.
+ *
+ * `journeys[].superseded_artifacts[]` is deliberately NOT read. Those are
+ * forensics from an earlier FAILED dispatch (ace#1571), not steps of the walk
+ * that shipped, so citing one is a real defect and must keep surfacing as
+ * unknown.
+ */
+export function collectCaptureEntries(
+  manifest: CaptureManifestLike | undefined | null,
+): CaptureEntry[] {
+  const out: CaptureEntry[] = [];
+  const m = manifest as Record<string, unknown> | null | undefined;
+  if (!m || typeof m !== 'object') return out;
+
+  const push = (raw: RawCaptureEntry | undefined, aliasFallback?: string) => {
+    if (!raw || typeof raw !== 'object') return;
+    const step =
+      typeof raw.step === 'string'
+        ? raw.step
+        : typeof raw.step_name === 'string'
+          ? raw.step_name
+          : undefined;
+    if (!step) return;
+    const entry: CaptureEntry = {
+      ...raw,
+      step,
+      file_id: typeof raw.file_id === 'string' ? raw.file_id : undefined,
+      shows: typeof raw.shows === 'string' ? raw.shows : undefined,
+      duplicate_of: typeof raw.duplicate_of === 'string' ? raw.duplicate_of : aliasFallback,
+    };
+    // Absent, not present-and-undefined: callers spread these into YAML.
+    if (entry.file_id === undefined) delete entry.file_id;
+    if (entry.shows === undefined) delete entry.shows;
+    if (entry.duplicate_of === undefined) delete entry.duplicate_of;
+    out.push(entry);
+  };
+
+  if (Array.isArray(m.captures)) for (const c of m.captures) push(c);
+
+  if (Array.isArray(m.journeys)) {
+    for (const j of m.journeys as RawJourneyLike[]) {
+      if (Array.isArray(j?.screenshots)) for (const s of j.screenshots) push(s);
+      if (Array.isArray(j?.steps)) for (const s of j.steps) push(s);
+      if (Array.isArray(j?.duplicates)) for (const d of j.duplicates) push(d, 'unknown');
+      // NOT `superseded_artifacts` — see the docblock. Citing one is a defect.
+    }
+  }
+  return out;
+}
+
+const entries = collectCaptureEntries;
 
 /**
  * Only the captures that show a distinct moment. Select images through this
