@@ -563,6 +563,13 @@ contract.
    re-confirmed 2026-09-06. The inline `content` param still works and is fine
    for a short EOI.
 
+   **Compose the payload to `payload.json` on disk in THIS step, before the
+   Step 6 publish — not after it (ace#2261).** The publish body, this draft and
+   the Step 8 `published.md` are the same bytes; writing them once and pointing
+   all three consumers at that one file makes them identical by construction
+   rather than by diligence. Step 6 then sends that file directly (see § Step 6
+   → *Large payloads*), and steps 4 and 8 render their markdown from it.
+
 5. **Resolve the labs program_id (integer).** The labs MCP expects the
    labs **integer** program ID, *not* the Connect program UUID. Despite
    the schema's `program_id: string`, labs `int()`-parses it internally
@@ -619,8 +626,17 @@ contract.
       curl -sS -X POST https://labs.connect.dimagi.com/mcp/ \
         -H "Authorization: Bearer $LABS_MCP_TOKEN" \
         -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
         -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
       ```
+      **Both the `Accept` header and the SSE-shaped response are load-bearing
+      and neither is guessable.** Without `Accept: application/json,
+      text/event-stream` the endpoint answers **HTTP 406** with no body —
+      measured 2026-09-08 on `bednet-check-2-visit/20260907-1126`, where the
+      snippet as previously printed here simply did not work. The reply is
+      then **Server-Sent Events**, not plain JSON: take the line beginning
+      `data: ` and JSON-parse the remainder.
+
       Treat the response as truth. If it disagrees with this SKILL.md,
       this SKILL.md is wrong — re-read the schema and update.
    2. Restart Claude Code (full process restart, not `/reload-plugins`)
@@ -654,6 +670,52 @@ contract.
      connect_opportunity_id: <int>,
    )
    ```
+
+   **Large payloads: send the file, don't retype it (ace#2261).** The atom
+   above takes inline arguments only — the live labs schema has **no**
+   file-handle parameter (verified 2026-09-08 against `tools/list`: the 21
+   declared properties contain nothing matching `file` or `path`), and
+   `create_solicitation` is a labs-side tool, so this cannot be fixed atom-side.
+   A composed solicitation body routinely runs **33–50 KB** (33,557 bytes on
+   `bednet-check-2-visit/20260907-1126`; §§ 4 and 8 measure the same bytes at
+   49,531 / 51,920 on `20260825-1310`). Emitting that as tool arguments spends
+   its full size in context a second time — the exact cost ace#1918 removed from
+   this skill's two documents — and makes the published bytes and the draft two
+   independent generations that can silently diverge.
+
+   So above roughly 20 KB, publish by sending the Step-4 `payload.json`
+   **directly**, via the same server and the same server-side schema validation:
+
+   ```bash
+   python3 -c "import json; p = json.load(open('payload.json')); json.dump(
+     {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+      'params': {'name': 'create_solicitation', 'arguments': p}},
+     open('rpc.json', 'w'))"
+
+   curl -sS -X POST https://labs.connect.dimagi.com/mcp/ \
+     -H "Authorization: Bearer $LABS_MCP_TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     --data-binary @rpc.json
+   ```
+
+   Same `Accept`-header and SSE-response caveats as the `tools/list` snippet
+   above. This is **not** a workaround for a schema problem — labs validates
+   the payload identically on both routes and returns the same
+   `INVALID_SCHEMA` + `error.details.fields` on drift; it is the same call made
+   without laundering the body through the model. Step 7a's `get_solicitation`
+   round-trip is required either way and is what actually settles that the
+   publish landed (it already says "whether via MCP atom or direct JSON-RPC").
+   Record the route in `solicitation-create_draft.md`. For a short EOI that fits
+   comfortably inline, the atom is simpler — use it.
+
+   **Second-order reason this matters.** A 33–50 KB generated argument object is
+   the single largest generation in Phase 8, and a generation cut mid-call is
+   precisely what raises `InputValidationError: <tool> was called with input
+   that could not be parsed as JSON` — a CLIENT-side error (see `CLAUDE.md`
+   § Gotchas), where the tool never ran and the server never saw a byte.
+   Reading the bytes off disk removes that failure mode instead of retrying
+   into it.
 
    **All solicitation fields are flat at the top of the atom's argument
    object.** There is no `data: {...}` envelope. Verified against the
@@ -955,6 +1017,7 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **Step 6 routed a >40 KB payload through the model's context while §§ 4/8 of the same skill mandated `localFilePath` for the SAME bytes (dimagi-internal/ace#2261).** The draft, the published doc and the publish body are one payload — §§ 4 and 8 say so ("reuse the step-4 scratch file") and measure it at 49,531 / 51,920 chars — but only two of the three consumers were routed off disk. The third, the publish itself, was pinned to `mcp__connect-labs__create_solicitation`, whose arguments are inline-only; the labs schema has no file-handle param (verified against the live `tools/list`) and it is a labs-side tool, so it cannot be fixed atom-side. The JSON-RPC route that solves it was already acknowledged — once, as an unexplained "fallback", in Step 7a rather than Step 6 — so nothing told an agent it was allowed or that a large payload was the case for it. Measured on `bednet-check-2-visit/20260907-1126` (labs solicitation **19201**, program 231): 33,557-byte payload published via `curl --data-binary @rpc.json`, HTTP 200, Step 7a round-trip green on every assertion. Step 4 now composes `payload.json` BEFORE the publish; Step 6 documents the JSON-RPC route for bodies above ~20 KB and names the `InputValidationError` failure mode a large generated argument object invites. Also fixed the § Step 6 `tools/list` curl, which **406s as printed** — it omits `Accept: application/json, text/event-stream`, and its reply is SSE rather than plain JSON. Both cost a round of rediscovery on the same run. | ACE team |
 | 2026-09-08 | **Step 7a's span ceiling subtracted the solicitation window UNCONDITIONALLY, so a PDD whose `## Timeline` starts at AWARD tripped a `[BLOCKER]` on the end date Step 2 had computed correctly (dimagi-internal/ace#2231).** Step 2 conditions its subtraction on *reading the rows* — rule (1) subtracts a solicitation-open row **that exists** — while the ceiling added in #1858 subtracted the window whether or not the total contained it. The two therefore disagree by exactly the solicitation window on any PDD whose clock starts post-award, and the ceiling flags the right answer. Measured on `poverty-graduation/20260908-0510` (labs solicitation **19188**, program 265): § 17's first row is *Partner onboarding and FLW recruitment*, total 18 weeks with no solicitation row; Step 2 gives **2027-02-09** (span 126d) and the unconditional ceiling reads `126 − 14` = 112d and rejects it. Complying publishes **2027-01-26**, two weeks SHORT of the programme's declared post-award stages — the exact inverse of the #1858 overshoot. That run deviated deliberately and recorded it in the draft, the published doc and the `sol-response-deadline` decisions row, but a compliant agent would have halted a completed publish at the last step of Phase 8. The ceiling's subtrahend is now a three-case table keyed on the same reading rule (1) performs, and rule (1) states the has-none case explicitly. Both shapes are legal by design — `templates/pdd-template.md § Timeline` asks a PDD to say where its clock starts. *Enforced:* `test/skills/solicitation-end-date-addend.test.ts`. | ACE team |
 | 2026-09-01 | **`expected_end_date` re-spent the solicitation window the start date had already consumed (dimagi-internal/ace#1858).** Step 2 said `expected_start_date + the PDD's stated duration band`, one row below a definition placing `expected_start_date` *after* the solicitation window and *after* award/contracting — while a PDD `## Timeline` total for a solicited engagement normally starts its clock at solicitation-open. The two rows therefore double-count the window and the award step. Measured on `bednet-check-2-visit/20260828-0629` (labs solicitation **17695**, program 231): published 2026-08-30 → deadline 2026-09-13 → start 2026-09-27; the rule applied literally gives `+18 weeks` = **2027-01-31**, against a correct post-award remainder of `+16 weeks` = **2027-01-17** — **14 days long on a public partner-facing listing**. That run deviated deliberately and recorded the derivation in the draft plus the `response-deadline` decisions row, but a compliant agent would have published the overshoot and nothing would have caught it: Step 7a asserted only `expected_end_date > expected_start_date`, which an over-long date satisfies. Sibling of ace#1685, which re-anchored the start date in the same change but never scoped the end date's *addend*. The addend is now explicitly the PDD's **post-award** duration — total less the rows the deadline + contracting allowance have already passed — with the subtraction recorded in the draft; Step 7a gained a span ceiling (`span ≤ total − solicitation window`); and `templates/pdd-template.md § Timeline` now asks the PDD to state where its clock starts, since it pinned no convention and the ambiguity was structural. | ACE team |
 | 2026-08-26 | **`expected_start_date` was derived from the Phase 4 opp row, publishing a start date BEFORE the solicitation's own `application_deadline` (dimagi-internal/ace#1685).** Step 2 said "Phase 4 opp `start_date` if available", but Phase 4 runs before Phase 8 in the same `/ace:run`, so that date is always at or before the publish date while the deadline is publish + 14 days. Observed on `hh-poverty-targeting/20260824-1404` (labs solicitation **17041**, program 189): Phase 4 opp `start_date` **2026-08-26** vs computed `application_deadline` **2026-09-09** — following the rule literally publishes a work start 14 days before applications close. That run deviated deliberately (published 2026-09-21 → 2026-12-07, recorded in `decisions.yaml` row `solicitation-date-window`), but a compliant agent would have published the contradiction and nothing would have caught it: Step 7a asserted only that the dates round-tripped, and `solicitation-create-eval` dim 3 graded the deadline in isolation. The PDD fallback does not save it either — for a relative-to-award timeline (the normal shape here) there is no absolute start date to inherit. Both date rows are now anchored to `application_deadline + a contracting allowance` and the PDD's duration band, with the Phase 4 dates usable only when they already satisfy the ordering; Step 7a gained a `[BLOCKER]` ordering assertion, and the eval rubric grades the ordering. | ACE team |
