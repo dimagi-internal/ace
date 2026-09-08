@@ -550,7 +550,33 @@ dispatches); both assume each artifact lands on Drive independently.
 (Canonical incident malaria-rdt/20260602-1409: see
 orchestrator-reference.md § Incremental writes rationale.)
 
-When dispatching `Agent(<phase>)`, structure the prompt with sections:
+**Every `Agent(<phase>)` dispatch passes `isolation: "worktree"` — no
+exceptions.** It is a sibling parameter of `prompt`, not something the
+prompt can ask for, so it is set at the dispatch site or not at all. A
+phase agent *ships code*: `CLAUDE.md § Self-heal a filed issue when you
+can` tells every agent to fix what it files, in session, so a phase agent
+runs `git checkout -b`, `git add -A` and `scripts/version-bump.sh` — and
+without the flag it runs all of that **in the orchestrator's own worktree
+while the orchestrator is using it.** On
+`poverty-graduation/20260908-0510` the Phase 8 agent filed and self-healed
+ace#2231 → PR #2232 exactly that way and left `/ace:run`'s worktree on a
+foreign branch (`fix/2231-conditional-span-ceiling`) four versions ahead
+of its own, while the orchestrator was writing `run_state.yaml` patches
+from it. The run survived on a happens-to-be-clean tree — luck, not
+design, and the same three-minute `git add -A` window as ace#2001.
+
+**The fix is isolation, not prohibition.** Do NOT tell phase agents to
+stop self-healing; that contradicts the standing operator directive (Jon,
+2026-07-22) and loses exactly the in-context catches it exists to get —
+ace#2231 would otherwise have published a solicitation two weeks short of
+its own declared post-award stages. Phase agents keep their state in Drive
+and `run_state.yaml`, so a private worktree costs them nothing. Full
+incident, the harness-enforcement note, and the `--expect-branch` backstop
+for any path that forgets the flag: `agents/orchestrator-reference.md
+§ Dispatch it into its OWN worktree`. ace#2233, recurrence of ace#2001.
+
+When dispatching `Agent(<phase>)`, pass `isolation: "worktree"` and
+structure the prompt with sections:
 
 ```
 ## Opportunity

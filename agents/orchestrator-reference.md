@@ -1634,11 +1634,36 @@ corrected backgrounded form are in `skills/shipping/SKILL.md § Step 2`.
 
 ### Dispatch it into its OWN worktree — `isolation: "worktree"`
 
-**Every fix-and-ship dispatch MUST pass `isolation: "worktree"` to the
+**Every dispatch that may commit MUST pass `isolation: "worktree"` to the
 `Agent` tool.** Not a preference: a dispatched subagent inherits the
 dispatcher's working directory, so without it the subagent runs
 `git checkout -b`, `git add -A` and `scripts/version-bump.sh` **inside
 the orchestrator's own worktree, concurrently with the orchestrator.**
+
+**"May commit" is every dispatch ACE makes, not just the fix-and-ship
+ones.** Three sites, all of them:
+
+| Site | Dispatch | Why it commits |
+|---|---|---|
+| § Self-heal sweep, § Fix-and-ship subagent template | a fix-and-ship subagent | that IS its job |
+| `agents/ace-orchestrator.md` § Per-phase conventions | `Agent(<phase>)` | `CLAUDE.md § Self-heal a filed issue when you can` tells every agent to fix what it files, in session — so a phase agent ships code too |
+| `agents/iterate-loop.md` § Autofix | the level-1 fix+ship subagent | ships the minimal fix for a dirty run |
+
+Scoping this rule to fix-and-ship is how the class came back. ace#2001
+was closed by PR #2041, which documented the flag only where a fix-and-ship
+dispatch reads it; `Agent(<phase>)` is launched from a different template
+that said nothing about isolation. On `poverty-graduation/20260908-0510`
+the Phase 8 agent self-healed ace#2231 → PR #2232 from the orchestrator's
+live worktree and left `/ace:run` on `fix/2231-conditional-span-ceiling`
+at VERSION 0.13.1362 while the orchestrator's own branch sat at 0.13.1358
+— and was concurrently writing `run_state.yaml` patches from that tree.
+Again nothing failed; again only because the tree happened to be clean.
+**The fix is isolation, not prohibition** — suppressing phase-agent
+self-healing contradicts the standing operator directive (Jon,
+2026-07-22). ace#2233. *Enforced:*
+`test/agents/phase-dispatch-isolation.test.ts`, which asserts the flag
+POSITIONALLY (this file has always contained the string, in the sweep, so
+a whole-file presence check was green throughout the incident).
 
 Measured on `poverty-graduation/20260905-0924` (ace#2001). The Phase 1
 subagent self-healed an issue and moved the branch out from under a live
