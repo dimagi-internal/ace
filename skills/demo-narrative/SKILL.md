@@ -182,8 +182,35 @@ paraphrase the schema here — read the model / schema and validate.
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
 
-   A fourth, on a different axis — the scene is well-formed and demonstrates
-   the right thing, and **the frame nobody can read it in** (ace#2219):
+   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
+   A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
+   alone — you have already named one element, and counting the words in its
+   id cannot say whether it is post-state-only (ace#1660).
+
+   **Retracted (ace#1660): there is no `scroll-under-fixed-header` check, and
+   `scroll_to` needs no offset.** A fourth check used to flag every `scroll_to`
+   without `offset: 96`. Both halves were wrong against canopy 0.2.423 and it
+   is deleted — **do not re-add it, and never write `offset:` on an action**:
+
+   - canopy's `ScrollToAction` declares only `kind` + `target`, and
+     `_ActionBase` sets `extra="forbid"`, so `offset:` makes the spec FAIL
+     validation (`Extra inputs are not permitted`). Following the old
+     remediation turned a passing spec into one canopy refuses.
+   - The premise was stale anyway. `recorder.py::scroll_to` chases
+     `scroll_into_view_if_needed` with an explicit centring scroll
+     (`window.scrollTo({top: y + scrollY - innerHeight / 2})`), so the element
+     lands at the vertical CENTRE — no fixed bar reaches it. That was #1365's
+     own fix, closed 2026-08-14.
+
+   If a scene genuinely needs different framing, the levers canopy accepts are
+   `scroll_to` (which names an element and lets the recorder centre it — the
+   right answer nearly always), `scroll` (whose `value` takes `top` / `bottom` /
+   a pixel offset), and a per-scene `viewport`. Which of those you reach for is
+   the fourth defect class, below.
+
+   **The fourth defect class**, on a different axis from the three above — the
+   scene is well-formed and demonstrates the right thing, and **the frame
+   nobody can read it in** (ace#2219):
 
    - **`pixel-scroll-framing`** — a `kind: scroll` carrying a raw pixel `value`
      decides how a judged still is framed, and a pixel offset is a guess about
@@ -219,30 +246,6 @@ paraphrase the schema here — read the model / schema and validate.
    retracted syntax verbatim and makes the spec fail validation if followed.
    Run `checkScrollFraming` from `lib/demo-frame-legibility.ts` over the spec —
    `demo-data-setup-qa` check 14 is the backstop that runs it again.
-
-   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
-   A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
-   alone — you have already named one element, and counting the words in its
-   id cannot say whether it is post-state-only (ace#1660).
-
-   **Retracted (ace#1660): there is no `scroll-under-fixed-header` check, and
-   `scroll_to` needs no offset.** A fourth check used to flag every `scroll_to`
-   without `offset: 96`. Both halves were wrong against canopy 0.2.423 and it
-   is deleted — **do not re-add it, and never write `offset:` on an action**:
-
-   - canopy's `ScrollToAction` declares only `kind` + `target`, and
-     `_ActionBase` sets `extra="forbid"`, so `offset:` makes the spec FAIL
-     validation (`Extra inputs are not permitted`). Following the old
-     remediation turned a passing spec into one canopy refuses.
-   - The premise was stale anyway. `recorder.py::scroll_to` chases
-     `scroll_into_view_if_needed` with an explicit centring scroll
-     (`window.scrollTo({top: y + scrollY - innerHeight / 2})`), so the element
-     lands at the vertical CENTRE — no fixed bar reaches it. That was #1365's
-     own fix, closed 2026-08-14.
-
-   If a scene genuinely needs different framing, the only levers canopy accepts
-   are `scroll` (whose `value` takes `top` / `bottom` / a pixel offset) and a
-   per-scene `viewport`.
 
    These are the halves decidable from the SPEC. The runtime halves —
    resolving an ambiguous target to the interactive node, comparing a gate
