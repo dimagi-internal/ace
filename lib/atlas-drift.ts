@@ -138,11 +138,14 @@ export interface ArtifactFileMeta {
  *  and treating that tie as supersession would silence real failures.
  *
  *  Why mtime and not `dispatch_id`: ace#1571 suggests comparing provenance
- *  sidecars, but `MobileClient.runRecipe` stamps sidecars over
- *  `result.screenshots` and `videos` only — `captureFailureForensics` writes
- *  `<recipeId>-FAILURE.{xml,png,txt}` with no `.meta.json` at all
- *  (`mcp/mobile/client.ts`). There is no dispatch id on a FAILURE dump to
- *  compare, so mtime is the signal that actually exists on disk. */
+ *  sidecars. Since ace#2237 a FAILURE dump does carry one —
+ *  `MobileClient.runRecipe` stamps `captureFailureForensics`'s
+ *  `<recipeId>-FAILURE.{xml,png}` with the producing dispatch, and a later
+ *  dispatch that harvests a preserved dump keeps that id and only adds
+ *  `superseded_by`. But this classifier runs OUT OF BAND over a directory
+ *  (`scripts/probe-atlas-drift.ts`) with no current dispatch in hand to
+ *  compare against, and dumps written before #2237 have no sidecar at all.
+ *  mtime is the signal that exists on disk for every dump, old and new. */
 export function isSupersededFailureDump(
   failureDump: ArtifactFileMeta,
   siblings: readonly ArtifactFileMeta[],

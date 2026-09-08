@@ -57,6 +57,7 @@ import {
   getAceVersion,
   getGitSha,
   newDispatchId,
+  stampArtifactProvenance,
   writeProvenanceSidecar,
 } from '../../lib/screenshot-provenance.js';
 import {
@@ -2019,6 +2020,11 @@ export class MobileClient {
     // current dispatch's ID to detect leftover PNGs from prior runs.
     const recipeId = path.basename(recipePath).replace(/\.ya?ml$/, '');
     const dispatchId = newDispatchId();
+    // When this dispatch began — captured BEFORE the dir wipe, so any
+    // artifact older than it is one the wipe deliberately spared rather than
+    // one this dispatch produced. That is what keeps a preserved
+    // `*-FAILURE.png` from being re-stamped with our id (ace#2237).
+    const dispatchStartedAtEpochMs = Date.now();
 
     // Dispatch-scoped output namespace (dimagi-internal/ace#1130). The
     // caller passes a run-scoped ROOT; this dispatch owns
@@ -2295,14 +2301,39 @@ export class MobileClient {
       deviceSerial: lastDeviceSerial,
       writtenAtEpochMs: Date.now(),
     });
-    for (const s of result.screenshots) {
+    //
+    // Forensics FIRST. `captureFailureForensics` above may have overwritten a
+    // preserved `<recipeId>-FAILURE.png` from a prior attempt with a fresh
+    // capture of THIS dispatch's failure screen, and it runs after the
+    // backend's harvest — so those files are stamped here explicitly, and
+    // before the harvest loop, so the harvest sees a sidecar that already
+    // agrees with the fresh mtime. Without this the current dispatch's own
+    // forensics carried no provenance at all, which is why the preserved
+    // frame on spark-facilitator/20260907-1120 had no original id to keep.
+    for (const forensicPath of [
+      result.failureForensics?.screenshotPath,
+      result.failureForensics?.uiDumpPath,
+    ]) {
+      if (!forensicPath) continue;
       try {
-        writeProvenanceSidecar(s.path, provenance);
-        s.provenance = provenance;
+        writeProvenanceSidecar(forensicPath, provenance);
       } catch (e) {
-        logInfo(`runRecipe: failed to write provenance sidecar for ${s.path}: ${String(e)}`);
+        logInfo(
+          `runRecipe: failed to write provenance sidecar for ${forensicPath}: ${String(e)}`,
+        );
       }
     }
+    // Preserved artifacts (`00-*`, `*-FAILURE.*`) keep the provenance of the
+    // dispatch that PRODUCED them and gain `superseded_by: <this dispatch>`;
+    // everything this dispatch actually wrote is stamped as ours. See
+    // `resolveArtifactProvenance` (ace#2237).
+    stampArtifactProvenance({
+      artifacts: result.screenshots,
+      current: provenance,
+      dispatchStartedAtEpochMs,
+      onError: (p, e) =>
+        logInfo(`runRecipe: failed to write provenance sidecar for ${p}: ${String(e)}`),
+    });
     // Stamp + spool the recordings. Sidecars land at `<video>.meta.json`,
     // same convention as PNGs. The spool is how videos from recipes whose
     // callers aren't uploading skills (heal, registration, baseline) still
