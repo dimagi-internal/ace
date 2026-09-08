@@ -77,14 +77,16 @@ describe('hqOAuthLogin — already-authenticated fast path', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('STILL throws template-drift when we are on the login page and the button is gone', async () => {
+  it('STILL throws template-drift when BOTH OAuth entry points are gone', async () => {
     // The negative control: this is the case the error message describes, and
-    // the fast path must not swallow it.
+    // the fast path must not swallow it. `fakePage` returns null for every
+    // selector here, so the /accounts/commcarehq/login/ fallback finds nothing
+    // either -- which is the only state that should still throw.
     const { page, state } = fakePage(`${BASE_URL}/accounts/login/`, false);
 
     await expect(
       hqOAuthLogin({ context: fakeContext(page), baseUrl: BASE_URL, ...CREDS }),
-    ).rejects.toThrow(/OAuth button "Login with CommCareHQ" not found/);
+    ).rejects.toThrow(/No CommCareHQ OAuth entry point on Connect/);
 
     expect(state.queried).toBe(true);
   });
@@ -94,6 +96,6 @@ describe('hqOAuthLogin — already-authenticated fast path', () => {
     const { page } = fakePage(`${BASE_URL}/accounts/login/?next=/a/x/opportunity/`, false);
     await expect(
       hqOAuthLogin({ context: fakeContext(page), baseUrl: BASE_URL, ...CREDS }),
-    ).rejects.toThrow(/OAuth button "Login with CommCareHQ" not found/);
+    ).rejects.toThrow(/No CommCareHQ OAuth entry point on Connect/);
   });
 });

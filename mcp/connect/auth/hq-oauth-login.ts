@@ -14,9 +14,13 @@ export interface HqOAuthLoginOptions {
  *
  * Selectors confirmed live on 2026-04-28 (see `scripts/probe-connect-login.ts`):
  *
- *   1. GET ${opts.baseUrl}/accounts/login/
- *   2. Click `button:has-text("Login with CommCareHQ")` — submits a form to
- *      `/accounts/commcarehq/login/?process=login`
+ *   1. GET ${opts.baseUrl}/accounts/login/ (this also detects the
+ *      already-authenticated case, which redirects away from it)
+ *   2. GET `/accounts/commcarehq/login/?process=login` and click the single
+ *      submit button on allauth's "Sign In Via commcarehq" interstitial. The
+ *      login page's own `button:has-text("Login with CommCareHQ")` is tried
+ *      first and is still honoured, but Connect removed it from the template
+ *      (verified anonymously 2026-09-08).
  *   3. Bounce to www.commcarehq.org. Three possible landings depending on what
  *      cookies the BrowserContext already carries:
  *        (a) `/accounts/login/?next=/oauth/authorize/...` — HQ login form
@@ -96,11 +100,31 @@ export async function hqOAuthLogin(opts: HqOAuthLoginOptions): Promise<void> {
       return;
     }
 
-    const oauthButton = await page.$('button:has-text("Login with CommCareHQ")');
+    // Connect's login template DROPPED the "Login with CommCareHQ" button: the
+    // page is now a plain email/password form (`name="login"` + `name="password"`)
+    // with no OAuth entry point on it at all. Verified anonymously on 2026-09-08 --
+    // `curl https://connect.dimagi.com/accounts/login/` contains no occurrence of
+    // "commcarehq" in any case. That is NOT the already-authenticated case above:
+    // this fires with no session at all, on the login page itself.
+    //
+    // The OAuth ROUTE is untouched -- `/accounts/commcarehq/login/?process=login`
+    // still serves allauth's "Sign In Via commcarehq ... Continue" interstitial,
+    // a single-button POST form. So go straight to it rather than hunting a button
+    // on a page that no longer offers one.
+    //
+    // The old button is still tried first, so this keeps working unchanged if the
+    // template ever puts it back.
+    let oauthButton = await page.$('button:has-text("Login with CommCareHQ")');
+    if (!oauthButton) {
+      await page.goto(`${opts.baseUrl}/accounts/commcarehq/login/?process=login`);
+      oauthButton = await page.$('form button[type="submit"]');
+    }
     if (!oauthButton) {
       throw new Error(
-        'OAuth button "Login with CommCareHQ" not found on Connect login page. ' +
-        'Connect template may have changed; re-run scripts/probe-connect-login.ts to update selectors.'
+        'No CommCareHQ OAuth entry point on Connect: neither the login page button ' +
+        '("Login with CommCareHQ") nor the submit button on ' +
+        '/accounts/commcarehq/login/?process=login was found. Connect template may ' +
+        'have changed; re-run scripts/probe-connect-login.ts to update selectors.'
       );
     }
 
