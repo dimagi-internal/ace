@@ -477,6 +477,52 @@ front half (how the labs-only opp + its data come to exist) differs.
    Fixing it is one `pipeline_update_schema` here; discovering it after the
    render costs a whole iteration.
 
+   **Match the aggregation to the noun the COLUMN HEADER promises, and declare
+   the relations between columns.** `count` counts RECORDS; `count_distinct`
+   counts THINGS. Rendering one against the other as if they were the same noun
+   produces a number that cannot be true, and no check below this line can see
+   it — check 9 derives its spec from the Deliver app, and the app does not know
+   what a dashboard will put in a column header. `spark-facilitator/20260907-1120`
+   shipped exactly this, and it cost the run:
+
+   ```
+   steps_covered    count_distinct  form.fcap_step_screen.pilot_fcap_step
+   steps_completed  count           form.closing.step_completed (= yes)
+   ```
+
+   Three meetings closing the same step contributed three to `steps_completed`
+   and one to `steps_covered`, so "Steps closed out" exceeded "Steps covered" on
+   **6 of 12 rows** and four rows exceeded the seven-step ceiling stated in the
+   adjacent header. Check 9 reported `0 unexempted violations` throughout —
+   correctly, because no RECORD was wrong. The user-artifact judge capped `trust`
+   at 2 on it, and a `trust` cap alone holds the whole run at 2.0. The fix was
+   one word: `count_distinct` over the STEP path, filtered on completion.
+
+   So, for every dashboard, write down what must hold between its rendered
+   columns and put it in the manifest as `column_invariants` (per dashboard
+   key), each entry `{left, op, right, because}` with `right` either another
+   field name or a literal bound the header states:
+
+   ```yaml
+   column_invariants:
+     weekly_review:
+       - {left: steps_completed, op: "<=", right: steps_covered,
+          because: 'A step cannot be closed out without being covered.'}
+       - {left: steps_covered, op: "<=", right: 7,
+          because: 'The column header states "of the 7 Goal Setting steps".'}
+       - {left: payable, op: "<=", right: records,
+          because: 'Only a filed record can earn a payment.'}
+   ```
+
+   Judge them here with `checkColumnInvariants`
+   (`lib/dashboard-column-invariants.ts`) over the same `pipeline_preview` rows
+   you just proved extract, and fix the SCHEMA rather than the data when one
+   fails — a violated relation is almost always an aggregation reading the wrong
+   noun. Check 16 re-runs this independently, so a skipped declaration surfaces
+   there rather than reaching a funder. **Declare the empty list deliberately if
+   a dashboard's columns genuinely bear no relation** — a recorded empty list is
+   evidence and an omitted one is not.
+
    **`period_end` is an EXCLUSIVE bound — pass `timeline.end_date + 1 day`, never
    `timeline.end_date` itself (ace#1683).**
 
