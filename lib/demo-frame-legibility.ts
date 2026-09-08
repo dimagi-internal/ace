@@ -148,7 +148,12 @@ export type LegibilityFindingKind =
   /** A definition whose term matches no enumerated label — the glossary drifted. */
   | 'orphan-definition'
   /** Nothing was enumerated, so nothing was judged. */
-  | 'no-terms-enumerated';
+  | 'no-terms-enumerated'
+  /**
+   * Every framing action in the spec is a `scroll_to`, which this check does
+   * not evaluate — so the pass was earned over nothing.
+   */
+  | 'scroll-to-framing-unjudged';
 
 export interface LegibilityFinding {
   kind: LegibilityFindingKind;
@@ -249,6 +254,12 @@ function buildFinishedReport(
 export function checkScrollFraming(spec: LegibilitySpec | undefined): LegibilityReport {
   const findings: LegibilityFinding[] = [];
   let judged = 0;
+  /**
+   * How many `scroll_to` actions frame a judged still. Counted so a pass with
+   * `judged` at zero can say what it DECLINED to look at rather than reading as
+   * an approval — see the finding emitted at the end of this function.
+   */
+  let scrollToFrames = 0;
 
   const scenes = spec?.scenes ?? [];
   for (let si = 0; si < scenes.length; si++) {
@@ -258,6 +269,7 @@ export function checkScrollFraming(spec: LegibilitySpec | undefined): Legibility
 
     for (let ai = 0; ai < actions.length; ai++) {
       const a = actions[ai];
+      if (a.kind === 'scroll_to' && framesAJudgedStill(actions, ai)) scrollToFrames++;
       if (a.kind !== 'scroll') continue;
       if (!framesAJudgedStill(actions, ai)) continue;
 
@@ -322,6 +334,29 @@ export function checkScrollFraming(spec: LegibilitySpec | undefined): Legibility
           `element the frame is about with a scroll_to action, which cannot be ambiguous`,
       });
     }
+  }
+
+  if (judged === 0 && scrollToFrames > 0) {
+    findings.push({
+      kind: 'scroll-to-framing-unjudged',
+      blocking: false,
+      detail:
+        `this check judged NOTHING. It reads pixel scrolls only, and all ${scrollToFrames} ` +
+        `framing-decisive action(s) in this spec are scroll_to, which it skips — so the pass ` +
+        `above records the ABSENCE of a pixel guess, not an approval of how these frames are ` +
+        `composed. Read it that way. On spark-facilitator/20260907-1120 it was read as a ` +
+        `verdict — the spec of record framed all five of its stills with scroll_to, ` +
+        `this check returned a pass having evaluated zero actions, and it was reported as ` +
+        `"check 14 passed". Three of those five scroll_to actions had silently failed to move ` +
+        `the page — scroll_to CENTRES its target, and a centred position outside the page's ` +
+        `own scroll range is clamped back to where the camera already was, so the recorder ` +
+        `filmed the previous frame and canopy failed the run on duplicate frames. The render ` +
+        `replaced them with pixel scrolls; once the spec of record was reconciled to what was ` +
+        `actually rendered, this same check returned two blocking findings. Nothing here says ` +
+        `scroll_to is wrong — it is this module's remedy, and it holds at any page length ` +
+        `whenever the centred position is reachable. What is wrong is treating a pass with ` +
+        `nothing in scope as evidence that the framing was looked at. ace#2253`,
+    });
   }
 
   return buildFinishedReport(findings, judged, 'framing-decisive scroll(s)');
