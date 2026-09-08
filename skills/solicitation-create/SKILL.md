@@ -153,6 +153,29 @@ contract.
 > not embed a fixed per-unit number as the load-bearing economic; the
 > range + the question + the LLO's response are the load-bearing parts.
 
+> **The rate is ALL-IN, and its composition is a required ask** (standing
+> operator directive, Jonathan 2026-09-08): *"the LLO should propose an
+> all-in rate per verified service delivery, and explicitly how much is
+> paid to the worker vs. commodity."* Two obligations follow, and a
+> composed listing must satisfy both:
+>
+> 1. **All-in.** The per-unit rate is the whole commercial relationship.
+>    There is **no separately-funded line** for supervision, transport,
+>    devices, connectivity or reporting time. Never invite one — no
+>    "funded separately", "reimbursed separately", "a separate budget
+>    line". Asking what the rate *covers* is fine and expected; implying
+>    that something sits outside it is not.
+> 2. **Decomposed.** Some question must ask how the all-in rate splits
+>    between what reaches the **worker** and what covers **commodity**.
+>    An undifferentiated total hides whether the worker is paid a
+>    defensible wage — the number the programme most needs to see.
+>
+> Solicitation 19201 broke both at once: Q8's text invited a separately
+> funded line while its own `framing` and the linked evaluation criterion
+> both said partner-absorbed, and nothing asked for the split. A
+> respondent reading all three on one screen cannot price the engagement,
+> and these listings carry no `contact_email` to ask through (ace#2265).
+
 1. **Read all source materials.** Open in this order:
 
    - **Work order** (`1-design/pdd-to-work-order.gdoc`) via `docs_get`
@@ -308,6 +331,15 @@ contract.
    over the composed payload. On any hit, halt with the `[BLOCKER]`
    that `formatJargonScan` renders and rewrite the offending field in
    the reader's language. Do not suppress it and do not publish.
+
+   **Rate-scope scan — same breath, same gate.** Run `scanRateScope` from
+   `lib/rate-scope-consistency.ts` over the composed payload. It enforces
+   the two obligations in the ALL-IN design principle above: no field may
+   invite a separately-funded line, and some field must ask how the rate
+   splits between worker and commodity. On any issue, halt with the
+   `[BLOCKER]` that `formatRateScope` renders. Both halves failed on
+   solicitation 19201, so treat a clean result as the exception until
+   you've read the composed budget question yourself.
 
    Two things about this check that are load-bearing:
 
@@ -552,7 +584,10 @@ contract.
    3. What is your timeline for fielding once awarded?
    4. What is your supervision model?
    5. Do you have local-language capacity matching the target geography?
-   6. Provide a budget breakdown for the proposed scope.
+   6. Propose your all-in rate per verified service delivery, and state
+      how much of it is paid to the worker vs. commodity. (ALL-IN — do
+      NOT ask which costs would be "funded separately"; see the design
+      principle above.)
 
    For `focus-group` (CHW-deployment vocabulary is wrong; swap to
    qualitative-research vocabulary):
