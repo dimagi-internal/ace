@@ -23,12 +23,17 @@
 // reader can see is what gets checked.
 //
 
+import yaml from 'js-yaml';
 import {
   assertManifestReadable,
   collectCaptureEntries,
   type CaptureManifestLike,
   type ManifestReadabilityReport,
 } from './capture-manifest.js';
+import {
+  extractDriveFileId,
+  imageRefsOnUnvalidatedSlide,
+} from './training-deck-spec.js';
 
 export interface CaptionBackingFinding {
   /** Drive fileId as it appears in the published document. */
@@ -88,6 +93,118 @@ export function extractCitedFileIds(published: string): string[] {
     for (const m of published.matchAll(re)) out.push(m[1]);
   }
   return out;
+}
+
+/**
+ * A published TRAINING-DECK SPEC carries something a rendered document does
+ * not: an INVENTORY.
+ *
+ * `manifest.{opp,common,template}` is the resolution map — every alias the
+ * deck COULD place, lifted wholesale from `app-screenshot-capture_manifest.yaml`
+ * by `training-deck-generate` § step 5 — and the slides then place a handful of
+ * them by `@alias`. To a whole-text scan the two are indistinguishable, so
+ * every frame the run CAPTURED read as a frame the deck ASSERTS OVER, and the
+ * skill's own BLOCKER became unpassable by construction on a correctly-authored
+ * spec: the only ways to satisfy it were to back-fill `shows:` onto dozens of
+ * frames nobody cites, or to stop reading the gate.
+ *
+ * Measured on spark-facilitator/20260907-1120: 10 images on slides, and
+ * `{cited_total: 91, backed: 13, findings: 66 x no-shows + 12 x
+ * duplicate-cited}` — every finding naming a frame no slide cites. (ace#2238)
+ *
+ * So for a deck spec the citations are derived the way a reader of the RENDERED
+ * DECK would see them: what the slides place, resolved through the map. The
+ * gate is not relaxed — an inventory entry a slide DOES place is judged exactly
+ * as before, and so is any Drive link elsewhere in the spec (a slide body, a
+ * note): the exemption is scoped to the map itself, not to the document.
+ *
+ * Returns `null` when the text is not a deck spec, which is the signal to fall
+ * back to the whole-text scan that is right for every rendered artifact.
+ */
+export function extractDeckSpecCitations(published: string): string[] | null {
+  let doc: unknown;
+  try {
+    doc = yaml.load(published);
+  } catch {
+    return null; // not YAML at all — a rendered Doc, markdown, prose
+  }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return null;
+  const d = doc as Record<string, unknown>;
+  const manifest = d.manifest;
+  if (!Array.isArray(d.modules)) return null;
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return null;
+
+  // The resolution map, in `resolveManifest` precedence: opp > common > template.
+  const merged = new Map<string, string>();
+  // Every row, including one a later bucket overrides — the subtraction below
+  // is over TEXT, and an overridden row is still a line in the document.
+  const allValues: string[] = [];
+  for (const bucket of ['template', 'common', 'opp'] as const) {
+    const entries = (manifest as Record<string, unknown>)[bucket];
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    for (const [alias, value] of Object.entries(entries as Record<string, unknown>)) {
+      if (typeof value !== 'string') continue;
+      merged.set(alias, value);
+      allValues.push(value);
+    }
+  }
+
+  const placed: string[] = [];
+  // Ids a slide placed by writing the Drive URL out in full: those occur in
+  // the document text too, so the loose-citation arithmetic below must not
+  // count them a second time.
+  const placedLiterally = new Map<string, number>();
+  for (const mod of d.modules) {
+    const slides = (mod as Record<string, unknown> | null)?.slides;
+    if (!Array.isArray(slides)) continue;
+    for (const slide of slides) {
+      for (const ref of imageRefsOnUnvalidatedSlide(slide)) {
+        const alias = ref.startsWith('@') ? ref.slice(1) : ref;
+        const value = merged.get(alias);
+        let id: string | null;
+        if (value !== undefined) {
+          id = extractDriveFileId(value);
+        } else if (/^https?:\/\//.test(ref)) {
+          // An inline URL: a Drive one is a citation, an external one is not.
+          id = extractDriveFileId(ref);
+          if (id) bump(placedLiterally, id);
+        } else {
+          // An alias the map does not carry. Kept VERBATIM so it lands as
+          // `unknown-id` — a slide asserting over a frame that does not exist
+          // is the same defect whether the generator invented the alias or
+          // the id, and dropping it would let the fence pass the spec that
+          // step 9's `@alias` resolution check is meant to fail.
+          id = ref;
+        }
+        if (!id) continue;
+        placed.push(id);
+      }
+    }
+  }
+
+  // Everything ELSE a reader can see in the spec — a Drive link in a slide
+  // body or a note — is read the way a rendered document is read. Only the map
+  // ROWS are exempt, and only as rows: each contributes exactly one textual
+  // occurrence, so subtracting that leaves any other mention standing, even
+  // for an id the map also carries.
+  const outside = tally(extractCitedFileIds(published));
+  for (const value of allValues) {
+    for (const id of extractCitedFileIds(value)) outside.set(id, (outside.get(id) ?? 0) - 1);
+  }
+  for (const [id, n] of placedLiterally) outside.set(id, (outside.get(id) ?? 0) - n);
+  for (const [id, n] of outside) for (let i = 0; i < n; i++) placed.push(id);
+
+  return placed;
+}
+
+function bump(counts: Map<string, number>, key: string): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function tally(ids: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of ids) bump(counts, id);
+  return counts;
 }
 
 /**
@@ -154,7 +271,9 @@ export function classifyCaptionBacking(args: {
    */
   poolFileIds?: readonly string[];
 }): CaptionBackingReport {
-  const cited = extractCitedFileIds(args.published);
+  // A deck spec's citations are what its SLIDES place; every other artifact's
+  // are what its text shows (ace#2238).
+  const cited = extractDeckSpecCitations(args.published) ?? extractCitedFileIds(args.published);
   const frames = flattenManifestFrames(args.manifest);
   const byId = new Map<string, ManifestFrame>();
   for (const f of frames) if (!byId.has(f.file_id)) byId.set(f.file_id, f);

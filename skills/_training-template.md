@@ -185,6 +185,12 @@ trusted until it is fixed. On `spark-facilitator/20260907-1120` this shape cost
 a deck and an FLW guide their entire image audit: 60 real frames, zero visible
 to any consumer, every guard reporting clean.
 
+**A deck spec is the one artifact that carries an INVENTORY as well as
+citations** (`manifest.opp`, the alias → URL resolution map). There, "what a
+reader can see" is what the SLIDES place — the map is not a citation, and the
+check reads it that way (ace#2238). So keep the full pool in the map; a finding
+on a deck spec always names a frame some slide actually carries.
+
 It takes the published document rather than a list you assemble, on purpose.
 The first attempt at this check was a helper you called with your own list of
 citations:
