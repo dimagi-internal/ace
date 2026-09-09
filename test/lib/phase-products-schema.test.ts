@@ -284,3 +284,80 @@ describe('componentDesignProductsMatchSchema — DesignProducts accepts what Pha
     expect(res.valid).toBe(true);
   });
 });
+
+/**
+ * ace#2296 — the Phase 4 payability predicate had no shape in this schema at
+ * all, so `validateAs: {kind:'phase-products', phase:'connect-setup'}` was
+ * structurally blind to it: `opportunity` is `.passthrough()`, and the whole
+ * `verification` block rode through unvalidated.
+ *
+ * `question_value` is a string in Connect's own contract
+ * (`connect_set_verification_flags` declares `question_value: z.string()`), and
+ * it is the field that decides whether a follow-up visit is payable. Typing it
+ * here is what catches a BOOLEAN landing in it — the shape a YAML 1.1
+ * read-modify-write produces, and the one case the raw-text quoting detector
+ * cannot see (a boolean `true` is unambiguous in both dialects; it is simply
+ * the wrong type).
+ */
+describe('connect-setup products.connect.opportunity.verification (ace#2296)', () => {
+  const RULE = {
+    name: 'consent_confirmed=yes',
+    question_path: 'form.consent_to_continue.consent_confirmed',
+    question_value: 'yes',
+    deliver_unit_id: 6862,
+  };
+
+  it('accepts the verbatim block from bednet-check-2-visit/20260908-1544', () => {
+    const res = validatePhaseProductsFragment('connect-setup', {
+      connect: {
+        opportunity: {
+          verification: { form_field_rules: [RULE], form_field_rules_saved: 1 },
+        },
+      },
+    });
+    expect(res.valid).toBe(true);
+  });
+
+  it('rejects a BOOLEAN question_value, naming the path', () => {
+    const res = validatePhaseProductsFragment('connect-setup', {
+      connect: {
+        opportunity: {
+          verification: { form_field_rules: [{ ...RULE, question_value: true }] },
+        },
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.issues.map((i) => i.path).join(' ')).toContain('question_value');
+  });
+
+  it('rejects a NUMERIC question_value too (the sexagesimal / lossy-number shape)', () => {
+    const res = validatePhaseProductsFragment('connect-setup', {
+      connect: {
+        opportunity: { verification: { form_field_rules: [{ ...RULE, question_value: 90 }] } },
+      },
+    });
+    expect(res.valid).toBe(false);
+  });
+
+  it('stays permissive about extra rule keys and an absent verification block', () => {
+    // Adding this shape must not newly reject a run that records more than the
+    // four known keys, or one that records no verification at all — an
+    // INVALID_PHASE_PRODUCTS here blocks the Drive write and stalls Phase 4.
+    expect(
+      validatePhaseProductsFragment('connect-setup', {
+        connect: {
+          opportunity: {
+            verification: {
+              form_field_rules: [{ ...RULE, observed_at: '2026-09-09T02:42:00Z' }],
+              form_submission_start: '08:00',
+              notes: 'read from the released CCZ',
+            },
+          },
+        },
+      }).valid,
+    ).toBe(true);
+    expect(
+      validatePhaseProductsFragment('connect-setup', { connect: { opportunity: { id: 'x' } } }).valid,
+    ).toBe(true);
+  });
+});

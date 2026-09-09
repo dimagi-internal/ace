@@ -1735,7 +1735,27 @@ export async function handleUpdateYamlFile(
         }
       }
     }
-    const newContent = YAML.stringify(merged);
+    // Serialize under YAML **1.1** resolution rules. This does NOT change the
+    // parse above (deliberately — see below); it changes only which scalars get
+    // QUOTED on the way out.
+    //
+    // The default (YAML 1.2 core schema) emits the string 'yes' BARE, because
+    // to a 1.2 reader a bare `yes` IS the string. PyYAML — ace-web's Python
+    // side — resolves YAML 1.1, where bare `yes` is the boolean `true`. So the
+    // default output means two different things to two readers of the same
+    // file. Measured on bednet-check-2-visit/20260908-1544: the Phase 4
+    // payability predicate landed as `question_value: yes`, read as "yes" by
+    // the plugin and `True` by PyYAML (ace#2296). Stringifying under 1.1 quotes
+    // every string a 1.1 reader would re-resolve (`yes|no|on|off|y|n`, base-60
+    // scalars, ISO timestamps), which a 1.2 reader also reads as that string —
+    // so the file means one thing to everyone. Verified against the real 94 KB
+    // run_state: identical object under both dialects, +44 bytes.
+    //
+    // The READ stays on 1.2 on purpose. Parsing with 1.1 would coerce the bare
+    // `yes` values already sitting in written files into booleans and write
+    // them back as `true` — the read-modify-write corruption this fix exists to
+    // prevent. Write 1.1-safe; keep reading 1.2-literally.
+    const newContent = YAML.stringify(merged, { version: '1.1' });
 
     // Size guard: a healthy ACE state doc is tens of KB; past ~1MB the Docs
     // API rejects the write with an opaque "Bad Request" that bricks every
@@ -3535,7 +3555,7 @@ server.tool(
 
 server.tool(
   'validate_run_state',
-  "Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Reads the YAML from Drive (one call, with the same transient-error retry handleReadFile uses), parses it, and returns `{valid, errors, warnings}` where each issue carries `{path, message, severity, expected?, actual?}`. Use to confirm a phase actually wrote its block correctly — particularly after an `Agent(<phase>)` dispatch returns. Empty/null YAML (legal at run-init before any phase writes) returns `valid: true`. Implementation: `lib/run-state-validator.ts::validateRunState`.",
+  "Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Reads the YAML from Drive (one call, with the same transient-error retry handleReadFile uses), parses it, and returns `{valid, errors, warnings}` where each issue carries `{path, message, severity, expected?, actual?}`. Use to confirm a phase actually wrote its block correctly — particularly after an `Agent(<phase>)` dispatch returns. Empty/null YAML (legal at run-init before any phase writes) returns `valid: true`. Also scans the RAW TEXT for scalars whose meaning depends on which YAML dialect reads the file — an unquoted `yes`/`no`/`on`/`off`/`y`/`n` is a string to the plugin's YAML 1.2 readers and a BOOLEAN to PyYAML on ace-web's Python side (ace#2296) — and reports each as a `warning` naming the path. Warnings never gate a boundary; `true`/`false` and ISO timestamps are deliberately not flagged. Implementation: `lib/run-state-validator.ts::validateRunState` + `lib/yaml-ambiguous-scalars.ts`.",
   {
     fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
   },
@@ -3544,7 +3564,9 @@ server.tool(
       const read = await handleReadFile({ fileId }, drive);
       const text = read.content ?? '';
       const parsed = text.trim() ? YAML.parse(text) : null;
-      const r = validateRunState(parsed);
+      // Pass the raw text too: the YAML 1.1-vs-1.2 quoting check (ace#2296)
+      // cannot be done on `parsed`, since quoting does not survive a parse.
+      const r = validateRunState(parsed, { rawText: text });
       return result(r);
     } catch (e: any) {
       return error(e.message);
