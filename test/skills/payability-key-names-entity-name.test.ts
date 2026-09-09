@@ -119,3 +119,76 @@ describe('pdd-to-deliver-app-eval grades the display name (ace#1958)', () => {
     ).toMatch(/entity_name/);
   });
 });
+
+/**
+ * dimagi-internal/ace#2279 — the fix above was REACHABLE only from the
+ * component, and `pdd-to-deliver-app` never emitted it.
+ *
+ * The two describes above guard the component's brief paragraph and the eval's
+ * rubric. Neither guards the one thing that decides whether the paragraph ever
+ * reaches an architect: the emit-checklist in `pdd-to-deliver-app § Step 3`.
+ * On main after ace#1958 closed, `grep -c "payability-scoped-key"
+ * skills/pdd-to-deliver-app/SKILL.md` returned **0** — so a brief composed by
+ * working down that 21-entry checklist, which is what the checklist is for,
+ * could not carry the display-name rail no matter how correct the component was.
+ *
+ * The defect duly recurred on the NEXT build of the same opportunity
+ * (`bednet-check-2-visit/20260908-1544`, Deliver app
+ * `d603345f-b02d-42ef-8ad2-772b7565f1d0`) — the third occurrence on this opp —
+ * with `entity_id` correctly scoped and `entity_name` identity-only again.
+ *
+ * The asymmetry is what made it invisible: the `entity_id` half is stated in
+ * BOTH the skill's inline "Payability-scoped keys" paragraph and the component,
+ * while the `entity_name` half lives only in the component. A brief author reads
+ * the skill.
+ */
+describe('pdd-to-deliver-app EMITS payability-scoped-key (ace#2279)', () => {
+  const DELIVER = fileURLToPath(
+    new URL('../../skills/pdd-to-deliver-app/SKILL.md', import.meta.url),
+  );
+
+  it('names the component somewhere in the skill', () => {
+    // The exact grep the filing ran against main: 0 hits, whole file.
+    const skill = readFileSync(DELIVER, 'utf8');
+    expect(
+      skill,
+      'pdd-to-deliver-app must name payability-scoped-key, or the component is unreachable ' +
+        'from the documented build path however correct it is',
+    ).toMatch(/payability-scoped-key/);
+  });
+
+  it('names it as an EMIT-CHECKLIST entry, not only in prose', () => {
+    // A passing mention in a rationale note would satisfy the test above while
+    // leaving the checklist — the thing a brief author works down — silent.
+    // Checklist entries are the `     - \`name\`` bullets under the
+    // Deployability (fitness) components block.
+    const skill = readFileSync(DELIVER, 'utf8');
+    const checklistEntries = skill
+      .split('\n')
+      .filter((l) => /^\s{4,}- `[a-z-]+`/.test(l))
+      .map((l) => l.replace(/^\s+- `([a-z-]+)`.*$/, '$1'));
+
+    expect(
+      checklistEntries,
+      'the emit-checklist must list payability-scoped-key alongside the other ' +
+        'triggered components',
+    ).toContain('payability-scoped-key');
+  });
+
+  it('says the discriminator belongs in entity_name too, where the brief author will read it', () => {
+    // The substance, not just the name. Guarding only the bullet's existence
+    // would let it be added as a bare name with the entity_id half restated and
+    // the display-name half still missing — which is the original defect.
+    const skill = readFileSync(DELIVER, 'utf8');
+    const idx = skill.indexOf('payability-scoped-key');
+    const entry = skill.slice(idx, idx + 1400);
+    expect(
+      entry,
+      "the checklist entry must name entity_name, not just entity_id",
+    ).toMatch(/entity_name/);
+    expect(
+      entry,
+      'the entry must say WHY — identical display names on a payment surface',
+    ).toMatch(/identical|indistinguishable|byte-identical/i);
+  });
+});

@@ -728,6 +728,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        published instrument whose source file the run's
        `inputs-manifest.yaml` names. Transcribe every constant exactly;
        verified ACE-direct by Step 4k (ace#1527).
+     - `payability-scoped-key` — the PDD marks a SUBSET of submissions to a form
+       **non-payable** (a did-not-happen branch, a screening-only visit, an
+       ineligible-entity record, a committee meeting on a form that also records
+       community meetings). Mandates the payability discriminator in `entity_id`
+       **AND in `entity_name`**. Both halves matter and only one of them is
+       stated twice: the skill's own "Payability-scoped keys" paragraph above
+       covers `entity_id`, so a brief composed from that paragraph alone ships a
+       correct key with an ambiguous DISPLAY name — payable and non-payable
+       entities rendering byte-identically on the worker's completed-work and
+       invoice views, one approved and one rejected with nothing to tell them
+       apart. That is ace#1958, whose fix landed in the component and was then
+       unreachable because this checklist did not name it, so the defect
+       recurred on the next build of the same opp (ace#2279).
      - `entity-state-taxonomy` — **always for `archetype:
        longitudinal-visits`**, and for any archetype whose PDD declares a
        phase / stage / status vocabulary the worker sees. Carry the PDD's
