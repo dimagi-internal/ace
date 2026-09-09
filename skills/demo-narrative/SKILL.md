@@ -143,6 +143,23 @@ paraphrase the schema here — read the model / schema and validate.
      hh-poverty-targeting/20260730-2210: 10 of 10 actions degraded to
      `wait_for`/`hold` and 7 scenes rendered 2 distinct images
      (dimagi-internal/ace#1162).
+
+     **When `source.payoff_control` is set, the payoff scene MUST act on that
+     control — it is not a hint (ace#2316).** The producer sets it when the
+     opp's cohort sits below the detection floor and it took the
+     `below_programme_scale` escape, which is granted only on the promise that
+     the payoff rests somewhere that scale supports. You are the half that keeps
+     the promise. Do NOT author the payoff against whichever control the
+     template happened to ship: on `spark-facilitator/20260908-2215` the
+     interactive dashboard came from `llo_weekly_review`, whose affordances are
+     an underperforming-only filter and a coaching-task button, and the payoff
+     became the filter — hiding 10 rows of 12 on a table that already fitted one
+     screen. Four independent judges capped `use_case_soundness` at 3 on it, and
+     the run could not converge. `checkEscapedPayoffIsHonoured`
+     (`lib/ddd-scene-actions.ts`) is the gate; `demo-data-setup-qa` check 19
+     runs it. **If the declared control is not on the page, that is a producer
+     defect — send it back rather than re-aiming the scene**, because re-aiming
+     is what ships the same demo with a green check.
    - `scenes[]` — each scene: `persona` (must exist in `personas`), `title`,
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
