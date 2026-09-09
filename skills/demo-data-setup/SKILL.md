@@ -144,6 +144,10 @@ front half (how the labs-only opp + its data come to exist) differs.
         interactive: true              # set iff role is review-action / review / decision
         par_url: <url>
     primary_dashboard: program_admin
+    payoff_control: testid:payability-decision   # step 0 — the control the payoff
+                                                 # scene ACTS on. REQUIRED once
+                                                 # detectable_signal carries
+                                                 # below_programme_scale (ace#2316)
     realized_vars_ref: 7-synthetic/realized.json
     render_reset:                      # step 4b — the per-render reset contract (ace#2297)
       required: true                   # true iff a dashboard is `interactive: true`
@@ -177,14 +181,54 @@ front half (how the labs-only opp + its data come to exist) differs.
      scene shows a stakeholder *taking* a decision rather than reading a
      figure. That role decides step 3's run handling, so choose it in the plan,
      not at render time.
-   - **Select a checked-in template per dashboard — reuse over scratch.** Survey
-     the palette with `mcp__connect-labs__list_templates` plus the labs
+   - **Name the DEMONSTRATION before you look at a single template (ace#2316).**
+     Derive it from the PDD, not from the palette: read the
+     `verification_predicate` and the payment unit, and write one sentence —
+     *what decision does this dashboard let a stakeholder take, that the
+     programme's own rules require, and that a spreadsheet could not take at
+     THIS opp's cohort size?* Then name the on-page control that performs it and
+     record it as `source.payoff_control` (a canopy target, `testid:…`).
+
+     **This ordering is the whole point.** Pick a template first and the
+     template's affordances silently become the demonstration. Measured on
+     `spark-facilitator/20260908-2215`: the dashboard was instantiated from
+     `llo_weekly_review`, whose only interactive affordances are (its own labs
+     description) *"an underperforming-only filter, and a one-click coaching
+     task spawn"*. No control on the page could express the opp's actual
+     payability rule, so the payoff became the filter — hiding 10 rows of 12 on
+     a table that already fitted one screen. All four independent judges capped
+     `use_case_soundness` at 3 on exactly that, pinning concept below the 4.0
+     convergence bar. Three consecutive runs of that opp ended non-converged.
+     **If the best-fit template carries no control for your demonstration,
+     author the control onto the page — do not re-aim the demonstration at what
+     the template happens to offer.**
+
+   - **Select a checked-in template per dashboard — reuse over scratch for the
+     DATA PLUMBING.** Survey the palette with
+     `mcp__connect-labs__list_templates` plus the labs
      `connect_labs/workflow/templates/` library, and map each dashboard to the
-     best fit. Known fits (MUAC-only nutrition):
-     - multi-LLO / FLW oversight → `program_admin_report` (+ `chc_nutrition_analysis` for the FLW aggregate).
-     - per-child recovery over follow-up visits → `sam_followup` (MUAC + recovery-status timeline). **Not** `kmc_longitudinal` — it keys on weight, unusable when CHWs have no scales.
+     best fit **for its pipeline and entity shape** — that is where the reuse
+     genuinely pays, because it is where the binding hazards live (ace#1160,
+     ace#1894, step 3's `checkDashboardBindings`). Reuse decides the plumbing;
+     it does NOT decide the demonstration, which you already fixed above.
      Only `workflow_create` from SCRATCH when nothing in the palette fits, and say
      so explicitly in the summary.
+
+     **Match on SHAPE, not on domain.** The fits below are worked examples from
+     one nutrition demo, not a lookup table — reading them as the map is how a
+     non-nutrition opp gets pattern-matched onto the nearest nutrition-shaped
+     template. Ask what each template's entity and period shape is (one row per
+     worker per period? one row per beneficiary across follow-ups? a cross-opp
+     rollup?) and match that to your opp's.
+     - multi-LLO / FLW oversight → `program_admin_report` (+ `chc_nutrition_analysis` for the FLW aggregate).
+     - per-child recovery over follow-up visits → `sam_followup` (MUAC + recovery-status timeline). **Not** `kmc_longitudinal` — it keys on weight, unusable when CHWs have no scales.
+
+     **The `render_code`-from-scratch prohibition below is scoped to those three
+     nutrition templates and does not generalise.** The invariants that DO apply
+     to every dashboard, bespoke render code included, are: re-point the
+     pipeline schema at the real form paths, verify with `checkDashboardBindings`
+     before minting a run (step 3), and lint utilities pre-upload (step 3b).
+     None of those argue against authoring presentation for this opp.
    - **Record each dashboard's `shape` from `list_templates.supports_saved_runs`.**
      BOTH shapes render at `/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>`
      (verified live 2026-07-21). Shape only decides where `run_id` comes from:
@@ -1038,6 +1082,22 @@ own headline anomaly, a PDD does not hand you one.
       narrative lands on, say, the follow-up completion rate against the PDD's
       own >=70% target — a claim that holds at any cohort size. Check 13 accepts
       the escape only with a non-empty quote; an unevidenced flag is a silencer.
+
+      **Taking the escape OBLIGES you to name where the payoff went, in
+      `source.payoff_control` — check 19 fails the run if you don't (ace#2316).**
+      "Build the payoff on something this scale DOES support" was unenforced
+      prose for as long as it existed, and it was broken the first time it was
+      relied on. `spark-facilitator/20260908-2215` took the escape with two
+      correct PDD quotes (~12 facilitators, one per community) and wrote the
+      right mitigation verbatim — *"the narrative's payoff is built on the
+      qualifying-share rule, which holds at any cohort size, rather than on a
+      claim that unaided scanning is impossible"* — and then the authored payoff
+      clicked `testid:below-target-filter` to hide 10 of 12 rows, which IS that
+      claim. Nothing compared the promise to the scene. Declare the control, and
+      `checkEscapedPayoffIsHonoured` (`lib/ddd-scene-actions.ts`) checks that a
+      scene actually acts on it. **Re-pointing the declaration at the
+      template's filter to clear the check re-creates the defect with a green
+      verdict** — the identity match cannot detect that, so it is on you.
 
       **No narration fixes an under-sized cohort** — the remedy is always the
       manifest. `bednet-check-2-visit/20260902-1555` authored a well-formed,

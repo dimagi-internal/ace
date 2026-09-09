@@ -177,7 +177,9 @@ export type SceneFindingKind =
   /** #1670 — the demonstration needs more cardinality than the data has. */
   | 'insufficient-cardinality'
   /** #1670 — the axis this demonstration depends on is not in the handoff. */
-  | 'unknown-cardinality';
+  | 'unknown-cardinality'
+  /** ace#2316 — the below-programme-scale escape was taken and its promise broken. */
+  | 'escaped-payoff-unhonoured';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -831,4 +833,129 @@ export function checkSceneCardinality(
   }
 
   return { ok: findings.length === 0, findings };
+}
+
+/**
+ * The `below_programme_scale` escape is a PROMISE. This is what keeps it.
+ *
+ * `checkDetectionCohortFloor` lets a programme whose own roster sits below
+ * `DETECTION_MIN_ROWS` keep its detection signal in the DATA — carrying it is
+ * what makes the dashboards honest — on the stated condition that the demo
+ * builds "its payoff elsewhere". That escape returns `ok` immediately and never
+ * looks at where elsewhere went, so the condition was unenforced prose.
+ *
+ * Measured, `spark-facilitator/20260908-2215`: the escape was taken with two
+ * PDD quotes (~12 facilitators, one per community — correct and unarguable) and
+ * the producer wrote the right mitigation down verbatim — *"the narrative's
+ * payoff is built on the qualifying-share rule, which holds at any cohort size,
+ * rather than on a claim that unaided scanning is impossible."* The authored
+ * payoff then clicked `testid:below-target-filter` to hide 10 of 12 rows, which
+ * IS the claim it had just promised not to make. All four independent judges
+ * capped `use_case_soundness` at 3 on exactly that — *"a checkbox that hides
+ * ten rows off a table that already fitted on one screen"* — which pins concept
+ * below the 4.0 convergence bar. Three consecutive runs of this opp ended
+ * non-converged and no check in ACE was looking at this.
+ *
+ * The root cause is upstream of the narrative: the dashboard was instantiated
+ * from `llo_weekly_review`, whose only interactive affordances are an
+ * underperforming-only filter and a coaching-task button, so no control on the
+ * page COULD demonstrate the payability rule. `demo-narrative` is told to
+ * author the payoff against the interactive dashboard, so it used what existed.
+ * Hence the fix is a declaration made at authoring time (`demo-data-setup`
+ * step 0 derives the required control from the PDD's verification predicate
+ * BEFORE selecting a template) and verified here.
+ *
+ * Keyed on the ARTIFACT, never on a vocabulary: it asks only whether the
+ * payoff scene acts on the control the author DECLARED. A word list is what
+ * ace#1841 pruned for precision and ace#2131 then evaded by writing the same
+ * demo in plain prose — an identity match cannot be evaded by rephrasing.
+ *
+ * Silent unless the escape was actually taken, so a demo at or above the floor,
+ * or one that never declared a signal, is unaffected.
+ */
+export interface EscapedPayoffSource extends DeclaredSignalSource {
+  /**
+   * The on-dashboard control the payoff scene acts on, as a canopy target
+   * (`testid:…` / `text:…`). Required once the escape is taken.
+   */
+  payoff_control?: unknown;
+}
+
+export function checkEscapedPayoffIsHonoured(
+  source: EscapedPayoffSource | undefined,
+  scenes: DddScene[] | undefined,
+): SceneReport {
+  const findings: SceneFinding[] = [];
+  const signal = source?.detectable_signal;
+
+  // Only bites where the promise was made.
+  if (!declaresDetection(signal)) return { ok: true, findings };
+  if (!programmeScaleEscape(signal)) return { ok: true, findings };
+
+  const declared = typeof source?.payoff_control === 'string' ? source.payoff_control.trim() : '';
+
+  if (declared.length === 0) {
+    findings.push({
+      kind: 'escaped-payoff-unhonoured',
+      scene: '(dataset)',
+      detail:
+        `this run took the \`below_programme_scale\` escape on its detection floor, which is granted ` +
+        `ONLY on the condition that the payoff is built elsewhere — but \`source.payoff_control\` names ` +
+        `no control, so there is nothing to build it on and nothing to check. Declare the control the ` +
+        `payoff scene acts on (a canopy target, e.g. \`testid:…\`) together with the one-line decision ` +
+        `it demonstrates, derived from the PDD's own verification predicate. If the dashboard carries no ` +
+        `such control, that is the finding: the template was selected before the demonstration was ` +
+        `chosen, and the control has to be authored onto the page rather than borrowed from the template`,
+    });
+    return { ok: false, findings };
+  }
+
+  // Scenes not available yet (QA can run before the narrative exists) — report
+  // the declaration as accepted and leave the honouring half to the re-run.
+  if (!Array.isArray(scenes) || scenes.length === 0) return { ok: true, findings };
+
+  const acted = scenes.some((scene) =>
+    (scene?.actions ?? []).some(
+      (a) => typeof a?.target === 'string' && targetsSameControl(a.target, declared),
+    ),
+  );
+
+  if (!acted) {
+    findings.push({
+      kind: 'escaped-payoff-unhonoured',
+      scene: '(spec)',
+      detail:
+        `the escape promised the payoff would rest on \`${declared}\`, and no scene ACTS on it — the ` +
+        `promise was made at authoring time and dropped at narrative time, which is exactly how ` +
+        `spark-facilitator/20260908-2215 shipped a payoff that hid 10 of 12 rows after declaring it ` +
+        `would not. Either author the payoff scene against \`${declared}\`, or, if that control does ` +
+        `not exist on the dashboard, put it there — do not re-point the declaration at whichever ` +
+        `filter the template happened to provide, which re-creates the defect with a passing check`,
+    });
+  }
+
+  return { ok: findings.length === 0, findings };
+}
+
+/**
+ * Same control? Compared on the canopy target, prefix-aware, so
+ * `testid:below-target-filter` and `below-target-filter` match while
+ * `testid:coach-x` and `testid:coach-y` do not. Deliberately an identity
+ * comparison and not a substring one: `testid:filter` must not satisfy a
+ * declaration of `testid:filter-and-approve`.
+ */
+function targetsSameControl(actionTarget: string, declared: string): boolean {
+  return stripTargetPrefix(actionTarget) === stripTargetPrefix(declared);
+}
+
+function stripTargetPrefix(target: string): string {
+  const t = target.trim();
+  const i = t.indexOf(':');
+  if (i === -1) return t.toLowerCase();
+  const prefix = t.slice(0, i).toLowerCase();
+  // canopy's recorder prefixes, verbatim (targets.py `_PREFIXES`).
+  if (['css', 'text', 'testid', 'aria', 'role'].includes(prefix)) {
+    return t.slice(i + 1).trim().toLowerCase();
+  }
+  return t.toLowerCase();
 }
