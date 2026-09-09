@@ -160,6 +160,54 @@ paraphrase the schema here — read the model / schema and validate.
      runs it. **If the declared control is not on the page, that is a producer
      defect — send it back rather than re-aiming the scene**, because re-aiming
      is what ships the same demo with a green check.
+   **Order the scenes as a LADDER that ends on the action (ace#2339).** The
+   arc judge's `arc_shape` carries a **hard cap at 3** when the final scene is
+   not the run's strongest moment. It is weighted .30, every judge's overall is
+   the MINIMUM across its dimensions, and the convergence bar is 4.0 — so a
+   deck that ends on a recap **cannot converge**, however good every frame is.
+
+   The ladder, each rung a genuinely different surface and granularity:
+
+   | Rung | What it shows | Why it earns its place |
+   |---|---|---|
+   | **Programme** | one row per opportunity / site | only when the programme has genuinely DISTINCT sites — see the warning below |
+   | **Opportunity** | the window and the funnel — totals, the rule, the aggregate | orients a stranger in one frame |
+   | **Worker** | one row per worker, sorted by the measure that matters | the rung most often skipped, and the one that makes the next drill feel earned |
+   | **Record** | the single item, and the rule that decided it | the peak: the thing no aggregate can show |
+   | **Action** | the operator DOES something, and the outcome is on screen | **must be last** |
+
+   **The programme rung is usually NOT available, and forcing it is worse than
+   omitting it.** ACE mints a fresh Connect opportunity per run, so a program's
+   opportunity list is mostly per-run duplicates of one pilot rather than
+   distinct sites. Measured 2026-09-09: Connect program 210 carried EIGHT
+   opportunities, all run-stamped copies of the same Spark pilot
+   (`20260907-1120 · …`, `20260828-0703 · …`). A rollup over those shows one
+   pilot eight times, which is the repetition the arc judge penalises directly.
+   Check the opportunity NAMES before you plan a programme rung; if they are
+   run-stamped, start the ladder at Opportunity.
+
+   **Whatever the trailing commentary is — caveats, open parameters, what the
+   pilot has not set — it goes in the FRAMING, not the finale.** It is honest
+   and it belongs in the deck; it just cannot be the last thing. Measured on
+   `spark-facilitator/20260909-1211`: the peak was scene 4 of 6, the one
+   state-changing beat was scene 5, and scene 6 was the open-parameters recap.
+   The judge: *"the run's strongest moment is scene 4 of 6, and both remaining
+   scenes decline from it … scene 6 is prose-only with no data, delivering the
+   payoff sentence over the run's emptiest screen. The finale-strength
+   deduction is a hard cap at 3."* Every ingredient of a strong finale was
+   already in that deck. **It was a reordering, not missing material.**
+
+   `checkArcLadder` (`lib/demo-arc-ladder.ts`, `demo-data-setup-qa` check 20)
+   enforces the floor of this — that the last scene performs a state change —
+   and **it is deliberately weaker than the rule above.** It would have PASSED
+   the run that motivated it, because that deck's recap scene technically
+   clicked a disclosure control. Distinguishing "a click that reveals prose"
+   from "a click that changes what the product knows" needs rendered frames and
+   is the arc judge's job; a static heuristic for it would be the fourth
+   retracted rule in this family. So the check catches a genuinely inert
+   finale; the ladder above is what stops a recap finale, and that part is on
+   you.
+
    - `scenes[]` — each scene: `persona` (must exist in `personas`), `title`,
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
