@@ -376,6 +376,51 @@ front half (how the labs-only opp + its data come to exist) differs.
          Record the reason verbatim (`noDeliverAppReason`) so the gate can
          tell "nothing to derive from" apart from "nobody derived it".
 
+    1b. **The same response also carries every question's `calculate`. Replay
+        those expressions; never draw a computed field from a distribution
+        (ace#2328).**
+
+        `specFromDeliverApp` reads `relevant` and `constraint`. It ignores
+        `calculate`, and `get_opportunity_apps` returns one on every hidden /
+        `DataBindOnly` question — which is where an app keeps its ARITHMETIC.
+        Measured on deliver app `61eedcad279046d499d0f05f9ce3dc83` v10: **26 of
+        the form's questions carry a `calculate`**, and they are the payment
+        logic itself.
+
+        This matters because the manifest is a **distribution language** — it
+        draws every field independently, so it cannot keep two coupled fields
+        consistent. A drawn `is_payable` will disagree with the
+        `meeting_conducted` / `meeting_type` it is supposed to be a function of,
+        which is the arithmetically-impossible class ace#1346 already forbids,
+        arriving by a different route.
+
+        So when a demonstration turns on a value the app COMPUTES — a payability
+        flag, a per-entity counter, a deduplication key — do not add it to
+        `field_distributions`. Replay the app's own expression over the generated
+        records as a declared generator post-step, under the same three
+        determinism obligations as any other (§ Hand-authoring a generator).
+        Walk each entity's records in the order the device would have seen them,
+        because a `casedb` read is a function of history:
+
+        ```
+        /data/is_payable    ==> if(meeting_conducted = 'yes' and meeting_type = 'community_meeting', 1, 0)
+        /data/capped_index  ==> min(/data/new_step_index, 3)
+        /data/key_date_part ==> if(/data/is_payable = 1, '', /data/date_and_place/date_of_meeting)
+        /data/entity_key    ==> concat(username, ' - ', pilot_fcap_step, ' - ', capped_index, ' - ', …)
+        ```
+
+        **What it is worth.** `spark-facilitator/20260908-2215` recorded these
+        fields as "DELIBERATELY NOT POPULATED" on the premise that their
+        expressions "live in the CCZ and are NOT exposed by
+        `get_opportunity_apps`" — false, and nothing here said so. Without them
+        the dataset held no payment decision, so the dashboard had only a
+        per-worker scorecard and the payoff became a filter over 12 rows; three
+        consecutive runs ended non-converged. Replaying them on `20260909-1211`
+        put the real decision in the data — 155 community meetings, 149 distinct
+        deduplication keys, and 6 records that are complete and correct and earn
+        nothing because they are the 4th on their step — which is a
+        demonstration no cohort size makes eyeballable.
+
     2. **Scrub the off-branch values, then write the fixture back.**
        `scrubOffBranchFields(records, spec.conditionalFields)` removes every
        value the form's own `relevant` says cannot exist on that record's
@@ -1450,6 +1495,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-09 | **New step 2c.1b: the deliver app exposes its `calculate` expressions, and a computed field must be REPLAYED rather than drawn (ace#2328).** `specFromDeliverApp` reads `relevant` and `constraint` and ignores `calculate`, and nothing in this skill mentioned it — `grep -niE "\.calculate\|hidden field\|DataBindOnly"` over the skill, `synthetic-data-generate` and `lib/dataset-constraints.ts` returned zero matches. But `get_opportunity_apps` returns one on every hidden/`DataBindOnly` question, which is where an app keeps its payment arithmetic: 26 of deliver app `61eedcad…` v10's questions carry one, including `is_payable`, `capped_index`, `key_date_part` and the `entity_key` the deliver unit submits as its dedup id. `spark-facilitator/20260908-2215` recorded them as "DELIBERATELY NOT POPULATED" on the false premise that they were not exposed, so its dataset carried no payment decision, its dashboard had only a per-worker scorecard, and its payoff became a filter over 12 rows — three consecutive non-converged runs. Replaying them on `20260909-1211` produced 149 distinct dedup keys over 155 community meetings and 6 records that are complete, correct and unpaid because they are the 4th on their FCAP step. The manifest cannot do this: it draws every field independently, so a drawn `is_payable` contradicts the fields it is a function of — the ace#1346 class by another route. | ACE team |
 | 2026-09-08 | **New step 4b: register the per-render reset for the interactive dashboard (ace#2297).** A labs run's `spawned_tasks` persists server-side across renders, so the second take of the scene whose payoff CREATES something finds the control gone and its `must_succeed` click aborts — order-dependent, invisible on the first pass. On `spark-facilitator/20260908-2215` (labs run 5508, workflow 5502, opp 10060) iterations 0-2 passed only because a human had reset the state by hand, leaving no trace in `run_state.yaml`, and the reset itself lived as `reset_and_realize.py` inside the DDD run dir — uncommitted, not worktree-portable (ace#2287), swept. Now: `scripts/reset-labs-run-state.ts` (+ `lib/labs-run-state-reset.ts`) in the repo, a `source.render_reset` block in the handoff whose `state_keys` come from `workflow_get → saved_runs.snapshot_inputs.state_keys`, and `demo-narrative` wiring it as `setup: {rerun: per_render}`. Backstop: `demo-data-setup-qa` check 18. | ACE team |
 | 2026-09-08 | **Step 2c.2's write-back must preserve `visit.id` losslessly (ace#2249).** The labs generator mints `visit.id` as a 60-bit integer, over JS `Number.MAX_SAFE_INTEGER`, so a plain `JSON.parse`/`JSON.stringify` round trip silently rewrote 490 of 505 ids on a live run while every gate stayed green (`auditDataset` judges values, not keys). Fixed at two points in `lib/dataset-constraints.ts`: `scrubOffBranchFields`'s internal deep copy now uses `structuredClone` instead of `JSON.parse(JSON.stringify(...))`, and new `parseJsonPreservingBigInts` / `stringifyJsonPreservingBigInts` helpers (an out-of-safe-range integer literal round-trips as a `bigint`) replace `JSON.parse`/`JSON.stringify` on both ends of the caller's own read/write. | ACE team |
 | 2026-09-08 | **New step 2c.4: declare, with a reason, the residuals labs STRUCTURALLY cannot emit (ace#2225).** Check 9 had no evidenced escape, so a run whose only residual violations were such fields could reach green only by narrowing the spec — the behaviour ace#1658 built the derivation to prevent — or not at all. Both runs of `poverty-graduation` took the permanent `fail`. Three recurring classes, all measured on `20260908-0510`: a per-member REPEAT group the flat generator cannot produce, a `Trigger` read-aloud label CommCare submits no value for, and an image with no labs `ImageConfig` corpus. New `declared_omissions[]` block in `branch-scrub_report.yaml`; the reason is required, and a blank one exempts nothing. | ACE team |
