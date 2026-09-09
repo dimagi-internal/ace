@@ -142,11 +142,40 @@ judge scores it as though it were the dashboard (ace#842 § failure mode 2).
 `Agent(canopy:ddd)` cannot cover for you — canopy is handed a storage-state path,
 not a way to mint one.
 
+### Step 3.1: Adopt an existing DDD run before dispatching (resumes + forks)
+
+**The DDD run dir is NOT worktree-portable.** canopy keeps run artifacts out of the
+repo and keys the runs root on the git worktree basename
+(`RUNS_DIR="$HOME/.canopy/ddd/runs/$(basename "$REPO_ROOT")"`, `resolve_ddd_dir.sh`).
+So a Phase 7 **resume or fork from a different worktree** resolves to a different,
+empty runs root: `resolve_narrative` returns `decision: new`, `Agent(canopy:ddd)`
+starts a FRESH run, and every completed render is discarded. Nothing halts and
+nothing warns.
+
+Before dispatching, resolve whether a run for this narrative slug already exists
+**anywhere on this machine** — `lib/ddd-run-adoption.ts::resolveDddRunAdoption`
+(`test/lib/ddd-run-adoption.test.ts`) returns one of:
+
+- `resume-in-place` — a run sits under this worktree's root. Dispatch normally.
+- `adopt-from-other-worktree` — move/copy the named `runDir` into this worktree's
+  runs root FIRST, then dispatch with `--resume <run_id>`.
+- `start-fresh` — no run for this slug anywhere. A fresh run is correct.
+
+The cost of getting this wrong is not just the re-render. `compute_auto_iterate`
+terminates on a noise-banded score **stall** and a finding **plateau** computed over
+`score_history`; a history reset to `[]` cannot detect the stall it was about to
+detect, so a silent restart changes the loop's **terminal verdict**, not only its
+runtime. Measured on `spark-facilitator/20260908-2215`, where a rate-limit-killed
+session's run (iteration 2, `score_history: [2.0, 2.0]`, 18 findings, three
+verdicts) sat under the ORIGINATING worktree's root and had to be hand-copied
+across. ace#2287.
+
 ### Step 3: Render + converge — canopy DDD
 
 **Dispatch `Agent(canopy:ddd)`** — the full converge → video → upload loop. This is
 the default and the only path that terminates on its own. Pass the run id, the
-unified spec, and the why-brief.
+unified spec, and the why-brief. **On a resume, pass `--resume <run_id>` explicitly
+and say so** — an unqualified dispatch is what starts a fresh run.
 
 Do NOT substitute a bare `canopy:ddd-run` invocation as the phase's render step.
 `ddd-run` is ONE render+judge pass: it returns a verdict and a findings list and
@@ -230,12 +259,21 @@ phases:
 - [ ] For Step 3 render: `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` readable, canopy
   checkout + `uv` reachable. The labs browser session itself is **not** a
   precondition to check — Step 3.0 restores it unconditionally every time.
+- [ ] For a **resume or fork**: the DDD run dir is under THIS worktree's runs root.
+  It is keyed on the worktree basename, so it does not travel with a fork —
+  Step 3.1 resolves and adopts it (ace#2287).
 
 ## Re-runnability
 
 Each step is independently re-runnable via `/ace:step <skill> --opp <slug>/<run-id>`
 (`demo-data-setup`, `demo-narrative`). Regenerate data → dashboards pick up the new
 fixtures on next render. Full disable → `synthetic_disable(opp_int_id)`.
+
+**One exception, and it is the expensive one: the canopy DDD run does not travel
+across worktrees.** `skills/fork-run` is precisely the operation that changes the
+worktree, and the runs root is keyed on the worktree basename — so re-running Step 3
+from a fork silently restarts the render loop from iteration 0 rather than resuming
+it. Run Step 3.1 first.
 
 ## What this phase does NOT do
 
