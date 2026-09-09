@@ -49,6 +49,17 @@ export interface DddRunCandidate {
   runDir: string;
 }
 
+/**
+ * The bit of a candidate's `run_state.yaml` that decides whether it is still
+ * adoptable. Injected, like the directory listings, so this module stays pure.
+ */
+export interface DddRunLiveness {
+  /** canopy's own ending, when the loop has already stopped. */
+  terminal_status?: string | null;
+  /** What `compute_auto_iterate` decided to do next; null on a finished run. */
+  auto_iterate_next_action?: string | null;
+}
+
 export interface DddRunAdoptionInput {
   /** Absolute path to `~/.canopy/ddd/runs` (the parent of every runs root). */
   runsParent: string;
@@ -63,6 +74,43 @@ export interface DddRunAdoptionInput {
   listRunsRoots: () => readonly string[];
   /** Lists run-id directory names under `runsParent/<rootName>`. */
   listRuns: (runsRootName: string) => readonly string[];
+  /**
+   * Reads a candidate's liveness. OPTIONAL: when absent, no candidate is
+   * excluded for being finished and the resolver behaves as it did before
+   * ace#2315 — so a caller that cannot read run state is never silently
+   * given a different answer than it asked for.
+   */
+  readRunLiveness?: (runDir: string) => DddRunLiveness | null | undefined;
+}
+
+/**
+ * A runs root that belongs to ONE ACE run: `ace-<opp-slug>-<YYYYMMDD-HHMM>`.
+ *
+ * Phase 7 pins `CANOPY_DDD_RUNS_DIR` to one of these, which is what makes the
+ * root survive a fork (ace#2287's fix, done without hand-copying). It also
+ * makes a root belonging to a DIFFERENT ACE run recognisable, which is what
+ * ace#2315 needs.
+ */
+const ACE_RUN_ROOT = /^ace-.+-\d{8}-\d{4}$/;
+
+export function isAceRunScopedRoot(rootName: string): boolean {
+  return ACE_RUN_ROOT.test(rootName);
+}
+
+/**
+ * Has this run already ENDED?
+ *
+ * Adoption exists to rescue work that was INTERRUPTED — a loop still mid-flight
+ * when its session died. A run canopy already terminated is not interrupted
+ * work, and resuming one is strictly harmful: `compute_auto_iterate` decides
+ * when to stop from `score_history`, so inheriting a finished run's history
+ * makes the stall detector fire on the first render and reports
+ * `stopped_not_converged` over renders this run never performed (ace#2315).
+ */
+export function isTerminatedRun(liveness: DddRunLiveness | null | undefined): boolean {
+  if (!liveness) return false;
+  const status = (liveness.terminal_status ?? '').trim();
+  return status.length > 0;
 }
 
 export type DddResumeDisposition =
@@ -142,9 +190,38 @@ export function resolveDddRunAdoption(input: DddRunAdoptionInput): DddRunAdoptio
     ? candidatesUnder(currentRunsRootName)
     : [];
 
+  // Two exclusions, both about candidates that are not this run's work to
+  // resume (ace#2315). Neither touches `inPlace`: a run already under this
+  // root IS this run's, and re-reporting it is how a resume finds its own dir.
+  const excluded: string[] = [];
+
   const elsewhere = roots
-    .filter((rootName) => rootName !== currentRunsRootName)
-    .flatMap(candidatesUnder);
+    .filter((rootName) => {
+      if (rootName === currentRunsRootName) return false;
+      // (1) A root scoped to a DIFFERENT ACE run. Every /ace:run of an opp
+      // re-derives the same narrative from the same PDD and so mints the same
+      // slug; run independence says one run never reads another's state.
+      if (isAceRunScopedRoot(rootName) && isAceRunScopedRoot(currentRunsRootName)) {
+        excluded.push(`${rootName} (a different ACE run's runs root)`);
+        return false;
+      }
+      return true;
+    })
+    .flatMap(candidatesUnder)
+    // (2) A run canopy already TERMINATED. Adoption rescues interrupted work;
+    // a finished run is not interrupted, and inheriting its score_history
+    // pre-decides this run's terminal verdict.
+    .filter((c) => {
+      const liveness = input.readRunLiveness?.(c.runDir);
+      if (isTerminatedRun(liveness)) {
+        excluded.push(
+          `${c.runsRootName}/${c.runId} (already ended: ` +
+            `terminal_status=${liveness?.terminal_status})`,
+        );
+        return false;
+      }
+      return true;
+    });
 
   const byRunIdDesc = (a: DddRunCandidate, b: DddRunCandidate): number =>
     a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0;
@@ -181,13 +258,18 @@ export function resolveDddRunAdoption(input: DddRunAdoptionInput): DddRunAdoptio
     };
   }
 
+  const skipped = excluded.length
+    ? ` Skipped ${excluded.length} candidate(s) that are not this run's to resume: ` +
+      `${excluded.join('; ')} (ace#2315).`
+    : '';
+
   return {
     disposition: 'start-fresh',
     inPlace,
     elsewhere,
     adopt: null,
     reason:
-      `No run for '${narrativeSlug}' under any runs root in ${runsParent} — ` +
-      `a fresh DDD run is correct.`,
+      `No adoptable run for '${narrativeSlug}' under any runs root in ${runsParent} — ` +
+      `a fresh DDD run is correct.${skipped}`,
   };
 }
