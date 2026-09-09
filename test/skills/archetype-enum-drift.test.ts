@@ -25,17 +25,25 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ARCHETYPES } from '../../lib/decisions-archetype-consistency.js';
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** Parse the canonical list out of its declaration rather than restating it. */
-function validArchetypes(): string[] {
-  const src = fs.readFileSync(path.join(REPO_ROOT, 'skills/idea-to-pdd-qa/checks.ts'), 'utf8');
-  const m = src.match(/const VALID_ARCHETYPES\s*=\s*\[([^\]]+)\]/);
-  if (!m) throw new Error('VALID_ARCHETYPES not found in skills/idea-to-pdd-qa/checks.ts');
-  return [...m[1].matchAll(/['"]([a-z-]+)['"]/g)].map((x) => x[1]);
-}
-
-const ARCHETYPES = validArchetypes();
+/*
+ * The canonical list is IMPORTED, not regex-parsed (ace#2312).
+ *
+ * This file used to read `skills/idea-to-pdd-qa/checks.ts` as text and pull
+ * `VALID_ARCHETYPES` out with `/const VALID_ARCHETYPES\s*=\s*\[([^\]]+)\]/`. The intent was
+ * right — don't restate the list a third time — but it made the source of truth depend on one
+ * source line's SYNTAX, and it silently picked the wrong source: `checks.ts` was a second
+ * literal of the set that `DECISION_VOCABULARIES['archetype-selection']` already declares, so
+ * this test and its sibling `test/lib/archetype-enum-docs.test.ts` were pinning prose against
+ * two different enums that nothing kept in sync.
+ *
+ * `checks.ts` now re-exports `ARCHETYPES`, so the old regex would have matched nothing and
+ * thrown 'VALID_ARCHETYPES not found' — a failure mode worth noting, because it would have
+ * read as this test being broken rather than as its premise having moved.
+ */
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');

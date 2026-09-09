@@ -847,15 +847,62 @@ If you're writing a skill that sets up verification, runs tests, reviews data, o
 
 ## How to register a new archetype
 
-The 4 current archetypes are `atomic-visit`, `longitudinal-visits`, `focus-group`, and `multi-stage`. Adding a new archetype is a framework-level change that touches ~3 places:
+The 4 current archetypes are `atomic-visit`, `longitudinal-visits`, `focus-group`, and `multi-stage`.
 
-1. **`templates/pdd-template.md`** — add the new archetype to the `Archetype:` enum description and to the archetype-guidance block at the top of the template.
-2. **`skills/idea-to-pdd/SKILL.md`** — add a `### <new-archetype>` subheading inside `## Archetypes` describing the additional questions to ask in step 3 and the archetype-specific sections to draft in step 4.
-3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-app-journeys`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
+**Step 0 — the canonical vocabulary, which this section used to omit entirely.** The closed set
+lives in ONE place:
 
-Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 9 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
+```ts
+// lib/decision-vocabularies.ts
+DECISION_VOCABULARIES['archetype-selection'].options
+```
 
-After adding a new archetype, add a regression fixture under `test/fixtures/` (mirror the structure of `ACE-Test-001` for `atomic-visit` and `ACE-Test-002` for `focus-group`).
+re-exported as `ARCHETYPES` from `lib/decisions-archetype-consistency.ts`. Edit it there and
+nowhere else; every other executable reference derives from it (`skills/idea-to-pdd-qa/checks.ts
+§ VALID_ARCHETYPES` is a re-export, not a second list). **Adding the value here is step one and
+it is not optional** — a prose surface naming an archetype the vocabulary does not carry will
+fail `test/lib/decision-vocabularies.test.ts`, and a run's `decisions.yaml` cannot record it.
+
+**Step 1 — let the drift tests tell you which files to edit. Do not work from a list in prose.**
+
+```bash
+npx vitest run test/skills/archetype-enum-drift.test.ts test/lib/archetype-enum-docs.test.ts
+```
+
+Both go red the moment the vocabulary gains a value, and each failure names the exact file and
+the enumerating line. Work the failures to green; that IS the checklist, and unlike this
+paragraph it cannot go stale.
+
+**Step 2 — then sweep for the surfaces no test guards yet**, because the two tests above pin a
+hand-maintained 10 files between them and the repo has more:
+
+```bash
+git grep -nE '`?(atomic-visit|longitudinal-visits|focus-group|multi-stage)`?( */|, )' \
+  -- 'skills/**' 'agents/**' 'lib/**' 'templates/**' ':!test/**'
+```
+
+Read each hit and judge it: a **slash- or comma-delimited run** presented as the complete set is
+a real enumeration and must gain the new value; a line contrasting two archetypes as examples
+("`atomic-visit` uses visit-centric categories, `focus-group` uses…") is not, and neither is a
+CHANGELOG row quoting a historical list. When you fix a genuine one, **add it to whichever drift
+test above covers its kind** — that is what stops the next instance.
+
+Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to
+avoid forking the framework — a new archetype is an additive change inside the existing skills,
+not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill:
+*"Framework changes mean variation points, not new components."*)
+
+Finally, add a regression fixture under `test/fixtures/` (mirror `ACE-Test-001` for
+`atomic-visit` and `ACE-Test-002` for `focus-group`).
+
+**Why this procedure is shaped like this (ace#2312).** It used to say "touches ~3 places" and
+name 10 files. Both were wrong in the way that matters: it named **neither canonical enum**, so
+someone following it literally never edited the vocabulary at all, and its 10 files overlapped
+the set the drift tests actually enforce **by three**. `longitudinal-visits` shipped 2026-08-17
+and the resulting stale-prose class has now recurred six times — ace#1486 → #1541 → #1630 →
+#1784 → #2128 → #2294 — across two ratchet tests, each of which correctly guards its own
+incident's files and cannot see a new one. A prose list of sites is the defect; a command that
+enumerates them is the fix.
 
 ## Where shared templates and prompts live
 
