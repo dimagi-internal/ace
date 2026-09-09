@@ -11,6 +11,7 @@ import {
   DecisionsLogSchema,
   parseDecisionsYaml,
 } from "../../lib/decisions-schema.js";
+import { findAmbiguousYamlScalars } from "../../lib/yaml-ambiguous-scalars.js";
 
 const NOW_PINNED = () => "2026-05-25T20:13:04Z";
 
@@ -491,5 +492,48 @@ describe("composeAppendedLog — inherited/seeded header (ace#1029)", () => {
     const parsed = parseDecisionsYaml(result.content);
     expect(parsed.generated_at).toBe("2026-07-06T13:53:07.331Z");
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("composeAppendedLog — YAML 1.1-safe serialization (ace#2299)", () => {
+  // Sibling of ace#2296 / PR #2298 (mcp/google-drive-server.ts's
+  // update_yaml_file). `composeAppendedLog`'s `content` is written straight
+  // to Drive by mcp/decisions-server.ts, and `params` is a free-form record
+  // (z.record(z.unknown())), so a row carrying a `question_value: yes`-shaped
+  // param serialized bare — a STRING to this repo's YAML 1.2 readers, a
+  // BOOLEAN to PyYAML on ace-web's Python side. Live repro:
+  // ACE/bednet-check-2-visit/runs/20260908-1544/decisions.yaml
+  // decisions[42].params.question_value: yes (unquoted).
+  it("quotes ambiguous params tokens so the file means one thing to every reader", () => {
+    const row = {
+      ...VALID_ROW,
+      id: "payability-predicate",
+      question: "Is the field payable when answered yes?",
+      "ai-default": "yes",
+      options: ["yes", "no"],
+      params: { question_value: "yes", enabled: "no" },
+    };
+    const result = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [row],
+      now: NOW_PINNED,
+    });
+
+    // No data loss under this repo's own YAML 1.2 reader.
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.decisions[0].params).toEqual({
+      question_value: "yes",
+      enabled: "no",
+    });
+
+    // Raw-text scan finds no unquoted 1.1-ambiguous scalars.
+    expect(findAmbiguousYamlScalars(result.content)).toEqual([]);
+
+    // YAML 1.1 and 1.2 parse the serialized text identically.
+    const parsed12 = yaml.parse(result.content);
+    const parsed11 = yaml.parse(result.content, { version: "1.1" } as any);
+    expect(parsed11).toEqual(parsed12);
   });
 });

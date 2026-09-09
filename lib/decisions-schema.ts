@@ -465,9 +465,14 @@ export function parseDecisionsYaml(input: string): DecisionsLog {
 export function serializeDecisionsLog(log: DecisionsLog): string {
   // Validate before emitting — catches caller errors before we write.
   DecisionsLogSchema.parse(log);
+  // version: '1.1' — same YAML-1.1-safe fix as lib/decisions-write.ts and
+  // mcp/google-drive-server.ts (ace#2296, ace#2299). Confirmed the
+  // `(value, replacer, options)` overload still applies `options` when
+  // `replacer` is `null` (node_modules/yaml/dist/public-api.d.ts).
   return yaml.stringify(log, null, {
     lineWidth: 0,
     aliasDuplicateObjects: false,
+    version: '1.1',
   });
 }
 

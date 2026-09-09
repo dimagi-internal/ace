@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import {
   DecisionRowSchema,
   DecisionRowStrictSchema,
@@ -7,6 +8,7 @@ import {
   parseDecisionsYaml,
   serializeDecisionsLog,
 } from "../../lib/decisions-schema.js";
+import { findAmbiguousYamlScalars } from "../../lib/yaml-ambiguous-scalars.js";
 
 describe("DecisionRowSchema", () => {
   it("accepts a minimal valid row", () => {
@@ -416,6 +418,57 @@ describe("serializeDecisionsLog", () => {
     expect(yaml).toContain("≥90%");
     const parsed = parseDecisionsYaml(yaml);
     expect(parsed.decisions[0]!["ai-default"]).toBe("≥90%");
+  });
+
+  // ace#2299 (sibling of ace#2296 / PR #2298): a bare `yes`/`no`/`on`/`off`
+  // is a STRING to the plugin's YAML 1.2 readers and a BOOLEAN to PyYAML on
+  // ace-web's Python side. `params` is a free-form record
+  // (`z.record(z.unknown())`), so any decision that carries a
+  // `question_value: yes`-shaped param hits this — the exact live repro was
+  // `decisions[42].params.question_value: yes` in
+  // ACE/bednet-check-2-visit/runs/20260908-1544/decisions.yaml.
+  it("serializes an ambiguous-token params value 1.1-safe (ace#2299)", () => {
+    const log = {
+      schema_version: 3 as const,
+      opportunity: "turmeric",
+      run_id: "20260507-1733",
+      generated_at: "2026-05-07T17:33:00Z",
+      decisions: [
+        {
+          id: "payability-predicate",
+          phase: "4-connect-setup",
+          skill: "connect-opp-setup",
+          question: "Is the verification form field payable when answered yes?",
+          "ai-default": "yes",
+          options: ["yes", "no"],
+          source: "connect_set_verification_flags",
+          status: "ai-default" as const,
+          params: { question_value: "yes", enabled: "no" },
+        },
+      ],
+    };
+    const content = serializeDecisionsLog(log);
+
+    // Round-trips with no data loss under this repo's own YAML 1.2 reader.
+    const parsed = parseDecisionsYaml(content);
+    expect(parsed).toEqual(log);
+    expect(parsed.decisions[0]!.params).toEqual({
+      question_value: "yes",
+      enabled: "no",
+    });
+
+    // The raw text scan (lib/yaml-ambiguous-scalars.ts) finds nothing —
+    // every 1.1-ambiguous scalar was quoted on the way out.
+    expect(findAmbiguousYamlScalars(content)).toEqual([]);
+
+    // The two dialects agree: YAML 1.2 (this repo's default) and YAML 1.1
+    // (PyYAML's dialect) parse the serialized text to the identical object.
+    const parsed12 = YAML.parse(content);
+    const parsed11 = YAML.parse(content, { version: "1.1" } as any);
+    expect(parsed11).toEqual(parsed12);
+    expect(
+      (parsed12 as any).decisions[0].params.question_value,
+    ).toBe("yes");
   });
 });
 
