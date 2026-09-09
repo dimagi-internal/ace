@@ -146,7 +146,7 @@ Run the check on the FULL post-edit source, before
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-render-code-utilities.ts" <render-code-path> --substitute
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-render-code-utilities.ts" <render-code-path> --substitute
 # exit 0 = every utility resolves · exit 1 = MISSING, do NOT upload
 # exit 2 = could not read the stylesheet — fix that first; do NOT proceed
 ```

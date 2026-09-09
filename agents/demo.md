@@ -49,7 +49,7 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    can't resolve project imports at all):
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/emit-demo-run-state.ts" "<name>" "<runId>" "<denovo|clone|ace-run>"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/emit-demo-run-state.ts" "<name>" "<runId>" "<denovo|clone|ace-run>"
    ```
    (Developers iterating in an ace repo/worktree checkout can point `ACE_ROOT`
    at the checkout instead to run their local copy of the script.)
@@ -119,7 +119,7 @@ All three converge on the realized `${var}` map (`par_url`); everything from
   labs-login capability — no human needed:
   ```bash
   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
     --connect-base-url https://connect.dimagi.com \
     --labs-base-url https://labs.connect.dimagi.com
   # → writes ~/.ace/labs-session.json (a Playwright storage_state)

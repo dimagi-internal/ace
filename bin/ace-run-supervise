@@ -127,6 +127,10 @@ fi
 
 [ -f "$run_dir/.timed-out" ] && { timed_out="--timed-out"; rm -f "$run_dir/.timed-out"; }
 
-(cd "$repo_root" && npx tsx scripts/run-exit-write.ts "$run_dir" "$status" ${timed_out:+$timed_out})
+# tsx is invoked as node + tsx/dist/cli.mjs, NOT `npx tsx`: the installed plugin cache
+# ships node_modules/.bin/tsx as a dereferenced COPY rather than a symlink (every version
+# since 0.13.1169, ace#2252), so tsx's split-bundle chunk imports resolve against .bin/ and
+# any invocation rooted inside the plugin throws ERR_MODULE_NOT_FOUND.
+(cd "$repo_root" && node "$repo_root/node_modules/tsx/dist/cli.mjs" scripts/run-exit-write.ts "$run_dir" "$status" ${timed_out:+$timed_out})
 
 exit "$rc"

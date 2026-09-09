@@ -81,7 +81,7 @@ most important line in this procedure.
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-nova-contract.ts"   # live tool count
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/probe-nova-contract.ts"   # live tool count
 ```
 
 Compare against the last count recorded in

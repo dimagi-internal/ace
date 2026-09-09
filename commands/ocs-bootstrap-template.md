@@ -41,18 +41,18 @@ ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(o
 
 # Default run (clones the first chatbot found on the team)
 OCS_TEAM_SLUG=<your team> \
-  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 
 # With an explicit source chatbot
 OCS_TEAM_SLUG=<your team> \
 OCS_BOOTSTRAP_SOURCE_ID=7804 \
-  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 
 # Force a refresh (archives the existing template and recreates)
 OCS_TEAM_SLUG=<your team> \
 OCS_BOOTSTRAP_SOURCE_ID=7804 \
 OCS_BOOTSTRAP_FORCE=1 \
-  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 ```
 
 ## Expected output

@@ -59,7 +59,7 @@ Default — mint the canonical `ACE-plugin` token with the maximum
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-RAW=$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/labs-mint-token.ts" ACE-plugin 365)
+RAW=$(node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" ACE-plugin 365)
 
 # Update 1Password (creates item if missing, otherwise updates field).
 # Vault MUST be Agent-Ace — that's what .env.tpl reads. AI-Agents is the
@@ -119,7 +119,7 @@ canonical one):
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/labs-mint-token.ts" "ACE-plugin-laptop" 30
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" "ACE-plugin-laptop" 30
 ```
 
 ## What it does

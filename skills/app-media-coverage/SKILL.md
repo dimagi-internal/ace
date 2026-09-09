@@ -83,7 +83,7 @@ classify:
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-media-classify.ts" <listing.json> --out <classification.json>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-classify.ts" <listing.json> --out <classification.json>
 ```
 
 You get `{assets, guidance, unsupported, ignored}`. Report `unsupported` and
@@ -185,7 +185,7 @@ For each `generated` row, compute `prompt_hash` over the trimmed
 `3-commcare/app-media-coverage_generated/<app>/<prompt_hash>.png`; on a miss:
 
 ```bash
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-content-generator.ts" <input.json> <output.png>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-content-generator.ts" <input.json> <output.png>
 ```
 
 Input JSON is `{applicationContext, formText, imageDirectives, upscale:false}`.
@@ -198,7 +198,7 @@ carries. Serial execution; ~30–60s each.
 Two commands per asset. First bound its size for the device:
 
 ```bash
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-media-prepare.ts" <file> --out-dir <dir>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-prepare.ts" <file> --out-dir <dir>
 ```
 
 It downscales to 800px longest edge and falls back to JPEG when a photograph
@@ -208,7 +208,7 @@ not get there — surface the message; do not attach an oversized asset.
 Then upload, and record the returned `asset_id` into the plan row:
 
 ```bash
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-nova-media-upload.ts" <prepared-file> --filename <name>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-nova-media-upload.ts" <prepared-file> --filename <name>
 ```
 
 **Use this script, never the `upload_media_asset` MCP tool directly.** The tool

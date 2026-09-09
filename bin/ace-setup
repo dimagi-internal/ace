@@ -616,7 +616,7 @@ EOF_KEYS
       printf '     Order matters: run setup FIRST, restart AFTER — the reverse\n'
       printf '     silently leaves every MCP server on the old values.\n'
       if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
-        ENV_FRESH_NOW="$(cd "$ROOT" && npx tsx scripts/doctor-env-freshness.ts 2>/dev/null || true)"
+        ENV_FRESH_NOW="$(cd "$ROOT" && node "$ROOT/node_modules/tsx/dist/cli.mjs" scripts/doctor-env-freshness.ts 2>/dev/null || true)"
         case "$ENV_FRESH_NOW" in
           WARN*) printf '     %s\n' "$(printf '%s' "$ENV_FRESH_NOW" | head -1)" ;;
           *) : ;;

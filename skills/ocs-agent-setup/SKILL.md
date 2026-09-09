@@ -287,7 +287,7 @@ round-trip gate in Step 11.5 below.
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/strip-inline-data-uris.ts" <download-dir>
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/strip-inline-data-uris.ts" <download-dir>
    ```
 
    It rewrites in place and prints one JSON line of per-file
@@ -648,7 +648,7 @@ round-trip gate in Step 11.5 below.
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/audit-composed-prompt.ts" /tmp/<run>-composed-prompt.md
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/audit-composed-prompt.ts" /tmp/<run>-composed-prompt.md
    ```
 
    The script calls `auditComposedPrompt` from

@@ -121,7 +121,7 @@ so for a while nothing in the converged path ran it at all (ace#2255).
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
   --connect-base-url https://connect.dimagi.com \
   --labs-base-url https://labs.connect.dimagi.com
 # → rewrites ~/.ace/labs-session.json; that path is what canopy gets as

@@ -58,7 +58,7 @@ The static check functions live at `skills/verdict-yaml-qa/checks.ts` as importa
 3. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill verdict-yaml-qa --artifact "$TMP" --target "<opp-name>" --capture-path "<phase>/<producer>-eval_verdict.yaml"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill verdict-yaml-qa --artifact "$TMP" --target "<opp-name>" --capture-path "<phase>/<producer>-eval_verdict.yaml"
    ```
 
    The runner:
@@ -98,7 +98,7 @@ The auto-fix loop is more constrained than producer-facing QA — most `-eval` s
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
+- Bash: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
 
 ## Mode Behavior
 

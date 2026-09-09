@@ -206,7 +206,7 @@ the shared link. Use the in-place re-render script instead
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/rerender-training-deck-in-place.ts" \
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/rerender-training-deck-in-place.ts" \
   --deck <presentationId> \
   --spec <new-spec.yaml> \
   --old-spec <spec.yaml that produced the CURRENT slides> \
