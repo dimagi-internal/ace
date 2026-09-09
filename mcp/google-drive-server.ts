@@ -48,6 +48,7 @@ import {
 } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import { classifyCaptionBacking } from '../lib/caption-backing.js';
+import { findBoldSpans, boldSpanRequests } from '../lib/docs-bold-spans.js';
 import {
   summarizeReplacementCoverage,
   summarizeBatchReplacementCoverage,
@@ -3010,6 +3011,48 @@ server.tool(
       }
 
       return result({ documentId, anchorsProcessed: pairs.length, emptyBulletsRemoved: emptyBullets.length });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'docs_finalize_bold',
+  'Finalize a template-rendered Google Doc by converting literal `**markdown bold**` into real Google Docs bold and deleting the `**` markers. Call AFTER `docs_copy_template` (and after `docs_finalize_bullets`, which changes paragraph indices). `replaceAllText` is plain-text substitution and carries no character formatting, so a skill that emits markdown bold in its prose tokens otherwise ships literal asterisks to the reader — this atom is what makes emitting them safe. Walks table cells recursively, sets ONLY the bold field so template fonts/colours/sizes survive, and never pairs markers across a paragraph boundary. Idempotent — a re-run finds no markers and reports 0. Returns the count of spans bolded.',
+  {
+    documentId: z.string().describe('The Google Doc ID'),
+  },
+  async ({ documentId }) => {
+    try {
+      const doc = await docs.documents.get({ documentId });
+      // Spans come back last-to-first, so mutating one cannot invalidate the
+      // indices of any span still to be processed.
+      const spans = findBoldSpans(doc.data.body?.content ?? []);
+
+      if (spans.length === 0) {
+        return result({ documentId, spansBolded: 0 });
+      }
+
+      // One batchUpdate per span rather than one for all of them. Docs applies
+      // a batch's requests sequentially against a shifting document, so the
+      // per-span triple (style, delete close, delete open) is only self-
+      // consistent in isolation; interleaving spans in one batch would require
+      // re-deriving every later index against the deletions already applied.
+      for (const span of spans) {
+        await docs.documents.batchUpdate({
+          documentId,
+          requestBody: { requests: boldSpanRequests(span) as any },
+        });
+      }
+
+      return result({
+        documentId,
+        spansBolded: spans.length,
+        // Ordered as processed (last-to-first); truncated because a long
+        // contractual document can carry a few hundred emphasised runs.
+        samples: spans.slice(0, 20).map((s) => s.text),
+      });
     } catch (e: any) {
       return error(e.message);
     }

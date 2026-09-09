@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 46, // +1: verify_caption_backing (published-artifact caption fence)
+    expectedCount: 47, // +1: docs_finalize_bold (markdown-bold → Docs-bold finalizer, ace#2335)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path

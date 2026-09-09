@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 46 atoms
+Source: `mcp/google-drive-server.ts` — 47 atoms
 
 ### `sheets_list_tabs`
 
@@ -332,6 +332,14 @@ Copy a Google Doc template and optionally replace placeholder text. Smart chips 
 ### `docs_finalize_bullets`
 
 Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill's cell-level token replacement can emit `\n`-separated bullet items without per-bullet token slots). Idempotent — re-runs are no-ops once all anchors have been processed. Returns the count of anchor pairs processed.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `documentId` | `z.string` | **required** | The Google Doc ID |
+
+### `docs_finalize_bold`
+
+Finalize a template-rendered Google Doc by converting literal `**markdown bold**` into real Google Docs bold and deleting the `**` markers. Call AFTER `docs_copy_template` (and after `docs_finalize_bullets`, which changes paragraph indices). `replaceAllText` is plain-text substitution and carries no character formatting, so a skill that emits markdown bold in its prose tokens otherwise ships literal asterisks to the reader — this atom is what makes emitting them safe. Walks table cells recursively, sets ONLY the bold field so template fonts/colours/sizes survive, and never pairs markers across a paragraph boundary. Idempotent — a re-run finds no markers and reports 0. Returns the count of spans bolded.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
