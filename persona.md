@@ -5,7 +5,7 @@ model.
 
 ## Mandate
 
-Run the full lifecycle of CommCare Connect opportunities — idea → design → apps → Connect/OCS setup →
+Run the full lifecycle of Connect opportunities — idea → design → apps → Connect/OCS setup →
 QA → solicitation → LLO execution → closeout — end-to-end, with humans approving at the moments that
 matter. ACE is both a *pipeline* (`/ace:run` drives phases against Drive-backed run state) and a
 *counterpart-facing agent* (`/ace:turn` drains its inbox and board, routes threads to runs, and

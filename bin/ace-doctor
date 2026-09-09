@@ -1217,8 +1217,13 @@ if [ -n "$ENV_FILE" ]; then
         const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
         const drive = makeDrive({ version: 'v3', auth });
         try {
-          const r = await drive.files.get({ fileId: '$TPL_ID', fields: 'name, mimeType', supportsAllDrives: true });
-          console.log(JSON.stringify({ ok: true, name: r.data.name || '' }));
+          const r = await drive.files.get({ fileId: '$TPL_ID', fields: 'name, mimeType, capabilities(canCopy), copyRequiresWriterPermission', supportsAllDrives: true });
+          console.log(JSON.stringify({
+            ok: true,
+            name: r.data.name || '',
+            canCopy: r.data.capabilities?.canCopy !== false,
+            copyRestricted: r.data.copyRequiresWriterPermission === true,
+          }));
         } catch (e) {
           console.log(JSON.stringify({ ok: false, message: e.message }));
         }
@@ -1226,8 +1231,25 @@ if [ -n "$ENV_FILE" ]; then
       TPL_OK="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
       TPL_NAME="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.name||''); } catch { console.log(''); }" 2>/dev/null)"
       TPL_MSG="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
+      TPL_CANCOPY="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.canCopy===false?'0':'1'); } catch { console.log('?'); }" 2>/dev/null)"
       if [ "$TPL_OK" = "1" ]; then
         pass "${TPL_LABEL}_access: SA can read $TPL_VAR (\"$TPL_NAME\")"
+        # READ IS NOT COPY, and every consumer of these templates COPIES.
+        #
+        # This is the gap that produced a plain-text work order on
+        # turmeric-market-study/20260828-1108: `docs_copy_template` failed at
+        # render time on a template-access error, the producer improvised a
+        # synthesized doc, and QA passed it 8/8. Re-probed on 2026-09-09 the
+        # template read fine AND copied fine — so the `_access` PASS above was
+        # true on both days and told us nothing about the operation that
+        # actually failed. `capabilities.canCopy` is the one Drive answers
+        # honestly without mutating anything (a real copy per doctor run would
+        # litter Drive with probe files).
+        if [ "$TPL_CANCOPY" = "0" ]; then
+          warn "${TPL_LABEL}_copyable: SA can READ $TPL_VAR but Drive reports canCopy=false" "the SA needs copy rights, not just Viewer: re-share the template with $TPL_SA_EMAIL, and if the doc has 'Viewers cannot download, print, or copy' set (copyRequiresWriterPermission), turn it off or grant the SA Writer. Otherwise $TPL_CONSUMER fails mid-run — and for the work order that used to mean a synthesized plain doc shipping as a contract"
+        else
+          pass "${TPL_LABEL}_copyable: Drive reports canCopy=true for $TPL_VAR"
+        fi
       elif [ "$TPL_OK" = "0" ]; then
         warn "${TPL_LABEL}_access: $TPL_VAR=$TPL_ID is set but the SA cannot read it ($TPL_MSG)" "share the template doc with $TPL_SA_EMAIL as Viewer, or re-point $TPL_VAR to an SA-accessible copy — otherwise $TPL_CONSUMER fails mid-run with 'File not found'"
       fi

@@ -18,8 +18,10 @@ manifest:
 
 voice:
   audience: flw
-  # NUMBER, not a quoted string — the schema requires z.number().
-  estimated_duration_minutes: 180
+  # No `estimated_duration_minutes` — the LLO owns session timing, so a
+  # training deck states no durations anywhere (operator decision 2026-09-09).
+  # The field is still optional on the schema for the partnership PITCH deck,
+  # which is not a training deck; do not reintroduce it here.
   language: "{{LANGUAGE}}"
 
 modules:
@@ -32,18 +34,19 @@ modules:
         subtitle: "FLW Training — {{DATE}}"
         date: "{{DATE}}"
       - id: agenda
-        # `items` is a LIST OF OBJECTS, each with `label` AND `duration`.
-        # A list of bare strings fails TrainingDeckSpecSchema.
+        # `items` is a LIST OF OBJECTS, each with a `label` and nothing else.
+        # A list of bare strings fails TrainingDeckSpecSchema. Do NOT add a
+        # `duration` key — agenda timing is the LLO's call, and the schema
+        # strips the key so it would silently do nothing anyway.
         layout: agenda
         title: "Today's Agenda"
         items:
-          - { label: "{{AGENDA_ITEM_1_LABEL}}", duration: "{{AGENDA_ITEM_1_DURATION}}" }
-          - { label: "{{AGENDA_ITEM_2_LABEL}}", duration: "{{AGENDA_ITEM_2_DURATION}}" }
-          - { label: "{{AGENDA_ITEM_3_LABEL}}", duration: "{{AGENDA_ITEM_3_DURATION}}" }
+          - { label: "{{AGENDA_ITEM_1_LABEL}}" }
+          - { label: "{{AGENDA_ITEM_2_LABEL}}" }
+          - { label: "{{AGENDA_ITEM_3_LABEL}}" }
       - id: icebreaker
         layout: exercise
         title: "{{ICEBREAKER_TITLE}}"
-        duration: "{{ICEBREAKER_DURATION}}"
         body: "{{ICEBREAKER_BODY}}"
 
   - id: your-opportunity

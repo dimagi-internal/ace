@@ -14,7 +14,8 @@ manifest:
 
 voice:
   audience: flw
-  estimated_duration_minutes: "{{DURATION}}"
+  # No `estimated_duration_minutes` — the LLO owns session timing, so a
+  # training deck states no durations anywhere (operator decision 2026-09-09).
   language: "{{LANGUAGE}}"
 
 modules:
@@ -33,7 +34,6 @@ modules:
       - id: icebreaker
         layout: exercise
         title: "{{ICEBREAKER_TITLE}}"
-        duration: "{{ICEBREAKER_DURATION}}"
         body: "{{ICEBREAKER_BODY}}"
 
   - id: fgd-overview

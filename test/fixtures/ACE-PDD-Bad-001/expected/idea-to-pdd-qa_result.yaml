@@ -7,8 +7,15 @@
 skill: idea-to-pdd-qa
 verdict: fail
 
-# Six checks should fail; one should pass.
+# Seven checks should fail; one should pass.
 expected_failures:
+  # The adversarial fixture's Program Parameters table carries a payment band
+  # and caps but none of the launch parameters Phase 4 needs — no LLO pay per
+  # visit, no budget, no opportunity dates, no verification flags. That is the
+  # PDD this check exists to stop: buildable-looking, not launchable.
+  - check: launch_parameters_present
+    detail_contains: missing
+
   - check: all_required_sections_present
     detail_contains: Target Population
 

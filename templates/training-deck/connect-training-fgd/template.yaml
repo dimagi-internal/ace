@@ -16,4 +16,3 @@ modules:
   - practice
   - resources
 expected_slide_count: "25-40"
-expected_duration_minutes: "180-300"

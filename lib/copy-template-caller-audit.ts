@@ -135,6 +135,16 @@ export const CALLER_REGISTRY: RegistryEntry[] = [
       'Copies bare, substitutes via slides_batch_update.',
   },
   {
+    file: 'skills/pdd-to-work-order-qa/SKILL.md',
+    kind: 'reference',
+    reason:
+      'Names docs_copy_template in the `rendered_from_template` check row, describing the render ' +
+      'path that check VERIFIES the artifact came from. QA reads a finished document out of Drive ' +
+      'and never calls the atom, so there is no result to read unmatchedReplacements from. Added ' +
+      'with that check (2026-09-09), after a synthesized plain doc shipped as a work order on ' +
+      'turmeric-market-study/20260828-1108 and scored 8/8 here.',
+  },
+  {
     file: 'skills/run-surface-audit/SKILL.md',
     kind: 'reference',
     reason:

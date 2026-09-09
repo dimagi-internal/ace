@@ -2,7 +2,9 @@
 name: idea-to-pdd
 description: >
   Develop a Program Design Doc (PDD) for a Connect intervention from
-  source material. Iterates a 5-question stress-test rubric until approved.
+  source material. Iterates a 6-question stress-test rubric until approved;
+  check 6 (launch readiness) is a hard gate on the app-build and
+  opportunity-creation parameters.
 disable-model-invocation: false
 ---
 
@@ -767,7 +769,7 @@ before deciding. If the rule is `ai-iteration` and the source is explicit, the
 source wins and you note the override. If the rule is `[human: …]`, honor it and
 raise the conflict.
 
-## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
+## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding. **Check 6 (Launch readiness) blocks on its own** — see the rubric's own note.
 
 6. **Write the PDD** to `1-design/idea-to-pdd.md` **as a NATIVE Google Doc via
    `drive_create_doc_from_markdown`** — NOT `drive_create_file` with a `text/*`
@@ -1013,7 +1015,9 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
 
 ## LLM-as-Judge Rubric
 
-Run this 5-question stress test against the drafted PDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
+Run this 6-question stress test against the drafted PDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
+
+**Check 6 (Launch readiness) is exempt from the two-or-more rule — it blocks on its own.** Checks 1-5 grade whether the design is *good*; check 6 grades whether it is *buildable and launchable*, and a PDD that Phase 4 cannot create an opportunity from is not 5/6 acceptable. One non-`pass` there is a halt (operator decision 2026-09-09).
 
 Background and worked examples live in `docs/examples/pdd-stress-test-observations.md`. Quote specific evidence from the PDD when grading; do not grade in the abstract.
 
@@ -1084,6 +1088,64 @@ Background and worked examples live in `docs/examples/pdd-stress-test-observatio
    USD 5.00–12.50/day; effective was USD 2.50–6.25. The PDD self-graded
    this check `pass` and the independent eval scored `resource_realism`
    6.5 — a 1.88-point self-eval gap concentrated entirely here.
+
+6. **Launch readiness** — *Is every parameter Phase 3 and Phase 4 need decided
+   HERE, or will someone have to invent it at setup time?* **This check is
+   MANDATORY and it is a HARD gate: any grade other than `pass` blocks the PDD
+   on its own, regardless of the two-or-more rule above** (operator decision
+   2026-09-09).
+
+   The PDD is where these get decided because it is the last point a human is
+   reliably in the loop. Phase 3 builds forms from them and Phase 4 passes them
+   straight into `connect_create_opportunity`, `connect_create_payment_unit`
+   and `connect_set_verification_flags` — so a parameter this document leaves
+   silent is not deferred, it is delegated to whichever agent notices first, or
+   silently defaulted by a skill.
+
+   Every one of these must appear as a row in § Program Parameters:
+
+   | PDD key | Connect field it feeds |
+   |---|---|
+   | `payment_rate_min` / `payment_rate_max` (band), or `flw_payment_per_visit` | payment unit `amount` — FLW pay per visit |
+   | `llo_payment_per_visit` | payment unit `org_amount` — LLO pay per visit |
+   | `daily_cap_per_flw` | payment unit `max_daily` — daily target |
+   | `total_cap_per_flw` | payment unit `max_total` — per-FLW campaign cap |
+   | `campaign_target_visits` | campaign target / opportunity sizing |
+   | `total_budget_usd` | opportunity `total_budget` |
+   | `opportunity_start_date` / `opportunity_end_date` | opportunity `start_date` / `end_date` |
+   | `verification_flags` | `connect_set_verification_flags` |
+
+   Also confirm the Phase 3 inputs the app build cannot proceed without, where
+   the archetype implies them: `learn_passing_score` + `assessment_items` when
+   a gating assessment exists, and `entity_id_grain` (the payment dedup key).
+
+   **`llo_payment_per_visit` is the one most likely to be missing, and it is
+   not optional downstream.** `connect_create_payment_unit` requires
+   `org_amount` for managed opportunities — the API rejects the create without
+   it (`org_amount is required for managed opportunities`) — and until
+   2026-09-09 the PDD vocabulary had a key for the FLW side and none at all for
+   the LLO side. Half the payment model was reaching Connect as a number nobody
+   had recorded a decision about.
+
+   **Ask, then propose — do not proceed on silence.** Put these to the human
+   during review. If they do not confirm a value, **propose one yourself with
+   your reasoning** and get it approved; the point is that a number exists and
+   someone agreed to it, not that the human types it. Never advance to Phase 3
+   with the question still open.
+
+   **Mode behaviour** — in `auto` / autonomous mode there is nobody to approve,
+   so the rule adapts rather than deadlocking: write the proposed value into
+   § Program Parameters marked `[PROPOSED]`, record a matching `decisions.yaml`
+   row with `evidence_basis: inferred` plus reasoning, and flag it
+   **unapproved** in the phase summary so the Phase 1→3 pause point surfaces
+   it. A proposal on the record is auditable; a silent default is not. In
+   interactive / review mode the gate is real: stop and ask.
+
+   *Enforced:* `idea-to-pdd-qa § launch_parameters_present` (check 0, runs
+   first) fails the PDD when any row is absent. `[PROPOSED]` / `[TBD]` values
+   pass that check by design — it enforces that the parameter was considered
+   and written where Phase 4 will look; sign-off is tracked separately via
+   `evidence_basis`.
 
 **Grading anchors (worked examples):**
 

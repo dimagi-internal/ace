@@ -1,7 +1,6 @@
 icebreakers:
   - id: two-truths
     title: "Two Truths and a Lie"
-    duration: "10 min"
     body: |
       Each person shares three statements about themselves — two true, one false.
       The group guesses which one is the lie.
@@ -9,7 +8,6 @@ icebreakers:
 
   - id: one-word
     title: "One-Word Check-In"
-    duration: "5 min"
     body: |
       Go around the room.
       Each person shares one word that describes how they feel right now.
@@ -17,7 +15,6 @@ icebreakers:
 
   - id: common-ground
     title: "Common Ground"
-    duration: "10 min"
     body: |
       Find three things everyone in the group has in common.
       They cannot be obvious (like "we all have phones").
@@ -27,7 +24,6 @@ practice_patterns:
   - id: guided-learn
     layout: exercise
     title: "Complete Learn Module {{N}}"
-    duration: "20 min"
     body: |
       Open your phone and complete Learn Module {{N}} now.
       Raise your hand when you finish or if you need help.
@@ -35,7 +31,6 @@ practice_patterns:
   - id: form-practice
     layout: exercise
     title: "Fill Out a Sample Form"
-    duration: "15 min"
     body: |
       Working with a partner, fill out the {{FORM_NAME}} form.
       Use the practice data provided.
@@ -44,7 +39,6 @@ practice_patterns:
   - id: role-play
     layout: exercise
     title: "Simulated {{VISIT_TYPE}}"
-    duration: "20 min"
     body: |
       Pair up. One person plays the {{ROLE}}, the other is the worker.
       Complete the full visit workflow from introduction to submission.

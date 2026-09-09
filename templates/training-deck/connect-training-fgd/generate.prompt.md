@@ -13,13 +13,22 @@ Read these artifacts from the opportunity's Drive folder (`ACE/<opp>/`):
 3. **Screenshot manifest** (`<run>/3-commcare-setup/screenshot-manifest.yaml` or `<run>/6-qa-and-training/screenshot-manifest.yaml`) — available `@alias` references for app screenshots. Only 2-3 screenshots are needed for FGD (sentinel form + attestation form). Every `@alias` you use in the spec MUST exist in this manifest.
 4. **run_state.yaml** (`<run>/run_state.yaml`) — run metadata. Extract: `run_id`, `generated_at` timestamp, OCS chatbot name, Connect opportunity details.
 5. **Question guide** (from PDD or inputs) — the structured discussion guide with question categories, probing questions, and time allocations.
+6. **Connect wiki page map** (`templates/training-deck/_common/connect-wiki-map.yaml`, in the repo — not in Drive) — curated links into the public Connect help site, keyed by topic.
+
+   **This source is ADDITIVE and subordinate.** Sources 1-5 are what the deck teaches; the wiki adds optional depth and gives the LLO somewhere to send follow-up questions. A slide must stand on its own if the reader never clicks a link, so never move required content behind one, and never cite the wiki in place of the PDD — where they disagree about THIS opportunity, the PDD wins, always.
+
+   **Only URLs from the map may appear in the deck.** Do not invent, shorten, or reconstruct a wiki URL, and do not pull one from memory or a web search: a fabricated link 404s in front of an LLO, and `scripts/probe-connect-wiki-map.ts` can only verify links that came from the map. If a topic you want has no entry, cite nothing and say so in your report.
+
+   Note the time allocations in source 5 are the QUESTION GUIDE's — a field protocol the facilitator follows. They are program parameters and they stay. They are not training-session timings, which the deck omits entirely (see the agenda rule below).
 
 ## Module-by-Module Content Instructions
 
 ### welcome (generate fresh)
 
 - **cover**: Use opportunity name as title. Subtitle format: "FLW Training — {date}".
-- **agenda**: List the module names as agenda items with approximate durations. Total should match `expected_duration_minutes` from the template (180-300 min). FGD training sessions run longer because of practice facilitation exercises.
+- **agenda**: List the module names as agenda items. **Emit NO durations** — each item is a bare `{label}`, and the schema strips a `duration` key if you add one. Session timing is the LLO's to set; do not state a total.
+
+  **This bans TRAINING-SCHEDULE timings, not PROGRAM parameters.** The two are easy to conflate and only one is ours to withhold. How long the training day runs, how long a module takes, how long to spend on an exercise — the LLO's call, so say nothing. How long an FGD session must run (75-90 min), how many participants a group holds, how soon the attestation is due (24 hours), how soon the session doc is due (72 hours) — these come from the PDD, they are what the FLW is being paid to comply with, and they MUST stay on the slides. Removing them would not be deference; it would be withholding the job description.
 - **icebreaker**: Select ONE icebreaker from `_common/facilitation.yaml`. Pick `two-truths` for groups of 10+, `one-word` for groups of 20+, `common-ground` for groups under 10. Fill the template tokens.
 
 ### platform-setup (include by reference)
@@ -149,28 +158,24 @@ Generate 4-6 slides using a mix of facilitation patterns and FGD-specific exerci
 1. **Guided Learn completion** — use the `guided-learn` pattern from `_common/facilitation.yaml`. Set `{{N}}` to "1" for the first module. If the PDD lists multiple Learn modules, add one slide per module.
 
 2. **Consent script read-aloud** (layout: `exercise`)
-   - Duration: 10 min
    - Each person reads the consent script aloud to a partner
    - Partner listens for: clarity, pace, eye contact, confidence
    - Switch roles and repeat
 
 3. **Mock FGD** (layout: `exercise`)
-   - Duration: 30-45 min
    - Split into groups of 6-8
    - One person facilitates using 2-3 questions from the question guide
    - Others play participants (assign personas if helpful — "you are skeptical," "you are enthusiastic," "you are quiet")
-   - After 15 min, pause for feedback: What went well? What was hard?
+   - Pause partway through for feedback: What went well? What was hard?
    - Rotate facilitator and repeat
 
 4. **OCS chatbot practice** (layout: `exercise`)
-   - Duration: 10-15 min
    - Open the chatbot on your phone
    - Ask it: "What should I do if a participant gets upset?"
    - Ask it: "Help me prepare for a session about [topic from PDD]"
    - Share interesting answers with the group
 
 5. **Attestation form walkthrough** (layout: `exercise` or `walkthrough`)
-   - Duration: 5 min
    - Open CommCare, find the attestation form
    - Fill out a practice submission together as a group
    - Confirm sync
@@ -184,7 +189,14 @@ Include the `_common/resources.yaml` module verbatim. Fill `{{LLO_CONTACT}}` fro
   ref: _common/resources
   overrides:
     LLO_CONTACT: "{{LLO_CONTACT}}"
+    # Copied VERBATIM from connect-wiki-map.yaml `sections.<key>.pages[0].url`.
+    WIKI_WORKER_ACCOUNT_SETUP_URL: "<sections.worker_account_setup.pages[0].url>"
+    WIKI_WORKER_APP_JOURNEY_URL: "<sections.worker_app_journey.pages[0].url>"
+    WIKI_VERIFICATION_URL: "<sections.verification.pages[0].url>"
+    WIKI_PAYMENTS_URL: "<sections.payments.pages[0].url>"
 ```
+
+Resolve each `WIKI_*_URL` by reading `_common/connect-wiki-map.yaml` and copying the `url` field verbatim. Every `WIKI_*_URL` token in `_common/resources.yaml` MUST be resolved — an unresolved token renders the literal `{{WIKI_PAYMENTS_URL}}` onto a slide an FLW reads, which is the `no_scaffolding_markers` defect class.
 
 ## Layout Selection Rules
 
@@ -234,6 +246,31 @@ Rules:
 - **Numbers are concrete**: "$15 per session" not "compensation per delivery unit". "6-12 participants per group" not "target group size".
 - **Positive framing**: "Let everyone finish their thought before asking the next question" not "Don't interrupt participants".
 - **Facilitation tone**: Emphasize listening, neutrality, curiosity, and respect for participants. The facilitator is a guide, not an expert. "Your job is to ask and listen, not to teach or correct."
+
+## Formatting Budgets (ENFORCED — `parseTrainingSpec` throws)
+
+The Dimagi stencil text frames are fixed-size. Text past these budgets does not
+reflow smaller — it spills out of the shape or gets clipped at render time, and
+nothing downstream looks at pixels, so an overflowing slide passes every other
+check and is first noticed by a room of FLWs. `parseTrainingSpec` rejects the
+spec rather than rendering one.
+
+| Field | Budget | Severity |
+|---|---|---|
+| `body` characters | 700 | error |
+| `body` non-empty lines | 9 | error |
+| any single `body` line | 120 chars | warn |
+| `agenda` items | 8 | error |
+| `stats` items | 3 (the stencil draws exactly three) | error |
+| `title` (non-cover, non-section) | 60 chars | error |
+| `cover` title | 28 chars | error |
+| `section` title | 24 chars | error |
+
+**Fix an overflow by splitting the slide, never by raising the budget.** Two
+clear slides beat one crammed one — that is the whole of "presented in the most
+effective way" that can actually be checked. One idea per slide; if a slide
+needs the word "also", it is two slides. Budgets live in `FORMATTING_BUDGETS`
+(`lib/training-deck-spec.ts`).
 
 ## Output Format
 

@@ -9,6 +9,30 @@ slides:
       - Your LLO Manager: {{LLO_CONTACT}} — for scheduling, logistics, and urgent issues
       - Quick Reference Card: Keep it with you in the field
       - FAQ Document: Answers to the most common questions
+      - Connect Help Site: {{WIKI_WORKER_APP_JOURNEY_URL}} — step-by-step guides for the app
+
+  # Deeper reading, sourced from the public Connect help site via
+  # `connect-wiki-map.yaml`. This slide is SUPPLEMENTARY by design: it adds
+  # depth for the FLW who wants it and gives the LLO somewhere to point
+  # follow-up questions. Nothing on it may be load-bearing — the deck must
+  # still teach the job in full if the reader never opens a link.
+  #
+  # Every URL here is a token resolved from the committed map. Do NOT hardcode
+  # a wiki URL into this file and do NOT let the generator invent one: a
+  # fabricated link 404s in front of an LLO, and `scripts/probe-connect-wiki-map.ts`
+  # can only check links that came from the map.
+  - id: learn-more
+    layout: content
+    title: "Learn More About Connect"
+    body: |
+      The Connect Help Site covers the platform in more detail than we can today:
+
+      - Setting up your account: {{WIKI_WORKER_ACCOUNT_SETUP_URL}}
+      - Using the app day to day: {{WIKI_WORKER_APP_JOURNEY_URL}}
+      - How visits get verified: {{WIKI_VERIFICATION_URL}}
+      - How and when you get paid: {{WIKI_PAYMENTS_URL}}
+
+      You do not need any of these to start work — everything required is in this session.
 
   - id: closing
     layout: closing

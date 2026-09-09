@@ -300,15 +300,19 @@ describe('SlideSpecSchema per-layout validation', () => {
     expect(result.items).toEqual(['Phone charged', 'App installed', 'ID card ready']);
   });
 
-  it('validates exercise layout', () => {
+  it('validates exercise layout, and strips any duration supplied', () => {
     const result = SlideSpecSchema.parse({
       id: 's1', layout: 'exercise', title: 'Practice',
+      // Still supplied here ON PURPOSE: this asserts the 2026-09-09 no-duration
+      // rule is enforced by the SCHEMA rather than by generator good behaviour.
+      // A generator that has not caught up loses the value instead of shipping
+      // an invented timing onto a slide.
       duration: '10 minutes',
       body: 'Open the app and register a test case.',
     });
     expect(result.layout).toBe('exercise');
     if (result.layout !== 'exercise') throw new Error('expected exercise');
-    expect(result.duration).toBe('10 minutes');
+    expect(result).not.toHaveProperty('duration');
   });
 
   it('validates closing layout', () => {
@@ -1169,19 +1173,36 @@ describe('spec.template.yaml skeleton shape (ace#1049)', () => {
     expect(Array.isArray(doc.manifest.opp)).toBe(false);
   });
 
-  it('declares estimated_duration_minutes as a number, not a quoted string', () => {
-    expect(typeof doc.voice.estimated_duration_minutes).toBe('number');
+  // The ace#1049 rule was "the skeleton must not teach the wrong TYPE". The
+  // duration half of it is now moot in the other direction: a TRAINING
+  // skeleton must not declare the field at all (operator decision 2026-09-09,
+  // the LLO owns session timing). The type discipline below is unchanged for
+  // the fields that remain.
+  it('omits estimated_duration_minutes entirely — training decks state no timings', () => {
+    expect(doc.voice.estimated_duration_minutes).toBeUndefined();
+    // And the ban is on the training variant only. The partnership PITCH deck
+    // is not training: its duration is the length of an accompanying video,
+    // which ACE does control, so it keeps the field AND its number-not-string
+    // discipline. Asserted here so a future sweep does not "finish the job"
+    // by stripping the pitch deck too.
+    const pitchPath = path.join(
+      here,
+      '../../templates/training-deck/connect-pitch-partnership/spec.template.yaml',
+    );
+    const pitch = YAML.parse(fs.readFileSync(pitchPath, 'utf8')) as any;
+    expect(pitch.voice.estimated_duration_minutes).toBeDefined();
   });
 
-  it('declares agenda items as {label, duration} objects, not bare strings', () => {
+  it('declares agenda items as {label} objects, not bare strings and not timed', () => {
     const welcome = doc.modules.find((m: any) => m.id === 'welcome');
     const agenda = welcome.slides.find((s: any) => s.layout === 'agenda');
     expect(Array.isArray(agenda.items)).toBe(true);
     expect(agenda.items.length).toBeGreaterThan(0);
     for (const item of agenda.items) {
+      // Objects, not bare strings — the original ace#1049 finding, still live.
       expect(typeof item).toBe('object');
       expect(typeof item.label).toBe('string');
-      expect(typeof item.duration).toBe('string');
+      expect(item.duration).toBeUndefined();
     }
   });
 });

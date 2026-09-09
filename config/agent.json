@@ -2,7 +2,7 @@
   "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated — its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
   "slug": "ace",
   "name": "ACE",
-  "description": "AI Connect Engine — runs the full CommCare Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
+  "description": "AI Connect Engine — runs the full Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
   "email": "ace@dimagi-ai.com",
   "_gog_client_doc": "The SHARED fleet OAuth client (client_id + client_secret), reused by every agent's mailbox — same value as eva/hal/ada. The per-agent, never-shared identity is `email`: identity bleed means acting as another agent's mailbox, and that is governed by --account, NOT by the client. Do NOT set this to `ace`: no credentials-ace.json is provisioned, so `canopy email` / bin/ace-email fail outright and the printed remedy (`gog login --client ace`) is an interactive browser OAuth a headless turn cannot run. See jjackson/ace#1147.",
   "gog_client": "canopy",

@@ -4,9 +4,9 @@ common: true
 slides:
   - id: what-is-connect
     layout: content
-    title: "What is CommCare Connect?"
+    title: "What is Connect?"
     body: |
-      CommCare Connect matches you with paid work opportunities:
+      Connect matches you with paid work opportunities:
       - Learn: Complete training modules on your phone
       - Deliver: Do field work using guided forms
       - Verify: Your work is checked for quality
