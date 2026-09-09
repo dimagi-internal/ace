@@ -127,20 +127,41 @@ ace@dimagi-ai.com
 
 1. **Read inputs.** Drive paths in the table above.
 
-2. **Resolve sibling-doc Drive URLs.** For each of llo-manager-guide,
-   flw-training-guide, quick-reference, look up the file's
+2. **Resolve the send scope FIRST — it decides which links this email carries.**
+   Call `resolveSendScope` from `lib/training-send-scope.ts` with whatever
+   subset the operator named for this send (`resolveSendScope(['training deck'])`
+   for "send only the training deck"), or with nothing when they named no
+   subset, which keeps the default: every training artifact is linked.
+
+   **The scope governs SENDING only. Every training artifact is still
+   generated** — the producers run unconditionally, and narrowing a send must
+   never be implemented by skipping one. See that module's header for why
+   (the two halves are routinely conflated, and the conflation deletes
+   capability).
+
+   Record the resolved scope in the phase summary via `describeSendScope`, so a
+   reader can tell a deliberately-narrow email from one that lost a link.
+
+3. **Resolve sibling-doc Drive URLs for the in-scope artifacts only.** For each
+   key in `scope.keys` (canonical names map to llo-manager-guide,
+   flw-training-guide, quick-reference), look up the file's
    webViewLink via `drive_list_folder` on
-   `ACE/<opp>/runs/<run-id>/6-qa-and-training/`. If any of them
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/`. If an **in-scope** doc
    doesn't exist yet, that's a phase-ordering bug — fail with a clear
-   pointer.
+   pointer. An out-of-scope doc that is missing is not this email's problem.
 
-3. **Compose the email body** using the format above. Keep it tight.
+4. **Compose the email body** using the format above. Keep it tight. Omit the
+   sections that would link an out-of-scope artifact rather than leaving a
+   heading with nothing under it.
 
-4. **Self-check before write.** Verify:
+5. **Self-check before write.** Verify:
    - Subject line is present and ≤ 78 chars
    - Every URL is a real URL (no `<...>` placeholders, no `TODO`)
    - Word count 200-350, excluding URLs
-   - All three sibling docs are linked
+   - Every **in-scope** sibling doc is linked, and **no out-of-scope artifact is
+     linked or attached** — assert both with `assertSendScopeRespected(scope,
+     <artifacts this email encloses>)`. On an unscoped send this is the previous
+     behaviour: all sibling docs linked.
    - Widget URL is the actual `widget_url` from
      `5-ocs/ocs-setup_widget-handoff.md`
    - The three personalization tokens are used (none more, none
@@ -148,7 +169,7 @@ ace@dimagi-ai.com
    - Exactly one primary CTA, and it carries a deadline, a time
      estimate, and a real link (ace#1654)
 
-5. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
+6. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
    `drive_create_file`, which uploads the body as `text/plain` so every `##`,
    `**`, `|` and `---` stays a literal character on the page. This document is
@@ -193,7 +214,7 @@ ace@dimagi-ai.com
    `lib/artifact-manifest.ts`, enforced by
    `test/lib/source-persisted-artifacts.test.ts`.)
 
-6. **Self-evaluate (LLM-as-Judge).** Five criteria:
+7. **Self-evaluate (LLM-as-Judge).** Five criteria:
    - **Subject + token discipline:** subject ≤ 78 chars, exactly
      `LLO_NAME`/`LLO_FIRST_NAME`/`LLO_ORG` tokens used
    - **URL hygiene:** all 4 URLs (opp + 3 docs + widget) are real
@@ -236,10 +257,10 @@ ace@dimagi-ai.com
    `skills/training-onboarding-email-eval/SKILL.md § LLM-as-Judge
    Rubric` — if they diverge, the eval is authoritative.**
 
-7. **Hand off.** Print Drive URL + verdict summary.
+8. **Hand off.** Print Drive URL + verdict summary.
 
 
-8. **Share it anyone-with-link.** The onboarding email is a deliverable a partner opens from
+9. **Share it anyone-with-link.** The onboarding email is a deliverable a partner opens from
    the run summary — a private Doc opens only for accounts explicitly shared on
    it, so a recipient following the link hits *You need access*. Nothing
    upstream catches this: the doc exists, has the right words, passes every
