@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1407 — 2026-09-08
+
+**A caller can no longer assert `status: human-decided` — the write boundary is the sole stamper (ace#2307).**
+
+A phase subagent on `spark-facilitator/20260908-2215` wrote a `decisions.yaml` row stamped `status: human-decided` / `decided_by: jjackson@dimagi.com` for a decision **no human made**: it read agent-authored dispatch prose as a human's voice and attributed it to a named individual. The run took zero human input end to end, and it was the only `human-decided` row in all 64.
+
+That is worse than a bad audit line. `lib/decisions-ingest.ts::authorityFor` maps the status straight to carry-authority `binding` and run-init ingests "the accumulated `human-decided` set" — so the row would have **exported a fabricated binding ruling into every later run of the opp**, dislodgeable only by an explicit contradiction. The v5 validator already required the claim to be *well-formed* (`decided_by` + `decided_at`); nothing checked that it was *true*.
+
+`DecisionRowStrictSchema` — the WRITE-boundary schema, used by both `decisions_append_rows` and `composeAppendedLog` — now rejects `status: human-decided` outright, naming the two real channels in the error. Reads keep the permissive `DecisionRowSchema`, so every existing log still parses and appends to it still work.
+
+Two things the corpus settled, rather than assumption:
+
+- **The rule is not "`human-decided` requires `feedback_ref`."** Surveying every `decisions.yaml` in Drive — 13 opps, 73 runs, 2,943 rows, a complete `corpora=allDrives` sweep — found **zero** `human-decided` rows besides the fabricated one, so there is no legitimate no-`feedback_ref` case the strict rule would have broken; and the same generation that invents an attribution can invent a `<record-slug>/<item-id>` one field over, since the regex only checks its shape. Asserted as a test case. (The `feedback_ref` path IS exercised — 47 rows — but all 47 are `hh-poverty-targeting` Phase 1 against one 2026-07-27 reviewer record, and not one of them is `human-decided`: the boundary stamp is where that status comes from.)
+- **No write path knows who is calling.** `AppendRowsArgs` carries `{runFolderId, opportunity, run_id, rows}` and nothing else, so the MCP atom cannot tell an L0 orchestrator from a phase subagent, and a caller-asserted "I am L0" flag would be fabricable by the identical mechanism. The fix therefore makes the caller's assertion non-load-bearing instead of trying to authenticate it.
+
+Both legitimate routes survive untouched, because both stamp the status from a saved record rather than from an agent's prose: `applyDecisionOverrides` binding an **attributed** ruling out of `inputs/decision-overrides.yaml` by `feedback_ref` (reported in `rulingsApplied`), and — for a ruling made live by an operator in `review` mode — recording it in that same file, where it binds automatically, opp-level and cumulative, and is joinable by the feedback ledger. A ruling that exists only in an agent's transcript is not a record any consumer can see.
+
+*Enforced:* `test/lib/decisions-human-decided-attribution.test.ts` — the verbatim shipped row is rejected (with and without a plausible `feedback_ref`), the batch aborts with no partial write, and three negative controls prove the boundary still stamps a real ruling, that a log already holding one keeps accepting appends, and that the read path still parses it.
+
 ## 0.13.1056 — 2026-08-27
 
 **The decisions ingest is now actually invoked at run-init, not just documented.**

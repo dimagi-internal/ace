@@ -959,6 +959,15 @@ saved review is the failure mode this closes). Contract:
 `lib/decision-overrides.ts`; writer spec: ace-web
 `docs/specs/2026-07-24-decision-review-save-design.md`.
 
+**A phase may never WRITE `status: human-decided` — that file is where a human
+ruling goes.** `human-decided` carries forward as **binding**, so an agent
+asserting it fabricates a ruling nobody made; the write boundary rejects a
+caller-asserted one and stamps the status itself from an attributed saved
+ruling. A ruling made live in `review` mode belongs in
+`inputs/decision-overrides.yaml` with `decided_by` + `decided_at`, not in a
+per-run row. *Enforced:*
+`test/lib/decisions-human-decided-attribution.test.ts` (ace#2307).
+
 **The procedural authority for each phase is the per-step `Output`
 block in its `agents/<phase>.md` file**, not the catalog in the writing
 skill's `SKILL.md`. The catalog (the `## Decisions Log` section in each
