@@ -1227,6 +1227,13 @@ alone makes the artifact land outside `4-connect` and fail
               name: <verbatim display name>    # from Step 4 create response — the exact tile text Connect renders (em-dash, NOT slug-reassembled). Phase 6 reads this as its OPP_NAME envVar; never recompose.
               url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
               connect_int_id: <integer | null>    # ConnectProd integer id = create-response int_id (Step 9)
+            verification:                      # Step 5's persisted config (shape per lib/phase-products-schema.ts)
+              form_field_rules:
+                - name: <=25 chars, e.g. consent_confirmed=yes>
+                  question_path: <dotted path READ FROM THE RELEASED CCZ, per Step 5>
+                  question_value: "yes"          # ALWAYS QUOTE the predicate. Bare `yes` is the string "yes" to the plugin's YAML 1.2 readers and the BOOLEAN true to PyYAML (ace-web's Python side), so the audit record of the payability predicate becomes parser-dependent (ace#2296). update_yaml_file now serializes 1.1-safe, and validate_run_state warns if any unquoted ambiguous scalar reaches the file.
+                  deliver_unit_id: <int>
+              form_field_rules_saved: <int>      # the count Connect actually persisted — the only evidence the write landed
             ace_test_user:                     # field names per lib/phase-products-schema.ts
               phone: ${ACE_E2E_PHONE}          # from Step 7
               invite_row_present: <bool>       # REQUIRED — the Step 7 read-back result

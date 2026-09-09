@@ -500,6 +500,39 @@
                       },
                       "end_date": {
                         "type": "string"
+                      },
+                      "verification": {
+                        "type": "object",
+                        "properties": {
+                          "form_field_rules": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "question_path": {
+                                  "type": "string"
+                                },
+                                "question_value": {
+                                  "type": "string"
+                                },
+                                "deliver_unit_id": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                }
+                              },
+                              "additionalProperties": true
+                            }
+                          },
+                          "form_field_rules_saved": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": true
                       }
                     },
                     "additionalProperties": true

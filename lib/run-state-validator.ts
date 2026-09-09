@@ -27,6 +27,7 @@
 
 import { parseTriggeredBy } from './triggering-thread.js';
 import { parseBlockers, parseLineage, parseOutcome } from './run-record.js';
+import { findAmbiguousYamlScalars } from './yaml-ambiguous-scalars.js';
 
 export type ValidationSeverity = 'error' | 'warning';
 
@@ -547,7 +548,28 @@ function validateStepBlock(
  * That matches the orchestrator's expectation at run-init (run_state.yaml
  * exists but no phase has written yet).
  */
-export function validateRunState(parsed: unknown): ValidationResult {
+export interface ValidateRunStateOptions {
+  /**
+   * The SERIALIZED run_state.yaml text, when the caller has it.
+   *
+   * Supplying it enables the YAML 1.1-vs-1.2 ambiguous-scalar scan
+   * (`lib/yaml-ambiguous-scalars.ts`). That check cannot be done on `parsed`:
+   * quoting does not survive a parse, so under the plugin's YAML 1.2 readers
+   * `question_value: yes` and `question_value: "yes"` are the SAME JS string —
+   * while PyYAML, on ace-web's Python side, reads the first as boolean `true`.
+   * The divergence only exists in the bytes (ace#2296).
+   *
+   * Optional, and a no-op when absent, so in-process callers that only hold a
+   * parsed object (`classifyPhaseWriteBack`) are unaffected. The `yaml`-package
+   * dependency is on the ALREADY-imported helper, so this module stays pure.
+   */
+  rawText?: string;
+}
+
+export function validateRunState(
+  parsed: unknown,
+  options: ValidateRunStateOptions = {},
+): ValidationResult {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
@@ -616,6 +638,27 @@ export function validateRunState(parsed: unknown): ValidationResult {
           checkPhaseSelfConsistency(phaseName, phaseBlock, warnings);
         }
       }
+    }
+  }
+
+  // Cross-dialect scalar ambiguity (ace#2296) — WARNINGS only, and only when
+  // the caller handed us the raw text.
+  //
+  // Warning, not error, on purpose: `validate_run_state` runs in every phase
+  // boundary fence of every live run and `classifyPhaseWriteBack` derives
+  // `malformed` from `errors`, so an error would halt a boundary — and on a
+  // RECORD-fidelity defect, where the live external config is correct. A
+  // correct finding that stops runs across the whole back catalogue is worse
+  // than the finding is good. Warnings never gate.
+  if (options.rawText) {
+    for (const f of findAmbiguousYamlScalars(options.rawText)) {
+      pushWarning(
+        warnings,
+        f.path,
+        `line ${f.line}: ${f.detail}`,
+        'a quoted scalar',
+        f.raw,
+      );
     }
   }
 

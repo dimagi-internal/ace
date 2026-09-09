@@ -401,7 +401,7 @@ Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/f
 
 ### `validate_run_state`
 
-Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Reads the YAML from Drive (one call, with the same transient-error retry handleReadFile uses), parses it, and returns `{valid, errors, warnings}` where each issue carries `{path, message, severity, expected?, actual?}`. Use to confirm a phase actually wrote its block correctly — particularly after an `Agent(<phase>)` dispatch returns. Empty/null YAML (legal at run-init before any phase writes) returns `valid: true`. Implementation: `lib/run-state-validator.ts::validateRunState`.
+Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Reads the YAML from Drive (one call, with the same transient-error retry handleReadFile uses), parses it, and returns `{valid, errors, warnings}` where each issue carries `{path, message, severity, expected?, actual?}`. Use to confirm a phase actually wrote its block correctly — particularly after an `Agent(<phase>)` dispatch returns. Empty/null YAML (legal at run-init before any phase writes) returns `valid: true`. Also scans the RAW TEXT for scalars whose meaning depends on which YAML dialect reads the file — an unquoted `yes`/`no`/`on`/`off`/`y`/`n` is a string to the plugin's YAML 1.2 readers and a BOOLEAN to PyYAML on ace-web's Python side (ace#2296) — and reports each as a `warning` naming the path. Warnings never gate a boundary; `true`/`false` and ISO timestamps are deliberately not flagged. Implementation: `lib/run-state-validator.ts::validateRunState` + `lib/yaml-ambiguous-scalars.ts`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

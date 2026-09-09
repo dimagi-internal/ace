@@ -443,3 +443,112 @@ describe('update_yaml_file: Docs newline-amplification preventers (#751)', () =>
     expect(fake.files.update).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * ace#2296 — the serializer, which is where the defect actually came from.
+ *
+ * The issue exonerated `update_yaml_file` by testing **js-yaml**, which quotes
+ * `'yes'` and uses single quotes. But this server imports the **`yaml`**
+ * package (`mcp/google-drive-server.ts` line 23), and `YAML.stringify` resolves
+ * the YAML 1.2 core schema by default: it emits the string `'yes'` BARE,
+ * because to a 1.2 reader a bare `yes` IS the string. It also double-quotes
+ * `+74260000101`. Both halves of the Drive file's fingerprint — bare `yes`,
+ * double-quoted phone — are this serializer's output, so the block did come
+ * through `update_yaml_file` after all.
+ *
+ * Fix: serialize with `{version: '1.1'}`, which quotes every string a YAML 1.1
+ * reader would re-resolve. Parsing stays on 1.2 ON PURPOSE — switching the READ
+ * to 1.1 would coerce existing bare `yes` values in already-written files into
+ * booleans and write them back as `true`, which is the read-modify-write
+ * corruption the issue warns about.
+ */
+describe('update_yaml_file: YAML 1.1-safe serialization (ace#2296)', () => {
+  it('quotes a `yes` string value so PyYAML cannot read it as a boolean', async () => {
+    const fake = makeFakeDriveWithDoc('', '1');
+    await handleUpdateYamlFile(
+      { fileId: 'f1', patch: { question_value: 'yes', phone: '+74260000101' } },
+      fake as any,
+    );
+    expect(fake.state.content).toContain('question_value: "yes"');
+    expect(fake.state.content).not.toMatch(/question_value: yes\s*$/m);
+  });
+
+  it('writes the payability predicate so BOTH dialects read the same string', async () => {
+    const fake = makeFakeDriveWithDoc('', '1');
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        merge: 'deep',
+        patch: {
+          phases: {
+            'connect-setup': {
+              products: {
+                connect: {
+                  opportunity: {
+                    verification: {
+                      form_field_rules: [
+                        {
+                          name: 'consent_confirmed=yes',
+                          question_path: 'form.consent_to_continue.consent_confirmed',
+                          question_value: 'yes',
+                          deliver_unit_id: 6862,
+                        },
+                      ],
+                      form_field_rules_saved: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      fake as any,
+    );
+    const at = (opts: any) =>
+      (YAML.parse(fake.state.content, opts) as any).phases['connect-setup'].products.connect
+        .opportunity.verification.form_field_rules[0].question_value;
+    expect(at(undefined)).toBe('yes');       // YAML 1.2 — the plugin
+    expect(at({ version: '1.1' })).toBe('yes'); // YAML 1.1 — PyYAML / ace-web
+  });
+
+  it('quotes every ambiguous token, not just `yes`', async () => {
+    const fake = makeFakeDriveWithDoc('', '1');
+    const tokens = ['y', 'Y', 'n', 'N', 'yes', 'YES', 'no', 'No', 'on', 'ON', 'off', 'Off'];
+    const patch: Record<string, string> = {};
+    tokens.forEach((t, i) => (patch[`k${i}`] = t));
+    await handleUpdateYamlFile({ fileId: 'f1', patch }, fake as any);
+    const under11 = YAML.parse(fake.state.content, { version: '1.1' });
+    tokens.forEach((t, i) => expect(under11[`k${i}`]).toBe(t));
+  });
+
+  it('leaves genuine booleans, numbers and plain strings unquoted', async () => {
+    const fake = makeFakeDriveWithDoc('', '1');
+    await handleUpdateYamlFile(
+      { fileId: 'f1', patch: { flag: true, count: 12, score: 8.5, status: 'done', empty: null } },
+      fake as any,
+    );
+    expect(fake.state.content).toContain('flag: true');
+    expect(fake.state.content).toContain('count: 12');
+    expect(fake.state.content).toContain('score: 8.5');
+    expect(fake.state.content).toContain('status: done');
+    expect(fake.state.content).toContain('empty: null');
+  });
+
+  it('round-trips a repeated patch cycle without drift (1.1-write / 1.2-read is stable)', async () => {
+    const fake = makeFakeDriveWithDoc('', '1');
+    const payload = { question_value: 'yes', started_at: '2026-09-08T21:44:35Z', v: '1.10' };
+    await handleUpdateYamlFile({ fileId: 'f1', patch: payload }, fake as any);
+    const first = fake.state.content;
+    for (let i = 0; i < 3; i++) {
+      await handleUpdateYamlFile({ fileId: 'f1', patch: { tick: i } }, fake as any);
+    }
+    const parsed = YAML.parse(fake.state.content);
+    expect(parsed).toMatchObject(payload);
+    expect(YAML.parse(fake.state.content, { version: '1.1' })).toMatchObject(payload);
+    // The ambiguous keys are byte-identical across cycles — no re-quoting churn.
+    for (const line of first.split('\n').filter((l) => l.trim())) {
+      expect(fake.state.content).toContain(line);
+    }
+  });
+});

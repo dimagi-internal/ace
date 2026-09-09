@@ -199,6 +199,49 @@ const ConnectProducts = z
             url: z.string().url().optional(),
             start_date: z.string().optional(),
             end_date: z.string().optional(),
+            /**
+             * Per-opportunity verification config as ACTUALLY PERSISTED by
+             * `connect_set_verification_flags` (ace#2296).
+             *
+             * This block had no shape here at all, so `validateAs` was
+             * structurally blind to it — `opportunity` is `.passthrough()`, and
+             * the whole `verification` sub-tree rode through unvalidated. That
+             * matters because `form_field_rules[].question_value` is the Phase 4
+             * PAYABILITY PREDICATE: it is what Connect compares a submitted
+             * form value against to decide whether a follow-up visit is paid.
+             *
+             * `question_value` is typed as a STRING because Connect's own
+             * contract types it that way (`mcp/connect-server.ts`:
+             * `question_value: z.string()`), so a boolean or a number reaching
+             * this key means an upstream reader coerced it — the shape a YAML
+             * 1.1 read-modify-write of an unquoted `yes` produces. The
+             * raw-text quoting detector
+             * (`lib/yaml-ambiguous-scalars.ts`) cannot catch that case: a
+             * boolean `true` is unambiguous to both dialects, it is just the
+             * wrong type. The two checks are complementary.
+             *
+             * Kept `.passthrough()` at both levels: this schema gates a Drive
+             * WRITE, so newly rejecting a rule that records one extra key would
+             * stall Phase 4. Only the payment-critical field is pinned.
+             */
+            verification: z
+              .object({
+                form_field_rules: z
+                  .array(
+                    z
+                      .object({
+                        name: z.string().optional(),
+                        question_path: z.string().optional(),
+                        question_value: z.string().optional(),
+                        deliver_unit_id: z.union([z.string(), z.number()]).optional(),
+                      })
+                      .passthrough(),
+                  )
+                  .optional(),
+                form_field_rules_saved: z.number().optional(),
+              })
+              .passthrough()
+              .optional(),
           })
           .passthrough()
           .optional(),

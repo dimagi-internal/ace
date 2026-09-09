@@ -20,6 +20,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import YAML from 'yaml';
 import {
   validateRunState,
   classifyPhaseWriteBack,
@@ -627,5 +628,76 @@ describe('ace#2113: phase self-consistency', () => {
       },
     });
     expect(consistencyPaths(r)).toEqual([]);
+  });
+});
+
+/**
+ * ace#2296 — the YAML 1.1 / 1.2 quoting divergence.
+ *
+ * `validateRunState`'s usual input is a PARSED object, in which quoting is
+ * already gone: under the plugin's YAML 1.2 parsers `question_value: yes` and
+ * `question_value: "yes"` produce the identical JS string. So the check is
+ * structurally impossible on the object and takes the raw text as an optional
+ * second argument. The text is what a foreign parser (PyYAML, on ace-web's
+ * Python side) actually sees.
+ *
+ * Severity is WARNING, deliberately. `validate_run_state` runs in every phase
+ * boundary fence of every live run, `validateRunState` is what
+ * `classifyPhaseWriteBack` calls to decide `malformed`, and an error would halt
+ * a boundary on a RECORD-fidelity defect while the live external config is
+ * correct — turning a correct finding into a run-stopper across historical
+ * runs. Warnings never gate.
+ */
+describe('validateRunState — YAML 1.1-ambiguous unquoted scalars (ace#2296)', () => {
+  const bare = [
+    'phases:',
+    '  connect-setup:',
+    '    status: done',
+    '    products:',
+    '      connect:',
+    '        opportunity:',
+    '          verification:',
+    '            form_field_rules:',
+    '              - name: consent_confirmed=yes',
+    '                question_path: form.consent_to_continue.consent_confirmed',
+    '                question_value: yes',
+    '                deliver_unit_id: 6862',
+    '            form_field_rules_saved: 1',
+    '',
+  ].join('\n');
+  const quoted = bare.replace('question_value: yes', 'question_value: "yes"');
+
+  const ambiguityWarnings = (r: { warnings: { path: string; message: string }[] }) =>
+    r.warnings.filter((w) => /YAML 1\.1/.test(w.message));
+
+  it('warns on the bare payability predicate, naming its full path', () => {
+    const parsed = YAML.parse(bare);
+    const r = validateRunState(parsed, { rawText: bare });
+    const hits = ambiguityWarnings(r);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].path).toBe(
+      'phases.connect-setup.products.connect.opportunity.verification.form_field_rules[0].question_value',
+    );
+  });
+
+  it('does NOT warn once the predicate is quoted', () => {
+    const parsed = YAML.parse(quoted);
+    expect(ambiguityWarnings(validateRunState(parsed, { rawText: quoted }))).toEqual([]);
+  });
+
+  it('is a WARNING, never an error — the boundary fence must not halt on it', () => {
+    const r = validateRunState(YAML.parse(bare), { rawText: bare });
+    expect(r.valid).toBe(true);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('classifyPhaseWriteBack still reads the phase as ok (warnings do not gate)', () => {
+    const parsed = YAML.parse(bare) as any;
+    parsed.phases['connect-setup'].completed_at = '2026-09-09T02:42:00Z';
+    expect(classifyPhaseWriteBack(parsed, 'connect-setup')).toBe('ok');
+  });
+
+  it('is a no-op when no rawText is supplied (every existing caller)', () => {
+    expect(ambiguityWarnings(validateRunState(YAML.parse(bare)))).toEqual([]);
   });
 });
