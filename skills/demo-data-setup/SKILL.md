@@ -214,12 +214,37 @@ front half (how the labs-only opp + its data come to exist) differs.
      Only `workflow_create` from SCRATCH when nothing in the palette fits, and say
      so explicitly in the summary.
 
-     **Match on SHAPE, not on domain.** The fits below are worked examples from
-     one nutrition demo, not a lookup table — reading them as the map is how a
-     non-nutrition opp gets pattern-matched onto the nearest nutrition-shaped
-     template. Ask what each template's entity and period shape is (one row per
-     worker per period? one row per beneficiary across follow-ups? a cross-opp
-     rollup?) and match that to your opp's.
+     **Match on SHAPE, not on domain — the palette has EIGHT families and a
+     domain-keyed lookup only ever finds one of them (ace#2321).** Enumerate the
+     live palette with `list_templates` and classify what comes back; the
+     families below were derived from the 28 templates registered on
+     2026-09-09, so re-derive rather than trust this list if it looks stale.
+     What matters is the **unit of a row** and **whether a row carries a
+     decision**:
+
+     | Family | Unit of a row | Decision per row? | Examples |
+     |---|---|---|---|
+     | per-worker scorecard, one window | one FLW for a period | yes (statuses) | `llo_weekly_review`, `performance_review`, `chc_nutrition_analysis`, `mbw_auditing_v5` |
+     | cross-opportunity rollup | one opportunity / LLO, drillable | usually no | `program_admin_report`, `audit_par`, `kmc_programme_metrics`, `chc_audit_history` |
+     | longitudinal per-beneficiary | one beneficiary across follow-ups | no | `sam_followup`, `kmc_longitudinal` |
+     | trend over saved snapshots | one period, read from ANOTHER dashboard's snapshots | no | `flw_audit_trend_dashboard`, `flw_daily_indicator_table` |
+     | automatic indicator report | one FLW-day / FLW-week, computed | **explicitly none** | `flw_daily_indicator_report`, `flw_weekly_audit_report` |
+     | **audit / adjudication** | **one reviewed ITEM (a submission, a photo, a record)** | **yes — the decision IS the artifact** | `bulk_image_audit`, `muac_picture_audit`, `kmc_image_audit`, `weekly_dual_track_audit`, `audit_with_ai_review` |
+     | fan-out / work creation | one spawned work item | n/a — it creates | `program_audit_creator`, `ocs_outreach`, `kmc_flw_flags` |
+     | funder-facing verified coverage | one ward / site | no | `verified_monitoring` |
+
+     **If your demonstration is "the platform DECIDED something about this
+     record", you want the audit/adjudication family, not a scorecard.** That
+     distinction is the whole of ace#2316: `spark-facilitator/20260908-2215`
+     needed to show a meeting record being decided not-payable, was pointed by a
+     nutrition-keyed fit list at `llo_weekly_review` (a per-worker scorecard),
+     and inherited a filter-and-coach payoff that a spreadsheet beats at n=12.
+     Six templates in the audit family existed the whole time and the selection
+     method never looked at them. **Reuse was never the problem; the selection
+     method was.**
+
+     Worked examples, kept as examples and NOT as the map — these are one
+     nutrition demo's answers:
      - multi-LLO / FLW oversight → `program_admin_report` (+ `chc_nutrition_analysis` for the FLW aggregate).
      - per-child recovery over follow-up visits → `sam_followup` (MUAC + recovery-status timeline). **Not** `kmc_longitudinal` — it keys on weight, unusable when CHWs have no scales.
 
@@ -638,9 +663,38 @@ front half (how the labs-only opp + its data come to exist) differs.
    backstop — it compares the shared visit total across every dashboard on one
    `labs_opp_id`, which is the only signal that surfaced this without an LLM judge.
 
-   **Nutrition note:** `program_admin_report` / `chc_nutrition_analysis` /
-   `sam_followup` are checked-in templates — ADAPT via
-   `workflow_create_from_template`, never build render_code from scratch.
+   **ADAPT is the default because reuse carries LEARNED PATTERNS — not because
+   authoring is forbidden (ace#2321).** `program_admin_report` /
+   `chc_nutrition_analysis` / `sam_followup` are checked-in templates; start
+   from the best-shaped one via `workflow_create_from_template`.
+
+   This line used to read *"never build render_code from scratch."* **That was
+   an uncited design preference, not a lesson.** It entered in `daad0ed9`
+   (2026-07-20), a FEATURE commit introducing template selection — no incident,
+   no run id, no issue, and nothing in the tracker about a bad de-novo
+   dashboard. Meanwhile it has now demonstrably COST something: read as a
+   general ban, it made the template's affordances the demonstration on three
+   consecutive `spark-facilitator` runs (ace#2316). A prohibition with no
+   reproducer behind it is exactly what `CLAUDE.md § A guard that PREDICTS
+   another system's rejection must cite a reproducer` refuses to ship.
+
+   So: **author the presentation and the controls this opp's demonstration
+   needs, and make them GREAT.** What you may not do is skip the three
+   invariants, none of which care whether the code came from a template:
+
+   1. **Re-point the pipeline schema** at the real form paths the generator
+      writes, and verify with `checkDashboardBindings` before minting a run
+      (step 3 — ace#1160, ace#1894). This is where reuse genuinely pays and
+      where de-novo work genuinely risks a dead page.
+   2. **Lint utilities pre-upload** (step 3b — ace#1662): labs purges Tailwind
+      against its own Django templates, so a utility only your `render_code`
+      uses is dropped silently.
+   3. **Author the layout against step 3c-layout's rules** (ace#2319) — six
+      deductions that cost five of eight convergence lifts on one run.
+
+   A dashboard that clears those three and carries the control its
+   demonstration needs is better than a template-shaped one that does not,
+   whatever its provenance.
 
    **ADAPT means RE-POINT — a template-instantiated pipeline is not wired
    until you change its schema (ace#1160).** Run

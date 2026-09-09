@@ -213,6 +213,49 @@ Record the terminal status and any open strategy findings in the phase write-bac
 (`verdict: passed-with-deferred-evals`), publish the `--stuck` package URL as the
 `summary_artifact`, and proceed to Phase 8.
 
+### Step 3.9: Promote a dashboard that EARNED it (the learning loop)
+
+**Only when the loop ended `converged_clean`.** Reuse in this phase currently
+flows one way — every run instantiates from the same fixed palette of
+checked-in templates, and a dashboard ACE authors well dies with its run. So
+the palette never learns, and the next opp of the same shape starts from the
+same eight families (`demo-data-setup` § Step 0's taxonomy) rather than from the
+best thing ACE has actually built.
+
+On `converged_clean`, promote the dashboard that carried the payoff:
+
+```
+mcp__connect-labs__workflow_set_template_flag({
+  workflow_id: <the interactive dashboard>,
+  is_template: true,
+  template_scope: 'program:<connect program id>',   # NOT 'global' — admin-only
+  opportunity_id: <labs_synthetic_opp_id>,
+})
+```
+
+Record it in the phase write-back as
+`products.synthetic.promoted_template: {workflow_id, scope, ddd_run_id}` so the
+next run can find it and the promotion is auditable.
+
+**Two constraints that decide whether this is safe, and neither is optional.**
+
+1. **Scope it to the program, never `global`.** `global` is admin-only and puts
+   a per-opp demo dashboard in every labs user's clone picker.
+2. **A promoted template is a RENDER-CODE pattern, not a wired dashboard.**
+   `workflow_clone` copies `pipeline_sources` verbatim and — by its own atom
+   description — does **not** clone the linked pipelines, and pipelines are
+   opportunity-scoped. So a cross-opp clone declares ids it cannot read and
+   renders **empty with no error** (ace#1894). Whoever reuses it must re-point
+   the schema in their own opp and pass `checkDashboardBindings`, exactly as
+   `demo-data-setup` § Step 3 already requires of a template instantiation.
+   That is why this step promotes a PATTERN and the reuse path stays
+   instantiate-then-re-point — never a blind clone.
+
+**Do NOT promote a non-converged dashboard.** `stopped_not_converged` means the
+judges found defects that were never fixed; promoting it propagates them to
+every future run of that shape, which is strictly worse than not learning. The
+gate is the loop's own `terminal_status`, not anyone's read of the screenshots.
+
 ### Step 4: Write-back + summary
 
 Write the `phases.synthetic-data-and-workflows` block per

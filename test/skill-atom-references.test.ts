@@ -101,6 +101,13 @@ const ALLOWLIST = new Set([
   'mobile_flow',  // template_kind for training-deck-render
   'mobile_zoom',  // template_kind for training-deck-render
 
+  // ---- labs workflow TEMPLATE KEYS (list_templates keys, not atoms) ----
+  // demo-data-setup § Step 0's shape taxonomy names template keys from the live
+  // palette (ace#2321). Most are not atom-shaped; this one collides with ACE's
+  // own `ocs_*` atom prefix while being a `workflow_create_from_template`
+  // template_key. Verified against `list_templates` on 2026-09-09.
+  'ocs_outreach',
+
   // ---- Doctor probe / field-key / Android-view-ID names (PR-S
   //      detector-widening surfaced these once agents/+playbook/integrations/
   //      came into scope) ----
