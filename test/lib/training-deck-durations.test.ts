@@ -119,6 +119,65 @@ describe('training decks state no durations', () => {
     ).toEqual([]);
   });
 
+  it('no training variant PROSE instructs the generator to emit a duration', () => {
+    // The gap this closes (ace#2331). The scan above reads only `.yaml`, and the
+    // schemas strip a `duration` KEY — so both miss the case that actually
+    // reached a deck: `generate.prompt.md` telling the model, in prose, to put a
+    // duration in a slide's BODY. Body text is free-form and budget-checked, not
+    // key-checked, so nothing downstream could catch it. Measured on
+    // connect-training-atomic/generate.prompt.md, which said "Emit NO durations"
+    // on line 27 and "Duration: 15-25 min per module based on content density"
+    // on line 103 — the second silently won, because it was the instruction
+    // sitting next to the slide it described.
+    //
+    // The matchers are deliberately narrow, for the same reason the yaml scan
+    // is: they must not fire on the FGD's PDD-derived program parameters
+    // ("Session duration (typically 75-90 min)"), nor on the prose that explains
+    // the ban. So they require either a numeric ASSIGNMENT (`Duration: 15`) or a
+    // time quantity bound to a per-unit training phrase ("15-25 min per module").
+    const TIME = String.raw`\d+\s*(?:[-–]\s*\d+\s*)?(?:min|mins|minutes|hours?|hrs?)\b`;
+    const UNIT = String.raw`per\s+(?:module|slide|exercise|activity|section|topic)\b`;
+    const PATTERNS: Array<[RegExp, string]> = [
+      [/\bdurations?\s*:\s*\d/i, 'a numeric duration assignment'],
+      [new RegExp(`${TIME}[^.\\n]{0,40}${UNIT}`, 'i'), 'a per-unit training timing'],
+      [new RegExp(`${UNIT}[^.\\n]{0,40}${TIME}`, 'i'), 'a per-unit training timing'],
+    ];
+
+    const offenders: string[] = [];
+    for (const variant of TRAINING_VARIANTS) {
+      const file = join(VARIANTS, variant, 'generate.prompt.md');
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          for (const [re, why] of PATTERNS) {
+            if (re.test(line)) {
+              offenders.push(`${variant}/generate.prompt.md:${i + 1}: ${why}: ${line.trim()}`);
+            }
+          }
+        });
+    }
+    expect(
+      offenders,
+      'A training-deck prompt must not instruct the generator to state a\n' +
+        'duration — the LLO sets session timing, and a duration in BODY text\n' +
+        'is invisible to both the schema strip and the yaml scan.\n\n' +
+        'If the figure is a PDD PROGRAM parameter (how long an FGD session must\n' +
+        'run, a submission deadline), phrase it as the requirement it is rather\n' +
+        'than as a per-module allowance.\n\n' +
+        offenders.join('\n'),
+    ).toEqual([]);
+  });
+
+  it('the atomic prompt still carries the no-durations rule it is scanned against', () => {
+    // Counter-ratchet for the test above: deleting the rule must not be a way
+    // to make the scan pass.
+    const prompt = readFileSync(
+      join(VARIANTS, 'connect-training-atomic', 'generate.prompt.md'),
+      'utf8',
+    );
+    expect(prompt).toMatch(/Emit NO durations/);
+  });
+
   it('the shared facilitation module carries no durations', () => {
     const doc = yaml.load(
       readFileSync(join(VARIANTS, '_common', 'facilitation.yaml'), 'utf8'),
