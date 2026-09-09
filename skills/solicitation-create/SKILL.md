@@ -765,7 +765,27 @@ contract.
    ```
 
    Same `Accept`-header and SSE-response caveats as the `tools/list` snippet
-   above. This is **not** a workaround for a schema problem — labs validates
+   above — **plus the reply envelope, which is four levels deep and where the
+   record is NOT the obvious one.** Read
+   `result.structuredContent`: on both `create_solicitation` and
+   `get_solicitation` that key holds the decoded solicitation record directly
+   (`id`, `questions`, `evaluation_criteria`, the three dates, `is_public`, …).
+
+   Do NOT reach through `result.content`. It looks like the payload and is
+   double-JSON-encoded: `result["content"][0]["text"]` is a JSON *string* that
+   parses to *another* `[{type, text}]` list, whose `[0]["text"]` is a second
+   JSON string that finally parses to the record —
+   `json.loads(json.loads(result["content"][0]["text"])[0]["text"])`. An agent
+   that stops at "JSON-parse the `data:` line" gets
+   `{content, isError, structuredContent}` and then raises `AttributeError` /
+   `KeyError` on a publish that **already succeeded** (HTTP 200, record
+   created), which is the worst possible moment to be unsure whether the call
+   landed. Measured on `spark-facilitator/20260908-2215` (labs solicitation
+   **19363**, program 210): 3 calls burned on the unwrap depth, during the
+   Step 7a round-trip, i.e. after the external write had landed
+   (dimagi-internal/ace#2302).
+
+   This is **not** a workaround for a schema problem — labs validates
    the payload identically on both routes and returns the same
    `INVALID_SCHEMA` + `error.details.fields` on drift; it is the same call made
    without laundering the body through the model. Step 7a's `get_solicitation`
@@ -836,6 +856,12 @@ contract.
    what labs persisted — if it diverges from what you sent, that's
    either silent-drop (an extra field labs rejected without surfacing)
    or silent-mutation (labs reformatting something).
+
+   **If you read this back over raw JSON-RPC rather than the MCP atom, the
+   record is `result.structuredContent`** — not `result.content`, which is
+   double-JSON-encoded and needs four unwraps. See the envelope note under
+   Step 6 (dimagi-internal/ace#2302). Assert against the decoded record, not
+   against whatever the first `json.loads` handed you.
 
    Required round-trip assertions:
 
@@ -1082,6 +1108,7 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **§ Step 6 documented how to send the JSON-RPC request and stopped one unwrap into the REPLY, so the record could not be found on a publish that had already succeeded (dimagi-internal/ace#2302).** The route itself was added hours earlier (ace#2261) and its response guidance ended at "take the line beginning `data: ` and JSON-parse the remainder" — which yields `{content, isError, structuredContent}`, not the solicitation. The record is **four** levels down, and the middle two are unguessable: `result["content"][0]["text"]` is a JSON string that parses to *another* `[{type, text}]` list, whose `[0]["text"]` parses to the record. An agent following the doc literally calls `.keys()` or `["id"]` on the first parse and raises `AttributeError`/`KeyError` **after** the external write landed (HTTP 200, record created) — the worst moment to be unsure whether a call worked. There is a one-liner the doc never mentioned: `result.structuredContent` holds the decoded record directly, on both `create_solicitation` and `get_solicitation`. Measured on `spark-facilitator/20260908-2215` (labs solicitation **19363**, program 210): 3 calls burned on the unwrap depth during the Step 7a round-trip. Same class as the `Accept`-header/406 fix in the entry below — request shape fixed, response shape still under-documented — and it now bites every Phase 8 above ~20 KB, which this skill measures as the normal case (33–50 KB). Step 6 gains the envelope note; Step 7a points at it for the read-back. | ACE team |
 | 2026-09-08 | **Step 6 routed a >40 KB payload through the model's context while §§ 4/8 of the same skill mandated `localFilePath` for the SAME bytes (dimagi-internal/ace#2261).** The draft, the published doc and the publish body are one payload — §§ 4 and 8 say so ("reuse the step-4 scratch file") and measure it at 49,531 / 51,920 chars — but only two of the three consumers were routed off disk. The third, the publish itself, was pinned to `mcp__connect-labs__create_solicitation`, whose arguments are inline-only; the labs schema has no file-handle param (verified against the live `tools/list`) and it is a labs-side tool, so it cannot be fixed atom-side. The JSON-RPC route that solves it was already acknowledged — once, as an unexplained "fallback", in Step 7a rather than Step 6 — so nothing told an agent it was allowed or that a large payload was the case for it. Measured on `bednet-check-2-visit/20260907-1126` (labs solicitation **19201**, program 231): 33,557-byte payload published via `curl --data-binary @rpc.json`, HTTP 200, Step 7a round-trip green on every assertion. Step 4 now composes `payload.json` BEFORE the publish; Step 6 documents the JSON-RPC route for bodies above ~20 KB and names the `InputValidationError` failure mode a large generated argument object invites. Also fixed the § Step 6 `tools/list` curl, which **406s as printed** — it omits `Accept: application/json, text/event-stream`, and its reply is SSE rather than plain JSON. Both cost a round of rediscovery on the same run. | ACE team |
 | 2026-09-08 | **Step 7a's span ceiling subtracted the solicitation window UNCONDITIONALLY, so a PDD whose `## Timeline` starts at AWARD tripped a `[BLOCKER]` on the end date Step 2 had computed correctly (dimagi-internal/ace#2231).** Step 2 conditions its subtraction on *reading the rows* — rule (1) subtracts a solicitation-open row **that exists** — while the ceiling added in #1858 subtracted the window whether or not the total contained it. The two therefore disagree by exactly the solicitation window on any PDD whose clock starts post-award, and the ceiling flags the right answer. Measured on `poverty-graduation/20260908-0510` (labs solicitation **19188**, program 265): § 17's first row is *Partner onboarding and FLW recruitment*, total 18 weeks with no solicitation row; Step 2 gives **2027-02-09** (span 126d) and the unconditional ceiling reads `126 − 14` = 112d and rejects it. Complying publishes **2027-01-26**, two weeks SHORT of the programme's declared post-award stages — the exact inverse of the #1858 overshoot. That run deviated deliberately and recorded it in the draft, the published doc and the `sol-response-deadline` decisions row, but a compliant agent would have halted a completed publish at the last step of Phase 8. The ceiling's subtrahend is now a three-case table keyed on the same reading rule (1) performs, and rule (1) states the has-none case explicitly. Both shapes are legal by design — `templates/pdd-template.md § Timeline` asks a PDD to say where its clock starts. *Enforced:* `test/skills/solicitation-end-date-addend.test.ts`. | ACE team |
 | 2026-09-01 | **`expected_end_date` re-spent the solicitation window the start date had already consumed (dimagi-internal/ace#1858).** Step 2 said `expected_start_date + the PDD's stated duration band`, one row below a definition placing `expected_start_date` *after* the solicitation window and *after* award/contracting — while a PDD `## Timeline` total for a solicited engagement normally starts its clock at solicitation-open. The two rows therefore double-count the window and the award step. Measured on `bednet-check-2-visit/20260828-0629` (labs solicitation **17695**, program 231): published 2026-08-30 → deadline 2026-09-13 → start 2026-09-27; the rule applied literally gives `+18 weeks` = **2027-01-31**, against a correct post-award remainder of `+16 weeks` = **2027-01-17** — **14 days long on a public partner-facing listing**. That run deviated deliberately and recorded the derivation in the draft plus the `response-deadline` decisions row, but a compliant agent would have published the overshoot and nothing would have caught it: Step 7a asserted only `expected_end_date > expected_start_date`, which an over-long date satisfies. Sibling of ace#1685, which re-anchored the start date in the same change but never scoped the end date's *addend*. The addend is now explicitly the PDD's **post-award** duration — total less the rows the deadline + contracting allowance have already passed — with the subtraction recorded in the draft; Step 7a gained a span ceiling (`span ≤ total − solicitation window`); and `templates/pdd-template.md § Timeline` now asks the PDD to state where its clock starts, since it pinned no convention and the ambiguity was structural. | ACE team |
