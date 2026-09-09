@@ -102,7 +102,17 @@ solicitation and selecting one winner, Phase 9 onboards exactly one org.
        the archetype (FLW-managing org for `atomic-visit`; facilitator-owning
        org for `focus-group`; staged-execution org for `multi-stage`)
      - Links to training materials (GDrive links or attachments) —
-       foreground the materials the recipient needs FIRST for this archetype
+       foreground the materials the recipient needs FIRST for this archetype.
+       **Enclose only the artifacts in this send's scope.** Resolve it with
+       `resolveSendScope` from `lib/training-send-scope.ts` — pass the subset the
+       operator named for this send ("send only the training deck" →
+       `resolveSendScope(['training deck'])`), or nothing when they named no
+       subset, which links them all as before. Before sending, assert the
+       message obeys it: `assertSendScopeRespected(scope, <artifacts enclosed>)`.
+       This is a live external send, so an out-of-scope enclosure is not
+       recoverable after the fact — check before `canopy email send`, not after.
+       Every artifact is still generated in Phase 6 regardless; the scope
+       governs only what this recipient receives.
      - Step-by-step "getting started" — archetype-specific (download app vs.
        review question guide vs. stage-1 prep)
      - Timeline and expectations — archetype-specific cadence (continuous
@@ -139,6 +149,11 @@ geographic coverage.
 **Materials to foreground:** `training-flw-guide.md` and
 `training-quick-reference.md` (field-facing). `training-llo-guide.md` is the
 overview; link it but don't lead with it.
+
+This ordering applies to whatever is **in scope** — it is guidance on emphasis,
+not a list of required enclosures. On a scoped send, foreground the highest item
+here that survives the scope and link nothing that does not (a deck-only send
+leads with the deck).
 
 **Timeline language:** "Continuous fieldwork over the opportunity window.
 Target delivery volume is X/week per FLW — see the opportunity brief."
