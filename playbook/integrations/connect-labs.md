@@ -365,6 +365,53 @@ retry tax.
    `flws` to the PDD's targets and re-run. Generation is fast at
    PDD-target scale (typically <30s for an `atomic-visit` opp).
 
+## Resetting a live run's state between renders
+
+A demo scene whose payoff is a stakeholder *creating* something (the "Create
+coaching task" button on `llo_weekly_review`) writes real state onto the labs
+**run**, and that state **persists across renders**. The second take finds the
+control already gone and a `must_succeed` click aborts the whole render — a
+failure that is order-dependent and invisible on the first pass (iteration 0
+passes; every iteration after it fails on a scene that has not changed).
+Measured on `spark-facilitator/20260908-2215`, DDD run
+`spark-fcap-facilitation-2026-09-08-001`, labs run 5508 (workflow 5502, opp
+10060) — ace#2297.
+
+ACE's reset is `scripts/reset-labs-run-state.ts` (pure half in
+`lib/labs-run-state-reset.ts`), registered per-run in the handoff by
+`demo-data-setup` and run before EVERY render by the spec's
+`setup: {rerun: per_render}` block. Five things about the endpoint are pure
+external-system knowledge:
+
+1. **`POST /labs/workflow/api/run/<run_id>/state/`, body NESTED as
+   `{"state": {...}}`.** `update_state_api` reads `data.get("state")` and
+   answers a flat body with `400 {"error": "state required in request body"}`
+   (`commcare_connect/workflow/views.py`, `update_state_api`) — ace#2297.
+2. **There is no `csrftoken` cookie on the labs domain.** labs runs
+   `CSRF_USE_SESSIONS = True` + `CSRF_COOKIE_HTTPONLY = True`
+   (`config/settings/base.py`), so the CSRF secret lives in the session and
+   the token has to be read out of a rendered page's `csrfmiddlewaretoken`
+   input (every page extending `base.html` has one; the workflow runner also
+   exposes `data-csrf-token` on `#workflow-root`). Re-logging-in never
+   produces the cookie — this is a settings-level fact, not a stale session.
+3. **The write SHALLOW-MERGES.** `update_run_state` does
+   `{**current_state, **sanitized}`, so `{"state": {}}` is a silent no-op and
+   a reset must NAME every key it clears. There is no delete verb; overwrite
+   is the only reset. (`status`, `period_start`, `period_end` are stripped
+   silently — status transitions go through `complete_run` only.)
+4. **A completed run refuses with `409`** ("Run is completed; state is
+   immutable"). Only the interactive dashboard's run — the one
+   `demo-data-setup § The interactive run stays live` deliberately leaves
+   `in_progress` — is resettable, which is also the only one that needs it.
+5. **WHICH keys to clear is declared, not guessed.** A workflow's mutable
+   state keys are its `snapshot_inputs.state_keys` (`["worker_states",
+   "spawned_tasks"]` for `llo_weekly_review`), returned by `workflow_get`
+   under `saved_runs.snapshot_inputs`.
+
+Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
+`/ace:labs-login`), not `LABS_MCP_TOKEN` — the endpoint is `@login_required`
++ CSRF-protected and the PAT only authenticates `/mcp/`.
+
 ## Troubleshooting
 
 - **`401 Unauthorized` on any atom** — `LABS_MCP_TOKEN` is missing,
@@ -458,4 +505,5 @@ retry tax.
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |
 | 2026-05-28 | Replaced the stdio→HTTP proxy with a native `type: "http"` entry + `headersHelper` (`scripts/labs-auth-headers.mjs`). Proxy retained as one-line-revert fallback pending production validation. Requires Claude Code ≥ 2.1.141. |
 | 2026-05-28 | Native path confirmed in production (live `labs_context` returned the real org tree via headersHelper); removed the retired stdio proxy (`connect-labs-server.ts` + its tests). Restore from git history if a revert is ever needed. |
+| 2026-09-08 | New `## Resetting a live run's state between renders` (ace#2297) — a labs run's `spawned_tasks` persists across renders, so the second take of a create-something scene aborts. Records the five endpoint facts (nested `{"state": …}` body; no `csrftoken` cookie because `CSRF_USE_SESSIONS=True`; shallow merge, so a reset must name its keys; 409 on a completed run; `snapshot_inputs.state_keys` is the declared key list) and points at `scripts/reset-labs-run-state.ts`. |
 | 2026-08-26 | `## Troubleshooting` gains the two `render_code` findings from `bednet-check-2-visit/20260825-1310` (ace#1662): a timed-out `workflow_patch_render_code` does not apply (re-fetch before retrying), and `render_code` is invisible to labs' Tailwind purge (ACE preventer: `scripts/check-render-code-utilities.ts`; root cause upstream as connect-labs#1294). |

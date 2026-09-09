@@ -145,6 +145,14 @@ front half (how the labs-only opp + its data come to exist) differs.
         par_url: <url>
     primary_dashboard: program_admin
     realized_vars_ref: 7-synthetic/realized.json
+    render_reset:                      # step 4b — the per-render reset contract (ace#2297)
+      required: true                   # true iff a dashboard is `interactive: true`
+      run_id: 5508                     # the INTERACTIVE dashboard's run (the only resettable one)
+      state_keys: [worker_states, spawned_tasks]   # workflow_get → saved_runs.snapshot_inputs.state_keys
+      command: >-
+        npx tsx <ace-root>/scripts/reset-labs-run-state.ts
+        --run-id 5508 --keys worker_states,spawned_tasks
+      verified_at: 2026-09-08T21:00Z   # when the command was last run green (or `null` + a reason)
     dataset_constraints:               # step 2c, counts not claims (ace#1658)
       spec_source: deliver-app         # deliver-app | none
       unparsed_expressions: <int>      # >0 means gates this run did not audit
@@ -834,6 +842,40 @@ front half (how the labs-only opp + its data come to exist) differs.
    (supersedes the earlier `docs/learnings/2026-06-13` picker note; the fix is a real
    run_id, minted if needed).
 
+4b. **Register the per-render reset for the interactive dashboard (ace#2297).**
+
+   A dashboard that carries a state-mutating control is a dashboard the RENDER
+   itself dirties: the run keeps what the take created, so the next take finds
+   the button gone and its `must_succeed` click aborts. Restoring the
+   precondition is this skill's job — unconditionally, every render, not on
+   probe (CLAUDE.md § Phase preconditions are restored, not adapted). Skip this
+   step only when no dashboard is `interactive: true`; then write
+   `render_reset: {required: false}` rather than omitting the block, because a
+   recorded `false` is evidence and an absent key is not.
+
+   - **Read the keys, don't guess them.** `mcp__connect-labs__workflow_get(<def_id>)`
+     returns `saved_runs.snapshot_inputs.state_keys` — the workflow's own
+     declaration of what state it mutates (`["worker_states", "spawned_tasks"]`
+     for `llo_weekly_review`). A reset that names no key writes NOTHING: labs
+     shallow-merges run state, so `{"state": {}}` is a silent success.
+   - **Run it once, now, and record `verified_at`.** `npx tsx
+     <ace-root>/scripts/reset-labs-run-state.ts --run-id <interactive run>
+     --keys <k1,k2>`. It needs the labs UI session (`/ace:labs-login`), not
+     `LABS_MCP_TOKEN`. Exercising it here is what turns a registered command
+     into a proven one; a `409` means you are pointing at a completed run.
+   - **Write the command with an ABSOLUTE path to the script.** canopy runs
+     `setup.command` with cwd = the git toplevel containing the SPEC (falling
+     back to the spec's own directory outside a repo), which is the demo run
+     dir — never the ACE checkout. A repo-relative `scripts/…` path resolves
+     against the wrong root and the reset silently never runs.
+   - **Write `source.render_reset`** (shape above). `demo-narrative` copies the
+     `command` verbatim into the spec's `setup` block with
+     `rerun: per_render` — never `once`, which skips the command the moment the
+     outputs file exists, i.e. from the second render on.
+   - Full endpoint mechanics (nested body, DOM-only CSRF token, shallow merge,
+     409): `playbook/integrations/connect-labs.md § Resetting a live run's state
+     between renders`.
+
 5. **Emit the handoff + write back.**
 
    Write `realized.json` — the **flat** multi-var map (`{ primary_par_url,
@@ -1100,6 +1142,18 @@ recording.
 an interactive run found `completed` fails, and so does a non-interactive run
 left `in_progress`.
 
+**A live run accumulates what the camera did to it.** The same decision that
+makes the payoff performable makes the run STATEFUL across takes: the task the
+scene creates is still there on the next render, the button is gone, and a
+`must_succeed` click aborts the whole thing. Iteration 0 passes and every later
+iteration fails on a scene nobody touched. So the interactive run carries a
+mandatory companion — the per-render reset registered in step 4b and run by the
+spec's `setup: {rerun: per_render}` block. Three iterations of
+`spark-facilitator/20260908-2215` (labs run 5508) passed only because a human
+had reset the state by hand, which left no trace in `run_state.yaml` or any
+artifact — the run read as reproducible while depending on an undocumented
+manual step (ace#2297). `demo-data-setup-qa` check 18 is the backstop.
+
 ## Hand-authoring a generator instead of the manifest DSL
 
 Sometimes the manifest DSL cannot express a design and the data gets authored by
@@ -1236,6 +1290,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **New step 4b: register the per-render reset for the interactive dashboard (ace#2297).** A labs run's `spawned_tasks` persists server-side across renders, so the second take of the scene whose payoff CREATES something finds the control gone and its `must_succeed` click aborts — order-dependent, invisible on the first pass. On `spark-facilitator/20260908-2215` (labs run 5508, workflow 5502, opp 10060) iterations 0-2 passed only because a human had reset the state by hand, leaving no trace in `run_state.yaml`, and the reset itself lived as `reset_and_realize.py` inside the DDD run dir — uncommitted, not worktree-portable (ace#2287), swept. Now: `scripts/reset-labs-run-state.ts` (+ `lib/labs-run-state-reset.ts`) in the repo, a `source.render_reset` block in the handoff whose `state_keys` come from `workflow_get → saved_runs.snapshot_inputs.state_keys`, and `demo-narrative` wiring it as `setup: {rerun: per_render}`. Backstop: `demo-data-setup-qa` check 18. | ACE team |
 | 2026-09-08 | **Step 2c.2's write-back must preserve `visit.id` losslessly (ace#2249).** The labs generator mints `visit.id` as a 60-bit integer, over JS `Number.MAX_SAFE_INTEGER`, so a plain `JSON.parse`/`JSON.stringify` round trip silently rewrote 490 of 505 ids on a live run while every gate stayed green (`auditDataset` judges values, not keys). Fixed at two points in `lib/dataset-constraints.ts`: `scrubOffBranchFields`'s internal deep copy now uses `structuredClone` instead of `JSON.parse(JSON.stringify(...))`, and new `parseJsonPreservingBigInts` / `stringifyJsonPreservingBigInts` helpers (an out-of-safe-range integer literal round-trips as a `bigint`) replace `JSON.parse`/`JSON.stringify` on both ends of the caller's own read/write. | ACE team |
 | 2026-09-08 | **New step 2c.4: declare, with a reason, the residuals labs STRUCTURALLY cannot emit (ace#2225).** Check 9 had no evidenced escape, so a run whose only residual violations were such fields could reach green only by narrowing the spec — the behaviour ace#1658 built the derivation to prevent — or not at all. Both runs of `poverty-graduation` took the permanent `fail`. Three recurring classes, all measured on `20260908-0510`: a per-member REPEAT group the flat generator cannot produce, a `Trigger` read-aloud label CommCare submits no value for, and an image with no labs `ImageConfig` corpus. New `declared_omissions[]` block in `branch-scrub_report.yaml`; the reason is required, and a blank one exempts nothing. | ACE team |
 | 2026-09-07 | **New step 3d: enumerate every coined label and prove its definition is reachable FROM the label (ace#2219).** This skill had ZERO guidance on legibility — `grep -niE "jargon|coined|define|glossar|legib|projector"` returned nothing — while the DDD user judge runs a `jargon visible to non-technical users, max 2` hard cap on every scene. On `poverty-graduation/20260905-1345` it fired independently on six of seven scenes over `31-point band`, `Surveys in the 31-point band`, `Mean likelihood below the line` and `Payable`/`Non-payable`; iteration 2 added a glossary panel, the judge recorded it VERIFIED PRESENT and correct, and the cap fired on six of seven scenes again because the panel sits below the fold of every frame that uses the vocabulary. New product `7-synthetic/dashboard-terms.yaml` + `checkCoinedTerms` in `lib/demo-frame-legibility.ts`, backstopped by `demo-data-setup-qa` check 15. The remedy is rename-or-gloss-at-the-label, never another panel. | ACE team |
