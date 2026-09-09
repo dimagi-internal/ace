@@ -809,6 +809,52 @@ front half (how the labs-only opp + its data come to exist) differs.
    proportions, so no term match can separate them. The check narrows the class;
    it does not close it, and the post-render judge is still the backstop.
 
+3c-layout. **Author the LAYOUT against the judges' own deduction rules, not
+   against the template's defaults (ace#2319).** Five of the eight dimension
+   lifts `spark-facilitator/20260908-2215` needed to converge were layout, not
+   story, and every one of them is avoidable at authoring time. These are the
+   deductions that actually fired, each stated as the rule that prevents it —
+   they are transcribed from that run's `verdict-concept` / `verdict-user`
+   findings, so they are what the judge does measure, not what it might:
+
+   - **A caption that claims an ORDER must render in that order.** The legend
+     captioned *"The seven FCAP Goal Setting steps, in order"* was laid out
+     column-major — 1,3,5,7 down the left and 2,4,6 down the right — so it
+     contradicted its own caption. If you write `columns-2` / `grid-flow-col`
+     over an ordered list, either read row-major or drop the ordering claim.
+   - **A container holding a filterable list cannot have a fixed height.** The
+     step panel kept ~165px of empty space below "7 Vision" after its list
+     collapsed from 12 rows to 3, because the container did not reflow. Any
+     panel whose children come from a filtered `.map(` sizes to content.
+   - **Load-bearing text is not the smallest type on the page.** Seven
+     definitions that decide whether a number can be read at all (*"it took
+     place, and it was a community meeting"*, *"target 85%+"*, *"of the seven"*)
+     were set in the page's smallest size, firing the
+     load-bearing-content-too-small rule. If a viewer must read it to read the
+     number, it is body text.
+   - **A header block is not taller than the rows it labels.** Two dashboards
+     ran ~130px of header — taller than four data rows — with labels on four
+     different vertical baselines. Set one baseline and let the data have the
+     frame.
+   - **Disclose one way per surface.** The same class of explanation arrived
+     three ways in one scene — four info bubbles, five inline grey sub-captions
+     and a full banner — and inconsistent disclosure inside a single header row
+     capped `visual_polish` on its own. Pick the affordance once.
+   - **Colour encodes one thing, and only against a stated threshold.** The one
+     green number on a page was a raw count (`155`) while the figures beside it
+     were black; red on `38%`/`82%` was correct only because the page states a
+     85% target. Colour without a stated threshold is decoration that reads as
+     judgement.
+
+   **These are authoring rules, deliberately NOT a lint.** A static checker over
+   `render_code` for "header taller than its rows" or "smallest type on the
+   page" cannot see computed layout, and this module has already retracted one
+   rule (ace#1660) and pruned another (ace#1841) for firing on specs that were
+   fine. The post-render judge measures these reliably — it caught all six — so
+   the cost worth removing is discovering them AFTER a render, not the detection
+   itself. Read this list while authoring, and the loop spends its iterations on
+   the story instead.
+
 3d. **Every coined label carries a definition a reader can reach FROM the label
    (ace#2219).** A dashboard is read on a projector by someone who has never
    seen it. A column or row label the programme invented — `31-point band`,
