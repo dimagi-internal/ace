@@ -242,7 +242,21 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     );
   }
 
-  const content = yaml.stringify(log, { lineWidth: 0, aliasDuplicateObjects: false });
+  // Serialize under YAML **1.1** resolution rules — sibling of the
+  // `update_yaml_file` fix in `mcp/google-drive-server.ts` (ace#2296). The
+  // default (1.2 core schema) emits a bare `yes`/`no`/`on`/`off`/`y`/`n` as a
+  // literal string, which PyYAML on ace-web's Python side resolves as a
+  // BOOLEAN — so a `params.question_value: yes` decision row means one thing
+  // to the plugin's readers and another to PyYAML. `version: '1.1'` quotes
+  // every scalar a 1.1 reader would re-resolve; a 1.2 reader reads the quoted
+  // form as the identical string, so the file means one thing to everyone.
+  // Reads are unaffected — this only changes what gets quoted on the way out.
+  // See ace#2299 (sibling of ace#2296) and lib/yaml-ambiguous-scalars.ts.
+  const content = yaml.stringify(log, {
+    lineWidth: 0,
+    aliasDuplicateObjects: false,
+    version: '1.1',
+  });
   return {
     content,
     warnings,
