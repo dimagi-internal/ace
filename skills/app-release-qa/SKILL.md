@@ -429,18 +429,52 @@ element text. This is load-bearing on the case-UPDATE path, where
 `pdd-to-deliver-app`'s preload-hidden-field pattern (ace#1180) produces
 precisely this shape.
 
-**Field count per form.** For each form in the Nova blueprint, count
-the `<input>` / `<select1>` / `<select>` / `<upload>` / `<bind>`
-elements in the XForm and compare against the Nova blueprint's field
-count. Mismatch by more than 0 → halt with `field-count-mismatch`
-(per form: `expected N, got M`). The check tolerates Nova's
-auto-generated bind elements (which inflate the count somewhat); the
-canonical signal is the silent-omission class ("Nova said 17, CCZ has
-14").
+**Field fidelity per form — compare field-ID SETS, not raw counts
+(ace#2285).** For each form in the Nova blueprint, collect the set of
+field **ids** the blueprint declares, collect the set the released form
+XML carries (from `<bind nodeset>` leaf names plus the
+`<input>` / `<select1>` / `<select>` / `<upload>` control refs), and
+compare the two SETS. The canonical signal is the silent-omission class
+("Nova declared `hh_size`, the CCZ has no such node"), and a set
+difference names the missing field instead of leaving you a number to
+guess at. Halt with `field-count-mismatch` (per form:
+`missing from CCZ: [...]`, `unexpected in CCZ: [...]`) only when a
+**named** field is absent.
 
-If the comparison is over-conservative (false positives on
-auto-generated binds), WARN instead of halt — but record the count in
-the verdict.
+**Do NOT halt on a raw count difference.** The two sides do not share a
+counting basis, so a bare `expected N, got M` comparison has no
+defensible zero point and it fires on structurally perfect apps.
+Measured on `bednet-check-2-visit/20260908-1544`, Learn form "How This
+Work Pays", which is 8 Nova `section` containers wrapping 12 labels:
+
+| Basis | Count |
+|---|---|
+| Nova blueprint (`get_app`) | 20 |
+| Literal control + bind elements in the released XForm | 16 |
+| Bind-only | 13 |
+
+All three describe the same correct form. A Nova `section` compiles to a
+`<group>` carrying **no bind and no input**, and a `label` compiles to a
+bind-less body element, so the blueprint legitimately counts rows the
+XForm never emits as either. The field-ID set comparison matched 5/5
+forms exactly on that same app.
+
+Note the direction: the retired instruction hedged only on count
+**inflation** ("false positives on auto-generated binds"), which is the
+opposite of what actually happens on a section-using Learn app — the
+literal count comes in **under** the blueprint, so the hedge did not
+apply and a literal reading halted a clean app. That is the ace#1238
+class (a guard predicting a failure that isn't there, deadlocking Phase
+3), and section-heavy Learn apps are the *standard* ACE shape, not an
+edge case.
+
+This is the third instance of the counting-basis class — hidden leaves
+(ace#1789), unlabelled and unrecursed containers
+(ace#1807 / ace#2281), and this one. `countNovaVisibleFields` in
+`lib/app-release-drift.ts` solves it for `app-release`'s drift check but
+is basis-matched to the `--draft-only` form walk, NOT to released-CCZ
+XML, so do not reach for it here. Record the counts on every basis you
+computed in the verdict as context; just never gate on them.
 
 **Geopoint bind-type fidelity (cross-cutting — Learn + Deliver).**
 A `kind: geopoint` field MUST compile to an XForm bind of
@@ -1124,11 +1158,16 @@ per_app:
       blueprint_count: <int>
       ccz_count: <int>
       match: true | false
-    field_counts:
+    field_fidelity:                       # ace#2285 — SET comparison, not counts
       - form_path: modules-0/forms-0.xml
-        blueprint_count: <int>
-        ccz_count: <int>
-        match: true | false
+        basis: field-id-set               # what was actually compared
+        match: true | false               # false iff `missing_from_ccz` is non-empty
+        missing_from_ccz: [<field-id>, ...]   # the gating signal
+        unexpected_in_ccz: [<field-id>, ...]  # recorded; not gating on its own
+        counts:                           # CONTEXT ONLY — never gate on these
+          blueprint: <int>                # Nova counts sections + labels
+          ccz_controls_and_binds: <int>   # reads LOW on section-using forms
+          ccz_binds_only: <int>
       - ...
     cli_validate:
       validate:
@@ -1179,7 +1218,7 @@ per_app:
       blueprint_count: <int>
       ccz_count: <int>
       match: true | false
-    field_counts: [...]
+    field_fidelity: [...]              # ace#2285 — same SET shape as learn
     cli_validate:
       validate:
         verdict: pass | fail | unavailable
@@ -1325,8 +1364,13 @@ defects.
   Halt; investigate Nova-side OR check if any post-build patcher
   (which should be none — `commcare-form-patch` was removed in
   PR #423) is stripping markers.
-- `field-count-mismatch` — silent field omission. Re-run the build
-  (Nova partial-persistence is usually fixed on retry).
+- `field-count-mismatch` — silent field omission: a field the Nova
+  blueprint declares by **id** has no corresponding node in the released
+  form XML. Re-run the build (Nova partial-persistence is usually fixed
+  on retry). Fires on a named set difference only — never on a raw count
+  difference, which has no shared basis between blueprint and CCZ and
+  reads LOW on any section-using form (ace#2285; see Step 4 § Field
+  fidelity per form).
 - `geopoint-bind-downgrade` — a `kind:geopoint` field compiled to an
   XForm bind `type="xsd:string"` instead of `type="geopoint"` in the
   released CCZ (stale / downgraded build; see reference.md § Geopoint
