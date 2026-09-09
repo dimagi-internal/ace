@@ -1165,6 +1165,29 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
   real HQ app (deliver-unit introspection, enabling "Create Review") can't be
   driven for a synthetic opp — the generator writes records directly. Pin the
   opp id ≥ 10000.
+- [ ] **`aggregation: "avg"` must never carry `transform: "int"` — it kills the
+  WHOLE pipeline, and the error names no field.** Postgres `avg()` over an
+  integer column returns `numeric`, which reaches the labs serializer as a
+  `Decimal`, and the preview fails with
+  `Analysis pipeline failed: Object of type Decimal is not JSON serializable`.
+  Nothing points at the offending column, so on a 15-field schema this reads as
+  "the pipeline is broken" and costs an isolation pass with `schema_override`.
+  Use `transform: "float"` (verified live 2026-09-08, pipeline 5501 / opp 10060:
+  the two previews differ in that one word). Reported upstream as
+  `dimagi-internal/connect-labs#1630`; until it lands, this is an authoring rule.
+- [ ] **A pipeline field's `default` is documented but does nothing.**
+  `WORKFLOW_REFERENCE.md § Field Definition Reference` declares
+  `"default": null  # Optional. Default value if extraction yields null`, and the
+  SQL backend ignores it — `pipeline_update_schema` accepts the key, and rows
+  still come back `null`. Measured 2026-09-08 on pipeline 5504: `default: 0` on
+  four integer fields and `default: "not_held"` on a select, all null on the
+  records where the branch is off. **Consequences worth planning around, not just
+  knowing:** null-guard in render code regardless, and remember that a
+  visit-level payload over a gated form legitimately carries nulls — which
+  `demo-data-setup-qa` check 16 treats as unjudgeable, so per-row
+  `column_invariants` belong on an AGGREGATED dashboard (whose sums are non-null
+  on every row) rather than on the visit-level one. Reported as
+  `dimagi-internal/connect-labs#1632`.
 - [ ] **Pin the timeline** to a fixed Monday. An unpinned trailing window slides
   off "today" and strands already-seeded runs/flags/audits/tasks on the wrong
   week, breaking idempotency. `start_date` must be a Monday and must equal the
