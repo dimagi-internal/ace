@@ -69,6 +69,44 @@ export function runStateApiPath(runId: number): string {
 }
 
 /**
+ * The real labs workflow-RUN page for `runId`, i.e. the page a `par_url` opens.
+ *
+ * This exists because there is no such thing as a run page addressable by run id
+ * alone (ace#2325). labs routes the run page as
+ * `/labs/workflow/<workflow_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>` —
+ * the WORKFLOW id is the path segment and the run id is a QUERY parameter — so
+ * `/labs/workflow/run/<run_id>/`, which the CLI used to synthesise when no
+ * `--page-url` was given, resolves to nothing. The CSRF token was then read off
+ * whatever that non-page returned, and the subsequent POST came back 404, which
+ * `classifyResetResponse` named `run-not-found` even though the run existed and
+ * was perfectly resettable.
+ *
+ * The token itself can come from ANY authenticated labs page (`base.html`
+ * renders `{% csrf_token %}`), so the run page is not required for correctness —
+ * what is required is that the URL resolve to a real authenticated page. Using
+ * the run's own page is simply the one URL the caller always has to hand, since
+ * it is the `par_url` already recorded in `source.dashboards[].par_url`.
+ *
+ * Measured 2026-09-09 on labs run 5590 / workflow 5502 / opp 10060:
+ *   synthesised `/labs/workflow/run/5590/` -> `run-not-found`, exit 1
+ *   this shape                             -> `cleared record_reviews`, exit 0
+ *
+ * `opportunityId` is optional: the endpoint accepts the write with or without
+ * the scope parameter, and it is included when known because that is the form
+ * the dashboards' own `par_url` takes.
+ */
+export function buildRunPageUrl(
+  baseUrl: string,
+  workflowId: number,
+  runId: number,
+  opportunityId?: number,
+): string {
+  const origin = baseUrl.replace(/\/+$/, '');
+  const query = `run_id=${runId}${opportunityId === undefined ? '' : `&opportunity_id=${opportunityId}`}`;
+  return `${origin}/labs/workflow/${workflowId}/run/?${query}`;
+}
+
+/**
  * Pull Django's CSRF token out of a rendered labs page.
  *
  * Required because labs sets no `csrftoken` cookie (fact 2 above). Django
@@ -154,7 +192,16 @@ export function classifyResetResponse(status: number, body: string): ResetClassi
     };
   }
   if (status === 404) {
-    return { outcome: 'run-not-found', detail: 'run id not found for this user/scope' };
+    return {
+      outcome: 'run-not-found',
+      detail:
+        'the state endpoint returned 404. TWO readings, and the second is the more common one ' +
+        '(ace#2325): the run id really is not visible to this user/scope, OR the CSRF token was ' +
+        'read off a page that is not a real labs page, so the request never carried a usable ' +
+        'token. Confirm the page the token came from resolves — buildRunPageUrl() builds the ' +
+        'run page as /labs/workflow/<workflow_id>/run/?run_id=<run_id>, which is the only shape ' +
+        'labs routes; the run id alone does not address a page',
+    };
   }
   if (status === 403 || status === 401) {
     return {

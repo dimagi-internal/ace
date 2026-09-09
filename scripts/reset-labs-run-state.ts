@@ -31,6 +31,7 @@ import * as path from 'node:path';
 import {
   LABS_BASE_URL,
   buildResetBody,
+  buildRunPageUrl,
   classifyResetResponse,
   extractCsrfToken,
   runStateApiPath,
@@ -66,8 +67,16 @@ interface Args {
   baseline: Record<string, unknown>;
   baseUrl: string;
   sessionPath: string;
-  /** Page to read the CSRF token from; defaults to the run-detail page per run. */
+  /**
+   * Page to read the CSRF token from. Either given directly as `--page-url`, or
+   * built from `--workflow-id` (+ optional `--opportunity-id`) via
+   * `buildRunPageUrl`. There is NO synthesised fallback: a run id alone does not
+   * address a labs page, and the URL this used to invent resolved to nothing,
+   * turning every default invocation into a bogus `run-not-found` (ace#2325).
+   */
   pageUrl?: string;
+  workflowId?: number;
+  opportunityId?: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -77,6 +86,8 @@ function parseArgs(argv: string[]): Args {
   let baseUrl = process.env.LABS_BASE_URL ?? LABS_BASE_URL;
   let sessionPath = path.join(os.homedir(), '.ace', 'labs-session.json');
   let pageUrl: string | undefined;
+  let workflowId: number | undefined;
+  let opportunityId: number | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -112,15 +123,32 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--page-url':
         // Any authenticated labs page carries the token (base.html renders
-        // `{% csrf_token %}`); pass the dashboard's own par_url when in doubt.
+        // `{% csrf_token %}`); the dashboard's own par_url is the one URL the
+        // caller always has, and is what `source.dashboards[].par_url` records.
         pageUrl = next();
         break;
+      case '--workflow-id': {
+        const n = Number(next().trim());
+        if (!Number.isInteger(n)) fail('--workflow-id must be an integer');
+        workflowId = n;
+        break;
+      }
+      case '--opportunity-id': {
+        const n = Number(next().trim());
+        if (!Number.isInteger(n)) fail('--opportunity-id must be an integer');
+        opportunityId = n;
+        break;
+      }
       case '--help':
       case '-h':
         process.stdout.write(
           'Usage: npx tsx scripts/reset-labs-run-state.ts --run-id <id[,id]> --keys <k1,k2> ' +
-            '[--baseline <json-file>] [--page-url <url>] [--base-url <url>] ' +
-            '[--session <storage-state.json>]\n',
+            '(--page-url <url> | --workflow-id <id> [--opportunity-id <id>]) ' +
+            '[--baseline <json-file>] [--base-url <url>] [--session <storage-state.json>]\n' +
+            '\n' +
+            'The CSRF token is read from a rendered labs page, so one of --page-url or\n' +
+            '--workflow-id is REQUIRED: a run id alone does not address a labs page.\n' +
+            'The run page is /labs/workflow/<workflow_id>/run/?run_id=<run_id>.\n',
         );
         process.exit(0);
         break;
@@ -136,7 +164,28 @@ function parseArgs(argv: string[]): Args {
         'nothing; read the keys from workflow_get -> saved_runs.snapshot_inputs.state_keys',
     );
   }
-  return { runIds, keys, baseline, baseUrl, sessionPath, pageUrl };
+  // No synthesised fallback (ace#2325). The old default was
+  // `<base>/labs/workflow/run/<run_id>/`, which is not a labs route: the run id
+  // is a QUERY parameter and the workflow id is the path segment, and the CLI
+  // never had the workflow id. Every invocation that did not already know about
+  // `--page-url` therefore read its token off a non-page and failed the POST
+  // with a 404 reported as `run-not-found` — including the natural one, the
+  // command `demo-data-setup` registers into `source.render_reset.command` and
+  // `demo-narrative` copies into a spec's `setup.command`. Because that setup
+  // block is `rerun: per_render`, the failure blocked EVERY render of a
+  // state-mutating demo. Refusing up front, naming the reason, is the whole fix:
+  // a guess that cannot resolve is strictly worse than an error that can be read.
+  if (!pageUrl && workflowId === undefined) {
+    fail(
+      'one of --page-url or --workflow-id is required. The CSRF token has to be read from a ' +
+        'rendered labs page (labs sets no csrftoken cookie), and a run id ALONE does not address ' +
+        'one: the run page is /labs/workflow/<workflow_id>/run/?run_id=<run_id>. Pass the ' +
+        "dashboard's own par_url as --page-url, or pass --workflow-id (plus --opportunity-id if " +
+        'you have it) and it will be built for you. ace#2325',
+    );
+  }
+
+  return { runIds, keys, baseline, baseUrl, sessionPath, pageUrl, workflowId, opportunityId };
 }
 
 function cookieHeader(sessionPath: string, baseUrl: string): string {
@@ -159,7 +208,9 @@ function cookieHeader(sessionPath: string, baseUrl: string): string {
 async function resetRun(runId: number, args: Args, cookie: string): Promise<boolean> {
   // labs sets no csrftoken cookie (CSRF_USE_SESSIONS=True), so read the token
   // out of a rendered page's csrfmiddlewaretoken input.
-  const pageUrl = args.pageUrl ?? `${args.baseUrl}/labs/workflow/run/${runId}/`;
+  const pageUrl =
+    args.pageUrl ??
+    buildRunPageUrl(args.baseUrl, args.workflowId as number, runId, args.opportunityId);
   const page = await fetch(pageUrl, { headers: { Cookie: cookie }, redirect: 'follow' });
   const html = await page.text();
   const token = extractCsrfToken(html);
