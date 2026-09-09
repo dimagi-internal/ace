@@ -106,12 +106,29 @@ paraphrase the schema here — read the model / schema and validate.
      red→yellow→green). The narrative moves from the overview dashboard to the
      recovery dashboard, not one screen.
    - `why_brief` — embed / reference the Step 2 brief.
-   - `setup: { command: <regenerate-realized.json command>, outputs: "realized.json", rerun: once }`.
+   - `setup: { command: <the per-render reset> && <regenerate-realized.json command>,
+     outputs: "realized.json", rerun: per_render }`.
      The `command` must (re)produce `realized.json` for the render session. For
      denovo Plan A this re-invokes `demo-data-setup` in ensure mode; **confirm
      idempotency live in the joint test** (if `demo-data-setup` regenerates
      rather than reuses, either add an ensure mode or set the command to emit the
      already-written `realized.json`).
+
+     **`rerun: per_render`, and the command must RESET the interactive run —
+     not merely re-emit the map (ace#2297).** This said `rerun: once` until
+     2026-09-08, and `once` skips the command whenever the outputs file already
+     exists — which is every render after the first. Recording a demo MUTATES
+     the world: the coaching task the payoff scene creates is still on the labs
+     run for the next take, the button is gone, and a `must_succeed` click
+     aborts the whole render. canopy's own `SetupBlock` docstring names this
+     case ("demos that MUTATE state during recording … film the wrong UI on
+     every re-render"). Re-emitting `realized.json` does not fix it either —
+     the data is unchanged; it is the RUN STATE that is dirty. So prefix the
+     command with `source.render_reset.command` verbatim from the handoff
+     (`demo-data-setup` step 4b), which clears the run's declared
+     `state_keys`. Whenever `source.render_reset.required` is true, both halves
+     are mandatory: `demo-data-setup-qa` check 18 fails a spec that carries one
+     without the other.
    - **Put the effecting actions on the INTERACTIVE dashboard, and only there.**
      Exactly one entry in `source.dashboards[]` carries `interactive: true`
      (`role: review-action` / `review` / `decision`); its run is deliberately
@@ -345,6 +362,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-08 | **The spec's `setup` block is `rerun: per_render` and must RESET the interactive run, not just re-emit `realized.json` (ace#2297).** Step 3 said `rerun: once`, which skips the setup command whenever the outputs file exists — i.e. from the second render on. But recording MUTATES the world: the coaching task the payoff scene creates persists on the labs run, so the next take finds the button gone and its `must_succeed` click aborts. On `spark-facilitator/20260908-2215` iterations 0-2 passed only because a human had reset labs run 5508 by hand. The command now prefixes `source.render_reset.command` (`demo-data-setup` step 4b); both halves are enforced by `demo-data-setup-qa` check 18. | ACE team |
 | 2026-09-06 | **Narrow the detection vocabulary: `marker` / `markers` are OUT (ace#1893).** They were the only NOUN forms in it, and a noun names a thing on the screen rather than an act the platform performs — so on `hh-poverty-targeting/20260901-1932` the payoff scene, a pure DECISION beat (*"A collection window ends in a disposition stored per worker"*), was flagged as an insufficient-cardinality detection demo on nothing but the word `marker`, used twice for a "recorded on this run" badge. The author renamed the noun to `badge` to get past the flag, which is exactly the cost the module warns about (*"inventing a demonstration costs the author's trust in every flag after it"*). Measured over all 10 unified specs in Drive (4 opps, 10 runs, 59 scenes): 26 scenes match the detection vocabulary, **24 carry a verb form**, and only 2 match on `marker` alone — the same scene in two revisions of one narrative. **Spec-level recall is unchanged, 8 specs flagged before and after**, because every spec with a noun-only scene also has a verb-form one. The two narrower repairs the issue proposed were measured and rejected: requiring a corroborating second vocabulary word is bit-identical to deletion (24/26), and exempting `features[].verify` is strictly worse (23/26) — it does not clear the false positive, whose other hit is in `show`. The ace#1841 widening to `show` / `concept_claim` / `features[]` STAYS: ablating it took the same spec from 6 findings to 0. | ACE team |
 | 2026-08-29 | Add a FOURTH demonstration verb — **detection / flagging**, on the `rows` axis with its own higher floor of **24** (`DETECTION_MIN_ROWS`, two screenfuls of the 12-row anchor the filter floor already uses): a filter claims narrowing is meaningful, a detection claims unaided scanning is not viable, and the second is false the moment the cohort fits in one look. `checkSceneCardinality` also now reads a scene's `show`, `concept_claim` and `features[]` alongside its title and action targets — measured on the failing spec, the detection vocabulary appears 20+ times and in not one title, so the verb alone would have matched nothing. The finding names the axis with room, because that is the action. `hh-poverty-targeting/20260828-0702` authored a detection demo over a seven-worker cohort; the gate returned ok with zero findings and the concept judge said post-render that a manager could find the outlier by eye, ending the loop `stopped_not_converged` at concept 2.0 after four iterations. ace#1841. | ACE team |
 | 2026-08-26 | Add the dataset's cardinality as an INPUT (`source.record_counts` + `source.data_shape`) and a pre-authoring shape check (Step 2b) with a per-verb minimum — `rows` 12 for filter/search/sort, `periods` 4 for a trend, `groups` 3 for a comparison — enforced by `checkSceneCardinality` in `lib/ddd-scene-actions.ts` at Step 3b. Flags rather than rejects (the rule reads the data's shape but not the dashboard's rendering, so it cannot be certain which population a surface enumerates — ace#1238), but every flag must be resolved. `bednet-check-2-visit/20260825-1310` authored a filter demonstration over a five-worker cohort; every existing gate reported green and the concept judge caught it four render iterations later, ending the loop `stopped_not_converged` at concept 3.0. ace#1670. | ACE team |
