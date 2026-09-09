@@ -165,8 +165,14 @@ function spansInParagraph(paragraph: DocsParagraph): BoldSpan[] {
       cursor = open + MARKER.length;
       continue;
     }
-    // Emphasis does not span a line break inside a paragraph.
-    if (/[\n\v\f\r]/.test(inner)) {
+    // Emphasis does not span a line break inside a paragraph. U+000B is in the
+    // class because that is how Google Docs encodes a SOFT line break
+    // (Shift+Enter) — it stays inside one paragraph, so a `\n`-only check would
+    // miss it and bold across the break. Written as a \u escape, never a raw
+    // byte: `test/no-control-bytes.test.ts` rejects a literal 0x0b in a tracked
+    // .ts source, and it reads TRACKED files — so a full local suite run before
+    // the first `git add` cannot catch it. CI did.
+    if (/[\n\r\u000b\f]/.test(inner)) {
       cursor = open + MARKER.length;
       continue;
     }

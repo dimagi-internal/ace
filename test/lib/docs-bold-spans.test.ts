@@ -117,6 +117,14 @@ describe('findBoldSpans', () => {
     expect(findBoldSpans([para(1, 'a **b\nc** d')])).toEqual([]);
   });
 
+  it('treats a Docs SOFT line break (U+000B) as a break too', () => {
+    // Shift+Enter inside a paragraph is U+000B, not \n. A \n-only check would
+    // pair across it and bold both lines plus the break.
+    expect(findBoldSpans([para(1, 'a **b\u000bc** d')])).toEqual([]);
+    // ...and the surrounding text still works, so the guard is not over-broad.
+    expect(findBoldSpans([para(1, 'a\u000b**b** c')]).map((s) => s.text)).toEqual(['b']);
+  });
+
   it('handles adjacent spans without swallowing the gap', () => {
     const spans = findBoldSpans([para(1, '**a****b**')]);
     expect(spans.map((s) => s.text)).toEqual(['b', 'a']);
