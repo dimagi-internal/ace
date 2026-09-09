@@ -3,6 +3,7 @@ import {
   resolveDddRunAdoption,
   runBelongsToSlug,
   type DddRunAdoptionInput,
+  type DddRunLiveness,
 } from '../../lib/ddd-run-adoption';
 
 const RUNS_PARENT = '/Users/x/.canopy/ddd/runs';
@@ -135,5 +136,90 @@ describe('picking among several runs', () => {
     );
     expect(out.disposition).toBe('resume-in-place');
     expect(out.adopt?.runId).toBe('demo-2026-09-01-001');
+  });
+});
+
+describe("a candidate that is not this run's to resume (ace#2315)", () => {
+  // Verbatim from bednet-check-2-visit/20260908-1544, at the moment Phase 7 had
+  // to decide. Two runs of the SAME narrative slug existed on the machine, both
+  // from EARLIER /ace:run invocations of the same opportunity, and the resolver
+  // recommended adopting one. Following it would have handed this run a
+  // score_history of three identical 2.0s over a dataset that no longer exists,
+  // firing the stall detector on the first render.
+  const layout = {
+    'bednet-u12df': ['bednet-two-visit-spot-check-2026-08-26-001'],
+    'bednet-2syps': ['bednet-two-visit-spot-check-2026-08-19-001'],
+    'ace-bednet-check-2-visit-20260908-1544': [],
+  };
+  const SLUG = 'bednet-two-visit-spot-check';
+  const HERE = 'ace-bednet-check-2-visit-20260908-1544';
+
+  const terminal: Record<string, DddRunLiveness> = {
+    [`${RUNS_PARENT}/bednet-u12df/bednet-two-visit-spot-check-2026-08-26-001`]: {
+      terminal_status: 'stopped_not_converged',
+      auto_iterate_next_action: null,
+    },
+    [`${RUNS_PARENT}/bednet-2syps/bednet-two-visit-spot-check-2026-08-19-001`]: {
+      terminal_status: 'stopped_not_converged',
+      auto_iterate_next_action: null,
+    },
+  };
+  const withLiveness = () => ({
+    ...input(layout, HERE, SLUG),
+    readRunLiveness: (dir: string) => terminal[dir] ?? null,
+  });
+
+  it('does NOT offer a run canopy already terminated', () => {
+    const out = resolveDddRunAdoption(withLiveness());
+    expect(out.disposition).toBe('start-fresh');
+    expect(out.adopt).toBeNull();
+    expect(out.elsewhere).toHaveLength(0);
+  });
+
+  it('says WHY it skipped them, naming the terminal status', () => {
+    const out = resolveDddRunAdoption(withLiveness());
+    expect(out.reason).toContain('stopped_not_converged');
+    expect(out.reason).toContain('ace#2315');
+  });
+
+  it('is the regression: without the liveness reader it still recommends adoption', () => {
+    // Pins the exact behaviour this change exists to fix, so an edit that drops
+    // the reader cannot pass silently.
+    const out = resolveDddRunAdoption(input(layout, HERE, SLUG));
+    expect(out.disposition).toBe('adopt-from-other-worktree');
+  });
+
+  it('excludes a root scoped to a DIFFERENT ACE run, even mid-flight', () => {
+    // Two concurrent runs of one opp mint the same slug. Neither may adopt the
+    // other's work, terminated or not — run independence (CLAUDE.md).
+    const out = resolveDddRunAdoption(
+      input(
+        {
+          'ace-bednet-check-2-visit-20260901-0900': [
+            'bednet-two-visit-spot-check-2026-09-01-001',
+          ],
+          [HERE]: [],
+        },
+        HERE,
+        SLUG,
+      ),
+    );
+    expect(out.disposition).toBe('start-fresh');
+    expect(out.reason).toContain("a different ACE run's runs root");
+  });
+
+  it('still adopts a live run from a plain WORKTREE root — ace#2287 keeps working', () => {
+    // The exclusions must not swallow the case adoption exists for: a fork
+    // whose original worktree holds an unfinished run.
+    const out = resolveDddRunAdoption({
+      ...input(
+        { 'emdash-spark-y3wpj': ['spark-fcap-facilitation-2026-09-08-001'], 'wt-here': [] },
+        'wt-here',
+        'spark-fcap-facilitation',
+      ),
+      readRunLiveness: () => ({ terminal_status: null, auto_iterate_next_action: 'render' }),
+    });
+    expect(out.disposition).toBe('adopt-from-other-worktree');
+    expect(out.adopt?.runId).toBe('spark-fcap-facilitation-2026-09-08-001');
   });
 });

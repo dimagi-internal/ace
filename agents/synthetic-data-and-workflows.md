@@ -152,14 +152,46 @@ empty runs root: `resolve_narrative` returns `decision: new`, `Agent(canopy:ddd)
 starts a FRESH run, and every completed render is discarded. Nothing halts and
 nothing warns.
 
-Before dispatching, resolve whether a run for this narrative slug already exists
-**anywhere on this machine** — `lib/ddd-run-adoption.ts::resolveDddRunAdoption`
+**So pin the runs root to THIS RUN, and stop depending on the worktree.**
+`resolve_ddd_dir.sh` consults `CANOPY_DDD_RUNS_DIR` before it falls back to the
+worktree basename, so exporting a run-scoped root for every canopy command makes
+the run dir survive a fork with nothing to hand-copy:
+
+```bash
+export CANOPY_DDD_RUNS_DIR="$HOME/.canopy/ddd/runs/ace-<opp-slug>-<run-id>"
+mkdir -p "$CANOPY_DDD_RUNS_DIR"
+# e.g. ace-bednet-check-2-visit-20260908-1544
+```
+
+Pass it to `Agent(canopy:ddd)` explicitly — a subagent does not inherit your
+shell.
+
+Then resolve whether a run for this narrative slug already exists **anywhere on
+this machine** — `lib/ddd-run-adoption.ts::resolveDddRunAdoption`
 (`test/lib/ddd-run-adoption.test.ts`) returns one of:
 
-- `resume-in-place` — a run sits under this worktree's root. Dispatch normally.
-- `adopt-from-other-worktree` — move/copy the named `runDir` into this worktree's
-  runs root FIRST, then dispatch with `--resume <run_id>`.
-- `start-fresh` — no run for this slug anywhere. A fresh run is correct.
+- `resume-in-place` — a run sits under this run's root. Dispatch normally.
+- `adopt-from-other-worktree` — move/copy the named `runDir` into this run's runs
+  root FIRST, then dispatch with `--resume <run_id>`.
+- `start-fresh` — no adoptable run for this slug anywhere. A fresh run is correct.
+
+**Pass `readRunLiveness` — the resolver is only safe with it.** The slug is
+derived from the narrative, so every `/ace:run` of an opp mints the SAME slug,
+and without liveness the resolver happily recommends a run belonging to a
+different ACE run. Read each candidate's `run_state.yaml` and hand back its
+`terminal_status` + `auto_iterate_next_action`; the resolver then skips any run
+canopy has already ended, and says so in `reason`. Adoption rescues INTERRUPTED
+work — a finished run is not interrupted, and inheriting its `score_history`
+makes the stall detector fire on the first render and report
+`stopped_not_converged` over renders this run never performed.
+
+Measured on `bednet-check-2-visit/20260908-1544`: two runs named
+`bednet-two-visit-spot-check-*` sat under `bednet-u12df` and `bednet-2syps` from
+the 2026-08-19 and 2026-08-26 runs of the same opp, each already ended
+`stopped_not_converged` with `score_history` `[2.0, 2.0, 2.0]` and `[2.0, 3.0]`
+over a dataset that no longer existed. The resolver recommended
+adopting one, and pinning the root did NOT change that verdict — it only changes
+where a new run lands. ace#2315.
 
 The cost of getting this wrong is not just the re-render. `compute_auto_iterate`
 terminates on a noise-banded score **stall** and a finding **plateau** computed over
@@ -302,9 +334,10 @@ phases:
 - [ ] For Step 3 render: `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` readable, canopy
   checkout + `uv` reachable. The labs browser session itself is **not** a
   precondition to check — Step 3.0 restores it unconditionally every time.
-- [ ] For a **resume or fork**: the DDD run dir is under THIS worktree's runs root.
-  It is keyed on the worktree basename, so it does not travel with a fork —
-  Step 3.1 resolves and adopts it (ace#2287).
+- [ ] `CANOPY_DDD_RUNS_DIR` exported to this run's own runs root
+  (`ace-<opp-slug>-<run-id>`) — it is what makes the DDD run dir survive a fork,
+  and what lets Step 3.1 tell this run's work from another run's (ace#2287,
+  ace#2315).
 
 ## Re-runnability
 
