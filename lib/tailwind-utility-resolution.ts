@@ -351,6 +351,13 @@ export function extractUtilityTokens(source: string): ExtractedToken[] {
   const NON_CLASS_ATTRS = new Set([
     'title', 'id', 'alt', 'href', 'src', 'type', 'name', 'placeholder',
     'role', 'key', 'htmlFor', 'target', 'rel', 'value', 'label',
+    // `testid` is the bare-prop form of `data-testid`, and the prefix rule
+    // above cannot see it because it has no hyphen. It reaches the DOM as
+    // `data-testid` — a shared wrapper forwards it, `<summary
+    // data-testid={props.testid}>` — but the CALL SITE writes `testid=`, which
+    // is what this scanner reads. Excluding one and not the other made an
+    // identical value pass on line 4 and fail on line 7 (ace#2326).
+    'testid',
   ]);
 
   /**

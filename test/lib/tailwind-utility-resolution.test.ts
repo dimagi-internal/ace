@@ -165,6 +165,31 @@ describe('extractUtilityTokens', () => {
     expect(seen).not.toContain('grid-cols-99');
   });
 
+  // ── ace#2326: the bare-prop form of the same attribute ──────────────────
+  //
+  // #1699 keyed its exclusion on the ATTRIBUTE NAME, and `data-*` is matched
+  // by a hyphen prefix `testid` does not have. But a shared wrapper forwards
+  // the id — `<summary data-testid={props.testid}>` — so the CALL SITE writes
+  // `testid=`, which is what this scanner reads. On
+  // bednet-check-2-visit/20260908-1544 that made an IDENTICAL value pass as
+  // `data-testid` and fail as `testid`, exiting 1 on a correct render_code.
+  it('does not lint a bare `testid` prop value as a utility (#2326)', () => {
+    const src =
+      '<div data-testid="gap-gloss" className="text-gray-700" />' +
+      '<Gloss testid="gap-gloss" />';
+    const tokens = extractUtilityTokens(src);
+    // Both occurrences of the same value are attribute values, not classes.
+    const glossOrigins = tokens.filter((t) => t.token === 'gap-gloss').map((t) => t.origin);
+    expect(glossOrigins.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(glossOrigins)).toEqual(new Set(['attribute-value']));
+    expect(tokens.find((t) => t.token === 'text-gray-700')?.origin).toBe('class-attribute');
+
+    // `gap-` IS a real Tailwind family and `gap-gloss` is not a real utility,
+    // so before the fix this reported MISSING and exited 1.
+    const report = classifyUtilities(src, DEPLOYED_CSS);
+    expect(report.missing.map((f) => f.token)).not.toContain('gap-gloss');
+  });
+
   it('still lints a utility assigned to a VARIABLE, not just a class attribute (#1699 guard)', () => {
     // `var cardBorder = 'border-slate-300'` has the same `<name> = "<value>"`
     // shape as a JSX attribute and is one of the seven ace#1662 ground-truth
