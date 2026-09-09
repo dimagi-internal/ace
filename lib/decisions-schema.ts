@@ -144,10 +144,15 @@ export const DecisionRowSchema = z
     status: z
       .enum(["ai-default", "human-decided", "overridden"])
       .describe(
-        "WHO settled this row. " +
+        "WHO settled this row. ALWAYS send `ai-default` on a new row — the other two values are " +
+          "stamped by the write boundary from a saved reviewer record, and a caller-asserted " +
+          "`human-decided` is REJECTED (ace#2307: a subagent cannot reach a human, so asserting one " +
+          "ruled fabricates a binding ruling). " +
           "`ai-default`: ACE chose — its standing judgment, freely re-decidable by a later run. " +
-          "`human-decided`: a named person ruled during review and `ai-default` holds THEIR answer; " +
-          "requires `decided_by` + `decided_at`, and carries FORWARD as binding into later runs. " +
+          "`human-decided`: a named person ruled and `ai-default` holds THEIR answer; carries FORWARD " +
+          "as binding into later runs. Stamped by `applyDecisionOverrides` when the row's " +
+          "`feedback_ref` matches an ATTRIBUTED ruling in `inputs/decision-overrides.yaml`, which is " +
+          "where a real human ruling belongs; never written by an emitting skill. " +
           "`overridden`: ACE proposed `ai-default` and a human replaced it via the override path, " +
           "which keeps both values. " +
           "Note this axis is about AUTHORSHIP only — it never gates or blocks a run. " +
@@ -159,8 +164,10 @@ export const DecisionRowSchema = z
       .optional()
       .describe(
         "Email (or stable identifier) of the person whose ruling this row records. " +
-          "REQUIRED when `status: human-decided`. Pair with `feedback_ref` when the ruling " +
-          "came from a logged review record so the feedback ledger can join the two.",
+          "REQUIRED when `status: human-decided` — but NOT a field a caller sets: the write boundary " +
+          "copies it from the attributed ruling saved in `inputs/decision-overrides.yaml` (ace#2307). " +
+          "Pair with `feedback_ref` when the ruling came from a logged review record so the feedback " +
+          "ledger can join the two.",
       ),
     decided_at: z
       .string()
@@ -308,6 +315,62 @@ export type DecisionRow = z.infer<typeof DecisionRowSchema>;
  */
 export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
   (row, ctx) => {
+    // v5.2 (ace#2307): a CALLER may not assert `human-decided`. The write
+    // boundary is the only thing that stamps it.
+    //
+    // `human-decided` is an attribution claim, and `lib/decisions-ingest.ts`
+    // maps it straight to carry-authority `binding` — so a mislabelled row
+    // does not merely misreport history, it exports a ruling into every later
+    // run of the opp that only an explicit contradiction dislodges. The base
+    // schema above already enforces that the claim is WELL-FORMED
+    // (`decided_by` + `decided_at` present). Nothing could check that it was
+    // TRUE, and on spark-facilitator/20260908-2215 a Phase 8 subagent read
+    // agent-authored dispatch prose as a human's voice and stamped
+    // `decided_by: <a real person>` for a decision that run's operator never
+    // made — the run took zero human input end to end.
+    //
+    // Requiring `feedback_ref` alongside it would not close this: the same
+    // generation that invented the attribution can invent the ref, and the
+    // regex on that field only checks its SHAPE. And there is no
+    // caller-identity check to fall back on — `AppendRowsArgs`
+    // (mcp/decisions-server.ts) carries `{runFolderId, opportunity, run_id,
+    // rows}` and nothing else, so the write path cannot tell an L0
+    // orchestrator from a phase subagent, and a caller-asserted "I am L0"
+    // flag would be fabricable by the identical mechanism.
+    //
+    // So the caller's assertion is made non-load-bearing instead. The two
+    // real channels both survive, because both stamp the status AFTER this
+    // parse or never pass through it at all:
+    //   1. `applyDecisionOverrides` (lib/decision-overrides.ts) stamps
+    //      `human-decided` when a row's `feedback_ref` matches an ATTRIBUTED
+    //      ruling saved in `inputs/decision-overrides.yaml` — the attribution
+    //      comes from the saved record, not from the emitting agent, and an
+    //      unattributed match is refused rather than stamped anonymously.
+    //   2. A ruling made live (an L0 orchestrator in `review` mode holding
+    //      `AskUserQuestion`) is recorded in `inputs/decision-overrides.yaml`
+    //      with `decided_by`/`decided_at`, where it binds automatically and
+    //      is opp-level and cumulative — strictly better than a per-run row,
+    //      and joinable by the feedback ledger. A ruling that exists only in
+    //      an agent's transcript is not a record any consumer can see.
+    // Reads keep the permissive `DecisionRowSchema`, so every existing log —
+    // including the rows the boundary stamped — still parses. Calibrated
+    // against every decisions.yaml in Drive (2026-09-08: 13 opps, 73 runs,
+    // 2,943 rows) — `human-decided` appeared ZERO times outside the
+    // fabricated row, so no legitimate case is being broken here.
+    if (row.status === "human-decided") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`status: human-decided` cannot be written by a caller — it is an attribution claim that " +
+          "`lib/decisions-ingest.ts` carries forward as BINDING into every later run, so an agent " +
+          "asserting it fabricates a ruling nobody made (dimagi-internal/ace#2307). Send this row as " +
+          "`status: ai-default` with your own reasoning. To record a real human ruling, put it in the " +
+          "opp's `inputs/decision-overrides.yaml` with `decided_by` + `decided_at` (ace-web's Phases " +
+          "tab → Decisions panel writes that file); the write boundary then stamps `human-decided` " +
+          "from that saved record and reports it in `rulingsApplied`.",
+        path: ["status"],
+      });
+    }
     if (!row.options.includes(row["ai-default"])) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

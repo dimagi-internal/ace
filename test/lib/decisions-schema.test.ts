@@ -776,9 +776,16 @@ describe("provenance + resolution owner (v5)", () => {
   // ruling never reached `decision-overrides.yaml` and was re-derived from
   // scratch on the next run. These tests pin the field that stops that.
 
-  it("accepts a human-decided row carrying its ruler and date", () => {
+  // The rules below (attribution present, ISO date, no `override`) live on the
+  // BASE schema, so they are asserted against `DecisionRowSchema` — which is
+  // also the READ path every existing log parses through. Whether a CALLER may
+  // assert `human-decided` at all is a separate, write-boundary question, and
+  // the answer is no: see test/lib/decisions-human-decided-attribution.test.ts
+  // (ace#2307).
+
+  it("READ path accepts a human-decided row carrying its ruler and date", () => {
     expect(() =>
-      DecisionRowStrictSchema.parse({
+      DecisionRowSchema.parse({
         ...base,
         status: "human-decided",
         decided_by: "sophie.feintuch@example.org",
@@ -790,7 +797,7 @@ describe("provenance + resolution owner (v5)", () => {
 
   it("REJECTS a human-decided row with no attribution — an unattributed ruling cannot be re-escalated", () => {
     expect(() =>
-      DecisionRowStrictSchema.parse({
+      DecisionRowSchema.parse({
         ...base,
         status: "human-decided",
         decided_at: "2026-07-27",
@@ -800,7 +807,7 @@ describe("provenance + resolution owner (v5)", () => {
 
   it("REJECTS a human-decided row with no decided_at", () => {
     expect(() =>
-      DecisionRowStrictSchema.parse({
+      DecisionRowSchema.parse({
         ...base,
         status: "human-decided",
         decided_by: "sophie.feintuch@example.org",
@@ -810,7 +817,7 @@ describe("provenance + resolution owner (v5)", () => {
 
   it("REJECTS a non-ISO decided_at", () => {
     expect(() =>
-      DecisionRowStrictSchema.parse({
+      DecisionRowSchema.parse({
         ...base,
         status: "human-decided",
         decided_by: "sophie.feintuch@example.org",
@@ -821,7 +828,7 @@ describe("provenance + resolution owner (v5)", () => {
 
   it("keeps human-decided and overridden distinct: a human-decided row must not carry `override`", () => {
     expect(() =>
-      DecisionRowStrictSchema.parse({
+      DecisionRowSchema.parse({
         ...base,
         status: "human-decided",
         decided_by: "sophie.feintuch@example.org",
@@ -882,7 +889,7 @@ describe("provenance + resolution owner (v5)", () => {
   });
 
   it("effectiveValue on a human-decided row is the human's answer", () => {
-    const parsed = DecisionRowStrictSchema.parse({
+    const parsed = DecisionRowSchema.parse({
       ...base,
       status: "human-decided",
       decided_by: "sophie.feintuch@example.org",

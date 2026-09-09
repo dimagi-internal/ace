@@ -201,6 +201,7 @@ describe('every `status: <value>` prescribed in agents/*.md is a legal enum valu
     'open', // products.solicitation.status (open until awarded)
     'overridden', // decisions.yaml row status
     'ai-default', // decisions.yaml row status
+    'human-decided', // decisions.yaml row status (write-boundary-stamped only, ace#2307)
   ]);
 
   it('has no unlisted status word', () => {
