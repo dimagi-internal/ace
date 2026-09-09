@@ -474,3 +474,67 @@ describe('novaVisibleFieldCount excludes an UNLABELLED container (ace#1807)', ()
     expect(d.drift).toBe(true);
   });
 });
+
+describe("countNovaVisibleFields recurses into a `section` container (ace#2281)", () => {
+  // `section` is Nova's third container kind and it nests children in the same
+  // `children[]` array `group`/`repeat` use — confirmed on the wire via
+  // `nova get_field` on bednet-check-2-visit/20260908-1544's Learn app:
+  //   {"id":"how_you_get_paid","kind":"section",
+  //    "label":{"parts":[{"kind":"text","text":"How you get paid"}]},
+  //    "children":[{"id":"pay_model","kind":"label", ...}]}
+  // Before the fix `section` was absent from CONTAINER_KINDS, so it took the
+  // leaf branch: counted as 1, children never visited.
+  const section = (label: string, children: { kind: string; label?: string }[]) => ({
+    kind: 'section',
+    label,
+    children,
+  });
+
+  it('counts the labelled section itself PLUS each visible child', () => {
+    // 1 for the section + 1 for its label child.
+    expect(
+      countNovaVisibleFields([section('How you get paid', [{ kind: 'label', label: 'pay_model' }])]),
+    ).toBe(2);
+  });
+
+  it('reproduces the live Learn form: 8 sections wrapping 12 labels == 20, not 8', () => {
+    // "How This Work Pays", verbatim shape: 8 sections, 12 label children.
+    const childCounts = [1, 2, 1, 2, 1, 2, 1, 2];
+    const form = childCounts.map((n, i) =>
+      section(`s${i}`, Array.from({ length: n }, (_, j) => ({ kind: 'label', label: `l${i}_${j}` }))),
+    );
+    // The HQ draft walk emits a row for the section AND for each child, so the
+    // basis-matched count is 8 + 12. The pre-fix value was 8.
+    expect(countNovaVisibleFields(form)).toBe(20);
+  });
+
+  it('still excludes an UNLABELLED section, matching the ace#1807 rule for every container kind', () => {
+    expect(countNovaVisibleFields([section('', [{ kind: 'label', label: 'x' }])])).toBe(1);
+  });
+
+  it('excludes hidden children of a section, same as any other container', () => {
+    expect(
+      countNovaVisibleFields([
+        section('Scores', [
+          { kind: 'hidden', label: 'q1_score' },
+          { kind: 'single_select', label: 'q1' },
+        ]),
+      ]),
+    ).toBe(2);
+  });
+
+  it('so a section-only Learn app no longer forces a spurious re-upload when no ordering fact resolves', () => {
+    // The whole cost of the bug: with no ordering signal, a soft field-count
+    // mismatch becomes hardDrift and the re-upload reverts grid + acquire
+    // (ace#1643). Same shape as the live form; HQ walk says 20.
+    const form = [1, 2, 1, 2, 1, 2, 1, 2].map((n, i) =>
+      section(`s${i}`, Array.from({ length: n }, (_, j) => ({ kind: 'label', label: `l${i}_${j}` }))),
+    );
+    const d = classifyAppDrift({
+      app: 'learn',
+      novaVisibleFieldCount: countNovaVisibleFields(form),
+      hqDraftVisibleFieldCount: 20,
+    });
+    expect(d.signals.fieldCounts.mismatch).toBe(false);
+  });
+});
