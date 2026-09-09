@@ -302,16 +302,41 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
  * shape `lib/screen-shape.ts § ScreenField` reads.
  */
 export interface NovaBlueprintField {
-  /** `group`, `repeat`, `single_select`, `label`, `hidden`, `text`, … */
+  /** `group`, `repeat`, `section`, `single_select`, `label`, `hidden`, `text`, … */
   kind: string;
   /** Rendered label text. A container with an EMPTY label is the ace#1807 case. */
   label?: string;
-  /** Children of a `group` / `repeat`. */
+  /** Children of a `group` / `repeat` / `section`. */
   children?: NovaBlueprintField[];
 }
 
-/** Nova kinds that contain other fields rather than being one. */
-const CONTAINER_KINDS = new Set(['group', 'repeat']);
+/**
+ * Nova kinds that contain other fields rather than being one.
+ *
+ * **All THREE of Nova's container kinds belong here.** `section` was missing
+ * until ace#2281, which is worse than it sounds: a kind absent from this set
+ * falls through to the leaf branch, so it is counted as 1 AND its children are
+ * never recursed into — every field inside it vanishes from the count. Measured
+ * on `bednet-check-2-visit/20260908-1544`, whose Learn app puts 12 labels inside
+ * 8 sections: `countNovaVisibleFields` returned `[5, 8, 10]` = 23 against an HQ
+ * draft walk of `[5, 20, 10]` = 35, off by exactly those 12 children. The same
+ * app's Deliver side uses `group` and matched exactly (14 = 14).
+ *
+ * `section` really is a container on the wire, not a styling hint — Nova's
+ * `get_field` returns it with a populated `children[]`:
+ *
+ * ```json
+ * {"id":"how_you_get_paid","kind":"section",
+ *  "label":{"parts":[{"kind":"text","text":"How you get paid"}]},
+ *  "children":[{"id":"pay_model","kind":"label", ...}]}
+ * ```
+ *
+ * The cost of the omission was a FALSE field-count mismatch, which is soft and
+ * therefore downgraded whenever an ordering fact is available — but it forces a
+ * needless `reupload-reapply-settings-then-build` when no ordering signal
+ * resolves, and that re-upload reverts grid + `acquire` (ace#1643).
+ */
+const CONTAINER_KINDS = new Set(['group', 'repeat', 'section']);
 
 /**
  * `novaVisibleFieldCount` — Nova's blueprint counted on the basis the HQ draft
