@@ -100,7 +100,7 @@ Slide sequence (in order):
 
 Generate exactly `N + 2` slides where `N` is the number of Learn modules in the Learn app summary (`pdd-to-learn-app_summary.md` or `app-deploy_summary.md`):
 
-1. **One guided-learn slide per Learn module** — emit one `exercise` slide per Learn module enumerated in the Learn app summary. Title: `"Complete Learn Module N: <module-name>"` (use the module's actual display name). Body: 1-2 sentences naming the key concept the module teaches + the assessment threshold (e.g., "75% pass"). Duration: 15-25 min per module based on content density.
+1. **One guided-learn slide per Learn module** — emit one `exercise` slide per Learn module enumerated in the Learn app summary. Title: `"Complete Learn Module N: <module-name>"` (use the module's actual display name). Body: 1-2 sentences naming the key concept the module teaches + the assessment threshold (e.g., "75% pass"). State no duration — the LLO paces the module.
 2. **Form practice** (1 slide) — use the `form-practice` pattern. Set `{{FORM_NAME}}` to the primary delivery form name from the Deliver app summary. If multiple forms, pick the most frequent visit type's form.
 3. **Role play** (1 slide) — use `role-play` pattern. Set `{{VISIT_TYPE}}` and `{{ROLE}}` from the PDD's visit description (e.g., `{{VISIT_TYPE}}` = "Household Visit", `{{ROLE}}` = "household member").
 
