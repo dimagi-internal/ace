@@ -894,3 +894,153 @@ describe('MaestroBackend.waitForPackageManager — bounded retry (#1067)', () =>
     expect(err.message).toMatch(/2 attempts/);
   });
 });
+
+// dimagi-internal/ace#2309 — `captureUiDump` shelled out to a bare `adb`
+// with no `ANDROID_ADB_SERVER_PORT`, so on any host whose allocated adb
+// SERVER port moved off 5037 (`port-allocator.ts` walks upward on a busy
+// host), every per-step UI dump was silently lost: `adb -s <serial> ...`
+// against the wrong server reports "device not found", and all three of
+// this method's swallow points (`exitCode !== 0` early return, the pull's
+// `.catch(() => {})`, and the outer `catch {}`) hide it. These tests pin
+// the fix at the unit level — process-env plumbing whose ground truth is
+// the source, not a live device — per the issue's own framing.
+describe('MaestroBackend — adb SERVER port threading into captureUiDump (ace#2309)', () => {
+  // Routing shell that also records the `opts` (3rd arg) each call was
+  // made with, so the test can assert on the env passed to `adb` — the
+  // existing `makeRoutingShell` helper above only captures cmd/args.
+  function makeEnvRecordingShell(routes: Array<{ match: (cmd: string, args: string[]) => boolean; reply: { stdout?: string; stderr?: string; code?: number } }>) {
+    const calls: { cmd: string; args: string[]; opts: unknown }[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[], opts?: unknown) => {
+      const probe = bootedProbe(cmd, args);
+      if (probe) return probe;
+      calls.push({ cmd, args, opts });
+      for (const r of routes) {
+        if (r.match(cmd, args)) {
+          return { stdout: r.reply.stdout ?? '', stderr: r.reply.stderr ?? '', exitCode: r.reply.code ?? 0 };
+        }
+      }
+      throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+    });
+    return { shell, calls };
+  }
+
+  it('sets ANDROID_ADB_SERVER_PORT on both the dump and pull adb calls when adbServerPort is supplied', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-adbport-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n');
+
+    const { shell, calls } = makeEnvRecordingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('pull'), reply: { code: 0 } },
+    ]);
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554', adbServerPort: 5038 });
+    expect(r.status).toBe('pass');
+
+    const adbCalls = calls.filter((c) => c.cmd === 'adb' && (c.args.includes('uiautomator') || c.args.includes('pull')));
+    expect(adbCalls).toHaveLength(2);
+    for (const call of adbCalls) {
+      expect((call.opts as { env?: NodeJS.ProcessEnv } | undefined)?.env).toEqual({
+        ANDROID_ADB_SERVER_PORT: '5038',
+      });
+    }
+  });
+
+  it('omits the env key entirely when no adbServerPort is supplied (bare-adb fallback unchanged)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-adbport-none-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n');
+
+    const { shell, calls } = makeEnvRecordingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('pull'), reply: { code: 0 } },
+    ]);
+    const backend = new MaestroBackend({ shell });
+    // No `adbServerPort` in opts at all — the pre-fix call shape.
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+    expect(r.status).toBe('pass');
+
+    const adbCalls = calls.filter((c) => c.cmd === 'adb' && (c.args.includes('uiautomator') || c.args.includes('pull')));
+    expect(adbCalls).toHaveLength(2);
+    for (const call of adbCalls) {
+      expect((call.opts as { env?: NodeJS.ProcessEnv } | undefined)?.env).toBeUndefined();
+    }
+  });
+
+  it('does NOT use opts.adbPort (the emulator bridge port) as the server port — that would be wrong', async () => {
+    // Decisive distinction from the issue: `adbPort` is `adbPortFromSerial`
+    // (e.g. 5555), used ONLY for Maestro's own `--host`/`--port` direct-TCP
+    // flags. Passing adbPort=5555 alongside a distinct adbServerPort must
+    // land 5038 (the server) on the adb CLI calls, never 5555.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-adbport-distinct-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n');
+
+    const { shell, calls } = makeEnvRecordingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('pull'), reply: { code: 0 } },
+    ]);
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, {
+      serial: 'emulator-5554',
+      adbPort: 5555,
+      adbServerPort: 5038,
+    });
+    expect(r.status).toBe('pass');
+
+    const adbDump = calls.find((c) => c.cmd === 'adb' && c.args.includes('uiautomator'));
+    expect((adbDump?.opts as { env?: NodeJS.ProcessEnv } | undefined)?.env).toEqual({
+      ANDROID_ADB_SERVER_PORT: '5038',
+    });
+  });
+
+  it('logs a warning naming the likely cause when dump windows were attempted but zero .xml files landed', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-adbport-warn-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n');
+
+    // Simulate the live failure: the dump call itself fails (wrong adb
+    // server), so no .xml is ever written to screenshotDir.
+    const { shell } = makeEnvRecordingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { code: 1, stderr: "adb: device 'emulator-5554' not found" } },
+    ]);
+    const backend = new MaestroBackend({ shell });
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+      expect(r.status).toBe('pass');
+      const warned = stderrSpy.mock.calls.some((c) => String(c[0]).includes('UI-dump window(s) attempted but 0 .xml files'));
+      expect(warned).toBe(true);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('does not warn when there were no dump windows at all (recipe with no takeScreenshot steps)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-adbport-nowarn-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- tapOn: B\n');
+
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const probe = bootedProbe(cmd, args);
+      if (probe) return probe;
+      return { stdout: 'OK\n', stderr: '', exitCode: 0 };
+    });
+    const backend = new MaestroBackend({ shell });
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+      expect(r.status).toBe('pass');
+      const warned = stderrSpy.mock.calls.some((c) => String(c[0]).includes('UI-dump window(s) attempted'));
+      expect(warned).toBe(false);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+});

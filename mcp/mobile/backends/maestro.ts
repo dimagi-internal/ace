@@ -201,7 +201,21 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number; serial?: string; captureAllBoundaries?: boolean } = {},
+    opts: {
+      adbPort?: number;
+      serial?: string;
+      captureAllBoundaries?: boolean;
+      /**
+       * The allocated adb SERVER port (`port-allocator.ts`, default 5037,
+       * walks upward on a busy host) — NOT `adbPort` above, which is the
+       * emulator's direct-TCP adb BRIDGE port (5555) Maestro itself uses.
+       * `captureUiDump` shells out to the bare `adb` CLI, which talks to
+       * the SERVER, not the bridge, so it needs this value pinned via
+       * `ANDROID_ADB_SERVER_PORT` or it silently talks to a server that
+       * has never heard of the device (ace#2309).
+       */
+      adbServerPort?: number;
+    } = {},
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
     // Maestro's `takeScreenshot: "name"` writes to `./name.png` in the
@@ -234,6 +248,7 @@ export class MaestroBackend {
         adbPort?: number;
         serial: string;
         captureAllBoundaries?: boolean;
+        adbServerPort?: number;
       });
     }
 
@@ -489,7 +504,7 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number; serial: string; captureAllBoundaries?: boolean },
+    opts: { adbPort?: number; serial: string; captureAllBoundaries?: boolean; adbServerPort?: number },
   ): Promise<RecipeRunResult> {
     const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
     const body = fs.readFileSync(absoluteRecipePath, 'utf8');
@@ -581,6 +596,14 @@ export class MaestroBackend {
     // surfacing as a context-free timeout string.
     let chunksCompleted = 0;
     let lastCompletedScreenshot: string | null = null;
+    // Non-silent signal (ace#2309): `captureUiDump` swallows every adb
+    // failure by design (dumps are best-effort, never allowed to fail the
+    // recipe) — so a 100% dump-capture failure rate is otherwise
+    // indistinguishable from "this recipe had no dump windows." Count
+    // every window we actually attempted (not `chunks.filter(...).length`,
+    // which would also count windows never reached because an earlier
+    // chunk failed) and compare against `.xml` files actually on disk.
+    let dumpWindowsAttempted = 0;
 
     try {
       for (const chunk of chunks) {
@@ -612,7 +635,8 @@ export class MaestroBackend {
         // grab the UI hierarchy XML before the next chunk relaunches
         // the Maestro driver.
         if (chunk.screenshotName) {
-          await this.captureUiDump(opts.serial, screenshotDir, chunk.screenshotName);
+          dumpWindowsAttempted++;
+          await this.captureUiDump(opts.serial, screenshotDir, chunk.screenshotName, opts.adbServerPort);
         }
       }
     } finally {
@@ -623,6 +647,28 @@ export class MaestroBackend {
         } catch {
           /* noop */
         }
+      }
+    }
+
+    // Non-silent signal, continued: dump windows were attempted but not a
+    // single `.xml` landed on disk. Never throws and never changes the
+    // verdict — dumps are best-effort by contract — but a run that goes
+    // 25-for-25 silent (the live bednet-check-2-visit/20260908-1544
+    // repro) must leave SOME trace that isn't a diff against the atlas.
+    if (dumpWindowsAttempted > 0) {
+      let xmlCount = 0;
+      try {
+        xmlCount = fs.readdirSync(screenshotDir).filter((f) => f.endsWith('.xml')).length;
+      } catch {
+        /* best-effort — directory listing failure isn't the thing we're warning about */
+      }
+      if (xmlCount === 0) {
+        logInfo(
+          `maestro: ${dumpWindowsAttempted} UI-dump window(s) attempted but 0 .xml files were ` +
+            'written — likely cause: captureUiDump talked to the wrong adb SERVER (bare `adb` ' +
+            'defaults to 5037; pass adbServerPort from AvdBackend.getAllocatedPorts() so ' +
+            'ANDROID_ADB_SERVER_PORT is pinned). See dimagi-internal/ace#2309.',
+        );
       }
     }
 
@@ -667,16 +713,38 @@ export class MaestroBackend {
    * brings it back. Failures are swallowed — a missing dump
    * degrades to "PNG without sibling XML", which is the pre-0.13.229
    * baseline.
+   *
+   * `adbServerPort` pins `ANDROID_ADB_SERVER_PORT` on both `adb` calls to
+   * the allocated adb SERVER port (`port-allocator.ts` walks upward from
+   * 5037 on a busy host) — NOT the emulator's direct-TCP adb BRIDGE port
+   * Maestro itself uses via `--host`/`--port`. Without it a bare `adb`
+   * defaults to 5037 and reports `device '<serial>' not found` on any
+   * host whose allocation moved off it, and that failure is invisible:
+   * this method's own `try`/`catch` swallows it exactly like every other
+   * best-effort dump failure (ace#2309). Optional and omittable — a
+   * caller with no allocated port (e.g. unit tests, or a caller that
+   * never resolved one) gets the pre-fix bare-`adb` behavior unchanged.
    */
-  private async captureUiDump(serial: string, screenshotDir: string, screenshotName: string): Promise<void> {
+  private async captureUiDump(
+    serial: string,
+    screenshotDir: string,
+    screenshotName: string,
+    adbServerPort?: number,
+  ): Promise<void> {
     const devicePath = `/sdcard/__ace-dump-${screenshotName}.xml`;
     const hostPath = path.join(screenshotDir, `${screenshotName}.xml`);
+    const env: NodeJS.ProcessEnv | undefined =
+      typeof adbServerPort === 'number' ? { ANDROID_ADB_SERVER_PORT: String(adbServerPort) } : undefined;
     try {
       const dumpRes = await this.shell('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', devicePath], {
         timeoutMs: 10_000,
+        env,
       });
       if (dumpRes.exitCode !== 0) return;
-      await this.shell('adb', ['-s', serial, 'pull', devicePath, hostPath], { timeoutMs: 10_000 }).catch(() => {});
+      await this.shell('adb', ['-s', serial, 'pull', devicePath, hostPath], {
+        timeoutMs: 10_000,
+        env,
+      }).catch(() => {});
     } catch {
       /* noop — best-effort */
     }

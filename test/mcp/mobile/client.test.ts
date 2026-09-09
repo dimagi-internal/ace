@@ -505,6 +505,39 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     const backendOpts = maestro.runRecipe.mock.calls[0][3];
     expect(backendOpts.captureAllBoundaries).toBe(true);
   });
+
+  // dimagi-internal/ace#2309 — `avd.getAllocatedPorts().adbServerPort` is
+  // resolved on every local-backend dispatch (not only when recording is
+  // on) and threaded into `maestro.runRecipe`'s opts, so
+  // `MaestroBackend.captureUiDump` can pin `ANDROID_ADB_SERVER_PORT` on
+  // its bare `adb` calls instead of silently talking to the default
+  // (5037) server on any host whose allocation moved off it.
+  it('forwards adbServerPort from avd.getAllocatedPorts() through to the backend call', async () => {
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const { avd, maestro } = fakeLocalBackends();
+    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+
+    expect(maestro.runRecipe).toHaveBeenCalledTimes(1);
+    const backendOpts = maestro.runRecipe.mock.calls[0][3];
+    expect(backendOpts.adbServerPort).toBe(5039);
+  });
+
+  it('omits adbServerPort rather than throwing when getAllocatedPorts() rejects (best-effort)', async () => {
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const { avd, maestro } = fakeLocalBackends();
+    avd.getAllocatedPorts = vi.fn().mockRejectedValue(new Error('boom'));
+    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+
+    const r = await client.runRecipe(recipePath, {}, tmpDir);
+    expect(r.status).toBe('pass');
+
+    const backendOpts = maestro.runRecipe.mock.calls[0][3];
+    expect(backendOpts.adbServerPort).toBeUndefined();
+  });
 });
 
 describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => {
