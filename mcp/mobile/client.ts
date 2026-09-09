@@ -2101,9 +2101,21 @@ export class MobileClient {
             // most.
             recordAttempt += 1;
             let handle: ReturnType<typeof startRecording>;
+            // Resolved once per attempt (not just when recording is on):
+            // `captureUiDump` needs the same allocated adb SERVER port the
+            // recorder does (ace#2309) — a bare `adb` defaults to 5037,
+            // which `port-allocator.ts` only uses when nothing else is
+            // running. Best-effort: a resolution failure must not block
+            // the recipe, it only means dumps fall back to the pre-fix
+            // bare-`adb` behavior.
+            let adbServerPort: number | undefined;
+            try {
+              adbServerPort = (await this.avd.getAllocatedPorts()).adbServerPort;
+            } catch (e) {
+              logInfo(`runRecipe: could not resolve adb server port for ${recipeId}: ${String(e)}`);
+            }
             if (recorderConfig.enabled && avdInfo?.serial) {
               try {
-                const ports = await this.avd.getAllocatedPorts();
                 handle = this.recorder.start({
                   serial: avdInfo.serial,
                   recipeId,
@@ -2111,7 +2123,7 @@ export class MobileClient {
                   attempt: recordAttempt,
                   outDir: runDir,
                   config: recorderConfig,
-                  adbServerPort: ports.adbServerPort,
+                  adbServerPort,
                 });
               } catch (e) {
                 logInfo(`runRecipe: could not start recording for ${recipeId}: ${String(e)}`);
@@ -2129,6 +2141,7 @@ export class MobileClient {
                 adbPort: avdInfo?.adbPort,
                 serial: avdInfo?.serial,
                 captureAllBoundaries: opts?.captureAllBoundaries,
+                adbServerPort,
               });
             } finally {
               if (handle) {

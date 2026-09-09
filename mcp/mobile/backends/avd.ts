@@ -117,7 +117,21 @@ export interface ShellResult {
   exitCode: number;
 }
 
-export type ShellFn = (cmd: string, args: string[], opts?: { timeoutMs?: number; cwd?: string }) => Promise<ShellResult>;
+/**
+ * `env` is an optional per-call override merged OVER the shell's normal
+ * environment (`shellEnv()` in `defaultShell`) — never a replacement.
+ * Used by `MaestroBackend.captureUiDump` to pin `ANDROID_ADB_SERVER_PORT`
+ * for its bare `adb` calls without needing its own wrapped-shell instance
+ * (ace#2309): `AvdBackend.makeAdbShell` solves the same problem for
+ * `adb`-prefixed calls by mutating `process.env` around the spawn, but
+ * `MaestroBackend` is handed a raw `ShellFn` with no such wrapper, so the
+ * override has to travel through `opts` instead.
+ */
+export type ShellFn = (
+  cmd: string,
+  args: string[],
+  opts?: { timeoutMs?: number; cwd?: string; env?: NodeJS.ProcessEnv },
+) => Promise<ShellResult>;
 
 /**
  * Resolve a `JAVA_HOME` for the current platform if the user hasn't already
@@ -294,7 +308,8 @@ function shellEnv(): NodeJS.ProcessEnv {
 
 export const defaultShell: ShellFn = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: shellEnv(), cwd: opts.cwd });
+    const env = opts.env ? { ...shellEnv(), ...opts.env } : shellEnv();
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env, cwd: opts.cwd });
     let stdout = '', stderr = '';
     child.stdout.on('data', (d) => (stdout += d.toString()));
     child.stderr.on('data', (d) => (stderr += d.toString()));
