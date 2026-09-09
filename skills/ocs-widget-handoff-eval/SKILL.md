@@ -15,7 +15,7 @@ widget parameter and `mcp/connect/` contains no widget or embed surface at all.
 The route that works right now is the bot's **public chat URL**, which needs no
 configuration hop.
 
-This rubric grades the staging artifact (`ocs-setup/widget-handoff.md`) on
+This rubric grades the staging artifact (`5-ocs/ocs-setup_widget-handoff.md`) on
 whether it gives the operator what they can actually use today: a live public
 chat URL, the credentials held for when CCC-301 ships, the opportunity this bot
 is bound to, and a way to verify they are talking to the right bot.
@@ -40,7 +40,7 @@ CCC-301).
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
-2. **Detect missing artifacts.** If `widget-handoff.md` is missing,
+2. **Detect missing artifacts.** If `5-ocs/ocs-setup_widget-handoff.md` is missing,
    emit `verdict: incomplete` with `[INFO] widget-handoff.md not
    found — Phase 5 ocs-setup did not write the staging artifact, or
    the LLO already pasted in and the artifact was archived`.
@@ -93,7 +93,7 @@ CCC-301).
    `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-widget-handoff-eval_verdict.yaml`. The filename uses
    **this eval skill's** name (`ocs-widget-handoff-eval`), not the
    producer's (`ocs-agent-setup` — the skill that produces
-   `ocs-setup/widget-handoff.md` as one of its outputs): per the 0.12.0
+   `5-ocs/ocs-setup_widget-handoff.md` as one of its outputs): per the 0.12.0
    Option-α rule an `-eval` skill keeps `-eval` in its verdict filename,
    and the Workbench rolls the score up to the producer row via the
    `eval_skill:` pairing in the phase agent's frontmatter, not by
@@ -105,7 +105,7 @@ CCC-301).
    target: <opp-name>
    mode: deep
    ran_at: <ISO timestamp>
-   capture_path: ocs-setup/widget-handoff.md
+   capture_path: 5-ocs/ocs-setup_widget-handoff.md
 
    overall_score: 8.7
    overall_score_pre_cap: 8.7

@@ -142,7 +142,7 @@ ace@dimagi-ai.com
    - Word count 200-350, excluding URLs
    - All three sibling docs are linked
    - Widget URL is the actual `widget_url` from
-     `ocs-setup/widget-handoff.md`
+     `5-ocs/ocs-setup_widget-handoff.md`
    - The three personalization tokens are used (none more, none
      fewer)
    - Exactly one primary CTA, and it carries a deadline, a time
