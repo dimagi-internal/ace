@@ -81,7 +81,11 @@ log "  → state file: ~/.ace/labs-session.json"
 
 # Drive the full Playwright flow. tsx pulls in the existing connect/auth
 # helpers; output is JSON so the shell can extract the session-state path.
-RESULT_JSON="$(npx --prefix "$SELF_DIR" tsx "$SELF_DIR/bin/labs-walkthrough-login.ts" \
+# tsx is invoked as node + tsx/dist/cli.mjs, NOT `npx tsx`: the installed plugin cache
+# ships node_modules/.bin/tsx as a dereferenced COPY rather than a symlink (every version
+# since 0.13.1169, ace#2252), so tsx's split-bundle chunk imports resolve against .bin/ and
+# any invocation rooted inside the plugin throws ERR_MODULE_NOT_FOUND.
+RESULT_JSON="$(node "$SELF_DIR/node_modules/tsx/dist/cli.mjs" "$SELF_DIR/bin/labs-walkthrough-login.ts" \
   --connect-base-url "$CONNECT_BASE_URL" \
   --labs-base-url "$LABS_BASE_URL" 2>&1 | tee /dev/stderr | tail -n 1)"
 

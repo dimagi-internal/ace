@@ -133,6 +133,15 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
   exit 0
 fi
 
+# node_modules/.bin/tsx is a symlink to ../tsx/dist/cli.mjs in a healthy install, but the
+# installed plugin cache has shipped it as a dereferenced COPY since 0.13.1169 (ace#2252) —
+# tsx's bundle splits into sibling hashed chunk files that cli.mjs imports relative to its own
+# location, so the copy's relative import resolves against .bin/ (nothing there) instead of
+# tsx/dist/ and every `npx tsx` invocation with cwd inside $ROOT throws ERR_MODULE_NOT_FOUND.
+# Invoke the real entrypoint directly so every internal call below is immune to that symlink
+# regardless of whether the packaging bug is ever fixed.
+TSX_CLI="$ROOT/node_modules/tsx/dist/cli.mjs"
+
 [ "$PREFLIGHT" = "1" ] || echo "INFO plugin_root=$ROOT (mode=$MODE)"
 
 # Dispatch sub-commands. Sub-commands short-circuit the rest of the script.
@@ -142,7 +151,7 @@ if [ "$SUBCOMMAND" = "verdicts" ]; then
     echo "  fix: run /ace:update to pull a version that ships the validator (>= 0.10.29)"
     exit 0
   fi
-  cd "$ROOT" && exec npx tsx scripts/validate-opp-verdicts.ts "$SUB_OPP"
+  cd "$ROOT" && exec node "$TSX_CLI" scripts/validate-opp-verdicts.ts "$SUB_OPP"
 fi
 
 if [ "$SUBCOMMAND" = "state-yaml-lint" ]; then
@@ -151,7 +160,7 @@ if [ "$SUBCOMMAND" = "state-yaml-lint" ]; then
     echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.6)"
     exit 0
   fi
-  cd "$ROOT" && exec npx tsx scripts/lint-opp-state.ts "$SUB_OPP"
+  cd "$ROOT" && exec node "$TSX_CLI" scripts/lint-opp-state.ts "$SUB_OPP"
 fi
 
 if [ "$SUBCOMMAND" = "state-yaml-cruft" ]; then
@@ -160,7 +169,7 @@ if [ "$SUBCOMMAND" = "state-yaml-cruft" ]; then
     echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.7)"
     exit 0
   fi
-  cd "$ROOT" && exec npx tsx scripts/lint-opp-cruft.ts "$SUB_OPP"
+  cd "$ROOT" && exec node "$TSX_CLI" scripts/lint-opp-cruft.ts "$SUB_OPP"
 fi
 
 # `deep-qa-freshness <opp>` — advisory check that mirrors the Phase 6
@@ -175,7 +184,7 @@ if [ "$SUBCOMMAND" = "deep-qa-freshness" ]; then
     echo "  fix: run /ace:update to pull a version that ships the check (shallow/deep QA split refactor)"
     exit 0
   fi
-  cd "$ROOT" && exec npx tsx scripts/check-deep-qa-freshness.ts "$SUB_OPP"
+  cd "$ROOT" && exec node "$TSX_CLI" scripts/check-deep-qa-freshness.ts "$SUB_OPP"
 fi
 
 # --preflight — emit a tight YAML snapshot of local state for the orchestrator's
@@ -461,13 +470,13 @@ if [ "$PREFLIGHT" = "1" ]; then
   # and re-points it after a key rotation, which a static header cannot follow
   # on its own. Status stays `fail` after a successful heal: MCP subprocesses
   # bind at session start, so the restart remains mandatory.
-  PF_NOVA_HDR_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
+  PF_NOVA_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
 
   # nova_scopes — ace#174. In PREFLIGHT deliberately, not only in the full
   # doctor run: preflight is what /ace:run gates on before Phase 1, and the
   # whole saving is catching a partially-scoped key there rather than at
   # Phase 3 app-deploy after a ~25-minute Nova build.
-  PF_NOVA_SCOPES_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-nova-scopes.ts --format=yaml 2>/dev/null || true)"
+  PF_NOVA_SCOPES_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-scopes.ts --format=yaml 2>/dev/null || true)"
   if [ -z "$PF_NOVA_SCOPES_YAML" ]; then
     PF_NOVA_SCOPES_YAML="nova_scopes:
   status: skip
@@ -522,7 +531,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   elif [ ! -f "$PF_OCS_SESS" ]; then
     PF_OCS_GEN_SKIP_REASON="$PF_OCS_SESS missing — run /ace:ocs-login (or set OCS_USERNAME/OCS_PASSWORD)"
   else
-    PF_OCS_GEN_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=yaml 2>/dev/null || true)"
+    PF_OCS_GEN_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-ocs-generation.ts --format=yaml 2>/dev/null || true)"
   fi
   if [ -z "$PF_OCS_GEN_YAML" ]; then
     [ -z "$PF_OCS_GEN_SKIP_REASON" ] && PF_OCS_GEN_SKIP_REASON="probe produced no output"
@@ -739,7 +748,7 @@ fi
 # handles the ps/stat side. Emits SKIP (not WARN) whenever it cannot bind the
 # process list to this session — e.g. run from a plain terminal.
 if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
-  ENV_FRESH_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-env-freshness.ts 2>/dev/null || true)"
+  ENV_FRESH_OUT="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-env-freshness.ts 2>/dev/null || true)"
   # The probe now emits MORE THAN ONE verdict line (env_freshness +
   # cache_freshness, ace#970), so read every line — a `head -1` here would
   # silently swallow the second.
@@ -1238,7 +1247,7 @@ if [ -n "$ENV_FILE" ]; then
       # CLAUDE_PLUGIN_DATA is passed explicitly so the probe's loadPluginEnv
       # finds the real .env in --here / dev-checkout mode too, where it cannot
       # derive the data dir from its own module path.
-      WO_DRIFT_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" GOOGLE_APPLICATION_CREDENTIALS="$KEY" npx tsx scripts/probe-work-order-template-drift.ts 2>&1)"
+      WO_DRIFT_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" GOOGLE_APPLICATION_CREDENTIALS="$KEY" node "$TSX_CLI" scripts/probe-work-order-template-drift.ts 2>&1)"
       WO_DRIFT_RC=$?
       if [ "$WO_DRIFT_RC" = "0" ]; then
         pass "work_order_template_drift: live template carries exactly the tokens templates/work-order-template.md declares"
@@ -1917,7 +1926,7 @@ fi
 # name the GENERATION provider's /service_providers/llm/<pk>/ page — which is
 # NOT the id OCS_LLM_PROVIDER_ID holds (that is embeddings; see the script).
 if [ -f "$ROOT/scripts/doctor-ocs-generation.ts" ]; then
-  ( cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=lines 2>/dev/null ) || true
+  ( cd "$ROOT" && node "$TSX_CLI" scripts/doctor-ocs-generation.ts --format=lines 2>/dev/null ) || true
 else
   info "ocs_generation: skipped — scripts/doctor-ocs-generation.ts not present (run /ace:update)"
 fi
@@ -2289,7 +2298,7 @@ fi
 # `configured:true` while the in-session Nova connection was unusable. That
 # question belongs to nova_header_readiness below, which outranks this line.
 if [ -f "$ROOT/scripts/doctor-nova-scopes.ts" ]; then
-  NOVA_SCOPES_LINES="$(cd "$ROOT" && npx tsx scripts/doctor-nova-scopes.ts --format=lines 2>/dev/null || true)"
+  NOVA_SCOPES_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-scopes.ts --format=lines 2>/dev/null || true)"
   # Printed verbatim: the script emits the exact PASS/WARN/FAIL/INFO shape
   # pass()/warn()/fail() produce, so the end-of-run summary counts it with no
   # bookkeeping here — same contract as nova_header_readiness below.
@@ -2576,7 +2585,7 @@ fi
 # re-pointing the nova-plugin#52 static-header override. Full rationale in
 # scripts/doctor-nova-header.ts and lib/nova-header-readiness.ts.
 if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
-  NOVA_HDR_LINES="$(cd "$ROOT" && npx tsx scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
+  NOVA_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
   # Printed verbatim: the script already emits the exact PASS/INFO/WARN shape
   # pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
   # counts it without any bookkeeping here.
@@ -2729,7 +2738,7 @@ else
     # resolver also finds keg-only Homebrew openjdk that isn't on PATH. Using
     # the same resolver keeps this check honest: it PASSes whenever ACE can
     # actually run the jar, and only blames the jar when a real JDK runs it.
-    COMMCARE_JAVA_BIN="$(cd "$ROOT" 2>/dev/null && npx tsx scripts/resolve-java-path.ts 2>/dev/null)"
+    COMMCARE_JAVA_BIN="$(cd "$ROOT" 2>/dev/null && node "$TSX_CLI" scripts/resolve-java-path.ts 2>/dev/null)"
     if [ -z "$COMMCARE_JAVA_BIN" ]; then
       warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but no working Java runtime found (resolveJavaPath: not on PATH, no \$ACE_JAVA_BIN, no /usr/libexec/java_home, no Homebrew openjdk)" "install JDK 17+ (brew install openjdk@17 on macOS)"
     else
@@ -2948,7 +2957,7 @@ unset MOBILE_ISSUES _MOBILE_MAESTRO _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBIL
 # owns the emulator/ps/filesystem reads and BORROWS every predicate rather than
 # re-deriving one. Emits SKIP (not WARN) when the AVD list is unreadable.
 if [ -f "$ROOT/scripts/doctor-avd-pool.ts" ]; then
-  AVD_POOL_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-avd-pool.ts 2>/dev/null || true)"
+  AVD_POOL_OUT="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-avd-pool.ts 2>/dev/null || true)"
   # The probe emits a verdict line followed by indented per-AVD detail; the
   # detail lines are carried onto the verdict so `warn` shows the whole pool.
   AVD_POOL_HEAD="$(printf '%s\n' "$AVD_POOL_OUT" | head -1)"
@@ -2983,7 +2992,7 @@ fi
 # own dry-run sweep rather than scanning independently, so a WARN here always
 # names exactly the files the reaper would take.
 if [ -f "$ROOT/scripts/doctor-emulator-temp.ts" ]; then
-  EMU_TMP_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-emulator-temp.ts 2>/dev/null || true)"
+  EMU_TMP_OUT="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-emulator-temp.ts 2>/dev/null || true)"
   EMU_TMP_HEAD="$(printf '%s\n' "$EMU_TMP_OUT" | head -1)"
   EMU_TMP_REST="$(printf '%s\n' "$EMU_TMP_OUT" | tail -n +2 | grep -v '^  fix: ')"
   case "$EMU_TMP_HEAD" in
@@ -3299,7 +3308,7 @@ done
 echo ""
 echo "[Drive layout]"
 if [ -f "$ROOT/scripts/doctor-drive-layout.ts" ]; then
-  cd "$ROOT" && npx tsx scripts/doctor-drive-layout.ts 2>&1
+  cd "$ROOT" && node "$TSX_CLI" scripts/doctor-drive-layout.ts 2>&1
 else
   warn "drive_layout: scripts/doctor-drive-layout.ts not present" "run /ace:update to pull a version that ships the audit (>= 0.11.9)"
 fi

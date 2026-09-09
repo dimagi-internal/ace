@@ -162,7 +162,7 @@ reuse one whose Learn the demo phone already finished; #568).
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-atlas-drift.ts" <dump-dir> --apk <apk> --out <report>.md
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/probe-atlas-drift.ts" <dump-dir> --apk <apk> --out <report>.md
 ```
 
 Read the two sections: **resource-ids in dumps but NOT in the map** (candidate

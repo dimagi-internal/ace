@@ -189,7 +189,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId from step 7> \
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId from step 7> \
      --screenshots <drive_folders.screenshots from app-screenshot-capture_manifest.yaml>
    ```
 

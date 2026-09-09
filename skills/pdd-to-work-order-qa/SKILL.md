@@ -84,7 +84,7 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 5. **Invoke the check runner** that imports `checks.ts § CHECKS` and runs each against `{workOrderText, decisionsYamlText, archetype}`. Output: a `QACheckResult[]` aligned with the `CHECKS` array.
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-work-order-qa --artifact "$TMP_WO" --target "<opp-name>/<run-id>" --capture-path "1-design/pdd-to-work-order.gdoc" --decisions "$TMP_DEC" --archetype "<archetype from step 3>" --pdd "$TMP_PDD" --include-passed
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-work-order-qa --artifact "$TMP_WO" --target "<opp-name>/<run-id>" --capture-path "1-design/pdd-to-work-order.gdoc" --decisions "$TMP_DEC" --archetype "<archetype from step 3>" --pdd "$TMP_PDD" --include-passed
    ```
 
    **All five of `--target`, `--capture-path`, `--decisions`, `--archetype` and
@@ -107,4 +107,4 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file` — **always with `exportAs: 'text/plain'`** for the work-order gdoc (the PDD body read in step 3 takes `text/markdown`, per its own sibling's convention) (see § Process step 1; the inverse of `idea-to-pdd-qa`, which requires `text/markdown`), and the default for `decisions.yaml`, `drive_create_file`
-- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
+- Bash: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)

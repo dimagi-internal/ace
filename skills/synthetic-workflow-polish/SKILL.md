@@ -165,7 +165,7 @@ call — see the seed skill's alias-consistency guardrail.
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-render-code-utilities.ts" <post-patch-source> --substitute
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-render-code-utilities.ts" <post-patch-source> --substitute
    # exit 0 = clean · exit 1 = MISSING, do NOT upload · exit 2 = stylesheet unreadable
    ```
 

@@ -239,7 +239,7 @@ Publishing one of these is a **two-step write**, and step 2 is not optional:
 
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId> \
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId> \
      --screenshots <screenshots folderId from the capture manifest's drive_folders>
    ```
 

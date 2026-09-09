@@ -151,7 +151,7 @@ For each app in scope, enumerate its forms and modules against the
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-WALK_OUT="$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch)"
+WALK_OUT="$(node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch)"
 jq . "$WALK_OUT"
 ```
 
@@ -301,7 +301,7 @@ Then, per form:
 2. Apply the attribute **on disk**:
 
    ```bash
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-xform-acquire.ts" \
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-xform-acquire.ts" \
      "$D/<form_unique_id>.xml" -o "$D/<form_unique_id>.acquire.xml"
    ```
 

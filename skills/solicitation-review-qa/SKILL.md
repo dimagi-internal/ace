@@ -144,7 +144,7 @@ The static check functions live at `skills/solicitation-review-qa/checks.ts` as 
 5. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" \
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" \
      --skill solicitation-review-qa \
      --artifact "$REC" \
      --context-recommendation "$REC" \
@@ -197,7 +197,7 @@ quality; QA's job is to ensure they have a fair input.
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file` — **always with `exportAs: 'text/plain'`** for BOTH the recommendation and scoring artifacts (see § Process step 1; the same as `pdd-to-work-order-qa` and `pdd-to-test-prompts-qa`, the inverse of `idea-to-pdd-qa`, which requires `text/markdown`), `drive_list_folder`, `drive_create_file`
-- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
+- Bash: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
 
 ## Mode Behavior
 
