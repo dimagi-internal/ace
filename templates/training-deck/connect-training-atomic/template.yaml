@@ -14,4 +14,3 @@ modules:
   - evaluation
   - resources
 expected_slide_count: "30-45"
-expected_duration_minutes: "150-240"

@@ -9,7 +9,7 @@ disable-model-invocation: false
 
 # Idea-to-PDD QA
 
-Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 10 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 11 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 This is the canonical first migration to the QA/Eval split (PR #146). The companion `idea-to-pdd-eval` was slimmed to quality-only dimensions in this same PR; structural completeness now lives here.
 
@@ -29,6 +29,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
+| 0 | `launch_parameters_present` | static | Every parameter Phase 3 (app build) and Phase 4 (opportunity creation) needs is declared in § Program Parameters: FLW pay per visit (`amount`), **LLO pay per visit (`org_amount`)**, daily target (`max_daily`), per-FLW cap (`max_total`), campaign target, `total_budget`, opportunity start/end dates, and verification flags. `[PROPOSED]` / `[TBD]` values are ACCEPTED — the check enforces that the parameter was decided and written where Phase 4 looks, not that a human signed it off. **Runs first on purpose.** | add a row per missing key to the § Program Parameters table; if a figure is unsettled write the proposal (`llo_payment_per_visit \| 1.50 [PROPOSED]`) with a matching `decisions.yaml` row carrying `evidence_basis: inferred`. Omitting the row is the only wrong answer |
 | 1 | `all_required_sections_present` | static | All 12 required PDD sections present (Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline, Program Parameters). Heading match tolerates case variation, bold-wrapping, and trailing parentheticals — see `checks.ts § checkAllRequiredSectionsPresent` for the full tolerance contract. | regenerate the missing section(s) with substantive content matching each section's purpose (auto_fix_hint enumerates per-section purpose in the failure detail) |
 | 2 | `archetype_declared_and_valid` | static | Archetype declared in the body's top metadata block (preferred — PDDs are rendered gdocs, so raw `---` frontmatter renders as noise) or, still accepted, in YAML frontmatter; value is one of {atomic-visit, longitudinal-visits, focus-group, multi-stage} (canonical list: `checks.ts § VALID_ARCHETYPES`) | add a `**Archetype:** <value>` line to the PDD's top metadata block |
 | 3 | `stress_test_appendix_present` | static | PDD has a `## Stress Test Results` appendix with the 5-question self-eval grades | add the appendix per skills/idea-to-pdd/SKILL.md § Process step 6 |

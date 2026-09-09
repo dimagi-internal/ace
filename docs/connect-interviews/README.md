@@ -1,6 +1,6 @@
 # Connect Interviews — ACE support
 
-The Connect Interviews program is a Dimagi initiative separate from ACE. FLWs conduct structured interviews with participants by chatting with an OCS LLM bot embedded in CommCare Connect Messaging. Successful interview completion drives Connect payment via the standard Deliver Unit flow.
+The Connect Interviews program is a Dimagi initiative separate from ACE. FLWs conduct structured interviews with participants by chatting with an OCS LLM bot embedded in Connect Messaging. Successful interview completion drives Connect payment via the standard Deliver Unit flow.
 
 This directory holds the ACE-side design artifacts for automating the team's launch workflow.
 

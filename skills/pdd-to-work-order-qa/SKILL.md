@@ -11,7 +11,7 @@ disable-model-invocation: false
 
 # PDD-to-Work-Order QA
 
-Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 14 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 15 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, auto-fix protocol, static-vs-LLM rules).
 
@@ -31,6 +31,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
+| 0 | `rendered_from_template` | static | The artifact was rendered by `docs_copy_template` from `WORK_ORDER_TEMPLATE_ID`, not synthesized into a blank doc. Fails on (a) any degradation confession in the body, or (b) missing template-only boilerplate (the hardcoded Dimagi signatory cell, the legal contact line). **Runs first on purpose** — a negative result explains every other row below it. | re-render via `docs_copy_template` and discard the doc; do NOT delete the confession note and re-run. If the copy itself fails, HALT — see `pdd-to-work-order § The render path is not optional` |
 | 1 | `all_required_sections_present` | static | All 11 required work-order sections present (Background, Scope of Work, Geographic Coverage, Deliverables and Verification, Timeline and Milestones, Payment Terms, Roles and Responsibilities, Permissions/Ethics/Compliance, Data Handling, Signatures, Annexures). | regenerate the missing section(s) with substantive content per templates/work-order-template.md |
 | 2 | `required_wo_decisions_present` | static | All four required `wo-*` rows present in decisions.yaml: `wo-number`, `wo-period-of-performance`, `wo-total-not-to-exceed-usd`, `wo-payment-schedule-split`. | append the missing rows with AI's best inference + status: applied/open |
 | 3 | `period_of_performance_complete` | static | Header's Period of Performance shows both start and end dates (or explicit placeholder). | render Period of Performance as "YYYY-MM-DD to YYYY-MM-DD" or "[Period of Performance — TBD]" |

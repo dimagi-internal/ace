@@ -96,6 +96,48 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
 5. **Render the work-order template to a Google Doc.**
+
+   > ### The render path is not optional
+   >
+   > **`docs_copy_template` from `WORK_ORDER_TEMPLATE_ID` is the ONLY sanctioned
+   > way to produce this artifact.** If the copy fails, **retry once**, and then
+   > **HALT and report**. Do not compose the document by any other route.
+   >
+   > Specifically forbidden, however reasonable it looks in the moment:
+   > `drive_create_file`, `drive_create_doc_from_markdown`, or any other write
+   > that puts synthesized contractual prose into a document. A work order is a
+   > contractual artifact; an unbranded plain-text approximation of one is not a
+   > degraded deliverable, it is a different thing wearing the same filename.
+   >
+   > **A provenance note is not a substitute for failing.** On
+   > `turmeric-market-study/20260828-1108` the copy failed transiently — the
+   > template was briefly unreachable by the service account — and the producer
+   > improvised: it synthesized the prose, wrote it to a blank doc, and
+   > explained itself inside the contract:
+   >
+   > > "NOTE (render provenance): ... The styled Google Docs template
+   > > (WORK_ORDER_TEMPLATE_ID) was not accessible to the service account at
+   > > render time, so this document was produced directly from the synthesized
+   > > contractual content rather than the branded template."
+   >
+   > That paragraph is honest and it changed nothing. `pdd-to-work-order-qa`
+   > returned **`verdict: pass`, 8/8** — correctly, because every other check in
+   > that suite is deliberately format-agnostic — the phase summary reported
+   > success, and a plain document went to the operator as the run's work order.
+   > Prose inside an artifact is not a gate. Only a halt is a halt.
+   >
+   > **The failure was transient, which is the point.** The template was
+   > verified copyable on 2026-09-09 (real copy, tables intact, tokens
+   > substituting), so nothing about the template or the environment prevents a
+   > recurrence — only this rule does.
+   >
+   > *Enforced:* `pdd-to-work-order-qa § rendered_from_template` fails the
+   > artifact whether or not the fallback confesses (it also checks for
+   > template-only boilerplate). *Preflight:* `/ace:doctor`'s
+   > `work_order_template_copyable` probe attempts a real copy before a run
+   > starts, so an unreachable template surfaces as a red doctor line rather
+   > than as a mid-run improvisation.
+
    - **Resolve-or-create the `1-design/` phase subfolder first** — `drive_create_folder({name: '1-design', parentFolderId: <run-folder file_id>, findOrCreate: true})` — and pass its id (NOT the run-folder id) as `parentFolderId` below. Passing the run-folder id lands the work order flat at the run root, which fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623).
    - `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID from env>, parentFolderId=<1-design folder id>, title="pdd-to-work-order.gdoc", replacements={...})`. Pass all token replacements directly to `docs_copy_template` — it runs a single `replaceAllText` batch under the hood, no separate `docs_batch_update` needed. If the run already has a `pdd-to-work-order.gdoc`, title the new one `pdd-to-work-order-2.gdoc`, etc.
    - **After the copy returns, call `docs_finalize_bullets(documentId=<new-doc-id>)` (required).** This atom applies real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, deletes the anchors, and returns the count of pairs processed. **The live `WORK_ORDER_TEMPLATE_ID` template carries FIVE anchor pairs** (the two §2 scope blocks, §4.2 verified-unit criteria, §4.3 reporting, §8.1 permissions), so the expected result is `anchorsProcessed: 5` (a non-zero `emptyBulletsRemoved` is normal when some bullet lines go unused). A `processed: 0` result now means the anchors were destroyed (e.g. by a bad token replacement) — investigate before shipping the doc; it is no longer the expected no-op it was pre-anchor-landing (history: jjackson/ace#614; doc staleness caught as jjackson/ace#819).

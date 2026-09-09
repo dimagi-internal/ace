@@ -964,7 +964,125 @@ export function checkAcceptanceDefined(raw: string): QACheckResult {
   };
 }
 
+/**
+ * Was this work order actually rendered from the branded template?
+ *
+ * ## The failure this exists for
+ *
+ * On `turmeric-market-study/20260828-1108` the work order shipped as a PLAIN
+ * Google Doc — no tables, no branding, no styling — and this QA suite returned
+ * `verdict: pass`, 8/8. The artifact explained why in its own body:
+ *
+ *   "NOTE (render provenance): ... The styled Google Docs template
+ *    (WORK_ORDER_TEMPLATE_ID) was not accessible to the service account at
+ *    render time, so this document was produced directly from the synthesized
+ *    contractual content rather than the branded template."
+ *
+ * `docs_copy_template` failed transiently, the skill mandated no behaviour for
+ * that case, so the producer improvised: it synthesized the prose and wrote it
+ * to a blank doc. The degradation was recorded only as PROSE — a `note:` field
+ * on the verdict and a paragraph inside the contract — and prose is not a gate,
+ * so the run reported success and a plain document went out as a contractual
+ * deliverable.
+ *
+ * ## Why no existing check caught it, and why that was not a bug
+ *
+ * Every other check here is deliberately FORMAT-AGNOSTIC: `normalizeDriveExport`
+ * plus dual markdown/gdoc matching exists precisely so the same document scores
+ * identically whether read as `text/plain` or `text/markdown` (jjackson/ace#706,
+ * dimagi-internal/ace#1609). That is correct and must stay. The consequence is
+ * that a plain synthesized doc satisfies all of them — it has the 11 sections,
+ * a period of performance, milestones summing to 100, and signature labels.
+ *
+ * So provenance needed its own check. This is the work order's missing
+ * counterpart to `idea-to-pdd`'s `pdd_is_native_google_doc` backstop.
+ *
+ * ## How it discriminates
+ *
+ * Two independent signals, either of which fails the check:
+ *
+ * 1. **A degradation confession.** The observed fallback announced itself. Cheap
+ *    to detect and catches the exact recurrence.
+ * 2. **Missing template boilerplate.** Content the TEMPLATE supplies and the
+ *    skill has no token for, so a synthesizer has no reason to produce it: the
+ *    hardcoded Dimagi signatory cell (`SKILL.md` § step 5: "Dimagi cell is
+ *    hardcoded in the template ... no tokens for the right cell"), the office
+ *    contact line, and the office footer with its full-width `｜` separators.
+ *
+ * Signal 2 is the durable half — it holds whether or not a future fallback is
+ * honest about itself. It is not cryptographic proof of provenance: a
+ * sufficiently determined producer could copy the boilerplate out of
+ * `templates/work-order-template.md`. It is a gate against IMPROVISATION, which
+ * is the failure that actually happened, and it is far stronger than the
+ * nothing that was there before.
+ */
+export function checkRenderedFromTemplate(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+
+  // Signal 1 — the artifact admits it was not rendered from the template.
+  const confessions: Array<[RegExp, string]> = [
+    [/render\s+provenance/i, 'a "render provenance" note'],
+    [/not\s+accessible\s+to\s+the\s+service\s+account/i, 'a service-account access excuse'],
+    [/rather\s+than\s+the\s+branded\s+template/i, 'an admission it bypassed the branded template'],
+    [/produced\s+directly\s+from\s+the\s+synthesized/i, 'an admission it was synthesized directly'],
+    [/(visual\s+styling|branded\s+tables).{0,80}(re-?applied|restored)/i, 'a "styling to be re-applied later" note'],
+  ];
+  const confessed = confessions.filter(([re]) => re.test(wo)).map(([, label]) => label);
+  if (confessed.length > 0) {
+    return {
+      pass: false,
+      detail:
+        `the work order states it was NOT rendered from the branded template (${confessed.join('; ')}) — ` +
+        `it is a synthesized plain document, not a contractual artifact`,
+      auto_fix_hint:
+        'do NOT edit the note out — the note is a symptom, the plain document is the defect. Re-render via ' +
+        '`docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID>, ...)` and discard this doc. If the copy ' +
+        'fails, HALT and report it: publishing a synthesized substitute is forbidden ' +
+        '(`skills/pdd-to-work-order/SKILL.md` § The render path is not optional). Check the template is ' +
+        'reachable and copyable first — `/ace:doctor` probes exactly this as `work_order_template_copyable`.',
+    };
+  }
+
+  // Signal 2 — boilerplate only the template carries.
+  //
+  // Both fingerprints live in the Signatures TABLE, which is why they were
+  // chosen: they survive both export formats identically, so this check keeps
+  // the suite's export-format independence (ace#1609). The office footer
+  // (`Cape Town`, the full-width `｜` separators) was a candidate and was
+  // REJECTED for exactly that reason — it is present in
+  // `fixtures/gdoc-work-order-plain.txt` and absent from
+  // `fixtures/gdoc-work-order-markdown.txt`, i.e. it does not survive the
+  // markdown export of the same document. Including it would have made this
+  // the one check in the file whose verdict depends on the reader's `exportAs`.
+  const fingerprints: Array<[RegExp, string]> = [
+    [/Lucina\s+Tse/i, 'Dimagi signatory block (hardcoded in the template)'],
+    [/legal@dimagi\.com/i, 'Dimagi legal contact line'],
+  ];
+  const missing = fingerprints.filter(([re]) => !re.test(wo)).map(([, label]) => label);
+  if (missing.length > 0) {
+    return {
+      pass: false,
+      detail:
+        `missing ${missing.length} of ${fingerprints.length} template-only element(s): ${missing.join('; ')} — ` +
+        `the document was probably not copied from WORK_ORDER_TEMPLATE_ID`,
+      auto_fix_hint:
+        'render via `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID>, ...)` rather than composing the ' +
+        'document. These elements are template boilerplate with no tokens, so their absence means the copy never ' +
+        'happened (or the live template has been edited — confirm with ' +
+        '`npx tsx scripts/probe-work-order-template-drift.ts` before assuming the producer is at fault).',
+    };
+  }
+
+  return { pass: true, detail: 'rendered from the branded template (boilerplate intact, no degradation note)' };
+}
+
 export const CHECKS: QACheck[] = [
+  {
+    id: 'rendered_from_template',
+    type: 'static',
+    description: 'Rendered via docs_copy_template, not synthesized into a plain doc',
+    run: (wo: string) => checkRenderedFromTemplate(wo),
+  },
   {
     id: 'all_required_sections_present',
     type: 'static',

@@ -333,10 +333,31 @@ screenshot-blocked run cannot lose it.
 
    - `manifest.common` / `manifest.opp` are **maps** (`alias -> URL`).
      Emit `{}` when a pool resolved to nothing. A scalar fails.
-   - `voice.estimated_duration_minutes` is a **number**. A quoted value
+   - agenda `items` is a **list of `{label}` objects**. A list of bare
+     strings fails. Do **not** add a `duration` key — training decks
+     state no timings (see below), and Zod strips the key, so adding one
+     changes nothing except your token count.
+   - `voice.estimated_duration_minutes` must be **omitted** by the two
+     TRAINING variants. It survives as an optional field only for
+     `connect-pitch-partnership`, which is a prospect-facing pitch rather
+     than training and whose duration is a video length ACE genuinely
+     controls. Where it IS emitted it is a **number**; a quoted value
      fails.
-   - agenda `items` is a **list of `{label, duration}` objects**. A list
-     of bare strings fails.
+
+   **No time durations anywhere in a training deck** (operator decision
+   2026-09-09) — not on the agenda, not on an exercise badge, not in a
+   speaker note, not as a session total. The LLO sets the schedule: they
+   know the room, the group size, the literacy mix, and how long the
+   questions will run. Every duration ACE used to print was invented, and
+   printing it made it look agreed.
+
+   This bans **training-schedule** timings, not **program parameters**.
+   How long an FGD session must run, how many participants a group holds,
+   that the attestation is due within 24 hours and the session doc within
+   72 — those come from the PDD, they are what the FLW is paid to comply
+   with, and they stay on the slides. Withholding them would not be
+   deference; it would be withholding the job description. *Enforced:*
+   `test/lib/training-deck-durations.test.ts`.
 
 10. **Write** the fully-expanded `training-deck-spec.yaml` to
     `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`

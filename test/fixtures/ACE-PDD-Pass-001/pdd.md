@@ -82,6 +82,12 @@ None pre-named — fixture only.
 | expected_reach_max | 30 |
 | cap_rationale | Deliberately non-binding: the per-FLW cap is a fraud ceiling, not a throughput target, and is sized for the largest cohort the program might later run. |
 | entity_id_grain | worker username + follow-up visit date |
+| llo_payment_per_visit | 0.50 |
+| campaign_target_visits | 30 |
+| total_budget_usd | 90 |
+| opportunity_start_date | 2026-06-01 |
+| opportunity_end_date | 2026-06-30 |
+| verification_flags | photo_required, gps_within_radius |
 
 ## Stress Test Results
 

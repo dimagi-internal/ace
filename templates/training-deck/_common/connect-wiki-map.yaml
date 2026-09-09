@@ -1,0 +1,170 @@
+# Connect public help site — curated page map for training decks.
+#
+# WHAT THIS IS FOR
+# ----------------
+# The connectpublic wiki is an ADDITIVE source. ACE keeps deriving deck
+# content from the PDD, the built app structure and per-run screenshots
+# exactly as before; this map supplies SUPPLEMENTARY depth plus outbound
+# links an LLO can follow after the session. It is never a substitute for
+# run-specific content, and a slide must still stand on its own if the
+# reader never clicks a link.
+#
+# WHY A COMMITTED MAP RATHER THAN PER-RUN LINK CHOICE
+# ---------------------------------------------------
+# Every run linking the same page for the same topic is worth more than a
+# freshly-reasoned choice each time, and a committed list is the only form a
+# liveness check can run against. Deck generators MUST cite from this file
+# and MUST NOT invent wiki URLs — a fabricated link 404s in front of an LLO,
+# which is worse than no link at all.
+#
+# PROVENANCE
+# ----------
+# Page ids and paths below were read from the space's own content API
+# (`/wiki/rest/api/content?spaceKey=connectpublic`) on 2026-09-09, not
+# hand-assembled. Re-derive with `npx tsx scripts/probe-connect-wiki-map.ts`,
+# which also checks every url still resolves.
+#
+# ADDING AN ENTRY
+# ---------------
+# Append under the matching `sections` key. `id` must be the real Confluence
+# page id and `url` must be `base` + the API's `_links.webui` value verbatim.
+# Do not shorten, prettify or guess a slug — the numeric id is what makes the
+# URL stable across page renames.
+
+base: https://dimagi.atlassian.net/wiki
+space_key: connectpublic
+verified_on: "2026-09-09"
+
+# Topic -> wiki pages. Keys are stable topic slugs a deck generator can look
+# up; they are deliberately NOT slide ids, because slide composition varies
+# per archetype while these topics do not.
+sections:
+  platform_overview:
+    audience: both
+    pages:
+      - id: 3146907649
+        title: Connect Overview
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907649/Connect+Overview
+      - id: 3146907685
+        title: Connect Glossary
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907685/Connect+Glossary
+
+  worker_account_setup:
+    audience: flw
+    pages:
+      - id: 3146907799
+        title: ConnectID Signup
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907799/ConnectID+Signup
+      - id: 3146907906
+        title: ConnectID Recovery
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907906/ConnectID+Recovery
+      - id: 3190653024
+        title: Pre-Registration for Connect Workers before signing up for PersonalID
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3190653024/Pre-Registration+for+Connect+Workers+before+signing+up+for+PersonalID
+
+  # The mobile app's Learn Journey / Claiming a Job / Deliver Journey /
+  # Payment Events material lives as SECTIONS INSIDE page 3146907771, not as
+  # separate pages. They are intentionally mapped to the parent page rather
+  # than to invented per-section URLs.
+  worker_app_journey:
+    audience: flw
+    pages:
+      - id: 3146907771
+        title: Connect Mobile Application
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907771/Connect+Mobile+Application
+
+  opportunity_basics:
+    audience: both
+    pages:
+      - id: 3146940513
+        title: Understanding an Opportunity
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146940513/Understanding+an+Opportunity
+
+  verification:
+    audience: both
+    pages:
+      - id: 3146940710
+        title: Verify & Approve Visits by a Connect Worker
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146940710/Verify+Approve+Visits+by+a+Connect+Worker
+      - id: 3146907751
+        title: Processing of Deliver Units
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146907751/Processing+of+Deliver+Units
+
+  payments:
+    audience: both
+    pages:
+      - id: 3214966794
+        title: Payments for Verified Service Delivery
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3214966794/Payments+for+Verified+Service+Delivery
+      - id: 3146940849
+        title: Record Connect Worker Payments
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146940849/Record+Connect+Worker+Payments
+
+  supervision:
+    audience: llo
+    pages:
+      - id: 3146940645
+        title: Monitoring an Opportunity
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146940645/Monitoring+an+Opportunity
+      - id: 3417833667
+        title: Opportunity Dashboard
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3417833667/Opportunity+Dashboard
+      - id: 3215458305
+        title: Connect Worker Management
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3215458305/Connect+Worker+Management
+
+  devices:
+    audience: both
+    pages:
+      - id: 3146908016
+        title: Guidelines for Choosing Connect Devices
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146908016/Guidelines+for+Choosing+Connect+Devices
+
+  notifications_and_messaging:
+    audience: flw
+    pages:
+      - id: 3146908031
+        title: Push Notifications
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146908031/Push+Notifications
+      - id: 3146973370
+        title: Messaging
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3146973370/Messaging
+
+  where_to_get_help:
+    audience: both
+    pages:
+      - id: 3172139013
+        title: Other Useful Links
+        url: https://dimagi.atlassian.net/wiki/spaces/connectpublic/pages/3172139013/Other+Useful+Links
+
+# Pages present in the space and DELIBERATELY not mapped. Recorded so a
+# future editor re-reading the space does not "helpfully" add them back.
+excluded:
+  - id: 3171778675
+    title: "[WIP] CCC FLW Onboarding Guide"
+    reason: >-
+      Marked [WIP] by its authors. Unstable content must not be linked from a
+      deck an LLO reads — the page may change or vanish between the deck being
+      built and the training being run.
+  - ids: [3146908044, 3146908063, 3146908089, 3157426258]
+    title: Release Notes and its dated children (April/May/June 2025)
+    reason: >-
+      Dated changelogs, not training material. They also age badly: a 2025
+      release note cited in a 2026 deck reads as a stale deck.
+  - id: 3146973270
+    title: Managing Mobile Worker PersonalID Account Links on CommCare HQ
+    reason: >-
+      CommCare HQ administration, not Connect usage. Out of scope for FLW and
+      LLO training audiences.
+
+# Known naming drift in the source, recorded so deck prose does not copy it
+# blindly. ACE's own API field is still `verification_flags`.
+naming_notes:
+  - note: >-
+      The wiki titles the concept "Verification Rules (previously Verification
+      Flags)". Connect is mid-rename. Deck prose should follow whatever the
+      opportunity's own UI shows the LLO; do not silently adopt either name.
+  - note: >-
+      "ConnectID" and "PersonalID" both appear in the space, mid-rename. Prefer
+      the term the FLW will actually see on their device for the run in
+      question.

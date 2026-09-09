@@ -646,18 +646,24 @@ export function buildChecklistTextBoxes(pageId: string): Record<string, unknown>
   ];
 }
 
+/**
+ * Exercise slide: title + body, and deliberately NO duration badge.
+ *
+ * Until 2026-09-09 this stencil carried a `{{DURATION}}` box pinned to the
+ * top-right, and the title was narrowed by 1_800_000 EMU to clear it. Training
+ * decks no longer state timing — the LLO sets it — so the badge is gone and the
+ * title reclaims the full content width. Leaving the box and feeding it an
+ * empty string was the cheaper edit and the wrong one: it renders a stray empty
+ * text frame in the corner of every exercise slide and keeps the title
+ * needlessly short, which is the opposite of the formatting rules in
+ * `skills/training-deck-render/SKILL.md`.
+ */
 export function buildExerciseTextBoxes(pageId: string): Record<string, unknown>[] {
   return [
     ...textBoxRequests({
       id: `${pageId}_title`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2 - 1_800_000, h: 700_000,
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
       fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_duration`, pageId, text: '{{DURATION}}',
-      x: SLIDE_W - MARGIN - 1_700_000, y: MARGIN + 100_000,
-      w: 1_700_000, h: 500_000,
-      fontSize: 14, bold: true, color: COLOR_INDIGO,
     }),
     ...textBoxRequests({
       id: `${pageId}_body`, pageId, text: '{{BODY}}',

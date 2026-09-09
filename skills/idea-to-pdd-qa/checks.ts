@@ -811,7 +811,122 @@ export function checkEntityStateTaxonomyForLongitudinal(raw: string): QACheckRes
   };
 }
 
+/**
+ * Every parameter Phase 3 (app build) and Phase 4 (opportunity creation) needs
+ * must be DECIDED in the PDD, not discovered at setup time.
+ *
+ * ## Why this is mandatory rather than best-effort
+ *
+ * Operator decision 2026-09-09: PDD review must verify these, propose values
+ * when the human does not supply them, and not proceed until they are settled.
+ *
+ * `program_parameters_coherent` (the sibling check) validates the numbers that
+ * ARE present — min ≤ max, a reachable passing score, cap vs reach. It cannot
+ * fail a PDD for staying silent, and its own fix hint says these keys are
+ * wanted only "where the PDD decides them". So a PDD could pass every gate
+ * with no payment rate, no caps, no dates and no verification flags, leaving
+ * `connect-opp-setup` to invent them mid-run from prose — or to fall back to a
+ * skill default nobody chose.
+ *
+ * ## The org_amount gap this closes
+ *
+ * `connect_create_payment_unit` takes BOTH `amount` (FLW pay per unit) and
+ * `org_amount` (LLO pay per unit), and `org_amount` is **required for managed
+ * opportunities** — the API rejects the create without it. The PDD vocabulary
+ * had a key for the FLW side (`payment_rate_min`/`max`) and none at all for
+ * the LLO side, so the number that reaches Connect for half the payment model
+ * was never a decision anyone recorded. `llo_payment_per_visit` fixes that.
+ *
+ * ## Mapping to the atoms
+ *
+ * | PDD key | Connect field |
+ * |---|---|
+ * | `payment_rate_min` / `payment_rate_max` (or `flw_payment_per_visit`) | `amount` |
+ * | `llo_payment_per_visit` | `org_amount` |
+ * | `daily_cap_per_flw` | `max_daily` |
+ * | `total_cap_per_flw` | `max_total` |
+ * | `campaign_target_visits` | campaign sizing / `number_of_users` derivation |
+ * | `total_budget_usd` | `total_budget` |
+ * | `opportunity_start_date` / `opportunity_end_date` | `start_date` / `end_date` |
+ * | `verification_flags` | `connect_set_verification_flags` |
+ *
+ * A value may legitimately be a proposal rather than a settled figure — that
+ * is what auto mode produces. `[PROPOSED]`/`[TBD]` markers are ACCEPTED here
+ * on purpose: this check enforces that the parameter was CONSIDERED and
+ * written down where Phase 4 will look, not that a human has signed it off.
+ * Sign-off is tracked in `decisions.yaml` via `evidence_basis` and surfaced by
+ * the phase summary.
+ */
+export function checkLaunchParametersPresent(raw: string): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
+  if (body === null) {
+    return {
+      pass: false,
+      detail: 'no § Program Parameters section — launch parameters cannot be declared',
+      auto_fix_hint:
+        'Add a `## Program Parameters` section with a `| Key | Value |` table (see program_parameters_coherent).',
+    };
+  }
+
+  const params = parseProgramParameters(body);
+
+  // Each entry: the canonical key, any accepted aliases, and what it feeds.
+  const required: Array<{ keys: string[]; feeds: string }> = [
+    { keys: ['payment_rate_min', 'flw_payment_per_visit'], feeds: 'payment unit `amount` (FLW pay per visit)' },
+    { keys: ['llo_payment_per_visit', 'org_payment_per_visit'], feeds: 'payment unit `org_amount` (LLO pay per visit — REQUIRED for managed opps)' },
+    { keys: ['daily_cap_per_flw'], feeds: 'payment unit `max_daily` (daily target)' },
+    { keys: ['total_cap_per_flw'], feeds: 'payment unit `max_total` (per-FLW campaign cap)' },
+    { keys: ['campaign_target_visits', 'expected_reach_max'], feeds: 'campaign target / opportunity sizing' },
+    { keys: ['total_budget_usd'], feeds: 'opportunity `total_budget`' },
+    { keys: ['opportunity_start_date'], feeds: 'opportunity `start_date`' },
+    { keys: ['opportunity_end_date'], feeds: 'opportunity `end_date`' },
+    { keys: ['verification_flags'], feeds: '`connect_set_verification_flags`' },
+  ];
+
+  const missing = required.filter(
+    (r) => !r.keys.some((k) => (params.get(k) ?? '').trim().length > 0),
+  );
+
+  if (missing.length > 0) {
+    return {
+      pass: false,
+      detail:
+        `§ Program Parameters is missing ${missing.length} launch parameter(s): ` +
+        missing.map((m) => `${m.keys[0]} (-> ${m.feeds})`).join('; '),
+      auto_fix_hint:
+        'Add a row per missing key to the § Program Parameters table. These are not optional: Phase 3 builds ' +
+        'the apps from them and Phase 4 passes them straight to `connect_create_opportunity` / ' +
+        '`connect_create_payment_unit` / `connect_set_verification_flags`, so a missing value is either ' +
+        'invented mid-run or silently defaulted. If a figure is not settled, WRITE THE PROPOSAL — ' +
+        '`| llo_payment_per_visit | 1.50 [PROPOSED] |` is a valid row and is what auto mode should emit, with a ' +
+        'matching decisions.yaml row carrying `evidence_basis: inferred`. Leaving the row out is the only ' +
+        'wrong answer. Accepted aliases: ' +
+        missing.map((m) => m.keys.join(' | ')).join(' ;; '),
+    };
+  }
+
+  const proposed = required
+    .map((r) => r.keys.find((k) => (params.get(k) ?? '').trim().length > 0)!)
+    .filter((k) => /\[(PROPOSED|TBD)\]/i.test(params.get(k) ?? ''));
+
+  return {
+    pass: true,
+    detail:
+      `all ${required.length} launch parameters declared` +
+      (proposed.length > 0
+        ? ` (${proposed.length} still marked proposed/TBD: ${proposed.join(', ')} — needs LLO or operator sign-off before Phase 4)`
+        : ''),
+  };
+}
+
 export const CHECKS: QACheck[] = [
+  {
+    id: 'launch_parameters_present',
+    type: 'static',
+    description:
+      'Every Phase 3 / Phase 4 launch parameter is declared in § Program Parameters',
+    run: checkLaunchParametersPresent,
+  },
   {
     id: 'pdd_is_native_google_doc',
     type: 'static',

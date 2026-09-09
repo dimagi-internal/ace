@@ -11,13 +11,20 @@ Read these artifacts from the opportunity's Drive folder (`ACE/<opp>/`):
 3. **Screenshot manifest** (`<run>/3-commcare-setup/screenshot-manifest.yaml` or `<run>/6-qa-and-training/screenshot-manifest.yaml`) — available `@alias` references for app screenshots. Every `@alias` you use in the spec MUST exist in this manifest.
 4. **run_state.yaml** (`<run>/run_state.yaml`) — run metadata. Extract: `run_id`, `generated_at` timestamp, OCS chatbot name, Connect opportunity details.
 5. **Learn module structure** (from app summary or PDD) — module names and content for practice slide generation.
+6. **Connect wiki page map** (`templates/training-deck/_common/connect-wiki-map.yaml`, in the repo — not in Drive) — curated links into the public Connect help site, keyed by topic.
+
+   **This source is ADDITIVE and subordinate.** Sources 1-5 are what the deck teaches; the wiki adds optional depth and gives the LLO somewhere to send follow-up questions. A slide must stand on its own if the reader never clicks a link, so never move required content behind one, and never cite the wiki in place of the PDD — where they disagree about THIS opportunity, the PDD wins, always.
+
+   **Only URLs from the map may appear in the deck.** Do not invent, shorten, or reconstruct a wiki URL, and do not pull one from memory or a web search: a fabricated link 404s in front of an LLO, and `scripts/probe-connect-wiki-map.ts` can only verify links that came from the map. If a topic you want has no entry, cite nothing and say so in your report — adding the entry is a repo change, reviewed once, not a per-run improvisation.
+
+   The map also records naming drift in the source (the wiki says "Verification Rules" where ACE's API says `verification_flags`; "ConnectID" and "PersonalID" both appear). Follow what the FLW will actually see on their device for this run — see `naming_notes` in the map and `skills/_terminology.md`.
 
 ## Module-by-Module Content Instructions
 
 ### welcome (generate fresh)
 
 - **cover**: Use opportunity name as title. **HARD CONSTRAINT: title ≤ 28 characters.** The Dimagi cover stencil's title shape wraps mid-word past ~28 chars at 32pt; longer opp names produce ugly mid-word breaks. If the opp's `display_name` is longer, shorten it for the cover (e.g. "Bednet Spot-Check (E2E Smoke)" → "Bednet Spot-Check" with `(E2E Smoke)` deferred to the subtitle if needed). Subtitle = `"FLW Training"` (no date — the `date:` field renders the date on its own line below the subtitle; including the date in the subtitle string makes it render twice). The `date:` field gets the month + year (e.g. `"June 2026"`).
-- **agenda**: List the module names as agenda items with approximate durations. Total should match `expected_duration_minutes` from the template (150-240 min).
+- **agenda**: List the module names as agenda items. **Emit NO durations** — each item is a bare `{label}`, and the schema strips a `duration` key if you add one. Session timing is the LLO's to set: they know the room, the group size, the literacy mix and how long the questions will run, and we do not. Do not state a total either.
 - **icebreaker**: Select ONE icebreaker from `_common/facilitation.yaml`. Pick `two-truths` for groups of 10+, `one-word` for groups of 20+, `common-ground` for groups under 10. Fill the template tokens.
 
 ### platform-setup (include by reference)
@@ -106,7 +113,7 @@ Generate 2-3 slides:
 1. **Knowledge check** (layout: `exercise`)
    - 3-5 multiple-choice questions derived from the training content
    - Cover: eligibility criteria, form workflow, quality requirements, payment rules
-   - Duration: 10 min
+   - State no duration — the facilitator paces this
 
 2. **Field readiness checklist** (layout: `checklist`)
    - Items: phone charged, CommCare installed, Learn modules complete, sync completed, practice form submitted, ID badge/materials ready
@@ -125,7 +132,15 @@ Include the `_common/resources.yaml` module verbatim. Fill `{{LLO_CONTACT}}` fro
   ref: _common/resources
   overrides:
     LLO_CONTACT: "{{LLO_CONTACT}}"
+    # Copied VERBATIM from connect-wiki-map.yaml `sections.<key>.pages[0].url`.
+    # These four are the only wiki links in the deck by default.
+    WIKI_WORKER_ACCOUNT_SETUP_URL: "<sections.worker_account_setup.pages[0].url>"
+    WIKI_WORKER_APP_JOURNEY_URL: "<sections.worker_app_journey.pages[0].url>"
+    WIKI_VERIFICATION_URL: "<sections.verification.pages[0].url>"
+    WIKI_PAYMENTS_URL: "<sections.payments.pages[0].url>"
 ```
+
+Resolve each `WIKI_*_URL` by reading `_common/connect-wiki-map.yaml` and copying the `url` field verbatim. Every `WIKI_*_URL` token in `_common/resources.yaml` MUST be resolved — an unresolved token renders the literal `{{WIKI_PAYMENTS_URL}}` onto a slide an FLW reads, which is the `no_scaffolding_markers` defect class.
 
 ## Layout Selection Rules
 
@@ -189,8 +204,10 @@ here for…", "If anyone says X, redirect to…").
 
 What to include per layout:
 - **cover, section, closing** — opener / transition / wrap-up cues
-- **agenda** — total session duration + what to highlight (the
-  trickiest module, expected break points)
+- **agenda** — what to highlight (the trickiest module, sensible break
+  points). No durations and no total: the LLO sets the schedule, and a
+  speaker note that says "90 minutes" is the same claim as a slide that
+  does, just quieter.
 - **content, two_column** — the one or two background facts that
   make the slide land (a real-world example, why it matters)
 - **walkthrough, mobile_flow, mobile_zoom** — what to watch for on
@@ -203,6 +220,31 @@ What to include per layout:
 - **checklist** — which items trip people up, how to handle "I forgot"
 - **timeline** — what counts as on/behind schedule, what to say
   if someone is far behind
+
+## Formatting Budgets (ENFORCED — `parseTrainingSpec` throws)
+
+The Dimagi stencil text frames are fixed-size. Text past these budgets does not
+reflow smaller — it spills out of the shape or gets clipped at render time, and
+nothing downstream looks at pixels, so an overflowing slide passes every other
+check and is first noticed by a room of FLWs. `parseTrainingSpec` rejects the
+spec rather than rendering one.
+
+| Field | Budget | Severity |
+|---|---|---|
+| `body` characters | 700 | error |
+| `body` non-empty lines | 9 | error |
+| any single `body` line | 120 chars | warn |
+| `agenda` items | 8 | error |
+| `stats` items | 3 (the stencil draws exactly three) | error |
+| `title` (non-cover, non-section) | 60 chars | error |
+| `cover` title | 28 chars | error |
+| `section` title | 24 chars | error |
+
+**Fix an overflow by splitting the slide, never by raising the budget.** Two
+clear slides beat one crammed one — that is the whole of "presented in the most
+effective way" that can actually be checked. One idea per slide; if a slide
+needs the word "also", it is two slides. Budgets live in `FORMATTING_BUDGETS`
+(`lib/training-deck-spec.ts`).
 
 ## Output Format
 

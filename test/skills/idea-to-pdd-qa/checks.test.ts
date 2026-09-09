@@ -291,10 +291,13 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports ten checks in stable order', () => {
-    expect(CHECKS).toHaveLength(10);
+  test('exports eleven checks in stable order', () => {
+    expect(CHECKS).toHaveLength(11);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
+      // First deliberately: a PDD missing its launch parameters cannot be
+      // built or launched from, so that failure frames every other row.
+      'launch_parameters_present',
       'pdd_is_native_google_doc',
       'all_required_sections_present',
       'archetype_declared_and_valid',

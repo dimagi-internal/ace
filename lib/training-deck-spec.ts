@@ -54,11 +54,24 @@ export const SectionSlideSchema = z.object({
   notes: z.string().optional(),
 });
 
+/**
+ * Agenda items carry a label and NO duration — the LLO decides session timing.
+ *
+ * An agenda that reads "Payments — 20 min" is ACE telling a partner how to run
+ * their own training day, from a deck authored before anyone knew the room, the
+ * literacy mix, or how long the FLWs' questions would run. The timing was
+ * always invented, and printing it made it look agreed. Operator decision
+ * 2026-09-09.
+ *
+ * `duration` is deliberately absent rather than optional: a stray key is
+ * stripped by Zod's default object parsing, so a generator that still emits one
+ * cannot get it onto a slide. `test/lib/training-deck-durations.test.ts` pins it.
+ */
 export const AgendaSlideSchema = z.object({
   id: z.string(),
   layout: z.literal('agenda'),
   title: z.string(),
-  items: z.array(z.object({ label: z.string(), duration: z.string() })),
+  items: z.array(z.object({ label: z.string() })),
   notes: z.string().optional(),
 });
 
@@ -138,11 +151,15 @@ export const ChecklistSlideSchema = z.object({
   notes: z.string().optional(),
 });
 
+/**
+ * No `duration` — see AgendaSlideSchema. The exercise stencil's duration badge
+ * was removed with it (`buildExerciseTextBoxes`), and `{{DURATION}}` is gone
+ * from this layout's placeholder contract, so nothing is left unreplaced.
+ */
 export const ExerciseSlideSchema = z.object({
   id: z.string(),
   layout: z.literal('exercise'),
   title: z.string(),
-  duration: z.string(),
   body: z.string(),
   notes: z.string().optional(),
 });
@@ -263,7 +280,17 @@ export const TrainingDeckSpecSchema = z.object({
   }),
   voice: z.object({
     audience: z.enum(['flw', 'llo', 'mixed', 'prospect']),
-    estimated_duration_minutes: z.number(),
+    /**
+     * OPTIONAL, and omitted by both TRAINING variants — the LLO owns session
+     * timing (operator decision 2026-09-09).
+     *
+     * Kept on the schema rather than deleted because the `connect-pitch-
+     * partnership` variant is not a training deck: it is a prospect-facing
+     * pitch whose `{{DURATION}}` is the length of an accompanying video, which
+     * ACE does control and does need to state. Deleting the field outright
+     * would have broken that variant to enforce a training-deck rule.
+     */
+    estimated_duration_minutes: z.number().optional(),
     language: z.string(),
   }),
   modules: z.array(ModuleSpecSchema),
@@ -285,14 +312,138 @@ export type UnexpandedTrainingDeckSpec = z.infer<typeof UnexpandedTrainingDeckSp
 // YAML parser
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Formatting budgets (operator decision 2026-09-09: "slides well formatted,
+// content presented in the most effective way")
+//
+// Aesthetics cannot be asserted, but OVERFLOW can, and overflow is how a deck
+// actually ends up looking bad: the stencil text frames are fixed-size, so
+// text past these budgets does not shrink — it spills out of the shape or gets
+// clipped by Slides at render time. The deck already pinned the two title
+// budgets it had been burned by (cover ≤ 28, section ≤ 24); these extend the
+// same treatment to the fields that carry the most text.
+//
+// Numbers are derived from the stencil geometry in
+// `training-deck-stencil-geometry.ts` — BODY_PT at the body frame's width and
+// height — with headroom for the widest common glyphs. They are deliberately
+// generous: the goal is catching a slide with three paragraphs crammed onto
+// it, not policing prose by ten characters.
+// ---------------------------------------------------------------------------
+
+export const FORMATTING_BUDGETS = {
+  /** Body copy in a `content` / `two_column` frame at BODY_PT. */
+  bodyChars: 700,
+  /** Bullet-style body lines — past this the list font collides with the frame. */
+  bodyLines: 9,
+  /** A single bullet that wraps past two lines stops reading as a bullet. */
+  bodyLineChars: 120,
+  /** Agenda items — the frame holds this many before lines merge visually. */
+  agendaItems: 8,
+  /** Slide titles other than cover (28) and section (24), which are stricter. */
+  titleChars: 60,
+  /** `stats` slides: the stencil draws exactly three columns. */
+  statsItems: 3,
+} as const;
+
+export interface FormattingFinding {
+  slideId: string;
+  layout: string;
+  rule: string;
+  detail: string;
+  severity: 'error' | 'warn';
+}
+
+/**
+ * Report formatting-budget violations for a fully-expanded spec.
+ *
+ * `error` = the content provably will not fit its frame, so the rendered slide
+ * is broken. `warn` = legible but poorly presented (a wall of text, a bullet
+ * list long enough that nobody reads the last item).
+ *
+ * Exported for reporting; `parseTrainingSpec` enforces the `error` half so no
+ * render path can skip it.
+ */
+export function lintDeckFormatting(spec: TrainingDeckSpec): FormattingFinding[] {
+  const findings: FormattingFinding[] = [];
+  const add = (
+    slideId: string,
+    layout: string,
+    rule: string,
+    detail: string,
+    severity: 'error' | 'warn',
+  ) => findings.push({ slideId, layout, rule, detail, severity });
+
+  for (const mod of spec.modules) {
+    for (const slide of mod.slides) {
+      const s = slide as unknown as Record<string, unknown>;
+      const id = String(s.id ?? '<unknown>');
+      const layout = String(s.layout ?? '<unknown>');
+
+      const title = typeof s.title === 'string' ? s.title : '';
+      if (layout !== 'cover' && layout !== 'section' && title.length > FORMATTING_BUDGETS.titleChars) {
+        add(id, layout, 'titleChars', `title is ${title.length} chars (budget ${FORMATTING_BUDGETS.titleChars})`, 'error');
+      }
+
+      if (typeof s.body === 'string') {
+        const body = s.body;
+        if (body.length > FORMATTING_BUDGETS.bodyChars) {
+          add(id, layout, 'bodyChars', `body is ${body.length} chars (budget ${FORMATTING_BUDGETS.bodyChars}) — split the slide`, 'error');
+        }
+        const lines = body.split('\n').filter((l) => l.trim().length > 0);
+        if (lines.length > FORMATTING_BUDGETS.bodyLines) {
+          add(id, layout, 'bodyLines', `${lines.length} non-empty lines (budget ${FORMATTING_BUDGETS.bodyLines})`, 'error');
+        }
+        const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+        if (longest > FORMATTING_BUDGETS.bodyLineChars) {
+          add(id, layout, 'bodyLineChars', `longest line is ${longest} chars (budget ${FORMATTING_BUDGETS.bodyLineChars})`, 'warn');
+        }
+      }
+
+      if (layout === 'agenda' && Array.isArray(s.items)) {
+        if (s.items.length > FORMATTING_BUDGETS.agendaItems) {
+          add(id, layout, 'agendaItems', `${s.items.length} agenda items (budget ${FORMATTING_BUDGETS.agendaItems})`, 'error');
+        }
+      }
+
+      if (layout === 'stats' && Array.isArray(s.stats) && s.stats.length > FORMATTING_BUDGETS.statsItems) {
+        add(id, layout, 'statsItems', `${s.stats.length} stats (the stencil draws ${FORMATTING_BUDGETS.statsItems})`, 'error');
+      }
+    }
+  }
+
+  return findings;
+}
+
 /**
  * Parse a YAML string into a validated `TrainingDeckSpec` (fully
  * expanded — no `ref` modules). Use AFTER `resolveModuleRefs()` has
  * inlined any ref modules.
+ *
+ * Also enforces the formatting budgets above. That check lives HERE, inside
+ * the function every render path already calls, rather than in a helper the
+ * render skill is merely instructed to invoke — ace#1877 shipped exactly that
+ * shape (a correct helper, a skill line saying "call it", and no caller) and
+ * it read as done for a release. A budget violation throws, because the
+ * alternative is a slide that renders with its text spilling out of the frame
+ * in front of a room of FLWs, and nothing downstream looks at pixels.
  */
 export function parseTrainingSpec(yamlStr: string): TrainingDeckSpec {
   const raw = yaml.load(yamlStr);
-  return TrainingDeckSpecSchema.parse(raw);
+  const spec = TrainingDeckSpecSchema.parse(raw);
+
+  const errors = lintDeckFormatting(spec).filter((f) => f.severity === 'error');
+  if (errors.length > 0) {
+    throw new Error(
+      `training-deck spec violates ${errors.length} formatting budget(s) — ` +
+        `the rendered slides would overflow their frames:\n` +
+        errors.map((e) => `  - ${e.slideId} (${e.layout}) ${e.rule}: ${e.detail}`).join('\n') +
+        `\n\nFix by splitting the offending slides, not by raising the budgets: ` +
+        `the frames are fixed-size in the Dimagi stencils. Budgets live in ` +
+        `FORMATTING_BUDGETS (lib/training-deck-spec.ts).`,
+    );
+  }
+
+  return spec;
 }
 
 /**
@@ -640,7 +791,7 @@ export const STENCIL_PLACEHOLDERS: Record<StencilKey, readonly string[]> = {
   ],
   timeline: ['{{BODY}}', '{{TITLE}}'],
   checklist: ['{{BODY}}', '{{TITLE}}'],
-  exercise: ['{{BODY}}', '{{DURATION}}', '{{TITLE}}'],
+  exercise: ['{{BODY}}', '{{TITLE}}'],
   closing: ['{{BODY}}', '{{TITLE}}'],
 } as const;
 
@@ -788,12 +939,10 @@ function buildLayoutRequests(
       // Title only — nothing extra
       break;
     case 'agenda':
-      // Prefix each item with a bullet marker (•) and keep "label  —  duration"
-      // — v5.3 fix; previously rendered as flat lines with no visual hierarchy.
-      r(
-        '{{BODY}}',
-        slide.items.map((i) => `•  ${i.label}  —  ${i.duration}`).join('\n'),
-      );
+      // Prefix each item with a bullet marker (•) for visual hierarchy (v5.3).
+      // The trailing "  —  duration" was dropped 2026-09-09: agenda items no
+      // longer carry a duration, because the LLO sets session timing.
+      r('{{BODY}}', slide.items.map((i) => `•  ${i.label}`).join('\n'));
       break;
     case 'content':
       r('{{BODY}}', slide.body);
@@ -974,7 +1123,8 @@ function buildLayoutRequests(
       r('{{BODY}}', slide.items.map((item) => `☐ ${item}`).join('\n'));
       break;
     case 'exercise':
-      r('{{DURATION}}', slide.duration);
+      // No duration replacement — the badge is gone from the stencil and
+      // `{{DURATION}}` is gone from this layout's placeholder contract.
       r('{{BODY}}', slide.body);
       break;
     case 'closing':
