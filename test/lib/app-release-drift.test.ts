@@ -538,3 +538,62 @@ describe("countNovaVisibleFields recurses into a `section` container (ace#2281)"
     expect(d.signals.fieldCounts.mismatch).toBe(false);
   });
 });
+
+describe('an ordering-cleared field-count mismatch does not assert a CAUSE it has not established (ace#2283)', () => {
+  // The clause used to state flatly that any mismatch was hidden fields
+  // (ace#1789). It is gated on nothing but `mismatch`, so the first time a
+  // different cause appeared it was confidently wrong: on
+  // bednet-check-2-visit/20260908-1544 the gap was unrecursed `section`
+  // containers (ace#2281) and this string blamed hidden fields. An
+  // unexplained mismatch gets investigated; a wrongly-explained one does not.
+  const cleared = () =>
+    classifyAppDrift({
+      app: 'learn',
+      novaEditedSinceDeploy: false,
+      novaFormCount: 3,
+      hqDraftFormCount: 3,
+      novaVisibleFieldCount: 23,
+      hqDraftVisibleFieldCount: 35,
+    });
+
+  it('still downgrades the mismatch to build-directly on the ordering fact', () => {
+    const d = cleared();
+    expect(d.drift).toBe(false);
+    expect(d.action).toBe('build-directly');
+    expect(d.conclusive).toBe(true);
+    expect(d.signals.fieldCounts.mismatch).toBe(true);
+  });
+
+  it('reports both counts and names the ordering fact as the reason for the downgrade', () => {
+    const reason = cleared().reasons.join(' ');
+    expect(reason).toContain('field counts differ (Nova 23, HQ draft 35)');
+    expect(reason).toContain('ordering fact');
+  });
+
+  it('marks the cause UNVERIFIED rather than declaring it', () => {
+    const reason = cleared().reasons.join(' ');
+    expect(reason).toContain('unverified');
+    // The old text asserted the cause outright. Nothing may claim it again.
+    expect(reason).not.toMatch(/raw count includes hidden fields/);
+    expect(reason).not.toMatch(/is (?:because of|due to) hidden fields/);
+  });
+
+  it('still offers the candidate bases as leads, so the pointer is not lost', () => {
+    const reason = cleared().reasons.join(' ');
+    for (const lead of ['ace#1789', 'ace#1807', 'ace#2281']) {
+      expect(reason).toContain(lead);
+    }
+  });
+
+  it('says nothing about a cause when the counts AGREE', () => {
+    const d = classifyAppDrift({
+      app: 'deliver',
+      novaEditedSinceDeploy: false,
+      novaVisibleFieldCount: 14,
+      hqDraftVisibleFieldCount: 14,
+    });
+    const reason = d.reasons.join(' ');
+    expect(reason).toContain('field counts agree (14)');
+    expect(reason).not.toContain('unverified');
+  });
+});

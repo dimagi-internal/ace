@@ -267,10 +267,23 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
       fieldCounts.comparable && !fieldCounts.mismatch
         ? `field counts agree (${fieldCounts.nova})`
         : null,
+      // Report the mismatch and WHY it was downgraded — but never assert a
+      // CAUSE this function has not established (ace#2283). The downgrade is
+      // earned by the ordering fact, not by knowing where the gap came from.
+      // This clause used to state flatly that the gap was hidden fields
+      // (ace#1789). That is only ONE basis artifact, it is gated on nothing but
+      // `mismatch`, and it was confidently wrong the first time another cause
+      // appeared: on bednet-check-2-visit/20260908-1544 the real gap was
+      // `section` containers that `countNovaVisibleFields` never recursed into
+      // (ace#2281), and this string reported it as hidden fields. A wrong cause
+      // is worse than no cause, because an unexplained mismatch gets
+      // investigated and an explained one does not.
       fieldCounts.mismatch
-        ? `field counts differ (Nova ${fieldCounts.nova}, HQ draft ${fieldCounts.hq}) but that is ` +
-          `not treated as drift — Nova's raw count includes hidden fields the HQ draft walk ` +
-          `never emits (ace#1789)`
+        ? `field counts differ (Nova ${fieldCounts.nova}, HQ draft ${fieldCounts.hq}); not ` +
+          `treated as drift because an ordering fact resolved the question. The CAUSE of the ` +
+          `gap is unverified here — a counting-basis artifact is the usual explanation ` +
+          `(hidden fields, ace#1789; unlabelled or unrecursed containers, ace#1807 / ace#2281) ` +
+          `— but this classifier has not established which, if any, applies`
         : null,
     ].filter(Boolean);
     reasons.push(
