@@ -146,19 +146,39 @@ alone makes the artifact land outside `4-connect` and fail
 
 4. **Create the opportunity** via `connect_create_opportunity`.
 
-   **⚠️ Single-active-opp invariant (per-program, per-application).**
-   Connect enforces "one active managed opportunity per accepted
-   `ProgramApplication`." Creating a new managed opp on a program where
-   a prior opp is currently `active=true` (under the same accepted
-   application) will *deactivate* the prior opp as a side effect of
-   the accept-application step in 3a. This was a silent surprise in
-   the leep-paint-collection run (see #106 finding 11) — the prior
-   `LEEP Paint Surveillance — India v1` opp flipped from active to
-   inactive without warning when this skill recreated the opp.
+   **⚠️ Single-active-opp check (per-program, per-application) — an
+   OBSERVATION, not a rule Connect is known to enforce.**
+   ACE has one recorded instance of a prior opp deactivating when a new
+   managed opp was created on the same program: the leep-paint-collection
+   run, 2026-05-06, where `LEEP Paint Surveillance — India v1` flipped
+   from active to inactive without warning as this skill recreated the opp
+   (jjackson/ace#106 finding 11). It also has a direct counter-observation:
+   on `bednet-check-2-visit/20260908-1544` (program
+   `efb8af66-fbfd-488f-bf99-66f864cea68b`, org `ai-demo-space`) **ten**
+   opportunities on one program were concurrently `active: true`, and an
+   immediate post-create re-read of the very opp that run's WARN named
+   (`5fdee3b8-e859-4aa7-a4be-8ad6f727917a`) came back `active: true` with
+   `dashboard_read: "ok"` — a real read of the edit-form toggle, and no
+   deactivation (ace#2290). So neither half of the old wording holds up:
+   do not write "Connect enforces one active managed opp per accepted
+   `ProgramApplication`" or "creating this opp will deactivate `<x>`" into
+   the WARN, the phase summary, or `connect-opp-setup.md`. Neither is
+   established.
 
-   Before calling `create_opportunity`, list active opps for this
-   program and surface a `[WARN]` line in `auto_surfaced` if any
-   exist:
+   **Leading hypothesis for the divergence — a hypothesis, not a finding.**
+   The 2026-05-06 side effect was attributed to the accept-application step
+   in 3a. On a self-managed org (PM org == target org) that step now
+   short-circuits on `Organization already has an application for this
+   program` and never reaches the accept call at all, which would explain
+   the side effect not firing today. That is checkable in upstream source,
+   not from here: run `skills/upstream-regression-triage` against
+   `dimagi/commcare-connect` before promoting either half of this back to
+   fact (ace#2290).
+
+   **Keep the check regardless.** It is one list call, and one real
+   deactivation was observed once — what changed is the claim it makes,
+   not whether it runs. Before calling `create_opportunity`, list opps for
+   this program and report which are active:
 
    ```
    mcp__plugin_ace_ace-connect__connect_list_opportunities({
@@ -180,12 +200,23 @@ alone makes the artifact land outside `4-connect` and fail
    through `get_opportunity`, which parses the real toggle off the edit
    form. Filter to this program yourself from the hydrated rows.
 
-   For each opp where `active=true`, surface in `auto_surfaced`:
-   `[WARN] Creating opp "<new-name>" will deactivate prior active
-   opp "<old-name>" (id=<old-uuid>) — same program, same accepted
-   application. Confirm intent or close prior opps first.`
+   Count the hydrated rows in this program with `active=true`. **N>1 is
+   the normal case on a mature program** — every `/ace:run` publishes a
+   fresh opp and per-run accumulation is by design (`CLAUDE.md`), so
+   "close prior opps first" is not the remedy and is no longer asked for.
+   If the count is non-zero, surface ONE `[WARN]` line in `auto_surfaced`
+   carrying the count and the ids:
+   `[WARN] <N> opportunit(y|ies) already active on this program before
+   creating "<new-name>": "<old-name>" (id=<old-uuid>), … . A new
+   managed opp MAY deactivate them — unverified, one observation each way
+   (ace#2290). Proceeding.`
 
-   The auto-mode default is to proceed (matches current Phase 9
+   Do not assert in that WARN — or anywhere downstream — that a named opp
+   will be, or has been, deactivated. If a prior opp matters to this run,
+   re-read it with `connect_get_opportunity` after the create and record
+   the `active` value you actually observed.
+
+   The auto-mode default is to proceed, unchanged (matches current Phase 9
    pause-point auto-approval). Review-mode pauses for explicit operator
    confirmation. An idempotent-resume path that detects an existing
    matching opp and asks before recreating is tracked as future work.
@@ -1427,6 +1458,7 @@ decisions_append_rows({
 | 2026-08-25 | **Step 4's verify-after-create no longer asserts four fields it cannot read; new Step 6.6 verifies them post-activation (dimagi-internal/ace#1647).** A never-activated opportunity renders only the edit-form half of `connect_get_opportunity`, so `start_date`, `total_budget`, `learn_app.cc_app_id` and `deliver_app.cc_app_id` were all absent at the moment Step 4 ran — four mandated comparisons passing vacuously on every run while the log read as verified. Same shape as ace#1449 (`passing_score` compared against a field the surface does not render). Step 4 now splits readable-here (`name`, `short_description`, `description`, `end_date`, `is_test`) from deferred, and requires an absent field to be recorded `unreadable-at-this-point` rather than counted as a match; Step 6.6 re-reads after `/activate/` and `[BLOCKER]`s on disagreement OR on continued absence. Verified live on `bednet-check-2-visit/20260825-1310` Phase 4 (same opp, same atom, either side of activation). Upstream half stays on #1637. | ACE team |
 | 2026-08-25 | **Step 6: `id` dropped from the `connect_list_payment_units` corroboration allowlist (dimagi-internal/ace#1642).** The listing's first column is the row `#`, so the PU that `connect_create_payment_units` returned as `id: 2495` reads back as `id: 1` — a per-opp display index, not the server PK, and passing it where a server id is required reproduces the `du.id` vs `du.server_id` rejection. Corroboration is now `payment_unit_uuid` / `name` only, with `payment_unit_uuid` named as the durable identifier. Atom description in `mcp/connect-server.ts` corrected to match. Observed on `bednet-check-2-visit/20260825-1310` Phase 4. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
+| 2026-09-08 | **Step 4's single-active-opp block stops asserting an enforcement and a deactivation it cannot support (dimagi-internal/ace#2290).** It read "Connect enforces one active managed opportunity per accepted `ProgramApplication`" and mandated a WARN reading "will deactivate prior active opp …", both generalized from a single 2026-05-06 observation (leep-paint-collection, jjackson/ace#106 finding 11). Counter-observed on `bednet-check-2-visit/20260908-1544`: **ten** opps on program `efb8af66-fbfd-488f-bf99-66f864cea68b` concurrently `active: true`, and a direct post-create re-read of `5fdee3b8-e859-4aa7-a4be-8ad6f727917a` returned `active: true` / `dashboard_read: "ok"` — no deactivation, so the WARN that run emitted was a prediction written into the artifact as fact. Both observations are now recorded as observations; the accept-application short-circuit on a self-managed org is named as the leading HYPOTHESIS with `upstream-regression-triage` against `dimagi/commcare-connect` as the way to settle it. The scan and the `hydrate: true` read are unchanged — the WARN is now singular-to-N, reports the count plus ids, drops the "close prior opps first" remedy (it contradicts per-run opp accumulation by design), and says "MAY deactivate — unverified" instead of predicting. Not CI-gateable: it is a claim about another system's behaviour. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
