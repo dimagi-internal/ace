@@ -919,6 +919,70 @@ Record per-app under `relevance_reachability`. Same rationale as constraint
 locality: mechanically detectable from bind order, so it is a parser rather
 than a rubric line.
 
+**Language tables vs. declared locales — always, every CCZ
+(dimagi-internal/ace#2292).** Every `<lang>/app_strings.txt` in the zip must be
+declared as a `<locale language="…">` in that CCZ's own `suite.xml`. Run the
+pure helper over the unzipped tree:
+
+```ts
+import { auditCczLanguageTables, formatCczLanguageTables }
+  from '../../lib/ccz-language-tables';
+const audit = auditCczLanguageTables({
+  suiteXml,
+  files,          // in-zip path -> text, as unzipped in Step 3
+  appName,        // optional — the app's name from the deploy summary
+});
+```
+
+The released Deliver CCZ for `bednet-check-2-visit/20260908-1544` (HQ app
+`a3359eaf446f498a80366e000a677a4a`, build `171996636b714bb09dee8779e7e83927`)
+unzipped to `default/ en/ modules-0/ modules-1/ nya/ tum/` while its `suite.xml`
+declared only `default` and `en`. The two extra tables were not a translation of
+this app: they were `spark-facilitator`'s Chichewa and Tumbuka programme, keyed
+to Spark's case model — 16 Spark-ish lines and **zero** bednet-ish lines in each
+50-line table, `app.display.name=Spark FCAP — pulogalamu ya wothandizira wa
+mudzi`. That CCZ scored 10.0 here with 0 BLOCKERs across 24 gates, because every
+gate above asks about forms, markers, XPath and versions and none of them asks
+whether the STRINGS in the zip belong to this opportunity.
+
+**This is a `[FINDING]`, not a halt, and the reason is specific.** The device is
+only ever offered the locales `suite.xml` declares, and `profile.ccpr` pinned
+`en` — so an orphan table is unreachable to a worker, Phase 6's device walk
+renders English, and Phase 4's configuration is unaffected. Halting a release on
+an unreachable file would cost a whole rebuild for something that cannot reach a
+worker. It still gets reported loudly, because it is a latent defect rather than
+a cosmetic one: the strings belong to another build, and they become reachable
+the moment a run resolves its deferred language question and declares a working
+language — at which point a worker switching language is shown another
+programme's register over another programme's case properties. It also
+contradicts the PDD, which set `working_language: en` and refused to name a
+geography ("inventing one would be fabricated context"); Chichewa and Tumbuka
+are Malawian languages, so this is the
+`docs/learnings/2026-05-12-no-inferred-backstory.md` class arriving through a
+build artifact.
+
+Emit `[FINDING]` `undeclared-language-table` naming **each orphan language and
+its `app.display.name`** — the foreign display name is what made the
+cross-opportunity origin obvious on sight, and it is carried as a
+`foreign-display-name` finding on the same audit. A `foreign-display-name` on a
+DECLARED language is `severity: 'signal'` and does not flip `ok`: a genuinely
+translated app translates its own name, so grading that would fire on every
+correctly multilingual build. `audit.missing` (declared with no table in the
+zip) is the INVERSE case, reported and deliberately not counted as an orphan.
+Record the finding as a Phase 3 residual, do not hand-edit the zip, and do not
+act on a cause — ace#2292's recycled-HQ-app hypothesis is explicitly unconfirmed
+and its second piece is still open.
+
+`audit.status === 'unable'` means the check **did not run** — either the file
+map carried no `app_strings.txt` at all, or `suite.xml` yielded zero locale
+declarations (every released CCZ declares at least `default`, so zero means the
+suite was not read, and reporting "every table is an orphan" on a failed read is
+the loudest possible false finding). That is NOT a pass: render it with
+`formatCczLanguageTables(audit, '<Learn|Deliver>')`, record it in the verdict's
+`checks[]` with its `reason`, and treat the language tables as UNVERIFIED.
+
+Record per-app under `language_tables`.
+
 ### Step 4.5: Runtime install validation via `commcare-cli.jar`
 
 Steps 3–4 are **structural** and never bind any XPath expression,
@@ -1253,6 +1317,11 @@ per_app:
 #   grid_menu_display:     { use_grid_menus, grid_form_menus,
 #                            modules_checked, modules_gridded, non_grid: [...] }
 #                          # all three fields are BLOCKER-gated (ace#1082)
+#   language_tables:       pass | unable | { present: [...], declared: [...],
+#                            orphans: [...], missing: [...], display_names: {...} }
+#                          # FINDING-gated, never a halt (ace#2292) — an orphan
+#                          # table is unreachable to a worker, so it is reported
+#                          # as a Phase 3 residual, not a release blocker
 auto_surfaced_concerns:
   - severity: BLOCKER | WARN | INFO
     message: "..."
@@ -1324,6 +1393,17 @@ defects.
   derive the case-list enum from the SAME itemset it repairs the form's option
   labels from — then re-release and re-run `app-release-qa`. Do not hand-edit
   the enum: an instance fix leaves the next build free to reinvent it.
+- `undeclared-language-table` — the CCZ ships a `<lang>/app_strings.txt` that
+  its own `suite.xml` never declares as a `<locale language="…">`, and on the
+  reported case those tables carried another opportunity's programme
+  (dimagi-internal/ace#2292: `spark-facilitator`'s Chichewa/Tumbuka strings in
+  `bednet-check-2-visit`'s released Deliver CCZ). `[FINDING]`, **not a halt** —
+  the device is only offered declared locales, so the table is unreachable to a
+  worker and the run continues. Operator action: record the orphan languages
+  and their `app.display.name` as a Phase 3 residual and check them against the
+  PDD's declared working language. Do not hand-edit the zip, and do not act on
+  a cause: whether the residue comes from a recycled HQ app or from the Nova
+  blueprint is unconfirmed, and ace#2292's second piece is open.
 - `ccz-min-version-gate` — the released CCZ's `profile.ccpr` declares a
   minimum CommCare (`requiredMajor.requiredMinor.requiredMinimal`) ABOVE the
   APK Phase 6 will run, so CommCare shows a version-gate screen instead of
