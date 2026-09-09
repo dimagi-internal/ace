@@ -153,9 +153,10 @@ front half (how the labs-only opp + its data come to exist) differs.
       required: true                   # true iff a dashboard is `interactive: true`
       run_id: 5508                     # the INTERACTIVE dashboard's run (the only resettable one)
       state_keys: [worker_states, spawned_tasks]   # workflow_get → saved_runs.snapshot_inputs.state_keys
-      command: >-
+      command: >-                     # --workflow-id is REQUIRED, not optional (ace#2325)
         npx tsx <ace-root>/scripts/reset-labs-run-state.ts
         --run-id 5508 --keys worker_states,spawned_tasks
+        --workflow-id 5502 --opportunity-id 10060
       verified_at: 2026-09-08T21:00Z   # when the command was last run green (or `null` + a reason)
     dataset_constraints:               # step 2c, counts not claims (ace#1658)
       spec_source: deliver-app         # deliver-app | none
@@ -1047,11 +1048,27 @@ front half (how the labs-only opp + its data come to exist) differs.
      declaration of what state it mutates (`["worker_states", "spawned_tasks"]`
      for `llo_weekly_review`). A reset that names no key writes NOTHING: labs
      shallow-merges run state, so `{"state": {}}` is a silent success.
+   - **Name the WORKFLOW, not just the run — the reset cannot find a page from a
+     run id alone (ace#2325).** The CSRF token has to be read off a rendered labs
+     page, and labs routes the run page as
+     `/labs/workflow/<workflow_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`:
+     the workflow id is the PATH segment and the run id is a QUERY parameter. So
+     pass `--workflow-id <def_id>` (plus `--opportunity-id` when you have it), or
+     `--page-url <the dashboard's own par_url>` — you already have both in
+     `source.dashboards[]`. The CLI now refuses up front when neither is given;
+     before ace#2325 it synthesised `<base>/labs/workflow/run/<run_id>/`, which
+     resolves to nothing, so the POST came back 404 and was reported as
+     `run-not-found` on a run that was perfectly resettable. Because the spec's
+     `setup` block is `rerun: per_render`, that blocked EVERY render.
    - **Run it once, now, and record `verified_at`.** `npx tsx
      <ace-root>/scripts/reset-labs-run-state.ts --run-id <interactive run>
-     --keys <k1,k2>`. It needs the labs UI session (`/ace:labs-login`), not
-     `LABS_MCP_TOKEN`. Exercising it here is what turns a registered command
-     into a proven one; a `409` means you are pointing at a completed run.
+     --keys <k1,k2> --workflow-id <def_id> --opportunity-id <opp>`. It needs the
+     labs UI session (`/ace:labs-login`), not `LABS_MCP_TOKEN`. Exercising it
+     here is what turns a registered command into a proven one; a `409` means you
+     are pointing at a completed run. **Retry once before believing a failure** —
+     measured 2026-09-09 on labs run 5590, one invocation in four returned
+     `run-not-found` with a correct page URL and the identical command succeeded
+     immediately after, so a `must_succeed` setup can abort a render on a flake.
    - **Write the command with an ABSOLUTE path to the script.** canopy runs
      `setup.command` with cwd = the git toplevel containing the SPEC (falling
      back to the spec's own directory outside a repo), which is the demo run
@@ -1495,6 +1512,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-09 | **Step 4b's registered reset command must name the WORKFLOW, and the CLI now refuses without it (ace#2325).** `reset-labs-run-state.ts` defaulted its CSRF page to `<base>/labs/workflow/run/<run_id>/`, which is not a labs route — the run page is `/labs/workflow/<workflow_id>/run/?run_id=<run_id>`, workflow id in the PATH and run id in the QUERY, and the CLI never had the workflow id. So the token was read off a non-page and the POST returned 404, reported as `run-not-found` on a run that was fine. The natural invocation — the one this step registers into `source.render_reset.command` and `demo-narrative` copies into `setup.command` — was the broken one, and because that block is `rerun: per_render` it blocked EVERY render of a state-mutating demo. Reproduced on `spark-facilitator/20260909-2242` (labs run 5590 / workflow 5502 / opp 10060): without the flag `run-not-found` exit 1, with it `cleared record_reviews` exit 0. Now: `buildRunPageUrl` in `lib/labs-run-state-reset.ts`, `--workflow-id`/`--opportunity-id` on the CLI, a fail-fast when neither a page URL nor a workflow id is given, and a 404 detail that names the wrong-token-page reading alongside the missing-run one. *Enforced:* `test/lib/labs-run-state-reset.test.ts`. | ACE team |
 | 2026-09-09 | **New step 2c.1b: the deliver app exposes its `calculate` expressions, and a computed field must be REPLAYED rather than drawn (ace#2328).** `specFromDeliverApp` reads `relevant` and `constraint` and ignores `calculate`, and nothing in this skill mentioned it — `grep -niE "\.calculate\|hidden field\|DataBindOnly"` over the skill, `synthetic-data-generate` and `lib/dataset-constraints.ts` returned zero matches. But `get_opportunity_apps` returns one on every hidden/`DataBindOnly` question, which is where an app keeps its payment arithmetic: 26 of deliver app `61eedcad…` v10's questions carry one, including `is_payable`, `capped_index`, `key_date_part` and the `entity_key` the deliver unit submits as its dedup id. `spark-facilitator/20260908-2215` recorded them as "DELIBERATELY NOT POPULATED" on the false premise that they were not exposed, so its dataset carried no payment decision, its dashboard had only a per-worker scorecard, and its payoff became a filter over 12 rows — three consecutive non-converged runs. Replaying them on `20260909-1211` produced 149 distinct dedup keys over 155 community meetings and 6 records that are complete, correct and unpaid because they are the 4th on their FCAP step. The manifest cannot do this: it draws every field independently, so a drawn `is_payable` contradicts the fields it is a function of — the ace#1346 class by another route. | ACE team |
 | 2026-09-08 | **New step 4b: register the per-render reset for the interactive dashboard (ace#2297).** A labs run's `spawned_tasks` persists server-side across renders, so the second take of the scene whose payoff CREATES something finds the control gone and its `must_succeed` click aborts — order-dependent, invisible on the first pass. On `spark-facilitator/20260908-2215` (labs run 5508, workflow 5502, opp 10060) iterations 0-2 passed only because a human had reset the state by hand, leaving no trace in `run_state.yaml`, and the reset itself lived as `reset_and_realize.py` inside the DDD run dir — uncommitted, not worktree-portable (ace#2287), swept. Now: `scripts/reset-labs-run-state.ts` (+ `lib/labs-run-state-reset.ts`) in the repo, a `source.render_reset` block in the handoff whose `state_keys` come from `workflow_get → saved_runs.snapshot_inputs.state_keys`, and `demo-narrative` wiring it as `setup: {rerun: per_render}`. Backstop: `demo-data-setup-qa` check 18. | ACE team |
 | 2026-09-08 | **Step 2c.2's write-back must preserve `visit.id` losslessly (ace#2249).** The labs generator mints `visit.id` as a 60-bit integer, over JS `Number.MAX_SAFE_INTEGER`, so a plain `JSON.parse`/`JSON.stringify` round trip silently rewrote 490 of 505 ids on a live run while every gate stayed green (`auditDataset` judges values, not keys). Fixed at two points in `lib/dataset-constraints.ts`: `scrubOffBranchFields`'s internal deep copy now uses `structuredClone` instead of `JSON.parse(JSON.stringify(...))`, and new `parseJsonPreservingBigInts` / `stringifyJsonPreservingBigInts` helpers (an out-of-safe-range integer literal round-trips as a `bigint`) replace `JSON.parse`/`JSON.stringify` on both ends of the caller's own read/write. | ACE team |
