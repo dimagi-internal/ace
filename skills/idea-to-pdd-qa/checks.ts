@@ -17,6 +17,7 @@ import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types'
 import { classifyGrainRelation } from '../../lib/payment-grain';
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
+import { ARCHETYPES } from '../../lib/decisions-archetype-consistency';
 
 export const REQUIRED_SECTIONS = [
   'Archetype',
@@ -61,7 +62,22 @@ const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
   'Program Parameters': 'a `| key | value |` table of the PDD decisions a LATER phase must apply verbatim (learn_passing_score, payment_rate_*, caps, entity_id_grain) — the canonical key vocabulary and per-key guidance is `## Program Parameters` in templates/pdd-template.md; see checkProgramParametersCoherent for the coherence rules',
 };
 
-const VALID_ARCHETYPES = ['atomic-visit', 'longitudinal-visits', 'focus-group', 'multi-stage'] as const;
+/**
+ * The archetype vocabulary — DERIVED, never restated (ace#2312).
+ *
+ * This was a second literal list of the same closed set that
+ * `DECISION_VOCABULARIES['archetype-selection'].options` already declares, which made the
+ * repo's guard against "one fact enumerated in many places" itself one fact in two places.
+ * The two lists happened to agree, but nothing made them: `longitudinal-visits` landed in the
+ * vocabulary on 2026-08-17 and the resulting stale-surface class has recurred six times
+ * (ace#1486 -> #1541 -> #1630 -> #1784 -> #2128 -> #2294).
+ *
+ * `test/skills/archetype-enum-drift.test.ts` used to REGEX-PARSE the literal out of this file
+ * to avoid restating it a third time — a reasonable move that made a source of truth depend on
+ * a source line's syntax. It now imports `ARCHETYPES` directly, like its sibling
+ * `test/lib/archetype-enum-docs.test.ts` always has, so both drift tests read one enum.
+ */
+const VALID_ARCHETYPES: readonly string[] = ARCHETYPES;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
