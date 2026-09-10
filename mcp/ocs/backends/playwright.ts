@@ -1,6 +1,7 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
 import {
   parseOcsTeamPage,
+  ocsMembersTablePath,
   checkboxOptions,
   checkedCheckboxValues,
   sameGroups,
@@ -1419,9 +1420,29 @@ export class PlaywrightBackend {
       return res.text ? await res.text() : '';
     };
 
+    // Membership lives on the htmx PARTIAL, not the page (ace#2344). The page
+    // is still fetched for the invite form + csrf.
+    const readMembers = async () => {
+      const path = ocsMembersTablePath(team);
+      const res = await this.opts.request('GET', path, undefined, {
+        followRedirects: false,
+        extraHeaders: { 'HX-Request': 'true', Referer: `${this.opts.baseUrl}${teamPath}` },
+      });
+      trail.push(`GET ${path} -> ${res.status}`);
+      const rb = parseOcsTeamPage(res.status === 200 && res.text ? await res.text() : '', args.email);
+      trail.push(...rb.raw);
+      if (!rb.parsed) {
+        throw new Error(
+          `The members table for "${team}" returned no rows, so membership cannot be read — an ` +
+            `empty read on a team ACE belongs to is a wrong read, not an absent member (ace#2344). ` +
+            `Not inviting on an unverified read. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      return rb;
+    };
+
     let html = await getPage(teamPath);
-    const pre = parseOcsTeamPage(html, args.email);
-    trail.push(...pre.raw);
+    const pre = await readMembers();
 
     // ── Accepted member: reconcile groups additively via the membership page.
     if (pre.isMember) {
@@ -1526,8 +1547,7 @@ export class PlaywrightBackend {
       trail.push(`POST ${cancelPath} (cancel stale invite) -> ${cr.status}`);
       // Verify the cancel landed before inviting again — never assume.
       html = await getPage(teamPath);
-      const check = parseOcsTeamPage(html, args.email);
-      trail.push(...check.raw);
+      const check = await readMembers();
       if (check.pending) {
         throw new Error(
           `Cancel of the stale invitation returned ${cr.status} but the read-back still shows it ` +
@@ -1569,9 +1589,8 @@ export class PlaywrightBackend {
 
     // Read back from a FRESH page load, not the htmx swap fragment. Proof
     // requires the invite to exist AND carry the requested groups.
-    const postHtml = await getPage(teamPath);
-    const rb = parseOcsTeamPage(postHtml, args.email);
-    trail.push(...rb.raw);
+    await getPage(teamPath); // the swap fragment is not proof — re-read the partial fresh
+    const rb = await readMembers();
     const wanted = chosen.map((c) => c.label);
     const proven = rb.isMember || (rb.pending !== undefined && sameGroups(rb.pending.groups, wanted));
     if (!proven) {

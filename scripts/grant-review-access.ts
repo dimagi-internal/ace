@@ -79,10 +79,15 @@
  *           cancel URL is rendered per-invitation in
  *           templates/teams/components/invitation_row.html:12.
  *   Read-back
- *           `GET /a/<team>/team/` renders the "Team Members" table (accepted
- *           members) and, inside `#invitation-form-and-table`, a "Pending
- *           Invitations" table whose columns are Email / Invited / Roles
- *           (templates/teams/components/invitation_row.html:2-5).
+ *           `GET /a/<team>/team/members/table/` (an htmx partial, `HX-Request:
+ *           true`) renders ONE table of accepted members AND pending
+ *           invitations — Member / Roles / Status / actions, one row each
+ *           (templates/teams/components/member_row_*.html). The team page
+ *           itself carries NO member rows any more; reading it as if it did is
+ *           what reported a four-member team empty on 2026-09-10 (ace#2344).
+ *           Parser + fixture: lib/ocs-team-members.ts. An empty read is
+ *           INCONCLUSIVE (`parsed: false`) and is reported NOT DONE, never as
+ *           "not a member".
  *
  *   ⚠ DEFAULT GROUP = "Chatbot Admin", and that is load-bearing. The surface the
  *   run-summary links is the chatbot admin page `/a/<team>/chatbots/<id>/`, served
@@ -113,6 +118,7 @@ import { PlaywrightSession as ConnectSession } from '../mcp/connect/auth/playwri
 import { PlaywrightSession as OcsSession } from '../mcp/ocs/auth/playwright-session.js';
 
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
+import { parseOcsTeamPage, ocsMembersTablePath, checkedCheckboxValues, type OcsTeamPageReadback } from '../lib/ocs-team-page.js';
 
 // ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
 // secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
@@ -712,74 +718,31 @@ async function grantHq(opts: {
 }
 
 // ── Open Chat Studio ───────────────────────────────────────────────────────
-interface OcsPendingInvite {
-  email: string;
-  invited: string;
-  /** Group names exactly as OCS renders them (`invitation.groups.all|join:", "`). */
-  groups: string[];
-  /** Per-row cancel URL from invitation_row.html:12, or undefined if not rendered. */
-  cancelUrl?: string;
-}
+// Membership is read off the members-table PARTIAL, never the team page — see
+// lib/ocs-team-page.ts (dimagi-internal/ace#2344). `parsed: false` is an
+// inconclusive read and is reported as NOT DONE, never as "not a member".
+type OcsReadback = OcsTeamPageReadback;
 
-interface OcsReadback {
-  isMember: boolean;
-  /** The matched accepted member's row, when `isMember` — id drives the edit URL. */
-  member?: { id: string; label: string };
-  pending?: OcsPendingInvite;
-  raw: string[];
-}
-
-function parseOcsTeamPage(html: string, email: string): OcsReadback {
-  const lower = email.toLowerCase();
-  const raw: string[] = [];
-
-  // Team Members table — rows render as `Name &lt;email&gt;` anchors.
-  const membersIdx = html.indexOf('Team Members');
-  const inviteIdx = html.indexOf('id="invitation-form-and-table"', membersIdx);
-  const membersHtml =
-    membersIdx === -1 ? '' : html.slice(membersIdx, inviteIdx === -1 ? undefined : inviteIdx);
-  const members = [...membersHtml.matchAll(/<a[^>]*href="[^"]*\/team\/members\/(\d+)\/"[^>]*>([\s\S]*?)<\/a>/gi)].map(
-    (m) => ({ id: m[1], label: stripTags(m[2]) }),
-  );
-  raw.push(`  Team Members table: ${JSON.stringify(members)}`);
-
-  // Pending Invitations table lives inside #invitation-form-and-table, after the
-  // invite form. Each row: <td>email</td><td>invited</td><td>roles</td> plus a
-  // cancel form (templates/teams/components/invitation_row.html:2-15).
-  const inviteSection = sectionById(html, 'invitation-form-and-table');
-  const afterForm = inviteSection.slice(inviteSection.indexOf('</form>') + 7);
-  const invites: OcsPendingInvite[] = [];
-  for (const row of afterForm.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)) {
-    const tds = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => stripTags(m[1]));
-    if (tds.length < 3 || !tds[0].includes('@')) continue;
-    invites.push({
-      email: tds[0],
-      invited: tds[1],
-      groups: tds[2].split(',').map((s) => s.trim()).filter(Boolean),
-      cancelUrl: row[1].match(/hx-post="([^"]*\/invite\/cancel\/[^"]*)"/)?.[1],
-    });
+async function ocsMembersReadback(
+  request: { get: (url: string, opts: { headers?: Record<string, string>; maxRedirects?: number }) => Promise<{ status(): number; text(): Promise<string> }> },
+  ocsBase: string,
+  team: string,
+  email: string,
+): Promise<{ status: number; rb: OcsReadback }> {
+  const url = `${ocsBase}${ocsMembersTablePath(team)}`;
+  const r = await request.get(url, {
+    headers: { 'HX-Request': 'true', Referer: `${ocsBase}/a/${team}/team/` },
+    maxRedirects: 0,
+  });
+  if (r.status() !== 200) {
+    return {
+      status: r.status(),
+      rb: { parsed: false, isMember: false, raw: [`  GET ${url} -> ${r.status()} — members table unreadable; read INCONCLUSIVE`] },
+    };
   }
-  raw.push(`  Pending Invitations table: ${JSON.stringify(invites)}`);
-
-  const member = members.find((m) => m.label.toLowerCase().includes(lower));
-  return {
-    isMember: Boolean(member),
-    member,
-    pending: invites.find((i) => i.email.toLowerCase() === lower),
-    raw,
-  };
-}
-
-/** The `value`s of the CHECKED checkboxes of a named group (order-independent). */
-function checkedCheckboxValues(html: string, name: string): string[] {
-  const out: string[] = [];
-  for (const m of html.matchAll(new RegExp(`<input\\b[^>]*name="${name}"[^>]*>`, 'gi'))) {
-    if (/\bchecked\b/i.test(m[0])) {
-      const v = m[0].match(/\bvalue="([^"]*)"/)?.[1];
-      if (v !== undefined) out.push(v);
-    }
-  }
-  return out;
+  const rb = parseOcsTeamPage(await r.text(), email);
+  rb.raw.unshift(`  GET ${url} -> 200`);
+  return { status: 200, rb };
 }
 
 function sameGroups(a: string[], b: string[]): boolean {
@@ -965,7 +928,19 @@ async function grantOcs(opts: {
     }
     let html = await gr.text();
 
-    const pre = parseOcsTeamPage(html, opts.email);
+    const { rb: pre } = await ocsMembersReadback(request, ocsBase, opts.team, opts.email);
+    if (!pre.parsed) {
+      record({
+        surface,
+        status: 'NOT DONE',
+        detail:
+          `The members table for "${opts.team}" returned no rows, so membership cannot be read — ` +
+          `an empty read on a team ACE belongs to is a wrong read, not an absent member (ace#2344). ` +
+          `OCS may have changed the template again; not inviting on an unverified read.`,
+        readback: [`GET ${teamUrl} -> 200`, ...pre.raw],
+      });
+      return;
+    }
     if (pre.isMember) {
       // Membership is not access. An accepted member on the wrong group 403s on
       // the chatbot page ACE links, so "already a member" is NOT the skip — the
@@ -1066,8 +1041,8 @@ async function grantOcs(opts: {
       // Verify the cancel landed before inviting again — never assume.
       const after = await request.get(teamUrl, { maxRedirects: 0 });
       html = after.status() === 200 ? await after.text() : '';
-      const check = html ? parseOcsTeamPage(html, opts.email) : undefined;
-      if (!check || check.pending) {
+      const check = html ? (await ocsMembersReadback(request, ocsBase, opts.team, opts.email)).rb : undefined;
+      if (!check || !check.parsed || check.pending) {
         record({
           surface,
           status: 'NOT DONE',
@@ -1152,10 +1127,10 @@ async function grantOcs(opts: {
 
     // Read back from a FRESH page load, not the swap fragment.
     const post = await request.get(teamUrl, { maxRedirects: 0 });
-    const postHtml = post.status() === 200 ? await post.text() : '';
-    const rb: OcsReadback = postHtml
-      ? parseOcsTeamPage(postHtml, opts.email)
-      : { isMember: false, raw: ['  (re-GET failed — read-back INCONCLUSIVE)'] };
+    const rb: OcsReadback =
+      post.status() === 200
+        ? (await ocsMembersReadback(request, ocsBase, opts.team, opts.email)).rb
+        : { parsed: false, isMember: false, raw: ['  (re-GET failed — read-back INCONCLUSIVE)'] };
     // Proof requires the invite to be there AND to carry the groups we asked for —
     // a pending row with the wrong groups is not the grant that was requested.
     const wanted = chosen.map((c) => c.label);

@@ -38,31 +38,54 @@ function makeBackend(request: RequestFn) {
 }
 
 // ── HTML fixtures (anchored to the OCS team templates the lib parser reads) ─
+//
+// Since 2026-09-10 (ace#2344) membership is read off the htmx PARTIAL
+// `/a/<team>/team/members/table/`; the team page carries only the invite form.
+// Every flow therefore reads: GET page → GET partial → …, and every fresh
+// read-back is GET page → GET partial again.
 
-const inviteForm = `
-<div id="invitation-form-and-table">
-  <form method="post">
+const teamPage = () => `
+<html><body>
+<div id="members-section">
+  <form hx-post="/a/dimagi/team/invite/">
     <input type="hidden" name="csrfmiddlewaretoken" value="page-csrf">
     <label><input type="checkbox" name="groups" value="7"> Chatbot Admin</label>
     <label><input type="checkbox" name="groups" value="9"> Chat Viewer</label>
   </form>
-  %PENDING%
-</div>`;
-
-function teamPage(opts: { members?: string; pendingRows?: string } = {}) {
-  return `
-<html><body>
-<h2>Team Members</h2>
-<table>${opts.members ?? ''}</table>
-${inviteForm.replace('%PENDING%', `<table>${opts.pendingRows ?? ''}</table>`)}
+  <div hx-get="/a/dimagi/team/members/table/" hx-trigger="load"></div>
+</div>
 </body></html>`;
-}
 
-const memberRow = (id: string, label: string) =>
-  `<tr><td><a href="/a/dimagi/team/members/${id}/">${label}</a></td></tr>`;
-const pendingRow = (email: string, groups: string) =>
-  `<tr><td>${email}</td><td>2026-07-20</td><td>${groups}</td>
-   <td><form hx-post="/a/dimagi/team/invite/cancel/88/"><button>Cancel</button></form></td></tr>`;
+const badge = (label: string) => `<span class="badge badge-ghost badge-sm">${label}</span>`;
+
+const memberRow = (id: string, name: string, email: string, groups: string[]) => `
+<tr id="record-member-${id}">
+  <td><div><span class="min-w-0"><span class="block font-semibold truncate">${name}</span>
+    <span class="block text-neutral-500 text-xs truncate">${email}</span></span></div></td>
+  <td><div>${groups.map(badge).join('')}</div></td>
+  <td><div><span class="badge badge-success badge-sm">Active</span></div></td>
+  <td><div><a class="btn" href="/a/dimagi/team/members/${id}/">edit</a>
+    <form method="post" action="/a/dimagi/team/members/${id}/remove/"><button>x</button></form></div></td>
+</tr>`;
+
+const pendingRow = (email: string, groups: string[]) => `
+<tr id="record-invitation-88">
+  <td><div><span class="min-w-0"><span class="block font-semibold truncate">${email}</span>
+    <span class="block text-neutral-500 text-xs truncate">${email}</span></span></div></td>
+  <td><div>${groups.map(badge).join('')}</div></td>
+  <td><div><span class="badge badge-warning badge-sm">Invited</span>
+    <span class="block text-neutral-500 text-xs mt-1">Invited 2 hours ago</span></div></td>
+  <td><div><form hx-post="/a/dimagi/team/invite/88/"><button>Resend</button></form>
+    <form hx-post="/a/dimagi/team/invite/cancel/88/"><button>Cancel</button></form></div></td>
+</tr>`;
+
+/** ACE is a member of every team it can open, so a truthful partial always has its row. */
+const agentRow = memberRow('41', 'ACE Agent', 'ace@dimagi-ai.com', ['Chatbot Admin', 'Team Admin']);
+
+const membersTable = (...rows: string[]) => `
+<p class="text-neutral-500 text-sm mb-2">${rows.length + 1} of ${rows.length + 1}</p>
+<table><thead><tr><th>Member</th><th>Roles</th><th>Status</th><th></th></tr></thead>
+<tbody>${agentRow}${rows.join('')}</tbody></table>`;
 
 const membershipPage = (checked: string[]) => `
 <form method="post">
@@ -71,17 +94,38 @@ const membershipPage = (checked: string[]) => `
   <label><input type="checkbox" name="groups" value="9" ${checked.includes('9') ? 'checked' : ''}> Chat Viewer</label>
 </form>`;
 
+const JO_MEMBER = memberRow('57', 'Jo Reviewer', 'jo@dimagi.com', ['Chatbot Admin']);
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('PlaywrightBackend.addTeamMember', () => {
+  it('reads membership off the members-table PARTIAL, not the team page', async () => {
+    const captured: Captured[] = [];
+    const be = makeBackend(
+      scriptedRequest(
+        [
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(JO_MEMBER) },
+          { status: 200, body: membershipPage(['7']) },
+        ],
+        captured,
+      ),
+    );
+    await be.addTeamMember({ email: 'jo@dimagi.com' });
+    expect(captured.slice(0, 2).map((c) => c.url)).toEqual(['/a/dimagi/team/', '/a/dimagi/team/members/table/']);
+    expect((captured[1].options as { extraHeaders?: Record<string, string> }).extraHeaders?.['HX-Request']).toBe('true');
+  });
+
   it('fresh invite: POSTs repeated groups keys and proves via fresh read-back', async () => {
     const captured: Captured[] = [];
     const be = makeBackend(
       scriptedRequest(
         [
-          { status: 200, body: teamPage() }, // GET team page (no member, no pending)
+          { status: 200, body: teamPage() }, // GET team page (invite form)
+          { status: 200, body: membersTable() }, // GET partial: agent only — jo absent
           { status: 200, body: '' }, // POST invite (htmx swap fragment)
-          { status: 200, body: teamPage({ pendingRows: pendingRow('jo@dimagi.com', 'Chatbot Admin') }) }, // verify
+          { status: 200, body: teamPage() }, // fresh GET page
+          { status: 200, body: membersTable(pendingRow('jo@dimagi.com', ['Chatbot Admin'])) }, // fresh partial
         ],
         captured,
       ),
@@ -102,8 +146,10 @@ describe('PlaywrightBackend.addTeamMember', () => {
       scriptedRequest(
         [
           { status: 200, body: teamPage() },
+          { status: 200, body: membersTable() },
           { status: 200, body: '' }, // POST "succeeds"
-          { status: 200, body: teamPage() }, // verify: still absent
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable() }, // verify: still absent
         ],
         [],
       ),
@@ -116,7 +162,8 @@ describe('PlaywrightBackend.addTeamMember', () => {
     const be = makeBackend(
       scriptedRequest(
         [
-          { status: 200, body: teamPage({ members: memberRow('57', 'Jo &lt;jo@dimagi.com&gt;') }) },
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(JO_MEMBER) },
           { status: 200, body: membershipPage(['7']) }, // member edit page: Chatbot Admin checked
         ],
         captured,
@@ -132,7 +179,8 @@ describe('PlaywrightBackend.addTeamMember', () => {
     const be = makeBackend(
       scriptedRequest(
         [
-          { status: 200, body: teamPage({ members: memberRow('57', 'Jo &lt;jo@dimagi.com&gt;') }) },
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(memberRow('57', 'Jo Reviewer', 'jo@dimagi.com', ['Chat Viewer'])) },
           { status: 200, body: membershipPage(['9']) }, // currently only Chat Viewer
           { status: 200, body: '' }, // POST groups union
           { status: 200, body: membershipPage(['7', '9']) }, // verify: both checked
@@ -152,7 +200,10 @@ describe('PlaywrightBackend.addTeamMember', () => {
   it('pending invite with matching groups is an idempotent skip', async () => {
     const be = makeBackend(
       scriptedRequest(
-        [{ status: 200, body: teamPage({ pendingRows: pendingRow('jo@dimagi.com', 'Chatbot Admin') }) }],
+        [
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(pendingRow('jo@dimagi.com', ['Chatbot Admin'])) },
+        ],
         [],
       ),
     );
@@ -163,7 +214,10 @@ describe('PlaywrightBackend.addTeamMember', () => {
   it('pending invite with WRONG groups fails loud without replace_invite', async () => {
     const be = makeBackend(
       scriptedRequest(
-        [{ status: 200, body: teamPage({ pendingRows: pendingRow('jo@dimagi.com', 'Chat Viewer') }) }],
+        [
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(pendingRow('jo@dimagi.com', ['Chat Viewer'])) },
+        ],
         [],
       ),
     );
@@ -175,11 +229,14 @@ describe('PlaywrightBackend.addTeamMember', () => {
     const be = makeBackend(
       scriptedRequest(
         [
-          { status: 200, body: teamPage({ pendingRows: pendingRow('jo@dimagi.com', 'Chat Viewer') }) },
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(pendingRow('jo@dimagi.com', ['Chat Viewer'])) },
           { status: 200, body: '' }, // POST cancel
-          { status: 200, body: teamPage() }, // verify cancel: gone
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable() }, // verify cancel: gone
           { status: 200, body: '' }, // POST fresh invite
-          { status: 200, body: teamPage({ pendingRows: pendingRow('jo@dimagi.com', 'Chatbot Admin') }) }, // verify
+          { status: 200, body: teamPage() },
+          { status: 200, body: membersTable(pendingRow('jo@dimagi.com', ['Chatbot Admin'])) }, // verify
         ],
         captured,
       ),
@@ -196,9 +253,28 @@ describe('PlaywrightBackend.addTeamMember', () => {
   });
 
   it('throws when a requested group is not offered on the team', async () => {
-    const be = makeBackend(scriptedRequest([{ status: 200, body: teamPage() }], []));
+    const be = makeBackend(
+      scriptedRequest([{ status: 200, body: teamPage() }, { status: 200, body: membersTable() }], []),
+    );
     await expect(
       be.addTeamMember({ email: 'jo@dimagi.com', group_labels: ['Super Admin'] }),
     ).rejects.toThrow(/not offered/);
+  });
+
+  // ace#2344 — the regression this file exists to pin: a read that yields NO rows
+  // must never be treated as "not a member" and must never lead to an invite.
+  it('refuses to act on an empty members read — inconclusive, not absent (ace#2344)', async () => {
+    const captured: Captured[] = [];
+    const be = makeBackend(
+      scriptedRequest(
+        [
+          { status: 200, body: teamPage() },
+          { status: 200, body: '<html><body><h2>Members &amp; access</h2></body></html>' }, // the OLD page shape
+        ],
+        captured,
+      ),
+    );
+    await expect(be.addTeamMember({ email: 'jo@dimagi.com' })).rejects.toThrow(/wrong read|ace#2344/);
+    expect(captured.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
 });

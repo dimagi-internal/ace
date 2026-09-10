@@ -249,3 +249,131 @@ Components: 1, 2, 3`;
     expect(set.frameworkComponentIds).toBeUndefined();
   });
 });
+
+//
+// ace#2352 — the framework's OWN component table is the inventory.
+//
+// The author: "the framework does have a numbered list, in the table near the
+// top, 1 through 12 plus 5b … I want to understand what's actually missing
+// before I paste it somewhere else … expect it to change." Two copies of one
+// list drift; the table she already maintains is read instead. An explicit
+// `Components:` line still wins when present.
+//
+// The Docs fixture is the live Graduation Framework's head as `drive_read_file`
+// returns it (rev 15, 2026-09-10): one cell per line, tab-led, with the
+// "Components by model" table repeating the same ids further down.
+//
+
+const FRAMEWORK_DOCS_EXPORT = [
+  'Poverty Graduation on Connect: Models and Components Framework',
+  'Purpose: A map of the components a graduation program is built from and how each would be built on Connect.',
+  'Components vs models. The components below are a menu. A specific program is a model: which components are on, plus the option chosen for each configurable one.',
+  '________________',
+  '',
+  '',
+  'The component list',
+  'Numbering is not a sequence; several run concurrently over the program\'s life.',
+  '#',
+  '\tComponent',
+  '\tTag',
+  '\tOne-line role',
+  '\t1',
+  '\tGeographic (village) selection',
+  '\t[candidate]',
+  '\tIn-platform community assessment tool to choose the areas for running the targeting survey.',
+  '\t2',
+  '\tTargeting survey',
+  '\t[core]',
+  '\tThe household poverty scorecard survey.',
+  '\t5',
+  '\tProductive asset transfer (in-kind)',
+  '\t[core]',
+  '\tDeliver and verify a physical income-generating asset.',
+  '\t5b',
+  '\tProductive asset transfer (cash)',
+  '\t[core]',
+  '\tTransfer asset-scale cash. Uses Component 6\'s transfer methods and verification.',
+  '\t12',
+  '\tCommunity entry and market assessment',
+  '\t[candidate]',
+  '\tAdded from the Kaduna model; no section or PDD yet.',
+  '\t________________',
+  '',
+  '',
+  'Components by model',
+  '#',
+  '\tComponent',
+  '\tKaduna (KADSIPA)',
+  '\t1',
+  '\tGeographic (village) selection',
+  '\tNot used.',
+  '\t7',
+  '\tSavings / VSLA',
+  '\tNot used.',
+].join('\r\n');
+
+const FRAMEWORK_MARKDOWN = `Poverty Graduation on Connect: Models and Components Framework
+Purpose: A map of the components.
+Components vs models. The components below are a menu.
+
+## The component list
+
+| # | Component | Tag | One-line role |
+|---|-----------|-----|---------------|
+| 1 | Geographic (village) selection | [candidate] | Choose the areas. |
+| 2 | Targeting survey | [core] | The household poverty scorecard survey. |
+| 5b | Productive asset transfer (cash) | [core] | Uses Component 6's transfer methods. |
+| 11 | Business group formation | [candidate] | No PDD yet. |
+
+## Components by model
+`;
+
+describe('classifyComponentSet — the framework\'s own component table (ace#2352)', () => {
+  it('reads the inventory off the Docs-exported table, 5b intact, first table only', () => {
+    const set = classifyComponentSet([
+      input('Graduation Framework', FRAMEWORK_DOCS_EXPORT),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toEqual(['1', '2', '5', '5b', '12']);
+    expect(set.findings.map((f) => f.code)).not.toContain('inventory-undeclared');
+  });
+
+  it('reads the same table from the markdown source the author drafts in', () => {
+    const set = classifyComponentSet([
+      input('graduation-framework.md', FRAMEWORK_MARKDOWN),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toEqual(['1', '2', '5b', '11']);
+  });
+
+  it('lets an explicit Components: declaration win over the table', () => {
+    const declaredToo = FRAMEWORK_DOCS_EXPORT.replace(
+      'Purpose: A map',
+      'Purpose: Components: 1, 2, 3 · A map',
+    );
+    const set = classifyComponentSet([
+      input('Graduation Framework', declaredToo),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toEqual(['1', '2', '3']);
+    expect(set.findings.map((f) => f.code)).not.toContain('inventory-conflict');
+  });
+
+  it('still refuses prose — a framework with no table and no declaration stays undeclared', () => {
+    const set = classifyComponentSet(REAL_SET);
+    expect(set.frameworkComponentIds).toBeUndefined();
+    expect(set.findings.map((f) => f.code)).toContain('inventory-undeclared');
+  });
+
+  it('does not mistake a table whose second header is not Component for the inventory', () => {
+    const other = `Some framework
+Purpose: not it.
+
+| # | Indicator | Weight |
+|---|-----------|--------|
+| 1 | Roof material | 10 |
+`;
+    const set = classifyComponentSet([input('fw', other), input('PDD - Enrollment', ENROLLMENT)]);
+    expect(set.frameworkComponentIds).toBeUndefined();
+  });
+});

@@ -55,17 +55,33 @@
 // PDD" — and for three days it had no producer anywhere in ACE, so the memo
 // reported three absent components on a programme missing nine (ace#2056).
 //
-// The reason it had none is real and is preserved here: the framework's
-// component table is PROSE, and parsing it is the same fragility as reading a
-// filename as an identity. So the inventory is not parsed — it is DECLARED, by
-// the same author, in the same place, with the same convention:
+// The reason it had none is real and is preserved here: PROSE is not parsed,
+// for the same reason a filename is not an identity. What the framework
+// carries, though, is not prose — it is a TABLE with a `#` column whose cells
+// follow the same id grammar as every declaration here (`1` … `12`, `5b`), and
+// the author's objection to declaring it twice was exactly right: "Since the
+// framework is already in the input set, I want to understand what's actually
+// missing before I paste it somewhere else … expect it to change" (2026-09-09,
+// ace#2352). Two copies of one list in one document drift.
 //
-//   Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12
+// So the inventory has two sources, in strict precedence:
 //
-// Declared → the gap list is exact. Undeclared → `inventory-undeclared`, a
-// finding that costs its author one line, and the consumer keeps its loud
+//   1. A DECLARATION on the metadata line, within the first 4 lines:
+//        Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12
+//      Explicit always wins. It is also the only form a document without a
+//      component table can use.
+//   2. The framework's own component TABLE — the FIRST table whose header row
+//      is `#` then `Component`, reading the `#` column until the first cell
+//      that is not an id. Both shapes the author actually produces are read:
+//      a Google Doc export (cells arrive as tab-led lines) and a markdown
+//      pipe table. The "Components by model" table further down repeats the
+//      same ids under the same header, so only the first table is read.
+//
+// Declared or tabled → the gap list is exact. Neither → `inventory-undeclared`,
+// a finding that costs its author one line, and the consumer keeps its loud
 // `inventory-unavailable` degrade. A loud gap still beats a confident guess;
-// what changed is that the gap now names the fix instead of being permanent.
+// what changed is that the guess-free source the author already maintains is
+// finally read.
 //
 // Pure and content-only: the caller does the Drive reads and hands text in.
 //
@@ -226,6 +242,60 @@ function declaredInventories(
   return out;
 }
 
+/** A component id as every convention here spells it: `4`, `5b`, `12`. */
+const ID_CELL_RE = /^\d+[a-z]?$/i;
+
+/**
+ * Read the framework's component inventory off its own `#` table (ace#2352).
+ *
+ * Google Docs exports a table as one cell per line, every cell after the first
+ * in a row led by a TAB; a markdown source carries the same table as a pipe
+ * table. Both reduce to a flat list of cells, so the reader is one loop:
+ * find the header (`#` then `Component`), count the header cells, then take
+ * every row's first cell while it is an id. It stops at the first non-id in
+ * column 0 — the separator line, the next heading, whatever follows the table.
+ *
+ * Only the FIRST such table is read. The framework's "Components by model"
+ * table repeats the ids under the same header and would only ever re-declare
+ * the same list; reading it too would make the doc disagree with itself.
+ */
+function tableInventory(text: string): string[] | undefined {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+
+  // Flatten to cells. A pipe-table line yields its cells; a Docs-export line is
+  // one cell (its leading tab is the cell boundary). Blank lines end a table.
+  const cells: string[] = [];
+  let started = false;
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\t/g, '');
+    const isPipe = /^\s*\|/.test(line);
+    const rowCells = isPipe
+      ? line.split('|').slice(1, -1).map((c) => c.trim())
+      : [line.trim()];
+    if (isPipe && rowCells.every((c) => /^:?-+:?$/.test(c))) continue; // markdown rule row
+    if (!started) {
+      if (rowCells[0] === '#') started = true;
+      else continue;
+    } else if (rowCells.length === 1 && rowCells[0] === '') {
+      break;
+    }
+    cells.push(...rowCells);
+  }
+  if (!started || cells.length < 2 || !/^component$/i.test(cells[1])) return undefined;
+
+  // Header width = cells up to the first id cell.
+  let width = cells.findIndex((c) => ID_CELL_RE.test(c));
+  if (width < 2) return undefined;
+
+  const ids: string[] = [];
+  for (let i = width; i < cells.length; i += width) {
+    const cell = cells[i];
+    if (!ID_CELL_RE.test(cell)) break;
+    ids.push(cell.toLowerCase());
+  }
+  return ids.length > 0 ? [...new Set(ids)].sort(compareComponentIds) : undefined;
+}
+
 /**
  * Classify an authored document set into the components ACE can address.
  *
@@ -288,7 +358,15 @@ export function classifyComponentSet(inputs: ComponentSetInput[]): ComponentSet 
   // single-PDD path there is no framework and nothing to be missing from it.
   let frameworkComponentIds: string[] | undefined;
   if (components.length > 0) {
-    const declarations = declaredInventories(inputs);
+    // Explicit declarations win outright; the framework's own table is the
+    // guess-free fallback that spares the author a second copy of the list.
+    let declarations = declaredInventories(inputs);
+    if (declarations.length === 0) {
+      declarations = inputs.flatMap((input) => {
+        const ids = tableInventory(input.text);
+        return ids ? [{ name: `${input.name} (component table)`, ids }] : [];
+      });
+    }
     const distinct = [...new Set(declarations.map((d) => d.ids.join(',')))];
 
     if (distinct.length === 1) {
@@ -311,12 +389,12 @@ export function classifyComponentSet(inputs: ComponentSetInput[]): ComponentSet 
         detail:
           'No document declares the framework\'s full component inventory, so the Learn build ' +
           'memo cannot name every component skipped for having no PDD (Learn PDD §6(5)) — it can ' +
-          'only name the ones another component happens to reference. The framework\'s component ' +
-          'table is prose; ACE will not parse it, for the same reason a filename is not evidence.',
+          'only name the ones another component happens to reference. No document carries a ' +
+          'readable component table either (a `#` / `Component` header with one id per row).',
         fix:
-          'Add to the framework document\'s metadata line, within its first 4 lines: ' +
-          '`· Components: 1, 2, 3, 4, 5, 5b, 6, …` — every component in the set, including the ones ' +
-          'this programme does not carry.',
+          'Either give the framework document a component table headed `#` / `Component`, or add ' +
+          'to its metadata line, within its first 4 lines: `· Components: 1, 2, 3, 4, 5, 5b, 6, …` ' +
+          '— every component in the set, including the ones this programme does not carry.',
       });
     }
   }
