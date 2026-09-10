@@ -2360,6 +2360,33 @@ if ! command -v gog >/dev/null 2>&1; then
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
   warn_turn "gog_auth: config/agent.json email or gog_client not set — cannot select GOG credentials" "see gmail_config above; fix config/agent.json, then: $GOG_LOGIN_HINT"
 else
+  # Hand the file keyring its password before probing anything (ace#2358).
+  #
+  # `GOG_KEYRING_PASSWORD` lives in the plugin-data `.env` and in NO shell
+  # profile, so a plain `/ace:doctor` runs with it unset. gog then cannot open
+  # the keyring — `no TTY available for keyring file backend password prompt` —
+  # and every probe below, plus `canopy email preflight`, fails for that reason
+  # alone. This block reported that as
+  #   `gog_auth: ... cannot call Gmail ... [TURN-BLOCKING]`
+  # which is a FALSE NEGATIVE on a mailbox that works, and whose remedy hint
+  # sends the operator to re-run an interactive browser OAuth that cannot fix
+  # it. Measured 2026-09-10: immediately after a fresh, verified-good canopy
+  # login (`gog auth list` showing the gmail scope, `canopy email preflight` →
+  # `OK: gog Gmail ready`), a plain doctor run still printed the warning and
+  # marked the turn blocked; exporting these two vars flipped the same run to
+  # `PASS gog_auth`.
+  #
+  # Only fills what the caller has NOT already exported, so an explicit env
+  # still wins.
+  if [ -z "${GOG_KEYRING_BACKEND:-}" ]; then
+    _gog_kr_backend="$(get_env GOG_KEYRING_BACKEND)"
+    [ -n "$_gog_kr_backend" ] && export GOG_KEYRING_BACKEND="$_gog_kr_backend"
+  fi
+  if [ -z "${GOG_KEYRING_PASSWORD:-}" ]; then
+    _gog_kr_password="$(get_env GOG_KEYRING_PASSWORD)"
+    [ -n "$_gog_kr_password" ] && export GOG_KEYRING_PASSWORD="$_gog_kr_password"
+  fi
+
   GOG_TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
   _gog() { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 gog "$@" 2>&1; else gog "$@" 2>&1; fi; }
   if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
