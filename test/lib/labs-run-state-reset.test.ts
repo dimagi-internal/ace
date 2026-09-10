@@ -4,8 +4,10 @@ import {
   buildResetBody,
   buildRunPageUrl,
   checkRenderResetRegistered,
+  classifyPinnedResetCommand,
   classifyResetResponse,
   extractCsrfToken,
+  renderResetCommand,
   runStateApiPath,
 } from '../../lib/labs-run-state-reset';
 
@@ -245,5 +247,146 @@ describe('checkRenderResetRegistered', () => {
     const r = checkRenderResetRegistered({ dashboards: interactiveDash, renderReset: goodReset });
     expect(r.pass).toBe(true);
     expect(r.detail).toMatch(/not judged/);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2351 — the registered reset command used to be an
+ * ABSOLUTE path into ONE user's VERSIONED plugin cache
+ * (`/Users/jjackson/.claude/plugins/cache/ace/ace/0.13.1426/scripts/…`).
+ * `demo-narrative` copies it verbatim into the spec's `setup.command`, so the
+ * per-run state pinned (a) a version directory — the cache keeps every prior
+ * version, so the path keeps RESOLVING and runs stale code after every
+ * `/ace:update` — and (b) a home directory, unusable from another account.
+ * Measured on `spark-facilitator/20260909-2242` (pinned 0.13.1413, pre-ace#2325,
+ * `grep -c buildRunPageUrl` = 0 there) and `20260910-0541` (`/Users/jjackson/…`).
+ *
+ * The self-resolving form locates the INSTALLED root through
+ * `installed_plugins.json` at run time, and check 18 now fails loud on a pin.
+ */
+describe('checkRenderResetRegistered — pinned vs self-resolving commands (ace#2351)', () => {
+  const interactiveDash = [{ key: 'llo_review', role: 'review-action', interactive: true }];
+  const args = { runId: 5590, workflowId: 5502, opportunityId: 10060, stateKeys: ['record_reviews'] };
+  const base = { required: true, run_id: 5590, state_keys: ['record_reviews'] };
+
+  it('FAILS a command pinned to a versioned plugin-cache directory — the 20260909-2242 shape', () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: {
+        ...base,
+        command:
+          'npx tsx /Users/jjackson/.claude/plugins/cache/ace/ace/0.13.1426/scripts/reset-labs-run-state.ts ' +
+          '--run-id 5590 --workflow-id 5502 --opportunity-id 10060 --keys record_reviews',
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/render_reset_command_pinned/);
+    expect(r.detail).toMatch(/plugin-cache/);
+  });
+
+  it('FAILS a command pinned to a home directory even outside the plugin cache', () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: {
+        ...base,
+        command:
+          'node /Users/jjackson/src/ace/scripts/reset-labs-run-state.ts --run-id 5590 --workflow-id 5502 --keys record_reviews',
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/render_reset_command_pinned/);
+    expect(r.detail).toMatch(/home directory/);
+  });
+
+  it("FAILS a Linux home pin too — the class is one machine's snapshot, not one OS", () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: {
+        ...base,
+        command:
+          'bash /home/ace/.claude/plugins/cache/ace/ace/0.13.1400/bin/ace-reset-labs-run --run-id 5590 --workflow-id 5502 --keys record_reviews',
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/render_reset_command_pinned/);
+  });
+
+  it('FAILS a spec setup.command that pins, even when the registered command is clean', () => {
+    // The spec is what canopy actually runs; a hand-edited pin there is the
+    // same stale-code path with one extra hop.
+    const command = renderResetCommand(args);
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: { ...base, command },
+      specSetup: {
+        command: `${command} && node /Users/jjackson/.claude/plugins/cache/ace/ace/0.13.1400/scripts/realize.ts`,
+        rerun: 'per_render',
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/setup\.command.*pinned/);
+  });
+
+  it('PASSES the self-resolving form, in the handoff and copied into the spec', () => {
+    const command = renderResetCommand(args);
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: { ...base, command },
+      specSetup: { command: `${command} && ./realize.sh`, rerun: 'per_render' },
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  it('the hint teaches the self-resolving form, not the pinned one', () => {
+    const r = checkRenderResetRegistered({ dashboards: interactiveDash, renderReset: null });
+    expect(r.auto_fix_hint).toContain('installed_plugins.json');
+    expect(r.auto_fix_hint).toContain('bin/ace-reset-labs-run');
+    expect(r.auto_fix_hint).not.toContain('<ace-root>');
+  });
+});
+
+describe('renderResetCommand (ace#2351)', () => {
+  it('locates the shim through installed_plugins.json — never a version directory, never a home', () => {
+    const cmd = renderResetCommand({
+      runId: 5590,
+      workflowId: 5502,
+      opportunityId: 10060,
+      stateKeys: ['record_reviews'],
+    });
+    expect(cmd).toContain('installed_plugins.json');
+    expect(cmd).toContain("['plugins']['ace@ace'][0]['installPath']");
+    expect(cmd).toContain('/bin/ace-reset-labs-run');
+    expect(cmd).toContain('--run-id 5590');
+    expect(cmd).toContain('--workflow-id 5502');
+    expect(cmd).toContain('--opportunity-id 10060');
+    expect(cmd).toContain('--keys record_reviews');
+    expect(cmd).not.toMatch(/plugins\/cache\/ace\/ace\//);
+    expect(cmd).not.toMatch(/\/Users\//);
+    expect(classifyPinnedResetCommand(cmd)).toBeNull();
+  });
+
+  it('is a single shell line, because canopy runs setup.command through `sh -c` (record_video.py:398)', () => {
+    const cmd = renderResetCommand({ runId: 1, workflowId: 2, stateKeys: ['a', 'b'] });
+    expect(cmd).not.toContain('\n');
+    expect(cmd).toContain('--keys a,b');
+    expect(cmd).not.toContain('--opportunity-id');
+  });
+
+  it('refuses an empty key list, like buildResetBody', () => {
+    expect(() => renderResetCommand({ runId: 1, workflowId: 2, stateKeys: [] })).toThrow(/shallow-merge/i);
+  });
+});
+
+describe('classifyPinnedResetCommand (ace#2351)', () => {
+  it('names the plugin-cache pin first when both pins are present', () => {
+    expect(
+      classifyPinnedResetCommand('npx tsx /Users/x/.claude/plugins/cache/ace/ace/0.13.1/scripts/r.ts'),
+    ).toMatch(/plugin-cache/);
+  });
+  it('does not flag a path merely containing the word Users mid-token', () => {
+    expect(classifyPinnedResetCommand('bash ./tools/Users-report --run-id 1')).toBeNull();
+  });
+  it('returns null on the empty string (the empty case is reported separately)', () => {
+    expect(classifyPinnedResetCommand('')).toBeNull();
   });
 });
