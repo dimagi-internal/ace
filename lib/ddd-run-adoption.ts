@@ -98,6 +98,22 @@ export function isAceRunScopedRoot(rootName: string): boolean {
 }
 
 /**
+ * `terminal_status` values canopy stamps on a loop that has NOT ended.
+ *
+ * canopy's `classify_termination` (`runtime/scripts/ddd/run_pipeline.py`) writes
+ * `terminal_status` on EVERY judged iteration, not only on the last one: when
+ * `compute_auto_iterate` says `continue` it stamps `"running"`, and only
+ * `stop_*` / convergence / divergence produce one of the four endings
+ * (`converged_clean`, `converged_with_open_questions`, `stopped_not_converged`,
+ * `diverging`). So a non-empty `terminal_status` is NOT "the loop has ended" —
+ * a session that dies between the judge and the next render leaves
+ * `terminal_status: running` behind, which is exactly the interrupted shape
+ * adoption exists to rescue (ace#2360; observed on
+ * spark-facilitator/20260910-1624 with the ace#2287 run itself).
+ */
+const IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set(['running']);
+
+/**
  * Has this run already ENDED?
  *
  * Adoption exists to rescue work that was INTERRUPTED — a loop still mid-flight
@@ -106,11 +122,15 @@ export function isAceRunScopedRoot(rootName: string): boolean {
  * when to stop from `score_history`, so inheriting a finished run's history
  * makes the stall detector fire on the first render and reports
  * `stopped_not_converged` over renders this run never performed (ace#2315).
+ *
+ * "Ended" means canopy stamped one of its ending statuses — an empty status or
+ * its in-flight `running` is a loop still owed its next render (ace#2360).
  */
 export function isTerminatedRun(liveness: DddRunLiveness | null | undefined): boolean {
   if (!liveness) return false;
   const status = (liveness.terminal_status ?? '').trim();
-  return status.length > 0;
+  if (status.length === 0) return false;
+  return !IN_FLIGHT_STATUSES.has(status);
 }
 
 export type DddResumeDisposition =

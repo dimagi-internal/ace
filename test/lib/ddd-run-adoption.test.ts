@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isTerminatedRun,
   resolveDddRunAdoption,
   runBelongsToSlug,
   type DddRunAdoptionInput,
@@ -221,5 +222,72 @@ describe("a candidate that is not this run's to resume (ace#2315)", () => {
     });
     expect(out.disposition).toBe('adopt-from-other-worktree');
     expect(out.adopt?.runId).toBe('spark-fcap-facilitation-2026-09-08-001');
+  });
+});
+
+describe("canopy's in-flight 'running' is not an ending (ace#2360)", () => {
+  // canopy's `classify_termination` (runtime/scripts/ddd/run_pipeline.py) stamps
+  // `terminal_status: running` on a loop whose next action is `continue` — i.e.
+  // a run that is STILL IN FLIGHT. That is precisely the interrupted shape
+  // adoption exists to rescue (ace#2287: iteration 2, score_history [2.0, 2.0],
+  // next action continue). Reading it as "already ended" re-opens the silent
+  // restart. Verbatim from spark-facilitator/20260910-1624, Phase 7 Step 3.1.
+  const layout = {
+    'emdash-spark-y3wpj': ['spark-fcap-facilitation-2026-09-08-001'],
+    'wt-here': [],
+  };
+  const SLUG = 'spark-fcap-facilitation';
+  const RUN_DIR = `${RUNS_PARENT}/emdash-spark-y3wpj/spark-fcap-facilitation-2026-09-08-001`;
+
+  const resolveWith = (liveness: DddRunLiveness) =>
+    resolveDddRunAdoption({
+      ...input(layout, 'wt-here', SLUG),
+      readRunLiveness: (dir: string) => (dir === RUN_DIR ? liveness : null),
+    });
+
+  it('ADOPTS a run stamped running + continue under another worktree root', () => {
+    const out = resolveWith({ terminal_status: 'running', auto_iterate_next_action: 'continue' });
+    expect(out.disposition).toBe('adopt-from-other-worktree');
+    expect(out.adopt?.runDir).toBe(RUN_DIR);
+  });
+
+  it('ADOPTS a run stamped running whose next action was never recomputed (null)', () => {
+    // The exact liveness the resolver read on 20260910-1624: the session died
+    // between the judge and compute_auto_iterate.
+    const out = resolveWith({ terminal_status: 'running', auto_iterate_next_action: null });
+    expect(out.disposition).toBe('adopt-from-other-worktree');
+  });
+
+  it("never describes a running candidate as 'already ended'", () => {
+    const out = resolveWith({ terminal_status: 'running', auto_iterate_next_action: 'continue' });
+    expect(out.reason).not.toContain('already ended');
+    expect(out.reason).not.toContain('terminal_status=running');
+  });
+
+  it('still EXCLUDES a run canopy genuinely ended', () => {
+    const out = resolveWith({
+      terminal_status: 'stopped_not_converged',
+      auto_iterate_next_action: null,
+    });
+    expect(out.disposition).toBe('start-fresh');
+    expect(out.reason).toContain('already ended: terminal_status=stopped_not_converged');
+  });
+
+  it('classifies every canopy terminal_status value the way classify_termination means it', () => {
+    // The four ending statuses classify_termination can emit, plus its one
+    // in-flight value. Pinned so a drift in either direction is a test diff.
+    for (const ended of [
+      'converged_clean',
+      'converged_with_open_questions',
+      'stopped_not_converged',
+      'diverging',
+    ]) {
+      expect(isTerminatedRun({ terminal_status: ended }), ended).toBe(true);
+    }
+    expect(isTerminatedRun({ terminal_status: 'running' })).toBe(false);
+    expect(isTerminatedRun({ terminal_status: ' running ' })).toBe(false);
+    expect(isTerminatedRun({ terminal_status: null })).toBe(false);
+    expect(isTerminatedRun({ terminal_status: '' })).toBe(false);
+    expect(isTerminatedRun(null)).toBe(false);
   });
 });
