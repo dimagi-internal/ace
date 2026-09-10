@@ -129,6 +129,23 @@ paraphrase the schema here — read the model / schema and validate.
      `state_keys`. Whenever `source.render_reset.required` is true, both halves
      are mandatory: `demo-data-setup-qa` check 18 fails a spec that carries one
      without the other.
+
+     **Refuse a PINNED reset command — halt, do not copy (ace#2351).** Before
+     copying `source.render_reset.command` into `setup.command`, check it for
+     `/plugins/cache/ace/ace/` or a `/Users/<name>/` (`/home/<name>/`) segment.
+     Either means the handoff snapshotted ONE machine's versioned plugin cache:
+     the cache keeps every prior version, so the path keeps resolving — to
+     STALE code — after every `/ace:update`, and from another account it names
+     a home that is not that account's install. On `spark-facilitator/
+     20260909-2242` the copied command pinned 0.13.1413 (pre-ace#2325) and
+     would have re-introduced `run-not-found` on every render; only a hand
+     rewrite caught it. Halt with: *"`source.render_reset.command` is pinned to
+     `<the offending segment>`; re-run `demo-data-setup` step 4b to register
+     the self-resolving form (`bash "$(python3 -c "…installed_plugins.json…")
+     /bin/ace-reset-labs-run" …`)"* — never silently re-resolve it here, because
+     the handoff is the record other consumers (forks, `demo-data-setup-qa`)
+     read. `classifyPinnedResetCommand()` in `lib/labs-run-state-reset.ts` is
+     the exact test check 18 applies.
    - **Put the effecting actions on the INTERACTIVE dashboard, and only there.**
      Exactly one entry in `source.dashboards[]` carries `interactive: true`
      (`role: review-action` / `review` / `decision`); its run is deliberately
@@ -475,6 +492,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-10 | **Step 3 refuses to copy a PINNED `render_reset.command` into `setup.command` (ace#2351).** The verbatim copy is the right contract — the handoff is the record — but it also means a command written as `/Users/<name>/.claude/plugins/cache/ace/ace/<version>/scripts/…` reaches canopy's per-render `subprocess.run(shell=True)` as a snapshot of one machine: the cache keeps old versions, so the path resolves to STALE code after every `/ace:update`, and another account cannot use it at all. On `spark-facilitator/20260909-2242` the copied string pinned 0.13.1413 (pre-ace#2325) and only a hand rewrite kept every render from failing `run-not-found`. Now: halt on `/plugins/cache/ace/ace/` or `/Users|/home/<name>/` and send the author back to `demo-data-setup` step 4b's self-resolving form; `demo-data-setup-qa` check 18 fails the same pin as `render_reset_command_pinned`. | ACE team |
 | 2026-09-08 | **The spec's `setup` block is `rerun: per_render` and must RESET the interactive run, not just re-emit `realized.json` (ace#2297).** Step 3 said `rerun: once`, which skips the setup command whenever the outputs file exists — i.e. from the second render on. But recording MUTATES the world: the coaching task the payoff scene creates persists on the labs run, so the next take finds the button gone and its `must_succeed` click aborts. On `spark-facilitator/20260908-2215` iterations 0-2 passed only because a human had reset labs run 5508 by hand. The command now prefixes `source.render_reset.command` (`demo-data-setup` step 4b); both halves are enforced by `demo-data-setup-qa` check 18. | ACE team |
 | 2026-09-06 | **Narrow the detection vocabulary: `marker` / `markers` are OUT (ace#1893).** They were the only NOUN forms in it, and a noun names a thing on the screen rather than an act the platform performs — so on `hh-poverty-targeting/20260901-1932` the payoff scene, a pure DECISION beat (*"A collection window ends in a disposition stored per worker"*), was flagged as an insufficient-cardinality detection demo on nothing but the word `marker`, used twice for a "recorded on this run" badge. The author renamed the noun to `badge` to get past the flag, which is exactly the cost the module warns about (*"inventing a demonstration costs the author's trust in every flag after it"*). Measured over all 10 unified specs in Drive (4 opps, 10 runs, 59 scenes): 26 scenes match the detection vocabulary, **24 carry a verb form**, and only 2 match on `marker` alone — the same scene in two revisions of one narrative. **Spec-level recall is unchanged, 8 specs flagged before and after**, because every spec with a noun-only scene also has a verb-form one. The two narrower repairs the issue proposed were measured and rejected: requiring a corroborating second vocabulary word is bit-identical to deletion (24/26), and exempting `features[].verify` is strictly worse (23/26) — it does not clear the false positive, whose other hit is in `show`. The ace#1841 widening to `show` / `concept_claim` / `features[]` STAYS: ablating it took the same spec from 6 findings to 0. | ACE team |
 | 2026-08-29 | Add a FOURTH demonstration verb — **detection / flagging**, on the `rows` axis with its own higher floor of **24** (`DETECTION_MIN_ROWS`, two screenfuls of the 12-row anchor the filter floor already uses): a filter claims narrowing is meaningful, a detection claims unaided scanning is not viable, and the second is false the moment the cohort fits in one look. `checkSceneCardinality` also now reads a scene's `show`, `concept_claim` and `features[]` alongside its title and action targets — measured on the failing spec, the detection vocabulary appears 20+ times and in not one title, so the verb alone would have matched nothing. The finding names the axis with room, because that is the action. `hh-poverty-targeting/20260828-0702` authored a detection demo over a seven-worker cohort; the gate returned ok with zero findings and the concept judge said post-render that a manager could find the outlier by eye, ending the loop `stopped_not_converged` at concept 2.0 after four iterations. ace#1841. | ACE team |

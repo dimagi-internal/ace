@@ -261,12 +261,93 @@ function isInteractive(d: ResetDashboardRef): boolean {
   return INTERACTIVE_ROLES.has((d.role ?? '').trim().toLowerCase().replace(/_/g, '-'));
 }
 
+// ── The registered command must resolve ITSELF (ace#2351) ──────────────────
+//
+// `demo-narrative` copies `source.render_reset.command` VERBATIM into the spec's
+// `setup.command`, which canopy's recorder runs with `subprocess.run(command,
+// shell=True, cwd=<the spec's git toplevel>)` (`runtime/scripts/walkthrough/
+// record_video.py:398`) — long after the phase that wrote it, and possibly from
+// another macOS account. A command written as an absolute path into the plugin
+// cache therefore pins TWO things that both go wrong silently: the VERSION
+// directory (the cache keeps every prior version, so the path keeps resolving
+// — to stale code — after every `/ace:update`) and the HOME directory (unusable
+// from any other account). Measured on `spark-facilitator/20260909-2242`
+// (pinned 0.13.1413, pre-ace#2325: `grep -c buildRunPageUrl` = 0 there, and no
+// `--workflow-id`) and `20260910-0541` (`/Users/jjackson/…/0.13.1426/…`).
+//
+// The absolute-path RULE is right — a repo-relative `scripts/…` resolves
+// against the spec's repo and never runs — so the fix is a path that resolves
+// itself: locate the installed root through `installed_plugins.json` at run
+// time and call `bin/ace-reset-labs-run`, which re-resolves the root again
+// (never trusting its own location) and execs the reset that lives there.
+
+/**
+ * A shell expression that expands to the INSTALLED ACE plugin root at run time.
+ * `installed_plugins.json` is the registry Claude Code itself maintains, so this
+ * follows every `/ace:update` and every account without being rewritten.
+ */
+export const ACE_INSTALLED_ROOT_SHELL_EXPR =
+  `$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['ace@ace'][0]['installPath'])")`;
+
+export interface RenderResetCommandArgs {
+  runId: number;
+  workflowId: number;
+  opportunityId?: number;
+  stateKeys: string[];
+}
+
+/**
+ * The canonical self-resolving `source.render_reset.command`. One shell line
+ * (canopy runs it through `sh -c`), no version directory, no home directory.
+ */
+export function renderResetCommand(args: RenderResetCommandArgs): string {
+  if (args.stateKeys.length === 0) {
+    throw new Error(
+      'renderResetCommand: no state keys. labs shallow-merges run state, so a reset that names ' +
+        'no key is a silent no-op — read them from workflow_get -> saved_runs.snapshot_inputs.state_keys.',
+    );
+  }
+  const opp = args.opportunityId === undefined ? '' : ` --opportunity-id ${args.opportunityId}`;
+  return (
+    `bash "${ACE_INSTALLED_ROOT_SHELL_EXPR}/bin/ace-reset-labs-run" ` +
+    `--run-id ${args.runId} --workflow-id ${args.workflowId}${opp} --keys ${args.stateKeys.join(',')}`
+  );
+}
+
+const PINNED_COMMAND_PATTERNS: Array<{ re: RegExp; why: string }> = [
+  {
+    re: /\/plugins\/cache\/ace\/ace\//,
+    why:
+      'a versioned plugin-cache directory (/plugins/cache/ace/ace/<version>/) — the cache keeps every ' +
+      'prior version, so the path keeps resolving to STALE code after every /ace:update',
+  },
+  {
+    re: /(^|[\s"'=(])\/(Users|home)\/[^/\s"']+\//,
+    why: 'a home directory (/Users/<name>/ or /home/<name>/) — unusable from any other account',
+  },
+];
+
+/**
+ * Why `command` is pinned to one machine's snapshot, or `null` when it is not.
+ * The plugin-cache pin is reported first because it is the one that runs
+ * stale code silently; a home pin at least fails visibly elsewhere.
+ */
+export function classifyPinnedResetCommand(command: string): string | null {
+  for (const { re, why } of PINNED_COMMAND_PATTERNS) {
+    if (re.test(command)) return why;
+  }
+  return null;
+}
+
 const RESET_HINT =
   'Register the per-render reset in the handoff: set source.render_reset = {required: true, run_id: ' +
   '<the interactive run>, state_keys: <workflow_get -> saved_runs.snapshot_inputs.state_keys>, command: ' +
-  '"npx tsx <ace-root>/scripts/reset-labs-run-state.ts --run-id <id> --keys <k1,k2>"}, and author the ' +
-  'spec\'s setup block as {command: "<that command> && <the realize command>", rerun: per_render}. ' +
-  'rerun: once is what let iteration 0 pass and every later iteration abort (ace#2297).';
+  '<the SELF-RESOLVING form — bash "$(python3 -c "…installed_plugins.json…[\'plugins\'][\'ace@ace\'][0]' +
+  '[\'installPath\']")/bin/ace-reset-labs-run" --run-id <id> --workflow-id <def_id> --opportunity-id <opp> ' +
+  '--keys <k1,k2>; renderResetCommand() in lib/labs-run-state-reset.ts is the exact string>}, and author ' +
+  'the spec\'s setup block as {command: "<that command> && <the realize command>", rerun: per_render}. ' +
+  'rerun: once is what let iteration 0 pass and every later iteration abort (ace#2297). Never a ' +
+  '/plugins/cache/ace/ace/<version>/ path or a /Users/<name>/ path in the command (ace#2351).';
 
 /**
  * A demo with a state-mutating surface must carry a registered per-render
@@ -306,6 +387,14 @@ export function checkRenderResetRegistered(input: RenderResetCheckInput): QAChec
     }
     if (!reset.command || reset.command.trim() === '') {
       problems.push('source.render_reset.command is empty — nothing for the spec setup block to run');
+    } else {
+      const pin = classifyPinnedResetCommand(reset.command);
+      if (pin) {
+        problems.push(
+          `render_reset_command_pinned: source.render_reset.command is pinned to ${pin}. Register the ` +
+            'self-resolving form instead (demo-data-setup step 4b; ace#2351)',
+        );
+      }
     }
   }
 
@@ -334,6 +423,13 @@ export function checkRenderResetRegistered(input: RenderResetCheckInput): QAChec
         problems.push(
           'the spec setup.command does not contain the registered reset command — the setup runs ' +
             'per_render but resets nothing',
+        );
+      }
+      const specPin = command.trim() === '' ? null : classifyPinnedResetCommand(command);
+      if (specPin) {
+        problems.push(
+          `render_reset_command_pinned: the spec setup.command is pinned to ${specPin} — canopy runs ` +
+            'this string verbatim per render, so it is a snapshot of one machine (ace#2351)',
         );
       }
     }

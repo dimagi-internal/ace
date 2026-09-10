@@ -380,8 +380,12 @@ Measured on `spark-facilitator/20260908-2215`, DDD run
 ACE's reset is `scripts/reset-labs-run-state.ts` (pure half in
 `lib/labs-run-state-reset.ts`), registered per-run in the handoff by
 `demo-data-setup` and run before EVERY render by the spec's
-`setup: {rerun: per_render}` block. Five things about the endpoint are pure
-external-system knowledge:
+`setup: {rerun: per_render}` block — **through `bin/ace-reset-labs-run`, the
+self-resolving shim, never by an absolute path into the plugin cache**
+(ace#2351: a `~/.claude/plugins/cache/ace/ace/<version>/…` path keeps
+resolving after `/ace:update` because the cache retains old versions, so it
+ran stale code silently; `renderResetCommand()` is the canonical string).
+Five things about the endpoint are pure external-system knowledge:
 
 1. **`POST /labs/workflow/api/run/<run_id>/state/`, body NESTED as
    `{"state": {...}}`.** `update_state_api` reads `data.get("state")` and
@@ -506,4 +510,5 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
 | 2026-05-28 | Replaced the stdio→HTTP proxy with a native `type: "http"` entry + `headersHelper` (`scripts/labs-auth-headers.mjs`). Proxy retained as one-line-revert fallback pending production validation. Requires Claude Code ≥ 2.1.141. |
 | 2026-05-28 | Native path confirmed in production (live `labs_context` returned the real org tree via headersHelper); removed the retired stdio proxy (`connect-labs-server.ts` + its tests). Restore from git history if a revert is ever needed. |
 | 2026-09-08 | New `## Resetting a live run's state between renders` (ace#2297) — a labs run's `spawned_tasks` persists across renders, so the second take of a create-something scene aborts. Records the five endpoint facts (nested `{"state": …}` body; no `csrftoken` cookie because `CSRF_USE_SESSIONS=True`; shallow merge, so a reset must name its keys; 409 on a completed run; `snapshot_inputs.state_keys` is the declared key list) and points at `scripts/reset-labs-run-state.ts`. |
+| 2026-09-10 | `## Resetting a live run's state between renders` now names `bin/ace-reset-labs-run` as the only registered entry point (ace#2351) — the per-run `render_reset.command` used to be an absolute plugin-cache path, which pins a version directory that the cache never deletes, so it kept resolving to stale code after every `/ace:update` (measured: `spark-facilitator/20260909-2242` ran 0.13.1413, pre-ace#2325). |
 | 2026-08-26 | `## Troubleshooting` gains the two `render_code` findings from `bednet-check-2-visit/20260825-1310` (ace#1662): a timed-out `workflow_patch_render_code` does not apply (re-fetch before retrying), and `render_code` is invisible to labs' Tailwind purge (ACE preventer: `scripts/check-render-code-utilities.ts`; root cause upstream as connect-labs#1294). |

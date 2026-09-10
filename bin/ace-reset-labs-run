@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# ace-reset-labs-run — self-resolving shim over scripts/reset-labs-run-state.ts.
+#
+# Why this exists (dimagi-internal/ace#2351): `demo-data-setup` step 4b registers
+# the per-render reset in `source.render_reset.command`, and `demo-narrative`
+# copies that string VERBATIM into the DDD spec's `setup.command`
+# (`rerun: per_render`). The command therefore lives in per-run state and is
+# executed by canopy's recorder — `subprocess.run(command, shell=True, cwd=<the
+# spec's git toplevel>)` — long after the phase that wrote it, possibly from
+# another macOS account. Until this shim it was written as an ABSOLUTE path
+# into the plugin cache:
+#
+#   npx tsx /Users/jjackson/.claude/plugins/cache/ace/ace/0.13.1426/scripts/reset-labs-run-state.ts …
+#
+# which pins a VERSION directory (the cache keeps every prior version, so the
+# path keeps resolving to STALE code after every /ace:update — measured:
+# `spark-facilitator/20260909-2242` carried 0.13.1413, pre-ace#2325, and lacked
+# the now-required --workflow-id) and a HOME directory (unusable from any other
+# account). The absolute-path rule itself is right — a relative `scripts/…`
+# resolves against the spec's repo and silently never runs — so the fix is a
+# path that resolves ITSELF: locate the INSTALLED plugin root at run time and
+# exec the reset that lives there.
+#
+# Root resolution mirrors bin/ace-setup (installed FIRST, `$PWD` is never a
+# candidate):
+#   1. $CLAUDE_PLUGIN_ROOT      — only when it is an ACE root (not canopy's)
+#   2. installed_plugins.json   — authoritative installPath for ace@ace
+#   3. newest plugin cache dir  — registry missing or unreadable
+#   4. this script's own checkout — a dev worktree with no install
+#
+# `dirname "$0"` is deliberately LAST. This shim may itself be invoked via a
+# pinned path (an old version directory that still exists); trusting its own
+# location would recreate the defect one hop later.
+#
+# tsx is resolved as `node <root>/node_modules/tsx/dist/cli.mjs`, never
+# `npx tsx`: the plugin cache's .bin/tsx is a dereferenced copy that cannot
+# find its sibling chunks (ace#2252; test/scripts/tsx-invocation.test.ts).
+#
+# Usage:
+#   bin/ace-reset-labs-run --run-id <id> --workflow-id <id> [--opportunity-id <id>] --keys <k1,k2>
+#   bin/ace-reset-labs-run --print-root          # resolution only, no exec
+#
+# Every other argument is passed through to scripts/reset-labs-run-state.ts.
+# Env: ACE_PLUGIN_REGISTRY overrides ~/.claude/plugins/installed_plugins.json
+# (the same knob bin/ace-setup honours; test/scripts/ace-reset-labs-run-root.test.ts).
+set -euo pipefail
+
+SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+_is_ace_root() {
+  [ -n "${1:-}" ] && [ -f "$1/.claude-plugin/plugin.json" ] \
+    && grep -q '"name": *"ace"' "$1/.claude-plugin/plugin.json" 2>/dev/null
+}
+
+_registry_install_path() {
+  _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
+  [ -f "$_REG" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$_REG" 2>/dev/null || true
+}
+
+ROOT=""
+ROOT_SOURCE=""
+
+if _is_ace_root "${CLAUDE_PLUGIN_ROOT:-}"; then
+  ROOT="$CLAUDE_PLUGIN_ROOT"; ROOT_SOURCE="CLAUDE_PLUGIN_ROOT"
+fi
+if [ -z "$ROOT" ]; then
+  CAND="$(_registry_install_path)"
+  if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="installed_plugins.json"; fi
+fi
+if [ -z "$ROOT" ]; then
+  CAND="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1 || true)"
+  if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="plugin-cache-newest"; fi
+fi
+if [ -z "$ROOT" ] && _is_ace_root "$SELF_DIR"; then
+  ROOT="$SELF_DIR"; ROOT_SOURCE="script-self-dir"
+fi
+
+if [ "${1:-}" = "--print-root" ]; then
+  echo "plugin_root=$ROOT"
+  echo "plugin_root_source=${ROOT_SOURCE:-none}"
+  echo "plugin_root_version=$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || true)"
+  [ -n "$ROOT" ] && exit 0 || exit 1
+fi
+
+if [ -z "$ROOT" ]; then
+  echo "[ace-reset-labs-run] ERROR: could not locate an installed ACE plugin root (checked CLAUDE_PLUGIN_ROOT, ${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}, the plugin cache, and $SELF_DIR). Run /plugin install ace@ace or /ace:setup." >&2
+  exit 2
+fi
+
+SCRIPT="$ROOT/scripts/reset-labs-run-state.ts"
+TSX="$ROOT/node_modules/tsx/dist/cli.mjs"
+if [ ! -f "$SCRIPT" ]; then
+  echo "[ace-reset-labs-run] ERROR: $SCRIPT is missing from the resolved root ($ROOT, source=$ROOT_SOURCE) — the install is incomplete or predates ace#2297; run /ace:update." >&2
+  exit 2
+fi
+if [ ! -f "$TSX" ]; then
+  echo "[ace-reset-labs-run] ERROR: $TSX is missing — run /ace:setup (npm install) in $ROOT." >&2
+  exit 2
+fi
+
+exec node "$TSX" "$SCRIPT" "$@"
