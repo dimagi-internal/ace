@@ -27,16 +27,16 @@ canopy CLI on PATH (`/canopy:setup`); the shims exit with the remediation when i
 
 ### Configuration (preamble)
 
-Requires these environment variables in `.env` (also resolved by `bin/ace-email` itself from the
-plugin data dir when not exported):
-
-| Variable | Description |
-|----------|-------------|
-| `ACE_GMAIL_ACCOUNT` | The Gmail account to send/receive from (default `ace@dimagi-ai.com`) |
-| `ACE_GMAIL_CLIENT` | The GOG OAuth client name for this account (the SHARED fleet client, `canopy`) |
+The identity has ONE source of truth — `config/agent.json` (`email` = `ace@dimagi-ai.com`,
+`gog_client` = `canopy`); `bin/ace-email` and the canopy engine read it from there. There are NO
+`ACE_GMAIL_ACCOUNT` / `ACE_GMAIL_CLIENT` env vars any more: they were RETIRED with ace#1147 /
+#1338 (`.env.tpl` no longer declares them, `bin/ace-setup` lists them as `RETIRED_KEYS`), and a
+`$ACE_GMAIL_ACCOUNT` in a shell command expands to EMPTY — so the account flag followed by that
+var silently ran as `-a ` and failed. Write the literals. *Enforced:* `test/lib/env-tpl-identity.test.ts`
+scans every skill/command/agent doc for the retired form.
 
 The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and authenticated for the
-configured account: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail`.
+configured account: `gog login ace@dimagi-ai.com --client canopy --services gmail`.
 
 **The gog client is SHARED across the fleet; the mailbox is what's per-agent.** Every agent
 (ace/eva/hal/ada) authorizes its own address under the one `canopy` OAuth client — identity bleed
@@ -48,8 +48,9 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
 
 ## Process
 
-1. **Resolve configuration.** Read `ACE_GMAIL_ACCOUNT` and `ACE_GMAIL_CLIENT` from environment.
-   Abort with a clear error if gog itself is missing.
+1. **Resolve configuration.** The mailbox and gog client come from `config/agent.json`
+   (`email` / `gog_client`) — never from the environment. Abort with a clear error if gog itself is
+   missing.
 
 2. **Determine the operation.** The calling skill specifies one of: **send**, **reply**, **search**,
    or **read**.
@@ -74,7 +75,7 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
    - Replies maintain the Gmail thread via the message id.
 
 5. **For search operations:**
-   - Use: `gog gmail search "<query>" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
+   - Use: `gog gmail search "<query>" -a ace@dimagi-ai.com --client canopy --json`
    - Common queries: `from:<address>`, `to:<address>`, `subject:<text>`, `in:inbox`, `is:unread`,
      `newer_than:1d` — combined with spaces.
    - Returns thread list with IDs, dates, senders, subjects.

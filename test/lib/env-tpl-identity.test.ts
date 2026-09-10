@@ -67,6 +67,36 @@ describe('gog identity has one source of truth (ace#1147)', () => {
     expect(src).not.toMatch(/agentConfig\.gog_client\s*\|\|\s*env\./);
   });
 
+  it('no shell command in any skill, command or agent doc passes the retired vars to gog', () => {
+    // Same failure as the CLAUDE.md case below, one door over: `skills/turn` and
+    // `skills/email-communicator` still carried `--account $ACE_GMAIL_ACCOUNT
+    // --client $ACE_GMAIL_CLIENT` as THE documented inbox pull two weeks after
+    // the vars were retired, and the CLAUDE.md-only guard could not see them.
+    // Match every spelling gog accepts for the two flags.
+    const docs: string[] = [];
+    const walk = (dir: string) => {
+      for (const ent of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(rel);
+        else if (ent.name.endsWith('.md')) docs.push(rel);
+      }
+    };
+    for (const dir of ['skills', 'commands', 'agents']) walk(dir);
+    expect(docs.length).toBeGreaterThan(50);
+    const offenders: string[] = [];
+    for (const rel of docs) {
+      const md = read(rel);
+      for (const key of IDENTITY_KEYS) {
+        const re = new RegExp(`(?:-a|--account|--client)\\s+\\$\\{?${key}`, 'g');
+        for (const m of md.matchAll(re)) {
+          const line = md.slice(0, m.index).split('\n').length;
+          offenders.push(`${rel}:${line}: ${m[0]}`);
+        }
+      }
+    }
+    expect(offenders, `retired identity vars passed to gog in a documented command (they expand to empty):\n${offenders.join('\n')}`).toEqual([]);
+  });
+
   it('no shell command in CLAUDE.md passes the retired vars to gog', () => {
     // These expand to EMPTY in a shell (.env is loaded into MCP subprocesses,
     // not the parent shell), so a documented `-a $ACE_GMAIL_ACCOUNT` ran as
