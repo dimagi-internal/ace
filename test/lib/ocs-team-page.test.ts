@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   csrfFromHtml,
   checkboxOptions,
@@ -27,6 +29,11 @@ const TEAM_PAGE = `
   </table>
 </div>
 </body></html>`;
+
+const MEMBERS_TABLE = readFileSync(
+  join(__dirname, '..', 'fixtures', 'ocs', 'members-table.partial.html'),
+  'utf8',
+);
 
 describe('csrfFromHtml', () => {
   it('extracts the Django csrf hidden-input value', () => {
@@ -72,26 +79,36 @@ describe('sameGroups', () => {
 });
 
 describe('parseOcsTeamPage', () => {
-  it('finds an accepted member with membership id', () => {
+  // The member list is no longer on the team page (ace#2344): the OLD page shape
+  // above must read as INCONCLUSIVE, never as "not a member".
+  it('no longer reads the old page\'s member anchors — the old shape yields no member', () => {
     const rb = parseOcsTeamPage(TEAM_PAGE, 'jo@dimagi.com');
+    expect(rb.isMember).toBe(false);
+    expect(rb.member).toBeUndefined();
+  });
+
+  it('reports a page with no rows as unparsed, not as absence', () => {
+    const oldMembersOnly = `<h2>Team Members</h2><table>
+      <tr><td><a href="/a/dimagi/team/members/57/">Jo Reviewer &lt;jo@dimagi.com&gt;</a></td></tr>
+    </table>`;
+    const rb = parseOcsTeamPage(oldMembersOnly, 'jo@dimagi.com');
+    expect(rb.parsed).toBe(false);
+    expect(rb.isMember).toBe(false);
+    expect(rb.raw.join('\n')).toContain('INCONCLUSIVE');
+  });
+
+  it('finds an accepted member with membership id + groups on the members-table partial', () => {
+    const rb = parseOcsTeamPage(MEMBERS_TABLE, 'reviewer@partner.example');
+    expect(rb.parsed).toBe(true);
     expect(rb.isMember).toBe(true);
-    expect(rb.member?.id).toBe('57');
+    expect(rb.member?.id).toBe('1737');
+    expect(rb.member?.groups).toEqual(['Chatbot Admin']);
     expect(rb.pending).toBeUndefined();
   });
 
-  it('finds a pending invite with groups + cancel url', () => {
-    const rb = parseOcsTeamPage(TEAM_PAGE, 'pending@dimagi.com');
-    expect(rb.isMember).toBe(false);
-    expect(rb.pending).toEqual({
-      email: 'pending@dimagi.com',
-      invited: '2026-07-20',
-      groups: ['Chat Viewer'],
-      cancelUrl: '/a/dimagi/team/invite/cancel/88/',
-    });
-  });
-
-  it('returns neither for an unknown email', () => {
-    const rb = parseOcsTeamPage(TEAM_PAGE, 'stranger@dimagi.com');
+  it('returns neither for an unknown email, with a non-empty trail', () => {
+    const rb = parseOcsTeamPage(MEMBERS_TABLE, 'stranger@dimagi.com');
+    expect(rb.parsed).toBe(true);
     expect(rb.isMember).toBe(false);
     expect(rb.pending).toBeUndefined();
     expect(rb.raw.length).toBeGreaterThan(0);

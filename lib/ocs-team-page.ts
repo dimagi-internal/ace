@@ -7,17 +7,26 @@
  * implementation surface (dimagi-internal/ace#906). Everything here is
  * pure string → data; no I/O.
  *
- * Contract notes (read off OCS source + live pages, 2026-07-24):
- * - Team page: `/a/<team>/team/` renders the Team Members table (rows are
- *   `Name <email>` anchors at `/team/members/<id>/`) and, inside
- *   `#invitation-form-and-table`, the invite form + Pending Invitations
- *   table (`<td>email</td><td>invited</td><td>roles</td>` + per-row
- *   hx-post cancel form — templates/teams/components/invitation_row.html).
+ * Contract notes (read off OCS source + live pages; members list re-read
+ * 2026-09-10, dimagi-internal/ace#2344):
+ * - Team page: `/a/<team>/team/` renders the invite form (a modal inside
+ *   `#members-section`, groups as checkboxes) but NO member rows any more —
+ *   the member + pending-invitation list is an htmx partial,
+ *   `/a/<team>/team/members/table/` (`MembersTable`, one row per accepted
+ *   member or pending invitation). Read membership off the PARTIAL; use the
+ *   page only for the invite form + csrf. `parseOcsTeamPage` takes the
+ *   partial's HTML and reports `parsed: false` — INCONCLUSIVE, never
+ *   "absent" — when it finds no rows, because ACE is a member of every team
+ *   it can open, so an empty read is a wrong read (that is exactly how #2344
+ *   told a reviewer she had no access while OCS was refusing to re-invite an
+ *   existing member).
  * - Membership page: `/a/<team>/team/members/<id>/` renders
  *   `MembershipForm` — `fields = ("groups",)`, CheckboxSelectMultiple
  *   (apps/teams/forms.py) — whose save() REPLACES the m2m set, which is
  *   why callers must always POST the UNION of current + wanted groups.
  */
+
+import { parseOcsMembersTable } from './ocs-team-members.js';
 
 export interface OcsPendingInvite {
   email: string;
@@ -29,12 +38,21 @@ export interface OcsPendingInvite {
 }
 
 export interface OcsTeamPageReadback {
+  /**
+   * True when at least one member/invitation row was parsed. FALSE means the
+   * read is INCONCLUSIVE (wrong page, changed template, no access) and
+   * `isMember: false` beneath it means nothing — callers must not treat it as
+   * "not a member" (dimagi-internal/ace#2344).
+   */
+  parsed: boolean;
   isMember: boolean;
   /** The matched accepted member's row, when `isMember` — id drives the edit URL. */
-  member?: { id: string; label: string };
+  member?: { id: string; label: string; groups: string[] };
   pending?: OcsPendingInvite;
   raw: string[];
 }
+
+export { ocsMembersTablePath } from './ocs-team-members.js';
 
 export function unescapeHtml(s: string): string {
   return s
@@ -91,46 +109,20 @@ export function sameGroups(a: string[], b: string[]): boolean {
 }
 
 /**
- * Parse the `/a/<team>/team/` page for one email: accepted-member row
- * (with membership id), pending-invite row (with groups + cancel URL),
- * plus a raw evidence trail for read-back reporting.
+ * Parse the members-table PARTIAL (`ocsMembersTablePath(team)`) for one email:
+ * accepted-member row (with membership id + groups), pending-invite row (with
+ * groups + cancel URL), plus a raw evidence trail for read-back reporting.
+ *
+ * Kept under its historical name so both consumers keep one import; the
+ * implementation lives in `lib/ocs-team-members.ts` with the live fixture.
  */
 export function parseOcsTeamPage(html: string, email: string): OcsTeamPageReadback {
-  const lower = email.toLowerCase();
-  const raw: string[] = [];
-
-  // Team Members table — rows render as `Name <email>` anchors.
-  const membersIdx = html.indexOf('Team Members');
-  const inviteIdx = html.indexOf('id="invitation-form-and-table"', membersIdx);
-  const membersHtml =
-    membersIdx === -1 ? '' : html.slice(membersIdx, inviteIdx === -1 ? undefined : inviteIdx);
-  const members = [...membersHtml.matchAll(/<a[^>]*href="[^"]*\/team\/members\/(\d+)\/"[^>]*>([\s\S]*?)<\/a>/gi)].map(
-    (m) => ({ id: m[1], label: stripTags(m[2]) }),
-  );
-  raw.push(`  Team Members table: ${JSON.stringify(members)}`);
-
-  // Pending Invitations table lives inside #invitation-form-and-table, after
-  // the invite form.
-  const inviteSection = sectionById(html, 'invitation-form-and-table');
-  const afterForm = inviteSection.slice(inviteSection.indexOf('</form>') + 7);
-  const invites: OcsPendingInvite[] = [];
-  for (const row of afterForm.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)) {
-    const tds = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => stripTags(m[1]));
-    if (tds.length < 3 || !tds[0].includes('@')) continue;
-    invites.push({
-      email: tds[0],
-      invited: tds[1],
-      groups: tds[2].split(',').map((s) => s.trim()).filter(Boolean),
-      cancelUrl: row[1].match(/hx-post="([^"]*\/invite\/cancel\/[^"]*)"/)?.[1],
-    });
-  }
-  raw.push(`  Pending Invitations table: ${JSON.stringify(invites)}`);
-
-  const member = members.find((m) => m.label.toLowerCase().includes(lower));
+  const rb = parseOcsMembersTable(html, email);
   return {
-    isMember: Boolean(member),
-    member,
-    pending: invites.find((i) => i.email.toLowerCase() === lower),
-    raw,
+    parsed: rb.parsed,
+    isMember: rb.isMember,
+    ...(rb.member ? { member: rb.member } : {}),
+    ...(rb.pending ? { pending: rb.pending } : {}),
+    raw: rb.raw,
   };
 }
