@@ -329,15 +329,22 @@ What each fixed:
   `products.synthetic.workflows{}` became orphans (measured 2/2 on
   `spark-facilitator/20260909-2242` and `/20260910-0541`).
 
-  **The skill fork carries `products` WHOLE and marks it UNATTRIBUTED** — the
-  plugin declares no product-key → producing-skill map (`lib/artifact-manifest.ts`
-  attributes files, `lib/phase-products-schema.ts` types blocks), and
-  `products.synthetic` is written by three parties. So for a Phase 7 fork at
-  `demo-narrative`, `products.synthetic.narrative` and `ddd_*` arrive STALE
-  next to the kept `source`/`workflows`; `steps.demo-narrative: pending` is the
-  authoritative signal and the re-run's deep-merge overwrites them. Tracked as
-  ace#2354. Until it lands, re-derive those keys — do not trust a carried
-  `narrative` or `ddd_*` value on a skill-forked run.
+  **The skill fork carries `products` BY ATTRIBUTION** (ace#2354). The plugin
+  declares which skill writes each products key — `PRODUCT_PRODUCERS` in
+  `lib/phase-products-schema.ts`, dotted keys, emitted as
+  `phases.<phase>.productProducers` in `docs/phase-products-schema.json` — and
+  ace-web's `apps/opps/skills.py::product_producers` reads it, so the forker
+  keeps only the keys whose producer ran BELOW the fork skill. `products.synthetic`
+  is written by three parties and is attributed one level down: a Phase 7 fork
+  at `demo-narrative` carries `synthetic.source` / `.labs_opp_id` /
+  `.workflows` / `.provider` / `.render_code_patched_this_run`
+  (`demo-data-setup`) and DROPS `synthetic.narrative` (`demo-narrative`) and
+  every `synthetic.ddd_*` (the Phase 7 agent). A key the map does not cover is
+  carried and NAMED in `fork_note` — never dropped silently. Against an ace-web
+  older than the consuming PR, or a plugin older than 0.13.1431, the forker
+  falls back to carrying the block whole with an `UNATTRIBUTED` note; on such a
+  run, re-derive `narrative` / `ddd_*` rather than trusting the carried value.
+  Contract: `agents/orchestrator-reference.md § Product-key producers`.
 
 The gap was easy to miss because **every fence read it green.**
 `verify_phase_artifacts` passes (the Drive files really were copied),

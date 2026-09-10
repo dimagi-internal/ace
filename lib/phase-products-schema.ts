@@ -490,6 +490,244 @@ export const PHASE_PRODUCTS_SCHEMAS = {
 
 export type PhaseName = keyof typeof PHASE_PRODUCTS_SCHEMAS;
 
+// ─── Product-key → producing-skill attribution (ace#2354) ──────────
+
+/**
+ * Which skill WRITES each `phases.<phase>.products.*` key.
+ *
+ * Keys are DOTTED paths relative to `products` (`synthetic.source`,
+ * `training.docs.faq`); values are the producing skill's directory name under
+ * `skills/`, or — for a key the phase agent itself writes in its write-back —
+ * that phase's `agents/<phase>.md` name. `lib/artifact-manifest.ts` attributes
+ * FILES by `producedBy`; this is the same attribution for the typed handoff
+ * KEYS, which nothing declared before ace#2354.
+ *
+ * ## Why it exists
+ *
+ * ace-web's skill fork (ace-web#765, fixing ace#2341) carries the fork phase's
+ * `products` block into the forked run so kept work is not orphaned. With no
+ * producer map it had to carry the block WHOLE and mark it UNATTRIBUTED, so a
+ * Phase 7 fork at `demo-narrative` seeded the new run with a stale
+ * `synthetic.narrative` and stale `synthetic.ddd_*` alongside the kept
+ * `synthetic.source` / `.workflows` / `.labs_opp_id`. The forker reads this
+ * map (via `docs/phase-products-schema.json`, `productProducers` per phase)
+ * and carries ONLY the keys whose producer ran before the fork skill.
+ *
+ * ## Resolution semantics (`productProducer`)
+ *
+ * - **Exact match** first (`synthetic.narrative`).
+ * - **Prefix inheritance**: a path with no entry of its own resolves to its
+ *   NEAREST attributed ancestor (`synthetic.source.record_counts` →
+ *   `synthetic.source` → `demo-data-setup`; `connect.opportunity.url` →
+ *   `connect` → `connect-opp-setup`). A deeper entry therefore overrides a
+ *   shallower one for its subtree (`solicitation.awarded` → `solicitation-review`
+ *   inside `solicitation` → `solicitation-create`).
+ * - **Wildcard**: a trailing `*` on the LAST segment matches any key segment
+ *   with that prefix (`synthetic.ddd_*` matches `synthetic.ddd_terminal_status`
+ *   and `synthetic.ddd_open_strategy_findings`). It is a prefix on one
+ *   segment, not a glob across segments, and only the last segment may carry
+ *   it. An exact entry outranks a wildcard at the same depth.
+ * - **Unmapped** → `undefined`. A consumer must CARRY an unmapped key and say
+ *   so — never drop silently (the same asymmetry as ace-web#765's step rule).
+ *
+ * Granularity is per phase: top-level keys suffice where one skill owns the
+ * block; `synthetic` is written by three parties and is attributed one level
+ * down. Every key the Zod schemas above declare must be attributed here or
+ * listed in {@link UNATTRIBUTED_PRODUCT_KEYS} — `test/lib/product-producers.test.ts`
+ * walks the schemas and fails CI on a silent gap, and checks every producer
+ * names a real `skills/<name>/` or the owning `agents/<phase>.md`.
+ *
+ * Producers were derived by reading which SKILL.md / agent doc writes each
+ * key (`grep -rn "products\." skills/*\/SKILL.md agents/*.md`), cross-checked
+ * against `lib/artifact-manifest.ts` `producedBy` — each entry cites its
+ * source inline.
+ */
+const DESIGN_PRODUCERS: Record<string, string> = {
+  // "This skill is the sole writer" — skills/idea-to-pdd/SKILL.md § Products.
+  pdd: 'idea-to-pdd',
+  // skills/pdd-to-work-order/SKILL.md § Products (agents/idea-to-design.md Step 1b).
+  work_order: 'pdd-to-work-order',
+  // The componentized-programme handoff — `buildComponentProducts`
+  // (lib/component-products.ts), written by idea-to-pdd Step 0
+  // (skills/idea-to-pdd/SKILL.md § Componentized programmes — two more products).
+  mode: 'idea-to-pdd',
+  components: 'idea-to-pdd',
+  program_level: 'idea-to-pdd',
+  overview_obligations: 'idea-to-pdd',
+  unresolved_references: 'idea-to-pdd',
+  framework_component_ids: 'idea-to-pdd',
+};
+
+export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>>> = {
+  design: DESIGN_PRODUCERS,
+  'idea-to-design': DESIGN_PRODUCERS,
+  'commcare-setup': {
+    // "This skill is the **sole writer** of `products.apps`" — written as one
+    // atomic block at the end of Phase 3 (skills/app-deploy/SKILL.md § Products).
+    // pdd-to-learn-app / pdd-to-deliver-app record `nova_app_id` in their
+    // summary frontmatter; app-deploy copies it into the block.
+    apps: 'app-deploy',
+  },
+  'connect-setup': {
+    // "single atomic block with `program` (copied from `opp.yaml.connect.program`
+    // for run self-containment), `opportunity`, `ace_test_user` sub-keys"
+    // (skills/connect-opp-setup/SKILL.md § Products). connect-program-setup
+    // writes opp.yaml, not run_state products.
+    connect: 'connect-opp-setup',
+  },
+  'ocs-setup': {
+    // "Sole writer" of the typed handoff (skills/ocs-agent-setup/SKILL.md § Products) …
+    ocs_chatbot: 'ocs-agent-setup',
+    // … except two keys a PHASE 6 skill appends into Phase 5's block after the
+    // training docs exist (skills/ocs-knowledge-refresh/SKILL.md § Step 3:
+    // "This is the only producer of that field"). Declared at their true
+    // producer so a consumer can tell "later phase" from "this phase".
+    'ocs_chatbot.knowledge_sources': 'ocs-knowledge-refresh',
+    'ocs_chatbot.last_reindexed_at': 'ocs-knowledge-refresh',
+  },
+  'qa-and-training': {
+    // The multi-writer slot table in agents/qa-and-training.md § Products —
+    // each doc skill read-modify-writes its own slot; the deck slot is written
+    // by training-deck-RENDER after the Slides render, never by -generate
+    // (jjackson/ace#748).
+    'training.deck': 'training-deck-render',
+    'training.docs.llo_guide': 'training-llo-guide',
+    'training.docs.flw_guide': 'training-flw-guide',
+    'training.docs.quick_reference': 'training-quick-reference',
+    'training.docs.faq': 'training-faq',
+    'training.docs.onboarding_email': 'training-onboarding-email',
+  },
+  'synthetic-data-and-workflows': {
+    // demo-data-setup: the seam contract (skills/demo-data-setup/SKILL.md
+    // § Products — `products.synthetic.source`) plus the dataset/dashboard
+    // handles the Phase 7 agent copies from realized.json in Step 4
+    // (agents/synthetic-data-and-workflows.md § Step 4: `provider`,
+    // `labs_opp_id`, `workflows{}`). On the retired pre-convergence path the
+    // same keys came from synthetic-workflow-seed / synthetic-data-generate.
+    'synthetic.provider': 'demo-data-setup',
+    'synthetic.labs_opp_id': 'demo-data-setup',
+    'synthetic.workflows': 'demo-data-setup',
+    'synthetic.source': 'demo-data-setup',
+    'synthetic.render_code_patched_this_run': 'demo-data-setup',
+    // demo-narrative: `{why_brief_ref, unified_spec_ref, validated}`
+    // (skills/demo-narrative/SKILL.md § Products).
+    'synthetic.narrative': 'demo-narrative',
+    // The Phase 7 agent's own write-back (agents/synthetic-data-and-workflows.md
+    // § Step 4 + § Step 3.5): one `walkthroughs[]` entry per DDD render, the
+    // program-scoped template promotion, and canopy's DDD loop ending
+    // (`ddd_terminal_status`, `ddd_open_strategy_findings`, …). The wildcard
+    // covers every `ddd_`-prefixed key so a new loop statistic is attributed
+    // without an edit here.
+    'synthetic.walkthroughs': 'synthetic-data-and-workflows',
+    'synthetic.promoted_template': 'synthetic-data-and-workflows',
+    'synthetic.ddd_*': 'synthetic-data-and-workflows',
+  },
+  'solicitation-management': {
+    // "sole writer of `products.solicitation` within the run"
+    // (skills/solicitation-create/SKILL.md § Step 9). solicitation-monitor
+    // reads it and does NOT mutate `status` (§ --close mode is a no-op).
+    solicitation: 'solicitation-create',
+    // solicitation-review flips `status: awarded` and adds `awarded.*` on award
+    // (skills/solicitation-review/SKILL.md § Products). `status` stays with
+    // create because monitor gates on `status == open` reading the created
+    // value; `awarded.*` exists only after review.
+    'solicitation.awarded': 'solicitation-review',
+    // "Only `solicitation-review` populates `selected_llo`" (CLAUDE.md § Gotchas).
+    selected_llo: 'solicitation-review',
+  },
+  'execution-management': {
+    // "Sole writer of `products.launch`" (skills/llo-launch/SKILL.md § Step 10).
+    launch: 'llo-launch',
+  },
+  closeout: {
+    // Each "Sole writer of `products.<key>`" per its SKILL.md.
+    cycle_grade: 'cycle-grade',
+    opp_eval: 'opp-eval',
+    learnings: 'learnings-summary',
+  },
+};
+
+/**
+ * Schema-declared keys that deliberately have NO producer, with the reason.
+ * The coverage test fails on a key that is neither here nor attributed, so a
+ * gap is always a conscious, documented one.
+ */
+export const UNATTRIBUTED_PRODUCT_KEYS: Partial<
+  Record<PhaseName, ReadonlyArray<{ key: string; reason: string }>>
+> = {
+  design: [
+    {
+      key: 'decisions_log',
+      reason:
+        'Recognized so a producer that records it does not trip the strict() root (jjackson/ace#766), ' +
+        'but no skill or agent in this repo writes it — the decisions gdoc is discovered by name at the ' +
+        'run-folder root, and `render_decisions_log` returns ids without writing this block. Attribute ' +
+        'it the day a writer appears.',
+    },
+  ],
+  'idea-to-design': [
+    {
+      key: 'decisions_log',
+      reason:
+        'Same key as under the legacy `design` spelling: supplementary telemetry with no writer in the ' +
+        'repo (jjackson/ace#766). Attribute it the day a writer appears.',
+    },
+  ],
+};
+
+/**
+ * Resolve the producing skill for a dotted `products` key under `phase`, per
+ * the semantics documented on {@link PRODUCT_PRODUCERS}: exact match, then the
+ * nearest attributed ancestor, with a trailing `*` on an entry's last segment
+ * matching a key-segment prefix. `undefined` when the phase has no map or
+ * nothing matches — the caller must then CARRY the key and name it, never
+ * drop it silently.
+ */
+export function productProducer(phase: string, dottedKey: string): string | undefined {
+  const map = (PRODUCT_PRODUCERS as Record<string, Record<string, string> | undefined>)[phase];
+  if (!map || !dottedKey) return undefined;
+  const keySegs = dottedKey.split('.');
+  let best: { producer: string; depth: number; exact: boolean } | undefined;
+  for (const [entry, producer] of Object.entries(map)) {
+    const entrySegs = entry.split('.');
+    if (entrySegs.length > keySegs.length) continue;
+    let matched = true;
+    let exact = true;
+    for (let i = 0; i < entrySegs.length; i++) {
+      const e = entrySegs[i];
+      const k = keySegs[i];
+      if (e === k) continue;
+      const isLast = i === entrySegs.length - 1;
+      if (isLast && e.endsWith('*') && k.startsWith(e.slice(0, -1))) {
+        exact = false;
+        continue;
+      }
+      matched = false;
+      break;
+    }
+    if (!matched) continue;
+    const depth = entrySegs.length;
+    if (!best || depth > best.depth || (depth === best.depth && exact && !best.exact)) {
+      best = { producer, depth, exact };
+    }
+  }
+  return best?.producer;
+}
+
+/**
+ * The one-paragraph statement of {@link productProducer}'s rules, emitted into
+ * `docs/phase-products-schema.json` so a consumer in another language
+ * (ace-web's `apps/opps/skills.py::product_producers`) reads the semantics
+ * next to the data rather than re-deriving them from this file.
+ */
+export const PRODUCT_PRODUCERS_SEMANTICS =
+  'Keys are dotted paths relative to `products`; values are the producing skill (a `skills/<name>/` dir) ' +
+  'or the owning phase agent (`agents/<phase>.md`). Resolve a key by exact match first, else by its ' +
+  'NEAREST attributed ancestor (a deeper entry overrides a shallower one for its subtree). A trailing `*` ' +
+  'on an entry\'s LAST segment matches any key segment with that prefix (`synthetic.ddd_*`); it is a ' +
+  'prefix on one segment, never a glob across segments; an exact entry outranks a wildcard at the same ' +
+  'depth. A key that resolves to nothing is UNMAPPED: carry it and name it, never drop it silently.';
+
 /**
  * Critical handoff keys (dot-paths under `products`) that MUST be present once
  * a phase reaches `done` — the keys the ace-web summary needs to render a
