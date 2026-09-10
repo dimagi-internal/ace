@@ -49,8 +49,8 @@ improvements ship once (a canopy PR) instead of N backports.
   denylist of gog error strings, and gog's "no token for this (mailbox, client) pair" message
   (`No auth for gmail <mailbox>.`) matches none of them, so a mailbox that cannot make a single
   call reports `PASS … live scopes OK`. That is the #1189 gate defeated at its source. So run the
-  inbox pull yourself as the real preflight — `gog gmail search "in:inbox is:unread" --account
-  $ACE_GMAIL_ACCOUNT --client canopy -j` — and treat an auth error there as TURN-BLOCKING no matter
+  inbox pull yourself as the real preflight — `gog gmail search "in:inbox is:unread" -a
+  ace@dimagi-ai.com --client canopy -j` — and treat an auth error there as TURN-BLOCKING no matter
   what the doctor printed. If the read fails under the configured client, check
   `gog auth tokens list` for a `token:<client>:<mailbox>` key: the pair, not the account, is what
   gog stores, and `gog auth list` collapses to one row per account so it can hide a working token
@@ -69,7 +69,9 @@ improvements ship once (a canopy PR) instead of N backports.
   not function` on a machine that is in fact HEALTHY, every turn, which is how a preflight verdict
   becomes noise people route around. (`agents/ace-orchestrator.md` § preflight already resolves the
   install path for the same reason — this keeps turns consistent with runs.) Gmail as ACE:
-  `gog gmail search "in:inbox is:unread" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
+  `gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client canopy --json`
+  (the mailbox and client are the literals from `config/agent.json` — `$ACE_GMAIL_ACCOUNT` /
+  `$ACE_GMAIL_CLIENT` were RETIRED with ace#1147 and expand to EMPTY in a shell)
   (doubles as the inbox queue pull). Dead gog auth:
   `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is the SHARED
   fleet client (`canopy`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
