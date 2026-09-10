@@ -727,6 +727,55 @@ is exactly this value — it is discarded today. Keep it. The validator reports
 missing `file_id` **once per phase** with the step names rather than once per
 step, because a warning list that is always 18 long is one nobody reads.
 
+### Product-key producers — who writes each `products.*` key (ace#2354)
+
+`lib/artifact-manifest.ts` attributes FILES (`producedBy`); the typed handoff
+KEYS under `phases.<phase>.products` had no attribution at all, and the gap
+surfaced the first time something needed to split a block: ace-web's skill
+fork (ace-web#765) carries the fork phase's `products` into the forked run, and
+with no map it had to carry the block WHOLE — so a Phase 7 fork at
+`demo-narrative` seeded the new run with a stale `synthetic.narrative` and
+stale `synthetic.ddd_*` beside the kept `synthetic.source` / `.workflows`.
+
+**Single source:** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` — a
+per-phase map of DOTTED key (relative to `products`) → producing skill dir, or
+the phase agent's name when the agent writes the key in its own write-back.
+`productProducer(phase, dottedKey)` resolves a key: exact match, else the
+nearest attributed ancestor (`connect.opportunity.url` → `connect` →
+`connect-opp-setup`; a deeper entry overrides a shallower one for its subtree),
+with a trailing `*` on an entry's last segment matching a key-segment prefix
+(`synthetic.ddd_*`). An unresolved key is UNMAPPED — a consumer carries it and
+names it, never drops it silently. Keys with deliberately no producer sit in
+`UNATTRIBUTED_PRODUCT_KEYS` with a reason (today: `decisions_log`, which nothing
+in the repo writes).
+
+**Granularity follows the writers.** One skill owns most blocks, so top-level
+keys suffice (`apps` → `app-deploy`, `connect` → `connect-opp-setup`, `launch`
+→ `llo-launch`). `synthetic` is written by three parties and is attributed one
+level down: `demo-data-setup` owns `provider` / `labs_opp_id` / `workflows` /
+`source` / `render_code_patched_this_run`, `demo-narrative` owns `narrative`,
+and the Phase 7 agent owns `walkthroughs`, `promoted_template` and every
+`ddd_*`. `training` is attributed per slot (the six writers in
+`agents/qa-and-training.md § Products`). `solicitation` → `solicitation-create`
+except `solicitation.awarded` → `solicitation-review`, which also owns
+`selected_llo`.
+
+**Where it travels.** `scripts/dump-phase-products-schema.ts` emits the map as
+`phases.<phase>.productProducers` (plus `unattributedProductKeys` and a
+top-level `productProducersSemantics` sentence) in
+`docs/phase-products-schema.json`, which ace-web reads without a TypeScript
+toolchain (`apps/opps/skills.py::product_producers`). `null` there means "the
+plugin declares nothing for this phase", which keeps the forker's carry-all
+fallback intact against an older plugin.
+
+**When you add or move a products key:** add its producer to
+`PRODUCT_PRODUCERS` (or a reasoned `UNATTRIBUTED_PRODUCT_KEYS` entry) and
+regenerate the JSON. *Enforced:* `test/lib/product-producers.test.ts` walks
+every Zod object key in `PHASE_PRODUCTS_SCHEMAS` and fails CI on a silent gap,
+and checks every producer is a real `skills/<name>/` or the owning
+`agents/<phase>.md`; `test/scripts/dump-phase-products-schema.test.ts` fails
+when the committed JSON lags the source.
+
 ### `partial` — a phase that shipped but parked something
 
 `partial` is a **terminal** phase status: *the phase is finished and its

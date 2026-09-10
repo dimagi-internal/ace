@@ -42,4 +42,27 @@ describe('dump-phase-products-schema', () => {
     expect(doc.phases['qa-and-training'].requiredProductKeys).toContain('training.deck');
     expect(doc.phases['qa-and-training'].requiredProductKeys).toContain('training.docs.onboarding_email');
   });
+
+  it('the generated contract carries the product-key producers ace-web forks by (ace#2354)', () => {
+    const doc = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, 'docs', 'phase-products-schema.json'), 'utf-8'),
+    );
+    // The semantics sentence travels WITH the data so a Python reader does not
+    // re-derive prefix/wildcard rules from the TypeScript.
+    expect(typeof doc.productProducersSemantics).toBe('string');
+    expect(doc.productProducersSemantics).toContain('*');
+    // The canonical three-writer block is attributed one level down.
+    const p7 = doc.phases['synthetic-data-and-workflows'];
+    expect(p7.productProducers['synthetic.source']).toBe('demo-data-setup');
+    expect(p7.productProducers['synthetic.narrative']).toBe('demo-narrative');
+    expect(p7.productProducers['synthetic.ddd_*']).toBe('synthetic-data-and-workflows');
+    expect(p7.productProducers.synthetic).toBeUndefined();
+    expect(p7.unattributedProductKeys).toEqual([]);
+    // Every phase carries the two keys, `null` (not `{}`) meaning "declares none".
+    for (const v of Object.values(doc.phases) as any[]) {
+      expect('productProducers' in v).toBe(true);
+      expect(Array.isArray(v.unattributedProductKeys)).toBe(true);
+    }
+    expect(doc.phases['idea-to-design'].unattributedProductKeys.map((u: any) => u.key)).toEqual(['decisions_log']);
+  });
 });
