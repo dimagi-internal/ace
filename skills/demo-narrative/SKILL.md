@@ -208,6 +208,54 @@ paraphrase the schema here — read the model / schema and validate.
    finale; the ladder above is what stops a recap finale, and that part is on
    you.
 
+   **Putting the action LAST is necessary and NOT sufficient — the finale has to
+   be strong in ABSOLUTE terms (ace#2347).** Measured: ordering the ladder
+   correctly moved `spark-facilitator` +1.0 across all three judges (2.0 → 3.0,
+   fail → warn) and unblocked the loop, and `arc_shape` **still capped at 3**.
+   The judge validated the order and applied the cap anyway — *"The ladder is
+   real and load-bearing … No two scenes could be swapped without breaking a
+   dependency … That is 5-anchor structure. But the deduction rule 'the final
+   scene is not the strongest moment' FIRES."* The cap measures how much the
+   last frame DELIVERS, not where the peak sits.
+
+   Two consecutive runs died on the same defect one dimension apart, and both
+   redesign findings describe one shape: **a finale that performs a single
+   instance of a rated activity, with no aggregate and no consequence.**
+
+   | Run | Dimension | The judge's words |
+   |---|---|---|
+   | `20260909-1211` | `arc_shape` | the finale *"inherits that whole table unchanged and adds one line of text and one small chip"* |
+   | `20260909-2242` | `use_case_soundness` | *"the page states the programme 'reviews at least one meeting in five in person' — roughly 35 of 173 records — and the walkthrough demonstrates exactly one review, producing an anonymous, undated chip, with no coverage measure against the 1-in-5 target anywhere on screen and no visible downstream consequence … A skeptical buyer watching the run's closing beat asks 'is that all it does?'"* |
+
+   So author the finale against three rules, all three read off that text:
+
+   1. **The action must produce something the previous frame did not already
+      contain.** A reviewer *confirming* a decision the page already displays
+      adds a chip and no information. A reviewer *contradicting* it — recording
+      "needs a site visit" on a row the machine marked **Paid** — adds
+      information, and it is usually the truer demonstration too: a two-layer
+      verification design has a human layer precisely to catch what the
+      automatic layer cannot, so a finale where the human agrees is a finale
+      that never exercises the design.
+   2. **If the page states a RATE for the activity, show the RATE, not one
+      instance.** One review against a stated 1-in-5 target is the
+      `use_case_soundness` litmus firing verbatim. Put the coverage beside the
+      single act — "8 of the 35 reviews this window are done" — so the closing
+      frame answers *"is that all it does?"* instead of inviting it.
+   3. **The action must have a visible downstream consequence.** *"the record
+      still earns nothing, and nothing connects the finding to any effect"* — a
+      state change no one can see the effect of is a chip, not a payoff. Show
+      what the finding changes: a payment released, a record queued for a visit,
+      a counter moving.
+
+   **This is authoring guidance, not a check, and deliberately so.** Whether an
+   outcome is *new information* or a restatement is semantic and needs rendered
+   frames; a static proxy for it would be the fourth retracted rule in this
+   family (ace#1660 retracted, ace#1841 pruned). `checkArcLadder` enforces only
+   the floor — that the last scene acts at all. Everything above is on the
+   author, and the evidence that authoring guidance works here is the +1.0 the
+   ladder itself produced.
+
    - `scenes[]` — each scene: `persona` (must exist in `personas`), `title`,
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
