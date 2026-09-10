@@ -111,6 +111,28 @@ It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest 
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
 
+**Confirm the tree you were handed is the INSTALLED one before you author (ace#2349).**
+`Skill()` resolves to the `installPath` bound when the session started, so after an
+`/ace:update` it can serve an older copy — and a stale `demo-narrative` silently drops
+whole rule sections rather than failing. Measured on `spark-facilitator/20260910-0541`:
+installed was `0.13.1426`, `Skill(ace:demo-narrative)` reported base directory
+`0.13.1413`, and the 96-line delta between them was exactly the ace#2339 scene ladder
+plus the ace#2347 finale rules — the two things that dispatch existed to apply. **No
+gate can catch this**: every authoring check (`checkSceneActions`, `checkArcLadder`,
+`checkSceneVariety`, `scripts.ddd.validate`, `narrative_coherence`) reads the authored
+spec and none can tell what guidance produced it, so the deck passes them all and dies
+at the judge having burned a render. So:
+
+```bash
+INSTALLED="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")"
+grep -c -E 'ace#2339|ace#2347' "$INSTALLED/skills/demo-narrative/SKILL.md"
+```
+
+If the base directory `Skill()` reports differs from `$INSTALLED`, **read
+`$INSTALLED/skills/demo-narrative/SKILL.md` from disk and follow that** — you cannot
+rebind your own skills mid-run (ace#1729), and reading the file is the whole fix. Say
+in the phase summary which tree you actually authored from.
+
 ### Step 3.0: Restore the labs session (FIRST, unconditionally)
 
 The render authenticates to labs with a stored Playwright `storageState`, and that
