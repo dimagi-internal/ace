@@ -261,12 +261,13 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    | HTML body | — | **wrong route.** An unrouted path falls through to the SPA catch-all and returns a bare HTML 404, not JSON. Check `/api/w/<ws>/opps/...`. |
    | *no response* | — | **not an error.** The POST blocks; you timed out, the fork didn't. Go to step 4b — never re-POST. |
 
-6. **Check the typed handoffs the fork did NOT copy (ace#1888). Not optional.**
-   ace-web copies phase artifacts and phase STATUSES; it does **not** copy the
-   `products` block. A phase marked `done` with no `products` is asserting a
-   completion it cannot back — and every existing fence reads it green (see
-   § Known issues). So audit it here, where the fork just happened and the
-   source run is still in hand:
+6. **Check the typed handoffs crossed the fork (ace#1888 / ace#2341). Not optional.**
+   ace-web now carries each copied phase's `products` block (ace-web#760) and a
+   skill fork's kept steps (ace-web#765) — on the DEPLOYED ace-web, which can
+   lag the merge (see § Known issues). A phase marked `done` with no `products`
+   is asserting a completion it cannot back — and every existing fence reads it
+   green. So audit it here, where the fork just happened and the source run is
+   still in hand; exit 0 is the expected result on a current deploy:
 
    ```bash
    # read costs zero context with writeToPath; then classify locally
@@ -305,24 +306,48 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
 
 ## Known issues
 
-**The fork does not copy `products` blocks — ace#1888, OPEN, owned by
-ace-web.** A forked run's phases carry `status: done, verdict: seeded` and no
-typed handoff, so a downstream phase that dereferences one
-(`demo-data-setup(ace-run)` reads
-`phases.connect-setup.products.connect.opportunity.connect_int_id`) gets a
-confusing empty result rather than a clean halt.
+**`products` blocks now cross the fork — ace#1888 CLOSED (ace-web#760,
+2026-09-08) for phase forks, ace#2341 CLOSED (ace-web#765, 2026-09-10) for
+skill forks.** Both take effect on the ace-web DEPLOY that carries them, not on
+the merge (ace-web deploys are `workflow_dispatch` on `main`) — so read the
+forked `run_state.yaml`, never the PR state, to know which behaviour you got.
+What each fixed:
 
-It is easy to miss because **every fence reads it green.**
+- **Phase fork** (ace-web#760): every copied phase's `products` block is
+  carried verbatim. Before it, a forked run's phases carried
+  `status: done, verdict: seeded` and no typed handoff, so a downstream phase
+  that dereferenced one (`demo-data-setup(ace-run)` reads
+  `phases.connect-setup.products.connect.opportunity.connect_int_id`) got a
+  confusing empty result rather than a clean halt.
+- **Skill fork** (ace-web#765): the fork-point phase's `steps.<skill>` entries
+  BELOW the fork skill (plus their `-qa`/`-eval` companions) are carried
+  verbatim, the fork skill and later steps are `pending`, the phase reads
+  `status: in_progress` with a `fork_note`, and `verdict`/`completed_at` are
+  omitted so the phase must re-complete. Before it, the whole block was reset
+  to `steps: pending, products: {}` and the kept artifacts were orphaned —
+  `demo-data-setup` re-ran, and the live labs workflows named in
+  `products.synthetic.workflows{}` became orphans (measured 2/2 on
+  `spark-facilitator/20260909-2242` and `/20260910-0541`).
+
+  **The skill fork carries `products` WHOLE and marks it UNATTRIBUTED** — the
+  plugin declares no product-key → producing-skill map (`lib/artifact-manifest.ts`
+  attributes files, `lib/phase-products-schema.ts` types blocks), and
+  `products.synthetic` is written by three parties. So for a Phase 7 fork at
+  `demo-narrative`, `products.synthetic.narrative` and `ddd_*` arrive STALE
+  next to the kept `source`/`workflows`; `steps.demo-narrative: pending` is the
+  authoritative signal and the re-run's deep-merge overwrites them. Tracked as
+  ace#2354. Until it lands, re-derive those keys — do not trust a carried
+  `narrative` or `ddd_*` value on a skill-forked run.
+
+The gap was easy to miss because **every fence read it green.**
 `verify_phase_artifacts` passes (the Drive files really were copied),
 `classify_phase_writeback` reads `ok` (the status block really is well-formed),
 and `verify_phase_products` returns `ok:true` on a *wholly absent* block for
 any phase with no entry in `REQUIRED_PRODUCT_KEYS` — measured on
 `hh-poverty-targeting/20260901-1932`: `idea-to-design` ok=true, `ocs-setup`
-ok=true, both with no `products` key at all.
-
-The real fix — carrying the block across the copy — is an **ace-web** change
-(`apps/opps/opp_forker.py`) and cannot be made from this repo. Step 6 above is
-ACE's half: it turns the silent gap into a loud, named one.
+ok=true, both with no `products` key at all. Step 6 above stays as the
+regression check for exactly that class: on a fork made after the deploy it
+should exit 0, and a non-zero exit means the deploy is behind the merge.
 *Enforced:* `lib/upstream-products-gap.ts` +
 `test/lib/upstream-products-gap.test.ts`, whose controls are transcribed from
 the forked run and its source.
