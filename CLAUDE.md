@@ -101,7 +101,7 @@ ACE is a fleet agent on canopy's agent operating model (spec: `docs/superpowers/
 - `.env.tpl` — 1Password-injectable template. Installed `.env` lives at `${CLAUDE_PLUGIN_DATA}/.env`. **1Password is source of truth** — never paste values into `.env` directly. **Refresh the installed `.env` with `/ace:setup --force-env` (= `bin/ace-setup --force-env`), NOT a raw `op inject -o <plugin-data>/.env`.** Raw `op inject` overwrites the whole file and drops local-only keys (`ACE_WEB_PAT_TOKEN` etc.); only `bin/ace-setup` snapshots the `# --- ACE local-only secrets ---` block and re-appends it. A `config/gating.json` deny rail blocks the raw form for Claude. *Enforced:* `bin/ace-setup` resolves its template root INSTALLED-FIRST and refuses to render `.env` from any other root (`bash bin/ace-setup --print-root` shows the resolution; `test/scripts/ace-setup-plugin-root.test.ts`) — it used to walk up from `$PWD`, so `--force-env` from a worktree wrote the machine's `.env` from that branch's template (ace#2091).
 - `migrations/` — version-to-version migration scripts. See `migrations/README.md`.
 
-**Sibling repo:** `ace-web` is a sibling repo, not a submodule. Browser-harness work happens in the `ace-web` checkout; its design spec lives there.
+**Sibling repo:** `ace-web` is where humans review a run — the web app at `labs.connect.dimagi.com/ace/` that renders each run from its Drive state: the public run-summary page, the members' workbench, and per-decision comments and edits that write back to the opp's Drive folder (§ Conventions, ace#2378). It is a sibling repo, not a submodule. Browser-harness work happens in the `ace-web` checkout; its design spec lives there.
 
 ## Running tests
 
@@ -188,6 +188,7 @@ When in doubt, validate by curling the live MCP's `tools/list` directly (e.g. `c
 ## Conventions
 
 - **Skills are stateless.** Per-opportunity state lives in Drive `ACE/<opp-name>/`. Don't introduce local state in `SKILL.md` files.
+- **ace-web is the human surface for a run; Google Drive is ACE's storage.** A reviewer-facing reference to a run — a reply, a close-out, a pause summary — leads with that run's ace-web page: `run_state.yaml` top-level `ace_web_summary_url` (the public `…/ace/opps/<ws>/<opp>/runs/<run>/summary`, no login; members also have the workbench at `…/ace/w/<ws>/opps/<opp>/runs/<run>`, which renders artifacts inline). Drive, HQ and Connect links appear as what that page links to, never as the entry point. A gdoc stays the format for a deliverable (§1b); the run page is how a reviewer reaches it, and a review artifact is not delivered until ace-web shows it. *Enforced on the send path:* `bin/ace-email` refuses a Drive/Docs-linked body with no ace-web link unless `--no-run-page "<why>"` (`test/hooks/email-shims.test.ts`; ace#2378).
 - **SKILL.md naming.** Skill dir is kebab-case verb phrase (`idea-to-pdd`, `app-test-cases`); must match frontmatter `name:` exactly.
 - **MCP servers run direct from TypeScript.** ESM + `npx tsx`, no build step.
 - **MCP capabilities are atomic.** Each atom in `mcp/{ocs,connect,mobile}/capability-map.ts` (and `mcp/connect/backends/commcare.ts`) routes to REST or Playwright; skill code never knows which. When upstream ships a real API for a Playwright-backed atom, it's a one-line routing change.

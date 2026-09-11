@@ -61,6 +61,20 @@ mapped to where it is enforced.
   surface reads. This skill is the sole writer of that key; `connect-opp-setup`
   owns the rest of `products.connect`.
 
+## Where a reviewer reads it
+
+On the run's ace-web summary page (`run_state.yaml` top-level
+`ace_web_summary_url`), not in Drive. ace-web is the human surface for a run
+and Drive is ACE's storage (`CLAUDE.md § Conventions`, ace#2378). The Doc is
+the storage copy and the place to anchor a comment; it is not the entry point.
+So every reviewer-facing reference gives the run page first and the Doc link
+as a deep link under it.
+
+**The memo is not delivered until ace-web renders it.** Rendering its content
+on the summary page is ace-web#767, open as of 2026-09-11. Until that ships,
+a close-out or reply says the page does not show the memo yet, and gives the
+Doc as the stopgap. It must not present the Doc as the review surface.
+
 ## The one rule: compose, never re-derive
 
 The memo is a collation. Every row and every paragraph comes from a producer's
@@ -214,8 +228,8 @@ defect.
 ## Mode Behavior
 
 - **Auto / default:** compose, publish, return. Not a pause point.
-- **Review:** identical; the orchestrator surfaces the memo link at the next
-  pause.
+- **Review:** identical; at the next pause the orchestrator surfaces the run's
+  ace-web page, with the memo Doc under it (§ Where a reviewer reads it).
 
 ## Dry-Run Behavior
 
@@ -227,3 +241,4 @@ no `run_state.yaml` write.
 | Date | Change | Author |
 |---|---|---|
 | 2026-09-11 | Initial version (ace#2371). The programme-level build memo every poverty-graduation PDD names as its review artifact had never been delivered: 76 skill writes to "the build memo", no artifact. Composes the Deliver `## Build memo` section, the Learn build memo (now actually written to Drive), and a new Phase 4 section mapping every PDD verification rule to where it is applied. Declared `required: true`, so the Phase 4 fence fails a run without it. *Enforced:* `test/skills/build-memo-contract.test.ts`. | ACE team |
+| 2026-09-11 | **The reviewer reads the memo on ace-web, not in Drive** (ace#2378). Added § Where a reviewer reads it: the run's summary page is the entry point and the Doc is storage behind it. The memo counts as delivered only once ace-web renders it (ace-web#767, open). Before this, the close-out put the Doc link directly under the summary URL, so a Drive-only artifact counted as delivered while the reviewer's surface could not show it. | ACE team |

@@ -259,10 +259,36 @@ describe('the review surfaces carry the link', () => {
     expect(productProducer('connect-setup', 'connect.opportunity.url')).toBe('connect-opp-setup');
   });
 
-  it('the orchestrator close-out and pause summary lead with the memo link', () => {
-    expect(read('agents/ace-orchestrator.md')).toContain('products.connect.build_memo.web_view_link');
-    expect(read('agents/orchestrator-reference.md')).toMatch(
-      /\*\*Build memo:\*\* from Phase 4 on, `products\.connect\.build_memo\.web_view_link`/,
+  // ace#2378: ace-web is the human surface for a run, Drive is storage. The
+  // close-out used to put the memo DOC directly under the summary URL, which
+  // made a Drive-only artifact count as delivered while the reviewer's page
+  // could not show it (ace-web#767). The Doc stays linked, but behind the page.
+  it('the orchestrator close-out and pause summary route the memo through the run page, Doc behind it', () => {
+    const orch = read('agents/ace-orchestrator.md');
+    const closeout = orch.slice(orch.indexOf('Once Phase 4 is done, name the **build memo**'));
+    expect(closeout.length, 'close-out build-memo paragraph missing').toBeGreaterThan(0);
+    const para = closeout.slice(0, closeout.indexOf('**(4)'));
+    expect(para).toContain('products.connect.build_memo.web_view_link');
+    expect(para).toContain('ace-web#767');
+    expect(para).toMatch(/UNDER the summary URL as a deep link, never in its\s+place/);
+
+    const ref = read('agents/orchestrator-reference.md');
+    const line = ref.split('\n').find((l) => l.includes('**Build memo:** from Phase 4 on')) ?? '';
+    expect(line).toContain('ace_web_summary_url');
+    expect(line).toContain('products.connect.build_memo.web_view_link');
+    expect(line).toMatch(/never as the entry point/);
+    // The page must be named BEFORE the Doc on the same line.
+    expect(line.indexOf('ace_web_summary_url')).toBeLessThan(
+      line.indexOf('products.connect.build_memo.web_view_link'),
     );
+  });
+
+  it('the skill says where a reviewer reads it, and that it is undelivered until ace-web renders it', () => {
+    const doc = read('skills/build-memo/SKILL.md');
+    const section = step(doc, '## Where a reviewer reads it', '## The one rule');
+    expect(section, '§ Where a reviewer reads it is missing').not.toBe('');
+    expect(section).toContain('ace_web_summary_url');
+    expect(section).toContain('not delivered until ace-web renders it');
+    expect(section).toContain('ace-web#767');
   });
 });

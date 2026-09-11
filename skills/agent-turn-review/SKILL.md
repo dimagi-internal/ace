@@ -91,6 +91,14 @@ Same pass, same draft. Not an appendix, not a follow-up.
   run."* Nothing in it was untrue; the reader simply could not tell what to do. Rewritten into the
   three blocks above it came to 798 words. Fleet-general for every turn-based agent → candidate for
   promotion into `canopy:agent-turn-review` §C, alongside 7a/7b.)
+- **A reply about a run leads with the run's ace-web page — Drive is ACE's storage, not the
+  reviewer's surface.** For any run, the OVERVIEW link above is `ace_web_summary_url` from that
+  run's `run_state.yaml`; Drive, HQ and Connect links appear only as deep links behind it. Check
+  the draft's FIRST link: a Doc, a folder or an HQ page there means reorder. `bin/ace-email`
+  backstops the Drive half (it refuses a Drive-linked body with no ace-web link unless
+  `--no-run-page "<why>"`); an HQ-only body passes the rail, so that half is yours to catch.
+  (Origin: ace#2378 — Jon, 2026-09-11, on a draft reply to Sophie: *"You should be thinking of
+  AceWeb as the primary surface … You don't want to just point her at Google Drive."*)
 - **Every claim about EXTERNAL SYSTEM STATE must be read back before the send — no exceptions.**
   Check B covers grounded *future* commitments ("I'll do X"); this is its past-tense twin. Any
   sentence asserting the world is now in some state — *"access is set up"*, *"you'll see a pending
@@ -218,7 +226,8 @@ Same pass, same draft. Not an appendix, not a follow-up.
     Drop this bullet once the fleet is known to be ≥ 0.2.423. Caught by §9a's render check,
     never by reading the body file.
 - **Reply mechanics** follow canopy `docs/agent-operating-model.md § 1b` by reference
-  (jjackson/ace#828): deliverables/attachments are **gdocs** with the draft shown **inline** —
+  (jjackson/ace#828): deliverables/attachments are **gdocs** (for a run, reached through its
+  ace-web page — above) with the draft shown **inline** —
   never a local file the human must open; **verify the recipient set from the structured thread
   read** (raw dumps hide `Cc:`) before rating fidelity complete.
 - **Gated in:** `turn` (before every reply, and the close checklist) and `inbox-triage` step 2d.

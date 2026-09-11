@@ -29,10 +29,24 @@ injection into the operator's own machine. The body was already file-passed for
 exactly this reason; the subject was not. This shim reads the file and hands the
 value to canopy through `execvp` argv, where no shell is involved.
 
+RUN-PAGE CHECK (ace#2378). ace-web is the human surface for a run; Google Drive
+is ACE's storage. A body that links `docs.google.com` / `drive.google.com` but
+carries no `labs.connect.dimagi.com/ace/` link is refused (exit 3) before canopy
+is called — the fix is to lead with the run's ace-web page (`run_state.yaml`
+top-level `ace_web_summary_url`) and keep the Drive links as deep links under it.
+`--dry-run` gets the same verdict, so a draft is caught before the approval step.
+A thread with no run behind it (a sales/BD thread) passes an explicit reason:
+
+  bin/ace-email ... --body-file body.txt --no-run-page "sales thread, no run yet"
+
+The flag is consumed here and never reaches canopy; the reason is echoed to stderr
+so the transcript records why the check was skipped.
+
 Auth check: `canopy email preflight --repo <this repo>` (exact `gog login` fix on failure).
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -97,7 +111,87 @@ def _resolve_subject_file(argv):
     return out
 
 
-ARGS = _resolve_subject_file(sys.argv[1:])
+ACE_WEB_MARKER = "labs.connect.dimagi.com/ace/"
+DRIVE_LINK = re.compile(r"(?:https?://)?(?:docs|drive)\.google\.com/\S*", re.IGNORECASE)
+RUN_PAGE_OVERRIDE = "--no-run-page"
+REFUSED_EXIT = 3
+
+
+def _take_run_page_override(argv):
+    """Strip `--no-run-page REASON` (or `=REASON`) out of argv; canopy never sees it."""
+    out, reason = [], None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == RUN_PAGE_OVERRIDE or arg.startswith(RUN_PAGE_OVERRIDE + "="):
+            if "=" in arg:
+                value = arg.split("=", 1)[1]
+                i += 1
+            elif i + 1 < len(argv):
+                value = argv[i + 1]
+                i += 2
+            else:
+                value = ""
+                i += 1
+            if not value.strip():
+                sys.exit(
+                    f'{RUN_PAGE_OVERRIDE} needs a reason, e.g. {RUN_PAGE_OVERRIDE} "sales thread, no run yet"'
+                )
+            reason = value.strip()
+            continue
+        out.append(arg)
+        i += 1
+    return out, reason
+
+
+def _body_file(argv):
+    for i, arg in enumerate(argv):
+        if arg == "--body-file" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--body-file="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def _check_run_page(argv, override_reason):
+    """Refuse a Drive-linked body that never names the run's ace-web page (ace#2378)."""
+    if override_reason is not None:
+        print(f"ace-email: run-page check overridden — {override_reason}", file=sys.stderr)
+        return
+    path = _body_file(argv)
+    if path is None:
+        return  # --body-file is required; canopy reports its absence
+    if path == "-" or path.startswith("/dev/"):
+        sys.exit(
+            "ace-email checks the body before it sends, so it needs a real file — "
+            "write the body to a file and pass --body-file <path>"
+        )
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return  # unreadable: canopy owns --body-file validation and will refuse it
+    drive_links = DRIVE_LINK.findall(body)
+    if not drive_links or ACE_WEB_MARKER in body.lower():
+        return
+    dry = " (dry-run — a real send gets this same refusal)" if "--dry-run" in argv else ""
+    shown = "\n".join(f"  {u}" for u in drive_links[:3])
+    print(
+        f"ace-email: REFUSED{dry}. The body links Google Drive/Docs but not the run's ace-web page.\n"
+        "ace-web is the human surface for a run; Drive is ACE's storage "
+        "(CLAUDE.md § Conventions, ace#2378).\n"
+        "Fix: lead with the run's page — run_state.yaml `ace_web_summary_url`, e.g.\n"
+        "  https://labs.connect.dimagi.com/ace/opps/dimagi-team/<opp>/runs/<run-id>/summary\n"
+        "and keep the Drive links as deep links under it.\n"
+        f'No run behind this thread (e.g. sales/BD)? Re-run with {RUN_PAGE_OVERRIDE} "<why>".\n'
+        f"Drive links found:\n{shown}",
+        file=sys.stderr,
+    )
+    sys.exit(REFUSED_EXIT)
+
+
+ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(sys.argv[1:]))
+_check_run_page(ARGS, _OVERRIDE)
 
 try:
     os.execvp("canopy", ["canopy", "email", "send", "--repo", REPO, *ARGS])

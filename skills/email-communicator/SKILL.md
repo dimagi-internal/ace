@@ -63,6 +63,10 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
    - Approval is procedural, per the calling context: in a turn or review-mode run, present the
      composed email (to/cc/subject/body) and get the human's yes before invoking; in auto-mode runs,
      the phase's pause-point governance applies. Use `--dry-run` to preview the rendered bodies.
+   - **Run-page check (ace#2378):** a body that links `docs.google.com` / `drive.google.com` and no
+     `labs.connect.dimagi.com/ace/` page exits 3 before canopy is called, dry-run included. Lead with
+     the run's `ace_web_summary_url`; for a thread with no run (sales/BD) pass
+     `--no-run-page "<why>"`, which is stripped before canopy and echoed to stderr.
    - Capture `message_id` and `thread_id` from the JSON result.
 
 4. **For reply operations:**

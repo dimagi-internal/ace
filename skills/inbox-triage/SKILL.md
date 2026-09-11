@@ -102,6 +102,12 @@ the shape of the turn.
        shown inline** (never a local .txt the human must open, never a wall of pasted text);
        **verify recipients from the structured thread read** — a raw dump hides `Cc:` and silently
        drops cc'd people; reply must cover the full recipient set.
+       **A reply about a run leads with that run's ace-web page** (`ace_web_summary_url` in the
+       routed run's `run_state.yaml`); Drive, HQ and Connect links go behind it as deep links, never
+       as the entry point. `bin/ace-email` refuses a Drive-linked body with no ace-web link unless
+       `--no-run-page "<why>"` names a thread with no run behind it. (Origin: ace#2378 — from
+       2026-09-02 ACE's replies to the poverty-graduation design author on thread
+       `19f86579142e6ba5` linked Docs and HQ pages, never the run page that existed the whole time.)
      - **Advance the run** *(act tier only)* — e.g. "approved, go ahead" on a pause-point thread →
        execute the pause point's approve path; a UAT-feedback reply forwarded by staff → feed the
        relevant Phase 9 skill. Correspond-tier content that *should* advance a run (an LLO's UAT
