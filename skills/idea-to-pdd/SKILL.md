@@ -520,7 +520,8 @@ the components is not enough, because a build needs enough to execute:
      `payment_rate_max` / `payment_rate_currency` / `payment_rate_unit`,
      `daily_cap_per_flw`, `total_cap_per_flw`, `flw_count_min` /
      `flw_count_max`, `expected_reach_min` / `expected_reach_max`,
-     `entity_id_grain`, `entity_state_taxonomy`, `cap_rationale`. Take the
+     `entity_id_grain`, `entity_state_taxonomy`, `duplicate_gps_rule`,
+     `cap_rationale`. Take the
      canonical key vocabulary and the per-key guidance from `## Program
      Parameters` in `templates/pdd-template.md` — snake_case keys, unknown keys
      allowed, omit a row only when this PDD genuinely does not decide it.
@@ -1026,6 +1027,23 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      | `payment_rate_band` | Phase 4 payment unit; Phase 8 solicitation | The band reads as an agreed price, or the awarded rate is applied without reference to it |
      | `daily_cap` / `total_cap` | Phase 4 opportunity config | Caps that do not match the PDD's stated economics |
      | `entity_id_grain` | Phase 3 `pdd-to-deliver-app`; Phase 4 payment unit | A payment grain chosen per-run rather than per-design |
+     | `duplicate_gps_rule` | Phase 3 `threshold-coherence-flag` + `pdd-to-deliver-app-eval § threshold_coherence`; the build memo's dedup rule (applied in review — Connect carries no GPS-duplicate control, ace#1013) | The accuracy condition is dropped: an accuracy-conditioned radius reads as a bare radius under the GPS tolerance, is flagged incoherent, and invites a builder to "fix" an author's decision (ace#2373) |
+
+     **`duplicate_gps_rule` is the WHOLE dedup rule, never a bare radius
+     (ace#2373).** Emit it as an object —
+     `{radius_m, applies_when: both_accuracies_below_radius, fallback: identifiers}`
+     — dropping `applies_when` only when the PDD runs the GPS test whatever
+     the readings' accuracy. **Do not emit `duplicate_gps_radius_m`**: a scalar
+     cannot carry the condition. Per ace#2373, `poverty-graduation/20260908-0510`
+     held `duplicate_gps_radius_m: 15` for a rule its author later [FIXED] as
+     *"same GPS point (< 15m) where both readings have accuracy better than
+     15m. Where either reading is less accurate than the radius, duplicate
+     detection relies on identifiers alone"* — so a reader of the state block
+     sees only a 15 m radius beside a 50 m GPS tolerance, which is the
+     ace#984 incoherence the author's condition exists to avoid. Transcribe the rule as the author
+     wrote it; never raise the radius or tie it to the tolerance to make it
+     look coherent — `lib/gps-dedup-coherence.ts` classifies the conditioned
+     form coherent as written.
 
      ```yaml
      program_parameters:
@@ -1034,6 +1052,8 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
        daily_cap: 5
        total_cap: 30
        entity_id_grain: "worker username + follow-up visit date"
+       # Only when the PDD de-duplicates by GPS proximity — the whole rule (ace#2373).
+       duplicate_gps_rule: { radius_m: 15, applies_when: both_accuracies_below_radius, fallback: identifiers }
        # Only when the PDD mandates an EXACT assessment item count — see below.
        assessment_coverage_deviation:
          accepted_max_ratio: 0.31
@@ -1887,6 +1907,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-11 | **`duplicate_gps_rule` joins the canonical Program Parameters vocabulary; a bare `duplicate_gps_radius_m` is retired (ace#2373).** Nothing in the vocabulary covered GPS de-duplication, so runs invented an unknown key and wrote the radius alone — which cannot carry the Targeting PDD author's accuracy condition ("where both readings have accuracy better than 15m … identifiers alone"). Downstream, `threshold-coherence-flag` then read a coherent-by-construction rule as a 15 m radius under a 50 m tolerance. Step 4's key list, `templates/pdd-template.md § Program Parameters` and Step 7.5's handoff table now carry the whole rule as `{radius_m, applies_when, fallback}`, with an instruction to transcribe the author's rule rather than raise or tie the radius. Classified by `lib/gps-dedup-coherence.ts`. *Enforced:* `test/skills/threshold-coherence-conditioned-radius.test.ts`. | ACE team |
 | 2026-08-13 | **CORRECTION — the randomization rule stands, its stated reason does not (ace#1213; ace#1121 reopened).** The entry below justified 'do not spec a per-attempt item draw' by claiming Connect's single `passing_score` makes a draw unusable. That argument only applies to a **variable-size** draw; the specified mechanism was a fixed 12-of-30, which keeps the denominator constant, so it never bit. And per Jonathan the same day, a per-attempt draw **is** expressible in XForms — a seeded `once(random())` selecting from a lookup-table/fixture nodeset, or hidden questions gated on `relevant`. What is actually missing is a **Nova authoring primitive** plus the complexity of that machinery. Step 4a's guidance is unchanged in effect (still: spec one fixed bank) but now states the reason correctly, points at `_app-component-library.md § Mechanisms a PDD must not assert` — **Table B**, buildable-but-unsupported — and adds an explicit instruction: **do not write that rotation is impossible**, and where a program genuinely needs it, file a Nova capability request. New standing rule in Step 4a: when uncertain whether a mechanism is platform-closed or merely unsupported, write *'ACE does not build this today'* rather than *'this is impossible'* — a false platform constraint in a Work Order outlives the constraint and forecloses the capability request someone should be making. | ACE team |
 | 2026-08-13 | **Step 4a checks every enforcement mechanism against the known-unbuildable list before specifying it (ace#1213, closes ace#1121).** Phase 1 could spec a mechanism the platform cannot build and nothing caught it until Phase 3 — `idea-to-pdd-qa` passed 6/6 and `idea-to-pdd-eval` scored the PDD 7.97 `pass`. By then the PDD, the **Work Order** and the Phase-6 **training materials** all described a control that does not exist, and a build-time deviation memo does not retro-correct three shipped documents. Step 4a gains a leading hard check against `_app-component-library.md § Known-unbuildable mechanisms`: a listed mechanism MUST NOT be asserted as enforced; state the buildable approximation and name the residual (the shape `gps-accuracy-capture` already models), or raise an open question. The per-topic bullets are now explicitly the instances, and the list is the enumerable version that gets checked. Also adds the rule **do not spec a randomized or per-attempt item draw** — spec one fixed bank sized for the gate, and where retake-resistance genuinely matters raise it as an open question, noting that unlimited re-attempts against a fixed bank lets a worker pass by memorising the answers. **The RATIONALE shipped in this entry was wrong and is retracted — see the correction entry above; ace#1121 is reopened.** *Enforced (structurally):* `test/skills/known-unbuildable-mechanisms.test.ts`. | ACE team |
 | 2026-05-15 | Pare attestation-form-fields question + Decisions Log to match the 5-field form: consent / date / venue / GPS / photo. Audio is out-of-band; gdoc_link is removed (gdoc is written after submission). Add `gps-verification-radius` and `gdoc-submission-window` decisions; recharacterize `audio-min-duration` and `audio-consent-fallback` as facilitator-protocol concerns (out-of-band, not in the form). | ACE team |
