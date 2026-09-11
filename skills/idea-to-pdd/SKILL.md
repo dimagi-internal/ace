@@ -20,6 +20,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
 | Prior runs | `ACE/<opp-name>/open-questions.md` § `## Open` (opp ROOT, durable across runs; passed inline at handoff when the orchestrator's bounds allow — ace#1487) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201). `## Archive` is never read back |
 | Reviewer | comment threads on the PRIOR run's PDD, via `drive_list_comments` | what a domain expert asked for IN PLACE, anchored to the section they were reading |
+| Reviewer / author | comment threads on every Google Doc / Sheet / Slides entry in the frozen `inputs-manifest.yaml` — a shortcut is read at its `resolved_target_id` — via `drive_list_comments` | what the people maintaining the SOURCE documents asked for in place. On a componentized programme those documents ARE the design, so their threads are the review (ace#2372). Replied to, never resolved — § Process step 1 |
 
 ## Products
 
@@ -196,11 +197,102 @@ the components is not enough, because a build needs enough to execute:
       WHERE it landed (the record slug + item id, the question row, the decision id).
       The thread then becomes an audit trail pointing at the durable record rather than
       being the record. Never resolve a thread whose substance is not yet carried
-      forward: that destroys the only remaining copy.
+      forward: that destroys the only remaining copy. **This resolve is for ACE's OWN
+      generated PDD only.** A thread on an input document is replied to and never
+      resolved — see the next block.
 
    Do not ask the reviewer to maintain this themselves — deleting a comment once it is
    incorporated, or hand-editing the resolution into the body, is the reviewer doing by
    hand what this step exists to do, and it costs them the audit trail.
+
+   **Read the comment threads on the INPUT documents too (ace#2372).** The step above
+   reads one document, the prior run's PDD. On a componentized programme that is the
+   wrong document: the component PDDs in `inputs/` ARE the design, their author keeps
+   them current through live shortcuts, and she reviews them where she writes them.
+   Before this block, no step read comments on anything in `inputs/`. Measured
+   2026-09-11: `drive_list_comments` on the Targeting PDD behind
+   `poverty-graduation/inputs/` returned **8 unresolved threads** by its author
+   (27 Jul – 11 Sep), and no `poverty-graduation` run had read one. They reached the
+   predecessor programme only because a human retyped them into a decisions document.
+
+   1. **Which entries.** Every entry in the frozen `inputs-manifest.yaml` whose
+      EFFECTIVE mime type is a Google Doc (`application/vnd.google-apps.document`),
+      Sheet (`…spreadsheet`) or Slides deck (`…presentation`), the three types the atom
+      reads. For a shortcut entry (`mime_type: application/vnd.google-apps.shortcut`)
+      the effective type is `resolved_target_mime_type`.
+   2. **Call it on the TARGET id, never on the shortcut's own `file_id`.**
+      `drive_read_file` follows shortcuts, but `drive_list_comments` does NOT, because
+      Drive's comments API does not. Measured 2026-09-11 on the same document: the
+      shortcut id `1JXV-mBBh9merO1TYlS47ac5VaJchwKER` returned
+      `Error: File not found`, and its target `1u-QzTn1G82n5U5J5txjUFjoNOnlQzGEnmU3B57AcYNs`
+      returned the 8 threads. A `File not found` on a shortcut id means you called the
+      wrong id; it does not mean the document has no comments. Take the target from the
+      entry's `resolved_target_id` (the orchestrator records it at capture, per
+      `agents/ace-orchestrator.md` step 5c). If a shortcut entry has none (a manifest
+      captured before 5c recorded it), resolve the target with `drive_list_folder` on
+      the manifest's `source_folder_id` and read that child's `shortcutDetails.targetId`.
+      Do not skip the entry. Replies go to the same target id.
+   3. **Same inbox-not-store treatment as the prior-run PDD.** Every unresolved thread
+      goes verbatim into the opp's feedback record per `skills/feedback-ledger`
+      (`channel: gdoc-comments`, `artifact` = the input document's name, `artifact_url`
+      = the target's URL). Its substance is routed to a durable home, and it gets a
+      disposition in the PDD's reviewer-comments disposition table.
+      - **`verbatim` is the whole thread.** Capture the root comment and each human
+        reply, in order and attributed. On an author's own document the resolution often
+        lives in a reply: thread `AAACBVt3vNM` carries the actual GPS-duplicate rule in
+        its author's reply while the thread still reads `resolved: false`.
+      - **Record the Drive comment id in the item's `anchor`**
+        (`"<section> · drive-comment:<id>"`). Item `id`s must be kebab-case, so the raw
+        id cannot be the `id`. This is what makes the step idempotent, and here it has to
+        be. A run's PDD is a new document every run, but an input document PERSISTS, so
+        every run re-reads the same threads. Before capturing, search
+        `ACE/<opp>/feedback/` for the comment id. A thread already captured is NOT
+        captured again. Only human replies posted after ACE's last reply on that thread
+        become a new item, in a new record (records are append-only).
+   4. **Already incorporated: say so, don't duplicate it.** Check each thread (and its
+      `quoted_text`) against the input document's CURRENT body, which step 1 reads
+      anyway. If the body already says what the thread asks, disposition it
+      `accepted-edit` (the author's own edit carries it; `lib/feedback-ledger.ts`),
+      status `shipped`, with a summary that cites the section: *"already in
+      <document> §X; the build reads it from there."* Do NOT restate it as a new
+      requirement in the PDD or the programme overview. A second copy of the author's
+      rule drifts from hers the next time she edits, and hers is the one she maintains.
+   5. **Not yet in the body: route it, and ask the author to fold it in.** A requirement
+      goes to this run's PDD body (synthesized mode) or to the programme overview under
+      the component it binds (componentized mode; the overview composes, and ACE writes
+      nothing into the author's document). Add an `open-questions.md` § `## Open` row
+      asking the author to fold it into her document, because downstream reads a
+      component from `components[].pdd_file_id` and a rule that lives only in the
+      overview is one a component-level reader can miss. A question or a choice routes
+      exactly as in step 2 above.
+   6. **Reply, but NEVER resolve. On an input document the thread belongs to the
+      author.** Use `drive_reply_to_comment` WITHOUT `action`, naming where the substance
+      landed (record slug + item id, the section it is already in, the question row, or
+      the decision id). Never pass `action: 'resolve'` on an input document, whoever
+      opened the thread. The two cases differ for three reasons:
+      - **Ownership.** ACE's generated PDD is ACE's artifact and a new document every
+        run, so resolving turns a thread into an audit trail. The input document is
+        the author's, and it persists.
+      - **What "resolved" means.** On her document a resolved thread means *she* is
+        done with it. If ACE closed it, ACE would be asserting on her behalf that her
+        design is settled.
+      - **Her working list.** Resolving removes the thread from her comment sidebar,
+        which is the list she works from.
+
+      This is a rule, not a permission limit. The service account has `canComment` AND
+      `canEdit` on all six shortcut targets in `poverty-graduation/inputs/` (read-only
+      `files.get capabilities` probe, 2026-09-11). For the same reason ACE never edits an
+      input document's body. Resolving is left to her.
+   7. **A thread the author already RESOLVED** is her closure, so ACE posts no reply to
+      it. If its substance is in the body, nothing more is needed: the body is the
+      durable home, and the author both wrote it and closed the thread. If it is NOT in
+      the body, capture and route it per 3 and 5, and raise the gap in the open-questions
+      row. A thread closed without its substance reaching the document is exactly what a
+      later reader cannot see.
+   8. **A failed reply does not halt the phase.** If `drive_reply_to_comment` is
+      refused (for example, the service account lacks commenter on that document), the
+      durable record from 3 is already written. List the unreplied threads in the phase
+      summary with the document name and continue.
 
    **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
    open-questions doc below). `## Archive` is closed history — never read it
@@ -242,7 +334,17 @@ the components is not enough, because a build needs enough to execute:
      - file_id: <id>
        name: <name>
        mime_type: <mime>
+     - file_id: <shortcut-id>              # a Drive shortcut in inputs/
+       name: <name>
+       mime_type: application/vnd.google-apps.shortcut
+       resolved_target_id: <target-id>     # the document itself
+       resolved_target_mime_type: <mime>
    ```
+
+   For a shortcut entry, dispatch on `resolved_target_mime_type`.
+   `drive_read_file` follows the shortcut by itself; `drive_list_comments`
+   does not, so comment reads go to `resolved_target_id` (see the INPUT
+   documents block above).
 
    For each entry, read its content **by type** — do not assume
    `drive_read_file` handles everything (it REFUSES binary formats —
@@ -1757,7 +1859,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD and `open-questions.md`, `role: 'commenter'` — § Process step 6c; ace#1843)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD and `open-questions.md`, `role: 'commenter'` — § Process step 6c; ace#1843), `drive_list_comments` (the prior run's PDD AND every Google Doc / Sheet / Slides input, called on a shortcut's `resolved_target_id` — § Process step 1; ace#2372), `drive_reply_to_comment` (`action: 'resolve'` on ACE's own PDD only; on an input document, reply with no `action`), `drive_list_folder` (a shortcut entry whose manifest row lacks `resolved_target_id`)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 
@@ -1797,4 +1899,5 @@ When `--dry-run` is active:
 | 2026-09-01 | Steps 6 + 6b: compose the PDD to a LOCAL FILE and pass `localFilePath` to BOTH writes rather than emitting the document inline twice. The rendered gdoc and its `.source.md` companion are now byte-identical BY CONSTRUCTION — step 6b's premise, and `run-surface-audit`'s DOC-FIDELITY check with it, previously rested on the agent re-typing a ~52 KB document identically with nothing verifying it (dimagi-internal/ace#1780). | ACE team |
 | 2026-09-02 | **Step 4a's must-not-assert check is now bidirectional — RETIRED rows count (ace#1924).** The check only ever ran forward: mechanisms the PDD was about to assert, against the LIVE rows of `_app-component-library.md § Mechanisms a PDD must not assert`. Nothing covered the inverse — a **source-stated** constraint or fixture pin whose justifying premise is a row since RETIRED. A retired row is history, so it never trips the forward check, and the source sentence leaning on it goes unexamined. Step 4a now requires checking such claims against the retired rows too, and when the premise is stale: keep the source-stated value binding for the run (source is authoritative; re-minting a fixture golden is an operator act) but record it as a `conflicting` decisions row citing the retired row, demote the pinned value to an **advisory mechanism** with the requirement stated separately (so a later phase using the now-available approach is not a deviation), and raise the re-mint as an open question. `scripts/probe-upstream-asks.ts` is the tripwire for this class repo-side but walks `SCAN_DIRS` / `SCAN_FILES` only, so it cannot see Drive-resident opp inputs — the fixture brief for `bednet-check-2-visit` pinned `entity_id` on the `voidcraft-labs/commcare-nova#458` closure that Table A retired 2026-08-29, three days after the brief was last written, and went stale with no signal (run `20260902-1555`). The Drive-scanning half of ace#1924 remains open. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-11 | **Step 1 reads the comment threads on the INPUT documents, not only on the prior run's PDD (ace#2372).** Until now `drive_list_comments` had exactly one caller, and it read the prior run's PDD. On a componentized programme the component PDDs in `inputs/` are the design, and their author reviews them in place, so her threads were invisible to every build. Measured: 8 unresolved threads on the `poverty-graduation` Targeting PDD, none ever read. The same inbox-not-store treatment now applies to every Google Doc / Sheet / Slides input. Four differences are decided explicitly in the skill. (1) **Reply, never resolve**: the thread belongs to the author, resolving stays for ACE's own PDD, and ACE never edits an input document. (2) **Already incorporated**: a thread whose substance is in the document's body gets an `accepted-edit` disposition citing the section, not a duplicate requirement. (3) **Idempotent**: input documents persist across runs, so the Drive comment id goes in the item `anchor` and a thread is captured once. (4) **The target id**: `drive_list_comments` does not follow shortcuts (the shortcut id returns `File not found`), so the call uses `resolved_target_id`, which `agents/ace-orchestrator.md` step 5c now records in the frozen manifest. *Enforced:* `test/skills/idea-to-pdd-input-doc-comments.test.ts`. | ACE team |
 | 2026-09-06 | **Step 6b: the `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** Step 6b named `drive_create_file` with `mimeType: 'text/markdown'` and warned against the renderer for destroying the bytes — but `drive_create_file` ALWAYS creates a Google Doc, has no `mimeType`, and the key was dropped by the MCP schema. The instruction reached the exact outcome it forbade, through the atom it named as safe. Measured on `poverty-graduation/20260905-0924`: two calls, one local file, both files `application/vnd.google-apps.document`; 57,178 bytes sent, 58,470 read back, every markdown marker gone — so DOC-FIDELITY compared one Doc against another built by the same importer. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01. `drive_create_file` now REFUSES a `mimeType` and names the right call. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`. | ACE team |
