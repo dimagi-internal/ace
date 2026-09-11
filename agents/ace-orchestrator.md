@@ -1132,6 +1132,10 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run-surface-audit-eval` for the judged half; and
      (3) lead the operator-facing close-out with that URL. This is the link an
      operator shares; it should never be reconstructed by hand or left unverified.
+     Once Phase 4 is done, put the **build memo** link
+     (`products.connect.build_memo.web_view_link`) directly under it — the PDD
+     names that memo as what humans review instead of every screen, so it is
+     the second link, not something to go looking for (ace#2371).
 
      **(4) If `run_state.yaml.triggered_by.thread_id` is set, draft the
      close-out reply (ace#1057).** A run dispatched from a turn is a promise to
@@ -1645,7 +1649,9 @@ whose rows have already run together.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`).
+**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`); and the run's **build memo** (`4-connect/build-memo.md`, linked at `products.connect.build_memo`) — the review artifact the PDD names, composed last by `build-memo` because the end of Phase 4 is the earliest point every other compilation target exists.
+
+**Gate (build memo):** `4-connect/build-memo.md` is `required: true` in the manifest, so this phase's boundary fence — `verify_phase_artifacts(phase='connect')`, Turn N+1 call #3 — reports it in `missing[]` with `producedBy: build-memo` on any run that reaches the boundary without it, rather than passing silently. Heal per Turn N+2 by `Skill(build-memo)`: it composes from Drive and never touches Connect, so the external-resource no-re-mint override does not apply to it. Still missing after the cap → `[BLOCKER]`. A memo that exists but carries `gaps[]` passes the fence — its gaps are stated in the document and in `connect-setup_summary.md` (ace#2371).
 
 **Notes:** Phase 4 activates the opp and invites the ACE test user (`${ACE_E2E_PHONE}`) so Phase 6 `app-screenshot-capture` has a real signed-in user (not placeholder screenshots). The opp is created with `is_test=true` so prod LLO-facing analytics/payment exports/partner dashboards exclude these dogfood runs; activation here is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` is idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. LLO invite-list prep is deferred to Phase 9. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 

@@ -21,7 +21,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 ## Products
 
-- `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`)
+- `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`), whose body carries the Deliver half of the run's build memo under `## Build memo` (Step 7)
 
 ## Process
 
@@ -2000,6 +2000,26 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    ---
    ```
 
+   **The body ends with the Deliver half of the run's build memo, under a
+   section headed exactly `## Build memo`.** Every note Steps 3–4n direct
+   "into the build memo" lands there — the screen-shape and derived-chain
+   reports, the language-layer counts, every stated exemption. Two sub-tables
+   are load-bearing, because `skills/build-memo` (end of Phase 4) collates them
+   row by row into `4-connect/build-memo.md`, the review artifact the PDD
+   names; write `None.` under a heading rather than dropping it:
+
+   - `### [ACE] latitudes taken` — `| PDD § | What ACE chose | Why |`, one row
+     per place the build exercised latitude the PDD granted.
+   - `### [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How resolved,
+     or OPEN |`, one row per `[FIXED]` statement that could not be built
+     exactly as written.
+
+   Cite the PDD section on every row. The programme memo quotes rows as
+   written and marks an uncited one `NOT CITED by pdd-to-deliver-app` rather
+   than guessing a section. Until ace#2371 this section had no fixed name —
+   `poverty-graduation/20260908-0510` headed it "Deliver app — build memo" —
+   and nothing collected it, so no reviewer ever saw it.
+
 8. **Notify admin group** that Deliver app generation is complete.
 
 ## Archetypes
@@ -2218,6 +2238,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-11 | **Step 7 names the Deliver build-memo section `## Build memo`, with `[ACE] latitudes taken` and `[FIXED] ambiguities hit` sub-tables (ace#2371).** Steps 3–4n direct notes "into the build memo" throughout, but the memo had no fixed home: on `poverty-graduation/20260908-0510` it existed as a section headed "Deliver app — build memo" inside this summary, not named as a memo and never linked to a reviewer. `skills/build-memo` now collates this section into the run's programme memo at the end of Phase 4; the section content itself is unchanged. | ACE team |
 | 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |
 | 2026-09-06 | **Step 4f's partner-register handoff is RETIRED — ACE builds, binds and PROVES the register (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02 and `scripts/probe-nova-fixtures.ts` returned `both` on 2026-09-06: a select accepts a `{kind:'lookup'}` options source and `get_field` reads it back. All three routes were confirmed live — `add_fields optionsSource`, `set_field_options_source` on an existing select, and `edit_field` converting a `text` field (`set_field_options_source` refuses a `text` field outright, so the conversion is not optional). So 4f now extracts, creates, populates AND binds, and `renderRegisterCsv` is deleted along with the operator step it existed for. **The halt is narrowed, not dropped:** it still fires on an undeclared register (Phase-1 gap), an unreadable declared source, any `diffOptionRegister` finding, and — new — a bind that does not VERIFY. That last one is the point. `add_fields` answers a correctly bound lookup field with `"options": []` and no mention of the source, so the write response cannot distinguish a landed bind from a missing one in either direction; only a `get_field` read-back can, via `verifyLookupBind`. An unverified bind is the ace#1621 defect wearing a better disguise — the select renders empty to a worker while every ACE artifact reports the register shipped. *Enforced:* `test/lib/option-register.test.ts` (`verifyLookupBind`, positive + four negative controls), `test/scripts/nova-fixtures-probe.test.ts`. | ACE team |
 | 2026-09-02 | **New Step 4n — derived-chain guard check (ace#1823).** The released `hh-poverty-targeting` Deliver form guards ONE node of its derived PPI chain and leaves twelve unguarded at form root. `/data/roster` is gated on consent, so on a vacant / refused / no-eligible-respondent visit `count()` over the empty nodeset returns 0 and the form submits `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` — the 31-point band, by construction, on **1,072 non-payable doors of 3,794** (28%), on the exact field the PDD's Layer-C band-boundary fraud control groups on. `ppi_score` IS guarded (`if(visit_outcome = 'completed', …)`), which is why it survived: nothing looks wrong at the score level and the corruption sits one layer down. A `calculate` over an empty nodeset is valid XForm, so `validate_app`, `app-release-qa`, install, play and submit all pass. Phase 7 blanked the chain in the fixture and declared the deviation — the app still ships this way, so a real deployment would too. 4n runs `lib/derived-chain-guard.ts` over the Step-4a field list: taint PROPAGATES along the chain (guarding the leaf or the final score is not enough), and a conditional whose TEST reads only tainted fields is not a guard — `if(member_count <= 3, 'le3', …)` is the corruption wearing an `if()`. A finding clears by applying the payable path's own discriminator OR by a recorded justification, because a zero over an empty nodeset is sometimes exactly right; what the check forbids is silence. Placed before 4m so every structural check stays ahead of the language layer. *Enforced:* `test/lib/derived-chain-guard.test.ts` (negative control: a naive detector that ignores the inline-guard shape fails 3 assertions, incl. flagging the correct `ppi_score`) + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

@@ -67,6 +67,7 @@ phases:
   connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
+    build-memo: pending               # last — composes the run's build memo (ace#2371)
   ocs-setup:            # Phase 5 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
@@ -1167,6 +1168,7 @@ external-comms pause points."*
    - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
    - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
    - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
+   - **Build memo:** from Phase 4 on, `products.connect.build_memo.web_view_link` plus any `gaps[]` — the review artifact the PDD names (ace#2371). Put it next to the `Decisions Log:` line; it is what a reviewer reads instead of every screen.
 3. **In `default` and `auto`: halts, without prompting.** If any `[BLOCKER]` is
    present, write `phases.<phase>.status: blocked` with a one-line reason and the
    contributing verdict paths, and stop the run there. Do NOT ask a question — the

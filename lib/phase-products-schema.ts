@@ -313,6 +313,21 @@ const ConnectProducts = z
           })
           .passthrough()
           .optional(),
+        /**
+         * The run's programme-level BUILD MEMO — the review artifact the PDD
+         * names ("humans review the memo and spot-check the apps"), composed
+         * at the end of Phase 4 by `skills/build-memo` into
+         * `4-connect/build-memo.md` (ace#2371). Written by `build-memo`, not by
+         * `connect-opp-setup` — see PRODUCT_PRODUCERS below.
+         *
+         * `complete` / `gaps` say whether every producer section was present
+         * when it was composed; a memo with gaps states them in the document
+         * rather than reconstructing them.
+         */
+        build_memo: DocPointer.extend({
+          complete: z.boolean().optional(),
+          gaps: z.array(z.string()).optional(),
+        }).optional(),
       })
       .passthrough()
       .optional(),
@@ -574,6 +589,10 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // (skills/connect-opp-setup/SKILL.md § Products). connect-program-setup
     // writes opp.yaml, not run_state products.
     connect: 'connect-opp-setup',
+    // … except the build-memo pointer, written at the end of Phase 4 by the
+    // composer that publishes the memo (skills/build-memo/SKILL.md § Process
+    // step 6: "This skill is the sole writer of that key"; ace#2371).
+    'connect.build_memo': 'build-memo',
   },
   'ocs-setup': {
     // "Sole writer" of the typed handoff (skills/ocs-agent-setup/SKILL.md § Products) …

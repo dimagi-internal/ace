@@ -84,6 +84,7 @@ The shape distinction:
 |---|---|---|
 | `connect-program-setup` | **NO QA** | Connect MCP atom (`connect_create_program`) validates name + organization + archetype at boundary. Producer dispatches and surfaces failures; nothing to revalidate ACE-side. *Eval* candidate exists (`connect-program-setup-eval` already ships) for "is this program-shape sensible for the PDD" — that's a quality judgment, not structural. |
 | `connect-opp-setup` | **NO QA** | Connect MCP atoms each validate at boundary (`connect_create_opportunity`, `connect_set_verification_flags`, `connect_create_payment_units`). Producer dispatches and surfaces failures; ACE-side QA would duplicate. **Eval candidate exists** (`_eval-decisions.md` — "is the configuration sensible for the PDD's archetype") which is the right home for the substantive concerns. |
+| `build-memo` | **inline QA** | `skills/build-memo/SKILL.md` § Process steps 1–2: the Completeness table records every input as `present` / `absent` / `section missing`, section 1 renders an uncited row as `NOT CITED by <producer>` and section 4 a blank `Where applied` cell as `NOT STATED by connect-opp-setup`, and both land in `products.connect.build_memo.gaps[]`. Presence of the memo itself is the Phase 4 fence's job (`4-connect/build-memo.md` is `required: true`, ace#2371). A standalone `-qa` would re-check the same structure. |
 
 ### Phase 5 — ocs-setup
 

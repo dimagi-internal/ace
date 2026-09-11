@@ -19,6 +19,8 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 | Phase 4 | `4-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
 | Phase 8 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 3 | `3-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
+| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read ONLY for their verification rules — Step 8's build-memo section needs every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview |
+| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Step 8's build-memo section: the CCZ-side enforcement a rule relies on when Connect cannot carry it |
 
 ## Phase folder anchor
 
@@ -32,7 +34,7 @@ alone makes the artifact land outside `4-connect` and fail
 
 ## Products
 
-- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response)
+- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response), and — last — the Phase 4 half of the run's build memo (Step 8, `## Build memo — opportunity configuration and verification`), which `skills/build-memo` collates at the end of Phase 4
 - `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
 
 ## Process
@@ -1168,6 +1170,41 @@ alone makes the artifact land outside `4-connect` and fail
    - Whether the FLW pre-invite landed or is deferred until activation
    - **ConnectProd int_id** (`connect_int_id`, from the Step 4 create
      response; see step 9)
+   - **Last: the Phase 4 half of the run's build memo**, under a section
+     headed exactly
+     `## Build memo — opportunity configuration and verification`.
+     `skills/build-memo` (connect-setup Step 3) collates it
+     verbatim into `4-connect/build-memo.md`, the review artifact the PDD names
+     — so what is not written here is not in the memo. Until ace#2371 Phase 4
+     wrote no memo content at all, and a reviewer had no way to learn where a
+     PDD verification rule was actually applied. Three sub-sections, each
+     present even when empty (write `None.` — never omit the heading):
+     1. `### Verification rules — where each is applied` — a table
+        `| Rule (quoted) | PDD § | Where applied | Evidence |` with **one row
+        per verification rule stated in ANY PDD of the run**: the overview, and
+        on a componentized run every component and program-level PDD (see
+        § Inputs). `Where applied` is exactly one of:
+        - `Connect form_field_rules: <name>` — evidence: `form_field_rules_saved`;
+        - `Connect deliver_unit_checks.duration_minutes` / `Connect form
+          submission window` — evidence: the value persisted;
+        - `CCZ: <form> / <field> — <constraint or relevant>` — evidence: the
+          Deliver summary line or released-CCZ bind that carries it;
+        - `Not configurable on Connect — applied in <where>`;
+        - `Not configurable on Connect — not applied anywhere in this build`.
+
+        **"Not configurable on Connect" is a valid answer and must be
+        stated, never omitted.** `connect_set_verification_flags` refuses
+        `duplicate`, `gps` and `gps_radius_meters` (Step 5, ace#1013), so a
+        PDD's duplicate-visit or GPS rule is exactly the row a reviewer cannot
+        find anywhere else. A rule with no row is the defect this section
+        exists to prevent; a blank `Where applied` cell is rendered in the
+        memo as `NOT STATED by connect-opp-setup`.
+     2. `### [ACE] latitudes taken` — `| PDD § | Value ACE chose | Why |`,
+        one row per opportunity-configuration value the PDD left to ACE
+        (dates, budget, max visits, payment amounts, flag thresholds).
+     3. `### [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How
+        resolved, or OPEN |`, one row per `[FIXED]` statement Phase 4 could
+        not configure exactly as written.
 
 9. **Capture the ConnectProd integer opportunity ID** (Phase 7 prerequisite).
 
@@ -1255,7 +1292,9 @@ alone makes the artifact land outside `4-connect` and fail
     `status`, `steps`, etc. when the orchestrator already set them (the
     #572/#587 lost-update footgun). `deep` recursively merges
     `products.connect` while preserving every sibling at every depth.
-    This skill is still the sole writer of `products.connect`.
+    This skill is the sole writer of `products.connect` **except
+    `products.connect.build_memo`**, which `skills/build-memo` writes at the
+    end of Phase 4 (ace#2371) — a `deep` merge here preserves it on a re-run.
 
     **Pass `validateAs: { kind: 'phase-products', phase: 'connect-setup' }`
     on this `update_yaml_file` call.** The server validates the
@@ -1467,5 +1506,6 @@ decisions_append_rows({
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 | 2026-09-08 | **Step 4's single-active-opp block stops asserting an enforcement and a deactivation it cannot support (dimagi-internal/ace#2290).** It read "Connect enforces one active managed opportunity per accepted `ProgramApplication`" and mandated a WARN reading "will deactivate prior active opp …", both generalized from a single 2026-05-06 observation (leep-paint-collection, jjackson/ace#106 finding 11). Counter-observed on `bednet-check-2-visit/20260908-1544`: **ten** opps on program `efb8af66-fbfd-488f-bf99-66f864cea68b` concurrently `active: true`, and a direct post-create re-read of `5fdee3b8-e859-4aa7-a4be-8ad6f727917a` returned `active: true` / `dashboard_read: "ok"` — no deactivation, so the WARN that run emitted was a prediction written into the artifact as fact. Both observations are now recorded as observations; the accept-application short-circuit on a self-managed org is named as the leading HYPOTHESIS with `upstream-regression-triage` against `dimagi/commcare-connect` as the way to settle it. The scan and the `hydrate: true` read are unchanged — the WARN is now singular-to-N, reports the count plus ids, drops the "close prior opps first" remedy (it contradicts per-run opp accumulation by design), and says "MAY deactivate — unverified" instead of predicting. Not CI-gateable: it is a claim about another system's behaviour. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-11 | **Step 8 ends `connect-opp-setup.md` with the Phase 4 half of the run's build memo (ace#2371).** Every poverty-graduation PDD names a build memo as the review artifact, and the Connect-side skills mentioned it zero times — so where a PDD verification rule was actually applied (on Connect, in the CCZ, or nowhere) was recorded nowhere a reviewer would look. That mattered concretely because `connect_set_verification_flags` refuses `duplicate` / `gps` / `gps_radius_meters` (ace#1013), leaving a Targeting PDD's duplicates rule with no Connect home. The new section maps one row per rule across the WHOLE PDD set (component PDDs included) to a closed `Where applied` vocabulary in which "Not configurable on Connect" is a required statement, not an omission, plus opportunity-config `[ACE]` latitudes and `[FIXED]` ambiguities. `skills/build-memo` collates it verbatim; `products.connect.build_memo` is the one `products.connect` key this skill does not write. *Enforced:* `test/skills/build-memo-contract.test.ts`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->

@@ -21,7 +21,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 ## Products
 
 - `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
-- `3-commcare/pdd-to-learn-app_build-memo.md` (componentized only) — the gap list Learn PDD §6(5) requires
+- `3-commcare/pdd-to-learn-app_build-memo.md` — the Learn half of the run's build memo, written on EVERY path by Step 7a; on a componentized run it carries the gap list Learn PDD §6(5) requires
 
 ## Process
 
@@ -71,7 +71,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    (`modules[].pdd_file_id`), not from the programme overview — the overview
    composes, it does not restate.
 
-   **Write `buildMemoNotes` into the build memo, including the gaps.** Learn
+   **Write `buildMemoNotes` into the build memo (Step 7a), including the gaps.** Learn
    PDD §6(5) requires naming every framework component skipped for having no
    PDD. When the framework's inventory is unavailable the plan says so
    explicitly rather than reporting none — do not quietly drop that line, and
@@ -979,6 +979,44 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    `get_app({app_id})` (whole-app) or `search_blueprint({query, app_id})`
    (one semantic name) — but persist it here so they don't have to.
 
+7a. **Write the build memo** to
+   `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-learn-app_build-memo.md`
+   via `drive_create_file` — same atom, same `3-commcare` parent folder as
+   Step 7's summary, immediately after it. **On every path**, not only the
+   componentized one.
+
+   This step did not exist until ace#2371. Step 0, Step 4e and § Repair mode
+   all say to write "into the build memo", and the Products list named the
+   file, but no step ever put it in Drive — so on
+   `poverty-graduation/20260905-1345` and its fork `20260908-0510` the memo
+   was composed inside the build's context and lost with it, and the
+   post-hoc summary had to record that the latitudes taken during authoring
+   "cannot be established". `skills/build-memo` collates this file into the
+   run's programme memo (`4-connect/build-memo.md`) at the end of Phase 4, so
+   what is not written here is not in front of the reviewer.
+
+   Five sections, each present even when empty (write `None.` — never drop
+   the heading):
+
+   - `## [ACE] latitudes taken` — `| PDD § | What ACE chose | Why |`, one row
+     per place the build exercised latitude the PDD granted.
+   - `## [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How resolved,
+     or OPEN |`, one row per `[FIXED]` statement that could not be built
+     exactly as written (including any `repairs[]` entry that could not be
+     satisfied, § Repair mode).
+   - `## Framework gaps (Learn PDD §6(5))` — on a componentized run, Step 0's
+     `buildMemoNotes` **verbatim**, including the `inventory-unavailable`
+     line when the framework's inventory was not declared. On a synthesized
+     run, the single line `Not a componentized programme — no framework gap
+     list applies.`
+   - `## Language layer` — Step 4e's final per-language coverage counts and
+     the `origin: ai` / `needs-review` line, or `No working language other
+     than English.`
+   - `## Repairs applied` — § Repair mode's per-item table, or `None.`
+
+   Cite the PDD section on every row. The programme memo marks an uncited
+   row `NOT CITED by pdd-to-learn-app` rather than guessing a section.
+
 8. **Notify admin group** that Learn app generation is complete, with the
    Nova app URL and a link to the summary in GDrive.
 
@@ -1119,8 +1157,8 @@ slash commands listed above. See
 `playbook/integrations/nova-integration.md` for current status.
 
 ## Mode Behavior
-- **Auto:** Build via `/nova:autobuild`, write summary, notify admin,
-  proceed.
+- **Auto:** Build via `/nova:autobuild`, write summary and build memo,
+  notify admin, proceed.
 - **Review:** Build, write summary, present summary for review before
   proceeding.
 

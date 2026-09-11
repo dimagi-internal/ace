@@ -603,6 +603,32 @@
                       }
                     },
                     "additionalProperties": true
+                  },
+                  "build_memo": {
+                    "type": "object",
+                    "properties": {
+                      "file_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "web_view_link": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "complete": {
+                        "type": "boolean"
+                      },
+                      "gaps": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -619,7 +645,8 @@
         "connect.ace_test_user.invite_row_present"
       ],
       "productProducers": {
-        "connect": "connect-opp-setup"
+        "connect": "connect-opp-setup",
+        "connect.build_memo": "build-memo"
       },
       "unattributedProductKeys": []
     },
