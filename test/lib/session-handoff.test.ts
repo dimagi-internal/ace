@@ -261,4 +261,12 @@ describe('the halt paths are told to use it (ace#1093)', () => {
     // The scratchpad is where the four drafts died.
     expect(skill).toMatch(/scratchpad does not count/i);
   });
+
+  it('inbox-triage gives an UNROUTABLE thread a parked-draft home (ace#2381)', () => {
+    // The comms-log home only exists under a run folder; an unroutable
+    // thread's parked draft must land on its board task instead.
+    const skill = read('skills/inbox-triage/SKILL.md');
+    expect(skill).toMatch(/unroutable thread has no comms-log/i);
+    expect(skill).toMatch(/parked draft goes on the board\s+task/i);
+  });
 });
