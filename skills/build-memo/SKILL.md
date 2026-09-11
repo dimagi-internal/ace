@@ -70,10 +70,18 @@ the storage copy and the place to anchor a comment; it is not the entry point.
 So every reviewer-facing reference gives the run page first and the Doc link
 as a deep link under it.
 
-**The memo is not delivered until ace-web renders it.** Rendering its content
-on the summary page is ace-web#767, open as of 2026-09-11. Until that ships,
-a close-out or reply says the page does not show the memo yet, and gives the
-Doc as the stopgap. It must not present the Doc as the review surface.
+**The memo is not delivered until ace-web renders it — and ace-web now does.**
+Since ace-web#768 (merged and deployed 2026-09-11, closing ace-web#767) the
+summary page carries the memo as CONTENT, as the first section of the
+Overview: its text in place, any `gaps[]` under a "This memo is incomplete"
+banner above it, and the Doc as a secondary "Open in Google Docs" link. The
+page reads it from the `products.connect.build_memo` pointer this skill
+writes, so there is nothing more to wire. A close-out or reply names the
+page as where to read the memo and gives the Doc only as the deep link to
+comment in. What proves it landed is `run-surface-audit`, not a claim: a memo
+the run recorded that the page does not show is `MISSING-ARTIFACT`, gaps the
+page dropped are `MEMO-GAPS-HIDDEN`, and a memo whose text the page could not
+read is `MEMO-BODY-UNREAD`.
 
 ## The one rule: compose, never re-derive
 
@@ -242,3 +250,4 @@ no `run_state.yaml` write.
 |---|---|---|
 | 2026-09-11 | Initial version (ace#2371). The programme-level build memo every poverty-graduation PDD names as its review artifact had never been delivered: 76 skill writes to "the build memo", no artifact. Composes the Deliver `## Build memo` section, the Learn build memo (now actually written to Drive), and a new Phase 4 section mapping every PDD verification rule to where it is applied. Declared `required: true`, so the Phase 4 fence fails a run without it. *Enforced:* `test/skills/build-memo-contract.test.ts`. | ACE team |
 | 2026-09-11 | **The reviewer reads the memo on ace-web, not in Drive** (ace#2378). Added § Where a reviewer reads it: the run's summary page is the entry point and the Doc is storage behind it. The memo counts as delivered only once ace-web renders it (ace-web#767, open). Before this, the close-out put the Doc link directly under the summary URL, so a Drive-only artifact counted as delivered while the reviewer's surface could not show it. | ACE team |
+| 2026-09-11 | **ace-web renders the memo** (ace-web#768, closing ace-web#767). § Where a reviewer reads it no longer tells a close-out to say the page cannot show the memo: the page carries its text as the first Overview section, gaps above it. `run-surface-audit` registers the new `build_memo` payload section (it had been reporting it as unaudited on every run) and now checks it: `MISSING-ARTIFACT` when the run made a memo the page does not show, `MEMO-GAPS-HIDDEN` when recorded gaps do not reach the page, `MEMO-INCOMPLETE` / `MEMO-BODY-UNREAD` as improvements. | ACE team |

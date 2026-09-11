@@ -64,6 +64,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   auditAssistantAccess,
+  auditBuildMemo,
   auditCompleteness,
   auditConfidentiality,
   auditDeepQaParity,
@@ -391,6 +392,10 @@ async function main(): Promise<number> {
   // The support assistant is the one artifact an outsider can use without
   // being granted anything; the page offers them the admin console (ace#1839).
   findings.push(...auditAssistantAccess(payload));
+
+  // The build memo is the review artifact the page leads with (ace-web#768);
+  // say so when it is incomplete or its text could not be rendered.
+  findings.push(...auditBuildMemo(payload));
 
   // ── D. Completeness ────────────────────────────────────────────
   const runState = a.runState ? await readYaml(a.runState) : null;

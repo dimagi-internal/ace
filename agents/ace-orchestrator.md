@@ -1134,12 +1134,14 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      operator shares; it should never be reconstructed by hand or left unverified.
      Once Phase 4 is done, name the **build memo** as the first thing to read
      on that page — the PDD names it as what humans review instead of every
-     screen (ace#2371). The reviewer reads it on the summary page, which is
-     where its content renders (ace-web#767, open as of 2026-09-11). The Doc
+     screen (ace#2371). The reviewer reads it on the summary page, which
+     renders its content as the first Overview section, with any gaps above
+     it (ace-web#768, deployed 2026-09-11). The Doc
      (`products.connect.build_memo.web_view_link`) is storage and the place
      to comment: it goes UNDER the summary URL as a deep link, never in its
-     place. Until ace-web#767 ships, say the page does not show the memo yet
-     (ace#2378; `skills/build-memo § Where a reviewer reads it`).
+     place. The audit in (2) is what proves the memo reached the page:
+     `MISSING-ARTIFACT` when it did not, `MEMO-GAPS-HIDDEN` when its gaps
+     were dropped (ace#2378; `skills/build-memo § Where a reviewer reads it`).
 
      **(4) If `run_state.yaml.triggered_by.thread_id` is set, draft the
      close-out reply (ace#1057).** A run dispatched from a turn is a promise to

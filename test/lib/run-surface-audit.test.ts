@@ -28,6 +28,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ACCEPTED_PUBLIC_SECRETS,
+  auditBuildMemo,
+  auditBuildMemoParity,
   auditCompleteness,
   auditWalkthroughParity,
   auditSyntheticLabelling,
@@ -57,6 +59,7 @@ import {
   resolveDocSource,
   stripMarkdownSyntax,
   summarise,
+  SURFACE_CONTRACT,
   type DocProbe,
   type DocSourceMap,
   type Finding,
@@ -77,6 +80,8 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
       description: 'x',
       status: 'active',
     },
+    // Null on every run with no `products.connect.build_memo` (ace-web#768).
+    build_memo: null,
     design: { docs: [{ title: 'PDD', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit', access: 'public' }] },
     apps: [],
     // Null on a clean run — the honest default for these three.
@@ -97,6 +102,8 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     learnings: null,
     open_questions: null,
     stage: { label: 'solicitation', pending_sections: [] },
+    // Null when the run carried nothing needing a human (ace-web#744).
+    carried_residuals: null,
     feedback: [],
     decisions: null,
     reactions: {},
@@ -1130,6 +1137,170 @@ describe('a partial build must not render as a clean one', () => {
       'commcare-setup': { status: 'done', verdict: 'pass', steps: { a: { verdict: 'pass' } } },
     })).toEqual([]);
     expect(auditBuildStatusParity({ build: null }, {})).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// The build memo (ace-web#768, closing ace-web#767) — the review
+// artifact the PDD names, rendered as the page's FIRST Overview section.
+// Before it was registered, every audit of every run page reported the
+// section as unaudited (CONTRACT-UNKNOWN-SECTION, blocking).
+// ═══════════════════════════════════════════════════════════════════
+
+const MEMO_DOC = 'https://docs.google.com/document/d/MEMOMEMOMEMO/edit';
+
+/** The section in ace-web's frozen shape — `SECTION_KEYS["build_memo"]` in
+ *  `apps/opps/tests/test_public_surface_contract.py`, incomplete on purpose
+ *  exactly as that contract fixture is. */
+function memoSection(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    title: 'Build memo',
+    url: MEMO_DOC,
+    access: 'public',
+    complete: false,
+    gaps: ['4-connect/connect-opp-setup.md: section missing'],
+    body: '# Build memo\n\n## 1. What to check\n\n| Row | Source |\n|---|---|\n',
+    ...over,
+  };
+}
+
+/** `phases.connect-setup.products.connect.build_memo`, as `skills/build-memo` step 6 writes it. */
+function memoPhases(over: Record<string, unknown> = {}) {
+  return {
+    'connect-setup': {
+      products: {
+        connect: {
+          build_memo: {
+            file_id: 'MEMOMEMOMEMO',
+            title: 'Build memo',
+            web_view_link: MEMO_DOC,
+            complete: false,
+            gaps: ['4-connect/connect-opp-setup.md: section missing'],
+            ...over,
+          },
+        },
+      },
+    },
+  };
+}
+
+describe('the build memo section (ace-web#768)', () => {
+  it('mirrors the key set ace-web freezes for it', () => {
+    expect([...SURFACE_CONTRACT.build_memo.keys].sort()).toEqual(
+      ['access', 'body', 'complete', 'gaps', 'title', 'url'],
+    );
+    expect(SURFACE_CONTRACT.build_memo.reviewerFacing).toBe(true);
+  });
+
+  it('null control: `build_memo: null` (every run with no memo) is known and not a defect', () => {
+    // The live shape of poverty-graduation/20260908-0510, fetched 2026-09-11.
+    const findings = auditContract(healthyPayload({ build_memo: null, carried_residuals: null }));
+    expect(findings.filter((f) => f.where.startsWith('build_memo'))).toEqual([]);
+    expect(findings.filter((f) => f.where.startsWith('carried_residuals'))).toEqual([]);
+    expect(auditBuildMemo(healthyPayload())).toEqual([]);
+  });
+
+  it('positive control: a populated memo in the frozen shape passes the contract', () => {
+    const findings = auditContract(healthyPayload({ build_memo: memoSection() }));
+    expect(codes(findings)).not.toContain('CONTRACT-UNKNOWN-SECTION');
+    expect(findings.filter((f) => f.where.startsWith('build_memo'))).toEqual([]);
+  });
+
+  it('BLOCKS when a populated memo loses a key the auditor reads', () => {
+    const memo = memoSection();
+    delete memo.gaps;
+    const drift = auditContract(healthyPayload({ build_memo: memo }))
+      .filter((f) => f.code === 'CONTRACT-KEY-DRIFT' && f.where === 'build_memo');
+    expect(drift).toHaveLength(1);
+    expect(drift[0].detail).toContain('gaps');
+    expect(isBlocking(drift[0])).toBe(true);
+  });
+
+  it('BLOCKS when the section vanishes entirely — absent is not `null`', () => {
+    const p = healthyPayload();
+    delete p.build_memo;
+    const missing = auditContract(p).filter((f) => f.code === 'CONTRACT-MISSING-SECTION');
+    expect(missing.map((f) => f.where)).toEqual(['build_memo']);
+  });
+
+  it('collects the memo Doc with its own declared access, so auditLinks checks it', () => {
+    const links = collectUrls(healthyPayload({ build_memo: memoSection({ access: 'admin' }) }), PAGE)
+      .filter((l) => l.label.startsWith('build_memo'));
+    expect(links).toEqual([{ label: 'build_memo.url', url: MEMO_DOC, declaredAccess: 'admin' }]);
+    // A private memo Doc is a wall whatever its tag says.
+    const findings = auditLinks([
+      probed({ label: 'build_memo.url', url: MEMO_DOC, declaredAccess: 'public', status: 401, cls: 'PRIVATE-DELIVERABLE' }),
+    ]);
+    expect(codes(findings)).toEqual(['LINK-PRIVATE-DELIVERABLE']);
+  });
+
+  it('reports an incomplete memo as an improvement — the page says so, so nothing is false', () => {
+    const findings = auditBuildMemo(healthyPayload({ build_memo: memoSection() }));
+    expect(codes(findings)).toEqual(['MEMO-INCOMPLETE']);
+    expect(findings[0].detail).toContain('connect-opp-setup.md: section missing');
+    expect(findings.some(isBlocking)).toBe(false);
+    // `complete: false` with no gaps recorded is still incomplete.
+    expect(codes(auditBuildMemo(healthyPayload({ build_memo: memoSection({ gaps: [] }) })))).toEqual(['MEMO-INCOMPLETE']);
+  });
+
+  it('is silent on a complete, readable memo', () => {
+    expect(auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: true, gaps: [] }) }))).toEqual([]);
+    // `complete: null` means the run did not say; the page then claims neither.
+    expect(auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: null, gaps: [] }) }))).toEqual([]);
+  });
+
+  it('reports a memo whose text could not be read', () => {
+    const findings = auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: true, gaps: [], body: null }) }));
+    expect(codes(findings)).toEqual(['MEMO-BODY-UNREAD']);
+    expect(findings.some(isBlocking)).toBe(false);
+  });
+});
+
+describe('a memo the run made must reach the page, gaps and all', () => {
+  it('BLOCKS when the run recorded a memo and the page shows none', () => {
+    const missing = auditCompleteness(healthyPayload({ build_memo: null }), { phases: memoPhases() })
+      .filter((f) => f.code === 'MISSING-ARTIFACT');
+    expect(missing).toHaveLength(1);
+    expect(missing[0].where).toBe('build_memo');
+    expect(missing.every(isBlocking)).toBe(true);
+  });
+
+  it('passes once the page links the memo Doc (matched on the Drive file id)', () => {
+    const findings = auditCompleteness(
+      healthyPayload({ build_memo: memoSection({ url: `${MEMO_DOC}?usp=drivesdk` }) }),
+      { phases: memoPhases() },
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('BLOCKS when the run recorded gaps and the page renders the memo as complete', () => {
+    const findings = auditBuildMemoParity(
+      healthyPayload({ build_memo: memoSection({ complete: null, gaps: [] }) }),
+      memoPhases(),
+    );
+    expect(codes(findings)).toEqual(['MEMO-GAPS-HIDDEN']);
+    expect(findings.every(isBlocking)).toBe(true);
+  });
+
+  it('is silent when the page carries the gaps, when the memo is complete, and on a run with no memo', () => {
+    expect(auditBuildMemoParity(healthyPayload({ build_memo: memoSection() }), memoPhases())).toEqual([]);
+    expect(auditBuildMemoParity(
+      healthyPayload({ build_memo: memoSection({ complete: true, gaps: [] }) }),
+      memoPhases({ complete: true, gaps: [] }),
+    )).toEqual([]);
+    expect(auditBuildMemoParity(healthyPayload(), {})).toEqual([]);
+    // No memo on the page at all is MISSING-ARTIFACT's finding, not this one.
+    expect(auditBuildMemoParity(healthyPayload({ build_memo: null }), memoPhases())).toEqual([]);
+  });
+});
+
+describe('carried_residuals is a known section (ace-web#744)', () => {
+  it('accepts null and a list of strings; a non-list is drift', () => {
+    expect(auditContract(healthyPayload({ carried_residuals: ['PAYMENT GATE UNPROVEN END-TO-END'] }))
+      .filter((f) => f.where.startsWith('carried_residuals'))).toEqual([]);
+    const drift = auditContract(healthyPayload({ carried_residuals: 'PAYMENT GATE UNPROVEN' }))
+      .filter((f) => f.where === 'carried_residuals');
+    expect(codes(drift)).toEqual(['CONTRACT-KEY-DRIFT']);
   });
 });
 

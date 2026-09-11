@@ -132,6 +132,21 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     kind: 'object',
     keys: ['workspace_slug', 'slug', 'run_id', 'display_name', 'description', 'status'],
   },
+  // The run's build memo, carried as CONTENT and rendered as the FIRST
+  // Overview section (ace-web#768, which closed ace-web#767): the PDD makes
+  // it the review artifact — "humans review the memo and spot-check the
+  // apps, rather than reviewing every screen" (ace#2371). `null` on every
+  // run with no `products.connect.build_memo`, i.e. every run before
+  // 2026-09-11. `url` is the Doc (probed against its own measured `access`
+  // like every other link); `complete`/`gaps`/`body` are read by
+  // `auditBuildMemo` and `auditBuildMemoParity`.
+  build_memo: {
+    kind: 'object',
+    keys: ['title', 'url', 'access', 'complete', 'gaps', 'body'],
+    linkKeys: ['url'],
+    reviewerFacing: true,
+    note: 'the review artifact the PDD names — what a partner reads instead of every screen',
+  },
   design: {
     kind: 'object',
     keys: ['docs'],
@@ -226,6 +241,12 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     linkKeys: ['url'],
   },
   stage: { kind: 'scalar', keys: ['label', 'pending_sections'] },
+  // What the run itself says is still unproven and needs a human — a list of
+  // STRINGS read from `run_notes.carried_residuals_needing_a_human`
+  // (ace-web#744 / #763). `null` when the run carried nothing. Registered so
+  // the section stops reading as unaudited; the check that a carried residual
+  // actually REACHES the page is ace#2346, still open.
+  carried_residuals: { kind: 'list', keys: [] },
   feedback: {
     kind: 'list',
     keys: [],
@@ -1175,6 +1196,7 @@ export const EXPECTED_PRODUCTS: readonly {
   { label: 'Learn app', path: 'commcare-setup.products.apps.learn', mode: 'single', section: 'apps' },
   { label: 'Deliver app', path: 'commcare-setup.products.apps.deliver', mode: 'single', section: 'apps' },
   { label: 'Connect opportunity', path: 'connect-setup.products.connect.opportunity', mode: 'single', section: 'connect.opportunity' },
+  { label: 'Build memo', path: 'connect-setup.products.connect.build_memo', mode: 'single', section: 'build_memo' },
   { label: 'OCS chatbot', path: 'ocs-setup.products.ocs_chatbot', mode: 'single', section: 'assistant' },
   { label: 'Training deck', path: 'qa-and-training.products.training.deck', mode: 'single', section: 'training.deck' },
   { label: 'Training doc', path: 'qa-and-training.products.training.docs', mode: 'children', section: 'training.docs' },
@@ -1347,6 +1369,101 @@ export function auditBuildStatusParity(payload: unknown, phases: unknown): Findi
         '`blocker_dispositions`) through ace-web `_read_build`, rendered with the same honest ' +
         'vocabulary the Phase 7 walkthrough already uses for a non-converged score',
       defect: '(ace-web#744) a partial run rendered identically to a clean one',
+    },
+  ];
+}
+
+/** `gaps` as the memo block carries it: the non-blank strings, trimmed. */
+function memoGaps(memo: unknown): string[] {
+  const raw = getPath(memo, 'gaps');
+  return Array.isArray(raw) ? raw.map((g) => String(g ?? '').trim()).filter(Boolean) : [];
+}
+
+/**
+ * The build memo the page leads with, read for what it says about ITSELF.
+ *
+ * Both findings are `improvement`, deliberately. ace-web renders an
+ * incomplete memo under a "This memo is incomplete" banner listing its gaps,
+ * and an unreadable body as "could not be loaded here" with the Doc linked —
+ * so the page is honest in both cases and nothing on it is false. What is
+ * true is that the reviewer is being handed a review artifact that is short
+ * of what it promises, and the operator should know before sending the link.
+ *
+ * The link itself needs nothing here: `build_memo.url` carries its own
+ * measured `access`, so `auditLinks` already catches a private Doc
+ * (`LINK-PRIVATE-DELIVERABLE`) and a mislabelled one. A memo the run made
+ * and the page never shows is `auditCompleteness`'s `MISSING-ARTIFACT`, and
+ * gaps the run recorded but the page dropped are `auditBuildMemoParity`.
+ */
+export function auditBuildMemo(payload: unknown): Finding[] {
+  const memo = getPath(payload, 'build_memo');
+  if (!memo || typeof memo !== 'object') return []; // no memo — absence is auditCompleteness's job
+  const out: Finding[] = [];
+  const gaps = memoGaps(memo);
+  if (getPath(memo, 'complete') === false || gaps.length > 0) {
+    out.push({
+      code: 'MEMO-INCOMPLETE',
+      severity: 'improvement',
+      where: 'build_memo',
+      detail:
+        `the build memo the page leads with says it is incomplete` +
+        (gaps.length ? ` — missing: ${gaps.join('; ')}` : ', without recording what is missing') +
+        `. The page says so, so nothing is false, but a reviewer is being asked to review from ` +
+        `an artifact that is short of what it promises`,
+      fix:
+        're-run `build-memo` once the missing producer sections exist (it is a pure collation, ' +
+        'so the fix is upstream of it), or tell the reviewer which parts the memo cannot yet cover',
+    });
+  }
+  const body = getPath(memo, 'body');
+  if (typeof body !== 'string' || !body.trim()) {
+    out.push({
+      code: 'MEMO-BODY-UNREAD',
+      severity: 'improvement',
+      where: 'build_memo.body',
+      detail:
+        'the page carries the build memo but not its text, so where the review artifact should be ' +
+        'it reads "The memo\'s text could not be loaded here" and the reader must leave the page ' +
+        'for the Doc',
+      fix:
+        'check ace-web `_read_build_memo_body` can export the memo (a Google Doc exports as ' +
+        '`text/markdown`; a PDF or image has no body) — the server log names the failing file_id',
+    });
+  }
+  return out;
+}
+
+/**
+ * Did the run record its memo as incomplete, and does the page SAY so?
+ *
+ * The memo's own contract is that it is never presented as complete while it
+ * has gaps (`skills/build-memo`, step 6 writes `complete` + `gaps[]`). ace-web
+ * normalises both before they reach the page, so a reader regression there
+ * would render an incomplete memo with no banner — the same shape as
+ * `auditBuildStatusParity`, where a `partial` Phase 3 rendered identically to
+ * a clean one (ace-web#744). A page with no memo at all is MISSING-ARTIFACT,
+ * not this.
+ */
+export function auditBuildMemoParity(payload: unknown, phases: unknown): Finding[] {
+  const recorded = getPath(phases, 'connect-setup.products.connect.build_memo');
+  if (!recorded || typeof recorded !== 'object') return [];
+  const recordedGaps = memoGaps(recorded);
+  if (getPath(recorded, 'complete') !== false && recordedGaps.length === 0) return [];
+  const shown = getPath(payload, 'build_memo');
+  if (!shown || typeof shown !== 'object') return [];
+  if (getPath(shown, 'complete') === false || memoGaps(shown).length > 0) return [];
+  return [
+    {
+      code: 'MEMO-GAPS-HIDDEN',
+      severity: 'misleading',
+      where: 'build_memo',
+      detail:
+        'the run recorded its build memo as incomplete' +
+        (recordedGaps.length ? ` (${recordedGaps.join('; ')})` : '') +
+        ' and the page carries neither `complete: false` nor any gap — so the review artifact ' +
+        'renders as a complete one',
+      fix: 'ace-web `_read_build_memo` must pass `complete` and `gaps[]` through from `products.connect.build_memo`',
+      defect: '(ace-web#744 shape) an incomplete artifact rendered identically to a complete one',
     },
   ];
 }
@@ -1682,6 +1799,7 @@ export function auditCompleteness(payload: unknown, runState: unknown | null): F
   out.push(...auditWalkthroughParity(payload, phases));
   out.push(...auditSyntheticLabelling(payload, phases));
   out.push(...auditBuildStatusParity(payload, phases));
+  out.push(...auditBuildMemoParity(payload, phases));
   const onPage = new Set(
     collectUrls(payload, 'https://labs.connect.dimagi.com/ace/')
       .map((u) => canonicalDocUrl(u.url)),
