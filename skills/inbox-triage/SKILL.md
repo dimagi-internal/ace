@@ -227,6 +227,17 @@ So, as a step and not an option:
    Drive, and a parked draft in a per-session scratchpad is exactly the state
    that dies at the boundary.
 
+   **An unroutable thread has no comms-log — its parked draft goes on the board
+   task instead** (ace#2381). A comms-log lives under a run folder, and most
+   act-tier mail (a staff request, a test, a directory ask) routes to no run. So
+   a parked reply on such a thread REQUIRES item 1's board task even for a
+   one-message thread: create it, and put the draft verbatim plus the review
+   verdict in its `notes` (or link a gdoc holding them). Parking at the gate is
+   itself what makes the thread multi-turn. (Origin: 2026-09-10, the
+   canopy-router test `1a08c2bfcc49b4e3` — the draft was left only in a
+   scratchpad, the operator left without approving, and the next turn found it
+   only by grepping every session transcript for the thread id.)
+
 **Do NOT read this as "old mail is worthless."** Two obligations survive the close, and skipping
 either is the actual failure:
 1. **The WORK behind the thread outlives the thread.** Before archiving, make sure every ask in it
