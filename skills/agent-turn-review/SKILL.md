@@ -99,6 +99,31 @@ Same pass, same draft. Not an appendix, not a follow-up.
   `--no-run-page "<why>"`); an HQ-only body passes the rail, so that half is yours to catch.
   (Origin: ace#2378 — Jon, 2026-09-11, on a draft reply to Sophie: *"You should be thinking of
   AceWeb as the primary surface … You don't want to just point her at Google Drive."*)
+- **Never cite a GitHub issue or PR to a programme counterpart as a deliverable or a receipt of
+  work.** The rule above fixes which link LEADS; this one fixes which links belong at all. "Filed
+  as #N" and "merged in PR #N" are ACE-side bookkeeping — a counterpart who cannot open the tracker
+  can do nothing with either, and offering them as progress swaps ACE's activity in for the thing
+  they actually asked for. Describe the change by what they will **SEE or DO differently on the
+  surface they use** — the run's ace-web page (ace#2378). Three parts:
+  - **A defect that is really a question for them is ASKED as a question**, in the reply, not
+    handed over as an issue number for them to go read.
+  - **One narrow exception: a tracker record the counterpart asked for BY NUMBER.** Then the link
+    is the receipt they requested — cite it as that, and **never as evidence of activity**.
+  - **The "how I improved this turn" section is for the people STEERING ACE — the operator, in the
+    turn close-out — not for a programme counterpart, whatever their email domain.**
+
+  **The test is not internal-vs-external, it is whether the recipient can act on the link.** That
+  matters because the fleet rule pulls the other way: canopy's `agent-core/turn.md` (Step 2 "Show
+  the team how you evolved", and Step 3 self-check item 5) REQUIRES *"EXACT LINKS … the changed
+  skill(s) and the PR(s)"* for internal stakeholders and exempts only *"external-counterpart
+  comms"*, so a `@dimagi-associate.com` design author who steers the build reads as neither and the
+  wording pulls toward including them. Raised upstream as dimagi-internal/canopy#633; do not fix it
+  by editing canopy from an ACE turn. (Origin: ace#2386 — Jon, 2026-09-11: *"Why would Sophie be
+  able to do anything with a github issue, generally, sharing that you create an issue is an
+  anti-pattern, because what would the end user do about it?"* The draft reply on thread
+  `19f86579142e6ba5` carried seven such links — including an issue number offered as the answer to
+  a question that was hers to settle — and the 2026-09-10 reply on the same thread carried three.
+  *Enforced:* `test/docs/tracker-link-not-a-counterpart-deliverable.test.ts`.)
 - **Every claim about EXTERNAL SYSTEM STATE must be read back before the send — no exceptions.**
   Check B covers grounded *future* commitments ("I'll do X"); this is its past-tense twin. Any
   sentence asserting the world is now in some state — *"access is set up"*, *"you'll see a pending
