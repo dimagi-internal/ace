@@ -94,7 +94,7 @@ async function main(): Promise<void> {
 
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext({
+    let context = await browser.newContext({
       storageState: resolveSavedStorageState(statePath),
     });
 
@@ -122,6 +122,17 @@ async function main(): Promise<void> {
       } else {
         log(`labs probe returned ${probe.status()} — running OAuth flow`);
       }
+
+      // Log in from a CLEAN context, never the saved one. The saved state is
+      // what just failed the probe, and whatever cookies survive in it
+      // short-circuit the OAuth flow into a landing hqOAuthLogin cannot
+      // finish: a live www.commcarehq.org cookie skips HQ's login form and
+      // strands the flow on /oauth/authorize/, which throws `oauth-consent`
+      // for credentials that are fine. The MCP relogin learned this in
+      // ace#2160; this script kept handing hqOAuthLogin the saved jar, so an
+      // expired labs session on an idle machine could not be refreshed at all.
+      await context.close();
+      context = await browser.newContext();
 
       // hqOAuthLogin establishes Connect (connect.dimagi.com) session
       // cookies in this BrowserContext. labsOAuthLogin then drives the
