@@ -83,6 +83,7 @@ Invoke the `connect-opp-setup` skill.
     `4-connect` folder), surfaced under
     `ACE/<opp-name>/runs/<run-id>/4-connect/` with the opportunity UUID.
   - Appended `verification-flags`, `payment-unit-shape`, `opportunity-end-date` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — only rows that meet the bar are emitted).
+  - **One `decisions.yaml` row per entry in the Step 8 build-memo section** — each verification rule, each `[ACE]` latitude, each `[FIXED]` ambiguity — with `phase: 4-connect`, `skill: connect-opp-setup`, derived from the same entry list the memo tables render (`skills/connect-opp-setup/SKILL.md § Decisions Log`). The Phase 4 boundary fails if that section lists items and the skill wrote zero rows (`verify_phase_artifacts(phase='connect').decisions`; ace#2384).
 - **Depends on:** Step 1 (needs program UUID); Phase 3 outputs (needs
   CommCare app metadata).
 - **Activation:** Phase 4 activates the opp synchronously (Step 6.5 in

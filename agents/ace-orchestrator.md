@@ -1810,6 +1810,13 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   NOT pair present_count/expected_count into a fraction:
                   present counts every file in the folder, expected counts
                   only the required set, so "7/4" is meaningless.
+                — for phase=commcare|connect ALSO returns `decisions`
+                  {ok, failures[], warnings[], summary, unreadable?}:
+                  every build-memo latitude / ambiguity / verification
+                  rule is owed as a decision row, and a producer whose
+                  memo lists any while its skill wrote ZERO rows fails
+                  (lib/build-phase-decisions.ts; ace#2384). Absent on
+                  every other phase.
              4. verify_phase_products(fileId=<run_state.yaml>, phase=<phase>)
                 — returns {phase, status, ok, mode, issues[]}. Covers the
                   THIRD half of the gate: the typed `products.<block>` handoff
@@ -1837,8 +1844,23 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
 Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
            AND verify_phase_products AND validate_run_state:
              - classify='ok' AND verify.ok=true AND products.ok=true
-               AND run_state.valid=true
+               AND run_state.valid=true AND verify.decisions.ok is not
+               false (the block is absent outside commcare/connect)
                  → proceed to Turn N+3
+             - verify.decisions.ok=false (build phase: a producer's build
+               memo lists latitudes / ambiguities / rules and its skill
+               wrote ZERO decision rows; failures[] names producer + path)
+                 → do NOT re-dispatch the producer — re-running
+                   pdd-to-deliver-app to repair a log rebuilds the app.
+                   Read each failures[].path and append ONE row per memo
+                   table entry via decisions_append_rows, under that
+                   producer's skill tag, mapped per its SKILL.md
+                   § Decisions Log (compose from the memo; never re-derive
+                   from the PDD or the app). Re-run the fence once; still
+                   false → [BLOCKER] quoting decisions.summary.
+                   unreadable=true → re-run the fence once, then
+                   [BLOCKER]. decisions.warnings[] (fewer rows than memo
+                   entries) never gate — name them in the phase line.
              - run_state.valid=false → do NOT re-dispatch the phase. No phase
                agent owns the run-level record, so a retry cannot fix it and
                would re-run the phase for nothing. Patch the named paths
