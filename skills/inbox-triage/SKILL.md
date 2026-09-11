@@ -150,6 +150,25 @@ the shape of the turn.
   g. **Write back** to the routed run's comms-log: thread summary, sender + tier, what ACE did, any
      commitment made. Skills stay stateless — the comms-log and `run_state.yaml` are the memory.
 
+     **An ANSWER to a counterpart's question about their programme also lands in that opp's
+     `open-questions.md`** — `## Open` if it is still live, `## Archive` (with `resolved_at` /
+     `resolved_by` / `resolution_note`) if the turn settled it — and a later answer that corrects
+     an earlier one says in its `resolution_note` which statement it supersedes. The comms-log is
+     not that record (it holds a one-line gist, never the body), and **`docs/learnings/` is never
+     it**: that directory is ACE's engineering notebook for platform mechanics, read by people
+     working on ACE, not by the programme's runs or its author. Writing a platform finding there
+     is fine; writing it ONLY there leaves the programme with no record of its own answer. Write
+     the doc in the shape `skills/idea-to-pdd` § The durable open-questions doc specifies, via
+     `drive_create_doc_from_markdown` (find-or-create keeps the file id), and read it back with
+     `exportAs: 'text/markdown'` through `extractOpenSection` — a plain-text write drops the `##`
+     headings and the next run's Phase 1 then refuses the whole doc. (Origin: 2026-09-10,
+     `poverty-graduation`, thread `19f86579142e6ba5` — two platform answers given to the design
+     author on 2026-09-05 were recorded only as `docs/learnings/2026-09-02-*` and `2026-09-04-*`;
+     asked "which record holds the answer", a turn pointed her at the repo, and Jon: *"that's
+     definitely not where learnings go for runs."* The same turn found the opp's
+     `open-questions.md` flattened by an earlier plain-text write, so Phase 1 could read none of
+     its 15 open rows.)
+
 ### 3. Mark handled threads read
 `bin/ace-mark-read <threadId> …` once fully handled or dismissed — NOT if still awaiting a human
 decision. (Reading via the API does not clear the unread flag. In zsh, pipe ids through `xargs` —
