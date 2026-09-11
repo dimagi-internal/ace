@@ -1628,20 +1628,48 @@ Forbid angle-bracket placeholder notation`).
   accepts GPS readings with accuracy up to `50m` — so the discriminator carries no
   signal (honest neighbours flag as duplicates; real duplicates read far apart).
   ACE compiled both numbers without ever comparing them.
+- **Amended:** ace#2373. #984's closing record recommends "raise the dedup radius
+  above the worst accepted accuracy … or tie them". That is ONE resolution, not
+  the only one, and it is not ACE's to impose. The Targeting PDD author resolved
+  the same problem a third way — she conditioned the radius per reading and moved
+  neither number — and asked that this be recorded because the closed issue reads
+  otherwise. Her rule is coherent by construction, and a builder must never move
+  it toward "raise or tie".
+- **Helper:** `lib/gps-dedup-coherence.ts` — `readGpsDedupRule` (from
+  `program_parameters.duplicate_gps_rule`), `parseGpsDedupWording` (from the
+  PDD's own sentence) and `classifyGpsDedupCoherence`. The controls below are
+  pinned by `test/lib/gps-dedup-coherence.test.ts`.
+
+**The dedup pair, classified** (worst accepted accuracy 50 m in both rows):
+
+<!-- gps-dedup-controls:begin -->
+| Targeting PDD §6 wording | Verdict |
+|---|---|
+| v1.0: "Duplicates: same household identifiers, or same GPS point (< 15m)." | **incoherent** — an unconditioned radius at or below the worst accepted accuracy (ace#984) |
+| v1.1 [FIXED]: "Duplicates: same household identifiers, or same GPS point (< 15m) where both readings have accuracy better than 15m. Where either reading is less accurate than the radius, duplicate detection relies on identifiers alone." | **coherent** — accuracy-conditioned: the GPS test only runs where both readings can resolve the radius; identifiers decide the rest |
+<!-- gps-dedup-controls:end -->
 
 **Brief paragraph (verbatim):**
 
 > REQUIRED — Threshold coherence: when two configured numbers constrain the same
 > physical quantity, CHECK them against each other and surface any conflict in the
 > build memo rather than silently compiling both. Pairs to check on every build:
-> GPS de-duplication radius vs accepted GPS accuracy tolerance (a dedup radius at
-> or below the worst accepted accuracy is meaningless); form duration floor vs a
-> realistic completion time for the actual item count; max payable visits/day vs
-> a realistic per-visit duration; any score threshold vs the instrument's
-> attainable score range (compute the true min/max from the point values — a
-> lookup table covering 0–100 for an instrument that can score 102 is a defect).
-> Picking the value may be a PM decision and not ACE's; NOTICING the incoherence
-> is always ACE's job. Record each checked pair and its verdict in the build memo.
+> GPS de-duplication radius vs accepted GPS accuracy tolerance (an UNCONDITIONED
+> dedup radius at or below the worst accepted accuracy is meaningless — but a
+> radius the PDD applies only where BOTH readings report accuracy better than the
+> radius, with identifiers deciding the rest, is an accuracy-conditioned radius
+> and is coherent by construction: record it as coherent, do not flag it, and
+> carry the condition into the build memo with the radius); form duration floor
+> vs a realistic completion time for the actual item count; max payable
+> visits/day vs a realistic per-visit duration; any score threshold vs the
+> instrument's attainable score range (compute the true min/max from the point
+> values — a lookup table covering 0–100 for an instrument that can score 102 is
+> a defect). Picking the value may be a PM decision and not ACE's; NOTICING the
+> incoherence is always ACE's job. NEVER change a threshold the PDD marks
+> `[FIXED]` or attributes to its author to resolve a conflict you noticed — not
+> toward "raise the radius or tie them", not toward anything: the value is the
+> PM's or the author's, so surface the conflict and build the number as written.
+> Record each checked pair and its verdict in the build memo.
 
 ### discriminating-assessment-items
 
@@ -2123,6 +2151,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-09-11 | **`threshold-coherence-flag` recognises an accuracy-conditioned dedup radius (ace#2373).** The brief read "dedup radius vs accepted GPS accuracy" as two scalars, so the Targeting PDD author's v1.1 §6 [FIXED] rule — 15 m applied only where both readings beat 15 m, identifiers otherwise — was briefed to the builder as a conflict against a 50 m tolerance, and #984's recommended remedy ("raise the radius or tie them") sat one step away. The paragraph now names the conditioned radius as coherent by construction, keeps the unconditioned radius at or below the tolerance as the incoherent case, and forbids moving a `[FIXED]` or author-attributed threshold in any direction to resolve a noticed conflict. The two §6 wordings are pinned as a controls table and executed by `lib/gps-dedup-coherence.ts`; the canonical `program_parameters.duplicate_gps_rule` key carries the condition the bare `duplicate_gps_radius_m` scalar dropped. *Enforced:* `test/lib/gps-dedup-coherence.test.ts` + `test/skills/threshold-coherence-conditioned-radius.test.ts`. | ACE (Sophie Feintuch review) |
 | 2026-08-24 | **New component `partner-option-register` (ace#1621).** A field whose options the PDD sources from a NAMED PARTNER REGISTER could ship an option list the architect composed. What let it through was not a missing rule but a **wrongly-scoped** one: `pdd-to-deliver-app § Step 4f` already governs option sources, and its halt fires only when a degraded select `feeds_entity_id` on a PAYABLE deliver unit — payment correctness — so anything else records an `option_source_gaps` entry and proceeds. On `spark-facilitator/20260820-0817` the meeting-activity repeat shipped **11 ACE-authored placeholders** (`attendance_register`, `facilitated_discussion`, `savings_collection`, …) identical on all 24 FCAP steps, while Spark's own 78-activity register sat in the run's frozen `inputs/` — as a published guide AND as fixture XML in Spark's production CCZ carrying the real value codes. The field feeds neither `entity_id` nor a payable unit, so 4f recorded the gap and proceeded exactly as written, and an operator reading the residual days later is what stopped the release. 4f gains a SECOND halt class, not dischargeable as a named gap: a declared register + an inline option list is a HALT regardless of payability, because the harm is `no-inferred-backstory` on the partner's own published process rather than payment. Both inline rungs of the escape ladder are withdrawn when a register is declared — "knowable from the PDD / inputs / a source `.ccz`" is exactly the case where the real values exist and must be READ. Ships no register of its own; absence is a HALT with a Phase-1 finding. Where ACE cannot finish, the terminal behaviour is extract → build the table → halt with the operator handoff, never placeholders. *(Both reasons recorded for this halt have since been overtaken. The 2026-08-24 reason — a missing create atom — was superseded 2026-09-01, when `create_lookup_table` proved to ship columns and rows atomically. Its replacement — a refused BINDING, `voidcraft-labs/commcare-nova#545` — was superseded on 2026-09-06, when that issue closed COMPLETED and the bind was accepted and read back live. ACE now builds AND binds; the halt is scoped to an undeclared register, an unreadable source, a diff finding, or a bind that fails to verify (ace#1886).)* Paired 1:1 with the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **`app-language-layer` ownership split — ACE authors the translations at level 0; the architect never touches a language atom (ace#1556).** The 2026-08-17 decision said translations are *authored by ACE*; the wiring delegated the authoring to `/nova:autobuild`, whose operating prompt (read verbatim off disk, nova plugin `1.26.0` and `1.27.0`, `skills/autobuild/SKILL.md` + `agents/nova-architect-autonomous.md`) says: *"Never treat your own language fluency as a substitute or bulk-translate self-generated text through `update_translations`. Only save target text supplied by the user…"* An `/ace:run` supplies no human target strings, so the architect declined — correctly — and the language step was a silent no-op on every multilingual build. Measured: `spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → **207 units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the copied English string served to a worker under the language's name. This is a MECHANISM fix, not a product reversal: the clause constrains the architect's *self-generated* text, and ACE — the caller, the "user" in that sentence — supplies the target text through the same six atoms on its own Nova MCP surface. New homes: `pdd-to-learn-app § Step 4e` and `pdd-to-deliver-app § Step 4m`, both thin wrappers over the component's level-0 recipe. Both brief paragraphs now tell the architect to build English-ONLY and to call no language atom, which makes translate-LAST structural rather than a request — the architect's turn is over before the language exists. Provenance is unchanged and honest: ACE's writes stay `origin: ai` / `needs-review`, nothing is marked reviewed on anyone's behalf. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-23 | **New component `entity-state-taxonomy` (ace#1564).** The followed entity's state model — the phase names and which activity/step numbers belong to each phase — existed only as PROSE in the PDD's § Entity Lifecycle, and nothing in `pdd-to-deliver-app`'s brief-composition checklist asked for it. The architect needs those option sets to build the phase-filtered step picker `longitudinal-visits` requires, so on `spark-facilitator/20260820-0817` it invented them: the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as `1 = "Introduction and community entry" (steps 1–4)` … `4 = "Sustainability and graduation" (steps 23–24)`, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, a pilot window pinned to `Goal Setting (Planning, Steps 1–7)` straddles two phases, and `no-inferred-backstory` fails on a REAL partner's own published process, in front of real workers. The component **ships no vocabulary**: the taxonomy is DERIVED from the PDD's typed `entity_state_taxonomy` handoff (or the source document it names, read out of `inputs/`) and the build HALTS when it is absent — hard-coding a canonical state set would be the mirror image of the defect, and systematic. Paired 1:1 with the eval's `entity_state_fidelity` hard-gate and the build's `pdd-to-deliver-app § Step 4l`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

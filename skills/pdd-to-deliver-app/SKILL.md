@@ -723,7 +723,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        BOTH are emitted and this one governs the content.
      - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
        physical quantity. Check the pairs, surface conflicts in the build
-       memo (ace#984).
+       memo (ace#984). Carry `program_parameters.duplicate_gps_rule` into the
+       brief WHOLE — radius, accuracy condition and fallback — and classify
+       the dedup pair with `lib/gps-dedup-coherence.ts`: an
+       accuracy-conditioned radius is coherent, and no `[FIXED]` or
+       author-attributed threshold is ever moved to resolve a conflict
+       (ace#2373).
      - `fixed-instrument-transcription` — the app digitises a `[FIXED]`
        published instrument whose source file the run's
        `inputs-manifest.yaml` names. Transcribe every constant exactly;

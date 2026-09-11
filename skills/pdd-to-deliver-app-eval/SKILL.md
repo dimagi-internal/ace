@@ -254,6 +254,34 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      incoherent pair with NO build-memo entry → `[BLOCKER]` → `fail`. An
      incoherent pair that IS surfaced → `[WARN]` (the value is a PM decision;
      noticing it is ACE's job).
+
+     **The dedup pair is not two scalars (ace#2373).** Classify it with
+     `lib/gps-dedup-coherence.ts` rather than by comparing the numbers: read
+     the rule with `readGpsDedupRule` over `program_parameters`, and when that
+     returns `null` or a `bare-scalar` source (a bare
+     `duplicate_gps_radius_m` cannot say whether the radius is conditioned),
+     read the PDD's own duplicate-rule sentence with `parseGpsDedupWording`;
+     then `classifyGpsDedupCoherence(rule, <worst accepted accuracy>)`. An
+     **accuracy-conditioned radius** — the GPS test runs only where BOTH
+     readings report accuracy better than the radius, identifiers deciding the
+     rest — is `coherent`: it takes no `[WARN]` and no deduction, however far
+     below the tolerance the radius sits. Only an **unconditioned** radius at
+     or below the worst accepted accuracy is `incoherent`. Controls, both
+     against a 50 m tolerance: Targeting PDD v1.1 §6 [FIXED] *"same GPS point
+     (< 15m) where both readings have accuracy better than 15m. Where either
+     reading is less accurate than the radius, duplicate detection relies on
+     identifiers alone"* → `coherent`; v1.0 *"same GPS point (< 15m)"* →
+     `incoherent`. An `unclear` verdict is not a defect: read the sentence
+     yourself and decide, and do not deduct for a phrasing the parser does not
+     recognise.
+
+     **A build that CHANGED a `[FIXED]` or author-attributed threshold to
+     resolve a conflict it noticed → `[BLOCKER]` → `fail`**, whichever
+     direction it moved and whether or not the memo records it — including
+     "raising the radius or tying it to the tolerance", #984's recommendation,
+     which the author of the case that prompted this gate explicitly
+     declined. Noticing is the build's job; the value is the PM's or the
+     author's.
    - **`fixed_instrument_fidelity`** (added 2026-08-20, ace#1527) — **when the
      PDD marks an instrument `[FIXED]` and the run's `inputs-manifest.yaml`
      carries its published source file, every scoring constant in the build MUST
@@ -584,6 +612,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-11 | **`threshold_coherence` stops reading the dedup pair as two scalars (ace#2373).** The #984 criterion declared any radius at or below the worst accepted accuracy incoherent, so the Targeting PDD v1.1 §6 [FIXED] rule — a 15 m radius applied only where both readings beat 15 m, identifiers otherwise — read 15 ≤ 50 → `[WARN]` at best and, with no memo entry, `[BLOCKER]` on a design that is coherent by construction. The pair is now classified with `lib/gps-dedup-coherence.ts`: an accuracy-conditioned radius is `coherent`; only an unconditioned radius at or below the tolerance is `incoherent`; a bare `duplicate_gps_radius_m` scalar is `unclear` and sends the judge to the PDD's own sentence rather than being read as unconditioned. New `[BLOCKER]`: a build that moved a `[FIXED]` or author-attributed threshold to resolve a conflict it noticed — the brief used to invite exactly that by quoting #984's "raise or tie". Paired with `_app-component-library.md § threshold-coherence-flag`. *Enforced:* `test/lib/gps-dedup-coherence.test.ts` + `test/skills/threshold-coherence-conditioned-radius.test.ts`. Feedback-Ref: 20260911-sophie-feintuch/q1-dedup. | ACE team |
 | 2026-09-06 | **`option_register_fidelity` gains a `verified` requirement (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02, so `pdd-to-deliver-app § Step 4f` now BINDS the register instead of building it and handing the bind to an operator. That silently changes what the build memo is claiming — previously the block recorded *a table exists with the right rows*, and a human performed the last step; now it claims *this field draws from that table*. The rubric had no way to grade the new half, and the failure is invisible in exactly the way this gate exists to catch: an unbound select renders EMPTY on the device while the CCZ is structurally valid and every ACE artifact says the register shipped. `verified` must come from `verifyLookupBind` over a `get_field` read-back — Nova reports `"options": []` for a correctly bound lookup field, so the write response is not evidence in either direction. Missing or non-`true` is a `[BLOCKER]`. | ACE team |
 | 2026-08-24 | **New `option_register_fidelity` hard-gate (ace#1621).** Third sibling of `fixed_instrument_fidelity` (#1527, a `[FIXED]` instrument's CONSTANTS vs a source file) and `entity_state_fidelity` (#1564, the entity's STATE vocabulary vs a PDD-declared taxonomy): this one grades a field's OPTION SET against a partner register the PDD names. Binary and non-weighted for the same reason as both — the weighted dimensions grade against a narrative PDD, so an invented option set reads as conformant prose. On `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps, past this rubric, while Spark's own 78-activity register sat in the run's `inputs/`. Verdicts: `unbound-register` (inline list where a register is declared), `undeclared-register` (Phase-1 gap), `unfiltered-register` / `wrong-table`, `source-unavailable` (unverifiable ≠ correct), and row-level `invented-option` / `missing-option` / `relabelled-option` — all `[BLOCKER]` → `fail`, no tolerance band, because these are the partner's own codes and words. Run `lib/option-register.ts`; do not eyeball it. Blocker rather than a deduction because `pdd-to-deliver-app § Step 4f` already *permitted* this via an `option_source_gaps` entry, and a named gap discharges the obligation to a human who may not read it. Paired 1:1 with `_app-component-library § partner-option-register` and 4f's register halt. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New non-weighted hard-gate `entity_state_fidelity` (ace#1564).** A `longitudinal-visits` Deliver app shipped four invented phase labels over a re-partitioned step set for a real partner's own published process, and this rubric passed it: every weighted dimension grades the build against a PDD that describes the entity lifecycle NARRATIVELY, so an invented vocabulary is PDD-conformant prose, and the app is internally consistent with its own invention so no structural gate has a symptom. The gate is binary and non-weighted because it is a set/label/partition comparison against a declared taxonomy, not a judgement. Graded mechanically via `lib/entity-state-taxonomy.ts` (`parseStateTaxonomy` on `program_parameters.entity_state_taxonomy`, then `diffStateTaxonomy` against the option set read from the blueprint) — the same helper the build runs at `pdd-to-deliver-app § Step 4l`, so build-emit and eval-grade cannot drift. `declared: false` while the trigger fires is its own blocker, reported as a Phase-1 gap: the build was supposed to HALT there, so a build that proceeded invented the vocabulary by construction. Paired 1:1 with `_app-component-library.md § entity-state-taxonomy`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts`. | ACE team |
