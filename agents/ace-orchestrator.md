@@ -1294,7 +1294,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - **5c. Capture the manifest — files AND the ids of the subfolders you
      did not descend into.** List `<opp>/inputs/` via `drive_list_folder`.
      For each direct child FILE, capture `{file_id, name, mime_type}` under
-     `inputs:`. For each direct child SUBFOLDER, capture
+     `inputs:`. For a Drive SHORTCUT, also capture `resolved_target_id` and
+     `resolved_target_mime_type`. `generate_inputs_manifest` already returns
+     both, and `drive_list_folder` returns them as `shortcutDetails.targetId` /
+     `.targetMimeType`. Phase 1 reads comment threads at the target, because
+     `drive_list_comments` does not follow shortcuts: the shortcut's own id
+     answers `File not found` (ace#2372). For each direct child SUBFOLDER, capture
      `{folder_id, name}` under `subfolders_not_listed:` — **mandatory, not
      optional** (ace#1648). Also record `source_folder_id`, the `inputs/`
      folder's own id. No extra call is needed for the subfolders:
@@ -1312,6 +1317,11 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
        - file_id: <id>
          name: <name>
          mime_type: <mime>
+       - file_id: <shortcut-id>
+         name: <name>
+         mime_type: application/vnd.google-apps.shortcut
+         resolved_target_id: <target-id>          # shortcuts only
+         resolved_target_mime_type: <target-mime> # shortcuts only
        - ...
      subfolders_not_listed:        # ALWAYS present; `[]` when there are none
        - folder_id: <id>
