@@ -2020,6 +2020,18 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    `poverty-graduation/20260908-0510` headed it "Deliver app — build memo" —
    and nothing collected it, so no reviewer ever saw it.
 
+   **Every row of the two sub-tables is ALSO a decision row** — append them
+   with ONE `decisions_append_rows` call immediately after this write,
+   derived from the same entry list the tables render (§ Decisions Log). The
+   memo is prose a reviewer reads; `decisions.yaml` is the register ace-web
+   renders with a comment box and an answer editor on every row, and an
+   answer there carries into the next run. On
+   `poverty-graduation/20260908-0510` this summary listed four `[ACE]`
+   latitudes (screen shape, transfer-method capture, derived-chain guards,
+   asset menu) and the run's 66 decision rows included none of them. The
+   Phase 3 boundary now fails this skill if the memo lists any latitude or
+   ambiguity and zero rows carry `skill: pdd-to-deliver-app` (ace#2384).
+
 8. **Notify admin group** that Deliver app generation is complete.
 
 ## Archetypes
@@ -2177,6 +2189,7 @@ form, Stage 2 = atomic household-visit form).
 ## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
+- **ACE decisions MCP:** `decisions_append_rows` (Step 7 — § Decisions Log)
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
 - **Nova MCP tools ACE calls directly** (Steps 4a–4h): `get_app`,
@@ -2209,15 +2222,114 @@ When `--dry-run` is active:
 
 ## Decisions Log
 
-This skill writes load-bearing defaults to the per-run
-`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
-schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
-(canonical authority). The list below catalogs decisions that commonly
-qualify under the bar for this phase — a working template, not a
-required set. The skill applies the bar criterion and emits whatever
-rows meet it; the catalog is a teaching device that improves over time.
+This skill writes to the per-run `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
+— the register ace-web renders on the public run page, where a reviewer
+comments on and answers each row and the answer carries into the next run.
+The bar criterion and schema live in `skills/idea-to-pdd/SKILL.md § Decisions
+Log Convention` (canonical authority). It owes two kinds of row: one per
+build-memo entry (REQUIRED, below), and any catalogue row that meets the bar.
+
+### Every build-memo entry is also a decision row (REQUIRED)
+
+Every row Step 7 writes under `### [ACE] latitudes taken` and `### [FIXED]
+ambiguities hit` is ALSO a `decisions.yaml` row. These are exactly the calls
+the register exists for: an `[ACE]` latitude is an `inferred` default, a
+`[FIXED]` ambiguity is a `conflicting` one. Until ace#2384 this section was
+only a catalogue "not a required set", and the app build wrote zero rows —
+`poverty-graduation/20260905-1345` and `20260908-0510` carried 61 and 66
+rows, none from Phase 3, while this summary listed the latitudes in prose. A
+regression of #399.
+
+**One source, two renderings.** Build the entry list ONCE —
+`{pdd_section, kind, chose, alternatives, why, spot_check, signals}` per entry —
+then render the memo table rows AND the decision rows from it. Never author one
+from the other after the fact, and never add an entry to one without the other:
+the memo and the register must list the same calls.
+
+| Row field | From the entry |
+|---|---|
+| `id` | `deliver-latitude-<slug>` / `deliver-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run of the same PDD re-derives the same id and the atom's idempotent skip holds |
+| `phase`, `skill` | `3-commcare`, `pdd-to-deliver-app` |
+| `question` | what the PDD left open (latitude) or said two ways (ambiguity) at that § |
+| `ai-default` | the "What ACE chose" / "How resolved" cell as a short label, an exact member of `options` |
+| `options` | that label plus each alternative the build weighed, 1–8 words each |
+| `source` | the entry's PDD § cell, naming the document |
+| `evidence_basis` | `[ACE]` latitude → `inferred` (`stated` only when the PDD itself names the value chosen); `[FIXED]` ambiguity → `conflicting` |
+| `conflict_signals` | ambiguity only, at least 2 entries: the `[FIXED]` statement as written, and the reading or constraint that competed with it — each cited |
+| `value_set_by` | `ace` |
+| `status` | `ai-default`, always (a caller-asserted `human-decided` is rejected — ace#2307) |
+| `reasoning` | the Why cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+
+**Where to spot-check goes in `reasoning`, not a field of its own.** ace-web's
+summary builds each decision from a fixed set of keys (`apps/opps/summary.py`
+on ace-web `main`, c20ef34: id, phase, skill, question, ai-default, override,
+options, source, status, reasoning, override_reasoning, evidence_basis,
+conflict_signals) and drops anything else — `params` included — so a new key
+would never reach the reviewer. `reasoning` renders as the row's note. End it
+with `Spot-check: <app> › <module> › <form> › <field>.`, and end the memo
+row's Why cell with the same sentence so `skills/build-memo` can fill its
+"Where to spot-check" column from what this skill named.
+
+**The boundary checks it.** `verify_phase_artifacts(phase='commcare')`
+returns a `decisions` report (`lib/build-phase-decisions.ts`). If this memo
+lists any latitude or ambiguity while zero rows carry `phase: 3-commcare` and
+`skill: pdd-to-deliver-app`, the Phase 3 boundary fails. `None.` under both
+headings owes no rows. Catalogue rows below count toward the total, but
+`app-test-cases` rows in the same phase do not.
+
+Worked example (the first entry is the real `20260908-0510` latitude; the
+second is illustrative):
+
+```
+decisions_append_rows({
+  runFolderId: <run-folder file_id>,
+  opportunity: <opp-slug>,
+  run_id: <run-id>,
+  rows: [
+    {
+      id: "deliver-latitude-transfer-method-capture",
+      phase: "3-commcare",
+      skill: "pdd-to-deliver-app",
+      question: "C6 §12 Q1 leaves open whether one flow serves every transfer method or method is a build variant — which did the build ship?",
+      "ai-default": "one flow, method-gated branches",
+      options: ["one flow, method-gated branches", "one form per transfer method"],
+      source: "C6 PDD §12 Q1 [ACE]",
+      status: "ai-default",
+      evidence_basis: "inferred",
+      value_set_by: "ace",
+      reasoning: "One flow reads the method off the household case and relevance-gates three artifact branches. An assumption, not a resolution. Spot-check: Deliver app › Consumption support distribution › consumption_dist › transfer_method."
+    },
+    {
+      id: "deliver-ambiguity-entity-id-grain",
+      phase: "3-commcare",
+      skill: "pdd-to-deliver-app",
+      question: "Targeting §3 and C5 §2 name different payment grains — which does the Deliver entity_id key on?",
+      "ai-default": "household",
+      options: ["household", "household member"],
+      source: "Targeting PDD §3 and C5 PDD §2 [FIXED]",
+      status: "ai-default",
+      evidence_basis: "conflicting",
+      conflict_signals: [
+        "Targeting PDD §3 [FIXED]: one payable survey per household",
+        "C5 PDD §2 [FIXED]: an asset is delivered to a named member"
+      ],
+      value_set_by: "ace",
+      reasoning: "OPEN — both are [FIXED]; keyed on household so the Targeting cap holds, flagged for the design author. Spot-check: Deliver app › Asset delivery › asset_delivery › entity_id."
+    }
+  ]
+})
+```
+
+The rejection is atomic — one row whose `ai-default` is not in its `options`
+costs the whole batch — so check each row before sending. If the atom is
+unbound this session, hand-write per `skills/idea-to-pdd/SKILL.md § Schema and
+write semantics` (top-level `decisions:`, not `rows:`).
 
 ### Common load-bearing decisions for Phase 3
+
+A catalogue of decisions that commonly qualify under the bar — a working
+template, not a required set. Emit whichever meet the bar, in the same call
+as the build-memo rows.
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -2226,9 +2338,9 @@ rows meet it; the catalog is a teaching device that improves over time.
 | `multimedia-coverage-strategy` | What multimedia (text vs voice prompts vs both) does the Deliver app surface? | `app-multimedia-coverage` skill output; PDD multimedia note |
 | `option-source-binding` | For each PDD-declared select/lookup field, where did its options come from — a Project data table, an inline enumeration, or a named gap? | Step 4f `option_source_gaps`; `pdd-to-deliver-app-eval § Capture fitness` |
 
-The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
-§ Phase Write-Back Contract § Decisions log clause) enforces the
-contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+The Phase 3 boundary fence enforces the build-memo rows
+(`agents/orchestrator-reference.md § Phase Write-Back Contract § Decisions
+log clause`); the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
 Each row this skill writes uses `phase: 3-commcare` and
@@ -2238,6 +2350,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-11 | **Every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** § Decisions Log was a catalogue "not a required set" and the app build wrote none — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3, while Step 7's memo listed four latitudes in prose. The rows derive from the same entry list as the memo tables ("one source, two renderings"); the spot-check location goes in `reasoning` because ace-web's summary drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows under this skill's tag. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 | 2026-09-11 | **Step 7 names the Deliver build-memo section `## Build memo`, with `[ACE] latitudes taken` and `[FIXED] ambiguities hit` sub-tables (ace#2371).** Steps 3–4n direct notes "into the build memo" throughout, but the memo had no fixed home: on `poverty-graduation/20260908-0510` it existed as a section headed "Deliver app — build memo" inside this summary, not named as a memo and never linked to a reviewer. `skills/build-memo` now collates this section into the run's programme memo at the end of Phase 4; the section content itself is unchanged. | ACE team |
 | 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |
 | 2026-09-06 | **Step 4f's partner-register handoff is RETIRED — ACE builds, binds and PROVES the register (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02 and `scripts/probe-nova-fixtures.ts` returned `both` on 2026-09-06: a select accepts a `{kind:'lookup'}` options source and `get_field` reads it back. All three routes were confirmed live — `add_fields optionsSource`, `set_field_options_source` on an existing select, and `edit_field` converting a `text` field (`set_field_options_source` refuses a `text` field outright, so the conversion is not optional). So 4f now extracts, creates, populates AND binds, and `renderRegisterCsv` is deleted along with the operator step it existed for. **The halt is narrowed, not dropped:** it still fires on an undeclared register (Phase-1 gap), an unreadable declared source, any `diffOptionRegister` finding, and — new — a bind that does not VERIFY. That last one is the point. `add_fields` answers a correctly bound lookup field with `"options": []` and no mention of the source, so the write response cannot distinguish a landed bind from a missing one in either direction; only a `get_field` read-back can, via `verifyLookupBind`. An unverified bind is the ace#1621 defect wearing a better disguise — the select renders empty to a worker while every ACE artifact reports the register shipped. *Enforced:* `test/lib/option-register.test.ts` (`verifyLookupBind`, positive + four negative controls), `test/scripts/nova-fixtures-probe.test.ts`. | ACE team |

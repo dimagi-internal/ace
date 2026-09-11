@@ -543,7 +543,13 @@ producer(s). `summary` is a narration-ready one-liner ("all N
 required artifacts found (+M optional)") — echo it verbatim rather
 than pairing `present_count/expected_count` into a fraction, since
 `present_count` counts every file in the folder and `expected_count`
-counts only the required set, so the ratio routinely exceeds 1.
+counts only the required set, so the ratio routinely exceeds 1. For the
+build phases (`commcare`, `connect`) it also returns `decisions` — the
+build-memo-entries-are-decision-rows check (`lib/build-phase-decisions.ts`,
+§ Phase Write-Back Contract § Decisions log clause). That verdict is kept
+out of `missing[]` on purpose: `missing[]` heals by re-dispatching the
+producer, and re-running `pdd-to-deliver-app` to repair a log would rebuild
+the app.
 
 **Products-level companion: `verify_phase_products(fileId, phase)`.**
 `verify_phase_artifacts` checks Drive *files*; `verify_phase_products`
@@ -951,9 +957,28 @@ load-bearing default the phase applied that meets the bar criterion
 (see [`docs/superpowers/specs/2026-05-08-decisions-log-design.md`](../docs/superpowers/specs/2026-05-08-decisions-log-design.md) §
 Scope and `skills/idea-to-pdd/SKILL.md` § Decisions Log Convention §
 Bar criterion). Each phase's primary writing skill owns the rows it
-writes. The orchestrator stub-fills + warns post-phase if a phase
-wrote zero rows AND the calibration set for that phase has any
-required rows. Schema and YAML helpers live in `lib/decisions-schema.ts`.
+writes. Schema and YAML helpers live in `lib/decisions-schema.ts`.
+
+**Build phases owe rows by construction, and the fence fails a silent one
+(ace#2384).** In `commcare-setup` and `connect-setup`, every entry a
+producer lists in its build-memo sections — `[ACE] latitudes taken`,
+`[FIXED] ambiguities hit`, and in Phase 4 `Verification rules — where each is
+applied` — is ALSO a `decisions.yaml` row under that producer's `skill`
+tag, derived from the same entry list (each producer's `§ Decisions Log`).
+`verify_phase_artifacts(phase='commcare'|'connect')` returns a `decisions`
+report (`lib/build-phase-decisions.ts`): a producer whose memo lists any
+entry while its skill wrote zero rows in that phase is `silent`, and
+`decisions.ok:false` fails the boundary (heal per the Turn N+2 branch in
+`ace-orchestrator.md § Phase boundary fence`). The count is per producer, so
+`app-test-cases` rows tagged `3-commcare` cannot stand in for a build that
+logged nothing. This replaces the clause's old last sentence — "the
+orchestrator stub-fills + warns post-phase if a phase wrote zero rows AND the
+calibration set for that phase has any required rows" — which had no
+implementation anywhere in the repo and could never fire for Phase 3, whose
+catalogue has no required rows: `poverty-graduation/20260905-1345` and
+`20260908-0510` shipped 61 and 66 rows, none from the app build, while its
+summaries listed the latitudes in prose. Other phases keep the catalogue as a
+teaching device; no zero-row gate applies to them.
 
 **Run-init ingest — what a new run inherits (added 2026-08-27).** A new
 run does NOT share a ledger with its predecessor; `decisions.yaml` stays

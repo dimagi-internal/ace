@@ -1206,6 +1206,15 @@ alone makes the artifact land outside `4-connect` and fail
         resolved, or OPEN |`, one row per `[FIXED]` statement Phase 4 could
         not configure exactly as written.
 
+     **Every row of these three tables is ALSO a decision row** — append
+     them with ONE `decisions_append_rows` call right after this write,
+     derived from the same entry list the tables render (§ Decisions Log §
+     Every build-memo entry is also a decision row). "Where is each PDD
+     verification rule enforced" is then a question a reviewer can answer on
+     the run page, not only read in the memo. The Phase 4 boundary fails if
+     this section lists any entry and zero rows carry `phase: 4-connect` +
+     `skill: connect-opp-setup` (ace#2384).
+
 9. **Capture the ConnectProd integer opportunity ID** (Phase 7 prerequisite).
 
    Phase 7's `synthetic-data-generate` addresses opportunities by their
@@ -1490,6 +1499,75 @@ decisions_append_rows({
 })
 ```
 
+### Every build-memo entry is also a decision row (REQUIRED)
+
+Every row Step 8 writes under the Phase 4 build-memo section —
+`### Verification rules — where each is applied`, `### [ACE] latitudes
+taken`, `### [FIXED] ambiguities hit` — is ALSO a `decisions.yaml` row, in the
+same `decisions_append_rows` call as the catalogue rows above. The catalogue
+alone left "where is the PDD's duplicates rule enforced" readable in the memo
+and unanswerable on the run page (ace#2384).
+
+**One source, two renderings.** Build the entry list ONCE, then render the
+memo table rows AND the decision rows from it; never add an entry to one
+without the other.
+
+| Row field | From the entry |
+|---|---|
+| `id` | `connect-rule-<slug>` / `connect-latitude-<slug>` / `connect-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run re-derives the same id |
+| `phase`, `skill` | `4-connect`, `connect-opp-setup` |
+| `question` | rule: "Where is the PDD verification rule '<quoted>' enforced?"; latitude / ambiguity: what the PDD left open or said two ways at that § |
+| `ai-default` | rule: the `Where applied` category as one of the `options` below; latitude / ambiguity: the chosen value or resolution as a short label |
+| `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed |
+| `source` | the entry's PDD § cell, naming the document |
+| `evidence_basis` | `[ACE]` latitude → `inferred`; `[FIXED]` ambiguity → `conflicting`; rule → `stated` when the PDD itself names where it is enforced, `inferred` when ACE chose, `conflicting` for `Not configurable on Connect — not applied` (the PDD requires it and Connect cannot hold it) |
+| `conflict_signals` | `conflicting` rows only, at least 2 entries, each cited |
+| `value_set_by` | `ace` |
+| `status` | `ai-default`, always |
+| `reasoning` | the Why / Evidence cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <the Connect setting, or the CCZ form › field>.` |
+
+The spot-check location goes in `reasoning` because ace-web's summary drops
+keys outside its fixed set (`apps/opps/summary.py`, ace-web `main` c20ef34),
+`params` included. **The boundary checks it:**
+`verify_phase_artifacts(phase='connect')` returns a `decisions` report
+(`lib/build-phase-decisions.ts`) that fails when the section lists entries and
+this skill wrote zero rows in `4-connect`.
+
+Worked example — a rule Connect cannot hold (`connect_set_verification_flags`
+refuses `duplicate` / `gps` / `gps_radius_meters`, ace#1013):
+
+```
+decisions_append_rows({
+  runFolderId: <run-folder file_id>,
+  opportunity: <opp-slug>,
+  run_id: <run-id>,
+  rows: [
+    {
+      id: "connect-rule-one-survey-per-household",
+      phase: "4-connect",
+      skill: "connect-opp-setup",
+      question: "Where is the PDD verification rule 'one payable survey per household' enforced?",
+      "ai-default": "Not configurable on Connect — applied elsewhere",
+      options: [
+        "Connect form_field_rules",
+        "CCZ constraint",
+        "Not configurable on Connect — applied elsewhere",
+        "Not configurable on Connect — not applied"
+      ],
+      source: "Targeting PDD §9 [FIXED]",
+      status: "ai-default",
+      evidence_basis: "conflicting",
+      conflict_signals: [
+        "Targeting PDD §9 [FIXED]: one payable survey per household",
+        "connect_set_verification_flags refuses duplicate (ace#1013): no Connect-side duplicate check"
+      ],
+      value_set_by: "ace",
+      reasoning: "Held in the CCZ by the payability-scoped entity_id key instead. Spot-check: Deliver app › Targeting survey › registration › entity_id."
+    }
+  ]
+})
+```
+
 ## Change Log
 
 | Date | Change | Author |
@@ -1507,5 +1585,6 @@ decisions_append_rows({
 | 2026-09-08 | **Step 4's single-active-opp block stops asserting an enforcement and a deactivation it cannot support (dimagi-internal/ace#2290).** It read "Connect enforces one active managed opportunity per accepted `ProgramApplication`" and mandated a WARN reading "will deactivate prior active opp …", both generalized from a single 2026-05-06 observation (leep-paint-collection, jjackson/ace#106 finding 11). Counter-observed on `bednet-check-2-visit/20260908-1544`: **ten** opps on program `efb8af66-fbfd-488f-bf99-66f864cea68b` concurrently `active: true`, and a direct post-create re-read of `5fdee3b8-e859-4aa7-a4be-8ad6f727917a` returned `active: true` / `dashboard_read: "ok"` — no deactivation, so the WARN that run emitted was a prediction written into the artifact as fact. Both observations are now recorded as observations; the accept-application short-circuit on a self-managed org is named as the leading HYPOTHESIS with `upstream-regression-triage` against `dimagi/commcare-connect` as the way to settle it. The scan and the `hydrate: true` read are unchanged — the WARN is now singular-to-N, reports the count plus ids, drops the "close prior opps first" remedy (it contradicts per-run opp accumulation by design), and says "MAY deactivate — unverified" instead of predicting. Not CI-gateable: it is a claim about another system's behaviour. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 | 2026-09-11 | **Step 8 ends `connect-opp-setup.md` with the Phase 4 half of the run's build memo (ace#2371).** Every poverty-graduation PDD names a build memo as the review artifact, and the Connect-side skills mentioned it zero times — so where a PDD verification rule was actually applied (on Connect, in the CCZ, or nowhere) was recorded nowhere a reviewer would look. That mattered concretely because `connect_set_verification_flags` refuses `duplicate` / `gps` / `gps_radius_meters` (ace#1013), leaving a Targeting PDD's duplicates rule with no Connect home. The new section maps one row per rule across the WHOLE PDD set (component PDDs included) to a closed `Where applied` vocabulary in which "Not configurable on Connect" is a required statement, not an omission, plus opportunity-config `[ACE]` latitudes and `[FIXED]` ambiguities. `skills/build-memo` collates it verbatim; `products.connect.build_memo` is the one `products.connect` key this skill does not write. *Enforced:* `test/skills/build-memo-contract.test.ts`. | ACE team |
+| 2026-09-11 | **Every Step 8 build-memo entry — each verification rule, `[ACE]` latitude and `[FIXED]` ambiguity — is also a `decisions.yaml` row (ace#2384).** The mapping of "where is each PDD verification rule enforced" existed only as memo prose, so a reviewer could read it but not answer it on the run page. Rule rows draw `ai-default` from the closed `Where applied` categories; the specific form/field or Connect setting goes in `reasoning` as `Spot-check:` because ace-web drops unknown keys. The Phase 4 boundary fails a section with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->

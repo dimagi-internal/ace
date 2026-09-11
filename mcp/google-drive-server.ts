@@ -35,6 +35,11 @@ import {
   verifyPhaseArtifacts,
   type DriveListAdapter,
 } from '../lib/phase-closeout.js';
+import {
+  BUILD_PHASE_DECISION_CONTRACTS,
+  unreadableBuildPhaseDecisions,
+  verifyBuildPhaseDecisions,
+} from '../lib/build-phase-decisions.js';
 import { PHASES, phaseAgentName, type Phase } from '../lib/artifact-manifest.js';
 import {
   isTransientNetworkError as isTransientNetworkErrorLib,
@@ -3790,7 +3795,7 @@ async function refreshRunReadme(
 
 server.tool(
   'verify_phase_artifacts',
-  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.",
+  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. **Build phases (`commcare`, `connect`) also return `decisions: {ok, decision_phase, producers[], failures[], warnings[], summary, unreadable?}`** — the check that every build-memo producer whose memo lists an `[ACE]` latitude, a `[FIXED]` ambiguity or a verification rule wrote at least one `decisions.yaml` row under its own `skill` tag (dimagi-internal/ace#2384). `decisions.ok:false` FAILS the boundary independently of `ok`, and it is deliberately not a `missing[]` entry: heal it by appending the rows the memo already lists, never by re-dispatching the producer (that would rebuild the app). Absent on every other phase. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/build-phase-decisions.ts::verifyBuildPhaseDecisions` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.",
   {
     runFolderId: z.string().describe("The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/)."),
     phase: z
@@ -3831,12 +3836,37 @@ server.tool(
       const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase, {
         mode: resolvedMode,
       });
+      // Build phases (commcare, connect): every [ACE] latitude / [FIXED]
+      // ambiguity / verification rule a producer's build memo lists is ALSO
+      // owed as a decisions.yaml row, and a producer that lists items but
+      // wrote zero rows fails the boundary (ace#2384). Reported as its own
+      // `decisions` block, NOT folded into `missing[]` — that list heals by
+      // re-dispatching the producer, which for pdd-to-deliver-app would
+      // rebuild the app to repair a log. A read failure is `ok:false,
+      // unreadable:true`: a gate that could not read its inputs passed nothing.
+      let decisions: unknown;
+      if (BUILD_PHASE_DECISION_CONTRACTS[phase as Phase]) {
+        try {
+          decisions = await verifyBuildPhaseDecisions(
+            {
+              ...adapter,
+              async readText(fileId: string) {
+                return (await handleReadFile({ fileId }, drive)).content;
+              },
+            },
+            runFolderId,
+            phase as Phase,
+          );
+        } catch (e: any) {
+          decisions = unreadableBuildPhaseDecisions(phase as Phase, e?.message ?? String(e));
+        }
+      }
       // Structural README refresh — see `refreshRunReadme`. Never gates the
       // verdict; surfaced in the payload so a silent failure is still visible.
       const readme = parsedRunState
         ? await refreshRunReadme(runFolderId, parsedRunState)
         : { readme_refreshed: false, readme_note: 'run_state.yaml unreadable — README left as-is' };
-      return result({ ...report, ...readme });
+      return result({ ...report, ...(decisions ? { decisions } : {}), ...readme });
     } catch (e: any) {
       return error(e.message);
     }

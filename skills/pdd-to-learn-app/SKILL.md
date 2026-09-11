@@ -22,6 +22,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 - `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
 - `3-commcare/pdd-to-learn-app_build-memo.md` — the Learn half of the run's build memo, written on EVERY path by Step 7a; on a componentized run it carries the gap list Learn PDD §6(5) requires
+- `decisions.yaml` rows (`phase: 3-commcare`, `skill: pdd-to-learn-app`) — one per entry in the build memo's `[ACE] latitudes taken` and `[FIXED] ambiguities hit` tables, appended in Step 7a (§ Decisions Log). REQUIRED: the Phase 3 boundary fails a memo that lists entries while this skill wrote zero rows (ace#2384)
 
 ## Process
 
@@ -1017,6 +1018,16 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    Cite the PDD section on every row. The programme memo marks an uncited
    row `NOT CITED by pdd-to-learn-app` rather than guessing a section.
 
+   **Every row of the first two tables is ALSO a decision row** — append them
+   with ONE `decisions_append_rows` call immediately after this write, derived
+   from the same entry list the tables render (§ Decisions Log). The memo is
+   prose a reviewer reads; `decisions.yaml` is the register ace-web renders
+   with a comment box and an answer editor on every row, and an answer there
+   carries into the next run. A call that reaches only the memo cannot be
+   answered. The Phase 3 boundary fails this skill if the memo lists any
+   latitude or ambiguity and zero rows carry `skill: pdd-to-learn-app`
+   (ace#2384).
+
 8. **Notify admin group** that Learn app generation is complete, with the
    Nova app URL and a link to the summary in GDrive.
 
@@ -1147,6 +1158,7 @@ results.
 ## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
+- **ACE decisions MCP:** `decisions_append_rows` (Step 7a — § Decisions Log)
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit` (for follow-up tweaks)
 
@@ -1171,4 +1183,115 @@ When `--dry-run` is active:
   expected Connectify fields).
 - Do not write `app-summaries/learn-app-summary.md` (no `nova_app_id`
   to record).
+- Do not call `decisions_append_rows`; list the rows you would append in
+  the same dry-run comms-log.
 - State tracks as `dry-run-success`.
+
+## Decisions Log
+
+This skill writes to the per-run `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
+— the register ace-web renders on the public run page, where a reviewer
+comments on and answers each row and the answer carries into the next run.
+The bar criterion and schema live in `skills/idea-to-pdd/SKILL.md § Decisions
+Log Convention` (canonical authority). Until ace#2384 this skill had no
+Decisions Log section at all, and the Learn build wrote zero rows:
+`poverty-graduation/20260905-1345` and `20260908-0510` carried 61 and 66 rows,
+none from Phase 3 — including the quiz item count, which was derived rather
+than read (ace#2364). A regression of #399.
+
+### Every build-memo entry is also a decision row (REQUIRED)
+
+Every row Step 7a writes under `## [ACE] latitudes taken` and `## [FIXED]
+ambiguities hit` is ALSO a `decisions.yaml` row. These are exactly the calls
+the register exists for: an `[ACE]` latitude is an `inferred` default, a
+`[FIXED]` ambiguity is a `conflicting` one.
+
+**One source, two renderings.** Build the entry list ONCE —
+`{pdd_section, kind, chose, alternatives, why, spot_check, signals}` per entry —
+then render the memo table rows AND the decision rows from it. Never author one
+from the other after the fact, and never add an entry to one without the other:
+the memo and the register must list the same calls.
+
+| Row field | From the entry |
+|---|---|
+| `id` | `learn-latitude-<slug>` / `learn-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run of the same PDD re-derives the same id and the atom's idempotent skip holds |
+| `phase`, `skill` | `3-commcare`, `pdd-to-learn-app` |
+| `question` | what the PDD left open (latitude) or said two ways (ambiguity) at that § |
+| `ai-default` | the "What ACE chose" / "How resolved" cell as a short label, an exact member of `options` |
+| `options` | that label plus each alternative the build weighed, 1–8 words each |
+| `source` | the entry's PDD § cell, naming the document |
+| `evidence_basis` | `[ACE]` latitude → `inferred` (`stated` only when the PDD itself names the value chosen); `[FIXED]` ambiguity → `conflicting` |
+| `conflict_signals` | ambiguity only, at least 2 entries: the `[FIXED]` statement as written, and the reading or constraint that competed with it — each cited |
+| `value_set_by` | `ace` |
+| `status` | `ai-default`, always (a caller-asserted `human-decided` is rejected — ace#2307) |
+| `reasoning` | the Why cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+
+**Where to spot-check goes in `reasoning`, not a field of its own.** ace-web's
+summary builds each decision from a fixed set of keys (`apps/opps/summary.py`
+on ace-web `main`, c20ef34: id, phase, skill, question, ai-default, override,
+options, source, status, reasoning, override_reasoning, evidence_basis,
+conflict_signals) and drops anything else — `params` included — so a new key
+would never reach the reviewer. `reasoning` renders as the row's note. End it
+with `Spot-check: <app> › <module> › <form> › <field>.`, and end the memo
+row's Why cell with the same sentence so `skills/build-memo` can fill its
+"Where to spot-check" column from what this skill named.
+
+**The boundary checks it.** `verify_phase_artifacts(phase='commcare')`
+returns a `decisions` report (`lib/build-phase-decisions.ts`). If this memo
+lists any latitude or ambiguity while zero rows carry `phase: 3-commcare` and
+`skill: pdd-to-learn-app`, the Phase 3 boundary fails. `None.` under both
+headings owes no rows. Rows another skill writes in the same phase
+(`app-test-cases`) do not count toward this one.
+
+Worked example (illustrative values):
+
+```
+decisions_append_rows({
+  runFolderId: <run-folder file_id>,
+  opportunity: <opp-slug>,
+  run_id: <run-id>,
+  rows: [
+    {
+      id: "learn-latitude-quiz-item-count",
+      phase: "3-commcare",
+      skill: "pdd-to-learn-app",
+      question: "Learn PDD §5 sets a pass mark but no item count — how many items does the final quiz carry?",
+      "ai-default": "10 items",
+      options: ["10 items", "5 items", "one per taught rule"],
+      source: "Learn PDD §5 [ACE]",
+      status: "ai-default",
+      evidence_basis: "inferred",
+      value_set_by: "ace",
+      reasoning: "Ten keeps one item per taught rule at the stated pass mark. Spot-check: Learn app › Assessment › Final quiz."
+    },
+    {
+      id: "learn-ambiguity-module-per-component",
+      phase: "3-commcare",
+      skill: "pdd-to-learn-app",
+      question: "Learn PDD §1 and §2 disagree on whether every framework component gets a module — which did the build follow?",
+      "ai-default": "components this programme carries",
+      options: ["components this programme carries", "every framework component"],
+      source: "Learn PDD §1 and §2 [FIXED]",
+      status: "ai-default",
+      evidence_basis: "conflicting",
+      conflict_signals: [
+        "Learn PDD §1 [FIXED]: a training module per component, all present",
+        "Learn PDD §2 [FIXED], 1 Sep edit: modules only for the components this programme carries"
+      ],
+      value_set_by: "ace",
+      reasoning: "OPEN — both statements are [FIXED]; built to the later §2 edit and flagged for the design author. Spot-check: Learn app › module list."
+    }
+  ]
+})
+```
+
+The rejection is atomic — one row whose `ai-default` is not in its `options`
+costs the whole batch — so check each row before sending. If the atom is
+unbound this session, hand-write per `skills/idea-to-pdd/SKILL.md § Schema and
+write semantics` (top-level `decisions:`, not `rows:`).
+
+## Change log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-09-11 | **Added § Decisions Log: every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** The skill had no Decisions Log section, so the Learn build contributed zero rows to the register a reviewer comments on and answers — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3. Rows derive from the same entry list as Step 7a's tables, with the spot-check location in `reasoning` because ace-web drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |

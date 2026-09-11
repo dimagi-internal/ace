@@ -492,7 +492,7 @@ so nothing from it had saved.
 - Input: approved PDD from GDrive
 - Output:
   - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
-  - From `pdd-to-deliver-app`: appended `deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy` rows in `decisions.yaml` (merge-only; rows are emitted only when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — the list is a working catalog, not a required set).
+  - From `pdd-to-learn-app` AND `pdd-to-deliver-app`: **one `decisions.yaml` row per entry in each build memo's `[ACE] latitudes taken` and `[FIXED] ambiguities hit` tables**, appended via `decisions_append_rows` with `phase: 3-commcare` and the producer's own `skill` tag — derived from the SAME entry list the memo table renders (each skill's `§ Decisions Log`). This is REQUIRED, not catalogue-optional: the Phase 3 boundary fails a producer whose memo lists any latitude or ambiguity and whose skill wrote zero rows (`verify_phase_artifacts(phase='commcare').decisions`, `lib/build-phase-decisions.ts`; ace#2384 — `poverty-graduation/20260908-0510` shipped 66 rows, 0 from the app build). `pdd-to-deliver-app` may additionally append catalogue rows (`deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy`) when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `pdd-to-learn-app-eval` after the Learn build and
   `pdd-to-deliver-app-eval` after the Deliver build. Each writes
