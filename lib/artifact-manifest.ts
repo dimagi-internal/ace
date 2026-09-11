@@ -432,10 +432,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '3-commcare/pdd-to-learn-app_build-memo.md',
     producedBy: 'pdd-to-learn-app',
-    consumedBy: ['ace-orchestrator'],
+    consumedBy: ['ace-orchestrator', 'build-memo'],
     phase: 'commcare',
     required: false,
-    description: 'Build memo for a COMPONENTIZED Learn app — written only on that path. Carries the gaps Learn PDD §6(5) requires: every framework component skipped for having no PDD, components referenced by others but absent from this programme, and any module built-but-hidden for this model. The inventory it needs comes from `products.framework_component_ids` (Phase 1, from a document that DECLARES `Components: 1, 2, 5b, …`) and from nothing else. When no document declared one the memo says so explicitly rather than reporting no gaps — see lib/learn-module-plan.ts, which refuses to parse the framework\'s prose component table for the same reason component-set.ts refuses to read a filename as a component identity (ace#2056).',
+    description: 'The Learn half of the run\'s build memo, written on EVERY path by pdd-to-learn-app Step 7a (that write step did not exist until ace#2371 — the memo was composed in-context and never reached Drive). Collated into the programme memo `4-connect/build-memo.md` by `build-memo` at the end of Phase 4. Optional at the Phase 3 fence because healing it there would re-dispatch a Nova rebuild; its absence is stated loudly in the programme memo instead. On a COMPONENTIZED run it carries the gaps Learn PDD §6(5) requires: every framework component skipped for having no PDD, components referenced by others but absent from this programme, and any module built-but-hidden for this model. The inventory it needs comes from `products.framework_component_ids` (Phase 1, from a document that DECLARES `Components: 1, 2, 5b, …`) and from nothing else. When no document declared one the memo says so explicitly rather than reporting no gaps — see lib/learn-module-plan.ts, which refuses to parse the framework\'s prose component table for the same reason component-set.ts refuses to read a filename as a component identity (ace#2056).',
   },
   {
     path: '1-design/component-set.yaml',
@@ -499,6 +499,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
       'solicitation-create', 'llo-invite',
       'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
       'cycle-grade', 'learnings-summary',
+      // Reads the PDD set ONLY to quote the sentence(s) naming the build memo
+      // (ace#2371) — never to derive a memo row.
+      'build-memo',
     ],
     phase: 'design',
     required: true,
@@ -638,7 +641,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'decisions.yaml',
     producedBy: 'idea-to-pdd',
-    consumedBy: ['decisions-render', 'idea-to-pdd'],
+    consumedBy: ['decisions-render', 'idea-to-pdd', 'build-memo'],
     phase: 'design',
     required: false,
     description: 'Per-run structured log of load-bearing defaults applied across the lifecycle. Phase 1 (idea-to-pdd) writes its rows when authoring the PDD; subsequent phases append rows as they apply load-bearing defaults (Phase 3-10 writes ship in the next PR of the decisions-log series). Schema enforced via lib/decisions-schema.ts. Re-runs honor status: overridden rows from prior runs as authoritative inputs. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata.',
@@ -717,10 +720,11 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-generate',
       'ocs-agent-setup', 'flw-data-review',
+      'build-memo',
     ],
     phase: 'commcare',
     required: true,
-    description: 'Deliver app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`, `delivery_unit`. `app-deploy` reads `nova_app_id` from here.',
+    description: 'Deliver app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`, `delivery_unit`. `app-deploy` reads `nova_app_id` from here. Its body carries the Deliver half of the run\'s build memo under a section headed `## Build memo` (`### [ACE] latitudes taken` + `### [FIXED] ambiguities hit`), which `build-memo` collates into `4-connect/build-memo.md` (ace#2371).',
   },
   {
     path: '3-commcare/app-deploy_summary.md',
@@ -823,10 +827,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '4-connect/connect-opp-setup.md',
     producedBy: 'connect-opp-setup',
-    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'ocs-agent-setup', 'opp-closeout'],
+    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'ocs-agent-setup', 'opp-closeout', 'build-memo'],
     phase: 'connect',
     required: true,
-    description: 'Connect Opportunity ID, verification rules, delivery/payment unit config',
+    description: 'Connect Opportunity ID, verification rules, delivery/payment unit config. Ends with the Phase 4 half of the run\'s build memo — `## Build memo — opportunity configuration and verification`: one row per PDD verification rule stating WHERE it is applied ("Not configurable on Connect" stated, never omitted), plus opportunity-config [ACE] latitudes and [FIXED] ambiguities (ace#2371).',
   },
   {
     path: '4-connect/connect-program-setup-eval_verdict.yaml',
@@ -854,6 +858,38 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'connect',
     required: true,
     description: 'Phase 4 (connect-setup) end-of-phase summary written by the connect-setup subagent. Captures program/opp IDs, payment-unit config, and gate disposition. Read by 3 downstream -eval skills as ground truth for grading.',
+  },
+  {
+    path: '4-connect/build-memo.md',
+    producedBy: 'build-memo',
+    consumedBy: ['ace-orchestrator', 'run-surface-audit'],
+    phase: 'connect',
+    // REQUIRED on every run, not only runs whose PDD names a build memo
+    // (ace#2371). A conditional requirement would need a detector deciding
+    // whether a PDD "names a build memo", and a detector that misses is the
+    // silent pass the issue was filed about. With `required: true` the Phase 4
+    // boundary fence's `verify_phase_artifacts(phase='connect')` reports it
+    // missing with `producedBy: 'build-memo'`, and the fence heals by
+    // re-dispatching that skill — which never touches Connect, so the
+    // external-resource no-re-mint override does not apply to it.
+    required: true,
+    rendered: true,
+    sourcePersisted: true,
+    // The review artifact itself: the design author reviews THIS and
+    // spot-checks the apps. `commenter` so the review lands as anchored
+    // comments (skills/feedback-ledger `gdoc-comments`).
+    recipientFacing: true,
+    shareRole: 'commenter',
+    description: 'The run\'s programme-level BUILD MEMO — the review artifact poverty-graduation Targeting PDD §11 [FIXED] names ("humans review the memo and spot-check the apps, rather than reviewing every screen"). Composed at the end of Phase 4 (the earliest point every compilation target — Learn app, Deliver app, opportunity configuration, verification flags — exists) by `build-memo`, which COMPOSES the producers\' own sections and never re-derives: (1) one row per [ACE] latitude taken and per [FIXED] ambiguity hit, citing the PDD section; (2) the Deliver `## Build memo` section of `3-commcare/pdd-to-deliver-app_summary.md`; (3) `3-commcare/pdd-to-learn-app_build-memo.md` including the Learn PDD §6(5) gap list; (4) the Phase 4 section of `4-connect/connect-opp-setup.md` mapping every PDD verification rule to where it is applied. An absent producer section is stated in the memo, never reconstructed. Linked from `products.connect.build_memo` (ace#2371).',
+  },
+  {
+    path: '4-connect/build-memo.source.md',
+    producedBy: 'build-memo',
+    consumedBy: ['run-surface-audit'],
+    phase: 'connect',
+    // Optional by contract, like every .source.md companion.
+    required: false,
+    description: 'Verbatim markdown `build-memo.md` was composed from, stored as a plain text/markdown file so `run-surface-audit`\'s DOC-FIDELITY-UNVERIFIED check has a real source to diff the published Doc against (ace#1687).',
   },
 
   // ── OCS phase (Phase 5) ────────────────────────────────────────

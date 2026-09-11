@@ -91,6 +91,9 @@ describe('source-persisted artifacts must store their composed markdown', () => 
     const paths = flagged.map((a) => a.path).sort();
     expect(paths).toEqual([
       '1-design/idea-to-pdd.md',
+      // ace#2371 — the run's build memo, composed as markdown from the
+      // producers' sections and published once per run through the importer.
+      '4-connect/build-memo.md',
       '6-qa-and-training/training-faq.md',
       '6-qa-and-training/training-flw-guide.md',
       '6-qa-and-training/training-llo-guide.md',

@@ -2,8 +2,8 @@
 name: connect-setup
 description: >
   Orchestrates Connect platform setup for an ACE opportunity:
-  program creation, opportunity shell, verification flags, and payment units.
-  Now atom-driven via the ace-connect MCP (no HITL).
+  program creation, opportunity shell, verification flags, payment units,
+  and the run's build memo (the review artifact). Now atom-driven via the ace-connect MCP (no HITL).
 model: inherit
 phase: connect-setup
 phase_display: Connect Setup
@@ -11,6 +11,7 @@ phase_ordinal: 4
 skills:
   - { name: connect-program-setup, has_judge: true,  eval_skill: connect-program-setup-eval }
   - { name: connect-opp-setup,     has_judge: false }
+  - { name: build-memo,            has_judge: false }
 ---
 
 # Connect Setup Agent (Phase 4)
@@ -51,7 +52,7 @@ returned 0/4).
   and capture the returned folder ID as `phaseFolderId`. `findOrCreate=true`
   reuses an existing same-named folder, so this is safe to call on resumed runs.
 
-Pass `phaseFolderId` to **both** skills as the `parentFolderId` for every
+Pass `phaseFolderId` to **all three** skills as the `parentFolderId` for every
 artifact write. Hold onto `runFolderId` for the Step 0 self-check at completion.
 
 ### Step 1: Program Setup
@@ -93,6 +94,36 @@ Invoke the `connect-opp-setup` skill.
   idempotent on already-active opps (skip-and-log) and still owns the
   real-LLO invite.
 
+### Step 3: Build memo (the run's review artifact — last, after Step 2)
+Invoke the `build-memo` skill with `phaseFolderId` and `runFolderId`.
+
+- **Why here.** The PDD names a build memo as a compilation target alongside
+  the Learn app, the Deliver app, the opportunity configuration and the
+  verification flags (poverty-graduation Targeting §11 [FIXED]: *"humans
+  review the memo and spot-check the apps, rather than reviewing every
+  screen"*). The end of this phase is the earliest point the other four all
+  exist, so it is the earliest point the memo can be complete. Until ace#2371
+  no run delivered one, and the design author reviewed every screen instead.
+- **Output:** `4-connect/build-memo.md` (a Google Doc, shared anyone-with-link
+  as commenter) + `4-connect/build-memo.source.md` +
+  `products.connect.build_memo` in `run_state.yaml`.
+- **It composes; it never re-derives.** It collates the Deliver `## Build
+  memo` section, `3-commcare/pdd-to-learn-app_build-memo.md`, Step 2's
+  `## Build memo — opportunity configuration and verification` section, and
+  the Phase 3–4 `decisions.yaml` rows. A missing producer section is stated in
+  the memo and returned in `gaps[]` — it does not stop the memo.
+- **Required on every run.** `lib/artifact-manifest.ts` declares
+  `4-connect/build-memo.md` `required: true`, so the boundary fence's
+  `verify_phase_artifacts(phase='connect')` fails a run that reaches it without
+  the memo, instead of passing it silently. It is required whether or not the
+  PDD names one: a conditional requirement would need a detector, and a
+  detector that misses is the silent pass this step exists to end.
+- **Ordering:** after Step 2, because Step 2 writes the Phase 4 section. Step 2
+  is what records each PDD verification rule against where it is applied —
+  including "Not configurable on Connect", which must be stated, never omitted
+  (`connect_set_verification_flags` refuses `duplicate` / `gps` /
+  `gps_radius_meters`, ace#1013).
+
 ### Completion
 
 Write the phase summary to `connect-setup_summary.md` with
@@ -108,17 +139,23 @@ Write the phase summary to `connect-setup_summary.md` with
 - Verification flags as configured
 - Payment units created (count, total budget)
 - Connect deep-link: `<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`
+- **Build memo:** its link (`products.connect.build_memo.web_view_link`), and
+  `complete` / `gaps[]` exactly as Step 3 returned them — a memo with gaps is
+  reported as such, never as complete.
 
 ### Self-check (fail loud if artifacts didn't land in 4-connect)
 
 Before returning, call
-`verify_phase_artifacts(runFolderId, phase='connect')` and confirm it reports
-**4/4** required artifacts present (`connect-program-setup.md`,
+`verify_phase_artifacts(runFolderId, phase='connect')` and confirm `ok: true` —
+all **5** required artifacts present (`connect-program-setup.md`,
 `connect-opp-setup.md`, `connect-program-setup-eval_verdict.yaml`,
-`connect-setup_summary.md`). If it returns anything less than 4/4, the writes
-landed outside the run folder (the `phaseFolderId` anchor was missed) — STOP and
-fail loud with the missing-artifact list; do NOT report the phase complete. This
-self-check is the structural preventer for jjackson/ace#635.
+`connect-setup_summary.md`, `build-memo.md`). If anything is missing, either the
+writes landed outside the run folder (the `phaseFolderId` anchor was missed) or a
+step never wrote its artifact — STOP and fail loud with the missing-artifact
+list; do NOT report the phase complete. A missing `build-memo.md` is healed by
+re-running Step 3 alone (`build-memo` never touches Connect, so it is safe to
+repeat). This self-check is the structural preventer for jjackson/ace#635 and,
+for the memo, ace#2371.
 
 ## Failure Modes
 
@@ -136,6 +173,7 @@ self-check is the structural preventer for jjackson/ace#635.
 
 ## Dry-Run Behavior
 
-When `--dry-run` is active, both skills write their full configuration
+When `--dry-run` is active, both Connect skills write their full configuration
 specs to `comms-log/dry-run-*.md` without calling any `connect_*`
-mutation atom. State tracks as `dry-run-success`.
+mutation atom, and `build-memo` composes to `comms-log/dry-run-build-memo.md`
+without publishing. State tracks as `dry-run-success`.
