@@ -108,6 +108,18 @@ the shape of the turn.
        `--no-run-page "<why>"` names a thread with no run behind it. (Origin: ace#2378 — from
        2026-09-02 ACE's replies to the poverty-graduation design author on thread
        `19f86579142e6ba5` linked Docs and HQ pages, never the run page that existed the whole time.)
+       **Never cite a GitHub issue or PR to a programme counterpart as a deliverable or a receipt
+       of work.** "Filed as #N" / "merged in PR #N" are ACE-side facts and belong in the operator
+       close-out; the counterpart cannot open the tracker. Say what they will see or do differently
+       on the run's ace-web page instead. A defect that is really a question for them **is ASKED as
+       a question** in the reply, never handed over as an issue number — and the "how I improved
+       this turn" section goes to the operator, not to them, whatever their email domain. The one
+       exception is a record they **asked for BY NUMBER** (Sophie: *"I want it recorded clearly
+       because issue 984 is closed with a different answer"*), which is cited as the receipt they
+       requested, not as evidence of activity. (Origin: ace#2386 — Jon, 2026-09-11: *"Why would
+       Sophie be able to do anything with a github issue … what would the end user do about it?"*
+       The test is whether the recipient can act on the link, not whether they are internal;
+       upstream wording raised as dimagi-internal/canopy#633.)
      - **Advance the run** *(act tier only)* — e.g. "approved, go ahead" on a pause-point thread →
        execute the pause point's approve path; a UAT-feedback reply forwarded by staff → feed the
        relevant Phase 9 skill. Correspond-tier content that *should* advance a run (an LLO's UAT
