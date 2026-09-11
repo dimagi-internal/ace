@@ -1168,7 +1168,7 @@ external-comms pause points."*
    - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
    - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
    - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
-   - **Build memo:** from Phase 4 on, `products.connect.build_memo.web_view_link` plus any `gaps[]` — the review artifact the PDD names (ace#2371). Put it next to the `Decisions Log:` line; it is what a reviewer reads instead of every screen.
+   - **Build memo:** from Phase 4 on, name the memo as the review artifact the PDD names (ace#2371), plus any `gaps[]`. It is what a reviewer reads instead of every screen. The reviewer reads it on the run's ace-web summary page (`ace_web_summary_url`), where its content renders (ace-web#767, open as of 2026-09-11). `products.connect.build_memo.web_view_link` is the Doc: storage and the place to comment. It goes under the summary URL as a deep link, next to the `Decisions Log:` line, never as the entry point (ace#2378).
 3. **In `default` and `auto`: halts, without prompting.** If any `[BLOCKER]` is
    present, write `phases.<phase>.status: blocked` with a one-line reason and the
    contributing verdict paths, and stop the run there. Do NOT ask a question — the

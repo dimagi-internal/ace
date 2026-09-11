@@ -1132,10 +1132,14 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run-surface-audit-eval` for the judged half; and
      (3) lead the operator-facing close-out with that URL. This is the link an
      operator shares; it should never be reconstructed by hand or left unverified.
-     Once Phase 4 is done, put the **build memo** link
-     (`products.connect.build_memo.web_view_link`) directly under it — the PDD
-     names that memo as what humans review instead of every screen, so it is
-     the second link, not something to go looking for (ace#2371).
+     Once Phase 4 is done, name the **build memo** as the first thing to read
+     on that page — the PDD names it as what humans review instead of every
+     screen (ace#2371). The reviewer reads it on the summary page, which is
+     where its content renders (ace-web#767, open as of 2026-09-11). The Doc
+     (`products.connect.build_memo.web_view_link`) is storage and the place
+     to comment: it goes UNDER the summary URL as a deep link, never in its
+     place. Until ace-web#767 ships, say the page does not show the memo yet
+     (ace#2378; `skills/build-memo § Where a reviewer reads it`).
 
      **(4) If `run_state.yaml.triggered_by.thread_id` is set, draft the
      close-out reply (ace#1057).** A run dispatched from a turn is a promise to
