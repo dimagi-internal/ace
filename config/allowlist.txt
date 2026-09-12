@@ -3,8 +3,12 @@
 # Two tiers (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md):
 #
 #   act:        senders listed HERE. May steer runs: resume paused runs, queue run
-#               actions, approve/reject pause points by reply. Internal staff only —
-#               run management is never external.
+#               actions, approve/reject pause points by reply. Membership is GRANTED
+#               by an operator and written down here — never inferred at triage time,
+#               and never derived from a run's own state (that is correspond). The
+#               `@dimagi.com` rule covers internal staff; anyone outside it is
+#               admitted only as ONE exact address, with a comment naming who
+#               authorized it and when.
 #   correspond: NOT listed here — derived at triage time from the routed run's state
 #               (selected_llo.contact_email, solicitation invitees, onboarding
 #               recipients, scoped to that opp's threads). Replies are drafted and
@@ -16,3 +20,9 @@
 # Comments start with #.
 
 @dimagi.com
+
+# Sophie Feintuch — programme design author for the poverty-graduation opportunity.
+# May tell ACE to trigger a run directly, with no operator relay.
+# Authorized by Jon, 2026-09-11. Scoped to this NAMED individual — deliberately NOT
+# @dimagi-associate.com as a domain.
+sfeintuch@dimagi-associate.com
