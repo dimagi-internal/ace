@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 47 atoms
+Source: `mcp/google-drive-server.ts` — 48 atoms
 
 ### `sheets_list_tabs`
 
@@ -432,6 +432,15 @@ Boundary-fence check that a phase's `phases.<phase>.products` block matches the 
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
 | `phase` | `z.string` | **required** | The phase whose products block to verify (e.g. "connect-setup", "qa-and-training"). |
+
+### `verify_run_claims`
+
+Boundary-fence REPORT (never a gate) on the run's frozen claim set — the statements about what THIS run's OUTPUT must look like, authored because a named counterpart decided something between runs. Reads `claims.yaml` from Drive and returns `{phase, ok, issues, due[], met, unmet, not_reached, indeterminate, all_met, summary}`. `due[]` is the claims whose `checkable_at` is this phase and which have no verdict yet — evaluate each against the artifacts the phase just produced, then write verdicts back with `update_yaml_file` (this atom NEVER writes; `claims` is an ARRAY, so resend the whole list via localFilePath — every merge mode replaces an array wholesale). UNMET NEVER HALTS THE RUN: what a counterpart is owed is a diff, and a halt produces no diff. Verdicts are `MET` | `UNMET` | `NOT REACHED` | `INDETERMINATE`, with `evidence_kind` (`probed` | `judged`) as an ORTHOGONAL qualifier — a claim declaring `check.kind: probe` may never be recorded `judged`; if the probe could not run that is `NOT REACHED` with the reason, and `INDETERMINATE` must name `would_settle_it`. An ABSENT claims file is `ok` with nothing due (most opps have none); an UNREADABLE one is `ok:false` and reported, never thrown. This is the claim-level companion to `verify_phase_artifacts` (Drive files) and `verify_phase_products` (typed handoff): those answer whether ACE's own bookkeeping is complete, this answers whether the change a human asked for actually happened. Design: `docs/superpowers/specs/2026-09-15-pre-run-claims-post-run-validation-design.md`. Implementation: `lib/run-claims.ts::classifyRunClaims`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive fileId of the run's claims.yaml. |
+| `phase` | `z.string` | **required** | The phase whose due claims to report (e.g. "commcare-setup"). Takes the run_state phase name, like classify_phase_writeback — NOT the manifest key. |
 
 ### `verify_caption_backing`
 

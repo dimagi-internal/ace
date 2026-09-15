@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 47, // +1: docs_finalize_bold (markdown-bold → Docs-bold finalizer, ace#2335)
+    expectedCount: 48, // +1: verify_run_claims (pre-run claims / post-run validation, report-only fence check)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path
@@ -122,6 +122,7 @@ const SERVERS: Record<string, ServerSpec> = {
       'classify_phase_writeback',
       'verify_phase_artifacts',
       'verify_phase_products',
+      'verify_run_claims',
       'verify_caption_backing',
       'render_run_readme',
       'render_decisions_log',

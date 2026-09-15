@@ -503,6 +503,14 @@ exact footgun that derailed bednet-spot-check 20260529-0651.
    - `drive_create_file` for `run_state.yaml` (initial — phases all pending)
    - `drive_create_file` for `inputs-manifest.yaml` (frozen file_id list from Step 3)
    - `drive_create_file` for `README.md` (Step 7b)
+   - **`claims.yaml` — FREEZE the claim set, if one is pending.** If
+     `ACE/<opp>/pending-claims.yaml` exists, copy it to
+     `runs/<run-id>/claims.yaml` with `frozen_at` (now) and
+     `source_run_id` (this run id) stamped, then TRASH the pending file.
+     A claim authored after this moment belongs to the NEXT run — the exam
+     cannot be rewritten once results start arriving. No pending file →
+     skip; most opportunities have none. Shape + rules: `lib/run-claims.ts`;
+     design: `docs/superpowers/specs/2026-09-15-pre-run-claims-post-run-validation-design.md`.
 
 The same create-then-use rule applies anywhere you make a folder and
 then write into it (per-phase `<N>-<phase>/` subfolders, recipe
@@ -1839,6 +1847,29 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   which it does not on any current model (§ Step 4). It is a
                   convenience view, not run state; the four checks above are
                   the actual gate
+             6b. verify_run_claims(fileId=<claims.yaml>, phase=<phase>)
+                — REPORT ONLY. It NEVER HALTS the run, and it deliberately
+                  does not appear in the Turn N+2 branch below.
+                  *Enforced:* test/agents/run-claims-fence.test.ts.
+                — Returns {phase, ok, issues[], due[], met, unmet,
+                  not_reached, indeterminate, all_met, summary}.
+                — `due[]` is the claims a counterpart's decision says THIS
+                  phase's OUTPUT must satisfy, not yet answered. For each:
+                  check it against the artifacts this phase just produced,
+                  then write the verdicts back in ONE update_yaml_file call
+                  — `claims` is an ARRAY, and EVERY merge mode replaces an
+                  array wholesale, so build the complete intended list and
+                  pass it via localFilePath (CLAUDE.md § update_yaml_file).
+                — verdict is MET | UNMET | NOT REACHED | INDETERMINATE.
+                  `evidence` is REQUIRED and names what you OBSERVED, not
+                  what you concluded. A claim declaring `check.kind: probe`
+                  may NOT be recorded `evidence_kind: judged` — if the probe
+                  could not run, that is NOT REACHED with the reason.
+                  INDETERMINATE must name `would_settle_it`.
+                — UNMET does NOT halt. Narrate it and keep going: what the
+                  counterpart is owed is a diff, and a halt produces none.
+                — No claims.yaml in the run folder → skip silently. Most
+                  opportunities have none, and that is not a defect.
              7. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
 Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
@@ -1911,6 +1942,11 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
            solicitation. Instead FINISH the write-back inline from the
            landed artifacts. See § External-resource phases: finish inline
            in `agents/orchestrator-reference.md`.
+           Independently of the branch above — and NEVER as part of it —
+           echo verify_run_claims.summary verbatim in the phase's one-line
+           summary when a claims file exists ("claims: 2/5 met, 1 not met").
+           An UNMET claim is narrated and the run continues.
+
 Turn N+3:  Self-heal sweep (§ below) — one BACKGROUND fix-and-ship
            dispatch per self-healable issue this phase filed. Never
            blocks; the run does not wait on it.
@@ -2400,6 +2436,28 @@ producer artifact as `<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml`
 — there is no top-level `verdicts/` directory), so new per-skill
 `-eval` rubrics need no change to opp-eval itself. Skills that still
 self-evaluate inline get `[INFO]` gap notes until a rubric arrives.
+
+## Run end: sweep unanswered claims
+
+**Whenever the run stops — completion, the Phase 8→9 gate, or a halt —
+sweep `runs/<run-id>/claims.yaml`.** Every claim still without a verdict
+becomes `NOT REACHED`, with `evidence` naming the checkpoint that never ran
+(`lib/run-claims.ts::sweepUnreached`).
+
+This is at RUN END and not in Phase 10 on purpose. Closeout is gated behind
+Phase 9, and the common shape today is a run that completes Phases 1–8 and
+halts at the 8→9 boundary by design — a sweep living in Phase 10 would
+never run for any of them, which is precisely the set of runs a counterpart
+is reading.
+
+**`NOT REACHED` accuses; it never passes.** A run closing with NOT REACHED
+claims is reporting a real gap, and `all_met` is false. That is the intended
+outcome, not a bug to tidy — rendering an unanswered claim as met, or
+dropping it, recreates the silence the mechanism exists to remove.
+
+Report the claim tally in the run's closing summary alongside the phase
+verdicts, and lead the counterpart-facing section with it
+(`lib/render-claims.ts`).
 
 ## Error Handling
 
