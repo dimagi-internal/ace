@@ -316,3 +316,85 @@ export function summarizeClaims(set: ClaimSet): ClaimSummary {
     summary: parts.join(', '),
   };
 }
+
+export interface DueClaim {
+  id: string;
+  claim: string;
+  artifact: string;
+  check: { kind: CheckKind; how: string };
+  authored_by: AuthoredBy;
+  person: string;
+  quote?: string;
+}
+
+export interface RunClaimsReport {
+  phase: string;
+  ok: boolean;
+  issues: string[];
+  due: DueClaim[];
+  met: number;
+  unmet: number;
+  not_reached: number;
+  indeterminate: number;
+  all_met: boolean;
+  summary: string;
+}
+
+/**
+ * The whole body of the `verify_run_claims` atom.
+ *
+ * Lives here rather than inline in `mcp/google-drive-server.ts` because the
+ * server files `await server.connect(transport)` at top level and therefore
+ * cannot be imported by a test — logic left in the atom is logic only a
+ * mirrored copy in a test can "cover", which passes whether or not the atom
+ * works.
+ *
+ * `raw` is the already-parsed claims.yaml (or `null` when the file is
+ * absent). An ABSENT file is `ok` with nothing due — most opportunities
+ * have no claims and that is not a defect. An UNREADABLE one is `ok: false`
+ * and reported; it never throws and never halts the run.
+ */
+export function classifyRunClaims(raw: unknown, phase: string): RunClaimsReport {
+  const empty = {
+    phase,
+    due: [] as DueClaim[],
+    met: 0,
+    unmet: 0,
+    not_reached: 0,
+    indeterminate: 0,
+    all_met: false,
+  };
+  if (raw === null || raw === undefined) {
+    return { ...empty, ok: true, issues: [], summary: 'no claims recorded for this run' };
+  }
+  const parsed = parseClaimSet(raw);
+  if (!parsed.ok || !parsed.claimSet) {
+    return {
+      ...empty,
+      ok: false,
+      issues: parsed.issues,
+      summary: 'claims file unreadable — reported, not halted',
+    };
+  }
+  const sum = summarizeClaims(parsed.claimSet);
+  return {
+    phase,
+    ok: true,
+    issues: [],
+    due: claimsDueAt(parsed.claimSet, phase).map((c) => ({
+      id: c.id,
+      claim: c.claim,
+      artifact: c.artifact,
+      check: c.check,
+      authored_by: c.authored_by,
+      person: c.origin.person,
+      ...(c.origin.quote ? { quote: c.origin.quote } : {}),
+    })),
+    met: sum.met,
+    unmet: sum.unmet,
+    not_reached: sum.not_reached,
+    indeterminate: sum.indeterminate,
+    all_met: sum.all_met,
+    summary: sum.summary,
+  };
+}
