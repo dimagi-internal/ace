@@ -173,6 +173,23 @@ export function classifyOpenQuestionsInline(
  * heading-stripped plain-text export rather than guessing at it. The rule that
  * `## Archive` is never inlined is enforced structurally here — the section
  * ends at the next H1/H2 — instead of relying on the reader to stop.
+ *
+ * dimagi-internal/ace#2367 (parser half): a ledger whose `## Open` / `## Archive`
+ * headings were written as literal paragraph text (not real Google Docs heading
+ * style) round-trips through the SAME `text/markdown` export as `\#\# Open` /
+ * `\#\# Archive` — Drive's exporter escapes markdown-significant punctuation in
+ * plain paragraph text exactly as it does inside table cells, and a `#` that is
+ * not part of a real structural heading is no exception. The heading regexes
+ * below (`OPEN_HEADING`, `H1_OR_H2`, `ANY_ATX_HEADING`) therefore never matched,
+ * and a correctly-shaped, fully-intact ledger came back `status: 'absent'` —
+ * blaming the ledger's shape when the shape was fine and the escaping was the
+ * only problem. `unescapeDriveMarkdown` already existed and `#` was already in
+ * its `ESCAPED_PUNCTUATION` class; the bug was purely that it ran on the
+ * section body AFTER the heading match instead of before it. Unescaping the
+ * whole read up front — before any heading regex runs — fixes that ordering
+ * and is a no-op on every shape that was already working (a real heading is
+ * never escaped, and the `text/plain` export this module also has to detect
+ * carries no backslashes at all).
  */
 
 /** CommonMark's escapable ASCII punctuation, as Drive's markdown exporter emits it. */
@@ -216,9 +233,15 @@ const BARE_OPEN_LINE = /^Open$/i;
  *   (b) no ATX headings at all but a bare `Open` line → `needs-markdown-export`
  *       (a `text/plain` export of a converted doc);
  *   (c) otherwise → `absent`.
+ *
+ * The text is unescaped (`unescapeDriveMarkdown`) BEFORE any heading regex
+ * runs, not after — see the doc comment above (ace#2367). That makes an
+ * escaped-but-correctly-shaped heading (`\#\# Open`) match like any other, and
+ * is a no-op for text that was never escaped, so the returned section (and the
+ * `needs-markdown-export` / `absent` classification) never need a second pass.
  */
 export function extractOpenSection(text: string): OpenQuestionsSectionOutcome {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const lines = unescapeDriveMarkdown(text.replace(/\r\n?/g, '\n')).split('\n');
   const start = lines.findIndex((line) => OPEN_HEADING.test(line));
 
   if (start === -1) {
@@ -252,7 +275,8 @@ export function extractOpenSection(text: string): OpenQuestionsSectionOutcome {
 
   return {
     status: 'ok',
-    section: unescapeDriveMarkdown(lines.slice(start, end).join('\n').trimEnd()),
+    // Already unescaped up front (see the doc comment above) — no second pass needed.
+    section: lines.slice(start, end).join('\n').trimEnd(),
   };
 }
 
