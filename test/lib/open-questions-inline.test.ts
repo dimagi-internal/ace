@@ -327,6 +327,96 @@ describe('reading the durable ledger back from a CONVERTED gdoc', () => {
   });
 });
 
+/**
+ * dimagi-internal/ace#2367 (parser half) — a ledger whose `## Open` /
+ * `## Archive` headings were typed as literal paragraph text (never given
+ * Google Docs' real Heading style) round-trips through the SAME
+ * `exportAs: 'text/markdown'` path the CONVERTED-doc suite above exercises,
+ * except Drive escapes the literal `#` characters exactly as it does inside a
+ * table cell: `## Open` → `\#\# Open`. The heading regexes never matched
+ * that, so a correctly-shaped, fully-intact ledger came back `absent`,
+ * blaming the ledger's shape rather than the escaping. Verified against the
+ * live ledger cited in the issue (`1oHNL2EszxRh7BEsnHd2SvxxIk11pEu2WqENI-T5JlEQ`):
+ * matching the raw read gave `absent`; unescaping before the heading match
+ * gave `ok` with all 15 rows and `## Archive` still excluded.
+ */
+describe('reading a ledger whose headings are literal, backslash-escaped text (#2367)', () => {
+  const ESCAPED_HEADING_LEDGER = [
+    '# Probe — Open Design Questions',
+    '',
+    '\\#\\# Settled — do not re-open',
+    '',
+    '- Nigeria PPI, 2020 — resolved',
+    '',
+    '\\#\\# Open',
+    '',
+    '- **id:** row-one',
+    '  **blocking:** Before Phase 3',
+    '  **raised\\_by:** 20260810-0900',
+    '',
+    '- **id:** row-two',
+    '  **blocking:** Non-blocking',
+    '  **raised\\_by:** 20260811-0900',
+    '',
+    '\\#\\# Archive',
+    '',
+    '- **id:** row-gone',
+    '  **resolved\\_at:** 2026-08-01T00:00:00Z',
+    '  **resolution\\_note:** settled long ago.',
+    '',
+  ].join('\n');
+
+  it('an escaped-but-correctly-shaped ## Open heading resolves to ok, not absent', () => {
+    const outcome = extractOpenSection(ESCAPED_HEADING_LEDGER);
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+
+    expect(outcome.section.startsWith('## Open'), 'the heading itself is unescaped').toBe(true);
+    // Both rows survive with their fields intact.
+    expect(outcome.section).toContain('**id:** row-one');
+    expect(outcome.section).toContain('**id:** row-two');
+    expect(outcome.section, 'the field escape is undone too').toContain('**raised_by:**');
+    expect(outcome.section).not.toContain('raised\\_by');
+
+    const { rows } = parseOpenRows(outcome.section);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.id)).toEqual(['row-one', 'row-two']);
+    expect(rows.map((r) => r.raisedBy)).toEqual(['20260810-0900', '20260811-0900']);
+  });
+
+  it('## Archive is still structurally excluded even though its heading was escaped too', () => {
+    const outcome = extractOpenSection(ESCAPED_HEADING_LEDGER);
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+
+    expect(outcome.section).not.toContain('## Archive');
+    expect(outcome.section).not.toContain('row-gone');
+    expect(outcome.section).not.toContain('## Settled');
+    expect(outcome.section).not.toContain('Nigeria PPI');
+  });
+
+  it('control: a genuinely heading-stripped text/plain export still asks for a re-read, not ok', () => {
+    // Same failure signature nothing else should swallow: no ATX headings anywhere,
+    // but a bare "Open" line — this must keep returning needs-markdown-export.
+    const outcome = extractOpenSection(
+      fs.readFileSync(
+        path.join(process.cwd(), 'test/fixtures/open-questions', 'converted-gdoc.text-plain.txt'),
+        'utf8',
+      ),
+    );
+    expect(outcome.status).toBe('needs-markdown-export');
+  });
+
+  it('control: a ledger with genuinely no ## Open section still returns absent', () => {
+    const outcome = extractOpenSection(
+      ['# Probe — Open Design Questions', '', '\\#\\# Archive', '', '- **id:** row-gone'].join('\n'),
+    );
+    expect(outcome.status).toBe('absent');
+    if (outcome.status !== 'absent') return;
+    expect(outcome.reason).toContain('## Open');
+  });
+});
+
 describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
