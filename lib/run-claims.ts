@@ -117,3 +117,70 @@ export function parseClaimSet(raw: unknown): ParseResult {
   }
   return { ok: true, claimSet: parsed.data, issues: [] };
 }
+
+/**
+ * Fields the fence legitimately writes after freezing.
+ * Everything else in a claim IS the exam, and cannot move.
+ */
+const VERDICT_FIELDS = new Set([
+  'verdict',
+  'evidence_kind',
+  'evidence',
+  'would_settle_it',
+  'checked_at',
+  'checked_in_phase',
+]);
+
+export function freezeClaimSet(
+  set: ClaimSet,
+  opts: { runId: string; now: string },
+): { ok: boolean; claimSet: ClaimSet | null; issues: string[] } {
+  if (set.frozen_at) {
+    return {
+      ok: false,
+      claimSet: null,
+      issues: [
+        `claim set is already frozen at ${set.frozen_at} — a claim authored later belongs to the NEXT run`,
+      ],
+    };
+  }
+  if (set.claims.length === 0) {
+    return { ok: false, claimSet: null, issues: ['refusing to freeze an empty claim set'] };
+  }
+  return {
+    ok: true,
+    claimSet: { ...set, frozen_at: opts.now, source_run_id: opts.runId },
+    issues: [],
+  };
+}
+
+/**
+ * Illegal mutations of a frozen set. Empty array = legal.
+ *
+ * Verdict fields are EXPECTED to change — the fence writes them as the run
+ * proceeds. The claim itself must not, or the exam gets rewritten once the
+ * results start arriving, which is exactly how a bar gets quietly lowered.
+ */
+export function diffFrozenClaims(frozen: ClaimSet, incoming: ClaimSet): string[] {
+  const issues: string[] = [];
+  const byId = new Map(frozen.claims.map((c) => [c.id, c]));
+  const incomingIds = new Set(incoming.claims.map((c) => c.id));
+
+  for (const c of incoming.claims) {
+    if (!byId.has(c.id)) issues.push(`claim ${c.id} was ADDED after the set was frozen`);
+  }
+  for (const c of frozen.claims) {
+    if (!incomingIds.has(c.id)) issues.push(`claim ${c.id} was REMOVED after the set was frozen`);
+  }
+  for (const c of incoming.claims) {
+    const before = byId.get(c.id);
+    if (!before) continue;
+    for (const key of Object.keys({ ...before, ...c })) {
+      if (VERDICT_FIELDS.has(key)) continue;
+      const a = JSON.stringify((before as Record<string, unknown>)[key]);
+      const b = JSON.stringify((c as Record<string, unknown>)[key]);
+      if (a !== b) issues.push(`claim ${c.id}: \`${key}\` was reworded after the set was frozen`);
+    }
+  }
+  return issues;
+}
