@@ -513,3 +513,14 @@ for dry-run purposes (same convention as `ocs-chatbot-eval`).
 | 2026-04-19 | Quick-mode template: add `Unexpected:` row (skill was already surfacing unexpected files but the template omitted it); tighten Notes wording with three concrete examples; specify stdout summary format including unexpected count. Surfaced in first run against a real partial opp (cosmetics-fgd-pilot) | ACE team (qa/eval iteration loop) |
 | 2026-05-05 | **Path-scheme migration on the umbrella aggregator.** Discovery (Step 5) walks each phase folder under `runs/<run-id>/` collecting `*_verdict*.yaml` (instead of `ACE/<opp>/verdicts/*.yaml`, which is gone). Outputs land under `10-closeout/opp-eval/`: scorecard (`opp-eval_scorecard-<mode>.md`), verdict (`opp-eval_verdict-<mode>.yaml`), gate brief (`opp-eval_gate-brief-deep.md`), and `--monitor` trend (`opp-eval_trend.md`). Verdict YAML `capture_path` field updated to `runs/<run-id>/`. Wiring fix — prior glob would have found zero verdicts on a fresh run. No behavior change beyond paths. | ACE team |
 | 2026-05-29 | **Anti-laundering deployability backstop (ITN post-mortem).** Added step 10b: an independent LLM-as-Judge deployability spot-check on the highest-stakes raw artifact (deliver blueprint → synthetic records → solicitation), decoupled from all upstream verdicts. If it scores < 5 while the rollup is ≥ 7, the run verdict is capped at `warn` with a `[BLOCKER]`. Previously opp-eval was a pure score-rollup with no independent fitness term, so inflated per-skill scores (the ITN 9.6s) laundered straight into a cycle PASS. New `deployability_probe` block in the verdict YAML. The one scoped exception to "trust the upstream judgments." Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+
+## Claims
+
+If the run folder holds `claims.yaml`, roll its tally into the scorecard via `summarizeClaims`
+(`lib/run-claims.ts`) and render the counterpart-facing section with `renderClaimsSection`
+(`lib/render-claims.ts`).
+
+`all_met` is TRUE only when EVERY claim is `MET`. A run where every ANSWERED claim passed but a
+checkpoint never ran has **not** met its claims — `NOT REACHED` accuses, it never passes, and
+reporting otherwise recreates the silence the mechanism exists to remove. Design:
+`docs/superpowers/specs/2026-09-15-pre-run-claims-post-run-validation-design.md`.
