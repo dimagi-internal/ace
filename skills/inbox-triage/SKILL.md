@@ -71,6 +71,20 @@ inbox is exactly when it must run. Ending the turn at this line is how a counter
 Apply the noise table, then present the remaining queue (sender, subject, date) so the human sees
 the shape of the turn.
 
+**The search row's `from` is the thread's FIRST sender — never tier it, never noise-classify it.**
+A `gog gmail search -j` thread row reports `date` from the thread's NEWEST message and `from` from
+its OLDEST, and says nothing about the mismatch. On any thread past its first reply those are two
+different people. Both the "sender" you present here and the noise-table match must come from the
+structured read (`canopy email read <threadId>`), whose `messages[-1].from` is the counterpart
+actually writing to ACE; use the row only for the thread id, the subject and the date. Two distinct
+failures otherwise, and §2c cannot save you from the second because it runs after the disposal:
+a thread STARTED by an `@dimagi.com` colleague and last replied to by an external party presents as
+**act tier** on this row, and a thread whose first message came from an auto-dismiss sender but
+whose newest message is a real human reply is **dropped as noise and never reaches §2 at all**.
+(Measured 2026-09-15 on thread `19f86579142e6ba5`: the row read `from: Neal Lesh <nlesh@dimagi.com>`
+against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 September message
+33 messages later was Sophie Feintuch's. ace#2399.)
+
 ### 2. For EACH thread, in order — handle fully before moving on
 
   a. **Read** the full thread via `email-communicator` (read).
