@@ -342,3 +342,11 @@ counts by class, and the open-thread age list. Feed this into the turn's combine
 - `agent-turn-review` — pre-send audit for every reply. Read `skills/agent-turn-review/SKILL.md`
   top to bottom and apply its A/B/C/D checklist INLINE; never dispatch it (or
   `canopy:agent-turn-review`) via the `Skill` tool, which drops §D. Supersedes `self-review`.
+
+## Terminology
+
+**The platform is `Connect`, never `CommCare Connect`** — in every word this skill
+puts in front of a human. The full rule, including the carve-outs for CommCare the
+mobile app, CommCare HQ and code-level identifiers, is
+[`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
+binding on this skill's output.

@@ -113,3 +113,67 @@ describe('Connect terminology in generated content', () => {
     expect(platformSetup).toMatch(/search 'CommCare'/);
   });
 });
+
+/**
+ * The reach half of the rule (added after the ACE-side miss described below).
+ *
+ * The terminology rule itself was correct and had lived in
+ * `skills/_terminology.md` for months. It was enforced ONLY under `templates/`,
+ * and NOT ONE of the prose-producing or outbound skills linked it. So the rule
+ * was invisible to the writer at the moment of writing: on
+ * `turmeric-market-study/20260914-1742` an agent composed the first outbound
+ * email to a partner organisation — the single most external artifact the
+ * system produces — and wrote "a CommCare Connect programme" twice. No test
+ * could fire, because an email is not a file under `templates/`.
+ *
+ * A rule nobody is pointed at is a rule that gets re-litigated per instruction,
+ * which is exactly what the operator asked us to stop doing. This test makes
+ * the LINK a structural requirement: every skill that writes human-facing prose
+ * or sends mail must carry the pointer, so a new skill cannot be added without
+ * inheriting the rule.
+ */
+const TERMINOLOGY_BOUND = [
+  // Shared contracts — these reach the six training skills + idea-to-pdd and
+  // solicitation-create transitively, which is why those are not listed here.
+  'skills/_training-template.md',
+  'skills/_solicitation-template.md',
+  // Producers and outbound surfaces no shared contract covers.
+  'skills/pdd-to-work-order/SKILL.md',
+  'skills/llo-onboarding/SKILL.md',
+  'skills/llo-launch/SKILL.md',
+  'skills/llo-uat/SKILL.md',
+  'skills/llo-feedback/SKILL.md',
+  'skills/llo-invite/SKILL.md',
+  'skills/email-communicator/SKILL.md',
+  'skills/inbox-triage/SKILL.md',
+  'skills/opp-closeout/SKILL.md',
+];
+
+describe('Connect terminology reaches the writer', () => {
+  it('every prose-producing / outbound skill links the terminology contract', () => {
+    const missing = TERMINOLOGY_BOUND.filter((rel) => {
+      const body = readFileSync(join(REPO_ROOT, rel), 'utf8');
+      return !body.includes('_terminology.md');
+    });
+
+    expect(
+      missing,
+      `These write prose a human reads, or send mail, and do not link the terminology\n` +
+        `contract — so the writer never sees the rule:\n\n` +
+        missing.map((m) => `  ${m}`).join('\n') +
+        `\n\nAdd a "## Terminology" section pointing at skills/_terminology.md.\n` +
+        `Banning the phrase under templates/ is not enough: the miss that prompted this\n` +
+        `test was an outbound email, which is not a file in this repo at all.`,
+    ).toEqual([]);
+  });
+
+  it('the terminology contract still states the rule it is being linked for', () => {
+    // Guards the pointer against rotting into a link to a file that no longer
+    // says anything. A reference is only worth requiring if the target binds.
+    const rule = readFileSync(join(REPO_ROOT, 'skills/_terminology.md'), 'utf8');
+    expect(rule).toMatch(/Always\s+`?Connect`?\.\s*Never\s+`?CommCare Connect`?/i);
+    // ...and still carves out CommCare-the-product, so the rule cannot be read
+    // as a blanket scrub.
+    expect(rule).toMatch(/CommCare HQ/);
+  });
+});
