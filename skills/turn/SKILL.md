@@ -72,7 +72,12 @@ improvements ship once (a canopy PR) instead of N backports.
   `gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client canopy --json`
   (the mailbox and client are the literals from `config/agent.json` — `$ACE_GMAIL_ACCOUNT` /
   `$ACE_GMAIL_CLIENT` were RETIRED with ace#1147 and expand to EMPTY in a shell)
-  (doubles as the inbox queue pull). Dead gog auth:
+  (doubles as the inbox queue pull). **As a queue pull it names the wrong person: each thread row's
+  `date` is the NEWEST message's, its `from` is the OLDEST message's, and nothing in the row says
+  so — so never tier or noise-classify a sender off this output.** Take the sender from the
+  structured read (`canopy email read <threadId>` → `messages[-1].from`) and use the row only for
+  the thread id, subject and date; `skills/inbox-triage` § 1 carries the full rule and the two
+  failure shapes (ace#2399). Dead gog auth:
   `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is the SHARED
   fleet client (`canopy`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
   (`--account`). `config/agent.json`'s `gog_client` is authoritative for the email engine; setting
