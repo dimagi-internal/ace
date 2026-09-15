@@ -249,3 +249,70 @@ export function recordVerdict(
 export function claimsDueAt(set: ClaimSet, phase: string): Claim[] {
   return set.claims.filter((c) => c.checkable_at === phase && !c.verdict);
 }
+
+/**
+ * Closeout: a claim nobody answered is a claim nobody answered.
+ *
+ * Rendering that as MET, or omitting it, is the exact silence this whole
+ * mechanism exists to kill — so it becomes NOT REACHED, which accuses.
+ */
+export function sweepUnreached(set: ClaimSet, now: string): ClaimSet {
+  return {
+    ...set,
+    claims: set.claims.map((c) =>
+      c.verdict
+        ? c
+        : {
+            ...c,
+            verdict: 'NOT REACHED' as const,
+            evidence_kind: (c.check.kind === 'probe' ? 'probed' : 'judged') as EvidenceKind,
+            evidence: `the \`${c.checkable_at}\` checkpoint never ran in this run`,
+            checked_at: now,
+          },
+    ),
+  };
+}
+
+export interface ClaimSummary {
+  total: number;
+  met: number;
+  unmet: number;
+  not_reached: number;
+  indeterminate: number;
+  /** Claims with no verdict yet — a mid-run state, not a closeout one. */
+  unanswered: number;
+  all_met: boolean;
+  summary: string;
+}
+
+export function summarizeClaims(set: ClaimSet): ClaimSummary {
+  const count = (v: ClaimVerdict) => set.claims.filter((c) => c.verdict === v).length;
+  const met = count('MET');
+  const unmet = count('UNMET');
+  const notReached = count('NOT REACHED');
+  const indeterminate = count('INDETERMINATE');
+  const unanswered = set.claims.filter((c) => !c.verdict).length;
+  const total = set.claims.length;
+
+  // `all_met` requires that NOTHING is outstanding. A run where every
+  // ANSWERED claim passed but a checkpoint never ran has not met its
+  // claims — reporting otherwise recreates the silence we are removing.
+  const allMet = total > 0 && met === total;
+
+  const parts: string[] = [`${met}/${total} met`];
+  if (unmet > 0) parts.push(`${unmet} not met`);
+  if (notReached > 0) parts.push(`${notReached} never reached`);
+  if (indeterminate > 0) parts.push(`${indeterminate} indeterminate`);
+  if (unanswered > 0) parts.push(`${unanswered} still open`);
+
+  return {
+    total,
+    met,
+    unmet,
+    not_reached: notReached,
+    indeterminate,
+    unanswered,
+    all_met: allMet,
+    summary: parts.join(', '),
+  };
+}

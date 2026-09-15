@@ -223,3 +223,73 @@ describe('claimsDueAt', () => {
     expect(claimsDueAt(answered, 'commcare-setup')).toHaveLength(0);
   });
 });
+
+// ── Task 4: closeout sweep + summary ───────────────────────────────
+
+import { sweepUnreached, summarizeClaims } from '../../lib/run-claims.js';
+
+const THREE = {
+  ...VALID,
+  claims: [
+    { ...VALID.claims[0], id: 'a', checkable_at: 'commcare-setup' },
+    { ...VALID.claims[0], id: 'b', checkable_at: 'connect-setup' },
+    { ...VALID.claims[0], id: 'c', checkable_at: 'ocs-setup' },
+  ],
+};
+const three = () =>
+  freezeClaimSet(parseClaimSet(THREE).claimSet!, { runId: 'r1', now: 't0' }).claimSet!;
+
+describe('sweepUnreached', () => {
+  it('marks every unanswered claim NOT REACHED at closeout', () => {
+    const swept = sweepUnreached(three(), '2026-09-15T20:00:00Z');
+    expect(swept.claims.every((c) => c.verdict === 'NOT REACHED')).toBe(true);
+    expect(swept.claims[0].evidence).toMatch(/never ran/i);
+  });
+
+  it('does not overwrite a verdict already recorded', () => {
+    const one = recordVerdict(three(), 'a', {
+      verdict: 'MET', evidence_kind: 'probed', evidence: 'x', phase: 'commcare-setup', now: 't1',
+    }).claimSet!;
+    const swept = sweepUnreached(one, 't9');
+    expect(swept.claims.find((c) => c.id === 'a')?.verdict).toBe('MET');
+    expect(swept.claims.find((c) => c.id === 'b')?.verdict).toBe('NOT REACHED');
+  });
+});
+
+describe('summarizeClaims', () => {
+  it('REGRESSION CONTROL: every answered claim MET but one never reached is NOT fully met', () => {
+    let s = three();
+    for (const id of ['a', 'b']) {
+      s = recordVerdict(s, id, {
+        verdict: 'MET', evidence_kind: 'probed', evidence: 'x', phase: 'p', now: 't',
+      }).claimSet!;
+    }
+    const swept = sweepUnreached(s, 't9');
+    const sum = summarizeClaims(swept);
+    expect(sum.met).toBe(2);
+    expect(sum.not_reached).toBe(1);
+    expect(sum.all_met).toBe(false);
+    expect(sum.summary).toMatch(/1 never reached/i);
+  });
+
+  it('a partial run reports verdicts for the phases it did reach', () => {
+    const s = recordVerdict(three(), 'a', {
+      verdict: 'UNMET', evidence_kind: 'probed', evidence: 'still marked paid',
+      phase: 'commcare-setup', now: 't1',
+    }).claimSet!;
+    const sum = summarizeClaims(s);
+    expect(sum.unmet).toBe(1);
+    expect(sum.unanswered).toBe(2);
+    expect(sum.all_met).toBe(false);
+  });
+
+  it('all met and all answered is all_met', () => {
+    let s = three();
+    for (const id of ['a', 'b', 'c']) {
+      s = recordVerdict(s, id, {
+        verdict: 'MET', evidence_kind: 'probed', evidence: 'x', phase: 'p', now: 't',
+      }).claimSet!;
+    }
+    expect(summarizeClaims(s).all_met).toBe(true);
+  });
+});
