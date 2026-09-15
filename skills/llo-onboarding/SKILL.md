@@ -235,6 +235,15 @@ When `--dry-run` is active:
 - Do not send emails
 - State tracks as `dry-run-success`
 
+
+## Terminology
+
+**The platform is `Connect`, never `CommCare Connect`** — in every word this skill
+puts in front of a human. The full rule, including the carve-outs for CommCare the
+mobile app, CommCare HQ and code-level identifiers, is
+[`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
+binding on this skill's output.
+
 ## Change Log
 
 | Date | Change | Author |

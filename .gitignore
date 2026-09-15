@@ -67,3 +67,4 @@ __pycache__/
 
 # scratch scratch dir used by ad-hoc calibration walks — never a deliverable
 tmp/
+.DS_Store

@@ -173,3 +173,11 @@ is a publish-only no-op in every mode. The rows below describe behavior
   email body for approval.
 - **Dry-run:** Steps 1-3 (no send), write `invitations.md` with
   `Status: dry-run`.
+
+## Terminology
+
+**The platform is `Connect`, never `CommCare Connect`** — in every word this skill
+puts in front of a human. The full rule, including the carve-outs for CommCare the
+mobile app, CommCare HQ and code-level identifiers, is
+[`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
+binding on this skill's output.

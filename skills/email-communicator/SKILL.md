@@ -124,3 +124,11 @@ When `--dry-run` is active:
   (and without the approval gate). Also write the composed email to `comms-log/dry-run-<step>.md` per
   the skills README contract. Return a synthetic message ID for logging.
 - **Search/read:** Execute normally (read-only operations are safe in dry-run).
+
+## Terminology
+
+**The platform is `Connect`, never `CommCare Connect`** — in every word this skill
+puts in front of a human. The full rule, including the carve-outs for CommCare the
+mobile app, CommCare HQ and code-level identifiers, is
+[`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
+binding on this skill's output.

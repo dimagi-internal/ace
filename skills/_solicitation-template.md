@@ -256,3 +256,11 @@ Edit when:
   `agents/ace-orchestrator.md` and Phase 9 entry-gate code).
 - Connect-labs MCP adds/removes an atom (update inventory).
 - Phase 8 sequencing changes.
+
+## Terminology
+
+**The platform is `Connect`, never `CommCare Connect`** — in every word this skill
+puts in front of a human. The full rule, including the carve-outs for CommCare the
+mobile app, CommCare HQ and code-level identifiers, is
+[`skills/_terminology.md`](./_terminology.md). Read it before writing prose; it is
+binding on this skill's output.
