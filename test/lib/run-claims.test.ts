@@ -127,3 +127,99 @@ describe('diffFrozenClaims', () => {
     expect(diffFrozenClaims(f, answered)).toEqual([]);
   });
 });
+
+// ── Task 3: verdict recording ──────────────────────────────────────
+
+import { recordVerdict, claimsDueAt } from '../../lib/run-claims.js';
+
+const frozenSet = () =>
+  freezeClaimSet(pending(), { runId: 'r1', now: '2026-09-15T10:30:00Z' }).claimSet!;
+
+describe('recordVerdict', () => {
+  it('records MET with probed evidence', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'MET',
+      evidence_kind: 'probed',
+      evidence: 'CCZ b3f1c2 — 0 matches for <connect:payment>',
+      phase: 'commcare-setup',
+      now: '2026-09-15T14:02:11Z',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.claimSet?.claims[0].verdict).toBe('MET');
+    expect(r.claimSet?.claims[0].checked_in_phase).toBe('commcare-setup');
+  });
+
+  it('REFUSES a probe-kind claim recorded as judged — the degradation this exists to prevent', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'MET',
+      evidence_kind: 'judged',
+      evidence: 'looked about right',
+      phase: 'commcare-setup',
+      now: 'n',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join(' ')).toMatch(/probe/i);
+  });
+
+  it('REFUSES INDETERMINATE without would_settle_it', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'INDETERMINATE',
+      evidence: 'ambiguous',
+      phase: 'commcare-setup',
+      now: 'n',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join(' ')).toMatch(/would_settle_it/);
+  });
+
+  it('accepts INDETERMINATE when it names what would settle it', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'INDETERMINATE',
+      evidence: 'the CCZ has two distribution forms',
+      would_settle_it: 'which form the opportunity binds as the payable deliver unit',
+      phase: 'commcare-setup',
+      now: 'n',
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('refuses an unknown claim id rather than silently doing nothing', () => {
+    const r = recordVerdict(frozenSet(), 'no-such-claim', {
+      verdict: 'MET',
+      evidence_kind: 'probed',
+      evidence: 'x',
+      phase: 'p',
+      now: 'n',
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('requires non-empty evidence for every verdict', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'UNMET',
+      evidence_kind: 'probed',
+      evidence: '',
+      phase: 'p',
+      now: 'n',
+    });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('claimsDueAt', () => {
+  it('returns only claims whose checkable_at matches', () => {
+    expect(claimsDueAt(frozenSet(), 'commcare-setup')).toHaveLength(1);
+    expect(claimsDueAt(frozenSet(), 'connect-setup')).toHaveLength(0);
+  });
+
+  it('does not re-return a claim that already has a verdict', () => {
+    const answered = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'MET',
+      evidence_kind: 'probed',
+      evidence: 'x',
+      phase: 'commcare-setup',
+      now: 'n',
+    }).claimSet!;
+    expect(claimsDueAt(answered, 'commcare-setup')).toHaveLength(0);
+  });
+});

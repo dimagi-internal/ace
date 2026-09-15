@@ -184,3 +184,68 @@ export function diffFrozenClaims(frozen: ClaimSet, incoming: ClaimSet): string[]
   }
   return issues;
 }
+
+export interface VerdictInput {
+  verdict: ClaimVerdict;
+  evidence_kind?: EvidenceKind;
+  evidence: string;
+  would_settle_it?: string;
+  phase: string;
+  now: string;
+}
+
+/**
+ * Record one claim's verdict. Every rule that keeps the vocabulary honest
+ * lives here rather than in the caller, because the caller is a prompt.
+ */
+export function recordVerdict(
+  set: ClaimSet,
+  claimId: string,
+  v: VerdictInput,
+): { ok: boolean; claimSet: ClaimSet | null; issues: string[] } {
+  const idx = set.claims.findIndex((c) => c.id === claimId);
+  if (idx === -1) {
+    return { ok: false, claimSet: null, issues: [`no claim with id \`${claimId}\` in this set`] };
+  }
+  const claim = set.claims[idx];
+  const issues: string[] = [];
+
+  if (!v.evidence || v.evidence.trim() === '') {
+    issues.push(`claim ${claimId}: every verdict needs evidence naming what was observed`);
+  }
+  // A probe that quietly becomes an opinion is the failure this vocabulary
+  // exists to prevent. If the probe could not run, that is NOT REACHED.
+  if (claim.check.kind === 'probe' && v.evidence_kind === 'judged') {
+    issues.push(
+      `claim ${claimId}: declares a probe check, so it cannot be recorded as \`judged\` — ` +
+        `if the probe could not run, record NOT REACHED with the reason`,
+    );
+  }
+  if (v.verdict === 'INDETERMINATE' && (!v.would_settle_it || v.would_settle_it.trim() === '')) {
+    issues.push(
+      `claim ${claimId}: INDETERMINATE must name \`would_settle_it\` — otherwise it is where a ` +
+        `claim goes to avoid failing`,
+    );
+  }
+  if (issues.length > 0) return { ok: false, claimSet: null, issues };
+
+  const resolvedKind: EvidenceKind =
+    v.evidence_kind ?? (claim.check.kind === 'probe' ? 'probed' : 'judged');
+
+  const claims = [...set.claims];
+  claims[idx] = {
+    ...claim,
+    verdict: v.verdict,
+    evidence_kind: resolvedKind,
+    evidence: v.evidence,
+    ...(v.would_settle_it ? { would_settle_it: v.would_settle_it } : {}),
+    checked_at: v.now,
+    checked_in_phase: v.phase,
+  };
+  return { ok: true, claimSet: { ...set, claims }, issues: [] };
+}
+
+/** Claims due at this phase that do not yet have a verdict. */
+export function claimsDueAt(set: ClaimSet, phase: string): Claim[] {
+  return set.claims.filter((c) => c.checkable_at === phase && !c.verdict);
+}
