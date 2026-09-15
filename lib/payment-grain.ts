@@ -24,6 +24,8 @@
  * unit is.
  */
 
+import { normalizeDriveExport } from './drive-export';
+
 /** Terms that make a grain (or a rate unit) day-scoped. */
 export const DAY_TERMS: readonly string[] = ['date', 'day', 'daily', 'calendar day', 'per day'];
 
@@ -89,12 +91,30 @@ export function classifyGrainRelation(unit: string, grain: string): GrainRelatio
  * reading a PDD body it does not otherwise parse, and Program Parameters keys
  * are snake_case and unique within a PDD. Returns `null` when the row is
  * absent or its value is empty.
+ *
+ * **Normalises Drive markdown-export escaping first (dimagi-internal/ace#2398).**
+ * Both callers are handed a Drive export of a NATIVE Google Doc — every PDD is
+ * one since ace#1061 — and Drive's `text/markdown` exporter escapes
+ * markdown-significant punctuation, so a snake_case key arrives as
+ * `entity\_id\_grain` and the literal match silently returns null. That turned
+ * `pdd-to-work-order-qa § payment_unit_matches_entity_grain` into a permanent
+ * "not applicable" PASS on every run — ace#1946's check shipped inert for the
+ * second time (the first was ace#2124). Normalising HERE rather than in each
+ * caller fixes the class: the PDD-side check (ace#1420) and the work-order-side
+ * check (ace#1946) share this function, and so will any future reader.
+ *
+ * What normalisation cannot rescue, and callers must know: a `text/plain`
+ * export of a native gdoc drops the table structure entirely (one cell per
+ * line, no pipes), so there is no row left to match. `--pdd` must therefore be
+ * the MARKDOWN export even where the same skill reads its own artifact as
+ * plain text.
  */
 export function readProgramParameter(text: string, key: string): string | null {
   if (!text) return null;
+  const normalized = normalizeDriveExport(text);
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`^\\s*\\|\\s*\`?${escaped}\`?\\s*\\|([^|]*)\\|`, 'im');
-  const m = text.match(re);
+  const m = normalized.match(re);
   if (!m) return null;
   const value = m[1].replace(/`/g, '').trim();
   return value.length > 0 ? value : null;
