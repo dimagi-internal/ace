@@ -194,6 +194,48 @@ the shape of the turn.
      `open-questions.md` flattened by an earlier plain-text write, so Phase 1 could read none of
      its 15 open rows.)
 
+### 2b. Author CLAIMS for anything the counterpart DECIDED
+
+When an **act**-tier counterpart decides something that changes what the next run must BUILD,
+record it as claims in `ACE/<opp>/pending-claims.yaml` (shape + rules: `lib/run-claims.ts`;
+design: `docs/superpowers/specs/2026-09-15-pre-run-claims-post-run-validation-design.md`).
+
+**Why this exists.** Routing their words into a store is not the same as the work happening. A
+decision can be recorded correctly, bind correctly on the next run, and still never reach the
+artifact they actually read — silently, because every existing gate passes. `feedback-ledger`
+answers *did their input reach us*; claims answer *did the work implied by it happen*. It has
+already gone wrong here: `poverty-graduation` carried a decision row recording that the Deliver
+app, the Connect opportunity and the support assistant disagreed about whether consumption
+support is paid. Nothing could ask them to agree, because "these three artifacts must agree" is
+not a property any check could express.
+
+**One claim per ARTIFACT that must change — never one per decision.** *"Make the Deliver app,
+the Connect opportunity and the support assistant agree that consumption support is unpaid"* is
+ONE decision and THREE claims, because the three artifacts are produced in three different
+phases. As a single claim it is unverifiable at any one checkpoint, and it fails as a lump —
+telling the reader nothing about which surface is wrong.
+
+**Carry their own acceptance criteria VERBATIM.** When a counterpart says what they want to see
+(*"I want to see the memo, whether Targeting v1.1 compiles as Component 2, and whether my
+comments land"*), each becomes a claim with `authored_by: counterpart` and their words in
+`origin.quote`. Claims ACE drafts are `authored_by: ace`. They render distinctly, so a bar the
+counterpart set cannot be quietly softened into one ACE set — that visibility is the only real
+check on ACE marking its own exam.
+
+Each claim states ONE checkable property of ONE artifact, names `checkable_at` (the first phase
+whose output can settle it), and declares `check.kind`: `probe` where a mechanical check exists,
+`judged` where it does not. **Do not declare a probe you cannot actually write** — a `probe`
+claim that degrades into an opinion is refused at record time, and correctly so.
+
+**Do NOT write claims into `decisions.yaml`.** A claim is **not a decision** — ACE weighed
+nothing and chose nothing. Writing it there fabricates a deliberation that never happened and
+corrupts the one store whose worth depends on honestly recording what ACE actually considered
+(Jon, 2026-07-27: *"not everything can be constituted as a decision"*).
+
+Claims are authored here and frozen when the next run starts. A claim authored while a run is
+already under way belongs to the run after it — the exam cannot be rewritten once results are
+arriving.
+
 ### 3. Mark handled threads read
 `bin/ace-mark-read <threadId> …` once fully handled or dismissed — NOT if still awaiting a human
 decision. (Reading via the API does not clear the unread flag. In zsh, pipe ids through `xargs` —
