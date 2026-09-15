@@ -101,6 +101,21 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
    which catches a self-contradicting § 6 but not a uniformly-per-visit § 6
    against a day-scoped grain (ace#1946).
 
+   **`--pdd` takes the `text/markdown` export, even though `--artifact` takes
+   `text/plain` (ace#2398).** The two flags legitimately want different formats,
+   because the grain lives in a TABLE and the work-order checks do not. A
+   `text/plain` export of a native gdoc flattens every table to one cell per
+   line, so `| entity_id_grain | … |` does not survive it at all and the grain
+   check degrades to `not applicable` — which PASSES, silently, with `--pdd`
+   correctly supplied. That is how ace#1946's check shipped inert a second time
+   (measured on `poverty-graduation/20260915-1518`; the first was ace#2124).
+   `readProgramParameter` now normalises the markdown export's backslash
+   escaping (`entity\_id\_grain`) itself, so the markdown form works; nothing
+   can rescue the plain form, because the table is gone before the parser runs.
+   **If the check reports `not applicable`, treat it as a defect to investigate,
+   not as a clean pass** — a run that genuinely has no grain to check should be
+   rare.
+
 6. **Compose and write the verdict YAML** to `1-design/pdd-to-work-order-qa_result.yaml` per the QA verdict schema (`lib/qa-types.ts`). `verdict: pass` iff every check passes; `verdict: fail` with `failures[]` array otherwise (each entry: `{check, detail, auto_fix_hint}`). `verdict: incomplete` if a check could not be evaluated (e.g., decisions.yaml unreadable).
 
 7. **Trigger the producer-retry loop on `verdict: fail`** per `agents/idea-to-design.md § Step 2.4`. After retry: re-run QA. Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures.

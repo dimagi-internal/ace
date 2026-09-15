@@ -892,6 +892,51 @@ Dimagi will settle each approved payable unit within 30 days of invoice receipt.
     const r = checkPaymentUnitMatchesEntityGrain(GDOC_WO_PLAIN, { pddText: PDD_VISIT_GRAIN });
     expect(r.pass).toBe(true);
   });
+
+  // ── dimagi-internal/ace#2398 ──────────────────────────────────────
+  // Every fixture above hands the check a HAND-WRITTEN markdown table, and
+  // that is why ace#1946 shipped inert a second time. At runtime `--pdd` is a
+  // Drive export of a NATIVE Google Doc (every PDD since ace#1061), and
+  // neither export produces `| entity_id_grain |`:
+  //
+  //   text/markdown -> keeps the pipes, escapes the key: `| entity\_id\_grain |`
+  //   text/plain    -> drops the table entirely: `\tentity_id_grain\r`
+  //
+  // `readProgramParameter` matched the literal row, so BOTH returned null, the
+  // check reported "not applicable" and PASSED — on every run, with `--pdd`
+  // correctly supplied. Measured on poverty-graduation/20260915-1518.
+  const PDD_DAY_GRAIN_MD_EXPORT = String.raw`
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| payment\_rate\_min | 2\.00 |
+| entity\_id\_grain | worker username \+ encounter date |
+`;
+
+  test('reads entity_id_grain from a Drive MARKDOWN export, whose keys are backslash-escaped', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE, {
+      pddText: PDD_DAY_GRAIN_MD_EXPORT,
+    });
+    // The whole point: this must be a real FAILURE, never "not applicable".
+    expect(r.pass).toBe(false);
+    expect(r.detail).not.toMatch(/not applicable|no entity_id_grain/i);
+    expect(r.detail).toMatch(/visit/i);
+    expect(r.detail).toMatch(/day/i);
+  });
+
+  test('a markdown-exported PDD whose grain agrees with the rate still passes', () => {
+    const pdd = String.raw`
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| entity\_id\_grain | one entity per household visit |
+`;
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE, { pddText: pdd });
+    expect(r.pass).toBe(true);
+    expect(r.detail).not.toMatch(/not applicable|no entity_id_grain/i);
+  });
 });
 
 // ace#2007 — poverty-graduation/20260905-0924's work order paired a `USD [TBD]`
