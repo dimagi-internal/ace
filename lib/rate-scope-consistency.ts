@@ -79,14 +79,78 @@ export interface RateScopeProse {
  * and stays — asking what the rate covers is exactly the composition ask. Only
  * the *separate funding* framing is wrong.
  */
-const SEPARATE_FUNDING_PATTERNS: readonly { re: RegExp; label: string }[] = [
-  { re: /funded\s+separately/gi, label: '"funded separately"' },
-  { re: /separately\s+funded/gi, label: '"separately funded"' },
-  { re: /funded\s+outside\s+(?:the\s+)?rate/gi, label: '"funded outside the rate"' },
-  { re: /reimbursed\s+separately/gi, label: '"reimbursed separately"' },
-  { re: /billed\s+separately/gi, label: '"billed separately"' },
-  { re: /a\s+separate\s+budget\s+line/gi, label: '"a separate budget line"' },
+const SEPARATE_FUNDING_PATTERNS: readonly {
+  re: RegExp;
+  label: string;
+  /**
+   * Whether naming a non-respondent funder can redeem this phrasing
+   * (see {@link isPrincipalFundedDisclosure}, ace#2434).
+   *
+   * Only the `funded` family. **Reimbursement and billing are respondent-side
+   * verbs whatever follows them** — "costs reimbursed separately by the
+   * programme" means the partner incurs the cost and the programme pays it
+   * back, which is precisely the separately-funded line #2265 forbids, not a
+   * disclosure that a principal procures something the partner never touches.
+   * "A separate budget line" is a request, so it is respondent-side too.
+   */
+  attributable: boolean;
+}[] = [
+  { re: /funded\s+separately/gi, label: '"funded separately"', attributable: true },
+  { re: /separately\s+funded/gi, label: '"separately funded"', attributable: true },
+  {
+    re: /funded\s+outside\s+(?:the\s+)?rate/gi,
+    label: '"funded outside the rate"',
+    attributable: true,
+  },
+  { re: /reimbursed\s+separately/gi, label: '"reimbursed separately"', attributable: false },
+  { re: /billed\s+separately/gi, label: '"billed separately"', attributable: false },
+  { re: /a\s+separate\s+budget\s+line/gi, label: '"a separate budget line"', attributable: false },
 ];
+
+/**
+ * Terms that name the RESPONDENT. A separate-funding phrase attributed to one
+ * of these is still the #2265 defect — "funded separately by the partner" is
+ * the respondent pushing its own costs outside the rate, said backwards.
+ */
+const RESPONDENT_TERMS =
+  /\b(?:you|your|yours|partner|partner's|respondent|respondent's|applicant|applicant's|bidder|llo|subcontractor|supplier|vendor)\b/i;
+
+/**
+ * An attribution immediately following a separate-funding phrase: who funds it.
+ *
+ * Only a TRAILING `by <funder>` / `through <funder>` is recognised, because that
+ * is the natural English for all six patterns above ("funded separately by X",
+ * "billed separately by X"). A leading attribution ("Dimagi funds the asset
+ * separately") is deliberately NOT matched — narrower is safer here, and the
+ * cost of a miss is one rewording rather than a weakened publication gate.
+ */
+const FUNDER_ATTRIBUTION = /^[\s,]*(?:by|through)\s+(?:the\s+)?([^.;:!?]{1,60})/i;
+
+/**
+ * True when this separate-funding match names a funder who is NOT the
+ * respondent — i.e. the listing is DISCLOSING that a principal carries the
+ * cost, not INVITING the respondent to bill it.
+ *
+ * Why this exists (ace#2434). The six patterns above match on phrasing alone
+ * and have no notion of who funds the separate line, so they blocked the
+ * disclosure an in-kind transfer programme is required to publish with the
+ * identical `[BLOCKER]` raised for 19201's respondent-invited line. Measured on
+ * `poverty-graduation/20260915-1518` (labs solicitation 20793, program 265):
+ * its Work Order § 2 lists, under what the partner will NOT do, "Carry the cost
+ * of the productive assets. Asset cost sits outside the per-unit delivery rate."
+ * Omitting that on a ~300-asset engagement invites a respondent to price the
+ * asset into its delivery rate — the largest single number in the response.
+ *
+ * The distinguishing signal is lexical and present in both controls: the
+ * disclosure ATTRIBUTES the funding ("funded separately **by Dimagi**"), while
+ * the defect leaves it open and addresses the respondent ("**you would expect**
+ * to be funded separately"). #2265's catch is unaffected.
+ */
+function isPrincipalFundedDisclosure(text: string, matchEnd: number): boolean {
+  const attribution = FUNDER_ATTRIBUTION.exec(text.slice(matchEnd, matchEnd + 80));
+  if (!attribution) return false;
+  return !RESPONDENT_TERMS.test(attribution[1]);
+}
 
 /**
  * Evidence that some question asks for the worker-vs-commodity split.
@@ -107,10 +171,13 @@ const COMPOSITION_ASK_PATTERNS: readonly RegExp[] = [
 function findSeparateFunding(field: string, text: string | undefined): RateScopeIssue[] {
   if (typeof text !== 'string' || !text) return [];
   const issues: RateScopeIssue[] = [];
-  for (const { re, label } of SEPARATE_FUNDING_PATTERNS) {
+  for (const { re, label, attributable } of SEPARATE_FUNDING_PATTERNS) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
+      // A principal-funded disclosure is the opposite of the defect — let it
+      // through rather than forcing the author to drop it (ace#2434).
+      if (attributable && isPrincipalFundedDisclosure(text, m.index + m[0].length)) continue;
       issues.push({
         kind: 'separately-funded-invitation',
         field,
