@@ -955,8 +955,42 @@
                   "contact_email": {
                     "type": "string"
                   },
+                  "contact_name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "solicitation",
+                      "operator"
+                    ]
+                  },
+                  "response_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
                   "awarded_at": {
                     "type": "string"
+                  },
+                  "program_application_id": {
+                    "type": "string"
+                  },
+                  "opportunity_id": {
+                    "type": "string"
+                  },
+                  "opportunity_url": {
+                    "type": "string"
+                  },
+                  "email_thread_id": {
+                    "type": "string"
+                  },
+                  "email_message_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": true
@@ -973,7 +1007,12 @@
       "productProducers": {
         "solicitation": "solicitation-create",
         "solicitation.awarded": "solicitation-review",
-        "selected_llo": "solicitation-review"
+        "selected_llo": "solicitation-review",
+        "selected_llo.program_application_id": "llo-onboarding",
+        "selected_llo.opportunity_id": "llo-onboarding",
+        "selected_llo.opportunity_url": "llo-onboarding",
+        "selected_llo.email_thread_id": "llo-onboarding",
+        "selected_llo.email_message_ids": "llo-onboarding"
       },
       "unattributedProductKeys": []
     },

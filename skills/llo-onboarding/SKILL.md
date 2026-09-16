@@ -8,39 +8,78 @@ disable-model-invocation: false
 
 # LLO Onboarding
 
-First LLO contact for the awarded LLO. Reads
+First LLO contact. Reads
 `phases.solicitation-management.products.selected_llo` in the current
-run's `run_state.yaml` (populated by Phase 8 `solicitation-review`
-after a solicitation is awarded), issues the Connect system invite to
-that single org, and sends the ACE-authored onboarding email with the
-OCS widget link embedded.
+run's `run_state.yaml`, issues the Connect system invite to that single
+org, and sends the ACE-authored onboarding email with the OCS widget
+link embedded.
+
+## How the LLO got there: two sources, one contract
+
+**A solicitation is one way to select an LLO, not the only one**
+(operator decision 2026-09-16). `selected_llo.source` says which:
+
+| `source` | Who wrote it | Phase 8 | Also carries |
+|---|---|---|---|
+| `solicitation` | `solicitation-review`, after `award_response` | `done` | `response_id`, and a sibling `products.solicitation` block |
+| `operator` | this skill, transcribing the opp's inputs | **`skipped` is legal** | no `response_id`, no `solicitation` block |
+
+An absent `source` is read as `solicitation` (legacy runs).
+
+**On the `operator` path, transcribe — do not invent.** The LLO's
+`org_slug`, `contact_email` and `contact_name` come from the opp's
+`inputs/` (PDD § Program Parameters `llo_org_slug` /
+`llo_contact_email` / `llo_contact_name`). If `org_slug` is absent
+there, HALT and ask the operator for it; **never derive a slug from an
+organisation's display NAME.** A Connect slug is visible only in the
+org's URL — `https://connect.dimagi.com/a/stewari/opportunity/` gives
+`stewari`, while the PDD's recorded name `stewari_nm_sandbox` was
+refused by `connect_send_llo_invite` with *"Object with slug=… does not
+exist"* (measured on turmeric-market-study/20260914-1742). Note
+`/a/<slug>/opportunity/` 404s for an org `ace@` is not a member of, so
+a 404 there means "no access", NOT "no org" — it cannot be used to test
+existence. The invite endpoint's global lookup is the real test.
 
 **Phase 9 entry guard:** if
 `phases.solicitation-management.products.selected_llo.org_slug` is
 null/empty in the current run's `run_state.yaml`, this skill halts
-immediately with:
+immediately. Branch the message on whether Phase 8 ran:
 
-> FATAL: Phase 9 cannot start —
-> `phases.solicitation-management.products.selected_llo.org_slug` is
-> empty in the current run's `run_state.yaml`. Run
-> `/ace:step solicitation-review --opp <opp-name>` to score Phase 8
-> solicitation responses and award an awardee. The orchestrator's
-> pre-Phase-8 gate should have caught this; if you're seeing this from
-> a manual `/ace:step` invocation, the gate was bypassed.
+> FATAL: Phase 9 cannot start — `selected_llo.org_slug` is empty in the
+> current run's `run_state.yaml`.
+>
+> - **If Phase 8 is `done`/`pending`:** run
+>   `/ace:step solicitation-review --opp <opp-name>` to score the
+>   responses and award an awardee. The orchestrator's pre-Phase-8 gate
+>   should have caught this; if you're seeing this from a manual
+>   `/ace:step` invocation, the gate was bypassed.
+> - **If Phase 8 is `skipped`:** this run selected its LLO up front, so
+>   there is nothing to award. The LLO details are missing from the
+>   opp's `inputs/` — add `llo_org_slug` (from the org's Connect URL),
+>   `llo_contact_email` and `llo_contact_name` to the PDD's
+>   § Program Parameters, or supply them now.
 
-The single-awardee model replaces the previous multi-LLO roster model
-that read `connect-setup/invites.md`. With Phase 8 publishing a
-solicitation and selecting one winner, Phase 9 onboards exactly one org.
+Either way the skill onboards exactly one org — the single-awardee
+model that replaced the multi-LLO roster in `connect-setup/invites.md`.
 
 ## Process
 
 1. **Read inputs from GDrive:**
    - `selected_llo` block — read from
      `phases.solicitation-management.products.selected_llo` in the
-     current run's `run_state.yaml`. Populated by Phase 8
-     `solicitation-review`. Must contain `org_slug`, `contact_email`,
-     `source: 'solicitation'`, `response_id`. Halt with the FATAL
+     current run's `run_state.yaml`. Must contain `org_slug` and
+     `contact_email`; on the award path it also carries
+     `source: 'solicitation'` + `response_id`. Halt with the FATAL
      message above if `org_slug` is null/empty.
+
+     **If the block is absent and Phase 8 is `skipped`,** write it
+     first from the opp's `inputs/` (PDD § Program Parameters
+     `llo_org_slug` / `llo_contact_email` / `llo_contact_name`) via
+     `update_yaml_file` (`merge: 'deep'`), setting
+     `source: 'operator'`. Do NOT synthesize a `products.solicitation`
+     block to go with it — an operator-selected LLO has no
+     solicitation, and inventing one would fabricate an audit trail for
+     a process that never ran.
    - Training materials: `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
    - Program details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` (program
@@ -125,6 +164,33 @@ solicitation and selecting one winner, Phase 9 onboards exactly one org.
 5. **Send the email** via the `email-communicator` skill (or draft for review).
 
 6. **Log communications** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-onboarding_comms-log.md`.
+
+7. **Record the handover back into `selected_llo`** via `update_yaml_file`
+   (`merge: 'deep'`) — one write, all the fields this run produced about
+   this LLO:
+
+   | Field | Source |
+   |---|---|
+   | `program_application_id` | the step-2 invite POST (already written there) |
+   | `opportunity_id` / `opportunity_url` | the LLO's own delivery opportunity, once it exists |
+   | `email_thread_id` | the Gmail thread the onboarding exchange runs on |
+   | `email_message_ids[]` | every message sent on it, appended in order |
+
+   **Why this is a write and not a "read it back later".** Two of these
+   cannot be re-derived: `program_application_id` because
+   `connect_list_invites` is a blind read that returns `[]` even for an
+   accepted invite, and the mail ids because nothing else records which
+   thread carried the round-trip. The other two are cheap to re-read but
+   belong with them — the point of the block is that one place answers
+   *"what did we do with this LLO?"*.
+
+   **`email_message_ids` is an ARRAY, so a `deep` patch REPLACES it
+   wholesale** (CLAUDE.md § `update_yaml_file`). Read the existing list,
+   append, and send the whole intended array — three successive `deep`
+   patches otherwise leave only the last id.
+
+   This block is what `render_run_readme` surfaces as § LLO handover, so
+   it stays readable without opening `run_state.yaml`.
 
 ## Archetypes
 
