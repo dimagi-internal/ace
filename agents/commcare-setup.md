@@ -341,6 +341,61 @@ rejects the parameter names ACE sends, and the probe script agrees) is NOT
 fixed by restarting — it needs a skill migration. Restarting into the same
 rejection twice is the tell.
 
+**3. Architect-bind probe — the caller's surface is not the architect's
+(ace#2408).** Everything above probes **this** session's Nova surface:
+`ToolSearch` loadability plus a live call from L0. The architect is a
+different agent with a different tool array, assembled from its own allowlist
+— so all of the above can pass while `Agent(nova:nova-architect-autonomous)`
+is **dead on arrival**. Measured on `poverty-graduation/20260915-1518`: every
+probe above was green, and the architect died before its first tool call with
+
+```
+400 tools.10.custom.input_schema: JSON schema is invalid.
+It must match JSON Schema draft 2020-12
+```
+
+while `get_hq_connection`, `get_app`, `get_module` and `create_form` stayed
+callable from L0 the whole time. Nova's deeper schemas (`create_module` at
+nesting depth 20, `add_automations` at 21) are rejected at **bind** time; the
+same tools answer fine over JSON-RPC. So probe the architect itself:
+
+> Dispatch `Agent(nova:nova-architect-autonomous)` with a trivial read-only
+> task — *"Call `list_apps` with limit 1, report how many apps came back, then
+> stop. Do not build anything."* — and assert it returns a number.
+
+That is a ~10-second dispatch and it is the only probe that exercises the
+thing Phase 3 actually depends on. On a failure, go to the fallback below; do
+NOT halt, and do NOT re-dispatch (see the next paragraph).
+
+**A bind fault is DETERMINISTIC — never retry it.** § Turn-0 halt detection
+says to re-dispatch up to three times. That rule is for an architect that
+*started and produced nothing*. A `tools.N.custom.input_schema` 400 is a pure
+function of the agent's tool array, which does not change between dispatches,
+so three re-dispatches are three identical failures and pure latency. Tell
+them apart by whether the agent ever ran: a bind fault kills it before its
+first tool call.
+
+**Fallback: drive Nova over JSON-RPC (`lib/nova-rpc.ts`).** Nova's MCP is a
+plain HTTP JSON-RPC endpoint, so ACE can call every tool it serves —
+including the ones that will not bind — without going through tool binding at
+all:
+
+```ts
+import { novaCall } from '../lib/nova-rpc.js';
+await novaCall('create_module', { app_id, name, case_type: null, forms: [...] });
+```
+
+`create_module` accepts its forms (and their fields) inline and
+`configure_connect` sets the app mode plus every form's Connect block in one
+atomic REPLACE-ALL call, so a whole Learn or Deliver app is buildable this
+way. The model never holds a Nova schema, which is also why
+`scripts/run-nova-media-upload.ts` has used this transport since 2026-08-27.
+
+Reaching for it is a deliberate downgrade and the build memo must say so: the
+architect's operating prompt and Nova's own authoring guidance are no longer
+steering the build, so whatever the brief does not state is not going to
+happen. Author the brief accordingly.
+
 #### Subagent inheritance
 
 Apply the same gate at the start of any later subagent dispatch in
@@ -405,6 +460,14 @@ After **each** Nova `Agent` dispatch returns, verify an app was created:
 
 Apply this check after the Learn dispatch and again after the Deliver
 dispatch — they fail independently.
+
+**Step 2 assumes the failure is TRANSIENT. Check that first (ace#2408).**
+Re-dispatching helps only when the architect actually ran and produced
+nothing. If it died *before its first tool call* — the tell is an API 400
+naming `tools.N.custom.input_schema`, or any error raised while the agent's
+tool array was being validated — the fault is the tool array itself, which is
+identical on every dispatch. Three attempts then cost three identical
+failures. Go straight to the JSON-RPC fallback in § Step 0c.3.
 
 **An app that EXISTS but is half-built is the other case, and it is NOT a
 re-dispatch (dimagi-internal/ace#1504).** The rule above covers "the architect
