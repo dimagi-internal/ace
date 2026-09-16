@@ -165,7 +165,7 @@ improvements ship once (a canopy PR) instead of N backports.
   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/probe-counterpart-asks.ts"
   ```
 
-  **Not `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" ...`** — the installed plugin cache's `node_modules/.bin/tsx`
+  **Not `npx tsx ...`** — the installed plugin cache's `node_modules/.bin/tsx`
   has shipped as a dereferenced copy instead of a symlink since 0.13.1169 (ace#2252), which makes
   `npx tsx` throw `ERR_MODULE_NOT_FOUND` for any invocation whose cwd/prefix is inside the plugin
   root. Calling `tsx/dist/cli.mjs` directly via `node` sidesteps the broken symlink entirely.
