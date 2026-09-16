@@ -18,6 +18,7 @@ import { classifyGrainRelation } from '../../lib/payment-grain';
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
 import { ARCHETYPES } from '../../lib/decisions-archetype-consistency';
+import { checkProgramLocale } from '../../lib/program-locale';
 
 export const REQUIRED_SECTIONS = [
   'Archetype',
@@ -877,10 +878,31 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
     { keys: ['daily_cap_per_flw'], feeds: 'payment unit `max_daily` (daily target)' },
     { keys: ['total_cap_per_flw'], feeds: 'payment unit `max_total` (per-FLW campaign cap)' },
     { keys: ['campaign_target_visits', 'expected_reach_max'], feeds: 'campaign target / opportunity sizing' },
-    { keys: ['total_budget_usd'], feeds: 'opportunity `total_budget`' },
+    // `total_budget_usd` is the legacy spelling and is currency-misleading on a
+    // non-USD programme; `total_budget` is the correct key. Both accepted.
+    { keys: ['total_budget', 'total_budget_usd'], feeds: 'opportunity `total_budget`' },
     { keys: ['opportunity_start_date'], feeds: 'opportunity `start_date`' },
     { keys: ['opportunity_end_date'], feeds: 'opportunity `end_date`' },
     { keys: ['verification_flags'], feeds: '`connect_set_verification_flags`' },
+    // The three program-shell fields below are IMMUTABLE once
+    // `connect_create_program` has run (`connect_update_program` accepts only
+    // name/description/budget/start_date/end_date), so they are settled at
+    // design time or not at all. Measured on `ai-demo-space` 2026-09-16, with
+    // none of them declared: seven of eleven live turmeric programs carry
+    // delivery type "Interview" for a market survey, and `country: IND` with
+    // `currency: USD`.
+    {
+      keys: ['connect_delivery_type', 'delivery_type'],
+      feeds: 'program `delivery_type` — a slug from `connect_list_delivery_types`',
+    },
+    {
+      keys: ['opportunity_country', 'country'],
+      feeds: 'program `country`',
+    },
+    {
+      keys: ['opportunity_currency', 'currency', 'payment_rate_currency'],
+      feeds: 'program `currency` — must be the LOCAL currency of `opportunity_country`',
+    },
   ];
 
   const missing = required.filter(
@@ -905,6 +927,38 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
     };
   }
 
+  // Declared is not the same as coherent. A PDD may name both a country and a
+  // currency and still pair India with USD — which is the live defect, not a
+  // hypothetical one. The pair is unfixable after `connect_create_program`, so
+  // catching it here is the only cheap opportunity.
+  const readParam = (keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = (params.get(k) ?? '').trim();
+      if (v.length > 0) return v.replace(/\[(PROPOSED|TBD)\]/gi, '').trim();
+    }
+    return null;
+  };
+
+  const locale = checkProgramLocale({
+    country: readParam(['opportunity_country', 'country']),
+    currency: readParam(['opportunity_currency', 'currency', 'payment_rate_currency']),
+  });
+
+  if (!locale.ok) {
+    return {
+      pass: false,
+      detail: `§ Program Parameters country/currency incoherent — ${locale.detail}`,
+      auto_fix_hint:
+        'An opportunity pays in the local currency of its country. Set `opportunity_currency` to ' +
+        (locale.expected
+          ? `\`${locale.expected}\` (the currency of ${locale.country}), or correct \`opportunity_country\` if the geography is what is wrong. `
+          : 'the local currency once `opportunity_country` names a country ACE recognises. ') +
+        'Do NOT resolve this by defaulting to USD. Note `connect_update_program` cannot change ' +
+        'country or currency after create, so a wrong pair here can only be undone by creating a ' +
+        'replacement program.',
+    };
+  }
+
   const proposed = required
     .map((r) => r.keys.find((k) => (params.get(k) ?? '').trim().length > 0)!)
     .filter((k) => /\[(PROPOSED|TBD)\]/i.test(params.get(k) ?? ''));
@@ -912,7 +966,8 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
   return {
     pass: true,
     detail:
-      `all ${required.length} launch parameters declared` +
+      `all ${required.length} launch parameters declared; ` +
+      `locale coherent (${locale.country}/${locale.expected})` +
       (proposed.length > 0
         ? ` (${proposed.length} still marked proposed/TBD: ${proposed.join(', ')} — needs LLO or operator sign-off before Phase 4)`
         : ''),

@@ -88,6 +88,9 @@ None pre-named — fixture only.
 | opportunity_start_date | 2026-06-01 |
 | opportunity_end_date | 2026-06-30 |
 | verification_flags | photo_required, gps_within_radius |
+| connect_delivery_type | nutrition |
+| opportunity_country | KEN |
+| opportunity_currency | KES |
 
 ## Stress Test Results
 

@@ -521,7 +521,15 @@ the components is not enough, because a build needs enough to execute:
      `daily_cap_per_flw`, `total_cap_per_flw`, `flw_count_min` /
      `flw_count_max`, `expected_reach_min` / `expected_reach_max`,
      `entity_id_grain`, `entity_state_taxonomy`, `duplicate_gps_rule`,
-     `cap_rationale`. Take the
+     `cap_rationale`, `connect_delivery_type`, `opportunity_country`,
+     `opportunity_currency`. **The last three are the program shell and are
+     IMMUTABLE after `connect_create_program`** — `connect_update_program`
+     accepts only name/description/budget/start_date/end_date, so a wrong value
+     is correctable only by creating a replacement program. Settle them here:
+     confirm the delivery-type slug against `connect_list_delivery_types` on the
+     PM org, and denominate the currency in the LOCAL money of
+     `opportunity_country` (Nigeria → `NGN`, India → `INR`; never default to
+     USD). Take the
      canonical key vocabulary and the per-key guidance from `## Program
      Parameters` in `templates/pdd-template.md` — snake_case keys, unknown keys
      allowed, omit a row only when this PDD genuinely does not decide it.
