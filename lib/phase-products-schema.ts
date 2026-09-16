@@ -429,12 +429,49 @@ const SolicitationProducts = z
       })
       .passthrough()
       .optional(),
+    /**
+     * The narrow LLO contract Phase 9 reads. Two things it is NOT:
+     *
+     * 1. NOT solicitation-only. `source` distinguishes how the LLO was chosen:
+     *    `solicitation` (Phase 8 awarded a response — `solicitation-review` is
+     *    the writer, and `response_id` is set) or `operator` (the LLO was named
+     *    up front in the opp's inputs, Phase 8 is `skipped`, and there is no
+     *    solicitation block to point at). The operator path exists because a
+     *    solicitation is one way to pick an LLO, not the only one — operator
+     *    decision 2026-09-16: *"LLO contact in phase 8 and 9 is not the only way
+     *    an LLO can be selected... I will give LLO details every time."*
+     *
+     * 2. NOT identity-only. The handover fields below record what was actually
+     *    DONE with the LLO, and they live here rather than in a separate block
+     *    so there is one place to look. `program_application_id` is the one that
+     *    must be captured at POST time or lost forever:
+     *    `connect_list_invites` is a BLIND READ that returns `[]` even for an
+     *    invite that exists AND has been accepted (verified with a control on
+     *    turmeric-market-study/20260914-1742 — the subsequent
+     *    `connect_create_opportunity` requires an accepted ProgramApplication
+     *    and succeeded). So an empty read is not evidence of a missing invite,
+     *    and nothing can re-derive the id later.
+     */
     selected_llo: z
       .object({
         org_slug: z.string().optional(),
         org_display_name: z.string().optional(),
         contact_email: z.string().optional(),
+        contact_name: z.string().optional(),
+        /** How this LLO was chosen. Absent is read as `solicitation` (legacy). */
+        source: z.enum(['solicitation', 'operator']).optional(),
+        /** Set only when `source: 'solicitation'`. */
+        response_id: z.union([z.string(), z.number()]).optional(),
         awarded_at: z.string().optional(),
+        // ── Handover record (see note 2 above) ──
+        /** UNRECOVERABLE if not captured from the invite POST. */
+        program_application_id: z.string().optional(),
+        /** The LLO's own delivery opportunity — distinct from ACE's build/QA opp. */
+        opportunity_id: z.string().optional(),
+        opportunity_url: z.string().optional(),
+        /** Gmail thread + message ids for the accept/decline round-trip. */
+        email_thread_id: z.string().optional(),
+        email_message_ids: z.array(z.string()).optional(),
       })
       .passthrough()
       .optional(),
@@ -651,8 +688,20 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // create because monitor gates on `status == open` reading the created
     // value; `awarded.*` exists only after review.
     'solicitation.awarded': 'solicitation-review',
-    // "Only `solicitation-review` populates `selected_llo`" (CLAUDE.md § Gotchas).
+    // `selected_llo` has TWO writers, one per `source` (ace, 2026-09-16):
+    //   - `source: 'solicitation'` -> `solicitation-review` (the award path;
+    //     still the ONLY skill that may call `award_response`).
+    //   - `source: 'operator'`     -> `llo-onboarding` (the LLO was named in the
+    //     opp's inputs, Phase 8 is `skipped`, and no solicitation exists).
+    // Attribution resolves to the award path because that is the one with a
+    // gated, auditable write; the operator path is a straight transcription of
+    // an input the human supplied, and is named here so it is not UNMAPPED.
     selected_llo: 'solicitation-review',
+    'selected_llo.program_application_id': 'llo-onboarding',
+    'selected_llo.opportunity_id': 'llo-onboarding',
+    'selected_llo.opportunity_url': 'llo-onboarding',
+    'selected_llo.email_thread_id': 'llo-onboarding',
+    'selected_llo.email_message_ids': 'llo-onboarding',
   },
   'execution-management': {
     // "Sole writer of `products.launch`" (skills/llo-launch/SKILL.md § Step 10).

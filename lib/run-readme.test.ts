@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateRunReadme } from './run-readme.js';
+import { generateRunReadme, lloHandoverFromRunState } from './run-readme.js';
 import { ARTIFACT_MANIFEST } from './artifact-manifest.js';
 
 describe('generateRunReadme', () => {
@@ -104,5 +104,68 @@ describe('generateRunReadme', () => {
     expect(md).not.toContain('known-issues.md');
     // dated paths shouldn't be there either
     expect(md).not.toContain('YYYY-MM-DD');
+  });
+});
+
+describe('LLO handover section', () => {
+  const withLlo = (selected: unknown) => ({
+    phases: { 'solicitation-management': { products: { selected_llo: selected } } },
+  });
+
+  it('is absent when the run has selected no LLO', () => {
+    expect(lloHandoverFromRunState({ phases: {} })).toBeNull();
+    expect(lloHandoverFromRunState(undefined)).toBeNull();
+    expect(generateRunReadme('20260916-1200')).not.toContain('LLO handover');
+  });
+
+  it('treats an empty or all-null block as no handover', () => {
+    // solicitation-create stubs `selected_llo` with null fields long before an
+    // award; that stub must not render an empty table.
+    expect(lloHandoverFromRunState(withLlo({}))).toBeNull();
+    expect(lloHandoverFromRunState(withLlo({ org_slug: null, contact_email: '' }))).toBeNull();
+    expect(lloHandoverFromRunState(withLlo({ email_message_ids: [] }))).toBeNull();
+  });
+
+  it('renders the fields that cannot be re-derived', () => {
+    const llo = lloHandoverFromRunState(
+      withLlo({
+        org_slug: 'stewari',
+        source: 'operator',
+        contact_name: 'Sarvesh',
+        contact_email: 'stewari@dimagi.com',
+        program_application_id: 'b8fd7871-0000-0000-0000-000000000000',
+        opportunity_url: 'https://connect.dimagi.com/a/stewari/opportunity/3f2476f7/',
+        email_thread_id: '1a0a4d90d8e9dd84',
+        email_message_ids: ['m1', 'm2', 'm3'],
+      }),
+    );
+    const md = generateRunReadme('20260916-1200', {}, { lloHandover: llo });
+    expect(md).toContain('## LLO handover');
+    expect(md).toContain('stewari');
+    expect(md).toContain('operator');
+    // The unrecoverable id must be on the page, not just in run_state.yaml.
+    expect(md).toContain('b8fd7871-0000-0000-0000-000000000000');
+    expect(md).toContain('1a0a4d90d8e9dd84');
+    expect(md).toContain('| Messages sent | 3 |');
+  });
+
+  it('omits rows it has no value for, rather than printing blanks', () => {
+    const llo = lloHandoverFromRunState(withLlo({ org_slug: 'stewari' }));
+    const md = generateRunReadme('20260916-1200', {}, { lloHandover: llo });
+    expect(md).toContain('| Connect slug | stewari |');
+    expect(md).not.toContain('| Email thread |');
+    expect(md).not.toContain('| Program application |');
+  });
+
+  it('defaults an absent source to solicitation, for legacy runs', () => {
+    const llo = lloHandoverFromRunState(withLlo({ org_slug: 'acme' }));
+    const md = generateRunReadme('20260916-1200', {}, { lloHandover: llo });
+    expect(md).toContain('| Selected via | solicitation |');
+  });
+
+  it('keeps the run-state pointer below the table', () => {
+    const llo = lloHandoverFromRunState(withLlo({ org_slug: 'acme' }));
+    const md = generateRunReadme('20260916-1200', {}, { lloHandover: llo });
+    expect(md.indexOf('## LLO handover')).toBeLessThan(md.indexOf('**Run state:**'));
   });
 });
