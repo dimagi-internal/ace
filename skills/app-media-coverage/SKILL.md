@@ -138,6 +138,11 @@ interchangeable** — a module takes a topic (`maternal_health`), a form takes a
 action (`register`); crossing them fails the schema. Use `default` only when
 nothing fits.
 
+Module tiles are free and safe. **Form tiles are free but currently not safe** —
+plan them, then let step 9's read-back decide whether they survive
+(`voidcraft-labs/commcare-nova#625`). Nothing here changes; the guard is at
+apply time.
+
 **(c) Generated images**, unless `--no-generate`, for each remaining visible
 field meeting this criterion:
 
@@ -226,8 +231,12 @@ both cheaper and atomic:
 
 - `attach_field_media` — every `field` row, in one call, spanning forms
 - `attach_option_media` — every `option` row, in one call
-- `set_menu_media` — every tile, in one call. **Each item sets BOTH slots of a
-  tile**: pass back the stored value for a slot you mean to keep, or it clears.
+- `set_menu_media` — **two calls, never one mixed batch**: all MODULE tiles
+  first, then all FORM tiles, as separate batches. Nova commits a batch whole,
+  so a mixed batch puts the module tiles — which are safe — behind a form-tile
+  write that step 9 may have to revert (`voidcraft-labs/commcare-nova#625`).
+  **Each item sets BOTH slots of a tile**: pass back the stored value for a
+  slot you mean to keep, or it clears.
 - `set_app_logo` — if a logo row exists
 
 `partitionForNova` in `lib/media-plan.ts` does the grouping and drops
@@ -237,11 +246,42 @@ On a batch rejection, Nova names the offending attachment and changes nothing.
 Fix that row and re-send the batch — do not fall back to one call per row,
 which turns one atomic failure into a partly-attached app.
 
-### 9. Verify against the blueprint
+### 9. Verify against the blueprint — and revert form tiles if `get_form` breaks
 
 Re-read each touched form with `get_form` and confirm every non-skipped row is
 present. This is a read-back against the system of record, not a check of the
 call's own return value.
+
+**Do one `get_form` on a single touched form immediately after the FORM-tile
+batch, before any other work.** A form-tile icon slug taken from Nova's own
+published `set_menu_media` enum is accepted by the write and then breaks
+`get_form` for **every form in the app** — `{"error_type":"invalid_input",
+"message":"Choose one valid value at icon."}`. Observed live on both apps of
+`poverty-graduation/20260915-1518` (2026-09-16); filed as
+`voidcraft-labs/commcare-nova#625`. Module tiles are unaffected — `get_module`
+returns a full payload throughout — which is why step 8 sends them separately.
+
+On an `invalid_input` rejection naming `icon`:
+
+1. **Re-send the FORM-tile batch with `icon: null`** on every item (keep the
+   other slot's stored value — each item still sets both). Do not touch the
+   module-tile batch; those icons are correct and still attached.
+2. `get_form` again on the same form. It recovers immediately.
+3. Record `form_tiles: reverted-upstream-defect` in the report frontmatter, and
+   a line in the report body naming `voidcraft-labs/commcare-nova#625`.
+4. **Continue — do not halt, and do not retry with a different slug.** Menu
+   icons are an enhancement and nothing downstream gates on them, while
+   `get_form` is load-bearing for the rest of the phase: `app-deploy`'s
+   XML-escape lint, `app-test-cases`, `app-release-qa`, and both
+   `pdd-to-*-app-eval` skills all read forms. A working `get_form` is worth far
+   more than a decorative form tile.
+
+When `voidcraft-labs/commcare-nova#625` closes, delete this guard and let form
+tiles ship — `scripts/probe-upstream-asks.ts` surfaces the citation once
+upstream closes it, which is why the reference is written in `owner/repo#n`
+form.
+
+Then finish the normal read-back across the remaining touched forms.
 
 Do **not** attempt a CCZ-level check here — the app has not been uploaded yet.
 Media reaching the released CCZ is verified downstream by `app-release-qa`.
@@ -257,6 +297,7 @@ nova_app_id: <id>
 supplied_assets: <N>
 supplied_unused: <N>
 builtin_icons: <N>
+form_tiles: applied | reverted-upstream-defect
 generated: <N>
 generated_cache_hits: <N>
 attachments_applied: <N>
@@ -285,6 +326,7 @@ with status and the counts above.
 | No resizer installed | No sips/ImageMagick/ffmpeg | Only affects oversized files; small ones still attach. Name the remediation. |
 | `run-nova-media-upload.ts` exit 1 (401) | `NOVA_API_KEY` missing or stale | Halt — refresh the plugin-data `.env` with `/ace:setup --force-env`, then re-run. The script loads that file itself; the error names the exact path it read. |
 | Nova rejects an attach batch | A wrong slot, tier-crossed icon, or stale UUID | Nothing was attached. Fix the named row, re-send the batch. |
+| `get_form` fails `invalid_input` "Choose one valid value at icon" app-wide, right after the form-tile batch | Nova accepts a form-tile slug from its own published enum, then its reader refuses it — `voidcraft-labs/commcare-nova#625`, repro `poverty-graduation/20260915-1518` | Re-send the FORM-tile batch with `icon: null`; `get_form` recovers. Record `form_tiles: reverted-upstream-defect` and continue. Module tiles keep their icons. Never halt. |
 | Content Generator 5xx / auth | Service or key | One retry is built in; then halt generation. Supplied files and icons still apply. |
 | `run-content-generator.ts` exit 2, "Set CONTENT_GENERATOR_URL…" | The two keys are absent from the plugin-data `.env` | Refresh it with `/ace:setup --force-env`, then re-run. Do NOT `source ~/.ace/env.sh` — it exports `NOVA_API_KEY` and nothing else, so it cannot fix this (ace#1957). The error names the file it read. |
 | `--max-images` exceeded | More candidates than the guard allows | Halt before generating. Operator raises the cap or trims the plan. |
@@ -310,4 +352,5 @@ with status and the counts above.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-16 | **Form-tile icons are guarded, not trusted (ace#2413).** Step 4(b) promised built-in menu icons were free and side-effect-free; that holds for module tiles but not form tiles — `set_menu_media` accepts a form-tile slug from its own published enum and every subsequent `get_form` on the app then fails `invalid_input` "Choose one valid value at icon" (`voidcraft-labs/commcare-nova#625`, reproduced live on both apps of `poverty-graduation/20260915-1518`). That took out `app-deploy`'s XML-escape lint, `app-test-cases`, `app-release-qa` and both `pdd-to-*-app-eval` skills four steps later, surfacing as "Nova broke" in a skill that never touched media. Step 8 now sends module and form tiles as separate batches so a form-tile problem cannot cost the module tiles; step 9 does a `get_form` read-back straight after the form-tile batch and, on that rejection, re-sends the batch with `icon: null`, records `form_tiles: reverted-upstream-defect`, and continues rather than halting. *Enforced:* `test/skills/media-form-tile-revert-guard.test.ts`. | ACE team |
 | 2026-08-27 | Initial version, replacing `app-multimedia-coverage`. Nova shipped a first-class media channel (`voidcraft-labs/nova-plugin#8`, closed 2026-06-03) — asset library, per-slot field media, option media, menu icons, app logo — and `compile_app`/`upload_app_to_hq` carry it to HQ. Verified live end-to-end 2026-08-27: attached image reached the released CCZ at `commcare/<sha256>.png` with matching `<value form="image">` itext, and built-in icon slugs materialised as real bundled assets. That retires the whole post-release XML-patch pipeline, its orphan-pruning ordering hazard, and its loss-on-every-rebuild. Adds two capabilities the old skill had no way to reach: supplied files from `inputs/media/` with free-form operator guidance, and picture-choice select options. Upload goes through a server-side proxy script because base64 through a tool call costs ~1 token/char. | ACE team |
