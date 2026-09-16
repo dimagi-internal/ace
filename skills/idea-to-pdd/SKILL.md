@@ -1759,7 +1759,18 @@ The PDD describes one FLW visit producing one structured delivery (photo + GPS +
 **Additional questions to answer in step 3:**
 - What is the exact form structure (every field, every type)?
 - What's the standardization protocol for any photo/measurement (lighting, angle, distance, color reference)?
-- What's the per-FLW and per-location daily cap?
+- What's the per-FLW daily cap, and the per-FLW total for the whole opportunity?
+  These are the only two caps Connect enforces — they land as a payment unit's
+  `max_daily` and `max_total`, both scoped **per worker**. A campaign-wide visit
+  total is not a field: it is carried by `total_budget`, because Connect derives
+  `number_of_users = total_budget / Σ(max_total × (amount + org_amount))`.
+  **Do NOT specify a per-location cap** (per market, per village, per facility).
+  Nothing can enforce one: Connect caps per worker rather than per place, and a
+  CommCare form cannot count other workers' submissions — they are offline until
+  sync. A PDD that states one commits the programme to a rule the platform will
+  not keep, and over-cap visits still get paid. If a deployment genuinely needs
+  to spread coverage across locations, write it as LLO supervisory practice in
+  the operations guidance, never as a Program Parameter or an FLW-facing rule.
 - How is duplicate detection handled (vendor ID, stall number, GPS resolution)?
 
 ### `longitudinal-visits`
