@@ -48,7 +48,11 @@ Quantitative review as written above:
 - Submission rates by FLW (vs. expected daily caps)
 - Completion rates and dropout patterns
 - Outlier detection on numeric fields, photo features, GPS clustering
-- Cap and rate-limit violations (e.g., more than 5 vendors per market per day)
+- Cap and rate-limit violations against the caps Connect actually enforces — the
+  payment unit's `max_daily` and `max_total`, both **per worker**. Read the real
+  values off the opportunity; do not assume a per-location cap (per market, per
+  village, per facility), which Connect has no way to enforce and a PDD should
+  not be stating (see `skills/idea-to-pdd/SKILL.md` § `atomic-visit`)
 - Per-FLW outliers vs. cohort baseline
 - Cross-FLW clustering (suspicious copy-paste patterns)
 
