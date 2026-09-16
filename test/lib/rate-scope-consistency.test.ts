@@ -161,3 +161,72 @@ describe('the operator-facing message', () => {
     expect(out).toContain('worker vs. commodity');
   });
 });
+
+// ── ace#2434: who funds the separate line decides whether it is a defect ────
+//
+// Verbatim shapes from `poverty-graduation/20260915-1518` (labs solicitation
+// 20793, program 265), an in-kind productive-asset transfer whose Work Order
+// § 2 lists, under what the partner will NOT do: "Carry the cost of the
+// productive assets. Asset cost sits outside the per-unit delivery rate."
+//
+// The controls that matter are the NEGATIVE ones: the guard must keep every
+// respondent-invited phrasing blocked, not merely let the disclosure through.
+
+const COMPOSITION_ASK =
+  'State how much of the rate is paid to the worker vs. commodity and other ' +
+  'non-labour delivery cost.';
+
+const PRINCIPAL_FUNDED_DISCLOSURE =
+  'Each proposed rate is all-in and covers worker compensation, supervision, ' +
+  'transport, devices, connectivity and reporting time. The purchase cost of ' +
+  'the productive asset is funded separately by Dimagi against an agreed asset ' +
+  'cost and count; the partner does not carry it and must not build it into ' +
+  'the per-activity rate. ' +
+  COMPOSITION_ASK;
+
+describe('a separate-funding phrase attributed to the PRINCIPAL (ace#2434)', () => {
+  it('does not block the disclosure an in-kind programme must publish', () => {
+    const result = scanRateScope({ scope_of_work: PRINCIPAL_FUNDED_DISCLOSURE });
+    expect(result.issues.filter((i) => i.kind === 'separately-funded-invitation')).toEqual([]);
+    expect(result.clean).toBe(true);
+  });
+
+  it('still blocks the shipped 19201 text, which attributes nothing', () => {
+    const result = scanRateScope({
+      questions: [{ id: 'budget', text: Q8_TEXT_SHIPPED, framing: COMPOSITION_ASK }],
+    });
+    expect(result.issues.some((i) => i.kind === 'separately-funded-invitation')).toBe(true);
+  });
+
+  it.each([
+    ['the partner', 'Asset cost is funded separately by the partner. ' + COMPOSITION_ASK],
+    ['you', 'Devices are funded separately by you. ' + COMPOSITION_ASK],
+    [
+      'your organisation',
+      'Transport is billed separately by your organisation. ' + COMPOSITION_ASK,
+    ],
+    [
+      'the respondent',
+      'Supervision is reimbursed separately by the respondent. ' + COMPOSITION_ASK,
+    ],
+    ['the LLO', 'Connectivity is separately funded by the LLO. ' + COMPOSITION_ASK],
+  ])('still blocks a line attributed to the respondent (%s)', (_label, prose) => {
+    const result = scanRateScope({ scope_of_work: prose });
+    expect(result.issues.some((i) => i.kind === 'separately-funded-invitation')).toBe(true);
+  });
+
+  it('still blocks an unattributed line, which is the ambiguity itself', () => {
+    const result = scanRateScope({
+      scope_of_work: 'Reporting time is funded separately. ' + COMPOSITION_ASK,
+    });
+    expect(result.issues.some((i) => i.kind === 'separately-funded-invitation')).toBe(true);
+  });
+
+  it('does not let an attribution leak across a sentence boundary', () => {
+    const result = scanRateScope({
+      scope_of_work:
+        'Devices are funded separately. Assets are procured by Dimagi. ' + COMPOSITION_ASK,
+    });
+    expect(result.issues.some((i) => i.kind === 'separately-funded-invitation')).toBe(true);
+  });
+});
