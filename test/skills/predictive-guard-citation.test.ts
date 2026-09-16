@@ -76,7 +76,10 @@ const CONTEXT_LINES = 1;
  * shown fired. Lower these numbers; do not raise them.
  */
 const BASELINE: Record<string, number> = {
-  'skills/connect-opp-setup/SKILL.md': 6,
+  // 6 -> 5 on 2026-09-16: the NM/PM rewrite of step 3 cited the
+  // accepted-application rejection to `turmeric-market-study/20260914-1742`,
+  // where it was observed live and used AS the acceptance check.
+  'skills/connect-opp-setup/SKILL.md': 5,
   'skills/app-hq-settings/SKILL.md': 3,
   'skills/pdd-to-learn-app/SKILL.md': 3,
   'skills/README.md': 3,
