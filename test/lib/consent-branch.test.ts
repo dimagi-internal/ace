@@ -31,7 +31,11 @@
  * of follow-ups can carry the bias.
  */
 import { describe, it, expect } from 'vitest';
-import { checkConsentBranchCompleteness } from '../../lib/consent-branch.js';
+import {
+  checkConsentBranchCompleteness,
+  flattenEffectiveRelevance,
+  type BuiltField,
+} from '../../lib/consent-branch.js';
 
 const pdd = [
   { id: 'consent_confirmed', required: true },
@@ -196,5 +200,319 @@ describe('checkConsentBranchCompleteness — scoped gates (spark-facilitator/202
     });
     expect(r.pass).toBe(false);
     expect(r.findings.filter((f) => f.kind === 'ungated-required-after-consent')).toHaveLength(3);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2415 — the gate is on the GROUP, and the helper could not
+ * see it.
+ *
+ * `checkConsentBranchCompleteness` read ONE flat `relevant` string per field. In
+ * a Nova blueprint the consent gate almost always sits on the enclosing group,
+ * not on each child — so run over the blueprint as BOTH callers instruct
+ * (`_app-component-library.md § consent-script-floor`,
+ * `pdd-to-deliver-app-eval § conditional_logic_match`), every question inside a
+ * correctly gated group came back `ungated-required-after-consent`, which
+ * hard-gates `conditional_logic_match` to <= 3 and fails the suite.
+ *
+ * Live: `poverty-graduation/20260915-1518`, Deliver app
+ * `6d77c3ac-eea6-4997-bd1e-a93be6d194ff`. The targeting form
+ * (`481b98c0-2da1-4e54-9bab-0eb29516f97c`) produced **14 false findings on a
+ * correct build**; the one field that passed did so by accident, because it
+ * happened to carry the gate on itself. The delivery form
+ * (`f7c04392-5c4c-4ab0-ae5e-181ea116cfe9`) added 2 more through a second
+ * mechanism — its groups gate on a hidden calculate over the consent answer, so
+ * a purely syntactic match misses them even after ancestor relevance is
+ * propagated.
+ *
+ * Every `BuiltField` in the 13 cases above is FLAT, which is why the suite could
+ * not see any of it. These fixtures are trees.
+ */
+describe('checkConsentBranchCompleteness — ancestor relevance (ace#2415)', () => {
+  // A reduced but faithful copy of the targeting form's shape: the gate on
+  // `g_identity` / `g_zone`, required children carrying none of their own, one
+  // field (`roster_complete`) that happens to carry it itself, and
+  // `gps_onsite_confirm` as a genuinely UNGATED required field — the control
+  // that keeps this suite from passing merely because the check got disabled.
+  const targetingPdd = [
+    { id: 'consent', required: true },
+    { id: 'hh_head_name', required: true },
+    { id: 'respondent_name', required: true },
+    { id: 'roster_complete', required: true },
+    { id: 'i1_zone', required: true },
+    { id: 'gps_onsite_confirm', required: true },
+  ];
+  const gate = "#form/g_consent/consent = 'yes'";
+  const targetingBuilt: BuiltField[] = [
+    {
+      id: 'g_consent',
+      kind: 'group',
+      children: [{ id: 'consent', kind: 'single_select', required: 'true()' }],
+    },
+    {
+      id: 'g_identity',
+      kind: 'group',
+      relevant: gate,
+      children: [
+        { id: 'hh_head_name', kind: 'text', required: 'true()' },
+        { id: 'respondent_name', kind: 'text', required: 'true()' },
+        // Two container levels below the gate, and carrying the gate itself as
+        // well — the effective relevance is the conjunction of both.
+        {
+          id: 'roster',
+          kind: 'repeat',
+          children: [
+            { id: 'roster_complete', kind: 'single_select', required: 'true()', relevant: gate },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'g_zone',
+      kind: 'group',
+      relevant: gate,
+      children: [{ id: 'i1_zone', kind: 'single_select', required: 'true()' }],
+    },
+    { id: 'gps_onsite_confirm', kind: 'single_select', required: 'true()' },
+  ];
+  const gatedFields = ['hh_head_name', 'respondent_name', 'roster_complete', 'i1_zone'];
+
+  it('a required field gated ONLY by its parent group reads as GATED, not ungated', () => {
+    const r = checkConsentBranchCompleteness(targetingBuilt, targetingPdd, {
+      consentField: 'consent',
+      disclosedInMemo: gatedFields,
+    });
+    for (const id of gatedFields) {
+      const f = r.findings.find((x) => x.field === id);
+      expect(f, `${id} must be reported`).toBeDefined();
+      expect(f!.kind, `${id} is inside a consent-gated group`).toBe('disclosed-consent-gate');
+    }
+    // Pre-fix, every one of these came back as the hard-gate kind.
+    expect(
+      r.findings.filter((f) => f.kind === 'ungated-required-after-consent').map((f) => f.field),
+    ).toEqual(['gps_onsite_confirm']);
+  });
+
+  it('a genuinely ungated required field after consent STILL reads as ungated', () => {
+    // The fix must not simply stop firing. `gps_onsite_confirm` sits outside
+    // every gated group, and it alone must fail the report.
+    const r = checkConsentBranchCompleteness(targetingBuilt, targetingPdd, {
+      consentField: 'consent',
+      disclosedInMemo: gatedFields,
+    });
+    expect(r.pass).toBe(false);
+    const ungated = r.findings.filter((f) => f.kind === 'ungated-required-after-consent');
+    expect(ungated).toHaveLength(1);
+    expect(ungated[0].field).toBe('gps_onsite_confirm');
+    expect(ungated[0].detail).toMatch(/invented/i);
+  });
+
+  it('the correct build passes once the memo discloses it — the 14-false-findings case', () => {
+    const correct = targetingBuilt.filter((f) => f.id !== 'gps_onsite_confirm');
+    const r = checkConsentBranchCompleteness(correct, targetingPdd, {
+      consentField: 'consent',
+      disclosedInMemo: gatedFields,
+    });
+    expect(r.findings.map((f) => f.kind)).toEqual(Array(4).fill('disclosed-consent-gate'));
+    expect(r.pass).toBe(true);
+  });
+
+  it('inherits through MORE than one container level', () => {
+    const deep: BuiltField[] = [
+      { id: 'consent_confirmed', required: true },
+      {
+        id: 'outer',
+        kind: 'group',
+        relevant: "/data/consent_confirmed = 'yes'",
+        children: [
+          {
+            id: 'middle',
+            kind: 'section',
+            children: [
+              { id: 'inner', kind: 'repeat', children: [{ id: 'net_hanging', required: true }] },
+            ],
+          },
+        ],
+      },
+    ];
+    const r = checkConsentBranchCompleteness(deep, pdd, {
+      consentField: 'consent_confirmed',
+      disclosedInMemo: ['net_hanging'],
+    });
+    expect(r.pass).toBe(true);
+    expect(r.findings).toEqual([
+      expect.objectContaining({ field: 'net_hanging', kind: 'disclosed-consent-gate' }),
+    ]);
+  });
+
+  it('an ancestor gate on something OTHER than consent is still an undisclosed narrowing', () => {
+    // Inheritance must not launder an unrelated gate into a consent gate.
+    const r = checkConsentBranchCompleteness(
+      [
+        { id: 'consent_confirmed', required: true },
+        {
+          id: 'g_big_hh',
+          kind: 'group',
+          relevant: '/data/hh_size > 3',
+          children: [{ id: 'net_hanging', required: true }],
+        },
+      ],
+      pdd,
+      { consentField: 'consent_confirmed' },
+    );
+    expect(r.pass).toBe(false);
+    expect(r.findings).toEqual([
+      expect.objectContaining({ field: 'net_hanging', kind: 'undisclosed-narrowing' }),
+    ]);
+  });
+
+  it('resolves ONE hop of hidden-calculate indirection (the delivery-form shape)', () => {
+    // `g_transfer` gates on `enrollment_outcome`, a hidden calculate over
+    // `participation_consent`: gated on consent in every sense that matters,
+    // and invisible to a purely syntactic match.
+    const deliveryPdd = [
+      { id: 'participation_consent', required: true },
+      { id: 'transfer_method', required: true },
+    ];
+    const built: BuiltField[] = [
+      { id: 'participation_consent', kind: 'single_select', required: 'true()' },
+      {
+        id: 'enrollment_outcome',
+        kind: 'hidden',
+        calculate: "if(#form/participation_consent = 'yes', 'enrolled', 'declined')",
+      },
+      {
+        id: 'g_transfer',
+        kind: 'group',
+        relevant: "#form/enrollment_outcome = 'enrolled'",
+        children: [{ id: 'transfer_method', kind: 'single_select', required: 'true()' }],
+      },
+    ];
+    const r = checkConsentBranchCompleteness(built, deliveryPdd, {
+      consentField: 'participation_consent',
+      disclosedInMemo: ['transfer_method'],
+    });
+    expect(r.pass).toBe(true);
+    expect(r.findings).toEqual([
+      expect.objectContaining({ field: 'transfer_method', kind: 'disclosed-consent-gate' }),
+    ]);
+  });
+
+  it('a calculate that does NOT reach consent is not laundered into a consent gate', () => {
+    const r = checkConsentBranchCompleteness(
+      [
+        { id: 'consent_confirmed', required: true },
+        { id: 'hh_is_large', kind: 'hidden', calculate: '/data/hh_size > 3' },
+        {
+          id: 'g',
+          kind: 'group',
+          relevant: "/data/hh_is_large = 'yes'",
+          children: [{ id: 'net_hanging', required: true }],
+        },
+      ],
+      pdd,
+      { consentField: 'consent_confirmed' },
+    );
+    expect(r.findings).toEqual([
+      expect.objectContaining({ field: 'net_hanging', kind: 'undisclosed-narrowing' }),
+    ]);
+  });
+
+  it("reads Nova's `true()` / `false()` strings as requiredness", () => {
+    const r = checkConsentBranchCompleteness(
+      [
+        { id: 'consent_confirmed', required: 'true()' },
+        { id: 'slept_under_net', required: 'true()' },
+        { id: 'net_hanging', required: 'false()' },
+      ],
+      pdd,
+      { consentField: 'consent_confirmed' },
+    );
+    // `false()` is not required, so only the genuinely-required field is in the
+    // collision. Read as a plain truthy string it produced a second, false one.
+    expect(r.findings.map((f) => f.field)).toEqual(['slept_under_net']);
+  });
+
+  it("reads Nova's structured `{parts:[…]}` relevance as well as a plain string", () => {
+    const r = checkConsentBranchCompleteness(
+      [
+        { id: 'consent_confirmed', required: true },
+        {
+          id: 'g',
+          kind: 'group',
+          relevant: { parts: [{ text: "#form/consent_confirmed = 'yes'" }] },
+          children: [{ id: 'net_hanging', required: true }],
+        },
+      ],
+      pdd,
+      { consentField: 'consent_confirmed', disclosedInMemo: ['net_hanging'] },
+    );
+    expect(r.pass).toBe(true);
+    expect(r.findings[0].kind).toBe('disclosed-consent-gate');
+  });
+
+  it('scoping (ace#1509) still applies to fields reached through a group', () => {
+    const r = checkConsentBranchCompleteness(targetingBuilt, targetingPdd, {
+      consentField: 'consent',
+      governs: ['hh_head_name'],
+      disclosedInMemo: ['hh_head_name'],
+    });
+    expect(r.pass).toBe(true);
+    expect(r.findings.map((f) => f.field)).toEqual(['hh_head_name']);
+  });
+});
+
+describe('flattenEffectiveRelevance (ace#2415)', () => {
+  it('conjoins ancestor and own relevance, outermost first', () => {
+    const leaves = flattenEffectiveRelevance([
+      {
+        id: 'outer',
+        kind: 'group',
+        relevant: 'A',
+        children: [
+          {
+            id: 'inner',
+            kind: 'group',
+            relevant: 'B',
+            children: [{ id: 'q', required: true, relevant: 'C' }],
+          },
+        ],
+      },
+    ]);
+    expect(leaves.map((f) => f.id)).toEqual(['q']);
+    expect(leaves[0].relevant).toBe('(A) and (B) and (C)');
+  });
+
+  it('leaves a single expression unwrapped, and an ungated leaf undefined', () => {
+    const leaves = flattenEffectiveRelevance([
+      { id: 'g', kind: 'group', relevant: 'A', children: [{ id: 'q', required: true }] },
+      { id: 'free', required: true },
+    ]);
+    expect(leaves.map((f) => [f.id, f.relevant])).toEqual([
+      ['q', 'A'],
+      ['free', undefined],
+    ]);
+  });
+
+  it('is a no-op on an already-flat list — the pre-ace#2415 input shape still works', () => {
+    const flat: BuiltField[] = [{ id: 'q', required: true, relevant: "/data/c = 'yes'" }];
+    expect(flattenEffectiveRelevance(flat)).toEqual([
+      { id: 'q', required: true, relevant: "/data/c = 'yes'", children: undefined },
+    ]);
+  });
+
+  it('does not emit containers as answerable leaves', () => {
+    const leaves = flattenEffectiveRelevance([
+      {
+        id: 'g',
+        kind: 'group',
+        relevant: 'A',
+        children: [
+          { id: 'a', required: true },
+          { id: 'b', required: true },
+        ],
+      },
+    ]);
+    expect(leaves.map((f) => f.id)).toEqual(['a', 'b']);
   });
 });
