@@ -48,6 +48,7 @@ import {
 import {
   generateRunReadme,
   phaseStatusFromRunState,
+  lloHandoverFromRunState,
   PHASE_README_STATUSES,
   type PhaseStatus,
 } from '../lib/run-readme.js';
@@ -3806,7 +3807,9 @@ async function refreshRunReadme(
       supportsAllDrives: true,
     });
     const runId = meta.data.name ?? runFolderId;
-    const markdown = generateRunReadme(runId, phaseStatusFromRunState(parsedRunState));
+    const markdown = generateRunReadme(runId, phaseStatusFromRunState(parsedRunState), {
+      lloHandover: lloHandoverFromRunState(parsedRunState),
+    });
     await handleCreateFile(
       { name: 'README.md', content: markdown, parentFolderId: runFolderId, findOrCreate: true },
       drive,

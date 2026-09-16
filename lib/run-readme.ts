@@ -99,6 +99,70 @@ export function phaseStatusFromRunState(runState: unknown): Partial<Record<strin
   return out;
 }
 
+/**
+ * The LLO handover record, as the README renders it.
+ *
+ * Exists because the handover was previously readable only by opening
+ * `run_state.yaml` and knowing where to look. On
+ * turmeric-market-study/20260914-1742 it was not even there — the fields had no
+ * typed home, so they landed in an invented top-level `llo_handover` key that
+ * no consumer read. Surfacing them in the README keeps them as usable as that
+ * ad-hoc block was, now that they live nested under `selected_llo`.
+ */
+export interface LloHandover {
+  org_slug?: string;
+  org_display_name?: string;
+  contact_email?: string;
+  contact_name?: string;
+  source?: string;
+  program_application_id?: string;
+  opportunity_id?: string;
+  opportunity_url?: string;
+  email_thread_id?: string;
+  email_message_ids?: string[];
+}
+
+/**
+ * Pull the `selected_llo` block out of a parsed `run_state.yaml`, or `null`
+ * when the run has not selected an LLO. Tolerates the whole block being absent,
+ * which is the normal state for every run before Phase 8/9.
+ */
+export function lloHandoverFromRunState(runState: unknown): LloHandover | null {
+  const block = (runState as any)?.phases?.['solicitation-management']?.products?.selected_llo;
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return null;
+  // An empty object, or one carrying only nulls, is not a handover.
+  const hasValue = Object.values(block).some(
+    (v) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0),
+  );
+  return hasValue ? (block as LloHandover) : null;
+}
+
+/** Render the § LLO handover section, or '' when there is nothing to show. */
+function renderLloHandover(llo: LloHandover | null): string {
+  if (!llo) return '';
+  const rows: Array<[string, string | undefined]> = [
+    ['Organisation', llo.org_display_name ?? llo.org_slug],
+    ['Connect slug', llo.org_slug],
+    ['Selected via', llo.source ?? 'solicitation'],
+    ['Contact', [llo.contact_name, llo.contact_email].filter(Boolean).join(' — ') || undefined],
+    ['Program application', llo.program_application_id],
+    ['Opportunity', llo.opportunity_url ?? llo.opportunity_id],
+    ['Email thread', llo.email_thread_id],
+    [
+      'Messages sent',
+      llo.email_message_ids?.length ? String(llo.email_message_ids.length) : undefined,
+    ],
+  ];
+  const present = rows.filter(([, v]) => v !== undefined && v !== '');
+  if (present.length === 0) return '';
+  let out = `\n---\n\n## LLO handover\n\n| Field | Value |\n|---|---|\n`;
+  for (const [label, value] of present) out += `| ${label} | ${value} |\n`;
+  // `program_application_id` is the one that cannot be re-derived:
+  // `connect_list_invites` returns `[]` even for an accepted invite.
+  out += `\nFull record: \`run_state.yaml\` → \`phases.solicitation-management.products.selected_llo\`.\n`;
+  return out;
+}
+
 const OPP_LEVEL_PATHS = new Set<string>([
   'inputs/',
   'opp.yaml',
@@ -124,6 +188,7 @@ const OPP_LEVEL_PATHS = new Set<string>([
 export function generateRunReadme(
   runId: string,
   phaseStatus: Partial<Record<string, PhaseStatus>> = {},
+  opts: { lloHandover?: LloHandover | null } = {},
 ): string {
   // Normalize incoming keys (short Phase keys OR long agent-file names)
   // to short Phase keys so both key-spaces flip their rows. Unknown
@@ -154,6 +219,7 @@ export function generateRunReadme(
     body += `| ${phaseFolder} | ${filename} | ${a.producedBy} | ${status} |\n`;
   }
 
+  body += renderLloHandover(opts.lloHandover ?? null);
   body += `\n---\n\n**Run state:** \`run_state.yaml\` (in this folder)\n**Latest cross-run truth:** \`../current/\` (shortcuts under the opp root)\n`;
   return body;
 }
