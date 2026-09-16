@@ -53,13 +53,16 @@ const COMPLETE_ROWS = [
   '| opportunity_start_date | 2026-06-01 |',
   '| opportunity_end_date | 2026-06-30 |',
   '| verification_flags | photo_required, gps_within_radius |',
+  '| connect_delivery_type | nutrition |',
+  '| opportunity_country | USA |',
+  '| opportunity_currency | USD |',
 ].join('\n');
 
 describe('checkLaunchParametersPresent', () => {
   test('passes when every launch parameter is declared', () => {
     const r = checkLaunchParametersPresent(pdd(COMPLETE_ROWS));
     expect(r.pass).toBe(true);
-    expect(r.detail).toMatch(/all 9 launch parameters declared/);
+    expect(r.detail).toMatch(/all 12 launch parameters declared/);
   });
 
   test('fails a PDD with no § Program Parameters at all', () => {
@@ -85,9 +88,9 @@ describe('checkLaunchParametersPresent', () => {
       pdd('| payment_rate_min | 1.00 |\n| daily_cap_per_flw | 5 |'),
     );
     expect(r.pass).toBe(false);
-    expect(r.detail).toMatch(/missing 7 launch parameter/);
+    expect(r.detail).toMatch(/missing 10 launch parameter/);
     expect(r.detail).toMatch(/verification_flags/);
-    expect(r.detail).toMatch(/total_budget_usd/);
+    expect(r.detail).toMatch(/total_budget/);
     expect(r.detail).toMatch(/opportunity_start_date/);
     // Mapping is in the message so the fixer does not have to look it up.
     expect(r.detail).toMatch(/max_daily|max_total|total_budget/);
@@ -121,6 +124,93 @@ describe('checkLaunchParametersPresent', () => {
     expect(r.detail).toMatch(/still marked proposed\/TBD/);
     expect(r.detail).toMatch(/llo_payment_per_visit/);
     expect(r.detail).toMatch(/sign-off before Phase 4/);
+  });
+
+  /**
+   * The program-shell trio. `delivery_type`, `country` and `currency` are
+   * create-time-only on a Connect program — `connect_update_program` accepts
+   * only name/description/budget/start_date/end_date — so a wrong value here
+   * can only be undone by creating a replacement program.
+   *
+   * Measured on `ai-demo-space` 2026-09-16 with none of them declared: seven of
+   * eleven live turmeric programs carry delivery type "Interview" for a market
+   * survey, and the current one pairs `country: IND` with `currency: USD`.
+   */
+  test('requires the delivery type to be a PDD decision, not a Phase 4 guess', () => {
+    const rows = COMPLETE_ROWS.split('\n')
+      .filter((l) => !l.includes('connect_delivery_type'))
+      .join('\n');
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/connect_delivery_type/);
+    expect(r.detail).toMatch(/connect_list_delivery_types/);
+  });
+
+  test('requires country and currency', () => {
+    for (const key of ['opportunity_country', 'opportunity_currency']) {
+      const rows = COMPLETE_ROWS.split('\n')
+        .filter((l) => !l.includes(key))
+        .join('\n');
+      const r = checkLaunchParametersPresent(pdd(rows));
+      expect(r.pass, `${key} should be required`).toBe(false);
+      expect(r.detail).toContain(key);
+    }
+  });
+
+  test('accepts payment_rate_currency as the currency alias', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_currency | USD |',
+      '| payment_rate_currency | USD |',
+    );
+    expect(checkLaunchParametersPresent(pdd(rows)).pass).toBe(true);
+  });
+
+  test('accepts total_budget as well as the legacy total_budget_usd', () => {
+    const rows = COMPLETE_ROWS.replace('| total_budget_usd | 900 |', '| total_budget | 75000 |');
+    expect(checkLaunchParametersPresent(pdd(rows)).pass).toBe(true);
+  });
+
+  test('FAILS the live turmeric pairing — country IND with currency USD', () => {
+    const rows = COMPLETE_ROWS.replace('| opportunity_country | USA |', '| opportunity_country | IND |');
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/incoherent/);
+    expect(r.detail).toMatch(/INR/);
+    // The fix hint must forbid the tempting resolution.
+    expect(r.auto_fix_hint).toMatch(/NOT resolve this by defaulting to USD/i);
+  });
+
+  test('passes a coherent non-USD programme', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | Nigeria |',
+    ).replace('| opportunity_currency | USD |', '| opportunity_currency | NGN |');
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/NGA\/NGN/);
+  });
+
+  test('a [PROPOSED] currency is still checked for coherence', () => {
+    // Otherwise a proposal is the loophole: mark it proposed and the pair is
+    // never validated, which is exactly when a wrong default survives.
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | IND [PROPOSED] |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/INR/);
+  });
+
+  test('an unrecognised country halts WITHOUT proposing a currency', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | Wakanda |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/not a recognised/i);
+    expect(r.auto_fix_hint).not.toMatch(/Set `opportunity_currency` to `[A-Z]{3}`/);
   });
 
   test('an empty value is treated as missing, not as declared', () => {

@@ -144,20 +144,65 @@ alone makes the artifact land outside `4-connect` and fail
       diverging field, plus the name check — so the divergence lands
       somewhere visible instead of nowhere.
 
+3b. **On the REUSE path, check the candidate's locale and delivery type
+   against the PDD — and report, do not "fix".** Hydrate the chosen
+   program via `connect_get_program` and compare its live
+   `delivery_type` / `currency` / `country` against the PDD's
+   `connect_delivery_type` / `opportunity_currency` / `opportunity_country`
+   (use `checkProgramLocale` for the latter pair). None of the three is
+   updatable, so a divergence has exactly two honest outcomes — inventing
+   a third is the failure mode:
+
+   - **Emit a `[WARN]` line per diverging field** into the program notes
+     and the phase summary, naming live-vs-PDD. This is the default.
+   - **Escalate to the operator when the CURRENCY diverges**, because
+     that one silently misprices every payment unit built on the
+     program: `amount` / `org_amount` are whole-currency-unit integers,
+     so rates authored in INR against a USD program are out by ~83x, not
+     merely mislabelled. State the only real remedy (a replacement
+     program) and let the operator decide — do not create one unprompted.
+
+   Never send these fields to `connect_update_program` to close the gap —
+   it does not accept them, and a create-time-only field cannot be
+   reconciled after the fact.
+
 4. **Create the program** via `connect_create_program`:
    - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
      opportunity is configured for; must be a program-manager org)
    - `name`: archetype-signaling name (e.g. `"Vaccine Hesitancy Pilot
      (FGD) — Q2 2026"`)
    - `description`: PDD's intervention summary
-   - `delivery_type`: slug (preferred — e.g. `"nutrition"`) or int FK
-     from `connect_list_delivery_types`. The new automation API accepts
-     the slug directly; the old form-driven backend required the int.
+   - `delivery_type`: **read `connect_delivery_type` from the PDD's
+     § Program Parameters — do NOT choose one here.** Resolve it against
+     `connect_list_delivery_types({organization_slug})` and pass the
+     matching slug (the automation API accepts the slug directly; the old
+     form-driven backend required the int FK). **HALT if the PDD declares
+     none, or if the declared slug is not in the live list** — say which
+     slugs exist and ask. Never fall back to a nearest-looking label.
    - `budget`: total program budget from the PDD
-   - `currency`: 3-letter ISO (e.g. `USD`)
-   - `country`: human country name as Connect renders it
-     (e.g. `"United States of America"`, not `"USA"`)
+   - `currency` / `country`: **read `opportunity_currency` and
+     `opportunity_country` from the PDD, then gate them through
+     `checkProgramLocale` (`lib/program-locale.ts`) before calling create.
+     HALT on `ok: false`** and surface the verdict's `detail` verbatim.
+     `country` is ISO 3166-1 alpha-3 as every live row reads it back
+     (`IND`, `USA`, `BGD`); the helper also normalizes alpha-2 and plain
+     country names, so pass through whatever the PDD wrote and send the
+     normalized `verdict.country`.
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
+
+   > **Why these three are gated rather than defaulted.** `delivery_type`,
+   > `currency` and `country` are **create-time-only** — step 3's update
+   > path is explicit that `connect_update_program` must never be sent
+   > them. So a wrong value is not a bug you fix next run; it is baked
+   > into the program every future run of this opp reuses. Measured on
+   > `ai-demo-space` 2026-09-16, with nothing binding these to the PDD:
+   > seven of eleven live turmeric programs run under delivery type
+   > `Interview` for a market survey, and the current one pairs
+   > `country: IND` with `currency: USD` — so every payment unit on it is
+   > denominated in the wrong money. Operator rule, 2026-09-16: *an
+   > opportunity's amounts are always in the local currency of its
+   > country.* Per the same decision these existing programs are left
+   > uncorrected (fix-forward only); the gate protects new ones.
 
 4a. **Ensure program budget headroom (runs on both the reuse and create
    paths; the raise is monotonic — it never shrinks a ceiling)
@@ -493,3 +538,4 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
 | 2026-09-01 | Steps 2 + 4a: both MANDATED org-wide list calls overflowed the tool-result cap in `ai-demo-space` and returned no usable data (measured 2026-09-01: programs 42 rows/57,425 chars, 75.3% description prose; opportunities hydrated 71 rows/81,175 chars). Step 4a now calls `connect_list_opportunities({summarize_by_program})`, which does the whole Σ classification server-side and returns a few hundred characters instead of the rows; Step 2's unfiltered rows come back with capped descriptions. `write_to_path` on both atoms is the escape hatch (dimagi-internal/ace#1799). | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 | 2026-09-06 | **Root-caused ace#1637: the unreadable rows are opportunities Connect REFUSES to render a dashboard for, and they now say so (`dashboard_read: 'setup_incomplete'`).** `OpportunityDashboard.get` 302s any opportunity whose `is_setup_complete` is false (payment units + `total_budget` + `start_date` + `end_date`, each unit with `max_total`/`max_daily`) to the payment-unit wizard — and `ace-connect` FOLLOWED that redirect, so `parseOpportunityDashboard` was handed the wizard and `classifyDashboardRead` correctly reported `no_cards` about the wrong page. Measured live 2026-09-06 on `ai-demo-space`: 11 of 11 previously-`no_cards` rows returned `302 → …/payment_units/create` and 6 of 6 `ok` rows returned 200; 10 of the 11 have zero payment units. The detail fetch now uses `maxRedirects: 0` and the status + `Location` reach the classifier. Step 4a still counts these as unreadable and the arithmetic is unchanged — `is_setup_complete` is false when ANY of the four is missing and `connect_create_opportunity` sets a budget through the automation API without payment units, so inferring 0 would be a guess about a value Connect owns — but the count is reported separately as `setup_incomplete_rows`, because it is the one unreadable class retrying can never fix. `active` being correlated-but-not-causal is explained by the same finding. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts` (incl. a pin on `maxRedirects: 0`) + `test/lib/connect-list-projection.test.ts`. | ACE team |
+| 2026-09-16 | **`delivery_type`, `currency` and `country` are now READ from the PDD and gated, not chosen here (operator decision 2026-09-16).** All three are create-time-only — step 3.5 already forbids sending them to `connect_update_program` — so a wrong value is baked into a program every future run of the opp reuses, and nothing bound them to the design. Measured on `ai-demo-space` 2026-09-16: seven of eleven live turmeric programs run under delivery type `Interview` for a market survey, and the current one (`b2ca75f6`) pairs `country: IND` with `currency: USD`, mispricing every payment unit built on it (`amount`/`org_amount` are whole-currency-unit integers, so an INR rate against a USD program is out by ~83x, not mislabelled). Step 4 now resolves `connect_delivery_type` against the live `connect_list_delivery_types` and HALTS on an absent or unmatched slug, and gates `{country, currency}` through `checkProgramLocale` (`lib/program-locale.ts`), which never defaults to USD and halts on an unrecognised country. New step 3b applies the same comparison on the REUSE path, where the fields cannot be repaired at all — `[WARN]` per divergence, operator escalation when the CURRENCY diverges. Upstream, `idea-to-pdd-qa § launch_parameters_present` now requires and coherence-checks the trio, so an incoherent pair fails at Phase 1 rather than Phase 4. Existing programs are deliberately left uncorrected (fix-forward only, same decision). *Enforced:* `test/lib/program-locale.test.ts` + `test/skills/idea-to-pdd-qa/launch-parameters.test.ts`. | ACE team |

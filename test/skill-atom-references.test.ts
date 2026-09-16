@@ -86,6 +86,7 @@ const ALLOWLIST = new Set([
   'connect_type',            // schema field on Connect modules
   'connect_markers',         // schema field set on forms
   'connect_username',        // env var (CONNECT_USERNAME)
+  'connect_delivery_type',   // PDD § Program Parameters key holding the delivery-type SLUG the design settled on; resolved against the real `connect_list_delivery_types` atom in connect-program-setup Step 4
 
   // ---- Env vars (atom-shaped only by coincidence) ----
   'connect_apk_version',     // ACE_CONNECT_APK_VERSION (lowercased in skill prose)
