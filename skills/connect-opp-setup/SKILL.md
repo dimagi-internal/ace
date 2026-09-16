@@ -48,15 +48,42 @@ alone makes the artifact land outside `4-connect` and fail
    the PDD is incomplete and `idea-to-pdd` should re-run with the
    stress-test rubric.
 
-3. **Pre-flight (LLO program-application must be ACCEPTED).** The new
-   `POST /api/programs/<id>/opportunities/` endpoint validates that the
-   target LLO org has an `ACCEPTED` `ProgramApplication` for the program.
-   For ACE-driven dogfood runs, the orchestrator handles this in Phase 9
-   (`llo-onboarding` → optionally `connect_accept_program_application`)
-   *before* this skill runs. For real-LLO runs, the LLO accepts manually
-   and this skill simply waits. If the application is still INVITED/APPLIED
-   when this skill calls `create_opportunity`, the API rejects with
-   `Organization must have an accepted application for this program.`
+3. **Pre-flight (the program-application must be ACCEPTED).**
+   `POST /api/programs/<id>/opportunities/` validates that the holding
+   org has an `ACCEPTED` `ProgramApplication` for the program. If it is
+   still INVITED/APPLIED, the create rejects with `Organization must
+   have an accepted application` — live on `turmeric-market-study/20260914-1742`.
+   That rejection was used there AS the acceptance check: no readable
+   application-status surface exists, and `connect_list_invites` returns
+   `[]` regardless.
+
+   > ### This skill creates ACE's BUILD/QA opportunity, never the LLO's
+   >
+   > **The network-manager / program-manager model (operator decision
+   > 2026-09-16).** A program manager creates the program in the PM org
+   > (`ai-demo-space`), invites the network manager, and **only once the
+   > NM accepts can the PM create that NM's opportunity.** Connect
+   > enforces the gate itself — the accepted-application check above is
+   > exactly it.
+   >
+   > Phase 4 runs *before* Phase 8/9, so at this point **no LLO has been
+   > invited and none has accepted.** Therefore this skill always creates
+   > a **self-managed** opportunity held by the PM org: ACE's own
+   > build-and-QA vehicle, which Phase 6's device walk needs and which no
+   > LLO ever sees. The LLO's delivery opportunity is created in Phase 9
+   > by `llo-onboarding`, after the invite is accepted.
+   >
+   > **Two opportunities is the correct model, not a workaround.** It
+   > falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint: a
+   > DeliverUnit backs exactly one PaymentUnit ever, so the LLO's opp
+   > needs its own freshly-copied `cc_app_id`s regardless (see
+   > `commcare_linked_app_copy` with `linked: false`, same domain).
+   >
+   > **There is no repair path if this is got wrong**, which is why the
+   > split is structural rather than advisory: `target_organization_slug`
+   > is create-time only and `connect_update_opportunity` carries no org
+   > field, so an opportunity created under the wrong org can never be
+   > handed to the LLO. It has to be created under the right one.
 
    **3a. Self-managed opp pre-flight (added per #106 finding 10).**
    "Self-managed" means the `target_organization_slug` equals the
@@ -75,8 +102,30 @@ alone makes the artifact land outside `4-connect` and fail
         application for this program`). Treat exactly like same-org:
         run steps 2–4.
       - **Equal to `organization_slug`** → self-managed; run steps 2–4.
-      - **Different, non-empty** → LLO-distinct path — Phase 9 already
-        handled the round-trip; skip this sub-step.
+      - **Different, non-empty** → **HALT.** Phase 4 must not create an
+        opportunity for a distinct LLO. Record the LLO in
+        `selected_llo` (see `llo-onboarding` § two sources) and let
+        Phase 9 create their opportunity after the invite is accepted;
+        then re-run this skill with the slug omitted so it builds ACE's
+        self-managed build/QA opp. Halt message:
+
+        > FATAL: `target_organization_slug` names a distinct LLO
+        > (`<slug>`), but Phase 4 runs before any LLO has been invited
+        > or has accepted, so this create can only fail with the
+        > accepted-application rejection cited in step 3
+        > (`turmeric-market-study/20260914-1742`) — and if it somehow
+        > succeeded, the opportunity could
+        > never be reassigned (`target_organization_slug` is create-time
+        > only; `connect_update_opportunity` has no org field). Omit the
+        > slug here; Phase 9 creates the LLO's opportunity.
+
+      (This branch previously read *"Phase 9 already handled the
+      round-trip; skip this sub-step"* — **which was impossible**:
+      `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so the
+      skill asserted a precondition the pipeline cannot produce. The
+      create it waved through would hit the step-3 rejection
+      (`turmeric-market-study/20260914-1742`). Corrected 2026-09-16 with
+      the NM/PM model above.)
 
       (Pre-#1251 this step read "if they differ, skip" — which on
       `('ai-demo-space', undefined)` reads as *differ → skip*, exactly
@@ -1588,3 +1637,4 @@ decisions_append_rows({
 | 2026-09-11 | **Every Step 8 build-memo entry — each verification rule, `[ACE]` latitude and `[FIXED]` ambiguity — is also a `decisions.yaml` row (ace#2384).** The mapping of "where is each PDD verification rule enforced" existed only as memo prose, so a reviewer could read it but not answer it on the run page. Rule rows draw `ai-default` from the closed `Where applied` categories; the specific form/field or Connect setting goes in `reasoning` as `Spot-check:` because ace-web drops unknown keys. The Phase 4 boundary fails a section with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
+| 2026-09-16 | **Phase 4 creates ACE's build/QA opportunity, never the LLO's — the network-manager / program-manager model (operator decision 2026-09-16).** Step 3a's third branch said of a distinct `target_organization_slug`: *"Phase 9 already handled the round-trip; skip this sub-step."* **That precondition is impossible** — `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so no invite has been sent and none accepted when this skill runs; the create it waved through could only reject with `Organization must have an accepted application for this program`. Worse, had it succeeded the opportunity would be stranded: `target_organization_slug` is create-time only and `connect_update_opportunity` carries no org field, so it could never be handed to the LLO. That branch now HALTs with the remedy. Step 3 states the model: PM creates the program → invites the NM → **NM accepts** → PM creates the NM's opportunity (`llo-onboarding` § 2b, on freshly-copied `cc_app_id`s). Two opportunities is structural, not a workaround — it falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint. | ACE team |

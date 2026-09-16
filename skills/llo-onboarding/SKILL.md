@@ -126,6 +126,51 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
    org as the managed-opportunity owner. For real-LLO runs, skip this
    step — the LLO accepts via the Connect UI.
 
+   **2b. Create the LLO's delivery opportunity — ONLY once the
+   application is `ACCEPTED`.** This is the step that completes the
+   network-manager / program-manager round-trip: PM creates the program
+   → invites the NM → **NM accepts** → PM creates the NM's opportunity →
+   confirms it to them.
+
+   Phase 4 deliberately did NOT create this one. Its opportunity is
+   ACE's self-managed build/QA vehicle, held by the PM org, because
+   Phase 4 runs before any LLO has been invited (see
+   `connect-opp-setup` § *This skill creates ACE's BUILD/QA
+   opportunity, never the LLO's*). **Two opportunities is the correct
+   model**, not a workaround — it falls out of the ace#573
+   `DeliverUnit.payment_unit` FK constraint.
+
+   1. **Copy, build and release fresh apps first.** The LLO's opp needs
+      its own `cc_app_id`s: a DeliverUnit backs exactly one PaymentUnit
+      ever, so it cannot reuse the build/QA opp's apps. Use
+      `commcare_linked_app_copy` with **the same domain and
+      `linked: false`** — HQ's generic Copy Application — then
+      `commcare_make_build` + `commcare_release_build`. A copy
+      preserves `acquire`/`grid`, so it dodges ace#1643, and it
+      destroys nothing. Two traps: the `name` must be UNIQUE (id
+      recovery is name-based), and **a 30s timeout on the recovery
+      re-list does NOT mean the POST failed** — re-list before retrying
+      or you create a duplicate.
+   2. `connect_create_opportunity` with `target_organization_slug`
+      = `selected_llo.org_slug`, the fresh app ids, and the PDD's
+      dates/budget. **Treat the rejection *"Organization must have an
+      accepted application for this program"* as the acceptance
+      check** — no readable application-status surface exists, and
+      `connect_list_invites` returns `[]` regardless, so the create
+      itself is the only reliable test. If it rejects, the NM has not
+      accepted yet: say so and stop. Do not accept on their behalf
+      unless step 2a's dogfood carve-out applies.
+   3. **HALT and ask rather than silently clamping** if the PDD's
+      `start_date` would fall outside the program's window — no
+      opportunity may begin before its program, and quietly moving a
+      contractual date is not this skill's call.
+   4. Create the payment unit at the rate the **work order** settled,
+      not the PDD's draft band, and in the program's currency. Set all
+      Layer A criteria the Evidence Model names, not just the field
+      rule.
+   5. Record `opportunity_id` / `opportunity_url` into `selected_llo`
+      (step 7).
+
 3. **Read the PDD's `archetype:` field.** Email content — framing, "getting
    started" steps, timeline language, and which pieces of training material
    to emphasize — branches by archetype. See `## Archetypes` below. Fall
@@ -317,3 +362,4 @@ binding on this skill's output.
 | 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |
 | 2026-04-30 | Switch `connect_send_llo_invite` to `POST /api/programs/<id>/applications/` (commcare-connect PR #1135). Args drop `contact_email` (server emails workspace admins via `send_program_invite_email`). Add new step 2a: `connect_accept_program_application` for ACE-driven dogfood runs that need to auto-accept the invite. (0.10.47) | ACE team |
 | 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 9 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 8 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |
+| 2026-09-16 | **Two changes, one operator decision each (2026-09-16).** (1) **A solicitation is one way to select an LLO, not the only one.** `selected_llo.source` now distinguishes `solicitation` (award path, `solicitation-review`) from `operator` (the LLO named up front in the opp's `inputs/`, legal with **Phase 8 `skipped`**, and explicitly forbidden from carrying a fabricated `solicitation` block). The entry guard's FATAL message branches on whether Phase 8 ran, because the remedies differ. `selected_llo` also gained the handover record — `program_application_id` (UNRECOVERABLE if not captured at POST time: `connect_list_invites` is a blind read returning `[]` even for an accepted invite), the LLO's `opportunity_id`/`url`, and the Gmail thread + message ids — which previously had no typed home and landed in an invented top-level key nothing read. It renders as § LLO handover in the run README. (2) **New step 2b creates the LLO's delivery opportunity here**, after acceptance, on freshly-copied apps (`commcare_linked_app_copy`, same domain + `linked: false`) — Phase 4 cannot, since it runs before any invite exists. The create's own rejection IS the acceptance check; no readable application-status surface exists. Halts rather than clamping when `start_date` falls outside the program window. | ACE team |
