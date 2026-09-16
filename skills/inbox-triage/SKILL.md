@@ -268,6 +268,28 @@ lets an open thread age silently between turns (HENIKE waited 23 days). Every tu
   (`initiated_by` / `last_actor` in `run_state.yaml`) in the close-out, every turn, until resolved —
   not just listed.
 
+**EXCEPTION — an item the operator has DELIBERATELY PARKED is not escalated on age (Jon,
+2026-09-16).** The rule above exists for the thread nobody decided about; it says nothing about the
+thread someone decided to leave. Once a board card or a prior close-out records an explicit
+decision to wait — with the reason, and the condition that would end the wait — the elapsed time
+**stops being a finding**. Report it as parked, in one line, and escalate only on something that
+actually CHANGED: the gating condition clearing, the counterpart writing again, or the work the
+wait was for completing. Do not re-derive "ACE went silent on a partner" from the date arithmetic
+and hand it back as new information; the operator already knows, and re-raising a settled decision
+every turn is how a close-out teaches its reader to skim past the escalations that are real.
+
+The test is **whether a decision is recorded**, not whether the thread feels old or important.
+No recorded decision → it is the §4 case above, and age escalates exactly as written. A recorded
+decision that has since been overtaken (the condition cleared, the counterpart wrote) → that is a
+CHANGE, so it escalates on the change, never on the age.
+
+(Origin: the `spark-connect-program` card. A turn verified the thread's last inbound was 53 days
+old, found the card reading "outbound drafted + parked, needs approval to send", and surfaced the
+age as a decision needing an answer. The wait was deliberate and Jon was aware of it: *"we are
+aware its been a long time and that in and of itself shouldn't be flagged going forward."* The card
+now records the gate — a full re-run, after the poverty-graduation work lands — and that recorded
+gate, not the date, is what a later turn reads.)
+
 ### 4b. A STALE inbound is closed, not answered late (Jon, 2026-08-14)
 Aging cuts both ways. §4 covers a thread ACE is sitting on; this covers the inbound that went
 unread so long that **answering it is the wrong move**. Once an unread inbound is roughly **two
