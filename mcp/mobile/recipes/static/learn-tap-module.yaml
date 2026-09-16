@@ -68,6 +68,31 @@ appId: org.commcare.dalvik
     timeout: 10000
 - takeScreenshot: "learn-tap-module-before-${MODULE_NAME}"
 
+# Bring the target row into view before tapping it (ace#2425).
+#
+# Without this the recipe taps whatever `${MODULE_NAME}` resolves to in the
+# CURRENTLY RENDERED viewport, so any suite row below the fold is
+# unreachable — `selector-not-found`, with the row genuinely absent from the
+# dump rather than mismatched. That bites hardest exactly where it is most
+# expensive: ACE puts the GATING assessment in the LAST module, and since
+# ace#1082 / PR #1100 Phase 3 applies GRID display app-wide, which packs
+# fewer rows per screen than a list. Live on poverty-graduation/20260915-1518
+# (APK 2.64.0): a 9-module Learn app rendered 8 grid tiles, "Certification"
+# sat below the fold, Learn stalled at 8/9 = 88%, and Connect therefore kept
+# Deliver locked — on a build where everything else was correct.
+#
+# A runtime no-op when the row already fits, so every existing caller is
+# unaffected. Scoped to the menu container so it scrolls the suite list
+# rather than the screen.
+- scrollUntilVisible:
+    element:
+      text: "${MODULE_NAME}"
+    direction: DOWN
+    speed: 40
+    visibilityPercentage: 30
+    timeout: 30000
+    centerElement: true
+
 # Maestro walks up from the matched `row_txt` TextView (not clickable)
 # to the row's parent LinearLayout (which IS clickable). No need for
 # `below:` scoping — rows in this ListView don't overlap horizontally,
