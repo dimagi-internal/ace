@@ -203,6 +203,77 @@ describe('app-screenshot-capture Deliver gate — duration floor (ace#1667)', ()
     expect(gate).toMatch(/every \*{0,2}started\*{0,2} opportunity/i);
   });
 
+  // ------------------------------------------------------------------
+  // ace#2187 — the not-started branch must not be decided off an ABSENT
+  // `start_date`.
+  //
+  // ace#2427 added the branch and keyed it on `start_date` being in the
+  // future. But `start_date` comes ONLY off the opportunity DASHBOARD half of
+  // `connect_get_opportunity` (ace#1550), and every dashboard-only field
+  // degrades to `undefined` when that page does not render. The atom says so
+  // itself, in `docs/atom-schemas.md`:
+  //
+  //   "`dashboard_read` says whether the dashboard half ANSWERED, and only
+  //    `ok` licenses reading an undefined field as absent."
+  //
+  // An undefined `start_date` does not compare as "in the future", so a
+  // degraded read SKIPS the not-started branch and falls straight through to
+  // `delivered >= 1` HARD — grading a working Deliver path
+  // `not-delivered-on-connect`, which is verbatim the misgrade ace#2187 filed.
+  // The branch is silently absent on exactly the input it exists to handle.
+  //
+  // This is reachable, not theoretical: `classifyDashboardRead`
+  // (`mcp/connect/backends/html-scrape.ts`) returns five statuses, and 16 of
+  // 81 hydrated `ai-demo-space` rows read non-`ok` on
+  // bednet-check-2-visit/20260825-1310. The `setup_incomplete` status is the
+  // sharpest case — Connect refuses a dashboard for an opportunity whose
+  // `is_setup_complete` is false, and `start_date` is one of the four fields
+  // that predicate requires, so the field the gate needs is the very field
+  // whose absence suppresses the page that carries it (ace#1637).
+  it('licenses the start_date read on dashboard_read, not on the field being present', () => {
+    const gate = deliverGate();
+    // The honesty flag must be consulted, and named as the licence.
+    expect(gate).toContain('dashboard_read');
+    expect(gate).toMatch(/only\s+`?dashboard_read: 'ok'`?\s+licenses/i);
+    // And the non-answering statuses must be enumerated, so "undefined" is
+    // never read as "absent" by a future author working from memory.
+    expect(gate).toContain('setup_incomplete');
+    expect(gate).toContain('not_fetched');
+  });
+
+  it('carries the start-date-unreadable outcome, distinct from pass AND from not-delivered-on-connect', () => {
+    const gate = deliverGate();
+    expect(gate).toContain('start-date-unreadable');
+    // It must be explicitly neither of the two verdicts it sits between —
+    // calling it a pass hides a broken path, calling it
+    // not-delivered-on-connect is the ace#2187 misdirection all over again.
+    expect(gate).toMatch(/not\*{0,2}\s+a pass/i);
+    expect(gate).toMatch(/not\*{0,2}\s+`?not-delivered-on-connect`?\s+either/i);
+    // And it must name the remedy rather than leaving the operator guessing.
+    expect(gate).toMatch(/re-read `connect_get_opportunity`/i);
+  });
+
+  it('forbids defaulting an unread start_date to "already started"', () => {
+    const gate = deliverGate();
+    expect(gate).toMatch(/do not default an unread `start_date` to "already started"/i);
+    // The mechanism, so the prohibition is checkable rather than a slogan:
+    // undefined compares as "not in the future" and skips the branch.
+    expect(gate).toMatch(/start_date: undefined/);
+    expect(gate).toMatch(/not in the future/i);
+  });
+
+  it('establishes start_date before any count is graded', () => {
+    const gate = deliverGate();
+    // Ordering is load-bearing twice over: start_date must be ESTABLISHED
+    // before the counts, and the not-started branch stays first among them.
+    expect(gate).toMatch(/must be ESTABLISHED before any\s*count is graded/i);
+    expect(gate).toMatch(/evaluated FIRST/i);
+    // The stored Phase-4 value is a fallback that must be disclosed, because
+    // `connect_update_opportunity` can move the date after Phase 4 wrote it.
+    expect(gate).toContain('phases.connect-setup.products.connect.opportunity.start_date');
+    expect(gate).toMatch(/record that you fell back to it/i);
+  });
+
   it('keeps every Deliver-count assertion inside the pinned block', () => {
     const outside = stepFiveOutsideGate();
     expect(outside).not.toMatch(/`approved >= 1`/);

@@ -865,15 +865,58 @@ corroborated by `4-connect/connect-opp-setup_summary.md`
 when the PDD states a minimum delivery duration). If neither records one, the
 opportunity has **no** duration floor: `duration_floor_seconds = 0`.
 
-**And read the opportunity's `start_date`** — the counts branch on it before
-anything else. Take it from the run's own state,
-`phases.connect-setup.products.connect.opportunity.start_date` (Phase 4 writes
-it), or read it live with `connect_get_opportunity({organization_slug,
-opportunity_id})`, whose dashboard half carries `start_date` (ace#1550). No new
-atom is needed either way. Compare it against the date the walk ran.
+**And establish the opportunity's `start_date` — with the read's own honesty
+flag, because an absent value is NOT a fact.** The counts branch on it before
+anything else, so establishing it is a precondition of grading rather than a
+convenience. Two sources, in this order:
 
-Now assert against the counts. **The not-started branch is evaluated FIRST**,
-because it is the one opportunity configuration under which no count can move:
+1. **Live** — `connect_get_opportunity({organization_slug, opportunity_id})`.
+   `start_date` comes only off the opportunity DASHBOARD (ace#1550), and every
+   dashboard-only field degrades to `undefined` when that page does not
+   render, so **read `dashboard_read` FIRST**. Per that atom's own contract
+   (grep `docs/atom-schemas.md` rather than paraphrasing it), **only
+   `dashboard_read: 'ok'` licenses reading `start_date`'s value — or its
+   absence — as a fact about the opportunity.** The other four statuses
+   (`setup_incomplete`, `no_cards`, `not_a_dashboard`, `not_fetched`) mean the
+   page did not answer. `setup_incomplete` is the one retrying can never fix.
+   OBSERVED, not predicted (ace#1637, measured live on `ai-demo-space`
+   2026-09-06): Connect refuses to render a dashboard for an opportunity whose
+   setup is unfinished — 11 of 11 such rows returned `302 →
+   …/payment_units/create` against 6 of 6 `ok` rows returning 200, and
+   `OpportunityDashboard.get` redirects on `is_setup_complete`, which is
+   `paymentunit_set.exists() and total_budget and start_date and end_date`.
+   `start_date` is itself one of those four, so the field the gate needs is
+   precisely the field whose absence suppresses the page that carries it.
+2. **Stored** — `phases.connect-setup.products.connect.opportunity.start_date`,
+   which Phase 4 wrote at create time. Use it when the live read did not
+   answer, and **record that you fell back to it**: it is a snapshot, and
+   `connect_update_opportunity` can move the date after Phase 4 wrote it.
+
+No new atom is needed either way. Compare the established date against the date
+the walk ran.
+
+Now assert against the counts. `start_date` must be ESTABLISHED before any
+count is graded, and among the count branches **the not-started branch is
+evaluated FIRST**, because it is the one opportunity configuration under which
+no count can move:
+
+- **`start_date` could not be established** — the live read's `dashboard_read`
+  was not `'ok'` AND the run carries no stored Phase-4 value → record
+  **`start-date-unreadable`**. This is **not** a pass, and it is **not**
+  `not-delivered-on-connect` either: nothing has shown the Deliver→Connect path
+  to be broken: the gate simply cannot tell which branch applies, because the
+  one input that separates *"Connect withheld credit by design"* from *"the
+  visit never arrived"* is unread. Record the `dashboard_read` status verbatim
+  alongside the `delivered/approved/rejected` counts, and name the remedy:
+  re-read `connect_get_opportunity` live, and if `dashboard_read` is
+  `setup_incomplete` that opportunity renders no dashboard at all, so the
+  stored Phase-4 value corroborated by `4-connect/connect-opp-setup_summary.md`
+  is the only source there will ever be. **Do not default an unread
+  `start_date` to "already started" and fall through to the hard assertion.**
+  A degraded dashboard read returns `start_date: undefined`, which compares as
+  "not in the future" and silently skips the branch below — reproducing the
+  exact ace#2187 misgrade (*a working Deliver path graded
+  `not-delivered-on-connect`*) on the one input the branch was added to catch.
 
 - **The opportunity has not started (`start_date` is in the future) and
   `delivered == 0`** → record **`not-started-as-designed`**: a
