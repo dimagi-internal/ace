@@ -10,6 +10,12 @@
 import { config as dotenvConfig } from 'dotenv';
 import { assertNotCredentialPath } from '../lib/contained-path.js';
 import { reconcileAfterCreate } from '../lib/drive-duplicate-reconcile.js';
+import {
+  DISPLACEMENT_FILE_FIELDS,
+  assertExpectedAbsent,
+  describeDisplaced,
+  type DisplacedContent,
+} from '../lib/drive-displacement.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -872,23 +878,24 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** \u2014 measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here. It was sequenced behind converting the producers that legitimately write above it (ace#1907); that conversion SHIPPED in ace#1918 \u2014 every measured >40,000-char producer now passes `localFilePath`, pinned by test/skills/large-artifact-localfilepath.test.ts \u2014 so what is left is the decision to turn the refusal on, not a working phase it would break (ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call\'s payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. **This atom ALWAYS creates a Google Doc, and it does not preserve bytes.** `text/plain; charset=utf-8` is the MEDIA type the body is decoded with on the way in (the charset hint is what makes em-dashes, accents and smart quotes decode correctly) — it is NOT the created file\'s type. The file lands as `application/vnd.google-apps.document`, so Drive\'s importer turns `#`, `**`, `>` and pipe tables into heading styles, bold runs and native tables, and a read-back returns styled text rather than the markdown you sent. That is fine for YAML and prose artifacts (readers export text and parse) and WRONG for any artifact whose purpose is byte preservation — a `.source.md` companion, most of all. For those use **`drive_upload_binary`** with `mimeType: "text/markdown"`, which uses Drive\'s media-upload path and lands the file as its native type. Passing `mimeType` here is REFUSED rather than silently ignored, and the refusal names that call (ace#1991). The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** \u2014 measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here. It was sequenced behind converting the producers that legitimately write above it (ace#1907); that conversion SHIPPED in ace#1918 \u2014 every measured >40,000-char producer now passes `localFilePath`, pinned by test/skills/large-artifact-localfilepath.test.ts \u2014 so what is left is the decision to turn the refusal on, not a working phase it would break (ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call\'s payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. **A reuse REPLACES content, and it now reports what it replaced (ace#2338).** The result carries `displaced: {revisionVersion, modifiedTime, ageSeconds, lastModifiedBy, note}` describing the content that was overwritten — because `reused:true` alone is equally true for \'I re-wrote my own draft\' and \'I destroyed a different agent\'s artifact\'. (Measured: an INDEPENDENT `solicitation-create-eval` verdict, 9.17, replaced by the producer\'s own self-eval, 8.86, because the producer believed the dispatched grader had stalled and ran the rubric inline.) READ `displaced` — an `ageSeconds` of seconds on a file you thought did not exist is another writer\'s work, and its revision history is the recovery path. Authorship itself is NOT knowable here: every ACE Drive write uses one service account, so `lastModifiedBy` is the same principal for every writer — which is why this reports rather than refuses. To make a collision fail loudly instead, pass `expectAbsent: true`. **This atom ALWAYS creates a Google Doc, and it does not preserve bytes.** `text/plain; charset=utf-8` is the MEDIA type the body is decoded with on the way in (the charset hint is what makes em-dashes, accents and smart quotes decode correctly) — it is NOT the created file\'s type. The file lands as `application/vnd.google-apps.document`, so Drive\'s importer turns `#`, `**`, `>` and pipe tables into heading styles, bold runs and native tables, and a read-back returns styled text rather than the markdown you sent. That is fine for YAML and prose artifacts (readers export text and parse) and WRONG for any artifact whose purpose is byte preservation — a `.source.md` companion, most of all. For those use **`drive_upload_binary`** with `mimeType: "text/markdown"`, which uses Drive\'s media-upload path and lands the file as its native type. Passing `mimeType` here is REFUSED rather than silently ignored, and the refusal names that call (ace#1991). The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
     content: z.string().optional().describe('Text content for the file, inline. Provide either this OR localFilePath, not both.'),
     localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 content becomes the file content. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR content, not both. Mirrors drive_update_file\'s and drive_upload_binary\'s param of the same name.'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. Set to false only when you specifically want a separate sibling each call.'),
+    expectAbsent: z.boolean().optional().describe('Assert that NO same-name file exists under the parent. When true and one does, the call is REFUSED with its id, revision, modifiedTime and age, and NOTHING is written — instead of silently replacing whatever another writer put there (ace#2338). Pass it whenever you believe you are the FIRST author of this artifact, most of all on a fallback/recovery path that concluded an earlier producer had stalled: that is exactly the belief that was wrong when an independent -eval verdict was overwritten by the producer\'s own self-eval. Default: false. Orthogonal to findOrCreate — this is an assertion about the NAME, so it is checked even with findOrCreate:false.'),
     mimeType: z.string().optional().describe("Accepted ONLY as 'application/vnd.google-apps.document' (this atom's sole outcome). Any other value is REFUSED with the drive_upload_binary call that does what you meant. Declared solely so a mistaken `mimeType: 'text/markdown'` fails loudly instead of being dropped by the schema — six skills carried that unsatisfiable instruction and every one silently produced a second Google Doc (ace#1991)."),
   },
-  async ({ name: fileName, content: fileContent, localFilePath, parentFolderId, findOrCreate, mimeType }) => {
+  async ({ name: fileName, content: fileContent, localFilePath, parentFolderId, findOrCreate, expectAbsent, mimeType }) => {
     try {
       assertCreateFileMimeType(mimeType, { name: fileName, parentFolderId, localFilePath });
       const resolved = resolveInlineOrLocalFile({
         atom: 'drive_create_file', inlineParam: 'content',
         inline: fileContent, localFilePath,
       });
-      const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate }, drive);
+      const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -899,21 +906,22 @@ server.tool(
 // 11a. Create a new Google Doc from markdown content, using Drive's native conversion
 server.tool(
   'drive_create_doc_from_markdown',
-  'Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`.\n\nThe body comes from exactly ONE of `markdown` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of document size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** (measured 2026-09-02 over the live Drive corpus: p95 = 29,772 chars, p99 = 60,671, and 3.5% of 1,572 text artifacts clear 40,000 \u2014 the PDD, the test prompts and the solicitation documents among them. No ceiling is enforced here; it was sequenced behind converting the producers that write above it, and that conversion shipped \u2014 ace#1907, ace#1918). A ~52 KB PDD emitted inline costs ~13k output tokens, and `idea-to-pdd` steps 6/6b require that document to be written TWICE — once rendered here and once as a `.source.md` companion via `drive_create_file` — with nothing verifying the two emissions match (ace#1780). Point both calls at the SAME local file and byte-identity is a property of the calls rather than of the author\'s diligence, which is what makes `run-surface-audit`\'s DOC-FIDELITY check meaningful.',
+  'Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true), and a reuse reports `displaced: {revisionVersion, modifiedTime, ageSeconds, lastModifiedBy, note}` naming the content it replaced (ace#2338); pass `expectAbsent: true` to refuse the write instead when you believe you are the first author. The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`.\n\nThe body comes from exactly ONE of `markdown` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of document size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** (measured 2026-09-02 over the live Drive corpus: p95 = 29,772 chars, p99 = 60,671, and 3.5% of 1,572 text artifacts clear 40,000 \u2014 the PDD, the test prompts and the solicitation documents among them. No ceiling is enforced here; it was sequenced behind converting the producers that write above it, and that conversion shipped \u2014 ace#1907, ace#1918). A ~52 KB PDD emitted inline costs ~13k output tokens, and `idea-to-pdd` steps 6/6b require that document to be written TWICE — once rendered here and once as a `.source.md` companion via `drive_create_file` — with nothing verifying the two emissions match (ace#1780). Point both calls at the SAME local file and byte-identity is a property of the calls rather than of the author\'s diligence, which is what makes `run-surface-audit`\'s DOC-FIDELITY check meaningful.',
   {
     name: z.string().describe('Name for the new Google Doc'),
     markdown: z.string().optional().describe('Markdown body, inline. Drive converts: # → H1, ## → H2, ### → H3, **bold**, *italic*, [text](url), -/* lists, ```code```, | tables |. Smart quotes / em-dashes / accents round-trip cleanly via UTF-8. Provide either this OR localFilePath, not both.'),
     localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 markdown becomes the document body. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR markdown, not both. Mirrors drive_update_file\'s and drive_upload_binary\'s param of the same name. Pair it with drive_create_file\'s localFilePath pointing at the SAME file to make a rendered doc and its .source.md companion byte-identical by construction (ace#1780).'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive.'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true.'),
+    expectAbsent: z.boolean().optional().describe('Assert that NO same-name file exists under the parent. When true and one does, the call is REFUSED with its id, revision, modifiedTime and age, and NOTHING is written (ace#2338). Same semantics as drive_create_file\'s parameter of the same name. Default: false.'),
   },
-  async ({ name: fileName, markdown, localFilePath, parentFolderId, findOrCreate }) => {
+  async ({ name: fileName, markdown, localFilePath, parentFolderId, findOrCreate, expectAbsent }) => {
     try {
       const resolved = resolveInlineOrLocalFile({
         atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown',
         inline: markdown, localFilePath,
       });
-      const r = await handleCreateDocFromMarkdown({ name: fileName, markdown: resolved, parentFolderId, findOrCreate }, drive);
+      const r = await handleCreateDocFromMarkdown({ name: fileName, markdown: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -2272,11 +2280,23 @@ export function assertCreateFileMimeType(
  * second copy). Pass `findOrCreate: false` to opt out.
  */
 export async function handleCreateFile(
-  args: { name: string; content: string; parentFolderId: string; findOrCreate?: boolean },
+  args: {
+    name: string;
+    content: string;
+    parentFolderId: string;
+    findOrCreate?: boolean;
+    expectAbsent?: boolean;
+  },
   driveClient: typeof drive = drive,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
-): Promise<{ id: string; name: string; webViewLink?: string; reused?: boolean }> {
-  const { name, content, parentFolderId, findOrCreate = true } = args;
+): Promise<{
+  id: string;
+  name: string;
+  webViewLink?: string;
+  reused?: boolean;
+  displaced?: DisplacedContent;
+}> {
+  const { name, content, parentFolderId, findOrCreate = true, expectAbsent = false } = args;
   const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
   const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
   if (!guard.ok) throw new Error(guard.message);
@@ -2287,18 +2307,31 @@ export async function handleCreateFile(
   // that mis-handles multi-byte sequences.
   const bodyMedia = { mimeType: 'text/plain; charset=utf-8', body: content };
 
-  if (findOrCreate) {
+  // `expectAbsent` is an assertion about the NAME, so it needs the lookup even
+  // when findOrCreate is off (where the write would otherwise be a blind
+  // sibling create — silent in its own way).
+  if (findOrCreate || expectAbsent) {
     const escaped = name.replace(/'/g, "\\'");
     const list = await retry(() => driveClient.files.list({
       q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
-      fields: 'files(id, name, webViewLink)',
+      // Widened for ace#2338: the reuse below replaces this file's content, and
+      // these fields are what let it say WHAT it replaced. They ride along on a
+      // list call the find-or-update path already makes — zero extra requests.
+      fields: `files(${DISPLACEMENT_FILE_FIELDS})`,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     }));
     const existing = list.data.files?.[0];
-    if (existing?.id) {
+    // Refuse BEFORE any write, so a caller that guessed wrong loses nothing.
+    if (expectAbsent) {
+      assertExpectedAbsent(existing as any, {
+        atom: 'drive_create_file', name, parentFolderId,
+      });
+    }
+    if (findOrCreate && existing?.id) {
       // Update content of existing file and return its id — no new file
       // gets created.
+      const displaced = describeDisplaced(existing as any);
       await retry(() => driveClient.files.update({
         fileId: existing.id!,
         media: bodyMedia,
@@ -2310,6 +2343,7 @@ export async function handleCreateFile(
         name: existing.name!,
         webViewLink: existing.webViewLink ?? undefined,
         reused: true,
+        displaced,
       };
     }
   }
@@ -2343,7 +2377,7 @@ export async function handleCreateFile(
     const escaped2 = name.replace(/'/g, "\\'");
     const after = await retry(() => driveClient.files.list({
       q: `name='${escaped2}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
-      fields: 'files(id, createdTime)',
+      fields: `files(createdTime, ${DISPLACEMENT_FILE_FIELDS})`,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     }));
@@ -2353,6 +2387,11 @@ export async function handleCreateFile(
     }));
     const verdict = reconcileAfterCreate(fileId, siblings);
     if (verdict.action === 'adopt') {
+      // Adopting means overwriting the canonical file — which, by construction
+      // of this branch, is ANOTHER writer's (ace#1417). Report the displacement
+      // for the same reason the reuse path does (ace#2338).
+      const canonMeta = (after?.data?.files ?? []).find((f) => f.id === verdict.canonicalId);
+      const displacedByAdopt = canonMeta ? describeDisplaced(canonMeta as any) : undefined;
       await retry(() => driveClient.files.update({
         fileId: verdict.canonicalId,
         media: bodyMedia,
@@ -2379,6 +2418,7 @@ export async function handleCreateFile(
         name: canon.data.name!,
         webViewLink: canon.data.webViewLink ?? undefined,
         reused: true,
+        displaced: displacedByAdopt,
       };
     }
   }
@@ -2406,11 +2446,23 @@ export async function handleCreateFile(
  * file under the parent is overwritten in place, no duplicate created.
  */
 export async function handleCreateDocFromMarkdown(
-  args: { name: string; markdown: string; parentFolderId: string; findOrCreate?: boolean },
+  args: {
+    name: string;
+    markdown: string;
+    parentFolderId: string;
+    findOrCreate?: boolean;
+    expectAbsent?: boolean;
+  },
   driveClient: typeof drive = drive,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
-): Promise<{ id: string; name: string; webViewLink?: string; reused?: boolean }> {
-  const { name, markdown, parentFolderId, findOrCreate = true } = args;
+): Promise<{
+  id: string;
+  name: string;
+  webViewLink?: string;
+  reused?: boolean;
+  displaced?: DisplacedContent;
+}> {
+  const { name, markdown, parentFolderId, findOrCreate = true, expectAbsent = false } = args;
   const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
   const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
   if (!guard.ok) throw new Error(guard.message);
@@ -2424,18 +2476,25 @@ export async function handleCreateDocFromMarkdown(
     body: Readable.from(Buffer.from(markdown, 'utf-8')),
   };
 
-  if (findOrCreate) {
+  if (findOrCreate || expectAbsent) {
     const escaped = name.replace(/'/g, "\\'");
     const list = await retry(() => driveClient.files.list({
       q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
-      fields: 'files(id, name, webViewLink)',
+      // Widened for ace#2338 — see handleCreateFile. Zero extra Drive calls.
+      fields: `files(${DISPLACEMENT_FILE_FIELDS})`,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     }));
     const existing = list.data.files?.[0];
-    if (existing?.id) {
+    if (expectAbsent) {
+      assertExpectedAbsent(existing as any, {
+        atom: 'drive_create_doc_from_markdown', name, parentFolderId,
+      });
+    }
+    if (findOrCreate && existing?.id) {
       // Overwrite existing file's content with the new markdown.
       // files.update with a markdown body re-runs the conversion server-side.
+      const displaced = describeDisplaced(existing as any);
       await retry(() => driveClient.files.update({
         fileId: existing.id!,
         media: bodyMedia,
@@ -2447,6 +2506,7 @@ export async function handleCreateDocFromMarkdown(
         name: existing.name!,
         webViewLink: existing.webViewLink ?? undefined,
         reused: true,
+        displaced,
       };
     }
   }
