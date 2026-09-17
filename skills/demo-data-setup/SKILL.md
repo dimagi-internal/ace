@@ -1150,12 +1150,35 @@ front half (how the labs-only opp + its data come to exist) differs.
    source-of-truth narrative artifact and the input a later fork replays. It is
    only either of those if it is the manifest that actually ran and it loads.
 
-   - **Author once, to a local file.** Send that file's contents to
-     `synthetic_generate_from_manifest`, and publish that identical string as the
-     artifact (`drive_create_file` a placeholder, then
-     `drive_update_file({localFilePath})` — which uploads the bytes off disk
-     rather than through a second emission). Do NOT type the manifest a second
-     time for the archive.
+   - **Author once, to a local file, and send THAT FILE — never its contents
+     through a tool call (ace#2433).** Generate with:
+
+     ```bash
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-labs-synthetic-generate.ts" <manifest.yaml> --opportunity-id <labs-opp-id>
+     ```
+
+     Then publish the same file as the artifact (`drive_create_file` a
+     placeholder, then `drive_update_file({localFilePath})` — which uploads the
+     bytes off disk). **Do NOT type the manifest a second time for the archive.**
+
+     Why the script rather than the atom: `synthetic_generate_from_manifest`
+     takes `manifest_yaml` as an inline **string** and has no file-handle
+     parameter, so calling it as an MCP tool forces you to re-emit the YAML into
+     the tool call. The wire payload is then one emission and the archive
+     another — identical only if you reproduce the file byte-for-byte, which is
+     precisely the assumption that failed below. The script reads the file and
+     POSTs `tools/call` server-side, so there is exactly ONE emission and the
+     archived file IS the wire payload by construction rather than by diligence.
+     Same `_path`-companion pattern as `scripts/run-nova-media-upload.ts`.
+
+     `--dry-run` (appended to that same command) prints the exact request without sending it and needs no token
+     — generation is a real mutation against a labs opportunity, so inspect it
+     first if anything about the manifest is uncertain.
+
+     The instruction this replaces ("send that file's contents to
+     `synthetic_generate_from_manifest`") was unsatisfiable: it named the file
+     as the source of truth while the only available parameter took a string.
    - **Then read it back and parse it.** `drive_read_file` → `yaml.safe_load`, and
      re-validate against the labs `Manifest` model if a connect-labs checkout is
      reachable. Fail the step if it does not parse.
@@ -1570,6 +1593,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 | 2026-08-27 | **Step 3c narrowed to CAPABILITY gaps, and gap prose is no longer scanned (ace#1762).** Measured against the real artifacts rather than its fixtures, the narrative pass ran at ~44% precision: 9 findings on `hh-poverty-targeting/20260827-0323`, of which 3 were a DECISION gap firing on claims that merely NAME thresholds (its own proposed remedy, not a contradiction) and 1 was one gap's `proposed_action` naming another gap's subject. Both are subtractions: `constraining` is now CAPABILITY only — the RESEARCH carve-out's reasoning covers DECISION verbatim, since both forbid a *qualified* claim and no keyword match can tell that from naming the subject — and `narrativeSources()` no longer emits `why_brief.gaps[]` at all, replacing the narrower self-exemption (`exemptGapId` removed as dead). Measured after: 9 → 5 findings over 4 distinct strings, all genuine `area` / `adjudication` CAPABILITY hits. Precision is the whole asset for a report-only check — a gate that cries wolf is how the real misses get waved through (ace#1744). | ACE team |
 | 2026-08-27 | **Step 3c also reads the NARRATIVE artifacts, not just dashboard `render_code` (ace#1759).** The same run's why-brief contradicted a gap it itself declared — `decisions-are-recorded` asserts the disposition is recorded "with its reason" while `adjudication-log-is-run-state-not-a-register` declares no durable register and no reason field. Only a post-render judge caught it, on iteration 2. `checkGapCopy`'s `sources` now takes already-prose entries alongside render_code, and `narrativeSources()` builds them from `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail, proposed_action}` and `unified_spec.scenes[].{concept_claim, show, narrative}`, each labelled by origin. A gap is exempt from its OWN detail/proposed_action. Still report-only; still term matching, so an inverted claim (scene 4's low-variance→fabrication converse) is not caught. | ACE team |
 | 2026-08-27 | **Step 3c: check dashboard COPY against the why-brief's declared gaps (ace#1750).** The narrative was gated against `gaps[]` and the dashboard prose was not, so `hh-poverty-targeting/20260827-0323` shipped four on-screen assertions of exactly what its own gap list declared unsupported — across two dashboards, one contradicting the same page's leave-one-out definition two lines above it. In all four the narration was clean and the UI copy was the offender, so every instance had to be caught by a post-render LLM judge. New `checkGapCopy` in `lib/gap-copy-check.ts`, report-only. Catches subject-term repetition, not semantic equivalence — a coverage claim phrased without the gap's nouns still slips. | ACE team |
+| 2026-09-17 | **Step 5b now sends the manifest FILE, via `scripts/run-labs-synthetic-generate.ts` (ace#2433).** The ace#1737 remedy was unsatisfiable as written: it said to send "that file's contents" to `synthetic_generate_from_manifest`, but that atom takes `manifest_yaml` as an inline string and exposes no file-handle parameter, so the model had to re-emit the YAML into the tool call — making the wire payload one emission and the archive another, which is the exact defect ace#1737 identified. The script reads the file and POSTs `tools/call` server-side, so the archived file IS the wire payload by construction. | ACE team |
 | 2026-08-27 | **Step 5b: the archived manifest must be the same bytes that were sent, and must round-trip parse (ace#1737).** `hh-poverty-targeting/20260824-1404` published a `demo-data-setup_manifest.yaml` that does not parse as YAML — flow mappings were column-aligned, so the longest key got zero spaces before its `{`. Generation had succeeded, so the archived copy was a SECOND emission rather than a capture of the wire payload; the break surfaced only when the next run tried to fork it. Drive was ruled out by direct probe (the pathological shape round-trips byte-for-byte). Fix: author once to a local file, send that, upload that file's bytes, then read back and `yaml.safe_load`. | ACE team |
 | 2026-08-26 | **`period_end` is exclusive — derive it as `timeline.end_date + 1 day` (ace#1683).** A run window is half-open (`visit_date >= date_from AND visit_date < date_to`, `query_builder._date_window_where`), and the natural authoring move — pass the manifest's own `timeline.start_date`/`end_date` — drops the fixture's entire final day from any snapshotted dashboard while its live sibling keeps it. Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047): snapshot run 5245 `total=2186`, live run 5249 `total=2237`, fixture `2237`, re-mint at `period_end 2026-08-31` → `2237`, exact. Nothing failed; every existing check passed. Also documented: period scoping bites only on the SNAPSHOT path, and omitting the bounds defaults to `[today, today)`, a zero-width window. New backstop: `demo-data-setup-qa` check 11. | ACE team |
 | 2026-08-26 | **Step 1c (ace-run): giving the demo something to detect is now a REQUIRED authoring step, derived from the PDD's own declared controls.** `hh-poverty-targeting/20260824-1404` shipped `anomalies: []` and no per-persona divergence, so the cohort had no signal in it — completion 64–77%, PPI ~34, 15 undifferentiated workers in the queue, one decision against an empty adjudication log — and the DDD loop ended `stopped_not_converged` at concept 2.0/5 on `use_case_soundness` ("the scenario does not exercise the feature it demonstrates"). Four obligations (enumerate the PDD's controls verbatim → instantiate ≥1 → cite the clause → state what a reviewer would SEE), an explicit ban on inventing a pattern the design does not declare, an honest `detectable_signal: none` escape, and the two manifest mechanics (1-based anomaly weeks with `week: 0` a silent no-op; `coaching_arcs: []` to the atom) that void the step by a different route. | ACE team |
