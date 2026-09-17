@@ -133,14 +133,90 @@ const PATH_REF = /\/[A-Za-z_][\w.-]*(?:\/[A-Za-z_][\w.-]*)*/g;
 
 /** A minimum-rows gate found in a constraint expression. */
 export interface DeadRepeatCardinalityGate {
-  /** The repeat the `count()` counts (its nodeset). */
+  /** The repeat the gate counts (its nodeset). */
   repeat: string;
-  /** The `count(...)` argument exactly as written. */
+  /** The `count(...)` / `sum(...)` argument exactly as written. */
   countArg: string;
   /** The comparison exactly as written, e.g. `>= 1`. */
   comparison: string;
   /** Fewest rows the gate demands. Always >= 1 (that is what makes it dead). */
   minimumRows: number;
+  /**
+   * Which aggregate spells the gate. `sum` is only ever recognised over a
+   * per-row 0/1 INDICATOR — see `findMinimumCardinalityGate` (ace#2416).
+   */
+  fn: 'count' | 'sum';
+  /**
+   * Set iff `fn === 'sum'`: the repeat child whose own `calculate` is the
+   * 0/1 indicator being summed. Naming it is what makes the widening
+   * auditable — a `sum()` over anything else is not a row count.
+   */
+  indicatorNode?: string;
+}
+
+/**
+ * Split a parenthesised argument list at top level. `open` is the index of the
+ * `(`; `close` is the exclusive end returned by `matchingParen`. Quote-aware,
+ * so `if(selected(x, 'a,b'), 1, 0)` splits into three arguments, not five.
+ */
+function splitCallArgs(expr: string, open: number, close: number): string[] {
+  const inner = expr.slice(open + 1, close - 1);
+  const args: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let cur = '';
+  for (const c of inner) {
+    if (quote) {
+      cur += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      cur += c;
+      continue;
+    }
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    if (c === ',' && depth === 0) {
+      args.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += c;
+  }
+  args.push(cur.trim());
+  return args.map((a) => a.trim());
+}
+
+/**
+ * True when `calc` is a per-row 0/1 INDICATOR: `if(<predicate>, 1, 0)` or
+ * `if(<predicate>, 0, 1)`, with the numerals optionally quoted (Nova emits a
+ * `type="xsd:string"` bind for these, so `'1'` / `'0'` is also in scope).
+ *
+ * This is the whole basis on which `sum()` is allowed to stand in for
+ * `count()`: an indicator contributes at most 1 per repetition, so
+ * `sum(indicator) >= N` implies at least N rows. `sum(/data/roster/age) >= 1`
+ * does NOT — one row with `age = 1` satisfies it, and so does a row with
+ * `age = 40` — which is why anything but this exact shape is refused.
+ */
+function isRowIndicator(calc: string): boolean {
+  const open = calc.indexOf('(');
+  if (open === -1 || !/^\s*if\s*\(/.test(calc)) return false;
+  const close = matchingParen(calc, open);
+  // The `if(...)` must BE the whole calculate, not a sub-expression of it.
+  if (close < 0 || calc.slice(close).trim() !== '') return false;
+  const args = splitCallArgs(calc, open, close);
+  if (args.length !== 3) return false;
+  const numeral = (a: string): string | undefined => {
+    const m = /^(?:'([01])'|"([01])"|([01]))$/.exec(a);
+    return m ? (m[1] ?? m[2] ?? m[3]) : undefined;
+  };
+  const t = numeral(args[1]);
+  const f = numeral(args[2]);
+  if (t === undefined || f === undefined) return false;
+  // One branch 1 and the other 0 — `if(p, 1, 1)` is a constant, not a flag.
+  return t !== f;
 }
 
 /**
@@ -195,19 +271,61 @@ function countsRepeat(countArg: string, repeat: string): boolean {
  * trade a real defect for a UX regression on the cap half, so it stays out of
  * scope rather than being half-handled here.
  *
+ * ## `sum()` over a per-row indicator (ace#2416)
+ *
+ * The same floor is idiomatically spelled `sum(<repeat>/<flag>) >= N` where
+ * `<flag>` is a per-row `calculate="if(<predicate>, 1, 0)"`. Recorded verbatim
+ * from released Deliver build `e55a640283e74900ba2453d0dea13714`
+ * (`poverty-graduation/20260915-1518`, `modules-0/forms-0.xml`):
+ *
+ * ```xml
+ * <bind nodeset="/data/roster/member_flag" type="xsd:string"
+ *       calculate="if(/data/roster/is_member = 'yes', 1, 0)"/>
+ * <bind nodeset="/data/roster_complete" required="true()"
+ *       constraint="sum(/data/roster/member_flag) &gt;= 1"/>
+ * ```
+ *
+ * That is semantically identical to `count(/data/roster[is_member = 'yes'])
+ * >= 1`, and the token scan saw only the literal `count(`. The cost was
+ * asymmetric: bound OUTSIDE the repeat (the shape ace#1560 prescribes as the
+ * REMEDY) the constraint-locality pass raised a `[BLOCKER]` and hard-halted
+ * Phase 3 on a correct build; bound INSIDE it the dead gate was missed
+ * entirely.
+ *
+ * `sum` requires `calculates` and is recognised ONLY when the summed argument
+ * is exactly a node whose own `calculate` is a 0/1 indicator (`isRowIndicator`).
+ * `sum(/data/roster/age) >= 1` is not a row count and stays unrecognised — a
+ * naive widening would launder a genuinely non-local constraint, which is the
+ * ace#980 class this module exists to catch.
+ *
+ * @param calculates nodeset -> `calculate`, for the indicator test. Omit it and
+ *   `sum()` is never recognised, which keeps the boundary testable on `count()`
+ *   alone.
+ *
  * Exported so the boundary is directly testable without building a form.
  */
 export function findMinimumCardinalityGate(
   constraint: string,
   repeat: string,
+  calculates?: ReadonlyMap<string, string>,
 ): DeadRepeatCardinalityGate | undefined {
-  const COUNT = /\bcount\s*\(/g;
-  for (const m of Array.from(constraint.matchAll(COUNT))) {
+  const AGGREGATE = /\b(count|sum)\s*\(/g;
+  for (const m of Array.from(constraint.matchAll(AGGREGATE))) {
+    const fn = m[1] as 'count' | 'sum';
     const open = m.index! + m[0].length - 1;
     const close = matchingParen(constraint, open);
     if (close < 0) continue;
     const countArg = constraint.slice(open + 1, close - 1);
     if (!countsRepeat(countArg, repeat)) continue;
+
+    // A `sum()` is a row count only over a per-row 0/1 indicator.
+    let indicatorNode: string | undefined;
+    if (fn === 'sum') {
+      const node = countArg.trim();
+      const calc = calculates?.get(node);
+      if (calc === undefined || !isRowIndicator(calc)) continue;
+      indicatorNode = node;
+    }
 
     // Forward form: count(...) >= N   /   count(...) > N
     const after = constraint.slice(close).match(/^\s*(>=|>)\s*(\d+(?:\.\d+)?)/);
@@ -220,6 +338,8 @@ export function findMinimumCardinalityGate(
           countArg,
           comparison: `${after[1]} ${after[2]}`,
           minimumRows,
+          fn,
+          ...(indicatorNode ? { indicatorNode } : {}),
         };
       }
       continue;
@@ -238,6 +358,8 @@ export function findMinimumCardinalityGate(
           countArg,
           comparison: `${before[1]} ${before[2]}`,
           minimumRows,
+          fn,
+          ...(indicatorNode ? { indicatorNode } : {}),
         };
       }
     }
@@ -537,7 +659,7 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
     // BEFORE the locality pass because the two are independent: this shape is
     // perfectly local and still dead. A bind can therefore raise both.
     const deadGate = ownRepeat
-      ? findMinimumCardinalityGate(constraint, ownRepeat)
+      ? findMinimumCardinalityGate(constraint, ownRepeat, calculates)
       : undefined;
     if (deadGate) {
       violations.push({
@@ -552,6 +674,31 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
       });
     }
 
+    /**
+     * Nodes forgiven because they are what this bind's own minimum-rows gate
+     * COUNTS (ace#2416).
+     *
+     * The adjacency exemption below forgives a reference to the repeat
+     * NODESET, which is what `count(/data/roster…)` resolves to. A gate spelled
+     * `sum(/data/roster/member_flag)` resolves through the flag's own
+     * `calculate` to the repeat's CHILD question, so the same sanctioned
+     * remedy read as a foreign reference and raised a `[BLOCKER]`.
+     *
+     * Deliberately scoped to the refs the GATE'S ARGUMENT resolves to, not to
+     * every ref in the expression: `sum(…/member_flag) >= 1 and
+     * /data/g_zone/i1_zone != ''` still reports the zone reference, and a
+     * `sum()` over a non-indicator is not a gate at all, so it forgives
+     * nothing.
+     */
+    const gateForgiven = new Set<string>();
+    for (const r of repeatNodesets) {
+      if (!isAdjacentRepeatGate(nodeset, r)) continue;
+      const gate = findMinimumCardinalityGate(constraint, r, calculates);
+      if (!gate) continue;
+      gateForgiven.add(r);
+      for (const ref of resolveRefs(gate.countArg)) gateForgiven.add(ref);
+    }
+
     for (const ref of resolveRefs(constraint)) {
       if (ref === nodeset) continue; // itself, spelled absolutely
       if (ref.startsWith(nodeset + '/')) continue; // own descendant
@@ -562,6 +709,9 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
       if (ownScreen !== undefined && screens.get(ref) === ownScreen) continue;
       // A cardinality gate sitting directly after the repeat it guards.
       if (repeatNodesets.has(ref) && isAdjacentRepeatGate(nodeset, ref)) continue;
+      // …including one that reaches the repeat's rows through a per-row
+      // indicator rather than the repeat nodeset (ace#2416).
+      if (gateForgiven.has(ref)) continue;
       // A repeat group the user is NOT inside is a different screen; so is
       // any other real question. Anything else (an unbound path, a constant
       // path) is not something the user edits — ignore it.
@@ -602,7 +752,7 @@ export function formatConstraintLocalityReport(
     if (v.kind === 'dead-repeat-cardinality-gate') {
       const g = v.deadGate!;
       return (
-        `  [BLOCKER] ${v.fieldId}: cardinality gate \`count(${g.countArg}) ` +
+        `  [BLOCKER] ${v.fieldId}: cardinality gate \`${g.fn}(${g.countArg}) ` +
         `${g.comparison}\` demands >= ${g.minimumRows} row(s) but is bound INSIDE ` +
         `${g.repeat}, so it never evaluates at zero repetitions — move the gate ` +
         `to a question immediately after the repeat${msg}`
