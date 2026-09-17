@@ -6,12 +6,16 @@
 #
 # Discovery loop notes:
 # - Post-registration the user lands on CommCare's "Welcome" screen
-#   (resource-id screen_first_start_main) with a nav drawer that includes
-#   an "Opportunities" item. Tapping that item triggers a system
-#   "Unlock PersonalID" credential prompt (BiometricPrompt with device-
-#   credential fallback) — the answer is the registration PIN. The
-#   recipe will need to handle this prompt; selector is
-#   com.android.systemui:id/lockPassword.
+#   (resource-id screen_first_start_main). CORRECTED 2026-09-16 (ace#2424):
+#   this note used to say the screen has "a nav drawer that includes an
+#   'Opportunities' item", and branch (a) below tapped that item with no
+#   drawer-open step in front of it. On a COLD first-start the drawer is
+#   CLOSED, so "Opportunities" is not in the hierarchy and the tap dies
+#   `Element not found`. What the screen DOES offer, in the hierarchy, is
+#   `connect_login_button` ("GO TO CONNECT MENU") — that is the route.
+#   Either route then triggers a system "Unlock PersonalID" credential
+#   prompt (BiometricPrompt with device-credential fallback) — the answer
+#   is the registration PIN; selector com.android.systemui:id/lockPassword.
 # - The opp-list screen is `connect_fragment_jobs_list` with an
 #   `rvJobList` RecyclerView. Empty-state shows `connect_no_jobs_text`.
 # - The toolbar exposes `action_sync` (top-right) and `action_bell`.
@@ -42,15 +46,47 @@ appId: org.commcare.dalvik
 #   (a) screen_first_start_main with nav drawer (cold-launch with prior session)
 #   (b) connect_fragment_jobs_list directly (warm post-login state)
 #
-# Branch (a): if first-start is visible, navigate via nav drawer + handle
+# Branch (a): if first-start is visible, route back into Connect and handle
 # the OS lockPassword unlock.
+#
+# THE ROUTE IS THE ON-SCREEN BUTTON, NOT A DRAWER ITEM (ace#2424).
+# This branch used to `tapOn: text: "Opportunities"` with no drawer-open
+# step in front of it, on the strength of the header note above claiming
+# `screen_first_start_main` has "a nav drawer that includes an
+# 'Opportunities' item". On a COLD first-start the drawer is CLOSED, so
+# "Opportunities" is not in the hierarchy at all and the tap dies
+# `Element not found: Text matching regex: Opportunities` — turning a
+# recoverable wedge into a dead end. Live on
+# poverty-graduation/20260915-1518 (APK 2.64.0): the FAILURE dump held
+# only `str_setup_message` "Welcome to CommCare!", `connect_login_button`
+# "GO TO CONNECT MENU", "Scan Application Barcode" and "Enter Code".
+#
+# `connect-resume-opp.yaml` documents the same correction twice (the #711
+# drawer route, then the #1032 note that the route is wrong on the Learn
+# suite); this recipe received neither.
+#
+# Use the button the screen actually offers. `personalid-login-button`
+# (`connect_login_button`) renders as "GO TO CONNECT MENU" on exactly this
+# surface and is the ONLY route from CommCareSetupActivity to the jobs
+# list — live-verified on 2.64.0 (2026-09-06, `34-post-registration-setup.xml`:
+# tapping it, after clearing the "Unlock PersonalID" prompt, reached
+# ConnectActivity / rvJobList), and it is branch (a) of
+# `connect-login.yaml`, which recovered this very device in one dispatch.
+# `optional: true` so an edge surface that renders first-start WITHOUT the
+# button falls through to the `home-jobs-list` assert below rather than
+# hard-failing here — `connect-login.yaml` owns that (post-install
+# signed-out) variant and always runs before this recipe.
 - runFlow:
     when:
       visible:
         id: "${SELECTOR:app-first-start-main}"
     commands:
+      - takeScreenshot: "claim-first-start-recovery"
       - tapOn:
-          text: "Opportunities"
+          id: "${SELECTOR:personalid-login-button}"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 5000
       - runFlow:
           when:
             visible:
@@ -60,6 +96,15 @@ appId: org.commcare.dalvik
                 id: "com.android.systemui:id/lockPassword"
             - inputText: ${PIN}
             - pressKey: Enter
+      # Give the Connect jobs list a bounded window to render before the
+      # shared assert below reads it. `optional: true` — this is a settle,
+      # not a gate; the assert is the gate, and it stays the same for every
+      # entry path.
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:home-jobs-list}"
+          timeout: 30000
+          optional: true
 
 # Either branch lands us on the jobs list. CONFIRMED 2026-04-30 round 4:
 # post-connect-login.yaml lands directly on connect_fragment_jobs_list
@@ -527,6 +572,56 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:deliver-download-button}"
     commands:
+      #
+      # THE OPP-DETAIL "DOWNLOAD LEARN APP" GATE (ace#2424) — and the
+      # mechanism behind the closed ace#629.
+      #
+      # `btn_start` is NOT inert. It claims the opportunity server-side and
+      # then hands back to an opp-detail surface carrying a SECOND gate:
+      # the Job Card (`viewJobCard` / `learning_card`) with Learn Progress
+      # 0% and `connect_learning_button` labelled "DOWNLOAD LEARN APP".
+      # Nothing tapped it, so the recipe burned its 180s below, emitted
+      # `claim-START-HANDOFF-WEDGED-issue629`, and CommCare fell back to
+      # `screen_first_start_main`. That is what #629 recorded as "btn_start
+      # is inert" and closed as a question with no mechanism.
+      #
+      # The claim itself had SUCCEEDED — read back in the same dispatch on
+      # poverty-graduation/20260915-1518:
+      #   connect_list_flw_invites(...) => claimed: true, status: 'accepted'
+      #   connect_preflight_learn_app_user(...) => ok: true
+      # so it is neither the auth/domain class nor a server-side failure.
+      #
+      # `learn-launch.yaml` cannot cover it: its header declares the
+      # pre-state as "the Learn CCZ download completed", i.e. it assumes
+      # the very thing that did not happen. `deliver-launch.yaml` has a
+      # download-gate branch; the Learn side had none. This mirrors it.
+      #
+      # TAPPED LIVE, SAME DISPATCH, APK 2.64.0: a two-step probe
+      # (assertVisible -> tapOn connect_learning_button -> extendedWaitUntil
+      # nsv_home_screen) returned `status: pass` — the CCZ downloaded and
+      # the device reached the Learn home in ~23s. That single tap is the
+      # whole missing branch.
+      #
+      # It sits in TWO places, both `when: visible` guarded and therefore
+      # inert when the gate is absent, because the gate's arrival time
+      # relative to the 10s settle above was never observed:
+      #   (1) here, BEFORE the 180s wait — costs nothing on the healthy
+      #       path (this Connect id does not render on the CommCare Learn
+      #       home) and saves three minutes when the gate is already up;
+      #   (2) inside the wedge detector below, for a gate that renders
+      #       late — so a #629 verdict is only ever reached after the gate
+      #       has actually been tried.
+      # `retryTapIfNoChange: true` for parity with every other tap on this
+      # path (see the tap-loss note on btn_start above).
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:deliver-opp-detail-view-button}"
+          commands:
+            - takeScreenshot: "claim-opp-detail-download-learn-gate"
+            - tapOn:
+                id: "${SELECTOR:deliver-opp-detail-view-button}"
+                retryTapIfNoChange: true
       - extendedWaitUntil:
           visible:
             id: "${SELECTOR:learn-home-screen}"
@@ -540,6 +635,35 @@ appId: org.commcare.dalvik
             notVisible:
               id: "${SELECTOR:learn-home-screen}"
           commands:
+            #
+            # LATE-RENDERING DOWNLOAD LEARN APP gate (ace#2424, placement 2
+            # of 2 — see the long note above the 180s wait).
+            #
+            # Probe (and clear) the gate BEFORE classifying anything. If it
+            # is on screen now, the handoff was never wedged: it handed
+            # back to the Job Card and nothing tapped the second gate. Tap
+            # it and give the CCZ download its own window (~23s measured
+            # live on 2.64.0; 180s for the same first-boot margin the wait
+            # above documents). Only if THAT fails do the two #1998 causes
+            # below get to speak — a "#629 inert handoff" verdict must
+            # never be reached without the gate having been tried.
+            #
+            # Guarded on the gate being visible, so this is inert on every
+            # path where it is not.
+            - runFlow:
+                when:
+                  visible:
+                    id: "${SELECTOR:deliver-opp-detail-view-button}"
+                commands:
+                  - takeScreenshot: "claim-opp-detail-download-learn-gate-late"
+                  - tapOn:
+                      id: "${SELECTOR:deliver-opp-detail-view-button}"
+                      retryTapIfNoChange: true
+                  - extendedWaitUntil:
+                      visible:
+                        id: "${SELECTOR:learn-home-screen}"
+                      timeout: 180000
+                      optional: true
             #
             # Split the two causes that present IDENTICALLY here (ace#1998).
             #
@@ -581,29 +705,43 @@ appId: org.commcare.dalvik
             # So: name it precisely, fail fast, and let ace#1997 fix the
             # cause. Revisit only with an on-device observation of the
             # post-dismiss state.
-            - runFlow:
-                when:
-                  visible:
-                    id: "${SELECTOR:commcare-version-prompt-title}"
-                commands:
-                  - takeScreenshot: "claim-BLOCKED-commcare-version-gate-issue1997"
-                  # Fails loudly with the gate still on screen. The
-                  # screenshot name + this assert name the CCZ-vs-APK
-                  # mismatch, NOT the #629 wedge.
-                  - assertNotVisible:
-                      id: "${SELECTOR:commcare-version-prompt-title}"
-            # Not the version gate → the genuine #629 signature.
+            #
+            # ace#2424 — classify ONLY if the Learn home still has not
+            # rendered. The download-gate branch above can have recovered
+            # the device in the meantime; without this wrapper such a run
+            # would still mint a `claim-START-HANDOFF-WEDGED-issue629`
+            # frame whose own assert then passes — a false artifact naming
+            # a wedge that did not happen, on a walk that succeeded.
             - runFlow:
                 when:
                   notVisible:
-                    id: "${SELECTOR:commcare-version-prompt-title}"
+                    id: "${SELECTOR:learn-home-screen}"
                 commands:
-                  - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
-                  # Fails loudly now that the diagnostic is captured — the
-                  # screenshot name + this assert pinpoint the inert btn_start
-                  # handoff (jjackson/ace#629), not a slow download.
-                  - assertVisible:
-                      id: "${SELECTOR:learn-home-screen}"
+                  - runFlow:
+                      when:
+                        visible:
+                          id: "${SELECTOR:commcare-version-prompt-title}"
+                      commands:
+                        - takeScreenshot: "claim-BLOCKED-commcare-version-gate-issue1997"
+                        # Fails loudly with the gate still on screen. The
+                        # screenshot name + this assert name the CCZ-vs-APK
+                        # mismatch, NOT the #629 wedge.
+                        - assertNotVisible:
+                            id: "${SELECTOR:commcare-version-prompt-title}"
+                  # Not the version gate → the genuine #629 signature, now
+                  # reached only after the DOWNLOAD LEARN APP gate has been
+                  # tried and did not produce the Learn home either.
+                  - runFlow:
+                      when:
+                        notVisible:
+                          id: "${SELECTOR:commcare-version-prompt-title}"
+                      commands:
+                        - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
+                        # Fails loudly now that the diagnostic is captured — the
+                        # screenshot name + this assert pinpoint the inert btn_start
+                        # handoff (jjackson/ace#629), not a slow download.
+                        - assertVisible:
+                            id: "${SELECTOR:learn-home-screen}"
       #
       # Already-Learn-complete, Deliver-app-INSTALLED branch (#863).
       #

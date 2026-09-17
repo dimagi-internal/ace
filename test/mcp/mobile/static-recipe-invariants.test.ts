@@ -275,6 +275,91 @@ describe('connect-claim-opp.yaml', () => {
     expect(yaml).toContain('org.commcare.dalvik:id/btn_start');
   });
 
+  // ------------------------------------------------------------------
+  // ace#2424 — the mechanism behind the closed ace#629.
+  //
+  // `btn_start` is NOT inert. It claims the opportunity server-side (read
+  // back in the same dispatch: `connect_list_flw_invites` -> claimed:
+  // true, status 'accepted'; `connect_preflight_learn_app_user` -> ok:
+  // true) and hands back to an opp-detail Job Card carrying a SECOND gate:
+  // `connect_learning_button` labelled "DOWNLOAD LEARN APP" at Learn
+  // Progress 0%. Nothing tapped it, so the post-Start path burned its 180s
+  // and emitted `claim-START-HANDOFF-WEDGED-issue629` on a healthy opp.
+  //
+  // `deliver-launch.yaml` has a download-gate branch; the Learn side had
+  // none, and `learn-launch.yaml` cannot cover it (its header declares the
+  // pre-state as "the Learn CCZ download completed").
+  //
+  // Live-verified on poverty-graduation/20260915-1518, APK 2.64.0: an
+  // isolated assertVisible -> tapOn -> extendedWaitUntil(nsv_home_screen)
+  // probe returned `status: pass`, Learn home in ~23s.
+  it('taps the opp-detail DOWNLOAD LEARN APP gate on the POST-START path, not only on resume', () => {
+    // The resume branch's tap has always existed (see the test above), so
+    // asserting the id is present is vacuous. What matters is that the
+    // gate is also handled AFTER btn_start — i.e. inside the branch that
+    // runs when the Deliver download gate is NOT what rendered.
+    const postStart = yaml.slice(yaml.indexOf('BRANCH B'));
+    expect(
+      postStart,
+      'the post-Start path must tap connect_learning_button, not just wait 180s past it',
+    ).toMatch(
+      /- tapOn:\s*\n\s*id: "org\.commcare\.dalvik:id\/connect_learning_button"/,
+    );
+    // Guarded, so it is inert when the gate is absent — this must never
+    // become an unconditional tap on the healthy download path.
+    expect(postStart).toMatch(
+      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/connect_learning_button"/,
+    );
+    // And the diagnostic frame has to be distinct from the resume one, so
+    // an artifact names which surface it came from.
+    expect(postStart).toContain('claim-opp-detail-download-learn-gate');
+  });
+
+  it('never reaches the #629 verdict without having tried the download gate', () => {
+    // A `claim-START-HANDOFF-WEDGED-issue629` frame is a claim about
+    // btn_start. It may only be minted once the second gate has been
+    // tapped and STILL produced no Learn home — otherwise the artifact
+    // names a wedge that did not happen (ace#2424).
+    const wedgeAt = yaml.indexOf('takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"');
+    expect(wedgeAt).toBeGreaterThan(-1);
+    const lateGateAt = yaml.indexOf(
+      'takeScreenshot: "claim-opp-detail-download-learn-gate-late"',
+    );
+    expect(
+      lateGateAt,
+      'the wedge detector must probe the DOWNLOAD LEARN APP gate before classifying',
+    ).toBeGreaterThan(-1);
+    expect(lateGateAt).toBeLessThan(wedgeAt);
+    // ...and the classification is wrapped in a `notVisible: nsv_home_screen`
+    // guard, so a run the late gate RECOVERED does not mint the frame at all.
+    const between = yaml.slice(lateGateAt, wedgeAt);
+    expect(between).toMatch(
+      /when:\s*\n\s*notVisible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nsv_home_screen"/,
+    );
+  });
+
+  it('first-start recovery uses the on-screen button, never a closed drawer item', () => {
+    // ace#2424 defect 2: branch (a) tapped `text: "Opportunities"` with no
+    // drawer-open step. On a cold `screen_first_start_main` the drawer is
+    // CLOSED, so that element is not in the hierarchy and the tap dies
+    // `Element not found: Text matching regex: Opportunities` — the FAILURE
+    // dump held only str_setup_message, connect_login_button
+    // ("GO TO CONNECT MENU"), "Scan Application Barcode" and "Enter Code".
+    // `connect-login.yaml` branch (a) taps connect_login_button on this same
+    // surface and is live-verified on 2.64.0.
+    const branchAAt = yaml.indexOf('# Branch (a)');
+    const afterBranchAAt = yaml.indexOf('# Either branch lands us on the jobs list');
+    expect(branchAAt).toBeGreaterThan(-1);
+    expect(afterBranchAAt).toBeGreaterThan(branchAAt);
+    const firstStart = yaml.slice(branchAAt, afterBranchAAt);
+    expect(firstStart).not.toMatch(/- tapOn:\s*\n\s*text: "Opportunities"/);
+    expect(firstStart).toMatch(
+      /- tapOn:\s*\n\s*id: "org\.commcare\.dalvik:id\/connect_login_button"/,
+    );
+    // The OS unlock prompt still has to be handled after it.
+    expect(firstStart).toContain('com.android.systemui:id/lockPassword');
+  });
+
   it('both branches converge on the Learn-app nsv_home_screen wait', () => {
     // The handoff selector for `learn-launch.yaml` is the Learn-app
     // StandardHomeActivity ScrollView. Whichever branch ran, the
