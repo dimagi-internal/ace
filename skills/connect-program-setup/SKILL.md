@@ -102,12 +102,25 @@ alone makes the artifact land outside `4-connect` and fail
 
    1. `connect_get_program({ organization_slug, program_id })` → live
       refreshable fields.
-   2. Compare against this run's PDD-derived values with
+   2. **Author this run's PDD-derived description to a local file
+      first** (an absolute path, e.g. `<scratch>/program-description.md`)
+      and never hold it only in the conversation. A program description
+      is the whole programme design in prose — measured live 2026-09-17
+      on the durable `bednet-check-2-visit` program, 21,012 chars — it is
+      re-derived on EVERY reuse, and it has two consumers from here: the
+      reconciler just below and the update in sub-step 5. One file read
+      twice costs nothing and makes those two copies identical by
+      construction; two emissions of the same prose are two generations,
+      which is the ace#1737 class (ace#2291).
+
+      Then compare against this run's PDD-derived values with
       `reconcileProgramWithPdd` (`lib/program-reconcile.ts` — pure
-      helper; run it via `npx tsx -e` or replicate its semantics
-      exactly: description/dates compare whitespace-normalized; budget
-      diverges only when the live ceiling is *below* the PDD budget,
-      since Step 4a deliberately raises it above for headroom).
+      helper; run it via `npx tsx -e`, having the snippet `readFileSync`
+      that description file rather than pasting the prose into it — or
+      replicate its semantics exactly: description/dates compare
+      whitespace-normalized; budget diverges only when the live ceiling
+      is *below* the PDD budget, since Step 4a deliberately raises it
+      above for headroom).
       **Pass the live `name` and the PDD's `archetype`** — they cost
       nothing and they are what powers step 3 below.
    3. **Emit every line in `warnings[]` verbatim into the program notes
@@ -133,10 +146,18 @@ alone makes the artifact land outside `4-connect` and fail
    5. If diverging AND updating is safe (the normal case at Phase 4 —
       this run has not published a solicitation yet): apply the
       helper's `updateArgs` via `connect_update_program({
-      organization_slug, program_id, ...updateArgs })` (it accepts
-      exactly `name/description/budget/start_date/end_date`; never
-      send delivery_type/currency/country — durable, and `updateArgs`
-      never contains `name`). Log each refreshed field (old → new) in
+      organization_slug, program_id, ...updateArgs })` — but **send the
+      description as `description_path`, pointing at the file from
+      sub-step 2, never as inline `description`** (grep
+      `docs/atom-schemas.md` for the current signature; do not restate
+      it here). The server reads the bytes off disk, so the prose does
+      not pass through the model a second time, and the bytes sent are
+      the bytes the reconciler judged. An unreadable or empty file is a
+      typed refusal naming the path and nothing is sent — a blanked
+      description on a live LLO-facing program is the failure this
+      guards (ace#2291). Never send
+      delivery_type/currency/country — durable, and `updateArgs`
+      never contains `name`. Log each refreshed field (old → new) in
       the program notes.
    6. If updating is unsafe (a live solicitation or external artifact
       already references the current text, or review mode withheld
@@ -459,7 +480,7 @@ alone makes the artifact land outside `4-connect` and fail
   - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
   - `connect_list_opportunities` — prefer `summarize_by_program`, which implies hydrate and returns the Σ classification instead of the rows (ace#1799); `write_to_path` writes the rows to disk. With `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)
-  - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling, idempotently when Σ is known and on the conservative assumption when it is not (Step 4a)
+  - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling, idempotently when Σ is known and on the conservative assumption when it is not (Step 4a). Send the refreshed description as `description_path` (an absolute local path the server reads off disk), never inline (ace#2291)
 
 ## Mode Behavior
 - **Auto:** Create program (or reuse), proceed
@@ -526,6 +547,7 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-17 | **The reuse-path description refresh no longer round-trips ~21 KB of prose through the model (ace#2291).** `connect_update_program` gained `description_path`, the same `<param>_path` handle this server already offers on `new_xform_xml_path` / `file_bytes_path` / `ccz_path`: the server reads the bytes off disk verbatim. Step 3a refreshes `description` on EVERY reuse and reuse is the normal path after an opp's first run, so the inline-only shape cost ~5.8k output tokens per run forever (measured live 2026-09-17 on program `efb8af66`, `ai-demo-space`: 21,012 chars). It also removes a correctness gap — the description the reconciler judged and the description sent were two separate generations, with nothing making them match (the ace#1737 class). Step 3a now authors the description to a file first and points BOTH consumers at it. A relative, unreadable or empty file is a typed refusal naming the path with nothing sent, never a silently blanked LLO-facing description. *Enforced:* `test/mcp/connect/unit/update-program-description-path.test.ts`. | ACE team |
 | 2026-09-06 | **The name is made NON-AUTHORITATIVE in code, not in prose (ace#1966, cause #2).** `reconcileProgramWithPdd` now takes the live `name` and the PDD `archetype` and returns `nameArchetype`, a `CheckOutcome` (`lib/check-outcome.ts`): a name whose archetype token contradicts this run's PDD produces a `[WARN]` in `warnings[]`, and a caller that passes neither gets a loud `UNABLE TO CHECK` rather than silence. Step 3a now emits `warnings[]` **unconditionally**, before branching — `inSync` covers only the four refreshable fields, so the live case (`Bednet Check Multi-Stage Study — 2026`, content fully refreshed, `inSync: true`) was dropped by every branch that existed. `name` still never enters `updateArgs`: the reconciler reports, it does not rename. Also corrects the module's own false rationale — `name` was documented as durable "because it is the cross-run reuse-lookup key", which Step 2 has contradicted since ace#1252 (no `name` filter; match on delivery type + archetype). | ACE team |
 | 2026-09-05 | **§ Archetypes: add the missing `longitudinal-visits` row, and state that a name outlives the run that chose it (ace#1966).** The section covered `atomic-visit` / `focus-group` / `multi-stage` only — `grep -n "longitudinal" ` on this file returned zero hits — even though `connect-opp-setup` § Archetypes has covered `longitudinal-visits` for some time, so an archetype ACE fully supports at the opportunity layer was named by improvisation at the program layer. Compounding it, `name` is in `DURABLE_PROGRAM_FIELDS`, so Step 3a can refresh a program's description against a later PDD but never its name: `bednet-check-2-visit` reuses a program called `Bednet Check Multi-Stage Study — 2026` whose own ACE-refreshed description now says "deliberately NOT multi-stage", and the mislabel undermines Step 2's archetype-matched reuse scan. Guidance is to prefer archetype-neutral names when the archetype is contested and to `[WARN]` on a contradiction rather than autonomously rename a durable reuse key. The `lib/program-reconcile.ts` half stays open on ace#1966. | ACE team |
 | 2026-08-26 | **Step 4a can tell an ABSENT field from an UNREAD one, and the Σ-unknown raise is idempotent (ace#1637 — same class as #1550/#1590, third mechanism).** `connect_get_opportunity` now returns `dashboard_read` (`ok` / `no_cards` / `not_a_dashboard` / `not_fetched`, from `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`). `total_budget` / `program_name` / `start_date` come only off the opportunity dashboard and each degrades to `undefined` when its card is absent, so "in no program" and "could not read the page" were the same bytes; 16 of 81 hydrated `ai-demo-space` rows on `bednet-check-2-visit/20260825-1310` were the second kind, two of them prior runs of the program being sized. A row with `dashboard_read: 'ok'` and no `program_name` is now EXCLUDED rather than making Σ unknown; only a genuinely unread row does. And the Σ-unknown branch no longer raises relative to the current ceiling — `program.budget + EXPECTED_OPP_BUDGET × 10` is not idempotent, so it compounded every run and took that program from 19,400 to 64,400 against a known consumption of 4,062. It now computes `knownΣ + unreadable_rows × EXPECTED_OPP_BUDGET + EXPECTED_OPP_BUDGET × 3` and raises only if the ceiling is below it. The relative raise survives only where no bound is computable (`listing.complete !== true`). Upstream residual left open and stated: why those 16 rows render no cards is still unknown — `active` is correlated but not causal. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts`. | ACE team |

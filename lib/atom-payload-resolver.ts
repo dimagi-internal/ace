@@ -162,6 +162,79 @@ export function resolveInlineOrLocalFile(args: {
 }
 
 /**
+ * The OPTIONAL form of "inline payload OR local file path", for an atom where
+ * the field itself may legitimately be absent.
+ *
+ * {@link resolveInlineOrLocalFile} enforces exactly-one because its atoms have
+ * nothing to write without a payload. `connect_update_program` is different:
+ * `description`, `name`, `budget`, `start_date` and `end_date` are all
+ * optional, and a call that refreshes only the dates must stay legal. So the
+ * rule here is *at most one*, and "neither" resolves to `undefined` — the
+ * backend then keeps the program's current text (ace#2291).
+ *
+ * Two refusals are deliberate, and both exist because the alternative is a
+ * SILENT wrong write to a live, LLO-facing surface:
+ *
+ *   - an unreadable path is named in a typed error, rather than becoming an
+ *     empty description; and
+ *   - an EMPTY (or whitespace-only) file is refused for the same reason — a
+ *     truncated author step would otherwise blank the description and report
+ *     success. Same argument as `resolveYamlPatch`'s `invalid_patch_file`.
+ *
+ * The bytes are returned verbatim — no trim, no parse, no re-serialisation.
+ * That is the ace#1737 property: the payload the atom sends must BE the bytes
+ * on disk, or the file handle buys nothing over re-emitting the text.
+ *
+ * @throws AtomArgUsageError when the caller supplies both, or when the file is
+ *   relative, unreadable, or empty.
+ */
+export function resolveOptionalInlineOrPath(args: {
+  /** Atom name, used in every error message. */
+  atom: string;
+  /** The name of this atom's inline param (`description`, …). */
+  inlineParam: string;
+  /** The name of this atom's path param (`description_path`, …). */
+  pathParam: string;
+  inline?: string;
+  path?: string;
+}): string | undefined {
+  const { atom, inlineParam, pathParam, inline, path: filePath } = args;
+  if (inline !== undefined && filePath !== undefined) {
+    throw new AtomArgUsageError(
+      `${atom}: pass exactly one of ${inlineParam} or ${pathParam}, not both`,
+    );
+  }
+  if (filePath === undefined) return inline;
+  if (!isAbsolute(filePath)) {
+    throw new AtomArgUsageError(
+      `${pathParam}_not_absolute: expected an absolute path (got "${filePath}"). ` +
+        `This server's working directory is the plugin cache, not your project, ` +
+        `so a relative path would read the wrong file or none at all. ` +
+        `Nothing was sent.`,
+    );
+  }
+  // ace#1110 F2: an arbitrary local read reaching a live external surface.
+  assertNotCredentialPath(filePath, { atom });
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, 'utf-8');
+  } catch (e: any) {
+    throw new AtomArgUsageError(
+      `unreadable_${pathParam}: ${filePath} could not be read (${e.code ?? e.message}). ` +
+        `Nothing was sent — ${inlineParam} is unchanged on the remote object.`,
+    );
+  }
+  if (raw.trim() === '') {
+    throw new AtomArgUsageError(
+      `empty_${pathParam}: ${filePath} is empty (${raw.length} bytes). ` +
+        `Sending it would blank ${inlineParam} on a live object and report success. ` +
+        `Nothing was sent.`,
+    );
+  }
+  return raw;
+}
+
+/**
  * Resolve the `patch` payload for `update_yaml_file` — either the inline
  * `patch` object or the JSON object stored at `localFilePath`, never both,
  * never neither. Same param NAME, same both-or-neither rule and same

@@ -512,12 +512,15 @@ List the programs on an organization. `connect-program-setup` Step 2 calls this 
 
 ### `connect_update_program`
 
+Refresh a program's per-run content. Only `name`, `description`, `budget`, `start_date` and `end_date` are accepted — `delivery_type`, `currency` and `country` are create-time-only on a Connect program and cannot be reconciled after the fact. `description` is the one large field: a program description is the full programme design in prose, and `connect-program-setup` § Step 3a refreshes it on EVERY reuse, which is the normal path for every run after an opp's first. Measured live 2026-09-17 on program efb8af66 (`ai-demo-space`): 21,012 chars, ~5.8k output tokens to re-emit. So pass `description_path` — the server reads the bytes off disk and the prose never passes through the model — and keep `description` for short text. Pointing `description_path` at the SAME file the step already authored also makes the sent bytes identical to the archived ones BY CONSTRUCTION rather than by diligence (ace#1737, ace#2291). Same purpose and same `<param>_path` shape as this server's `new_xform_xml_path` / `file_bytes_path` / `ccz_path`.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `program_id` | `z.string` | **required** | _—_ |
-| `name` | `z.string` | optional | _—_ |
-| `description` | `z.string` | optional | _—_ |
+| `name` | `z.string` | optional | Short enough that inline is always fine; there is deliberately no path handle for it. |
+| `description` | `z.string` | optional | New description, inline. Small edits only — prefer `description_path` for a full programme description. Provide either this OR description_path, not both. |
+| `description_path` | `z.string` | optional | ABSOLUTE path to a local utf-8 file whose bytes become the new description. Read off disk verbatim — no trim, no parse — so the payload never enters the model context regardless of size. Provide either this OR description, not both; omit both to leave the description untouched. A relative, unreadable or EMPTY file is a typed refusal naming the path, and nothing is sent — never a silently blanked description on a live LLO-facing surface (ace#2291). |
 | `budget` | `z.coerce.number` | optional | _—_ |
 | `start_date` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
