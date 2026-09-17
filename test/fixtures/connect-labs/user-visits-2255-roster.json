@@ -1,0 +1,303 @@
+{
+  "_provenance": {
+    "source": "user_visits.json written by 7-synthetic/build_dataset.py, read back from the opp's labs fixture folder on Drive (1s2BDB0-0bK3jeq-9nhfs2RZ45CAB1Oqv)",
+    "issue": "dimagi-internal/ace#2432",
+    "run": "poverty-graduation/20260915-1518",
+    "labs_opportunity_id": 10065,
+    "connect_opportunity_id": 2255,
+    "of": "3 records taken VERBATIM from the 2207 the run generated",
+    "measured_on_the_full_set": {
+      "records": 2207,
+      "records_with_a_non_empty_roster": 1379,
+      "conditional_missing_member_name_before_the_fix": 1379,
+      "dwelling_photo_present_anywhere": 0
+    },
+    "records": [
+      "index 0 — consent = yes, roster of 3 rows: the repeat the auditor read as absent",
+      "index 1 — consent = yes, roster of 1 row",
+      "index 2 — consent = no: the gate does not hold, so the form never asks for a roster"
+    ]
+  },
+  "records": [
+    {
+      "completed_work": "",
+      "completed_work_id": null,
+      "date_created": "2026-11-02T11:00:00",
+      "deliver_unit": "targeting_survey",
+      "deliver_unit_id": 6906,
+      "entity_id": "169a9509-e94d-8f9e-dd31-943a1aab1c7c",
+      "entity_name": "Beneficiary 1417",
+      "flag_reason": "",
+      "flagged": false,
+      "form_json": {
+        "form": {
+          "case_name_calc": "Funmilayo Danladi",
+          "entity_key": "Funmilayo Danladi - Funmilayo Danladi - targeting_survey - completed",
+          "entity_label": "Funmilayo Danladi - targeting survey - completed",
+          "g_assets": {
+            "i10_iron": "no",
+            "i8_sofa": "yes",
+            "i9_fan": "yes"
+          },
+          "g_consent": {
+            "consent": "yes"
+          },
+          "g_door": {
+            "eligible_respondent": "yes",
+            "occupied": "yes"
+          },
+          "g_elec": {
+            "i7_electricity": "no"
+          },
+          "g_food7": {
+            "i3_bread": "yes",
+            "i4_eggs": "no",
+            "i5_milk": "no",
+            "i6_sachet_water": "yes"
+          },
+          "g_gps": {
+            "gps_accuracy": 19.58
+          },
+          "g_identity": {
+            "hh_head_name": "Funmilayo Danladi",
+            "phone": "08088913758",
+            "respondent_name": "Funmilayo Danladi"
+          },
+          "g_photo": {
+            "photo_consent": "yes"
+          },
+          "g_zone": {
+            "i1_zone": "north_west"
+          },
+          "hh_head_name_rec": "Funmilayo Danladi",
+          "hh_size_band": "le3",
+          "hh_status_calc": "surveyed",
+          "member_count": 3,
+          "phone_rec": "08088913758",
+          "photo_declined_rec": "no",
+          "ppi_score": 61,
+          "pts_bread": 9,
+          "pts_eggs": 0,
+          "pts_electricity": 0,
+          "pts_fan": 5,
+          "pts_iron": 0,
+          "pts_milk": 0,
+          "pts_sachet": 6,
+          "pts_size": 31,
+          "pts_sofa": 8,
+          "pts_zone": 2,
+          "respondent_name_rec": "Funmilayo Danladi",
+          "roster": [
+            {
+              "is_member": "yes",
+              "member_flag": 1,
+              "member_name": "Joy"
+            },
+            {
+              "is_member": "yes",
+              "member_flag": 1,
+              "member_name": "Tijani"
+            },
+            {
+              "is_member": "yes",
+              "member_flag": 1,
+              "member_name": "Dauda"
+            }
+          ],
+          "roster_complete": "yes",
+          "selected_init": "no",
+          "survey_date": "2026-11-02",
+          "targeting_survey": {
+            "deliver": {
+              "entity_id": "Funmilayo Danladi - Funmilayo Danladi - targeting_survey - completed",
+              "entity_name": "Funmilayo Danladi - targeting survey - completed",
+              "name": "targeting_survey"
+            }
+          },
+          "visit_outcome": "completed"
+        }
+      },
+      "id": 61532706321339694,
+      "images": [],
+      "justification": null,
+      "location": "",
+      "opportunity_id": 10065,
+      "reason": null,
+      "review_created_on": "2026-11-02T12:30:00",
+      "review_status": "approved",
+      "status": "approved",
+      "status_modified_date": "2026-11-02T12:00:00",
+      "username": "damilola_adeyemi",
+      "visit_date": "2026-11-02",
+      "xform_id": "61916812-2eff-fb89-b820-7a093fe91aff"
+    },
+    {
+      "completed_work": "",
+      "completed_work_id": null,
+      "date_created": "2026-11-02T11:00:00",
+      "deliver_unit": "targeting_survey",
+      "deliver_unit_id": 6906,
+      "entity_id": "6d5a36a2-623f-312c-3bc2-b89d4e5e0b73",
+      "entity_name": "Beneficiary 1966",
+      "flag_reason": "",
+      "flagged": false,
+      "form_json": {
+        "form": {
+          "case_name_calc": "Tijani Maikudi",
+          "entity_key": "Tijani Maikudi - Tijani Maikudi - targeting_survey - completed",
+          "entity_label": "Tijani Maikudi - targeting survey - completed",
+          "g_assets": {
+            "i10_iron": "no",
+            "i8_sofa": "yes",
+            "i9_fan": "no"
+          },
+          "g_consent": {
+            "consent": "yes"
+          },
+          "g_door": {
+            "eligible_respondent": "yes",
+            "occupied": "yes"
+          },
+          "g_elec": {
+            "i7_electricity": "no"
+          },
+          "g_food7": {
+            "i3_bread": "no",
+            "i4_eggs": "no",
+            "i5_milk": "no",
+            "i6_sachet_water": "yes"
+          },
+          "g_gps": {
+            "gps_accuracy": 28.773
+          },
+          "g_identity": {
+            "hh_head_name": "Tijani Maikudi",
+            "phone": "08008288261",
+            "respondent_name": "Tijani Maikudi"
+          },
+          "g_photo": {
+            "photo_consent": "yes"
+          },
+          "g_zone": {
+            "i1_zone": "north_west"
+          },
+          "hh_head_name_rec": "Tijani Maikudi",
+          "hh_size_band": "le3",
+          "hh_status_calc": "surveyed",
+          "member_count": 1,
+          "phone_rec": "08008288261",
+          "photo_declined_rec": "no",
+          "ppi_score": 47,
+          "pts_bread": 0,
+          "pts_eggs": 0,
+          "pts_electricity": 0,
+          "pts_fan": 0,
+          "pts_iron": 0,
+          "pts_milk": 0,
+          "pts_sachet": 6,
+          "pts_size": 31,
+          "pts_sofa": 8,
+          "pts_zone": 2,
+          "respondent_name_rec": "Tijani Maikudi",
+          "roster": [
+            {
+              "is_member": "yes",
+              "member_flag": 1,
+              "member_name": "Fati"
+            }
+          ],
+          "roster_complete": "yes",
+          "selected_init": "no",
+          "survey_date": "2026-11-02",
+          "targeting_survey": {
+            "deliver": {
+              "entity_id": "Tijani Maikudi - Tijani Maikudi - targeting_survey - completed",
+              "entity_name": "Tijani Maikudi - targeting survey - completed",
+              "name": "targeting_survey"
+            }
+          },
+          "visit_outcome": "completed"
+        }
+      },
+      "id": 12855619120244108,
+      "images": [],
+      "justification": null,
+      "location": "",
+      "opportunity_id": 10065,
+      "reason": null,
+      "review_created_on": "2026-11-02T12:30:00",
+      "review_status": "approved",
+      "status": "approved",
+      "status_modified_date": "2026-11-02T12:00:00",
+      "username": "grace_udo",
+      "visit_date": "2026-11-02",
+      "xform_id": "134735d5-1b0b-e1dc-2113-b17439dc0aaf"
+    },
+    {
+      "completed_work": "",
+      "completed_work_id": null,
+      "date_created": "2026-11-02T11:00:00",
+      "deliver_unit": "targeting_survey",
+      "deliver_unit_id": 6906,
+      "entity_id": "79cec9c4-ad8a-ff13-ba8b-7234c99c81db",
+      "entity_name": "Beneficiary 712",
+      "flag_reason": "",
+      "flagged": false,
+      "form_json": {
+        "form": {
+          "case_name_calc": "Dwelling - 2026-11-02",
+          "entity_key": ", - targeting_survey - refused",
+          "entity_label": "Dwelling - 2026-11-02 - targeting survey - refused",
+          "g_consent": {
+            "consent": "no"
+          },
+          "g_door": {
+            "eligible_respondent": "yes",
+            "occupied": "yes"
+          },
+          "g_gps": {
+            "gps_accuracy": 31.347
+          },
+          "hh_size_band": "",
+          "hh_status_calc": "",
+          "member_count": "",
+          "photo_declined_rec": "",
+          "ppi_score": "",
+          "pts_bread": "",
+          "pts_eggs": "",
+          "pts_electricity": "",
+          "pts_fan": "",
+          "pts_iron": "",
+          "pts_milk": "",
+          "pts_sachet": "",
+          "pts_size": "",
+          "pts_sofa": "",
+          "pts_zone": "",
+          "selected_init": "no",
+          "survey_date": "2026-11-02",
+          "targeting_survey": {
+            "deliver": {
+              "entity_id": ", - targeting_survey - refused",
+              "entity_name": "Dwelling - 2026-11-02 - targeting survey - refused",
+              "name": "targeting_survey"
+            }
+          },
+          "visit_outcome": "refused"
+        }
+      },
+      "id": 190587378519765392,
+      "images": [],
+      "justification": null,
+      "location": "",
+      "opportunity_id": 10065,
+      "reason": null,
+      "review_created_on": "2026-11-02T12:30:00",
+      "review_status": "approved",
+      "status": "approved",
+      "status_modified_date": "2026-11-02T12:00:00",
+      "username": "hauwa_ibrahim",
+      "visit_date": "2026-11-02",
+      "xform_id": "80bddcc8-0ad6-9f24-9383-186e8d3e7326"
+    }
+  ]
+}

@@ -101,9 +101,9 @@ front half (how the labs-only opp + its data come to exist) differs.
     violations: [{kind, field, count}]
   declared_omissions:              # step 2c.4 — residuals labs CANNOT emit (ace#2225)
     - field: <leaf name>           # exempts this field's conditional-missing
-      reason: "<the mechanism — a REPEAT group the flat generator cannot
-                produce, a Trigger label CommCare submits no value for, an
-                image with no labs ImageConfig corpus>"
+      reason: "<the mechanism — a Trigger label CommCare submits no value for,
+                an image with no labs ImageConfig corpus. NOT a repeat group:
+                that one is buildable and auditable now, ace#2432>"
   ```
   An entry with a blank `reason` exempts nothing and is named in check 9's
   failure — the escape costs the same citation `checkDetectionCohortFloor`
@@ -530,14 +530,33 @@ front half (how the labs-only opp + its data come to exist) differs.
 
     4. **Declare — with a reason — the residuals labs STRUCTURALLY cannot
        emit (ace#2225).** Some fields the app declares can never appear in a
-       generated set, however correct the spec and the scrub are. Three
-       recurring classes, all measured on `poverty-graduation/20260908-0510`:
+       generated set, however correct the spec and the scrub are. Two recurring
+       classes, both measured on `poverty-graduation/20260908-0510`:
 
        | class | why no value can exist |
        |---|---|
-       | a per-member **REPEAT group** (`member_name`, `member_confirmed`, `member_is_counted`) | the generator emits one flat object per visit, not an array, so a roster row has nowhere to live and `member_count` is drawn directly |
        | a **`Trigger`** read-aloud label (`roster_intro`, `ppi_intro`) | CommCare submits no value for one at all |
        | an image with **no labs corpus** (`dwelling_photo`) | labs `ImageConfig` ships MUAC and scale corpora only |
+
+       **A REPEAT group is no longer one of them — build it, don't exempt it
+       (ace#2432).** This table's first class used to read *"a per-member REPEAT
+       group … the generator emits one flat object per visit, not an array, so a
+       roster row has nowhere to live"*. Both halves of that premise have since
+       been refuted, three months apart, and each on its own is enough:
+       `BeneficiaryCohort.repeat_groups: dict[str, RepeatGroupSpec]` is in the
+       labs manifest schema
+       (`connect_labs/labs/synthetic/generator/fixtures/manifest.py`), and a
+       hand-authored generator post-step (§ Hand-authoring a generator) can
+       write the array directly — `poverty-graduation/20260915-1518` did, on all
+       1,379 completed surveys; and `auditDataset` now descends into an array,
+       so a materialised roster resolves as PRESENT rather than reading as
+       absent on every record. What still holds is only this: a manifest that
+       does not DECLARE a repeat draws `member_count` directly and emits no
+       roster — which is a build that skipped the repeat, not a value that
+       cannot exist, so it is not exemptible. The stale wording cost that run
+       three `declared_omissions` entries exempting data that was present and
+       correct, which is the gate losing resolution exactly where the dataset
+       got better.
 
        Write each as a `{field, reason}` entry in `declared_omissions[]` in
        `branch-scrub_report.yaml`. Check 9 then exempts that field's
@@ -1539,6 +1558,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-17 | **A REPEAT group is no longer a `declared_omissions[]` class — step 2c.4 said it was structurally impossible, and both halves of that premise are refuted (ace#2432).** `auditDataset` resolved a conditional field by leaf name against a flat record, and `leafPaths` treated an array as an opaque LEAF — so `/data/roster/member_name` had no path at all while its gate, at the record's top level, resolved fine. Measured on `poverty-graduation/20260915-1518` (deliver app `e4594937038c42d2be4d01f45df44209` v7, 2,207 records): `member_name`, `is_member` and `member_flag` each reported `conditional-missing` on 1,379 records — exactly the 1,379 carrying a non-empty `form.roster`, whose `roster[].member_flag` sums re-derive the app's own `/data/member_count` with 0 failures. The run spent three `declared_omissions` entries exempting data that was present and correct, so materialising the repeat scored the same as skipping it. `leafPaths` now descends into an array (index elided, so one spec field addresses every row), which fixes `auditDataset` and the scrub's `unresolvedFields` together and makes the scrub clear an off-branch value from EVERY row. The other half: `BeneficiaryCohort.repeat_groups: dict[str, RepeatGroupSpec]` is in the labs manifest schema, so the generator can emit one. *Enforced:* `test/lib/dataset-constraints-repeat-groups.test.ts`, against real captures of that run's deliver app and records — including the negative controls, since an empty repeat and rows lacking the leaf must both still read as absent. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.{provider, labs_opp_id, workflows, source, render_code_patched_this_run}` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to the skill that writes it, and ace-web's skill fork trims by it — so a Phase 7 fork at `demo-narrative` now carries exactly these five keys and drops `narrative` / `ddd_*`. Nothing changes in what this skill writes; if it starts writing a new `synthetic.<key>`, add the attribution there too (the coverage test fails on a schema-declared key with no producer). | ACE team |
 | 2026-09-10 | **Step 4b's registered reset command is now SELF-RESOLVING, and a pinned one fails QA (ace#2351).** The step said "write the command with an ABSOLUTE path", and the path that produced was `~/.claude/plugins/cache/ace/ace/<version>/scripts/reset-labs-run-state.ts` under one user's home. `demo-narrative` copies it verbatim into the spec's `setup.command` (`rerun: per_render`), so per-run state pinned a VERSION directory — the cache keeps every prior version, so the path kept resolving to STALE code after every `/ace:update` — and a HOME directory. Measured on `spark-facilitator/20260909-2242` (pinned 0.13.1413, pre-ace#2325: `grep -c buildRunPageUrl` = 0, no `--workflow-id`) and `20260910-0541` (`/Users/<name>/…/0.13.1426/…`). The absolute-path rule stays (canopy runs `setup.command` via `subprocess.run(shell=True, cwd=<spec toplevel>)`, `record_video.py:398`); the path now resolves ITSELF: `bash "$(python3 -c "…installed_plugins.json…['plugins']['ace@ace'][0]['installPath']")/bin/ace-reset-labs-run" …`, where the new shim re-resolves the installed root (never `dirname $0`) and execs the reset there. Verified live on labs run 5590 / workflow 5502 / opp 10060 through Python `shell=True` from a foreign cwd. `renderResetCommand()` in `lib/labs-run-state-reset.ts` is the canonical string; `demo-data-setup-qa` check 18 gains `render_reset_command_pinned`. *Enforced:* `test/lib/labs-run-state-reset.test.ts`, `test/scripts/ace-reset-labs-run-root.test.ts`. | ACE team |
 | 2026-09-09 | **Step 4b's registered reset command must name the WORKFLOW, and the CLI now refuses without it (ace#2325).** `reset-labs-run-state.ts` defaulted its CSRF page to `<base>/labs/workflow/run/<run_id>/`, which is not a labs route — the run page is `/labs/workflow/<workflow_id>/run/?run_id=<run_id>`, workflow id in the PATH and run id in the QUERY, and the CLI never had the workflow id. So the token was read off a non-page and the POST returned 404, reported as `run-not-found` on a run that was fine. The natural invocation — the one this step registers into `source.render_reset.command` and `demo-narrative` copies into `setup.command` — was the broken one, and because that block is `rerun: per_render` it blocked EVERY render of a state-mutating demo. Reproduced on `spark-facilitator/20260909-2242` (labs run 5590 / workflow 5502 / opp 10060): without the flag `run-not-found` exit 1, with it `cleared record_reviews` exit 0. Now: `buildRunPageUrl` in `lib/labs-run-state-reset.ts`, `--workflow-id`/`--opportunity-id` on the CLI, a fail-fast when neither a page URL nor a workflow id is given, and a 404 detail that names the wrong-token-page reading alongside the missing-run one. *Enforced:* `test/lib/labs-run-state-reset.test.ts`. | ACE team |
