@@ -255,6 +255,19 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      incoherent pair that IS surfaced → `[WARN]` (the value is a PM decision;
      noticing it is ACE's job).
 
+     **A per-entity cap expressed through the KEY is a threshold pair too
+     (ace#2148).** When `entity_id` carries a clamped counter, the clamp
+     constant and the PDD's per-entity cap are two numbers constraining one
+     quantity — and they are deliberately NOT the same number, because a
+     `casedb` read is the state BEFORE this submission. Do not compare them
+     by eye and do not re-derive the trace by hand: call
+     `checkPayableCapArithmetic()` in `lib/payable-cap-arithmetic.ts` over
+     the released form. A `capacity` above the cap is a `[BLOCKER]` — it
+     pays for work outside the agreed cap, which is partner-facing — and
+     `report.indices` is the trace to quote in the finding. This criterion
+     is how ace#2148 was caught, by hand, on
+     `spark-facilitator/20260906-2233`.
+
      **The dedup pair is not two scalars (ace#2373).** Classify it with
      `lib/gps-dedup-coherence.ts` rather than by comparing the numbers: read
      the rule with `readGpsDedupRule` over `program_parameters`, and when that
@@ -612,6 +625,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-17 | **`threshold_coherence` gains the capped-index pair, and stops re-deriving it by hand (ace#2148).** This criterion caught the defect — a per-step cap of 3 shipped binding at 4 on `spark-facilitator/20260906-2233`, 28 payable events against a declared 21 — by a judge tracing the arithmetic manually, which is not a gate anyone can rely on twice. The clamp constant and the declared cap are a threshold pair, and they are deliberately DIFFERENT numbers: a `casedb` read is the state before this submission, so the correct clamp is `cap - 1` under a pre-increment counter and `cap` under one that already counts it. The criterion now calls `checkPayableCapArithmetic()` rather than comparing the two, and quotes `report.indices` as the trace. | ACE team |
 | 2026-09-11 | **`threshold_coherence` stops reading the dedup pair as two scalars (ace#2373).** The #984 criterion declared any radius at or below the worst accepted accuracy incoherent, so the Targeting PDD v1.1 §6 [FIXED] rule — a 15 m radius applied only where both readings beat 15 m, identifiers otherwise — read 15 ≤ 50 → `[WARN]` at best and, with no memo entry, `[BLOCKER]` on a design that is coherent by construction. The pair is now classified with `lib/gps-dedup-coherence.ts`: an accuracy-conditioned radius is `coherent`; only an unconditioned radius at or below the tolerance is `incoherent`; a bare `duplicate_gps_radius_m` scalar is `unclear` and sends the judge to the PDD's own sentence rather than being read as unconditioned. New `[BLOCKER]`: a build that moved a `[FIXED]` or author-attributed threshold to resolve a conflict it noticed — the brief used to invite exactly that by quoting #984's "raise or tie". Paired with `_app-component-library.md § threshold-coherence-flag`. *Enforced:* `test/lib/gps-dedup-coherence.test.ts` + `test/skills/threshold-coherence-conditioned-radius.test.ts`. Feedback-Ref: 20260911-sophie-feintuch/q1-dedup. | ACE team |
 | 2026-09-16 | **`conditional_logic_match`'s consent helper reads the field TREE — a gate on the GROUP no longer reads as ungated (ace#2415).** `checkConsentBranchCompleteness` inspected only the per-field `relevant`. Nova almost always puts the consent gate on the enclosing group, so running it "over the blueprint" as this row instructed reported every question inside a correctly gated group as `ungated-required-after-consent` — which this row hard-gates to ≤ 3, failing an otherwise-good build. Measured on `poverty-graduation/20260915-1518`: 14 false findings on the targeting form plus 2 more on the delivery form, whose groups gate on a hidden calculate over the consent answer and so miss even after ancestor relevance is propagated. Nothing caught it because every `BuiltField` in the helper's 13 test cases was flat. The helper now owns effective-relevance resolution (own ∧ every ancestor's) and one hop of calculate indirection; the input contract is stated in this row and in `_app-component-library.md § consent-script-floor`, since "run it over the blueprint" is what produced the wrong answer. Grading of the four finding kinds is unchanged. *Enforced:* `test/lib/consent-branch.test.ts`. | ACE team |
 | 2026-09-06 | **`option_register_fidelity` gains a `verified` requirement (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02, so `pdd-to-deliver-app § Step 4f` now BINDS the register instead of building it and handing the bind to an operator. That silently changes what the build memo is claiming — previously the block recorded *a table exists with the right rows*, and a human performed the last step; now it claims *this field draws from that table*. The rubric had no way to grade the new half, and the failure is invisible in exactly the way this gate exists to catch: an unbound select renders EMPTY on the device while the CCZ is structurally valid and every ACE artifact says the register shipped. `verified` must come from `verifyLookupBind` over a `get_field` read-back — Nova reports `"options": []` for a correctly bound lookup field, so the write response is not evidence in either direction. Missing or non-`true` is a `[BLOCKER]`. | ACE team |
