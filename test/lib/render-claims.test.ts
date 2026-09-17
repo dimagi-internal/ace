@@ -28,7 +28,8 @@ const SET: ClaimSet = {
       check: { kind: 'probe', how: 'parse the CCZ' },
       verdict: 'MET',
       evidence_kind: 'probed',
-      evidence: 'CCZ b3f1c2, 0 matches',
+      evidence: 'CCZ b3f1c2 via commcare_download_ccz(app_id=e4594937), 0 matches',
+      says: 'The distribution visit is no longer marked as payable work.',
     },
     {
       id: 'b',
@@ -44,7 +45,8 @@ const SET: ClaimSet = {
       check: { kind: 'judged', how: 'read the composed PDD' },
       verdict: 'UNMET',
       evidence_kind: 'judged',
-      evidence: 'composed PDD has no Component 2 section',
+      evidence: 'composed PDD 1u-QzTn1G82n rev 8 has no Component 2 section',
+      says: 'Your Targeting doc did not come through as Component 2 — the build used the July copy.',
     },
     {
       id: 'c',
@@ -56,6 +58,7 @@ const SET: ClaimSet = {
       check: { kind: 'probe', how: 'ask the bot' },
       verdict: 'NOT REACHED',
       evidence_kind: 'probed',
+      // No `says` on purpose — a claim answered before the field existed.
       evidence: 'the `ocs-setup` checkpoint never ran in this run',
     },
   ],
@@ -100,5 +103,49 @@ describe('renderClaimsSection', () => {
       ],
     };
     expect(renderClaimsSection(one)).toContain('which form the opportunity binds as payable');
+  });
+});
+
+describe('renderClaimsSection audience', () => {
+  it('renders the counterpart-facing `says`, not the audit record', () => {
+    const md = renderClaimsSection(SET);
+    expect(md).toContain('The distribution visit is no longer marked as payable work.');
+    expect(md).not.toContain('commcare_download_ccz');
+  });
+
+  it('defaults to the counterpart audience, so a caller cannot leak by forgetting', () => {
+    expect(renderClaimsSection(SET)).toEqual(
+      renderClaimsSection(SET, { audience: 'counterpart' }),
+    );
+  });
+
+  it('NEVER falls back to `evidence` on the counterpart surface', () => {
+    // Claim `c` has no `says`. It must render as the verdict alone —
+    // silence about the detail, not the audit record in its place.
+    const md = renderClaimsSection(SET);
+    expect(md).toContain('The support assistant says consumption support is unpaid.');
+    expect(md).not.toContain('the `ocs-setup` checkpoint never ran in this run');
+  });
+
+  it('keeps `evidence` exactly as strong on an internal surface', () => {
+    const md = renderClaimsSection(SET, { audience: 'internal' });
+    expect(md).toContain('commcare_download_ccz');
+    expect(md).toContain('1u-QzTn1G82n rev 8');
+    // `says` is not replaced by it — the internal reader gets both.
+    expect(md).toContain('The distribution visit is no longer marked as payable work.');
+  });
+
+  it('falls back to `evidence` for a says-less claim ONLY on the internal surface', () => {
+    const md = renderClaimsSection(SET, { audience: 'internal' });
+    expect(md).toContain('the `ocs-setup` checkpoint never ran in this run');
+  });
+
+  it('keeps the completeness property on both surfaces — every claim renders either way', () => {
+    for (const audience of ['counterpart', 'internal'] as const) {
+      const md = renderClaimsSection(SET, { audience });
+      for (const c of SET.claims) expect(md).toContain(c.claim);
+      expect(md).toMatch(/not met/i);
+      expect(md).toMatch(/never reached/i);
+    }
   });
 });

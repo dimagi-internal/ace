@@ -65,6 +65,25 @@ describe('classifyRunClaims', () => {
     expect(r.due).toEqual([]);
   });
 
+  it('names an ANSWERED claim with no counterpart-facing sentence in missing_says', () => {
+    const set = parsed();
+    set.claims[0].verdict = 'MET';
+    set.claims[0].evidence_kind = 'probed';
+    set.claims[0].evidence = 'commcare_download_ccz(app_id=e4594937) — 0 matches';
+    set.claims[1].verdict = 'MET';
+    set.claims[1].evidence_kind = 'probed';
+    set.claims[1].evidence = 'two payment units, neither for consumption support';
+    set.claims[1].says = 'Nobody is paid for consumption support on this opportunity.';
+    const r = classifyRunClaims(set, 'commcare-setup');
+    // Reported, never fatal — the verdict stands and the run continues.
+    expect(r.ok).toBe(true);
+    expect(r.missing_says).toEqual(['cs-deliver-unpaid']);
+  });
+
+  it('does not name an UNANSWERED claim in missing_says — it has nothing to say yet', () => {
+    expect(classifyRunClaims(parsed(), 'commcare-setup').missing_says).toEqual([]);
+  });
+
   it('an ABSENT claims file is ok with nothing due — most opps have none', () => {
     const r = classifyRunClaims(null, 'commcare-setup');
     expect(r.ok).toBe(true);

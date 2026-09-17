@@ -1851,8 +1851,9 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                 — REPORT ONLY. It NEVER HALTS the run, and it deliberately
                   does not appear in the Turn N+2 branch below.
                   *Enforced:* test/agents/run-claims-fence.test.ts.
-                — Returns {phase, ok, issues[], due[], met, unmet,
-                  not_reached, indeterminate, all_met, summary}.
+                — Returns {phase, ok, issues[], due[], missing_says[],
+                  met, unmet, not_reached, indeterminate, all_met,
+                  summary}.
                 — `due[]` is the claims a counterpart's decision says THIS
                   phase's OUTPUT must satisfy, not yet answered. For each:
                   check it against the artifacts this phase just produced,
@@ -1866,6 +1867,16 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   may NOT be recorded `evidence_kind: judged` — if the probe
                   could not run, that is NOT REACHED with the reason.
                   INDETERMINATE must name `would_settle_it`.
+                — WRITE `says` TOO. `evidence` is the AUDIT record and is
+                  internal by construction (file ids, atom calls, read-path
+                  caveats); `says` is the ONE sentence the counterpart
+                  reads on the run page and in the reply, in her terms with
+                  no internal identifiers. Omitting it renders her a bare
+                  pass with nothing behind it — the run page shows `says`
+                  and NEVER `evidence` (ace#2420).
+                — `missing_says[]` names claims already ANSWERED with no
+                  such sentence. Never a gate: add the sentence for any
+                  claim this phase answered, and otherwise narrate it.
                 — UNMET does NOT halt. Narrate it and keep going: what the
                   counterpart is owed is a diff, and a halt produces none.
                 — No claims.yaml in the run folder → skip silently. Most

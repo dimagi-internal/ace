@@ -60,6 +60,7 @@ import {
   stripMarkdownSyntax,
   summarise,
   SURFACE_CONTRACT,
+  auditClaimRows,
   type DocProbe,
   type DocSourceMap,
   type Finding,
@@ -80,6 +81,8 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
       description: 'x',
       status: 'active',
     },
+    // Null on every run that authored no claims (ace#2420).
+    claims: null,
     // Null on every run with no `products.connect.build_memo` (ace-web#768).
     build_memo: null,
     design: { docs: [{ title: 'PDD', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit', access: 'public' }] },
@@ -1183,6 +1186,109 @@ function memoPhases(over: Record<string, unknown> = {}) {
     },
   };
 }
+
+// ── The claim set on the run page (ace#2420) ───────────────────────
+
+function claimRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'cs-deliver-unpaid',
+    claim: 'The Deliver app carries no payment marker on consumption support.',
+    verdict: 'MET',
+    evidence_kind: 'probed',
+    authored_by: 'ace',
+    person: 'Sophie Feintuch',
+    quote: null,
+    artifact: 'deliver-app',
+    checkable_at: 'commcare-setup',
+    says: 'Nobody is paid for consumption support.',
+    evidence: null,
+    would_settle_it: null,
+    ...over,
+  };
+}
+
+function claimSet(rows: Record<string, unknown>[]): Record<string, unknown> {
+  return {
+    summary: `${rows.length}/${rows.length} met`,
+    total: rows.length,
+    all_met: true,
+    counts: {
+      met: rows.length, unmet: 0, not_reached: 0, indeterminate: 0, unanswered: 0,
+    },
+    error: null,
+    people: [{ person: 'Sophie Feintuch', claims: rows }],
+  };
+}
+
+describe('the claim set on the run page (ace#2420)', () => {
+  it('is a KNOWN section — an unregistered one blocks every run', () => {
+    // `auditContract` raises CONTRACT-UNKNOWN-SECTION for any payload key
+    // it has never heard of, so ace-web shipping `claims` without this
+    // entry would have blocked the audit on every run.
+    const findings = auditContract(healthyPayload({ claims: claimSet([claimRow()]) }));
+    expect(findings.filter((f) => f.where.startsWith('claims'))).toEqual([]);
+    expect(SURFACE_CONTRACT.claims.reviewerFacing).toBe(true);
+  });
+
+  it('mirrors the key set ace-web freezes for it', () => {
+    expect([...SURFACE_CONTRACT.claims.keys].sort()).toEqual(
+      ['all_met', 'counts', 'error', 'people', 'summary', 'total'],
+    );
+  });
+
+  it('null control: `claims: null` — most runs author none — is not a defect', () => {
+    expect(auditClaimRows(healthyPayload({ claims: null }))).toEqual([]);
+    expect(auditClaimRows(healthyPayload())).toEqual([]);
+  });
+
+  it('passes a well-formed claim set', () => {
+    expect(auditClaimRows(healthyPayload({ claims: claimSet([claimRow()]) }))).toEqual([]);
+  });
+
+  it('catches a renamed `authored_by` — it renders as a bar ACE set for itself', () => {
+    const row = claimRow();
+    delete row.authored_by;
+    const findings = auditClaimRows(healthyPayload({ claims: claimSet([row]) }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('CONTRACT-KEY-DRIFT');
+    expect(findings[0].detail).toMatch(/authored_by/);
+  });
+
+  it('catches a renamed `evidence_kind` — a judged verdict then reads as a probe', () => {
+    const row = claimRow();
+    delete row.evidence_kind;
+    expect(auditClaimRows(healthyPayload({ claims: claimSet([row]) }))).toHaveLength(1);
+  });
+
+  it('BLOCKS when the tally does not match the rows — the denominator IS the mechanism', () => {
+    const set = claimSet([claimRow()]);
+    set.total = 8;
+    set.summary = '8/8 met';
+    const findings = auditClaimRows(healthyPayload({ claims: set }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('CLAIMS-DENOMINATOR-MISMATCH');
+    expect(findings[0].severity).toBe('broken');
+  });
+
+  it("a claim's AUDIT record must never reach an anonymous reader", () => {
+    const row = claimRow({
+      evidence: 'commcare_download_ccz(domain=connect-ace-prod, app_id=e4594937…)',
+    });
+    const findings = auditConfidentiality(
+      healthyPayload({ claims: claimSet([row]) }), { anonymous: true },
+    );
+    const leak = findings.filter((f) => f.code === 'CONF-CLAIM-EVIDENCE-EXPOSED');
+    expect(leak).toHaveLength(1);
+    expect(leak[0].detail).toMatch(/audit record/i);
+  });
+
+  it('the counterpart-facing `says` is NOT a leak — it is what she is owed', () => {
+    const findings = auditConfidentiality(
+      healthyPayload({ claims: claimSet([claimRow()]) }), { anonymous: true },
+    );
+    expect(findings.filter((f) => f.code === 'CONF-CLAIM-EVIDENCE-EXPOSED')).toEqual([]);
+  });
+});
 
 describe('the build memo section (ace-web#768)', () => {
   it('mirrors the key set ace-web freezes for it', () => {

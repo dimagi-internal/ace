@@ -126,6 +126,23 @@ describe('diffFrozenClaims', () => {
     };
     expect(diffFrozenClaims(f, answered)).toEqual([]);
   });
+
+  it('ALLOWS `says` — the counterpart-facing sentence is written with the verdict', () => {
+    const f = frozen();
+    const answered = {
+      ...f,
+      claims: [
+        {
+          ...f.claims[0],
+          verdict: 'MET' as const,
+          evidence_kind: 'probed' as const,
+          evidence: 'x',
+          says: 'The Deliver app no longer pays for consumption support.',
+        },
+      ],
+    };
+    expect(diffFrozenClaims(f, answered)).toEqual([]);
+  });
 });
 
 // ── Task 3: verdict recording ──────────────────────────────────────
@@ -192,6 +209,36 @@ describe('recordVerdict', () => {
       now: 'n',
     });
     expect(r.ok).toBe(false);
+  });
+
+  it('carries the counterpart-facing `says` alongside the audit `evidence`', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'MET',
+      evidence_kind: 'probed',
+      evidence: 'commcare_download_ccz(app_id=e4594937…) — 0 matches',
+      says: 'The Deliver app has no payment marker on consumption support.',
+      phase: 'commcare-setup',
+      now: 'n',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.claimSet?.claims[0].says).toBe(
+      'The Deliver app has no payment marker on consumption support.',
+    );
+    // `evidence` stays exactly as strong — `says` is a second field, not
+    // a softening of the audit record (ace#2420).
+    expect(r.claimSet?.claims[0].evidence).toMatch(/commcare_download_ccz/);
+  });
+
+  it('does NOT reject a verdict that omits `says` — a lost verdict would read as NOT REACHED', () => {
+    const r = recordVerdict(frozenSet(), 'cs-deliver-unpaid', {
+      verdict: 'MET',
+      evidence_kind: 'probed',
+      evidence: 'CCZ b3f1c2 — 0 matches',
+      phase: 'commcare-setup',
+      now: 'n',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.claimSet?.claims[0].says).toBeUndefined();
   });
 
   it('requires non-empty evidence for every verdict', () => {

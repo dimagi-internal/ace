@@ -517,8 +517,16 @@ for dry-run purposes (same convention as `ocs-chatbot-eval`).
 ## Claims
 
 If the run folder holds `claims.yaml`, roll its tally into the scorecard via `summarizeClaims`
-(`lib/run-claims.ts`) and render the counterpart-facing section with `renderClaimsSection`
+(`lib/run-claims.ts`) and render the section with `renderClaimsSection`
 (`lib/render-claims.ts`).
+
+The scorecard is an INTERNAL artifact, so call it as
+`renderClaimsSection(set, { audience: 'internal' })` — that is the only audience that
+carries each claim's audit `evidence`. The DEFAULT is `'counterpart'`, which renders the
+`says` sentence and never `evidence`: Drive file ids, MCP atom signatures and scraped-field
+reliability caveats are the class `skills/agent-turn-review` § F bans from anything a
+counterpart reads (ace#2386, ace#2420). What the counterpart herself sees is the run's
+ace-web page, which renders the same claim set to the same contract.
 
 `all_met` is TRUE only when EVERY claim is `MET`. A run where every ANSWERED claim passed but a
 checkpoint never ran has **not** met its claims — `NOT REACHED` accuses, it never passes, and

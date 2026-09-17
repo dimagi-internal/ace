@@ -147,6 +147,29 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     reviewerFacing: true,
     note: 'the review artifact the PDD names — what a partner reads instead of every screen',
   },
+  // "What changed because you asked" — the run's frozen claim set, and
+  // the FIRST Overview section (ace#2420). What a named counterpart
+  // DECIDED between runs, and whether this run's output acted on it.
+  // `null` on every run that authored no claims, which is most of them.
+  //
+  // `people` is the list key, and the two markings under it carry the
+  // design's weight: `authored_by: counterpart` is its ONLY mitigation
+  // for ACE writing its own exam, and `evidence_kind: judged` is what
+  // stops a read-and-assessed verdict borrowing a probe's authority. A
+  // rename of either renders as an unmarked claim — which looks correct
+  // and is not, so both are frozen in `itemKeys` below.
+  //
+  // `says` is the counterpart-facing sentence and is served to everyone;
+  // `evidence` is the AUDIT record and is served to MEMBERS only, which
+  // `auditClaimsConfidentiality` checks rather than assumes. No links —
+  // the section IS its content.
+  claims: {
+    kind: 'object',
+    keys: ['summary', 'total', 'all_met', 'counts', 'error', 'people'],
+    itemKeys: ['person', 'claims'],
+    reviewerFacing: true,
+    note: 'what a counterpart asked for between runs, and whether this run did it',
+  },
   design: {
     kind: 'object',
     keys: ['docs'],
@@ -260,6 +283,23 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
   workbench: { kind: 'object', keys: ['url', 'access'], linkKeys: ['url'] },
   viewer: { kind: 'scalar', keys: ['is_member'] },
 };
+
+/**
+ * Keys on a claim row that the auditor reads.
+ *
+ * Frozen for the same reason as `DECISION_ROW_KEYS`: a rename here is
+ * invisible at runtime and renders as an unmarked claim. `authored_by`
+ * and `evidence_kind` are the two that matter most — see the `claims`
+ * entry in `SURFACE_CONTRACT`.
+ */
+export const CLAIM_ROW_KEYS = [
+  'id',
+  'claim',
+  'verdict',
+  'evidence_kind',
+  'authored_by',
+  'says',
+] as const;
 
 /** Keys on a decision row that the auditor reads. */
 export const DECISION_ROW_KEYS = [
@@ -508,6 +548,73 @@ export function auditDecisionRows(decisions: unknown): Finding[] {
  * to reject it is what a good decision row is FOR, and an over-broad version
  * of this rule fires on correct rows.
  */
+/**
+ * The claim rows themselves.
+ *
+ * `auditSection` only reaches `people[]`; the claims live one level below
+ * that, and their row shape is where the design's properties actually
+ * live. Two things are checked and nothing else:
+ *
+ * 1. **the row shape**, for the usual reason — a renamed `authored_by`
+ *    renders as "ACE set this bar", which is the opposite of the truth
+ *    and looks perfectly fine on the page;
+ * 2. **the denominator**, because that is the whole mechanism: the tally
+ *    the section leads with must equal the number of claims under it. A
+ *    page whose header says "8/8 met" over seven rendered claims is the
+ *    exact silence the claim set exists to remove, and it is invisible to
+ *    every other check here.
+ */
+export function auditClaimRows(payload: unknown): Finding[] {
+  const out: Finding[] = [];
+  const claims = getPath(payload, 'claims');
+  if (!claims || typeof claims !== 'object') return out;
+  const c = claims as Record<string, unknown>;
+  const people = Array.isArray(c.people) ? c.people : [];
+
+  let rendered = 0;
+  people.forEach((group, gi) => {
+    if (!group || typeof group !== 'object') return;
+    const rows = (group as Record<string, unknown>).claims;
+    if (!Array.isArray(rows)) return;
+    rows.forEach((row, ri) => {
+      rendered += 1;
+      if (!row || typeof row !== 'object') return;
+      const r = row as Record<string, unknown>;
+      const missing = CLAIM_ROW_KEYS.filter((k) => !(k in r));
+      if (missing.length > 0) {
+        out.push({
+          code: 'CONTRACT-KEY-DRIFT',
+          severity: 'misleading',
+          where: `claims.people[${gi}].claims[${ri}]`,
+          detail:
+            `a claim row is missing the key(s) this auditor reads: ${missing.join(', ')}. ` +
+            `A renamed \`authored_by\` renders the claim as one ACE set for itself, which is ` +
+            `the opposite of the truth and looks correct on the page`,
+          fix: 'reconcile against ace-web apps/opps/summary.py :: _read_claims',
+          defect: '5 (key-contract mismatch renders as absence)',
+        });
+      }
+    });
+  });
+
+  const total = typeof c.total === 'number' ? c.total : null;
+  if (total !== null && total !== rendered) {
+    out.push({
+      code: 'CLAIMS-DENOMINATOR-MISMATCH',
+      severity: 'broken',
+      where: 'claims.total',
+      detail:
+        `the section says ${total} claim(s) and renders ${rendered}. The claim set IS the ` +
+        `denominator — an unmet claim is supposed to appear as an accusation rather than as an ` +
+        `absence, and a tally that does not match what is on the page restores exactly the ` +
+        `silence the mechanism exists to remove`,
+      fix: 'ace-web apps/opps/summary.py :: _read_claims must count the rows it emits',
+      defect: 'the completeness property (ace#2420)',
+    });
+  }
+  return out;
+}
+
 export function auditArchetypeContradiction(rows: readonly unknown[]): Finding[] {
   const checkRows: ArchetypeCheckRow[] = [];
   for (const row of rows) {
@@ -1137,6 +1244,44 @@ export function auditConfidentiality(payload: unknown, opts: { anonymous: boolea
         });
       }
     });
+  }
+
+  // 2b. A claim's AUDIT record, served anonymously.
+  //
+  //     Same rule as the private ledger above, one level down. A claim's
+  //     `says` is written FOR the counterpart and is served to everyone;
+  //     its `evidence` names Drive file ids, MCP atom signatures like
+  //     `commcare_download_ccz(domain=…, app_id=…)`, internal field names
+  //     and caveats about ACE's own read paths. On the first live run
+  //     that was ~3,900 words for eight claims, and it is the class
+  //     `skills/agent-turn-review` § F bans from counterpart comms
+  //     (ace#2386, ace#2420).
+  if (opts.anonymous && p.claims && typeof p.claims === 'object') {
+    const people = (p.claims as Record<string, unknown>).people;
+    if (Array.isArray(people)) {
+      people.forEach((group, gi) => {
+        const rows = (group as Record<string, unknown> | null)?.claims;
+        if (!Array.isArray(rows)) return;
+        rows.forEach((row, ri) => {
+          const r = row as Record<string, unknown> | null;
+          if (!r || typeof r.evidence !== 'string' || !r.evidence) return;
+          out.push({
+            code: 'CONF-CLAIM-EVIDENCE-EXPOSED',
+            severity: 'misleading',
+            where: `claims.people[${gi}].claims[${ri}].evidence (${String(r.id ?? '')})`,
+            detail:
+              'a claim\'s AUDIT record reached the UNAUTHENTICATED summary. `evidence` names ' +
+              'Drive file ids, MCP atom signatures and ACE-internal read-path caveats; it is ' +
+              'written for whoever may have to re-derive the verdict, not for the person who ' +
+              'asked. The counterpart-facing half is `says`',
+            fix:
+              'ace-web apps/opps/summary.py :: _read_claims must null `evidence` when ' +
+              'viewer_is_member is false',
+            defect: 'internal references in counterpart-facing output (ace#2386)',
+          });
+        });
+      });
+    }
   }
 
   // 3. `viewer.is_member` must be false on an anonymous probe — otherwise the

@@ -32,6 +32,22 @@ describe('claims are wired into the fence as a REPORT, not a gate', () => {
     expect(ORCH).toMatch(/does NOT halt|never halts|NEVER HALTS/i);
   });
 
+  it('the fence tells the phase to write the counterpart-facing sentence, not just evidence', () => {
+    // `evidence` is the audit record and never leaves ACE. If the fence
+    // stops naming `says`, every verdict renders to the person who asked
+    // as a bare pass with nothing behind it — ace#2420, the state this
+    // whole reviewer-facing half was built to leave.
+    expect(ORCH).toMatch(/`says`/);
+    expect(ORCH).toMatch(/missing_says/);
+  });
+
+  it('REGRESSION CONTROL: `says` is reported, never gated', () => {
+    const start = ORCH.indexOf('Turn N+2:  Branch on classify_phase_writeback');
+    const end = ORCH.indexOf('Turn N+3');
+    const branch = ORCH.slice(start, end);
+    expect(branch).not.toMatch(/missing_says/);
+  });
+
   it('REGRESSION CONTROL: claims never appear in the Turn N+2 branch condition', () => {
     // The branch is what decides whether the run proceeds. A claims result
     // must never be able to stop it.
