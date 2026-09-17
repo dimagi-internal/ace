@@ -1123,7 +1123,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     3. **Assert** each declared-select field's `kind` is `single_select` or
        `multi_select`. Collect the offenders as
        `degraded[] = {field_id, declared_as, shipped_kind, feeds_entity_id}`.
-    4. **If `degraded` is empty, proceed to Step 5.** Nothing to do.
+    4. **If `degraded` is empty, run the whole-app lookup sweep in step 8 and
+       then proceed to Step 5.** An empty `degraded` list means no field needs
+       CONVERTING; it does not mean no field needs CHECKING (ace#2143).
     5. **For each offender, try to bind a real option source before accepting
        the degradation.** Call `get_lookup_tables({app_id})` ONCE — it lists
        this app Project's data tables and their columns with the stable ids
@@ -1138,7 +1140,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          {kind: 'single_select', optionsSource: {...}}})` — a kind conversion
          that would set saved case values aside returns `needsConfirmation`;
          on a fresh build there is nothing to set aside, so re-call with
-         `confirmConversion: true`.
+         `confirmConversion: true`. **Every bind made here is a site for the
+         step-8 sweep** — do not verify it ad hoc.
        - **No table, but the set is knowable** from the PDD / inputs / a source
          `.ccz` → bind it inline:
          `source: {kind: 'inline', options: [{value, label: {parts: [{kind:
@@ -1215,12 +1218,37 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           field outright** (*"is not a single- or multiple-choice field"*), so
           convert first — observed live 2026-09-06.
        4. **Verify by READ-BACK, never by the write's response.** Call
-          `get_field` and pass `field.optionsSource` to `verifyLookupBind`
-          in `lib/option-register.ts`. This is not ceremony:
-          `add_fields` answers a *correctly bound* lookup field with
+          `get_field` for the field AND
+          `get_lookup_table_rows({app_id, tableId})` for the table, and pass
+          BOTH to `verifyLookupBind` in `lib/option-register.ts`
+          (`{requested, readBack: field.optionsSource, rows}`). This is not
+          ceremony: `add_fields` answers a *correctly bound* lookup field with
           `"options": []` and no mention of the source, so its response can
           neither confirm nor deny a bind. A `verified: false` of any code is a
           HALT.
+
+          **`rows` is REQUIRED, and page to the end (ace#2143).** A bind that
+          lands on a table whose VALUE column repeats a code is refused by
+          Nova's `upload_app_to_hq` preflight one skill later, in `app-deploy`
+          — *"A lookup-powered choice list uses activity_id for its saved
+          values, but malawi_activities repeats the same value in several rows.
+          Make the values unique or choose another value column."* Uniqueness
+          **within a filter partition is not enough**: on
+          `spark-facilitator/20260906-2233` `malawi_activities` carried `other`
+          on seven rows, one per FCAP step, which no worker ever sees twice at
+          once, and Nova still refused the whole app. `get_lookup_table_rows`
+          pages at 100 rows, so concatenate the pages and pass
+          `complete: true`; a partial read is `verified: false`, because a
+          duplicate on an unread page is invisible.
+
+          **Repairing a duplicate is not just renaming the rows.** A shared
+          `other` row usually exists once per partition *because* the select is
+          filtered — one shared row would be excluded from every partition —
+          and the follow-up field's `relevant` / `required` are written against
+          the literal value (`activity = 'other'`). Renaming to `s1_other` …
+          `s7_other` requires that predicate to change too (e.g.
+          `ends-with(activity, 'other')`). Decide which of the two shapes you
+          want before editing rows.
        5. Record the table id, the column ids, and the `verifyLookupBind`
           verdict in the build memo and in Step 7's summary. That verdict is
           the run's evidence the register is live; without it the build is
@@ -1258,6 +1286,41 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        frozen `inputs/`. The field does not feed `entity_id`, so 4f recorded a
        gap and proceeded exactly as written — and it took an operator reading
        the residual, days later, to stop the release.
+
+    8. **Sweep EVERY lookup-backed select in the app — not just the ones this
+       step bound (ace#2143).** This runs unconditionally, including when
+       `degraded` was empty at step 4 and when no partner register is declared
+       at all.
+
+       Steps 1–7 only ever reach a field that FAILED an assertion: a
+       PDD-declared select that shipped as free text, or a register field the
+       PDD named. A field the architect already shipped as a correctly-shaped
+       `single_select` bound to a table it authored itself passes step 3 and is
+       never looked at again — and that is the field that broke
+       `spark-facilitator/20260906-2233`. `malawi_activities` was created,
+       populated and bound by the architect, recorded as clean by every ACE
+       gate, and refused by Nova's `upload_app_to_hq` preflight in `app-deploy`
+       because its value column repeated `other` on seven rows. Nova's preflight
+       sweeps every lookup-powered choice list in the app, so the only ACE-side
+       check that cannot be bypassed is one with the same scope.
+
+       1. Collect every field in the built app whose options source reads back
+          `kind: 'lookup'`, whoever created it — walk the `get_form` responses
+          already fetched in Step 4a and read each one's `optionsSource`.
+       2. For each distinct `tableId` in that set, read the rows:
+          `get_lookup_table_rows({app_id, tableId})`, paging to the end (100
+          rows/page) and passing the concatenated rows with `complete: true`.
+          One read per table, not per field.
+       3. Call `auditLookupBinds` in `lib/option-register.ts` with one
+          `{field, requested, readBack, rows}` site per bound field. **HALT on
+          `ok: false`**, quoting `describeLookupBindAudit(audit)`.
+
+       The failures it names are all invisible to every other gate ACE runs:
+       `duplicate-values` (the upload preflight refuses the app),
+       `empty-table` and `not-a-lookup-source` (the select renders EMPTY on the
+       device), `no-rows-read-back` / `partial-rows-read-back` (the check did
+       not actually run — not a pass). Fixing one here costs a row edit; the
+       same fix after `app-deploy` costs the whole of Phase 3 again.
 
        **Two exemptions, both from the halt's own rationale (ace#1295).**
        The rationale is payment correctness, so it does not reach a case where
@@ -2019,6 +2082,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        rows: <n>            # rows written, from the partner's own source
        findings: 0          # diffOptionRegister + diffRegisterRows; >0 HALTED
        verified: true       # verifyLookupBind code `ok`; anything else HALTED
+   lookup_bind_audit:       # Step 4f step 8 (ace#2143). EVERY lookup-backed
+                            # select in the app, whoever bound it — not just
+                            # the ones this step bound. Required whenever the
+                            # app has at least one; `sites: 0` is the value
+                            # for an app with none. A missing block on an app
+                            # that HAS one reads as "the sweep did not run".
+     sites: <n>             # fields audited via auditLookupBinds
+     failures: 0            # >0 HALTED; quote describeLookupBindAudit lines
    instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
                             # instrument is [FIXED]. There is no other skip
                             # reason: an unresolvable [FIXED] source HALTS the
@@ -2388,6 +2459,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-09-17 | **Step 4j gains sub-step 6 — capped-index arithmetic (ace#2148).** When a per-entity cap rides in `entity_id` as a clamped counter, the clamp constant is NOT the cap: a `casedb` read is the state BEFORE this submission, so `min(<casedb count>, N)` admits `N + 1` distinct keys and the (N+1)-th mints an index that has never existed, which Connect pays. `spark-facilitator/20260906-2233` shipped a cap of 3 binding at 4 — 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green, the CCZ structurally perfect, and the app internally consistent with its own wrong key; `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. Nothing on this path re-derived the arithmetic, so it surfaced only in `pdd-to-deliver-app-eval`, one Nova build later. The step deliberately does NOT compare the clamp to the cap — both correct spellings are live in this same opportunity five weeks apart and share no constant (`min(<casedb count> + 1, 3)` vs `if(pcts >= 3, 2, pcts)`) — it traces the first `cap + 1` submissions, mechanically via `lib/payable-cap-arithmetic.ts`. Paired with `_app-component-library § payability-scoped-key` CAPPED INDEX and the released-form backstop in `app-release-qa § Step 4`. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts` + `test/skills/payable-cap-wiring.test.ts`. | ACE team |
+| 2026-09-17 | **Step 4f gains step 8: EVERY lookup-backed select in the app is audited, not just the ones 4f bound (ace#2143).** On `spark-facilitator/20260906-2233` `app-deploy` could not upload the Deliver app — Nova's `upload_app_to_hq` preflight refused it: *"A lookup-powered choice list uses activity_id for its saved values, but malawi_activities repeats the same value in several rows."* The table carried `other` on seven rows, one per FCAP step: unique WITHIN each filter partition (`step_id = step`, so a worker never sees two at once) and not unique across the table, which is what Nova requires. ACE owned the uniqueness rule already — `diffOptionRegister` has carried it since ace#1621 — but only on the PARTNER-REGISTER path, where the PDD names a register file in `inputs/`. `malawi_activities` was authored by the build itself, so that path never fired; and 4f's per-field verify was unreachable too, because steps 1–7 only ever touch a field that FAILED an assertion and this one shipped as a correctly-shaped `single_select` from the start. Every ACE artifact recorded it as "BOUND and read-back-verified" and Nova's preflight was the first thing in the run that noticed — after a full Nova build, media coverage and two translation layers. **The fix is scope, not a second copy of the check.** Nova's preflight sweeps every lookup-powered choice list in the app, so ACE's does too: `auditLookupBinds` over one site per bound field, run unconditionally, including when `degraded` is empty and when no register is declared. `verifyLookupBind` now takes the bound table's ROWS as a **required** argument (an optional one is a check a caller skips by forgetting) and refuses `duplicate-values`, `empty-table`, `no-rows-read-back` and `partial-rows-read-back` — the last because `get_lookup_table_rows` pages at 100 rows and a duplicate on an unread page is invisible. It also splits `bindLanded` out of `verified`, so `scripts/probe-nova-fixtures.ts` keeps reporting on Nova's BINDING capability and never reads a table-content finding as an upstream regression. *Enforced:* `test/lib/option-register.test.ts` (the seven-row `other` repro, blank-value collision, absent/partial/empty rows, and a whole-app sweep whose only failure is an architect-built site the run never bound). | ACE team |
 | 2026-09-11 | **Every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** § Decisions Log was a catalogue "not a required set" and the app build wrote none — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3, while Step 7's memo listed four latitudes in prose. The rows derive from the same entry list as the memo tables ("one source, two renderings"); the spot-check location goes in `reasoning` because ace-web's summary drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows under this skill's tag. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 | 2026-09-11 | **Step 7 names the Deliver build-memo section `## Build memo`, with `[ACE] latitudes taken` and `[FIXED] ambiguities hit` sub-tables (ace#2371).** Steps 3–4n direct notes "into the build memo" throughout, but the memo had no fixed home: on `poverty-graduation/20260908-0510` it existed as a section headed "Deliver app — build memo" inside this summary, not named as a memo and never linked to a reviewer. `skills/build-memo` now collates this section into the run's programme memo at the end of Phase 4; the section content itself is unchanged. | ACE team |
 | 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |

@@ -474,10 +474,23 @@ In priority order:
 1. **Build the table and bind to it** whenever the option set exists as DATA —
    a partner register in the run's `inputs/`, a source `.ccz`'s fixture XML, a
    roster file. `create_lookup_table` (columns + up to 5000 rows, one atomic
-   write) then bind, then **verify with a `get_field` read-back through
-   `verifyLookupBind`**. This rung was unavailable until 2026-09-06 and is now
-   the default; a register that exists must never be retyped as an inline list,
-   because that substitutes ACE's transcription for the partner's own codes.
+   write) then bind, then **verify with a `get_field` read-back AND a
+   `get_lookup_table_rows` read through `verifyLookupBind`**. This rung was
+   unavailable until 2026-09-06 and is now the default; a register that exists
+   must never be retyped as an inline list, because that substitutes ACE's
+   transcription for the partner's own codes.
+
+   **The value column must be unique ACROSS THE WHOLE TABLE, not just within a
+   filter partition (ace#2143).** Nova's `upload_app_to_hq` preflight refuses
+   the entire app otherwise — *"A lookup-powered choice list uses activity_id
+   for its saved values, but malawi_activities repeats the same value in
+   several rows."* A partitioned register with one "Other (specify)" row per
+   partition is the shape that trips it: the rows are unique to a worker and
+   duplicated to the preflight. Either give each partition its own code
+   (`s1_other` … `s7_other`, and widen the follow-up's `relevant` to
+   `ends-with(activity, 'other')`) or hold a single shared row that the filter
+   admits. `pdd-to-deliver-app § Step 4f` step 8 sweeps every lookup-backed
+   select in the app for this, whoever built it.
 2. **Enumerate inline** if the option set is knowable and bounded from the
    source material (the PDD, the inputs pack) but is NOT a partner register —
    `set_field_options_source` with `kind: 'inline'`. This is how `district`

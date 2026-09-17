@@ -461,6 +461,44 @@ function decodeXmlText(s: string): string {
  * downstream symptom — a select with an unbound source renders empty to a
  * field worker and passes every structural gate ACE runs, exactly like the
  * invented-options defect the Step 4f halt was built for (ace#1621/#1564).
+ *
+ * ## Why the bound table's ROWS are part of the same verification (ace#2143)
+ *
+ * A bind that lands on a table whose value column REPEATS a code is not a
+ * working select. Nova's `upload_app_to_hq` preflight refuses the whole app
+ * for it, verbatim:
+ *
+ *   "This app isn't ready to upload. Fix these first: A lookup-powered choice
+ *    list uses activity_id for its saved values, but malawi_activities repeats
+ *    the same value in several rows. Make the values unique or choose another
+ *    value column."
+ *
+ * On `spark-facilitator/20260906-2233` that refusal was the FIRST thing in the
+ * run that noticed. `malawi_activities` carried `other` on seven rows — one
+ * per FCAP step — which is unique inside each filter partition and not unique
+ * across the table, and Nova requires the latter. Phase 3 had by then spent a
+ * full Nova build, media coverage and two translation layers, and every ACE
+ * artifact recorded the register as "BOUND and read-back-verified", because
+ * the read-back this function performs looks only at the field's
+ * `optionsSource` and never at the table behind it.
+ *
+ * ACE did own the uniqueness rule — `diffOptionRegister` has carried it since
+ * ace#1621 — but only on the PARTNER-REGISTER path, where the PDD names a
+ * register file in the run's `inputs/`. `malawi_activities` was authored by
+ * the build from the PDD itself, so that path never fired. One of the two ways
+ * ACE creates a lookup table was guarded and the other was not, and the
+ * unguarded one shipped.
+ *
+ * So the check moves to where BOTH paths funnel: every bind ACE performs is
+ * required to prove itself through `verifyLookupBind`
+ * (`pdd-to-deliver-app § Step 4f` step 4, `_app-component-library §
+ * structured-capture` rung 1), and `verifyLookupBind` now cannot answer
+ * `verified: true` without having seen the bound table's rows. `rows` is a
+ * REQUIRED property for exactly that reason — an optional one is a check a
+ * caller can skip by forgetting, which is the shape of the defect being fixed.
+ * Absent rows, a partial page, and an empty table are all `verified: false`,
+ * on this module's standing rule that "I could not check" and "it is correct"
+ * are different answers.
  * ------------------------------------------------------------------------ */
 
 /** The lookup source a build ASKED Nova for. */
@@ -479,16 +517,99 @@ export interface LookupBindReadBack {
   labelColumnId?: string | null;
 }
 
+/**
+ * One cell of a Project data-table row.
+ *
+ * Shape observed live 2026-09-17 against Nova
+ * `get_lookup_table_rows({app_id, tableId})` on the app from ace#2143
+ * (`0f7431d8-cbae-4f03-a87f-14b5a5261544`, table `malawi_activities`):
+ * `{"rows":[{"id":"…","cells":[{"columnId":"…","value":"step_1"}, …]}]}`.
+ * Every field is optional for the same reason `LookupBindReadBack`'s are —
+ * the point is to survive a shape that is missing, partial, or drifted.
+ */
+export interface LookupTableCell {
+  columnId?: string | null;
+  value?: string | null;
+}
+
+/** One row of a Project data table. */
+export interface LookupTableRow {
+  cells?: LookupTableCell[] | null;
+}
+
+/**
+ * `get_lookup_table_rows` as a whole — the rows AND whether the read finished.
+ *
+ * The atom is PAGED (100 rows/page, a `complete` flag plus a cursor), and a
+ * duplicate on an unread page is invisible. A caller that pages through the
+ * whole table concatenates the pages and passes `complete: true` itself; a
+ * caller that reads one page passes what the atom said. Anything other than
+ * `complete: true` is `partial-rows-read-back`, never a pass.
+ */
+export interface LookupRowsReadBack {
+  rows?: LookupTableRow[] | null;
+  complete?: boolean | null;
+}
+
+/** A value code that appears on more than one row, and how many rows. */
+export interface DuplicateLookupValue {
+  /** The repeated value. The empty string means the cell was blank or absent. */
+  value: string;
+  count: number;
+}
+
+/**
+ * Pure. Which values in `valueColumnId` appear on more than one row.
+ *
+ * A row carrying no cell for that column reads as the empty string — two such
+ * rows ARE a duplicate (they are two options that save the same nothing), and
+ * a whole read-back whose cells do not carry `columnId` collapses to one loud
+ * blank-value duplicate rather than a silent pass. Deterministic order: first
+ * appearance of each repeated value.
+ */
+export function findDuplicateLookupValues(
+  rows: readonly LookupTableRow[],
+  valueColumnId: string,
+): DuplicateLookupValue[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const cell = (row?.cells ?? []).find((c) => c?.columnId === valueColumnId);
+    const value = cell?.value ?? '';
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([value, count]) => ({ value, count }));
+}
+
 export interface BindVerification {
-  /** True only when the read-back proves the requested lookup source is live. */
+  /**
+   * True only when the read-back proves the requested lookup source is live
+   * AND the table behind it can actually back a select. Step 4f halts on
+   * anything else; this is the field a build memo records.
+   */
   verified: boolean;
+  /**
+   * True when the FIELD's options source read back as the requested lookup —
+   * i.e. the bind itself landed — whatever the table's rows then say.
+   *
+   * Split out for `scripts/probe-nova-fixtures.ts` (ace#2143): that probe is
+   * the upstream-regression tripwire for Nova's BINDING capability, and a
+   * table-CONTENT finding must never be reported as "the bind regressed".
+   * Nothing in a run should key on this — a run wants `verified`.
+   */
+  bindLanded: boolean;
   /** Machine-readable class, so a caller can route rather than string-match. */
   code:
     | 'ok'
     | 'no-read-back'
     | 'not-a-lookup-source'
     | 'wrong-table'
-    | 'wrong-columns';
+    | 'wrong-columns'
+    | 'no-rows-read-back'
+    | 'partial-rows-read-back'
+    | 'empty-table'
+    | 'duplicate-values';
   /** Human-readable, quoted into the build memo. */
   message: string;
 }
@@ -500,16 +621,25 @@ export interface BindVerification {
  * the read-back could not be performed at all, which is NOT a pass ("I could
  * not check" and "it is correct" are different answers — the same rule
  * `diffOptionRegister` applies to an unreadable register source).
+ *
+ * `rows` is `get_lookup_table_rows({app_id, tableId: requested.tableId})` for
+ * the table the field is bound to, and is REQUIRED (ace#2143): a bind onto a
+ * table whose value column repeats a code is refused by Nova's
+ * `upload_app_to_hq` preflight one skill later, and before ace#2143 nothing on
+ * ACE's side looked. Pass `null` when the read could not be performed, which
+ * is `verified: false` by the same rule as above.
  */
 export function verifyLookupBind(input: {
   requested: LookupBindRequest;
   readBack: LookupBindReadBack | null | undefined;
+  rows: LookupRowsReadBack | null | undefined;
 }): BindVerification {
-  const { requested, readBack } = input;
+  const { requested, readBack, rows } = input;
 
   if (!readBack) {
     return {
       verified: false,
+      bindLanded: false,
       code: 'no-read-back',
       message:
         'no options source was read back for this field — an unverified bind is not a bind; ' +
@@ -520,6 +650,7 @@ export function verifyLookupBind(input: {
   if (readBack.kind !== 'lookup') {
     return {
       verified: false,
+      bindLanded: false,
       code: 'not-a-lookup-source',
       message:
         `field reads back with options source kind "${readBack.kind ?? 'absent'}", not "lookup" — ` +
@@ -530,6 +661,7 @@ export function verifyLookupBind(input: {
   if (readBack.tableId !== requested.tableId) {
     return {
       verified: false,
+      bindLanded: false,
       code: 'wrong-table',
       message:
         `field is bound to lookup table "${readBack.tableId ?? 'absent'}", but the register was ` +
@@ -543,6 +675,7 @@ export function verifyLookupBind(input: {
   ) {
     return {
       verified: false,
+      bindLanded: false,
       code: 'wrong-columns',
       message:
         'field is bound to the right table through the wrong columns ' +
@@ -552,9 +685,132 @@ export function verifyLookupBind(input: {
     };
   }
 
+  // The bind itself is proven from here down. Everything that follows is about
+  // the TABLE it points at — which is a different failure with the same
+  // invisibility, so it shares the verdict but not `bindLanded` (ace#2143).
+  if (!rows || !Array.isArray(rows.rows)) {
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'no-rows-read-back',
+      message:
+        `the bind landed, but no rows were read back for lookup table "${requested.tableId}" — ` +
+        'a table whose value column repeats a code is refused by Nova\'s upload preflight ' +
+        'one skill later; call get_lookup_table_rows({app_id, tableId}) and pass its result',
+    };
+  }
+
+  if (rows.complete !== true) {
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'partial-rows-read-back',
+      message:
+        `the rows read back for lookup table "${requested.tableId}" are INCOMPLETE ` +
+        `(${rows.rows.length} row(s), complete=${String(rows.complete)}) — the atom pages at ` +
+        '100 rows, and a duplicate value on an unread page is invisible; page to the end and ' +
+        'pass the concatenated rows with complete: true',
+    };
+  }
+
+  if (rows.rows.length === 0) {
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'empty-table',
+      message:
+        `field is bound to lookup table "${requested.tableId}", which has NO rows — ` +
+        'the select renders empty on the device while every structural gate passes',
+    };
+  }
+
+  const dupes = findDuplicateLookupValues(rows.rows, requested.valueColumnId);
+  if (dupes.length > 0) {
+    const shown = dupes
+      .slice(0, 5)
+      .map((d) => (d.value === '' ? `"" (blank) ×${d.count}` : `"${d.value}" ×${d.count}`))
+      .join(', ');
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'duplicate-values',
+      message:
+        `field is bound to lookup table "${requested.tableId}" through value column ` +
+        `"${requested.valueColumnId}", but that column repeats ${dupes.length} value(s) ` +
+        `across ${rows.rows.length} rows (${shown}${dupes.length > 5 ? ', …' : ''}) — ` +
+        'Nova\'s upload preflight refuses the whole app for this ("…repeats the same value in ' +
+        'several rows. Make the values unique or choose another value column."), and uniqueness ' +
+        'WITHIN a filter partition is not enough (ace#2143)',
+    };
+  }
+
   return {
     verified: true,
+    bindLanded: true,
     code: 'ok',
-    message: `field is bound to lookup table "${requested.tableId}" on the declared value/label columns`,
+    message:
+      `field is bound to lookup table "${requested.tableId}" on the declared value/label columns, ` +
+      `over ${rows.rows.length} rows with unique values in "${requested.valueColumnId}"`,
   };
+}
+
+/* --------------------------------------------------------------------------
+ * The whole-app sweep (ace#2143)
+ *
+ * `verifyLookupBind` answers for ONE bind, and `pdd-to-deliver-app § Step 4f`
+ * only reaches it for a field that step itself bound — a field the architect
+ * already shipped as a correctly-shaped `single_select` never enters 4f's
+ * `degraded[]` list, so nothing on ACE's side ever looked at the table behind
+ * it.
+ *
+ * That is how ace#2143 shipped. `malawi_activities` was authored by the
+ * architect from the PDD, bound by the architect, and passed every ACE gate;
+ * Nova's `upload_app_to_hq` preflight in `app-deploy` was the first thing in
+ * the run that noticed, after Phase 3 had spent a full Nova build, media
+ * coverage and two translation layers.
+ *
+ * Nova's preflight sweeps EVERY lookup-powered choice list in the app, so the
+ * only ACE-side check that cannot be bypassed is one with the same scope.
+ * Collect every field in the built app whose options source reads back
+ * `kind: 'lookup'` — whoever created it — and audit them together.
+ * ----------------------------------------------------------------------- */
+
+/** One lookup-backed select in the built app, with everything read back for it. */
+export interface LookupBindSite {
+  /** How to name it in a halt: `<form id>.<field id>` is enough to act on. */
+  field: string;
+  requested: LookupBindRequest;
+  readBack: LookupBindReadBack | null | undefined;
+  rows: LookupRowsReadBack | null | undefined;
+}
+
+export interface LookupBindAudit {
+  /** True iff every site verified. Anything else is a Step 4f HALT. */
+  ok: boolean;
+  sites: Array<BindVerification & { field: string }>;
+  /** Just the failures, in input order — what the halt message quotes. */
+  failures: Array<BindVerification & { field: string }>;
+}
+
+/**
+ * Pure. Verify EVERY lookup-backed select in the built app at once.
+ *
+ * An EMPTY site list is `ok: true` — an app with no lookup-backed select has
+ * nothing to audit. That is deliberately not the same as "the caller did not
+ * look": the caller's obligation to enumerate is stated in
+ * `pdd-to-deliver-app § Step 4f` step 8, and a site whose read-back or rows
+ * are missing fails HERE rather than being silently dropped.
+ */
+export function auditLookupBinds(sites: readonly LookupBindSite[]): LookupBindAudit {
+  const results = sites.map((s) => ({
+    field: s.field,
+    ...verifyLookupBind({ requested: s.requested, readBack: s.readBack, rows: s.rows }),
+  }));
+  const failures = results.filter((r) => !r.verified);
+  return { ok: failures.length === 0, sites: results, failures };
+}
+
+/** Human-readable halt lines for the build memo / a Step 4f halt. */
+export function describeLookupBindAudit(audit: LookupBindAudit): string[] {
+  return audit.failures.map((f) => `[${f.code}] ${f.field}: ${f.message}`);
 }

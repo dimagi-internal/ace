@@ -1,0 +1,55 @@
+{
+  "_provenance": {
+    "captured": "2026-09-17",
+    "how": "mcp__nova__get_lookup_table_rows({app_id: '0f7431d8-cbae-4f03-a87f-14b5a5261544', tableId: '01a07bd1-8006-7c9b-8a7b-9282648e6419'})",
+    "what": "Verbatim response for the `malawi_activities` Project data table on the Deliver app from spark-facilitator/20260906-2233 — the run in dimagi-internal/ace#2143, where Nova's upload_app_to_hq preflight refused the app because the value column repeated a code.",
+    "note": "This is the table AS IT STANDS AFTER REPAIR: 28 rows, one shared `other` row under step_id `all`, so `activity_id` is unique. The pre-repair table had 34 rows with `other` on seven rows, one per FCAP step. Both controls in test/lib/option-register.test.ts read THIS file: the repaired `activity_id` column is the positive control, and `step_id` — which really does repeat, four times on step_1 alone — is the negative control, which is also Nova's own suggested remedy read backwards (\"choose another value column\")."
+  },
+  "table": {
+    "id": "01a07bd1-8006-7c9b-8a7b-9282648e6419",
+    "name": "malawi_activities",
+    "tag": "malawi_activities",
+    "columnCount": 3,
+    "rowCount": 28,
+    "dataBytes": 5133,
+    "definitionRevision": "29",
+    "rowsRevision": "30",
+    "tableRevision": "30",
+    "columns": [
+      { "id": "01a07bd1-8009-705d-83ef-32095660d448", "wireName": "step_id", "label": "step_id", "dataType": "text" },
+      { "id": "01a07bd1-8009-7096-8145-552b6a8c2145", "wireName": "activity_id", "label": "activity_id", "dataType": "text" },
+      { "id": "01a07bd1-8009-70a3-a395-5a351b195630", "wireName": "activity", "label": "activity", "dataType": "text" }
+    ]
+  },
+  "rows": [
+    { "id": "01a07bd1-800b-71d0-8499-fc634ac0a850", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_1" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s1_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Introduce the FCAP process, its four phases and three pathways" }] },
+    { "id": "01a07bd1-800b-76c6-8d06-b6e3553f8239", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_1" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s1_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Agree partnership expectations and shared commitments" }] },
+    { "id": "01a07bd1-800b-76d6-bec5-16fc3fe461bd", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_1" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s1_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Establish communication and grievance-reporting channels" }] },
+    { "id": "01a07bd1-800b-76df-b1fa-e26b7aeed08a", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_1" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s1_a4" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Sign the Partnership Agreement" }] },
+    { "id": "01a07bd1-800b-76e8-8d1f-04b7b9b26541", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "all" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "other" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Other activity (specify)" }] },
+    { "id": "01a07bd1-800b-76f1-92d1-b6ddbf303d12", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_2" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s2_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Examine gender roles and social norms" }] },
+    { "id": "01a07bd1-800b-76fa-bf55-96604a6c26f4", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_2" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s2_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Define the qualities of good leadership" }] },
+    { "id": "01a07bd1-800b-7703-8e9c-2b57c7349984", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_2" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s2_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Elect leaders and committees by secret ballot" }] },
+    { "id": "01a07bd1-800b-770c-9bf3-dc1f6e4d986b", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_2" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s2_a4" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Develop or update community bylaws" }] },
+    { "id": "01a07bd1-800b-771d-b51f-06ce19004a1f", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Map local resources" }] },
+    { "id": "01a07bd1-800b-7726-84cf-402dcedcdab5", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Examine socio-economic differences" }] },
+    { "id": "01a07bd1-800b-772f-9ccb-b83e78137ef0", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Analyse seasonal patterns" }] },
+    { "id": "01a07bd1-800b-7738-aa50-a58c8c48d523", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a4" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Assess strengths, weaknesses, opportunities and threats" }] },
+    { "id": "01a07bd1-800b-7742-9a59-7cfc4eff2bce", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a5" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Consider climate change and environmental stewardship" }] },
+    { "id": "01a07bd1-800b-774a-9e6d-ce358641883e", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_3" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s3_a6" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Prioritise the most urgent and shared community needs" }] },
+    { "id": "01a07bd1-800b-775c-9f6b-4b7792b2b00c", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Introduce the three FCAP pathways" }] },
+    { "id": "01a07bd1-800b-7766-8b47-f7e5f1229ecb", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Translate prioritised needs into goal-aligned options" }] },
+    { "id": "01a07bd1-800b-776f-adcb-a3e876b3569d", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Assess feasibility on the microgrant pathway canvas" }] },
+    { "id": "01a07bd1-800b-7778-acd4-ea65c832deaa", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a4" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Plan and conduct market research" }] },
+    { "id": "01a07bd1-800b-7781-b83d-2753fe91edd6", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a5" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Apply environmental and social screening" }] },
+    { "id": "01a07bd1-800b-7789-873c-6c95c0c38937", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_4" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s4_a6" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Select the microgrant pathway" }] },
+    { "id": "01a07bd1-800b-779c-bc5f-af590004a4c6", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_5" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s5_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Select a community-funded initiative pathway" }] },
+    { "id": "01a07bd1-800b-77a5-938f-71326dc9aaf3", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_5" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s5_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Establish a community-wide savings system" }] },
+    { "id": "01a07bd1-800b-77ae-9d54-7caacdb33071", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_5" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s5_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Set up recordkeeping and reporting practices" }] },
+    { "id": "01a07bd1-800b-77bf-a736-5714dfccb107", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_6" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s6_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Identify priority advocacy issues" }] },
+    { "id": "01a07bd1-800b-77c8-964b-943a7440d83e", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_6" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s6_a2" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Map relevant government actors" }] },
+    { "id": "01a07bd1-800b-77d1-aa76-8e23aa3dceaa", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_6" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s6_a3" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Build skills to engage institutions and prepare requests" }] },
+    { "id": "01a07bd1-800b-77e3-a22e-b56bc4c63157", "cells": [{ "columnId": "01a07bd1-8009-705d-83ef-32095660d448", "value": "step_7" }, { "columnId": "01a07bd1-8009-7096-8145-552b6a8c2145", "value": "s7_a1" }, { "columnId": "01a07bd1-8009-70a3-a395-5a351b195630", "value": "Create the community vision" }] }
+  ],
+  "complete": true
+}

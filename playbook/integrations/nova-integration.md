@@ -838,6 +838,27 @@ is now the whole point of this section.
   encodes this as `verifyLookupBind` in `lib/option-register.ts`, used by both
   `pdd-to-deliver-app § Step 4f` and the probe below, so a run and its tripwire
   agree on what "bound" means.
+- **The value column must be unique ACROSS THE TABLE, and the upload preflight
+  is what enforces it.** `upload_app_to_hq` refuses the whole app:
+
+  > This app isn't ready to upload. Fix these first: A lookup-powered choice
+  > list uses activity_id for its saved values, but malawi_activities repeats
+  > the same value in several rows. Make the values unique or choose another
+  > value column.
+
+  Observed 2026-09-06 on `spark-facilitator/20260906-2233` (Deliver app
+  `0f7431d8-cbae-4f03-a87f-14b5a5261544`). **Uniqueness within a filter
+  partition does not satisfy it:** that table carried `other` on seven rows,
+  one per FCAP step, filtered by `step_id = step` — no worker ever saw two at
+  once, and the preflight still refused. Nothing earlier in the chain says a
+  word: `create_lookup_table` writes the rows, `set_field_options_source` binds
+  happily, and `get_field` reads the bind back as correct. Since ace#2143 ACE
+  checks this itself — `verifyLookupBind` takes the table's rows as a required
+  argument and `pdd-to-deliver-app § Step 4f` step 8 audits EVERY lookup-backed
+  select in the app via `auditLookupBinds`, not just the ones it bound (the
+  offending table was authored by the architect, so the register path never saw
+  it). `get_lookup_table_rows` pages at 100 rows and reports `complete`; a
+  partial read cannot prove uniqueness and is not a pass.
 - **A bound field pins its table, and a SOFT-DELETED app still pins it.** Once
   a select references a table, `remove_lookup_table` returns
   `{"code":"referenced","blockingApps":[…]}`. `delete_app` does not release it:

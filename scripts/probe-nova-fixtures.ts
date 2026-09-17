@@ -35,6 +35,12 @@
  * `lib/option-register.ts` — the same helper `pdd-to-deliver-app § Step 4f`
  * uses, so the run and the probe agree on what "bound" means.
  *
+ * Since ace#2143 that helper also reads the bound TABLE's rows and refuses a
+ * value column that repeats a code. The probe passes a live
+ * `get_lookup_table_rows` read so Nova's row shape is exercised here, but its
+ * verdict keys on `bindLanded` rather than `verified`: a table-content finding
+ * is a fact about the throwaway table, not an upstream binding regression.
+ *
  * Run it when: a Nova release lands, `probe-nova-contract.ts` reports a new
  * tool count, or a build reports a register bind it could not verify.
  *
@@ -239,11 +245,26 @@ export async function probeNovaFixtures(
       }).catch(() => null);
       readBack = got?.field?.optionsSource ?? null;
     }
-    const check = verifyLookupBind({ requested, readBack });
+
+    // Read the table's rows back too (ace#2143). Two reasons, and the second is
+    // the one that earns the extra call: `verifyLookupBind` now requires them,
+    // and doing it live here means Nova's row shape is exercised by the probe
+    // rather than only by a run — a drift in `{cells:[{columnId,value}]}` fails
+    // loudly in the tripwire instead of silently in `findDuplicateLookupValues`.
+    const rowsRead = await callNovaTool(apiKey, 'get_lookup_table_rows', {
+      app_id: appId,
+      tableId,
+    }).catch(() => null);
+    const check = verifyLookupBind({ requested, readBack, rows: rowsRead });
 
     return {
       canCreateTable,
-      canBindSelect: bindAccepted && check.verified,
+      // Keyed on `bindLanded`, NOT `verified`. This probe's verdict is about
+      // Nova's BINDING capability; a duplicate-value or unreadable-rows finding
+      // is a fact about the throwaway table (which the probe writes itself with
+      // unique values), and reporting it as `create-only` would raise a false
+      // upstream regression. `bindReadBackIssue` still carries the message.
+      canBindSelect: bindAccepted && check.bindLanded,
       bindAccepted,
       bindReadBackIssue: check.verified ? undefined : check.message,
       bindError,
