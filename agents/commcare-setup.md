@@ -355,9 +355,48 @@ It must match JSON Schema draft 2020-12
 ```
 
 while `get_hq_connection`, `get_app`, `get_module` and `create_form` stayed
-callable from L0 the whole time. Nova's deeper schemas (`create_module` at
-nesting depth 20, `add_automations` at 21) are rejected at **bind** time; the
-same tools answer fine over JSON-RPC. So probe the architect itself:
+callable from L0 the whole time. A handful of Nova's schemas are rejected at
+**bind** time; the same tools answer fine over JSON-RPC.
+
+**The discriminator is schema SIZE, not nesting depth** — measured 2026-09-17
+by loading tools one at a time into isolated throwaway dispatches, recording
+each result to disk before attempting the next (a bind fault kills the process,
+so the surviving file is the evidence):
+
+| tool | depth | bytes | binds? |
+|---|---|---|---|
+| `generate_schema` | 14 | 4,193 | **yes** |
+| `add_fields` | 15 | 6,571 | **yes** |
+| `create_form` | 15 | 9,422 | **yes** |
+| `configure_case_list` | **12** | 16,257 | **NO** — 400, `req_011Cf8b9ra6sJ3bEwrqL4Kbh` |
+| `create_module` | 20 | 16,004 | **NO** — 400, `req_011Cf8b6Evu4BTrpdFxaLEh4` |
+
+`configure_case_list` is the case that settles it: it is **shallower** than two
+tools that bind and it still fails, so depth cannot be the rule. It is also
+*larger* than `create_module`, which is what makes it a clean natural
+experiment rather than one more confounded data point.
+
+Across all 120 tools the sizes fall either side of a cliff with **nothing in
+between** — the largest that binds is 9,422 B and the smallest that fails is
+16,004 B. So the threshold sits somewhere in `(9,422, 16,004]` and the affected
+set is exactly four tools:
+
+    add_automations (17,792)  update_automation (17,752)
+    configure_case_list (16,257)  create_module (16,004)
+
+Two of those are confirmed by a 400 with a request id; the other two are
+inferred from size alone, and that inference is the weak part of this claim —
+re-measure before relying on it.
+
+**A refuted theory, recorded so it is not re-derived:** the failure is NOT
+caused by the 98 Nova tools declaring `"$schema":
+"http://json-schema.org/draft-07/schema#"`. That correlates well (98 of 120
+tools) and is wrong — `get_languages` and `get_entry_points` both declare
+draft-07 and both bind fine. Validating against a 2020-12 metaschema *will*
+tell you those schemas are invalid; that is the validator's opinion, not the
+API's.
+
+So probe the architect itself:
 
 > Dispatch `Agent(nova:nova-architect-autonomous)` with a trivial read-only
 > task — *"Call `list_apps` with limit 1, report how many apps came back, then
