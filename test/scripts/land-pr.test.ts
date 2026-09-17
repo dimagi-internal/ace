@@ -227,4 +227,52 @@ describe('scripts/land-pr.sh', () => {
     expect(SCRIPT).toMatch(/2026-09-05/);
     expect(SCRIPT).toMatch(/every 2-4 minutes/);
   });
+
+  //
+  // ace#2448 — the fourth stranded-PR issue in this family, and the first to
+  // ask why there was a fourth.
+  //
+  // ace#2004 (armed only inside the DIRTY branch), ace#2175 (a version
+  // collision is BLOCKED, not DIRTY, so the recovery never ran) and ace#1974
+  // (a bare HEAD refspec re-armed an un-updated PR) were each fixed as
+  // instances. None of them made the script CHECK its own most important side
+  // effect, so a fourth shape arrived by another route — PR #2447 came out of
+  // a rebase CLEAN-but-unarmed and merged only after a human re-armed it by
+  // hand — and was again invisible, because the log said "auto-merge armed"
+  // either way.
+  //
+  // The call discarded both streams, `|| true` swallowed the exit code, and the
+  // echo asserted success unconditionally. That is `CLAUDE.md` § External
+  // Mutations — Verify After Create ("a tool call that returned 200 is not a
+  // read-back") missing from the one script whose whole job is making a remote
+  // state change stick.
+  //
+  it('reads the arm back instead of assuming it took', () => {
+    const arm = CODE.lastIndexOf('--auto --merge');
+    expect(arm).toBeGreaterThan(-1);
+    // NOT `indexOf('autoMergeRequest', arm) > arm`. The give-up line already
+    // reports autoMergeRequest and also sits after the arm, so that assertion
+    // passes on the very script this test exists to reject — it was inert when
+    // first written here, caught by running it against the pre-fix file. What
+    // makes it a read-back is that the arm's own result is CAPTURED, so the
+    // control flow below can branch on it.
+    const afterArm = CODE.slice(arm);
+    expect(afterArm).toMatch(/armed="\$\(gh pr view[\s\S]{0,240}autoMergeRequest/);
+  });
+
+  it('never claims a bare unconditional "auto-merge armed" success', () => {
+    // The exact string that made four issues look identical in the log. Any
+    // report of the arm must carry its observed state.
+    expect(CODE).not.toMatch(/echo\s+"\s*auto-merge armed"\s*$/m);
+    expect(CODE).toMatch(/armed=/);
+  });
+
+  it('falls back to a bare --auto, and still only ever names one --merge form', () => {
+    // The retry is a fallback, not a diagnosis: the header argues (citing gh
+    // merge.go) that `--merge` under a queue only warns. Keeping the retry
+    // flagless means the single `--auto --merge` call site the ratchet above
+    // pins stays single.
+    const bare = CODE.match(/--auto(?! --merge)/g) ?? [];
+    expect(bare.length).toBeGreaterThanOrEqual(1);
+  });
 });

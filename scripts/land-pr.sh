@@ -426,8 +426,47 @@ while [ "$attempt" -lt "$MAX" ]; do
 
   # ARM — the initial arm on a clean run, the re-arm against the corrected
   # VERSION after a rebase. Always after the guard, always after any push.
+  #
+  # READ THE ARM BACK (ace#2448). This is the script's load-bearing side effect
+  # and until now it was the one thing never verified: the call discarded both
+  # streams, `|| true` swallowed any exit code, and the `echo` below asserted
+  # success unconditionally. So a PR that did not arm looked identical in the
+  # log to one that did, and the poll loop then waited out its full budget on a
+  # merge nobody was going to perform.
+  #
+  # That is `CLAUDE.md` § External Mutations — Verify After Create ("a tool call
+  # that returned 200 is not a read-back") applied to the place that most needs
+  # it. Three earlier issues in this family — ace#2004 (armed only inside the
+  # DIRTY branch), ace#2175 (a collision is BLOCKED, not DIRTY) and ace#1974 (a
+  # bare HEAD refspec re-armed an un-updated PR) — were each fixed as instances.
+  # None added a read-back, so a fourth shape arrived by another route and was
+  # again invisible until a human noticed a CLEAN PR that never merged.
+  #
+  # The bare-`--auto` retry is a FALLBACK, not a diagnosis. The header above
+  # argues (citing gh merge.go:298-304) that `--merge` under a queue only warns
+  # and arms anyway; that may well be right, and this does not contradict it —
+  # it just stops the script from claiming an outcome it never checked. If the
+  # retry turns out to be what consistently lands it, that is the evidence
+  # ace#2448 currently lacks, and the flag question can be settled on data.
   gh pr merge "$PR" -R "$REPO" --auto --merge >/dev/null 2>&1 || true
-  echo "  auto-merge armed"
+  armed="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest \
+             --jq '.autoMergeRequest != null' 2>/dev/null || echo unknown)"
+  if [ "$armed" != "true" ]; then
+    gh pr merge "$PR" -R "$REPO" --auto >/dev/null 2>&1 || true
+    armed="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest \
+               --jq '.autoMergeRequest != null' 2>/dev/null || echo unknown)"
+    # Written as an `if` rather than `[ … ] && echo`: this script runs under
+    # `set -uo pipefail` today, so a false test is harmless — but a later `-e`
+    # would turn that idiom into an exit, and stranding every ship is too big a
+    # prize for a one-character saving.
+    if [ "$armed" = "true" ]; then
+      echo "  auto-merge armed (bare --auto; the --merge form did not take)"
+    fi
+  fi
+  case "$armed" in
+    true) echo "  auto-merge armed=true" ;;
+    *)    echo "  auto-merge armed=$armed — NOT armed after two attempts; the poll below will not merge it on its own" ;;
+  esac
 
   # A line PER POLL. The ten silent minutes of ace#2175 were half the defect:
   # a wait that prints nothing is indistinguishable from a hang, and the reader
