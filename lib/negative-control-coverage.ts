@@ -61,6 +61,55 @@
  * checks are exported, documented in `skills/_app-component-library.md`,
  * thoroughly tested, and called by nothing (ace#1688/#1689).
  *
+ * ## Fixture grounding — the third dimension, added 2026-09-16
+ *
+ * Negative and positive controls together answer *can this check fail, and can
+ * it pass*. Neither asks the question that killed five gates in
+ * `poverty-graduation/20260915-1518`: **is the check's SPECIFICATION right?**
+ *
+ * A test's entire power is the independence of its oracle. When the
+ * implementation and the input it is fed come out of one act of authorship,
+ * they agree by construction — the control fires, the positive passes, and
+ * the pair proves only that the code does what the code does. CI cannot tell
+ * that apart from a real test: both are green.
+ *
+ * This is specifically worse under AI authorship. A human writing a parser
+ * usually has a real artifact open — that is *why* they are writing the
+ * parser. A model materialises the sample from the same internal
+ * representation that produced the regex, so the sample inherits every
+ * mistaken assumption the regex makes, silently and in both directions.
+ *
+ * Measured in one run (`poverty-graduation/20260915-1518`), five green gates
+ * over broken behaviour, every one of them fixture-authored-in-the-same-pass:
+ *
+ *   | Issue  | The specification the fixtures agreed with                      |
+ *   |--------|-----------------------------------------------------------------|
+ *   | #2422  | Three contact obligations passed and the bot still emitted the   |
+ *   |        | wrong address — the test helper supplied the required field on   |
+ *   |        | every synthetic row, so "absent" was never an input.             |
+ *   | #2396  | `selectOpenRows` ranked by a `blocking:` field that 0 of 15 real |
+ *   |        | rows carry. Every fixture supplied it.                           |
+ *   | #2398  | `readProgramParameter` matched a literal table row that neither  |
+ *   |        | export produces — the ace#1946 check shipped INERT a second time. |
+ *   | #2429  | `unmatchedReplacements` is blind to a token the builder stopped   |
+ *   |        | emitting.                                                        |
+ *   | #2426  | `recipe-sanity-probe` returned fully clean on the defect it       |
+ *   |        | exists to catch.                                                 |
+ *
+ * So: a check's controls may not ALL be inline literals. At least one must
+ * reach the check from a **captured artifact** — a file under
+ * `test/fixtures/`, or any other path read off disk, the repo's own
+ * `skills/*.md` included. The mechanical rule is `GROUNDING`.
+ *
+ * **What this does and does not buy.** A file on disk is not automatically
+ * real; a fabricated fixture committed under `test/fixtures/` is the same
+ * tautology with an extra hop. What it buys is that the input becomes a
+ * REVIEWABLE, REUSABLE, DIFFABLE object with a provenance line, instead of
+ * three lines of object literal nobody will ever look at again — and that the
+ * cheapest way to satisfy the rail is to go and capture the real thing. That
+ * is a nudge, not a proof, and it is stated here so nobody mistakes a green
+ * grounding check for evidence that a fixture is faithful.
+ *
  * *Enforced:* `test/lib/negative-control-coverage.test.ts` — including
  * negative controls for this module, which would otherwise be a check that
  * cannot fail, in a file about checks that cannot fail.
@@ -110,6 +159,12 @@ export interface CoverageRow {
   positive: TestBlock[];
   /** Blocks that exercise the surface at all. */
   exercised: TestBlock[];
+  /**
+   * Controls (negative or positive) whose input reaches the check from a
+   * CAPTURED ARTIFACT rather than from a literal typed beside the assertion.
+   * See § Fixture grounding.
+   */
+  grounded: TestBlock[];
 }
 
 /**
@@ -445,6 +500,96 @@ export function indirectCallers(source: string, fn: string): string[] {
   return [...new Set(names)].filter((n) => n !== fn);
 }
 
+// ── Fixture grounding ──────────────────────────────────────────────────────
+
+/**
+ * The mechanical rule for "this value came off disk rather than out of the
+ * author's head".
+ *
+ * Two forms, because ACE tests use both. A direct read — `readFileSync`,
+ * `readdirSync`, `globSync` — is the common one and covers the repo-policing
+ * rails that walk `skills/*.md` as well as the suites that load a captured
+ * CCZ. A bare `fixtures/` path literal covers the rest: a helper that wraps
+ * the read (`loadOcsFixture('chatbot-table.html')`), or a path handed to an
+ * MCP harness that reads it later.
+ *
+ * Deliberately NOT here: `JSON.parse`, `yaml.parse` and friends. Parsing an
+ * INLINE string is the exact thing this dimension is about — a hand-written
+ * YAML blob is a literal that has been through a parser, and counting it
+ * would mark the ace#2396 class grounded.
+ */
+export const GROUNDING =
+  /\b(?:readFileSync|readdirSync|globSync|readFile|readdir)\s*\(|['"`][^'"`\n]*\bfixtures?\/[^'"`\n]*['"`]/;
+
+/**
+ * Names bound, anywhere in a test file, to something that reads disk.
+ *
+ * Grounding almost never happens inside the `it` block. ACE's shape is a
+ * module-level `const CCZ = readFileSync(join(FIX, 'app.ccz'))` — or an
+ * `import { OPEN_QUESTIONS } from './fixtures/open-questions'` — consumed by
+ * a dozen blocks below it. Reading only the block body calls every one of
+ * those ungrounded, and a ratchet that over-reports debt is a ratchet someone
+ * deletes.
+ *
+ * Both binding forms are collected: plain and destructured declarations whose
+ * initialiser reads disk, and every name imported from a module specifier
+ * containing `fixtures`. Declarations are not restricted to module scope —
+ * the false positive (a nested `const` shadowing a name a sibling block
+ * happens to use) under-reports debt by one entry, while the false negative
+ * would silently pin dozens of genuinely-grounded checks as debt they do not
+ * owe.
+ */
+export function groundedBindings(source: string): string[] {
+  const masked = maskLiterals(source);
+  const names = new Set<string>();
+
+  for (const m of source.matchAll(/\bimport\s+([\s\S]{0,400}?)\s+from\s+(['"])([^'"]+)\2/g)) {
+    if (!/\bfixtures?\//.test(m[3])) continue;
+    for (const n of m[1].replace(/[{}*]/g, ' ').split(/[,\s]+/)) {
+      const id = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(n) ? n : '';
+      if (id && id !== 'type' && id !== 'as') names.add(id);
+    }
+  }
+
+  for (const m of masked.matchAll(/\b(?:const|let|var)\s+(\{[^}]{0,300}\}|[A-Za-z0-9_$]+)\s*(?::[^=\n]{0,200})?=/g)) {
+    const init = statementSlice(masked, m.index + m[0].length);
+    if (init < 0) continue;
+    // Test the RAW source over the same span: masking blanks string CONTENTS,
+    // and a `fixtures/` path literal lives entirely inside one.
+    if (!GROUNDING.test(source.slice(m.index + m[0].length, init))) continue;
+    for (const n of m[1].replace(/[{}]/g, ' ').split(/[,\s:]+/)) {
+      if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(n)) names.add(n);
+    }
+  }
+  return [...names];
+}
+
+/** End offset of the statement starting at `from`, balancing brackets. */
+function statementSlice(masked: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < masked.length; i++) {
+    const c = masked[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth < 0) return i;
+    } else if (c === ';' && depth === 0) return i;
+  }
+  return masked.length;
+}
+
+/**
+ * Does this control's input reach the check from a captured artifact?
+ *
+ * True when the block's own call context reads disk, or when it references a
+ * name this file bound to something that does.
+ */
+export function isGrounded(block: TestBlock, bindings: readonly string[]): boolean {
+  if (GROUNDING.test(block.callContext)) return true;
+  if (bindings.length === 0) return false;
+  return new RegExp(`\\b(?:${bindings.join('|')})\\b`).test(maskLiterals(block.callContext));
+}
+
 /**
  * Classify the verdict vocabulary a check returns, from its declared return
  * type and (for a local report interface) that interface's fields.
@@ -567,6 +712,8 @@ export function classifyCoverage(
 ): CoverageRow[] {
   const maskedContext = new Map<TestBlock, string>();
   for (const b of blocks) maskedContext.set(b, maskLiterals(b.callContext));
+  const bindings = new Map<string, string[]>();
+  for (const [file, src] of sources) bindings.set(file, groundedBindings(src));
   const byFile = new Map<string, TestBlock[]>();
   for (const b of blocks) {
     const list = byFile.get(b.file) ?? [];
@@ -586,11 +733,15 @@ export function classifyCoverage(
     }
     const neg = negativeSignal(surface.shape);
     const pos = positiveSignal(surface.shape);
+    const negative = neg ? exercised.filter((b) => neg.test(b.callContext)) : [];
+    const positive = pos ? exercised.filter((b) => pos.test(b.callContext)) : [];
+    const controls = [...new Set([...negative, ...positive])];
     return {
       surface,
       exercised,
-      negative: neg ? exercised.filter((b) => neg.test(b.callContext)) : [],
-      positive: pos ? exercised.filter((b) => pos.test(b.callContext)) : [],
+      negative,
+      positive,
+      grounded: controls.filter((b) => isGrounded(b, bindings.get(b.file) ?? [])),
     };
   });
 }
