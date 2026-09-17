@@ -382,6 +382,14 @@ blank chart.
    counting and numeric aggregations, tolerates a zero on SOME rows, and treats
    an all-zero **filtered** count as reported rather than fatal.
 
+   Hand it `fields_all_null` **and `fields_suspect`** from the same response.
+   The second (connect-labs#1882) is the only signal on either side that sees a
+   field which extracted the WRONG value rather than none — every rule above
+   judges a field by what it is MISSING, so a `count` that is merely wrong
+   passes all of them. That is ace#2431: over the JSONB column `flag_reason` it
+   returned each worker's `total_visits`, non-null and non-zero on every row,
+   and the whole check reported clean.
+
    Two things it exists to stop you doing:
 
    - **Reading `fields_all_null` as the answer.** It is NULL-only. Verified live

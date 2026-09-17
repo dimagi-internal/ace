@@ -33,6 +33,7 @@ import {
   checkPipelineFieldsExtract,
   isDeadExtraction,
   type PipelinePreview,
+  type SuspectField,
 } from '../../lib/pipeline-field-extraction.js';
 
 // ── Real rows, pipeline 5411 / opp 10054, 2026-09-06, from_cache:false ──
@@ -350,5 +351,103 @@ describe('checkPipelineFieldsExtract — the surfaces #1864 slipped past', () =>
     const r = checkPipelineFieldsExtract([HEALTHY, ISSUE_1864]);
     expect(r.pass).toBe(false);
     expect(r.findings.filter((f) => f.blocking).every((f) => f.pipeline_id === 5414)).toBe(true);
+  });
+});
+
+/**
+ * ace#2431, as measured on labs opp 10065 / pipeline 5694
+ * (`poverty-graduation/20260915-1518`). `flag_reason` is a JSONB base column;
+ * an unflagged visit stores `{}`, and the pre-connect-labs#1882 SQL rendered
+ * that as the two-character string `'{}'` — not empty, so `count` returned
+ * each worker's `total_visits`. The truth was 17 / 9 / 11 of 235 / 315 / 260.
+ *
+ * Every value here is non-null and non-zero, which is the entire point: this
+ * corpus is GREEN under every deadness rule in the check, and green under
+ * `fields_all_null`, which is why the wrong numbers reached a dashboard.
+ */
+const ISSUE_2431: PipelinePreview = {
+  pipeline_id: 5694,
+  name: 'Poverty-graduation FLW aggregates',
+  declared: [
+    { name: 'held_for_review', path: 'flag_reason', aggregation: 'count' },
+    { name: 'community', path: 'form.community_identity.village_name', aggregation: 'first' },
+  ],
+  rows: [
+    { held_for_review: 235, total_visits: 235, community: 'Village A' },
+    { held_for_review: 315, total_visits: 315, community: 'Village B' },
+    { held_for_review: 260, total_visits: 260, community: 'Village C' },
+  ],
+  from_cache: false,
+  fields_all_null: [],
+  fields_suspect: [
+    {
+      name: 'held_for_review',
+      signal: 'equals_row_count',
+      detail: '`held_for_review` equals that row’s total_visits on all 3 sampled rows.',
+    },
+  ],
+};
+
+describe('checkPipelineFieldsExtract — fields_suspect (ace#2431)', () => {
+  it('is BLIND to the wrong-value class without the upstream signal — the reason to carry it', () => {
+    // The mutation for this half: drop fields_suspect and the corpus is clean.
+    // Nothing in this file's own rules can see a count that is merely WRONG.
+    const { fields_suspect: _dropped, ...blind } = ISSUE_2431;
+    const r = checkPipelineFieldsExtract([blind as PipelinePreview]);
+    expect(r.pass).toBe(true);
+    expect(r.findings).toEqual([]);
+    expect(r.fields_judged).toBe(2);
+  });
+
+  it('surfaces a suspect field, naming the signal and carrying labs’ own detail', () => {
+    const r = checkPipelineFieldsExtract([ISSUE_2431]);
+    const f = r.findings.find((x) => x.field === 'held_for_review');
+    expect(f?.kind).toBe('field-suspect');
+    expect(f?.detail).toContain('equals_row_count');
+    expect(f?.detail).toContain('total_visits');
+    expect(f?.pipeline_id).toBe(5694);
+  });
+
+  it('reports rather than blocks, and says so in the detail line', () => {
+    const r = checkPipelineFieldsExtract([ISSUE_2431]);
+    expect(r.pass).toBe(true);
+    expect(r.findings.every((f) => !f.blocking)).toBe(true);
+    expect(r.detail).toContain('reported, not blocking');
+    expect(r.detail).toContain('field-suspect');
+  });
+
+  it('does not double-report a field an existing rule already flagged', () => {
+    // filter_matched_nothing overlaps filtered-field-all-zero exactly. One
+    // finding per field, and the check's own kind wins.
+    const overlap: PipelinePreview = {
+      ...HEALTHY,
+      rows: HEALTHY.rows.map((r) => ({ ...r, gps_imprecise: 0 })),
+      fields_suspect: [{ name: 'gps_imprecise', signal: 'filter_matched_nothing' }],
+    };
+    const hits = checkPipelineFieldsExtract([overlap]).findings.filter(
+      (f) => f.field === 'gps_imprecise',
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0].kind).toBe('filtered-field-all-zero');
+  });
+
+  it('NEGATIVE CONTROL: a healthy preview stays clean, and an absent/empty signal changes nothing', () => {
+    for (const suspect of [undefined, []]) {
+      const r = checkPipelineFieldsExtract([{ ...HEALTHY, fields_suspect: suspect }]);
+      expect(r.pass).toBe(true);
+      expect(r.findings.filter((f) => f.kind === 'field-suspect')).toEqual([]);
+    }
+  });
+
+  it('tolerates a malformed upstream entry rather than inventing a finding', () => {
+    // fields_suspect is someone else's payload; a shape change must not throw
+    // or produce a finding naming an empty field.
+    const junk = [{}, { name: '' }, null, { name: 'held_for_review' }] as unknown as SuspectField[];
+    const r = checkPipelineFieldsExtract([{ ...ISSUE_2431, fields_suspect: junk }]);
+    const hits = r.findings.filter((f) => f.kind === 'field-suspect');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].field).toBe('held_for_review');
+    // No signal and no detail upstream — the finding still tells the reader what to do.
+    expect(hits[0].detail).toContain('Re-derive the number');
   });
 });
