@@ -40,10 +40,27 @@ import { type CheckOutcome, checked, unable, formatUnable } from './check-outcom
 export interface EntityIdComponents {
   /** False when no `entity_id` bind exists, or its calculate cannot be read. */
   resolved: boolean;
-  /** Each concat argument, in order. String literals (separators) are dropped. */
+  /**
+   * Each concat argument, in order. String literals (separators) are dropped.
+   * For a CONDITIONAL key this is the UNION across branches, deduped and in
+   * first-seen order — see `branches`.
+   */
   components: string[];
   /** The raw calculate the components came from. */
   raw?: string;
+  /**
+   * One component list per branch when the key is a top-level `if(...)`
+   * (ace#2417). Absent for every other key shape.
+   *
+   * The `if()` PREDICATE is not a branch and is not a component: it decides
+   * which key is built, it is not part of either key.
+   *
+   * Callers that judge whether the key identifies an entity MUST judge each
+   * branch and require every one of them to pass — a conditional key is only
+   * as good as its weakest branch, and reading the union would let a clean
+   * payable branch launder a worker-and-day-scoped fallback.
+   */
+  branches?: string[][];
 }
 
 function bindsOf(xml: string): Array<{ nodeset: string; calculate: string }> {
@@ -57,15 +74,32 @@ function bindsOf(xml: string): Array<{ nodeset: string; calculate: string }> {
   return out;
 }
 
-/** Split a `concat(...)` argument list at top level, ignoring nested parens. */
-function splitConcatArgs(concat: string): string[] {
-  const open = concat.indexOf('(');
+/**
+ * Split a call's argument list at top level, ignoring nested parens.
+ *
+ * **Quote-aware, and that is load-bearing (ace#2417).** A separator literal
+ * containing a comma — `concat(/data/lat, ',', /data/lon)`, which is how a GPS
+ * point is spelled — used to split INSIDE the literal and yield two bare `'`
+ * arguments. A bare `'` survives the string-literal filter below, and reads as
+ * an entity-identifying node to `hasEntityNode`, so `concat(username, ',',
+ * visit_date)` scored an entity component it does not have. The junk arguments
+ * also landed in the operator-facing report as components of the key.
+ */
+function splitCallArgs(expr: string): string[] {
+  const open = expr.indexOf('(');
   if (open === -1) return [];
   let depth = 0;
+  let quote: string | null = null;
   const args: string[] = [];
   let cur = '';
-  for (let i = open; i < concat.length; i++) {
-    const ch = concat[i];
+  for (let i = open; i < expr.length; i++) {
+    const ch = expr[i];
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { quote = ch; cur += ch; continue; }
     if (ch === '(') { depth++; if (depth === 1) continue; }
     if (ch === ')') { depth--; if (depth === 0) { args.push(cur); break; } }
     if (ch === ',' && depth === 1) { args.push(cur); cur = ''; continue; }
@@ -75,12 +109,108 @@ function splitConcatArgs(concat: string): string[] {
 }
 
 /**
+ * Index just past the `)` closing the `(` at `open`, or -1 when unbalanced.
+ * Quote-aware, like `splitCallArgs`.
+ */
+function matchingParen(expr: string, open: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = open; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === "'" || c === '"') { quote = c; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+/** A quoted string literal — a separator, never a component of the grain. */
+const STRING_LITERAL = /^(?:'[^']*'|"[^"]*")$/;
+
+/** The components of ONE key expression: a `concat(...)`, or a single node. */
+function componentsOfExpression(expr: string): string[] {
+  const e = expr.trim();
+  if (!/^concat\s*\(/.test(e)) {
+    // A single-node key is legal; treat the node itself as the sole component.
+    return [e];
+  }
+  return splitCallArgs(e)
+    .filter((a) => !STRING_LITERAL.test(a))
+    .map((a) => (/casedb[\s\S]*\/username$/.test(a) ? 'username' : a));
+}
+
+/** Bounded so a pathological blueprint cannot make the extractor hang. */
+const MAX_CONDITIONAL_DEPTH = 4;
+
+/**
+ * The key expressions a top-level `if(...)` can produce, one per branch.
+ * `undefined` when `expr` is not a whole, well-formed 3-argument `if()`.
+ *
+ * A branch that is ITSELF a conditional is expanded too — `if(a, X, if(b, Y,
+ * Z))` is three keys, not two — because every branch is judged independently,
+ * so expanding can only add cases that must pass.
+ *
+ * Deliberately NOT recursive into a `concat()` argument. `concat(username,
+ * if(p, hh_key, started_at))` stays ONE branch with the `if()` as an opaque
+ * component: that is the released ace#1285 shape
+ * (`test/fixtures/ccz/hh-poverty-targeting-visit.xml`), the defect this whole
+ * module exists to catch, and splitting it would hand the clean sub-branch to
+ * the union and suppress `no-entity-component` on the worker-and-day one.
+ */
+function conditionalBranches(expr: string, depth = 0): string[] | undefined {
+  const e = expr.trim();
+  if (depth >= MAX_CONDITIONAL_DEPTH || !/^if\s*\(/.test(e)) return undefined;
+  // The `if(...)` must BE the whole expression, not a sub-term of it —
+  // `if(p, a, b) + 1` and `if(p, a, b) and c` are not conditional keys.
+  const close = matchingParen(e, e.indexOf('('));
+  if (close < 0 || e.slice(close).trim() !== '') return undefined;
+  const args = splitCallArgs(e);
+  if (args.length !== 3) return undefined;
+  // args[0] is the PREDICATE — it selects a key, it is not part of one.
+  return [args[1], args[2]].flatMap(
+    (branch) => conditionalBranches(branch, depth + 1) ?? [branch],
+  );
+}
+
+/**
  * The nodes `entity_id` is actually keyed on, following one level of
  * indirection (`entity_id -> /data/entity_key -> concat(...)`), which is the
  * shape Nova emits.
  *
  * A `casedb` user lookup collapses to the literal `username` — its whole
  * function in a key is "the worker", and the surrounding XPath is noise.
+ *
+ * ## A CONDITIONAL key is decomposed into its branches (ace#2417)
+ *
+ * `if(<predicate>, concat(A), concat(B))` matched neither `concat(` nor a bare
+ * node, so it fell through to the single-node branch and the WHOLE expression
+ * became one opaque component. Every downstream test then ran against that
+ * blob: `ANSWER_LIKE` matched it (the text contains `outcome`), nothing in it
+ * looked like an entity, and `nodeTailMatches` could never see the
+ * discriminator because the tail of an `if(...)` string is never a node name.
+ * Two `[BLOCKER]`s on a key that is correct on both branches. Recorded verbatim
+ * from released Deliver build `e55a640283e74900ba2453d0dea13714`
+ * (`poverty-graduation/20260915-1518`, `modules-0/forms-0.xml`):
+ *
+ * ```xml
+ * <bind nodeset="/data/entity_key" type="xsd:string"
+ *       calculate="if(/data/visit_outcome = 'completed',
+ *         concat(/data/g_identity/hh_head_name, ' - ', /data/g_identity/respondent_name,
+ *                ' - targeting_survey - completed'),
+ *         concat(/data/g_gps/gps_lat, ',', /data/g_gps/gps_lon,
+ *                ' - targeting_survey - ', /data/visit_outcome))"/>
+ * ```
+ *
+ * The conditional is what the PDD's non-payable branch requires: a vacant
+ * dwelling or a refusal has no household-head or respondent name, so the key
+ * falls back to the GPS point. Both branches carry household identity plus the
+ * activity code; neither carries a username or a date.
+ *
+ * `components` is the UNION across branches — right for asking "is this
+ * declared node in the key at all", since a declared business key legitimately
+ * appears in the payable branch only. `branches` is what the entity-identity
+ * test must read, one branch at a time.
  */
 export function extractEntityIdComponents(xml: string): EntityIdComponents {
   const binds = bindsOf(xml);
@@ -94,14 +224,23 @@ export function extractEntityIdComponents(xml: string): EntityIdComponents {
     if (!target) return { resolved: false, components: [], raw: entity.calculate };
     calc = target.calculate.trim();
   }
-  if (!/^concat\s*\(/.test(calc)) {
-    // A single-node key is legal; treat the node itself as the sole component.
-    return { resolved: true, components: [calc], raw: calc };
+
+  const branchExprs = conditionalBranches(calc);
+  if (branchExprs) {
+    const branches = branchExprs.map(componentsOfExpression);
+    const seen = new Set<string>();
+    const components: string[] = [];
+    for (const b of branches) {
+      for (const c of b) {
+        if (seen.has(c)) continue;
+        seen.add(c);
+        components.push(c);
+      }
+    }
+    return { resolved: true, components, raw: calc, branches };
   }
-  const components = splitConcatArgs(calc)
-    .filter((a) => !/^'[^']*'$/.test(a) && !/^"[^"]*"$/.test(a))
-    .map((a) => (/casedb[\s\S]*\/username$/.test(a) ? 'username' : a));
-  return { resolved: true, components, raw: calc };
+
+  return { resolved: true, components: componentsOfExpression(calc), raw: calc };
 }
 
 /**
@@ -280,7 +419,7 @@ export function checkEntityIdGrain(
   declaredNodes: string[] = [],
   opts: GrainCheckOpts = {},
 ): GrainReport {
-  const { resolved, components } = extractEntityIdComponents(xml);
+  const { resolved, components, branches } = extractEntityIdComponents(xml);
   if (!resolved) {
     return unable(
       'no readable entity_id calculate was found in the form XML, so the dedup grain could not be ' +
@@ -340,17 +479,32 @@ export function checkEntityIdGrain(
   // what the PDD declared, i.e. the build kept the pinned grain and added the
   // one component it was told to. A key that is worker + day + answer with NO
   // declared grain behind it is still the real defect.
+  //
+  // A CONDITIONAL key is judged one BRANCH at a time and EVERY branch must
+  // carry entity identity (ace#2417). Reading the union instead would let a
+  // clean payable branch launder a worker-and-day-scoped fallback — the ace#969
+  // shape wearing a conditional. `branches` is absent for every other key
+  // shape, in which case this is the single-list test it always was.
   const residual = components.filter((c) => c !== mandated);
   const residualIsDeclared =
     declaredNodes.length > 0 &&
     declaredNodes.every((want) => residual.some((c) => c.includes(want)));
-  const hasEntityNode = residual.some((c) => !NON_ENTITY.test(c) && !ANSWER_LIKE.test(c));
-  if (!hasEntityNode && !(mandated !== undefined && residualIsDeclared)) {
-    findings.push({
-      kind: 'no-entity-component',
-      detail:
-        `no component identifies the tracked entity — the key is ${components.join(' + ')}, which is ` +
-        'worker-and-day scoped by construction',
+  const carriesEntityNode = (list: string[]): boolean =>
+    list.filter((c) => c !== mandated).some((c) => !NON_ENTITY.test(c) && !ANSWER_LIKE.test(c));
+  const branchLists = branches ?? [components];
+  if (!(mandated !== undefined && residualIsDeclared)) {
+    branchLists.forEach((list, i) => {
+      if (carriesEntityNode(list)) return;
+      findings.push({
+        kind: 'no-entity-component',
+        detail: branches
+          ? `no component identifies the tracked entity on branch ${i + 1} of ${branches.length} of ` +
+            `the conditional key — that branch is ${list.join(' + ')}, which is worker-and-day ` +
+            'scoped by construction. EVERY branch of a conditional key must carry entity identity; ' +
+            'a key is only as good as its weakest branch'
+          : `no component identifies the tracked entity — the key is ${components.join(' + ')}, which is ` +
+            'worker-and-day scoped by construction',
+      });
     });
   }
 

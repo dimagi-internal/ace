@@ -31,6 +31,12 @@ import {
 } from '../../lib/entity-id-grain.js';
 
 import { assertChecked, assertUnable, isPass } from '../../lib/check-outcome.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Real released CCZ form XMLs, vendored verbatim. */
+const CCZ_FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'ccz');
 /** The live released shape, including the entity_key indirection. */
 const LIVE = `<?xml version="1.0"?>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
@@ -365,5 +371,253 @@ describe('expandEntityIdComponents (ace#1810)', () => {
     const [e] = expandEntityIdComponents(xml, ['/data/unbound']);
     expect(e.via).toEqual([]);
     expect(e.text).toBe('/data/unbound');
+  });
+});
+
+/**
+ * dimagi-internal/ace#2417 — a CONDITIONAL `entity_id` was read as one opaque
+ * component, so two `[BLOCKER]`s landed on a key that is correct on both
+ * branches and Phase 3 hard-halted.
+ *
+ * Both fixtures below are REAL released artifacts read from `test/fixtures/ccz/`,
+ * not inline literals:
+ *
+ *   - POSITIVE — `poverty-graduation-targeting-survey.xml`: the verbatim
+ *     `modules-0/forms-0.xml` of Deliver app e4594937038c42d2be4d01f45df44209,
+ *     released build e55a640283e74900ba2453d0dea13714 on `connect-ace-prod`
+ *     (`poverty-graduation/20260915-1518`). Its `/data/entity_key` is
+ *     `if(/data/visit_outcome = 'completed', concat(hh_head_name, ' - ',
+ *     respondent_name, ' - targeting_survey - completed'), concat(gps_lat, ',',
+ *     gps_lon, ' - targeting_survey - ', visit_outcome))`. The conditional is
+ *     what the PDD's non-payable branch requires — a vacant dwelling or a
+ *     refusal has no household-head or respondent name, so the key falls back
+ *     to the GPS point. Both branches carry household identity plus the
+ *     activity code; neither carries a username or a date.
+ *
+ *   - NEGATIVE — `hh-poverty-targeting-visit.xml`: the released ace#1285 key,
+ *     `concat(<casedb username>, ' | ', visit_outcome, ' | ', if(...))`. The
+ *     conditional here is nested INSIDE a `concat`, which is deliberately NOT
+ *     decomposed: splitting it would hand the clean `hh_head_key` sub-branch to
+ *     the union and suppress `no-entity-component` on the worker-and-day one —
+ *     the exact defect this module was written for.
+ *
+ * Measured on this fixture before the change: `components` was a single string
+ * containing the whole `if(...)`, and the report carried `[answer-in-grain]` +
+ * `[no-entity-component]`.
+ */
+describe('a CONDITIONAL entity_id key (ace#2417)', () => {
+  const SHIPPED = readFileSync(
+    join(CCZ_FIXTURES, 'poverty-graduation-targeting-survey.xml'),
+    'utf8',
+  );
+  /** The released bind, quoted from the fixture — the mutations below target it. */
+  const SHIPPED_KEY =
+    "calculate=\"if(/data/visit_outcome = 'completed', " +
+    "concat(/data/g_identity/hh_head_name, ' - ', /data/g_identity/respondent_name, " +
+    "' - targeting_survey - completed'), " +
+    "concat(/data/g_gps/gps_lat, ',', /data/g_gps/gps_lon, ' - targeting_survey - ', " +
+    '/data/visit_outcome))"';
+  /** What `app-release-qa` passes for this PDD: a declared non-payable branch. */
+  const OPTS = { hasNonPayableBranch: true, payabilityDiscriminator: 'visit_outcome' };
+
+  it('the captured fixture really carries the conditional key', () => {
+    // Without this, every mutation below could be a silent no-op.
+    expect(SHIPPED).toContain(SHIPPED_KEY);
+  });
+
+  it('decomposes the conditional into its branches, dropping the predicate', () => {
+    const c = extractEntityIdComponents(SHIPPED);
+    expect(c.resolved).toBe(true);
+    expect(c.branches).toEqual([
+      ['/data/g_identity/hh_head_name', '/data/g_identity/respondent_name'],
+      ['/data/g_gps/gps_lat', '/data/g_gps/gps_lon', '/data/visit_outcome'],
+    ]);
+    // The predicate `/data/visit_outcome = 'completed'` selects a key; it is
+    // not part of one, and must never appear as a component.
+    expect(c.components).not.toContain("/data/visit_outcome = 'completed'");
+    // The union, for the declared-node test — a declared business key
+    // legitimately appears on the payable branch only.
+    expect(c.components).toEqual([
+      '/data/g_identity/hh_head_name',
+      '/data/g_identity/respondent_name',
+      '/data/g_gps/gps_lat',
+      '/data/g_gps/gps_lon',
+      '/data/visit_outcome',
+    ]);
+  });
+
+  it('POSITIVE CONTROL — the real released conditional key is clean', () => {
+    const r = checkEntityIdGrain(SHIPPED, [], OPTS);
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(isPass(r)).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — the released ace#1285 worker-and-day key still fails', () => {
+    // Real captured artifact, a different released build, unmodified. Its
+    // conditional sits INSIDE a concat and stays opaque on purpose.
+    const live = readFileSync(join(CCZ_FIXTURES, 'hh-poverty-targeting-visit.xml'), 'utf8');
+    const r = checkEntityIdGrain(live, []);
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toEqual(
+      expect.arrayContaining(['answer-in-grain', 'no-entity-component']),
+    );
+  });
+
+  it('NEGATIVE CONTROL — a branch keyed on worker + date is still a [BLOCKER]', () => {
+    // THE laundering case. Branch 1 is the shipped, correct household key;
+    // branch 2 is replaced with worker + date. Reading the union would pass
+    // this — every branch must carry entity identity.
+    const oneBadBranch = SHIPPED.replace(
+      SHIPPED_KEY,
+      "calculate=\"if(/data/visit_outcome = 'completed', " +
+        "concat(/data/g_identity/hh_head_name, ' - ', /data/g_identity/respondent_name, " +
+        "' - targeting_survey - completed'), " +
+        "concat(instance('casedb')/casedb/case[@case_type='commcare-user']" +
+        "[hq_user_id=instance('commcaresession')/session/context/userid]/username, ' - ', " +
+        '/data/survey_date, \' - targeting_survey - \', /data/visit_outcome))"',
+    );
+    expect(oneBadBranch).not.toBe(SHIPPED);
+    const r = checkEntityIdGrain(oneBadBranch, [], OPTS);
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    const noEntity = r.findings.filter((f) => f.kind === 'no-entity-component');
+    expect(noEntity).toHaveLength(1);
+    expect(noEntity[0].detail).toMatch(/branch 2 of 2/);
+    expect(noEntity[0].detail).toMatch(/username/);
+    expect(noEntity[0].detail).toMatch(/weakest branch/);
+  });
+
+  it('NEGATIVE CONTROL — an ANSWER in a branch is still a [BLOCKER]', () => {
+    // The ace#969 over-correction wearing a conditional: the payable branch
+    // gains a consent answer that no mandate puts there. Decomposition must
+    // not hide it — before this change it was hidden the other way round, by
+    // the whole blob being one unreadable component.
+    const answerInBranch = SHIPPED.replace(
+      "concat(/data/g_identity/hh_head_name, ' - ', /data/g_identity/respondent_name, " +
+        "' - targeting_survey - completed')",
+      "concat(/data/g_identity/hh_head_name, ' - ', /data/g_consent/consent, " +
+        "' - targeting_survey - completed')",
+    );
+    expect(answerInBranch).not.toBe(SHIPPED);
+    const r = checkEntityIdGrain(answerInBranch, [], OPTS);
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    const answers = r.findings.filter((f) => f.kind === 'answer-in-grain');
+    expect(answers).toHaveLength(1);
+    // The finding names the NODE, not the whole `if(...)` blob — before this
+    // change the blob was the component, so the detail was unreadable and the
+    // discriminator exemption could never match its tail.
+    expect(answers[0].detail.startsWith('/data/g_consent/consent ')).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — a declared node in NEITHER branch is still missing', () => {
+    const r = checkEntityIdGrain(SHIPPED, ['hh_head_name', 'household_id'], OPTS);
+    assertChecked(r);
+    expect(r.findings.map((f) => f.kind)).toEqual(['missing-declared-node']);
+    expect(r.findings[0].detail).toMatch(/household_id/);
+  });
+
+  it('a declared node on the PAYABLE branch only is present — the union is right here', () => {
+    // The non-payable branch cannot carry a household-head name; there is
+    // none. Requiring every branch to carry the declared grain would refuse
+    // the very shape the PDD mandates.
+    const r = checkEntityIdGrain(SHIPPED, ['hh_head_name', 'respondent_name'], OPTS);
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+  });
+
+  it('the discriminator is still the ONLY answer field suppressed (ace#1441)', () => {
+    // `visit_outcome` is in branch 2 as a real component and is exempt because
+    // `payability-scoped-key` mandates it. Drop the mandate and it fires.
+    const r = checkEntityIdGrain(SHIPPED, [], {});
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('answer-in-grain');
+    expect(r.findings.find((f) => f.kind === 'answer-in-grain')!.detail).toMatch(
+      /\/data\/visit_outcome/,
+    );
+  });
+});
+
+describe('conditional decomposition — the boundary (ace#2417)', () => {
+  const key = (calc: string): string => `
+    <h:html xmlns:h="http://www.w3.org/1999/xhtml">
+      <h:head><model>
+        <bind nodeset="/data/x/deliver/entity_id" calculate="${calc
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/"/g, '&quot;')}"/>
+      </model></h:head>
+    </h:html>`;
+
+  it('expands a nested conditional branch into a third key', () => {
+    const c = extractEntityIdComponents(
+      key("if(/data/a = 'y', /data/hh_id, if(/data/b = 'y', /data/gps, /data/plot_id))"),
+    );
+    expect(c.branches).toEqual([['/data/hh_id'], ['/data/gps'], ['/data/plot_id']]);
+  });
+
+  it('does NOT split a conditional nested inside a concat — that is the ace#1285 shape', () => {
+    const c = extractEntityIdComponents(
+      key("concat(/data/hh_id, ' | ', if(/data/a = 'y', /data/b, /data/visit_date))"),
+    );
+    expect(c.branches).toBeUndefined();
+    expect(c.components).toEqual([
+      '/data/hh_id',
+      "if(/data/a = 'y', /data/b, /data/visit_date)",
+    ]);
+  });
+
+  it.each([
+    ["if(/data/a = 'y', /data/b, /data/c) + 1", 'an if() that is only part of the expression'],
+    ["if(/data/a = 'y', /data/b)", 'a two-argument if()'],
+    ["concat('if(', /data/hh_id)", 'a literal that merely mentions if('],
+    ['/data/hh_id', 'a bare node'],
+  ])('%s is not a conditional key (%s)', (calc) => {
+    expect(extractEntityIdComponents(key(calc)).branches).toBeUndefined();
+  });
+
+  it('splits a predicate containing a comma without losing an argument', () => {
+    const c = extractEntityIdComponents(
+      key("if(selected(/data/outcome, 'completed'), /data/hh_id, /data/gps)"),
+    );
+    expect(c.branches).toEqual([['/data/hh_id'], ['/data/gps']]);
+  });
+
+  it('is bounded, so a deeply nested conditional cannot hang the gate', () => {
+    let calc = '/data/leaf';
+    for (let i = 0; i < 12; i++) calc = `if(/data/p${i} = 'y', /data/hh${i}, ${calc})`;
+    expect(() => extractEntityIdComponents(key(calc))).not.toThrow();
+    expect(extractEntityIdComponents(key(calc)).branches!.length).toBeGreaterThan(1);
+  });
+
+  it('REGRESSION — a comma inside a separator literal is not an argument break', () => {
+    // `concat(lat, ',', lon)` is how a GPS point is spelled. Splitting inside
+    // the literal yielded two bare `'` arguments, which survive the
+    // string-literal filter and read as entity-identifying nodes — so
+    // `concat(username, ',', visit_date)` scored an entity component it does
+    // not have, and the junk landed in the operator-facing report.
+    const c = extractEntityIdComponents(
+      key("concat(/data/g_gps/gps_lat, ',', /data/g_gps/gps_lon)"),
+    );
+    expect(c.components).toEqual(['/data/g_gps/gps_lat', '/data/g_gps/gps_lon']);
+    expect(c.components).not.toContain("'");
+  });
+
+  it("REGRESSION — a ',' separator cannot launder no-entity-component", () => {
+    const r = checkEntityIdGrain(
+      key(
+        "concat(instance('casedb')/casedb/case[@case_type='commcare-user']" +
+          "[hq_user_id=instance('commcaresession')/session/context/userid]/username, ','," +
+          ' /data/visit_date)',
+      ),
+      [],
+    );
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
   });
 });
