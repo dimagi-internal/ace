@@ -472,6 +472,33 @@ if [ "$PREFLIGHT" = "1" ]; then
   # bind at session start, so the restart remains mandatory.
   PF_NOVA_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
 
+  # static_header_drift — ace#2159. The generalization of the drift branch
+  # inside nova_header_readiness above, applied to EVERY user-scope MCP entry
+  # in ~/.claude.json that pins a static Authorization header.
+  #
+  # A HALT class, and a silent one: a static header is bound at connection time
+  # and does not follow a credential rotation, so a rotated LABS_MCP_TOKEN
+  # leaves `connect_labs` authenticating with the old value while .env,
+  # 1Password and the plugin's own headersHelper all agree with each other and
+  # report green. The labs probes below (connect_labs_env /
+  # connect_labs_mcp_reachable / connect_labs_connect_oauth) curl labs with the
+  # .env token, so they PASS on a credential the session is not using — that is
+  # how the bednet-2-visit preflight halted with zero connect-labs atoms bound
+  # and no block naming it. `--heal` re-points the entries this probe owns;
+  # nova's entry is reported here but healed by nova_header_readiness, which
+  # owns it.
+  PF_STATIC_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-static-header-drift.ts --format=yaml --heal 2>/dev/null || true)"
+  if [ -z "$PF_STATIC_HDR_YAML" ]; then
+    PF_STATIC_HDR_YAML="static_header_drift:
+  status: skip
+  config_readable: false
+  pinned_entries: 0
+  drifted: []
+  healed: []
+  detail: \"probe produced no output (run /ace:update)\"
+  remediation: \"\""
+  fi
+
   # nova_scopes — ace#174. In PREFLIGHT deliberately, not only in the full
   # doctor run: preflight is what /ace:run gates on before Phase 1, and the
   # whole saving is catching a partially-scoped key there rather than at
@@ -595,6 +622,7 @@ nova_needs_auth_cache:
   recurrence: ${PF_NOVA_CACHE_RECURRENCE}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 ${PF_NOVA_HDR_YAML}
+${PF_STATIC_HDR_YAML}
 ${PF_NOVA_SCOPES_YAML}
 ${PF_OCS_GEN_YAML}
 EOF
@@ -2639,6 +2667,15 @@ if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
   # pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
   # counts it without any bookkeeping here.
   [ -n "$NOVA_HDR_LINES" ] && printf '%s\n' "$NOVA_HDR_LINES"
+fi
+
+# 7b-iii. static_header_drift — the same question, asked of EVERY user-scope
+# MCP entry rather than only nova (ace#2159). Runs AFTER nova_header_readiness
+# so nova's own entry is already healed by the probe that owns it, and this one
+# reports rather than re-writes it.
+if [ -f "$ROOT/scripts/doctor-static-header-drift.ts" ]; then
+  STATIC_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-static-header-drift.ts --format=lines --heal 2>/dev/null || true)"
+  [ -n "$STATIC_HDR_LINES" ] && printf '%s\n' "$STATIC_HDR_LINES"
 fi
 
 # 7c. nova_needs_auth_cache — verify Claude Code is not caching

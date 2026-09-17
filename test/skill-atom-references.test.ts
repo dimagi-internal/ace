@@ -115,6 +115,10 @@ const ALLOWLIST = new Set([
   'drive_shared',                  // bin/ace-doctor probe label (PASS/FAIL on Shared-Drive parent guard)
   'ocs_generation',                // bin/ace-doctor probe label (ace#1516 — live 'can OCS generate?' preflight check)
   'ocs_auth',                      // bin/ace-doctor probe label ([Auth liveness] OCS session check)
+  'connect_labs_env',              // bin/ace-doctor probe label (LABS_MCP_TOKEN presence in .env)
+  'connect_labs_mcp_reachable',    // bin/ace-doctor probe label (live PAT check against labs.connect.dimagi.com/mcp/)
+  'connect_labs_connect_oauth',    // bin/ace-doctor probe label (Connect OAuth bridge behind the labs PAT)
+  'connect_labs',                  // the USER-SCOPE MCP server key in ~/.claude.json (ace#2159 static_header_drift). The plugin's own entry is `connect-labs`; this underscored form is a server name, not an atom.
   'ocs_shared_collection_team',    // bin/ace-doctor probe label (shared collection lives on OCS_TEAM_SLUG)
   'ocs_chatbot',                   // field key in run_state.yaml.phases.ocs-setup.products.ocs_chatbot
   'connect_primary_phone_input',   // org.commcare.dalvik:id/connect_primary_phone_input AutoCompleteTextView

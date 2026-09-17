@@ -1951,6 +1951,35 @@ it is observable: `ace-orchestrator.md § Pre-flight Step 2a` (the `list_apps`
 check for a `pending`/`in_progress` `commcare-setup`) and
 `commcare-setup.md § Step 0b`.
 
+**`static_header_drift` halt class — the credential no other probe can
+see (dimagi-internal/ace#2159).** A user-scope MCP entry in `~/.claude.json`
+may pin a literal `Authorization` header. Claude Code binds it at connection
+time for the life of the MCP subprocess, and unlike every other credential path
+ACE has — the plugin's `headersHelper`, `.env`, `~/.ace/env.sh`, 1Password — it
+does not re-read its source, so it cannot follow a rotation. Rotate
+`LABS_MCP_TOKEN`, run `/ace:setup --force-env`, and the file on disk is correct
+while `connect_labs` keeps sending the old bearer.
+
+The expensive part is that everything else reads green. Measured on
+`bednet-2-visit`, preflight halt 2026-09-07: the pinned token returned HTTP 401
+and the `.env` token returned HTTP 200 against the same endpoint with the same
+payload; `connect_labs_env`, `connect_labs_mcp_reachable` and
+`connect_labs_connect_oauth` all curl labs with the `.env` token, so all three
+passed on a credential the session was not using, and ZERO connect-labs atoms
+bound — Phases 7 and 8 dead, `blocks-e2e`, with no block naming it. Before this
+probe `bin/ace-doctor` never opened `~/.claude.json` at all.
+
+`lib/nova-header-readiness.ts` already carried this check for `nova` alone
+(`static-header-stale`), hand-written as one branch of a nova-specific
+classifier — which is why `connect_labs` was uncovered. `static_header_drift`
+walks EVERY pinned entry and compares each against its configured key
+(`connect_labs` → `LABS_MCP_TOKEN`, `nova` → `NOVA_API_KEY`). Two contracts
+carried over verbatim: an unanswerable comparison is `null`/`skip` and **never**
+a pass, and a server whose heal belongs to another probe (`nova` →
+`nova_header_readiness`) is reported here but written by that probe only. Like
+its sibling it stays `fail` after healing — the header rebinds on a full
+restart, not on `/ace:update` or `/reload-plugins`.
+
 **`ocs_generation` halt class — and why preflight makes one live
 exception.** Every other OCS check the doctor runs is env-presence or a
 reachability GET; `ocs_shared_collection_team` proves a collection is
