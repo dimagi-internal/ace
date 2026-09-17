@@ -504,12 +504,149 @@ server.tool(
   },
 );
 
+const DRIVE_SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
+
+/**
+ * Resolve a Drive shortcut id to the id of the file it points at.
+ *
+ * Drive's `comments` / `replies` collections do NOT follow shortcuts: handed
+ * a shortcut id they answer `File not found: <id>.`, which reads as "the
+ * document is gone" or "no comments", not "you passed a shortcut". The read
+ * path (`fetchDriveText` / `fetchDriveBinary`) has resolved shortcuts since
+ * jjackson/ace#106, so a caller who read a doc through its shortcut id
+ * naturally used the same id for its comments — and every componentized
+ * input under `ACE/<opp>/inputs/` is a shortcut. ace#2375.
+ *
+ * Returns the id to actually call with plus what the caller passed, so a
+ * handler can echo BOTH and the caller learns which document the threads
+ * live on. A non-shortcut id passes through untouched (one extra metadata
+ * read, the same cost `drive_read_file` already pays).
+ *
+ * The metadata lookup is wrapped in `withTransientRetry` — a single 503 on
+ * the resolution step must not fail a call that would otherwise succeed.
+ */
+export async function resolveShortcutTarget(
+  fileId: string,
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ fileId: string; requestedFileId: string; wasShortcut: boolean }> {
+  const meta = await withTransientRetry(
+    () =>
+      driveClient.files.get({
+        fileId,
+        fields: 'id, mimeType, shortcutDetails',
+        supportsAllDrives: true,
+      }),
+    opts,
+  );
+  const mimeType = (meta.data as any).mimeType || '';
+  if (mimeType !== DRIVE_SHORTCUT_MIME) {
+    return { fileId, requestedFileId: fileId, wasShortcut: false };
+  }
+  const targetId = (meta.data as any).shortcutDetails?.targetId;
+  if (!targetId) {
+    throw new Error(`shortcut_without_target: Drive shortcut ${fileId} has no target file ID`);
+  }
+  return { fileId: targetId, requestedFileId: fileId, wasShortcut: true };
+}
+
+/**
+ * List-comments handler, exported for unit testing with a mocked Drive
+ * client. Resolves Drive shortcuts to the same target the read path follows
+ * (ace#2375) and echoes both ids in the result.
+ */
+export async function handleListComments(
+  args: { fileId: string; includeResolved?: boolean; maxResults?: number },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  file_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
+  total: number;
+  comments: any[];
+}> {
+  const { includeResolved = true, maxResults = 100 } = args;
+  const resolved = await resolveShortcutTarget(args.fileId, driveClient, opts);
+  const resp = await driveClient.comments.list({
+    fileId: resolved.fileId,
+    pageSize: maxResults,
+    fields:
+      'comments(id,content,resolved,createdTime,modifiedTime,author/displayName,quotedFileContent/value,anchor,replies(content,createdTime,author/displayName))',
+  });
+  const all = resp.data.comments ?? [];
+  const kept = includeResolved ? all : all.filter((c: any) => !c.resolved);
+  return {
+    file_id: resolved.fileId,
+    requested_file_id: resolved.requestedFileId,
+    shortcut_resolved: resolved.wasShortcut,
+    total: kept.length,
+    comments: kept.map((c: any) => ({
+      id: c.id,
+      author: c.author?.displayName ?? null,
+      created_time: c.createdTime ?? null,
+      modified_time: c.modifiedTime ?? null,
+      resolved: c.resolved ?? false,
+      content: c.content ?? '',
+      quoted_text: c.quotedFileContent?.value ?? null,
+      anchor: c.anchor ?? null,
+      replies: (c.replies ?? []).map((r: any) => ({
+        author: r.author?.displayName ?? null,
+        created_time: r.createdTime ?? null,
+        content: r.content ?? '',
+      })),
+    })),
+  };
+}
+
+/**
+ * Reply-to-comment handler, exported for unit testing with a mocked Drive
+ * client. Same shortcut resolution as `handleListComments` — the two atoms
+ * are used as a pair, so a shortcut id that works for the read must work for
+ * the reply (ace#2375).
+ */
+export async function handleReplyToComment(
+  args: { fileId: string; commentId: string; content: string; action?: 'resolve' | 'reopen' },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  reply_id: string | null | undefined;
+  file_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
+  comment_id: string;
+  action: string | null;
+  content: string;
+  author: string | null;
+  created_time: string | null;
+}> {
+  const { commentId, content, action } = args;
+  const resolved = await resolveShortcutTarget(args.fileId, driveClient, opts);
+  const resp = await driveClient.replies.create({
+    fileId: resolved.fileId,
+    commentId,
+    fields: 'id,content,action,createdTime,author/displayName',
+    requestBody: action ? { content, action } : { content },
+  });
+  return {
+    reply_id: resp.data.id,
+    file_id: resolved.fileId,
+    requested_file_id: resolved.requestedFileId,
+    shortcut_resolved: resolved.wasShortcut,
+    comment_id: commentId,
+    action: resp.data.action ?? null,
+    content: resp.data.content ?? '',
+    author: resp.data.author?.displayName ?? null,
+    created_time: resp.data.createdTime ?? null,
+  };
+}
+
 // 8b. List reviewer comments on a Drive file
 server.tool(
   'drive_list_comments',
-  "List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`.\n\nReturns `{file_id, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`.\n\n**`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away.\n\n`resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them.\n\nRuns as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.",
+  "List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`.\n\nReturns `{file_id, requested_file_id, shortcut_resolved, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`.\n\n**Drive shortcuts are resolved transparently**, the same way `drive_read_file` resolves them — Drive's own `comments.list` does NOT follow a shortcut and answers `File not found`, and every componentized input under `ACE/<opp>/inputs/` is a shortcut, so the raw API would fail on exactly the common case. `file_id` is the document the threads actually live on; `requested_file_id` is what you passed, and `shortcut_resolved` says whether they differ. Pass a shortcut id or its target — either works.\n\n**`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away.\n\n`resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them.\n\nRuns as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.",
   {
-    fileId: z.string().describe('The Google Drive file ID to read comments from.'),
+    fileId: z.string().describe('The Google Drive file ID to read comments from. A shortcut id is resolved to its target.'),
     includeResolved: z
       .boolean()
       .optional()
@@ -524,33 +661,7 @@ server.tool(
   },
   async ({ fileId, includeResolved = true, maxResults = 100 }) => {
     try {
-      const resp = await drive.comments.list({
-        fileId,
-        pageSize: maxResults,
-        fields:
-          'comments(id,content,resolved,createdTime,modifiedTime,author/displayName,quotedFileContent/value,anchor,replies(content,createdTime,author/displayName))',
-      });
-      const all = resp.data.comments ?? [];
-      const kept = includeResolved ? all : all.filter((c: any) => !c.resolved);
-      return result({
-        file_id: fileId,
-        total: kept.length,
-        comments: kept.map((c: any) => ({
-          id: c.id,
-          author: c.author?.displayName ?? null,
-          created_time: c.createdTime ?? null,
-          modified_time: c.modifiedTime ?? null,
-          resolved: c.resolved ?? false,
-          content: c.content ?? '',
-          quoted_text: c.quotedFileContent?.value ?? null,
-          anchor: c.anchor ?? null,
-          replies: (c.replies ?? []).map((r: any) => ({
-            author: r.author?.displayName ?? null,
-            created_time: r.createdTime ?? null,
-            content: r.content ?? '',
-          })),
-        })),
-      });
+      return result(await handleListComments({ fileId, includeResolved, maxResults }, drive));
     } catch (e: any) {
       return error(e.message);
     }
@@ -560,9 +671,9 @@ server.tool(
 // 8c. Reply to a reviewer comment, optionally resolving the thread
 server.tool(
   'drive_reply_to_comment',
-  "Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask.\n\n`action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state.\n\n**Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself.\n\nRuns as the service account — correct for artifacts ACE generated.",
+  "Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask.\n\n`action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state.\n\n**Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself.\n\n**Drive shortcuts are resolved transparently** (same as `drive_list_comments` and `drive_read_file`) — the raw `replies.create` does not follow one. The result echoes `file_id` (the document the thread lives on), `requested_file_id` and `shortcut_resolved`.\n\nRuns as the service account — correct for artifacts ACE generated.",
   {
-    fileId: z.string().describe('The Google Drive file ID the comment is on.'),
+    fileId: z.string().describe('The Google Drive file ID the comment is on. A shortcut id is resolved to its target.'),
     commentId: z.string().describe('The comment thread id, from `drive_list_comments`.'),
     content: z
       .string()
@@ -575,20 +686,7 @@ server.tool(
   },
   async ({ fileId, commentId, content, action }) => {
     try {
-      const resp = await drive.replies.create({
-        fileId,
-        commentId,
-        fields: 'id,content,action,createdTime,author/displayName',
-        requestBody: action ? { content, action } : { content },
-      });
-      return result({
-        reply_id: resp.data.id,
-        comment_id: commentId,
-        action: resp.data.action ?? null,
-        content: resp.data.content ?? '',
-        author: resp.data.author?.displayName ?? null,
-        created_time: resp.data.createdTime ?? null,
-      });
+      return result(await handleReplyToComment({ fileId, commentId, content, action }, drive));
     } catch (e: any) {
       return error(e.message);
     }

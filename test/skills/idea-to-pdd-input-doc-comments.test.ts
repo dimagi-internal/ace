@@ -133,8 +133,12 @@ describe("the call goes to a shortcut's TARGET", () => {
   const block = inputBlock(SKILL);
   const listComments = toolBody(GDRIVE, 'drive_list_comments');
 
+  // Liveness guard for the slicer above, not a claim about how the atom is
+  // wired: ace#2375 moved the Drive call out of the registration and into an
+  // exported `handleListComments` so it could be unit-tested with a mocked
+  // client, so either shape counts as "the registration was found".
   it('the drive_list_comments registration is findable', () => {
-    expect(listComments).toContain('drive.comments.list');
+    expect(listComments).toMatch(/drive\.comments\.list|handleListComments\(/);
   });
 
   it('while the atom does not follow shortcuts, the skill must name resolved_target_id', () => {
