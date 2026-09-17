@@ -864,13 +864,44 @@ corroborated by `4-connect/connect-opp-setup_summary.md`
 when the PDD states a minimum delivery duration). If neither records one, the
 opportunity has **no** duration floor: `duration_floor_seconds = 0`.
 
-Now assert against the counts:
+**And read the opportunity's `start_date`** — the counts branch on it before
+anything else. Take it from the run's own state,
+`phases.connect-setup.products.connect.opportunity.start_date` (Phase 4 writes
+it), or read it live with `connect_get_opportunity({organization_slug,
+opportunity_id})`, whose dashboard half carries `start_date` (ace#1550). No new
+atom is needed either way. Compare it against the date the walk ran.
 
+Now assert against the counts. **The not-started branch is evaluated FIRST**,
+because it is the one opportunity configuration under which no count can move:
+
+- **The opportunity has not started (`start_date` is in the future) and
+  `delivered == 0`** → record **`not-started-as-designed`**: a
+  **PASS-with-note**, NOT `not-delivered-on-connect`. Connect credits nothing
+  before an opportunity's start date, so `delivered >= 1` is structurally
+  unreachable and no action available to Phase 6 can produce a delivery. The
+  device says so itself — the Deliver home renders a red *"The job has not
+  started yet. You will not earn any progress for work."* banner over a
+  `Daily Visits 0/N` chip, and the sync recipe's terminal frame captures it.
+  Record `start_date`, the run date, the `delivered/approved/rejected` counts
+  and that frame as evidence; keep the leg **`pass`**, since the walk proved
+  exactly what Phase 6 set out to prove. Note this is **not** the `rejected`
+  shape — nothing was submitted-then-refused, so `rejected == 0` and none of
+  the branches below describes it. **Do not** relax the gate generally, and
+  **do not** move the opportunity's start date to make the walk payable: that
+  edits the programme's own contract to satisfy a test, which is the same
+  error `rejected-by-duration-floor-as-designed` exists to prevent.
+  Live: poverty-graduation/20260915-1518 — Deliver walk `pass` (43
+  screenshots, 0 failures), `connect_get_deliver_progress` `{delivered: 0,
+  approved: 0, rejected: 0}`, `connect_get_opportunity` `start_date:
+  "2026-11-01"` against a run date of 2026-09-16 (ace#2427).
 - **`delivered >= 1` — HARD, unconditional.** The visit reached Connect. This
   is the real end-to-end proof of the Deliver→Connect path and the floor of
   the gate; a Deliver leg that cannot clear it is `not-delivered-on-connect`,
-  never `pass`. It is reachable on every opportunity, floor or no floor, so it
-  is never conditional.
+  never `pass`. It is reachable on every **started** opportunity, floor or no
+  floor, so it is never conditional on the duration floor or on the counts; the
+  sole configuration that can make it unreachable is the not-started branch
+  above, which is read from the opportunity's own `start_date` rather than
+  inferred from a zero count.
 - **`approved >= 1` — CONDITIONAL.** A payment unit actually registered. It is
   strictly stronger than `delivered` (a delivery can be submitted and then
   **rejected** by verification), so assert it **only when the walk could

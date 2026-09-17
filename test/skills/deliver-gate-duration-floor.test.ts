@@ -144,6 +144,65 @@ describe('app-screenshot-capture Deliver gate — duration floor (ace#1667)', ()
     expect(skill).not.toMatch(/criterion `app-test-cases\.yaml` declares \(\*"one payment unit registers"\*\)/i);
   });
 
+  // ------------------------------------------------------------------
+  // ace#2427 — the second configuration that makes a count unreachable.
+  //
+  // The duration floor above is the gate's ONE carve-out for "the
+  // opportunity's own configuration makes server credit impossible". It is
+  // not the only such configuration: an opportunity whose `start_date` has
+  // not arrived credits nothing at all, so `delivered >= 1` is structurally
+  // unreachable and no action available to Phase 6 can produce a delivery.
+  //
+  // Live on poverty-graduation/20260915-1518: Deliver walk `pass` (43
+  // screenshots, 0 failures, all 14 screens), then
+  // `connect_get_deliver_progress` -> {delivered: 0, approved: 0,
+  // rejected: 0} and `connect_get_opportunity` -> start_date "2026-11-01"
+  // against a run date of 2026-09-16. By the gate as written that is
+  // `not-delivered-on-connect` — i.e. "the Deliver->Connect path is broken"
+  // — which is false. Connect is behaving correctly, and the device says so
+  // in red on the frame the sync recipe captured.
+  //
+  // It is NOT the `rejected` shape either (rejected == 0): nothing was
+  // submitted-then-refused, so none of the three pre-existing branches
+  // describes it.
+  it('carries the not-started branch, evaluated before the counts', () => {
+    const gate = deliverGate();
+    expect(gate).toContain('not-started-as-designed');
+    expect(gate).toMatch(/PASS-with-note/i);
+    // Guarded on the opportunity's own configuration, not on a zero count.
+    expect(gate).toMatch(/start_date/);
+    expect(gate).toMatch(/NOT\s+`?not-delivered-on-connect`?/i);
+    // Ordering is load-bearing: a zero count must not reach the hard
+    // assertion before the start date has been consulted.
+    expect(gate).toMatch(/evaluated FIRST/i);
+  });
+
+  it('says where start_date is read from, and invents no atom for it', () => {
+    const gate = deliverGate();
+    // Already stored by Phase 4 ...
+    expect(gate).toContain('phases.connect-setup.products.connect.opportunity.start_date');
+    // ... or read live from the atom that really does carry it (ace#1550).
+    expect(gate).toContain('connect_get_opportunity');
+    expect(gate).toMatch(/no new atom/i);
+  });
+
+  it('forbids moving the start date to make a walk payable', () => {
+    // The sibling of "do not relax the duration floor" — editing the
+    // programme's own contract to satisfy a test.
+    expect(deliverGate()).toMatch(/do not\*{0,2} move the opportunity's start date/i);
+  });
+
+  it('keeps `delivered >= 1` hard while naming its one unreachable case', () => {
+    const gate = deliverGate();
+    // The hard assertion survives the carve-out ...
+    expect(gate).toMatch(/`delivered >= 1`[^.]{0,80}(HARD|unconditional)/i);
+    // ... and its reachability claim is no longer unqualified, because the
+    // old wording ("reachable on every opportunity, floor or no floor") is
+    // exactly what left the not-started case with nowhere to go.
+    expect(gate).not.toMatch(/reachable on every opportunity,/i);
+    expect(gate).toMatch(/every \*{0,2}started\*{0,2} opportunity/i);
+  });
+
   it('keeps every Deliver-count assertion inside the pinned block', () => {
     const outside = stepFiveOutsideGate();
     expect(outside).not.toMatch(/`approved >= 1`/);

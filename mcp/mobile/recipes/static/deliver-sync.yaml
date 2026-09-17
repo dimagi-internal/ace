@@ -209,4 +209,24 @@ appId: org.commcare.dalvik
     commands:
       - takeScreenshot: "deliver-sync-counter-unrefreshed"
 
-- takeScreenshot: "deliver-sync-visit-registered"
+# THE TERMINAL FRAME IS NAMED NEUTRALLY, AND THAT IS DELIBERATE (ace#2427).
+#
+# This capture is UNCONDITIONAL — it fires on every path through the two
+# branches above — so its name may not assert anything the picture might
+# contradict. It used to be `deliver-sync-visit-registered`, which is a
+# CLAIM, and downstream prose cites step names. On
+# poverty-graduation/20260915-1518 it fired alongside
+# `deliver-sync-counter-unrefreshed` and the two files were byte-identical
+# (md5 9a9ea6aea3779af374c41c093a561282): a frame named `visit-registered`
+# depicting `Daily Visits 0/31` under a red "The job has not started yet.
+# You will not earn any progress for work." banner — the opportunity's
+# start_date was seven weeks out. Any artifact citing that step name would
+# have asserted the opposite of its own picture.
+#
+# Whether a visit actually registered is NOT this recipe's to say: the chip
+# stood down as the gate in ace#2100 and `connect_get_deliver_progress` is
+# the authority (see the header). So the frame records "this is where the
+# sync leg ended", nothing more, and the Deliver gate in
+# `skills/app-screenshot-capture` § Step 5 supplies the verdict — including
+# the `not-started-as-designed` branch this frame is the evidence for.
+- takeScreenshot: "deliver-sync-final"

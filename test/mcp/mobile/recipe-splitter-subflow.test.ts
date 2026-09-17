@@ -235,7 +235,11 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
     'deliver-launch.yaml': { trailing: 'deliver-launch-home' },
     'deliver-sync.yaml': {
       leading: 'deliver-sync-pre',
-      trailing: 'deliver-sync-visit-registered',
+      // ace#2427: renamed from `deliver-sync-visit-registered`. The frame is
+      // unconditional, so its name may not claim an outcome the picture can
+      // contradict — it fired over a "job has not started yet" banner on
+      // poverty-graduation/20260915-1518.
+      trailing: 'deliver-sync-final',
     },
     'form-advance.yaml': { leading: '${SCREENSHOT_NAME}' },
     'form-submit.yaml': {
