@@ -157,8 +157,22 @@ the components is not enough, because a build needs enough to execute:
    `text/plain` export strips the `##` markers and flattens its tables to one
    cell per line, so `## Open` stops resolving and the question rows run
    together. Take the section from `extractOpenSection`
-   (`lib/open-questions-inline.ts`), which excludes `## Archive`
-   structurally and refuses a heading-stripped read instead of guessing at it.
+   (`lib/open-questions-inline.ts`), **passing the export you used as its
+   second argument** — `extractOpenSection(text, 'text/markdown')`. It excludes
+   `## Archive` structurally and refuses a heading-stripped read instead of
+   guessing at it.
+
+   **Two look-alike failures, opposite remedies (ace#2367).** A `text/plain`
+   read of a healthy doc and a `text/markdown` read of a FLATTENED doc both
+   arrive as "no headings, a bare `Open` line". The second argument is what
+   tells them apart, because you are the one who chose the export:
+   `needs-markdown-export` → **re-read** as markdown; `flattened-headings` →
+   the DOC is broken (its headings were written as ordinary paragraphs), so a
+   re-read returns the same bytes. On `flattened-headings` the live rows ARE
+   recovered — delimited at the bare `Archive` label, so archived rows still
+   never ride along — but it is a **degraded** read: inline it, say so at the
+   Phase 1→2 pause, and **repair the doc** by rewriting it in the two-section
+   shape below (`checkOpenQuestionsWriteShape` before you write).
 
    **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
    on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
@@ -1354,6 +1368,17 @@ Rules:
   `drive_read_file(..., exportAs: 'text/markdown')` plus `extractOpenSection`:
   the default `text/plain` export of a converted doc has no `##` markers and no
   table rows, so it cannot be parsed for `## Open` at all.
+- **CHECK THE CONTENT BEFORE YOU WRITE IT — `checkOpenQuestionsWriteShape`
+  (`lib/open-questions-inline.ts`).** Pass the markdown you are about to hand
+  `drive_create_doc_from_markdown`; on `ok: false` do NOT write, fix the shape
+  and re-check. It runs the very parser Phase 1 reads with, so a write can
+  never pass a shape the read then refuses. **The trap it closes is real and
+  cost a run:** a turn read this doc back as `text/plain` (bare `Open` /
+  `Archive` labels, rows run together), edited THAT text and wrote it out
+  again — laundering the headings away. The doc looked fine to a human and the
+  next run's Phase 1 could inline none of its 15 open rows, including a hold on
+  the work order (`poverty-graduation`, revision 52, 2026-09-10; ace#2367).
+  Never round-trip a `text/plain` read back into this doc.
 - **It is shared anyone-with-link `commenter` at creation** —
   `drive_set_anyone_with_link(fileId: <docId>, role: 'commenter')`, per
   § Process step 6c. This ledger is where a human ANSWERS a deferred question,

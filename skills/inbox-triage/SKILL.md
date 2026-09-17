@@ -200,7 +200,14 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
      the doc in the shape `skills/idea-to-pdd` § The durable open-questions doc specifies, via
      `drive_create_doc_from_markdown` (find-or-create keeps the file id), and read it back with
      `exportAs: 'text/markdown'` through `extractOpenSection` — a plain-text write drops the `##`
-     headings and the next run's Phase 1 then refuses the whole doc. (Origin: 2026-09-10,
+     headings and the next run's Phase 1 then refuses the whole doc.
+
+     **Run `checkOpenQuestionsWriteShape` (`lib/open-questions-inline.ts`) on the markdown FIRST
+     and do not write on `ok: false`** — it runs the very parser Phase 1 reads with, so this write
+     path cannot publish a shape the read then refuses (ace#2367). **And never round-trip a
+     `text/plain` read back into this doc:** that export has no `##` markers and its rows have run
+     together, so editing it and writing it back is exactly how the headings were laundered away
+     here. (Origin: 2026-09-10,
      `poverty-graduation`, thread `19f86579142e6ba5` — two platform answers given to the design
      author on 2026-09-05 were recorded only as `docs/learnings/2026-09-02-*` and `2026-09-04-*`;
      asked "which record holds the answer", a turn pointed her at the repo, and Jon: *"that's
