@@ -374,6 +374,31 @@ export interface SelectOpenRowsResult {
   omittedIds: string[];
   /** True iff `omittedIds` is non-empty. */
   truncated: boolean;
+  /**
+   * True iff `rows.length > 0` and not one row's `blocking:` field parsed —
+   * a corpus/parser MISMATCH, not a legitimate all-`other` tiering.
+   *
+   * dimagi-internal/ace#2396: no ACE writer currently emits `blocking:`. The
+   * canonical row template (`skills/idea-to-pdd/SKILL.md` § The durable
+   * open-questions doc) declares only `id` / `question` / `raised_by` /
+   * `owner` / `answered_where`; real ledgers carry free-prose `**blocks:**`
+   * instead. So on the real corpus this is `true`, every row lands in tier
+   * `other`, and the ranking silently degrades to the within-tier recency
+   * tiebreak applied to a single tier — exactly the cut ace#2115 was filed
+   * and closed to eliminate. `reason` also states this in prose; this field
+   * is the same fact as a boolean a caller (or a test) can branch on without
+   * reading English.
+   *
+   * Deliberately NOT fatal and does NOT change `ok` / non-`ok` status —
+   * Phase 1 depends on this path, and a hard failure here would block every
+   * run on every opp whose ledger uses `blocks:`, which, on the evidence, is
+   * all of them. Which field name and value vocabulary the ledger should
+   * standardise on, and updating the writers (`skills/idea-to-pdd`,
+   * `skills/inbox-triage`) to emit it, is a still-open design decision this
+   * flag does not make — it only makes the degradation loud instead of
+   * silent.
+   */
+  rankingFieldAbsent: boolean;
   /** One sentence, pasteable into the Phase 1→2 pause summary. */
   reason: string;
 }
@@ -485,11 +510,17 @@ export function selectOpenRows(input: SelectOpenRowsInput): SelectOpenRowsResult
       includedIds: [],
       omittedIds: [],
       truncated: false,
+      rankingFieldAbsent: false,
       reason:
         'The durable open-questions ledger has no `## Open` rows to inline: the section is ' +
         'passed as-is (dimagi-internal/ace#2115).',
     };
   }
+
+  // dimagi-internal/ace#2396: true when NOT ONE row's `blocking:` field
+  // parsed — a corpus/parser mismatch, since no ACE writer currently emits
+  // that field. See the `rankingFieldAbsent` doc comment above.
+  const rankingFieldAbsent = rows.every((row) => row.blocking === null);
 
   const ranked = rows
     .map((row, index) => ({ row, index }))
@@ -537,22 +568,44 @@ export function selectOpenRows(input: SelectOpenRowsInput): SelectOpenRowsResult
 
   const includedIds = included.map((entry) => label(entry.row, entry.index));
 
-  const reason =
-    omitted.length === 0
-      ? `All ${rows.length} \`## Open\` rows fit within the ${capChars}-char inline cap; ` +
+  const reason = (() => {
+    if (omitted.length === 0) {
+      return (
+        `All ${rows.length} \`## Open\` rows fit within the ${capChars}-char inline cap; ` +
         'none omitted (dimagi-internal/ace#2115).'
-      : `Ranked the ${rows.length} \`## Open\` rows by \`blocking:\` (Go/no-go, then Before ` +
-        'Phase N ascending, then the rest; recency only as the within-tier tiebreak) and filled ' +
-        `to the ${capChars}-char inline cap: ${includedIds.length} inlined, ${omitted.length} ` +
-        `NOT inlined and therefore NOT reconciled by this run — ${omitted.join(', ')}. Name ` +
-        'them in the inline block and at the Phase 1→2 pause, and read them from the file_id ' +
-        'if a phase needs one (dimagi-internal/ace#1201, ace#2115).';
+      );
+    }
+    if (rankingFieldAbsent) {
+      // dimagi-internal/ace#2396: tell the truth. Every row parsed with
+      // `blocking: null`, so this is NOT a ranked cut — say so instead of
+      // claiming a ranking that never happened, which is how the
+      // degradation stayed invisible on the real corpus.
+      return (
+        `None of the ${rows.length} \`## Open\` rows carry a \`blocking:\` field — no ACE ` +
+        'writer currently emits it (dimagi-internal/ace#2396), so this is NOT a ranked cut: ' +
+        'every row landed in tier `other` and the fill fell back to the within-tier recency ' +
+        `tiebreak only. Filled to the ${capChars}-char inline cap: ${includedIds.length} ` +
+        `inlined, ${omitted.length} NOT inlined and therefore NOT reconciled by this run — ` +
+        `${omitted.join(', ')}. Name them in the inline block and at the Phase 1→2 pause, and ` +
+        'read them from the file_id if a phase needs one (dimagi-internal/ace#1201).'
+      );
+    }
+    return (
+      `Ranked the ${rows.length} \`## Open\` rows by \`blocking:\` (Go/no-go, then Before ` +
+      'Phase N ascending, then the rest; recency only as the within-tier tiebreak) and filled ' +
+      `to the ${capChars}-char inline cap: ${includedIds.length} inlined, ${omitted.length} ` +
+      `NOT inlined and therefore NOT reconciled by this run — ${omitted.join(', ')}. Name ` +
+      'them in the inline block and at the Phase 1→2 pause, and read them from the file_id ' +
+      'if a phase needs one (dimagi-internal/ace#1201, ace#2115).'
+    );
+  })();
 
   return {
     inlined: parts.join(separator),
     includedIds,
     omittedIds: omitted,
     truncated: omitted.length > 0,
+    rankingFieldAbsent,
     reason,
   };
 }

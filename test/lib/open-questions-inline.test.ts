@@ -730,3 +730,133 @@ describe('the executing prose ranks rather than truncating by recency (#2115)', 
     expect(decision.reason).toContain('selectOpenRows');
   });
 });
+
+/**
+ * dimagi-internal/ace#2396 — `selectOpenRows` ranks by a `blocking:` field no
+ * ACE writer emits. The canonical row template (`skills/idea-to-pdd/SKILL.md`
+ * § The durable open-questions doc) declares only `id` / `question` /
+ * `raised_by` / `owner` / `answered_where`; real ledgers carry free-prose
+ * `**blocks:**` instead. Measured on `poverty-graduation`'s ledger: 0 of 15
+ * rows parsed with a non-null `blocking`, every row landed in tier `other`,
+ * and the cut degraded to exactly the recency order ace#2115 was filed and
+ * closed to eliminate — while `reason` kept asserting rows were "Ranked ...
+ * by `blocking:`" on a corpus where not one row carried the field.
+ *
+ * These fixtures are the REAL shape (`**blocks:**` free prose, no
+ * `**blocking:**` at all) rather than the synthetic `row()` helper above,
+ * which supplies `**blocking:**` on every row and is exactly why the
+ * pre-existing suite stayed green while the behaviour was inert.
+ */
+describe('the ranking field is absent from the real corpus (#2396)', () => {
+  /** Same synthetic shape as the #2115 suite above (block-scoped there, so re-declared here). */
+  const row = (id: string, raisedBy: string, blocking: string, pad = 0) =>
+    `- **id:** ${id} **question:** Q? ${'x'.repeat(pad)} **raised_by:** ${raisedBy} ` +
+    `**owner:** operator **blocking:** ${blocking}`;
+
+  /** The real writer shape: `**blocks:**` free prose, never `**blocking:**`. */
+  const realShapeRow = (id: string, raisedBy: string, blocksText: string, pad = 0) =>
+    [
+      `- **id:** ${id}`,
+      `  **question:** What should happen here? ${'x'.repeat(pad)}`,
+      `  **raised_by:** ${raisedBy}`,
+      '  **owner:** operator',
+      '  **answered_where:** solicitation responses',
+      `  **blocks:** ${blocksText}`,
+    ].join('\n');
+
+  it('a real-shape ledger (blocks:, no blocking:) trips the signal and the reason tells the truth', () => {
+    const section = [
+      '## Open',
+      '',
+      realShapeRow(
+        'deployment-parameters-all-tbd',
+        '20260910-0900',
+        'gating for Phases 3 and 4 — the transfer-method decision.',
+        300,
+      ),
+      '',
+      realShapeRow('working-language', '20260914-1200', 'training content localization.', 300),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 500 });
+
+    // Every row genuinely has no `blocking:` field.
+    const { rows } = parseOpenRows(section);
+    expect(rows.every((r) => r.blocking === null)).toBe(true);
+    expect(rows.every((r) => r.tier === 'other')).toBe(true);
+
+    expect(result.truncated, 'the cap still fires on this ledger').toBe(true);
+    expect(result.rankingFieldAbsent, 'the structured signal fires').toBe(true);
+    expect(result.reason, 'the reason names the real cause').toContain('dimagi-internal/ace#2396');
+    expect(result.reason, 'the reason admits nothing was ranked').toContain('NOT a ranked cut');
+    // It must NOT claim a ranking that never happened.
+    expect(result.reason).not.toContain('Ranked the');
+    // It still names what was dropped — the loud-not-fatal contract.
+    expect(result.reason).toContain('NOT reconciled by this run');
+  });
+
+  it('control: a ledger with genuine blocking: values still ranks, and the signal does not fire', () => {
+    const section = [
+      '## Open',
+      '',
+      row('newest-detail', '20260901-0000', 'Non-blocking', 200),
+      '',
+      row('oldest-blocker', '20260101-0000', 'Go/no-go. The pilot cannot run otherwise.', 200),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 400 });
+
+    expect(result.truncated).toBe(true);
+    expect(result.rankingFieldAbsent, 'the signal must not fire when blocking: is present').toBe(
+      false,
+    );
+    expect(result.reason, 'the reason is unchanged from the pre-#2396 wording').toContain(
+      'Ranked the',
+    );
+    expect(result.reason).not.toContain('dimagi-internal/ace#2396');
+    // And ranking still actually worked (the #2115 behaviour is untouched).
+    expect(result.includedIds).toEqual(['oldest-blocker']);
+  });
+
+  it('control: a MIXED ledger (some blocking:, some blocks:-only) still ranks and does not trip the all-absent signal', () => {
+    const section = [
+      '## Open',
+      '',
+      row('has-blocking', '20260101-0000', 'Go/no-go. Stop.', 200),
+      '',
+      realShapeRow('blocks-only', '20260910-0900', 'gates the pilot somehow.', 200),
+    ].join('\n');
+
+    const result = selectOpenRows({ section, capChars: 400 });
+
+    const { rows } = parseOpenRows(section);
+    expect(rows.some((r) => r.blocking !== null), 'one row does carry blocking:').toBe(true);
+    expect(rows.some((r) => r.blocking === null), 'one row does not').toBe(true);
+
+    expect(result.truncated).toBe(true);
+    expect(result.rankingFieldAbsent, 'not ALL rows are absent, so the signal stays off').toBe(
+      false,
+    );
+    // The row that carries blocking: still ranks ahead of the blocks:-only one.
+    expect(result.includedIds).toEqual(['has-blocking']);
+    expect(result.reason).toContain('Ranked the');
+  });
+
+  it('the signal never makes the result non-ok or throws — loud, not fatal', () => {
+    const section = [
+      '## Open',
+      '',
+      realShapeRow('a', '20260101-0000', 'blocks phase 3.', 300),
+      '',
+      realShapeRow('b', '20260901-0000', 'blocks phase 4.', 300),
+    ].join('\n');
+
+    expect(() => selectOpenRows({ section, capChars: 400 })).not.toThrow();
+    const result = selectOpenRows({ section, capChars: 400 });
+    expect(result.rankingFieldAbsent).toBe(true);
+    // Still returns a usable inline block and full accounting, same contract
+    // as every other selectOpenRows call.
+    expect(result.includedIds.length + result.omittedIds.length).toBe(2);
+    expect(result.inlined.startsWith('## Open')).toBe(true);
+  });
+});
