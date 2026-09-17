@@ -30,6 +30,8 @@ import {
   CONTACT_EXACTNESS_OBLIGATIONS,
   auditContactExactness,
   extractContactProtectionBlocks,
+  RETRIEVAL_FALLBACK_OBLIGATION,
+  auditRetrievalFallback,
 } from '../../lib/standing-fabrication-domains.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -95,10 +97,43 @@ const CONTACT_CLAUSE =
   'programme has not published one and offer the ACE admin group; never supply ' +
   'an address from general knowledge or vary the spelling of one.';
 
-/** The same prompt with the contact-exactness clause restored. */
-const PROMPT_FIXED_SECTION = PROMPT_NO_CONTACT_CLAUSE.replace(
+/**
+ * dimagi-internal/ace#2422 — round 1. Identical in shape to what shipped for
+ * ace#2216: all three contact-exactness obligations, no retrieval-fallback
+ * clause. This is the exact shape `poverty-graduation/20260915-1518`
+ * published — it audited clean under the three-obligation gate, and the bot
+ * still answered a content-heavy prompt with `ace@dimagi.com`, because
+ * retrieval-slot competition left nothing about contacts retrieved on that
+ * turn. The NEGATIVE CONTROL for the new obligation below.
+ */
+const PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK = PROMPT_NO_CONTACT_CLAUSE.replace(
   '## Mandatory closing step — tagging',
   `## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n## Mandatory closing step — tagging`,
+);
+
+/**
+ * dimagi-internal/ace#2422 — the retrieval-fallback clause the live
+ * `--prompt-patch` added on round 2 of that run. It names no address (the
+ * value still comes from retrieval, ace#1665); what it adds is a per-answer
+ * check — confirm something was retrieved THIS answer, else write no
+ * address at all — which is mechanically different from a standing
+ * prohibition the model can believe it is honouring while still recalling.
+ */
+const RETRIEVAL_FALLBACK_CLAUSE =
+  'Before you write any contact address, check that something was actually ' +
+  'retrieved for this specific answer. If nothing was retrieved in this ' +
+  'answer, write no address at all — say only "your supervisor, and the ACE ' +
+  'admin group," and do not guess at a domain.';
+
+/**
+ * dimagi-internal/ace#2422 — round 2: round 1 plus the retrieval-fallback
+ * clause. This is the fully-compliant, four-obligation prompt Step 7 now
+ * mandates, and is used throughout this file as "the clause Step 7
+ * mandates" / the POSITIVE CONTROL for every obligation together.
+ */
+const PROMPT_FIXED_SECTION = PROMPT_NO_CONTACT_CLAUSE.replace(
+  '## Mandatory closing step — tagging',
+  `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n## Mandatory closing step — tagging`,
 );
 
 describe('the standing set is well-formed', () => {
@@ -332,11 +367,87 @@ describe('auditComposedPrompt — the ace#2216 contact-exactness gap', () => {
 });
 
 /**
+ * dimagi-internal/ace#2422 — the retrieval-fallback obligation.
+ *
+ * ace#2216's three contact-exactness obligations are necessary but not
+ * sufficient: round 1 below carries all three, and the run this issue was
+ * filed from published exactly that shape, exited 0, and the bot still
+ * answered a content-heavy prompt with `ace@dimagi.com` because nothing
+ * about contacts was retrieved on that turn (retrieval-slot competition —
+ * `max_results: 20` favoured the answer's own content citations over the
+ * 853-byte contacts page). Round 2 — `PROMPT_FIXED_SECTION`, this file's
+ * positive control throughout — is round 1 plus the retrieval-fallback
+ * clause the live `--prompt-patch` added.
+ */
+describe('auditComposedPrompt — the ace#2422 retrieval-fallback gap', () => {
+  it('round 1 really is the ace#2216-compliant shape: three obligations, no retrieval clause', () => {
+    expect(auditContactExactness(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).missing).toEqual([]);
+    expect(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).not.toMatch(/retriev/i);
+  });
+
+  it('NEGATIVE CONTROL — a complete ace#2216 pass no longer buys exit 0', () => {
+    const audit = auditComposedPrompt(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK);
+    expect(audit.contactExactness.ok, 'the three ace#2216 obligations are unaffected').toBe(true);
+    expect(audit.retrievalFallback.ok).toBe(false);
+    expect(audit.retrievalFallback.missing).toEqual([RETRIEVAL_FALLBACK_OBLIGATION]);
+    expect(audit.ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — round 1 plus the shipped clause passes', () => {
+    const audit = auditComposedPrompt(PROMPT_FIXED_SECTION);
+    expect(audit.retrievalFallback.ok).toBe(true);
+    expect(audit.retrievalFallback.missing).toEqual([]);
+    expect(audit.ok).toBe(true);
+  });
+
+  it('NON-INERTNESS — the two differ only by the retrieval-fallback clause', () => {
+    expect(PROMPT_FIXED_SECTION.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
+      PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK,
+    );
+  });
+
+  it('is not satisfied by inlining the right address either (ace#1665 stays intact)', () => {
+    const inlined = PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK.replace(
+      '## Mandatory closing step',
+      'Escalate to the ACE admin group at ace@dimagi-ai.com.\n\n## Mandatory closing step',
+    );
+    expect(auditComposedPrompt(inlined).retrievalFallback.ok).toBe(false);
+    expect(auditComposedPrompt(inlined).ok).toBe(false);
+  });
+
+  it('is not satisfied by a generic "never use general knowledge" rule alone', () => {
+    // The observed failure mode: round 1 already carries obligation
+    // `no-general-knowledge` and still fabricated. A prompt that restates
+    // that same generic prohibition, without the per-answer retrieval
+    // check, must still fail the new obligation.
+    expect(auditRetrievalFallback(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).ok).toBe(false);
+  });
+
+  it('names the obligation in the operator report', () => {
+    const report = formatStandingDomainReport(auditComposedPrompt(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK));
+    expect(report).toContain('RETRIEVAL-FALLBACK');
+    expect(report).toContain(RETRIEVAL_FALLBACK_OBLIGATION.label);
+  });
+
+  it('emits no retrieval-fallback report once satisfied', () => {
+    const audit = auditComposedPrompt(PROMPT_FIXED_SECTION);
+    expect(formatStandingDomainReport(audit)).toBe('');
+  });
+});
+
+/**
  * The strongest available control that the audit measures the protection the
  * TEMPLATE owned rather than a phrasing invented here: run it against the
  * golden template's own guard, read off disk. If that guard ever loses one of
  * the three halves this fails, which is the right outcome — the composed
  * prompt is only being asked to carry what the template carried.
+ *
+ * The retrieval-fallback obligation (ace#2422) is deliberately NOT asserted
+ * here: the golden template inlines the address literally and never
+ * retrieves anything, so "confirm it was retrieved in this answer" has
+ * nothing to check against. That obligation protects the RAG-composed
+ * prompt specifically — see the comment above `RETRIEVAL_FALLBACK_OBLIGATION`
+ * in `lib/standing-fabrication-domains.ts`.
  */
 describe('the golden template guard satisfies the audit (ace#2216)', () => {
   const bootstrap = readFileSync(`${ROOT}scripts/bootstrap-ocs-golden-template.ts`, 'utf8');
@@ -388,7 +499,7 @@ describe('ocs-agent-setup § Step 7 states the replacement fact (ace#2216)', () 
   });
 
   it('mandates a clause that itself passes the audit — doc and gate cannot drift', () => {
-    const start = agentSetup.indexOf('The composed prompt MUST say, as two obligations:');
+    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
     expect(start, 'Step 7 must still mandate the obligations verbatim').toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('- **Carry a `## Do not invent'));
     const audit = auditContactExactness(mandated);
@@ -396,6 +507,17 @@ describe('ocs-agent-setup § Step 7 states the replacement fact (ace#2216)', () 
       audit.missing.map((o) => o.label),
       'the text Step 7 tells the composer to write must satisfy Step 7.5',
     ).toEqual([]);
+  });
+
+  it('mandates a retrieval-fallback clause that itself passes ace#2422 — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
+    expect(start, 'Step 7 must still mandate the obligations verbatim').toBeGreaterThan(-1);
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('- **Carry a `## Do not invent'));
+    // The text Step 7 tells the composer to write must satisfy the
+    // retrieval-fallback gate too — kept as `.ok).toBe(true)` in one
+    // expression so the negative-control ratchet's positive-signal detector
+    // (which looks for `.ok` within 40 chars of `.toBe(true)`) can see it.
+    expect(auditRetrievalFallback(mandated).ok).toBe(true);
   });
 });
 
