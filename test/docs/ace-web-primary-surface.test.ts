@@ -51,6 +51,24 @@ describe('the principle is stated where a reply is shaped (ace#2378)', () => {
     expect(step2d).toContain('ace#2378');
   });
 
+  /**
+   * The rail has exactly one run-linked carve-out, and a skill that needs it
+   * has to say so where the send is composed — otherwise Phase 9's first live
+   * send just fails (ace#2380). It also has to say WHY, or the next reader
+   * removes it as a rule-dodge: the LLO is an implementing partner, and the
+   * run page is built for Dimagi-side review.
+   */
+  it('llo-onboarding names the override, its reason, and who the recipient is (ace#2380)', () => {
+    const doc = read('skills/llo-onboarding/SKILL.md');
+    const send = doc.slice(doc.indexOf('5. **Send the email**'), doc.indexOf('6. **Log communications**'));
+    expect(send).toContain('--no-run-page');
+    expect(/--no-run-page\s+"[^"]+"/.test(send), 'the override must carry a reason').toBe(true);
+    expect(send).toContain('ace#2378');
+    expect(send).toContain('ace#2380');
+    expect(send).toMatch(/reviewer-facing/);
+    expect(send).toContain('ace_web_summary_url');
+  });
+
   it("agent-turn-review §F checks the draft's first link", () => {
     const doc = read('skills/agent-turn-review/SKILL.md');
     const f = doc.slice(doc.indexOf('## F. ACE specifics'));

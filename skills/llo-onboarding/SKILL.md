@@ -206,7 +206,48 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
        email fallback (`$ACE_GMAIL_ACCOUNT`)
      - Contact info for escalation
 
-5. **Send the email** via the `email-communicator` skill (or draft for review).
+5. **Send the email** via the `email-communicator` skill (or draft for
+   review) — and pass the run-page override, because this send is a
+   deliberate carve-out from it:
+
+   ```
+   bin/ace-email --to <selected_llo.contact_email> --cc <CRISPR Admin group> \
+     --subject-file <subject-file> --body-file <body-file> \
+     --no-run-page "LLO onboarding: the training pack is the deliverable; ace-web is a Dimagi-side review surface"
+   ```
+
+   **Without the flag this send is REFUSED, and the refusal is correct
+   until you read who the recipient is.** `bin/ace-email` exits 3 —
+   before canopy is called, dry-run included — on a body that links
+   `docs.google.com` / `drive.google.com` and carries no
+   `labs.connect.dimagi.com/ace/` link (ace#2378). Step 4's body is
+   exactly that: the Phase 6 training pack, enclosed as Drive links.
+   Reproduced on a realistic Phase 9 body, 2026-09-17 (ace#2380):
+
+   ```
+   $ bin/ace-email --to llo@example.org --subject "... Welcome and Next Steps" \
+       --body-file body.txt --dry-run
+   ace-email: REFUSED (dry-run — a real send gets this same refusal). The body
+   links Google Drive/Docs but not the run's ace-web page.
+   $ echo $?
+   3
+   ```
+
+   **Why the carve-out is right.** The convention the rail enforces is
+   scoped to a **reviewer-facing** reference to a run (`CLAUDE.md
+   § Conventions`): ace-web renders how the run was built and what Dimagi
+   decided, for Dimagi-side review. The awarded LLO is an implementing
+   partner, not a reviewer — what they need in their first message is the
+   opportunity to accept and the pack that trains their team. Leading
+   with a build audit trail would hand them the wrong document. The
+   override is how a send says "the run page is not this recipient's
+   surface", which is a statement, not a suppression: it is echoed to
+   stderr and lands in the transcript.
+
+   **It does not generalise to Phase 9's other mail.** A later reply on
+   this thread that discusses how the run was built, or that asks anyone
+   to review it, is reviewer-facing again and leads with the run's
+   `ace_web_summary_url` with the Drive links as deep links under it.
 
 6. **Log communications** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-onboarding_comms-log.md`.
 
@@ -362,4 +403,5 @@ binding on this skill's output.
 | 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |
 | 2026-04-30 | Switch `connect_send_llo_invite` to `POST /api/programs/<id>/applications/` (commcare-connect PR #1135). Args drop `contact_email` (server emails workspace admins via `send_program_invite_email`). Add new step 2a: `connect_accept_program_application` for ACE-driven dogfood runs that need to auto-accept the invite. (0.10.47) | ACE team |
 | 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 9 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 8 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |
+| 2026-09-17 | **Step 5 sends with `--no-run-page`, and says why.** `bin/ace-email` refuses a body that links Drive/Docs and no ace-web page (ace#2378); step 4's body is nothing but the Phase 6 training pack as Drive links, so the first live Phase 9 send exited 3 before canopy was ever called — reproduced on a realistic body 2026-09-17. The rail's convention is scoped to a **reviewer-facing** reference to a run, and the awarded LLO is an implementing partner, not a reviewer, so the override is the fix rather than an ace-web link in an onboarding pack. `bin/ace-email`'s own refusal text and `email-communicator` said the override was for threads with NO run, which would have steered a Phase 9 agent away from the flag it needs; both now name the partner-deliverable case. *Enforced:* `test/hooks/email-shims.test.ts` extracts this step's reason and proves a Drive-only body carrying it reaches canopy, plus `test/docs/ace-web-primary-surface.test.ts`. ace#2380. | ACE team |
 | 2026-09-16 | **Two changes, one operator decision each (2026-09-16).** (1) **A solicitation is one way to select an LLO, not the only one.** `selected_llo.source` now distinguishes `solicitation` (award path, `solicitation-review`) from `operator` (the LLO named up front in the opp's `inputs/`, legal with **Phase 8 `skipped`**, and explicitly forbidden from carrying a fabricated `solicitation` block). The entry guard's FATAL message branches on whether Phase 8 ran, because the remedies differ. `selected_llo` also gained the handover record — `program_application_id` (UNRECOVERABLE if not captured at POST time: `connect_list_invites` is a blind read returning `[]` even for an accepted invite), the LLO's `opportunity_id`/`url`, and the Gmail thread + message ids — which previously had no typed home and landed in an invented top-level key nothing read. It renders as § LLO handover in the run README. (2) **New step 2b creates the LLO's delivery opportunity here**, after acceptance, on freshly-copied apps (`commcare_linked_app_copy`, same domain + `linked: false`) — Phase 4 cannot, since it runs before any invite exists. The create's own rejection IS the acceptance check; no readable application-status surface exists. Halts rather than clamping when `start_date` falls outside the program window. | ACE team |

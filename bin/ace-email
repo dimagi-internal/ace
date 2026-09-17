@@ -35,7 +35,9 @@ carries no `labs.connect.dimagi.com/ace/` link is refused (exit 3) before canopy
 is called — the fix is to lead with the run's ace-web page (`run_state.yaml`
 top-level `ace_web_summary_url`) and keep the Drive links as deep links under it.
 `--dry-run` gets the same verdict, so a draft is caught before the approval step.
-A thread with no run behind it (a sales/BD thread) passes an explicit reason:
+A send whose recipient is not a reviewer of the run passes an explicit reason —
+a thread with no run behind it (sales/BD), or a partner-facing deliverable whose
+subject IS the Drive pack, such as the Phase 9 LLO onboarding email (ace#2380):
 
   bin/ace-email ... --body-file body.txt --no-run-page "sales thread, no run yet"
 
@@ -183,7 +185,9 @@ def _check_run_page(argv, override_reason):
         "Fix: lead with the run's page — run_state.yaml `ace_web_summary_url`, e.g.\n"
         "  https://labs.connect.dimagi.com/ace/opps/dimagi-team/<opp>/runs/<run-id>/summary\n"
         "and keep the Drive links as deep links under it.\n"
-        f'No run behind this thread (e.g. sales/BD)? Re-run with {RUN_PAGE_OVERRIDE} "<why>".\n'
+        "Not a reviewer-facing reference to a run — a sales/BD thread with no run, or a\n"
+        "partner-facing deliverable such as the Phase 9 LLO onboarding pack? Re-run with\n"
+        f'{RUN_PAGE_OVERRIDE} "<why>".\n'
         f"Drive links found:\n{shown}",
         file=sys.stderr,
     )
