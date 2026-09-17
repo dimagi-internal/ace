@@ -732,8 +732,10 @@ makes, silently and in both directions.
 So: **at least one of a check's controls must reach it from a file read off
 disk** — `test/fixtures/`, a suite-local `fixtures/` dir, or the repo's own
 `skills/*.md`. *Enforced:* the same ratchet
-(`test/skills/negative-control-ratchet.test.ts`, `GROUNDING_BASELINE`); 118 of
-141 surfaces fail it today and are pinned, so only new checks are blocked.
+(`test/skills/negative-control-ratchet.test.ts`, `GROUNDING_BASELINE`). Most
+surfaces fail it today — 118 of 141 when it was written — so the known set is
+pinned and only NEW checks are blocked. Its size doubles as the budget: ground
+one and lower it, never raise it.
 
 Five gates in `poverty-graduation/20260915-1518` were green over broken
 behaviour for exactly this reason:
