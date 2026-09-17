@@ -1618,10 +1618,25 @@ export of a converted doc **strips the `##` markers** (`## Open` arrives as a
 bare `Open`) and flattens every pipe table to one cell per line, so the section
 stops resolving and the question rows run together — measured against a
 converted probe doc, 2026-08-26. Pass the read through `extractOpenSection`
-(`lib/open-questions-inline.ts`): it returns the `## Open` section with
-`## Archive` structurally excluded, and on a heading-stripped read it returns
-`needs-markdown-export` and names the remedy rather than guessing at a section
-whose rows have already run together.
+(`lib/open-questions-inline.ts`), **with the export you used as its second
+argument** — `extractOpenSection(text, 'text/markdown')`. It returns the
+`## Open` section with `## Archive` structurally excluded, and it uses that
+second argument to tell two look-alike failures apart rather than guessing:
+
+| Verdict | What it means | What to do |
+|---|---|---|
+| `ok` | real `## Open` heading | inline the section |
+| `needs-markdown-export` | you read `text/plain` of a converted doc — rows have run together | **re-read** with `exportAs: 'text/markdown'` |
+| `flattened-headings` | you DID read markdown and the DOC has no headings — flattened by a plain-text write | inline the RECOVERED section, say at the Phase 1→2 pause that the ledger was read in **degraded** form, and **repair the doc** (rewrite it in the two-section shape) — a re-read returns the same bytes |
+| `absent` | markdown-shaped, no `## Open` | inline nothing; say so |
+
+**`flattened-headings` is never reported as a healthy read.** Its rows were
+recovered from a bare `Open` label and delimited at the bare `Archive` label,
+so the archive still cannot ride along — but the doc is broken in Drive until
+someone rewrites it. Paste the returned `reason` into the pause summary; it is
+written for that. Telling the caller to re-read markdown it had already read
+is the loop ace#2367 was filed against, and reading the doc as empty silently
+exempted 15 live rows from the ace#1201 reconciliation.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 

@@ -1,0 +1,16 @@
+Open Questions — ACE-2367 probe
+
+
+Open
+
+
+* id: partner-selection-on-hold question: Work order and solicitation are on hold pending partner selection. raised_by: 20260910-1202 owner: design author answered_where: —
+
+
+* id: consumption-support-paid question: Is consumption support a paid deliver unit? raised_by: 20260905-0924 owner: ACE answered_where: —
+
+
+Archive
+
+
+* id: ppi-instrument question: Which PPI instrument applies? resolved_at: 2026-09-04T00:00:00Z resolved_by: 20260904-0800 resolution_note: Kenya 2015 PPI, sourced from povertyindex.org.

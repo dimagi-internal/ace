@@ -27,6 +27,7 @@ import path from 'node:path';
 
 import {
   OPEN_QUESTIONS_INLINE_CAP_CHARS,
+  checkOpenQuestionsWriteShape,
   classifyOpenQuestionsInline,
   extractOpenSection,
   parseOpenRows,
@@ -417,6 +418,300 @@ describe('reading a ledger whose headings are literal, backslash-escaped text (#
   });
 });
 
+/**
+ * dimagi-internal/ace#2367 (the remaining half) — the ledger with NO headings
+ * at all.
+ *
+ * PR #2397 fixed the adjacent shape: headings typed as literal text, which
+ * Drive's markdown exporter escapes to `\#\# Open`. Unescaping before the
+ * heading match resolves those. It does nothing for the shape the issue was
+ * actually filed against, which carries no `#` characters at ALL — a ledger
+ * flattened by an earlier plain-text WRITE, where `Open` and `Archive` are
+ * ordinary paragraphs and every row is a run-on paragraph.
+ *
+ * Verified against `origin/main` at 726e1fe7 (post-#2397) with a reconstruction
+ * of the poverty-graduation ledger ace#2367 quotes:
+ *
+ *   $ npx tsx probe-2367-premise.ts
+ *   status: needs-markdown-export
+ *   reason: "... Re-read the file with `drive_read_file(..., exportAs:
+ *            'text/markdown')` — do NOT parse this text."
+ *
+ * That verdict is not merely unhelpful, it LOOPS: the read already WAS the
+ * markdown export, so the named remedy returns the same bytes, and Phase 1
+ * inlines none of the opp's 15 open rows (including the design author's hold
+ * on the work order) while reporting a cause that is false.
+ *
+ * Two things are wrong and both are fixed here:
+ *
+ *  1. **The module guesses at which export the caller requested.** The caller
+ *     KNOWS — it passed `exportAs` to `drive_read_file`. `extractOpenSection`
+ *     now takes that as its second argument, so `text/markdown` + no headings
+ *     is a FLATTENED DOC (repair it) and `text/plain`/unknown + no headings
+ *     stays `needs-markdown-export` (re-read it). No heuristic over Drive's
+ *     export bytes; the authoritative fact comes from the party that has it.
+ *  2. **A flattened doc must not be silently read as EMPTY, and must not be
+ *     silently read as WHOLE either.** The recovery is delimited: it starts at
+ *     the bare `Open` label and stops at the bare `Archive` label (or at the
+ *     first non-list line after the rows begin), so the one invariant this
+ *     module enforces structurally — `## Archive` is never inlined — survives
+ *     a degraded read. Treating the whole body as the open section would
+ *     inline resolved history as live questions, which is the harm ace#1487
+ *     and the two-section shape exist to prevent; that is the false positive
+ *     this suite refuses to trade into.
+ */
+describe('a ledger with NO headings at all — the flattened doc (#2367)', () => {
+  const fixture = (name: string) =>
+    fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
+
+  /**
+   * NOT an inline literal. These are the VERBATIM bytes Drive returned on
+   * 2026-09-17 for a probe doc built the way the poverty-graduation ledger was
+   * broken: `drive_create_doc_from_markdown` fed content with NO `#` headings
+   * — the shape a turn produces when it reads the doc back as `text/plain`
+   * (which strips the markers) and writes that text out again.
+   *
+   *   test/fixtures/open-questions/flattened-gdoc.text-markdown.md  (exportAs markdown)
+   *   test/fixtures/open-questions/flattened-gdoc.text-plain.txt    (default export)
+   *
+   * The probe doc (`1rISrQ7MpEsCGUmheB94RsPz-BbkQ4kstLQYq9nnPybg`, under the
+   * ACE root) was trashed immediately after capture, as the 2026-08-26 probe
+   * above was.
+   *
+   * What the capture SETTLES, rather than assumes:
+   *   - the `text/markdown` export of a flattened doc carries no `#` at all —
+   *     `Open` and `Archive` are bare paragraphs, so the escaped-heading fix
+   *     (#2397) cannot reach it;
+   *   - `**bold**` runs and `raised\_by` escaping DO survive, so the rows are
+   *     intact and worth recovering;
+   *   - the `text/plain` export of the SAME doc drops `**` entirely
+   *     (`* id: partner-selection-on-hold question: …`), so its rows carry no
+   *     `- **id:**` bullet and genuinely cannot be parsed — which is why that
+   *     branch must keep refusing rather than recovering.
+   */
+  const FLATTENED_LEDGER = fixture('flattened-gdoc.text-markdown.md');
+
+  it('a markdown READ of a flattened doc is flattened-headings, not a re-read prompt', () => {
+    const outcome = extractOpenSection(FLATTENED_LEDGER, 'text/markdown');
+    expect(
+      outcome.status,
+      'the caller already read markdown — telling it to read markdown again is the loop',
+    ).toBe('flattened-headings');
+    if (outcome.status !== 'flattened-headings') return;
+
+    expect(outcome.reason, 'the remedy must be REPAIR, not re-read').toMatch(/repair|rewrite/i);
+    expect(
+      outcome.reason,
+      'and it must not send the caller back round the re-read loop',
+    ).not.toContain("Re-read the file with `drive_read_file");
+  });
+
+  it('the open rows are recovered rather than silently dropped', () => {
+    const outcome = extractOpenSection(FLATTENED_LEDGER, 'text/markdown');
+    expect(outcome.status).toBe('flattened-headings');
+    if (outcome.status !== 'flattened-headings') return;
+
+    expect(outcome.section).toContain('partner-selection-on-hold');
+    expect(outcome.section).toContain('consumption-support-paid');
+    // Drive's escaping is undone on this path too, so the rows parse.
+    expect(outcome.section).toContain('**raised_by:**');
+
+    const { rows } = parseOpenRows(outcome.section);
+    expect(rows.map((r) => r.id)).toEqual([
+      'partner-selection-on-hold',
+      'consumption-support-paid',
+    ]);
+  });
+
+  it('the ARCHIVE still never rides along — the recovery is delimited, not whole-body', () => {
+    const outcome = extractOpenSection(FLATTENED_LEDGER, 'text/markdown');
+    expect(outcome.status).toBe('flattened-headings');
+    if (outcome.status !== 'flattened-headings') return;
+
+    expect(outcome.section, 'resolved history is not a live question').not.toContain(
+      'ppi-instrument',
+    );
+    expect(outcome.section).not.toContain('Kenya 2015 PPI');
+    expect(outcome.section).not.toContain('resolution_note');
+    // Nor the title paragraph above the bare `Open` label.
+    expect(outcome.section).not.toContain('ACE-2367 probe');
+    expect(outcome.section.startsWith('Open')).toBe(true);
+  });
+
+  it('the CAPTURED text/plain export of the SAME doc is refused — its rows are unparseable', () => {
+    const plain = fixture('flattened-gdoc.text-plain.txt');
+    // Ground truth from the capture: the plain export drops the bold runs, so
+    // the `- **id:**` row marker does not exist and nothing could be recovered.
+    expect(plain, 'no bold survives the plain export').not.toContain('**id:**');
+    expect(parseOpenRows(plain).rows, 'so there is nothing to parse').toHaveLength(0);
+
+    expect(extractOpenSection(plain, 'text/plain').status).toBe('needs-markdown-export');
+    expect(extractOpenSection(plain).status).toBe('needs-markdown-export');
+  });
+
+  it('a bare Archive label with an EMPTY Open section still terminates the recovery', () => {
+    const outcome = extractOpenSection(
+      ['Open Questions', '', 'Open', '', 'Archive', '', '- **id:** row-gone'].join('\n'),
+      'text/markdown',
+    );
+    expect(outcome.status).toBe('flattened-headings');
+    if (outcome.status !== 'flattened-headings') return;
+    expect(outcome.section).not.toContain('row-gone');
+  });
+
+  it('a flattened doc with NO bare Open label is absent — never a whole-body fallback', () => {
+    // The false positive this must not trade into: with no label there is no
+    // way to tell a live question from an archived one, so inventing a section
+    // would inline the whole ledger, resolved rows and all.
+    const outcome = extractOpenSection(
+      [
+        'Open Questions — some opp',
+        '',
+        '- **id:** row-one **question:** still live?',
+        '',
+        '- **id:** row-gone **resolved\\_at:** 2026-08-01T00:00:00Z',
+      ].join('\n'),
+      'text/markdown',
+    );
+    expect(outcome.status).toBe('absent');
+    if (outcome.status !== 'absent') return;
+    expect(outcome).not.toHaveProperty('section');
+  });
+
+  it('control: the SAME bytes read as text/plain still ask for a re-read', () => {
+    const outcome = extractOpenSection(FLATTENED_LEDGER, 'text/plain');
+    expect(outcome.status).toBe('needs-markdown-export');
+  });
+
+  it('control: an unstated export still asks for a re-read, but names the flattened case too', () => {
+    // Backward compatibility: every pre-existing caller passes one argument.
+    const outcome = extractOpenSection(FLATTENED_LEDGER);
+    expect(outcome.status).toBe('needs-markdown-export');
+    if (outcome.status !== 'needs-markdown-export') return;
+    // ...and the loop is broken even for a caller that never learns the new
+    // argument: the remedy says what to do when the re-read returns the same
+    // bytes, by naming the terminating branch and how to reach it.
+    expect(outcome.reason).toContain("exportAs: 'text/markdown'");
+    expect(outcome.reason, 'the second, terminating branch is named').toContain(
+      'flattened-headings',
+    );
+  });
+
+  it('NEGATIVE CONTROL: a well-formed ## Open / ## Archive doc is byte-identical, with or without the new argument', () => {
+    const WELL_FORMED = [
+      '# Open Questions',
+      '',
+      '## Open',
+      '',
+      '- **id:** row-one',
+      '  **blocking:** Before Phase 3',
+      '',
+      '## Archive',
+      '',
+      '- **id:** row-gone',
+    ].join('\n');
+
+    const bare = extractOpenSection(WELL_FORMED);
+    const markdown = extractOpenSection(WELL_FORMED, 'text/markdown');
+    const plain = extractOpenSection(WELL_FORMED, 'text/plain');
+
+    for (const [label, outcome] of [
+      ['no argument', bare],
+      ["'text/markdown'", markdown],
+      ["'text/plain'", plain],
+    ] as const) {
+      expect(outcome.status, label).toBe('ok');
+      if (outcome.status !== 'ok') continue;
+      expect(outcome.section, label).toBe('## Open\n\n- **id:** row-one\n  **blocking:** Before Phase 3');
+      expect(outcome.section, label).not.toContain('row-gone');
+    }
+    expect(markdown).toEqual(bare);
+    expect(plain).toEqual(bare);
+  });
+
+  it('NEGATIVE CONTROL: the escaped-heading ledger (#2397) is unchanged by the new argument', () => {
+    const ESCAPED = [
+      '# Probe',
+      '',
+      '\\#\\# Open',
+      '',
+      '- **id:** row-one',
+      '',
+      '\\#\\# Archive',
+      '',
+      '- **id:** row-gone',
+    ].join('\n');
+
+    expect(extractOpenSection(ESCAPED, 'text/markdown')).toEqual(extractOpenSection(ESCAPED));
+    const outcome = extractOpenSection(ESCAPED, 'text/markdown');
+    expect(outcome.status, 'a real (escaped) heading still wins over the flattened path').toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.section).toBe('## Open\n\n- **id:** row-one');
+  });
+
+  it('NEGATIVE CONTROL: the converted-gdoc fixtures are unaffected by the new argument', () => {
+    const fixture = (name: string) =>
+      fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
+
+    for (const name of ['converted-gdoc.text-markdown.md', 'literal-markdown-gdoc.text-plain.txt']) {
+      expect(extractOpenSection(fixture(name), 'text/markdown'), name).toEqual(
+        extractOpenSection(fixture(name)),
+      );
+      expect(extractOpenSection(fixture(name)).status, name).toBe('ok');
+    }
+  });
+});
+
+/**
+ * The WRITE half of ace#2367. The parser fix above recovers a flattened
+ * ledger; it does not stop one being written. The flattening came from a turn
+ * that read the doc back as `text/plain` (bare labels, run-on rows) and wrote
+ * THAT text out again — laundering the headings away, with nothing at the
+ * boundary to notice.
+ *
+ * `checkOpenQuestionsWriteShape` is that boundary: the content a writer is
+ * about to hand `drive_create_doc_from_markdown` must read back `ok` through
+ * the very parser Phase 1 uses. It is the same function on both sides, so the
+ * write cannot pass a shape the read then refuses.
+ */
+describe('a writer cannot publish a shape the reader would refuse (#2367)', () => {
+  const fixture = (name: string) =>
+    fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
+
+  it('POSITIVE control, captured: a real well-formed ledger read back from Drive passes', () => {
+    // Real bytes, not a literal typed beside the assertion: the 2026-08-26
+    // capture of a healthy CONVERTED ledger. Round-tripping THAT into the doc
+    // is legal and must stay legal — the guard exists to stop the flattened
+    // round-trip, not every round-trip.
+    const result = checkOpenQuestionsWriteShape(fixture('converted-gdoc.text-markdown.md'));
+    expect(result.ok, result.reason).toBe(true);
+
+    const spark = checkOpenQuestionsWriteShape(fixture('spark-facilitator.text-markdown.md'));
+    expect(spark.ok, spark.reason).toBe(true);
+  });
+
+  it('NEGATIVE control, captured: the flattened export that caused the incident is REFUSED', () => {
+    // The exact artifact of the defect — Drive's own markdown export of a
+    // heading-less doc. This is what a turn had in hand and wrote back.
+    const result = checkOpenQuestionsWriteShape(fixture('flattened-gdoc.text-markdown.md'));
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/## Open/);
+    expect(result.reason, 'the refusal names the verdict the reader would give').toContain(
+      'flattened-headings',
+    );
+  });
+
+  it('NEGATIVE control, captured: the text/plain export is REFUSED too', () => {
+    const result = checkOpenQuestionsWriteShape(fixture('flattened-gdoc.text-plain.txt'));
+    expect(result.ok).toBe(false);
+  });
+
+  it('a doc with real headings but no ## Open section is REFUSED', () => {
+    const result = checkOpenQuestionsWriteShape('# Open Questions\n\n## Archive\n\n- **id:** gone\n');
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
@@ -436,6 +731,37 @@ describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)'
     const skill = read('skills/idea-to-pdd/SKILL.md');
     expect(skill, 'the skill must name the export format').toContain("exportAs: 'text/markdown'");
     expect(skill, 'the skill must name the extractor').toContain('extractOpenSection');
+  });
+
+  /**
+   * ace#2367: a `flattened-headings` read that the executing prose never
+   * mentions is a status nobody acts on — the run inlines a degraded section
+   * and reports it as a healthy one, which is the silence this was filed
+   * against. The prose is what runs; the helper is only what it calls.
+   */
+  it('the prose that reads the ledger names the flattened-doc verdict and its repair', () => {
+    const doc = read('agents/ace-orchestrator.md');
+    const phase1 = doc.slice(
+      doc.indexOf('### Phase 1: Idea to Design'),
+      doc.indexOf('### Phase 2:', doc.indexOf('### Phase 1: Idea to Design')),
+    );
+    expect(phase1, 'Phase 1 must name the flattened-doc verdict').toContain('flattened-headings');
+
+    const skill = read('skills/idea-to-pdd/SKILL.md');
+    expect(skill, 'idea-to-pdd must name it too').toContain('flattened-headings');
+  });
+
+  /**
+   * The write half. `skills/inbox-triage` step 2g is where the flattening
+   * write came from, so it — and the shape contract in `idea-to-pdd` — must
+   * name the guard a writer runs before publishing.
+   */
+  it('the writing prose names the pre-write shape check', () => {
+    for (const rel of ['skills/inbox-triage/SKILL.md', 'skills/idea-to-pdd/SKILL.md']) {
+      expect(read(rel), `${rel} must name the write-shape guard`).toContain(
+        'checkOpenQuestionsWriteShape',
+      );
+    }
   });
 });
 
