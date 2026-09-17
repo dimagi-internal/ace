@@ -164,6 +164,44 @@ describe('email shims over the canopy engine', () => {
       expect(r.stderr).toContain('needs a real file');
       expect(called(log)).toBe(false);
     });
+
+    /**
+     * Phase 9 is the one run-linked send that legitimately carries the override
+     * (ace#2380). `llo-onboarding` emails the awarded LLO the Phase 6 training
+     * pack as Drive links, so the rail refuses it (exit 3) — and the run-summary
+     * page is a Dimagi-side REVIEW surface, not an onboarding pack for an
+     * implementing partner, so the fix is the override rather than an ace-web
+     * link. This test runs the invocation the skill documents, rather than
+     * asserting a string is present: it extracts the skill's own reason and
+     * proves a Drive-only body carrying it reaches canopy.
+     */
+    it('the Phase 9 onboarding invocation llo-onboarding documents passes the rail', () => {
+      const skill = fs.readFileSync(path.join(REPO_ROOT, 'skills', 'llo-onboarding', 'SKILL.md'), 'utf8');
+      const reason = /--no-run-page\s+"([^"]+)"/.exec(skill)?.[1] ?? '';
+      expect(reason, 'skills/llo-onboarding must document the --no-run-page reason it sends with').not.toBe('');
+
+      const { dir, log } = withFakeCanopy();
+      const body = bodyFile(
+        `Welcome to the opportunity. Your training pack:\n${DOC}\nhttps://drive.google.com/drive/folders/xyz\n`,
+      );
+
+      // without it, the first live Phase 9 send is refused
+      const refused = runShim('ace-email', ['--to', 'llo@partner.org', '--subject', 's', '--body-file', body], dir);
+      expect(refused.status).toBe(3);
+      expect(called(log)).toBe(false);
+
+      // with the skill's own reason, it sends — and the flag never reaches canopy
+      const r = runShim(
+        'ace-email',
+        ['--to', 'llo@partner.org', '--subject', 's', '--body-file', body, '--no-run-page', reason],
+        dir,
+      );
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain(`run-page check overridden — ${reason}`);
+      const sent = fs.readFileSync(log, 'utf8').trim();
+      expect(sent).toBe(`email send --repo ${REPO_ROOT} --to llo@partner.org --subject s --body-file ${body}`);
+      expect(sent).not.toContain('no-run-page');
+    });
   });
 
   it('both shims exit with a remediation (not a traceback) when canopy is missing', () => {
