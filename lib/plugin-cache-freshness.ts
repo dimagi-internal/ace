@@ -127,3 +127,136 @@ export function classifyPluginCacheFreshness(input: {
       `NOT respawn MCP subprocesses.`,
   };
 }
+
+// ── Version DRIFT: the sibling failure where the old cache dir is still there ──
+
+/**
+ * Is a running MCP subprocess executing OLD code from a directory that still
+ * exists? (dimagi-internal/ace#2394)
+ *
+ * `classifyPluginCacheFreshness` above only fires when the directory has been
+ * DELETED. A session that auto-updated on startup can spawn its MCP children
+ * from the previous version ~1s before the registry is rewritten, and then
+ * both existing probes report PASS:
+ *
+ * - `session_freshness` compares `$ROOT/VERSION` against
+ *   `installed_plugins.json` — two ON-DISK facts, which agree;
+ * - `cache_freshness` sees `rootExists === true`, because `0.13.1445/` is
+ *   still sitting next to `0.13.1446/`.
+ *
+ * Nothing observed the one fact that matters: the version in the live
+ * subprocess's own argv. Measured 2026-09-15 — five MCP children on
+ * `0.13.1445` while the registry read `0.13.1446`, so `verify_run_claims`
+ * (shipped in 1446) resolved to nothing and every claim came back
+ * `NOT REACHED`. The operator reads that as "the run didn't address the
+ * counterpart's asks" rather than "the atom wasn't loaded", which is the
+ * expensive part: the probe's own absence is reported as a property of the run.
+ *
+ * **Judge the VERSION FILE, not the directory name.** `CLAUDE.md § Check the
+ * running subprocess` records that the cache dir is NAMED from
+ * `.claude-plugin/plugin.json` but FILLED from the marketplace clone's HEAD, so
+ * the name can lie in both directions — on 2026-07-27 `cache/ace/ace/0.13.667/`
+ * contained `0.13.670` code. A check that compared directory names would have
+ * reported that healthy session as stale. The caller resolves
+ * `<root>/VERSION`; the name is only a fallback for when it cannot be read.
+ *
+ * Pure by design, same split as the two classifiers above.
+ */
+export interface ChildVersionProc {
+  pid: number;
+  command: string;
+  /** Contents of `<root>/VERSION`, trimmed. Resolved by the caller; null if unreadable. */
+  rootVersionFile: string | null;
+  /** Resolved by the caller — a missing root belongs to cache_freshness, not here. */
+  rootExists: boolean;
+}
+
+export interface DriftedProc {
+  pid: number;
+  server: string;
+  /** What the process is actually running, authoritative where available. */
+  running: string;
+  /** The directory name, kept because it is what a `ps` by hand shows. */
+  dirName: string;
+  /** True when `<root>/VERSION` could not be read and dirName was used instead. */
+  fromDirName: boolean;
+}
+
+export interface ChildVersionDriftResult {
+  verdict: 'pass' | 'warn' | 'skip';
+  drifted: DriftedProc[];
+  reason: string;
+}
+
+export function classifyMcpChildVersionDrift(input: {
+  procs: ChildVersionProc[];
+  installedVersion?: string;
+}): ChildVersionDriftResult {
+  const installed = (input.installedVersion ?? '').trim();
+  const judged = (input.procs ?? []).filter(
+    (p) => p && pluginRootFromCommand(p.command) !== null && p.rootExists,
+  );
+
+  if (!installed) {
+    return {
+      verdict: 'skip',
+      drifted: [],
+      reason:
+        'installed plugin version is unknown (registry unreadable) — nothing to compare the ' +
+        'running subprocesses against',
+    };
+  }
+  if (judged.length === 0) {
+    return {
+      verdict: 'skip',
+      drifted: [],
+      reason:
+        'no MCP subprocess is running from an existing plugin-cache directory (dev checkout, ' +
+        'or the directory is gone — cache_freshness owns that case)',
+    };
+  }
+
+  const drifted: DriftedProc[] = [];
+  for (const p of judged) {
+    const dirName = pluginRootFromCommand(p.command)!.version;
+    const fromFile = (p.rootVersionFile ?? '').trim();
+    const running = fromFile || dirName;
+    if (running !== installed) {
+      drifted.push({
+        pid: p.pid,
+        server: serverName(p.command),
+        running,
+        dirName,
+        fromDirName: fromFile === '',
+      });
+    }
+  }
+
+  if (drifted.length === 0) {
+    return {
+      verdict: 'pass',
+      drifted: [],
+      reason: `all ${judged.length} MCP subprocess(es) are running v${installed}, matching the installed plugin`,
+    };
+  }
+
+  const detail = drifted
+    .map(
+      (d) =>
+        `${d.server}(pid ${d.pid}) v${d.running}${d.fromDirName ? ' [dir name; VERSION unreadable]' : ''}`,
+    )
+    .join(', ');
+
+  return {
+    verdict: 'warn',
+    drifted,
+    reason:
+      `${drifted.length} MCP subprocess(es) are running OLDER code than the installed plugin ` +
+      `v${installed} (${detail}). The directory still exists, so cache_freshness cannot see ` +
+      `this, and session_freshness compares two on-disk facts that both read v${installed}. ` +
+      `Any atom added since is silently ABSENT and any changed atom silently serves old ` +
+      `behaviour — an absent atom reads as a finding about your run, not about the plugin. ` +
+      `Quit and reopen Claude Code (Cmd-Q); /ace:update and /reload-plugins do NOT respawn ` +
+      `MCP subprocesses (CLAUDE.md § MCP changes need a full Claude restart).`,
+  };
+}
