@@ -188,10 +188,15 @@ const LEDGER: Record<string, LedgerEntry> = {
  * reusable and diffable, and the cheapest way to satisfy this rail is to go
  * and capture the actual artifact.
  *
- * Measured 2026-09-17: 140 uniform-verdict surfaces, 23 grounded, **117 not**.
- * Failing 117 at once produces a test nobody can land, which is how guards get
+ * Measured 2026-09-17: 141 uniform-verdict surfaces, 23 grounded, **118 not**.
+ * Failing 118 at once produces a test nobody can land, which is how guards get
  * disabled — so the known set is pinned and only NEW surfaces are blocked.
  * Shrinking this list is always allowed and never needs the file rewritten.
+ *
+ * The list is pinned at the moment this rail merged, so a check written before
+ * that is grandfathered whatever its date — `lib/run-surface-audit.ts::auditClaimRows`
+ * landed on main while this branch was rebasing and is here for exactly that
+ * reason, not because anything about it was judged.
  *
  * Entries leave by gaining one control fed from a captured artifact, or by
  * the check being deleted. Do not add to it.
@@ -231,6 +236,7 @@ const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
   'lib/run-surface-audit.ts::auditBuildMemo',
   'lib/run-surface-audit.ts::auditBuildMemoParity',
   'lib/run-surface-audit.ts::auditBuildStatusParity',
+  'lib/run-surface-audit.ts::auditClaimRows',
   'lib/run-surface-audit.ts::auditCompleteness',
   'lib/run-surface-audit.ts::auditConfidentiality',
   'lib/run-surface-audit.ts::auditContract',
@@ -510,7 +516,7 @@ describe('every structural check has a negative control', () => {
     // `test/fixtures/`, or any other path read off disk, including the repo's
     // own `skills/*.md`.
     //
-    // The 117 surfaces that fail this today are pinned; only NEW ones fail.
+    // The 118 surfaces that fail this today are pinned; only NEW ones fail.
     const offenders = uniform
       .filter((r) => r.negative.length + r.positive.length > 0)
       .filter((r) => r.grounded.length === 0)
