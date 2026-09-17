@@ -127,6 +127,18 @@ Invoke the `build-memo` skill with `phaseFolderId` and `runFolderId`.
 
 ### Completion
 
+**Write each external identifier the moment its create call returns — do NOT
+batch it into this block (ace#2412).** The opportunity UUID and `int_id`, each
+payment-unit id, and the test-user invite are external Connect objects, and a
+re-dispatch mints a SECOND opportunity — which also permanently burns a shared
+`DeliverUnit` binding against the same released Deliver app, so the duplicate
+cannot create its payment units at all. A phase killed before reaching this
+section leaves `products: null` while the opportunity already exists.
+`verify_phase_products` validates an in-flight phase for shape only
+(`mode: fragment`), so the incremental write passes the fence. Rationale:
+`agents/orchestrator-reference.md § Write an EXTERNAL identifier in the step
+that mints it`.
+
 Write the phase summary to `connect-setup_summary.md` with
 `parentFolderId = phaseFolderId` (the `4-connect` folder, surfaced under
 `ACE/<opp-name>/runs/<run-id>/4-connect/`) with:

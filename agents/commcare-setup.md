@@ -874,6 +874,18 @@ step exists in part as the structural watcher that would have caught
 the form-patch over-stripping incident at Phase 3 instead of Phase 6).
 
 ### Completion
+
+**Before you get here: `nova_app_id` is written the moment `create_app` returns,
+and each `hq_app_id` / released build id the moment its call returns — NOT
+batched into this block (ace#2412).** A Nova app and an HQ app are external,
+non-idempotent objects; a phase killed between building them and reaching this
+section leaves `products: null` while both apps exist, and § Step 0's resume
+check then reads "a fresh run that has built nothing" and re-dispatches the
+build — minting a duplicate pair. `verify_phase_products` validates an in-flight
+phase for shape only (`mode: fragment`), so the incremental write passes the
+fence. Full rationale: `agents/orchestrator-reference.md § Write an EXTERNAL
+identifier in the step that mints it`.
+
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
 then write the `phases.commcare-setup` block per `agents/orchestrator-reference.md
 § Phase Write-Back Contract`. Phase 3 is a procedure doc executed by the

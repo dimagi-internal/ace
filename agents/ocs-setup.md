@@ -127,6 +127,16 @@ in one parallel block, so a latency-delayed result can't tempt an invented
 placeholder id. `classify_phase_writeback` only checks block shape, so the
 live round-trip is the only real guard against fabricated identifiers.
 
+
+**Write each external identifier the moment its create call returns — do NOT batch
+it into this block (ace#2412).** The chatbot's `experiment_id`, `public_id`, `pipeline_id` and collection id are external OCS objects — a re-dispatch mints a SECOND chatbot. A phase killed before reaching this
+section leaves `products: null` while the external object already exists, and the
+resume path then reads the run as having created nothing.
+`verify_phase_products` validates an in-flight phase for shape only
+(`mode: fragment`), so the incremental write passes the fence. Rationale:
+`agents/orchestrator-reference.md § Write an EXTERNAL identifier in the step that
+mints it`.
+
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_summary.md`,
 then write the `phases.ocs-setup` block per `agents/orchestrator-reference.md §
 Phase Write-Back Contract`. Set `phases.ocs-setup.status: done` — the enum is closed
