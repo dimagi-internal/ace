@@ -46,6 +46,7 @@ export type SanityFailureClass =
   | 'unguarded-option-tap-below-long-label'
   | 'input-anchor-skips-hint'
   | 'input-focus-scroll-is-guarded'
+  | 'option-tap-guard-is-unscoped'
   | 'input-without-erase'
   | 'deliver-smoke-rewalks-learn';
 
@@ -430,6 +431,61 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'input-focus-scroll',
         value: guardedFocus.anchor,
+      });
+    }
+
+    // 6.8b option-tap-guard-is-unscoped → the OPTION-TAP sibling of 6.8,
+    // and the half `input-focus-scroll-is-guarded` is structurally blind
+    // to (ace#2426).
+    //
+    // 6.8 keys on the input-focus idiom and deliberately never fires on an
+    // option tap, because for a BARE option tap the anchor IS the tap
+    // target and the guard is correct (ace#1070). That reasoning holds
+    // only while the tap is bare. The moment the tap is `below:`-SCOPED —
+    // which is exactly what the field-list walk emits, since one screen
+    // carries several identically-labelled Yes/No questions — a GLOBAL
+    // guard is evaluating a strictly weaker predicate than the tap it is
+    // nominally protecting.
+    //
+    // Maestro's own model settles this without a device: a `when:`
+    // condition owns its OWN `ElementSelector` (`Condition.visible` /
+    // `Condition.notVisible`), `below` is a property OF an
+    // `ElementSelector`, and it compiles to a `Filters.below(...)` stage
+    // `intersect`ed into that selector's filter chain
+    // (`Orchestra.buildFilter`) — i.e. it strictly NARROWS the candidate
+    // set. So `notVisible: {text: "No"}` asks "is there no `No` ANYWHERE",
+    // while the tap asks "is there a `No` BELOW my question". In a
+    // field-list of four Yes/No questions a bare `No` is essentially
+    // always on screen, the guard no-ops, the scroll never fires, and the
+    // tap dies the moment ITS OWN options are below the fold.
+    //
+    // Live: poverty-graduation/20260915-1518 `journey-deliver`,
+    // `Element not found: Text matching regex: No, Below: ...MILK...` on
+    // screen 11/14 — the MILK anchor VISIBLE at [42,2214][1038,2337] with
+    // its options off the bottom, while BREAD's `No` sat visible at
+    // [42,1121][1038,1205]. Scoping all 13 guard/scroll pairs with the
+    // tap's own anchor took the leg from `selector-not-found` to `pass`
+    // (43 screenshots, 0 failures).
+    //
+    // Pure recipe shape — no field data, so it runs unconditionally.
+    // Three silence guards keep the #858 tax at zero:
+    //   * the tap must be `below:`-SCOPED (a bare option tap with a global
+    //     guard is the ace#1070 shape and is correct);
+    //   * the guard step must itself scroll to the SAME option literal and
+    //     name it in its `when:` — a guard about some other element is not
+    //     this class;
+    //   * a guard step that carries ANY `below:` is left alone, and an
+    //     unconditional scroll for the option anywhere earlier clears it —
+    //     under either, the needed scroll is not being suppressed.
+    const unscopedGuard = findUnscopedGuardForScopedOptionTap(recipe.text);
+    if (unscopedGuard) {
+      failures.push({
+        class: 'option-tap-guard-is-unscoped',
+        detail: `recipe ${recipe.name} guards the pre-scroll for option "${unscopedGuard.option}" (line ${unscopedGuard.guardLine}) on a GLOBAL when: notVisible with no below: anchor, then taps that option at line ${unscopedGuard.line} SCOPED below: "${unscopedGuard.anchor}" — the guard asks "is there no \\"${unscopedGuard.option}\\" anywhere on screen" while the tap needs one below its own question, so on a field-list holding several identically-labelled questions the guard is a runtime no-op, the scroll never fires, and the tap fails selector-not-found as soon as its own options are below the fold (ace#2426, the option-tap sibling of ace#1299 § 2)`,
+        remediation: `scope the guard AND its scrollUntilVisible with the SAME below: anchor the tap uses ("${unscopedGuard.anchor}") — a guard must never evaluate a wider region than the tap it protects, per skills/app-test-cases/SKILL.md § A guard must carry the same scope as the tap it protects; re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'option-tap-guard-scope',
+        value: unscopedGuard.option,
       });
     }
 
@@ -1839,6 +1895,84 @@ function findInputAnchorSkipsHint(
       const field = hits[0];
       if (!hasHint(field)) continue;
       return { line: step.line, fieldId: field.id, anchor: spec.text, hint: field.hint! };
+    }
+  }
+  return null;
+}
+
+/**
+ * A `below:`-SCOPED option tap whose preceding guarded pre-scroll is
+ * GLOBAL — the option-tap sibling of `findGuardedInputFocusScroll`
+ * (ace#2426).
+ *
+ * `findGuardedInputFocusScroll` deliberately never fires on an option tap,
+ * because for a BARE option tap the anchor IS the tap target and the guard
+ * is correct (ace#1070). That is true only while the tap is bare. A
+ * `below:`-scoped tap addresses a strictly NARROWER region than a global
+ * `notVisible` on the same literal — `below` is a per-`ElementSelector`
+ * property compiled into a `Filters.below(...)` stage, and a `when:`
+ * condition carries its own selector — so the guard can be false while the
+ * tap's own region holds nothing, which is precisely the state that needs
+ * the scroll.
+ *
+ * Silence guards, in firing order. Each is the difference between a rail
+ * and a Phase 3 halt whose remediation is a no-op (the #858 tax):
+ *
+ *   1. **The tap must carry a `below:`.** A bare option tap under a global
+ *      guard is the sanctioned ace#1070 shape.
+ *   2. **The tap must not be the input-focus idiom** — that is 6.8's
+ *      class, and double-reporting one defect is not a second finding.
+ *   3. **Exactly one non-anchor `text:` matcher**, else there is no
+ *      evidence which literal is the option (the ace#1548 rule).
+ *   4. **The guard must scroll to that same option literal and name it in
+ *      its own `when:`** — a guard about some other element is not this.
+ *   5. **A guard step carrying ANY `below:` is left alone**, and an
+ *      unconditional scroll for the option anywhere earlier clears the
+ *      tap. Under either, the needed scroll is not being suppressed, and
+ *      a wrong-anchor guard is a claim this check has no evidence for.
+ */
+function findUnscopedGuardForScopedOptionTap(
+  yaml: string,
+): { line: number; guardLine: number; option: string; anchor: string } | null {
+  const items = splitTopLevelSteps(yaml);
+  const focusTapLines = new Set(findInputFocusSteps(yaml).map((s) => s.line));
+
+  for (let i = 0; i < items.length; i++) {
+    const text = items[i].text;
+    if (!/^\s*-\s+tapOn:/.test(text)) continue;
+    if (focusTapLines.has(items[i].startLine)) continue; // guard 2
+
+    const below = extractKeyBlock(text, 'below'); // guard 1
+    if (!below) continue;
+    const anchorSpecs = stepTextMatcherSpecs(below);
+    if (!anchorSpecs.length) continue;
+    const anchorTexts = new Set(anchorSpecs.map((s) => s.text));
+
+    const optionSpecs = stepTextMatcherSpecs(text).filter((s) => !anchorTexts.has(s.text));
+    if (optionSpecs.length !== 1) continue; // guard 3
+    const option = optionSpecs[0].text;
+
+    let guardLine = -1;
+    let cleared = false;
+    for (let j = 0; j < i; j++) {
+      const g = items[j].text;
+      if (!/scrollUntilVisible/.test(g)) continue;
+      if (!stepTextMatcherSpecs(g).some((s) => s.text === option)) continue; // guard 4
+      if (!isGuardedScrollStep(g)) {
+        cleared = true; // an unconditional scroll for the option already fires
+        continue;
+      }
+      const when = extractKeyBlock(g, 'when') ?? '';
+      if (!stepTextMatcherSpecs(when).some((s) => s.text === option)) continue; // guard 4
+      if (extractKeyBlock(g, 'below') !== null) {
+        cleared = true; // guard 5 — already scoped (or scoped to something
+        continue; //      else, which this check has no evidence about)
+      }
+      if (guardLine === -1) guardLine = items[j].startLine;
+    }
+
+    if (guardLine !== -1 && !cleared) {
+      return { line: items[i].startLine, guardLine, option, anchor: anchorSpecs[0].text };
     }
   }
   return null;

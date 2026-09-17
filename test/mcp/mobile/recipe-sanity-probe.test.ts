@@ -2269,6 +2269,189 @@ describe('probeRecipeSanity — failure class: input-focus-scroll-is-guarded (ac
   });
 });
 
+// ---------------------------------------------------------------------
+// ace#2426 — the option-tap sibling of ace#1299 § 2, and the
+// probe-coverage sibling of ace#1554.
+//
+// `input-focus-scroll-is-guarded` fires ONLY on the input-focus idiom, on
+// purpose: for a BARE option tap the anchor IS the tap target and the
+// guard is correct (ace#1070). That reasoning stops holding the moment the
+// option tap is `below:`-SCOPED, which is exactly what the field-list walk
+// emits — and there the global guard evaluates a strictly weaker predicate
+// than the tap it protects.
+//
+// Live: poverty-graduation/20260915-1518 `journey-deliver` died
+// `Element not found: Text matching regex: No, Below: ...MILK...` with the
+// MILK anchor visible at the very bottom of the screen and BREAD's bare
+// `No` visible above it — so `notVisible: {text: "No"}` was false, no
+// scroll fired, and MILK's own options stayed below the fold. The probe
+// returned FULLY CLEAN on that recipe (`ok: true`, zero failures, zero
+// warnings, `field_data_supplied: true`), which is half the issue.
+const SCOPE_ANCHOR = '[\\\\s\\\\S]*In the past 7 days, did you eat MILK[\\\\s\\\\S]*';
+
+/** The defective shape: GLOBAL guard + GLOBAL scroll, SCOPED tap. */
+function scopedOptionTap(
+  opts: { guard?: 'none' | 'global' | 'scoped'; alsoUnconditional?: boolean } = {},
+): string {
+  const guard = opts.guard ?? 'global';
+  const lines: string[] = [];
+  if (opts.alsoUnconditional) {
+    lines.push('- scrollUntilVisible:', '    element:', '      text: "No"');
+  }
+  if (guard !== 'none') {
+    lines.push(
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      '        text: "No"',
+      ...(guard === 'scoped' ? ['        below:', `          text: "${SCOPE_ANCHOR}"`] : []),
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            text: "No"',
+      ...(guard === 'scoped' ? ['            below:', `              text: "${SCOPE_ANCHOR}"`] : []),
+      '          direction: DOWN',
+      '          speed: 30',
+      '          centerElement: true',
+    );
+  }
+  lines.push('- tapOn:', '    text: "No"', '    below:', `      text: "${SCOPE_ANCHOR}"`);
+  return lines.join('\n');
+}
+
+describe('probeRecipeSanity — failure class: option-tap-guard-is-unscoped (ace#2426)', () => {
+  it('flags a GLOBAL notVisible guard in front of a below:-scoped option tap', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', scopedOptionTap())],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('journey-deliver.yaml');
+    expect(f!.value).toBe('No');
+    expect(f!.detail).toMatch(/no-op/i);
+    expect(f!.remediation).toMatch(/same below: anchor/i);
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('does NOT flag once guard and scroll carry the tap’s own anchor — the proven fix', () => {
+    // This is the exact edit that took the live leg from
+    // selector-not-found to pass across all 13 guard/scroll pairs.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', scopedOptionTap({ guard: 'scoped' }))],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('does NOT flag a BARE option tap under a global guard — ace#1070 still stands', () => {
+    // One question per screen: the guard and the tap address the same
+    // region, so the guard is correct and an unconditional scroll would
+    // walk the flow out of the form.
+    const body = [
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      '        text: "No"',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            text: "No"',
+      '- tapOn:',
+      '    text: "No"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('does NOT flag when there is no guarded scroll at all — a different class', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', scopedOptionTap({ guard: 'none' }))],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('does NOT flag when an unconditional scroll for the option also precedes the tap', () => {
+    // The defect is a guard that SUPPRESSES the only scroll, not the mere
+    // presence of a guard.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', scopedOptionTap({ alsoUnconditional: true }))],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('does NOT flag a guard about some OTHER element — silence under uncertainty', () => {
+    const body = [
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      '        text: "Some other element"',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            text: "Some other element"',
+      '- tapOn:',
+      '    text: "No"',
+      '    below:',
+      `      text: "${SCOPE_ANCHOR}"`,
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('does NOT double-report the input-focus idiom — that is 6.8’s class', () => {
+    // A `tapOn: below:` followed by inputText is an input focus tap, and
+    // `input-focus-scroll-is-guarded` already owns it. One defect, one
+    // finding.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', inputWalk(HINT_ANCHOR, { guarded: true }))],
+      novaApps: [HINTED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'input-focus-scroll-is-guarded'),
+    ).toBeDefined();
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeUndefined();
+  });
+
+  it('fires with no Nova field data — the defect is pure recipe shape', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', scopedOptionTap())],
+      novaApps: [],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.find((x) => x.class === 'option-tap-guard-is-unscoped'),
+    ).toBeDefined();
+  });
+});
+
 describe('probeRecipeSanity — failure class: input-without-erase (ace#1844)', () => {
   it('flags an inputText with no eraseText immediately before it', () => {
     const body = [
