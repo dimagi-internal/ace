@@ -241,6 +241,31 @@ whose output can settle it), and declares `check.kind`: `probe` where a mechanic
 `judged` where it does not. **Do not declare a probe you cannot actually write** — a `probe`
 claim that degrades into an opinion is refused at record time, and correctly so.
 
+**Write `check.how` so the check produces BOTH of the verdict's two sentences.** When the
+fence answers a claim it writes an `evidence` and a `says`, and they are for different
+people:
+
+- **`evidence` — the audit record.** What was OBSERVED, for whoever may later have to
+  re-derive the verdict: file ids, revisions, the atom call that produced the read, the
+  caveats of that read path. Internal, and it stays exactly as strong as it is.
+- **`says` — the counterpart-facing sentence.** What the verdict says to the person who
+  asked, in their terms, with no internal identifiers. It is what the run page and the
+  reply render; `evidence` never leaves ACE.
+
+On the first live run these read, for the same claim:
+
+> `evidence`: *"Probed by the orchestrator against the RELEASED artifact …
+> `connect_markers.deliver=2` and `projected_connect_state.deliver_units = [targeting_survey
+> …]` with `collision_count 0`. Unzipped the same CCZ and grepped independently…"*
+>
+> `says`: *"The Deliver app has no payment marker on consumption support — two payable
+> activities, and no consumption form in it at all."*
+
+A `check.how` that only describes the mechanical probe gets you the first and not the
+second; say what the answer should TELL HER, not just what to measure. A claim answered
+without a `says` renders to her as a bare pass with nothing behind it, and
+`verify_run_claims` names it in `missing_says[]` at the next boundary (ace#2420).
+
 **Do NOT write claims into `decisions.yaml`.** A claim is **not a decision** — ACE weighed
 nothing and chose nothing. Writing it there fabricates a deliberation that never happened and
 corrupts the one store whose worth depends on honestly recording what ACE actually considered

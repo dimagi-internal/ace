@@ -1,6 +1,8 @@
 # Pre-run claims / post-run validation
 
-**Status:** design, approved in outline (Jon, 2026-09-15) — not yet implemented.
+**Status:** implemented. The mechanism shipped 2026-09-15 (ace#2393); the reviewer-facing
+half of § Rendering — the run-page section and the `says` / `evidence` split — shipped
+2026-09-16 (ace#2420, ace-web).
 **Origin:** thread `19f86579142e6ba5`, Sophie Feintuch's 2026-09-14 message on `poverty-graduation`.
 
 ## The failure this exists to kill
@@ -197,7 +199,40 @@ Written back by the fence into the same file:
     evidence: >-
       deliver CCZ b3f1c2 — form `distribution_visit` has no
       <connect:payment> element (0 matches).
+    says: >-
+      The Deliver app has no payment marker on consumption support — two
+      payable activities, and no consumption form in it at all.
 ```
+
+### `evidence` and `says` — two fields, two audiences
+
+`evidence` is the **audit record**. It is written for whoever may later have to
+re-derive this verdict, so it names file ids, revisions, the atom call that produced
+the read and the reliability caveats of that read path. It is INTERNAL by
+construction, and nothing below weakens it.
+
+`says` is the **counterpart-facing sentence** — what this verdict says to the person
+who asked, in their terms, with no internal identifiers.
+
+Two fields rather than one because the audience genuinely differs and one string
+cannot serve both. Measured on the first live run: the eight claims' `evidence` came
+to ~3,900 words of Drive file ids, `commcare_download_ccz(domain=…, app_id=…)`
+signatures, `connect_markers.deliver=2`-style internal field names and notes like
+*"connect_list_payment_units is HTML-scraped and its required_deliver_units field
+returns [] regardless of actual configuration"*. That is exactly what the audit
+record is FOR, and exactly what `skills/agent-turn-review` § F bans from counterpart
+comms (ace#2386). With one field the reply had to be hand-rewritten, and a hand
+rewrite loses the completeness guarantee the renderer exists to provide — this run's
+eight were all MET, so the omission risk never bit, but a run with one UNMET is
+precisely where a tired rewrite drops a line (ace#2420).
+
+`says` is OPTIONAL in the schema, so a set written before it existed still parses,
+and `recordVerdict` does not refuse a verdict for want of it — a rejected write
+would leave the claim unanswered, and the closeout sweep would then call it
+`NOT REACHED`, which accuses falsely. Instead `classifyRunClaims` returns
+`missing_says[]`: the ids of claims that HAVE a verdict and no sentence, reported at
+the boundary where the phase that wrote the verdict can still add one. Report loud;
+never halt, applied to the reporting mechanism itself.
 
 ### Verdict vocabulary
 
@@ -271,6 +306,32 @@ rather than with Drive.
 Rendering the counterpart's own claims distinctly from ACE's is what makes §1 safe: she can
 see which bar was hers and which ACE set for itself, and say so when ACE's is too low.
 
+### The two surfaces, and the one contract they share
+
+| Surface | Built by | Shows |
+|---|---|---|
+| The run's public summary page | `apps/opps/summary.py::_read_claims` + `ClaimsSection.tsx` in `ace-web` | claim, verdict, `judged` qualifier, `authored_by: counterpart` marking, `says` |
+| The reply, `opp-eval`, the members' workbench | `lib/render-claims.ts::renderClaimsSection` | the same, plus `evidence` on an `internal` audience |
+
+`renderClaimsSection(set, { audience })` takes `'counterpart'` (the default) or
+`'internal'`. The default is the safe one on purpose: a caller that wants the audit
+record has to ask for it, so a new consumer cannot leak by forgetting.
+
+**ace-web matches this contract rather than inventing a second one.** The three
+properties that carry the design's weight — every claim renders whichever way it went;
+a claim the counterpart authored is marked as theirs; a `judged` verdict is qualified —
+are what make the mitigation in §1 real, and a second renderer that dropped any one of
+them would look fine and be useless. The public page is a `counterpart` surface and
+therefore never carries `evidence`; a workspace member's view of the same page carries
+it underneath, which is the `internal` half of the same split.
+
+An ABSENT `claims.yaml` renders nothing at all — most opportunities have none, and a
+"no claims" heading on every other run would train reviewers to skip the section. An
+UNREADABLE one is surfaced as a visible problem, matching `classifyRunClaims`'s
+`ok: false` posture; failing silently would put the reviewer back in front of a page
+that renders an omission as an absence, which is the failure this whole design exists
+to kill.
+
 ## What this deliberately does NOT do
 
 - **It does not block.** §2.
@@ -300,6 +361,11 @@ see which bar was hers and which ACE set for itself, and say so when ACE's is to
   UNMET, one NOT REACHED; assert the rendered section shows all three.
 - **Regression control:** a claim set where every claim is MET but one checkpoint never ran
   must NOT render as fully met.
+- `evidence` never reaches a `counterpart` render, at any verdict, including a claim that
+  carries no `says` — the fallback is silence about the detail, not the audit record in its
+  place.
+- The ace-web payload's absent / unreadable branches, and that its render carries the
+  counterpart marking and the `judged` qualifier.
 
 ## Residuals
 

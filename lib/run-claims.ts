@@ -56,7 +56,34 @@ const ClaimSchema = z.object({
   // Written back by the fence as the run proceeds.
   verdict: z.enum(VERDICTS).optional(),
   evidence_kind: z.enum(['probed', 'judged']).optional(),
+  /**
+   * The AUDIT record. Written for whoever may later have to re-derive
+   * this verdict, so it names file ids, revisions, atom calls and the
+   * reliability caveats of the read path. It is INTERNAL by
+   * construction and must stay that way — see `says` for the half a
+   * counterpart reads.
+   */
   evidence: z.string().optional(),
+  /**
+   * The COUNTERPART-facing sentence: what this verdict says to the
+   * person who asked, in their terms, with no internal identifiers.
+   *
+   * Two fields rather than one because the audience genuinely differs
+   * and one string cannot serve both. On the first live run
+   * (`poverty-graduation/20260915-1518`) the eight claims' `evidence`
+   * came to ~3,900 words of Drive file ids, MCP atom signatures
+   * (`commcare_download_ccz(domain=…, app_id=…)`), internal field names
+   * and scraped-field reliability notes. That is exactly what the audit
+   * record is FOR, and exactly what `skills/agent-turn-review` § F bans
+   * from counterpart comms (ace#2386) — so the reply was hand-rewritten
+   * instead, which loses the completeness guarantee the renderer exists
+   * to provide (ace#2420).
+   *
+   * Optional, so a claim set written before this field existed still
+   * parses. `classifyRunClaims` reports an answered claim that lacks one
+   * in `missing_says[]`, at the boundary where it can still be written.
+   */
+  says: z.string().optional(),
   would_settle_it: z.string().optional(),
   checked_at: z.string().optional(),
   checked_in_phase: z.string().optional(),
@@ -126,6 +153,7 @@ const VERDICT_FIELDS = new Set([
   'verdict',
   'evidence_kind',
   'evidence',
+  'says',
   'would_settle_it',
   'checked_at',
   'checked_in_phase',
@@ -188,7 +216,17 @@ export function diffFrozenClaims(frozen: ClaimSet, incoming: ClaimSet): string[]
 export interface VerdictInput {
   verdict: ClaimVerdict;
   evidence_kind?: EvidenceKind;
+  /** The audit record — what was OBSERVED. Internal; required. */
   evidence: string;
+  /**
+   * The counterpart-facing sentence. Optional here so a verdict is
+   * never LOST for want of it (a rejected write leaves the claim
+   * unanswered, and the closeout sweep would then call it
+   * `NOT REACHED`, which accuses falsely). Its absence is reported by
+   * `classifyRunClaims` instead — loud, not fatal, per the design's
+   * "report loud; never halt".
+   */
+  says?: string;
   would_settle_it?: string;
   phase: string;
   now: string;
@@ -238,6 +276,7 @@ export function recordVerdict(
     verdict: v.verdict,
     evidence_kind: resolvedKind,
     evidence: v.evidence,
+    ...(v.says && v.says.trim() ? { says: v.says.trim() } : {}),
     ...(v.would_settle_it ? { would_settle_it: v.would_settle_it } : {}),
     checked_at: v.now,
     checked_in_phase: v.phase,
@@ -267,6 +306,11 @@ export function sweepUnreached(set: ClaimSet, now: string): ClaimSet {
             verdict: 'NOT REACHED' as const,
             evidence_kind: (c.check.kind === 'probe' ? 'probed' : 'judged') as EvidenceKind,
             evidence: `the \`${c.checkable_at}\` checkpoint never ran in this run`,
+            // Carries a `says` too: a swept claim renders on the
+            // counterpart's surface like any other, and that surface never
+            // shows `evidence`. Without this the loudest verdict in the
+            // vocabulary would be the one that renders with no sentence.
+            says: `The run never reached the point where this could be checked, so nobody answered it.`,
             checked_at: now,
           },
     ),
@@ -332,6 +376,16 @@ export interface RunClaimsReport {
   ok: boolean;
   issues: string[];
   due: DueClaim[];
+  /**
+   * Ids of claims that HAVE a verdict but no counterpart-facing `says`.
+   *
+   * Not an error — the verdict stands. It is the one thing the reviewer's
+   * surface cannot render, reported at the boundary where the phase that
+   * wrote the verdict is still in a position to add the sentence. Left
+   * silent, every claim renders to the counterpart as a bare pass/fail
+   * and the run page is back to the state ace#2420 describes.
+   */
+  missing_says: string[];
   met: number;
   unmet: number;
   not_reached: number;
@@ -358,6 +412,7 @@ export function classifyRunClaims(raw: unknown, phase: string): RunClaimsReport 
   const empty = {
     phase,
     due: [] as DueClaim[],
+    missing_says: [] as string[],
     met: 0,
     unmet: 0,
     not_reached: 0,
@@ -381,6 +436,9 @@ export function classifyRunClaims(raw: unknown, phase: string): RunClaimsReport 
     phase,
     ok: true,
     issues: [],
+    missing_says: parsed.claimSet.claims
+      .filter((c) => c.verdict && !(c.says ?? '').trim())
+      .map((c) => c.id),
     due: claimsDueAt(parsed.claimSet, phase).map((c) => ({
       id: c.id,
       claim: c.claim,
