@@ -693,7 +693,19 @@ Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
   consumption and breaks the grain. The mandated discriminator is exempt
   (ace#1441); a SECOND answer field is not;
 - `no-entity-component` — fires **even with nothing declared**, because a key of
-  worker + date + answers is worker-and-day scoped by construction.
+  worker + date + answers is worker-and-day scoped by construction. On a
+  CONDITIONAL key — `if(<predicate>, concat(A), concat(B))`, which is what a
+  PDD's non-payable branch needs when the fallback changes the IDENTITY source
+  rather than just adding a suffix — this is judged **per branch, and every
+  branch must pass** (ace#2417). The finding names which branch failed. The
+  `if()` predicate is not a component: it selects a key, it is not part of one.
+  `report.components` is the UNION across branches, which is the right list for
+  the declared-node test (a declared business key legitimately appears on the
+  payable branch only) and the WRONG one for entity identity — read
+  `report.components` for display, never re-derive the entity test from it.
+  A conditional nested inside a `concat()` is deliberately NOT decomposed: that
+  is the released ace#1285 shape, and splitting it would let a clean sub-branch
+  launder a worker-and-day-scoped one.
 
 **`report.resolvedThroughIntermediate` is NOT a finding — carry it forward
 (ace#1810).** Each entry names a declared component that is in the key only
