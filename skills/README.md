@@ -732,7 +732,7 @@ makes, silently and in both directions.
 So: **at least one of a check's controls must reach it from a file read off
 disk** — `test/fixtures/`, a suite-local `fixtures/` dir, or the repo's own
 `skills/*.md`. *Enforced:* the same ratchet
-(`test/skills/negative-control-ratchet.test.ts`, `GROUNDING_BASELINE`); 118 of
+(`test/skills/negative-control-ratchet.test.ts`, `GROUNDING_BASELINE`); 117 of
 140 surfaces fail it today and are pinned, so only new checks are blocked.
 
 Five gates in `poverty-graduation/20260915-1518` were green over broken

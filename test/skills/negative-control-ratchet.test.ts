@@ -188,8 +188,8 @@ const LEDGER: Record<string, LedgerEntry> = {
  * reusable and diffable, and the cheapest way to satisfy this rail is to go
  * and capture the actual artifact.
  *
- * Measured 2026-09-16: 140 uniform-verdict surfaces, 22 grounded, **118 not**.
- * Failing 118 at once produces a test nobody can land, which is how guards get
+ * Measured 2026-09-17: 140 uniform-verdict surfaces, 23 grounded, **117 not**.
+ * Failing 117 at once produces a test nobody can land, which is how guards get
  * disabled — so the known set is pinned and only NEW surfaces are blocked.
  * Shrinking this list is always allowed and never needs the file rewritten.
  *
@@ -205,7 +205,6 @@ const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
   'lib/choice-label-integrity.ts::checkCaseListEnumDrift',
   'lib/choice-label-integrity.ts::checkMarkdownEatenLabels',
   'lib/consent-branch.ts::checkConsentBranchCompleteness',
-  'lib/constraint-locality.ts::checkConstraintLocality',
   'lib/constraint-locality.ts::checkRelevanceReachability',
   'lib/dashboard-bindings.ts::checkDashboardBindings',
   'lib/dashboard-column-invariants.ts::checkColumnInvariants',
@@ -511,7 +510,7 @@ describe('every structural check has a negative control', () => {
     // `test/fixtures/`, or any other path read off disk, including the repo's
     // own `skills/*.md`.
     //
-    // The 118 surfaces that fail this today are pinned; only NEW ones fail.
+    // The 117 surfaces that fail this today are pinned; only NEW ones fail.
     const offenders = uniform
       .filter((r) => r.negative.length + r.positive.length > 0)
       .filter((r) => r.grounded.length === 0)
