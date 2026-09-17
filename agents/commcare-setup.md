@@ -990,6 +990,15 @@ step (e.g. `partial-producer-deferred`), and the artifact fence
 including `recipes/journey-learn.yaml`, registered required in
 `lib/artifact-manifest.ts` (ace#892).
 
+**This paragraph is no longer the enforcement, and it never was.** It
+shipped as ace#892's fix and did not hold: `poverty-graduation/20260905-1345`
+wrote `done`/`pass` with 9 of 10 required artifacts absent, and Phases 4 and 5
+ran on it (ace#2174). `update_yaml_file` now REFUSES that write outright with
+`PHASE_ARTIFACTS_INCOMPLETE`, naming each missing path and its `producedBy` —
+so the `partial` write-back above is not advice, it is the only other way the
+phase can close. See `agents/orchestrator-reference.md § `done` is enforced at
+the WRITE`.
+
 `partial` is a **legal, terminal** phase status — `validate_run_state`
 accepts it and `classify_phase_writeback` returns `ok` (terminal, not a
 retry trigger), so writing it does NOT cost a phase re-dispatch. Full

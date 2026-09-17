@@ -831,6 +831,37 @@ and checks every producer is a real `skills/<name>/` or the owning
 `agents/<phase>.md`; `test/scripts/dump-phase-products-schema.test.ts` fails
 when the committed JSON lags the source.
 
+### `done` is enforced at the WRITE, not asked for in prose (ace#2174)
+
+**`update_yaml_file` REFUSES a patch that sets `phases.<phase>.status` to
+`done` (or the legacy synonym `complete`) on a `run_state.yaml` while that
+phase's manifest-required artifacts are absent from the run folder.** The
+refusal is typed — `PHASE_ARTIFACTS_INCOMPLETE` — names every missing path with
+the `producedBy` skill that makes it, and no Drive write happens. It is
+unconditional, like the status-enum guard beside it (ace#992): the agent that
+writes `done` over a producer it skipped is exactly the agent that would not
+pass an opt-in flag.
+
+Two legal ways forward, both stated in the refusal: ship the artifacts
+(dispatch each `producedBy`), or write `status: partial` per the section below.
+`partial` is deliberately ungated.
+
+**This replaces prose that did not hold.** ace#892 shipped this requirement as
+a paragraph in `agents/commcare-setup.md` plus two `required: true` manifest
+rows; both are declarations, and the only test it landed made the new rows pass
+manifest LINT. Six weeks later `poverty-graduation/20260905-1345` wrote
+`status: done` / `verdict: pass` with 9 of Phase 3's 10 required artifacts
+absent, and Phases 4 and 5 — including a one-way Connect opportunity — ran on
+it before Phase 6's pre-flight halted. The read-side fence was never the gap:
+`verify_phase_artifacts` reported `1/10` on that run and nothing acted on it,
+because acting on it is prose here. *Enforced:*
+`test/mcp/gdrive/update-yaml-terminal-writeback.test.ts` (drives the real write
+path; its two gating assertions fail against the pre-guard tree) +
+`test/lib/terminal-phase-writeback.test.ts`. Implementation:
+`lib/terminal-phase-writeback.ts`, which reuses the boundary fence's own
+`verifyPhaseArtifacts` so the gate and the fence cannot disagree about what
+"required" means.
+
 ### `partial` — a phase that shipped but parked something
 
 `partial` is a **terminal** phase status: *the phase is finished and its
@@ -838,7 +869,9 @@ downstream-facing handoff is final, but at least one declared producer or
 `-eval` step did not ship.* It is what the verdict-gate rule in every phase
 agent's § Completion mandates (`agents/commcare-setup.md` is the canonical
 prose) — `done` overstates it, and `blocked`/`error` would wrongly halt
-downstream phases that don't depend on the parked artifact.
+downstream phases that don't depend on the parked artifact. It is also the
+escape hatch the write-time gate above points at, so a phase with a genuinely
+unproducible artifact is never stranded without a legal terminal status.
 
 Canonical shape:
 
