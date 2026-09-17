@@ -723,6 +723,60 @@ UNVERIFIED rather than clean. `report.detail` and `report.ok` are unreachable
 on that branch by construction (`lib/check-outcome.ts`); if you expected the
 form to set `entity_id`, the extractor is the bug.
 
+**Payable-cap arithmetic — always, every released Deliver form whose
+`entity_id` carries a clamped counter (dimagi-internal/ace#2148).** The
+per-entity cap is enforced by DEDUPLICATION, not by the app refusing a
+submission — Connect dedups on `entity_id` and never reads `is_payable` — so an
+off-by-one in the clamped index IS the cap being wrong, and it errs toward
+paying for work outside the agreed cap.
+
+The clamp constant and the cap are not the same number, and which way they
+differ depends on **when the counter is read**. A `casedb` read is the state
+BEFORE this submission, because the case property is written on submit. On
+`spark-facilitator/20260906-2233` the per-step cap was 3 and the build shipped
+`capped_index = if(payable_count_this_step >= 3, 3, payable_count_this_step)`
+over such a read: the 4th meeting reads 3, clamps to 3, and mints an index that
+has never existed — Connect creates a CompletedWork for it and pays it. 4 keys
+x 7 steps = 28 against a declared `total_cap_per_flw` of 21. `validate_app`,
+`compile_app` and `make_build` all passed; the CCZ was structurally perfect and
+the app internally consistent with its own wrong key. Only
+`pdd-to-deliver-app-eval` re-deriving the arithmetic by hand caught it.
+
+```ts
+import { checkPayableCapArithmetic, formatPayableCapReport }
+  from '../../lib/payable-cap-arithmetic';
+const report = checkPayableCapArithmetic(formXml, {
+  // The PDD's per-entity cap, when it declares one. OMIT it and the check
+  // reads the app's own `is_payable` guard instead — which is what caught
+  // ace#2148, where the guard was right and the key was wrong.
+  declaredCap,
+});
+```
+
+**Do not adjudicate this by comparing the clamp to the cap.** Both correct
+constructions are live in ACE and they share no constant: build
+`b08533bdf26a48a295a362ff204fb88d` clamps `min(<casedb count> + 1, 3)`
+(indices 1..3) and build `0cb63a78fd9949b696876ee7a642b685` clamps
+`if(pcts >= 3, 2, pcts)` (indices 0..2). The helper SIMULATES the first
+submissions and counts distinct keys; `report.indices` is that trace, and it
+belongs in the verdict because it is what a reviewer can check by eye.
+
+Any finding is a `[BLOCKER]` `payable-cap-arithmetic` — name `node`,
+`capacity` vs `cap`, the `capSource`, `firstOvercapped`, and the `remedy`
+expression, and route the fix to `pdd-to-deliver-app` Step 4j.6. `kind` is
+`payable-cap-off-by-one` (the ace#2148 class), `payable-cap-mismatch` (the two
+disagree by more than one), or `payable-cap-not-expressible` (a cap below 1 is
+a payability question, not a dedup one).
+
+`report.status === 'unable'` means the check **did not run** — NOT a pass.
+Record it in `checks[]` with its `reason` and treat the cap as UNVERIFIED. The
+two reasons that are not benign: *no clamped counter in `entity_id`* on a form
+whose PDD DOES declare a per-entity cap means the cap is not enforced at all
+(raise it as a `[BLOCKER]` yourself, naming the declared cap), and *the counter
+never resolves to a casedb read* means the timing is undecidable — read the
+counter by hand and call `payableCapacity` with the timing rather than
+assuming one, because a guessed timing is an off-by-one in the other direction.
+
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
 primitive** — Vellum's Assessment Score mug takes a hand-written XPath
@@ -1328,6 +1382,12 @@ per_app:
 #   geopoint_binds:        pass | [<offending field paths>]
 #   casedb_preloads:       pass | [<visible question refs answered from the case>]
 #                          # BLOCKER-gated (ace#2006); Deliver app
+#   payable_cap_arithmetic: { status: checked|unable, reason, ok, node, timing,
+#                            clamp: { threshold, clampedValue }, capacity, cap,
+#                            cap_source: declared|is_payable, indices: [...],
+#                            findings: [...] }
+#                          # BLOCKER-gated (ace#2148); Deliver app. `unable` is
+#                          # NOT a pass — record the reason, treat as UNVERIFIED
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
 #   relevance_reachability: { relevances_checked, wholly_unreachable: [...], partial: [...] }
 #                          # derived from violations[].whollyUnreachable (ace#1539);

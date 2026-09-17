@@ -1491,6 +1491,43 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        success summary — halting here costs one loop; letting it through costs
        a Nova build plus a Phase-3 halt.
 
+    6. **Capped-index arithmetic — when the cap rides in the key (ace#2148).**
+       A per-entity cap ("at most N paid meetings per FCAP step") is enforced by
+       DEDUPLICATION, not by the app refusing a submission: the key carries a
+       clamped counter, fresh per payable encounter up to the cap and constant
+       after it. The clamp constant is NOT the cap. **A `casedb` read is the
+       state BEFORE this submission** — the case property is written on submit —
+       so `min(<casedb count>, N)` admits `N + 1` distinct keys and the
+       (N+1)-th mints an index that has never existed, which Connect pays. On
+       `spark-facilitator/20260906-2233` that turned a cap of 3 into a cap of 4:
+       28 payable events against a declared `total_cap_per_flw` of 21, with
+       every build-time gate green and `is_payable` correctly 0 on the fourth
+       meeting (Connect never reads it).
+
+       Two correct spellings, sharing no constant — both have shipped from this
+       path, five weeks apart:
+
+       ```
+       if(<casedb count> >= <cap>, <cap - 1>, <casedb count>)   # indices 0..cap-1
+       min(<casedb count> + 1, <cap>)                            # indices 1..cap
+       ```
+
+       So do NOT adjudicate it by comparing the clamp to the cap. Read the
+       built `capped_index` back with `get_field`, and either trace the first
+       `cap + 1` payable submissions by hand — confirming the last lands on an
+       index an earlier one already used — or run the same trace mechanically:
+
+       ```ts
+       import { parseClamp, payableCapacity } from '../../lib/payable-cap-arithmetic';
+       const clamp = parseClamp(builtCalculate);
+       payableCapacity(clamp!, 'pre-increment') === declaredCap;  // must hold
+       ```
+
+       A mismatch is a **HALT**, repaired inside the same bounded loop as step 5.
+       `app-release-qa § Step 4` runs `checkPayableCapArithmetic` over the
+       RELEASED form as the backstop; reaching it means a Nova build and a
+       Phase-3 halt were spent on arithmetic decidable here.
+
     (Forms with no non-payable branch skip cleanly — `deviates:false`, and the
     pinned grain stands.)
 
@@ -2350,6 +2387,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-17 | **Step 4j gains sub-step 6 — capped-index arithmetic (ace#2148).** When a per-entity cap rides in `entity_id` as a clamped counter, the clamp constant is NOT the cap: a `casedb` read is the state BEFORE this submission, so `min(<casedb count>, N)` admits `N + 1` distinct keys and the (N+1)-th mints an index that has never existed, which Connect pays. `spark-facilitator/20260906-2233` shipped a cap of 3 binding at 4 — 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green, the CCZ structurally perfect, and the app internally consistent with its own wrong key; `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. Nothing on this path re-derived the arithmetic, so it surfaced only in `pdd-to-deliver-app-eval`, one Nova build later. The step deliberately does NOT compare the clamp to the cap — both correct spellings are live in this same opportunity five weeks apart and share no constant (`min(<casedb count> + 1, 3)` vs `if(pcts >= 3, 2, pcts)`) — it traces the first `cap + 1` submissions, mechanically via `lib/payable-cap-arithmetic.ts`. Paired with `_app-component-library § payability-scoped-key` CAPPED INDEX and the released-form backstop in `app-release-qa § Step 4`. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts` + `test/skills/payable-cap-wiring.test.ts`. | ACE team |
 | 2026-09-11 | **Every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** § Decisions Log was a catalogue "not a required set" and the app build wrote none — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3, while Step 7's memo listed four latitudes in prose. The rows derive from the same entry list as the memo tables ("one source, two renderings"); the spot-check location goes in `reasoning` because ace-web's summary drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows under this skill's tag. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 | 2026-09-11 | **Step 7 names the Deliver build-memo section `## Build memo`, with `[ACE] latitudes taken` and `[FIXED] ambiguities hit` sub-tables (ace#2371).** Steps 3–4n direct notes "into the build memo" throughout, but the memo had no fixed home: on `poverty-graduation/20260908-0510` it existed as a section headed "Deliver app — build memo" inside this summary, not named as a memo and never linked to a reviewer. `skills/build-memo` now collates this section into the run's programme memo at the end of Phase 4; the section content itself is unchanged. | ACE team |
 | 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |
