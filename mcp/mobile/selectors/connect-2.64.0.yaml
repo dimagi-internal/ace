@@ -509,8 +509,7 @@ selectors:
   deliver-opp-detail-view-button:
     type: id
     value: "org.commcare.dalvik:id/connect_learning_button"
-    unverified: true
-    purpose: "Primary action on the post-Learn-completion opp-detail ('VIEW OPPORTUNITY DETAILS' / 'DOWNLOAD LEARN APP'). Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — the walk resumed an opp whose Learn was already complete and whose Deliver CCZ downloaded without passing through this gate."
+    purpose: "Primary action on the opp-detail Job Card ('VIEW OPPORTUNITY DETAILS' / 'DOWNLOAD LEARN APP'). PROMOTED off unverified (ace#2424): live-verified on 2.64.0 during poverty-graduation/20260915-1518 — after btn_start claimed the opp server-side, the device sat on viewJobCard/learning_card at Learn Progress 0% with this button reading 'DOWNLOAD LEARN APP', and an isolated assertVisible -> tapOn -> extendedWaitUntil(nsv_home_screen) probe returned status: pass, the CCZ downloading and the Learn home rendering in ~23s. The 2.64.0 calibration walk (2026-09-06) missed it only because it resumed an opp whose Learn was already complete. Also live-verified on 2.63.0 (2026-05-26)."
 
   deliver-download-button:
     type: id
