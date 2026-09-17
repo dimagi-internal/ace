@@ -906,26 +906,35 @@ fail `test/lib/decision-vocabularies.test.ts`, and a run's `decisions.yaml` cann
 **Step 1 — let the drift tests tell you which files to edit. Do not work from a list in prose.**
 
 ```bash
-npx vitest run test/skills/archetype-enum-drift.test.ts test/lib/archetype-enum-docs.test.ts
+npx vitest run test/skills/archetype-enumeration-discovery.test.ts \
+               test/skills/archetype-enum-drift.test.ts \
+               test/lib/archetype-enum-docs.test.ts
 ```
 
-Both go red the moment the vocabulary gains a value, and each failure names the exact file and
-the enumerating line. Work the failures to green; that IS the checklist, and unlike this
+All three go red the moment the vocabulary gains a value, and each failure names the exact file
+and the enumerating line. Work the failures to green; that IS the checklist, and unlike this
 paragraph it cannot go stale.
 
-**Step 2 — then sweep for the surfaces no test guards yet**, because the two tests above pin a
-hand-maintained 10 files between them and the repo has more:
+**The first of the three is the one that finds files nobody has written down.** The other two pin
+a hand-maintained 10 files between them; `archetype-enumeration-discovery` walks `skills/ agents/
+commands/ playbook/ templates/ lib/ mcp/` + `CLAUDE.md` and flags every place that enumerates the
+vocabulary and leaves a value out (`lib/archetype-enumeration-scan.ts`). A surface written
+tomorrow is in scope the moment it exists — which is the whole point, since ace#2294 was two
+rubrics in neither hand list while both hand tests stayed green (ace#2312).
 
-```bash
-git grep -nE '`?(atomic-visit|longitudinal-visits|focus-group|multi-stage)`?( */|, )' \
-  -- 'skills/**' 'agents/**' 'lib/**' 'templates/**' ':!test/**'
-```
+**Step 2 — for each failure, pick one of the two correct fixes.**
 
-Read each hit and judge it: a **slash- or comma-delimited run** presented as the complete set is
-a real enumeration and must gain the new value; a line contrasting two archetypes as examples
-("`atomic-visit` uses visit-centric categories, `focus-group` uses…") is not, and neither is a
-CHANGELOG row quoting a historical list. When you fix a genuine one, **add it to whichever drift
-test above covers its kind** — that is what stops the next instance.
+- **Name the archetype and say what it does there.** Right when the surface really does branch
+  per archetype — a `## Archetypes` table in a producer or a rubric.
+- **Stop enumerating.** Right when the surface is archetype-agnostic, or branches on ONE
+  exception. `agents/synthetic-data-and-workflows.md` does this deliberately after ace#1691:
+  *"Do NOT run the pipeline below for `focus-group`. For every other archetype … proceed."*
+  An enumeration of the archetypes that PASS silently omits every archetype added later; naming
+  the single exception cannot. Prefer this shape wherever it fits.
+
+You do not need to register the file anywhere. If the discovery rail flagged it, the rail already
+covers it, and a surface it flags but you cannot fix this session goes in that test's `BASELINE`
+ledger with the count it actually carries — a debt to pay down, never a floor to fill.
 
 Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to
 avoid forking the framework — a new archetype is an additive change inside the existing skills,
@@ -943,6 +952,12 @@ and the resulting stale-prose class has now recurred six times — ace#1486 → 
 #1784 → #2128 → #2294 — across two ratchet tests, each of which correctly guards its own
 incident's files and cannot see a new one. A prose list of sites is the defect; a command that
 enumerates them is the fix.
+
+And a *test* that enumerates them has the same defect, which is the second half of ace#2312: a
+guard against "one fact enumerated in many places" that itself enumerates places is unguarded
+against a new place by construction. `test/skills/archetype-enumeration-discovery.test.ts`
+discovers its sites instead. It found 24 stale enumerations in 21 files on the day it landed —
+8 fixed there, 16 ledgered — on a tree where both hand-listed drift tests were green.
 
 ## Where shared templates and prompts live
 

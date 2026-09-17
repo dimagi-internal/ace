@@ -264,7 +264,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - **PCT tokens are bare numbers (no `%` suffix).** The live template's percent cells already have `%` pre-suffixed (e.g. cell text reads `{{wo_mobilization_advance_pct}}%`), so emitting `"40%"` produces `"40%%"`. Pass `"40"` (or `"40.0"` if you need decimals) — the template adds the `%` glyph. Same rule for `{{wo_reconciliation_pct}}`. (Surfaced in bednet-spot-check Phase 1 finding.)
 
    **RACI table (12 rows × 3 cols, header + 11 responsibility rows):**
-     - `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` for N=1..11. Archetype-branched (atomic-visit, focus-group, multi-stage produce different RACI rows). Use `—` or `✓` or `Lead`/`Supports`/`Reviews`/`Produces` for the responsibility-owner columns. If the archetype needs fewer than 11 rows, fill trailing rows with empty strings.
+     - `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` for N=1..11. Archetype-branched — take the rows from the `### ` branch for this run's archetype in `## Archetypes` below rather than from a list here, so the branches stay in one place (ace#2312). Use `—` or `✓` or `Lead`/`Supports`/`Reviews`/`Produces` for the responsibility-owner columns. If the archetype needs fewer than 11 rows, fill trailing rows with empty strings.
 
    **Data Handling table (9 rows × 2 cols, header + 8 fields):**
      - `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}`

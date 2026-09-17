@@ -157,8 +157,11 @@ The 3 calibration runs should include:
 
 ## Archetypes
 
-Archetype-agnostic. Widget handoff shape is identical for atomic-visit /
-focus-group / multi-stage opps.
+Archetype-agnostic. The widget handoff shape is identical for **every**
+archetype, so this section names none of them — an archetype-agnostic skill
+that lists the vocabulary anyway acquires a maintenance obligation it has no
+use for, and this one had gone stale (it named the pre-2026-08-17 three;
+ace#2312).
 
 ## MCP Tools Used
 
