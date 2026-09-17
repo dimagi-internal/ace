@@ -1475,8 +1475,12 @@ Then Step 0 (template selection) and steps 3–5 (author dashboards, mint runs,
 build `/run/?run_id=` URLs, emit the realized map) are EXACTLY the denovo spine,
 and `demo-narrative` authors the DDD narrative — so Phase 7 becomes
 `demo-data-setup(ace-run)` → `demo-narrative` → DDD, the same pipeline as
-`/ace:demo`. Archetype branching (`atomic-visit` / `multi-stage`; `focus-group`
-is a hard skip) is preserved at the Phase-7 agent level.
+`/ace:demo`. Archetype branching is preserved at the Phase-7 agent level, and it
+names the one EXCEPTION rather than enumerating the archetypes that pass:
+`focus-group` is a hard skip, every other archetype proceeds. (This line used to
+list `atomic-visit` / `multi-stage` only, which is how `longitudinal-visits` hit
+neither branch — ace#1691, ace#2312. See
+`agents/synthetic-data-and-workflows.md`.)
 
 ## The interactive run stays live
 
