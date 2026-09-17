@@ -606,6 +606,16 @@ front half (how the labs-only opp + its data come to exist) differs.
    `spark-facilitator/20260828-0703` the first render read one and looked
    perfect while the same run recomputed 40 minutes later and returned zeros.
 
+   Pass the response's `fields_all_null` **and `fields_suspect`** straight
+   through — the check folds both in, so it can never report clean where labs
+   is already shouting. `fields_suspect` (connect-labs#1882) is the only signal
+   on either side that sees a field which extracted the WRONG value rather than
+   none, because every deadness rule judges a field by what it is MISSING. On
+   ace#2431 a `count` over the JSONB column `flag_reason` returned each
+   worker's `total_visits` — 235 / 315 / 260 where the truth was 17 / 9 / 11 —
+   and nothing was null, nothing was zero, and every gate went green. A wrong
+   number on a dashboard is worse than a blank one: it reads as an answer.
+
    **Do not read the response's own `fields_all_null` as the answer.** It is
    NULL-only, so `count` / `count_distinct` over zero matched records read as a
    healthy `0` — precisely the field type that gates a demo's filter. Verified

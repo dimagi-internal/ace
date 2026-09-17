@@ -51,6 +51,21 @@
  * `pipeline_preview` responses — the fetch belongs to the caller, the rule is
  * testable.
  *
+ * **What that framing cannot see, and why `fields_suspect` is folded in.**
+ * Every rule here judges a field by the ABSENCE of a value, so a field that
+ * extracted the WRONG value passes all of them. ace#2431 is that case: a
+ * `count` over the JSONB base column `flag_reason` returned each worker's
+ * `total_visits` (235 / 315 / 260) where the truth was 17 / 9 / 11, because
+ * `{}` is what an unflagged visit stores and `NULLIF(flag_reason::text, '')`
+ * renders it as the non-empty string `'{}'`. Nothing was null, nothing was
+ * zero, `fields_all_null` was empty, and this check reported clean — a wrong
+ * number on a dashboard is strictly worse than a blank one, because it reads
+ * as an answer. connect-labs#1882 fixed the SQL and added `fields_suspect`
+ * alongside `fields_all_null`; carrying it here is the same obligation as
+ * carrying `fields_all_null` — never report clean where upstream is shouting.
+ * Reported, not blocking: both upstream signals are heuristics with a
+ * legitimate reading, and labs states it reports rather than gates.
+ *
  * Sibling of `lib/dashboard-bindings.ts` (#1160), which asks the same question
  * of the DEFINITION and cannot see data, and of `demo-data-setup-qa` check 7,
  * which asks it of a rendered payload and cannot see the declaration.
@@ -80,6 +95,21 @@ export interface PipelinePreview {
   from_cache?: boolean;
   /** `pipeline_preview(...).fields_all_null` — folded in so we never regress below it. */
   fields_all_null?: string[];
+  /**
+   * `pipeline_preview(...).fields_suspect` — labs' sibling detector for a field
+   * that extracted the WRONG value rather than none (connect-labs#1882,
+   * ace#2431). Folded in for the same reason `fields_all_null` is: this check
+   * must never report clean where an upstream signal is shouting.
+   */
+  fields_suspect?: SuspectField[];
+}
+
+/** One entry of `pipeline_preview(...).fields_suspect`. */
+export interface SuspectField {
+  name: string;
+  /** `equals_row_count` | `filter_matched_nothing` — open-ended by design. */
+  signal?: string;
+  detail?: string;
 }
 
 export type ExtractionFindingKind =
@@ -88,7 +118,8 @@ export type ExtractionFindingKind =
   | 'no-rows'
   | 'field-missing-from-rows'
   | 'field-dead'
-  | 'filtered-field-all-zero';
+  | 'filtered-field-all-zero'
+  | 'field-suspect';
 
 export interface ExtractionFinding {
   kind: ExtractionFindingKind;
@@ -241,6 +272,7 @@ export function checkPipelineFieldsExtract(previews: PipelinePreview[]): Extract
     // Never fall below labs' own detector, whatever our rules decide.
     for (const name of p.fields_all_null ?? []) {
       if (flagged.has(name)) continue;
+      flagged.add(name);
       findings.push({
         kind: 'field-dead',
         pipeline_id: p.pipeline_id,
@@ -249,6 +281,32 @@ export function checkPipelineFieldsExtract(previews: PipelinePreview[]): Extract
         detail:
           `pipeline ${p.pipeline_id}.${name} is named in the preview's own fields_all_null and was ` +
           `not otherwise flagged — labs extracted null for it on every row`,
+      });
+    }
+
+    // The other half of the same obligation. Every rule above judges a field by
+    // its ABSENCE of a value, so a field that extracted the WRONG value is
+    // invisible to all of them — which is exactly how ace#2431 put each
+    // worker's total_visits on a dashboard as a hold count and passed every
+    // gate. labs computes that signal now; refusing to carry it would leave
+    // this check reporting clean while its own upstream is shouting.
+    for (const s of p.fields_suspect ?? []) {
+      if (!s || typeof s.name !== 'string' || s.name === '') continue;
+      if (flagged.has(s.name)) continue;
+      flagged.add(s.name);
+      findings.push({
+        kind: 'field-suspect',
+        pipeline_id: p.pipeline_id,
+        field: s.name,
+        // Reported, not blocking — both upstream signals are heuristics with a
+        // legitimate reading (an all-flagged cohort; a filter that genuinely
+        // matches nothing in the sample), and labs itself states it reports
+        // rather than gates. Same posture as filtered-field-all-zero above.
+        blocking: false,
+        detail:
+          `pipeline ${p.pipeline_id}.${s.name} is named in the preview's own fields_suspect` +
+          `${s.signal ? ` (${s.signal})` : ''} — the field extracted a value, so no deadness rule ` +
+          `here can see it. ${s.detail ?? 'Re-derive the number against the real data before publishing it.'}`,
       });
     }
   }
