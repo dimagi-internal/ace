@@ -126,24 +126,48 @@ const ISSUE = /(?:([A-Za-z][\w.-]*(?:\/[\w.-]+)?)(?=#))?#(\d{3,5})\b/g;
 const RUN = /([a-z][a-z0-9-]{2,40})\/(20\d{6}-\d{4})/g;
 
 /**
- * Normalise a tracker reference to `<repo>#<n>`.
+ * Normalise a tracker reference.
  *
  * ACE's own issues appear as `#1238`, `ace#1238`, `jjackson/ace#1238` and
  * `dimagi-internal/ace#1238` — four spellings of one thing, because the repo
- * changed orgs mid-history. Upstream references keep their repo
- * (`commcare-nova#545`), because collapsing those to a bare number would make
- * a Nova issue indistinguishable from an ACE one in a prune review.
+ * changed orgs mid-history. Those all collapse to `ace#1238`.
+ *
+ * An UPSTREAM reference keeps its owner **verbatim**, org and all —
+ * `voidcraft-labs/commcare-nova#545`, never the repo segment on its own. Two
+ * reasons, and the second is the one that bit: collapsing it to a bare number
+ * would make a Nova issue indistinguishable from an ACE one in a prune review,
+ * and dropping just the ORG makes the reference INVISIBLE to
+ * `scripts/probe-upstream-asks.ts`, whose `REF_RE` requires `owner/repo#n` — a
+ * citation written that way is never classified at all. An earlier cut of this
+ * module shortened every owner to its repo segment and quietly manufactured 93
+ * such references; `test/lib/upstream-asks.test.ts` caught it in CI, which is
+ * the ledger ace#2050 guards.
  */
 export function normaliseIssue(owner: string | undefined, n: string): string {
   if (!owner) return `ace#${n}`;
   const repo = owner.includes('/') ? owner.split('/')[1] : owner;
-  return `${repo}#${n}`;
+  if (repo === 'ace') return `ace#${n}`;
+  return `${owner}#${n}`;
 }
 
-/** Every tracker reference and run id in a source file. */
+/**
+ * Every tracker reference and run id in a source file.
+ *
+ * A doc that cites one upstream issue BOTH ways — fully qualified in one
+ * paragraph and with the org dropped in the next — yields one reference: the
+ * qualified one. They are the same issue, and keeping the short spelling would
+ * plant an org-less reference in the registry that
+ * `scripts/probe-upstream-asks.ts` cannot see (see `normaliseIssue`).
+ * `test/docs/upstream-absence-claims.test.ts` is the live case, citing
+ * `voidcraft-labs/commcare-nova#545` and connect-labs both ways.
+ */
 export function citationsIn(source: string): { issues: string[]; runs: string[] } {
+  const issues = [...new Set([...source.matchAll(ISSUE)].map((m) => normaliseIssue(m[1], m[2])))];
+  const qualifiedTails = new Set(
+    issues.filter((i) => i.includes('/')).map((i) => i.slice(i.indexOf('/') + 1)),
+  );
   return {
-    issues: [...new Set([...source.matchAll(ISSUE)].map((m) => normaliseIssue(m[1], m[2])))],
+    issues: issues.filter((i) => i.includes('/') || !qualifiedTails.has(i)),
     runs: [...new Set([...source.matchAll(RUN)].map((m) => `${m[1]}/${m[2]}`))],
   };
 }
@@ -164,7 +188,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/docs/allowlist-named-authorization.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file; the header argues the invariant from first principles' },
   'test/docs/orchestrator-inline-handoff-fallback.test.ts': { issues: ['ace#2221', 'ace#1103'], observed: 'spark-facilitator/20260907-1120' },
   'test/docs/tracker-link-not-a-counterpart-deliverable.test.ts': { issues: ['ace#2386', 'ace#2378'] },
-  'test/docs/upstream-absence-claims.test.ts': { issues: ['ace#1833', 'connect-labs#1331', 'commcare-nova#545', 'ace#1886', 'ace#1621'] },
+  'test/docs/upstream-absence-claims.test.ts': { issues: ['ace#1833', 'dimagi-internal/connect-labs#1331', 'voidcraft-labs/commcare-nova#545', 'ace#1886', 'ace#1621'] },
   'test/skills/agent-turn-review-not-dispatched.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file' },
   'test/skills/aging-parked-item-not-reflagged.test.ts': { issues: ['ace#818'], note: 'cited at the negative control, not in the file header' },
   'test/skills/app-deploy-contracts.test.ts': { issues: ['ace#1331', 'ace#1295', 'ace#1327'], observed: 'bednet-check-2-visit/20260814-0856', note: 'multi-section file; provenance sits above the second describe' },
@@ -207,7 +231,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/kb-instrument-contamination.test.ts': { issues: ['ace#1018'] },
   'test/skills/large-artifact-localfilepath.test.ts': { issues: ['ace#1918', 'ace#1780', 'ace#1907', 'ace#2055'] },
   'test/skills/learn-suite-reentry-guarded.test.ts': { issues: ['ace#1633', 'ace#1071', 'ace#897'], observed: 'bednet-check-2-visit/20260825-1310' },
-  'test/skills/media-form-tile-revert-guard.test.ts': { issues: ['ace#2413', 'commcare-nova#625'], observed: 'poverty-graduation/20260915-1518' },
+  'test/skills/media-form-tile-revert-guard.test.ts': { issues: ['ace#2413', 'voidcraft-labs/commcare-nova#625'], observed: 'poverty-graduation/20260915-1518' },
   'test/skills/negative-control-ratchet.test.ts': { issues: ['ace#1693', 'ace#1695', 'ace#1701', 'ace#1679', 'ace#1026', 'ace#1688', 'ace#1689', 'ace#2422', 'ace#2396', 'ace#2398', 'ace#1946', 'ace#2429', 'ace#2426'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/no-per-location-cap.test.ts': { issues: [], observed: 'turmeric-market-study/20260916-1650' },
   'test/skills/nova-contracts.test.ts': { issues: [], unknown: 'no issue or run id in the file; predates the convention (added 2026-04, the oldest rail here)' },
@@ -222,7 +246,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/onboarding-email-word-band.test.ts': { issues: ['ace#1673', 'ace#1654'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/payability-key-names-entity-name.test.ts': { issues: ['ace#1958', 'ace#1434'], observed: 'bednet-check-2-visit/20260902-1555' },
   'test/skills/pdd-must-not-assert-mechanisms.test.ts': { issues: ['ace#1213'] },
-  'test/skills/pdd-retired-premise-bidirectional.test.ts': { issues: ['ace#1924', 'ace#1213', 'commcare-nova#458'] },
+  'test/skills/pdd-retired-premise-bidirectional.test.ts': { issues: ['ace#1924', 'ace#1213', 'voidcraft-labs/commcare-nova#458'] },
   'test/skills/pdd-to-work-order-qa/checks.test.ts': { issues: ['ace#1609'], observed: 'malaria-itn-app/20260521-1025' },
   'test/skills/per-run-test-user-switch.test.ts': { issues: ['ace#1289'] },
   'test/skills/post-build-components-not-briefed.test.ts': { issues: ['ace#1632'], observed: 'bednet-check-2-visit/20260825-1310' },

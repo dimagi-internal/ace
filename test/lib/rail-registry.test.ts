@@ -57,8 +57,32 @@ describe('normaliseIssue — four spellings of one issue', () => {
     expect(normaliseIssue('dimagi-internal/ace', '1238')).toBe('ace#1238');
   });
 
-  it('keeps an upstream repo, so a Nova issue is not mistaken for an ACE one', () => {
-    expect(normaliseIssue('voidcraft-labs/commcare-nova', '545')).toBe('commcare-nova#545');
+  it('keeps an upstream owner VERBATIM, org included', () => {
+    // Not just "so a Nova issue is not mistaken for an ACE one" — dropping the
+    // org makes the reference invisible to scripts/probe-upstream-asks.ts,
+    // whose REF_RE requires owner/repo#n. An earlier cut shortened every owner
+    // to its repo segment and planted 93 such references; the ace#2050 ledger
+    // in test/lib/upstream-asks.test.ts caught it in CI.
+    expect(normaliseIssue('voidcraft-labs/commcare-nova', '545')).toBe('voidcraft-labs/commcare-nova#545');
+    expect(normaliseIssue('dimagi-internal/connect-labs', '1331')).toBe('dimagi-internal/connect-labs#1331');
+  });
+});
+
+describe('citationsIn — one issue cited two ways is one reference', () => {
+  it('drops the org-less spelling when the qualified one is present', () => {
+    // test/docs/upstream-absence-claims.test.ts writes both. Keeping the short
+    // form would plant an org-less reference in the registry — the defect this
+    // whole rule exists to avoid.
+    const src = 'voidcraft-labs/commcare-nova#545 closed COMPLETED; see also commcare-nova#545 upstream.';
+    expect(citationsIn(src).issues).toEqual(['voidcraft-labs/commcare-nova#545']);
+  });
+
+  it('NEGATIVE — a different issue number is not collapsed away', () => {
+    const src = 'voidcraft-labs/commcare-nova#545 and voidcraft-labs/commcare-nova#625';
+    expect(citationsIn(src).issues).toEqual([
+      'voidcraft-labs/commcare-nova#545',
+      'voidcraft-labs/commcare-nova#625',
+    ]);
   });
 });
 
