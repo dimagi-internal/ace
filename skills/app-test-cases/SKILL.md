@@ -460,6 +460,75 @@ walk**:
    re-running the overshoot at `speed: 15` / `visibilityPercentage: 30`
    with `centerElement: true` throughout failed at the identical step
    with an identical dump. Do not re-propose tuning them for this class.
+
+   **A guard must carry the same scope as the tap it protects
+   (ace#2426).** If you emit a `when: notVisible` pre-scroll in front of an
+   option tap at all, its condition AND its `scrollUntilVisible` element
+   must carry the **identical `below:` anchor** the tap carries. **A global
+   guard cannot protect a scoped tap.**
+
+   ```yaml
+   # WRONG — global guard, global scroll, scoped tap
+   - runFlow:
+       when:
+         notVisible:
+           text: "No"                                     # <- whole screen
+       commands:
+         - scrollUntilVisible:
+             element:
+               text: "No"                                 # <- whole screen
+   - tapOn:
+       text: "No"
+       below:
+         text: "[\\s\\S]*<this question>[\\s\\S]*"        # <- one region
+
+   # RIGHT — all three address the same region
+   - runFlow:
+       when:
+         notVisible:
+           text: "No"
+           below:
+             text: "[\\s\\S]*<this question>[\\s\\S]*"
+       commands:
+         - scrollUntilVisible:
+             element:
+               text: "No"
+               below:
+                 text: "[\\s\\S]*<this question>[\\s\\S]*"
+   - tapOn:
+       text: "No"
+       below:
+         text: "[\\s\\S]*<this question>[\\s\\S]*"
+   ```
+
+   **Why, from Maestro's own model rather than from one device run.** A
+   `when:` condition owns its OWN element selector (`Condition.visible` /
+   `Condition.notVisible`), `below` is a property OF a selector, and it
+   compiles to a `Filters.below(...)` stage intersected into that
+   selector's filter chain — i.e. it strictly NARROWS the candidate set.
+   So the global guard asks *"is there no `No` anywhere on screen"* while
+   the tap needs *"a `No` below MY question"*. In a field-list holding four
+   identically-labelled Yes/No questions a bare `No` is essentially always
+   visible somewhere, so the guard is a runtime **no-op**, the scroll never
+   fires, and the tap dies the instant its own options fall below the fold
+   — which is the "anchor visible, options not" state ace#1299 § 2 calls
+   the more important half of the bug.
+
+   Live: `poverty-graduation/20260915-1518` failed
+   `Element not found: Text matching regex: No, Below: ...MILK...` on the
+   `g_food7` field-list, with the MILK label visible at the very bottom
+   ([42,2214][1038,2337] on 1080x2400) and BREAD's `No` visible above it at
+   [42,1121][1038,1205]. Scoping all 13 guard/scroll pairs took the leg
+   from `selector-not-found` to `pass` — 43 screenshots, 0 failures, all 14
+   screens.
+
+   This does **not** touch § Quiz / required-input answer-tap rule item 2,
+   whose guard is global because its tap is too (one question per screen,
+   nothing to scope against). The rule is scope PARITY, not "always
+   scope": *the guard may never evaluate a wider region than the tap it
+   protects.* *Enforced:* `option-tap-guard-is-unscoped` in
+   `mcp/mobile/recipe-sanity-probe.ts`, which fires only on a
+   `below:`-scoped tap sitting behind a global guard.
 3. Per label-less EditText child: **`below:` anchored on the question
    label is NOT reliable and is inert whenever the question has a hint
    (ace#1299).** The calibrated layout order is
@@ -572,6 +641,10 @@ Two matcher traps on that screen:
   around the centring scroll for a `tapOn: below:` + `inputText` pair.
   This one needs no Nova data; it is the guarded-vs-unconditional
   discriminator below, made non-optional.
+- `option-tap-guard-is-unscoped` — a GLOBAL `when: notVisible: "<option>"`
+  guard in front of a `below:`-SCOPED option tap. The static enforcement of
+  § A guard must carry the same scope as the tap it protects, below. Needs
+  no Nova data either.
 
 **Every `- inputText` is immediately preceded by `- eraseText`** — on a
 field-list, a standalone question, anywhere. Maestro's `inputText`
@@ -1462,6 +1535,15 @@ For each form-walk segment of a recipe:
 
    Do NOT reach for `scroll` or a fixed swipe count instead — those are
    unguarded by construction and reproduce the q6 failure.
+
+   **This snippet is for a question that owns its screen, and the guard is
+   global because the TAP is global.** Inside a `kind: group` field-list
+   the tap is `below:`-scoped — several identically-labelled questions
+   share one screen — and copying this global guard in front of a scoped
+   tap makes the guard a runtime no-op (ace#2426). There the guard and its
+   scroll must carry the tap's own `below:` anchor: see § group-field-list
+   walk item 2 → **A guard must carry the same scope as the tap it
+   protects**. *Enforced:* `option-tap-guard-is-unscoped`.
 3. For `kind: image` required fields, emit the photo-capture sequence
    (`camera-take-photo` → `camera-shutter-button` → `camera-save-photo`)
    before advance.
