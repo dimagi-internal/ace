@@ -100,6 +100,12 @@ describe('scanStencilTokenDrift', () => {
     // deck — patching the deck is what happened on the run that filed #2429,
     // and it left the next render to reproduce the bug.
     expect(text).toContain('--repair');
+    // And it must NOT tell the reader to interpolate the template id in the
+    // shell. ACE's env is loaded into MCP subprocesses, not the calling shell,
+    // so "$ACE_TRAINING_DECK_TEMPLATE_ID" expands to EMPTY in a Bash tool call
+    // — a remedy that hands the script an empty id is worse than no remedy,
+    // because it fails in a way that looks like the tool is broken (ace#1147).
+    expect(text).not.toContain('"$ACE_TRAINING_DECK_TEMPLATE_ID"');
   });
 
   it('passes the same stencil once the live template is repaired', () => {
