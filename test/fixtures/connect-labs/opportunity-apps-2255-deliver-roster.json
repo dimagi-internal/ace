@@ -1,0 +1,450 @@
+{
+  "_provenance": {
+    "atom": "get_opportunity_apps(2255, 'deliver')",
+    "issue": "dimagi-internal/ace#2432",
+    "run": "poverty-graduation/20260915-1518",
+    "deliver_app_id": "e4594937038c42d2be4d01f45df44209",
+    "deliver_app_version": 7,
+    "verbatim": [
+      "/data/g_consent",
+      "/data/g_consent/consent",
+      "/data/g_consent/consent_declined_note",
+      "/data/g_door",
+      "/data/g_door/eligible_respondent",
+      "/data/g_door/occupied",
+      "/data/g_photo",
+      "/data/g_photo/dwelling_photo",
+      "/data/g_photo/photo_consent",
+      "/data/g_photo/photo_declined_note",
+      "/data/roster",
+      "/data/roster/is_member",
+      "/data/roster/member_flag",
+      "/data/roster/member_name",
+      "/data/roster_complete"
+    ],
+    "envelope": "HQ api/v0.5/application/<id>/ shape — {learn_app, deliver_app} wrapper from commcare_connect/data_export/views.py:AppStructureView; modules[].forms[].questions[] with value/type/relevant/required/constraint/is_group/group/repeat per corehq/apps/app_manager/xform.py",
+    "trimmed": [
+      "Every question below is VERBATIM from the live response; the 118-question app was cut to the roster branch and the two controls it is judged against.",
+      "/data/g_consent/consent_script is omitted — a Trigger whose label is a 2 KB read-aloud consent script, and /data/g_photo/dwelling_photo already supplies a genuinely-absent field.",
+      "The second module (Enrollment and asset delivery) is omitted entirely."
+    ],
+    "synthesized": []
+  },
+  "learn_app": null,
+  "deliver_app": {
+    "id": "e4594937038c42d2be4d01f45df44209",
+    "name": "Poverty Graduation Deliver app",
+    "version": 7,
+    "is_released": false,
+    "modules": [
+      {
+        "name": {
+          "en": "Targeting Survey"
+        },
+        "case_type": "household",
+        "unique_id": "f61eda5eb91c30f7cc216c3acdbbcce5330eef03",
+        "forms": [
+          {
+            "name": {
+              "en": "Household targeting survey"
+            },
+            "xmlns": "http://openrosa.org/formdesigner/42b2810ad3fa433c",
+            "unique_id": "f9dffd96530f4e0da51a2e85804c1069",
+            "questions": [
+              {
+                "comment": null,
+                "constraint": null,
+                "group": null,
+                "hashtagValue": "#form/g_door",
+                "is_group": true,
+                "label": "At the door",
+                "label_ref": "g_door-label",
+                "relevant": null,
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "group",
+                "translations": {
+                  "en": "At the door"
+                },
+                "type": "FieldList",
+                "value": "/data/g_door"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_door",
+                "hashtagValue": "#form/g_door/occupied",
+                "is_group": false,
+                "label": "Is the dwelling occupied?",
+                "label_ref": "g_door-occupied-label",
+                "options": [
+                  {
+                    "label": "Yes",
+                    "label_ref": "g_door-occupied-opt0-label",
+                    "translations": {
+                      "en": "Yes"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No",
+                    "label_ref": "g_door-occupied-opt1-label",
+                    "translations": {
+                      "en": "No"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": null,
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Is the dwelling occupied?"
+                },
+                "type": "Select",
+                "value": "/data/g_door/occupied"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_door",
+                "hashtagValue": "#form/g_door/eligible_respondent",
+                "is_group": false,
+                "label": "Is an eligible adult respondent available to speak for the household?",
+                "label_ref": "g_door-eligible_respondent-label",
+                "options": [
+                  {
+                    "label": "Yes",
+                    "label_ref": "g_door-eligible_respondent-opt0-label",
+                    "translations": {
+                      "en": "Yes"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No",
+                    "label_ref": "g_door-eligible_respondent-opt1-label",
+                    "translations": {
+                      "en": "No"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": "/data/g_door/occupied = 'yes'",
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Is an eligible adult respondent available to speak for the household?"
+                },
+                "type": "Select",
+                "value": "/data/g_door/eligible_respondent"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": null,
+                "hashtagValue": "#form/g_consent",
+                "is_group": true,
+                "label": "Consent",
+                "label_ref": "g_consent-label",
+                "relevant": "/data/g_door/eligible_respondent = 'yes'",
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "group",
+                "translations": {
+                  "en": "Consent"
+                },
+                "type": "FieldList",
+                "value": "/data/g_consent"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_consent",
+                "hashtagValue": "#form/g_consent/consent",
+                "is_group": false,
+                "label": "Did the respondent give consent for the survey?",
+                "label_ref": "g_consent-consent-label",
+                "options": [
+                  {
+                    "label": "Yes",
+                    "label_ref": "g_consent-consent-opt0-label",
+                    "translations": {
+                      "en": "Yes"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No",
+                    "label_ref": "g_consent-consent-opt1-label",
+                    "translations": {
+                      "en": "No"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": null,
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Did the respondent give consent for the survey?"
+                },
+                "type": "Select",
+                "value": "/data/g_consent/consent"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_consent",
+                "hashtagValue": "#form/g_consent/consent_declined_note",
+                "is_group": false,
+                "label": "That is recorded. This visit still counts as attended. Do not ask again and do not ask any of the survey questions. Thank them, leave, and submit this visit before you move on.",
+                "label_ref": "g_consent-consent_declined_note-label",
+                "relevant": "/data/g_consent/consent = 'no'",
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "trigger",
+                "translations": {
+                  "en": "That is recorded. This visit still counts as attended. Do not ask again and do not ask any of the survey questions. Thank them, leave, and submit this visit before you move on."
+                },
+                "type": "Trigger",
+                "value": "/data/g_consent/consent_declined_note"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": null,
+                "hashtagValue": "#form/roster",
+                "is_group": true,
+                "label": "Household roster",
+                "label_ref": "roster-label",
+                "relevant": "/data/g_consent/consent = 'yes'",
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "repeat",
+                "translations": {
+                  "en": "Household roster"
+                },
+                "type": "Repeat",
+                "value": "/data/roster"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/roster",
+                "hashtagValue": "#form/roster/member_name",
+                "is_group": false,
+                "label": "Name or nickname",
+                "label_ref": "roster-member_name-label",
+                "relevant": null,
+                "repeat": "/data/roster",
+                "required": true,
+                "setvalue": null,
+                "tag": "input",
+                "translations": {
+                  "en": "Name or nickname"
+                },
+                "type": "Text",
+                "value": "/data/roster/member_name"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/roster",
+                "hashtagValue": "#form/roster/is_member",
+                "is_group": false,
+                "label": "Does this person count as a member of this household?",
+                "label_ref": "roster-is_member-label",
+                "options": [
+                  {
+                    "label": "Yes",
+                    "label_ref": "roster-is_member-opt0-label",
+                    "translations": {
+                      "en": "Yes"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No",
+                    "label_ref": "roster-is_member-opt1-label",
+                    "translations": {
+                      "en": "No"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": null,
+                "repeat": "/data/roster",
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Does this person count as a member of this household?"
+                },
+                "type": "Select",
+                "value": "/data/roster/is_member"
+              },
+              {
+                "comment": null,
+                "constraint": "sum(/data/roster/member_flag) >= 1",
+                "constraintMsg_ref": "roster_complete-constraintMsg",
+                "group": null,
+                "hashtagValue": "#form/roster_complete",
+                "is_group": false,
+                "label": "Is the household roster complete?",
+                "label_ref": "roster_complete-label",
+                "options": [
+                  {
+                    "label": "Yes, everyone is listed",
+                    "label_ref": "roster_complete-opt0-label",
+                    "translations": {
+                      "en": "Yes, everyone is listed"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No, go back and add someone",
+                    "label_ref": "roster_complete-opt1-label",
+                    "translations": {
+                      "en": "No, go back and add someone"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": "/data/g_consent/consent = 'yes'",
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Is the household roster complete?"
+                },
+                "type": "Select",
+                "value": "/data/roster_complete"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": null,
+                "hashtagValue": "#form/g_photo",
+                "is_group": true,
+                "label": "Photograph of the dwelling",
+                "label_ref": "g_photo-label",
+                "relevant": "/data/g_consent/consent = 'yes'",
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "group",
+                "translations": {
+                  "en": "Photograph of the dwelling"
+                },
+                "type": "FieldList",
+                "value": "/data/g_photo"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_photo",
+                "hashtagValue": "#form/g_photo/photo_consent",
+                "is_group": false,
+                "label": "Is the household willing for you to photograph the dwelling?",
+                "label_ref": "g_photo-photo_consent-label",
+                "options": [
+                  {
+                    "label": "Yes",
+                    "label_ref": "g_photo-photo_consent-opt0-label",
+                    "translations": {
+                      "en": "Yes"
+                    },
+                    "value": "yes"
+                  },
+                  {
+                    "label": "No",
+                    "label_ref": "g_photo-photo_consent-opt1-label",
+                    "translations": {
+                      "en": "No"
+                    },
+                    "value": "no"
+                  }
+                ],
+                "relevant": null,
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "select1",
+                "translations": {
+                  "en": "Is the household willing for you to photograph the dwelling?"
+                },
+                "type": "Select",
+                "value": "/data/g_photo/photo_consent"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_photo",
+                "hashtagValue": "#form/g_photo/dwelling_photo",
+                "is_group": false,
+                "label": "Take a photograph of the dwelling.",
+                "label_ref": "g_photo-dwelling_photo-label",
+                "relevant": "/data/g_photo/photo_consent = 'yes'",
+                "repeat": null,
+                "required": true,
+                "setvalue": null,
+                "tag": "upload",
+                "translations": {
+                  "en": "Take a photograph of the dwelling."
+                },
+                "type": "Image",
+                "value": "/data/g_photo/dwelling_photo"
+              },
+              {
+                "comment": null,
+                "constraint": null,
+                "group": "/data/g_photo",
+                "hashtagValue": "#form/g_photo/photo_declined_note",
+                "is_group": false,
+                "label": "That is recorded. Do not take a photograph. This visit still counts and you are still paid for it. It will be flagged for review, so there is nothing more for you to do here. Carry on and submit the visit.",
+                "label_ref": "g_photo-photo_declined_note-label",
+                "relevant": "/data/g_photo/photo_consent = 'no'",
+                "repeat": null,
+                "required": false,
+                "setvalue": null,
+                "tag": "trigger",
+                "translations": {
+                  "en": "That is recorded. Do not take a photograph. This visit still counts and you are still paid for it. It will be flagged for review, so there is nothing more for you to do here. Carry on and submit the visit."
+                },
+                "type": "Trigger",
+                "value": "/data/g_photo/photo_declined_note"
+              },
+              {
+                "calculate": "if(/data/roster/is_member = 'yes', 1, 0)",
+                "comment": null,
+                "constraint": null,
+                "group": "/data/roster",
+                "hashtagValue": "#form/roster/member_flag",
+                "label": "#form/roster/member_flag",
+                "relevant": null,
+                "repeat": "/data/roster",
+                "setvalue": null,
+                "tag": "hidden",
+                "translations": {},
+                "type": "DataBindOnly",
+                "value": "/data/roster/member_flag"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

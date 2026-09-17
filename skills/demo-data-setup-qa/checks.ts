@@ -395,7 +395,10 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
  *    residual violations were fields labs STRUCTURALLY cannot simulate could
  *    never pass. On `poverty-graduation/20260908-0510` all six residuals were
  *    a REPEAT-group roster (the generator emits one flat object, not an
- *    array), a `Trigger` read-aloud label (CommCare submits no value for one),
+ *    array — TRUE THEN, REFUTED SINCE: the manifest carries
+ *    `repeat_groups` and `auditDataset` reads inside an array, so a repeat is
+ *    built, not exempted, ace#2432), a `Trigger` read-aloud label (CommCare
+ *    submits no value for one),
  *    or an image with no labs `ImageConfig` corpus — with zero off-branch,
  *    zero integrality and an empty `unparsed[]`. The only two routes to green
  *    were to narrow the spec, which is the behaviour defect 1 exists to
@@ -478,8 +481,10 @@ function partitionOmissions(declared: DeclaredOmission[] | undefined): {
 const OMISSION_HINT =
   'A residual the labs generator STRUCTURALLY cannot emit is declared, not narrowed away: add a ' +
   '{field, reason} entry to declared_omissions[] in 7-synthetic/branch-scrub_report.yaml naming why the ' +
-  'value cannot exist (a REPEAT-group roster the flat generator cannot produce, a Trigger read-aloud label ' +
-  'CommCare submits no value for, an image with no labs ImageConfig corpus). The reason is REQUIRED — an ' +
+  'value cannot exist (a Trigger read-aloud label CommCare submits no value for, an image with no labs ' +
+  'ImageConfig corpus). A REPEAT-group roster is NOT one of them any more: the manifest carries ' +
+  'BeneficiaryCohort.repeat_groups and auditDataset reads inside an array, so build the repeat rather than ' +
+  'exempting it (dimagi-internal/ace#2432). The reason is REQUIRED — an ' +
   'unevidenced entry exempts nothing. This escape covers conditional-missing and an unresolved scrub field ' +
   'only: an off-branch value, an integrality violation and an unparsed gate are never exempt, because each ' +
   'of those is a dataset defect the scrub or an added spec entry can actually fix (dimagi-internal/ace#2225).';

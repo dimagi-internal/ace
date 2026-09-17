@@ -151,40 +151,66 @@ function compare(a: number, op: CrossFieldRule['op'], b: number): boolean {
  * reads as `undefined` — precisely the value flat indexing produced for it
  * before — so nothing that used to pass starts failing, and a flat record
  * resolves to exactly the same values it always did.
+ *
+ * A REPEAT group is the same defect one level down (ace#2432). `leafPaths`
+ * treated an array as an opaque leaf, so a CommCare Repeat that was correctly
+ * materialised — `form.roster: [{member_name, is_member, member_flag}, …]` —
+ * had no path for its CHILDREN, and each of them read as absent while its
+ * gate, at the record's top level, resolved fine. Measured on
+ * `poverty-graduation/20260915-1518` (deliver app e4594937038c42d2be4d01f45df44209
+ * v7, 2,207 records): `member_name`, `is_member` and `member_flag` each
+ * reported `conditional-missing` on 1,379 records — the exact 1,379 that carry
+ * a non-empty `roster` array, and whose `member_flag` sums re-derive the app's
+ * own `/data/member_count` with 0 failures. The run had to spend three
+ * `declared_omissions` entries exempting data that was present and correct, so
+ * doing the harder, more faithful thing scored the same as skipping it.
+ *
+ * `read` therefore reads a repeat child as its first PRESENT row value; the
+ * per-value checks below go through `readAll`, so a fraction in the third
+ * roster row is still counted rather than hidden behind the first.
  */
-function fieldReader(rows: Row[]): (index: number, field: string, xpath?: string) => unknown {
+function fieldReader(rows: Row[]): {
+  read: (index: number, field: string, xpath?: string) => unknown;
+  readAll: (index: number, field: string, xpath?: string) => unknown[];
+} {
   const indexes = rows.map((r) => leafPaths(r as Container));
-  return (index, field, xpath) => {
-    const ref = resolveField(indexes[index], field, xpath);
-    return ref ? ref[0][ref[1]] : undefined;
+  return {
+    read: (index, field, xpath) => readRefs(resolveFieldRefs(indexes[index], field, xpath)),
+    readAll: (index, field, xpath) => refValues(resolveFieldRefs(indexes[index], field, xpath)),
   };
 }
 
 export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   const violations: ConstraintViolation[] = [];
-  const read = fieldReader(rows);
+  const { read, readAll } = fieldReader(rows);
   const add = (kind: ConstraintKind, field: string | undefined, count: number, detail: string) => {
     if (count > 0) violations.push({ kind, field, count, detail });
   };
+  /** Records with at least one value of `field` that a predicate rejects. */
+  const recordsWhereAny = (field: string, bad: (v: number) => boolean) =>
+    rows.filter((_, i) =>
+      readAll(i, field).some((raw) => {
+        const v = num(raw);
+        return v !== null && bad(v);
+      }),
+    ).length;
 
   for (const f of spec.integerFields ?? []) {
-    const vals = rows.map((_, i) => num(read(i, f.field))).filter((v): v is number => v !== null);
-    const nonInt = vals.filter((v) => !Number.isInteger(v)).length;
+    const nonInt = recordsWhereAny(f.field, (v) => !Number.isInteger(v));
     add(
       'non-integer', f.field, nonInt,
       `${f.field} is a COUNT and must be an integer — ${nonInt} record(s) carry a fraction ` +
         '(the manifest draws it from a continuous distribution unless the HQ schema types it Int)',
     );
-    const oob = vals.filter(
+    const oob = recordsWhereAny(
+      f.field,
       (v) => (f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max),
-    ).length;
+    );
     add('out-of-bounds', f.field, oob, `${f.field} outside its stated bounds [${f.min ?? '-∞'}, ${f.max ?? '∞'}]`);
   }
 
   for (const field of spec.wholeCurrencyFields ?? []) {
-    const bad = rows
-      .map((_, i) => num(read(i, field)))
-      .filter((v): v is number => v !== null && !Number.isInteger(v)).length;
+    const bad = recordsWhereAny(field, (v) => !Number.isInteger(v));
     add('fractional-currency', field, bad, `${field} must be a whole currency unit — ${bad} record(s) are fractional`);
   }
 
@@ -602,18 +628,45 @@ export interface ScrubReport {
 
 type Container = Record<string, unknown>;
 
+/** One place a leaf value lives: its owning object and the key on it. */
+type LeafRef = [Container, string];
+
 /**
  * Every leaf path in a record, dotted — `form.net_check.slept_under_net`.
  * Built once per record so resolution does not depend on knowing whether the
  * fixture nests under `form`, `form_json.form`, or nothing at all.
+ *
+ * A path maps to a LIST of refs because of REPEAT groups (ace#2432). A
+ * CommCare Repeat materialises as a JSON array of row objects, so
+ * `/data/roster/member_name` exists once PER ROW, and eliding the row index
+ * from the path is what lets one spec field address all of them at once:
+ * `form.roster.member_name` → one ref per roster row. Every other shape
+ * yields a single-element list, so a flat or group-nested record resolves to
+ * exactly the values it always did.
+ *
+ * The array itself is ALSO indexed as a leaf (`form.roster`), unchanged — a
+ * spec field naming the repeat group is resolved and scrubbed as one value,
+ * which is how an off-branch repeat is removed whole.
  */
-function leafPaths(record: Container, prefix = '', out: Map<string, [Container, string]> = new Map()) {
+function leafPaths(record: Container, prefix = '', out: Map<string, LeafRef[]> = new Map()) {
+  const push = (path: string, ref: LeafRef) => {
+    const at = out.get(path);
+    if (at) at.push(ref);
+    else out.set(path, [ref]);
+  };
   for (const [key, value] of Object.entries(record)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       leafPaths(value as Container, path, out);
     } else {
-      out.set(path, [record, key]);
+      push(path, [record, key]);
+      if (Array.isArray(value)) {
+        for (const element of value) {
+          if (element !== null && typeof element === 'object' && !Array.isArray(element)) {
+            leafPaths(element as Container, path, out);
+          }
+        }
+      }
     }
   }
   return out;
@@ -626,12 +679,13 @@ function leafPaths(record: Container, prefix = '', out: Map<string, [Container, 
  * and a flat `slept_under_net` alike. A tie (two different leaves that both
  * match) resolves to nothing and is reported — guessing which one the form
  * meant is how a scrub would delete real data.
+ *
+ * Returns every ref at the winning path: one for a plain leaf, one per row for
+ * a repeat-group child. Rows of the SAME repeat are not a tie — they are one
+ * field asked many times, and the tie rule still fires on two DIFFERENT paths
+ * that match equally well.
  */
-function resolveField(
-  index: Map<string, [Container, string]>,
-  field: string,
-  xpath?: string,
-): [Container, string] | null {
+function resolveFieldRefs(index: Map<string, LeafRef[]>, field: string, xpath?: string): LeafRef[] {
   const wanted = (xpath ? xpath.split('/').filter(Boolean) : [field]).slice();
   const candidates: { key: string; score: number }[] = [];
   for (const key of index.keys()) {
@@ -647,11 +701,33 @@ function resolveField(
     }
     candidates.push({ key, score });
   }
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) return [];
   const best = Math.max(...candidates.map((c) => c.score));
   const winners = candidates.filter((c) => c.score === best);
-  if (winners.length !== 1) return null;
-  return index.get(winners[0].key) ?? null;
+  if (winners.length !== 1) return [];
+  return index.get(winners[0].key) ?? [];
+}
+
+/** Every value the field holds in this record — one per repeat row. */
+function refValues(refs: LeafRef[]): unknown[] {
+  return refs.map(([container, key]) => container[key]);
+}
+
+/**
+ * The single value a field reads as for a whole record.
+ *
+ * The first PRESENT value, else the first value, else `undefined`. For
+ * anything but a repeat there is exactly one ref and this is the identity. For
+ * a repeat it is what makes "the form asked for this and got an answer" true
+ * of a materialised roster: a row carrying `member_name` answers the question,
+ * even if a later row does not (ace#2432). It is deliberately NOT "any value
+ * at all" — an empty array, and rows that all lack the leaf, both resolve to
+ * nothing and still read as absent.
+ */
+function readRefs(refs: LeafRef[]): unknown {
+  const values = refValues(refs);
+  const first = values.find((v) => present(v));
+  return first !== undefined ? first : values[0];
 }
 
 /**
@@ -720,11 +796,11 @@ export function scrubOffBranchFields<T extends Container>(
     for (const record of scrubbed) {
       const index = leafPaths(record);
       const allOnBranch = gates.every((g) => {
-        const ref = resolveField(index, g.requiredWhen.field, g.requiredWhen.path);
-        return ref !== null && ref[0][ref[1]] === g.requiredWhen.equals;
+        const refs = resolveFieldRefs(index, g.requiredWhen.field, g.requiredWhen.path);
+        return refs.length > 0 && readRefs(refs) === g.requiredWhen.equals;
       });
       if (allOnBranch) everFullyOnBranch.add(field);
-      if (resolveField(index, field, gates[0].path)) everResolved.add(field);
+      if (resolveFieldRefs(index, field, gates[0].path).length > 0) everResolved.add(field);
       if (everFullyOnBranch.has(field) && everResolved.has(field)) break;
     }
   }
@@ -738,19 +814,24 @@ export function scrubOffBranchFields<T extends Container>(
 
     for (const record of scrubbed) {
       const index = leafPaths(record);
-      const gateRef = resolveField(index, spec.requiredWhen.field, spec.requiredWhen.path);
-      const fieldRef = resolveField(index, spec.field, spec.path);
-      if (!gateRef) {
+      const gateRefs = resolveFieldRefs(index, spec.requiredWhen.field, spec.requiredWhen.path);
+      // Every place the field lives in this record — one per repeat row
+      // (ace#2432). An off-branch value is impossible in EVERY row, so a
+      // partial delete would leave data the form could not have collected.
+      const fieldRefs = resolveFieldRefs(index, spec.field, spec.path);
+      if (gateRefs.length === 0) {
         recordsGateMissing += 1;
         continue;
       }
-      const [gateContainer, gateKey] = gateRef;
-      if (gateContainer[gateKey] === spec.requiredWhen.equals) continue; // on-branch: keep
-      if (!fieldRef) continue; // already absent — the idempotent case
-      const [container, key] = fieldRef;
-      if (container[key] === undefined) continue;
-      delete container[key];
-      recordsScrubbed += 1;
+      if (readRefs(gateRefs) === spec.requiredWhen.equals) continue; // on-branch: keep
+      if (fieldRefs.length === 0) continue; // already absent — the idempotent case
+      let cleared = false;
+      for (const [container, key] of fieldRefs) {
+        if (container[key] === undefined) continue;
+        delete container[key];
+        cleared = true;
+      }
+      if (cleared) recordsScrubbed += 1;
     }
 
     totalCleared += recordsScrubbed;
