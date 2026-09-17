@@ -142,6 +142,54 @@ See `docs/superpowers/specs/2026-05-10-state-consolidation.md` for
 historical context (the original design had cross-run inheritance via
 a seed step; that was reverted in favour of run independence).
 
+**Write an EXTERNAL identifier in the step that mints it — never batch it
+to phase end (ace#2412).** The Phase Write-Back Contract below lands
+`phases.<phase>` on *completion*, and for `status` / `verdict` / `steps`
+that is right. It is wrong for the ids of objects that exist **outside**
+ACE: a Nova app, a Connect program or opportunity, an OCS chatbot, a
+labs environment. Those are created early in a phase, are not idempotent,
+and cost real money or real state to recreate — so the moment a create
+call returns an id, that id belongs in `products` before the next step
+runs.
+
+This is the identifier half of the rule § Incremental writes already
+states for ARTIFACTS ("write each artifact to Drive the moment it is
+produced; an interrupted phase that batched its writes persists
+**nothing**"). The artifact half was railed; the identifier half was not,
+and identifiers are the part that cannot be regenerated safely.
+
+`verify_phase_products` already supports this: an in-flight phase
+classifies as `mode: fragment` and is validated for SHAPE only, so an
+incremental `products` write passes the fence. The contract simply never
+asked for one.
+
+**What it costs when skipped.** On `poverty-graduation/20260915-1518` the
+Phase 3 agent and two of its subagents were killed mid-phase by the
+harness watchdog. It had written its Drive artifacts incrementally (so
+`verify_phase_artifacts` reported real partial progress: 3/10 required)
+but nothing to `products` — while **two Nova apps already existed at
+`status: complete`**. `run_state.yaml` showed `products: null`, so the
+apps were recoverable only by reading `nova_app_id` out of artifact
+frontmatter and cross-checking a live `search_apps`.
+
+Worse, it silently flips a branch in ACE's own resume procedure.
+`ace-orchestrator.md` § Step 2a reads: *if the run records
+`products.apps.{learn,deliver}.nova_app_id` → assert both ids are in
+`list_apps`; if no app ids are recorded yet (a fresh run that has built
+nothing) → assert `get_hq_connection`*. With no recorded ids the resume
+takes the second branch and concludes "built nothing" — which is false —
+so the natural recovery re-dispatches the build skills and **mints a
+second pair of Nova apps**. The orphan class `/ace:sweep` exists to clean
+would then be manufactured by the recovery path rather than by the
+failure. The same shape applies to `connect-opp-setup` (a second
+opportunity also burns a shared `DeliverUnit` binding) and to
+`ocs-agent-setup` (a second chatbot).
+
+**So:** the id of any externally-created object is written to
+`products` in the same step that creates it. `commcare-setup`,
+`connect-setup`, `ocs-setup` and `synthetic-data-and-workflows` are the
+four phases this binds.
+
 **`initiated_by`** — the operator who kicked off the opp. Set once in
 "Starting a New Opportunity" from `git config user.email`. Never overwritten.
 Fallback to the literal string `unknown` if git config is unset.

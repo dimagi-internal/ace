@@ -312,6 +312,15 @@ gate is the loop's own `terminal_status`, not anyone's read of the screenshots.
 
 ### Step 4: Write-back + summary
 
+**Write each external identifier the moment its create call returns — do NOT batch
+it into this block (ace#2412).** The labs env, `labs_opp_id`, workflow and run ids are external labs objects that a re-run duplicates. A phase killed before reaching this
+section leaves `products: null` while the external object already exists, and the
+resume path then reads the run as having created nothing.
+`verify_phase_products` validates an in-flight phase for shape only
+(`mode: fragment`), so the incremental write passes the fence. Rationale:
+`agents/orchestrator-reference.md § Write an EXTERNAL identifier in the step that
+mints it`.
+
 Write the `phases.synthetic-data-and-workflows` block per
 [`§ Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract).
 **Populate `products.synthetic` in the shape ace-web reads**
