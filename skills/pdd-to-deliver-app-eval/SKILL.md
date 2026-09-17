@@ -443,6 +443,18 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
        to a field worker while every artifact in the run reports the register
        shipped — the same no-symptom class as an invented option list, which is
        why it grades as a blocker rather than a deduction.
+     - **The `lookup_bind_audit:` block missing, or `failures` not `0` →
+       `[BLOCKER]` → `fail` (ace#2143).** This grades the WHOLE APP, not just
+       the declared register, and is the only clause here that fires on a build
+       with no register declared at all — so read it even when the
+       `option_register:` block is legitimately absent. `sites: 0` is the
+       correct value for an app with no lookup-backed select; an app that HAS
+       one and carries no block reads as "the sweep did not run". The failure it
+       exists for is `duplicate-values`: on
+       `spark-facilitator/20260906-2233` a build-authored table repeated `other`
+       on seven rows (unique within each filter partition, not across the
+       table), `app-deploy` could not upload the Deliver app at all, and
+       everything ACE had written said the register was bound and verified.
 
      **Why a blocker rather than an `option_source_gaps` entry.** Step 4f
      already *permitted* this: its halt is scoped to payment correctness
