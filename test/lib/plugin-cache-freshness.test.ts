@@ -149,3 +149,125 @@ describe('isStaleCacheModuleError', () => {
     expect(isStaleCacheModuleError('HTTP 502 /a/x/opportunity/: bad gateway')).toBe(false);
   });
 });
+
+// ── ace#2394: the old cache dir is STILL THERE and the child is running it ──
+
+import { classifyMcpChildVersionDrift } from '../../lib/plugin-cache-freshness.js';
+
+/**
+ * The live 2026-09-15 observation, verbatim from the issue: five MCP children
+ * on 0.13.1445 while the registry read 0.13.1446, BOTH directories present.
+ * `verify_run_claims` shipped in 1446, so every claim came back NOT REACHED
+ * and the mechanism reported its own absence as a property of the run.
+ */
+const CACHE = '/Users/x/.claude/plugins/cache/ace/ace';
+const drifted1445 = ['google-drive', 'ocs', 'connect', 'mobile', 'decisions'].map((s, i) => ({
+  pid: 81786 + i,
+  command: `npm exec tsx ${CACHE}/0.13.1445/mcp/${s}-server.ts`,
+  rootExists: true,
+  rootVersionFile: '0.13.1445',
+}));
+
+describe('classifyMcpChildVersionDrift (ace#2394)', () => {
+  it('WARNs on the live 0.13.1445-under-1446 case that both other probes pass', () => {
+    const r = classifyMcpChildVersionDrift({
+      procs: drifted1445,
+      installedVersion: '0.13.1446',
+    });
+    expect(r.verdict).toBe('warn');
+    expect(r.drifted).toHaveLength(5);
+    expect(r.drifted.map((d) => d.server).sort()).toEqual([
+      'connect', 'decisions', 'google-drive', 'mobile', 'ocs',
+    ]);
+    expect(r.reason).toContain('0.13.1445');
+    expect(r.reason).toContain('0.13.1446');
+    expect(r.reason).toContain('Cmd-Q');
+  });
+
+  it('MUTATION: cache_freshness is GREEN on that same corpus — the reason this exists', () => {
+    // rootExists is true for all five, so the ace#970 classifier passes. If
+    // this ever goes red, the new check is redundant and should be deleted.
+    const cache = classifyPluginCacheFreshness({
+      procs: drifted1445.map(({ pid, command, rootExists }) => ({ pid, command, rootExists })),
+      installedVersion: '0.13.1446',
+    });
+    expect(cache.verdict).toBe('pass');
+  });
+
+  it('judges the VERSION FILE, not the directory name', () => {
+    // CLAUDE.md § Check the running subprocess: cache/ace/ace/0.13.667/ held
+    // 0.13.670 code on 2026-07-27. A dir-name check calls that stale; it is not.
+    const r = classifyMcpChildVersionDrift({
+      procs: [{
+        pid: 1,
+        command: `npm exec tsx ${CACHE}/0.13.667/mcp/ocs-server.ts`,
+        rootExists: true,
+        rootVersionFile: '0.13.670',
+      }],
+      installedVersion: '0.13.670',
+    });
+    expect(r.verdict).toBe('pass');
+  });
+
+  it('falls back to the directory name when VERSION is unreadable, and SAYS so', () => {
+    const r = classifyMcpChildVersionDrift({
+      procs: [{
+        pid: 1,
+        command: `npm exec tsx ${CACHE}/0.13.1445/mcp/ocs-server.ts`,
+        rootExists: true,
+        rootVersionFile: null,
+      }],
+      installedVersion: '0.13.1446',
+    });
+    expect(r.verdict).toBe('warn');
+    expect(r.drifted[0].fromDirName).toBe(true);
+    expect(r.reason).toContain('VERSION unreadable');
+  });
+
+  it('PASSes when the children match, and names the count it judged', () => {
+    const r = classifyMcpChildVersionDrift({
+      procs: [{
+        pid: 1,
+        command: `npm exec tsx ${CACHE}/0.13.1446/mcp/ocs-server.ts`,
+        rootExists: true,
+        rootVersionFile: '0.13.1446',
+      }],
+      installedVersion: '0.13.1446',
+    });
+    expect(r.verdict).toBe('pass');
+    expect(r.reason).toContain('all 1 MCP subprocess');
+  });
+
+  it('leaves a DELETED root to cache_freshness rather than double-reporting it', () => {
+    const r = classifyMcpChildVersionDrift({
+      procs: [{
+        pid: 1,
+        command: `npm exec tsx ${CACHE}/0.13.1445/mcp/ocs-server.ts`,
+        rootExists: false,
+        rootVersionFile: null,
+      }],
+      installedVersion: '0.13.1446',
+    });
+    expect(r.verdict).toBe('skip');
+  });
+
+  it('does NOT judge a dev checkout', () => {
+    const r = classifyMcpChildVersionDrift({
+      procs: [{
+        pid: 1,
+        command: 'npm exec tsx /Users/x/src/ace/mcp/ocs-server.ts',
+        rootExists: true,
+        rootVersionFile: null,
+      }],
+      installedVersion: '0.13.1446',
+    });
+    expect(r.verdict).toBe('skip');
+  });
+
+  it('SKIPs rather than guessing when the registry version is unknown', () => {
+    expect(classifyMcpChildVersionDrift({ procs: drifted1445 }).verdict).toBe('skip');
+    expect(
+      classifyMcpChildVersionDrift({ procs: drifted1445, installedVersion: '  ' }).verdict,
+    ).toBe('skip');
+  });
+});

@@ -29,10 +29,12 @@
  */
 import { execFileSync } from 'node:child_process';
 import { statSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { classifyEnvFreshness, type McpProc } from '../lib/env-freshness.js';
 import {
   classifyPluginCacheFreshness,
+  classifyMcpChildVersionDrift,
   pluginRootFromCommand,
 } from '../lib/plugin-cache-freshness.js';
 
@@ -184,6 +186,35 @@ function main(): void {
     console.log(`PASS cache_freshness: ${cache.reason}`);
   } else {
     console.log(`SKIP cache_freshness: ${cache.reason}`);
+  }
+
+  // ace#2394 — the sibling of cache_freshness, for when the OLD directory is
+  // still present. Same process list again; one extra read of <root>/VERSION
+  // per child, because the directory NAME can lie (CLAUDE.md § Check the
+  // running subprocess: cache/ace/ace/0.13.667/ once held 0.13.670 code).
+  const drift = classifyMcpChildVersionDrift({
+    procs: procs.map((p) => {
+      const parsed = pluginRootFromCommand(p.command);
+      const rootExists = parsed ? existsSync(parsed.root) : false;
+      let rootVersionFile: string | null = null;
+      if (parsed && rootExists) {
+        try {
+          rootVersionFile = readFileSync(join(parsed.root, 'VERSION'), 'utf8').trim();
+        } catch {
+          rootVersionFile = null;
+        }
+      }
+      return { pid: p.pid, command: p.command, rootExists, rootVersionFile };
+    }),
+    installedVersion: readInstalledVersion(),
+  });
+
+  if (drift.verdict === 'warn') {
+    console.log(`WARN mcp_child_version: ${drift.reason}`);
+  } else if (drift.verdict === 'pass') {
+    console.log(`PASS mcp_child_version: ${drift.reason}`);
+  } else {
+    console.log(`SKIP mcp_child_version: ${drift.reason}`);
   }
 }
 
