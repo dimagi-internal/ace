@@ -268,11 +268,14 @@ export interface StandingDomainAudit {
   missing: StandingFabricationDomain[];
   /** The contact-exactness half (ace#2216). Scoped to the whole prompt. */
   contactExactness: ContactExactnessAudit;
+  /** The retrieval-fallback half (ace#2422). Scoped to the whole prompt. */
+  retrievalFallback: ContactExactnessAudit;
   /**
    * True iff the anti-fabrication section exists with every standing domain
-   * covered AND the contact-exactness protection is present. One verdict, one
-   * exit code — the gate has a single runtime caller and adding a second
-   * script is how a preventer stops being called (ace#2015).
+   * covered AND the contact-exactness protection is present AND the
+   * retrieval-fallback protection is present. One verdict, one exit code —
+   * the gate has a single runtime caller and adding a second script is how a
+   * preventer stops being called (ace#2015).
    */
   ok: boolean;
 }
@@ -375,6 +378,93 @@ export function auditContactExactness(prompt: string): ContactExactnessAudit {
   return { blocksPresent: true, blocks, covered, missing, ok: missing.length === 0 };
 }
 
+//
+// ── The RETRIEVAL-FALLBACK obligation (dimagi-internal/ace#2422) ─────────────
+//
+// ace#2216's three contact-exactness obligations are necessary and not
+// sufficient. On `poverty-graduation/20260915-1518` a composed prompt carried
+// all three, exited 0, and the bot still answered a content-heavy prompt
+// with `ace@dimagi.com` — the wrong domain. Root cause: retrieval-slot
+// competition. The contacts page is small (~853 bytes); a content-heavy
+// answer fills `max_results: 20` with its own citations, so on that turn
+// nothing about contacts was actually retrieved. "Never supply one from
+// general knowledge" (obligation `no-general-knowledge`) does not stop this,
+// because the model does not experience its own recall as "general
+// knowledge" — it produces a plausible, resolving address and moves on. A
+// DIFFERENT prompt in the same round, whose answer left retrieval slots free,
+// got `ace@dimagi-ai.com` right — so the gap is not "the bot doesn't know the
+// rule", it is "the rule has no per-answer check attached to it."
+//
+// The missing behaviour is a per-answer check with a hard fallback: before
+// writing any contact address, confirm something was actually retrieved IN
+// THIS ANSWER; if not, write no address at all. That is mechanically
+// different from a standing prohibition — it is checkable turn by turn,
+// rather than a belief the model can hold while still recalling.
+//
+// This is a SEPARATE obligation from `CONTACT_EXACTNESS_OBLIGATIONS`, not a
+// fourth entry merged into that array. The golden template
+// (`scripts/bootstrap-ocs-golden-template.ts`) inlines the address literally
+// and never retrieves anything — there is no retrieval for it to check. The
+// `CONTACT_EXACTNESS_OBLIGATIONS` array is deliberately tested against that
+// template read off disk (below) as the control that the audit measures a
+// REAL protection and not an invented phrasing; folding a
+// retrieval-specific obligation into the same array would fail that control
+// for a reason that has nothing to do with the template regressing. The
+// two audits protect different failure surfaces — static inlining vs. RAG
+// retrieval — and stay separate on purpose.
+//
+
+/** The retrieval-fallback obligation (dimagi-internal/ace#2422). */
+export const RETRIEVAL_FALLBACK_OBLIGATION: ContactExactnessObligation = {
+  id: 'no-address-if-not-retrieved',
+  label: 'Write no address at all when nothing was retrieved for THIS answer',
+  pattern:
+    /(?=.*\bretriev\w*\b)(?=.*\bthis\b[^|]{0,40}\b(?:answer|response|reply|turn)\b)(?=.*\b(?:no address at all|no address|not (?:write|include|give|state|provide) an address|write no address|omit the address)\b)/i,
+  why:
+    'A standing "never use general knowledge" rule is not enough on its own — ' +
+    'round 1 of poverty-graduation/20260915-1518 carried all three ace#2216 ' +
+    'obligations, exited 0, and the bot still emitted ace@dimagi.com, because ' +
+    'retrieval-slot competition left nothing about contacts retrieved on that ' +
+    'turn and the model fell back to a plausible-looking recall it does not ' +
+    'experience as "general knowledge." The fallback has to be a per-answer ' +
+    'check: confirm something was retrieved THIS turn, and if not, write no ' +
+    'address at all rather than improvise one.',
+};
+
+/**
+ * Audit a composed prompt for the retrieval-fallback obligation
+ * (dimagi-internal/ace#2422): before writing a contact address, the prompt
+ * must instruct the bot to confirm it was retrieved in THIS answer and, if
+ * not, write no address at all. Matched against the same contact-bearing
+ * blocks as `auditContactExactness`, and kept as a separate audit — see the
+ * comment above `RETRIEVAL_FALLBACK_OBLIGATION` for why it is not folded
+ * into `CONTACT_EXACTNESS_OBLIGATIONS`.
+ */
+export function auditRetrievalFallback(prompt: string): ContactExactnessAudit {
+  const blocks = extractContactProtectionBlocks(prompt);
+  if (blocks.length === 0) {
+    return {
+      blocksPresent: false,
+      blocks: [],
+      covered: [],
+      missing: [RETRIEVAL_FALLBACK_OBLIGATION],
+      ok: false,
+    };
+  }
+
+  const haystack = blocks.map(normalize).join(' | ');
+  const covered: string[] = [];
+  const missing: ContactExactnessObligation[] = [];
+
+  if (RETRIEVAL_FALLBACK_OBLIGATION.pattern.test(haystack)) {
+    covered.push(RETRIEVAL_FALLBACK_OBLIGATION.id);
+  } else {
+    missing.push(RETRIEVAL_FALLBACK_OBLIGATION);
+  }
+
+  return { blocksPresent: true, blocks, covered, missing, ok: missing.length === 0 };
+}
+
 /** Collapse markdown emphasis and whitespace so label matching is not brittle. */
 function normalize(text: string): string {
   return text
@@ -395,6 +485,7 @@ function normalize(text: string): string {
  */
 export function auditComposedPrompt(prompt: string): StandingDomainAudit {
   const contactExactness = auditContactExactness(prompt);
+  const retrievalFallback = auditRetrievalFallback(prompt);
   const section = extractAntiFabricationSection(prompt);
   if (section === null) {
     return {
@@ -403,6 +494,7 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
       covered: [],
       missing: [...STANDING_FABRICATION_DOMAINS],
       contactExactness,
+      retrievalFallback,
       ok: false,
     };
   }
@@ -423,7 +515,8 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
     covered,
     missing,
     contactExactness,
-    ok: missing.length === 0 && contactExactness.ok,
+    retrievalFallback,
+    ok: missing.length === 0 && contactExactness.ok && retrievalFallback.ok,
   };
 }
 
@@ -437,6 +530,17 @@ export function formatContactExactnessReport(audit: ContactExactnessAudit): stri
     : '[CONTACT-EXACTNESS] the composed prompt says nothing about contacts at ' +
       `all. All ${CONTACT_EXACTNESS_OBLIGATIONS.length} obligations are missing — ` +
       'the golden template guard does NOT survive the publish (ace#2216).';
+  return [head, ...audit.missing.map((o) => `  - ${o.label} (${o.id}) — ${o.why}`)].join('\n');
+}
+
+/** The retrieval-fallback half of the operator report (ace#2422). Empty when it passes. */
+export function formatRetrievalFallbackReport(audit: ContactExactnessAudit): string {
+  if (audit.ok) return '';
+  const head = audit.blocksPresent
+    ? '[RETRIEVAL-FALLBACK] the composed prompt does not carry the ' +
+      'no-address-if-not-retrieved fallback:'
+    : '[RETRIEVAL-FALLBACK] the composed prompt says nothing about contacts ' +
+      'at all, so it cannot state the retrieval-fallback either (ace#2422).';
   return [head, ...audit.missing.map((o) => `  - ${o.label} (${o.id}) — ${o.why}`)].join('\n');
 }
 
@@ -463,6 +567,9 @@ export function formatStandingDomainReport(audit: StandingDomainAudit): string {
 
   const contact = formatContactExactnessReport(audit.contactExactness);
   if (contact !== '') parts.push(contact);
+
+  const retrieval = formatRetrievalFallbackReport(audit.retrievalFallback);
+  if (retrieval !== '') parts.push(retrieval);
 
   return parts.join('\n\n');
 }

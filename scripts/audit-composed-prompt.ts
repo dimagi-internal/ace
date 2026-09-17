@@ -11,11 +11,12 @@
  * Exit codes:
  *   0 — the `## Do not invent operational specifics` section exists and
  *       carries every standing domain, AND the prompt carries the
- *       contact-exactness protection (ace#2216). Safe to publish.
- *   1 — the section is missing, one or more standing domains are absent, or
- *       the contact-exactness protection is absent. The composed prompt MUST
- *       NOT be published. `ocs-agent-setup` § Step 7.5 halts the phase on
- *       this.
+ *       contact-exactness protection (ace#2216), AND the prompt carries the
+ *       retrieval-fallback protection (ace#2422). Safe to publish.
+ *   1 — the section is missing, one or more standing domains are absent, the
+ *       contact-exactness protection is absent, or the retrieval-fallback
+ *       protection is absent. The composed prompt MUST NOT be published.
+ *       `ocs-agent-setup` § Step 7.5 halts the phase on this.
  *   2 — harness error (no argument, unreadable file, empty prompt). Not a
  *       verdict about the prompt; do not treat it as a pass OR as a miss.
  *
@@ -52,14 +53,17 @@ const USAGE = `Usage:
   npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json]
   npx tsx scripts/audit-composed-prompt.ts --stdin [--json]
 
-Audits a composed OCS system prompt for two things:
+Audits a composed OCS system prompt for three things:
   - the STANDING half of its "## ${ANTI_FABRICATION_HEADING}"
-    section (${STANDING_FABRICATION_DOMAINS.length} domains), and
+    section (${STANDING_FABRICATION_DOMAINS.length} domains),
   - the contact-exactness protection the publish replaces
-    (${CONTACT_EXACTNESS_OBLIGATIONS.length} obligations, dimagi-internal/ace#2216).
+    (${CONTACT_EXACTNESS_OBLIGATIONS.length} obligations, dimagi-internal/ace#2216), and
+  - the retrieval-fallback protection (dimagi-internal/ace#2422): write no
+    address at all when nothing was retrieved for THIS answer.
 
-Exit 0 = both present (safe to publish).
-Exit 1 = a standing domain or a contact obligation is missing (DO NOT publish).
+Exit 0 = all three present (safe to publish).
+Exit 1 = a standing domain, a contact obligation, or the retrieval-fallback
+  obligation is missing (DO NOT publish).
 Exit 2 = harness error.`;
 
 export interface AuditCliArgs {
@@ -137,6 +141,16 @@ function main(argv: string[]): number {
               why: o.why,
             })),
           },
+          retrieval_fallback: {
+            ok: audit.retrievalFallback.ok,
+            blocks_present: audit.retrievalFallback.blocksPresent,
+            covered: audit.retrievalFallback.covered,
+            missing: audit.retrievalFallback.missing.map((o) => ({
+              id: o.id,
+              label: o.label,
+              why: o.why,
+            })),
+          },
         },
         null,
         2,
@@ -148,8 +162,9 @@ function main(argv: string[]): number {
     if (!parsed.json) {
       process.stdout.write(
         `[STANDING-DOMAINS] OK — all ${STANDING_FABRICATION_DOMAINS.length} standing domains ` +
-          `present in "## ${ANTI_FABRICATION_HEADING}", and all ` +
-          `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present.\n`,
+          `present in "## ${ANTI_FABRICATION_HEADING}", all ` +
+          `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present, ` +
+          'and the retrieval-fallback obligation is present.\n',
       );
     }
     return 0;
@@ -158,9 +173,10 @@ function main(argv: string[]): number {
   process.stderr.write(`${formatStandingDomainReport(audit)}\n`);
   process.stderr.write(
     '\nDO NOT publish this prompt. Add the missing domain(s) to the ' +
-      `"## ${ANTI_FABRICATION_HEADING}" section, and/or the missing contact ` +
-      'obligation(s) to the escalation/contacts passage, per ' +
-      '`skills/ocs-agent-setup/SKILL.md` § Step 7, then re-run this audit.\n',
+      `"## ${ANTI_FABRICATION_HEADING}" section, the missing contact ` +
+      'obligation(s), and/or the retrieval-fallback obligation to the ' +
+      'escalation/contacts passage, per `skills/ocs-agent-setup/SKILL.md` ' +
+      '§ Step 7, then re-run this audit.\n',
   );
   return 1;
 }

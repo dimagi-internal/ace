@@ -88,10 +88,34 @@ const PROMPT_STANDING_ONLY = PROMPT_V3.replace(
   ].join('\n'),
 );
 
-/** Publishable: the standing half AND the contact-exactness clause. */
-const PROMPT_FIXED = PROMPT_STANDING_ONLY.replace(
+/**
+ * dimagi-internal/ace#2422 — round 1. Identical in shape to what shipped for
+ * ace#2216: the standing half plus all three contact-exactness obligations,
+ * no retrieval-fallback clause. This is the shape that published clean on
+ * `poverty-graduation/20260915-1518` and the bot still emitted
+ * `ace@dimagi.com`, because retrieval-slot competition left nothing about
+ * contacts retrieved on that turn.
+ */
+const PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK = PROMPT_STANDING_ONLY.replace(
   '## Mandatory closing step — tagging',
   `## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n## Mandatory closing step — tagging`,
+);
+
+/**
+ * dimagi-internal/ace#2422 — the retrieval-fallback clause the live
+ * `--prompt-patch` added on round 2. Names no address (ace#1665 stays
+ * intact); adds a per-answer check instead of a standing prohibition.
+ */
+const RETRIEVAL_FALLBACK_CLAUSE =
+  'Before you write any contact address, check that something was actually ' +
+  'retrieved for this specific answer. If nothing was retrieved in this ' +
+  'answer, write no address at all — say only "your supervisor, and the ACE ' +
+  'admin group," and do not guess at a domain.';
+
+/** Publishable: the standing half, the contact-exactness clause AND the retrieval-fallback clause. */
+const PROMPT_FIXED = PROMPT_STANDING_ONLY.replace(
+  '## Mandatory closing step — tagging',
+  `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n## Mandatory closing step — tagging`,
 );
 
 let tmp: string;
@@ -164,9 +188,12 @@ describe('scripts/audit-composed-prompt.ts — the ace#2216 fixture', () => {
   });
 
   it('NON-INERTNESS: the two differ only by that clause and differ in exit code', () => {
-    expect(PROMPT_FIXED.replace(`## Escalation and contacts\n\n${CONTACT_CLAUSE}\n\n`, '')).toBe(
-      PROMPT_STANDING_ONLY,
-    );
+    expect(
+      PROMPT_FIXED.replace(
+        `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n`,
+        '',
+      ),
+    ).toBe(PROMPT_STANDING_ONLY);
     expect(runOn(PROMPT_STANDING_ONLY).code).not.toBe(runOn(PROMPT_FIXED).code);
   });
 
@@ -189,6 +216,59 @@ describe('scripts/audit-composed-prompt.ts — the ace#2216 fixture', () => {
     expect(parsed.contact_exactness.missing.map((m: { id: string }) => m.id)).toEqual(
       CONTACT_EXACTNESS_OBLIGATIONS.map((o) => o.id),
     );
+  });
+});
+
+describe('scripts/audit-composed-prompt.ts — the ace#2422 fixture (retrieval-fallback)', () => {
+  // The issue's own repro: a composed prompt carrying ALL THREE ace#2216
+  // contact obligations — round 1, PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK —
+  // exits 1 exactly because of this fourth check, and it must not be
+  // confused for a contact-exactness miss. Round 2, PROMPT_FIXED, is round 1
+  // plus the live `--prompt-patch` clause.
+  it('round 1 really has no retrieval-fallback clause', () => {
+    expect(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).not.toMatch(/retriev/i);
+  });
+
+  it('NEGATIVE CONTROL: round 1 exits 1 — a complete ace#2216 pass no longer buys exit 0', () => {
+    const { code, stderr } = runOn(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK);
+    expect(code).toBe(1);
+    expect(stderr).toContain('RETRIEVAL-FALLBACK');
+    expect(stderr, 'the three ace#2216 obligations are unaffected').not.toContain(
+      '[CONTACT-EXACTNESS]',
+    );
+    expect(stderr).toContain('DO NOT publish this prompt');
+  });
+
+  it('POSITIVE CONTROL: round 2 (round 1 + the shipped clause) exits 0', () => {
+    const { code, stdout } = runOn(PROMPT_FIXED);
+    expect(code).toBe(0);
+    expect(stdout).toContain('retrieval-fallback obligation is present');
+  });
+
+  it('NON-INERTNESS: the two differ only by the retrieval-fallback clause and differ in exit code', () => {
+    expect(PROMPT_FIXED.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
+      PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK,
+    );
+    expect(runOn(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).code).not.toBe(runOn(PROMPT_FIXED).code);
+  });
+
+  it('inlining the right address does not buy a pass either (ace#1665 stays intact)', () => {
+    const inlined = PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK.replace(
+      '## Mandatory closing step — tagging',
+      'Escalate to the ACE admin group at ace@dimagi-ai.com.\n\n## Mandatory closing step — tagging',
+    );
+    expect(runOn(inlined).code).toBe(1);
+  });
+
+  it('--json carries the retrieval-fallback verdict, distinct from contact-exactness', () => {
+    const { code, stdout } = runOn(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK, ['--json']);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.contact_exactness.ok).toBe(true);
+    expect(parsed.retrieval_fallback.ok).toBe(false);
+    expect(parsed.retrieval_fallback.missing.map((m: { id: string }) => m.id)).toEqual([
+      'no-address-if-not-retrieved',
+    ]);
   });
 });
 
