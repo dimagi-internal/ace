@@ -96,9 +96,10 @@ already in it. (Live auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
 
-**Four blocks the preflight DOES emit — halt before Phase 1 if any is
+**Five blocks the preflight DOES emit — halt before Phase 1 if any is
 `fail`:** `selector_map_currency`, `nova_needs_auth_cache`,
-`nova_header_readiness`, and `ocs_generation`. The first three are
+`nova_header_readiness`, `static_header_drift`, and `ocs_generation`. The
+first four are
 no-network static checks for halt-classes unrecoverable in-session. On
 `fail`: surface the block's `remediation`, run the cache-clear node one-liner
 the full `/ace:doctor` prints, and tell the operator to Cmd-Q + reopen, then
@@ -134,6 +135,23 @@ tell the operator to Cmd-Q + reopen. Do NOT send them to `/mcp`: `Authenticate`
 mints an OAuth token that lacks `nova.hq.read`, which is how this class hides.
 A `skip` here means the process env could not be read — never treat it as a
 pass.
+
+**`static_header_drift` is the same class asked of EVERY user-scope MCP entry,
+and the one that kills Phases 7 and 8 silently** (ace#2159). A static
+`Authorization` header in `~/.claude.json` is bound at connection time and does
+not follow a credential rotation, so a rotated `LABS_MCP_TOKEN` leaves
+`connect_labs` authenticating with the old value — measured on
+`bednet-2-visit`, 2026-09-07: the pinned token returned HTTP 401 and the
+current `.env` token returned HTTP 200 against the same endpoint, and ZERO
+connect-labs atoms bound into the session. Nothing else can see it: the
+`connect_labs_*` probes curl labs with the `.env` token, so they pass on a
+credential the session is not using, and `env.labs_mcp_token: present` above is
+about the same file. **Do not read a green labs block as evidence that labs
+will work in this session** — this block is the one that speaks to that.
+Like `nova_header_readiness` it self-heals (`healed: [connect_labs]`) and
+still reports `fail`, because the header rebinds only on a full restart:
+surface the remediation, write a handoff, Cmd-Q + reopen. A `skip` means
+`~/.claude.json` was unreadable or nothing is pinned — never a pass.
 
 `ocs_generation` is different in two ways and must not be lumped in with
 them. It is the ONE **live** probe in preflight — it asks OCS to generate

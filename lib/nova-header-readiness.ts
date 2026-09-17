@@ -54,6 +54,8 @@
  *     exists to eliminate.
  */
 
+import { hasStaticAuthHeader } from './static-header-drift.js';
+
 /** How the Nova MCP would obtain its `Authorization` header, if at all. */
 export type NovaHeaderStatus = 'pass' | 'fail' | 'skip';
 
@@ -118,15 +120,15 @@ export interface NovaHeaderVerdict {
   autoHealable: boolean;
 }
 
-/** Case-insensitive lookup for a non-empty `Authorization` header. */
-export function hasStaticAuthHeader(headers: Record<string, string> | null): boolean {
-  if (!headers) return false;
-  for (const [name, value] of Object.entries(headers)) {
-    if (name.toLowerCase() !== 'authorization') continue;
-    if (typeof value === 'string' && value.trim() !== '') return true;
-  }
-  return false;
-}
+/**
+ * Case-insensitive lookup for a non-empty `Authorization` header.
+ *
+ * Re-exported from `lib/static-header-drift.ts`, which generalized this check
+ * to EVERY user-scope MCP entry after `connect_labs` hit the identical stale-
+ * header failure with no probe covering it (ace#2159). Kept as an export here
+ * so nova's callers and tests are unaffected.
+ */
+export { hasStaticAuthHeader };
 
 /**
  * Decide whether the Nova MCP will get an `Authorization` header.
