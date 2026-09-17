@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   checkConstraintLocality,
   checkRelevanceReachability,
@@ -755,5 +758,201 @@ describe('findMinimumCardinalityGate (the boundary, without a form)', () => {
     expect(() =>
       findMinimumCardinalityGate('count(/data/roster >= 1', R),
     ).not.toThrow();
+  });
+});
+
+//
+// dimagi-internal/ace#2416 — a minimum-rows gate spelled `sum()` over a
+// per-row 0/1 indicator.
+//
+// Every fixture below is the REAL released form, read from
+// `test/fixtures/ccz/poverty-graduation-targeting-survey.xml` — the verbatim
+// `modules-0/forms-0.xml` of Deliver app e4594937038c42d2be4d01f45df44209,
+// released build e55a640283e74900ba2453d0dea13714 on `connect-ace-prod`
+// (`poverty-graduation/20260915-1518`, Phase 3 Step 2.8). The negative
+// controls are that same file with ONE surgical mutation each, so a passing
+// positive control cannot be explained by anything but the property under
+// test.
+//
+// What the run measured, before this change:
+//
+//   constraintsChecked=1 violations=1
+//   [BLOCKER] roster_complete: constraint references /data/roster/is_member
+//
+// `/data/roster_complete` is a TOP-LEVEL node rendered immediately after the
+// repeat closes (body order: repeat /data/roster -> input member_name ->
+// select1 is_member -> select1 roster_complete -> group /data/g_zone), i.e.
+// exactly the remedy ace#1560 prescribes. The gate resolves through
+// `member_flag`'s own `calculate` to a question inside the repeat, so the
+// adjacency exemption — which forgives a reference to the repeat NODESET —
+// never saw it.
+//
+const CCZ_FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'test', 'fixtures', 'ccz');
+const SHIPPED_GATE_FORM = readFileSync(
+  join(CCZ_FIXTURES, 'poverty-graduation-targeting-survey.xml'),
+  'utf8',
+);
+
+/** The bind the whole issue is about, quoted from the fixture. */
+const SHIPPED_INDICATOR_BIND =
+  '<bind nodeset="/data/roster/member_flag" type="xsd:string" ' +
+  'calculate="if(/data/roster/is_member = \'yes\', 1, 0)"/>';
+const SHIPPED_GATE_BIND =
+  '<bind nodeset="/data/roster_complete" type="xsd:string" required="true()" ' +
+  'constraint="sum(/data/roster/member_flag) &gt;= 1"';
+const SHIPPED_IS_MEMBER_BIND =
+  '<bind nodeset="/data/roster/is_member" type="xsd:string" required="true()"/>';
+
+describe('sum()-spelled minimum-rows gates (ace#2416)', () => {
+  it('the captured fixture really carries the binds these controls mutate', () => {
+    // Without this, every mutation below could silently be a no-op and each
+    // test would pass on an unmutated form.
+    expect(SHIPPED_GATE_FORM).toContain(SHIPPED_INDICATOR_BIND);
+    expect(SHIPPED_GATE_FORM).toContain(SHIPPED_GATE_BIND);
+    expect(SHIPPED_GATE_FORM).toContain(SHIPPED_IS_MEMBER_BIND);
+  });
+
+  it('POSITIVE CONTROL — the real released sum() gate is clean', () => {
+    const report = checkConstraintLocality(SHIPPED_GATE_FORM);
+    expect(report.constraintsChecked).toBe(1);
+    expect(report.violations).toEqual([]);
+    expect(formatConstraintLocalityReport(report)).toMatch(/^constraint-locality: PASS/);
+  });
+
+  it('NEGATIVE CONTROL — the same gate bound INSIDE the repeat is still dead (ace#1560)', () => {
+    // The one mutation: the identical constraint moved onto a question inside
+    // `/data/roster`, where it never evaluates at zero repetitions. Widening
+    // the matcher to `sum()` must strengthen this class, not launder it — it
+    // was previously invisible to the dead-gate check entirely.
+    const insideRepeat = SHIPPED_GATE_FORM.replace(
+      SHIPPED_IS_MEMBER_BIND,
+      '<bind nodeset="/data/roster/is_member" type="xsd:string" required="true()" ' +
+        'constraint="sum(/data/roster/member_flag) &gt;= 1"/>',
+    );
+    expect(insideRepeat).not.toBe(SHIPPED_GATE_FORM);
+    const { violations } = checkConstraintLocality(insideRepeat);
+    const dead = violations.filter((v) => v.kind === 'dead-repeat-cardinality-gate');
+    expect(dead.map((v) => v.fieldId)).toEqual(['is_member']);
+    expect(dead[0].severity).toBe('blocker');
+    expect(dead[0].deadGate).toMatchObject({
+      repeat: '/data/roster',
+      fn: 'sum',
+      indicatorNode: '/data/roster/member_flag',
+      minimumRows: 1,
+    });
+    expect(formatConstraintLocalityReport({ constraintsChecked: 2, violations: dead })).toContain(
+      'sum(/data/roster/member_flag)',
+    );
+  });
+
+  it('NEGATIVE CONTROL — a sum() over a NON-indicator is still a [BLOCKER]', () => {
+    // The laundering the widening must not perform: `sum(<repeat child>) >= 1`
+    // says nothing about row count unless the child is a 0/1 flag. Here
+    // `member_flag` is turned into a worker-entered number; everything else,
+    // including the constraint expression and the bind's position, is the
+    // shipped form byte-for-byte.
+    const nonIndicator = SHIPPED_GATE_FORM.replace(
+      SHIPPED_INDICATOR_BIND,
+      '<bind nodeset="/data/roster/member_flag" type="xsd:int" required="true()"/>',
+    );
+    expect(nonIndicator).not.toBe(SHIPPED_GATE_FORM);
+    const { violations } = checkConstraintLocality(nonIndicator);
+    expect(violations.map((v) => v.kind)).toEqual(['non-local']);
+    expect(violations[0].severity).toBe('blocker');
+    expect(violations[0].foreignRefs).toContain('/data/roster/member_flag');
+  });
+
+  it('NEGATIVE CONTROL — the ace#980 non-local class is untouched', () => {
+    // The gate forgives only what its OWN argument resolves to. A foreign
+    // question alongside a legitimate sum() gate is still reported.
+    const withForeignRef = SHIPPED_GATE_FORM.replace(
+      'constraint="sum(/data/roster/member_flag) &gt;= 1"',
+      'constraint="sum(/data/roster/member_flag) &gt;= 1 and /data/g_zone/i1_zone != \'\'"',
+    );
+    expect(withForeignRef).not.toBe(SHIPPED_GATE_FORM);
+    const { violations } = checkConstraintLocality(withForeignRef);
+    expect(violations.map((v) => v.kind)).toEqual(['non-local']);
+    expect(violations[0].foreignRefs).toEqual(['/data/g_zone/i1_zone']);
+  });
+
+  it('NEGATIVE CONTROL — a sum() gate far from its repeat is still non-local', () => {
+    // Adjacency, not mere reference, is the line (the ace#980 `i1_zone`
+    // defect). Move the gate to the zone question six screens on and it must
+    // come back.
+    const drifted = SHIPPED_GATE_FORM.replace(
+      '<bind nodeset="/data/g_zone/i1_zone" type="xsd:string" required="true()"',
+      '<bind nodeset="/data/g_zone/i1_zone" type="xsd:string" required="true()" ' +
+        'constraint="sum(/data/roster/member_flag) &gt;= 1"',
+    );
+    expect(drifted).not.toBe(SHIPPED_GATE_FORM);
+    const { violations } = checkConstraintLocality(drifted);
+    expect(violations.map((v) => v.fieldId)).toEqual(['i1_zone']);
+    expect(violations[0].kind).toBe('non-local');
+  });
+});
+
+describe('findMinimumCardinalityGate — the sum() boundary (ace#2416)', () => {
+  const R = '/data/roster';
+  const FLAG = '/data/roster/member_flag';
+  /** The real per-row indicator from the released build. */
+  const indicator = new Map([[FLAG, "if(/data/roster/is_member = 'yes', 1, 0)"]]);
+
+  it('recognises the shipped sum() gate and names the indicator it trusts', () => {
+    const gate = findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R, indicator);
+    expect(gate).toMatchObject({
+      repeat: R,
+      countArg: FLAG,
+      comparison: '>= 1',
+      minimumRows: 1,
+      fn: 'sum',
+      indicatorNode: FLAG,
+    });
+  });
+
+  it('refuses sum() with no calculate map — the indicator cannot be proven', () => {
+    expect(findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R)).toBeUndefined();
+  });
+
+  it.each([
+    ['a worker-entered number (no calculate at all)', new Map<string, string>()],
+    ['a non-0/1 payload', new Map([[FLAG, "if(/data/roster/is_member = 'yes', 40, 0)"]])],
+    ['a constant', new Map([[FLAG, "if(/data/roster/is_member = 'yes', 1, 1)"]])],
+    ['an aggregate, not a per-row flag', new Map([[FLAG, 'count(/data/roster)']])],
+    ['a nested conditional', new Map([[FLAG, "if(/data/a = 'y', 1, if(/data/b = 'y', 1, 0))"]])],
+    ['an if() that is only part of the expression', new Map([[FLAG, "if(/data/a = 'y', 1, 0) + 1"]])],
+  ])('refuses sum() over %s', (_why, calculates) => {
+    expect(findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R, calculates)).toBeUndefined();
+  });
+
+  it('accepts a quoted 0/1 indicator — Nova binds these as xsd:string', () => {
+    const quoted = new Map([[FLAG, "if(/data/roster/is_member = 'yes', '1', '0')"]]);
+    expect(findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R, quoted)?.fn).toBe('sum');
+  });
+
+  it('accepts the inverted flag — if(p, 0, 1) counts rows just as well', () => {
+    const inverted = new Map([[FLAG, "if(/data/roster/is_member = 'no', 0, 1)"]]);
+    expect(findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R, inverted)?.fn).toBe('sum');
+  });
+
+  it('splits the indicator arguments quote- and paren-aware', () => {
+    // A comma inside the predicate must not be read as an argument separator,
+    // or `selected(x, 'yes')` makes the indicator look like a 4-argument call.
+    const nested = new Map([[FLAG, "if(selected(/data/roster/is_member, 'yes'), 1, 0)"]]);
+    expect(findMinimumCardinalityGate(`sum(${FLAG}) >= 1`, R, nested)?.fn).toBe('sum');
+  });
+
+  it.each([
+    `sum(${FLAG}) <= 10`,
+    `sum(${FLAG}) >= 0`,
+    `sum(${FLAG}) = 1`,
+    'sum(/data/visits/flag) >= 1',
+  ])('%s is not a minimum-rows gate over this repeat', (expr) => {
+    expect(findMinimumCardinalityGate(expr, R, indicator)).toBeUndefined();
+  });
+
+  it('keeps the count() forms unchanged and stamps fn: count', () => {
+    const gate = findMinimumCardinalityGate("count(/data/roster[x = 'yes']) >= 2", R);
+    expect(gate).toMatchObject({ fn: 'count', minimumRows: 2 });
+    expect(gate?.indicatorNode).toBeUndefined();
   });
 });

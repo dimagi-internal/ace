@@ -1381,7 +1381,8 @@ respondent may never have heard read out.
 - **Enforced by:** `pdd-to-deliver-app-eval § field_answerability`, plus the
   **mechanical bind check** in `app-release-qa` (no LLM — parses each `<bind>` in
   the released CCZ and flags any `constraint` referencing a node outside its own
-  nodeset, AND any minimum-rows gate bound inside the repeat it counts —
+  nodeset, AND any minimum-rows gate bound inside the repeat it counts, whether
+  spelled `count(...)` or `sum(<per-row 0/1 flag>)` —
   `lib/constraint-locality.ts`, `checkConstraintLocality`).
 - **Origin:** ace#980 — two independent instances in one form. `gps_onsite_confirm`
   carried `constraint="number(selected-at(/data/gps, 3)) <= 50"` with the message
@@ -1418,7 +1419,12 @@ respondent may never have heard read out.
 > container: `edit_field` on a repeat answers `kind "repeat" carries no
 > 'validate' slot`.) An UPPER bound — a cap like `count(…) <= 10` — is the
 > opposite case and correctly stays INSIDE the repeat, where it fires on the row
-> that breaks it.
+> that breaks it. Both spellings count: `sum(/data/roster/member_flag) >= 1` over
+> a per-row `calculate="if(/data/roster/is_member = 'yes', 1, 0)"` is the same
+> gate as `count(/data/roster[is_member = 'yes']) >= 1` and is governed by the
+> same rule in both directions — legal immediately after the repeat, dead inside
+> it (ace#2416). A `sum()` over anything that is NOT a 0/1 indicator is not a row
+> count at all and is read as an ordinary foreign reference.
 >
 > RELEVANCE REACHABILITY (the temporal sibling of the same rule): a `relevant`
 > expression MUST be decidable by the time the form walks past the field it

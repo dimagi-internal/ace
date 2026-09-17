@@ -1,0 +1,769 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Household targeting survey</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/42b2810ad3fa433c" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="4" name="household_targeting_survey">
+          <g_door>
+            <occupied/>
+            <eligible_respondent/>
+          </g_door>
+          <g_gps>
+            <gps/>
+            <gps_lat/>
+            <gps_lon/>
+            <gps_accuracy/>
+            <gps_advisory/>
+          </g_gps>
+          <g_consent>
+            <consent_script/>
+            <consent/>
+            <consent_declined_note/>
+          </g_consent>
+          <g_identity>
+            <hh_head_name/>
+            <respondent_name/>
+            <phone/>
+          </g_identity>
+          <roster jr:template="">
+            <member_name/>
+            <is_member/>
+            <member_flag/>
+          </roster>
+          <roster_complete/>
+          <g_zone>
+            <i1_zone/>
+          </g_zone>
+          <g_food7>
+            <i3_bread/>
+            <i4_eggs/>
+            <i5_milk/>
+            <i6_sachet_water/>
+          </g_food7>
+          <g_elec>
+            <i7_electricity/>
+          </g_elec>
+          <g_assets>
+            <i8_sofa/>
+            <i9_fan/>
+            <i10_iron/>
+          </g_assets>
+          <g_photo>
+            <photo_consent/>
+            <dwelling_photo/>
+            <photo_declined_note/>
+          </g_photo>
+          <visit_outcome/>
+          <survey_date/>
+          <member_count/>
+          <hh_size_band/>
+          <pts_zone/>
+          <pts_size/>
+          <pts_bread/>
+          <pts_eggs/>
+          <pts_milk/>
+          <pts_sachet/>
+          <pts_electricity/>
+          <pts_sofa/>
+          <pts_fan/>
+          <pts_iron/>
+          <ppi_score/>
+          <hh_status_calc/>
+          <case_name_calc/>
+          <entity_key/>
+          <entity_label/>
+          <hh_head_name_rec/>
+          <respondent_name_rec/>
+          <phone_rec/>
+          <photo_declined_rec/>
+          <selected_init/>
+          <targeting_survey>
+            <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="targeting_survey">
+              <name>Targeting survey</name>
+              <entity_id/>
+              <entity_name/>
+            </deliver>
+          </targeting_survey>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <create>
+              <case_name/>
+              <owner_id/>
+              <case_type>household</case_type>
+            </create>
+            <update>
+              <gps_accuracy/>
+              <gps_lat/>
+              <gps_lon/>
+              <hh_head_name_rec/>
+              <hh_size_band/>
+              <hh_status/>
+              <last_visit_outcome/>
+              <phone_rec/>
+              <photo_declined/>
+              <ppi_score/>
+              <respondent_name_rec/>
+              <selected/>
+              <survey_date/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance id="commcaresession" src="jr://instance/session"/>
+      <bind nodeset="/data/g_door/occupied" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_door/eligible_respondent" type="xsd:string" required="true()" relevant="/data/g_door/occupied = 'yes'"/>
+      <bind nodeset="/data/g_gps/gps" type="geopoint" required="true()"/>
+      <bind nodeset="/data/g_gps/gps_lat" type="xsd:string" calculate="if(/data/g_gps/gps = '', '', selected-at(/data/g_gps/gps, 0))"/>
+      <bind nodeset="/data/g_gps/gps_lon" type="xsd:string" calculate="if(/data/g_gps/gps = '', '', selected-at(/data/g_gps/gps, 1))"/>
+      <bind nodeset="/data/g_gps/gps_accuracy" type="xsd:string" calculate="if(/data/g_gps/gps = '', '', selected-at(/data/g_gps/gps, 3))"/>
+      <bind nodeset="/data/g_gps/gps_advisory" relevant="/data/g_gps/gps_accuracy &gt; 50"/>
+      <bind nodeset="/data/g_consent" relevant="/data/g_door/eligible_respondent = 'yes'"/>
+      <bind nodeset="/data/g_consent/consent_script"/>
+      <bind nodeset="/data/g_consent/consent" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_consent/consent_declined_note" relevant="/data/g_consent/consent = 'no'"/>
+      <bind nodeset="/data/g_identity" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_identity/hh_head_name" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_identity/respondent_name" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_identity/phone" type="xsd:string" required="false()"/>
+      <bind nodeset="/data/roster" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/roster/member_name" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/roster/is_member" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/roster/member_flag" type="xsd:string" calculate="if(/data/roster/is_member = 'yes', 1, 0)"/>
+      <bind nodeset="/data/roster_complete" type="xsd:string" required="true()" constraint="sum(/data/roster/member_flag) &gt;= 1" jr:constraintMsg="jr:itext('roster_complete-constraintMsg')" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_zone" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_zone/i1_zone" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_food7" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_food7/i3_bread" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_food7/i4_eggs" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_food7/i5_milk" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_food7/i6_sachet_water" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_elec" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_elec/i7_electricity" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_assets" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_assets/i8_sofa" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_assets/i9_fan" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_assets/i10_iron" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_photo" relevant="/data/g_consent/consent = 'yes'"/>
+      <bind nodeset="/data/g_photo/photo_consent" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/g_photo/dwelling_photo" type="binary" required="true()" relevant="/data/g_photo/photo_consent = 'yes'"/>
+      <bind nodeset="/data/g_photo/photo_declined_note" relevant="/data/g_photo/photo_consent = 'no'"/>
+      <bind nodeset="/data/visit_outcome" type="xsd:string" calculate="if(/data/g_door/occupied = 'no', 'vacant', if(/data/g_door/eligible_respondent = 'no', 'no_eligible_respondent', if(/data/g_consent/consent = 'no', 'refused', 'completed')))"/>
+      <bind nodeset="/data/survey_date" type="xsd:string" calculate="today()"/>
+      <bind nodeset="/data/member_count" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', sum(/data/roster/member_flag), '')"/>
+      <bind nodeset="/data/hh_size_band" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/member_count &lt;= 3, 'le3', if(/data/member_count &lt;= 6, 'four_to_six', 'gt6')), '')"/>
+      <bind nodeset="/data/pts_zone" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_zone/i1_zone = 'north_central', 10, if(/data/g_zone/i1_zone = 'north_east', 0, if(/data/g_zone/i1_zone = 'north_west', 2, if(/data/g_zone/i1_zone = 'south_east', 0, if(/data/g_zone/i1_zone = 'south_south', 10, if(/data/g_zone/i1_zone = 'south_west', 16, 0)))))), '')"/>
+      <bind nodeset="/data/pts_size" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/hh_size_band = 'le3', 31, if(/data/hh_size_band = 'four_to_six', 10, 0)), '')"/>
+      <bind nodeset="/data/pts_bread" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_food7/i3_bread = 'yes', 9, 0), '')"/>
+      <bind nodeset="/data/pts_eggs" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_food7/i4_eggs = 'yes', 10, 0), '')"/>
+      <bind nodeset="/data/pts_milk" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_food7/i5_milk = 'yes', 6, 0), '')"/>
+      <bind nodeset="/data/pts_sachet" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_food7/i6_sachet_water = 'yes', 6, 0), '')"/>
+      <bind nodeset="/data/pts_electricity" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_elec/i7_electricity = 'yes', 5, 0), '')"/>
+      <bind nodeset="/data/pts_sofa" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_assets/i8_sofa = 'yes', 8, 0), '')"/>
+      <bind nodeset="/data/pts_fan" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_assets/i9_fan = 'yes', 5, 0), '')"/>
+      <bind nodeset="/data/pts_iron" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_assets/i10_iron = 'yes', 6, 0), '')"/>
+      <bind nodeset="/data/ppi_score" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', /data/pts_zone + /data/pts_size + /data/pts_bread + /data/pts_eggs + /data/pts_milk + /data/pts_sachet + /data/pts_electricity + /data/pts_sofa + /data/pts_fan + /data/pts_iron, '')"/>
+      <bind nodeset="/data/hh_status_calc" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', 'surveyed', '')"/>
+      <bind nodeset="/data/case_name_calc" type="xsd:string" calculate="if(/data/g_identity/hh_head_name = '', concat('Dwelling - ', /data/survey_date), /data/g_identity/hh_head_name)" required="true()"/>
+      <bind nodeset="/data/entity_key" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', concat(/data/g_identity/hh_head_name, ' - ', /data/g_identity/respondent_name, ' - targeting_survey - completed'), concat(/data/g_gps/gps_lat, ',', /data/g_gps/gps_lon, ' - targeting_survey - ', /data/visit_outcome))"/>
+      <bind nodeset="/data/entity_label" type="xsd:string" calculate="concat(/data/case_name_calc, ' - targeting survey - ', /data/visit_outcome)"/>
+      <bind nodeset="/data/hh_head_name_rec" type="xsd:string" calculate="/data/g_identity/hh_head_name"/>
+      <bind nodeset="/data/respondent_name_rec" type="xsd:string" calculate="/data/g_identity/respondent_name"/>
+      <bind nodeset="/data/phone_rec" type="xsd:string" calculate="/data/g_identity/phone"/>
+      <bind nodeset="/data/photo_declined_rec" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', if(/data/g_photo/photo_consent = 'no', 'yes', 'no'), '')"/>
+      <bind nodeset="/data/selected_init" type="xsd:string" calculate="'no'"/>
+      <bind nodeset="/data/targeting_survey"/>
+      <bind nodeset="/data/targeting_survey/deliver/entity_id" calculate="/data/entity_key"/>
+      <bind nodeset="/data/targeting_survey/deliver/entity_name" calculate="/data/entity_label"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="g_door-label">
+            <value>At the door</value>
+            <value form="markdown">At the door</value>
+          </text>
+          <text id="g_door-occupied-label">
+            <value>Is the dwelling occupied?</value>
+            <value form="markdown">Is the dwelling occupied?</value>
+          </text>
+          <text id="g_door-occupied-hint">
+            <value>Answer no only if nobody lives here at all. If people live here but nobody is home right now, answer yes.</value>
+            <value form="markdown">Answer no only if nobody lives here at all. If people live here but nobody is home right now, answer yes.</value>
+          </text>
+          <text id="g_door-eligible_respondent-label">
+            <value>Is an eligible adult respondent available to speak for the household?</value>
+            <value form="markdown">Is an eligible adult respondent available to speak for the household?</value>
+          </text>
+          <text id="g_door-eligible_respondent-hint">
+            <value>That means the household head, or an adult member aged 18 or over. A child cannot answer for the household.</value>
+            <value form="markdown">That means the household head, or an adult member aged 18 or over. A child cannot answer for the household.</value>
+          </text>
+          <text id="g_gps-label">
+            <value>Location</value>
+            <value form="markdown">Location</value>
+          </text>
+          <text id="g_gps-gps-label">
+            <value>Capture the household's location.</value>
+            <value form="markdown">Capture the household's location.</value>
+          </text>
+          <text id="g_gps-gps-hint">
+            <value>Stand at the dwelling and capture the point. This is recorded on every visit, including a dwelling nobody lives in and a household that declines.</value>
+            <value form="markdown">Stand at the dwelling and capture the point. This is recorded on every visit, including a dwelling nobody lives in and a household that declines.</value>
+          </text>
+          <text id="g_gps-gps_advisory-label">
+            <value>This reading is rough. If you can, wait about a minute and capture it again, or step out to a more open spot away from walls and trees and try once more. A reading of 50 metres or better is what we want. You can still submit this visit either way, and whatever reading you have is saved with it.</value>
+            <value form="markdown">This reading is rough. If you can, wait about a minute and capture it again, or step out to a more open spot away from walls and trees and try once more. A reading of 50 metres or better is what we want. You can still submit this visit either way, and whatever reading you have is saved with it.</value>
+          </text>
+          <text id="g_consent-label">
+            <value>Consent</value>
+            <value form="markdown">Consent</value>
+          </text>
+          <text id="g_consent-consent_script-label">
+            <value>Read this out loud, in the language the respondent speaks. Do not shorten it.
+
+Good day. My name is [say your name] and I am working with the graduation programme. I would like to ask you a short set of questions about your household: who lives here, what people here ate in the past week, and a few things your household may own. The answers help the programme understand which households in this area are living in the deepest poverty.
+
+Taking part is your choice. You do not have to answer me. You can stop at any time, including after we have started and after you have already answered, and I will leave out anything you ask me to leave out.
+
+What you tell me is kept confidential. Your answers are stored under your household's record and are seen only by the people working on this programme. Your name is not read out to your neighbours, it is not published, and it is not used for anything outside this programme.
+
+What I record on this phone goes to Dimagi, who run the system, and to the organisation that runs the graduation programme. They are the people who will act on it.
+
+One thing is important, so please listen. Answering these questions does not mean your household will join the programme. Most households that are surveyed will not be enrolled. The choice of which households join is made later by the organisation that runs the programme, away from here. I do not make that choice and I cannot change it. And if you say no to me today, you lose nothing you would otherwise have been given.
+
+Do you agree to answer these questions?</value>
+            <value form="markdown">Read this out loud, in the language the respondent speaks. Do not shorten it.
+
+Good day. My name is [say your name] and I am working with the graduation programme. I would like to ask you a short set of questions about your household: who lives here, what people here ate in the past week, and a few things your household may own. The answers help the programme understand which households in this area are living in the deepest poverty.
+
+Taking part is your choice. You do not have to answer me. You can stop at any time, including after we have started and after you have already answered, and I will leave out anything you ask me to leave out.
+
+What you tell me is kept confidential. Your answers are stored under your household's record and are seen only by the people working on this programme. Your name is not read out to your neighbours, it is not published, and it is not used for anything outside this programme.
+
+What I record on this phone goes to Dimagi, who run the system, and to the organisation that runs the graduation programme. They are the people who will act on it.
+
+One thing is important, so please listen. Answering these questions does not mean your household will join the programme. Most households that are surveyed will not be enrolled. The choice of which households join is made later by the organisation that runs the programme, away from here. I do not make that choice and I cannot change it. And if you say no to me today, you lose nothing you would otherwise have been given.
+
+Do you agree to answer these questions?</value>
+          </text>
+          <text id="g_consent-consent-label">
+            <value>Did the respondent give consent for the survey?</value>
+            <value form="markdown">Did the respondent give consent for the survey?</value>
+          </text>
+          <text id="g_consent-consent-hint">
+            <value>Record what they actually said. Either answer lets you finish and submit this visit.</value>
+            <value form="markdown">Record what they actually said. Either answer lets you finish and submit this visit.</value>
+          </text>
+          <text id="g_consent-consent_declined_note-label">
+            <value>That is recorded. This visit still counts as attended. Do not ask again and do not ask any of the survey questions. Thank them, leave, and submit this visit before you move on.</value>
+            <value form="markdown">That is recorded. This visit still counts as attended. Do not ask again and do not ask any of the survey questions. Thank them, leave, and submit this visit before you move on.</value>
+          </text>
+          <text id="g_identity-label">
+            <value>Who lives here</value>
+            <value form="markdown">Who lives here</value>
+          </text>
+          <text id="g_identity-hh_head_name-label">
+            <value>Name of the household head</value>
+            <value form="markdown">Name of the household head</value>
+          </text>
+          <text id="g_identity-hh_head_name-hint">
+            <value>Write the name the household itself uses for the head. Spell it as they say it.</value>
+            <value form="markdown">Write the name the household itself uses for the head. Spell it as they say it.</value>
+          </text>
+          <text id="g_identity-respondent_name-label">
+            <value>Name of the person you are speaking with</value>
+            <value form="markdown">Name of the person you are speaking with</value>
+          </text>
+          <text id="g_identity-respondent_name-hint">
+            <value>This may be the same person as the household head. If so, write the same name again.</value>
+            <value form="markdown">This may be the same person as the household head. If so, write the same name again.</value>
+          </text>
+          <text id="g_identity-phone-label">
+            <value>Phone number for this household</value>
+            <value form="markdown">Phone number for this household</value>
+          </text>
+          <text id="g_identity-phone-hint">
+            <value>This one is optional. It is the only question here you may leave blank. If the household has no phone, or does not want to give a number, leave it empty and carry on.</value>
+            <value form="markdown">This one is optional. It is the only question here you may leave blank. If the household has no phone, or does not want to give a number, leave it empty and carry on.</value>
+          </text>
+          <text id="roster-label">
+            <value>Household roster</value>
+            <value form="markdown">Household roster</value>
+          </text>
+          <text id="roster-member_name-label">
+            <value>Name or nickname</value>
+            <value form="markdown">Name or nickname</value>
+          </text>
+          <text id="roster-member_name-hint">
+            <value>A first name, or the name the family calls them by, is enough.</value>
+            <value form="markdown">A first name, or the name the family calls them by, is enough.</value>
+          </text>
+          <text id="roster-is_member-label">
+            <value>Does this person count as a member of this household?</value>
+            <value form="markdown">Does this person count as a member of this household?</value>
+          </text>
+          <text id="roster-is_member-hint">
+            <value>A member normally lives here and eats here. A visitor staying a few nights does not count.</value>
+            <value form="markdown">A member normally lives here and eats here. A visitor staying a few nights does not count.</value>
+          </text>
+          <text id="roster_complete-label">
+            <value>Is the household roster complete?</value>
+            <value form="markdown">Is the household roster complete?</value>
+          </text>
+          <text id="roster_complete-hint">
+            <value>Read the list back to the respondent and ask if anyone is missing before you answer.</value>
+            <value form="markdown">Read the list back to the respondent and ask if anyone is missing before you answer.</value>
+          </text>
+          <text id="roster_complete-constraintMsg">
+            <value>Go back one screen to the household roster and add at least one person who counts as a member of this household. A survey cannot be completed with nobody counted as a member.</value>
+            <value form="markdown">Go back one screen to the household roster and add at least one person who counts as a member of this household. A survey cannot be completed with nobody counted as a member.</value>
+          </text>
+          <text id="roster_complete-opt0-label">
+            <value>Yes, everyone is listed</value>
+            <value form="markdown">Yes, everyone is listed</value>
+          </text>
+          <text id="roster_complete-opt1-label">
+            <value>No, go back and add someone</value>
+            <value form="markdown">No, go back and add someone</value>
+          </text>
+          <text id="g_zone-label">
+            <value>Where the household lives</value>
+            <value form="markdown">Where the household lives</value>
+          </text>
+          <text id="g_zone-i1_zone-label">
+            <value>In which zone does the household live?</value>
+            <value form="markdown">In which zone does the household live?</value>
+          </text>
+          <text id="g_zone-i1_zone-hint">
+            <value>Read this out word for word and record the zone the respondent names. Do not answer it for them.</value>
+            <value form="markdown">Read this out word for word and record the zone the respondent names. Do not answer it for them.</value>
+          </text>
+          <text id="g_zone-i1_zone-opt0-label">
+            <value>North Central</value>
+            <value form="markdown">North Central</value>
+          </text>
+          <text id="g_zone-i1_zone-opt1-label">
+            <value>North East</value>
+            <value form="markdown">North East</value>
+          </text>
+          <text id="g_zone-i1_zone-opt2-label">
+            <value>North West</value>
+            <value form="markdown">North West</value>
+          </text>
+          <text id="g_zone-i1_zone-opt3-label">
+            <value>South East</value>
+            <value form="markdown">South East</value>
+          </text>
+          <text id="g_zone-i1_zone-opt4-label">
+            <value>South South</value>
+            <value form="markdown">South South</value>
+          </text>
+          <text id="g_zone-i1_zone-opt5-label">
+            <value>South West</value>
+            <value form="markdown">South West</value>
+          </text>
+          <text id="g_food7-label">
+            <value>In the past 7 days</value>
+            <value form="markdown">In the past 7 days</value>
+          </text>
+          <text id="g_food7-i3_bread-label">
+            <value>Within the past 7 days, did any members of your household eat any BREAD within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household eat any BREAD within the household?</value>
+          </text>
+          <text id="g_food7-i3_bread-hint">
+            <value>Read this out word for word, then wait quietly. Record what the respondent says.</value>
+            <value form="markdown">Read this out word for word, then wait quietly. Record what the respondent says.</value>
+          </text>
+          <text id="g_food7-i4_eggs-label">
+            <value>Within the past 7 days, did any members of your household eat any EGGS within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household eat any EGGS within the household?</value>
+          </text>
+          <text id="g_food7-i5_milk-label">
+            <value>Within the past 7 days, did any members of your household drink any MILK within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household drink any MILK within the household?</value>
+          </text>
+          <text id="g_food7-i6_sachet_water-label">
+            <value>Within the past 7 days, did any members of your household drink any SACHET WATER within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household drink any SACHET WATER within the household?</value>
+          </text>
+          <text id="g_elec-label">
+            <value>In the past 30 days</value>
+            <value form="markdown">In the past 30 days</value>
+          </text>
+          <text id="g_elec-i7_electricity-label">
+            <value>Over the past 30 days, did your household purchase or pay for any ELECTRICITY (including electricity vouchers)?</value>
+            <value form="markdown">Over the past 30 days, did your household purchase or pay for any ELECTRICITY (including electricity vouchers)?</value>
+          </text>
+          <text id="g_elec-i7_electricity-hint">
+            <value>Read this out word for word, then wait quietly. Record the answer you are given.</value>
+            <value form="markdown">Read this out word for word, then wait quietly. Record the answer you are given.</value>
+          </text>
+          <text id="g_assets-label">
+            <value>Things the household owns</value>
+            <value form="markdown">Things the household owns</value>
+          </text>
+          <text id="g_assets-i8_sofa-label">
+            <value>Does your household own a sofa?</value>
+            <value form="markdown">Does your household own a sofa?</value>
+          </text>
+          <text id="g_assets-i8_sofa-hint">
+            <value>Read this out word for word, then wait quietly. Do not suggest an answer.</value>
+            <value form="markdown">Read this out word for word, then wait quietly. Do not suggest an answer.</value>
+          </text>
+          <text id="g_assets-i9_fan-label">
+            <value>Does your household own an FAN?</value>
+            <value form="markdown">Does your household own an FAN?</value>
+          </text>
+          <text id="g_assets-i9_fan-hint">
+            <value>Read this out word for word, exactly as it is written here, then wait quietly.</value>
+            <value form="markdown">Read this out word for word, exactly as it is written here, then wait quietly.</value>
+          </text>
+          <text id="g_assets-i10_iron-label">
+            <value>Does your household own an IRON?</value>
+            <value form="markdown">Does your household own an IRON?</value>
+          </text>
+          <text id="g_assets-i10_iron-hint">
+            <value>Read this out word for word, then wait quietly. Do not reword or explain the question.</value>
+            <value form="markdown">Read this out word for word, then wait quietly. Do not reword or explain the question.</value>
+          </text>
+          <text id="g_assets-i10_iron-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="g_assets-i10_iron-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="g_photo-label">
+            <value>Photograph of the dwelling</value>
+            <value form="markdown">Photograph of the dwelling</value>
+          </text>
+          <text id="g_photo-photo_consent-label">
+            <value>Is the household willing for you to photograph the dwelling?</value>
+            <value form="markdown">Is the household willing for you to photograph the dwelling?</value>
+          </text>
+          <text id="g_photo-photo_consent-hint">
+            <value>Ask before you raise the phone. Either answer is fine and the visit still counts.</value>
+            <value form="markdown">Ask before you raise the phone. Either answer is fine and the visit still counts.</value>
+          </text>
+          <text id="g_photo-dwelling_photo-label">
+            <value>Take a photograph of the dwelling.</value>
+            <value form="markdown">Take a photograph of the dwelling.</value>
+          </text>
+          <text id="g_photo-dwelling_photo-hint">
+            <value>Frame the front of the dwelling so it can be recognised later. Stand back far enough to get the whole doorway in. Do not photograph people.</value>
+            <value form="markdown">Frame the front of the dwelling so it can be recognised later. Stand back far enough to get the whole doorway in. Do not photograph people.</value>
+          </text>
+          <text id="g_photo-photo_declined_note-label">
+            <value>That is recorded. Do not take a photograph. This visit still counts and you are still paid for it. It will be flagged for review, so there is nothing more for you to do here. Carry on and submit the visit.</value>
+            <value form="markdown">That is recorded. Do not take a photograph. This visit still counts and you are still paid for it. It will be flagged for review, so there is nothing more for you to do here. Carry on and submit the visit.</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <setvalue ref="/data/case/@case_id" value="instance('commcaresession')/session/data/case_id_new_household_0" event="xforms-ready"/>
+      <bind nodeset="/data/case/create/case_name" calculate="/data/case_name_calc"/>
+      <bind nodeset="/data/case/create/owner_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/update/gps_accuracy" calculate="/data/g_gps/gps_accuracy" relevant="count(/data/g_gps/gps_accuracy) &gt; 0"/>
+      <bind nodeset="/data/case/update/gps_lat" calculate="/data/g_gps/gps_lat" relevant="count(/data/g_gps/gps_lat) &gt; 0"/>
+      <bind nodeset="/data/case/update/gps_lon" calculate="/data/g_gps/gps_lon" relevant="count(/data/g_gps/gps_lon) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_head_name_rec" calculate="/data/hh_head_name_rec" relevant="count(/data/hh_head_name_rec) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_size_band" calculate="/data/hh_size_band" relevant="count(/data/hh_size_band) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_status" calculate="/data/hh_status_calc" relevant="count(/data/hh_status_calc) &gt; 0"/>
+      <bind nodeset="/data/case/update/last_visit_outcome" calculate="/data/visit_outcome" relevant="count(/data/visit_outcome) &gt; 0"/>
+      <bind nodeset="/data/case/update/phone_rec" calculate="/data/phone_rec" relevant="count(/data/phone_rec) &gt; 0"/>
+      <bind nodeset="/data/case/update/photo_declined" calculate="/data/photo_declined_rec" relevant="count(/data/photo_declined_rec) &gt; 0"/>
+      <bind nodeset="/data/case/update/ppi_score" calculate="/data/ppi_score" relevant="count(/data/ppi_score) &gt; 0"/>
+      <bind nodeset="/data/case/update/respondent_name_rec" calculate="/data/respondent_name_rec" relevant="count(/data/respondent_name_rec) &gt; 0"/>
+      <bind nodeset="/data/case/update/selected" calculate="/data/selected_init" relevant="count(/data/selected_init) &gt; 0"/>
+      <bind nodeset="/data/case/update/survey_date" calculate="/data/survey_date" relevant="count(/data/survey_date) &gt; 0"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/g_door" appearance="field-list">
+      <label ref="jr:itext('g_door-label')"/>
+      <select1 ref="/data/g_door/occupied">
+        <label ref="jr:itext('g_door-occupied-label')"/>
+        <hint ref="jr:itext('g_door-occupied-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_door/eligible_respondent">
+        <label ref="jr:itext('g_door-eligible_respondent-label')"/>
+        <hint ref="jr:itext('g_door-eligible_respondent-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/g_gps" appearance="field-list">
+      <label ref="jr:itext('g_gps-label')"/>
+      <input ref="/data/g_gps/gps">
+        <label ref="jr:itext('g_gps-gps-label')"/>
+        <hint ref="jr:itext('g_gps-gps-hint')"/>
+      </input>
+      <trigger ref="/data/g_gps/gps_advisory" appearance="minimal">
+        <label ref="jr:itext('g_gps-gps_advisory-label')"/>
+      </trigger>
+    </group>
+    <group ref="/data/g_consent" appearance="field-list">
+      <label ref="jr:itext('g_consent-label')"/>
+      <trigger ref="/data/g_consent/consent_script" appearance="minimal">
+        <label ref="jr:itext('g_consent-consent_script-label')"/>
+      </trigger>
+      <select1 ref="/data/g_consent/consent">
+        <label ref="jr:itext('g_consent-consent-label')"/>
+        <hint ref="jr:itext('g_consent-consent-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <trigger ref="/data/g_consent/consent_declined_note" appearance="minimal">
+        <label ref="jr:itext('g_consent-consent_declined_note-label')"/>
+      </trigger>
+    </group>
+    <group ref="/data/g_identity" appearance="field-list">
+      <label ref="jr:itext('g_identity-label')"/>
+      <input ref="/data/g_identity/hh_head_name">
+        <label ref="jr:itext('g_identity-hh_head_name-label')"/>
+        <hint ref="jr:itext('g_identity-hh_head_name-hint')"/>
+      </input>
+      <input ref="/data/g_identity/respondent_name">
+        <label ref="jr:itext('g_identity-respondent_name-label')"/>
+        <hint ref="jr:itext('g_identity-respondent_name-hint')"/>
+      </input>
+      <input ref="/data/g_identity/phone">
+        <label ref="jr:itext('g_identity-phone-label')"/>
+        <hint ref="jr:itext('g_identity-phone-hint')"/>
+      </input>
+    </group>
+    <group ref="/data/roster">
+      <label ref="jr:itext('roster-label')"/>
+      <repeat nodeset="/data/roster">
+        <input ref="/data/roster/member_name">
+          <label ref="jr:itext('roster-member_name-label')"/>
+          <hint ref="jr:itext('roster-member_name-hint')"/>
+        </input>
+        <select1 ref="/data/roster/is_member">
+          <label ref="jr:itext('roster-is_member-label')"/>
+          <hint ref="jr:itext('roster-is_member-hint')"/>
+          <item>
+            <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+      </repeat>
+    </group>
+    <select1 ref="/data/roster_complete">
+      <label ref="jr:itext('roster_complete-label')"/>
+      <hint ref="jr:itext('roster_complete-hint')"/>
+      <item>
+        <label ref="jr:itext('roster_complete-opt0-label')"/>
+        <value>yes</value>
+      </item>
+      <item>
+        <label ref="jr:itext('roster_complete-opt1-label')"/>
+        <value>no</value>
+      </item>
+    </select1>
+    <group ref="/data/g_zone" appearance="field-list">
+      <label ref="jr:itext('g_zone-label')"/>
+      <select1 ref="/data/g_zone/i1_zone">
+        <label ref="jr:itext('g_zone-i1_zone-label')"/>
+        <hint ref="jr:itext('g_zone-i1_zone-hint')"/>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt0-label')"/>
+          <value>north_central</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt1-label')"/>
+          <value>north_east</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt2-label')"/>
+          <value>north_west</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt3-label')"/>
+          <value>south_east</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt4-label')"/>
+          <value>south_south</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_zone-i1_zone-opt5-label')"/>
+          <value>south_west</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/g_food7" appearance="field-list">
+      <label ref="jr:itext('g_food7-label')"/>
+      <select1 ref="/data/g_food7/i3_bread">
+        <label ref="jr:itext('g_food7-i3_bread-label')"/>
+        <hint ref="jr:itext('g_food7-i3_bread-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_food7/i4_eggs">
+        <label ref="jr:itext('g_food7-i4_eggs-label')"/>
+        <hint ref="jr:itext('g_assets-i8_sofa-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_food7/i5_milk">
+        <label ref="jr:itext('g_food7-i5_milk-label')"/>
+        <hint ref="jr:itext('g_elec-i7_electricity-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_food7/i6_sachet_water">
+        <label ref="jr:itext('g_food7-i6_sachet_water-label')"/>
+        <hint ref="jr:itext('g_assets-i10_iron-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/g_elec" appearance="field-list">
+      <label ref="jr:itext('g_elec-label')"/>
+      <select1 ref="/data/g_elec/i7_electricity">
+        <label ref="jr:itext('g_elec-i7_electricity-label')"/>
+        <hint ref="jr:itext('g_elec-i7_electricity-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/g_assets" appearance="field-list">
+      <label ref="jr:itext('g_assets-label')"/>
+      <select1 ref="/data/g_assets/i8_sofa">
+        <label ref="jr:itext('g_assets-i8_sofa-label')"/>
+        <hint ref="jr:itext('g_assets-i8_sofa-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_assets/i9_fan">
+        <label ref="jr:itext('g_assets-i9_fan-label')"/>
+        <hint ref="jr:itext('g_assets-i9_fan-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/g_assets/i10_iron">
+        <label ref="jr:itext('g_assets-i10_iron-label')"/>
+        <hint ref="jr:itext('g_assets-i10_iron-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/g_photo" appearance="field-list">
+      <label ref="jr:itext('g_photo-label')"/>
+      <select1 ref="/data/g_photo/photo_consent">
+        <label ref="jr:itext('g_photo-photo_consent-label')"/>
+        <hint ref="jr:itext('g_photo-photo_consent-hint')"/>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('g_assets-i10_iron-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <upload ref="/data/g_photo/dwelling_photo" mediatype="image/*" appearance="acquire">
+        <label ref="jr:itext('g_photo-dwelling_photo-label')"/>
+        <hint ref="jr:itext('g_photo-dwelling_photo-hint')"/>
+      </upload>
+      <trigger ref="/data/g_photo/photo_declined_note" appearance="minimal">
+        <label ref="jr:itext('g_photo-photo_declined_note-label')"/>
+      </trigger>
+    </group>
+  </h:body>
+</h:html>

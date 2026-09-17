@@ -806,7 +806,9 @@ It flags any constraint referencing a question or repeat the user cannot
 edit from that screen, resolving hidden calculates transitively (so
 indirection can't launder a foreign reference) and allowing the two
 legitimate shapes: a self-reference (`.`) and a cardinality gate placed
-**immediately** after the repeat it guards.
+**immediately** after the repeat it guards — including one spelled
+`sum(<repeat>/<flag>) >= N` over a per-row `if(<predicate>, 1, 0)` indicator,
+which is the same gate written a different way (ace#2416).
 
 This check is **mechanical on purpose.** The class is 100% detectable
 from the binds, and the LLM rubric missed it twice in one form:
@@ -853,7 +855,11 @@ here and their remedies differ:
   reject. This shape satisfies locality *exactly* (a `count()` over your own
   repeat is a same-repeat reference), which is why it needed its own check:
   locality and reachability are different properties. The violation carries
-  `deadGate: { repeat, countArg, comparison, minimumRows }`.
+  `deadGate: { repeat, countArg, comparison, minimumRows, fn, indicatorNode? }`.
+  `fn` is `'count'` or `'sum'`; `sum` is recognised ONLY over a repeat child
+  whose own `calculate` is a `if(<predicate>, 1, 0)` indicator, and
+  `indicatorNode` names it (ace#2416). Quote `fn`, not a hard-coded `count(`,
+  when you render the offending expression.
 
   Read `kind` on every violation. A report whose violations you bucket by
   `severity` alone loses the remedy — both kinds are `blocker`, and "move
