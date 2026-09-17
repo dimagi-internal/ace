@@ -178,6 +178,57 @@ describe('checkRenderResetRegistered', () => {
     expect(r.auto_fix_hint).toBeTruthy();
   });
 
+  /**
+   * ace#2430. When check 8's evidenced live-load escape is taken, the
+   * interactive run is COMPLETED — and labs refuses a state write to a
+   * completed run with 409 (fact 4 above). Demanding a reset there would make
+   * the two gates jointly unsatisfiable: the only QA-passing configuration
+   * would be one whose reset cannot run.
+   */
+  it('stands down when the interactive run took the evidenced live-load escape — a completed run is immutable', () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: { required: false },
+      interactiveLiveLoad: {
+        dashboard: 'llo_review',
+        status: 'failed',
+        run_id: 5720,
+        control_run_id: 5718,
+        verified_at: '2026-09-15T18:42:00Z',
+        observed: 'connection ended while "Loading workflow configuration..." with no complete event',
+        upstream_ref: 'dimagi-internal/connect-labs#1884',
+      },
+    });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/escape|completed/i);
+  });
+
+  it('does NOT stand down on an unevidenced escape — that is just a missing reset', () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: { required: false },
+      interactiveLiveLoad: { dashboard: 'llo_review', status: 'failed' },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/render_reset\.required/);
+  });
+
+  it('does NOT stand down when the live load was PROVEN — that run is live and mutable', () => {
+    const r = checkRenderResetRegistered({
+      dashboards: interactiveDash,
+      renderReset: { required: false },
+      interactiveLiveLoad: {
+        dashboard: 'llo_review',
+        status: 'ok',
+        run_id: 5720,
+        verified_at: '2026-09-17T07:04:00Z',
+        observed: 'stream completed in 4s with complete:true; surveys 137 rows, worker_context 9 rows',
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/render_reset\.required/);
+  });
+
   it('treats a role-only interactive dashboard the same as an explicit flag', () => {
     const r = checkRenderResetRegistered({
       dashboards: [{ key: 'weekly', role: 'decision' }],

@@ -1138,6 +1138,79 @@ front half (how the labs-only opp + its data come to exist) differs.
      409): `playbook/integrations/connect-labs.md § Resetting a live run's state
      between renders`.
 
+4c. **Prove the interactive run's page actually LOADS, and record the probe
+   (ace#2430). A run that cannot load is not a dashboard.**
+
+   The `in_progress` mandate is not free: an interactive run has **no
+   snapshot**, so its page re-runs the live pipeline stream on EVERY load —
+   including every render take — while a completed run returns early on its
+   snapshot and never opens one (`workflow-runner.tsx`:
+   `if (snapshotCarriesPipelines) return;`). Until this step existed, nothing
+   in ACE ever exercised that dependency: step 3 proves the pipeline
+   EXTRACTS (`pipeline_preview`) and QA check 7 reads the data through
+   `api/<def>/pipeline-data/` — a side-channel around the stream the page
+   itself uses. On `poverty-graduation/20260915-1518` the stream died after
+   its first event, the interactive dashboard could not load at all, and
+   check 8 *enforced* that state: it fails a completed interactive run, so
+   the only QA-passing configuration was the one that could not render.
+
+   So, before the `par_url` is recorded, run the probe labs documents for
+   itself (`WORKFLOW_REFERENCE.md` § "Fastest way to tell these apart"):
+
+   ```bash
+   SESS=$(python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.ace/labs-session.json')));print([c['value'] for c in d['cookies'] if c['name']=='sessionid' and c['domain']=='labs.connect.dimagi.com'][0])")
+   curl -sS -N --max-time 180 -b "sessionid=$SESS" \
+     "https://labs.connect.dimagi.com/labs/workflow/api/<def_id>/pipeline-data/stream/?opportunity_id=<opp>&refresh=1" \
+     -o <run-dir>/interactive-live-load.sse
+   ```
+
+   `refresh=1` forces the cold path past the 1-hour pipeline cache — a
+   cache-served pass is not evidence about what the render will do, the same
+   reason step 3 requires `from_cache: false`. Scope it the way step 4 scopes
+   the `par_url`: `opportunity_id` for an opp-owned dashboard, `program_id`
+   for a program-owned rollup. Then classify the transcript — do not eyeball
+   it, because a terminal event is not enough (a multi-opp failure lives at
+   `metadata.per_opp[<opp>].error`, never at the top level):
+
+   ```bash
+   npx tsx -e "
+   import {readFileSync} from 'node:fs';
+   import {classifyLiveLoadStream} from './lib/interactive-live-load';
+   const r = classifyLiveLoadStream(readFileSync(process.argv[1],'utf8'));
+   console.log(r.verdict, '|', r.detail); process.exit(r.ok ? 0 : 1);
+   " <run-dir>/interactive-live-load.sse
+   ```
+
+   Write the result to `source.interactive_live_load`
+   (`{dashboard, status, probe_url, verified_at, observed, run_id}` —
+   `evidenceFromProbe()` builds it from the probe result, so the archived
+   observation is the transcript that was read rather than a second account
+   of it). `demo-data-setup-qa` check 8 REFUSES an `in_progress` interactive
+   run with no such record: the mandate now carries its proof.
+
+   - **`painted` → ship it `in_progress`**, exactly as § The interactive run
+     stays live says.
+   - **`died` / `errored` / `empty` → do NOT ship a dead link.** Re-run once
+     (a stream can flake), and if it still fails: mint the same definition as
+     a **completed control run** and load that. If the control renders, the
+     live path is the problem, not the dashboard — complete the interactive
+     run too, say on the page that the decision control is read-only for this
+     recording, and record the escape with `status: failed`,
+     `control_run_id: <the control>` and `upstream_ref: <the labs issue>`.
+     The standing labs-side issue is `dimagi-internal/connect-labs#1884`;
+     cite a newer one if the symptom differs.
+     A blank flag exempts nothing (same discipline as
+     `below_programme_scale`). If the CONTROL also fails to render, the
+     dashboard is broken — that is a step-3 bindings defect, not an escape.
+   - **Tell `demo-narrative` which it was.** On the escape the payoff scene
+     cannot perform a state change, so the narrative declares check 20's
+     evidenced `finale_is_read` rather than authoring a click that will
+     degrade to a `hold`.
+
+   An expired labs session returns a login page here, not a stream —
+   `classifyLiveLoadStream` reads that as `empty`, so re-run `/ace:labs-login`
+   before concluding anything about labs.
+
 5. **Emit the handoff + write back.**
 
    Write `realized.json` — the **flat** multi-var map (`{ primary_par_url,
@@ -1443,6 +1516,40 @@ recording.
 an interactive run found `completed` fails, and so does a non-interactive run
 left `in_progress`.
 
+**The mandate is not free, and it is now VERIFIED rather than assumed
+(ace#2430).** Completing a run is also how its page stops needing anything
+live: the runner returns early on a snapshot (`if (snapshotCarriesPipelines)
+return;`) and never opens a stream, while an `in_progress` run has no snapshot
+and therefore re-runs the pipeline SSE stream on **every** load — the reviewer's,
+and every render take's. So this rule buys a performable control at the price of
+a live dependency, and on `poverty-graduation/20260915-1518` that dependency
+failed: the stream died after its first event
+(`send_sse_event("Loading workflow configuration...")`, emitted before any
+network I/O) and the interactive dashboard rendered a shell plus a banner
+guessing at three causes. The same definition over the same pipeline rendered
+perfectly as a completed run — because a completed run never opens the stream.
+Check 8, being one-sided, then *enforced* the dead configuration: the only
+QA-passing shape was the one that could not render.
+
+Two things follow, and step 4c is where both happen:
+
+1. **Probe the live load before recording the `par_url`** — the stream
+   endpoint, classified by `classifyLiveLoadStream`, recorded as
+   `source.interactive_live_load`. An unproven `in_progress` run now FAILS
+   check 8.
+2. **There is an evidenced escape.** When the live load is observed failing and
+   a completed control run of the same definition DOES render, the interactive
+   run may ship `completed` — with `control_run_id` and `upstream_ref`. The
+   demo is then honest-but-degraded (the decision is visible, not performable),
+   which is strictly better than a blank page, and `demo-narrative` declares
+   check 20's `finale_is_read` instead of authoring a click that cannot land.
+
+Note what did NOT change: the rule itself. Probed live on 2026-09-17, both
+definitions from that run streamed to completion in 4s and 7s — the labs-side
+failure did not reproduce two days later. A mandate whose truth moves between
+Tuesday and Thursday is exactly one that has to be checked at the moment it is
+recorded, not reasoned about once.
+
 **A live run accumulates what the camera did to it.** The same decision that
 makes the payoff performable makes the run STATEFUL across takes: the task the
 scene creates is still there on the next render, the button is gone, and a
@@ -1591,6 +1698,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-17 | **New step 4c: the `in_progress` mandate is PROVEN before its `par_url` is recorded (ace#2430).** § The interactive run stays live required exactly one run to stay live and check 8 enforced it, but nothing ever loaded that page — step 3 proves the pipeline extracts and check 7 reads the data through `api/<def>/pipeline-data/`, a side-channel around the stream the page itself uses. The two run states are not symmetric: a completed run's page returns early on its snapshot (`workflow-runner.tsx`: `if (snapshotCarriesPipelines) return;`), while an `in_progress` run has no snapshot and re-runs the pipeline SSE stream on every load, every take. On `poverty-graduation/20260915-1518` that stream died after its first event and the interactive dashboard could not load at all — and check 8, being one-sided, *enforced* the dead state: a `completed` interactive run failed, so the only QA-passing configuration was the one that could not render. Now: probe `api/<def>/pipeline-data/stream/` with `refresh=1`, classify it with `classifyLiveLoadStream` (`lib/interactive-live-load.ts`), record `source.interactive_live_load`, and — when the live load fails against a completed control run of the SAME definition that DOES render — ship the run completed under an evidenced escape carrying `control_run_id` + `upstream_ref`. Probed live 2026-09-17 on definitions 5714 and 5695 / labs opp 10065: both streamed to completion (4s / 7s, 137 + 9 rows), i.e. the labs-side failure did NOT reproduce — which is the argument for checking at record time rather than reasoning once. *Enforced:* `test/lib/interactive-live-load.test.ts` (fixtures trimmed from those real captures). | ACE team |
 | 2026-09-17 | **A REPEAT group is no longer a `declared_omissions[]` class — step 2c.4 said it was structurally impossible, and both halves of that premise are refuted (ace#2432).** `auditDataset` resolved a conditional field by leaf name against a flat record, and `leafPaths` treated an array as an opaque LEAF — so `/data/roster/member_name` had no path at all while its gate, at the record's top level, resolved fine. Measured on `poverty-graduation/20260915-1518` (deliver app `e4594937038c42d2be4d01f45df44209` v7, 2,207 records): `member_name`, `is_member` and `member_flag` each reported `conditional-missing` on 1,379 records — exactly the 1,379 carrying a non-empty `form.roster`, whose `roster[].member_flag` sums re-derive the app's own `/data/member_count` with 0 failures. The run spent three `declared_omissions` entries exempting data that was present and correct, so materialising the repeat scored the same as skipping it. `leafPaths` now descends into an array (index elided, so one spec field addresses every row), which fixes `auditDataset` and the scrub's `unresolvedFields` together and makes the scrub clear an off-branch value from EVERY row. The other half: `BeneficiaryCohort.repeat_groups: dict[str, RepeatGroupSpec]` is in the labs manifest schema, so the generator can emit one. *Enforced:* `test/lib/dataset-constraints-repeat-groups.test.ts`, against real captures of that run's deliver app and records — including the negative controls, since an empty repeat and rows lacking the leaf must both still read as absent. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.{provider, labs_opp_id, workflows, source, render_code_patched_this_run}` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to the skill that writes it, and ace-web's skill fork trims by it — so a Phase 7 fork at `demo-narrative` now carries exactly these five keys and drops `narrative` / `ddd_*`. Nothing changes in what this skill writes; if it starts writing a new `synthetic.<key>`, add the attribution there too (the coverage test fails on a schema-declared key with no producer). | ACE team |
 | 2026-09-10 | **Step 4b's registered reset command is now SELF-RESOLVING, and a pinned one fails QA (ace#2351).** The step said "write the command with an ABSOLUTE path", and the path that produced was `~/.claude/plugins/cache/ace/ace/<version>/scripts/reset-labs-run-state.ts` under one user's home. `demo-narrative` copies it verbatim into the spec's `setup.command` (`rerun: per_render`), so per-run state pinned a VERSION directory — the cache keeps every prior version, so the path kept resolving to STALE code after every `/ace:update` — and a HOME directory. Measured on `spark-facilitator/20260909-2242` (pinned 0.13.1413, pre-ace#2325: `grep -c buildRunPageUrl` = 0, no `--workflow-id`) and `20260910-0541` (`/Users/<name>/…/0.13.1426/…`). The absolute-path rule stays (canopy runs `setup.command` via `subprocess.run(shell=True, cwd=<spec toplevel>)`, `record_video.py:398`); the path now resolves ITSELF: `bash "$(python3 -c "…installed_plugins.json…['plugins']['ace@ace'][0]['installPath']")/bin/ace-reset-labs-run" …`, where the new shim re-resolves the installed root (never `dirname $0`) and execs the reset there. Verified live on labs run 5590 / workflow 5502 / opp 10060 through Python `shell=True` from a foreign cwd. `renderResetCommand()` in `lib/labs-run-state-reset.ts` is the canonical string; `demo-data-setup-qa` check 18 gains `render_reset_command_pinned`. *Enforced:* `test/lib/labs-run-state-reset.test.ts`, `test/scripts/ace-reset-labs-run-root.test.ts`. | ACE team |

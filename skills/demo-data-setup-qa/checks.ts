@@ -24,6 +24,11 @@
  */
 
 import type { QACheckResult } from '../../lib/qa-types';
+import {
+  classifyLiveLoadEvidence,
+  describeLiveLoadEvidence,
+  LIVE_LOAD_PROBE_HINT,
+} from '../../lib/interactive-live-load.js';
 import type {
   ConstraintReport,
   ScrubReport,
@@ -312,10 +317,52 @@ export interface DashboardPayloadPair {
  * A payload with no `instance.status` is reported, not failed: an absent field
  * is a fetch-shape question, and a QA gate that fails on what it cannot see is
  * the always-fires class (ace#1026).
+ *
+ * **ace#2430 — the mandate is now verified, and it has an evidenced escape.**
+ * Leaving the run `in_progress` costs a LIVE dependency: that page has no
+ * snapshot, so every load re-runs the pipeline SSE stream, while a completed
+ * run returns early on its snapshot and never opens one
+ * (`workflow-runner.tsx`: `if (snapshotCarriesPipelines) return;`). On
+ * `poverty-graduation/20260915-1518` that stream died after its first event and
+ * the interactive dashboard could not load at all — and because this check was
+ * one-sided, the ONLY QA-passing configuration was the one that could not
+ * render. So: the producer must record `source.interactive_live_load` (the
+ * probe it ran), an unproven `in_progress` run fails, a run whose own probe
+ * says it cannot load fails, and a `completed` interactive run passes when — and
+ * only when — the failure is evidenced against a rendering control run. Same
+ * cite-your-source discipline as `below_programme_scale` and
+ * `declared_omissions[]`; the escape is reported in `detail`, never silent.
  */
-export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheckResult {
+export function checkInteractiveRunsLive(
+  pairs: DashboardPayloadPair[],
+  liveLoad?: unknown,
+): QACheckResult {
   const problems: string[] = [];
   const unknown: string[] = [];
+  const notes: string[] = [];
+
+  // ace#2430: the mandate now carries its proof. An interactive run has NO
+  // snapshot, so its page re-runs the live pipeline stream on every load —
+  // including every render take — while a completed run returns early on its
+  // snapshot and never opens one. That asymmetry is why `in_progress` needs
+  // verifying and `completed` does not, and it is what made the old one-sided
+  // rule enforce a page that could not render.
+  const anyInteractive = pairs.some(({ dashboard }) => isInteractiveRole(dashboard.role));
+  const evidence = classifyLiveLoadEvidence(liveLoad);
+  const escapeGranted = anyInteractive && evidence.status === 'failed' && evidence.granted;
+  const provenLive = anyInteractive && evidence.status === 'ok' && evidence.granted;
+
+  if (anyInteractive && !evidence.granted) {
+    problems.push(
+      `the interactive dashboard's live-load is unproven: ${evidence.problems.join('; ')}. An in_progress ` +
+        `run has no snapshot, so its page depends on the live pipeline stream every time it is opened`,
+    );
+  } else if (escapeGranted) {
+    notes.push(
+      `live-load escape taken (evidenced): ${describeLiveLoadEvidence(evidence, liveLoad)} — the interactive ` +
+        `run ships completed because its live load was observed failing against a rendering control`,
+    );
+  }
 
   for (const { dashboard, payload } of pairs) {
     const status = payload?.instance?.status;
@@ -324,11 +371,18 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
       unknown.push(`${dashboard.key} (role ${dashboard.role ?? 'unset'})`);
       continue;
     }
-    if (interactive && status === 'completed') {
+    if (interactive && status === 'completed' && !escapeGranted) {
       problems.push(
         `${dashboard.key}: role '${dashboard.role}' is interactive but its run is completed — the page ` +
           `renders "This run is completed… Decisions are read-only" with the status control disabled, so ` +
           `the decision the narrative demonstrates cannot be performed on camera`,
+      );
+    }
+    if (interactive && status !== 'completed' && escapeGranted) {
+      problems.push(
+        `${dashboard.key}: its recorded live-load probe says this page cannot load ` +
+          `(${describeLiveLoadEvidence(evidence, liveLoad)}), yet the run shipped '${status}' — a dead ` +
+          `par_url must not reach a stakeholder; complete the run and say so on the page`,
       );
     }
     if (!interactive && status !== 'completed') {
@@ -341,16 +395,22 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
   }
 
   const unknownNote = unknown.length ? ` (unknown run status, not judged: ${unknown.join(', ')})` : '';
+  const noteText = notes.length ? `; ${notes.join('; ')}` : '';
   if (problems.length === 0) {
-    return { pass: true, detail: `${pairs.length} dashboard run state(s) match their role${unknownNote}` };
+    const proof = provenLive ? `, interactive live-load proven (${describeLiveLoadEvidence(evidence, liveLoad)})` : '';
+    return {
+      pass: true,
+      detail: `${pairs.length} dashboard run state(s) match their role${proof}${unknownNote}${noteText}`,
+    };
   }
   return {
     pass: false,
-    detail: problems.join('; ') + unknownNote,
+    detail: problems.join('; ') + unknownNote + noteText,
     auto_fix_hint:
       'Leave ONLY the review-action dashboard\'s run in_progress — skip workflow_save_snapshot for it — ' +
       'and complete every other dashboard\'s run as usual. The interactive dashboard trades snapshot ' +
-      'stability for a page the reviewer can actually act on; the rest keep it (dimagi-internal/ace#1162).',
+      'stability for a page the reviewer can actually act on; the rest keep it (dimagi-internal/ace#1162). ' +
+      LIVE_LOAD_PROBE_HINT,
   };
 }
 

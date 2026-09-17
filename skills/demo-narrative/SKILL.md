@@ -161,6 +161,18 @@ paraphrase the schema here — read the model / schema and validate.
      `wait_for`/`hold` and 7 scenes rendered 2 distinct images
      (dimagi-internal/ace#1162).
 
+     **Unless `source.interactive_live_load.status` is `failed` (ace#2430).**
+     An `in_progress` run's page has no snapshot, so it re-runs the live
+     pipeline stream on every load; when the producer's step-4c probe caught
+     that failing against a control run that DOES render, the interactive run
+     ships `completed` under an evidenced escape and its control is read-only
+     like every other. Do not author a click against it — it would degrade to
+     a `hold` and cost the arc exactly what #1162 cost it. Author the finale as
+     the strongest READ beat available and declare check 20's evidenced
+     `finale_is_read`, citing that record's `control_run_id` and
+     `upstream_ref`. Check the field before you place the payoff; a blank or
+     `ok` record means the normal rule above applies unchanged.
+
      **When `source.payoff_control` is set, the payoff scene MUST act on that
      control — it is not a hint (ace#2316).** The producer sets it when the
      opp's cohort sits below the detection floor and it took the

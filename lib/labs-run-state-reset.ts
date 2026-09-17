@@ -59,6 +59,7 @@
  */
 
 import type { QACheckResult } from './qa-types.js';
+import { classifyLiveLoadEvidence, describeLiveLoadEvidence } from './interactive-live-load.js';
 
 /** Default labs origin; every ACE demo dashboard lives here. */
 export const LABS_BASE_URL = 'https://labs.connect.dimagi.com';
@@ -252,6 +253,14 @@ export interface RenderResetCheckInput {
   renderReset?: RenderResetContract | null;
   /** Omit when QA runs BEFORE the narrative is authored — that half is then reported, not judged. */
   specSetup?: SpecSetupBlock | null;
+  /**
+   * `source.interactive_live_load` (ace#2430). When the interactive run took
+   * the EVIDENCED live-load escape it ships `completed`, and fact 4 above says
+   * a completed run refuses the state write with 409 — so demanding a reset
+   * there would make check 8 and check 18 jointly unsatisfiable. Anything less
+   * than a granted `failed` record changes nothing here.
+   */
+  interactiveLiveLoad?: unknown;
 }
 
 const INTERACTIVE_ROLES = new Set(['review-action', 'review', 'decision']);
@@ -367,6 +376,21 @@ export function checkRenderResetRegistered(input: RenderResetCheckInput): QAChec
     };
   }
   const names = interactive.map((d) => d.key).join(', ');
+
+  // ace#2430: an evidenced live-load failure means that run shipped COMPLETED,
+  // and a completed run's state is immutable (409). Nothing can be dirtied, so
+  // there is nothing to reset — and requiring one anyway would leave no
+  // configuration that satisfies both gates.
+  const liveLoad = classifyLiveLoadEvidence(input.interactiveLiveLoad);
+  if (liveLoad.status === 'failed' && liveLoad.granted) {
+    return {
+      pass: true,
+      detail:
+        `dashboard(s) ${names} took the evidenced live-load escape (ace#2430), so the run ships completed ` +
+        `and its state is immutable (labs answers a write to a completed run with 409) — ` +
+        `${describeLiveLoadEvidence(liveLoad, input.interactiveLiveLoad)}`,
+    };
+  }
   const problems: string[] = [];
   const reset = input.renderReset ?? undefined;
 

@@ -270,6 +270,30 @@ describe('checkInteractiveRunsLive (#1162)', () => {
   const live = { instance: { status: 'in_progress' } };
   const done = { instance: { status: 'completed' } };
 
+  /**
+   * ace#2430: the `in_progress` mandate now carries its proof. An interactive
+   * run has no snapshot, so its page re-runs the live pipeline stream on EVERY
+   * load; these fixtures are the producer's record of having watched it do so.
+   */
+  const PROVEN_LIVE = {
+    dashboard: 'llo_review',
+    status: 'ok',
+    run_id: 5720,
+    probe_url: 'https://labs.connect.dimagi.com/labs/workflow/api/5714/pipeline-data/stream/?opportunity_id=10065',
+    verified_at: '2026-09-17T07:04:00Z',
+    observed: 'stream completed in 4s with complete:true; surveys 137 rows, worker_context 9 rows',
+  };
+  const PROVEN_DEAD = {
+    dashboard: 'llo_review',
+    status: 'failed',
+    run_id: 5720,
+    control_run_id: 5718,
+    probe_url: 'https://labs.connect.dimagi.com/labs/workflow/api/5695/pipeline-data/stream/?opportunity_id=10065',
+    verified_at: '2026-09-15T18:42:00Z',
+    observed: 'connection ended while "Loading workflow configuration..." with no complete event',
+    upstream_ref: 'dimagi-internal/connect-labs#1884',
+  };
+
   it('fails when a review-action dashboard’s run is completed — the #1162 repro', () => {
     const r = checkInteractiveRunsLive([
       { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
@@ -281,12 +305,15 @@ describe('checkInteractiveRunsLive (#1162)', () => {
     expect(r.auto_fix_hint).toMatch(/in_progress/);
   });
 
-  it('passes the option-1 shape: the review-action run live, every other run completed', () => {
-    const r = checkInteractiveRunsLive([
-      { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
-      { dashboard: { key: 'child_recovery', template: 'sam_followup', par_url: 'u', role: 'recovery' }, payload: done },
-      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: live },
-    ]);
+  it('passes the option-1 shape: the review-action run live AND PROVEN to load, every other run completed', () => {
+    const r = checkInteractiveRunsLive(
+      [
+        { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
+        { dashboard: { key: 'child_recovery', template: 'sam_followup', par_url: 'u', role: 'recovery' }, payload: done },
+        { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: live },
+      ],
+      PROVEN_LIVE,
+    );
     expect(r.pass).toBe(true);
   });
 
@@ -306,15 +333,74 @@ describe('checkInteractiveRunsLive (#1162)', () => {
   });
 
   it('is silent on a dashboard whose payload carries no status — it judges what it can see', () => {
-    const r = checkInteractiveRunsLive([
-      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: {} },
-    ]);
+    const r = checkInteractiveRunsLive(
+      [{ dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: {} }],
+      PROVEN_LIVE,
+    );
     expect(r.pass).toBe(true);
     expect(r.detail).toMatch(/unknown/i);
   });
 
   it('passes vacuously on an empty dashboard list', () => {
     expect(checkInteractiveRunsLive([]).pass).toBe(true);
+  });
+
+  // ── ace#2430: the mandate is verified, and the escape is evidenced ──
+
+  it('FAILS an in_progress interactive run with no live-load evidence — the mandate was never verified', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: live },
+    ]);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/live[- ]load/i);
+    expect(r.auto_fix_hint).toMatch(/pipeline-data\/stream/);
+  });
+
+  it('FAILS an in_progress interactive run whose recorded probe says the page cannot load', () => {
+    const r = checkInteractiveRunsLive(
+      [{ dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: live }],
+      PROVEN_DEAD,
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/cannot load|dead/i);
+  });
+
+  it('PASSES a completed interactive run when the failure is evidenced — reported, never silent', () => {
+    const r = checkInteractiveRunsLive(
+      [
+        { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
+        { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: done },
+      ],
+      PROVEN_DEAD,
+    );
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/escape|evidenced/i);
+    expect(r.detail).toMatch(/5718/);
+  });
+
+  it('REFUSES the escape when it is unevidenced — an unevidenced flag exempts nothing', () => {
+    const r = checkInteractiveRunsLive(
+      [{ dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: done }],
+      { ...PROVEN_DEAD, control_run_id: undefined },
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/control_run_id/);
+  });
+
+  it('a proven-live record does NOT license completing the interactive run', () => {
+    const r = checkInteractiveRunsLive(
+      [{ dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: done }],
+      PROVEN_LIVE,
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/read-only/i);
+  });
+
+  it('a demo with no interactive dashboard needs no live-load evidence', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
+    ]);
+    expect(r.pass).toBe(true);
   });
 });
 
