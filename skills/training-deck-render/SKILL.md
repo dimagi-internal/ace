@@ -54,6 +54,82 @@ training material step before Phase 7.
    deck. Verify all 14 stencils are present (match against the
    `STENCILS` constant). HALT if any missing.
 
+7b. **Scan the copied stencils for placeholder drift. HALT on any**
+    (dimagi-internal/ace#2429).
+
+    ```bash
+    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-stencil-token-drift.ts" \
+      --deck <copied presentationId>
+    ```
+
+    Exit 0 = no drift. Exit 1 = drift, and the deck must not be
+    rendered from this template until it is reconciled.
+
+    **This is the check step 9's `unmatchedReplacements` cannot make,
+    and the reason is worth knowing.** The template and
+    `STENCIL_PLACEHOLDERS` are two halves of one contract kept in
+    different places, and they drift in BOTH directions:
+
+    - a token the builder replaces that the stencil lacks — silently
+      **dropped**. `unmatchedReplacements` catches this (ace#2126).
+    - a token the stencil carries that the builder no longer replaces
+      — nothing targets it, so it survives onto the slide and the
+      reader sees a literal `{{TOKEN}}`. `unmatchedReplacements` is
+      **structurally blind** to this: it only reports tokens the
+      builder *tried* to replace.
+
+    The second is ace#2429. The duration badge left the exercise
+    layout's contract on 2026-09-09; the live template, minted
+    2026-09-07, kept it. `poverty-graduation/20260915-1518` rendered
+    281 requests, 281 replies, **0 unmatched** — and shipped a partner
+    a literal `{{DURATION}}` on all 13 of its exercise slides. The
+    generate-side `/\{\{[A-Z_]+\}\}/` sweep passes too, because it
+    scans the SPEC and the token lives in the TEMPLATE. This step is
+    the one place both halves are in hand.
+
+    **If it reports drift, repair the TEMPLATE, not the deck.** One
+    `replaceAllText` over the rendered deck fixes that artifact and
+    leaves the next render to reproduce it — that is exactly what
+    happened on the run that filed #2429. The repair is in place, so
+    the presentationId does not change and
+    `ACE_TRAINING_DECK_TEMPLATE_ID` needs no rotation:
+
+    ```bash
+    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-stencil-token-drift.ts" \
+      --repair
+    ```
+
+    (No `--template` argument: it defaults to
+    `ACE_TRAINING_DECK_TEMPLATE_ID` read from `<plugin-data>/.env` by
+    the script itself. Do **not** interpolate that variable in the
+    shell — ACE's env is loaded into MCP subprocesses, not the calling
+    shell, so `$ACE_TRAINING_DECK_TEMPLATE_ID` expands to EMPTY in a
+    Bash tool call and would send an empty id. ace#1147.)
+
+    It deletes every text-bearing shape on each drifted stencil page
+    and re-layers that stencil's boxes from
+    `lib/training-deck-stencil-geometry.ts` — the same thing the
+    bootstrap's step 4 does per page — then re-reads the template and
+    proves the drift is gone. Chrome (accent bar, right rule, corner
+    mark) is not text-bearing and is untouched, and the notes page is
+    not scanned or rewritten, so `{{NOTES}}` survives.
+
+    Note that **re-running `bootstrap-training-deck-template.ts` is a
+    no-op here**, despite being the obvious move: it dedupes on
+    `TEMPLATE_NAME` in the ACE root folder, so it finds the drifted
+    template and returns `Template already exists`. Forcing a real
+    re-mint means a new presentationId, which means a 1Password
+    rotation plus `/ace:setup --force-env` plus a full Claude restart
+    (every MCP server reads `.env` at module load). Repair in place
+    unless the stencil GEOMETRY changed, not just its tokens.
+
+    The comparison logic is `lib/stencil-token-drift.ts`
+    (`scanStencilTokenDrift`), unit-tested in
+    `test/lib/stencil-token-drift.test.ts` against both drift
+    directions plus the live template's real pre- and post-repair
+    content. The script is only the Slides round-trip around it.
+
 8. **Build requests.** Call
    `buildSlidesRequestsV2(spec, { stencils, manifest })`.
 
@@ -81,11 +157,15 @@ training material step before Phase 7.
    token.** That renders correctly once and teaches the next run
    nothing. A dropped token means the live template gdoc no longer
    carries the placeholder the builder targets, and the fix is to
-   re-bootstrap the template
-   (`scripts/bootstrap-training-deck-template.ts`) so the stencil has
-   the slot. `{{NOTES}}` is the likeliest first hit: the bootstrap
-   injects it into each stencil's notes page, so an unmatched
-   `{{NOTES}}` means the live template predates that step.
+   reconcile the template — step 7b's `--repair`, which rebuilds the
+   drifted stencil pages in place and keeps the presentationId. (Step
+   7b should have caught it first; an entry reaching HERE and not
+   there means the token is on the notes page, which 7b does not
+   scan.) `{{NOTES}}` is the likeliest such hit: the bootstrap injects
+   it into each stencil's notes page, so an unmatched `{{NOTES}}` means
+   the live template predates that step, and THAT one does need
+   `scripts/bootstrap-training-deck-template.ts` (after trashing or
+   renaming the existing template — it dedupes on `TEMPLATE_NAME`).
 
 10. **Write deck handoff** to `run_state.yaml`:
 
@@ -236,6 +316,8 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/rerender-train
 
 ## MCP Tools Used
 
+- `scripts/check-stencil-token-drift.ts` (step 7b gate; `--repair` for the
+  operator-side template reconcile)
 - `ace-gdrive`:
   - `drive_read_file` (read the spec YAML)
   - `drive_set_anyone_with_link` (pre-flight image sharing)
@@ -266,6 +348,11 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/rerender-train
 
 ## Change Log
 
+- v2: Step 7b — post-copy stencil placeholder-drift scan, blocking.
+  Catches builder/template drift in both directions at the one point
+  where both halves are in hand (dimagi-internal/ace#2429). Logic in
+  `lib/stencil-token-drift.ts`; `--repair` reconciles the template in
+  place, so no template id changes and no `.env` rotation.
 - v1: Initial skill. Replaces `training-deck-build`. Reads
   `training-deck-spec.yaml` (from `training-deck-generate`) instead
   of `training-deck-outline.md`. Single-pass render via
