@@ -713,6 +713,46 @@ was found by a human reading a report that looked fine.
 3. **Add a positive control that is not vacuous.** "No date fields at all, so nothing was checked" is a *not-applicable*, and per `lib/check-outcome.ts` that is not a pass. The positive control must feed input the check genuinely inspects and assert it comes back clean — and assert the count it inspected, so a check that matched nothing cannot pass by looking at nothing (the ace#1634 regex-blindness shape).
 4. **Where the rule is a subset or threshold relation, cover a valid EDGE case passing.** An over-tight check produces false positives, which get "fixed" by loosening until the check is vacuous again. `. >= today() and . <= date(today() + 30)` must pass while the strict-lower-bound sibling fails; a `REACHABLE` link tagged `public` must pass alongside an `OK` one.
 5. **Prove the control can go red.** Before you ship it, break the check — neuter it to report nothing, or wire it to always fire — and watch your control fail. If it stays green, it is not a control.
+6. **Feed at least one control from a CAPTURED artifact, not an inline literal.** See below.
+
+### Fixture grounding — the oracle has to be independent
+
+A control's entire power is that its input did not come from the same place
+the implementation did. When you write the parser and the sample it parses in
+one pass, they agree by construction: the negative control fires, the positive
+control passes, and the pair proves only that the code does what the code
+does. CI cannot tell that apart from a real test — both are green.
+
+This is specifically worse under AI authorship. A human writing a parser
+usually has the real artifact open, because that is *why* they are writing it.
+A model materialises the sample from the same internal representation that
+produced the regex, so the sample inherits every mistaken assumption the regex
+makes, silently and in both directions.
+
+So: **at least one of a check's controls must reach it from a file read off
+disk** — `test/fixtures/`, a suite-local `fixtures/` dir, or the repo's own
+`skills/*.md`. *Enforced:* the same ratchet
+(`test/skills/negative-control-ratchet.test.ts`, `GROUNDING_BASELINE`). Most
+surfaces fail it today — 118 of 141 when it was written — so the known set is
+pinned and only NEW checks are blocked. Its size doubles as the budget: ground
+one and lower it, never raise it.
+
+Five gates in `poverty-graduation/20260915-1518` were green over broken
+behaviour for exactly this reason:
+
+| Issue | The specification the fixtures agreed with |
+|---|---|
+| ace#2422 | Three contact obligations passed and the bot still emitted the wrong address — the test helper supplied the required field on every synthetic row, so "absent" was never an input |
+| ace#2396 | `selectOpenRows` ranked by a `blocking:` field that 0 of 15 real rows carry; every fixture supplied it |
+| ace#2398 | `readProgramParameter` matched a table row neither export produces — the ace#1946 check shipped inert a SECOND time |
+| ace#2429 | `unmatchedReplacements` is blind to a token the builder stopped emitting |
+| ace#2426 | `recipe-sanity-probe` returned fully clean on the defect it exists to catch |
+
+What this does **not** buy: a fabricated file committed under `test/fixtures/`
+is the same tautology with an extra hop. What it buys is that the input
+becomes reviewable, reusable and diffable instead of three lines nobody looks
+at again — and that the cheapest way to satisfy the rail is to go and capture
+the real thing. Commit the capture with a line saying where it came from.
 
 ### Verdict shape
 

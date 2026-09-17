@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyCoverage,
   extractTestBlocks,
+  groundedBindings,
   indirectCallers,
+  isGrounded,
   maskLiterals,
   negativeSignal,
   positiveSignal,
@@ -269,5 +271,112 @@ describe('classifyCoverage — the verdict the ratchet reads', () => {
       `});`,
     ].join('\n');
     expect(run(src, surface('checkV', 'outcome')).positive).toHaveLength(1);
+  });
+});
+
+describe('fixture grounding — whether a control input came off disk', () => {
+  const surface = (fn: string, shape: CheckSurface['shape'] = 'pass'): CheckSurface => ({
+    file: 'lib/x.ts',
+    fn,
+    shape,
+    returnType: 'QACheckResult',
+  });
+  const run = (src: string, s: CheckSurface) =>
+    classifyCoverage([s], extractTestBlocks('t.test.ts', src), new Map([['t.test.ts', src]]))[0];
+
+  it('NEGATIVE — controls built from inline literals are NOT grounded', () => {
+    // The ace#2396 shape: the row the check ranks by is typed beside the
+    // assertion, so it carries the field the implementation expects and no
+    // real row does. This must read as ungrounded or the rail certifies the
+    // exact thing it exists to catch.
+    const src = [
+      `it('flags', () => { expect(checkA({ blocking: true }).pass).toBe(false); });`,
+      `it('clean', () => { expect(checkA({ blocking: false }).pass).toBe(true); });`,
+    ].join('\n');
+    const row = run(src, surface('checkA'));
+    expect(row.negative).toHaveLength(1);
+    expect(row.positive).toHaveLength(1);
+    expect(row.grounded).toHaveLength(0);
+  });
+
+  it('a control reading disk inside the block IS grounded', () => {
+    const src = `it('flags', () => { expect(checkA(readFileSync(p, 'utf8')).pass).toBe(false); });`;
+    expect(run(src, surface('checkA')).grounded).toHaveLength(1);
+  });
+
+  it('a module-level fixture constant grounds the blocks that use it', () => {
+    // The shape ACE actually writes — `const GOOD_WO = readFileSync(...)` at
+    // module scope, consumed by a dozen blocks below. Reading only the block
+    // body calls every one of them ungrounded, and a ratchet that
+    // over-reports debt is a ratchet someone deletes.
+    const src = [
+      `const GOOD_WO = readFileSync(join(FIXTURES, 'good-work-order.md'), 'utf8');`,
+      `it('clean', () => { expect(checkA(GOOD_WO).pass).toBe(true); });`,
+      `it('flags', () => { expect(checkA('# inline').pass).toBe(false); });`,
+    ].join('\n');
+    const row = run(src, surface('checkA'));
+    expect(row.grounded.map((b) => b.title)).toEqual(['clean']);
+  });
+
+  it('a name imported from a fixtures module grounds its blocks', () => {
+    const src = [
+      `import { OPEN_QUESTIONS } from './fixtures/open-questions';`,
+      `it('flags', () => { expect(checkA(OPEN_QUESTIONS).pass).toBe(false); });`,
+    ].join('\n');
+    expect(run(src, surface('checkA')).grounded).toHaveLength(1);
+  });
+
+  it('NEGATIVE — parsing an INLINE blob is not grounding', () => {
+    // A hand-written YAML string that has been through a parser is still a
+    // literal authored in the same pass. Counting `yaml.parse` would mark the
+    // whole ace#2396 class grounded and make the rail report the opposite of
+    // the truth.
+    const src = [
+      `const SPEC = yaml.parse('scenes:\\n  - id: one\\n');`,
+      `it('flags', () => { expect(checkA(SPEC).pass).toBe(false); });`,
+    ].join('\n');
+    expect(run(src, surface('checkA')).grounded).toHaveLength(0);
+  });
+
+  it('NEGATIVE — a fixture binding a block never mentions does not ground it', () => {
+    // Otherwise one captured artifact anywhere in a file would launder every
+    // check in it, which is the file-level approximation this replaces.
+    const src = [
+      `const CCZ = readFileSync(join(FIX, 'app.ccz'));`,
+      `it('flags', () => { expect(checkA({ id: 'x' }).pass).toBe(false); });`,
+    ].join('\n');
+    expect(run(src, surface('checkA')).grounded).toHaveLength(0);
+  });
+
+  it('groundedBindings collects both declaration forms and skips ungrounded ones', () => {
+    const src = [
+      `import { SAMPLE } from '../fixtures/ocs/session';`,
+      `import { helper } from './helpers';`,
+      `const CCZ = readFileSync(p);`,
+      `const { rows } = loadCsv(readFileSync(q, 'utf8'));`,
+      `const INLINE = { a: 1 };`,
+      `const PATHY = 'test/fixtures/connect/dashboard.html';`,
+    ].join('\n');
+    const names = groundedBindings(src).sort();
+    expect(names).toEqual(['CCZ', 'PATHY', 'SAMPLE', 'rows']);
+  });
+
+  it('isGrounded reads a `fixtures/` path literal in the block itself', () => {
+    const block = extractTestBlocks(
+      't.test.ts',
+      `it('flags', () => { expect(checkA(load('test/fixtures/ccz/app.ccz')).pass).toBe(false); });`,
+    )[0];
+    expect(isGrounded(block, [])).toBe(true);
+  });
+
+  it('NEGATIVE — a fixture name appearing only inside a STRING does not ground a block', () => {
+    // `maskLiterals` is applied before the binding-name match for exactly
+    // this: a test title that happens to mention the constant would otherwise
+    // certify a block whose input is entirely inline.
+    const block = extractTestBlocks(
+      't.test.ts',
+      `it('behaves like GOLDEN_CCZ', () => { expect(checkA({ a: 1 }).pass).toBe(false); });`,
+    )[0];
+    expect(isGrounded(block, ['GOLDEN_CCZ'])).toBe(false);
   });
 });

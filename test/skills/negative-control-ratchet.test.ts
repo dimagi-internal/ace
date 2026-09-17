@@ -161,6 +161,175 @@ const LEDGER: Record<string, LedgerEntry> = {
 };
 
 /**
+ * ── Fixture grounding ─────────────────────────────────────────────────────
+ *
+ * A check surface whose controls are ALL inline literals typed beside the
+ * assertion. The negative control fires, the positive control passes, and the
+ * pair proves only that the code does what the code does — because the
+ * implementation and its inputs came out of one act of authorship and agree
+ * by construction. CI cannot tell that apart from a real test; both are green.
+ *
+ * The two clauses above ask *can this check fail* and *can it pass*. Neither
+ * asks whether the check's SPECIFICATION is right, and a control authored in
+ * the same pass agrees with a wrong specification as readily as a right one.
+ * `predictive-guard-citation` polices claims about ANOTHER system, so it does
+ * not reach this either.
+ *
+ * Five gates in `poverty-graduation/20260915-1518` were green over broken
+ * behaviour for exactly this reason — ace#2422 (a test helper supplied the
+ * required contact field on every synthetic row, so "absent" was never an
+ * input, and the bot shipped the wrong address past three green obligations),
+ * ace#2396 (`selectOpenRows` ranked by a `blocking:` field that 0 of 15 real
+ * rows carry; every fixture supplied it), ace#2398 (a table row neither
+ * export produces — the ace#1946 check shipped INERT a SECOND time), ace#2429
+ * and ace#2426. The mechanism and its limits are in
+ * `lib/negative-control-coverage.ts § Fixture grounding`; the short version is
+ * that a fixture on disk is not automatically real, but it is reviewable,
+ * reusable and diffable, and the cheapest way to satisfy this rail is to go
+ * and capture the actual artifact.
+ *
+ * Measured 2026-09-17: 141 uniform-verdict surfaces, 23 grounded, **118 not**.
+ * Failing 118 at once produces a test nobody can land, which is how guards get
+ * disabled — so the known set is pinned and only NEW surfaces are blocked.
+ * Shrinking this list is always allowed and never needs the file rewritten.
+ *
+ * The list is pinned at the moment this rail merged, so a check written before
+ * that is grandfathered whatever its date — `lib/run-surface-audit.ts::auditClaimRows`
+ * landed on main while this branch was rebasing and is here for exactly that
+ * reason, not because anything about it was judged.
+ *
+ * Entries leave by gaining one control fed from a captured artifact, or by
+ * the check being deleted. Do not add to it.
+ *
+ * **Two assertions guard it, and only one of them is LEDGER-shaped.** New
+ * offenders are blocked by SET MEMBERSHIP; the debt is held down by the set's
+ * SIZE. What is deliberately NOT asserted is that an entry which has since
+ * become grounded be deleted — see `the grounding debt does not grow in
+ * aggregate` for why a 118-entry membership rail cannot converge on a repo
+ * that merges every two minutes.
+ */
+const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
+  'lib/answer-key-pattern.ts::checkAnswerKeyPattern',
+  'lib/assessment-retry-leak.ts::checkAssessmentRetryLeak',
+  'lib/build-phase-decisions.ts::checkBuildPhaseDecisions',
+  'lib/ccz-language-tables.ts::auditCczLanguageTables',
+  'lib/ccz-min-version.ts::checkCczMinVersion',
+  'lib/choice-label-integrity.ts::checkCaseListEnumDrift',
+  'lib/choice-label-integrity.ts::checkMarkdownEatenLabels',
+  'lib/consent-branch.ts::checkConsentBranchCompleteness',
+  'lib/constraint-locality.ts::checkRelevanceReachability',
+  'lib/dashboard-bindings.ts::checkDashboardBindings',
+  'lib/dashboard-column-invariants.ts::checkColumnInvariants',
+  'lib/date-default-validate.ts::checkDateDefaultValidate',
+  'lib/ddd-scene-actions.ts::checkDetectionCohortFloor',
+  'lib/ddd-scene-actions.ts::checkEscapedPayoffIsHonoured',
+  'lib/decision-vocabularies.ts::checkVocabulary',
+  'lib/decisions-archetype-consistency.ts::checkArchetypeConsistency',
+  'lib/deck-module-labels.ts::checkDeckModuleLabels',
+  'lib/demo-arc-ladder.ts::checkArcLadder',
+  'lib/demo-scene-variety.ts::checkSceneVariety',
+  'lib/derived-chain-guard.ts::checkDerivedChainGuards',
+  'lib/entity-id-grain.ts::checkEntityIdGrain',
+  'lib/gap-copy-check.ts::checkGapCopy',
+  'lib/generator-determinism.ts::checkGeneratorDeterminism',
+  'lib/labs-run-state-reset.ts::checkRenderResetRegistered',
+  'lib/pass-label-scope.ts::checkPassLabelScope',
+  'lib/pipeline-field-extraction.ts::checkPipelineFieldsExtract',
+  'lib/program-locale.ts::checkProgramLocale',
+  'lib/program-reconcile.ts::checkNameArchetype',
+  'lib/recipe-state-contract.ts::checkChainContinuity',
+  'lib/run-surface-audit.ts::auditArchetypeContradiction',
+  'lib/run-surface-audit.ts::auditAssistantAccess',
+  'lib/run-surface-audit.ts::auditBuildMemo',
+  'lib/run-surface-audit.ts::auditBuildMemoParity',
+  'lib/run-surface-audit.ts::auditBuildStatusParity',
+  'lib/run-surface-audit.ts::auditClaimRows',
+  'lib/run-surface-audit.ts::auditCompleteness',
+  'lib/run-surface-audit.ts::auditConfidentiality',
+  'lib/run-surface-audit.ts::auditContract',
+  'lib/run-surface-audit.ts::auditDecisionRows',
+  'lib/run-surface-audit.ts::auditDeepQaParity',
+  'lib/run-surface-audit.ts::auditDocFidelity',
+  'lib/run-surface-audit.ts::auditGuideScreenshots',
+  'lib/run-surface-audit.ts::auditLinks',
+  'lib/run-surface-audit.ts::auditRender',
+  'lib/run-surface-audit.ts::auditReviewerMembership',
+  'lib/run-surface-audit.ts::auditSyntheticLabelling',
+  'lib/run-surface-audit.ts::auditUnresolvedMemberGates',
+  'lib/run-surface-audit.ts::auditWalkthroughParity',
+  'lib/scoring-arithmetic.ts::checkScoringArithmetic',
+  'lib/screen-shape.ts::checkScreenShape',
+  'lib/standing-fabrication-domains.ts::auditComposedPrompt',
+  'lib/starter-module.ts::auditReleasedModules',
+  'lib/support-channel-guard.ts::checkWorkerFacingSupportChannel',
+  'lib/tailwind-utility-resolution.ts::classifyUtilities',
+  'lib/taught-vs-collectable.ts::checkTaughtStepsCollectable',
+  'lib/time-estimate-check.ts::checkLearnModuleTimeEstimates',
+  'lib/transition-criteria.ts::checkTransitionCriteria',
+  'lib/verdict-manifest-agreement.ts::checkVerdictManifestAgreement',
+  'lib/version-uniqueness.ts::checkVersionAdvances',
+  'lib/version-uniqueness.ts::checkVersionUnclaimed',
+  'skills/demo-data-setup-qa/checks.ts::checkCrossDashboardConsistency',
+  'skills/demo-data-setup-qa/checks.ts::checkDatasetObeysPddConstraints',
+  'skills/demo-data-setup-qa/checks.ts::checkInteractiveRunsLive',
+  'skills/demo-data-setup-qa/checks.ts::checkParUrlPayloadPopulated',
+  'skills/demo-data-setup-qa/checks.ts::checkParUrlScope',
+  'skills/idea-to-pdd-qa/checks.ts::checkArchetypeDeclared',
+  'skills/idea-to-pdd-qa/checks.ts::checkEntityStateTaxonomyForLongitudinal',
+  'skills/idea-to-pdd-qa/checks.ts::checkEvidenceModelLayered',
+  'skills/idea-to-pdd-qa/checks.ts::checkLaunchParametersPresent',
+  'skills/idea-to-pdd-qa/checks.ts::checkPddIsNativeGoogleDoc',
+  'skills/idea-to-pdd-qa/checks.ts::checkProgramParametersCoherent',
+  'skills/idea-to-pdd-qa/checks.ts::checkReviewerCommentTableIfReferenced',
+  'skills/idea-to-pdd-qa/checks.ts::checkStressTestAppendixPresent',
+  'skills/idea-to-pdd-qa/checks.ts::checkSuccessMetricsTablePopulated',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkAdversarialCoverage',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkAdversarialShareMinimum',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkEachPromptHasRequiredFields',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkEscalationPromptPresent',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkHeaderWithTotalCount',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkProductFeedbackPromptPresent',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkPromptCountInRange',
+  'skills/pdd-to-test-prompts-qa/checks.ts::checkTrainingGapPromptPresent',
+  'skills/pdd-to-work-order-qa/checks.ts::checkAcceptanceDefined',
+  'skills/pdd-to-work-order-qa/checks.ts::checkAdvanceContingentWhenCapUnresolved',
+  'skills/pdd-to-work-order-qa/checks.ts::checkDeclaredCapReachesContract',
+  'skills/pdd-to-work-order-qa/checks.ts::checkPaymentModelsReconciled',
+  'skills/pdd-to-work-order-qa/checks.ts::checkRenderedFromTemplate',
+  'skills/solicitation-review-qa/checks.ts::checkAllResponsesScored',
+  'skills/solicitation-review-qa/checks.ts::checkAwardeeNamed',
+  'skills/solicitation-review-qa/checks.ts::checkAwardeeReasoningSubstantive',
+  'skills/solicitation-review-qa/checks.ts::checkCriteriaCoverageTablePopulated',
+  'skills/solicitation-review-qa/checks.ts::checkNoAwardActionYet',
+  'skills/solicitation-review-qa/checks.ts::checkRecommendationSectionPresent',
+  'skills/solicitation-review-qa/checks.ts::checkScoringTableWellFormed',
+  'skills/solicitation-review-qa/checks.ts::checkTieBreakResolved',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkAnomaliesTraceable',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkBeneficiaryCohortsWellFormed',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkCoachingArcsMatchPersonas',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkFlwPersonasWellFormed',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkKpiFieldPathsResolvable',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkManifestYamlParses',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkRandomSeedPresent',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkRequiredKeysPresent',
+  'skills/synthetic-narrative-plan-qa/checks.ts::checkTimelineDatesConsistent',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkAiQualityAssertionsFalsifiable',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkPersonaPainPointsDocumented',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkRequiredTopLevelKeys',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkScenePersonasResolvable',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkSceneTitlesUnique',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkScenesArrayWellFormed',
+  'skills/synthetic-walkthrough-spec-qa/checks.ts::checkSpecYamlParses',
+  'skills/verdict-yaml-qa/checks.ts::checkDimensionWeightsSumToOne',
+  'skills/verdict-yaml-qa/checks.ts::checkGateDispositionConsistent',
+  'skills/verdict-yaml-qa/checks.ts::checkLiveStateVerifiedConsistency',
+  'skills/verdict-yaml-qa/checks.ts::checkOverallScoreConsistentWithDimensions',
+  'skills/verdict-yaml-qa/checks.ts::checkSchemaValidates',
+  'skills/verdict-yaml-qa/checks.ts::checkVerdictTierMatchesScore',
+  'skills/verdict-yaml-qa/checks.ts::checkYamlParses',
+]);
+
+/**
  * Recorded so a future reader can tell erosion from the starting point.
  *
  * Measured 2026-08-27 at ACE 0.13.10xx, by this file's own scanner over 5,024
@@ -343,6 +512,86 @@ describe('every structural check has a negative control', () => {
         'where the check is a subset or threshold relation, where the over-tight version ' +
         'produces false positives that get "fixed" by loosening until the check is vacuous ' +
         'again.\n',
+    ).toBe('');
+  });
+
+  it('no NEW check is proved only by inline literals it was authored beside', () => {
+    // Fixture grounding. A control the author typed next to the assertion
+    // shares every assumption the implementation makes, so the pair agrees by
+    // construction and reports green either way. At least ONE control per
+    // check must reach it from a captured artifact — a file under
+    // `test/fixtures/`, or any other path read off disk, including the repo's
+    // own `skills/*.md`.
+    //
+    // The 118 surfaces that fail this today are pinned; only NEW ones fail.
+    const offenders = uniform
+      .filter((r) => r.negative.length + r.positive.length > 0)
+      .filter((r) => r.grounded.length === 0)
+      .filter((r) => !GROUNDING_BASELINE.has(surfaceKey(r.surface)))
+      .map(
+        (r) =>
+          `${surfaceKey(r.surface)} — ${r.negative.length + r.positive.length} control(s), ` +
+          'every input an inline literal',
+      );
+
+    expect(
+      offenders.join('\n  '),
+      'A check is proved only against inputs written in the same pass as the check.\n\n' +
+        'Capture the artifact it actually runs on — the real export, the real row, the real ' +
+        'YAML — commit it under test/fixtures/ (or the suite-local fixtures/ dir) with a line ' +
+        'saying where it came from, and feed the check THAT. A literal you type beside the ' +
+        'assertion inherits the same misreading the implementation has, in both directions.\n\n' +
+        'Five gates shipped green over broken behaviour in one run this way: ace#2422 ' +
+        '(required field supplied by the helper on every synthetic row), ace#2396 (ranked by a ' +
+        'field 0 of 15 real rows carry), ace#2398, ace#2429, ace#2426.\n\n' +
+        'If a captured artifact genuinely does not exist for this input — a check over a shape ' +
+        'no system has emitted yet — add the key to GROUNDING_BASELINE and say so there.\n',
+    ).toBe('');
+  });
+
+  it('the grounding debt does not grow in aggregate', () => {
+    // The second half of the ratchet, and the shape of it is a deliberate
+    // departure from LEDGER's.
+    //
+    // LEDGER (4 entries) demands that an entry which IMPROVED be deleted, and
+    // at four entries that is free. At 118 it is not: every unrelated PR that
+    // grounds any pinned check turns every other open PR red, and a rail that
+    // breaks builds it has no quarrel with is a rail somebody deletes — which
+    // this file's own header names as the failure mode to avoid.
+    //
+    // Measured while landing this change: `main` merged a PR every ~2 minutes,
+    // and THREE separate rebases each flipped a different pinned entry
+    // (checkConstraintLocality, then auditClaimRows arriving, then
+    // checkEntityIdGrain), costing a full CI cycle each. A membership rail
+    // cannot be made to converge against that.
+    //
+    // Nothing is lost by relaxing it, because the strictness bought TIDINESS,
+    // not safety: the clause above keys on SET MEMBERSHIP, so a check that
+    // becomes grounded simply stops being consulted — it can never let a new
+    // ungrounded check through. What remains load-bearing is that the debt
+    // cannot GROW, and a count says that directly and is immune to the churn.
+    // Same contract predictive-guard-citation's per-file counts already use.
+    const ungrounded = uniform.filter(
+      (r) => r.negative.length + r.positive.length > 0 && r.grounded.length === 0,
+    );
+    expect(
+      ungrounded.length,
+      `${ungrounded.length} check surfaces are proved only by inline literals (baseline ` +
+        `${GROUNDING_BASELINE.size}). Ground one and lower GROUNDING_BASELINE, never raise it.\n`,
+    ).toBeLessThanOrEqual(GROUNDING_BASELINE.size);
+  });
+
+  it('no baseline entry names a check that no longer exists', () => {
+    // The part of the staleness check that IS free of cross-PR churn: a
+    // deleted check must leave the list, or the baseline slowly becomes a
+    // list of names with nothing behind them and its size stops meaning
+    // anything — which matters precisely because the size is now the budget.
+    const live = new Set(rows.map((r) => surfaceKey(r.surface)));
+    const ghosts = [...GROUNDING_BASELINE].filter((k) => !live.has(k));
+    expect(
+      ghosts.join('\n  '),
+      'These checks are gone — delete their GROUNDING_BASELINE entries so the ' +
+        'budget reflects real debt.\n',
     ).toBe('');
   });
 
