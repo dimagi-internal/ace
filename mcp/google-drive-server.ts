@@ -46,6 +46,11 @@ import {
   unreadableBuildPhaseDecisions,
   verifyBuildPhaseDecisions,
 } from '../lib/build-phase-decisions.js';
+import {
+  terminalPhaseWritesIn,
+  phaseModeFromMerged,
+  formatIncompleteTerminalWriteBack,
+} from '../lib/terminal-phase-writeback.js';
 import { PHASES, phaseAgentName, type Phase } from '../lib/artifact-manifest.js';
 import {
   isTransientNetworkError as isTransientNetworkErrorLib,
@@ -853,7 +858,7 @@ server.tool(
 // 10a. Patch a YAML file server-side (read+merge+CAS-write in one call)
 server.tool(
   'update_yaml_file',
-  'Patch a YAML-content Google Doc in one MCP call: the server reads the current content + revisionVersion, parses it as YAML (treating empty/missing as `{}`), merges `patch` into the existing YAML, serializes back to YAML, and writes with optimistic-concurrency. On a `revision_conflict` (a concurrent writer landed between read and write) the call retries once with the freshly-observed revision. Three merge modes — pick one based on what you\'re patching. **In ALL THREE, an array value is REPLACED wholesale, never merged or appended (ace#1467)** — build the whole list and write it once:\n\n- `shallow` (default): `patch[k]` *replaces* `base[k]` for every top-level key `k`. Predictable, matches the historical behavior. Use for whole-subtree updates (e.g., `connect: { opportunity_id: 2, status: "active" }` to fully overwrite the `connect:` block).\n\n- `two-level`: for top-level keys whose value is a plain object on BOTH sides, the merge recurses one level — child keys from `patch[k]` are merged into `base[k]` (with `patch` winning on conflicts), preserving sibling child keys. For non-object values (strings, numbers, arrays) and for keys present on only one side, the behavior is identical to `shallow`. Use for incremental run_state.yaml writes where each phase agent owns one entry under `phases:` / `gates:` and must not clobber sibling entries written by other phases.\n\n- `deep`: recurses at EVERY depth for object-valued keys, so a partial nested patch preserves siblings at all levels. This is the right default for incremental run_state.yaml writes. Note the array rule above: `deep` does not deep-merge lists.\n\nUse this tool for run_state.yaml / opp.yaml updates instead of pairing drive_read_file + drive_update_file by hand: it saves one round-trip per state transition AND keeps the EXISTING file content out of the model context — you send only what you are writing, never the parts you are leaving alone.\n\n**That is not the same as "the model only sends the diff", and the gap is the array rule above (ace#2184).** An ADD is a real diff. REMOVING one element from a list is not: since arrays are replaced wholesale, the payload for deleting one entry is every SURVIVING entry, retyped. On `phases.<phase>.residuals` that is kilobytes of load-bearing prose — payment predicates, XPath carrying `!=` and `concat(...)` — routed back out through the model for nothing. So the patch comes from exactly ONE of `patch` (inline) or `localFilePath` (an absolute path to a local file holding ONE JSON object, which the server reads off disk — ~zero context regardless of size, the same handle under the same name as `drive_update_file`, `drive_upload_binary` and `drive_create_file`). To drop a list element: build the filtered array with a script, write it to a file, pass the path. The survivors never enter the context window and cannot be corrupted in transit. A file that is not parseable JSON, or whose top level is not an object, is refused with `invalid_patch_file` naming the path — never merged as an empty patch. For arbitrary text files use drive_update_file instead.',
+  'Patch a YAML-content Google Doc in one MCP call: the server reads the current content + revisionVersion, parses it as YAML (treating empty/missing as `{}`), merges `patch` into the existing YAML, serializes back to YAML, and writes with optimistic-concurrency. On a `revision_conflict` (a concurrent writer landed between read and write) the call retries once with the freshly-observed revision. Three merge modes — pick one based on what you\'re patching. **In ALL THREE, an array value is REPLACED wholesale, never merged or appended (ace#1467)** — build the whole list and write it once:\n\n- `shallow` (default): `patch[k]` *replaces* `base[k]` for every top-level key `k`. Predictable, matches the historical behavior. Use for whole-subtree updates (e.g., `connect: { opportunity_id: 2, status: "active" }` to fully overwrite the `connect:` block).\n\n- `two-level`: for top-level keys whose value is a plain object on BOTH sides, the merge recurses one level — child keys from `patch[k]` are merged into `base[k]` (with `patch` winning on conflicts), preserving sibling child keys. For non-object values (strings, numbers, arrays) and for keys present on only one side, the behavior is identical to `shallow`. Use for incremental run_state.yaml writes where each phase agent owns one entry under `phases:` / `gates:` and must not clobber sibling entries written by other phases.\n\n- `deep`: recurses at EVERY depth for object-valued keys, so a partial nested patch preserves siblings at all levels. This is the right default for incremental run_state.yaml writes. Note the array rule above: `deep` does not deep-merge lists.\n\nUse this tool for run_state.yaml / opp.yaml updates instead of pairing drive_read_file + drive_update_file by hand: it saves one round-trip per state transition AND keeps the EXISTING file content out of the model context — you send only what you are writing, never the parts you are leaving alone.\n\n**That is not the same as "the model only sends the diff", and the gap is the array rule above (ace#2184).** An ADD is a real diff. REMOVING one element from a list is not: since arrays are replaced wholesale, the payload for deleting one entry is every SURVIVING entry, retyped. On `phases.<phase>.residuals` that is kilobytes of load-bearing prose — payment predicates, XPath carrying `!=` and `concat(...)` — routed back out through the model for nothing. So the patch comes from exactly ONE of `patch` (inline) or `localFilePath` (an absolute path to a local file holding ONE JSON object, which the server reads off disk — ~zero context regardless of size, the same handle under the same name as `drive_update_file`, `drive_upload_binary` and `drive_create_file`). To drop a list element: build the filtered array with a script, write it to a file, pass the path. The survivors never enter the context window and cannot be corrupted in transit. A file that is not parseable JSON, or whose top level is not an object, is refused with `invalid_patch_file` naming the path — never merged as an empty patch. For arbitrary text files use drive_update_file instead.\n\n**Two UNCONDITIONAL write-time guards run on any patch carrying `phases.*`, neither opt-in.** (1) A phase `status` outside the enum is refused with `INVALID_PHASE_STATUS` (ace#992). (2) On a file named `run_state.yaml`, a patch flipping a phase to `done` (or the legacy synonym `complete`) while that phase\'s manifest-required artifacts are ABSENT from the run folder is refused with `PHASE_ARTIFACTS_INCOMPLETE`, which names every missing path and the `producedBy` skill that makes it. No Drive write happens on either refusal. Two legal ways forward from the second: ship the artifacts (dispatch each `producedBy`, then retry), or write `status: partial` with a verdict naming the gap — `partial` is TERMINAL, does not halt downstream phases, and is deliberately ungated. Required-ness is `lib/artifact-manifest.ts`, evaluated by the same `verifyPhaseArtifacts` the boundary fence\'s `verify_phase_artifacts` uses, so the gate and the fence cannot disagree. ace#2174, the regression of ace#892 — which shipped this same requirement as prose in a phase agent plus two manifest rows, and did not hold.',
   {
     fileId: z.string().describe('The Google Drive file ID of the YAML doc'),
     patch: z.record(z.unknown()).optional().describe('Object whose top-level keys are merged into the existing YAML per `merge`, inline. With `merge: "shallow"` (default) each top-level key fully replaces its base counterpart; with `merge: "two-level"` object-valued top-level keys merge one level deeper, preserving sibling child keys. Provide either this OR localFilePath, not both.'),
@@ -1726,6 +1731,88 @@ function findLargestStringScalar(obj: unknown): { path: string; size: number } {
   return best;
 }
 
+/**
+ * The `DriveListAdapter` `lib/phase-closeout.ts` expects, bound to a specific
+ * Drive client. ONE definition, used by both the read-time fence
+ * (`verify_phase_artifacts`) and the write-time guard below — if those two
+ * enumerated the run folder differently they could disagree about what is
+ * present, which is the one thing a gate and its fence must never do.
+ */
+function driveListAdapterFor(driveClient: typeof drive): DriveListAdapter {
+  return {
+    async listFolder(folderId: string) {
+      const safe = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const resp = await driveClient.files.list({
+        q: `'${safe}' in parents and trashed = false`,
+        fields: 'files(id, name, mimeType)',
+        orderBy: 'name',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      return (resp.data.files ?? []).map((f) => ({
+        id: f.id ?? '',
+        name: f.name ?? '',
+        mimeType: f.mimeType ?? '',
+      }));
+    },
+  };
+}
+
+/**
+ * Write-time artifact gate for a terminal phase write-back (ace#2174, the
+ * regression of ace#892). Rationale, the two legal ways forward, and why this
+ * is a WRITE-side guard rather than one more read-side report:
+ * `lib/terminal-phase-writeback.ts`.
+ *
+ * Throws `PHASE_ARTIFACTS_INCOMPLETE` before any Drive write when a patch flips
+ * a phase to `done`/`complete` while that phase's manifest-required artifacts
+ * are absent. Otherwise returns silently.
+ *
+ * **Every failure to OBSERVE is a pass, deliberately.** If the file is not a
+ * `run_state.yaml`, has no resolvable parent, or the folder listing throws, the
+ * guard steps aside. A Drive hiccup is not the agent's lie, and a gate that
+ * converts one into a refused write-back would strand a finished phase with no
+ * way to record itself — strictly worse than the defect it polices. What it
+ * must never do is pass an artifact set it DID read and found short.
+ */
+async function assertTerminalPhaseArtifacts(
+  fileId: string,
+  patch: Record<string, unknown>,
+  merged: Record<string, unknown>,
+  driveClient: typeof drive,
+): Promise<void> {
+  const writes = terminalPhaseWritesIn(patch);
+  if (writes.length === 0) return; // not a terminal phase write-back — zero I/O
+
+  let runFolderId: string | undefined;
+  try {
+    const meta = await driveClient.files.get({
+      fileId,
+      fields: 'name, parents',
+      supportsAllDrives: true,
+    } as any);
+    if ((meta.data as any)?.name !== 'run_state.yaml') return;
+    runFolderId = (meta.data as any)?.parents?.[0];
+  } catch {
+    return;
+  }
+  if (!runFolderId) return;
+
+  const adapter = driveListAdapterFor(driveClient);
+  for (const write of writes) {
+    let report;
+    try {
+      report = await verifyPhaseArtifacts(adapter, runFolderId, write.phaseKey, {
+        mode: phaseModeFromMerged(merged, write.phaseName),
+      });
+    } catch {
+      continue; // could not enumerate — see the "failure to OBSERVE" note above
+    }
+    if (report.ok) continue;
+    throw new Error(formatIncompleteTerminalWriteBack(write, report));
+  }
+}
+
 export async function handleUpdateYamlFile(
   args: {
     fileId: string;
@@ -1849,6 +1936,22 @@ export async function handleUpdateYamlFile(
         }
       }
     }
+    // --- Write-time artifact gate for a TERMINAL phase write-back (ace#2174) -
+    //
+    // UNCONDITIONAL, like the status-enum guard above, and for the same reason:
+    // the agent that writes `done` over a producer it skipped is exactly the
+    // agent that would not pass an opt-in flag. Runs here, on the MERGED
+    // document, because the phase's `mode` may have been written by an earlier
+    // patch and `app-QA-only` legitimately drops eleven artifacts from the
+    // required set (ace#1069) — evaluating the patch alone would refuse a
+    // correct write. No Drive write has happened at this point.
+    //
+    // ace#892 shipped this same requirement as prose in `agents/commcare-setup.md`
+    // plus two `required: true` manifest rows, and prose does not execute: on
+    // poverty-graduation/20260905-1345 Phase 3 wrote done/pass with 9 of its 10
+    // required artifacts absent, and Phases 4 and 5 ran on it.
+    await assertTerminalPhaseArtifacts(fileId, patch, merged, driveClient);
+
     // Serialize under YAML **1.1** resolution rules. This does NOT change the
     // parse above (deliberately — see below); it changes only which scalars get
     // QUOTED on the way out.
@@ -3993,24 +4096,7 @@ server.tool(
   },
   async ({ runFolderId, phase, mode }) => {
     try {
-      const adapter: DriveListAdapter = {
-        async listFolder(folderId: string) {
-          const safe = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-          const resp = await drive.files.list({
-            q: `'${safe}' in parents and trashed = false`,
-            fields: 'files(id, name, mimeType)',
-            orderBy: 'name',
-            supportsAllDrives: true,
-            includeItemsFromAllDrives: true,
-          });
-          const files = resp.data.files ?? [];
-          return files.map((f) => ({
-            id: f.id ?? '',
-            name: f.name ?? '',
-            mimeType: f.mimeType ?? '',
-          }));
-        },
-      };
+      const adapter: DriveListAdapter = driveListAdapterFor(drive);
       // Resolve the phase's run MODE from run_state.yaml unless the caller
       // pinned one (ace#1069). Reading it here rather than making the caller
       // pass it is the point: `app-QA-only` is a supported run shape, and a
