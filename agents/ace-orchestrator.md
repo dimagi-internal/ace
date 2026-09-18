@@ -1191,7 +1191,29 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      *"Just checking if ACE is still working on this?"*, sent while the run had
      been running two days and had completed its last phase hours earlier.
 
-     **The loaded `run_state.yaml` statuses ARE the resumed run's progress
+     **(5) Otherwise, send the run-complete email.** Step (4) covers a run
+     that a person asked for by email — the reply to their thread IS the
+     notice. A run nobody dispatched that way still finished, and still has
+     someone who wants to know: `Skill(run-complete-email)`, which composes
+     what the run produced, what it decided, and what it is UNSURE about, and
+     leads with the audited summary URL from (2).
+
+     - **Never both.** If `triggered_by.thread_id` is set, (4) has it; sending
+       this as well is two emails about one run, and the second is the one
+       that teaches people to ignore the first.
+     - **After the audit, not before.** The email leads with the summary URL,
+       so sending it ahead of (2) hands someone a page whose broken and
+       misleading findings are still unfixed.
+     - **Internal by default.** It names gates that did not pass. That is the
+       honest half and the reason a reply is worth writing, but who outside
+       Dimagi should see it is a per-run human decision (`--to`), never a
+       default.
+
+     Re-sendable later for any run via `/ace:run-complete-email <opp>/<run-id>`
+     — the skill reads `run_state.yaml`, so it does not depend on being
+     invoked at the moment the run closed.
+
+          **The loaded `run_state.yaml` statuses ARE the resumed run's progress
      record** — there is nothing to rebuild. Only if `TaskCreate` resolves
      (§ Step 4 — it does not on any current model) may you optionally mirror
      them: `done`/`skipped` → `completed` (skipped phases carry a one-word

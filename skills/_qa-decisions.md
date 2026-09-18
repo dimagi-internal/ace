@@ -183,6 +183,7 @@ Dispatched at two natural points: inline self-check by each `-eval` skill after 
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |
 | `eval-calibration` | not applicable | Meta-skill — calibrates other evals' rubrics. Not a producer of a per-opp artifact. |
 | `verdict-yaml-qa` | not applicable | Cross-cutting QA skill — structurally checks any `-eval` verdict YAML. Not a producer of a per-opp artifact. See `### Eval-self-QA (cross-cutting)` above for the contract. |
+| `run-complete-email` | **NO QA** | The artifact is an email body, and its structural correctness is enforced by the send path rather than by a checker: `bin/ace-email` builds the HTML + plain-text alternative from the markdown and fails loudly on a malformed body. The content claims worth checking — that every link is one the run actually produced — are guarded at the source instead, by reading `products.*` out of `run_state.yaml` rather than assembling URLs from a naming convention. **Revisit if:** the email grows a structured block a consumer parses (an ics invite, a machine-readable summary), at which point there is something to check that isn't prose. |
 
 ## MCP-improvement candidates surfaced by the audit
 

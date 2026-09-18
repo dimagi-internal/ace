@@ -43,6 +43,7 @@ const RUN_LEVEL_EXEMPT = new Set([
   'inputs-manifest.yaml', // frozen pointer-set captured at run start (orchestrator-emitted)
   'decisions.yaml',       // per-run structured decisions log (rows accumulate across all phases)
   'decisions.gdoc',       // prose Google Doc rendering of decisions.yaml (one stable URL per run)
+  'run-complete-email.md', // the run-complete notice: run-level, not a phase's output
   // Partnership-video pipeline (run-root artifacts, not under a phase folder)
   'angles.yaml',          // three grounded narrative angles — propose-phase terminal artifact
   'video_spec.yaml',      // filled ace-web spec as POSTed

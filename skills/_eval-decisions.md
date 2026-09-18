@@ -177,6 +177,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `decisions-sync` | not applicable | Utility — syncs decisions log. |
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |
 | `eval-calibration` | not applicable | Meta-skill listed above; not a per-opp producer. |
+| `run-complete-email` | **NO eval** | Graded by its reply, not by a judge. The email's whole purpose is to provoke a response that `inbox-triage` routes back into the run, so its real quality signal is whether a human answers it — a far better measure than an LLM scoring tone. Scoring it would also add a model call to every run close for a message a human reads within the hour. **Revisit if:** it starts being sent to external counterparts by default (it is internal-only today), where an unreviewed misjudged sentence costs a relationship rather than a re-send. |
 
 ## Maintenance
 

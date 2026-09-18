@@ -182,6 +182,11 @@ const UNCLAIMED_BASELINE = new Set<string>([
   'eval-calibration',  // produces an opp-level artifact (eval-calibration/
                        // known-issues.md), not a per-run skill any phase
                        // agent dispatches.
+  'run-complete-email', // run-level, not phase-level: ace-orchestrator invokes
+                       // it once the last phase settles (and it has no skills:
+                       // list of its own), and /ace:run-complete-email invokes
+                       // it on demand for a run that finished long ago. Same
+                       // shape as decisions-render above.
   // 2026-07-21 (Plan C convergence): Phase 7 was rewired onto the /ace:demo
   // pipeline (demo-data-setup(ace-run) -> demo-narrative -> canopy DDD), so
   // these former Phase-7 producers are no longer claimed by the phase agent.

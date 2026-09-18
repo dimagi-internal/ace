@@ -647,6 +647,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-run structured log of load-bearing defaults applied across the lifecycle. Phase 1 (idea-to-pdd) writes its rows when authoring the PDD; subsequent phases append rows as they apply load-bearing defaults (Phase 3-10 writes ship in the next PR of the decisions-log series). Schema enforced via lib/decisions-schema.ts. Re-runs honor status: overridden rows from prior runs as authoritative inputs. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata.',
   },
   {
+    path: 'run-complete-email.md',
+    producedBy: 'run-complete-email',
+    consumedBy: [],
+    phase: 'design',
+    required: false,
+    description: "The run-complete notice: what the run produced, what it decided, and what it is unsure about, with the public run-summary link. Written BEFORE the send so a failed send still leaves a body to retry from, and overwritten on re-send so the artifact and the email always agree. Lives at the run-folder root alongside run_state.yaml and decisions.yaml — it is run-level, not a phase's output. Re-triggerable against any run whose run_state.yaml exists via /ace:run-complete-email, which is what lets already-finished runs be sent; it is not tied to the moment a run closes.",
+  },
+  {
     path: 'decisions.gdoc',
     producedBy: 'decisions-render',
     consumedBy: ['ace-orchestrator'],

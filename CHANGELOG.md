@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1547 — 2026-09-17
+
+**A finished run now tells someone it finished.**
+
+ACE emails counterparts *inside* a run — `llo-invite`, `llo-onboarding`, `llo-uat`, `timeline-monitor` — and replies come back through `inbox-triage`. What was missing is the message that closes the loop: *your run is done, here is what came out of it.* Without it, a run that completed at 3am was known only to whoever happened to open the Workbench.
+
+`skills/run-complete-email` composes it from `run_state.yaml`, `decisions.yaml` and `open-questions.md`, and `/ace:run-complete-email <opp>[/<run-id>]` sends it for **any run whose `run_state.yaml` exists** — not only one closing right now. That is the part that matters: the 13 runs already in Drive can each be sent, and a run that stopped at Phase 4 gets an email saying so rather than nothing.
+
+Three rules the skill holds to:
+
+- **It says what the run is UNSURE about.** Open questions and gates that did not pass, not just deliverables. A completion notice listing only successes invites no reply — and a reply is the point, because `inbox-triage` routes it straight back into the run.
+- **Every link is one the run actually produced**, read from `products.*` rather than assembled from a naming convention. A phase that did not run is reported as not run, never omitted. Same honesty rule the run-summary page holds.
+- **Internal by default.** It names rough edges; who outside Dimagi sees them is a per-run human decision (`--to`), never a default.
+
+The orchestrator fires it at close as step (5), and **never alongside step (4)**: a run dispatched from an email already gets its reply there, and two emails about one run is how people learn to ignore the first. It runs *after* the run-surface audit, since the email leads with the summary URL and should not hand anyone an unaudited page.
+
+**Compensating trim.** The dispatchable-skill catalog sat at 26,937 of its 27,000-char budget, so any new skill broke the ratchet. Rather than raise the ceiling — that budget is paid in every session in every repo with ACE installed — `add-org-member`'s description gave back the 380 chars of implementation detail (the `@dimagi.com` guard, the `ai-demo-space` default, the read-back verify) that decide nothing about dispatch and are all already in its body. Catalog is now 26,7xx.
+
 ## 0.13.1407 — 2026-09-08
 
 **A caller can no longer assert `status: human-decided` — the write boundary is the sole stamper (ace#2307).**
