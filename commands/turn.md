@@ -20,6 +20,9 @@ read-only; sends flow only through `bin/ace-email` (deny rail).
 Optional scope (from the runner / scheduler / a human): **$ARGUMENTS**
 - `--thread <id>` → a specific email thread triggered this turn; make it the focus of inbound
   processing (still close out both surfaces).
+- `--caller <path>` → canopy's caller envelope for this turn (who asked, whether THIS message is
+  verified, the workspace's profile of them). Resolve the sender's tier from it with
+  `canopy caller tier --caller <path> --repo .` — see `skills/inbox-triage` § Counterpart tiers.
 - `--slack <ref>` → a specific Slack message is the trigger; focus there.
 - (none) → reconcile both surfaces (board + `ace@` inbox), the default.
 
