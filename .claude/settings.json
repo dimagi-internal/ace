@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CANOPY_AGENT": "ace"
+  },
   "hooks": {
     "Stop": [
       {
