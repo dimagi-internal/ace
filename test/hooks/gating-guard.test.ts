@@ -102,6 +102,22 @@ describe('gating_guard.py', () => {
     expect(r.decision).toBeNull();
   });
 
+  // PowerShell is the Windows shell tool. A "Bash" rail means any shell — before canopy#670
+  // every rail here was bypassed from PowerShell (fizzy, 2026-09-22).
+  it('DENIES the same raw send from PowerShell', () => {
+    const r = runGuard('PowerShell', {
+      command: 'gog gmail send --account ace@dimagi-ai.com --to x@y.com --subject hi --body yo',
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('bin/ace-email');
+  });
+
+  it('allows ordinary PowerShell', () => {
+    const r = runGuard('PowerShell', { command: 'Get-ChildItem; git status' });
+    expect(r.exitCode).toBe(0);
+    expect(r.decision).toBeNull();
+  });
+
   it('never blocks on malformed hook input (fail-open by design)', () => {
     const r = spawnSync('python3', [GUARD], { input: 'not json', encoding: 'utf8' });
     expect(r.status).toBe(0);

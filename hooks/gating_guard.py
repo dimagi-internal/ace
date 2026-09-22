@@ -31,11 +31,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(os.path.dirname(HERE), "config", "gating.json")
 
 
+# Every tool that takes a command LINE. On Windows the harness offers PowerShell beside Bash,
+# and a `"tool": "Bash"` rail means "any shell": otherwise every rail here is bypassed from
+# PowerShell (found on fizzy by Shayoni Mazumdar, 2026-09-22; the fleet engine got the same
+# fix in canopy#670). A rail about the shell itself rather than the command opts out with
+# `"bash_only": true`.
+SHELL_TOOLS = frozenset({"Bash", "PowerShell"})
+
+
 def _subject(tool_name, tool_input):
     """The string a rule's pattern is tested against, per tool."""
     if not isinstance(tool_input, dict):
         return ""
-    if tool_name == "Bash":
+    if tool_name in SHELL_TOOLS:
         return tool_input.get("command", "") or ""
     if tool_name in ("Edit", "Write", "NotebookEdit"):
         return tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or ""
@@ -49,7 +57,7 @@ def _subject(tool_name, tool_input):
 def _summarize_action(tool_name, subject):
     """A crisp, human-readable summary of the GATED action — so the approval prompt says
     exactly WHAT you're approving at a glance, not a generic 'needs approval'."""
-    if tool_name != "Bash":
+    if tool_name not in SHELL_TOOLS:
         return f"{tool_name} → {subject[:80]}"
     s = subject
     m = re.search(r"bin/ace-email\b([^\n;&|]*)", s)
@@ -79,7 +87,10 @@ def _approval_reason(rule, tool_name, subject, cwd):
 
 
 def _matches(rule, tool_name, subject):
-    if rule.get("tool") and rule["tool"] != tool_name:
+    want = rule.get("tool")
+    if want and want != tool_name and not (
+        want == "Bash" and tool_name in SHELL_TOOLS and not rule.get("bash_only")
+    ):
         return False
     tp = rule.get("tool_pattern")
     if tp:
