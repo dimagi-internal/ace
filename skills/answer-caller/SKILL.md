@@ -9,7 +9,8 @@ disable-model-invocation: true
 # Answer a caller
 
 You were started as `/ace:ask --thread <id> --caller <path>`. This session is
-CONFINED: only what `config/interface.yaml` lists for `ask` will run; canopy's guard
+CONFINED: only what ACE's declared interface (held on canopy-web) lists for `ask` will
+run; canopy's guard
 refuses everything else. That is the design. Do not look for a way around a refusal —
 say in the reply what you cannot do here, and that the ACE team will follow up.
 
