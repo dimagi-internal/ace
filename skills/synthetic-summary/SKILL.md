@@ -1,12 +1,15 @@
 ---
 name: synthetic-summary
-description: >
-  DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Compose a one-page reviewer-facing summary of an opp's synthetic data
-  demo — labs URL, fixture folder, narrative — for stakeholder forwarding.
+description: Compose a one-page reviewer-facing summary of an opportunity's synthetic-data demo. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
 disable-model-invocation: false
 ---
 
 # Synthetic Summary
+
+> **Deprecated (Plan C convergence, 2026-07-21).** Superseded by the `/ace:demo`
+> pipeline (`demo-narrative` + the canopy DDD loop); Phase 7 no longer dispatches
+> this. Kept as a fallback until the converged path is validated — see
+> `agents/synthetic-data-and-workflows.md` § Deprecated skills.
 
 Stage 1 sibling of `synthetic-data-generate`. Reads the Phase 7 artifacts in
 the run folder and produces a single markdown page a Dimagi staffer can

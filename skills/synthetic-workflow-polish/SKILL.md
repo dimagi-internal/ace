@@ -1,12 +1,15 @@
 ---
 name: synthetic-workflow-polish
-description: >
-  DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Layer per-opp visuals on top of the seeded workflows — hero panel,
-  named FLW story cards, anomaly callouts, opp-domain branding cues.
+description: Layer per-opportunity visuals over seeded workflows — hero panel, FLW story cards, anomaly callouts. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
 disable-model-invocation: false
 ---
 
 # Synthetic Workflow Polish
+
+> **Deprecated (Plan C convergence, 2026-07-21).** Superseded by the `/ace:demo`
+> pipeline (`demo-narrative` + the canopy DDD loop); Phase 7 no longer dispatches
+> this. Kept as a fallback until the converged path is validated — see
+> `agents/synthetic-data-and-workflows.md` § Deprecated skills.
 
 Stage 3.2 of ACE Phase 7 (Plan B). The `synthetic-workflow-seed` skill
 instantiates the SEED templates with opp-agnostic render code; this
