@@ -23,11 +23,6 @@
       "marketplace": "voidcraft-labs/nova-marketplace",
       "marketplace_name": "nova-marketplace",
       "note": "Phase 3 app build (/nova:autobuild); needs NOVA_API_KEY from .env"
-    },
-    {
-      "name": "chrome-sales",
-      "marketplace": "dimagi-internal/chrome-sales",
-      "note": "skills/marketplace-outreach-doc inserts native Google Docs @email blocks via its gdrive MCP (docs_insert_email_block); then run chrome-sales:setup for deps + ~/.chrome-sales creds"
     }
   ],
   "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) \u2014 no canopy provision manifest",

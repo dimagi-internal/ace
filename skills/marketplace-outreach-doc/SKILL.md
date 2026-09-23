@@ -1,6 +1,6 @@
 ---
 name: marketplace-outreach-doc
-description: Draft one grounded outreach email per organisation for a marketplace EOI round, as a Doc of one-click-to-Gmail blocks. Use when asked for emails for the orgs on a marketplace page.
+description: Draft one grounded outreach email per organisation for a marketplace EOI round, as a Doc with a one-click Gmail draft each. Use when asked for emails for the orgs on a marketplace page.
 disable-model-invocation: false
 ---
 
@@ -61,28 +61,52 @@ the salutation, you have not used the data you were given.
 - **Short.** These go to people running delivery organisations.
 - **No invented facts.** No claimed budget, no promised award, no "as we discussed".
 
-**An organisation with no contact on file gets a block with an empty `To:` and a one-line
-note saying the address is missing.** Never guess an address from a domain, and never quietly
-drop the organisation — a silent omission is how somebody gets left out of a round.
+**An organisation with no contact on file gets its section with the recipient left blank and
+a one-line note saying the address is missing.** Never guess an address from a domain, and
+never quietly drop the organisation — a silent omission is how somebody gets left out of a
+round.
 
-## 3. Deliver as real email blocks
+## 3. Deliver so that one click opens a real draft
 
-Follow **`eva:email-macros`** for the mechanics — read that skill and do what it says. The
-short version: a bolded `Subject:` line is *not* an email macro; the native `@email` building
-block (To/Cc/Bcc/Subject/Body with a Gmail icon in the margin) is, and
-chrome-sales' gdrive MCP has the tool that inserts one (its insert-email-block atom).
+Build the doc with ACE's own Drive tools — `drive_create_doc_from_markdown` for the body,
+then `docs_batch_update` to turn each "Open in Gmail" line into a link. Give each
+organisation a **Gmail compose URL**:
+
+```
+https://mail.google.com/mail/?view=cm&fs=1&to=<email>&su=<subject>&body=<body>
+```
+
+URL-encode each field. One click opens Gmail's compose window with the recipient, subject
+and body already in it — which is the thing being asked for. Keep the emails short: the
+whole draft rides in a URL, and a few thousand characters is the practical ceiling.
+
+**Do not reach for `docs_insert_email_block` (chrome-sales) instead.** It is the obvious
+candidate and it does not do this. It inserts a **styled 5×2 table that imitates** the
+native `@email` building block — its own description says "matching the native @email
+building block", and its code comments say the styling constants were copied from one. The
+Docs API has no request that inserts a building block, so a lookalike is all it can be, and
+a table has no Gmail icon in the margin: clicking it does nothing. Delivering that under the
+words "click the Gmail icon" is the exact failure `eva:email-macros` warns about — a thing
+that looks like a macro and does nothing — one level up. It would also drag in a service
+account that must be granted writer on every doc, a font-inheritance trap, and reverse-order
+index arithmetic, for a worse result.
+
+(If genuine native blocks are ever wanted, the one path that yields them is a template Doc
+with real `@email` blocks in it, copied per use — smart chips survive a copy. That needs a
+human-made template and a fixed block count, so it is not the default here.)
 
 Structure the doc so it can be worked through top to bottom:
 
 1. **A heading naming the round** and its deadline.
-2. **One line of instruction**: click the Gmail icon on a block to open it as a draft.
-3. **A block per organisation**, in the order the page listed them — that is the order on
-   screen, and somebody working down the list will follow it.
+2. **One line of instruction**: click an organisation's "Open in Gmail" link to get a draft.
+3. **A section per organisation**, in the order the page listed them — that is the order on
+   screen, and somebody working down the list will follow it. Show the recipient, the
+   subject and the body as text too, so the doc can be read and edited on its own.
 4. **A closing section listing anything a human must resolve**: organisations with no
    contact, slugs the directory did not hold (`not_found` from `marketplace_orgs_get`), and
    any organisation you deliberately skipped, with the reason.
 
-Then **reply with the doc's link and a two-line summary** — how many blocks, and how many
+Then **reply with the doc's link and a two-line summary** — how many drafts, and how many
 need a human's attention. Not the drafts themselves: they are in the doc.
 
 ## What ACE does not do here
@@ -96,12 +120,12 @@ need a human's attention. Not the drafts themselves: they are in the doc.
 - **Never widen the list.** Draft for the organisations that were on screen. If the person
   wants "everyone in the network", have them say so — and say how many that is first.
 
-## Dependencies worth knowing
+## Dependencies
 
-`chrome-sales` (for its insert-email-block tool) is declared in ACE's `config/agent.json`
-`required_plugins`. Before it was declared, this skill worked only on a box that happened
-to host Eva as well, which is the kind of dependency that fails on a fresh runner and looks
-like a bug in the skill.
+None beyond ACE's own Drive tools. `docs_batch_update` executes raw Docs API requests, so
+the links need nothing from another plugin — which is the point: this skill adds no plugin
+to a runner's install list, and cannot fail because a box happens not to host another agent.
 
 Related: [[email-communicator]] (ACE's own send path, deliberately not used here),
-`eva:email-macros`, `eva:gdoc-review` (worth a pass before a link is handed over).
+`eva:email-macros` (the same problem, solved with the imitation table — read the note in §3
+before copying it), `eva:gdoc-review` (worth a pass before a link is handed over).
