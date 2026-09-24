@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 48 atoms
+Source: `mcp/google-drive-server.ts` — 49 atoms
 
 ### `sheets_list_tabs`
 
@@ -311,6 +311,15 @@ Execute raw Google Docs API batchUpdate requests. Supports all 40 request types:
 |-------|------|----------|-------------|
 | `documentId` | `z.string` | **required** | The Google Doc ID |
 | `requests` | `z.array` | **required** | Array of Docs API request objects, e.g. [{"insertText": {"location": {"index": 1}, "text": "Hello"}}] |
+
+### `docs_insert_email_blocks`
+
+Turn `@@EMAIL_<key>@@` anchor paragraphs in a Google Doc into email draft blocks — the To / Cc / Bcc / Subject / Body table Docs renders with a Gmail icon in the margin; clicking the icon opens a pre-filled Gmail draft. Write the doc first (e.g. drive_create_doc_from_markdown) with each anchor alone on a Normal-text line (blank line either side, never on a heading line), then call this ONCE with every block. It validates all anchors before writing anything, inserts last-to-first so no index arithmetic is yours, and deletes the consumed tokens. Call it LAST: re-publishing markdown over the doc afterwards wipes the blocks. Procedure: skills/gdoc-email-drafts. Ported from chrome-sales docs_insert_email_block; runs as ACE's own service account, so no sharing step.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `documentId` | `z.string` | **required** | The Google Doc ID |
+| `blocks` | `z.array` | **required** | One entry per email block to insert |
 
 ### `render_decisions_log`
 

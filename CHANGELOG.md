@@ -5,6 +5,28 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1555 — 2026-09-24
+
+**ACE can put draft emails in a Google Doc as email blocks with a working Gmail icon (`skills/gdoc-email-drafts`).**
+
+Each block is the To / Cc / Bcc / Subject / Body table Docs shows with a Gmail icon in the
+margin, and clicking the icon opens a filled-in Gmail draft. Eva already did this through
+chrome-sales' `docs_insert_email_block`. ACE now has its own atom, `docs_insert_email_blocks`,
+ported from that tool and running as ACE's own service account, so no doc has to be shared
+with another account first.
+
+The caller writes `@@EMAIL_<key>@@` anchors where the blocks go, then makes one call. The
+atom checks every anchor before writing anything, refuses an anchor on a heading line (the
+block would take the heading's 18pt font, a bug Eva shipped once), inserts the blocks
+last-first so the caller does no index math, and deletes the anchor tokens it used. The
+index logic is in `lib/docs-email-block.ts` with unit tests. `scripts/run-email-blocks.ts`
+runs the same code against a live doc without an MCP restart.
+
+`marketplace-outreach-doc` now uses the new skill. It had used Gmail compose URLs because it
+claimed API-built blocks get no Gmail icon. That claim was wrong.
+
+**Needs a full Claude Code restart** to load the new ace-gdrive atom.
+
 ## 0.13.1553 — 2026-09-24
 
 **`marketplace-outreach-doc` names where the Drive root actually comes from (ace#2474 follow-up).**
