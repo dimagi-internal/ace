@@ -14,14 +14,26 @@ the drafts, and the person reviews them and sends them.
 A bold `Subject:` line followed by a quoted body is **not** a draft email. It looks like one,
 but clicking it does nothing. Always use the block.
 
-## The tool
+## Where the procedure lives
 
-`docs_insert_email_blocks` (ace-gdrive; exact signature in `docs/atom-schemas.md`). It runs as
-ACE's own service account, which already owns every doc ACE creates, so there is no step to
-share the doc with anyone. It is ported from chrome-sales' `docs_insert_email_block`, which
-Eva's `email-macros` skill uses. Do not call the chrome-sales tool from ACE. It runs as a
-different service account, which needs writer access on each doc and leaves you to do the
-index math yourself.
+This is fleet-wide, and **canopy owns it**: `agent-core/email-drafts.md` in the installed canopy
+plugin. Eva and every other agent use it through `canopy gdoc email-blocks`, which runs as the
+agent's own Google account. Read that doc for the rules. This skill only binds them to ACE.
+
+## ACE's tool, and why it is not the canopy command
+
+ACE uses `docs_insert_email_blocks` (ace-gdrive; exact signature in `docs/atom-schemas.md`), not
+the canopy CLI, for two reasons:
+
+- ACE's docs are created and owned by its Drive **service account**, and ace@ itself gets
+  `403 PERMISSION_DENIED` on them (measured 2026-09-24), so the canopy command cannot edit them.
+- `marketplace-outreach-doc` runs in a confined panel turn with **no shell**, so a CLI is out of
+  reach there anyway.
+
+The two are one algorithm in two languages: `lib/docs-email-block.ts` here and canopy's
+`src/orchestrator/gdoc_email_blocks.py`. **Change them together.** Do not call chrome-sales'
+`docs_insert_email_block` from ACE: it runs as a third service account, which needs writer
+access on every doc, and it leaves the index math to you.
 
 ## Procedure
 

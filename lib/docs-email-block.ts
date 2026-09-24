@@ -3,7 +3,13 @@
  * table that Docs renders with a Gmail icon in the margin, so a human clicks the
  * icon and gets a pre-filled Gmail draft.
  *
- * ## Provenance
+ * ## Provenance, and its twin
+ *
+ * canopy owns this procedure fleet-wide: `agent-core/email-drafts.md`, engine
+ * `src/orchestrator/gdoc_email_blocks.py` (`canopy gdoc email-blocks`), which runs as an
+ * agent's own account. ACE keeps this TypeScript copy because its docs are owned by the Drive
+ * service account (ace@ gets a 403 on them) and its marketplace panel turn has no shell.
+ * Change the two together.
  *
  * Ported from chrome-sales' `docs_insert_email_block` (mcp/google-drive-server.ts
  * there), which Eva's `email-macros` skill drives. The Docs API has no request
