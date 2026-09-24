@@ -5,6 +5,15 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1556 — 2026-09-24
+
+**`gdoc-email-drafts` points at canopy's fleet procedure (canopy#680).** Email blocks are now a
+fleet capability: `agent-core/email-drafts.md` plus `canopy gdoc email-blocks`, which runs as
+each agent's own account, and Eva uses it too (eva#334). ACE keeps `docs_insert_email_blocks`
+because its docs are owned by its service account (ace@ gets a 403 on them) and its marketplace
+panel turn has no shell. The skill and `lib/docs-email-block.ts` now name the canopy twin to
+change alongside.
+
 ## 0.13.1555 — 2026-09-24
 
 **ACE can put draft emails in a Google Doc as email blocks with a working Gmail icon (`skills/gdoc-email-drafts`).**
