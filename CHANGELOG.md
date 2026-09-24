@@ -5,6 +5,17 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1553 — 2026-09-24
+
+**`marketplace-outreach-doc` names where the Drive root actually comes from (ace#2474 follow-up).**
+
+The skill said to read `ACE_DRIVE_ROOT_FOLDER_ID` with `printenv`. A caller turn does not
+carry it: the live run got exit 1, then spent four denied calls — a compound `grep`, the real
+`.env` (outside `read_paths`), `resolve_opp_path`, `drive_diagnose` — before reading the id out
+of `.env.tpl`, where it is committed because a folder id is not a secret. The skill now points
+straight there, and the capability's one `bash` grant is dropped as useless rather than left
+looking load-bearing.
+
 ## 0.13.1552 — 2026-09-24
 
 **A marketplace page can hand ACE the organisations on screen, and get an outreach doc back (ace#2474).**
