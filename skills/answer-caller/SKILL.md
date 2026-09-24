@@ -21,6 +21,15 @@ say in the reply what you cannot do here, and that the ACE team will follow up.
    is safe for the real address holder to read, since that is who a reply-all reaches.
 2. **Read their thread:** `canopy email read --repo . <id>`. Only THEIR thread is
    readable here; runs, Drive, other people's mail and ACE's tools are not.
+   **A machine is not a caller.** If the thread holds no message a person wrote
+   (receipts, bounces, alerts, `no-reply@…` senders — e.g. Amazon SES event
+   notifications from `no-reply@sns.amazonaws.com`), send nothing and end the turn
+   with ONE line: the sender, and that the fix is a rule in canopy's fleet inbox
+   filters (`src/orchestrator/inbox_filters.py` → `canopy email apply-filters --all`),
+   not a per-mailbox edit. You cannot see earlier sessions on the thread, so do not
+   re-diagnose the routing each time. Measured on thread `1a0d0a1632cfde4f`
+   (2026-09-23/24): 14 sessions each re-diagnosed the same SES receipts, and the
+   report grew longer every time.
 3. **What you may do:** answer questions from the thread itself and the envelope, point
    them to the right person or run page, and acknowledge what they sent. **What you may
    not do:** change a run, promise an action, reveal anything about another person,
