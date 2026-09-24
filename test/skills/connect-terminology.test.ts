@@ -147,6 +147,7 @@ const TERMINOLOGY_BOUND = [
   'skills/email-communicator/SKILL.md',
   'skills/inbox-triage/SKILL.md',
   'skills/opp-closeout/SKILL.md',
+  'skills/gdoc-email-drafts/SKILL.md',
 ];
 
 describe('Connect terminology reaches the writer', () => {

@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 48, // +1: verify_run_claims (pre-run claims / post-run validation, report-only fence check)
+    expectedCount: 49, // +1: docs_insert_email_blocks (email draft blocks with the Gmail icon — skills/gdoc-email-drafts)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path

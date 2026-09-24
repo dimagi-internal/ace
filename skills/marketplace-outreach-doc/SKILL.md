@@ -104,40 +104,24 @@ NOT fall back to Claude Docs: the deliverable is a Doc in ACE's own Drive, where
 ACE's artifacts live. Both were tried on the first live run, and both are dead ends that cost
 the whole delivery.
 
-Build the doc with ACE's own Drive tools — `drive_create_doc_from_markdown` for the body,
-then `docs_batch_update` to turn each "Open in Gmail" line into a link. Give each
-organisation a **Gmail compose URL**:
+Build the doc with [[gdoc-email-drafts]]: publish the markdown with a `@@EMAIL_<org-slug>@@`
+anchor under each organisation's heading, then insert every organisation's email block in one
+`docs_insert_email_blocks` call. The person hovers a block, clicks the Gmail icon in the margin,
+and gets a Gmail draft with the recipient, subject and body filled in. Keep each email short:
+these go to people running delivery organisations.
 
-```
-https://mail.google.com/mail/?view=cm&fs=1&to=<email>&su=<subject>&body=<body>
-```
-
-URL-encode each field. One click opens Gmail's compose window with the recipient, subject
-and body already in it — which is the thing being asked for. Keep the emails short: the
-whole draft rides in a URL, and a few thousand characters is the practical ceiling.
-
-**Do not reach for `docs_insert_email_block` (chrome-sales) instead.** It is the obvious
-candidate and it does not do this. It inserts a **styled 5×2 table that imitates** the
-native `@email` building block — its own description says "matching the native @email
-building block", and its code comments say the styling constants were copied from one. The
-Docs API has no request that inserts a building block, so a lookalike is all it can be, and
-a table has no Gmail icon in the margin: clicking it does nothing. Delivering that under the
-words "click the Gmail icon" is the exact failure `eva:email-macros` warns about — a thing
-that looks like a macro and does nothing — one level up. It would also drag in a service
-account that must be granted writer on every doc, a font-inheritance trap, and reverse-order
-index arithmetic, for a worse result.
-
-(If genuine native blocks are ever wanted, the one path that yields them is a template Doc
-with real `@email` blocks in it, copied per use — smart chips survive a copy. That needs a
-human-made template and a fixed block count, so it is not the default here.)
+(An earlier version of this skill claimed that email blocks inserted through the API do not get
+the Gmail icon, and used Gmail compose URLs instead. That was wrong. Blocks built this way do
+open as drafts, as the operator observed on 2026-09-24.)
 
 Structure the doc so it can be worked through top to bottom:
 
 1. **A heading naming the round** and its deadline.
-2. **One line of instruction**: click an organisation's "Open in Gmail" link to get a draft.
+2. **One line of instruction**: hover an organisation's block and click the Gmail icon in the
+   margin to get a draft.
 3. **A section per organisation**, in the order the page listed them — that is the order on
-   screen, and somebody working down the list will follow it. Show the recipient, the
-   subject and the body as text too, so the doc can be read and edited on its own.
+   screen, and somebody working down the list will follow it. Its email block holds the
+   recipient, subject and body.
 4. **A closing section listing anything a human must resolve**: organisations with no
    contact, slugs the directory did not hold (`not_found` from `marketplace_orgs_get`), and
    any organisation you deliberately skipped, with the reason.
@@ -158,10 +142,8 @@ need a human's attention. Not the drafts themselves: they are in the doc.
 
 ## Dependencies
 
-None beyond ACE's own Drive tools. `docs_batch_update` executes raw Docs API requests, so
-the links need nothing from another plugin — which is the point: this skill adds no plugin
-to a runner's install list, and cannot fail because a box happens not to host another agent.
+None beyond ACE's own Drive tools. `docs_insert_email_blocks` is ACE's own atom, so this skill
+adds no plugin to a runner's install list.
 
 Related: [[email-communicator]] (ACE's own send path, deliberately not used here),
-`eva:email-macros` (the same problem, solved with the imitation table — read the note in §3
-before copying it), `eva:gdoc-review` (worth a pass before a link is handed over).
+[[gdoc-email-drafts]] (how the blocks are built), `eva:gdoc-review` (worth a pass before a link is handed over).

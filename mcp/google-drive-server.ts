@@ -67,6 +67,7 @@ import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/pha
 import { classifyRunClaims } from '../lib/run-claims.js';
 import { classifyCaptionBacking } from '../lib/caption-backing.js';
 import { findBoldSpans, boldSpanRequests } from '../lib/docs-bold-spans.js';
+import { insertEmailBlocks } from '../lib/docs-email-block.js';
 import {
   summarizeReplacementCoverage,
   summarizeBatchReplacementCoverage,
@@ -2949,6 +2950,37 @@ server.tool(
         documentId: resp.data.documentId,
         replies: resp.data.replies,
       });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'docs_insert_email_blocks',
+  'Turn `@@EMAIL_<key>@@` anchor paragraphs in a Google Doc into email draft blocks — the To / Cc / Bcc / Subject / Body table Docs renders with a Gmail icon in the margin; clicking the icon opens a pre-filled Gmail draft. Write the doc first (e.g. drive_create_doc_from_markdown) with each anchor alone on a Normal-text line (blank line either side, never on a heading line), then call this ONCE with every block. It validates all anchors before writing anything, inserts last-to-first so no index arithmetic is yours, and deletes the consumed tokens. Call it LAST: re-publishing markdown over the doc afterwards wipes the blocks. Procedure: skills/gdoc-email-drafts. Ported from chrome-sales docs_insert_email_block; runs as ACE\'s own service account, so no sharing step.',
+  {
+    documentId: z.string().describe('The Google Doc ID'),
+    blocks: z.array(z.object({
+      anchor: z.string().describe('The <key> of an @@EMAIL_<key>@@ paragraph in the doc; [A-Za-z0-9_-]+, unique'),
+      to: z.string().optional().describe('To field (comma-separated addresses, or a placeholder like [Name])'),
+      cc: z.string().optional().describe('Cc field'),
+      bcc: z.string().optional().describe('Bcc field'),
+      subject: z.string().optional().describe('Subject line'),
+      body: z.string().optional().describe('Body text; \\n separates paragraphs'),
+    })).min(1).describe('One entry per email block to insert'),
+  },
+  async ({ documentId, blocks }) => {
+    try {
+      const r = await insertEmailBlocks(
+        {
+          get: async (id) => (await docs.documents.get({ documentId: id })).data as any,
+          batchUpdate: (id, requests) => docs.documents.batchUpdate({ documentId: id, requestBody: { requests } }),
+        },
+        documentId,
+        blocks,
+      );
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }
