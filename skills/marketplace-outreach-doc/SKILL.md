@@ -47,6 +47,25 @@ email — and `countries`, `team_size`, `year_established` are there when they h
 **`include_contacts=true` only here, where writing to people is the point.** These are real
 addresses and they persist in this transcript.
 
+## 1a. When the ask does not fit the round, say so before writing
+
+Check the round's `application_deadline` and, with `include_applicants`, whether the
+organisations on screen have already submitted. Three cases come up:
+
+- **Open round, orgs have not applied** — an invitation. The straightforward case.
+- **Closed round, orgs already submitted** — an invitation makes no sense. Write a follow-up
+  on their submission instead, and say in one line that you did and why. Leave what you do
+  not know as a marked placeholder (`[DECISION / NEXT STEP]`) rather than inventing an
+  outcome: the directory records who applied, never who was selected.
+- **The ask and the screen disagree** — say which list you are working from and offer the
+  alternative.
+
+**Ask in the CHAT, not with a tool.** A widget turn is confined and `AskUserQuestion` is not
+in its profile; the reply IS the question, so put it in the message. Reaching for the tool
+costs a denied call and a turn.
+
+Never silently write the email that does fit while the person asked for one that does not.
+
 ## 2. Draft one email per organisation
 
 Each email names something true about **that** organisation. A mail merge with the name
@@ -60,6 +79,9 @@ the salutation, you have not used the data you were given.
   one, and its `contact_email` for questions.
 - **Short.** These go to people running delivery organisations.
 - **No invented facts.** No claimed budget, no promised award, no "as we discussed".
+- **The directory does not hold their EOI answers** — only that they applied. Do not
+  characterise what an organisation said in its submission, and say so if the email would
+  read as though you had.
 
 **An organisation with no contact on file gets its section with the recipient left blank and
 a one-line note saying the address is missing.** Never guess an address from a domain, and
@@ -67,6 +89,21 @@ never quietly drop the organisation — a silent omission is how somebody gets l
 round.
 
 ## 3. Deliver so that one click opens a real draft
+
+**Where it goes.** `drive_create_doc_from_markdown` needs a `parentFolderId` on a Shared
+Drive, and this is not an opportunity, so there is no run folder to resolve. Read ACE's
+Drive root and work under it:
+
+```bash
+printenv ACE_DRIVE_ROOT_FOLDER_ID
+```
+
+Then find-or-create a `marketplace-outreach` folder there (`drive_create_folder` is
+find-or-create) and put the doc in it, named for the round and the date. Do NOT reach for
+`resolve_opp_path` — it resolves an opportunity's path and this has no opportunity — and do
+NOT fall back to Claude Docs: the deliverable is a Doc in ACE's own Drive, where the rest of
+ACE's artifacts live. Both were tried on the first live run, and both are dead ends that cost
+the whole delivery.
 
 Build the doc with ACE's own Drive tools — `drive_create_doc_from_markdown` for the body,
 then `docs_batch_update` to turn each "Open in Gmail" line into a link. Give each
