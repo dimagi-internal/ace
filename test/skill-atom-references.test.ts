@@ -79,6 +79,8 @@ const ATOM_PREFIXES = [
  * issue or fix the skill.
  */
 const ALLOWLIST = new Set([
+  // ---- Another plugin's tools, named so a skill can warn against them ----
+  'docs_insert_email_block',  // chrome-sales' gdrive MCP, NOT an ACE atom — marketplace-outreach-doc names it to say why it must not be used (it imitates the native @email block and does not click through to Gmail)
   // ---- Field names / payload keys (not atoms) ----
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
   'connect_user_id',         // ConnectID user pk on a UserInvite row — a products.connect.ace_test_user field (ace#1286), not an atom

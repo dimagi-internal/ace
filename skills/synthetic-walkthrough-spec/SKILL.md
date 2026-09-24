@@ -1,12 +1,15 @@
 ---
 name: synthetic-walkthrough-spec
-description: >
-  DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Generate per-persona walkthrough YAML specs from the narrative plan and
-  persona catalog. Each spec drives a canopy:walkthrough run.
+description: Generate per-persona walkthrough specs from the narrative plan. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
 disable-model-invocation: false
 ---
 
 # Synthetic Walkthrough Spec
+
+> **Deprecated (Plan C convergence, 2026-07-21).** Superseded by the `/ace:demo`
+> pipeline (`demo-narrative` + the canopy DDD loop); Phase 7 no longer dispatches
+> this. Kept as a fallback until the converged path is validated — see
+> `agents/synthetic-data-and-workflows.md` § Deprecated skills.
 
 Stage 2 of ACE Phase 7 (Plan B). Reads the narrative plan and the persona
 catalog (canned + opp-specific overlays) and emits one walkthrough spec

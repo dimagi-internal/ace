@@ -5,6 +5,49 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1552 — 2026-09-24
+
+**A marketplace page can hand ACE the organisations on screen, and get an outreach doc back (ace#2474).**
+
+connect-labs' marketplace now carries the canopy agent panel, and ACE is the agent it offers.
+`skills/marketplace-outreach-doc` is the procedure for the question people take to it: a drafted
+email per organisation for an EOI round, delivered as a Doc whose links open pre-filled Gmail
+drafts.
+
+Three things it exists to get right. **Read the selection, never ask for it** — the page declares
+which organisations are on screen and which round is being looked at, and asking someone which
+organisations they mean while they are looking at them is the failure the whole path removes.
+**Ground each email in that organisation's own record** — what it has delivered on Connect
+versus what it merely applied for; if two drafts differ only in the salutation, the data went
+unused. **Never invent a recipient** — an organisation with no contact on file gets a blank
+recipient and a note saying so, because guessing an address from a domain is how somebody is
+left out of a round.
+
+Driven live against the RUTF 2026 Nigeria round, which settled three things guidance alone would
+not have:
+
+- **The doc needs a destination.** `drive_create_doc_from_markdown` requires a `parentFolderId`
+  on a Shared Drive and this is not an opportunity, so no run folder resolves. Without one named,
+  the turn reached for `resolve_opp_path`, then for Claude Docs, then pasted the drafts into the
+  chat. It now reads `ACE_DRIVE_ROOT_FOLDER_ID` and works under a `marketplace-outreach` folder.
+- **A confined widget turn cannot ask with a tool.** `AskUserQuestion` is not in its profile; in
+  a chat the reply IS the question.
+- **The ask often does not fit the round.** Asked for "emails to submit to this EOI" on a closed
+  round whose organisations had all already submitted, ACE worked out for itself that an
+  invitation made no sense, wrote follow-ups, and left `[DECISION / NEXT STEP]` rather than
+  inventing an outcome. Encoding that makes it reliable rather than lucky — and records that the
+  directory holds *that* an organisation applied, never what it said or whether it won.
+
+`chrome-sales` is deliberately NOT a dependency. Its `docs_insert_email_block` looks like the
+right tool and is not: it inserts a styled table that imitates the native `@email` block, so it
+carries no Gmail icon and clicking it does nothing. A Gmail compose URL, inserted with ACE's own
+`docs_batch_update`, actually opens a draft.
+
+Five deprecated `synthetic-*` skills give up ~1.7K chars of description: the dispatchable
+catalog was at its budget ceiling, so no skill could be added without trimming, and a deprecated
+skill paying per-session budget in every repo to explain its own deprecation is the wrong thing
+to pay for. The explanation moves into each body, where `skills/README.md` says it belongs.
+
 ## 0.13.1407 — 2026-09-08
 
 **A caller can no longer assert `status: human-decided` — the write boundary is the sole stamper (ace#2307).**
