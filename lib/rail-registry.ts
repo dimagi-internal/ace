@@ -189,6 +189,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/docs/orchestrator-inline-handoff-fallback.test.ts': { issues: ['ace#2221', 'ace#1103'], observed: 'spark-facilitator/20260907-1120' },
   'test/docs/tracker-link-not-a-counterpart-deliverable.test.ts': { issues: ['ace#2386', 'ace#2378'] },
   'test/docs/upstream-absence-claims.test.ts': { issues: ['ace#1833', 'dimagi-internal/connect-labs#1331', 'voidcraft-labs/commcare-nova#545', 'ace#1886', 'ace#1621'] },
+  'test/skills/ampersand-not-banned.test.ts': { issues: ['ace#2150'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/agent-turn-review-not-dispatched.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file' },
   'test/skills/aging-parked-item-not-reflagged.test.ts': { issues: ['ace#818'], note: 'cited at the negative control, not in the file header' },
   'test/skills/app-deploy-contracts.test.ts': { issues: ['ace#1331', 'ace#1295', 'ace#1327'], observed: 'bednet-check-2-visit/20260814-0856', note: 'multi-section file; provenance sits above the second describe' },

@@ -399,8 +399,17 @@ API's.
 So probe the architect itself:
 
 > Dispatch `Agent(nova:nova-architect-autonomous)` with a trivial read-only
-> task — *"Call `list_apps` with limit 1, report how many apps came back, then
+> task — *"Call `list_projects`, report how many projects came back, then
 > stop. Do not build anything."* — and assert it returns a number.
+
+The probe tool MUST be one on the architect's own allowlist. `list_apps` is
+NOT on it (the architect's `tools:` list carries `list_projects`, `get_app`,
+`create_app` … but no `list_apps`), so an earlier revision of this probe
+could never return a number even from a perfectly bound architect — on
+`spark-facilitator/20260925-1536` the architect bound, made three tool calls,
+and reported "no tool by that name". **Judge the probe by whether the agent
+RAN** (made any tool call), not only by the number: a bind fault kills it
+before its first call, a missing-tool answer means it bound fine.
 
 That is a ~10-second dispatch and it is the only probe that exercises the
 thing Phase 3 actually depends on. On a failure, go to the fallback below; do
