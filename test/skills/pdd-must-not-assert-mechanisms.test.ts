@@ -283,31 +283,41 @@ describe('pdd-to-deliver-app entity_id guidance (ace#1232)', () => {
     expect(source).toMatch(/text:\s*", ' - ', "/);
   });
 
-  it('does not mandate a case-ref (or any case read) for a followup entity_id', () => {
+  it('sanctions a #case/ read in a calculate for a followup entity_id — and no preload shape', () => {
     const source = flatten(deliver());
 
     // Named retired claims — each one shipped, each one was false.
     expect(
       source,
-      'A visible/hidden case-bound field does NOT preload on this Nova ' +
-        'instance (ace#1232, proven against a compiled CCZ). Do not restore it.',
+      'A visible case-bound field pre-fills the previous ANSWER; it is not a ' +
+        'read a key can be built on (ace#2006). Do not restore it as a mechanism.',
     ).not.toMatch(/case-bound fields open pre-filled/i);
 
     expect(
       source,
       "Nova's \"preload mechanic\" is not a mechanism a brief can request " +
-        '(ace#1224/#1232) — do not point the architect at it.',
+        '(ace#1224) — do not point the architect at it.',
     ).not.toMatch(/preload\s+mechanic/i);
 
-    // And the positive form: the closure is stated, with all three surfaces.
-    expect(source).toMatch(/MUST NOT depend on reading the case back/i);
-    for (const issue of ['1180', '1224', '1232']) {
+    // The retired closure must not come back: commcare-nova#458 closed
+    // COMPLETED 2026-08-15, and a released CCZ proved the read compiles as a
+    // live calculate bind (ace#2199, spark-facilitator/20260925-1536).
+    expect(
+      source,
+      'case-ref is NOT rejected app-wide any more — do not restore the closure (ace#2199).',
+    ).not.toMatch(/REJECTED app-wide/i);
+    expect(source).not.toMatch(/MUST NOT depend on reading the case back/i);
+
+    // The positive form: the sanctioned read, its released-CCZ proof, and the
+    // longitudinal guard against the atomic-visit fallback.
+    expect(source).toMatch(/read the case with a `#case\/<property>`/i);
+    expect(source).toMatch(/5c1eef4323224550b1c36a7da9521e71/);
+    expect(source).toMatch(/Do NOT fall back to `concat\(username, <date>\)` for a\s+longitudinal design/i);
+    for (const issue of ['1224', '2006', '2199', '1462']) {
       expect(source, `the case-UPDATE rule must cite ace#${issue}`).toMatch(
         new RegExp(`ace#${issue}`),
       );
     }
-    // The sanctioned alternative.
-    expect(source).toMatch(/kind:\s*"user-ref"/);
   });
 
   it('carries the fake-preload structural step, with the payment halt (ace#1224)', () => {

@@ -151,9 +151,10 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > becomes invalid XML when CCHQ parses the form during
      > `make_build` (CCHQ rejects with "Error parsing XML: StartTag:
      > invalid element name"). Use words ("three letters", "a number")
-     > or backticks (`three letters`) for placeholder syntax. Same rule
-     > for `&` and `"` in label text — write them out as words instead
-     > of relying on entity encoding to land. This applies especially
+     > or backticks (`three letters`) for placeholder syntax. `&` is
+     > NOT restricted: Nova entity-encodes it to `&amp;` and HQ builds
+     > it, so keep a partner's published name verbatim, `&` included
+     > (verified against a released build, ace#2150). This applies especially
      > to pattern-recognition / regex-style quiz options where it's
      > tempting to write `<country><number>.<number>` literally.
 

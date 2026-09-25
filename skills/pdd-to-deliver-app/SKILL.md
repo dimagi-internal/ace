@@ -129,9 +129,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > `make_build` (CCHQ rejects with "Error parsing XML: StartTag:
      > invalid element name"). Use words ("placeholder text", "the
      > expected format") or backticks (`expected format`) for
-     > placeholder syntax. Same rule for `&` and `"` in label text —
-     > write them out as words instead of relying on entity encoding
-     > to land. This applies to hint text and constraint messages too,
+     > placeholder syntax. `&` is NOT restricted: Nova entity-encodes
+     > it to `&amp;` and HQ builds it, so keep a partner's published
+     > name verbatim, `&` included (verified against a released build,
+     > ace#2150). This applies to hint text and constraint messages too,
      > anywhere literal `<`/`>` would be tempting (e.g. format hints,
      > validator-message templates).
 
@@ -265,8 +266,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > `{ kind: "field-ref", uuid: <field uuid> }`,
      > `{ kind: "user-ref", property: "username" }`, or
      > `{ kind: "text", text }`. (`{ kind: "case-ref", caseType,
-     > property }` is in the schema but is REJECTED app-wide on this Nova
-     > instance — never author one; see the case-UPDATE rule below.) So
+     > property }` has no case to read on a CASE-CREATE form — case reads
+     > belong on followup forms; see the case-UPDATE rule below.) So
      > `entity_id: { parts: [{ kind: "field-ref", uuid: <entity_key uuid> }] }`
      > and
      > `entity_name: { parts: [{ kind: "field-ref", uuid: <beneficiary_name uuid> }] }`.
@@ -324,92 +325,79 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
      > REQUIRED: When a `connect.deliver_unit` spans multiple forms (a
      > registration form plus later visit forms for the same entity),
-     > every form MUST emit the IDENTICAL `entity_id` grain — and on the
-     > followup forms that grain **MUST NOT depend on reading the case
-     > back into a form node.** There is no mechanism on this Nova
-     > instance that a brief can reliably ask for to get a case property
-     > into a followup form's field. All three surfaces are closed, each
-     > proven live:
+     > every form MUST emit the IDENTICAL `entity_id` grain. On a
+     > followup form, **read the case with a `#case/<property>`
+     > reference in a hidden field's `calculate`** — that is the
+     > sanctioned case-read path, and it is how a `longitudinal-visits`
+     > key reaches the entity's history (its current phase/step, its
+     > per-step counter). Build the key in a hidden `entity_key`
+     > calculate and point `entity_id` at ONE `field-ref` to it:
      >
-     > - **`case-ref` parts are rejected app-wide.** A followup form's
-     >   `case-ref` to its OWN case type fails with "This expression does
-     >   not survive Nova's canonical identity parse and print round
-     >   trip" across every expression shape and slot, so a brief
-     >   mandating one is **unbuildable** (ace#1180 /
-     >   `commcare-nova#458`).
+     > ```
+     > entity_key.calculate =
+     >   concat(#case/case_id, '-', #case/<state property>, '-',
+     >          #form/<capped counter>, '-', #form/<payability discriminator>)
+     > ```
+     >
+     > (Nova renders `#case/` as `#<case_type>/` in its read-back; both
+     > mean the current record.)
+     >
+     > **This path is verified against a released CCZ, not just the
+     > blueprint.** `voidcraft-labs/commcare-nova#458` (a followup form's
+     > `case-ref` to its OWN case type rejected by the canonical round
+     > trip) closed COMPLETED 2026-08-15. On
+     > `spark-facilitator/20260925-1536` the Deliver followup form was
+     > briefed with `#case/` reads, the architect built them without a
+     > rejection, and the released build `5c1eef4323224550b1c36a7da9521e71`
+     > compiles them as LIVE `calculate` binds over the case database —
+     > not as preload-dependent `setvalue`s:
+     >
+     > ```
+     > <bind nodeset="/data/entity_key" calculate="concat(
+     >   instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/@case_id, '-',
+     >   instance('casedb')/casedb/case[@case_id = …]/pilot_fcap_step, '-',
+     >   /data/capped_index, '-', /data/meeting_kind)"/>
+     > ```
+     >
+     > (dimagi-internal/ace#2199.) `#case/case_id` is correct HERE because
+     > the case already exists on a followup form; it stays wrong on a
+     > CASE-CREATE form (see the case-create rule above).
+     >
+     > **Two case-READ shapes that are still NOT a read:**
+     >
      > - **`caseWrite` is write-only — it does not preload.** A hidden
      >   field carrying `caseWrite` plus a literal `default_value` looks
      >   like a preload and is not one: it holds the literal and then
      >   writes that literal back, wiping the case property (ace#1224).
-     >   Step 4h below halts on this shape.
-     > - **~~A visible case-bound field does NOT emit a preload
-     >   either.~~ FALSE AS OF 2026-08-29 — Nova emits one for
-     >   essentially every field (ace#2006).** ace#1232 proved the
-     >   negative against a CCZ compiled at the time; the released
-     >   Deliver CCZ of `spark-facilitator/20260828-0703` contains
-     >   `<setvalue … value="instance('casedb')/…" event="xforms-ready"/>`
-     >   for **35 of its 36 answerable questions** — every one except the
-     >   photo upload. Do not rely on this bullet's original claim in
-     >   either direction: **assume a visible case-bound field DOES
-     >   preload, and check the compiled CCZ.**
+     >   Step 4i below halts on this shape. Read with `#case/` in a
+     >   `calculate` instead.
+     > - **A visible case-bound field DOES preload (ace#2006).** The
+     >   released Deliver CCZ of `spark-facilitator/20260828-0703`
+     >   contains `<setvalue … value="instance('casedb')/…"
+     >   event="xforms-ready"/>` for 35 of its 36 answerable questions.
+     >   That is a pre-fill of the previous visit's ANSWER, not a read
+     >   you can build a key on — see the derived-state rule below.
      >   *Enforced:* `lib/casedb-preload-audit.ts`, run by
-     >   `app-release-qa` § Step 2.9, fails the build on any visible
-     >   question answered from the case.
+     >   `app-release-qa` § Step 2.9.
      >
-     > (One shape HAS been observed working — a hidden field populated by
-     > a casedb `<setvalue event="xforms-ready">` that Nova emitted on its
-     > own, `bednet-check-2-visit/20260813-2333`. Do not build on it: it
-     > is not requestable from the authoring surface, and it is correct
-     > there only because that `setvalue` happened to be emitted AFTER the
-     > empty-string initializer for the same node. One emission-order
-     > change and every worker silently goes unpaid, with no build,
-     > validate, or `play` error. It is not a sanctioned mechanism.)
+     > **Do NOT fall back to `concat(username, <date>)` for a
+     > longitudinal design.** That is the `atomic-visit` grain: it drops
+     > the entity's history out of the key, so a per-entity cap ("3 paid
+     > per step") cannot be expressed and the design silently becomes
+     > "any visit counts" (ace#1462). It remains a legitimate key only
+     > for an `atomic-visit` followup where the worker IS the entity
+     > referent and no history is priced.
      >
-     > **Sanctioned alternative — key on worker identity + the encounter
-     > date.** In the common ACE shape the FLW maps 1:1 to the entity
-     > (one facilitator per CBF, one worker per assigned household), so
-     > the worker IS the entity referent and no case read is needed:
+     > **When the FLW does NOT map 1:1 to the entity**, `#case/case_id`
+     > already distinguishes the entities the worker serves — no re-asked
+     > select is needed. If a key component genuinely cannot come from
+     > the case or the form, say so in the build memo next to the
+     > `entity_id` you shipped.
      >
-     > ```
-     > entity_id.parts = [ { kind: "text",      text: "concat(" },
-     >                     { kind: "user-ref",  property: "username" },
-     >                     { kind: "text",      text: ", ' - ', " },
-     >                     { kind: "field-ref", uuid: <encounter date uuid> },
-     >                     { kind: "text",      text: ")" } ]
-     > ```
-     >
-     > Note the quoted separator inside an explicit `concat(...)` — a
-     > bare `{ text: " - " }` part is XPath subtraction and yields `NaN`
-     > (see the parts-is-XPath-source rule above). Add the payability
-     > discriminator, and any finer per-encounter component, INSIDE the
-     > same `concat(...)`. `entity_name` follows the same construction
-     > over the human-readable fields.
-     >
-     > **When the FLW does NOT map 1:1 to the entity** (one worker serves
-     > many households/outlets), worker identity alone collapses them.
-     > Then re-ASK the identifying key component on the followup form as
-     > a **select** over the same option source the create form used
-     > (`_app-component-library.md § structured-capture`) and reference it
-     > with an ordinary `field-ref` — an answered field, not a case read.
-     > If neither shape fits, say so in the build memo next to the
-     > `entity_id` you shipped; do not ship a key that silently depends on
-     > a case read.
-     >
-     > Still NOT the case id, in either form: `/data/case/@case_id` is
-     > rejected by `validate_app` (the case block is not a blueprint
-     > field) and `#case/case_id` compiles to a casedb lookup that breaks
-     > create-form install and is the wrong dedup grain anyway (a
-     > per-registration UUID gives no cross-registration / cross-FLW
-     > dedup).
-     >
-     > Caveat that still applies: a per-form suffix must go **inside**
-     > `concat(...)`, never as a bare
+     > Caveat that still applies: every literal separator and every
+     > per-form suffix goes **inside** `concat(...)`, never as a bare
      > `{ kind: "text", text: " - <form_name>" }` part between two
      > references.
-     >
-     > Re-open the case-read path only once `commcare-nova#458` (#1180)
-     > is fixed AND a preload is re-verified against a live compiled CCZ —
-     > not against the blueprint, which shows the bind either way.
 
      > **Case-write DERIVED state only, never the raw answers
      > (dimagi-internal/ace#2006).** Nova emits a casedb read-back
@@ -2458,6 +2446,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-25 | **The case-UPDATE `entity_id` rule now SANCTIONS the case read it used to forbid (ace#2199).** The REQUIRED paragraph still told the architect that a followup `case-ref` could never be built (citing `commcare-nova#458`, closed COMPLETED 2026-08-15) and steered followup forms to `concat(username, <date>)` — the `atomic-visit` grain, which cannot express a per-entity cap and is the ace#1462 failure for a `longitudinal-visits` design. The paragraph's own re-open condition ("re-verify against a live compiled CCZ") is now met: on `spark-facilitator/20260925-1536` the Deliver followup form was briefed with `#case/` reads and the released build `5c1eef4323224550b1c36a7da9521e71` compiles `entity_key` as a live `calculate` over `instance('casedb')` (`@case_id`, `pilot_fcap_step`). The rule now says: read the case with `#case/<property>` in a hidden calculate; `caseWrite` + literal default is still not a read (ace#1224); a visible case-bound field pre-fills the previous answer (ace#2006); never fall back to the username grain for a longitudinal design. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` (inverted to require the read and forbid the retired closure). | ACE team |
 | 2026-09-17 | **Step 4j gains sub-step 6 — capped-index arithmetic (ace#2148).** When a per-entity cap rides in `entity_id` as a clamped counter, the clamp constant is NOT the cap: a `casedb` read is the state BEFORE this submission, so `min(<casedb count>, N)` admits `N + 1` distinct keys and the (N+1)-th mints an index that has never existed, which Connect pays. `spark-facilitator/20260906-2233` shipped a cap of 3 binding at 4 — 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green, the CCZ structurally perfect, and the app internally consistent with its own wrong key; `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. Nothing on this path re-derived the arithmetic, so it surfaced only in `pdd-to-deliver-app-eval`, one Nova build later. The step deliberately does NOT compare the clamp to the cap — both correct spellings are live in this same opportunity five weeks apart and share no constant (`min(<casedb count> + 1, 3)` vs `if(pcts >= 3, 2, pcts)`) — it traces the first `cap + 1` submissions, mechanically via `lib/payable-cap-arithmetic.ts`. Paired with `_app-component-library § payability-scoped-key` CAPPED INDEX and the released-form backstop in `app-release-qa § Step 4`. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts` + `test/skills/payable-cap-wiring.test.ts`. | ACE team |
 | 2026-09-17 | **Step 4f gains step 8: EVERY lookup-backed select in the app is audited, not just the ones 4f bound (ace#2143).** On `spark-facilitator/20260906-2233` `app-deploy` could not upload the Deliver app — Nova's `upload_app_to_hq` preflight refused it: *"A lookup-powered choice list uses activity_id for its saved values, but malawi_activities repeats the same value in several rows."* The table carried `other` on seven rows, one per FCAP step: unique WITHIN each filter partition (`step_id = step`, so a worker never sees two at once) and not unique across the table, which is what Nova requires. ACE owned the uniqueness rule already — `diffOptionRegister` has carried it since ace#1621 — but only on the PARTNER-REGISTER path, where the PDD names a register file in `inputs/`. `malawi_activities` was authored by the build itself, so that path never fired; and 4f's per-field verify was unreachable too, because steps 1–7 only ever touch a field that FAILED an assertion and this one shipped as a correctly-shaped `single_select` from the start. Every ACE artifact recorded it as "BOUND and read-back-verified" and Nova's preflight was the first thing in the run that noticed — after a full Nova build, media coverage and two translation layers. **The fix is scope, not a second copy of the check.** Nova's preflight sweeps every lookup-powered choice list in the app, so ACE's does too: `auditLookupBinds` over one site per bound field, run unconditionally, including when `degraded` is empty and when no register is declared. `verifyLookupBind` now takes the bound table's ROWS as a **required** argument (an optional one is a check a caller skips by forgetting) and refuses `duplicate-values`, `empty-table`, `no-rows-read-back` and `partial-rows-read-back` — the last because `get_lookup_table_rows` pages at 100 rows and a duplicate on an unread page is invisible. It also splits `bindLanded` out of `verified`, so `scripts/probe-nova-fixtures.ts` keeps reporting on Nova's BINDING capability and never reads a table-content finding as an upstream regression. *Enforced:* `test/lib/option-register.test.ts` (the seven-row `other` repro, blank-value collision, absent/partial/empty rows, and a whole-app sweep whose only failure is an architect-built site the run never bound). | ACE team |
 | 2026-09-11 | **Every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** § Decisions Log was a catalogue "not a required set" and the app build wrote none — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3, while Step 7's memo listed four latitudes in prose. The rows derive from the same entry list as the memo tables ("one source, two renderings"); the spot-check location goes in `reasoning` because ace-web's summary drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows under this skill's tag. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
