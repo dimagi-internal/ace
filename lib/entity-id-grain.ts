@@ -533,8 +533,9 @@ export function checkEntityIdGrain(
     resolvedThroughIntermediate,
     detail: [
       `entity-id-grain: the released key is ${components.join(' + ')}, which is NOT the mandated grain.`,
-      'Every legitimate same-day submission past the first collapses into one payable unit, so the',
-      'programme silently UNDER-pays and the CCZ projection still reports collision_count: 0.',
+      'Every legitimate same-day submission past the first is grouped onto one entity row, so the',
+      'per-entity record is wrong (and the payment then rides on max_daily alone — a repeated key is',
+      'paid again, ace#2512) while the CCZ projection still reports collision_count: 0.',
       'Phase 4 cannot repair this — Connect consumes entity_id from the form and has no override',
       '(dimagi-internal/ace#1285).',
       ...findings.map((f) => `  [${f.kind}] ${f.detail}`),

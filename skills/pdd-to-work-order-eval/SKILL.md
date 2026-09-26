@@ -55,6 +55,8 @@ Common failure modes: per-visit rate in section 6 differs from `payment-rate` de
 
 This is graded against the real platform's capabilities, not against the PDD. A criterion can trace perfectly to the PDD and still be unverifiable in production. Common failure modes: criterion requires data not captured by the Connect app (e.g., "temperature logged during transit" without a temperature field); criterion requires audit data the platform doesn't expose; criterion is subjective ("delivered in good condition") without an audit mechanism. A `fail` here is a `[BLOCKER]` — an unverifiable criterion makes the contract unenforceable regardless of PDD fidelity.
 
+**Payment-cap enforcement is graded here too (ace#2512).** A work order that promises a per-entity or per-day cap because "Connect pays each key / slot once" (or "collapses repeats into one payment") states a platform behaviour that does not exist: with the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeated `entity_id` to `pending`, auto-approves it and pays it again (`playbook/integrations/connect-api.md § A repeated entity_id is PAID AGAIN`). Such a cap is `partial` at best unless the work order names a real Connect-side stop (a verification rule on a computed `payable_slot` field, or the payment unit's `max_daily` / `max_total`); a not-to-exceed total that relies on it alone is `fail`.
+
 ### 5. Commercial realism *(out-of-chain fitness)*
 *Would a real Dimagi contracts person sign this draft?*
 

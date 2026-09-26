@@ -202,8 +202,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      slug-vs-name separation, not just a workaround for the column width.
    - **REQUIRED — `entity_id` is Connect's dedup / payment grain; make
      it a BUSINESS KEY built from form fields, NOT the system case id.**
-     `entity_id` is the value Connect uses to collapse duplicate
-     deliveries and aggregate visits to the same real-world entity. It
+     `entity_id` is the value Connect uses to group deliveries onto one
+     CompletedWork row per real-world entity (it does NOT stop a repeat
+     being paid — ace#2512). It
      must therefore be a human-meaningful key derived from the PDD's
      `duplicate-detection-key` (Evidence Model Layer A) — the natural
      identifiers that define one unique entity (e.g. beneficiary name +
@@ -1448,9 +1449,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `entity_name`** — directly as a part, or transitively via a field
        whose `calculate` references it. That is a **payment-correctness**
        defect, not a data-quality one: the key evaluates to the same constant
-       for every entity, Connect dedups every delivery into ONE payable
-       entity, and every worker after the first goes unpaid while every
-       submission succeeds. Do not write the success summary; surface the
+       for every entity, so Connect folds every delivery a worker makes onto
+       ONE CompletedWork row — the per-entity record, per-entity review and
+       any per-entity cap are gone while every submission succeeds (and each
+       repeat is still paid, ace#2512). Do not write the success summary; surface the
        field, the marker it feeds, and the case property it would wipe.
 
     3. **Also inspect every hidden field referenced by a `relevant`
@@ -1543,10 +1545,21 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        a Nova build plus a Phase-3 halt.
 
     6. **Capped-index arithmetic — when the cap rides in the key (ace#2148).**
-       A per-entity cap ("at most N paid meetings per FCAP step") is enforced by
-       DEDUPLICATION, not by the app refusing a submission: the key carries a
-       clamped counter, fresh per payable encounter up to the cap and constant
-       after it. The clamp constant is NOT the cap. **A `casedb` read is the
+       A per-entity cap ("at most N paid meetings per FCAP step") puts a
+       clamped counter in the key, fresh per payable encounter up to the cap and
+       constant after it. **The key does not stop the over-cap payment** — with
+       the `duplicate` flag off (always, on ACE opportunities) Connect resets a
+       repeat key to `pending`, auto-approves it and pays it again (ace#2512;
+       `playbook/integrations/connect-api.md § A repeated entity_id is PAID
+       AGAIN`). So the form MUST ALSO compute a `payable_slot` field (`yes` only
+       for an in-cap payable encounter) for Phase 4's `form_field_rules` row to
+       gate on, and the build summary names it. If the PDD names no such field,
+       build it anyway from the same counter the clamp reads (it is derivable:
+       `yes` iff the encounter is payable AND the pre-submission count is below
+       the cap) and list it as a Phase 4 residual — never ship a cap that rides
+       only in the key. Keep non-payable record kinds on a form with no
+       `deliver_unit` marker (they would otherwise consume `max_daily` /
+       `max_total`). The clamp constant is still NOT the cap. **A `casedb` read is the
        state BEFORE this submission** — the case property is written on submit —
        so `min(<casedb count>, N)` admits `N + 1` distinct keys and the
        (N+1)-th mints an index that has never existed, which Connect pays. On

@@ -1,7 +1,10 @@
 /**
  * Shared primitives for the payment-unit-vs-`entity_id`-grain invariant.
  *
- * Connect resolves payable units by `entity_id`. A document may state a rate
+ * Connect groups visits into entity rows by `entity_id` (it does NOT stop a
+ * repeat on one row being paid — ace#2512; a worker-day grain means one paid
+ * unit per day only with `max_daily` = 1 or a verification rule rejecting
+ * same-day repeats). A document may state a rate
  * per EVENT (per visit, per session, per form) while the opportunity's
  * `entity_id` grain makes the payable unit a worker-DAY — the two agree only
  * when there is exactly one event per worker per day, and disagree everywhere

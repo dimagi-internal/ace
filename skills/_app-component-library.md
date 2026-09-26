@@ -665,12 +665,23 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > the build memo next to the key you shipped, exactly as for a key that cannot
 > be scoped. (ace#1958, observed on `bednet-check-2-visit/20260902-1555`:
 > `entity_key` carried `consent_confirmed`, `entity_label` did not.)
-> CAPPED INDEX — when the cap is enforced THROUGH the key, the clamp constant
-> is NOT the cap (ace#2148). A per-entity cap ("at most 3 paid meetings per
-> FCAP step") is expressed by putting a CLAMPED counter in `entity_id`: a fresh
-> index per payable encounter up to the cap, then the same index forever, so
-> the over-cap encounters collide onto a key Connect has already paid. The
-> invariant nobody states is the TIMING of the counter: **a `casedb` read is
+> CAPPED INDEX — the key GROUPS over-cap encounters; it does NOT stop them
+> being paid (ace#2512). A per-entity cap ("at most 3 paid meetings per FCAP
+> step") puts a CLAMPED counter in `entity_id`: a fresh index per payable
+> encounter up to the cap, then the same index forever, so the over-cap
+> encounters land on an existing CompletedWork. But with the `duplicate` flag
+> off — always, on ACE opportunities (`connect_set_verification_flags` refuses
+> it, ace#1013) — Connect resets a repeat key to `pending`, auto-approves it,
+> and `payment_accrued` counts it again (`processor.py` `clean_form_submission`;
+> `models.py` `CompletedWork.payment_accrued`, "Includes duplicates"; see
+> `playbook/integrations/connect-api.md § A repeated entity_id is PAID AGAIN`).
+> So the cap MUST ALSO be enforced Connect-side: the form computes
+> `payable_slot` (`yes` only for an in-cap payable encounter), and Phase 4
+> adds a `form_field_rules` row requiring `payable_slot = yes`, so an over-cap
+> record is flagged and never auto-approved. Name that rule in the residual
+> list exactly as for the non-payable predicate above. The clamped key stays,
+> as belt-and-braces grouping — and the clamp constant is still NOT the cap
+> (ace#2148). The invariant nobody states is the TIMING of the counter: **a `casedb` read is
 > the state BEFORE this submission, because the case property is written on
 > submit.** So `min(<casedb count>, cap)` admits `cap + 1` distinct keys, not
 > `cap` — the (cap+1)-th encounter mints an index that has never existed and
@@ -686,7 +697,13 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > SCOPE: this closes the slot-consumption mode only. A non-payable record still
 > mints a CompletedWork on its own key until Layer A verification rejects it —
 > the `deliver_unit` marker carries no relevance condition, which is upstream
-> of ACE.
+> of ACE. And a REJECTED visit still counts toward `max_daily` / `max_total`
+> (the counts exclude only `over_limit` and `trial`), so record kinds the
+> design never pays for (committee meetings, did-not-happen reports) belong on
+> a SEPARATE form with no `deliver_unit` marker — or the payment unit's caps
+> must be sized for them. Sized for payable units only, they let unpaid
+> records exhaust `max_total` and later payable visits go `over_limit`
+> (ace#2512: on the spark-facilitator design, ~week 10 of 13).
 
 ### embedded-bc-script
 
@@ -2238,3 +2255,4 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 | 2026-08-25 | **`grid-menu-display` is no longer briefed to Nova (closes dimagi-internal/ace#1632).** The component was in the `pdd-to-{learn,deliver}-app` emit-checklists — i.e. its Brief paragraph went verbatim into the `/nova:autobuild` brief — while its own **Enforced by** says it is applied POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via `commcare_set_menu_display` + `commcare_set_app_menu_display`. Nova's authoring surface has no menu-display-format control at all, so every architect build was asked for something structurally impossible and reported a spurious "unmet requirement" in the build memo — the one artifact meant to carry REAL deviations — twice per run (Learn + Deliver). Live on `bednet-check-2-visit/20260825-1310`: the Learn architect searched the deferred tool catalogue three ways, found no atom, and reported it unmet; Step 2.65 then applied all three fields HQ-side on the first attempt and verified them from the raw app doc. Both emit-checklist entries now say **do NOT put it in the Nova brief** and name the post-build owner, and the component carries a `DO NOT BRIEF THIS` bullet stating the general rule (a component enforced by a post-build skill is never briefed). *Enforced:* `test/skills/post-build-components-not-briefed.test.ts`. | ACE team |
 | 2026-08-25 | **`live-photo-capture` is no longer briefed to Nova either (closes dimagi-internal/ace#1640).** The sibling instance of the ace#1632 defect, one component over: it sat in `pdd-to-deliver-app`'s emit-checklist while its own **Enforced by** says it is applied POST-BUILD by `app-hq-settings` § Step 3 (`commcare_get_form_source` -> inject `acquire` -> `commcare_patch_xform`) and gated by `app-release-qa` (`camera-only-appearance-missing`) — and `pdd-to-deliver-app-eval` already said in so many words that it "is not representable in the Nova blueprint". Confirmed against Nova's LIVE `add_fields` / `edit_field` schemas rather than our own docs: no field kind has an `appearance` slot (`caseWrite.mode` saves a link to the attachment, which is a different thing), so the paragraph was unsatisfiable by any call the architect has. Entry now marked **do NOT put it in the Nova brief** with the post-build owner and gate named, plus a `DO NOT BRIEF THIS` bullet here. The `KNOWN_UNMARKED` ledger row in `test/skills/post-build-components-not-briefed.test.ts` is deleted, so the rail now enforces the rule with no exception. | ACE team |
 | 2026-08-25 | **`connect-supported-capabilities-only`'s brief no longer instructs UNCONDITIONAL case-list authoring (closes dimagi-internal/ace#1652).** The clause conflated two different things: *don't use case SEARCH* (correct, always) and *therefore give each menu a case LIST* (correct only for a menu a worker navigates THROUGH to reach an existing record). On a registration-only module the entry's only session datum is `function="uuid()"`, so CommCare pushes no entity-selection screen and the authored columns are unreachable by construction — `app-release-qa` Step 2.8 raises `[BLOCKER] case-list-unreachable` on exactly that shape. ace#1281 closed this class at the OTHER producer (`pdd-to-deliver-app` § 4d's case-list *heal*, which now correctly declines), but § 4d only ever fires on a module whose `caseListConfig.columns` is EMPTY — and this brief, whose trigger is **always**, had already populated it. Same class, different door: the configuration was authored upstream of its own guard. Observed on `hh-poverty-targeting/20260824-1404` (HQ app `f94db1bd…`, build v10 `is_released: true`): one `<entry>`, one `uuid()` datum, a dead 4-column detail set traceable to this paragraph. It is also unhealable after the fact — Nova refuses to remove the last visible Results column from a module that declares a case type — and the PDD (`archetype: atomic-visit`, census-saturation, each household surveyed at most once) implies no followup form, so neither documented remediation was available. The second half of the clause is now scoped to navigate-through menus, with the registration-only carve-out stated explicitly. Checked while in the file: no other always-on component instructs case-list authoring. *Enforced:* `test/skills/component-brief-case-list-scoping.test.ts`. | ACE team |
+| 2026-09-26 | **`payability-scoped-key`: the clamped key no longer claims over-cap encounters "collide onto a key Connect has already paid" (ace#2512).** With the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeat key to `pending`, auto-approves it and pays it again, so the clamp groups the over-cap encounter but does not stop its payment. The cap now also requires a computed `payable_slot` field plus a Phase 4 `form_field_rules` row, and SCOPE adds that a rejected visit still counts toward `max_daily` / `max_total`, so non-payable record kinds go on a form with no `deliver_unit` marker. Source: commcare-connect `form_receiver/processor.py` `clean_form_submission` + `opportunity/models.py` `CompletedWork.payment_accrued`. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts`. | ACE team |

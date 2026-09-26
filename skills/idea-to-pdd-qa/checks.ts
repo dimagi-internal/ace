@@ -618,9 +618,11 @@ export function checkPaymentUnitMatchesEntityGrain(raw: string): QACheckResult {
       pass: false,
       detail:
         `payment_rate_unit is per-${unitEvent} ("${unit}") but entity_id_grain is day-scoped ` +
-        `("${grain}"): Connect resolves payable units by entity_id, so several same-${unitEvent}s ` +
+        `("${grain}"): Connect groups visits by entity_id, so several same-${unitEvent}s ` +
         `by one worker on one day collapse into ONE payment entity. The two statements agree only ` +
-        `when there is exactly one ${unitEvent} per worker per day.`,
+        `when there is exactly one ${unitEvent} per worker per day. (That entity row is not a single ` +
+        `payment — Connect pays a repeated key again unless max_daily or a verification rule stops ` +
+        `it, ace#2512 — so a per-day quote must also name that stop.)`,
       auto_fix_hint:
         `The payable unit is the GRAIN, not the stated unit. Either quote the rate per that grain ` +
         `(e.g. "per verified follow-up day", with the band multiplied by the expected events per ` +

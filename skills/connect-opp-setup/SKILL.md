@@ -682,10 +682,27 @@ alone makes the artifact land outside `4-connect` and fail
      `form_field_rules` rule or cite the CCZ-side enforcement; do not
      re-send the dead flag.
 
+   **A per-entity cap or a "repeat is not payable" rule REQUIRES a
+   `form_field_rules` row — the `entity_id` key does not enforce it
+   (ace#2512).** With `duplicate` refused (above) and force-disabled under
+   automatic visit verification, Connect resets a repeat key to `pending`,
+   auto-approves it and pays it again (`playbook/integrations/connect-api.md
+   § A repeated entity_id is PAID AGAIN`). So when the PDD caps paid
+   encounters per entity (or per step), write a rule on the Deliver form's
+   computed `payable_slot` field (`question_value` = its stored `yes`),
+   read out of the released CCZ like any other path. If the released form has
+   no such field, do NOT record the cap as enforced: record it as a
+   `[PLATFORM]` gap / Phase 3 defect in the summary. Also check the payment
+   unit's `max_daily` / `max_total` against EVERY record kind that carries the
+   `deliver_unit` marker, not only the payable ones — flagged and rejected
+   visits still count toward both caps, so a non-payable record kind on the
+   paid unit exhausts `max_total` early.
+
    Layer A rules that none of these can carry (photo-present, date sanity,
-   cross-field consistency, dedup) are normally already enforced *in the
-   CCZ* — cite that in the summary rather than leaving the rule looking
-   dropped.
+   cross-field consistency) are normally already enforced *in the CCZ* — cite
+   that in the summary rather than leaving the rule looking dropped. Dedup is
+   NOT among them: a CCZ cannot see another submission's payment, and Connect
+   does not dedup payment on a repeated key (ace#2512).
 
 6. **Configure payment units** via `connect_create_payment_units` (plural,
    atomic batch — the new automation API takes a list). Build one entry
@@ -1459,11 +1476,15 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   its own `calculate` bind in the released CCZ before writing the record
   — a component is a NODE NAME, not a semantics.** Three failure modes to
   check, and the third is invisible to a reader of the composite alone:
-    1. the case id **alone** pays each entity once, ever;
+    1. the case id **alone** folds the whole arc onto one entity row;
     2. a `concat(username, today())`-style key silently reverts to
-       cross-sectional dedup and makes repeat activities payable;
+       cross-sectional grouping;
     3. **the sequence component is present but UNCLAMPED**, so the
-       per-entity cap the PDD mandates silently does not bind.
+       per-entity grouping the PDD mandates silently does not hold.
+  None of the three is what stops a payment: a repeat key is paid again
+  (ace#2512), so the PDD's per-entity cap binds only through the
+  `payable_slot` `form_field_rules` row of Step 5 — record whether it was
+  written.
   The record must state, per component, whether the PDD's sequence/clamp
   semantics are actually implemented — not merely that the component is
   present. On spark-facilitator/20260828-0703 the key read
@@ -1472,8 +1493,9 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   third component is `min(<meetings_on_current_step>, 3)`, and the clamp
   lives entirely inside `meeting_index`'s own bind. That app was correct —
   but an UNCLAMPED `meeting_index` produces a byte-identical composite,
-  passes both failure modes above, and makes every 4th+ meeting per step
-  independently payable. Phase 6's `delivered >= 1` does not catch it
+  passes both failure modes above, and puts every 4th+ meeting per step
+  on its own key (payable either way without the Step 5 `payable_slot`
+  rule, ace#2512). Phase 6's `delivered >= 1` does not catch it
   either; it takes a 4th meeting on one step to surface. Phase 3's
   `entity-id-grain` now reports these as
   `resolvedThroughIntermediate` — read that list and resolve each entry

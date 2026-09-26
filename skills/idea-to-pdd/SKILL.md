@@ -1537,7 +1537,7 @@ Everything else in the base table is `value_set_by: ace`.
 | `entity-registration-path` | Registered by a separate form, by the first visit, or already existing in the partner's system? | PDD `Entity Lifecycle` + `pdd-to-deliver-app` case ops |
 | `visit-sequence-and-cadence` | Expected visits, their order, and the interval — including any change in cadence across the arc. | PDD `Entity Lifecycle` |
 | `payability-against-history` | Is the same activity twice payable? An out-of-order visit? A per-entity cap over a window? **Never leave unanswered** — silence degrades Layer A to "any visit counts" (ace#1462). | PDD `Evidence Model` Layer A |
-| `payment-unit-entity-id` | The Connect dedup business key expressing the row above. Default for this archetype: `concat(<case_id>, '-', <activity_code>)` = one payment per activity per entity. Never the case id alone (that would pay once per entity, ever). | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
+| `payment-unit-entity-id` | The Connect dedup business key expressing the row above. Default for this archetype: `concat(<case_id>, '-', <activity_code>)` = one entity row per activity per entity. The key GROUPS visits; it does not stop a repeat being paid (ace#2512) — any per-entity cap needs a Connect-side stop (`payable_slot` form rule or payment-unit caps). Never the case id alone (that folds the whole arc onto one entity row). | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
 | `case-state-read-write` | What each visit preloads from the case and writes back. | `pdd-to-deliver-app` case ops |
 | `visit-ownership` | Payable only from the FLW who owns the case, or from any FLW? | PDD `Evidence Model` Layer A |
 | `progression-affects-payment` | Does a stalled entity affect payment, or is progression monitored only? | PDD `Evidence Model` + `Success Metrics` |
@@ -1561,7 +1561,7 @@ Everything else in the base table is `value_set_by: ace`.
 | `notetaker-required` | Is a separate notetaker required? Always / when audio recording / never? | PDD `Facilitation Protocol` |
 | `venue-acceptable-list` | Which venue types are acceptable / disallowed? | PDD `Facilitation Protocol` |
 | `site-selection` | Sites pre-named in PDD, or deferred to solicitation review? | PDD `Target Population` + `solicitation-review` |
-| `payment-unit-entity-id` | `entity_id` is a business key (Connect's dedup grain), never the case id. Default `concat(username, today())` = one paid session/facilitator/day; if ≥2 sessions/day per facilitator, override to a finer-grained business key (e.g. `concat(username, '-', session_date, '-', venue)`). Affects payment collapse. | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
+| `payment-unit-entity-id` | `entity_id` is a business key (Connect's dedup grain), never the case id. Default `concat(username, today())` = one entity row per facilitator/day (a same-day repeat is still paid unless `max_daily` = 1 — ace#2512); if ≥2 sessions/day per facilitator, override to a finer-grained business key (e.g. `concat(username, '-', session_date, '-', venue)`). Affects payment collapse. | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
 | `saturation-early-stop` | Threshold + sign-off for stopping the pilot before the planned session count? | PDD `Success Metrics` |
 
 **`multi-stage` (additive):**
@@ -1871,16 +1871,31 @@ a fan-out of apps nobody needs and announces "Stage 2 is live" to a
 cohort that is not uniformly in Stage 2.
 
 **The `entity_id` lever — read this before writing the Evidence Model.**
-Connect's payment dedup grain is `entity_id`, an arbitrary business key
-(see `payment-unit-entity-id` in the decisions table). That is what makes
-this archetype implementable today with no new platform capability:
+Connect's grouping grain is `entity_id`, an arbitrary business key
+(see `payment-unit-entity-id` in the decisions table): it decides which
+`CompletedWork` row a visit lands on. That is what makes this archetype
+implementable today with no new platform capability:
 
 - `atomic-visit` sets it cross-sectionally — `concat(username, today())`
-  = one paid visit per FLW per day.
+  = one entity row per FLW per day.
 - **`longitudinal-visits` sets it to entity + sequence position** — e.g.
-  `concat(<case_id>, '-', <activity_code>)` = one payment per activity
-  per entity, for the life of the case. A repeat of the same activity on
-  the same entity collapses to a single payment automatically.
+  `concat(<case_id>, '-', <activity_code>)` = one entity row per activity
+  per entity, for the life of the case.
+
+**The key groups; it does not cap.** A repeat on an existing key is NOT
+collapsed into the earlier payment: with the `duplicate` flag off — always,
+on ACE opportunities — Connect resets it to `pending`, auto-approves it and
+pays it again (ace#2512; source cited in `playbook/integrations/connect-api.md
+§ A repeated entity_id is PAID AGAIN`). So every "at most N paid" rule in
+Layer A must name a Connect-side stop: `max_daily` / `max_total` on the
+payment unit, or a computed form field (e.g. `payable_slot`, `yes` only for
+an in-cap payable encounter) plus the `form_field_rules` row Phase 4 adds
+requiring it. And because every visit on the paid deliver unit counts toward
+`max_daily` / `max_total` whether payable or not, **record kinds the design
+does not pay for (committee meetings, did-not-happen reports) go on a form
+with no `deliver_unit` marker**, or the caps must be sized for them. Never
+write "Connect pays each key once" or "collapses to a single payment" in the
+PDD (ace#2512) — the Work Order copies it and the partner signs it.
 
 If the Evidence Model does not say which longitudinal facts Layer A
 reads, this archetype degrades silently into `atomic-visit` — the PDD
@@ -2003,3 +2018,4 @@ When `--dry-run` is active:
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 | 2026-09-11 | **Step 1 reads the comment threads on the INPUT documents, not only on the prior run's PDD (ace#2372).** Until now `drive_list_comments` had exactly one caller, and it read the prior run's PDD. On a componentized programme the component PDDs in `inputs/` are the design, and their author reviews them in place, so her threads were invisible to every build. Measured: 8 unresolved threads on the `poverty-graduation` Targeting PDD, none ever read. The same inbox-not-store treatment now applies to every Google Doc / Sheet / Slides input. Four differences are decided explicitly in the skill. (1) **Reply, never resolve**: the thread belongs to the author, resolving stays for ACE's own PDD, and ACE never edits an input document. (2) **Already incorporated**: a thread whose substance is in the document's body gets an `accepted-edit` disposition citing the section, not a duplicate requirement. (3) **Idempotent**: input documents persist across runs, so the Drive comment id goes in the item `anchor` and a thread is captured once. (4) **The target id**: `drive_list_comments` does not follow shortcuts (the shortcut id returns `File not found`), so the call uses `resolved_target_id`, which `agents/ace-orchestrator.md` step 5c now records in the frozen manifest. *Enforced:* `test/skills/idea-to-pdd-input-doc-comments.test.ts`. | ACE team |
 | 2026-09-06 | **Step 6b: the `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** Step 6b named `drive_create_file` with `mimeType: 'text/markdown'` and warned against the renderer for destroying the bytes — but `drive_create_file` ALWAYS creates a Google Doc, has no `mimeType`, and the key was dropped by the MCP schema. The instruction reached the exact outcome it forbade, through the atom it named as safe. Measured on `poverty-graduation/20260905-0924`: two calls, one local file, both files `application/vnd.google-apps.document`; 57,178 bytes sent, 58,470 read back, every markdown marker gone — so DOC-FIDELITY compared one Doc against another built by the same importer. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01. `drive_create_file` now REFUSES a `mimeType` and names the right call. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`. | ACE team |
+| 2026-09-26 | **The `entity_id` lever no longer promises that a repeat collapses to one payment (ace#2512).** With the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeat key to `pending`, auto-approves it and pays it again (`processor.py` `clean_form_submission`; `CompletedWork.payment_accrued` "Includes duplicates"). The lever now says the key GROUPS visits, names the two Connect-side stops (payment-unit caps; a computed `payable_slot` field + `form_field_rules` row), and requires non-payable record kinds to live on a form with no `deliver_unit` marker, since every visit on the paid unit counts toward `max_daily` / `max_total`. Found on `spark-facilitator/20260926-1413` by both the PDD and Work Order evals. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts`. | ACE team |

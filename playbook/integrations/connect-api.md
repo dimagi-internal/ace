@@ -187,6 +187,72 @@ in the verification-flags layer. If Connect ships per-form deliver units
 in a future release, update this section and Nova's deliver-unit
 guidance together.
 
+### A repeated `entity_id` is PAID AGAIN — the key groups visits, it does not dedup payment
+
+**`entity_id` decides which `CompletedWork` row a visit lands on. It does
+not decide how many times that row is paid.** With the opportunity's
+`duplicate` verification flag off, a second visit on an existing key is
+reset to `pending`, auto-approved like any clean visit, and counted again.
+ACE cannot turn that flag on: `connect_set_verification_flags` refuses
+`duplicate` (ace#1013), and Connect's verification form force-sets
+`duplicate = False` whenever `automatic_visit_verification` is on. So on
+every ACE opportunity, **treat a repeated key as a second payment.**
+
+Source (dimagi/commcare-connect `main` @ `3c760f279`, 2026-09-25; ace#2512):
+
+- `form_receiver/processor.py` `process_deliver_unit`: a visit whose key
+  already exists gets `status = duplicate`, but only on the NOT-over-limit
+  branch. `CompletedWork.objects.get_or_create(opportunity_access, entity_id,
+  payment_unit)` shares the ROW, not a single payment.
+- `processor.py` `clean_form_submission`: `if opportunity_flags.duplicate:`
+  flag it; **`else: user_visit.status = VisitValidationStatus.pending`**.
+  Then `auto_approve_visits and status == pending and not flagged` →
+  `approved` / `agree`. (`auto_approve_visits` defaults to `True`,
+  `duplicate` defaults to `False`, `opportunity/models.py`.)
+- `opportunity/models.py` `CompletedWork.approved_count` counts every
+  approved visit per deliver unit, and `payment_accrued` is
+  `approved_count * payment_unit.amount` — its own docstring says
+  *"Includes duplicates"*.
+- `opportunity/forms.py` `OpportunityVerificationFlagsConfigForm.save`:
+  `if self.auto_verify: instance.duplicate = False`.
+
+**What actually stops a payment on the Connect side** — nothing else does:
+
+1. **`over_limit`** — `max_daily` on the payment unit, `max_visits` on the
+   claim limit, or a claim past its end date. An `over_limit` visit is not
+   approved.
+2. **A verification flag.** Any flag (e.g. a `form_field_rules` row that
+   `form_value_not_found`s) makes the visit `flagged`, so it is never
+   auto-approved, and under `automatic_visit_verification` it is
+   `rejected`. **This is how a per-entity cap is enforced:** the Deliver
+   form computes a field that is `yes` only for an in-cap payable encounter
+   (e.g. `payable_slot`), and Phase 4 adds a `form_field_rules` row
+   requiring `yes`. A clamped index in `entity_id` is belt-and-braces for
+   grouping; on its own it pays the over-cap encounter.
+3. A human review rejecting the visit.
+
+**Second consequence — non-payable records consume the caps.** The daily /
+total counts filter `UserVisit` on `(opportunity_access, deliver_unit)` and
+exclude only `over_limit` and `trial`. A visit that is flagged, rejected, or
+merely "not payable" in the design STILL counts toward `max_daily` and
+`max_visits`. So a PDD that files non-payable record kinds (committee
+meetings, did-not-happen reports, over-cap encounters) on the paid
+deliver unit and sizes `max_total` to the number of PAYABLE units lets the
+unpaid records exhaust the cap, and later payable visits go `over_limit`.
+Keep non-payable record kinds on a form with **no `deliver_unit` marker**
+(the marker carries no relevance condition), or size the caps for every
+record that will carry the marker. On the spark-facilitator design (~13
+community + ~13 committee meetings per facilitator, `max_total` 21)
+payment would have stopped around week 10.
+
+What would falsify this: on an auto-verified ACE opportunity, two visits
+with the same `entity_id`, no flags, under the caps, and
+`connect_get_deliver_progress` / the `CompletedWork` showing
+`approved_count` 1. Read from source; not yet observed as a live double
+payment. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts` fails if
+skill, template or playbook prose re-asserts that a repeated key is paid
+once.
+
 ### Every Connect list VIEW is paginated at 20, and the payload never says so
 
 Connect renders its list pages through `django_tables2`, and the shared

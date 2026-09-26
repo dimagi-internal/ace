@@ -701,10 +701,11 @@ export function checkPaymentUnitMatchesEntityGrain(
     pass: false,
     detail:
       `the work order quotes a per-${relation.unitEvent} rate ("${rate}") but the payable unit is ` +
-      `day-scoped ("${grain.value}", from ${grain.source}): Connect resolves payable units by ` +
-      `entity_id, so several same-day ${relation.unitEvent}s by one worker collapse into ONE payable ` +
-      `unit. This is a contractual document — the partner has been quoted a price per ` +
-      `${relation.unitEvent} for something Connect will not pay per ${relation.unitEvent}.`,
+      `day-scoped ("${grain.value}", from ${grain.source}): Connect groups visits by ` +
+      `entity_id, so several same-day ${relation.unitEvent}s by one worker share ONE entity row. ` +
+      `This is a contractual document — the rate unit and the payable unit must agree, and the ` +
+      `per-day unit needs a named stop (max_daily = 1 or a verification rule), because Connect ` +
+      `pays a repeated key again without one (ace#2512).`,
     auto_fix_hint:
       `Re-derive § 6 Payment Terms against the GRAIN, not the archetype. Quote the rate per the ` +
       `payable unit the opportunity actually resolves (e.g. "…at the per-day rate proposed in the ` +
