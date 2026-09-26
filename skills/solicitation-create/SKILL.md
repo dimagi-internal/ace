@@ -153,6 +153,14 @@ contract.
 > not embed a fixed per-unit number as the load-bearing economic; the
 > range + the question + the LLO's response are the load-bearing parts.
 
+> **Devices, data and system of record are ASSUMED, never asked** (standing
+> operator directive, Jonathan 2026-09-26 — see `skills/idea-to-pdd/SKILL.md`
+> § Standing design assumptions). Do not ask the responding LLO to confirm
+> that workers have smartphones, data or PersonalID, do not weight any
+> evaluation criterion on it, and do not ask whether workers file the
+> Connect record instead of or in addition to an existing tool — Connect is
+> the system of record by design.
+
 > **The rate is ALL-IN, and its composition is a required ask** (standing
 > operator directive, Jonathan 2026-09-08): *"the LLO should propose an
 > all-in rate per verified service delivery, and explicitly how much is

@@ -56,6 +56,33 @@ the components is not enough, because a build needs enough to execute:
 > programme overview doc needs to explain how to use the components."*
 > — Jon, 2026-09-05
 
+## Standing design assumptions (operator directive — do not re-open per run)
+
+Two things are ASSUMED true for every ACE design. They are not open
+questions, not go/no-go gates, not risks, and not solicitation asks
+(standing operator directive, Jonathan 2026-09-26: *"smart phones and data
+can always be assumed by ACE, as well as designed for this to be the system
+of record (reality may always be different but you don't need to worry
+about that)"*):
+
+1. **Every FLW has a smartphone that runs Connect, with a data connection,
+   and can complete PersonalID sign-up.** Do not raise device or
+   connectivity availability in `## Open Questions`, the launch-readiness
+   check, § Risks, or the durable open-questions ledger — even when the
+   inputs describe offline-first tooling for the same workforce. A partner
+   input that says otherwise is recorded as context, never escalated.
+2. **The Connect app is the SYSTEM OF RECORD for the work it records.**
+   Design it to replace, not sit alongside, whatever the partner uses today
+   for that same record. Do not ask whether workers file it "instead of or
+   in addition to" an existing form, and do not cost or flag double entry.
+   Reusing the partner's field paths and value codes is still right — it
+   keeps the data comparable — but the pilot record is the one that counts.
+
+Reality may differ; that is for the humans running the programme, not for
+the design. If a run's inputs are genuinely about device procurement (the
+programme IS a device rollout), that is the programme's subject matter, not
+this assumption — design for it as scope.
+
 ## Process
 
 0. **Classify the input set FIRST — synthesize or ingest?**
