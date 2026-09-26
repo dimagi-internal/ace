@@ -2081,7 +2081,8 @@ if [ "$CO_STATUS" = "ok" ]; then
   CO_PM="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f2)"
   CO_NM="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f3)"
   CO_PM_SRC="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f4)"
-  CO_DESC="pm_org=$CO_PM ($CO_PM_SRC) nm_org=${CO_NM:-unset} (not yet consumed; no live check)"
+  if [ -n "$CO_NM" ]; then CO_MODE="Phase 4 PM→NM: opportunity held by nm_org"; else CO_MODE="Phase 4 self-managed"; fi
+  CO_DESC="pm_org=$CO_PM ($CO_PM_SRC) nm_org=${CO_NM:-unset} ($CO_MODE; nm_org not live-checked)"
   if [ -n "$CONNECT_BASE" ] && [ -n "${CONNECT_AUTH_COOKIES:-}" ] && [ "${CONNECT_AUTH_STATUS:-}" = "302" -o "${CONNECT_AUTH_STATUS:-}" = "301" ]; then
     CO_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --max-redirs 0 \
       -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/a/$CO_PM/program/" 2>/dev/null || echo "000")"

@@ -146,8 +146,11 @@ Activate the opportunity and notify LLOs that they are live.
      Tracking: jjackson/ace#106 finding 9.
    - **Otherwise activate** (rare — an operator manually deactivated
      between Phase 4 and Phase 9, or Phase 4's activation was rolled
-     back). Pass `organization_slug` and `opportunity_id` from
-     `connect-setup/opportunity.md`. The atom hits
+     back). Pass `opportunity_id` from `connect-setup/opportunity.md` and
+     `organization_slug` = the run's `products.connect.pm_org_slug`
+     (legacy: `organization_slug`) — the activate endpoint is REST and
+     authorises an admin of the program org or the holding org, so the
+     PM org is always valid. The atom hits
      `POST /api/opportunities/<id>/activate/`, which validates that:
      (a) the opp isn't already active, (b) the opp hasn't ended, and
      (c) at least one PaymentUnit exists. Returns

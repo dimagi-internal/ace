@@ -100,7 +100,7 @@ links, each a separate membership system:
 |---|---|---|---|
 | **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + `WorkspaceMembership` | **@dimagi.com/@dimagi-ai.com auto-join** on first sign-in (no grant). **Other domains cannot sign in at all** — see the allowlist box below; an invite to them is a no-op. |
 | **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
-| **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` (org from `run_state` → `connect.products.connect.organization_slug`). |
+| **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` into the org that **HOLDS** the opportunity (`run_state` → `connect.products.connect.holding_org_slug`; legacy runs: `organization_slug`). Connect's `org_opportunity_access` gives the holding org's members access to its opportunity; on a PM→NM run that is the NM org, not the PM org (live 2026-09-26, `playbook/integrations/connect-api.md § PM→NM org-URL matrix`). |
 | **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | `commcare_invite_web_user` (ships since ace#905; defaults to the **`App Editor`** role — load-bearing, see below; reconciles an existing member's role rather than skipping). |
 | **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` (defaults to the "Chatbot Admin" group — the least-privilege group that opens the linked chatbot page; reconciles an existing member's groups additively). Internal-tool surface; most reviewers don't need it. |
 
@@ -134,9 +134,10 @@ grants membership and tells the person the one sign-in they must do themselves.
 ## Process
 
 1. **Resolve the run's identifiers** from `run_state.yaml` (`resolve_opp_path` → read the run's
-   `run_state.yaml`): `connect.products.connect.organization_slug` (Connect org — the run's RECORDED
-   org is authoritative; if the key is absent read the `/a/<org>/` segment of `.opportunity.url`, and
-   only if both are absent fall back to the configured PM org `connect_orgs.pm_org` from
+   `run_state.yaml`): the Connect org that HOLDS the opportunity — `connect.products.connect.holding_org_slug`,
+   else legacy `organization_slug` (`runConnectOrgs()` in `lib/connect-orgs.ts` is the rule; the run's
+   RECORDED org is authoritative; if both keys are absent read the `/a/<org>/` segment of
+   `.opportunity.url`, and only if that is absent too fall back to the configured PM org `connect_orgs.pm_org` from
    `bash bin/ace-doctor --preflight --no-live` — never a typed slug), `.opportunity.url`,
    the `commcare` `domain` (HQ), the `ocs_chatbot.team_slug` (OCS), the labs `opp_id`, and the
    `ace_web_summary_url`. Confirm the summary is clean first — run `run-surface-audit` if you
@@ -191,7 +192,12 @@ grants membership and tells the person the one sign-in they must do themselves.
      1Password, set as `ACE_WEB_PAT_TOKEN`.) The invitee then signs in once and accepts the pending
      invite. Read back `GET /api/workspaces/<workspace>/members` to confirm (pending until they accept).
 
-   - **Connect opportunity.** `connect_add_org_member({ organization_slug, email, role: "viewer" })`.
+   - **Connect opportunity.** `connect_add_org_member({ organization_slug: <holding org from step 1>, email, role: "viewer" })`.
+     The holding org, not the program org: a viewer there gets VIEW on exactly the org's own
+     opportunities, where a PM-org viewer would see every program the PM org runs. (Upstream
+     `org_opportunity_access` grants the holding org ADMIN on the opp, capped by the member's own
+     role — so a `viewer` member reads it.) Not yet exercised with a real reviewer on a PM→NM run;
+     the claim rests on that upstream source.
      Precondition Connect enforces (not bypassable): ACE must be an **admin** of the org — on 403 →
      ask a current org admin to add `ace@dimagi-ai.com` as admin. No Connect account is needed
      first: Connect records a **pending invite** and the invitee signs up from its link (ace#2503).

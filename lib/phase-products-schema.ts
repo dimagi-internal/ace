@@ -183,7 +183,33 @@ const ConnectProducts = z
     connect: z
       .object({
         domain: z.string().optional(),
+        /**
+         * LEGACY single-org key. Pre-2026-09-26 runs were self-managed, so this
+         * one slug was both the program's org and the opportunity's. New runs
+         * still write it (= `pm_org_slug`) so older readers keep resolving; read
+         * through `runConnectOrgs` (`lib/connect-orgs.ts`), which prefers the
+         * two keys below and backfills from this one.
+         */
         organization_slug: z.string().optional(),
+        /**
+         * The PROGRAM's org (program manager). PM-only pages — verification
+         * rules, the program-scoped Learn passing-score form — are served only
+         * at this org's URL, and only for an opportunity held by a DIFFERENT
+         * org (ace#2419).
+         */
+        pm_org_slug: z.string().optional(),
+        /**
+         * The org that HOLDS the opportunity (`target_organization_slug` at
+         * create). The configured NM org when `connect_orgs.nm_org` is set,
+         * else the PM org (self-managed). Reviewer access, the opportunity URL
+         * and worker-facing reads resolve here. Unrepairable if wrong —
+         * `connect_update_opportunity` has no org field.
+         */
+        holding_org_slug: z.string().optional(),
+        /** `pm-nm` | `self-managed` — `phase4Orgs().mode` at create time. */
+        org_mode: z.enum(['pm-nm', 'self-managed']).optional(),
+        /** The accepted ProgramApplication (pm-nm only), captured from the invite POST. */
+        program_application_id: z.string().optional(),
         program: z
           .object({
             id: z.string().optional(),

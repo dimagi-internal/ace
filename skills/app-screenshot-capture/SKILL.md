@@ -22,6 +22,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | Phase 3 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
 | Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
+| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.pm_org_slug` (legacy: `organization_slug`) | `organization_slug` for EVERY Connect call in this skill. On a PM→NM run the opportunity is HELD by the NM org, but the PM org's URL serves every surface this skill reads (invite read-back, dashboard, learn/deliver progress) — live matrix in `playbook/integrations/connect-api.md § PM→NM org-URL matrix`. `runConnectOrgs()` (`lib/connect-orgs.ts`) is the rule. |
 | Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + top-level `run_id` + ACE test user invite | `${OPP_RUN_ID}` (verbatim from `run_state.yaml.run_id`, the deterministic tile matcher), `${OPP_NAME}` (verbatim from `opportunity.name`, logging/screenshot context only), `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 Recipes are read by path from the entries in `app-test-cases.yaml`

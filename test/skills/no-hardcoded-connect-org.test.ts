@@ -45,7 +45,6 @@ const ALLOWLIST: ReadonlyArray<readonly [string, string, string]> = [
   ['skills/connect-program-setup/SKILL.md', 'hydrated org-wide array measured 81,175 chars on `ai-demo-space`', 'historical: ace#1799 measurement'],
   ['skills/connect-program-setup/SKILL.md', 'hydrated `ai-demo-space` rows** came back', 'historical: bednet-check-2-visit/20260825-1310 observation'],
   ['skills/connect-program-setup/SKILL.md', '11 of 11 such rows on `ai-demo-space`', 'historical: ace#1637 root-cause measurement'],
-  ['skills/connect-opp-setup/SKILL.md', "`('ai-demo-space', undefined)` reads as *differ → skip*", 'historical: quotes the pre-#1251 behaviour'],
   ['skills/connect-opp-setup/SKILL.md', 'org `ai-demo-space`) **ten**', 'historical: bednet-check-2-visit/20260908-1544 observation'],
   ['skills/sweep-connect/SKILL.md', '`ai-demo-space` held 114 opportunities at ace#938 time', 'historical: ace#938 measurement'],
   ['templates/pdd-template.md', 'measured on `ai-demo-space` 2026-09-16', 'historical: delivery-type measurement'],

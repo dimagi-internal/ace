@@ -79,7 +79,9 @@ const BASELINE: Record<string, number> = {
   // 6 -> 5 on 2026-09-16: the NM/PM rewrite of step 3 cited the
   // accepted-application rejection to `turmeric-market-study/20260914-1742`,
   // where it was observed live and used AS the acceptance check.
-  'skills/connect-opp-setup/SKILL.md': 5,
+  // 5 -> 4 on 2026-09-26: the PM->NM rewrite of step 3 moved the ace#1800
+  // citation onto the line of the already-applied invite rejection.
+  'skills/connect-opp-setup/SKILL.md': 4,
   'skills/app-hq-settings/SKILL.md': 3,
   'skills/pdd-to-learn-app/SKILL.md': 3,
   'skills/README.md': 3,

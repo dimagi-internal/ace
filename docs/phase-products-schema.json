@@ -503,6 +503,22 @@
                   "organization_slug": {
                     "type": "string"
                   },
+                  "pm_org_slug": {
+                    "type": "string"
+                  },
+                  "holding_org_slug": {
+                    "type": "string"
+                  },
+                  "org_mode": {
+                    "type": "string",
+                    "enum": [
+                      "pm-nm",
+                      "self-managed"
+                    ]
+                  },
+                  "program_application_id": {
+                    "type": "string"
+                  },
                   "program": {
                     "type": "object",
                     "properties": {
