@@ -87,8 +87,13 @@ possible when CCC-301 ships.
 - Input: `ocs-agent-config.md` from Step 1
 - Output: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` with the
   public chat URL, the credentials, the Connect opportunity this bot is bound to
-  (an identity reference, so a reader can tell which run's bot they hold), and a
-  chat-test prompt whose answer is opp-specific
+  (an identity reference for the operator), a chat-test prompt whose answer is
+  opp-specific, and the **run-level check: the `public_id` inside the link**.
+  Every run of an opp gets its own bot built from the same PDD, so the chat-test
+  prompt confirms the *opportunity*, never the *run* — and the public chat page
+  renders neither the bot's name nor the opportunity. The `public_id` in the URL
+  is the only discriminator a reader holding the link can actually see; name it
+  as such (ace#2488)
 
 **Do NOT instruct anyone to paste the credentials into a Connect field.** There
 is no per-opportunity widget field: `connect_update_opportunity` carries no
