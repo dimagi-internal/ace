@@ -192,33 +192,111 @@ export function parseProgramsList(html: string): ProgramListRow[] {
   return out;
 }
 
+/** One row of Connect's opportunity list page — only what that page carries. */
+export interface OpportunityListRow {
+  id: string;
+  name: string;
+  /**
+   * The HOLDING organization's display NAME (not slug). Rendered only by the
+   * program-manager table (`record.organization.name`); absent on the non-PM
+   * table, where the viewing org is the holder. This is the value the old
+   * parser mislabelled `short_description` (dimagi-internal/ace#2506) — the
+   * list page never carries the short description.
+   */
+  holding_organization_name?: string;
+  /** The Program column (`program_name`), when the page has one. */
+  program_name?: string;
+}
+
 /**
- * Parse Connect's opportunity list page. Each row contains an anchor:
- *   <a href=/a/<org>/opportunity/<uuid>/ class="flex flex-col ...">
- *     <p class="text-sm text-slate-900">NAME</p>
- *     <p class="text-xs text-slate-400">SUBTITLE</p>
- *   </a>
- * (Confirmed live 2026-04-28 against march-demo's opportunity list.)
+ * Thrown when the opportunity list page has data rows but its `<thead>` has
+ * no "Opportunity" column. Same class-level preventer as
+ * {@link PaymentUnitTableSchemaError}: name the drift, never guess a position.
  */
-export function parseOpportunitiesList(html: string): Pick<Opportunity, 'id' | 'name' | 'short_description'>[] {
-  const out: Pick<Opportunity, 'id' | 'name' | 'short_description'>[] = [];
-  // Match anchors that wrap the title block. The anchor's class is "flex flex-col items-start"
-  const anchorRegex = /<a\s+href=["']?\/a\/[^/]+\/opportunity\/([a-f0-9-]{36})\/?["']?[^>]*class="[^"]*flex flex-col[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
-  for (const m of html.matchAll(anchorRegex)) {
-    const id = m[1];
-    const inner = m[2];
-    const ps = [...inner.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)].map((p) => p[1].replace(/<[^>]+>/g, '').trim());
-    if (ps[0]) {
-      out.push({
-        id,
-        name: ps[0],
-        short_description: ps[1] ?? '',
-      });
+export class OpportunityListSchemaError extends Error {
+  constructor(public readonly seen_headers: string[]) {
+    super(
+      `opportunity list table has rows but no "Opportunity" header. ` +
+        `Headers seen: [${seen_headers.map((h) => `"${h}"`).join(', ')}]. ` +
+        `Update parseOpportunitiesList (mcp/connect/backends/html-scrape.ts) against the live ` +
+        `/a/<org>/opportunity/ HTML (dimagi-internal/ace#2506).`,
+    );
+    this.name = 'OpportunityListSchemaError';
+  }
+}
+
+/** The detail-page anchor for an opportunity: `/a/<org>/opportunity/<uuid>/` and nothing after. */
+const OPP_DETAIL_ANCHOR =
+  /<a\s+[^>]*href=["']?\/a\/[^/"'\s>]+\/opportunity\/([a-f0-9-]{36})\/?(?=["'\s>])[^>]*>([\s\S]*?)<\/a>/;
+
+function oppListText(raw: string): string {
+  return decodeHtmlEntities(raw.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+}
+
+/** Parse one opportunity-column cell (either table variant) into a row. */
+function parseOpportunityCell(cell: string): Omit<OpportunityListRow, 'program_name'> | undefined {
+  const a = cell.match(OPP_DETAIL_ANCHOR);
+  if (!a) return undefined;
+  const ps = [...a[2].matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)].map((p) => oppListText(p[1]));
+  const name = ps.length > 0 ? ps[0] : oppListText(a[2]);
+  if (!name) return undefined;
+  return { id: a[1], name, ...(ps[1] ? { holding_organization_name: ps[1] } : {}) };
+}
+
+/**
+ * Parse Connect's opportunity list page (`/a/<org>/opportunity/`).
+ *
+ * **Two table layouts, chosen by the VIEWING org** (`OpportunityList.get_table_class`,
+ * commcare_connect/opportunity/views.py): `ProgramManagerOpportunityTable` for a
+ * program-manager org, `OpportunityTable` otherwise. Their opportunity cells
+ * differ (commcare_connect/opportunity/tables.py):
+ *
+ *   PM:     <a href=/a/<org>/opportunity/<uuid>/ class="flex flex-col …">
+ *             <p class="text-sm …">NAME</p><p class="text-xs …">HOLDING ORG NAME</p></a>
+ *   non-PM: <div class="flex …"><a href="/a/<org>/opportunity/<uuid>/">NAME</a></div>
+ *
+ * Until dimagi-internal/ace#2506 this anchored on `flex flex-col`, so the
+ * non-PM page (e.g. a network-manager org holding an opportunity in another
+ * org's program) parsed to ZERO rows, and on the PM page the holding org's
+ * name came back as `short_description`. Live fixtures of both:
+ * `test/fixtures/connect-html/ace-{pm,nm}-org-opp-list-held-by-nm.html`.
+ *
+ * The opportunity column is resolved by `<thead>` LABEL, not by class or
+ * position; within it the row is the detail-page anchor. The row-actions menu
+ * repeats that anchor ("View Opportunity"), which is why a whole-page anchor
+ * scan is not used when a table is present. With no `<thead>` at all (the
+ * bare-anchor shape older tests use) it falls back to scanning detail anchors.
+ */
+export function parseOpportunitiesList(html: string): OpportunityListRow[] {
+  const out: OpportunityListRow[] = [];
+  const theadMatch = html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/);
+  if (theadMatch) {
+    const headers = [...theadMatch[1].matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((h) =>
+      normalizeHeaderLabel(h[1]),
+    );
+    const body = html.slice(theadMatch.index! + theadMatch[0].length);
+    const rows = [...body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
+      .map((r) => [...r[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1]))
+      // The empty-state row is a single colspan cell ("No Opportunities created yet.").
+      .filter((cells) => cells.length > 1);
+    if (rows.length === 0) return [];
+    const oppIdx = headers.indexOf('opportunity');
+    if (oppIdx < 0) throw new OpportunityListSchemaError(headers);
+    const programIdx = headers.indexOf('program');
+    for (const cells of rows) {
+      const row = parseOpportunityCell(cells[oppIdx] ?? '');
+      if (!row) continue;
+      const program = programIdx >= 0 && cells[programIdx] !== undefined ? oppListText(cells[programIdx]) : '';
+      out.push({ ...row, ...(program && program !== '--' ? { program_name: program } : {}) });
+    }
+  } else {
+    for (const m of html.matchAll(new RegExp(OPP_DETAIL_ANCHOR.source, 'g'))) {
+      const row = parseOpportunityCell(m[0]);
+      if (row) out.push(row);
     }
   }
-  // Dedupe by id (the same opp may appear in nav + list)
   const seen = new Set<string>();
-  return out.filter((o) => seen.has(o.id) ? false : (seen.add(o.id), true));
+  return out.filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
 }
 
 /**

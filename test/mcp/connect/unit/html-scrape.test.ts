@@ -7,6 +7,8 @@ import {
   extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
+  parseOpportunitiesList,
+  OpportunityListSchemaError,
   parseFormErrors,
   parseFormErrorsByField,
   parsePaymentUnitTable,
@@ -673,5 +675,98 @@ describe('parseWorkerLearnTable', () => {
     } catch (e) {
       expect((e as WorkerLearnTableSchemaError).missing_columns).toContain('Modules completed');
     }
+  });
+});
+
+/**
+ * dimagi-internal/ace#2506 — Connect's opportunity list renders a DIFFERENT
+ * table class per viewing org (`OpportunityList.get_table_class`,
+ * commcare_connect/opportunity/views.py): `ProgramManagerOpportunityTable`
+ * for a program-manager org, `OpportunityTable` otherwise. Their
+ * `render_opportunity` differ (commcare_connect/opportunity/tables.py):
+ *
+ *   PM:     <a href=… class="flex flex-col …"><p>NAME</p><p>{record.organization.name}</p></a>
+ *   non-PM: <div …><a href="…">NAME</a></div>   (BaseOpportunityList.render_opportunity)
+ *
+ * The old parser anchored on `flex flex-col`, so the non-PM page parsed to
+ * ZERO rows, and on the PM page it reported the HOLDING ORG's name as the
+ * short description (the list page never carries the short description).
+ * Fixtures are live read-only captures, 2026-09-26, of the same
+ * opportunity held by `ace-nm-org` in an `ace-pm-org` program (CSRF token
+ * replaced).
+ */
+describe('parseOpportunitiesList', () => {
+  const PROBE = '7bfcb845-015c-416a-a200-9795c68dfc55';
+  const PROBE_NAME = '20260926-0000 · ACE-IT PM→NM probe';
+
+  it('finds the NM-held opportunity on the non-PM (holding org) page', () => {
+    const out = parseOpportunitiesList(fix('ace-nm-org-opp-list-held-by-nm.html'));
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe(PROBE);
+    expect(out[0].name).toBe(PROBE_NAME);
+    // The non-PM table has no holding-org subtitle; the viewer IS the holder.
+    expect(out[0].holding_organization_name).toBeUndefined();
+  });
+
+  it('reads the PM page subtitle as the holding org, never as short_description', () => {
+    const out = parseOpportunitiesList(fix('ace-pm-org-opp-list-held-by-nm.html'));
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe(PROBE);
+    expect(out[0].name).toBe(PROBE_NAME);
+    expect(out[0].holding_organization_name).toBe('ace-nm-org');
+    expect((out[0] as unknown as Record<string, unknown>).short_description).toBeUndefined();
+  });
+
+  it('reads the Program column on both variants', () => {
+    for (const f of ['ace-nm-org-opp-list-held-by-nm.html', 'ace-pm-org-opp-list-held-by-nm.html']) {
+      expect(parseOpportunitiesList(fix(f))[0].program_name).toBe('ACE-IT-20260926-PMNM PM→NM probe');
+    }
+  });
+
+  it('does not pick up the row-actions "View Opportunity" link as a second row', () => {
+    // Both fixtures carry the detail href twice per row (opportunity column
+    // + actions menu); only the opportunity column is a row.
+    for (const f of ['ace-nm-org-opp-list-held-by-nm.html', 'ace-pm-org-opp-list-held-by-nm.html']) {
+      expect(parseOpportunitiesList(fix(f)).map((o) => o.id)).toEqual([PROBE]);
+    }
+  });
+
+  describe('regression — previously-parsing fixtures still parse', () => {
+    it('march-demo (PM table, 3 rows) keeps every id and name', () => {
+      const out = parseOpportunitiesList(fix('march-demo-opportunity.html'));
+      expect(out.map((o) => o.name)).toEqual(['Demo Opp', 'Readers Demo', 'MBW Demo']);
+      expect(out.map((o) => o.id)).toEqual([
+        'dea88661-1cd6-486b-ab25-48584bf61a8e',
+        '16e6fc66-40f3-4fda-895c-2d0618d3a7bf',
+        'c799ca1e-fae6-4ff7-bb11-3d2a506082fe',
+      ]);
+      expect(out.every((o) => o.holding_organization_name === 'March-Demo')).toBe(true);
+    });
+
+    it.each([
+      'ai-demo-space-opp-list-as-admin.html',
+      'ai-demo-space-opportunity.html',
+      'ai-demo-space-opportunity-as-admin.html',
+      'jjackson-opportunity.html',
+    ])('%s (empty "No Opportunities created yet." table) parses to [] without throwing', (f) => {
+      expect(parseOpportunitiesList(fix(f))).toEqual([]);
+    });
+
+    it('bare anchors with no table (the pagination-test shape) still parse', () => {
+      const html =
+        '<a href="/a/ai-demo-space/opportunity/00000001-1111-1111-1111-111111111111/" class="flex flex-col items-start">' +
+        '<p>Opp 1</p><p>Org</p></a>';
+      expect(parseOpportunitiesList(html)).toEqual([
+        { id: '00000001-1111-1111-1111-111111111111', name: 'Opp 1', holding_organization_name: 'Org' },
+      ]);
+    });
+  });
+
+  it('fails loud when rows exist but no Opportunity header can be found', () => {
+    const html =
+      '<table><thead><tr><th>#</th><th>Something else</th></tr></thead><tbody>' +
+      '<tr class="even"><td>1</td><td><a href="/a/x/opportunity/00000001-1111-1111-1111-111111111111/">A</a></td></tr>' +
+      '</tbody></table>';
+    expect(() => parseOpportunitiesList(html)).toThrow(OpportunityListSchemaError);
   });
 });
