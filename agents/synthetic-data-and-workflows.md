@@ -5,12 +5,16 @@ description: >
   top of the built apps. CONVERGED (Plan C, 2026-07-21) onto the /ace:demo pipeline —
   demo-data-setup(ace-run) generates data + authors dashboards, demo-narrative
   authors the DDD narrative, and the canopy DDD loop renders/judges/uploads. Same
-  engine as /ace:demo, differing only by data-source provider. No run-time gate.
+  engine as /ace:demo, differing only by data-source provider. Since ace#2510 the
+  ace-run provider builds the semantic-layer cascade: a PDD-authored registry,
+  a multi-partner synthetic programme, and the labs indicator report trio.
+  No run-time gate.
 model: inherit
 phase: synthetic-data-and-workflows
 phase_display: Synthetic Data and Workflows
 phase_ordinal: 7
 skills:
+  - { name: semantic-registry-author, has_judge: true, qa_skill: semantic-registry-author-qa }
   - { name: demo-data-setup,   has_judge: false, qa_skill: demo-data-setup-qa }
   - { name: demo-narrative,     has_judge: false } # canopy scripts.ddd.validate is the gate
 ---
@@ -88,21 +92,55 @@ undefined (ace#1691). Adding an archetype stays purely additive, per
 — idempotent. Every artifact this phase produces writes into THIS `7-synthetic/`
 folder id (never the run-folder root — fails `verify_phase_artifacts`, jjackson/ace#791).
 
-### Step 1: Data + dashboards — `demo-data-setup(provider=ace-run)`
+### Step 1: The semantic-layer cascade — registry, programme, trio (ace#2510)
+
+Operator decision (Jon, 2026-09-26): every run produces a **cascade story** a
+viewer can drill — programme → partner → opportunity → worker → case — and the
+same programme seen two ways: the programme manager's programme report and one
+partner's (network manager's) opportunity report with its anonymous benchmark.
+*"The synthetic data is going to prove to be a key part of people wrapping their
+head around the system."*
 
 Invoke `demo-data-setup` with `{provider: ace-run, name: <opp>, runId: <run-id>}`.
-It reads the run's Phase-4 opp (`phases.connect-setup.products.connect.opportunity`,
-`connect_int_id`) + the PDD/app structure, authors a story-coherent manifest keyed on
-the real deliver-app form paths, generates fixtures via
-`synthetic_generate_from_manifest`, and authors the demo dashboards dynamically
-(`workflow_create_from_template` → `pipeline_update_schema` → render → **`workflow_create_run`**
-→ `workflow_save_snapshot`). Returns the realized `${var}` map (one
-`/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>` URL per dashboard) and
-writes `7-synthetic/realized.json` + the `products.synthetic` block.
+Its § Process (ace-run) C0–C7 runs, in order:
 
-**Gate:** `demo-data-setup-qa` (structural — every dashboard URL is a valid run
-deep-link, labs-only opp, timeline pinned). On `fail`, apply auto-fix hints and
-re-run before proceeding — a dead dashboard must not reach a stakeholder.
+1. **C1** — one labs-only synthetic opportunity per partner (default 3) under one
+   labs-only program. The run's real network-manager org is never touched.
+2. **C2 — `semantic-registry-author`** (gated by `semantic-registry-author-qa`;
+   graded by `semantic-registry-author-eval`, deferrable): the registry from the
+   PDD — the followed entity as the model, one indicator per PDD success metric /
+   payment rule / review signal with its PDD section, targets only where the PDD
+   states them, the PDD's own nouns, `llo_map` over the partners.
+3. **C3** — `7-synthetic/cascade-story.yaml` (four authored signals: lagging
+   partner, standout worker, data-quality problem, trend), then one mirror-mode
+   manifest per partner keyed on the released Deliver app's form paths.
+4. **C4** — `indicator_programme_report` bound to the registry (its companion
+   `indicator_worker_review` comes with it), its `visits` pipeline set to the
+   registry's Layer-1 fields.
+5. **C5** — benchmark cohort → `indicator_opp_report` per partner
+   (`benchmarks_create_opp_reports`, sharing the programme's pipelines and
+   registry) → `workflow_rebuild_history` weekly (handed down to every opp report)
+   → `benchmarks_publish` per saved run, oldest first.
+6. **C6** — `verifyCascadeStoryLanded` against the saved runs.
+7. **C7** — `realized.json` + `products.synthetic.cascade` + `workflows{}`.
+
+Worked live example: `spark-facilitator/20260926-1800` (program 10082, registry
+6369, programme report 6371, opp reports 6376/6378/6380).
+
+**Gate:** `demo-data-setup-qa` — every run URL is a correctly scoped deep-link
+(the programme report is program-owned, `&program_id=`), and check 21: the story
+plan holds AND every signal landed in the saved runs. On `fail`, apply the
+auto-fix hints and re-run before proceeding — a partner table where nothing
+stands out must not reach a stakeholder.
+
+**Bounded run-time.** Generation is three `synthetic_generate_from_manifest`
+calls; history is one `workflow_rebuild_history` call (13 weekly periods in
+~1 min on the proof); the trio is five creates. The cascade adds minutes, not
+hours — the DDD render (Step 3) is still the long pole.
+
+**Legacy path.** The single-opportunity template dashboards (`demo-data-setup`
+§ Legacy single-opportunity path) remain for an operator who asks for them
+(`--legacy-dashboards`); they are no longer the default.
 
 ### Step 2: Narrative — `demo-narrative`
 
@@ -110,6 +148,12 @@ Invoke `demo-narrative` with `{brief: <PDD-derived>, realizedRef: 7-synthetic/re
 It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest gaps)
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
+
+On the cascade (every ace-run since ace#2510) the scenes follow `demo-narrative`
+step 2c's **cascade scene ladder**: programme headline → the lagging partner →
+one of its facilitators → a community's visit history → the data-quality worker
+→ the partner's network-manager view of its opportunity report and anonymous
+benchmark. The DDD pipeline is unchanged; only what the scenes render changed.
 
 **Confirm the tree you were handed is the INSTALLED one before you author (ace#2349).**
 `Skill()` resolves to the `installPath` bound when the session started, so after an
@@ -269,6 +313,10 @@ Record the terminal status and any open strategy findings in the phase write-bac
 
 ### Step 3.9: Promote a dashboard that EARNED it (the learning loop)
 
+**Not for the cascade.** The indicator trio FOLLOWS the deployed labs
+templates and a registry is programme data, so there is no ACE-authored render
+to promote; skip this step when `products.synthetic.cascade` is set.
+
 **Only when the loop ended `converged_clean`.** Reuse in this phase currently
 flows one way — every run instantiates from the same fixed palette of
 checked-in templates, and a dashboard ACE authors well dies with its run. So
@@ -340,8 +388,20 @@ phases:
     products:
       synthetic:
         provider: ace-run
-        labs_opp_id: <int>
+        labs_opp_id: <int>                 # the first partner's labs-only opp
+        cascade:                           # ace#2510 — every id written as it is minted
+          registry: { registry_id: <int>, program_id: <int>, version: <int>, indicators: [<id>, ...] }
+          program_id: <int>
+          partners: [{ label: Partner A, opportunity_id: <int> }, ...]
+          programme_report: { workflow_id: <int>, run_id: <latest saved run>, url: <programme_par_url> }
+          worker_review: { workflow_id: <int>, run_id: <int> }
+          opp_reports: [{ partner: Partner A, opportunity_id: <int>, workflow_id: <int>, run_id: <int>, url: <url> }, ...]
+          cohort_id: <int>
+          history: { first_period_end: <date>, last_period_end: <date>, run_ids: [<int>, ...] }
+          story_verified: true             # demo-data-setup-qa check 21
         source: { dashboards: [...], realized_vars_ref: 7-synthetic/realized.json }
+        # ace-web's run summary renders this map — mirror the trio into it:
+        # programme_report, worker_review, <partner>_opp_report
         workflows: { <key>: { workflow_id: <id>, run_url: <par_url> } }
         walkthroughs:
           - web_view_link: <DDD /ddd/<slug>/<run_id> package URL>
@@ -351,6 +411,8 @@ phases:
         ddd_terminal_status: <status>
         ddd_open_strategy_findings: <int>
     steps:
+      semantic-registry-author:    { status: done }
+      semantic-registry-author-qa: { status: done }
       demo-data-setup: { status: done }
       demo-narrative:   { status: done }
       ddd-run:          { status: done }

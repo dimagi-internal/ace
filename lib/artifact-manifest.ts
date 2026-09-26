@@ -1376,6 +1376,59 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // matching (modulo the doc-extension tolerance), so any path carrying a
   // `<placeholder>` segment can never satisfy a required entry.
 
+  // Semantic-layer cascade (ace#2510): the registry is authored from the PDD
+  // FIRST, then demo-data-setup(ace-run) builds a multi-partner programme and
+  // the labs indicator trio over it.
+  {
+    path: '7-synthetic/semantic-registry-author_registry.json',
+    producedBy: 'semantic-registry-author',
+    role: 'manifest',
+    consumedBy: ['semantic-registry-author-qa', 'semantic-registry-author-eval', 'demo-data-setup'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'The semantic registry exactly as sent to labs `semantic_registry_create` — `{properties_doc, indicators_doc, deployment}`: the followed entity as the model, one indicator per PDD success metric / payment rule / review signal (numerator, denominator, direction, bands and target only where the PDD states one, `scope_note` citing the PDD section), the `display:` nouns, and `deployment.llo_map`. The record id is `products.synthetic.cascade.registry.registry_id`.',
+  },
+  {
+    path: '7-synthetic/semantic-registry-author_summary.md',
+    producedBy: 'semantic-registry-author',
+    role: 'summary',
+    consumedBy: ['semantic-registry-author-eval', 'demo-narrative'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'Human-readable indicator table: id, label, plain sentence, numerator ÷ denominator, direction, target (with its PDD quote) and the PDD section each indicator comes from — plus every PDD metric that is NOT computable from visit data, and why.',
+  },
+  {
+    path: '7-synthetic/semantic-registry-author-qa_result.yaml',
+    producedBy: 'semantic-registry-author-qa',
+    role: 'qa-result',
+    consumedBy: ['semantic-registry-author-eval', 'opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'Binary structural gate on the registry, run before any labs write: labs `semantic_registry_validate` (grammar + compiles at every scope) AND `checkRegistryAuthoring` (lib/semantic-registry-authoring.ts — PDD anchor per indicator, no invented target, % bands not fractions, the programme\'s own nouns, every partner opportunity in llo_map).',
+  },
+  {
+    path: '7-synthetic/semantic-registry-author-eval_verdict.yaml',
+    producedBy: 'semantic-registry-author-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      'Per-skill -eval verdict for semantic-registry-author: PDD fidelity, definition correctness, coverage of the PDD\'s metrics, honesty about targets and non-computable metrics, legibility of the display contract. Provisional rubric; optional so a deferred eval never blocks the phase.',
+  },
+  {
+    path: '7-synthetic/cascade-story.yaml',
+    producedBy: 'demo-data-setup',
+    role: 'manifest',
+    consumedBy: ['demo-data-setup-qa', 'demo-narrative'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'The story the synthetic programme is built to tell (lib/cascade-story.ts `CascadeStoryPlan`): partners → labs-only opportunities, workers per partner, weeks, and the four authored signals (lagging partner, standout worker, data-quality problem, trend), each with its registry indicator, PDD citation and what a viewer sees. `demo-data-setup-qa` checks it before generation and verifies it LANDED in the saved runs after.',
+  },
   {
     path: '7-synthetic/realized.json',
     producedBy: 'demo-data-setup',

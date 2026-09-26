@@ -1,0 +1,596 @@
+{
+ "properties_doc": {
+  "version": 1,
+  "entity": {
+   "name": "community",
+   "plural": "communities",
+   "key": "community_case_id",
+   "cohort_date": "first_visit"
+  },
+  "visit_columns": [
+   {
+    "name": "is_held",
+    "word_match": {
+     "column": "meeting_conducted",
+     "word": "yes"
+    }
+   },
+   {
+    "name": "is_community_meeting",
+    "word_match": {
+     "column": "meeting_type",
+     "word": "community_meeting"
+    }
+   },
+   {
+    "name": "is_verified",
+    "sql": "COALESCE(meeting_conducted = 'yes' AND meeting_type = 'community_meeting', FALSE)"
+   },
+   {
+    "name": "step_done",
+    "sql": "COALESCE(step_completed = 'yes', FALSE)"
+   },
+   {
+    "name": "is_repeat_flag",
+    "sql": "COALESCE(repeat_counts_flag = 'yes', FALSE)"
+   },
+   {
+    "name": "is_location_flag",
+    "sql": "COALESCE(location_review_flag = 'yes', FALSE)"
+   },
+   {
+    "name": "is_saving",
+    "sql": "COALESCE(CAST(currently_saving AS DECIMAL) = 1, FALSE)"
+   },
+   {
+    "name": "attendance",
+    "sql": "COALESCE(male_attendance, 0) + COALESCE(female_attendance, 0)"
+   },
+   {
+    "name": "spoke",
+    "sql": "COALESCE(male_participants, 0) + COALESCE(female_participants, 0)"
+   }
+  ],
+  "pipelines": {
+   "entity": "visits"
+  },
+  "constants": {
+   "ON_TIME_DAYS": 105,
+   "SAVINGS_STEP": 5,
+   "FINAL_STEP": 7
+  },
+  "aggregates": [
+   {
+    "name": "num_records",
+    "label": "Meeting records",
+    "means": "Every meeting record filed for the community, held or not.",
+    "sql": "COUNT(*)"
+   },
+   {
+    "name": "first_visit",
+    "label": "First record",
+    "means": "Date of the community's first meeting record.",
+    "sql": "MIN(visit_date)"
+   },
+   {
+    "name": "last_visit",
+    "label": "Latest record",
+    "means": "Date of the community's most recent meeting record.",
+    "sql": "MAX(visit_date)"
+   },
+   {
+    "name": "verified_meetings",
+    "label": "Verified meetings",
+    "means": "Records with meeting_conducted = yes and meeting_type = community_meeting (PDD §3.1).",
+    "sql": "COUNT(*) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "verified_weeks",
+    "label": "Weeks with a verified meeting",
+    "means": "Distinct calendar weeks containing at least one verified community meeting.",
+    "sql": "COUNT(DISTINCT DATE_TRUNC('week', visit_date)) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "step7_done_date",
+    "label": "Step 7 completed on",
+    "means": "Date of the verified meeting at which the community completed Step 7 (Vision).",
+    "sql": "MIN(visit_date) FILTER (WHERE is_verified AND step_done AND step_number = :FINAL_STEP)"
+   },
+   {
+    "name": "max_step",
+    "label": "Furthest FCAP step",
+    "means": "Highest FCAP step recorded on any meeting.",
+    "sql": "MAX(step_number)"
+   },
+   {
+    "name": "hh_represented_sum",
+    "label": "Households represented",
+    "means": "Households represented, summed over verified meetings.",
+    "sql": "SUM(hh_represented) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "hh_enrolled_sum",
+    "label": "Households enrolled (per meeting)",
+    "means": "The community's enrolled households, counted once per verified meeting.",
+    "sql": "SUM(enrolled_households) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "attended_sum",
+    "label": "People attending",
+    "means": "Men plus women attending, summed over verified meetings.",
+    "sql": "SUM(attendance) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "female_attended_sum",
+    "label": "Women attending",
+    "means": "Women attending, summed over verified meetings.",
+    "sql": "SUM(female_attendance) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "spoke_sum",
+    "label": "People who spoke",
+    "means": "Men plus women who spoke, summed over verified meetings.",
+    "sql": "SUM(spoke) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "female_spoke_sum",
+    "label": "Women who spoke",
+    "means": "Women who spoke, summed over verified meetings.",
+    "sql": "SUM(female_participants) FILTER (WHERE is_verified)"
+   },
+   {
+    "name": "repeat_flag_records",
+    "label": "Repeat-count flags",
+    "means": "Community meetings whose men and women attending both equal the previous meeting's (repeat_counts_flag = yes, PDD §5.4).",
+    "sql": "COUNT(*) FILTER (WHERE is_repeat_flag)"
+   },
+   {
+    "name": "location_flag_records",
+    "label": "Location review flags",
+    "means": "Records whose location fix was worse than 50 m or more than 2 km from enrolment (PDD §5.6).",
+    "sql": "COUNT(*) FILTER (WHERE is_location_flag)"
+   },
+   {
+    "name": "last_step5_meeting",
+    "label": "Latest held meeting at Step 5+",
+    "means": "Date of the latest held meeting on Step 5 or later.",
+    "sql": "MAX(visit_date) FILTER (WHERE is_held AND step_number >= :SAVINGS_STEP)"
+   },
+   {
+    "name": "last_saving_meeting",
+    "label": "Latest meeting reporting savings",
+    "means": "Date of the latest meeting with currently_saving = 1.",
+    "sql": "MAX(visit_date) FILTER (WHERE is_saving)"
+   }
+  ],
+  "properties": [
+   {
+    "name": "active_days",
+    "label": "Days in active window",
+    "means": "Days from the first record to Step-7 completion, or to the report date if not yet complete (PDD §8.1 P1).",
+    "type": "int",
+    "sql": "FLOOR(EXTRACT(EPOCH FROM (COALESCE(step7_done_date::timestamp, (:as_of)::timestamp) - first_visit::timestamp)) / 86400)::int"
+   },
+   {
+    "name": "active_weeks",
+    "label": "Weeks in active window",
+    "means": "Community-weeks in the active window, counting the first week.",
+    "type": "int",
+    "sql": "FLOOR(active_days / 7) + 1"
+   },
+   {
+    "name": "reached_step5",
+    "label": "On Step 5 or later",
+    "means": "The community has held a meeting on Step 5 or later (savings are asked only from Step 5, PDD §5.5).",
+    "type": "bool",
+    "sql": "COALESCE(max_step >= :SAVINGS_STEP, FALSE)"
+   },
+   {
+    "name": "saving_now",
+    "label": "Saving at latest meeting",
+    "means": "The latest held meeting on Step 5+ reported currently_saving = 1.",
+    "type": "bool",
+    "sql": "COALESCE(reached_step5 AND last_saving_meeting IS NOT NULL AND last_saving_meeting = last_step5_meeting, FALSE)"
+   },
+   {
+    "name": "completed_on_time",
+    "label": "Step 7 within 15 weeks",
+    "means": "Completed Step 7 within 105 days (15 weeks) of the first record (PDD §8.1 P3).",
+    "type": "bool",
+    "sql": "COALESCE(step7_done_date IS NOT NULL AND FLOOR(EXTRACT(EPOCH FROM (step7_done_date::timestamp - first_visit::timestamp)) / 86400) <= :ON_TIME_DAYS, FALSE)"
+   }
+  ]
+ },
+ "indicators_doc": {
+  "version": 1,
+  "cube": "spark_facilitator_community",
+  "description": "One row per community (the followed entity, PDD §6). Indicators from PDD §8 and the review signals of §5.4/§5.6/§7.2.",
+  "defaults": {
+   "min_denominator": 1
+  },
+  "series": [
+   "SF"
+  ],
+  "display": {
+   "title": "Spark facilitator programme (synthetic)",
+   "entity": {
+    "name": "community",
+    "plural": "communities"
+   },
+   "worker": {
+    "name": "facilitator",
+    "plural": "facilitators"
+   },
+   "organisation": {
+    "name": "partner",
+    "plural": "partners"
+   },
+   "categories": [
+    "Delivery",
+    "Progression",
+    "Participation",
+    "Data quality"
+   ],
+   "headline_count": 5,
+   "case_fields": [
+    {
+     "field": "step_number",
+     "label": "FCAP step",
+     "format": "count"
+    },
+    {
+     "field": "enrolled_households",
+     "label": "Households enrolled",
+     "format": "count"
+    },
+    {
+     "field": "first_visit_date",
+     "label": "First meeting",
+     "format": "date"
+    },
+    {
+     "field": "last_visit_date",
+     "label": "Latest meeting",
+     "format": "date"
+    },
+    {
+     "field": "total_visits",
+     "label": "Records",
+     "format": "count"
+    }
+   ],
+   "reading": {
+    "column": "female_participants",
+    "label": "Women who spoke",
+    "unit": "people"
+   },
+   "targets_note": "Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%). Spark's participation indicators carry no target in the PDD, so they are shown without one. Synthetic data."
+  },
+  "measures": [
+   {
+    "name": "sf_p1",
+    "title": "Meeting regularity",
+    "type": "number",
+    "sql": "100.0 * {sf_p1_numerator} / NULLIF({sf_p1_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_P1",
+     "unit": "%",
+     "category": "Delivery",
+     "prominence": "Top",
+     "direction": "higher",
+     "bands": [
+      80,
+      60
+     ],
+     "target": 80,
+     "label": "Meeting regularity",
+     "headline": 1,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of the weeks each community has been active, the share with at least one verified community meeting.",
+     "scope_note": "PDD §8.1 P1 — target ≥ 80%."
+    }
+   },
+   {
+    "name": "sf_p1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.verified_weeks"
+   },
+   {
+    "name": "sf_p1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.active_weeks"
+   },
+   {
+    "name": "sf_p3",
+    "title": "On-time step progression",
+    "type": "number",
+    "sql": "100.0 * {sf_p3_numerator} / NULLIF({sf_p3_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_P3",
+     "unit": "%",
+     "category": "Progression",
+     "prominence": "Top",
+     "direction": "higher",
+     "bands": [
+      75,
+      50
+     ],
+     "target": 75,
+     "label": "Step 7 on time",
+     "headline": 2,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of enrolled communities, the share that completed Step 7 within 15 weeks of their first meeting — reported, not paid on.",
+     "scope_note": "PDD §8.1 P3 — target ≥ 75%, reported not priced (§7.4)."
+    }
+   },
+   {
+    "name": "sf_p3_numerator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.completed_on_time"
+     }
+    ]
+   },
+   {
+    "name": "sf_p3_denominator",
+    "type": "count"
+   },
+   {
+    "name": "sf_s1",
+    "title": "Household attendance",
+    "type": "number",
+    "sql": "100.0 * {sf_s1_numerator} / NULLIF({sf_s1_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S1",
+     "unit": "%",
+     "category": "Participation",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Household attendance",
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Households represented at verified meetings, out of the community's enrolled households.",
+     "scope_note": "PDD §8.2 S1 (Spark's own definition). The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.hh_represented_sum"
+   },
+   {
+    "name": "sf_s1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.hh_enrolled_sum"
+   },
+   {
+    "name": "sf_s2",
+    "title": "Female attendance",
+    "type": "number",
+    "sql": "100.0 * {sf_s2_numerator} / NULLIF({sf_s2_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S2",
+     "unit": "%",
+     "category": "Participation",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Women attending",
+     "headline": 3,
+     "order": 2,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of everyone attending verified meetings, the share who were women.",
+     "scope_note": "PDD §8.2 S2. The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s2_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.female_attended_sum"
+   },
+   {
+    "name": "sf_s2_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.attended_sum"
+   },
+   {
+    "name": "sf_s3",
+    "title": "Overall participation",
+    "type": "number",
+    "sql": "100.0 * {sf_s3_numerator} / NULLIF({sf_s3_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S3",
+     "unit": "%",
+     "category": "Participation",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Spoke up",
+     "order": 3,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of everyone attending verified meetings, the share who spoke.",
+     "scope_note": "PDD §8.2 S3. The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s3_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.spoke_sum"
+   },
+   {
+    "name": "sf_s3_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.attended_sum"
+   },
+   {
+    "name": "sf_s4",
+    "title": "Female participation",
+    "type": "number",
+    "sql": "100.0 * {sf_s4_numerator} / NULLIF({sf_s4_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S4",
+     "unit": "%",
+     "category": "Participation",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Women who spoke",
+     "headline": 4,
+     "order": 4,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of the women attending verified meetings, the share who spoke.",
+     "scope_note": "PDD §8.2 S4. The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s4_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.female_spoke_sum"
+   },
+   {
+    "name": "sf_s4_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.female_attended_sum"
+   },
+   {
+    "name": "sf_s5",
+    "title": "Communities saving",
+    "type": "number",
+    "sql": "100.0 * {sf_s5_numerator} / NULLIF({sf_s5_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S5",
+     "unit": "%",
+     "category": "Progression",
+     "prominence": "Lower",
+     "direction": "higher",
+     "label": "Saving",
+     "order": 2,
+     "flw_applicable": false,
+     "benchmarkable": true,
+     "plain": "Of communities on Step 5 or later, the share whose latest meeting reported the community is saving.",
+     "scope_note": "PDD §8.2 S5 — denominator restricted to Step 5+ (§5.5). The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s5_numerator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.saving_now"
+     }
+    ]
+   },
+   {
+    "name": "sf_s5_denominator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.reached_step5"
+     }
+    ]
+   },
+   {
+    "name": "sf_s6",
+    "title": "Verified share of records",
+    "type": "number",
+    "sql": "100.0 * {sf_s6_numerator} / NULLIF({sf_s6_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_S6",
+     "unit": "%",
+     "category": "Delivery",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Verified share",
+     "order": 2,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of every meeting record filed (held or not, community or committee), the share that is a verified community meeting.",
+     "scope_note": "PDD §8.2 S6. The PDD sets no target."
+    }
+   },
+   {
+    "name": "sf_s6_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.verified_meetings"
+   },
+   {
+    "name": "sf_s6_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.num_records"
+   },
+   {
+    "name": "sf_d1",
+    "title": "Repeat-count flag rate",
+    "type": "number",
+    "sql": "100.0 * {sf_d1_numerator} / NULLIF({sf_d1_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_D1",
+     "unit": "%",
+     "category": "Data quality",
+     "prominence": "Top",
+     "direction": "lower",
+     "label": "Repeat counts",
+     "headline": 5,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of verified meetings, the share whose attendance counts exactly repeat the previous meeting's — a review flag, not a rejection.",
+     "scope_note": "PDD §5.4 repeat_counts_flag; S-1 review stratum (§7.2). The PDD sets no threshold."
+    }
+   },
+   {
+    "name": "sf_d1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.repeat_flag_records"
+   },
+   {
+    "name": "sf_d1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.verified_meetings"
+   },
+   {
+    "name": "sf_d2",
+    "title": "Location review flag rate",
+    "type": "number",
+    "sql": "100.0 * {sf_d2_numerator} / NULLIF({sf_d2_denominator}, 0)",
+    "meta": {
+     "indicator": "SF_D2",
+     "unit": "%",
+     "category": "Data quality",
+     "prominence": "Lower",
+     "direction": "lower",
+     "label": "Location flags",
+     "order": 2,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of meeting records, the share whose location was worse than 50 m or more than 2 km from the community — reviewed, never a payment condition.",
+     "scope_note": "PDD §5.6 location_review_flag; S-1 review stratum (§7.2). The PDD sets no threshold."
+    }
+   },
+   {
+    "name": "sf_d2_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.location_flag_records"
+   },
+   {
+    "name": "sf_d2_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.num_records"
+   }
+  ]
+ },
+ "deployment": {
+  "version": 1,
+  "llo_map": {
+   "10082": "Partner A",
+   "10083": "Partner B",
+   "10084": "Partner C"
+  }
+ }
+}
