@@ -399,3 +399,82 @@ describe('the cap read off the app\'s own guard', () => {
     expect(capFromPayabilityGuard(SHIPPED_FIX, '/data/some_other_counter', 'pre-increment')).toBeNull();
   });
 });
+
+describe('ace#2480 — the `+ 1` in the clamp, the casedb read one hop down', () => {
+  // `spark-facilitator/20260925-1536`, Nova app
+  // `ef133601-bd0e-4691-ba11-8339440fd8c5`, Community Meeting Record. The
+  // counter the clamp reads is `stored_index + 1`: the `+ 1` sits in the
+  // clamp's OWN counter expression and the casedb read lives in a separate
+  // hidden node. No single resolved part holds both, which the old
+  // co-occurrence rule read as `pre-increment` — a false off-by-one whose
+  // remedy (`>= 3, 2`) would have paid 2 keys per step against a cap of 3.
+  const read = (prop: string) =>
+    `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/${prop}`;
+  const storedIndex = `if(${read('step_meeting_index')} = '', 0, number(${read('step_meeting_index')}))`;
+  const shape = (clampExpr: string) =>
+    form([
+      ['/data/stored_index', storedIndex],
+      [
+        '/data/capped_index',
+        `if(/data/meeting_kind = 'community_meeting', ${clampExpr}, /data/stored_index)`,
+      ],
+      [
+        '/data/entity_key',
+        "concat(/data/case_id, '-', /data/pilot_fcap_step, '-', /data/capped_index, '-', /data/meeting_kind)",
+      ],
+      ['/data/new_index', '/data/stored_index + 1'],
+      ['/data/deliver/entity_id', '/data/entity_key'],
+    ]).replace(/>= 3/g, '&gt;= 3');
+
+  for (const clampExpr of [
+    'if(/data/stored_index + 1 >= 3, 3, /data/stored_index + 1)',
+    'min(/data/stored_index + 1, 3)',
+  ]) {
+    it(`${clampExpr} admits exactly 3 payable keys per step — no off-by-one`, () => {
+      const report = checkPayableCapArithmetic(shape(clampExpr), { declaredCap: 3 });
+      assertChecked(report);
+      expect(report.node).toBe('/data/capped_index');
+      expect(report.timing).toBe('includes-current');
+      // The hand trace: stored 0,1,2,3,4 -> capped 1,2,3,3,3.
+      expect(report.indices.slice(0, 5)).toEqual([1, 2, 3, 3, 3]);
+      expect(report.capacity).toBe(3);
+      expect(report.findings.map((f) => f.kind)).not.toContain('payable-cap-off-by-one');
+      expect(report.ok).toBe(true);
+    });
+  }
+
+  it('the filed remedy would UNDER-pay — it is the finding now, not the fix', () => {
+    const report = checkPayableCapArithmetic(
+      shape('if(/data/stored_index + 1 >= 3, 2, /data/stored_index + 1)'),
+      { declaredCap: 3 },
+    );
+    assertChecked(report);
+    expect(report.capacity).toBe(2);
+    expect(report.ok).toBe(false);
+    expect(report.findings[0].firstOvercapped).toBeNull();
+  });
+
+  it('the same two-node shape WITHOUT the + 1 is still the ace#2148 off-by-one', () => {
+    const report = checkPayableCapArithmetic(
+      shape('if(/data/stored_index >= 3, 3, /data/stored_index)'),
+      { declaredCap: 3 },
+    );
+    assertChecked(report);
+    expect(report.timing).toBe('pre-increment');
+    expect(report.capacity).toBe(4);
+    expect(report.findings[0].kind).toBe('payable-cap-off-by-one');
+  });
+
+  it('classifies the counter by evaluating its offset across hops', () => {
+    const binds = new Map<string, string>([
+      ['/data/stored_index', storedIndex],
+      ['/data/next', '/data/stored_index + 1'],
+    ]);
+    expect(classifyCounterTiming('/data/stored_index', binds)).toBe('pre-increment');
+    expect(classifyCounterTiming('/data/stored_index + 1', binds)).toBe('includes-current');
+    expect(classifyCounterTiming('/data/next', binds)).toBe('includes-current');
+    expect(classifyCounterTiming('number(/data/stored_index) + 1', binds)).toBe('includes-current');
+    // Two increments is not a timing ACE can key on — undecidable, not guessed.
+    expect(classifyCounterTiming('/data/next + 1', binds)).toBeNull();
+  });
+});

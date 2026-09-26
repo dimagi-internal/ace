@@ -65,8 +65,15 @@
  * share no constant, which is exactly why a rule about the constant alone
  * cannot gate this and a simulation can.
  *
- * A counter this module cannot resolve to a `casedb` read is reported
- * `unable`, never assumed. Guessing the timing is guessing at payment.
+ * "Resolves to" means the counter is EVALUATED as (casedb count + an integer
+ * offset) across every node it reads, wherever the `+ 1` sits — in the
+ * clamp's own counter expression (`stored_index + 1`, the casedb read one hop
+ * down) as much as inside the node that reads the case (ace#2480; the old
+ * "one part holds both" rule called that pre-increment and proposed a remedy
+ * that under-paid).
+ *
+ * A counter this module cannot reduce to a `casedb` read plus 0 or 1 is
+ * reported `unable`, never assumed. Guessing the timing is guessing at payment.
  */
 
 import { DOMParser } from '@xmldom/xmldom';
@@ -361,52 +368,154 @@ function calculateBinds(xml: string): Map<string, string> {
   return out;
 }
 
-const DATA_PATH_RE = /\/data\/[A-Za-z_][\w-]*(?:\/[A-Za-z_][\w-]*)*/g;
-const MAX_RESOLVE_DEPTH = 4;
-
-/**
- * An expression and every `calculate` it reaches, bounded and cycle-guarded.
- *
- * Returned as PARTS rather than joined text, because the timing rule below
- * has to ask whether ONE expression both reads the case and adds to it. A
- * joined blob answers that question wrong whenever any unrelated node in the
- * chain happens to add 1 to something.
- */
-export function resolveExpression(expr: string, binds: Map<string, string>): string[] {
-  const parts: string[] = [expr];
-  const seen = new Set<string>();
-  const walk = (text: string, depth: number): void => {
-    if (depth >= MAX_RESOLVE_DEPTH) return;
-    for (const path of text.match(DATA_PATH_RE) ?? []) {
-      if (seen.has(path)) continue;
-      seen.add(path);
-      const calc = binds.get(path);
-      if (calc === undefined) continue;
-      parts.push(calc);
-      walk(calc, depth + 1);
-    }
-  };
-  walk(expr, 0);
-  return parts;
-}
+/** Bound on sub-expressions + node hops the counter evaluator descends. */
+const MAX_EVAL_DEPTH = 16;
 
 const CASEDB = /instance\(\s*'casedb'\s*\)/;
-const PLUS_ONE = /\+\s*1(?![\d.])/;
+/** A bare casedb path read — `instance('casedb')/casedb/case[…]/prop`. */
+const CASEDB_READ = /^instance\(\s*'casedb'\s*\)\/[^\s,()]*(?:\[[^\]]*\][^\s,()]*)*$/;
+const SINGLE_DATA_PATH = /^\/data\/[A-Za-z_][\w-]*(?:\/[A-Za-z_][\w-]*)*$/;
+const STRING_LITERAL = /^(?:'[^']*'|"[^"]*")$/;
+
+/** Strip whitespace and any parentheses wrapping the WHOLE expression. */
+function unwrap(expr: string): string {
+  let t = expr.trim();
+  while (t.startsWith('(') && matchingParen(t, 0) === t.length - 1) t = t.slice(1, -1).trim();
+  return t;
+}
+
+/**
+ * Split at top-level `+` / `-` into signed terms, quote- and paren-aware.
+ *
+ * A `-` counts as an operator only with whitespace on both sides: XPath
+ * names (`/data/step-count`) may contain hyphens.
+ */
+function additiveTerms(expr: string): Array<{ sign: 1 | -1; term: string }> {
+  const out: Array<{ sign: 1 | -1; term: string }> = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  let sign: 1 | -1 = 1;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && (c === '+' || (c === '-' && /\s/.test(expr[i - 1] ?? '') && /\s/.test(expr[i + 1] ?? '')))) {
+      out.push({ sign, term: expr.slice(start, i).trim() });
+      sign = c === '+' ? 1 : -1;
+      start = i + 1;
+    }
+  }
+  out.push({ sign, term: expr.slice(start).trim() });
+  return out;
+}
+
+/**
+ * The counter's value relative to the stored `casedb` count, evaluated
+ * across every hop: `0` means it IS the pre-submission count, `1` means the
+ * count plus this submission. `null` when the expression cannot be reduced
+ * to "one casedb count plus an integer constant".
+ *
+ * This evaluates rather than pattern-matches (ace#2480). Asking "does one
+ * resolved part contain both a casedb read and a `+ 1`" misreads a counter
+ * whose `+ 1` sits in the clamp's own expression while the casedb read lives
+ * one hop down — `stored_index + 1` over `stored_index = <casedb read>` — as
+ * pre-increment, and then proposes a remedy that under-pays.
+ *
+ * Branching (`if`, `cond`) evaluates every non-literal value branch and
+ * requires them to agree; literal branches are the empty-case default
+ * (`if(<read> = '', 0, number(<read>))`) or a no-selection fallback, and
+ * carry no timing. A `+ 1` in a CONDITION is never a term, so an unrelated
+ * increment elsewhere in the chain cannot flip the answer.
+ */
+function counterOffset(
+  expr: string,
+  binds: Map<string, string>,
+  depth = 0,
+  visiting: Set<string> = new Set(),
+): number | null {
+  if (depth > MAX_EVAL_DEPTH) return null;
+  const t = unwrap(expr);
+  if (!t) return null;
+
+  const terms = additiveTerms(t);
+  if (terms.length > 1) {
+    let offset = 0;
+    let counterTerm: string | null = null;
+    for (const { sign, term } of terms) {
+      const n = intLiteral(term);
+      if (n !== null) offset += sign * n;
+      else if (counterTerm === null && sign === 1) counterTerm = term;
+      else return null;
+    }
+    if (counterTerm === null) return null;
+    const inner = counterOffset(counterTerm, binds, depth + 1, visiting);
+    return inner === null ? null : inner + offset;
+  }
+
+  if (CASEDB_READ.test(t)) return 0;
+
+  if (SINGLE_DATA_PATH.test(t)) {
+    const calc = binds.get(t);
+    if (calc === undefined || visiting.has(t)) return null;
+    visiting.add(t);
+    const r = counterOffset(calc, binds, depth + 1, visiting);
+    visiting.delete(t);
+    return r;
+  }
+
+  const call = /^([\w-]+)\s*\(/.exec(t);
+  if (!call || matchingParen(t, t.indexOf('(')) !== t.length - 1) return null;
+  const args = splitArgs(t.slice(t.indexOf('(') + 1, -1));
+  const fn = call[1];
+
+  if (fn === 'number' && args.length === 1) return counterOffset(args[0], binds, depth + 1, visiting);
+  // A count over casedb is the pre-submission count.
+  if (fn === 'count' && args.length === 1 && CASEDB.test(args[0])) return 0;
+
+  let values: string[] | null = null;
+  if (fn === 'if' && args.length === 3) values = [args[1], args[2]];
+  else if (fn === 'cond' && args.length >= 3 && args.length % 2 === 1) {
+    values = args.filter((_, i) => i % 2 === 1 || i === args.length - 1);
+  }
+  if (!values) return null;
+
+  let agreed: number | null = null;
+  for (const v of values) {
+    const u = unwrap(v);
+    if (intLiteral(u) !== null || STRING_LITERAL.test(u)) continue;
+    const r = counterOffset(u, binds, depth + 1, visiting);
+    if (r === null || (agreed !== null && r !== agreed)) return null;
+    agreed = r;
+  }
+  return agreed;
+}
 
 /**
  * Whether the counter the clamp reads already counts this submission.
  *
- * `null` means undecidable from the form — the counter never reaches a
- * `casedb` read, so nothing here knows what it counts. That is an `unable`,
- * not a default: assuming a timing is assuming a payment.
+ * Decided by EVALUATING the counter as (casedb count + constant offset)
+ * across every hop it resolves through — never by where a `+ 1` happens to
+ * sit (ace#2480). Offset 0 is `pre-increment`, offset 1 is
+ * `includes-current`.
+ *
+ * `null` means undecidable from the form — the counter never reduces to a
+ * `casedb` read plus 0 or 1, so nothing here knows what it counts. That is an
+ * `unable`, not a default: assuming a timing is assuming a payment.
  */
 export function classifyCounterTiming(
   counterExpr: string,
   binds: Map<string, string>,
 ): CounterTiming | null {
-  const parts = resolveExpression(counterExpr, binds);
-  if (!parts.some((p) => CASEDB.test(p))) return null;
-  return parts.some((p) => CASEDB.test(p) && PLUS_ONE.test(p)) ? 'includes-current' : 'pre-increment';
+  const offset = counterOffset(counterExpr, binds);
+  if (offset === 0) return 'pre-increment';
+  if (offset === 1) return 'includes-current';
+  return null;
 }
 
 /**
@@ -532,7 +641,7 @@ export function checkPayableCapArithmetic(
   const timing = classifyCounterTiming(clamp.counter, binds);
   if (!timing) {
     return unable(
-      `the counter \`${clamp.counter}\` in \`${node}\` never resolves to a casedb read, so ` +
+      `the counter \`${clamp.counter}\` in \`${node}\` never reduces to a casedb read plus 0 or 1, so ` +
         'whether it already counts this submission cannot be decided from the form. ' +
         'Read the counter by hand and call `payableCapacity` with the timing.',
     );
