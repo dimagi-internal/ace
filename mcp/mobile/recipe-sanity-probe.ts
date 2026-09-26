@@ -29,6 +29,7 @@
 //     remediation command per failure class; the operator runs it.
 
 import { parseAllDocuments } from 'yaml';
+import { evaluateValidateWithTodayDefault } from '../../lib/date-default-validate.js';
 
 /** Failure classes the probe can surface. Stable strings — telemetry
  * and the SKILL.md remediation table reference them by name. */
@@ -204,6 +205,16 @@ export interface NovaFieldSlice {
   relevant?: string;
   /** Present iff `kind === 'group'` — the field-list's children. */
   children?: NovaFieldSlice[];
+  /** Whether the question is required, when the caller supplies it.
+   * Informational: a `kind: date` screen is judged on its `validate`
+   * alone (ace#2483). */
+  required?: boolean;
+  /** The field's `validate` (constraint) expression verbatim, when it has
+   * one. Read only for `kind: date` — a date whose widget default (today)
+   * satisfies it (or that has none) is crossed by a bare form-advance per
+   * app-test-cases answer-tap rule 4.7, so it lengthens the licensed
+   * advance chain like a label (ace#2483). */
+  validate?: string;
 }
 
 /** Minimal Nova app shape the probe consumes. Matches the relevant
@@ -1002,13 +1013,45 @@ function splitTopLevelSteps(
   return items;
 }
 
-/** Longest run of consecutive `label` SCREENS in any single form across
- * the supplied apps.
+/** Does this field render a screen that a bare form-advance legitimately
+ * crosses — a screen with nothing to tap (ace#2483)?
+ *
+ * - `label` — nothing to answer (#858).
+ * - `date` whose `validate` is absent or statically SATISFIED by the
+ *   widget default (today) — app-test-cases answer-tap rule 4.7 emits a
+ *   plain `form-advance.yaml` for it. A `violated` or `unverifiable`
+ *   constraint is NOT carried by the default, so it stays answerable.
+ * - `group` whose VISIBLE (non-`hidden`) children are all no-interaction
+ *   by this same rule — a display-only field-list screen. A group holding
+ *   any real input is one ANSWERABLE screen, however many labels it has.
+ *
+ * Everything else, including an empty group, is answerable — which keeps
+ * the threshold where it was. */
+function isNoInteractionScreen(field: NovaFieldSlice, depth = 0): boolean {
+  if (field.kind === 'label') return true;
+  if (field.kind === 'date') {
+    const validate = field.validate?.trim();
+    if (!validate) return true;
+    return evaluateValidateWithTodayDefault(validate).verdict === 'satisfied';
+  }
+  if (field.kind === 'group') {
+    if (depth > 8) return false;
+    const visible = (field.children ?? []).filter((c) => c.kind !== 'hidden');
+    return visible.length > 0 && visible.every((c) => isNoInteractionScreen(c, depth + 1));
+  }
+  return false;
+}
+
+/** Longest run of consecutive NO-INTERACTION screens (see
+ * `isNoInteractionScreen`) in any single form across the supplied apps.
  *
  * `hidden` fields render no screen, so they don't break a run. A `group`
- * DOES break it: the whole field-list is one answerable screen no matter
- * how many labels sit inside it, so group children are never counted
- * here. Returns 0 when no caller supplied field data. */
+ * holding any real input DOES break it: the whole field-list is one
+ * answerable screen no matter how many labels sit inside it, so its label
+ * children never raise the allowance. A group whose visible children are
+ * ALL labels (or default-accepted dates) counts as ONE screen in the run,
+ * and so does a default-accepted date (ace#2483). Returns 0 when no
+ * caller supplied field data. */
 function maxConsecutiveLabelScreens(apps: NovaAppSlice[]): number {
   let max = 0;
   for (const app of apps) {
@@ -1018,7 +1061,7 @@ function maxConsecutiveLabelScreens(apps: NovaAppSlice[]): number {
         let run = 0;
         for (const field of form.fields) {
           if (field.kind === 'hidden') continue;
-          if (field.kind === 'label') {
+          if (isNoInteractionScreen(field)) {
             run++;
             if (run > max) max = run;
           } else {
