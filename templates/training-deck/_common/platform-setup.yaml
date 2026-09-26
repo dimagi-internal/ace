@@ -83,15 +83,15 @@ slides:
     body: |
       1. Find your opportunity in the list
       2. Read the description and requirements
-      3. Tap "Claim" to get started
-      4. The opportunity moves to "My Opportunities"
+      3. Tap "Start" to get started
+      4. The opportunity moves to your "In Progress" list
 
   - id: install-learn
     layout: walkthrough
     title: "Installing the Learn App"
     image: "@learn-install"
     body: |
-      1. After claiming, tap "Start Learning"
+      1. After you tap "Start", Connect opens the Learn app
       2. CommCare will download the Learn app
       3. Wait for the download to complete
       4. The Learn modules will appear on your screen
@@ -105,4 +105,3 @@ slides:
       - Always sync before starting work (pull latest updates)
       - Sync after completing each form (push your data)
       - If offline, your data is saved locally and syncs when you reconnect
-      - Look for the green check mark — it means sync is complete
