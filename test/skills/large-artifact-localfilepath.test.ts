@@ -73,7 +73,9 @@ const PRODUCERS = [
     artifact: 'app-screenshot-capture_manifest.yaml',
     corpusMax: 43_778,
     resampled: 18_331,
-    atoms: ['drive_create_file'],
+    // ace#2490: a machine-parsed YAML goes through drive_upload_binary
+    // (text/yaml), never drive_create_file (which always makes a Google Doc).
+    atoms: ['drive_upload_binary'],
   },
 ] as const;
 
