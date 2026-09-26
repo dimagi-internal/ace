@@ -268,9 +268,10 @@ twin gate: dimagi-internal/ace#1604.
          healthy invite.
       3. The exact tile text, compared against the matcher. Note that
          different Connect surfaces return different strings for the same
-         opportunity — `connect_list_opportunities` reports
-         `short_description` as the org name while `connect_get_opportunity`
-         returns the real one — so verify what the DEVICE renders rather
+         opportunity — `connect_list_opportunities` carries no
+         `short_description` at all (a PM org's list shows the holding org's
+         name there; ace#2506) while `connect_get_opportunity` returns the
+         real one — so verify what the DEVICE renders rather
          than what an API returns.
 
       Only once the dump shows the tile genuinely absent is a server-side

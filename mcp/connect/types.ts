@@ -74,6 +74,10 @@ export interface Opportunity {
   short_description: string;
   description: string;
   organization_slug?: string;          // LLO org executing the opp (`organization` in API)
+  // Display NAME of the holding org, from a program-manager org's list page
+  // (ace#2506). Only unhydrated `list_opportunities` rows read at a PM org
+  // carry it; there `organization_slug` is the listing org, not the holder.
+  holding_organization_name?: string;
   // `managed` / `active` are OPTIONAL because the opportunity LIST page does
   // not carry them. `list_opportunities` leaves them undefined rather than
   // fabricating `true` / `false`, which is what made the single-active-opp

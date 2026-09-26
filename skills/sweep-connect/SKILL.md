@@ -28,13 +28,19 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
 ## Process
 
 1. **Read the live-set** via `drive_read_file`. Parse YAML.
-2. **List Connect inventory** using existing atoms, in the configured PM
-   org (`organization_slug` = `connect_orgs.pm_org`, from `bash
-   bin/ace-doctor --preflight --no-live` → `connect_orgs:`). A PM org's
-   listing includes every opportunity on its programs, including those HELD
-   by the configured NM org (Phase 4's PM→NM shape) — so list at the PM org;
-   `connect_list_opportunities` at the NM org's URL currently returns 0 rows
-   (ace#2506). ACE programs
+2. **List Connect inventory** using existing atoms, in BOTH configured
+   orgs — the PM org (`connect_orgs.pm_org`) AND, when one is configured, the NM/holding
+   org (`connect_orgs.nm_org`; null in self-managed mode), from `bash bin/ace-doctor --preflight --no-live`
+   → `connect_orgs:`. Union the rows by opportunity `id`. A PM org's listing
+   includes every opportunity on its programs, including those HELD by the
+   NM org (Phase 4's PM→NM shape, where the PM table's
+   `holding_organization_name` names the holder); the NM org's listing adds
+   anything it holds on a program outside the PM org, which the PM listing
+   cannot see. Both list layouts parse since ace#2506 (before it, the NM
+   org's URL returned 0 rows). An NM-held opportunity is still acted on at
+   the PM org's URL (`playbook/integrations/connect-api.md § PM→NM org-URL
+   matrix`); pass the org it was LISTED at as `organization_slug` to the
+   per-opportunity reads in step 4b. ACE programs
    also live in any org a previous configuration used; to sweep one, pass
    that org's slug explicitly (the operator names it — read it off the
    live-set opps' `connect.program.url`, never from memory):

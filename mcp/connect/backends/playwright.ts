@@ -514,7 +514,7 @@ export class PlaywrightBackend implements ConnectClient {
   }) => {
     if (program_id) {
       throw new Error(
-        `unsupported_filter: the opportunity list page carries no program column, so ` +
+        `unsupported_filter: the opportunity list page carries no program ID (only a program NAME column), so ` +
           `program_id cannot be filtered here and silently ignoring it returns the whole org ` +
           `(dimagi-internal/ace#1022). Either hydrate and filter yourself — ` +
           `listOpportunities({organization_slug, hydrate: true}) then get_opportunity per row — ` +
@@ -610,12 +610,20 @@ export class PlaywrightBackend implements ConnectClient {
     // `managed`, `active` and `total_budget` are deliberately ABSENT: the
     // list page does not carry them, and a fabricated value is worse than a
     // missing one because a caller cannot tell it apart from a real one.
+    //
+    // `short_description` is absent for the same reason (ace#2506): the list
+    // page never renders it. The subtitle the PM table shows under the name is
+    // the HOLDING org's name, reported as `holding_organization_name`.
+    // `organization_slug` is the org whose list was read (the URL scope that
+    // `getOpportunity` needs) — on a PM org's page that is the program org,
+    // not necessarily the holder.
     let opportunities = stubs.map((s) => ({
       id: s.id,
       name: s.name,
-      short_description: s.short_description,
       description: '',
       organization_slug,
+      ...(s.holding_organization_name !== undefined ? { holding_organization_name: s.holding_organization_name } : {}),
+      ...(s.program_name !== undefined ? { program_name: s.program_name } : {}),
     })) as unknown as Opportunity[];
     if (name) opportunities = opportunities.filter((o) => o.name === name);
     if (hydrate) {

@@ -351,10 +351,10 @@ released Learn `cc3aaedcfa9a47729873d4915e12d226` / Deliver
 | `connect_get_learn_progress` / `connect_get_deliver_progress` | HTML | ✅ | ✅ | empty worker lists both |
 | `connect_list_invoices` | HTML | ✅ | ✅ | `[]` both. Upstream: `invoice_pay` / ticket-link are PM-only (`is_opportunity_pm`); invoice create/status label the actor by org |
 | `connect_get_learn_passing_score` | HTML, program-scoped | ✅ 80 | ❌ 404 | the init-edit form lives under the program's org |
-| `connect_list_opportunities` | HTML | ✅ lists it | ❌ returns 0 rows | upstream `OpportunityData.get_base_qs` includes `organization=org` opps, so this is an ACE parser gap on the NM (non-PM) table — ace#2506 |
+| `connect_list_opportunities` | HTML | ✅ lists it (`holding_organization_name: ace-nm-org`) | ✅ lists it | the two orgs render different table classes (`OpportunityList.get_table_class`); until ace#2506 the parser read only the PM one — 0 rows at the NM org, and the PM table's holding-org subtitle mislabelled `short_description` |
 
 **Rule for ACE: act at the PM org's URL for everything in Phases 4–6.** Every
-surface above serves there, including the two that do not serve at the NM org.
+surface above serves there, including the ones that do not serve at the NM org.
 The holding org matters for WHERE the opportunity lives (its canonical URL,
 reviewer membership — `share-run-access` grants viewer in the holding org, which
 `org_opportunity_access` gives VIEW on the opp) and for `target_organization_slug`.
