@@ -192,11 +192,15 @@ grants membership and tells the person the one sign-in they must do themselves.
      invite. Read back `GET /api/workspaces/<workspace>/members` to confirm (pending until they accept).
 
    - **Connect opportunity.** `connect_add_org_member({ organization_slug, email, role: "viewer" })`.
-     Preconditions Connect enforces (not bypassable): ACE must be an **admin** of the org, and the
-     invitee must **already have a Connect account**. On 403 → ask a current org admin to add
-     `ace@dimagi-ai.com` as admin. On "user does not exist" → the person must sign in once at
-     https://connect.dimagi.com/ first, then re-run. **External emails:** allowed here (this is the
-     deliberate external path `add-org-member` points to), but the account precondition still holds.
+     Precondition Connect enforces (not bypassable): ACE must be an **admin** of the org — on 403 →
+     ask a current org admin to add `ace@dimagi-ai.com` as admin. No Connect account is needed
+     first: Connect records a **pending invite** and the invitee signs up from its link (ace#2503).
+     Statuses `invited-pending` (the normal outcome — pending until they accept) / `already-invited`
+     / `invited` / `already-member` are all grants; `role` is the read-back, and `role_unchanged`
+     means the requested role did not land. A `ConnectValidationError` (email in neither the member
+     nor the pending table after the POST) is a **NOT DONE** — never relay it as "sign in to Connect
+     first". **External emails:** allowed here (this is the deliberate external path
+     `add-org-member` points to).
 
    - **labs dashboards.** No separate grant — labs authenticates via the same CCHQ OAuth. Once the
      person can sign in to labs (CCHQ account) they reach the run's dashboards. Just include the

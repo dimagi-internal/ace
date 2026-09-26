@@ -35,13 +35,15 @@ Follow the skill exactly. Key rules it enforces:
 
 - **@dimagi.com only** — non-Dimagi emails are refused (use the Connect UI for
   external collaborators).
-- **The invitee must already have a Connect account** (signed in once at
-  https://connect.dimagi.com/ ) — Connect won't provision one from an invite.
 - **ACE must be an admin** of the target workspace, or the add 403s — ask a
   current admin to add `ace@dimagi-ai.com` as admin first.
+- **No Connect account is needed first** — Connect records a pending invite
+  and the invitee signs up from its link.
 
-On success the person gets an accept-invite email and shows as *pending* in the
-workspace member list until they accept.
+On success (`status: invited-pending`) the person gets an accept-invite email
+and shows under *Pending Invites* until they accept; `already-invited` /
+`already-member` are also successes. Only a validation error (email in neither
+the member nor the pending table after the POST) means nothing was recorded.
 
 ## Examples
 

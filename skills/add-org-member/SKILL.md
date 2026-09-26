@@ -6,7 +6,7 @@ description: >
   the `connect_add_org_member` atom: enforces a @dimagi.com guard, defaults
   the workspace to the instance's configured PM org and the email to the session's own git
   identity ("add me"), invites via Connect's membership form, and verifies
-  by member-table read-back. Anyone running ACE can invoke it; ACE performs
+  by member-table + pending-invite-table read-back. Anyone running ACE can invoke it; ACE performs
   the add as its own org-admin identity.
 disable-model-invocation: false
 ---
@@ -42,7 +42,7 @@ Resolve `email` when omitted by running `git config user.email`. If that is
 empty or not a `@dimagi.com` address, ask the operator for the email rather
 than guessing.
 
-## Preconditions (both enforced by Connect — you cannot bypass them)
+## Precondition (enforced by Connect — you cannot bypass it)
 
 - **ACE must be an admin of the target workspace.** ACE acts as its own
   Connect identity (`ace@dimagi-ai.com`). Connect's `add_members` view is
@@ -50,11 +50,11 @@ than guessing.
   POST 403s. The atom surfaces this as an HTTP 403 error — if you see it, ask
   a current workspace admin to add `ace@dimagi-ai.com` as an admin first (or
   to add the user directly).
-- **The invitee must already have a Connect account.** Connect's
-  `MembershipForm.clean_email` only accepts an email that already belongs to
-  a Connect user (it does not provision accounts from an invite). If the
-  person has never signed in to Connect, the add is rejected. Tell them to
-  sign in once at https://connect.dimagi.com/ , then re-run.
+
+The invitee does **not** need a Connect account first. Connect records the add
+as a **pending invite** and emails an accept-invite link; someone with no
+account signs up from that link. The membership appears only once they accept
+(ace#2503).
 
 ## Process
 
@@ -68,22 +68,30 @@ than guessing.
 
 2. **Add.** Call `connect_add_org_member({ organization_slug, email, role })`.
    The atom GETs the workspace home for a CSRF token, POSTs the membership
-   form, then verifies by reading back the member table (Connect's view
-   redirects identically on success and failure, so read-back is the only
-   reliable signal — the atom handles this).
+   form, then reads back BOTH the member table and the pending-invite table,
+   before and after (Connect's view redirects identically on success and
+   failure, so read-back is the only reliable signal — the atom handles this).
 
-3. **Report.** On success: confirm the email, role, and workspace, and note
-   that the user receives an accept-invite email and shows as *pending* in the
-   member list until they click it. On a `ConnectValidationError`, relay the
-   two likely causes (no Connect account yet / already a member). On HTTP 403,
-   relay the admin-rights precondition.
+3. **Report** by the returned `status` — every one below except a throw is a
+   success, and `role` is what Connect stored (read back), not what you asked:
+   - `invited-pending` — the normal outcome. The invite was created and emailed;
+     they appear under *Pending Invites* (`invited_on` / `expires_on` given)
+     and become a member when they click the link.
+   - `already-invited` — a pending invite already existed; Connect re-sends it
+     unless it was sent a few minutes ago (reinvite cooldown).
+   - `invited` — a membership was created directly.
+   - `already-member` — nothing changed; they were already in the workspace.
+   - `role_unchanged` present — the requested role did NOT land; relay its note.
+
+   On a `ConnectValidationError` or HTTP 403, see **Failure modes**.
 
 ## Failure modes
 
-- **`ConnectValidationError` ("user does not exist or is already a member")** —
-  Connect rejected the add. Either the invitee has no Connect account yet (most
-  common — have them sign in once) or they're already in the workspace (no
-  action needed; confirm via the member list).
+- **`ConnectValidationError` ("recorded neither a membership nor a pending
+  invite")** — the email is in neither table after the POST, so Connect
+  recorded nothing. Likely an invalid address, or the reinvite cooldown on an
+  invite that was just revoked/accepted. Check the workspace's Members tab.
+  Do NOT tell the person to "sign in to Connect first" — that is not a cause.
 - **HTTP 403** — ACE (`ace@dimagi-ai.com`) is not an admin of this workspace.
   A current admin must grant ACE admin, or add the user directly.
 - **Non-@dimagi.com email** — refused by this skill before any Connect call.
