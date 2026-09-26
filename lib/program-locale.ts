@@ -38,6 +38,9 @@
  *      States of America')" while every live row read back through
  *      `connect_list_programs` is alpha-3 (`IND`, `USA`, `BGD`). Rather than
  *      pick a winner on unverified ground, accept both and normalize.
+ *      The WRITE side has since been settled (ace#2486): create matches on
+ *      Connect's `Country.name`, so gate on alpha-3 but SEND
+ *      `connectCountryName(alpha3)`.
  *
  * NOTE these fields are IMMUTABLE once a program exists — `connect_update_program`
  * accepts only `name/description/budget/start_date/end_date`. So this check has
@@ -96,7 +99,96 @@ const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
   UNITEDKINGDOM: 'GBR', UK: 'GBR', GREATBRITAIN: 'GBR',
   UNITEDSTATES: 'USA', UNITEDSTATESOFAMERICA: 'USA', VIETNAM: 'VNM',
   YEMEN: 'YEM', ZAMBIA: 'ZMB', ZIMBABWE: 'ZWE',
+  // Connect's own Country.name spellings (see CONNECT_COUNTRY_NAME) that the
+  // entries above do not already cover, so connectCountryName round-trips.
+  LAOPEOPLESDEMOCRATICREPUBLIC: 'LAO',
+  UNITEDKINGDOMOFGREATBRITAINANDNORTHERNIRELAND: 'GBR',
 };
+
+/**
+ * ISO 3166-1 alpha-3 -> the `Country.name` Connect's program-create endpoint
+ * matches on (ace#2486).
+ *
+ * The WRITE and READ surfaces disagree on format, and only the write one can
+ * reject: `connect_create_program`'s serializer declares
+ * `country = SlugRelatedField(slug_field="name", queryset=Country.objects.all())`
+ * (`commcare_connect/program/api/serializers.py`), so alpha-3 is refused —
+ * live 2026-09-26, spark-facilitator/20260925-1536 Phase 4:
+ *
+ *   country: 'MWI'    -> "country: Object with name=MWI does not exist."
+ *   country: 'Malawi' -> created 9e82982e…, and reads back as `MWI`
+ *
+ * Every value below is copied from Connect's own seed data — the `COUNTRIES`
+ * table in `commcare_connect/opportunity/migrations/0092_currency_country_
+ * opportunity_currency_fk.py` — not from a generic ISO list, because Connect's
+ * names are not the ISO short names in every case ("Ivory Coast", "Viet Nam",
+ * "United Republic of Tanzania", "United Kingdom of Great Britain and Northern
+ * Ireland"). Only MWI -> Malawi has been exercised against the live endpoint.
+ * Keys match COUNTRY_CURRENCY exactly (pinned by test).
+ */
+export const CONNECT_COUNTRY_NAME: Readonly<Record<string, string>> = {
+  AFG: 'Afghanistan',
+  BGD: 'Bangladesh',
+  BEN: 'Benin',
+  BFA: 'Burkina Faso',
+  BDI: 'Burundi',
+  KHM: 'Cambodia',
+  CMR: 'Cameroon',
+  TCD: 'Chad',
+  COD: 'Democratic Republic of the Congo',
+  CIV: 'Ivory Coast',
+  EGY: 'Egypt',
+  ETH: 'Ethiopia',
+  GHA: 'Ghana',
+  GTM: 'Guatemala',
+  GIN: 'Guinea',
+  HTI: 'Haiti',
+  IND: 'India',
+  IDN: 'Indonesia',
+  JOR: 'Jordan',
+  KEN: 'Kenya',
+  LAO: "Lao People's Democratic Republic",
+  LBN: 'Lebanon',
+  LBR: 'Liberia',
+  MDG: 'Madagascar',
+  MWI: 'Malawi',
+  MLI: 'Mali',
+  MOZ: 'Mozambique',
+  MMR: 'Myanmar',
+  NPL: 'Nepal',
+  NER: 'Niger',
+  NGA: 'Nigeria',
+  PAK: 'Pakistan',
+  PHL: 'Philippines',
+  RWA: 'Rwanda',
+  SEN: 'Senegal',
+  SLE: 'Sierra Leone',
+  SOM: 'Somalia',
+  ZAF: 'South Africa',
+  SSD: 'South Sudan',
+  SDN: 'Sudan',
+  TZA: 'United Republic of Tanzania',
+  THA: 'Thailand',
+  TGO: 'Togo',
+  UGA: 'Uganda',
+  GBR: 'United Kingdom of Great Britain and Northern Ireland',
+  USA: 'United States of America',
+  VNM: 'Viet Nam',
+  YEM: 'Yemen',
+  ZMB: 'Zambia',
+  ZWE: 'Zimbabwe',
+};
+
+/**
+ * The `country` value to SEND to `connect_create_program` for an alpha-3 code
+ * (normally `checkProgramLocale(...).country`). Returns `null` for an unknown
+ * code — a HALT for the caller, never a licence to send the alpha-3 or guess a
+ * spelling.
+ */
+export function connectCountryName(alpha3: string | null | undefined): string | null {
+  if (alpha3 == null) return null;
+  return CONNECT_COUNTRY_NAME[alpha3.trim().toUpperCase()] ?? null;
+}
 
 /**
  * Normalize any accepted country spelling to ISO 3166-1 alpha-3, or `null` when
