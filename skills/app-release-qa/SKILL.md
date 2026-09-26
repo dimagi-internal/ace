@@ -725,10 +725,18 @@ form to set `entity_id`, the extractor is the bug.
 
 **Payable-cap arithmetic — always, every released Deliver form whose
 `entity_id` carries a clamped counter (dimagi-internal/ace#2148).** The
-per-entity cap is enforced by DEDUPLICATION, not by the app refusing a
-submission — Connect dedups on `entity_id` and never reads `is_payable` — so an
-off-by-one in the clamped index IS the cap being wrong, and it errs toward
-paying for work outside the agreed cap.
+clamped index GROUPS encounters onto CompletedWork rows; it is not what stops
+an over-cap payment. With the `duplicate` flag off — always, on ACE
+opportunities — Connect resets a repeat key to `pending` and auto-approves it,
+so a repeat is paid again (ace#2512; `playbook/integrations/connect-api.md
+§ A repeated entity_id is PAID AGAIN`). The Connect-side stop is the
+`payable_slot` field plus the `form_field_rules` row Phase 4 adds on it
+(`_app-component-library § payability-scoped-key`). The index arithmetic still
+matters — an off-by-one there puts an in-cap and an over-cap encounter on
+separate keys and makes the grouping, and every per-entity report built on it,
+wrong — so the check below stays; record in the verdict whether the form also
+computes a `payable_slot`-style field Phase 4 can gate on, since the key alone
+does not bind the cap.
 
 The clamp constant and the cap are not the same number, and which way they
 differ depends on **when the counter is read**. A `casedb` read is the state

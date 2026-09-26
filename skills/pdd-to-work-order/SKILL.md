@@ -197,8 +197,14 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
          encounter date*) → the payable unit is a worker-DAY, so quote a
          per-day rate: "…at the per-day rate proposed in the partner's
          solicitation response, for each verified follow-up day." Never a
-         per-visit rate — several same-day visits by one worker collapse into
-         ONE payable unit.
+         per-visit rate. **But the day grain does not by itself make one
+         payment per day:** several same-day visits share ONE entity row, and
+         Connect pays each approved visit on it (ace#2512 — a repeated key is
+         reset to `pending` and auto-approved). The per-day quote is true only
+         when the payment unit's `max_daily` is 1 or a `form_field_rules` row
+         rejects same-day repeats; say which one in § 6 (from the PDD's Program
+         Parameters), and if the PDD names neither, carry it as an open item
+         rather than asserting per-day payment.
        - Grain resolves **per session** (typical of `focus-group`) → "…at the
          per-session rate proposed in the partner's solicitation response."
        - `multi-stage` → name the stage that is payable, per the PDD's
@@ -328,7 +334,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 ### `longitudinal-visits`
 - Scope: per-visit data capture against a **followed entity over time** — the same visit-shaped unit as `atomic-visit`, but the Scope of Work must name what is being followed (the case / household / participant / cohort) and its cadence (phase, sequence, follow-up interval, or `visit 1..n`). A scope that reads identically to an atomic-visit one has lost the longitudinal half between the PDD and the contract — the ace#1462 failure, where the PDD prose was longitudinal-aware and the payment predicate was not.
-- Verification: photo + GPS Layer A on the deliver-app form, as `atomic-visit`; PLUS the visit's position in the sequence must be recoverable from the submitted record, since that is what makes a repeat visit payable rather than a duplicate.
+- Verification: photo + GPS Layer A on the deliver-app form, as `atomic-visit`; PLUS the visit's position in the sequence must be recoverable from the submitted record. Any per-entity cap ("at most N paid meetings per step") must name its Connect-side enforcement — the `payable_slot` verification rule or the payment-unit caps — never "Connect pays each key/slot once": Connect pays a repeated key again (ace#2512), and the partner signs this document.
 - Payment unit: per visit (rate from existing `payment-rate` decision) — **iff the PDD's `entity_id_grain` resolves one payable unit per visit.** Where it does, each qualifying visit in the sequence is separately payable — state this explicitly, because "per visit" against a followed entity otherwise reads as one payment per entity. Where the grain is day-scoped, several same-day follow-ups are ONE payable unit and the rate must be quoted per day (ace#1946).
 - Roles: as `atomic-visit`, plus Partner owns the follow-up schedule and re-contact of enrolled entities.
 

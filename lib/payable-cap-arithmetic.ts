@@ -4,13 +4,20 @@
  *
  * ## Why this exists (dimagi-internal/ace#2148)
  *
- * `_app-component-library § payability-scoped-key` routes the per-entity cap
- * through the dedup key: Connect dedups on `entity_id` and never reads the
- * app's own `is_payable` flag, so "the cap is enforced by deduplication, not by
- * the app refusing a submission." The app therefore puts a CLAMPED counter in
- * the key — a fresh index per payable encounter until the cap, then the same
- * index forever after, so the over-cap encounters collide onto a key Connect
- * has already paid.
+ * `_app-component-library § payability-scoped-key` puts a CLAMPED counter in
+ * the `entity_id` key — a fresh index per payable encounter until the cap, then
+ * the same index forever after, so the over-cap encounters are grouped onto an
+ * existing CompletedWork row.
+ *
+ * CORRECTION (dimagi-internal/ace#2512): grouping is NOT payment dedup. With
+ * the opportunity's `duplicate` flag off — always, on ACE opportunities —
+ * Connect resets a repeat key to `pending`, auto-approves it and counts it in
+ * `approved_count` again (commcare-connect `form_receiver/processor.py`
+ * `clean_form_submission`; `CompletedWork.payment_accrued` "Includes
+ * duplicates"). The cap binds only through a `payable_slot` verification rule
+ * (see `playbook/integrations/connect-api.md`). This check still matters: a
+ * mis-clamped index splits in-cap and over-cap encounters across keys, and the
+ * `payable_slot` field is computed from the same counter.
  *
  * The clamp constant and the cap are NOT the same number, and which way they
  * differ depends on when the counter is read. On
@@ -716,7 +723,7 @@ export function checkPayableCapArithmetic(
           `\`${node}\` = ${clamp.raw} over a ${timing} counter admits ${capacity} distinct ` +
           `payable key(s) per entity against a cap of ${cap} (${capSource}). Trace: ${traced}.` +
           (firstOvercapped === null
-            ? ' The key under-counts: an encounter inside the cap collides onto one already paid.'
+            ? ' The key under-counts: an encounter inside the cap is grouped onto an earlier one\'s key.'
             : ` Submission #${firstOvercapped} mints a key that has never existed, so Connect ` +
               'creates a CompletedWork for it and pays it.'),
       },
