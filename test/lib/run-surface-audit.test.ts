@@ -48,6 +48,7 @@ import {
   applyRenderedGates,
   auditAssistantAccess,
   canonicalDocUrl,
+  codeSpanLedParagraphs,
   derivePublicChatUrl,
   classifyLink,
   collectUrls,
@@ -679,6 +680,71 @@ describe('defects 9 and 10 — what the reader actually sees', () => {
 // ═══════════════════════════════════════════════════════════════════
 // Defects 11 + 12 — the documents themselves.
 // ═══════════════════════════════════════════════════════════════════
+
+/**
+ * dimagi-internal/ace#2499 — the plain-text export DROPS code-span backticks,
+ * so a paragraph that opens with an inline code span like `## Archive` reads
+ * as an ATX heading in the txt and tripped DOC-LITERAL-MARKDOWN on a
+ * correctly-formatted doc. The HTML export still carries the monospace run,
+ * and that is the authority for "is this line a code span?".
+ *
+ * Fixtures are the anonymous `export?format=txt` / `export?format=html` reads
+ * of spark-facilitator's open-questions ledger (revision 43, before the
+ * 2026-09-26 repair) — the documents the blocking finding was raised on.
+ */
+describe('DOC-LITERAL-MARKDOWN does not fire on a code span the txt export unwrapped (#2499)', () => {
+  const fixture = (name: string) =>
+    readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
+  const probe = (text: string, html: string | null | undefined): DocProbe => ({
+    label: 'open_questions.url',
+    url: 'https://docs.google.com/document/d/1-ALB_Yax5xfDB6U1VpKY3eEjVFfoVjIXsvM_dopIEbo/edit',
+    text,
+    html,
+    imageCount: 0,
+    sourceMarkdown: null,
+  });
+  const txt = () => fixture('spark-facilitator-spliced.export.txt');
+  const html = () => fixture('spark-facilitator-spliced.export.html');
+
+  it('ground truth: the txt export has `## Archive` at a line start, and the HTML says it is monospace', () => {
+    expect(txt()).toMatch(/^## Archive is closed history/m);
+    expect(codeSpanLedParagraphs(html())).toContain(
+      '## Archive is closed history: never read back, never inlined at phase handoff. Resolution MOVES a row from ## Open to ## Archive; it never annotates one in place.',
+    );
+  });
+
+  it('does NOT flag the code-span paragraph when the HTML export is supplied', () => {
+    expect(codes(auditDocFidelity([probe(txt(), html())]))).not.toContain('DOC-LITERAL-MARKDOWN');
+  });
+
+  it('NEGATIVE control: a real literal `## Heading` line in the same export still flags', () => {
+    const withLiteral = txt() + '\r\n## Step one\r\nDo the thing.\r\n';
+    const f = auditDocFidelity([probe(withLiteral, html())]);
+    expect(codes(f)).toContain('DOC-LITERAL-MARKDOWN');
+    expect(f.find((x) => x.code === 'DOC-LITERAL-MARKDOWN')!.detail).toMatch(/ATX headings/);
+  });
+
+  it('NEGATIVE control: a literal line whose text matches a code-span paragraph is excused ONCE, not every time', () => {
+    const line =
+      '## Archive is closed history: never read back, never inlined at phase handoff. Resolution MOVES a row from ## Open to ## Archive; it never annotates one in place.';
+    // The fixture has two such paragraphs (the splice duplicated it); a third is not covered.
+    const extra = txt() + '\r\n' + line + '\r\n';
+    expect(codes(auditDocFidelity([probe(extra, html())]))).toContain('DOC-LITERAL-MARKDOWN');
+  });
+
+  it('without the HTML export it keeps flagging — the safe direction', () => {
+    expect(codes(auditDocFidelity([probe(txt(), null)]))).toContain('DOC-LITERAL-MARKDOWN');
+    expect(codes(auditDocFidelity([probe(txt(), undefined)]))).toContain('DOC-LITERAL-MARKDOWN');
+  });
+
+  it('a non-monospace `## ...` paragraph in the HTML is not treated as a code span', () => {
+    const plain =
+      '<html><head><style>.c1{font-family:"Arial"}.c2{font-family:"Roboto Mono"}</style></head><body>' +
+      '<p class="c0"><span class="c1">## Step one</span></p>' +
+      '<p class="c0"><span class="c2">## Archive</span><span>&nbsp;is history</span></p></body></html>';
+    expect(codeSpanLedParagraphs(plain)).toEqual(['## Archive is history']);
+  });
+});
 
 describe('defect 11 — a document that shows the reader raw markdown', () => {
   const doc = (text: string): DocProbe => ({

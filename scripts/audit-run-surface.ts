@@ -238,13 +238,15 @@ async function readBounded(resp: Response, max: number): Promise<string | null> 
  *
  * Returns `text: null` when the document genuinely could not be read.
  */
-async function fetchDocText(url: string): Promise<{ text: string | null; images: number | null; why: string }> {
+async function fetchDocText(
+  url: string,
+): Promise<{ text: string | null; images: number | null; html: string | null; why: string }> {
   const m = url.match(/\/d\/([A-Za-z0-9_-]{10,})/);
-  if (!m) return { text: null, images: null, why: 'not a Drive document URL' };
+  if (!m) return { text: null, images: null, html: null, why: 'not a Drive document URL' };
   const id = m[1];
   // Slides and Sheets have no plain-text export; they are judged by the link
   // probe only, and this says so rather than reporting them unread.
-  if (!url.includes('/document/')) return { text: null, images: null, why: 'not a Google Doc (no text export)' };
+  if (!url.includes('/document/')) return { text: null, images: null, html: null, why: 'not a Google Doc (no text export)' };
 
   async function get(fmt: 'txt' | 'html'): Promise<{ ok: boolean; body: string; status: number }> {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -267,11 +269,14 @@ async function fetchDocText(url: string): Promise<{ text: string | null; images:
   }
 
   const txt = await get('txt');
-  if (!txt.ok) return { text: null, images: null, why: `text export answered HTTP ${txt.status || 'nothing'} anonymously` };
+  if (!txt.ok) return { text: null, images: null, html: null, why: `text export answered HTTP ${txt.status || 'nothing'} anonymously` };
   const html = await get('html');
   return {
     text: txt.body,
     images: html.ok ? (html.body.match(/<img\b/gi) ?? []).length : null,
+    // Handed to the literal-markdown check so a code span the txt export
+    // unwrapped is not reported as a raw `##` heading (ace#2499).
+    html: html.ok ? html.body : null,
     why: '',
   };
 }
@@ -427,10 +432,10 @@ async function main(): Promise<number> {
   for (const l of probed) {
     if (!isAceDeliverable(l.url)) continue;
     if (l.cls !== 'OK') continue; // a private doc is already a `broken` finding
-    const { text, images, why } = await fetchDocText(l.url);
+    const { text, images, html, why } = await fetchDocText(l.url);
     if (text === null && why.startsWith('not a Google Doc')) continue; // Slides/Sheets
     const src = resolveDocSource(docSources, l.url);
-    docProbes.push({ label: l.label, url: l.url, text, imageCount: images, sourceMarkdown: src, unreadableReason: why || undefined });
+    docProbes.push({ label: l.label, url: l.url, text, html, imageCount: images, sourceMarkdown: src, unreadableReason: why || undefined });
   }
   findings.push(...auditDocFidelity(docProbes));
   findings.push(...auditGuideScreenshots(runState, docProbes));

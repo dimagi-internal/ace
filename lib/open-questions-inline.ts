@@ -444,6 +444,18 @@ export interface OpenQuestionsWriteCheck {
 export function checkOpenQuestionsWriteShape(markdown: string): OpenQuestionsWriteCheck {
   const outcome = extractOpenSection(markdown, 'text/markdown');
   if (outcome.status === 'ok') {
+    const spliced = findSplicedPreamble(markdown);
+    if (spliced.length) {
+      return {
+        ok: false,
+        reason:
+          'REFUSED — do not write this. It reads back `ok`, but its structure shows a spliced ' +
+          `rewrite a partner would see: ${spliced.join('; ')}. Rewrite the preamble (everything ` +
+          'above `## Open`) as ONE whole block rather than editing it in place, with a single ' +
+          '`Last updated by run` line (skills/idea-to-pdd/SKILL.md § The durable open-questions ' +
+          'doc; dimagi-internal/ace#2499).',
+      };
+    }
     return {
       ok: true,
       reason:
@@ -460,6 +472,65 @@ export function checkOpenQuestionsWriteShape(markdown: string): OpenQuestionsWri
       '(skills/idea-to-pdd/SKILL.md § The durable open-questions doc; ' +
       'dimagi-internal/ace#2367).',
   };
+}
+
+/** An H2 — the level a spliced sentence fragment lands at. */
+const H2_LINE = /^ {0,3}##[ \t]+(\S.*?)[ \t]*$/;
+const ARCHIVE_HEADING = /^ {0,3}##[ \t]+Archive[ \t]*$/i;
+const LAST_UPDATED_STAMP = /last updated by run/i;
+
+/**
+ * Structural signs that a preamble rewrite was SPLICED rather than rewritten
+ * (dimagi-internal/ace#2499). `extractOpenSection` cannot see any of these —
+ * it only needs one real `## Open` — so the write gate asks separately.
+ *
+ * Measured on spark-facilitator revision 43: an edit cut at the `## Open`
+ * inside the old preamble's `` `## Open` `` CODE SPAN, so the rest of that
+ * sentence became an H2 (`## Open\` before raising questions of its own, …`)
+ * and the old `Last updated by run 20260906-2233` line survived beneath the new
+ * `…20260925-1536` one. Deliberately NOT "any H2 other than Open/Archive": a
+ * third section (`## Settled — do not re-open`, the converted-gdoc fixture) is
+ * a legal ledger, and refusing it would refuse a healthy doc to catch a
+ * different defect. What a splice leaves is narrower:
+ *
+ *   - a GARBLED heading — an H2 that starts as `Open`/`Archive` but carries
+ *     more text, or carries an unbalanced backtick (half of a code span);
+ *   - the canonical heading TWICE;
+ *   - more than one `Last updated by run` stamp in the preamble (a mention
+ *     inside a row is a row's business, not a stamp).
+ *
+ * Returns one human-readable problem per defect; empty when the shape is clean.
+ */
+export function findSplicedPreamble(markdown: string): string[] {
+  const lines = unescapeDriveMarkdown(markdown.replace(/\r\n?/g, '\n')).split('\n');
+  const problems: string[] = [];
+
+  for (const line of lines) {
+    const m = H2_LINE.exec(line);
+    if (!m || OPEN_HEADING.test(line) || ARCHIVE_HEADING.test(line)) continue;
+    const text = m[1];
+    const nearMiss = /^(open|archive)\b/i.test(text);
+    const halfCodeSpan = (text.match(/`/g) ?? []).length % 2 === 1;
+    if (nearMiss || halfCodeSpan) {
+      const shown = text.length > 60 ? `${text.slice(0, 60)}…` : text;
+      problems.push(`garbled heading \`## ${shown}\` (a sentence fragment rendered as a section heading)`);
+    }
+  }
+
+  const openCount = lines.filter((l) => OPEN_HEADING.test(l)).length;
+  if (openCount > 1) problems.push(`${openCount} \`## Open\` headings (exactly one is allowed)`);
+  const archiveCount = lines.filter((l) => ARCHIVE_HEADING.test(l)).length;
+  if (archiveCount > 1) problems.push(`${archiveCount} \`## Archive\` headings (at most one is allowed)`);
+
+  const firstOpen = lines.findIndex((l) => OPEN_HEADING.test(l));
+  const preamble = firstOpen === -1 ? lines : lines.slice(0, firstOpen);
+  const stamps = preamble.filter((l) => LAST_UPDATED_STAMP.test(l)).length;
+  if (stamps > 1) {
+    problems.push(
+      `${stamps} \`Last updated by run\` lines in the preamble, which disagree about which run last touched the ledger`,
+    );
+  }
+  return problems;
 }
 
 /* ------------------------------------------------------------------------- *
