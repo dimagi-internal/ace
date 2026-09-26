@@ -4,6 +4,8 @@ import {
   normalizeCountry,
   currencyForCountry,
   checkProgramLocale,
+  CONNECT_COUNTRY_NAME,
+  connectCountryName,
 } from '../../lib/program-locale';
 
 /**
@@ -115,5 +117,46 @@ describe('COUNTRY_CURRENCY table hygiene', () => {
       expect(alpha3, `${name} did not normalize`).not.toBeNull();
       expect(COUNTRY_CURRENCY[alpha3], `${alpha3} has no currency`).toBeTruthy();
     }
+  });
+});
+
+/**
+ * ace#2486: Connect's program-create serializer matches `country` on
+ * `Country.name`, so alpha-3 is rejected ("Object with name=MWI does not
+ * exist.") while "Malawi" succeeds — live, spark-facilitator/20260925-1536.
+ */
+describe('connectCountryName', () => {
+  it('maps MWI to Malawi (the live-verified value)', () => {
+    expect(connectCountryName('MWI')).toBe('Malawi');
+  });
+
+  it('covers exactly the COUNTRY_CURRENCY keys — a gated country always has a send value', () => {
+    expect(Object.keys(CONNECT_COUNTRY_NAME).sort()).toEqual(Object.keys(COUNTRY_CURRENCY).sort());
+    for (const alpha3 of Object.keys(COUNTRY_CURRENCY)) {
+      expect(connectCountryName(alpha3), alpha3).toBeTruthy();
+    }
+  });
+
+  it('never sends the alpha-3 code itself', () => {
+    for (const [alpha3, name] of Object.entries(CONNECT_COUNTRY_NAME)) {
+      expect(name, alpha3).not.toBe(alpha3);
+    }
+  });
+
+  it('round-trips through normalizeCountry, so the gate and the send agree', () => {
+    for (const [alpha3, name] of Object.entries(CONNECT_COUNTRY_NAME)) {
+      expect(normalizeCountry(name), name).toBe(alpha3);
+    }
+  });
+
+  it('returns null for an unknown or missing code — never a default', () => {
+    expect(connectCountryName('XXX')).toBeNull();
+    expect(connectCountryName('')).toBeNull();
+    expect(connectCountryName(null)).toBeNull();
+    expect(connectCountryName(undefined)).toBeNull();
+  });
+
+  it('tolerates case and whitespace on the alpha-3 input', () => {
+    expect(connectCountryName(' mwi ')).toBe('Malawi');
   });
 });
