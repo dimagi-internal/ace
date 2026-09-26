@@ -34,7 +34,7 @@ hq_owner: ace@dimagi-ai.com                # Web user for both domains
 ocs_team_slug: connect-ace
 
 # Connect side
-connect_pm_org: ai-demo-space              # PM-side Connect org slug
+connect_pm_org: <connect_orgs.pm_org>      # PM-side Connect org slug. Defaults to the configured PM org (bin/ace-doctor --preflight → connect_orgs.pm_org)
 connect_program_name: "ACE Interviews Test"
 connect_program_delivery_type: interview   # Slug from connect_list_delivery_types
 country: Nigeria

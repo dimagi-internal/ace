@@ -688,8 +688,10 @@ contract.
       backfilled by a prior `solicitation-create` run), use it
       directly. This is the durable opp-level cache.
    2. **Lookup:** call `mcp__connect-labs__labs_context()`. Find the
-      organization by `opp.yaml.organization_slug` (default
-      `ai-demo-space`); within it, find the program whose `name` matches
+      organization by the org recorded in `opp.yaml.connect.program.url`
+      (`/a/<org>/program/<id>/` — the program's own org, authoritative),
+      else `opp.yaml.organization_slug`, else the configured PM org
+      (`connect_orgs.pm_org` from preflight); within it, find the program whose `name` matches
       the Connect program name from
       `runs/<run-id>/4-connect/connect-program-setup.md` (the markdown
       summary written by `connect-program-setup`). Capture the

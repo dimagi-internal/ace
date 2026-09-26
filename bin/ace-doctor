@@ -571,6 +571,32 @@ if [ "$PREFLIGHT" = "1" ]; then
   remediation: \"${PF_OCS_GEN_SKIP_REASON}\""
   fi
 
+  # connect_orgs — which Connect orgs this INSTANCE acts in (PM / NM). Resolved
+  # by lib/connect-orgs.ts, the single resolver, so the legacy PM default lives
+  # in exactly one place; values come from the installed .env (local-only keys
+  # ACE_CONNECT_PM_ORG / ACE_CONNECT_NM_ORG, preserved by /ace:setup --force-env),
+  # with the shell env as a fallback. Static — no network. The orchestrator
+  # passes this block into every phase dispatch that acts in Connect.
+  PF_CONNECT_ORGS_YAML="$(cd "$ROOT" && \
+    PF_PM_SHELL="${ACE_CONNECT_PM_ORG:-}" PF_NM_SHELL="${ACE_CONNECT_NM_ORG:-}" \
+    ACE_CONNECT_PM_ORG="$(pf_get_env ACE_CONNECT_PM_ORG)" \
+    ACE_CONNECT_NM_ORG="$(pf_get_env ACE_CONNECT_NM_ORG)" \
+    node "$TSX_CLI" -e "
+      import { renderConnectOrgsYaml } from './lib/connect-orgs.ts';
+      const e = process.env;
+      console.log(renderConnectOrgsYaml({
+        ACE_CONNECT_PM_ORG: e.ACE_CONNECT_PM_ORG || e.PF_PM_SHELL,
+        ACE_CONNECT_NM_ORG: e.ACE_CONNECT_NM_ORG || e.PF_NM_SHELL,
+      }));
+    " 2>/dev/null || true)"
+  if [ -z "$PF_CONNECT_ORGS_YAML" ]; then
+    PF_CONNECT_ORGS_YAML="connect_orgs:
+  status: fail
+  pm_org: null
+  nm_org: null
+  remediation: \"lib/connect-orgs.ts could not be evaluated (tsx missing?) — run /ace:setup to install deps\""
+  fi
+
   # Build the YAML body. Missing public values render as empty strings; the
   # orchestrator can decide how to react (some are required, some optional).
   cat <<EOF
@@ -613,6 +639,7 @@ selector_map_currency:
   recipes_scanned: ${PF_SEL_RECIPES_SCANNED}
   unresolved_selectors: ${PF_SEL_UNRESOLVED_YAML}
   remediation: "${PF_SEL_REMEDIATION}"
+${PF_CONNECT_ORGS_YAML}
 nova_needs_auth_cache:
   status: ${PF_NOVA_CACHE_STATUS}
   scope: "cache-file + NOVA_API_KEY presence only; says nothing about which principal the live Nova MCP connection bound (ace#1604)"
@@ -2024,6 +2051,55 @@ else
   else
     warn "connect_auth: skipped — $CONNECT_SESS missing" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD for headless OAuth"
   fi
+fi
+
+# 3b. connect_orgs — the configured PM org resolves and ace@ can read its
+# program list. Resolution goes through lib/connect-orgs.ts (the single
+# resolver); the live half is ONE GET of /a/<pm_org>/program/ — the same page
+# connect_list_programs / connect_create_program read (mcp/connect/backends/
+# playwright.ts) — with the session cookies connect_auth just used. 200 = the
+# org exists and ace@ can see its programs. The NM org gets NO live check:
+# nothing consumes it until the PM→NM flow change lands, and there is no
+# program page an NM org is guaranteed to render, so a probe would be a guess.
+CONNECT_ORGS_LINE="$(cd "$ROOT" && \
+  PF_PM_SHELL="${ACE_CONNECT_PM_ORG:-}" PF_NM_SHELL="${ACE_CONNECT_NM_ORG:-}" \
+  ACE_CONNECT_PM_ORG="$(get_env ACE_CONNECT_PM_ORG)" \
+  ACE_CONNECT_NM_ORG="$(get_env ACE_CONNECT_NM_ORG)" \
+  node "$TSX_CLI" -e "
+    import { resolveConnectOrgs } from './lib/connect-orgs.ts';
+    const e = process.env;
+    try {
+      const o = resolveConnectOrgs({
+        ACE_CONNECT_PM_ORG: e.ACE_CONNECT_PM_ORG || e.PF_PM_SHELL,
+        ACE_CONNECT_NM_ORG: e.ACE_CONNECT_NM_ORG || e.PF_NM_SHELL,
+      });
+      console.log(['ok', o.pm_org, o.nm_org ?? '', o.source.pm_org, o.source.nm_org].join('\t'));
+    } catch (err) { console.log(['error', String(err && err.message || err)].join('\t')); }
+  " 2>/dev/null)"
+CO_STATUS="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f1)"
+if [ "$CO_STATUS" = "ok" ]; then
+  CO_PM="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f2)"
+  CO_NM="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f3)"
+  CO_PM_SRC="$(printf '%s' "$CONNECT_ORGS_LINE" | cut -f4)"
+  CO_DESC="pm_org=$CO_PM ($CO_PM_SRC) nm_org=${CO_NM:-unset} (not yet consumed; no live check)"
+  if [ -n "$CONNECT_BASE" ] && [ -n "${CONNECT_AUTH_COOKIES:-}" ] && [ "${CONNECT_AUTH_STATUS:-}" = "302" -o "${CONNECT_AUTH_STATUS:-}" = "301" ]; then
+    CO_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --max-redirs 0 \
+      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/a/$CO_PM/program/" 2>/dev/null || echo "000")"
+    case "$CO_HTTP" in
+      200) pass "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → 200 (org resolves, ace@ can read its programs)" ;;
+      404) warn "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → 404 (the PM org does not resolve for ace@)" "check the slug in ACE_CONNECT_PM_ORG (the /a/<org>/ path segment) and that ace@dimagi-ai.com is a member of that org" ;;
+      403) warn "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → 403 (ace@ cannot read this org's programs)" "grant ace@dimagi-ai.com a program-manager-capable role in $CO_PM" ;;
+      301|302) warn "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → $CO_HTTP (redirected; session or org access)" "/ace:connect-login, then re-run /ace:doctor" ;;
+      000) warn "connect_orgs: $CO_DESC — cannot reach $CONNECT_BASE (network/timeout)" "verify $CONNECT_BASE is reachable" ;;
+      *) warn "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → HTTP $CO_HTTP" "re-run; if persistent, open $CONNECT_BASE/a/$CO_PM/program/ as ace@" ;;
+    esac
+  else
+    info "connect_orgs: $CO_DESC — live check skipped (no authed Connect session; see connect_auth above)"
+  fi
+elif [ "$CO_STATUS" = "error" ]; then
+  fail "connect_orgs: $(printf '%s' "$CONNECT_ORGS_LINE" | cut -f2-)" "fix the value in the installed .env — ACE_CONNECT_PM_ORG / ACE_CONNECT_NM_ORG are local-only keys that /ace:setup --force-env preserves (playbook/integrations/connect-api.md § Which Connect orgs ACE acts in)"
+else
+  warn "connect_orgs: could not evaluate lib/connect-orgs.ts (tsx missing?)" "run /ace:setup to install deps"
 fi
 
 # 4. ace-connect (CCHQ side) — separate cookie jar, separate expiry clock.

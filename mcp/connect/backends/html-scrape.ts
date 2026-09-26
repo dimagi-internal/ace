@@ -6,7 +6,7 @@
  * the corresponding regex test fails first — integration tests don't have to.
  *
  * All regex anchors below are confirmed against fixtures captured 2026-04-28
- * from /a/ai-demo-space/program/ (and friends).
+ * from /a/<org>/program/ (and friends).
  */
 
 import type { DeliveryType, ProgramListRow, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow, WorkerDeliverRow } from '../types.js';

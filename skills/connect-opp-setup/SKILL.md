@@ -8,8 +8,13 @@ disable-model-invocation: false
 
 # Connect Opportunity Setup
 
-Create and fully configure a Connect managed opportunity in `ai-demo-space`
-(or whichever PM-side org owns the parent program).
+Create and fully configure a Connect managed opportunity in the PM-side org
+that owns the parent program: **the configured PM org (`connect_orgs.pm_org`
+from `/ace:doctor --preflight`, passed in by the connect-setup dispatch)** for a
+program this run created, or — when the program was reused — the org recorded
+in its URL (`opp.yaml.connect.program.url`, `/a/<org>/program/<id>/`), which
+stays authoritative. Never type an org slug here
+(`playbook/integrations/connect-api.md § Which Connect orgs ACE acts in`).
 
 ## Inputs
 
@@ -61,7 +66,7 @@ alone makes the artifact land outside `4-connect` and fail
    >
    > **The network-manager / program-manager model (operator decision
    > 2026-09-16).** A program manager creates the program in the PM org
-   > (`ai-demo-space`), invites the network manager, and **only once the
+   > (`connect_orgs.pm_org`), invites the network manager, and **only once the
    > NM accepts can the PM create that NM's opportunity.** Connect
    > enforces the gate itself — the accepted-application check above is
    > exactly it.
@@ -84,11 +89,16 @@ alone makes the artifact land outside `4-connect` and fail
    > is create-time only and `connect_update_opportunity` carries no org
    > field, so an opportunity created under the wrong org can never be
    > handed to the LLO. It has to be created under the right one.
+   >
+   > An ACE-controlled network-manager org is configured separately as
+   > `connect_orgs.nm_org`. This skill does not use it: it is unconsumed
+   > until the follow-up PM→NM flow change, and today's Phase 4 behaviour
+   > (a self-managed opportunity in the PM org) is unchanged.
 
    **3a. Self-managed opp pre-flight (added per #106 finding 10).**
    "Self-managed" means the `target_organization_slug` equals the
    program's `organization_slug` (the LLO is the same org running the
-   program — typical for ACE dogfood opps in `ai-demo-space`). For
+   program — typical for ACE dogfood opps in the configured PM org). For
    this pattern, no human-mediated invite-and-accept happens upstream,
    so the application doesn't yet exist when this skill runs. Detect
    and resolve:
@@ -280,7 +290,9 @@ alone makes the artifact land outside `4-connect` and fail
    from CommCareHQ synchronously, and syncs learn modules + deliver
    units in the same transaction. Args:
 
-   - `organization_slug`: PM-side org (e.g. `ai-demo-space`)
+   - `organization_slug`: the PM-side org that owns the program (see the
+     opening paragraph — `connect_orgs.pm_org`, or the reused program's
+     recorded org)
    - `program_id`: from step 1 (program.md)
    - `name`: **construct as `"<run_id> · <PDD display name>"`** — the
      `run_id` from run_state (format `YYYYMMDD-HHMM`) as a FRONT prefix,
@@ -1313,7 +1325,7 @@ alone makes the artifact land outside `4-connect` and fail
         products:
           connect:
             domain: <ACE_HQ_DOMAIN, e.g. connect-ace-prod>   # REQUIRED handoff key — phase-products contract + ace-web summary read it; omitting it fails verify_phase_products at the Phase 4 boundary fence (jjackson/ace#734)
-            organization_slug: <Connect org slug, e.g. ai-demo-space>
+            organization_slug: <Connect org slug — the program's org: connect_orgs.pm_org, or the reused program's recorded org>
             program:
               id: <UUID copied from opp.yaml.connect.program.id>
               url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/

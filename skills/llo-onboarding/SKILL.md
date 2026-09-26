@@ -95,7 +95,12 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
    `POST /api/programs/<program_id>/applications/` and creates a
    `ProgramApplication` row in `INVITED` status; Connect emails the LLO
    workspace admins via the `send_program_invite_email` task. Args:
-   - `organization_slug`: PM-side org running the program
+   - `organization_slug`: PM-side org running the program — the org in
+     the program's recorded URL (`opp.yaml.connect.program.url`,
+     `/a/<org>/program/<id>/`), which for a program this instance created is
+     the configured PM org (`connect_orgs.pm_org` from preflight). Never
+     type a slug. (`connect_orgs.nm_org`, ACE's own network-manager org, is
+     not consumed here until the follow-up PM→NM flow change.)
    - `program_id`: program UUID (from `connect-setup/program.md`)
    - `organization`: `selected_llo.org_slug` from the current run's
      `run_state.yaml`.

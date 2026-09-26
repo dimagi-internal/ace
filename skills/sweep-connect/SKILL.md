@@ -28,7 +28,12 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
 ## Process
 
 1. **Read the live-set** via `drive_read_file`. Parse YAML.
-2. **List Connect inventory** using existing atoms:
+2. **List Connect inventory** using existing atoms, in the configured PM
+   org (`organization_slug` = `connect_orgs.pm_org`, from `bash
+   bin/ace-doctor --preflight --no-live` → `connect_orgs:`). ACE programs
+   also live in any org a previous configuration used; to sweep one, pass
+   that org's slug explicitly (the operator names it — read it off the
+   live-set opps' `connect.program.url`, never from memory):
    - `connect_list_programs`
    - `connect_list_opportunities` (per program)
    - `connect_list_invites` (per program — for unaccepted-invite cleanup tied to orphan opportunities)

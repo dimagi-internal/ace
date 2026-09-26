@@ -541,7 +541,7 @@ server.tool('connect_update_opportunity',
 server.tool('connect_set_learn_passing_score',
   {
     organization_slug: z.string().describe(
-      'PM-side org slug that owns the program (e.g. ai-demo-space).',
+      'PM-side org slug that owns the program (e.g. my-pm-org) — skills pass the configured PM org, connect_orgs.pm_org.',
     ),
     program_id: z.string().describe(
       'Program UUID. Required because the form carrying passing_score is the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/), not the opportunity edit form connect_update_opportunity posts.',
@@ -559,7 +559,7 @@ server.tool('connect_set_learn_passing_score',
 server.tool('connect_get_learn_passing_score',
   {
     organization_slug: z.string().describe(
-      'PM-side org slug that owns the program (e.g. ai-demo-space).',
+      'PM-side org slug that owns the program (e.g. my-pm-org) — skills pass the configured PM org, connect_orgs.pm_org.',
     ),
     program_id: z.string().describe(
       'Program UUID. Required because the score is rendered ONLY on the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/). connect_get_opportunity reads the opportunity edit form plus the detail page, and the field appears on neither — which is why it does not return it.',
@@ -785,7 +785,7 @@ server.tool('connect_delete_unaccepted_flw_invites',
 server.tool('connect_add_org_member',
   'Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent), reading the member table BEFORE and AFTER so the outcome is observed rather than assumed. Returns `status: "invited"` (absent before, present after — this call added them) or `status: "already-member"`, plus `role` READ BACK from the table (the role Connect actually stored) alongside the `requested_role`. IMPORTANT: Connect\'s `MembershipForm.clean_email` EXCLUDES users already in the org, so for an existing member the form never validates — the POST is a silent no-op returning the same 302 as success, and the requested role is NOT applied. That case returns `role_unchanged: {requested, actual, note}`; there is no add-member path that updates an existing membership\'s role (do it in the Connect UI). Requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee MUST already have a Connect account (signed in once) — if they were not a member before and are still absent after, that is the cause, raised as a typed validation error. A newly added user gets an accept-invite email and shows in the member list. `role` defaults to `member`.',
   {
-    organization_slug: z.string().describe('Workspace (organization) slug, e.g. "ai-demo-space".'),
+    organization_slug: z.string().describe('Workspace (organization) slug, e.g. "my-pm-org".'),
     email: z.string().email().describe('Email of an EXISTING Connect user to add (they must have signed in to Connect at least once).'),
     role: z.enum(['admin', 'member', 'viewer']).optional().describe('Membership role to request for a NEW member. Default "member". Ignored by Connect if the person is already a member — see `role_unchanged` in the result.'),
   },
@@ -806,14 +806,14 @@ server.tool('connect_get_invoice',
 
 server.tool('connect_get_learn_progress',
   'Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect\'s OpportunityAccess.learn_progress == 100 / completed_learn_date set), NOT when the assessment passes. A partial walk (e.g. 4/5 modules → 80%) returns `learn_complete: false` even though the on-device assessment screen may already read "Passed", so assert `learn_complete` / `modules_completed_pct >= 100` — never the assessment status — to confirm the Deliver gate will open. Returns `{ domain, opportunity_id, workers: [{ name, modules_completed_pct, learn_complete, completed_learning_date, assessment_status }] }`. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label (the table has a leading Status column the per-worker API omits), so a live template reshape fails loud rather than shifting fields.',
-  { domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space.'), opportunity_id: z.string().describe('Opportunity UUID.') },
+  { domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. my-pm-org.'), opportunity_id: z.string().describe('Opportunity UUID.') },
   async (args) => runAtom(async () => (await client()).getLearnProgress(args))
 );
 
 server.tool('connect_get_deliver_progress',
   'Read each accepted worker\'s AUTHORITATIVE DELIVERY progression from Connect\'s WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6\'s Deliver smoke can return pass while the visit sits UNSENT in the device\'s local outbox, because the device is not authoritative about whether a delivery reached Connect. Assert `delivered >= 1` for "the visit reached Connect"; assert `approved >= 1` only as a CONDITIONAL payability check (a delivery can be submitted and then REJECTED by verification, so delivered alone does not prove payability). `approved >= 1` is NOT a criterion app-test-cases.yaml declares — no such criterion exists in that artifact (ace#1667) — and it is structurally unreachable on any opportunity whose deliver_unit duration floor exceeds a machine-speed Maestro walk, because Connect correctly rejects the sub-floor visit. See skills/app-screenshot-capture/SKILL.md Step 5 deliver-gate block for the duration-floor branch. Returns `{ domain, opportunity_id, workers: [{ name, payment_unit, delivered, approved, rejected, progress_completed, progress_total, last_active }] }` — one row per worker+payment-unit. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label, so a live template reshape throws WorkerDeliverTableSchemaError rather than returning shifted fields.',
   {
-    domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space.'),
+    domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. my-pm-org.'),
     opportunity_id: z.string().describe('Opportunity UUID.'),
   },
   async (args) => runAtom(async () => (await client()).getDeliverProgress(args))

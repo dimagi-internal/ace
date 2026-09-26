@@ -106,6 +106,20 @@ the full `/ace:doctor` prints, and tell the operator to Cmd-Q + reopen, then
 resume. (Rationale + jjackson/ace#582: see orchestrator-reference.md
 § Pre-flight rationale.)
 
+**`connect_orgs` — which Connect orgs this instance acts in; pass it into
+every Connect-acting dispatch.** Preflight also emits a `connect_orgs:` block
+(`status`, `pm_org`, `nm_org`, `source`), resolved by `lib/connect-orgs.ts` from
+the installed `.env`'s local-only `ACE_CONNECT_PM_ORG` / `ACE_CONNECT_NM_ORG`
+(`playbook/integrations/connect-api.md § Which Connect orgs ACE acts in`). Halt
+before Phase 1 when the block reports `fail` (an unusable slug — surface its
+`remediation`). Otherwise include the block verbatim in the dispatch prompt of
+every phase that acts in Connect — `connect-setup` (P4), `synthetic-data-and-workflows`
+(P7), `solicitation-management` (P8), `execution-manager` (P9), `closeout` (P10) —
+and tell the phase that "the PM org" means `connect_orgs.pm_org`. No skill names
+an org slug of its own. `nm_org` is carried but unconsumed until the follow-up
+PM→NM flow change; a program an opp already owns keeps the org recorded in
+`opp.yaml.connect.program.url`.
+
 **`nova_needs_auth_cache.recurrence: confirmed-by-handoff` means the restart
 has already been tried and failed — do not offer it again.** Preflight sets
 that field by correlating the block with the handoff printed below it; when it

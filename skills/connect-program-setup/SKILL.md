@@ -16,6 +16,16 @@ Create or select a Connect program for this opportunity.
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype-aware program naming + domain match |
 | Connect MCP | `connect_list_programs({organization_slug})` | reuse-vs-create decision |
+| Preflight | `connect_orgs.pm_org` (from `/ace:doctor --preflight`, passed in by the connect-setup dispatch) | the `organization_slug` for every call in this skill |
+
+**Which org.** `organization_slug` throughout this skill is **the configured PM
+org — `connect_orgs.pm_org`** from preflight (`lib/connect-orgs.ts`; see
+`playbook/integrations/connect-api.md § Which Connect orgs ACE acts in`). Never
+type a slug here. One exception, and it wins: on the **reuse** path, the org is
+the one recorded in `opp.yaml.connect.program.url` (`/a/<org>/program/<id>/`) —
+an existing program's own org stays authoritative even if the instance's PM org
+has since changed. `connect_orgs.nm_org` is not used by this skill (it is
+unconsumed until the PM→NM flow change).
 
 ## Phase folder anchor
 
@@ -188,8 +198,8 @@ alone makes the artifact land outside `4-connect` and fail
    reconciled after the fact.
 
 4. **Create the program** via `connect_create_program`:
-   - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
-     opportunity is configured for; must be a program-manager org)
+   - `organization_slug`: the configured PM org (`connect_orgs.pm_org`
+     from preflight; must be a program-manager org)
    - `name`: archetype-signaling name (e.g. `"Vaccine Hesitancy Pilot
      (FGD) — Q2 2026"`)
    - `description`: PDD's intervention summary

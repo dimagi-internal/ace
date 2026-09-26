@@ -597,7 +597,7 @@ Read one opportunity from the edit form (authoritative for name/description/curr
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. ai-demo-space). |
+| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. my-pm-org) — skills pass the configured PM org, connect_orgs.pm_org. |
 | `program_id` | `z.string` | **required** | Program UUID. Required because the form carrying passing_score is the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/), not the opportunity edit form connect_update_opportunity posts. |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID whose Learn app gate is being changed. Note the score lives on the CommCareApp row, which is keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity — so every opportunity in this org wired to the same HQ Learn app shares it. The returned previous_passing_score shows what was displaced. |
 | `passing_score` | `z.coerce.number` | **required** | Learn-app passing score, 0-100 (Connect renders the input with min=0 max=100). This is the ONLY gate on Deliver unlock: Connect sets passed = score >= passing_score for every submitted form block carrying user_score. |
@@ -606,7 +606,7 @@ Read one opportunity from the edit form (authoritative for name/description/curr
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. ai-demo-space). |
+| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. my-pm-org) — skills pass the configured PM org, connect_orgs.pm_org. |
 | `program_id` | `z.string` | **required** | Program UUID. Required because the score is rendered ONLY on the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/). connect_get_opportunity reads the opportunity edit form plus the detail page, and the field appears on neither — which is why it does not return it. |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID whose Learn gate to read. Note the score lives on the CommCareApp row, keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity, so this value is shared by every opportunity in the org wired to the same HQ Learn app. |
 
@@ -729,7 +729,7 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "ai-demo-space". |
+| `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "my-pm-org". |
 | `email` | `z.string` | **required** | Email of an EXISTING Connect user to add (they must have signed in to Connect at least once). |
 | `role` | `z.enum` | optional | Membership role to request for a NEW member. Default "member". Ignored by Connect if the person is already a member — see `role_unchanged` in the result. |
 
@@ -753,7 +753,7 @@ Read each accepted worker's AUTHORITATIVE Learn progression from Connect's Worke
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space. |
+| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. my-pm-org. |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
 
 ### `connect_get_deliver_progress`
@@ -762,7 +762,7 @@ Read each accepted worker's AUTHORITATIVE DELIVERY progression from Connect's Wo
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space. |
+| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. my-pm-org. |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
 
 ### `commcare_list_apps`
