@@ -754,6 +754,146 @@ describe('probeRecipeSanity — #858 label-screen carve-out', () => {
   });
 });
 
+// ace#2483 — two more screens with nothing to tap, which the #858 carve-out
+// missed because it counted only TOP-LEVEL `kind: label` fields. Repro:
+// spark-facilitator/20260925-1536 journey-deliver.yaml, lines 390 and 641.
+type FieldList = NonNullable<NovaAppSlice['modules'][0]['forms'][0]['fields']>;
+
+function spark2483App(middle: FieldList): NovaAppSlice {
+  return {
+    app_id: 'app-deliver-2483',
+    modules: [
+      {
+        module_name: 'Community Meetings',
+        forms: [
+          {
+            form_name: 'Community Meeting Visit',
+            fields: [
+              { id: 'meeting_type', kind: 'single_select', label: 'Meeting type', options: [{ label: 'Enrolment' }, { label: 'Follow-up' }] },
+              ...middle,
+              { id: 'facilitator_notes', kind: 'text', label: 'Facilitator notes' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// answer, leave the answered screen, cross ONE more screen, then answer.
+const TWO_ADVANCE_BODY = [
+  '- tapOn:',
+  '    text: "Enrolment"',
+  '- runFlow:',
+  '    file: form-advance.yaml',
+  '- runFlow:',
+  '    file: form-advance.yaml',
+  '- tapOn:',
+  '    text: "Facilitator notes"',
+].join('\n');
+
+function advanceFailure(middle: FieldList) {
+  const verdict = probeRecipeSanity({
+    recipes: [recipeBody('journey-deliver.yaml', TWO_ADVANCE_BODY)],
+    novaApps: [spark2483App(middle)],
+    connectOpp: LIVE_OPP,
+  });
+  return verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap');
+}
+
+describe('probeRecipeSanity — ace#2483 no-interaction screens beyond top-level labels', () => {
+  it('does NOT flag a bare advance over a group whose visible children are all labels', () => {
+    // The "Step" group: seven relevance-gated labels, no input.
+    const f = advanceFailure([
+      {
+        id: 'step',
+        kind: 'group',
+        label: 'Step',
+        children: [
+          ...Array.from({ length: 7 }, (_, i) => ({
+            id: `step_${i + 1}`,
+            kind: 'label',
+            label: `Step ${i + 1} guidance`,
+            relevant: `#form/meeting_type = 'enrolment'`,
+          })),
+          { id: 'step_calc', kind: 'hidden' },
+        ],
+      },
+    ]);
+    expect(f).toBeUndefined();
+  });
+
+  it('does NOT flag a bare advance over a required date accepted at its widget default', () => {
+    // partnership_date: `. <= today() and . >= today() - 1095` — today
+    // satisfies it, so SKILL.md answer-tap rule 4.7 emits a plain advance.
+    const f = advanceFailure([
+      {
+        id: 'partnership_date',
+        kind: 'date',
+        label: 'Date the partnership started',
+        required: true,
+        validate: '. <= today() and . >= today() - 1095',
+      },
+    ]);
+    expect(f).toBeUndefined();
+  });
+
+  it('does NOT flag a required date with no validate at all (today is a valid date)', () => {
+    const f = advanceFailure([{ id: 'meeting_date', kind: 'date', label: 'Meeting date', required: true }]);
+    expect(f).toBeUndefined();
+  });
+
+  it('STILL flags a required date whose validate today VIOLATES (strictly future)', () => {
+    // Rule 4.7's other half: the default cannot carry this screen.
+    const f = advanceFailure([
+      {
+        id: 'next_meeting_date',
+        kind: 'date',
+        label: 'Next meeting date',
+        required: true,
+        validate: '. > today() and . <= date(today() + 30)',
+      },
+    ]);
+    expect(f).toBeDefined();
+  });
+
+  it('STILL flags a date whose validate cannot be statically evaluated', () => {
+    const f = advanceFailure([
+      { id: 'd', kind: 'date', label: 'Date', required: true, validate: '. >= /data/start_date' },
+    ]);
+    expect(f).toBeDefined();
+  });
+
+  it('STILL flags a genuinely skipped required text input between the same two advances (control)', () => {
+    const f = advanceFailure([
+      { id: 'cbf_name', kind: 'text', label: 'Community-based facilitator name', required: true },
+    ]);
+    expect(f).toBeDefined();
+  });
+
+  it('STILL flags a genuinely skipped required select between the same two advances (control)', () => {
+    const f = advanceFailure([
+      { id: 'venue', kind: 'single_select', label: 'Venue', required: true, options: [{ label: 'School' }, { label: 'Clinic' }] },
+    ]);
+    expect(f).toBeDefined();
+  });
+
+  it('STILL flags a group mixing labels with a real required input (one answerable field-list)', () => {
+    const f = advanceFailure([
+      {
+        id: 'where',
+        kind: 'group',
+        label: 'Where the community is',
+        children: [
+          { id: 'where_note', kind: 'label', label: 'Record where the community is' },
+          { id: 'village', kind: 'text', label: 'Village', required: true },
+        ],
+      },
+    ]);
+    expect(f).toBeDefined();
+  });
+});
+
 describe('probeRecipeSanity — failure class: group-field-list-per-question-walk', () => {
   it('flags a form-advance between two children of the same group', () => {
     // The #862 repro: journey-deliver.yaml walked poverty_scorecard

@@ -1618,7 +1618,13 @@ For each form-walk segment of a recipe:
    (the selector row needs live-device calibration before such a field
    is walkable). Statically verify with
    `lib/date-default-validate.ts` rather than eyeballing the
-   expression.
+   expression. `recipe-sanity-probe`'s `form-advance-without-answer-tap`
+   honours this rule: a default-accepted date — and a `kind: group`
+   whose visible children are all labels — counts as a no-interaction
+   screen alongside top-level labels, so the plain advance over it is
+   not read as a skipped input (ace#2483). Step 2.6's caller passes each
+   date field's `validate` (and `required`) in `fields` for it to judge;
+   a date with no `validate` supplied is treated as default-accepted.
 5. Hidden / `calculate`-only fields are auto-populated by the form
    runtime — they don't need a per-question answer step. Skip them when
    composing the answer sequence.
