@@ -134,7 +134,10 @@ grants membership and tells the person the one sign-in they must do themselves.
 ## Process
 
 1. **Resolve the run's identifiers** from `run_state.yaml` (`resolve_opp_path` → read the run's
-   `run_state.yaml`): `connect.products.connect.organization_slug` (Connect org), `.opportunity.url`,
+   `run_state.yaml`): `connect.products.connect.organization_slug` (Connect org — the run's RECORDED
+   org is authoritative; if the key is absent read the `/a/<org>/` segment of `.opportunity.url`, and
+   only if both are absent fall back to the configured PM org `connect_orgs.pm_org` from
+   `bash bin/ace-doctor --preflight --no-live` — never a typed slug), `.opportunity.url`,
    the `commcare` `domain` (HQ), the `ocs_chatbot.team_slug` (OCS), the labs `opp_id`, and the
    `ace_web_summary_url`. Confirm the summary is clean first — run `run-surface-audit` if you
    haven't; never share a run with an unresolved **broken** or **misleading** finding.

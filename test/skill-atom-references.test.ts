@@ -85,6 +85,7 @@ const ALLOWLIST = new Set([
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
   'connect_user_id',         // ConnectID user pk on a UserInvite row — a products.connect.ace_test_user field (ace#1286), not an atom
   'connect_program_id',      // bookkeeping field
+  'connect_orgs',            // bin/ace-doctor --preflight YAML block (lib/connect-orgs.ts: pm_org / nm_org), not an atom
   'connect_type',            // schema field on Connect modules
   'connect_markers',         // schema field set on forms
   'connect_username',        // env var (CONNECT_USERNAME)

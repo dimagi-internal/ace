@@ -25,7 +25,7 @@ Single YAML spec mirroring the Cohort tracker columns (per opp-checklist steps 2
 ```yaml
 # Identity
 cohort_id: "08TRS"                   # e.g. "08TRS", "09TRE", "07T1B"
-llo_org_slug: "ai-demo-space"        # PM org (V1 is ACE-owned)
+llo_org_slug: "<connect_orgs.pm_org>" # V1 is ACE-owned: default = the configured PM org (bin/ace-doctor --preflight → connect_orgs.pm_org)
 hq_downstream_domain: "ace-interviews-test"
 hq_master_domain: "ace-interviews-master"
 
@@ -35,7 +35,7 @@ master_deliver_app_id: "<couch id>"
 
 # Connect opp
 connect_program_id: "<uuid from interview-domain-bootstrap>"
-connect_pm_org: "ai-demo-space"
+connect_pm_org: "<connect_orgs.pm_org>"   # default = the configured PM org; never type a slug
 opp_short_description: "Connect Interviews : 08TRS"
 opp_long_description: "..."          # Free text; checklist step 3.6
 

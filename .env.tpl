@@ -179,6 +179,22 @@ CONNECT_BASE_URL=https://connect.dimagi.com
 ACE_HQ_USERNAME=op://Agent-Ace/ACE - CommCareHQ/username
 ACE_HQ_PASSWORD=op://Agent-Ace/ACE - CommCareHQ/password
 
+# Which Connect orgs THIS instance acts in — per-instance, NOT 1Password-backed.
+# Deliberately left commented: an uncommented line here would be injected on
+# every /ace:setup --force-env and clobber an instance's own choice. Set them in
+# the INSTALLED .env instead; because they are absent from this template,
+# bin/ace-setup treats them as local-only keys and re-appends them after every
+# re-inject (the "# --- ACE local-only secrets ---" block).
+#   ACE_CONNECT_PM_ORG — program-manager org slug (the <org> in /a/<org>/).
+#                        Unset → lib/connect-orgs.ts's legacy default.
+#   ACE_CONNECT_NM_ORG — network-manager org slug. Unset → not configured.
+#                        Not consumed yet (the PM→NM flow change is a follow-up).
+# Resolved in ONE place (lib/connect-orgs.ts); surfaced as `connect_orgs:` by
+# /ace:doctor --preflight. See playbook/integrations/connect-api.md
+# § Which Connect orgs ACE acts in.
+# ACE_CONNECT_PM_ORG=ace-pm-org
+# ACE_CONNECT_NM_ORG=ace-nm-org
+
 # ── Nova (CommCare app builder MCP) ──────────────────────────────────
 #
 # Nova's MCP server lives at https://mcp.commcare.app/mcp. Nova plugin

@@ -59,8 +59,14 @@ artifact write. Hold onto `runFolderId` for the Step 0 self-check at completion.
 Invoke the `connect-program-setup` skill.
 
 - **Input:** PDD and opportunity details from Drive; `organization_slug`
-  defaults to `ai-demo-space` (or whichever PM-side org the opportunity
-  is configured for).
+  is the configured PM org — `connect_orgs.pm_org` from the preflight
+  block the orchestrator passes in (`lib/connect-orgs.ts`; if the dispatch
+  did not carry it, run `bash bin/ace-doctor --preflight --no-live` and read
+  `connect_orgs:`; HALT when `connect_orgs` reports `fail`). A reused program
+  keeps the org recorded in `opp.yaml.connect.program.url`. Pass
+  `connect_orgs` through to `connect-program-setup` and `connect-opp-setup`.
+  `connect_orgs.nm_org` is not used by this phase until the follow-up PM→NM
+  flow change.
 - **Output:** Connect program created or reused; details written to
   `connect-program-setup.md` (and the `-eval_verdict.yaml`) with
   `parentFolderId = phaseFolderId` (the `4-connect` folder), surfaced under

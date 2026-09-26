@@ -4,7 +4,7 @@ description: >
   Add a Dimagi teammate to a Connect workspace (organization) by email, so
   they can see the programs/opportunities ACE runs there. Thin wrapper over
   the `connect_add_org_member` atom: enforces a @dimagi.com guard, defaults
-  the workspace to `ai-demo-space` and the email to the session's own git
+  the workspace to the instance's configured PM org and the email to the session's own git
   identity ("add me"), invites via Connect's membership form, and verifies
   by member-table read-back. Anyone running ACE can invoke it; ACE performs
   the add as its own org-admin identity.
@@ -14,8 +14,9 @@ disable-model-invocation: false
 # Add Org Member
 
 Invite a human to a Connect **workspace** (Connect's term: *organization*) by
-email. This is the "let me / let a teammate into the ai-demo-space workspace
-so they can see what ACE is building" flow.
+email. This is the "let me / let a teammate into ACE's workspace so they can
+see what ACE is building" flow. "ACE's workspace" is the instance's configured
+PM org (`connect_orgs.pm_org`, `lib/connect-orgs.ts`) — never a typed slug.
 
 ## What it does
 
@@ -34,7 +35,7 @@ so they can see what ACE is building" flow.
 | Input | Required | Default |
 |---|---|---|
 | `email` | no | the session's `git config user.email` (i.e. "add me") |
-| `organization_slug` (`--org`) | no | `ai-demo-space` (the ACE demo workspace) |
+| `organization_slug` (`--org`) | no | the configured PM org — `connect_orgs.pm_org` (resolve with `bash bin/ace-doctor --preflight --no-live` → `connect_orgs.pm_org`) |
 | `role` (`--role`) | no | `member` (one of `admin` \| `member` \| `viewer`) |
 
 Resolve `email` when omitted by running `git config user.email`. If that is
@@ -58,7 +59,9 @@ than guessing.
 ## Process
 
 1. **Resolve + guard.** Resolve `email` (arg or `git config user.email`),
-   `organization_slug` (arg or `ai-demo-space`), `role` (arg or `member`).
+   `organization_slug` (arg, else `connect_orgs.pm_org` from
+   `bash bin/ace-doctor --preflight --no-live`), `role` (arg or `member`).
+   Report the resolved slug back so the operator sees which workspace it was.
    If `email` does not end in `@dimagi.com`, STOP and tell the operator this
    skill only adds Dimagi accounts; point them at the Connect UI for external
    collaborators.

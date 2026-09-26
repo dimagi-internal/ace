@@ -258,7 +258,7 @@ For `create_program` and other write atoms to succeed, the configured account
 organization. `create_program` additionally requires that the org be a
 *program-manager* org (`program_manager=True`) — the new automation API
 enforces this via the `IsProgramManagerAdmin` permission. Demo/testing
-happens in `ai-demo-space`.
+happens in the configured PM org (below).
 
 To grant admin role:
 1. As an existing org admin, open `https://connect.dimagi.com/a/<org>/organization/`
@@ -268,6 +268,48 @@ To grant admin role:
 Without admin role, ace@dimagi-ai.com's view defaults to the
 network-member-side ("Apply to Program" buttons) and authoring atoms will
 fail with 403.
+
+### Which Connect orgs ACE acts in
+
+ACE runs Connect on a program-manager / network-manager model (CLAUDE.md
+§ Phases). Which orgs play those roles is a property of the **instance**, not
+of ACE, so it is configuration — resolved in exactly one place,
+`lib/connect-orgs.ts` (`resolveConnectOrgs(env)` → `{ pm_org, nm_org, source }`):
+
+| Key (installed `.env`) | Role | Unset |
+|---|---|---|
+| `ACE_CONNECT_PM_ORG` | Program-manager org: creates programs and ACE's own build/QA opportunity (Phase 4), sends LLO invites, owns solicitations' programs. | The legacy default in `lib/connect-orgs.ts`, so an install that never set it behaves exactly as before. |
+| `ACE_CONNECT_NM_ORG` | Network-manager org ACE controls. **Not consumed yet** — the PM→NM flow change that reads it is a follow-up. | `null` (not configured). |
+
+**Where to set them — and why not `.env.tpl`.** Put the lines in the
+*installed* `.env` (`${CLAUDE_PLUGIN_DATA}/.env`). They are deliberately NOT
+declared in `.env.tpl` (only documented there, commented): `bin/ace-setup
+--force-env` preserves every key absent from the template in its
+`# --- ACE local-only secrets ---` block, so a per-instance value survives every
+re-inject and 1Password can never silently override it. Declaring them in the
+template would do the opposite — the injected value would win on every setup.
+MCP subprocesses read `.env` at startup, so restart Claude Code after changing
+them (CLAUDE.md § MCP changes need a full Claude restart).
+
+**How skills read it.** `/ace:doctor --preflight` emits a `connect_orgs:` block
+(`status`, `pm_org`, `nm_org`, `source`); the orchestrator passes it into every
+phase dispatch that acts in Connect, and skills say "the configured PM org
+(`connect_orgs.pm_org`)" rather than naming a slug. A skill run outside
+`/ace:run` gets the same block by running `bash bin/ace-doctor --preflight
+--no-live`. The full `/ace:doctor` adds one live check: `GET
+/a/<pm_org>/program/` with the ACE session (200 = the org resolves and ace@ can
+read its programs; 404 = the slug does not resolve for ace@). The NM org gets
+no live check while nothing consumes it. *Enforced:*
+`test/lib/connect-orgs.test.ts`, and `test/skills/no-hardcoded-connect-org.test.ts`
+fails on any org slug literal in skills/agents/commands/templates/mcp/playbook
+outside its reasoned allowlist.
+
+**An existing program's org is NOT re-derived from config.** A program an opp
+already owns is reused via `opp.yaml.connect.program`; its recorded URL
+(`/a/<org>/program/<id>/`) names the org it lives in, and that recorded org stays
+authoritative for every call against that program. Changing
+`ACE_CONNECT_PM_ORG` affects programs created from then on; it never
+re-homes (and must never orphan) one that exists.
 
 ### Re-running probes
 
@@ -297,8 +339,9 @@ with token auth and the entire `playwright.ts` backend deleted.
 
 There is no separate staging instance for Connect today. Tests against
 production use a name-prefix isolation pattern (`ACE-IT-<timestamp>`) to avoid
-clobbering real data, and run inside the `ai-demo-space` org which is
-explicitly provisioned for this kind of dogfood.
+clobbering real data, and run inside the configured PM org
+(`ACE_CONNECT_PM_ORG`, § Which Connect orgs ACE acts in), which is expected to
+be provisioned for this kind of dogfood.
 
 If a real staging URL becomes available, set `CONNECT_BASE_URL` in `.env`
 to point at it; no other code changes needed.
