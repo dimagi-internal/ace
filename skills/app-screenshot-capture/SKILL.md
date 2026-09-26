@@ -1412,13 +1412,20 @@ live in the capture manifest, so no audit reaches them.
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
-**Compose the manifest to a LOCAL FILE first, then pass `localFilePath` to
-`drive_create_file` — do not emit it inline (ace#1918).** The server reads the
-bytes off disk, so the write costs ~zero context regardless of size. This
-manifest is one row per captured step across every journey and was measured at
-43,778 chars in the 2026-09-02 corpus (four runs re-sampled 2026-09-06:
-6k–19k, so it scales with journey count). The inline `content` param still
-works for a short capture run.
+**Compose the manifest to a LOCAL FILE first, then write it with
+`drive_upload_binary({name, mimeType: 'text/yaml', parentFolderId, localFilePath})`
+— do not emit it inline (ace#1918).** The server reads the bytes off disk, so
+the write costs ~zero context regardless of size. This manifest is one row per
+captured step across every journey and was measured at 43,778 chars in the
+2026-09-02 corpus (four runs re-sampled 2026-09-06: 6k–19k, so it scales with
+journey count).
+
+**Not `drive_create_file` (ace#2490).** That atom always creates a native
+Google Doc, and a Doc export of this manifest comes back with every `\n` as
+`\r\n\r\n\r\n` — the canonical example in `skills/_training-template.md §
+Machine-parsed artifacts must not be written as Google Docs` is this very file.
+Every consumer parses it, so it must be stored as real bytes. The same rule
+covers the two Step 9 verdict YAMLs.
 
 Link each captured PNG back to (a) its journey id (a meaningful slug
 like `journey-learn-pass` / `journey-deliver-submit` from `app-test-cases.yaml`), (b) its
@@ -1622,6 +1629,8 @@ Write the canonical structural verdict to
 shallow smoke verdict to
 `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`. Both
 shapes conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
+Write both as real bytes — `drive_upload_binary` with `mimeType: 'text/yaml'`
+and `localFilePath` — never as Google Docs (ace#2490; see Step 6).
 
 **REQUIRED before either file is written — and again after ANY re-run
 that changes a leg's status (dimagi-internal/ace#1830).** Both verdicts
