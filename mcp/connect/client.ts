@@ -370,9 +370,12 @@ export interface ConnectClient {
 
   /**
    * Invite a human user to a Connect workspace (organization) by email.
-   * Connect calls this an "organization membership"; the user gets an
-   * email with an accept-invite link and appears in the member table
-   * immediately (pending until they accept).
+   * Connect records this as a PENDING INVITE (`OrganizationInvite.send_invite`):
+   * the user gets an email with an accept-invite link and appears in
+   * `/a/<org_slug>/organization/pending_invites_table` immediately; the
+   * membership (`member_table`) only exists once they accept. An address
+   * with no Connect account CAN be invited — the invitee signs up from the
+   * link. (ace#2503)
    *
    * POST to the HTML form view `/a/<org_slug>/organization/member`
    * (Django name `organization:add_members`); there is no REST API
@@ -380,20 +383,13 @@ export interface ConnectClient {
    * ACE session user MUST be an admin of the target org, or the POST
    * 403s.
    *
-   * Two Connect-side rules the caller can't bypass (enforced by
-   * `MembershipForm.clean_email`):
-   *   1. The email must belong to an EXISTING Connect user — Connect
-   *      does not provision accounts from an invite. Unknown emails are
-   *      rejected.
-   *   2. The user must NOT already be a member of this org.
-   * Both surface as the SAME server message ("User with this email does
-   * not exist or is already a member"), and — critically — the view
-   * still 302-redirects on validation failure (it does not re-render the
-   * error). So this method CANNOT read success off the POST status; it
-   * verifies by reading back `/a/<org_slug>/organization/member_table`
-   * (which renders `user__email`) and confirming the email is present.
-   * On absence it throws a typed ConnectValidationError with the
-   * documented reason.
+   * `OrganizationInviteForm.clean_email` rejects (a) an existing member and
+   * (b) an address inside the reinvite cooldown. The view 302-redirects on
+   * rejection too (it does not echo the error), so this method CANNOT read
+   * success off the POST status: it reads BOTH tables before and after the
+   * POST (ace#911, ace#2503) and classifies from the read-back. Only when
+   * the email is in NEITHER table after the POST does it throw a typed
+   * ConnectValidationError.
    *
    * `role` is one of Connect's `UserOrganizationMembership.Role` values:
    * `admin` | `member` | `viewer` (default `member`).
@@ -406,24 +402,34 @@ export interface ConnectClient {
     organization_slug: string;
     email: string;
     /**
-     * The role READ BACK from the member table — the role Connect actually
-     * stored, never the one that was requested. `null` when the row renders a
-     * role we don't recognise.
+     * The role READ BACK from Connect (the member row, or the pending-invite
+     * row) — the role Connect actually stored, never the one that was
+     * requested. `null` when the row renders a role we don't recognise.
      */
     role: string | null;
     requested_role: 'admin' | 'member' | 'viewer';
     /**
-     * `invited` — they were absent before and present after; this call added them.
-     * `already-member` — they were ALREADY a member, so Connect's
-     *   `MembershipForm.clean_email` rejected the POST and NOTHING changed
-     *   (it excludes users already in the org, so the form never validates and
-     *   no role update occurs). Do not read this as "the requested role applied".
+     * `invited-pending` — absent from both tables before; a pending invite
+     *   exists after. This call created the invite and Connect emailed it. The
+     *   person becomes a member when they accept. The normal success outcome.
+     * `already-invited` — a pending invite already existed before the call.
+     *   Connect refreshes (re-sends) a pending invite unless it is inside the
+     *   reinvite cooldown; `role` is the read-back, see `role_unchanged`.
+     * `invited` — absent before, present in the MEMBER table after (a
+     *   membership was created directly).
+     * `already-member` — they were ALREADY a member, so Connect's clean_email
+     *   rejected the POST and NOTHING changed. Do not read this as "the
+     *   requested role applied".
      */
-    status: 'invited' | 'already-member';
+    status: 'invited-pending' | 'already-invited' | 'invited' | 'already-member';
+    /** Pending-invite dates as rendered (`invited-pending` / `already-invited` only). */
+    invited_on?: string | null;
+    expires_on?: string | null;
     /**
-     * Set when status is `already-member` AND the stored role differs from the
-     * requested one — i.e. the caller asked for a role change that did NOT happen.
-     * Connect has no add-member path that updates an existing membership's role.
+     * Set when status is `already-member` or `already-invited` AND the stored
+     * role differs from the requested one — i.e. the caller asked for a role
+     * that did NOT land. Connect has no add-member path that updates an
+     * existing membership's role.
      */
     role_unchanged?: { requested: string; actual: string | null; note: string };
   }>;

@@ -11,7 +11,7 @@ import type {
 import { HttpError, ConnectValidationError, ConnectError, UnsupportedVerificationFlagError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
-import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
+import { parseOrgMemberTable, parsePendingInviteTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
 import { toConnectQuestionPath } from '../../../lib/connect-question-path.js';
 import {
@@ -1302,36 +1302,48 @@ export class PlaywrightBackend implements ConnectClient {
    * Invite a human user to a Connect workspace (organization) by email.
    * Full contract + the two clean_email rules are documented on
    * `ConnectClient.addOrgMember`. Endpoint probed against commcare-connect
-   * `organization/views.py::add_members_form` + `forms.py::MembershipForm`
+   * `organization/views.py::add_members_form` + `forms.py::OrganizationInviteForm`
    * (the source of truth — POST `/a/<org>/organization/member`, form
    * fields `email` + `role`).
    *
    * The view is `@api_view(["POST"]) @org_admin_required` and ALWAYS
    * 302-redirects to `?active_tab=members` — including on validation
    * failure, which it does NOT echo. So the POST status can't distinguish
-   * success from rejection; we verify by reading back the member table
-   * (`org_member_table`, which renders the `user__email` column) and
-   * confirming the email landed.
+   * success from rejection; we verify by reading back BOTH tables.
+   *
+   * ace#2503: the view now calls `OrganizationInvite.send_invite`, so a
+   * successful add is a PENDING INVITE (`pending_invites_table`), not a row
+   * in `org_member_table` — the membership only appears once the invitee
+   * accepts. Reading the member table alone reported every successful invite
+   * as a failure.
    */
   addOrgMember: ConnectClient['addOrgMember'] = async ({ organization_slug, email, role }) => {
     const wantRole = role ?? 'member';
     const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
+    // Pending invites sort by -date_modified, so a fresh invite is on page 1.
+    const pendingPath = `/a/${organization_slug}/organization/pending_invites_table?page_size=100`;
 
-    /** Read the member table as structured rows: one per membership. */
-    const readMembers = async (): Promise<OrgMemberRow[]> => {
-      const res = await this.request.get(tablePath);
-      if (res.status() !== 200) throw await httpErrorFor(res, tablePath);
-      return parseOrgMemberTable(await res.text());
+    const readTable = async <R>(path: string, parse: (html: string) => R[]): Promise<R[]> => {
+      const res = await this.request.get(path);
+      // A failed read must fail LOUD — never be read as "absent" (absence is
+      // what drives the rejection branch below).
+      if (res.status() !== 200) throw await httpErrorFor(res, path);
+      return parse(await res.text());
     };
-    const findRow = (rows: OrgMemberRow[]) =>
+    const findRow = <R extends OrgMemberRow>(rows: R[]): R | null =>
       rows.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
+    const readBoth = async () => ({
+      member: findRow(await readTable(tablePath, parseOrgMemberTable)),
+      pending: findRow(await readTable(pendingPath, parsePendingInviteTable)),
+    });
 
-    // 0. PRE-read. Connect's MembershipForm.clean_email EXCLUDES users already
-    //    in the org, so for an existing member the form never validates and the
-    //    POST is a silent no-op — same 302 as success. Without knowing the
-    //    before-state we cannot tell "added" from "was already there", and we
-    //    would report a role that was never applied. (dimagi-internal/ace#911)
-    const before = findRow(await readMembers());
+    // 0. PRE-read both tables. Connect's OrganizationInviteForm.clean_email
+    //    REJECTS existing members (and addresses in the reinvite cooldown), so
+    //    for those the POST is a silent no-op — same 302 as success. Without
+    //    the before-state we cannot tell "added" from "was already there", and
+    //    we would report a role that was never applied. (ace#911, ace#2503)
+    const pre = await readBoth();
+    const before = pre.member;
     // 1. GET the org home page — it renders the add-member modal whose
     //    form carries the {% csrf_token %} we need.
     const homePath = `/a/${organization_slug}/organization/`;
@@ -1361,20 +1373,62 @@ export class PlaywrightBackend implements ConnectClient {
     //    (PAGE_SIZE_OPTIONS = [20,30,50,100]); a fresh membership sorts to
     //    the end of the queryset, so the large page keeps it on the single
     //    page for any realistic workspace (<100 members).
-    const after = findRow(await readMembers());
+    const post = await readBoth();
+    const after = post.member ?? before;
 
     if (!after) {
-      // Absent before AND after → the POST genuinely did nothing. With the
-      // pre-read we can now name the ONE remaining cause precisely: the
-      // "already a member" branch is excluded by `before` being null.
+      const pending = post.pending;
+      if (pending) {
+        const base = {
+          organization_slug,
+          email,
+          // The role Connect STORED on the invite, read back — never the ask.
+          role: pending.role,
+          requested_role: wantRole,
+          invited_on: pending.invited_on,
+          expires_on: pending.expires_on,
+        };
+        if (!pre.pending) {
+          // Absent from both tables before, pending invite after: this call
+          // created the invite (and Connect emailed it). Membership follows
+          // when the invitee accepts — they do NOT need an account first.
+          return { ...base, status: 'invited-pending' as const };
+        }
+        // Already pending before. Connect's send_invite REFRESHES a pending
+        // invite (new role, new token, re-sent) unless it is inside the
+        // reinvite cooldown, in which case the POST was a no-op. Either way
+        // the read-back role is the truth; flag a requested role that didn't land.
+        const result = { ...base, status: 'already-invited' as const };
+        if (pending.role?.toLowerCase() !== wantRole.toLowerCase()) {
+          return {
+            ...result,
+            role_unchanged: {
+              requested: wantRole,
+              actual: pending.role,
+              note:
+                `'${email}' already had a pending invite with role '${pending.role ?? 'unknown'}' and the requested ` +
+                `role '${wantRole}' was NOT applied — most likely Connect's reinvite cooldown rejected the POST ` +
+                `("An invite was just sent to this address"). Retry after a few minutes, or change it in the Connect UI.`,
+            },
+          };
+        }
+        return result;
+      }
+      // In NEITHER table after the POST → Connect genuinely recorded nothing.
+      // The 302 does not echo the reason. OrganizationInviteForm rejects an
+      // invalid email, an existing member (excluded by the pre-read), or an
+      // address inside the reinvite cooldown whose invite is no longer pending
+      // (e.g. just revoked or accepted). A missing Connect account is NOT a
+      // cause any more: Connect invites unknown addresses and the invitee signs
+      // up from the invite link (ace#2503).
       throw new ConnectValidationError(
         [
-          `Connect did not add '${email}' to workspace '${organization_slug}', and they were not a member beforehand. ` +
-            `Connect's MembershipForm.clean_email rejects with a silent 302; since the pre-read confirms they were NOT ` +
-            `already a member, the cause is that no Connect account exists for that email yet — the person must sign in ` +
-            `at https://connect.dimagi.com/ once before they can be added.`,
+          `Connect recorded neither a membership nor a pending invite for '${email}' in workspace '${organization_slug}' ` +
+            `after the add-member POST (it 302s on rejection without echoing the reason). They were not a member or ` +
+            `pending invitee beforehand. Likely causes: an invalid email address, or Connect's reinvite cooldown on an ` +
+            `invite that was just revoked/accepted. Check the workspace's Members tab in the Connect UI.`,
         ],
-        { email: ['No Connect account exists for this email'] },
+        { email: ['Connect did not record a membership or pending invite for this email'] },
       );
     }
 
@@ -1396,7 +1450,7 @@ export class PlaywrightBackend implements ConnectClient {
             actual: after.role,
             note:
               `'${email}' was already a member with role '${after.role ?? 'unknown'}'. Connect's add-member form ` +
-              `excludes existing members (MembershipForm.clean_email), so the requested role '${wantRole}' was NOT ` +
+              `excludes existing members (OrganizationInviteForm.clean_email), so the requested role '${wantRole}' was NOT ` +
               `applied and no membership was modified. Change an existing member's role in the Connect UI.`,
           },
         };

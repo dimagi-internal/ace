@@ -1,0 +1,32 @@
+<!--
+  Reconstructed from commcare-connect origin/main @ 3c760f279 (2026-09-25):
+  PendingInviteTable with no rows renders base_table.html's empty_text row
+  ("No pending invites."). The messages block is OUTSIDE the table and names
+  an email — it must NOT parse as an invite.
+-->
+<div hx-swap-oob="beforeend:#messages"><div class="alert alert-warning">An invite was just sent to ghost@dimagi.com. Try again in a few minutes.</div></div>
+<div class="flex flex-col gap-2 mt-6">
+  <div class="flex items-center gap-2">
+    <h2 class="card_title">Pending Invites</h2>
+    <span class="hint">0 invites</span>
+  </div>
+  <div class="table-container">
+    <table class="base-table">
+      <thead >
+        <tr>
+          <th >#</th>
+          <th class="orderable"><a href="?invites-sort=email">Email</a></th>
+          <th class="orderable"><a href="?invites-sort=role">Role</a></th>
+          <th class="orderable"><a href="?invites-sort=date_modified">Invited on</a></th>
+          <th >Expires on</th>
+          <th class="col-action"></th>
+        </tr>
+      </thead>
+      <tbody >
+        <tr>
+          <td colspan="6" class="text-center py-4">No pending invites.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,0 +1,133 @@
+<!--
+  Reconstructed from commcare-connect origin/main @ 3c760f279 (2026-09-25):
+  templates/organization/pending_invites_table.html + base_table.html +
+  organization/tables.py::PendingInviteTable + role_badge.html +
+  pending_invite_actions.html. Row emails/dates are the live read-back recorded
+  in dimagi-internal/ace#2503 (ace-nm-org, 2026-09-26); two roles are varied so
+  the parser's role read-back is actually exercised. Not a byte-for-byte live
+  capture: keep the django-tables2 `<td >` spacing and the out-of-table
+  hx-swap-oob messages block — both are regression surfaces.
+-->
+<div hx-swap-oob="beforeend:#messages"><div class="alert alert-success">Invite sent to stewari@dimagi.com.</div></div>
+<div class="flex flex-col gap-2 mt-6">
+  <div class="flex items-center gap-2">
+    <h2 class="card_title">Pending Invites</h2>
+    <span class="hint">4 invites</span>
+  </div>
+  <div class="table-container">
+    <table class="base-table">
+      <thead >
+        <tr>
+          <th >#</th>
+          <th class="orderable"><a href="?invites-sort=email">Email</a></th>
+          <th class="orderable"><a href="?invites-sort=role">Role</a></th>
+          <th class="orderable"><a href="?invites-sort=date_modified">Invited on</a></th>
+          <th >Expires on</th>
+          <th class="col-action"></th>
+        </tr>
+      </thead>
+      <tbody >
+        <tr class="odd" class="group">
+          <td >
+            1
+          </td>
+          <td >
+            stewari@dimagi.com
+          </td>
+          <td >
+            <span class="badge badge-sm primary-light">Admin</span>
+          </td>
+          <td >
+            26-Sep-2026 13:19
+          </td>
+          <td >
+            03-Oct-2026 13:19
+          </td>
+          <td class="col-action">
+            <div class="flex gap-2 justify-end">
+              <button type="button" class="button button-sm outline-style" hx-post="/a/ace-nm-org/organization/invite/41/reinvite" hx-target="#pending_invites_container" hx-swap="innerHTML" disabled>
+                Just sent
+              </button>
+              <button type="button" class="button button-sm negative-outline" hx-post="/a/ace-nm-org/organization/invite/41/revoke" hx-target="#pending_invites_container" hx-swap="innerHTML">Revoke</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="even" class="group">
+          <td >
+            2
+          </td>
+          <td >
+            smazumdar@dimagi.com
+          </td>
+          <td >
+            <span class="badge badge-sm primary-light">Admin</span>
+          </td>
+          <td >
+            26-Sep-2026 13:19
+          </td>
+          <td >
+            03-Oct-2026 13:19
+          </td>
+          <td class="col-action">
+            <div class="flex gap-2 justify-end">
+              <button type="button" class="button button-sm outline-style" hx-post="/a/ace-nm-org/organization/invite/40/reinvite" hx-target="#pending_invites_container" hx-swap="innerHTML" disabled>
+                Just sent
+              </button>
+              <button type="button" class="button button-sm negative-outline" hx-post="/a/ace-nm-org/organization/invite/40/revoke" hx-target="#pending_invites_container" hx-swap="innerHTML">Revoke</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="odd" class="group">
+          <td >
+            3
+          </td>
+          <td >
+            aking@dimagi.com
+          </td>
+          <td >
+            <span class="badge badge-sm primary-light">Viewer</span>
+          </td>
+          <td >
+            26-Sep-2026 13:19
+          </td>
+          <td >
+            03-Oct-2026 13:19
+          </td>
+          <td class="col-action">
+            <div class="flex gap-2 justify-end">
+              <button type="button" class="button button-sm outline-style" hx-post="/a/ace-nm-org/organization/invite/39/reinvite" hx-target="#pending_invites_container" hx-swap="innerHTML">
+                Reinvite
+              </button>
+              <button type="button" class="button button-sm negative-outline" hx-post="/a/ace-nm-org/organization/invite/39/revoke" hx-target="#pending_invites_container" hx-swap="innerHTML">Revoke</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="even" class="group">
+          <td >
+            4
+          </td>
+          <td >
+            mtheis@dimagi.com
+          </td>
+          <td >
+            <span class="badge badge-sm primary-light">Member</span>
+          </td>
+          <td >
+            26-Sep-2026 13:18
+          </td>
+          <td >
+            03-Oct-2026 13:18
+          </td>
+          <td class="col-action">
+            <div class="flex gap-2 justify-end">
+              <button type="button" class="button button-sm outline-style" hx-post="/a/ace-nm-org/organization/invite/38/reinvite" hx-target="#pending_invites_container" hx-swap="innerHTML">
+                Reinvite
+              </button>
+              <button type="button" class="button button-sm negative-outline" hx-post="/a/ace-nm-org/organization/invite/38/revoke" hx-target="#pending_invites_container" hx-swap="innerHTML">Revoke</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

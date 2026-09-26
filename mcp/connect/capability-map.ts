@@ -30,9 +30,9 @@ export interface CapabilityRoute {
  * - 0.13.x added `add_org_member` — invite a human user to a Connect
  *   workspace (organization) by email. Playwright HTML-form POST to
  *   `/a/<org>/organization/member`; no REST equivalent. Requires the ACE
- *   session user to be an org admin and the invitee to already have a
- *   Connect account (Connect's `MembershipForm.clean_email` rejects
- *   unknown emails). Verified by read-back of `/organization/member_table`.
+ *   session user to be an org admin. Connect records the add as a PENDING
+ *   invite, so it is verified by read-back of BOTH `/organization/member_table`
+ *   and `/organization/pending_invites_table` (ace#2503).
  *
  * `REST` = JSON to the new automation API endpoints, mediated by the
  * authenticated session cookie + CSRF token. There is no token auth path
