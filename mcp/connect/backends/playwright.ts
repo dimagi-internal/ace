@@ -8,7 +8,14 @@ import type {
   ProgramApplication,
   VerificationFlags,
 } from '../types.js';
-import { HttpError, ConnectValidationError, ConnectError, UnsupportedVerificationFlagError } from '../errors.js';
+import {
+  HttpError,
+  ConnectValidationError,
+  ConnectError,
+  UnsupportedVerificationFlagError,
+  CrossOrgCreateUnsupportedError,
+  VerificationPagePmOnlyError,
+} from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, parsePendingInviteTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
@@ -1018,7 +1025,15 @@ export class PlaywrightBackend implements ConnectClient {
    */
   setVerificationFlags: ConnectClient['setVerificationFlags'] = async ({ organization_slug, opportunity_id, flags }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/verification_flags_config/`;
-    const getRes = await this.request.get(path);
+    // `maxRedirects: 0` (ace#2419): the page is PM-only and 302s to the
+    // opportunity detail page at the HOLDING org's URL. Following that redirect
+    // parsed the detail page and blamed the payload ("no input for
+    // form_field_rules") — or, with empty flags, POSTed into it and returned
+    // ok having written nothing. Same mechanism as ace#1637's dashboard read.
+    const getRes = await this.request.get(path, { maxRedirects: 0 });
+    if (getRes.status() >= 300 && getRes.status() < 400) {
+      throw new VerificationPagePmOnlyError(path, organization_slug, getRes.headers()['location']);
+    }
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
     const html = await getRes.text();
 
@@ -1736,8 +1751,9 @@ export class PlaywrightBackend implements ConnectClient {
    *     activation if PUs / dates / budget are missing — that's the
    *     correct surfaced error).
    *   - There is no `target_organization_slug` field on the HTML form —
-   *     standalone opps live under the calling PM org. Cross-org
-   *     transfer is REST-only.
+   *     standalone opps live under the calling org. A cross-org create
+   *     is REST-only, so this fallback THROWS
+   *     `CrossOrgCreateUnsupportedError` when the target differs.
    *   - The `program` field is NOT sent (form doesn't accept it).
    *
    * The shared learn/deliver `hq_server_url` + `api_key` invariant still
@@ -1748,14 +1764,13 @@ export class PlaywrightBackend implements ConnectClient {
       args.target_organization_slug &&
       args.target_organization_slug !== args.organization_slug
     ) {
-      // The HTML form creates under the PM slug. There is no equivalent
-      // field for `target_organization_slug` — that's REST-only. Surface
-      // a non-fatal note so the caller knows ownership transfer needs a
-      // separate (out-of-band) acceptance step.
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[ace-connect] createOpportunity Playwright fallback: target_organization_slug='${args.target_organization_slug}' differs from organization_slug='${args.organization_slug}'. The HTML form creates a standalone opp under the PM org; cross-org transfer is REST-only.`,
-      );
+      // The HTML form creates under the org in its URL. There is no field for
+      // `target_organization_slug` — that's REST-only. This used to WARN and
+      // create under the acting (PM) org anyway, which is unrepairable (the
+      // holding org is create-time only) and, since Phase 4 now requires an
+      // NM-held opportunity (ace#2419), silently recreated the self-managed
+      // defect. Refuse before any network call.
+      throw new CrossOrgCreateUnsupportedError(args.organization_slug, args.target_organization_slug);
     }
 
     if (args.learn_app.hq_server_url !== args.deliver_app.hq_server_url) {

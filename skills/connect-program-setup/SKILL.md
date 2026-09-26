@@ -24,8 +24,11 @@ org — `connect_orgs.pm_org`** from preflight (`lib/connect-orgs.ts`; see
 type a slug here. One exception, and it wins: on the **reuse** path, the org is
 the one recorded in `opp.yaml.connect.program.url` (`/a/<org>/program/<id>/`) —
 an existing program's own org stays authoritative even if the instance's PM org
-has since changed. `connect_orgs.nm_org` is not used by this skill (it is
-unconsumed until the PM→NM flow change).
+has since changed. The program always lives in the PM org; when
+`connect_orgs.nm_org` is configured, `connect-opp-setup` Step 3 invites that NM
+org to this program and creates the run's opportunity HELD by it (the PM→NM
+flow, operator decision 2026-09-26). This skill does not invite anyone — it
+only creates or reuses the program.
 
 ## Phase folder anchor
 

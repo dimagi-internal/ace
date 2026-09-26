@@ -325,3 +325,92 @@ export class UnsupportedVerificationFlagError extends ConnectError {
     };
   }
 }
+
+/**
+ * `createOpportunity` was asked to put the opportunity in an org OTHER than the
+ * acting org, on a path that cannot do that.
+ *
+ * The HTML `/a/<org>/opportunity/init/` wizard has no holding-org field: it
+ * creates the opportunity under the org in its URL. Until 2026-09-26 the
+ * Playwright fallback logged a `console.warn` and created the opportunity under
+ * the ACTING (PM) org anyway — and a wrong holding org is unrepairable:
+ * `target_organization_slug` is create-time only and `connect_update_opportunity`
+ * carries no org field. Phase 4 now DEPENDS on the holding org being the
+ * configured NM org (ace#2419 — the PM-only verification-rules page serves only
+ * when request org != holding org; observed spark-facilitator/20260925-1536), so
+ * a silent fallback to the PM org would quietly recreate that defect on every
+ * run where the REST path failed. Refuse instead.
+ */
+export class CrossOrgCreateUnsupportedError extends ConnectError {
+  retryable = false;
+  constructor(
+    public acting_org: string,
+    public target_org: string,
+  ) {
+    super(
+      `createOpportunity: target_organization_slug='${target_org}' differs from the acting ` +
+        `organization_slug='${acting_org}', and this path (the HTML init wizard) can only create ` +
+        `the opportunity under '${acting_org}'. Refusing: an opportunity created under the wrong ` +
+        `org can never be reassigned (target_organization_slug is create-time only; ` +
+        `connect_update_opportunity has no org field). Create it through the REST automation API ` +
+        `(POST /api/programs/<id>/opportunities/), which honours the holding org — see ace#2419.`,
+    );
+  }
+
+  toJSON() {
+    return {
+      error: 'cross_org_create_unsupported' as const,
+      message: this.message,
+      acting_org: this.acting_org,
+      target_org: this.target_org,
+      retryable: false as const,
+    };
+  }
+}
+
+/**
+ * The verification-rules page is PM-ONLY, and the org in this request is the
+ * opportunity's HOLDING org.
+ *
+ * Upstream `verification_flags_config` redirects to `opportunity:detail` unless
+ * `request.is_opportunity_pm`, which is
+ * `_can_manage_opportunity(...) and request.org.id != opportunity.organization_id`
+ * (`commcare_connect/program/utils.py`). So the page serves ONLY at the
+ * program-manager org's URL of an opportunity HELD BY A DIFFERENT org.
+ *
+ * Before this error the atom followed the redirect, parsed the detail page,
+ * found no formset inputs, and blamed the payload ("has no input for
+ * form_field_rules") — or, with an empty `flags`, POSTed into the redirect and
+ * returned `{ok:true}` having written nothing. Observed on
+ * spark-facilitator/20260925-1536 (self-managed opp, ace#2419) and reproduced
+ * 2026-09-26 at the NM-org URL of an NM-held probe opportunity, where the same
+ * rule then SAVED at the PM-org URL (`form_field_rules_saved: 1`).
+ */
+export class VerificationPagePmOnlyError extends ConnectError {
+  retryable = false;
+  constructor(
+    public path: string,
+    public organization_slug: string,
+    public location: string | undefined,
+  ) {
+    super(
+      `Connect's verification-rules page ${path} redirected (to ${location ?? 'the opportunity detail page'}) ` +
+        `instead of serving: it is PM-only. It serves only when the requesting org manages the ` +
+        `program AND is not the org holding the opportunity (is_opportunity_pm: request.org != ` +
+        `opportunity.organization). Call this at the PROGRAM-MANAGER org's URL of an opportunity held ` +
+        `by a different (network-manager) org. A self-managed opportunity (held by the PM org itself) ` +
+        `can never carry verification rules — ace#2419.`,
+    );
+  }
+
+  toJSON() {
+    return {
+      error: 'verification_page_pm_only' as const,
+      message: this.message,
+      path: this.path,
+      organization_slug: this.organization_slug,
+      location: this.location,
+      retryable: false as const,
+    };
+  }
+}

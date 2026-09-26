@@ -55,8 +55,9 @@ deferred to later stages. This skill is the data plumbing only.
      (the path turmeric currently uses). Required for the payment-units
      pre-flight in step 1a; if none of these are present, skip 1a with a
      `[WARN]` instead of halting.
-   - `organization_slug` — flat top-level; if absent, use the configured PM
-     org (`connect_orgs.pm_org` from the preflight block the orchestrator
+   - `organization_slug` — the run's `phases.connect-setup.products.connect.pm_org_slug`
+     (legacy runs: `.organization_slug`; then the flat top-level key); if all are absent,
+     use the configured PM org (`connect_orgs.pm_org` from the preflight block the orchestrator
      passes in, or `bash bin/ace-doctor --preflight --no-live` →
      `connect_orgs:` when run standalone). Never type a slug.
    - `connect.opportunity.url` if present — informational

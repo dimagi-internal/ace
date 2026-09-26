@@ -8,13 +8,16 @@ disable-model-invocation: false
 
 # Connect Opportunity Setup
 
-Create and fully configure a Connect managed opportunity in the PM-side org
-that owns the parent program: **the configured PM org (`connect_orgs.pm_org`
-from `/ace:doctor --preflight`, passed in by the connect-setup dispatch)** for a
+Create and fully configure a Connect managed opportunity on the program
+owned by the PM org — **the configured PM org (`connect_orgs.pm_org` from
+`/ace:doctor --preflight`, passed in by the connect-setup dispatch)** for a
 program this run created, or — when the program was reused — the org recorded
 in its URL (`opp.yaml.connect.program.url`, `/a/<org>/program/<id>/`), which
-stays authoritative. Never type an org slug here
-(`playbook/integrations/connect-api.md § Which Connect orgs ACE acts in`).
+stays authoritative. **When `connect_orgs.nm_org` is configured the
+opportunity is HELD by that network-manager org** (the real PM→NM flow, Step
+3); when it is not, the PM org holds it (legacy self-managed). Never type an
+org slug here (`playbook/integrations/connect-api.md § Which Connect orgs ACE
+acts in`).
 
 ## Inputs
 
@@ -53,157 +56,133 @@ alone makes the artifact land outside `4-connect` and fail
    the PDD is incomplete and `idea-to-pdd` should re-run with the
    stress-test rubric.
 
-3. **Pre-flight (the program-application must be ACCEPTED).**
-   `POST /api/programs/<id>/opportunities/` validates that the holding
-   org has an `ACCEPTED` `ProgramApplication` for the program. If it is
-   still INVITED/APPLIED, the create rejects with `Organization must
-   have an accepted application` — live on `turmeric-market-study/20260914-1742`.
-   That rejection was used there AS the acceptance check: no readable
-   application-status surface exists, and `connect_list_invites` returns
-   `[]` regardless.
+3. **Pre-flight: resolve the two orgs, then make the holding org's
+   program application ACCEPTED.**
 
-   > ### This skill creates ACE's BUILD/QA opportunity, never the LLO's
+   **3.0 Resolve the orgs (operator decision 2026-09-26).** From the
+   connect-setup dispatch take `connect_orgs` (`/ace:doctor --preflight`)
+   and compute, exactly as `phase4Orgs()` in `lib/connect-orgs.ts` does:
+
+   | `connect_orgs.nm_org` | mode | `pm_org` (program's org) | `holding_org` (`target_organization_slug`) |
+   |---|---|---|---|
+   | set, ≠ PM org | **`pm-nm`** (the normal shape) | `connect_orgs.pm_org`, or a reused program's recorded org | **`connect_orgs.nm_org`** |
+   | unset | `self-managed` (legacy, other instances) | same | the PM org |
+
+   `pm_org` is the program's org and the org whose URL every **PM-only**
+   surface needs; `holding_org` is the org the opportunity is created
+   under and lives in forever. **Never type either slug** —
+   `playbook/integrations/connect-api.md § Which Connect orgs ACE acts in`.
+
+   > ### Why Phase 4's opportunity is held by the NM org
    >
-   > **The network-manager / program-manager model (operator decision
-   > 2026-09-16).** A program manager creates the program in the PM org
-   > (`connect_orgs.pm_org`), invites the network manager, and **only once the
-   > NM accepts can the PM create that NM's opportunity.** Connect
-   > enforces the gate itself — the accepted-application check above is
-   > exactly it.
+   > **The program-manager / network-manager model.** A program manager
+   > creates the program in the PM org, invites a network manager, and
+   > **only once the NM accepts can the PM create an opportunity held by
+   > that NM** — Connect enforces the gate itself (live on
+   > `turmeric-market-study/20260914-1742`): `POST
+   > /api/programs/<id>/opportunities/` rejects with `Organization must have
+   > an accepted application for this program`.
    >
-   > Phase 4 runs *before* Phase 8/9, so at this point **no LLO has been
-   > invited and none has accepted.** Therefore this skill always creates
-   > a **self-managed** opportunity held by the PM org: ACE's own
-   > build-and-QA vehicle, which Phase 6's device walk needs and which no
-   > LLO ever sees. The LLO's delivery opportunity is created in Phase 9
-   > by `llo-onboarding`, after the invite is accepted.
+   > Until 2026-09-26 Phase 4 always created a **self-managed** opportunity
+   > (held by the PM org). That shape can never carry verification rules:
+   > Connect's verification-rules page is PM-only and serves only when the
+   > requesting org is NOT the holding org (`is_opportunity_pm`,
+   > `commcare_connect/program/utils.py`) — so every self-managed run
+   > silently dropped its PDD's Layer A payability rules (ace#2419,
+   > observed `spark-facilitator/20260925-1536`). With an ACE-controlled NM
+   > org configured, Phase 4 now runs the **real** PM→NM flow on every run:
+   > the NM org holds the opportunity, and the PM org — a different org —
+   > sets its rules. Proved live 2026-09-26 on probe opportunity
+   > `7bfcb845-015c-416a-a200-9795c68dfc55` (matrix in
+   > `playbook/integrations/connect-api.md § PM→NM org-URL matrix`).
    >
-   > **Two opportunities is the correct model, not a workaround.** It
-   > falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint: a
-   > DeliverUnit backs exactly one PaymentUnit ever, so the LLO's opp
-   > needs its own freshly-copied `cc_app_id`s regardless (see
-   > `commcare_linked_app_copy` with `linked: false`, same domain).
+   > **This is still ACE's build/QA opportunity, not the partner LLO's.**
+   > The NM org here is ACE's own; the awarded partner's opportunity is
+   > created in Phase 9 by `llo-onboarding`, after the partner accepts, on
+   > freshly-copied `cc_app_id`s (ace#573). **Two opportunities remains the
+   > model.**
    >
-   > **There is no repair path if this is got wrong**, which is why the
-   > split is structural rather than advisory: `target_organization_slug`
-   > is create-time only and `connect_update_opportunity` carries no org
-   > field, so an opportunity created under the wrong org can never be
-   > handed to the LLO. It has to be created under the right one.
-   >
-   > An ACE-controlled network-manager org is configured separately as
-   > `connect_orgs.nm_org`. This skill does not use it: it is unconsumed
-   > until the follow-up PM→NM flow change, and today's Phase 4 behaviour
-   > (a self-managed opportunity in the PM org) is unchanged.
+   > **There is no repair path if the holding org is wrong**:
+   > `target_organization_slug` is create-time only and
+   > `connect_update_opportunity` carries no org field. The Playwright
+   > create fallback therefore THROWS `cross_org_create_unsupported` rather
+   > than creating under the PM org (it used to warn and do exactly that).
 
-   **3a. Self-managed opp pre-flight (added per #106 finding 10).**
-   "Self-managed" means the `target_organization_slug` equals the
-   program's `organization_slug` (the LLO is the same org running the
-   program — typical for ACE dogfood opps in the configured PM org). For
-   this pattern, no human-mediated invite-and-accept happens upstream,
-   so the application doesn't yet exist when this skill runs. Detect
-   and resolve:
+   **3a. Invite + accept the holding org (unconditional; the conflict is
+   the skip).** In BOTH modes the holding org needs an ACCEPTED
+   `ProgramApplication` for this program — in `self-managed` mode the
+   holding org is the PM org itself, which still needs one (omitting
+   `target_organization_slug` does not waive it: the REST backend sends
+   `organization_slug` as the holding org — dimagi-internal/ace#1251).
 
-   1. Branch on `target_organization_slug` — **three cases**
-      (dimagi-internal/ace#1251):
-      - **Omitted** → self-managed. Omitting does NOT waive the
-        accepted-application requirement; it relocates it to the PM org
-        (the REST backend sends `organization_slug` as the holding org,
-        and the create rejects with `Organization must have an accepted
-        application for this program`). Treat exactly like same-org:
-        run steps 2–4.
-      - **Equal to `organization_slug`** → self-managed; run steps 2–4.
-      - **Different, non-empty** → **HALT.** Phase 4 must not create an
-        opportunity for a distinct LLO. Record the LLO in
-        `selected_llo` (see `llo-onboarding` § two sources) and let
-        Phase 9 create their opportunity after the invite is accepted;
-        then re-run this skill with the slug omitted so it builds ACE's
-        self-managed build/QA opp. Halt message:
+   1. **Any other `target_organization_slug` → HALT.** Phase 4 never
+      creates an opportunity for a *partner* LLO (Phase 8/9 have not run,
+      so no partner has accepted). If a caller passes a slug that is not
+      `holding_org` above, halt:
 
-        > FATAL: `target_organization_slug` names a distinct LLO
-        > (`<slug>`), but Phase 4 runs before any LLO has been invited
-        > or has accepted, so this create can only fail with the
-        > accepted-application rejection cited in step 3
-        > (`turmeric-market-study/20260914-1742`) — and if it somehow
-        > succeeded, the opportunity could
-        > never be reassigned (`target_organization_slug` is create-time
-        > only; `connect_update_opportunity` has no org field). Omit the
-        > slug here; Phase 9 creates the LLO's opportunity.
+      > FATAL: `target_organization_slug` names `<slug>`, which is not this
+      > instance's configured holding org (`<holding_org>`). Phase 4 builds
+      > ACE's own build/QA opportunity; the partner's opportunity is created
+      > in Phase 9 by `llo-onboarding` after their invite is accepted. An
+      > opportunity created under the wrong org can never be reassigned.
 
-      (This branch previously read *"Phase 9 already handled the
-      round-trip; skip this sub-step"* — **which was impossible**:
-      `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so the
-      skill asserted a precondition the pipeline cannot produce. The
-      create it waved through would hit the step-3 rejection
-      (`turmeric-market-study/20260914-1742`). Corrected 2026-09-16 with
-      the NM/PM model above.)
-
-      (Pre-#1251 this step read "if they differ, skip" — which on
-      `('ai-demo-space', undefined)` reads as *differ → skip*, exactly
-      backwards: the omitted case is the one that needs the round-trip
-      most, and it is the documented-correct choice for a no-LLO PDD.)
-   2. Self-managed case: run the round-trip below **unconditionally** —
-      attempt the transition and treat the conflict as the skip
-      (CLAUDE.md § Conventions). Do NOT try to read the application
-      state first: no list-program-applications atom exists, and in
-      seeded `/ace:iterate` runs Phase 8/9 are `skipped` so
-      `connect-setup/llo-invite_invitations.md` doesn't exist either.
-      If `connect_send_llo_invite` / `connect_accept_program_application`
-      reports the application already exists or is already accepted,
-      **that IS the skip signal** — log it and continue. Branch on the
-      call result, never on a read-back flag.
-
-      **The skip response carries no id — do not go looking for one.**
-      Connect's rejection body is `{error: 'validation_error', fields:
-      {organization: ['Organization already has an application for this
-      program.']}}` and names no `application_id` anywhere (observed on
-      `hh-poverty-targeting/20260828-0702`, ace#1800). That is fine: the
-      create derives the application server-side from
-      `(target_organization_slug, program_id)`, so nothing downstream
-      needs the id on this path. Note also that this error does NOT
-      distinguish `INVITED`/`APPLIED` from `ACCEPTED` — if the existing
-      application is merely pending, `connect_create_opportunity` is what
-      fails, loudly, with `Organization must have an accepted application
-      for this program.` Let that be the check; do not infer acceptance
-      from the skip alone.
-   3. The round-trip:
+   2. Run the round-trip **unconditionally** — attempt the transition and
+      treat the conflict as the skip (CLAUDE.md § Conventions). Do NOT try
+      to read the application state first: no list-program-applications
+      atom exists, and `connect_list_invites` is a BLIND read returning
+      `[]` even for an accepted invite.
 
       ```
       mcp__plugin_ace_ace-connect__connect_send_llo_invite({
-        organization_slug,                      // PM-side org running the program
+        organization_slug: <pm_org>,           // the program's org
         program_id,
-        organization: organization_slug,        // the org being invited — SAME org here
+        organization: <holding_org>,           // nm_org in pm-nm mode; pm_org when self-managed
       })
+      // → { program_application_id, status: 'invited' }  — CAPTURE the id NOW
       mcp__plugin_ace_ace-connect__connect_accept_program_application({
-        organization_slug,
-        program_id,                             // REQUIRED — the accept is program-scoped
-        application_id: <returned>,             // ProgramApplication UUID from the invite response
+        organization_slug: <pm_org>,
+        program_id,                            // REQUIRED — the accept is program-scoped
+        application_id: <program_application_id from the invite>,
       })
+      // → { status: 'accepted' }
       ```
 
-      **Do not paraphrase these signatures — the parameter names above are
-      the atoms' real ones, per `docs/atom-schemas.md`.** Every name in
-      this block was wrong until ace#1800: `connect_send_llo_invite` takes
-      `organization` (not `target_organization_slug`), and
-      `connect_accept_program_application` takes
-      `organization_slug` / `program_id` / `application_id` (not
-      `target_organization_slug` / `program_application_id`, and it had
-      dropped `program_id`, which is required). The wrong block was
-      invisible because it only executes on the FIRST Phase 4 run of a
-      program in a fresh PM org — every later run short-circuits on
-      "Organization already has an application for this program" and never
-      reaches the accept call.
+      **Capture `program_application_id` from the invite POST** and write
+      it to `products.connect.program_application_id` (Step 10). It is not
+      recoverable later: `connect_list_invites` is blind.
 
-      Capture `application_id` from the invite response;
-      `create_opportunity` may want it as a conditionally-required
-      input depending on Connect's contract evolution. (The original
-      `POST /api/programs/<id>/opportunities/` derives it server-side
-      from `target_organization_slug` + `program_id`, but newer
-      versions may require it explicitly — passing it doesn't hurt.)
+      The accept is Connect's automation shortcut: its REST view
+      (`ProgramApplicationAcceptView`) authorises the caller as an admin of
+      the **program's** org, so it is called with the PM org and the NM
+      admin identity plays no part. Observed live 2026-09-26: invite
+      `68b0a689-7326-4c13-a21e-ef492db3a738` → `invited`, accept →
+      `accepted`, then the NM-held create succeeded.
+
+      **Do not paraphrase these signatures — the parameter names above are
+      the atoms' real ones, per `docs/atom-schemas.md`.** Every name in this
+      block was wrong until ace#1800 (`connect_send_llo_invite` takes
+      `organization`, not `target_organization_slug`;
+      `connect_accept_program_application` takes `organization_slug` /
+      `program_id` / `application_id`). The wrong block was invisible
+      because it only executes on the FIRST Phase 4 run of a program —
+      every later run short-circuits on the conflict below.
+
+   3. **The skip response carries no id — do not go looking for one (ace#1800).** On a
+      reused program the invite rejects with `{error: 'validation_error',
+      fields: {organization: ['Organization already has an application for
+      this program.']}}` and names no `application_id` (observed on
+      `hh-poverty-targeting/20260828-0702`, ace#1800). That is fine: the
+      create derives the application server-side from
+      `(target_organization_slug, program_id)`. Record
+      `program_application_id: null` with the reason. This error does NOT
+      distinguish `INVITED`/`APPLIED` from `ACCEPTED` — if the existing
+      application is merely pending, `connect_create_opportunity` fails
+      loudly with `Organization must have an accepted application for this
+      program.` Let that be the check; do not infer acceptance from the skip.
 
    4. Log the round-trip result to `comms-log/observations.md` so the
-      operator can audit the silent state mutation. This is the only
-      Phase 4 step that mutates Connect state outside the opp
-      itself.
+      operator can audit the state mutation. This is the only Phase 4
+      step that mutates Connect state outside the opp itself.
 
 4. **Create the opportunity** via `connect_create_opportunity`.
 
@@ -290,9 +269,8 @@ alone makes the artifact land outside `4-connect` and fail
    from CommCareHQ synchronously, and syncs learn modules + deliver
    units in the same transaction. Args:
 
-   - `organization_slug`: the PM-side org that owns the program (see the
-     opening paragraph — `connect_orgs.pm_org`, or the reused program's
-     recorded org)
+   - `organization_slug`: `pm_org` from Step 3.0 — the org that owns the
+     program (`connect_orgs.pm_org`, or the reused program's recorded org)
    - `program_id`: from step 1 (program.md)
    - `name`: **construct as `"<run_id> · <PDD display name>"`** — the
      `run_id` from run_state (format `YYYYMMDD-HHMM`) as a FRONT prefix,
@@ -343,7 +321,11 @@ alone makes the artifact land outside `4-connect` and fail
      correcting the field does not correct frames that already show it,
      and re-shooting the job card needs an unclaimed opportunity. Get it
      right at create time.
-   - `target_organization_slug`: LLO org slug (must be ACCEPTED — see step 3)
+   - `target_organization_slug`: **`holding_org` from Step 3.0** — the
+     configured NM org in `pm-nm` mode (its application ACCEPTED in 3a).
+     Pass it explicitly in both modes. Read the create response's
+     `organization_slug` back and assert it equals `holding_org`; a
+     mismatch is a `[BLOCKER]` (the holding org cannot be changed later).
    - `start_date` / `end_date`: opportunity dates (YYYY-MM-DD; must fit
      inside the program window)
    - `total_budget`: an integer in the opp currency's whole unit (Connect
@@ -610,6 +592,23 @@ alone makes the artifact land outside `4-connect` and fail
    *actually has*. *(This atom still goes through the legacy HTML form —
    the verification config page isn't part of PR #1135's automation API.)*
 
+   **Call it with `organization_slug: <pm_org>` — the PROGRAM's org, never
+   the holding org.** The page is PM-only: Connect serves it only when the
+   requesting org manages the program AND is not the org holding the
+   opportunity (`is_opportunity_pm`; ace#2419). So:
+
+   - **`pm-nm` mode** → call at `pm_org`. Proved live 2026-09-26 on the
+     NM-held probe `7bfcb845-015c-416a-a200-9795c68dfc55`: at the PM-org
+     URL a rule saved (`form_field_rules_saved: 1`); at the NM-org URL the
+     page redirected.
+   - **`self-managed` mode** → the page can never serve (request org ==
+     holding org). The atom now raises a typed `verification_page_pm_only`
+     error instead of mis-blaming the payload. Do not retry; record every
+     intended rule under `verification.not_applied_reason` citing ace#2419,
+     name it in the build memo as a `[PLATFORM]` gap, and carry the rules
+     to Phase 9's partner opportunity. Configuring `ACE_CONNECT_NM_ORG` is
+     the fix.
+
    **Read this before writing anything: five of the eight documented
    flags no longer exist on Connect's form (dimagi-internal/ace#1013).**
    `duplicate`, `gps`, `gps_radius_meters`, `catchment_areas` and
@@ -692,6 +691,26 @@ alone makes the artifact land outside `4-connect` and fail
    atomic batch — the new automation API takes a list). Build one entry
    per unit in the PDD's payment plan; the entire request is rejected if
    any unit is invalid.
+
+   > **Which org URL, Steps 6–7 (live matrix 2026-09-26,
+   > `playbook/integrations/connect-api.md § PM→NM org-URL matrix`).**
+   > Pass `organization_slug: <pm_org>` to every call in Steps 6–9. The REST
+   > atoms here (`create_payment_unit(s)`, `activate_opportunity`,
+   > `send_flw_invite`) hit `/api/opportunities/<id>/…`, which authorises an
+   > admin of EITHER the program's org or the holding org, so the slug does
+   > not select anything — but the HTML reads DO read the org off the URL:
+   > `connect_list_payment_units` at the NM-org URL returns rows WITHOUT
+   > `payment_unit_uuid` / `amount` (observed on the probe), and
+   > `connect_get_learn_passing_score` is program-scoped (404 at the NM org).
+   > `pm_org` serves every surface Phase 4 uses.
+   >
+   > **ace#573 does not bite across orgs.** Connect keys the `CommCareApp` row
+   > — and so its `DeliverUnit`s — on the HOLDING org
+   > (`program/api/serializers.py`: `CommCareApp.objects.get_or_create(...,
+   > organization=<holding org>)`). The probe opportunity, held by the NM org
+   > and wired to a Deliver app whose PM-org DeliverUnit (7083) was already
+   > bound to another opportunity's payment unit, got a fresh DeliverUnit
+   > (7084) and its payment unit created cleanly.
 
    **ALWAYS pass `total_budget`** (the same whole-unit integer you set on
    the opportunity in Step 4) as a top-level arg to
@@ -1003,7 +1022,7 @@ alone makes the artifact land outside `4-connect` and fail
    Args:
    ```
    connect_send_flw_invite({
-     organization_slug: <PM-side org>,
+     organization_slug: <pm_org>,
      opportunity_id: <UUID from step 4>,
      phone_numbers: [process.env.ACE_E2E_PHONE]
    })
@@ -1034,7 +1053,7 @@ alone makes the artifact land outside `4-connect` and fail
 
    ```
    connect_list_flw_invites({
-     organization_slug: <PM-side org>,
+     organization_slug: <pm_org>,
      opportunity_id: <UUID from step 4>,
      phone: '${ACE_E2E_PHONE}'
    })
@@ -1223,8 +1242,13 @@ alone makes the artifact land outside `4-connect` and fail
    `parentFolderId = phaseFolderId` (the `4-connect` folder; surfaced at
    `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`):
    - Opportunity ID (UUID) and URL
-     (`<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`)
-   - All configuration details (dates, total_budget, target LLO org)
+     (`<CONNECT_BASE_URL>/a/<holding_org>/opportunity/<uuid>/`)
+   - **Both orgs and the mode:** program org (`pm_org`), holding org
+     (`holding_org`), `org_mode`, and the `program_application_id` from 3a.
+     The build memo's opportunity section states them too, so a reviewer
+     knows which org the opportunity lives in (and so which org's
+     membership lets them see it).
+   - All configuration details (dates, total_budget)
    - Verification flags (final values, including which were inherited
      from defaults vs. set explicitly)
    - Deliver units (from create response) and Payment units (from step 6)
@@ -1325,14 +1349,18 @@ alone makes the artifact land outside `4-connect` and fail
         products:
           connect:
             domain: <ACE_HQ_DOMAIN, e.g. connect-ace-prod>   # REQUIRED handoff key — phase-products contract + ace-web summary read it; omitting it fails verify_phase_products at the Phase 4 boundary fence (jjackson/ace#734)
-            organization_slug: <Connect org slug — the program's org: connect_orgs.pm_org, or the reused program's recorded org>
+            organization_slug: <= pm_org_slug; LEGACY key kept so pre-2026-09-26 readers still resolve>
+            pm_org_slug: <the program's org — Step 3.0 pm_org>             # PM-only pages (verification rules, passing score) resolve here
+            holding_org_slug: <the org HOLDING the opportunity — Step 3.0 holding_org>   # nm_org in pm-nm mode; reviewer access + opp URL resolve here
+            org_mode: <pm-nm | self-managed>
+            program_application_id: <UUID captured from the Step 3a invite POST | null on the already-applied skip>
             program:
               id: <UUID copied from opp.yaml.connect.program.id>
               url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
             opportunity:
               id: <UUID>                       # from Step 4 create response
               name: <verbatim display name>    # from Step 4 create response — the exact tile text Connect renders (em-dash, NOT slug-reassembled). Phase 6 reads this as its OPP_NAME envVar; never recompose.
-              url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
+              url: <CONNECT_BASE_URL>/a/<holding_org_slug>/opportunity/<uuid>/   # the HOLDING org's URL — where the opportunity lives
               connect_int_id: <integer | null>    # ConnectProd integer id = create-response int_id (Step 9)
             verification:                      # Step 5's persisted config (shape per lib/phase-products-schema.ts)
               form_field_rules:
@@ -1650,3 +1678,4 @@ decisions_append_rows({
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
 | 2026-09-16 | **Phase 4 creates ACE's build/QA opportunity, never the LLO's — the network-manager / program-manager model (operator decision 2026-09-16).** Step 3a's third branch said of a distinct `target_organization_slug`: *"Phase 9 already handled the round-trip; skip this sub-step."* **That precondition is impossible** — `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so no invite has been sent and none accepted when this skill runs; the create it waved through could only reject with `Organization must have an accepted application for this program`. Worse, had it succeeded the opportunity would be stranded: `target_organization_slug` is create-time only and `connect_update_opportunity` carries no org field, so it could never be handed to the LLO. That branch now HALTs with the remedy. Step 3 states the model: PM creates the program → invites the NM → **NM accepts** → PM creates the NM's opportunity (`llo-onboarding` § 2b, on freshly-copied `cc_app_id`s). Two opportunities is structural, not a workaround — it falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint. | ACE team |
+| 2026-09-26 | **Phase 4 runs the real PM→NM flow when `connect_orgs.nm_org` is configured (operator decision, Jon).** Step 3 was rewritten: 3.0 resolves `pm_org` / `holding_org` via `phase4Orgs()` (`lib/connect-orgs.ts`); 3a invites + accepts the HOLDING org (the NM org in `pm-nm` mode) and captures `program_application_id` from the invite POST; Step 4 passes `target_organization_slug = holding_org` and asserts the echo; Step 5 sets verification rules at `pm_org`, which Connect now serves because request org ≠ holding org (ace#2419 — a self-managed opp can never carry them; observed spark-facilitator/20260925-1536). Proved live 2026-09-26 on program `777f9060-8f26-43bb-aad1-b8f1d7df22db` / opportunity `7bfcb845-015c-416a-a200-9795c68dfc55` (NM-held; rule saved at the PM-org URL, refused at the NM-org URL). Step 10 records `pm_org_slug` + `holding_org_slug` (+ legacy `organization_slug`). The partner LLO's opportunity is still created in Phase 9. Self-managed behaviour is unchanged when `nm_org` is unset. | ACE team |

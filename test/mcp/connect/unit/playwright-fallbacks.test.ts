@@ -23,6 +23,7 @@ import { CompositeBackend } from '../../../../mcp/connect/backends/composite.js'
 import {
   ConnectError,
   ConnectValidationError,
+  CrossOrgCreateUnsupportedError,
   HttpError,
 } from '../../../../mcp/connect/errors.js';
 import type { ConnectClient } from '../../../../mcp/connect/client.js';
@@ -415,6 +416,35 @@ describe('PlaywrightBackend.createOpportunity', () => {
         deliver_app: { hq_server_url: 'https://india.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
       }),
     ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  // ace#2419 / spark-facilitator/20260925-1536: Phase 4 now requires the
+  // opportunity to be HELD by the configured NM org. The HTML init wizard can
+  // only create under the org in its URL, so a differing target used to WARN
+  // and create under the PM org — an unrepairable wrong holding org. It must
+  // refuse, and refuse before touching the network.
+  it('THROWS CrossOrgCreateUnsupportedError (no request made) when target_organization_slug differs', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext([], captured);
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const err = await backend
+      .createOpportunity({
+        organization_slug: 'pm-org',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'nm-org',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 1,
+        learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
+        deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+      })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(CrossOrgCreateUnsupportedError);
+    expect(err.toJSON()).toMatchObject({ error: 'cross_org_create_unsupported', acting_org: 'pm-org', target_org: 'nm-org' });
+    expect(captured).toEqual([]);
   });
 
   it('rejects mismatched api_key across learn_app and deliver_app', async () => {

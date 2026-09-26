@@ -278,8 +278,8 @@ of ACE, so it is configuration — resolved in exactly one place,
 
 | Key (installed `.env`) | Role | Unset |
 |---|---|---|
-| `ACE_CONNECT_PM_ORG` | Program-manager org: creates programs and ACE's own build/QA opportunity (Phase 4), sends LLO invites, owns solicitations' programs. | The legacy default in `lib/connect-orgs.ts`, so an install that never set it behaves exactly as before. |
-| `ACE_CONNECT_NM_ORG` | Network-manager org ACE controls. **Not consumed yet** — the PM→NM flow change that reads it is a follow-up. | `null` (not configured). |
+| `ACE_CONNECT_PM_ORG` | Program-manager org: creates programs, invites + accepts the NM org (Phase 4), sets PM-only config (verification rules), sends partner LLO invites, owns solicitations' programs. Must have Program Manager enabled. | The legacy default in `lib/connect-orgs.ts`, so an install that never set it behaves exactly as before. |
+| `ACE_CONNECT_NM_ORG` | Network-manager org ACE controls. **Holds Phase 4's build/QA opportunity** (`target_organization_slug`), so every run exercises the real PM→NM flow (operator decision 2026-09-26). | `null` → Phase 4 falls back to the legacy self-managed shape (PM org holds its own opportunity; verification rules cannot be set — ace#2419). |
 
 **Where to set them — and why not `.env.tpl`.** Put the lines in the
 *installed* `.env` (`${CLAUDE_PLUGIN_DATA}/.env`). They are deliberately NOT
@@ -298,8 +298,9 @@ phase dispatch that acts in Connect, and skills say "the configured PM org
 `/ace:run` gets the same block by running `bash bin/ace-doctor --preflight
 --no-live`. The full `/ace:doctor` adds one live check: `GET
 /a/<pm_org>/program/` with the ACE session (200 = the org resolves and ace@ can
-read its programs; 404 = the slug does not resolve for ace@). The NM org gets
-no live check while nothing consumes it. *Enforced:*
+read its programs; 404 = the slug does not resolve for ace@). The NM org has no
+live doctor check yet — the Phase 4 invite (a 400 naming the org) is where a bad
+NM slug surfaces. *Enforced:*
 `test/lib/connect-orgs.test.ts`, and `test/skills/no-hardcoded-connect-org.test.ts`
 fails on any org slug literal in skills/agents/commands/templates/mcp/playbook
 outside its reasoned allowlist.
@@ -310,6 +311,63 @@ already owns is reused via `opp.yaml.connect.program`; its recorded URL
 authoritative for every call against that program. Changing
 `ACE_CONNECT_PM_ORG` affects programs created from then on; it never
 re-homes (and must never orphan) one that exists.
+
+### PM→NM org-URL matrix (live, 2026-09-26)
+
+Phase 4 in `pm-nm` mode acts on an opportunity whose program org (PM) and
+holding org (NM) differ, so every opportunity-scoped atom is reachable at two
+URLs. Connect's authority is `org_opportunity_access` + `is_opportunity_pm`
+(`commcare_connect/program/utils.py`): the holding org AND the program org both
+get ADMIN on the opportunity, but `is_opportunity_pm` — which gates PM-only
+views — is `ADMIN and request.org != opportunity.organization`. The REST
+automation views (`/api/opportunities/<id>/…`, `/api/programs/<id>/…`) take no
+org from the URL at all and authorise an admin of either org.
+
+**Probe objects** (throwaway, left in place, named for sweep): program
+`777f9060-8f26-43bb-aad1-b8f1d7df22db` ("ACE-IT-20260926-PMNM PM→NM probe") in
+the PM org `ace-pm-org`; application `68b0a689-7326-4c13-a21e-ef492db3a738`
+(`ace-nm-org`, accepted); opportunity `7bfcb845-015c-416a-a200-9795c68dfc55`
+(int 2297, `20260926-0000 · ACE-IT PM→NM probe`, is_test, held by `ace-nm-org`,
+active); deliver unit 7084; payment unit `c4d325e3-b58f-417d-8b8c-74cc94a4cfae`
+(server id 2593); one form_field_rule (`probe meeting yes`); FLW invite for the
+unregistered test number `+74260009999`. Apps: spark-facilitator/20260925-1536's
+released Learn `cc3aaedcfa9a47729873d4915e12d226` / Deliver
+`0d877e0f7bc14382b34f4a843803ca0a` on `connect-ace-prod`.
+
+| Atom | Transport | `/a/<pm>/…` | `/a/<nm>/…` | Evidence |
+|---|---|---|---|---|
+| `connect_create_program` | REST | ✅ | n/a | program above |
+| `connect_send_llo_invite` (organization = nm) | REST, org-agnostic | ✅ | — | → `status: invited`, `program_application_id` returned |
+| `connect_accept_program_application` | REST (`ProgramApplicationAcceptView` authorises a **program-org** admin) | ✅ | — | → `status: accepted` |
+| `connect_create_opportunity` (target = nm) | REST | ✅ | — | create response `organization_slug: ace-nm-org`; DU 7084 ≠ the PM-org DU 7083 for the same app |
+| `connect_get_opportunity` | HTML | ✅ | ✅ | identical fields both; `dashboard_read: setup_incomplete` pre-PU, `ok` after activation. NB the atom ECHOES the input slug as `organization_slug` — it is not the holding org |
+| `connect_list_deliver_units` | HTML | ✅ | ✅ | same `server_id` 7084 |
+| `connect_set_verification_flags` | HTML, **PM-only** | ✅ `form_field_rules_saved: 1` | ❌ 302 → detail (now typed `verification_page_pm_only`) | ace#2419 resolved for `pm-nm` mode |
+| `connect_create_payment_unit(s)` | REST, org-agnostic | ✅ | (same endpoint) | PU 2593 on DU 7084 |
+| `connect_activate_opportunity` | REST, org-agnostic | (same endpoint) | ✅ | `active: true` |
+| `connect_send_flw_invite` | REST, org-agnostic | ✅ | (same endpoint) | `invited_count: 1` |
+| `connect_list_flw_invites` | HTML | ✅ | ✅ | row present both |
+| `connect_list_payment_units` | HTML | ✅ full row | ⚠️ row WITHOUT `payment_unit_uuid` / `amount` / `org_amount` | the NM-org table omits those columns |
+| `connect_get_learn_progress` / `connect_get_deliver_progress` | HTML | ✅ | ✅ | empty worker lists both |
+| `connect_list_invoices` | HTML | ✅ | ✅ | `[]` both. Upstream: `invoice_pay` / ticket-link are PM-only (`is_opportunity_pm`); invoice create/status label the actor by org |
+| `connect_get_learn_passing_score` | HTML, program-scoped | ✅ 80 | ❌ 404 | the init-edit form lives under the program's org |
+| `connect_list_opportunities` | HTML | ✅ lists it | ❌ returns 0 rows | upstream `OpportunityData.get_base_qs` includes `organization=org` opps, so this is an ACE parser gap on the NM (non-PM) table — ace#2506 |
+
+**Rule for ACE: act at the PM org's URL for everything in Phases 4–6.** Every
+surface above serves there, including the two that do not serve at the NM org.
+The holding org matters for WHERE the opportunity lives (its canonical URL,
+reviewer membership — `share-run-access` grants viewer in the holding org, which
+`org_opportunity_access` gives VIEW on the opp) and for `target_organization_slug`.
+
+**ace#573 does not cross orgs.** `ManagedOpportunityCreateSerializer` keys
+`CommCareApp.objects.get_or_create(...)` on the HOLDING org, and
+`DeliverUnit.get_or_create(app=deliver_app, …)` hangs off that row. The probe
+reused a Deliver app whose PM-org DeliverUnit (7083) was already bound to
+spark-facilitator/20260925-1536's payment unit; the NM-held opportunity got a
+fresh DeliverUnit (7084) and its payment unit created without touching 7083.
+Within ONE holding org the constraint still applies — each run builds fresh
+apps, so it does not bite Phase 4. The same keying means the Learn
+`passing_score` row is per holding org too.
 
 ### Re-running probes
 

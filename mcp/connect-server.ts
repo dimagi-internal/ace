@@ -462,7 +462,11 @@ server.tool('connect_create_opportunity',
         'summary doc; the headline lives here.',
     ),
     target_organization_slug: z.string().optional().describe(
-      'LLO org slug. Optional — if omitted, the opp is created under the PM org: the REST ' +
+      'HOLDING org slug — the org the opportunity is created under and lives in forever ' +
+      '(create-time only; connect_update_opportunity has no org field). Phase 4 passes the ' +
+      'configured NM org here when connect_orgs.nm_org is set (the PM->NM flow; the PM-only ' +
+      'verification-rules page then serves at the PM org URL — ace#2419), after inviting and ' +
+      'accepting it. Optional — if omitted, the opp is created under the PM org: the REST ' +
       'backend sends `organization_slug` (the program-running org) as the holding org. ' +
       'OMITTING DOES NOT WAIVE the accepted-application requirement — it relocates it: the ' +
       'HOLDING org (the PM org, when omitted) must hold an ACCEPTED ProgramApplication for ' +
@@ -470,9 +474,9 @@ server.tool('connect_create_opportunity',
       'for this program" (jjackson/ace#1251 — run the self-managed invite+accept round-trip ' +
       'first, connect-opp-setup Step 3a). The live deployment also REJECTS organization=None ' +
       'with "organization: This field is required" (HTTP 400, observed malaria-rdt/20260604-1604, ' +
-      'jjackson/ace#700), so do NOT rely on a null organization. Pass this only when an LLO has ' +
-      'an ACCEPTED program application and you want to assign FLWs to that org; Phase 9 ' +
-      'reassigns the awarded LLO post-award.',
+      'jjackson/ace#700), so do NOT rely on a null organization. The HTML fallback cannot ' +
+      'create cross-org and THROWS cross_org_create_unsupported rather than silently creating ' +
+      'under the PM org.',
     ),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Must fit inside the program window.'),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -617,7 +621,7 @@ const VerificationFlagsZ = z.object({
 });
 
 server.tool('connect_set_verification_flags',
-  'Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-deliver-unit `duration` are backed by fields that still exist on the form. `duplicate`, `gps`, `catchment_areas`, `gps_radius_meters` and `deliver_unit_checks[].check_attachments` are now REFUSED when truthy — the atom fetches the form, finds no such input, and throws a typed `unsupported_verification_flag` error BEFORE posting, because Django drops unrecognized keys and the old behaviour returned `ok: true` for a control that was never set. The support test reads the fetched page, not a hardcoded list, so it relaxes by itself if Connect restores a field. `form_field_rules` is the only surface on which a PDD Evidence-Model Layer A predicate can be enforced server-side; it is additive and idempotent, and its `name` is capped at 25 chars (a longer name silently fails the WHOLE formset). Durations are `deliver_unit_checks[].duration_minutes` (MINUTES, per the form label); the legacy `duration_seconds` spelling is rejected rather than reinterpreted. The response carries `form_field_rules_saved` — the count Connect actually persisted — which is the only evidence the write landed.',
+  'Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-deliver-unit `duration` are backed by fields that still exist on the form. `duplicate`, `gps`, `catchment_areas`, `gps_radius_meters` and `deliver_unit_checks[].check_attachments` are now REFUSED when truthy — the atom fetches the form, finds no such input, and throws a typed `unsupported_verification_flag` error BEFORE posting, because Django drops unrecognized keys and the old behaviour returned `ok: true` for a control that was never set. The support test reads the fetched page, not a hardcoded list, so it relaxes by itself if Connect restores a field. `form_field_rules` is the only surface on which a PDD Evidence-Model Layer A predicate can be enforced server-side; it is additive and idempotent, and its `name` is capped at 25 chars (a longer name silently fails the WHOLE formset). Durations are `deliver_unit_checks[].duration_minutes` (MINUTES, per the form label); the legacy `duration_seconds` spelling is rejected rather than reinterpreted. The response carries `form_field_rules_saved` — the count Connect actually persisted — which is the only evidence the write landed. WHICH ORG: the page is PM-only — Connect serves it only when the requesting org manages the program AND is not the org holding the opportunity (is_opportunity_pm). Pass the PROGRAM org as `organization_slug`; at the holding org (or on a self-managed opp, where they are the same) the page redirects and this throws a typed `verification_page_pm_only` error (ace#2419; live-verified 2026-09-26 on an NM-held opportunity).',
   { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
   async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );

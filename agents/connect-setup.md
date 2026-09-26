@@ -65,8 +65,12 @@ Invoke the `connect-program-setup` skill.
   `connect_orgs:`; HALT when `connect_orgs` reports `fail`). A reused program
   keeps the org recorded in `opp.yaml.connect.program.url`. Pass
   `connect_orgs` through to `connect-program-setup` and `connect-opp-setup`.
-  `connect_orgs.nm_org` is not used by this phase until the follow-up PM→NM
-  flow change.
+  **When `connect_orgs.nm_org` is configured, Phase 4 runs the real PM→NM
+  flow:** the program is in the PM org, `connect-opp-setup` invites + accepts
+  the NM org and creates the opportunity HELD by it, and verification rules
+  are set at the PM org's URL (Connect serves that PM-only page only when
+  request org ≠ holding org — ace#2419). Unset → the legacy self-managed
+  shape. `lib/connect-orgs.ts` `phase4Orgs()` is the rule.
 - **Output:** Connect program created or reused; details written to
   `connect-program-setup.md` (and the `-eval_verdict.yaml`) with
   `parentFolderId = phaseFolderId` (the `4-connect` folder), surfaced under
@@ -157,7 +161,9 @@ Write the phase summary to `connect-setup_summary.md` with
   `app-screenshot-capture` cannot claim a non-active opp.
 - Verification flags as configured
 - Payment units created (count, total budget)
-- Connect deep-link: `<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`
+- Orgs: `pm_org_slug` (program) and `holding_org_slug` (opportunity) plus
+  `org_mode` (`pm-nm` | `self-managed`)
+- Connect deep-link: `<CONNECT_BASE_URL>/a/<holding_org_slug>/opportunity/<uuid>/`
 - **Build memo:** its link (`products.connect.build_memo.web_view_link`), and
   `complete` / `gaps[]` exactly as Step 3 returned them — a memo with gaps is
   reported as such, never as complete.

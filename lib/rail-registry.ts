@@ -252,6 +252,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/pdd-to-work-order-qa/checks.test.ts': { issues: ['ace#1609'], observed: 'malaria-itn-app/20260521-1025' },
   'test/skills/payable-cap-wiring.test.ts': { issues: ['ace#2148'], observed: 'spark-facilitator/20260906-2233' },
   'test/skills/per-run-test-user-switch.test.ts': { issues: ['ace#1289'] },
+  'test/skills/phase4-pm-nm-holding-org.test.ts': { issues: ['ace#2419'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/post-build-components-not-briefed.test.ts': { issues: ['ace#1632'], observed: 'bednet-check-2-visit/20260825-1310' },
   'test/skills/predictive-guard-citation.test.ts': { issues: ['ace#1238'], observed: 'turmeric-market-study/20260914-1742' },
   'test/skills/qa-check-count-drift.test.ts': { issues: ['ace#2272', 'ace#1420', 'ace#1783'], observed: 'bednet-check-2-visit/20260908-1544' },

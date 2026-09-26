@@ -182,7 +182,7 @@ twin gate: dimagi-internal/ace#1604.
 
       ```
       connect_list_flw_invites({
-        organization_slug: <run_state …connect.organization_slug>,
+        organization_slug: <run_state …connect.pm_org_slug, else legacy …connect.organization_slug>,  # the PM org serves every Phase 6 read, incl. on an NM-held opp (connect-api.md § PM→NM org-URL matrix)
         opportunity_id:    <run_state …connect.opportunity.id>,
         phone: '${ACE_E2E_PHONE}'
       })
