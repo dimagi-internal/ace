@@ -65,7 +65,7 @@ import {
 } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import { classifyRunClaims } from '../lib/run-claims.js';
-import { classifyCaptionBacking } from '../lib/caption-backing.js';
+import { classifyCaptionBacking, extractDeckSpecCitations } from '../lib/caption-backing.js';
 import { findBoldSpans, boldSpanRequests } from '../lib/docs-bold-spans.js';
 import { insertEmailBlocks } from '../lib/docs-email-block.js';
 import {
@@ -1463,6 +1463,32 @@ export async function handleReadFile(
     returned_length,
     has_more: offset + returned_length < total_length,
   };
+}
+
+/**
+ * Read the PUBLISHED artifact for `verify_caption_backing` so its citations
+ * survive (dimagi-internal/ace#2492).
+ *
+ * A rendered training guide is a native Google Doc, and the default
+ * `text/plain` export keeps a hyperlink's TEXT but drops its TARGET — so the
+ * `drive.google.com/file/d/<id>` citations `extractCitedFileIds` looks for are
+ * not there, and the fence returned `cited_total: 0, ok: true` on every
+ * FLW/LLO guide it was made mandatory for. The markdown export keeps the link
+ * targets. A deck spec is read plain (it is YAML, and the markdown exporter
+ * escapes it past parsing), which is why the plain read comes first and the
+ * markdown re-read happens only for a Doc that does not parse as a deck spec.
+ */
+export async function readPublishedForCaptionBacking(
+  fileId: string,
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<string> {
+  const plain = await handleReadFile({ fileId }, driveClient, opts);
+  const text = plain.content ?? '';
+  if (plain.mimeType !== 'application/vnd.google-apps.document') return text;
+  if (extractDeckSpecCitations(text) !== null) return text;
+  const md = await handleReadFile({ fileId, exportAs: 'text/markdown' }, driveClient, opts);
+  return md.content ?? text;
 }
 
 /**
@@ -4004,13 +4030,13 @@ server.tool(
   },
   async ({ publishedFileId, manifestFileId, poolFileIds }) => {
     try {
-      const pub = await handleReadFile({ fileId: publishedFileId }, drive);
+      const publishedText = await readPublishedForCaptionBacking(publishedFileId, drive);
       const man = await handleReadFile({ fileId: manifestFileId }, drive);
       const manifestText = man.content ?? '';
       const manifest = manifestText.trim() ? YAML.parse(manifestText) : null;
       return result(
         classifyCaptionBacking({
-          published: pub.content ?? '',
+          published: publishedText,
           manifest,
           poolFileIds,
         }),
