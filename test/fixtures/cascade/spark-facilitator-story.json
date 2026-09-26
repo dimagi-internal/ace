@@ -1,0 +1,48 @@
+{
+  "partners": [
+    { "label": "Partner A", "opportunity_id": 10082, "workers": 12 },
+    { "label": "Partner B", "opportunity_id": 10083, "workers": 12 },
+    { "label": "Partner C", "opportunity_id": 10084, "workers": 12 }
+  ],
+  "weeks": 13,
+  "worker_roster": [
+    "cbf_a01", "cbf_a02", "cbf_a03", "cbf_a04", "cbf_a05", "cbf_a06", "cbf_a07", "cbf_a08", "cbf_a09", "cbf_a10", "cbf_a11", "cbf_a12",
+    "cbf_b01", "cbf_b02", "cbf_b03", "cbf_b04", "cbf_b05", "cbf_b06", "cbf_b07", "cbf_b08", "cbf_b09", "cbf_b10", "cbf_b11", "cbf_b12",
+    "cbf_c01", "cbf_c02", "cbf_c03", "cbf_c04", "cbf_c05", "cbf_c06", "cbf_c07", "cbf_c08", "cbf_c09", "cbf_c10", "cbf_c11", "cbf_c12"
+  ],
+  "signals": [
+    {
+      "kind": "lagging_partner",
+      "carrier": "Partner C",
+      "indicator": "SF_P1",
+      "higher_is_better": true,
+      "pdd_ref": "PDD §8.1 P1 (target ≥ 80%); not-held reason codes §5.4 screen 3a",
+      "visible_as": "Partner C's meeting regularity row is the only one below the 80% target, because from week 6 its planned meetings are recorded as not held (poor mobilization, transport difficulty)."
+    },
+    {
+      "kind": "standout_worker",
+      "carrier": "cbf_b03",
+      "indicator": "SF_S4",
+      "higher_is_better": true,
+      "pdd_ref": "PDD §8.2 S4 female participation",
+      "visible_as": "In Partner B's facilitator table one CBF's women-who-spoke figure is about double every peer's, and their community reaches Step 7 first."
+    },
+    {
+      "kind": "data_quality",
+      "carrier": "cbf_a07",
+      "indicator": "SF_D1",
+      "higher_is_better": false,
+      "pdd_ref": "PDD §5.4 repeat_counts_flag; §7.2 S-1 flagged stratum",
+      "visible_as": "One Partner A facilitator files identical men/women attendance at nearly every meeting, so their repeat-count rate stands alone while every other CBF sits near zero."
+    },
+    {
+      "kind": "trend",
+      "carrier": "Partner B",
+      "indicator": "SF_S2",
+      "higher_is_better": true,
+      "trend_direction": "up",
+      "pdd_ref": "PDD §8.2 S2 female attendance",
+      "visible_as": "Across the 13 saved weekly reports, Partner B's share of women attending climbs from about a third to level with the other partners."
+    }
+  ]
+}

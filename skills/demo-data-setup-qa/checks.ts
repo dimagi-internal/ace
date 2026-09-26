@@ -34,9 +34,60 @@ import type {
   ScrubReport,
   UnparsedExpression,
 } from '../../lib/dataset-constraints';
+import {
+  checkCascadeStoryPlan,
+  verifyCascadeStoryLanded,
+  type CascadeStoryPlan,
+  type GradedPeriod,
+} from '../../lib/cascade-story';
 
-/** Templates whose workflows are PROGRAM-owned (cross-opp rollups). */
-const PROGRAM_OWNED_TEMPLATES = ['program_admin_report', 'audit_par'];
+/**
+ * Check 21 — the cascade story was planned AND landed (ace#2510).
+ *
+ * The plan is gated before generation; this re-runs that gate and then asks
+ * the only authority on what a viewer sees — the programme report's SAVED runs
+ * — whether each authored signal is actually there. A story that did not land
+ * films a partner table where nothing stands out, which no narration fixes.
+ */
+export function checkCascadeStory(
+  plan: CascadeStoryPlan | null | undefined,
+  registryIndicatorIds: readonly string[],
+  periods: GradedPeriod[],
+): QACheckResult {
+  if (!plan) {
+    return {
+      pass: false,
+      detail: '7-synthetic/cascade-story.yaml is missing — the ace-run provider must author the story before generating',
+      auto_fix_hint: 'write the CascadeStoryPlan per skills/demo-data-setup § Process (ace-run) C3, then regenerate',
+    };
+  }
+  const planned = checkCascadeStoryPlan(plan, registryIndicatorIds);
+  if (planned.verdict === 'fail') {
+    return {
+      pass: false,
+      detail: planned.findings.map((f) => `${f.signal ?? 'plan'}: ${f.detail}`).join('; '),
+      auto_fix_hint: 'fix the story plan (all four signals, each on a registry indicator with a PDD citation) before generating',
+    };
+  }
+  const landed = verifyCascadeStoryLanded(plan, periods);
+  const lines = landed.results.map((r) => `${r.kind} ${r.landed ? 'landed' : 'DID NOT LAND'} — ${r.observed}`);
+  if (landed.verdict === 'pass') return { pass: true, detail: lines.join('; ') };
+  return {
+    pass: false,
+    detail: lines.join('; '),
+    auto_fix_hint:
+      'change the transplant pool for the signal that did not land (widen the separation, fix the carrier), ' +
+      'regenerate that partner, rebuild history (demo-data-setup § C5) and re-verify. Never re-describe the ' +
+      'story to match what came out.',
+  };
+}
+
+/**
+ * Templates whose workflows are PROGRAM-owned (cross-opp rollups). The
+ * indicator programme report is created with `program_id` by
+ * demo-data-setup § C4 (ace#2510), so its run URL carries `&program_id=`.
+ */
+const PROGRAM_OWNED_TEMPLATES = ['program_admin_report', 'audit_par', 'indicator_programme_report'];
 
 export interface DashboardRef {
   key: string;

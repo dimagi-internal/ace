@@ -431,6 +431,48 @@ const Walkthrough = z
   })
   .passthrough();
 
+/**
+ * The semantic-layer cascade Phase 7 builds (ace#2510): a registry authored
+ * from the PDD, a multi-partner synthetic programme, and the labs indicator
+ * trio over it. Every id is a labs object a re-run would duplicate, so each is
+ * written the moment its create call returns (ace#2412) — the typed keys are
+ * exactly the ones `/ace:sweep` and the narrative need to find them again.
+ */
+const LabsRunLink = z
+  .object({
+    workflow_id: z.number(),
+    run_id: z.number().optional(),
+    url: z.string().url().optional(),
+  })
+  .passthrough();
+
+const CascadeProducts = z
+  .object({
+    registry: z
+      .object({
+        registry_id: z.number(),
+        program_id: z.number().optional(),
+        version: z.number().optional(),
+        indicators: z.array(z.string()).optional(),
+      })
+      .passthrough()
+      .optional(),
+    program_id: z.number().optional(),
+    partners: z
+      .array(z.object({ label: z.string(), opportunity_id: z.number() }).passthrough())
+      .optional(),
+    programme_report: LabsRunLink.optional(),
+    worker_review: LabsRunLink.optional(),
+    opp_reports: z.array(LabsRunLink.extend({ opportunity_id: z.number(), partner: z.string().optional() })).optional(),
+    cohort_id: z.number().optional(),
+    history: z
+      .object({ first_period_end: z.string(), last_period_end: z.string(), run_ids: z.array(z.number()) })
+      .passthrough()
+      .optional(),
+    story_verified: z.boolean().optional(),
+  })
+  .passthrough();
+
 const SyntheticProducts = z
   .object({
     synthetic: z
@@ -438,6 +480,7 @@ const SyntheticProducts = z
         walkthroughs: z.array(Walkthrough).optional(),
         workflows: z.unknown().optional(),
         labs_opp_id: z.union([z.string(), z.number()]).optional(),
+        cascade: CascadeProducts.optional(),
       })
       .passthrough()
       .optional(),
@@ -691,6 +734,11 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     'synthetic.workflows': 'demo-data-setup',
     'synthetic.source': 'demo-data-setup',
     'synthetic.render_code_patched_this_run': 'demo-data-setup',
+    // The semantic-layer cascade (ace#2510): the registry block is written by
+    // the skill that authors it; the programme, trio and history by
+    // demo-data-setup (ace-run), which builds them over that registry.
+    'synthetic.cascade': 'demo-data-setup',
+    'synthetic.cascade.registry': 'semantic-registry-author',
     // demo-narrative: `{why_brief_ref, unified_spec_ref, validated}`
     // (skills/demo-narrative/SKILL.md § Products).
     'synthetic.narrative': 'demo-narrative',

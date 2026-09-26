@@ -908,6 +908,154 @@
                       "string",
                       "number"
                     ]
+                  },
+                  "cascade": {
+                    "type": "object",
+                    "properties": {
+                      "registry": {
+                        "type": "object",
+                        "properties": {
+                          "registry_id": {
+                            "type": "number"
+                          },
+                          "program_id": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          },
+                          "indicators": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "registry_id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "program_id": {
+                        "type": "number"
+                      },
+                      "partners": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "opportunity_id": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "label",
+                            "opportunity_id"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "programme_report": {
+                        "type": "object",
+                        "properties": {
+                          "workflow_id": {
+                            "type": "number"
+                          },
+                          "run_id": {
+                            "type": "number"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        },
+                        "required": [
+                          "workflow_id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "worker_review": {
+                        "type": "object",
+                        "properties": {
+                          "workflow_id": {
+                            "type": "number"
+                          },
+                          "run_id": {
+                            "type": "number"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        },
+                        "required": [
+                          "workflow_id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "opp_reports": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "workflow_id": {
+                              "type": "number"
+                            },
+                            "run_id": {
+                              "type": "number"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "opportunity_id": {
+                              "type": "number"
+                            },
+                            "partner": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workflow_id",
+                            "opportunity_id"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "cohort_id": {
+                        "type": "number"
+                      },
+                      "history": {
+                        "type": "object",
+                        "properties": {
+                          "first_period_end": {
+                            "type": "string"
+                          },
+                          "last_period_end": {
+                            "type": "string"
+                          },
+                          "run_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "required": [
+                          "first_period_end",
+                          "last_period_end",
+                          "run_ids"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "story_verified": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -925,6 +1073,8 @@
         "synthetic.workflows": "demo-data-setup",
         "synthetic.source": "demo-data-setup",
         "synthetic.render_code_patched_this_run": "demo-data-setup",
+        "synthetic.cascade": "demo-data-setup",
+        "synthetic.cascade.registry": "semantic-registry-author",
         "synthetic.narrative": "demo-narrative",
         "synthetic.walkthroughs": "synthetic-data-and-workflows",
         "synthetic.promoted_template": "synthetic-data-and-workflows",

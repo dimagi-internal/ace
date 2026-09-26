@@ -32,7 +32,7 @@ section.
 |---|---|---|
 | `denovo` | a short demo brief (this skill) | **implemented (Plan A)** |
 | `clone` | a real Connect opportunity id | **implemented (Plan B)** — `synthetic_profile_from_prod`(mirror) → `synthetic_generate_from_manifest` → the SAME dashboard-authoring spine as denovo, + a fidelity gate |
-| `ace-run` | the Phase 4 opp of a full `/ace:run` | Phase 7 convergence (Plan C) — Phase 7 becomes this provider |
+| `ace-run` | the Phase 4 opp of a full `/ace:run` | Phase 7 convergence (Plan C) — Phase 7 becomes this provider. **Builds the semantic-layer cascade** (multi-partner synthetic programme + indicator report trio over a PDD-authored registry) — § Process (ace-run) C0–C7, ace#2510 |
 
 All three converge on the **same handoff**: the realized `${var}` map. Only the
 front half (how the labs-only opp + its data come to exist) differs.
@@ -50,6 +50,8 @@ front half (how the labs-only opp + its data come to exist) differs.
 
 - `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs
 - `<demo-run>/7-synthetic/realized.json` — **the handoff**: a **FLAT** `${var}` map (DDD substitutes `${var}` verbatim — keep it flat, no nesting). One `<key>_par_url` per dashboard the demo builds, plus `primary_par_url` (the dashboard the walkthrough opens on) and any `<name>_url` drills. E.g. `{ "primary_par_url": ..., "program_admin_par_url": ..., "child_recovery_par_url": ..., "audit_good_url": ... }`
+- `<demo-run>/7-synthetic/cascade-story.yaml` — **ace-run only**: the story plan (partners, weeks, roster, four authored signals) that § C3 gates and § C6 verifies against the saved runs (`lib/cascade-story.ts`)
+- `run_state.yaml…products.synthetic.cascade` — **ace-run only**: registry, program, partners, programme report, worker review, opp reports, cohort, history (§ C7)
 - `<demo-run>/7-synthetic/demo-data-setup.md` — run summary (labs opp id, record counts, one par_url per dashboard, warnings)
 - `<demo-run>/7-synthetic/dashboard-terms.yaml` — the step-3d legibility
   enumeration, one block per dashboard, so what a lay viewer must read and what
@@ -1341,6 +1343,160 @@ own headline anomaly, a PDD does not hand you one.
    `phases.connect-setup.products.connect.opportunity` (`connect_int_id`, apps) and
    the PDD (`inputs/pdd.md`) / deploy summaries — the KPI fields, deliver units,
    and personas come from the built apps, not invented.
+
+### ace-run builds the semantic-layer cascade (default — ace#2510)
+
+Operator decision (Jon, 2026-09-26): every run produces a **programme cascade
+story**, not a bespoke dashboard — *"the synthetic data is going to prove to be a
+key part of people wrapping their head around the system."* After 1a the ace-run
+provider runs **C0–C7** below; steps 1b–2a and the Step 0 template spine that
+follow are the legacy single-opportunity path, used only when the operator asks
+for it (`--legacy-dashboards`) or the archetype has no followed entity worth a
+cascade.
+
+What the viewer gets, all live in labs and all following the deployed templates
+(never forked):
+
+| level | surface | who it is for |
+|---|---|---|
+| programme → partner → opportunity → worker | `indicator_programme_report` (program-owned, multi-opp, saved weekly runs) | the programme manager |
+| worker → case → the case's visits | its companion `indicator_worker_review` (created with it) | the PM drilling in |
+| one partner's opportunity + anonymous benchmark | `indicator_opp_report`, one per partner, receiving the programme's saved runs by hand-down | that partner's network manager |
+
+Worked, live example (all ids real, `spark-facilitator/20260926-1800`):
+`docs/examples/cascade/spark-facilitator/` (pool, pipeline, registry scripts);
+programme report 6371, worker review 6373, opp reports 6376/6378/6380, program
+10082, registry 6369, cohort 5.
+
+**C0. Size the story.** Default 3 partners × ~12 workers × ~13 weeks. For a
+programme whose PDD fixes one entity per worker (Spark: one community per CBF),
+a worker is a row in the partner table and a case is that worker's entity. The
+real partner org of the run (`connect_orgs.nm_org`, e.g. `ace-nm-org`) is **never**
+touched — partners exist only as `llo_map` labels over labs-only synthetic
+opportunities. Label them neutrally (`Partner A/B/C`) unless the PDD names
+candidate LLOs, and even then prefer neutral labels: a synthetic figure next to a
+real organisation's name is a claim about that organisation.
+
+**C1. Create the synthetic programme.** One labs-only opportunity per partner:
+the first `synthetic_create_labs_only({label, gdrive_folder_id: 'pending-generate',
+org_name, program_name, allowed_domains: ['@dimagi.com', '@dimagi-ai.com']})`
+leaves `program_id` unset, which makes its own id the program id; every later
+partner passes `program_id: <that id>`. Include ACE's own domain in
+`allowed_domains` or the ACE identity cannot read what it just created. Write each
+`{label, opportunity_id}` to `products.synthetic.cascade.partners` and
+`program_id` immediately (ace#2412).
+
+**C2. Registry.** Invoke `semantic-registry-author` with the partners and
+program id; it validates, runs `semantic-registry-author-qa`, and creates the
+record. Do not generate data against a registry that has not passed QA — the
+story signals are authored against its indicator ids.
+
+**C3. Author the story, then the data.** Write `7-synthetic/cascade-story.yaml`
+(`lib/cascade-story.ts` `CascadeStoryPlan`): partners, weeks, worker roster, and
+the four signals — `lagging_partner`, `standout_worker`, `data_quality`, `trend` —
+each naming a registry indicator, the PDD clause it derives from (`pdd_ref`, same
+rule as step 1c: an uncited signal is an invented one) and what a viewer sees.
+Gate it with `checkCascadeStoryPlan(plan, registryIndicatorIds)` BEFORE generating.
+The data-quality signal is step 1c's obligation carried over: pick it from the
+PDD's own review flags / verification controls, never a fraud pattern the design
+does not describe.
+
+Then generate one manifest per partner with `synthetic_generate_from_manifest`,
+using **mirror mode with an AUTHORED transplant pool**
+(`beneficiary_cohorts[0].longitudinal: {mode: mirror, jitter_frac: 0,
+transplant_pool}`): one series per followed entity with `owner` = its worker, and
+per visit `{day, form, values, cats, dates}` keyed on the released Deliver app's
+exact form paths. Synthetic slot mode cannot express this — it draws a random
+entity per visit, so one case would be visited by every worker. This is still
+curation, not mirroring of real data ("curate invents signal"): the pool is
+written, not profiled. Mechanics that bite (all observed, ace#2510):
+- `jitter_frac: 0` — jitter turns people-counts fractional and breaks a
+  deliberately repeated count;
+- a categorical constant across an entity's visits is stamped onto ALL its
+  visits (`_series_constants`) — omit branch-only answers that never vary;
+- a labs-only opp has no form schema, so a numeric-looking code comes back
+  `"1.0"` — the registry reads it with a cast (`semantic-registry-author` step 1);
+- `kpi_config` needs one entry even though the cascade does not read it.
+
+**C4. Instantiate the trio.**
+1. `workflow_create_from_template({template_key: 'indicator_programme_report',
+   program_id, opportunity_ids: [all partners], registry_source: {registry_id},
+   name: '<Programme> programme report (synthetic)'})` — one call also creates the
+   companion worker review and its run (`companions.worker_review`). Bind WITHOUT
+   a home-scope key (see `semantic-registry-author` § 4 binding gotcha).
+2. The template's `visits` pipeline carries only Connect's base columns. Replace
+   its schema with the registry's Layer-1 fields (`pipeline_update_schema`,
+   `terminal_stage: visit_level`, one `{name, path, aggregation: first,
+   transform?}` per column; ids from `workflow_get` → `pipeline_sources`). Preview
+   first (`pipeline_preview` with `opportunity_ids`) and read `fields_all_null`.
+   When an existing report already carries the right pipeline, pass
+   `pipelines_from: {workflow_id, program_id}` at create instead.
+3. Grade one date before writing history: `workflow_preview_as_of({definition_id,
+   program_id, as_of: <last period end>, include_opportunities: true})` — every
+   partner present, no indicator null that should not be.
+
+**C5. Saved weekly history + hand-down.** Create the partner opp reports FIRST
+so hand-down has somewhere to go:
+`benchmarks_cohort_create({organization_id: 'labs-synthetic-<slug of org_name>',
+min_peers: 2, min_denominator: 1, require_complete_series: false})` →
+`benchmarks_cohort_add_opportunities` →
+`benchmarks_create_opp_reports({cohort_id, template_key: 'indicator_opp_report',
+source_workflow_id: <programme report>, source_program_id})` (response `shared:
+true` confirms they reference the programme's pipelines and registry). Then
+`workflow_rebuild_history({definition_id, program_id, cadence: 'weekly', start:
+<first Monday>, end: <last Sunday>, limit: 13})` — one completed run per week,
+handed down to every opp report (`hand_down_queued: true`). Publish the benchmark
+for each saved run **in chronological order** (`benchmarks_publish({cohort_id,
+workflow_id, run_id, program_id})`) — the opp report's Benchmarks tab shows the
+most recently PUBLISHED as-of, not the latest period. `min_peers: 2` is the floor
+for three partners (a partner's peers are the other two); record it in the summary.
+The latest saved run is the programme report's `run_id`; each opp report's latest
+handed-down run (`workflow_history_runs(..., generated_only: false)`) is its
+`run_id`.
+
+**C6. Verify the story LANDED — against the saved runs, not the manifest.**
+`workflow_history_runs({definition_id, program_id, generated_only: false,
+include_snapshot: true})` → map each run's `data.snapshot.state.snapshot`
+`{byLLO, byFLW, programInd}` to `GradedPeriod` and call
+`verifyCascadeStoryLanded(plan, periods)`. Every signal must land; a signal that
+did not is fixed in the pool and regenerated (the ids stay; re-run C5), never
+re-described to match what came out. `demo-data-setup-qa` re-runs this check.
+
+**C7. Handoff.** `realized.json` (flat) carries:
+
+```json
+{
+  "primary_par_url": "<programme report run URL>",
+  "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/<prog>/run/?run_id=<latest>&program_id=<program>",
+  "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/<review>/run/?owning_program_id=<program>&run_id=<review run>&flw=<opp>%3A%3A<username>&source_run=<latest>",
+  "lagging_partner_label": "Partner C",
+  "standout_worker": "cbf_b03",
+  "data_quality_worker": "cbf_a07",
+  "partner_c_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/<opp report>/run/?run_id=<handed-down run>&opportunity_id=<opp>"
+}
+```
+
+one `<partner>_opp_report_par_url` per partner, and a `worker_review_url` for each
+worker carrier. Write `products.synthetic.cascade` (`registry`, `program_id`,
+`partners`, `programme_report`, `worker_review`, `opp_reports[]`, `cohort_id`,
+`history`, `story_verified`) AND mirror the reports into `products.synthetic.workflows`
+(`{programme_report: {workflow_id, run_url}, <partner>_opp_report: {...}}`) — that
+map is what ace-web's run summary renders. `labs_opp_id` = the first partner's
+opportunity. `dashboard-terms.yaml` enumerates the registry's labels (every
+indicator label is a column header; the definitions popup is at point of use).
+
+**Sweep handles.** Registries have no delete atom and synthetic opps are only
+disabled (`synthetic_disable`), so the ids in `products.synthetic.cascade` are the
+only way to find these objects again. Name every labs object with
+`(synthetic, ace <opp>/<run-id>)`.
+
+**Known residuals (labs, 2026-09-26).** An opportunity renders as
+"Opportunity <id>" where a label map would help; the drilled partner header
+reads the programme's case count; the case table shows the entity id (a
+followup form carries no clean entity name). None blocks the drill.
+
+### Legacy single-opportunity path (1b–2a, then the Step 0 spine)
+
 1b. **Author the manifest from the PDD/apps** (the story-coherent per-opp manifest
    that today's `synthetic-narrative-plan` + `synthetic-data-generate` produce) —
    keyed on the real deliver-app form paths so the dashboards read real fields.

@@ -96,6 +96,33 @@ paraphrase the schema here — read the model / schema and validate.
    `stopped_not_converged` at concept 3.0 four iterations later, on a defect
    decidable from two numbers before the first frame was recorded.
 
+2c. **ace-run provider: author the cascade scene ladder (ace#2510).** When
+   `realized.json` carries `programme_par_url` the run built the semantic-layer
+   cascade (`demo-data-setup` § Process (ace-run) C0–C7), and the story is the
+   DRILL, told from two seats. Read `7-synthetic/cascade-story.yaml` — its four
+   signals are what the scenes find, and its `visible_as` sentences are the
+   narration's raw material (never claim a figure the saved run does not show;
+   `demo-data-setup-qa` check 21 printed the observed values).
+
+   | # | persona | url / action | what the viewer sees |
+   |---|---|---|---|
+   | 1 | programme manager | `${programme_par_url}` | headline tiles against the PDD's targets; which one is off target |
+   | 2 | programme manager | click `tr:has-text("${lagging_partner_label}")` | the lagging partner's tiles and its facilitators ranked |
+   | 3 | programme manager | `${worker_review_url}` for a lagging-partner facilitator | one worker against same-month / similar-caseload peers |
+   | 4 | programme manager | click the community row | that case's visit history — the not-held weeks as gaps |
+   | 5 | programme manager | the data-quality worker's review (`${data_quality_worker}`) | the PDD's review flag concentrated on one worker — the record to check, not a verdict |
+   | 6 | network manager of the lagging partner | `${<partner>_opp_report_par_url}` → click `Benchmarks` | the same figures handed down ("From the programme report"), then the partner ranked against peers it cannot name |
+
+   Rules: scene 1 names the programme's own targets, not generic "KPIs"; the
+   partner, worker and case are the story's carriers, never a random row; the
+   standout worker may replace scene 5 when the PDD's evidence model has no
+   review flag. The finale's `Benchmarks` click is the closing action (a
+   `click` counts for `checkArcLadder`). The reports are otherwise read-only —
+   do not invent a state change they do not offer; if the payoff you choose is a
+   pure read, declare `finale_is_read: {reason}` per step 3's ladder rule.
+   Opportunities render as "Opportunity <id>" (labs residual) — narrate the
+   partner, not the opportunity id.
+
 3. **Author the `UnifiedSpec`** (`<demo-slug>.yaml`):
    - `base_url: https://labs.connect.dimagi.com`; no `auth` block (labs cookies
      seeded out-of-band, per `hal:synthetic-walkthrough`).
