@@ -712,6 +712,77 @@ describe('a writer cannot publish a shape the reader would refuse (#2367)', () =
   });
 });
 
+/**
+ * dimagi-internal/ace#2499 — a preamble rewrite spliced at the `## Open` inside
+ * a CODE SPAN, not at the real heading. The rest of the old preamble survived
+ * as an H2 whose text is a sentence fragment, followed by a second, stale
+ * `Last updated by run` line. `extractOpenSection` still read it `ok` (the
+ * real `## Open` is further down), so the write gate — which only asked that
+ * question — accepted it and a partner saw the mess.
+ *
+ * `spark-facilitator-spliced.text-markdown.md` reconstructs the revision-43
+ * preamble from the issue's verbatim `text/markdown` quote and the captured
+ * `text/plain` export of the same revision
+ * (`spark-facilitator-spliced.export.txt`); its rows are the repaired doc's.
+ * `spark-facilitator-repaired.text-markdown.md` is the live doc's
+ * `export?format=md` read after the operator's repair (2026-09-26).
+ */
+describe('a spliced preamble is refused at the write boundary (#2499)', () => {
+  const fixture = (name: string) =>
+    fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
+
+  it('the spliced fixture is the incident: it still reads back ok, which is why the old gate passed it', () => {
+    expect(extractOpenSection(fixture('spark-facilitator-spliced.text-markdown.md')).status).toBe('ok');
+  });
+
+  it('REFUSES the spliced preamble, naming the garbled heading and the duplicate Last-updated line', () => {
+    const result = checkOpenQuestionsWriteShape(fixture('spark-facilitator-spliced.text-markdown.md'));
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/garbled heading/i);
+    expect(result.reason).toContain('Open` before raising');
+    expect(result.reason).toMatch(/2 `Last updated by run` lines/);
+  });
+
+  it('each defect refuses on its own', () => {
+    const ok = '# Open Questions — x\n\nLast updated by run 1.\n\n## Open\n\n- **id:** a\n\n## Archive\n';
+    expect(checkOpenQuestionsWriteShape(ok).ok).toBe(true);
+
+    const garbled = ok.replace('## Open\n', '## Open` before raising questions\n\n## Open\n');
+    const g = checkOpenQuestionsWriteShape(garbled);
+    expect(g.ok).toBe(false);
+    expect(g.reason).toMatch(/garbled heading/i);
+
+    const twoStamps = ok.replace('Last updated by run 1.', 'Last updated by run 2.\n\nLast updated by run 1.');
+    const t = checkOpenQuestionsWriteShape(twoStamps);
+    expect(t.ok).toBe(false);
+    expect(t.reason).toMatch(/2 `Last updated by run` lines/);
+
+    const twoOpen = ok.replace('## Archive', '## Open\n\n- **id:** b\n\n## Archive');
+    const o = checkOpenQuestionsWriteShape(twoOpen);
+    expect(o.ok).toBe(false);
+    expect(o.reason).toMatch(/2 `## Open` headings/);
+  });
+
+  it('POSITIVE controls, captured: the repaired doc and the earlier healthy ledgers still pass', () => {
+    for (const name of [
+      'spark-facilitator-repaired.text-markdown.md',
+      'spark-facilitator.text-markdown.md',
+      // carries a third H2 (`## Settled — do not re-open`) — legal, not a splice
+      'converted-gdoc.text-markdown.md',
+    ]) {
+      const result = checkOpenQuestionsWriteShape(fixture(name));
+      expect(result.ok, `${name}: ${result.reason}`).toBe(true);
+    }
+  });
+
+  it('a `Last updated by run` mention inside a ROW is not a preamble stamp', () => {
+    const md =
+      '# Open Questions — x\n\nLast updated by run 2.\n\n## Open\n\n' +
+      '- **id:** a **latest:** Last updated by run 1, which asked Spark.\n\n## Archive\n';
+    expect(checkOpenQuestionsWriteShape(md).ok).toBe(true);
+  });
+});
+
 describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 

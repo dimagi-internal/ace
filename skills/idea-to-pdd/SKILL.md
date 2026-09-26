@@ -1379,6 +1379,16 @@ Rules:
   next run's Phase 1 could inline none of its 15 open rows, including a hold on
   the work order (`poverty-graduation`, revision 52, 2026-09-10; ace#2367).
   Never round-trip a `text/plain` read back into this doc.
+  **It also refuses a SPLICED preamble** (ace#2499): a garbled H2 (a sentence
+  fragment such as ``## Open` before raising…``), a second `## Open` /
+  `## Archive`, or more than one `Last updated by run` line above `## Open`.
+  That shape came from editing the preamble in place and cutting at the
+  `## Open` inside a code span instead of at the real heading.
+- **Rewrite the preamble (everything above `## Open`) as ONE whole block**,
+  never by splicing into the old one, and keep exactly one
+  `Last updated by run` line. Refer to the sections in prose ("the Open
+  section below") rather than opening a paragraph with a `` `## …` `` code
+  span.
 - **It is shared anyone-with-link `commenter` at creation** —
   `drive_set_anyone_with_link(fileId: <docId>, role: 'commenter')`, per
   § Process step 6c. This ledger is where a human ANSWERS a deferred question,

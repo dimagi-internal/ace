@@ -2044,6 +2044,7 @@ export function resolveDocSource(
  * Deliberately anchored to line starts / paired delimiters so prose that
  * happens to contain an asterisk doesn't trip it.
  */
+const ATX_PATTERN = { re: /^#{1,6}[^\S\n]+\S[^\n]*$/m, what: 'ATX headings (`## ...`)' } as const;
 const LITERAL_MARKDOWN_PATTERNS: readonly { re: RegExp; what: string }[] = [
   // NOTE the `[^\S\n]` instead of `\s`. With `\s` and the `m` flag, `\s+`
   // happily eats the NEWLINE, so a lone `#` — which is what a Google Docs table
@@ -2052,7 +2053,10 @@ const LITERAL_MARKDOWN_PATTERNS: readonly { re: RegExp; what: string }[] = [
   // properly-converted document was reported as raw markdown. A false positive
   // here is not harmless; it is the same class of bug as a false negative, and
   // it trains the reader to ignore the auditor.
-  { re: /^#{1,6}[^\S\n]+\S[^\n]*$/m, what: 'ATX headings (`## ...`)' },
+  // ATX is also cross-checked against the HTML export when one is supplied: the
+  // txt export drops code-span backticks, so `` `## Archive` is closed history``
+  // arrives as a heading-shaped line (`hasUnexcusedAtxHeading`, ace#2499).
+  ATX_PATTERN,
   { re: /\*\*[^*\n]{2,}\*\*/, what: 'bold markers (`**...**`)' },
   { re: /^---[^\S\n]*$[\s\S]{0,400}?^---[^\S\n]*$/m, what: 'YAML frontmatter fence' },
   { re: /^[^\S\n]*\|[^\n]+\|[^\S\n]*$/m, what: 'pipe tables' },
@@ -2060,12 +2064,88 @@ const LITERAL_MARKDOWN_PATTERNS: readonly { re: RegExp; what: string }[] = [
   { re: /^[^\S\n]*```/m, what: 'code fences' },
 ];
 
+const ATX_LINE = /^#{1,6}[^\S\n]+\S/;
+
+/** Decode the handful of entities Google's HTML export emits in body text. */
+function decodeHtmlText(s: string): string {
+  return s
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&ndash;/g, '\u2013')
+    .replace(/&sect;/g, '\u00a7')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+const normaliseLine = (s: string): string => s.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * The plain text of every paragraph in a Google Docs HTML export that OPENS
+ * with a monospace run starting `#` — i.e. a paragraph like
+ * `` `## Archive` is closed history… `` whose txt-export line will begin
+ * `## Archive …` with the backticks gone (dimagi-internal/ace#2499).
+ *
+ * Monospace is read from the export's own `<style>` block (`.c3{…font-family:
+ * "Roboto Mono"}` is what Drive emits for a converted code span), never from a
+ * guessed class name. Pure; regex-level, which is enough for Google's flat,
+ * machine-generated export.
+ */
+export function codeSpanLedParagraphs(html: string): string[] {
+  const mono = new Set<string>();
+  for (const m of html.matchAll(/\.([A-Za-z0-9_-]+)\{([^}]*)\}/g)) {
+    const family = /font-family:\s*([^;]+)/i.exec(m[2]);
+    if (family && /mono|courier|consolas|menlo|source code/i.test(family[1])) mono.add(m[1]);
+  }
+  if (!mono.size) return [];
+
+  const out: string[] = [];
+  for (const m of html.matchAll(/<(p|li|h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/g)) {
+    const first = /^\s*<span\b[^>]*class="([^"]*)"[^>]*>([^<]*)<\/span>/.exec(m[2]);
+    if (!first) continue;
+    if (!first[1].split(/\s+/).some((c) => mono.has(c))) continue;
+    if (!decodeHtmlText(first[2]).trimStart().startsWith('#')) continue;
+    out.push(normaliseLine(decodeHtmlText(m[2].replace(/<[^>]*>/g, ''))));
+  }
+  return out;
+}
+
+/**
+ * Does the txt export carry an ATX heading line the HTML export does not
+ * explain as a code-span-led paragraph? Each code-span paragraph excuses ONE
+ * matching txt line, so a literal `## …` line that merely shares its text is
+ * still caught. With no HTML the answer is the raw pattern — the safe direction.
+ */
+function hasUnexcusedAtxHeading(text: string, html: string | null | undefined): boolean {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => ATX_LINE.test(l));
+  if (!lines.length) return false;
+  if (!html) return true;
+  const excuses = new Map<string, number>();
+  for (const p of codeSpanLedParagraphs(html)) excuses.set(p, (excuses.get(p) ?? 0) + 1);
+  for (const line of lines) {
+    const key = normaliseLine(line);
+    const n = excuses.get(key) ?? 0;
+    if (n === 0) return true;
+    excuses.set(key, n - 1);
+  }
+  return false;
+}
+
 export interface DocProbe {
   /** Payload label, e.g. `training.docs[1].url`. */
   label: string;
   url: string;
   /** Plain-text export of the published doc, or null if it could not be read. */
   text: string | null;
+  /**
+   * HTML export of the same doc, when fetched. Used ONLY to excuse an ATX
+   * heading hit that is really a paragraph opening with an inline code span —
+   * the txt export drops the backticks (ace#2499). Absent/null → no excuse.
+   */
+  html?: string | null;
   /** Number of `<img` tags in the HTML export, or null if not fetched. */
   imageCount: number | null;
   /**
@@ -2126,7 +2206,9 @@ export function auditDocFidelity(probes: DocProbe[]): Finding[] {
       });
       continue;
     }
-    const hits = LITERAL_MARKDOWN_PATTERNS.filter((p) => p.re.test(d.text!)).map((p) => p.what);
+    const hits = LITERAL_MARKDOWN_PATTERNS.filter((p) =>
+      p === ATX_PATTERN ? hasUnexcusedAtxHeading(d.text!, d.html) : p.re.test(d.text!),
+    ).map((p) => p.what);
     if (hits.length) {
       out.push({
         code: 'DOC-LITERAL-MARKDOWN',
