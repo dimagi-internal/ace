@@ -427,6 +427,57 @@ import type { ConstraintReport } from '../../../lib/dataset-constraints';
 const CLEAN_REPORT: ConstraintReport = { ok: true, total: 276, violations: [] };
 const DERIVED = { unparsed: [], questionsSeen: 4, gatesParsed: 2 };
 
+describe('checkDatasetObeysPddConstraints — evidenced unparsed_resolutions (ace#2497)', () => {
+  // Verbatim from deliver app 0d877e0f v14 (spark-facilitator/20260925-1536).
+  const UNPARSED = [
+    {
+      kind: 'relevant' as const,
+      field: 'gps_far_note',
+      path: '/data/about_this_meeting/gps_far_note',
+      expression: '/data/distance_from_community_m > 2000',
+      reason: 'not of the form',
+    },
+    {
+      kind: 'constraint' as const,
+      field: 'male_participants',
+      path: '/data/who_came/male_participants',
+      expression: '. >= 0 and . <= /data/who_came/male_attendance',
+      reason: 'not a conjunction',
+    },
+  ];
+  const DERIV = { unparsed: UNPARSED, questionsSeen: 107, gatesParsed: 39 };
+  const OK_RES = [
+    { field: 'gps_far_note', expression: '/data/distance_from_community_m > 2000', resolution: 'direct-measured-assertion', detail: 'Trigger label; records carrying a value: 0 of 167.' },
+    { field: 'male_participants', expression: '. >= 0 and . <= /data/who_came/male_attendance', resolution: 'spec-addition', detail: 'crossFieldRules[male_participants <= male_attendance]; 0 of 167 violate.' },
+  ];
+
+  it('passes when EVERY raw unparsed gate carries a matching, evidenced resolution, and echoes them', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: OK_RES });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/2 unparsed gate\(s\) resolved/);
+    expect(r.detail).toMatch(/gps_far_note: direct-measured-assertion/);
+  });
+
+  it('CONTROL: a gate with no matching resolution still fails', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: [OK_RES[0]] });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/male_participants \[constraint\]/);
+    expect(r.auto_fix_hint).toMatch(/unparsed_resolutions/);
+  });
+
+  it('CONTROL: a resolution with a blank detail, or an unknown kind, clears nothing', () => {
+    const blank = [OK_RES[0], { ...OK_RES[1], detail: '  ' }];
+    expect(checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: blank }).pass).toBe(false);
+    const unknown = [OK_RES[0], { ...OK_RES[1], resolution: 'looked-fine' }];
+    expect(checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: unknown }).pass).toBe(false);
+  });
+
+  it('CONTROL: a resolution for a different expression on the same field does not match', () => {
+    const wrong = [OK_RES[0], { ...OK_RES[1], expression: '. <= 999' }];
+    expect(checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: wrong }).pass).toBe(false);
+  });
+});
+
 describe('checkDatasetObeysPddConstraints (#1658)', () => {
   it('passes a measured zero over a spec that was actually derived', () => {
     const r = checkDatasetObeysPddConstraints({ derivation: DERIVED, report: CLEAN_REPORT });

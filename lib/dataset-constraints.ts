@@ -71,6 +71,17 @@ export interface ConditionalFieldSpec {
   path?: string;
   /** The branch on which this field is asked at all. */
   requiredWhen: { field: string; path?: string; equals: unknown };
+  /**
+   * Other gates on the SAME question that `specFromDeliverApp` could not parse
+   * (verbatim expressions). When present, this entry is only part of the
+   * conjunction that decides whether the form asks the question, so
+   * `auditDataset` skips the `conditional-missing` judgement for the field
+   * (it cannot evaluate the whole conjunction) while still judging
+   * `conditional-off-branch` (any unsatisfied PARSED gate still makes a value
+   * impossible). The unparsed gates themselves are reported in
+   * `DerivedDatasetSpec.unparsed` (ace#2496).
+   */
+  unparsedGates?: string[];
 }
 
 export interface CrossFieldRule {
@@ -247,6 +258,14 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
   // absent and `conditional-off-branch` with it present. `step_phase_2/3/4`
   // were worse: `phase` holds one value per record, so they fired on EVERY
   // meeting record by construction and no dataset could pass check 9.
+  //
+  // A field whose question ALSO carries a gate the derivation could not parse
+  // (`unparsedGates`) is skipped here: the parsed gates are only part of the
+  // conjunction, so "every parsed gate holds" does not mean the form asked for
+  // it. Judging it anyway demands the field on its group gate ALONE — measured
+  // on deliver app 0d877e0f v14, `other_reason` (own gate
+  // `selected(question2, 'other')`) fired on every not-held record that
+  // correctly lacked it (ace#2496). The off-branch direction above still runs.
   const gatesByField = new Map<string, ConditionalFieldSpec[]>();
   for (const c of spec.conditionalFields ?? []) {
     const group = gatesByField.get(c.field);
@@ -254,6 +273,7 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
     else gatesByField.set(c.field, [c]);
   }
   for (const [field, gates] of gatesByField) {
+    if (gates.some((g) => (g.unparsedGates ?? []).length > 0)) continue;
     const missing = rows.filter(
       (_, i) =>
         gates.every((g) => read(i, g.requiredWhen.field, g.requiredWhen.path) === g.requiredWhen.equals) &&
@@ -484,8 +504,14 @@ function parseIntegerBounds(constraint: string): { min?: number; max?: number } 
  * Gate inheritance is handled: a `relevant` on a GROUP gates every question
  * underneath it, so each descendant gets that gate too (HQ only repeats a
  * `relevant` on the node that declares it). One question under two gates
- * yields two `ConditionalFieldSpec` entries; `auditDataset` checks each
- * independently, which is the correct semantics for an `and` of gates.
+ * yields two `ConditionalFieldSpec` entries. `auditDataset` judges
+ * `conditional-off-branch` per entry (any unsatisfied gate makes a value
+ * impossible) and `conditional-missing` once per field over the CONJUNCTION
+ * of its entries (ace#1693).
+ *
+ * A gate that cannot be parsed goes to `unparsed[]`, and every PARSED entry
+ * of the same question is stamped with `unparsedGates`, so the presence
+ * judgement is skipped rather than made on a partial conjunction (ace#2496).
  */
 export function specFromDeliverApp(appJson: unknown): DerivedDatasetSpec {
   const questions = collectQuestions(appJson);
@@ -510,9 +536,12 @@ export function specFromDeliverApp(appJson: unknown): DerivedDatasetSpec {
     questionsSeen += 1;
     const field = leafFieldName(path);
 
-    for (const gate of gates) {
-      const applies = gate.ownerPath === path || path.startsWith(`${gate.ownerPath}/`);
-      if (!applies) continue;
+    const applying = gates.filter((gate) => gate.ownerPath === path || path.startsWith(`${gate.ownerPath}/`));
+    const unparsedHere = applying
+      .filter((gate) => !RELEVANT_EQUALITY.exec(gate.expression))
+      .map((gate) => gate.expression);
+
+    for (const gate of applying) {
       const m = RELEVANT_EQUALITY.exec(gate.expression);
       if (!m) {
         unparsed.push({
@@ -535,6 +564,7 @@ export function specFromDeliverApp(appJson: unknown): DerivedDatasetSpec {
         field,
         path,
         requiredWhen: { field: gateField, path: m[1], equals },
+        ...(unparsedHere.length ? { unparsedGates: unparsedHere } : {}),
       });
     }
 

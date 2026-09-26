@@ -493,7 +493,33 @@ export interface DatasetConstraintCheckInput {
    * exempts nothing and is named in the failure.
    */
   declaredOmissions?: DeclaredOmission[];
+  /**
+   * `derivation.unparsed_resolutions[]` from `7-synthetic/branch-scrub_report.yaml`
+   * — how each gate `specFromDeliverApp` could not parse was actually audited
+   * (ace#2497). An unparsed entry is cleared only by a resolution matching it on
+   * `field` + `expression` with a known `resolution` kind and a non-empty
+   * `detail` stating the measurement. `derivation.unparsed` stays the RAW
+   * derivation output — never edit it to `[]`; that is indistinguishable from
+   * deleting the list.
+   */
+  unparsedResolutions?: UnparsedResolution[];
 }
+
+/** One entry of the producer's `derivation.unparsed_resolutions[]` (ace#2497). */
+export interface UnparsedResolution {
+  field: string;
+  expression: string;
+  /**
+   * `spec-addition` (declared via mergeDatasetSpecs and audited),
+   * `direct-measured-assertion` (measured over the records; `detail` carries the count),
+   * `spec-correction` (a derived entry replaced by the app's own, tighter gate),
+   * `out-of-scope-form` (a question on a form the fixture does not generate; `detail` carries the count).
+   */
+  resolution: string;
+  detail: string;
+}
+
+const RESOLUTION_KINDS = new Set(['spec-addition', 'direct-measured-assertion', 'spec-correction', 'out-of-scope-form']);
 
 /** One `{field, reason}` entry of the producer's `declared_omissions[]`. */
 export interface DeclaredOmission {
@@ -579,7 +605,26 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
     );
   }
 
-  const unparsed = input.derivation?.unparsed ?? [];
+  const rawUnparsed = input.derivation?.unparsed ?? [];
+  // ace#2497: an unparsed gate is cleared only by an EVIDENCED resolution that
+  // names it (field + expression) — same discipline as declared_omissions.
+  const resolutions = (input.unparsedResolutions ?? []).filter(
+    (r) =>
+      typeof r?.field === 'string' &&
+      typeof r?.expression === 'string' &&
+      RESOLUTION_KINDS.has(String(r?.resolution ?? '').trim()) &&
+      String(r?.detail ?? '').trim().length > 0,
+  );
+  const resolvedKey = new Set(resolutions.map((r) => `${r.field}\u0000${r.expression.trim()}`));
+  const resolvedNote: string[] = [];
+  const unparsed = rawUnparsed.filter((u) => {
+    if (resolvedKey.has(`${u.field}\u0000${String(u.expression).trim()}`)) {
+      const r = resolutions.find((x) => x.field === u.field && x.expression.trim() === String(u.expression).trim());
+      if (r) resolvedNote.push(`${u.field}: ${r.resolution}`);
+      return false;
+    }
+    return true;
+  });
   if (unparsed.length > 0) {
     problems.push(
       `${unparsed.length} expression(s) could not be derived into the spec, so those gates were NOT audited: ` +
@@ -587,7 +632,10 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
     );
     hints.push(
       'hand-declare each unparsed gate as an ADDITION (mergeDatasetSpecs(derived, additions)) — never as a ' +
-        'replacement for the derived spec — then re-run the scrub and the audit.',
+        'replacement for the derived spec — then re-run the scrub and the audit, and record HOW each one was ' +
+        'audited as a {field, expression, resolution, detail} entry in derivation.unparsed_resolutions[] ' +
+        '(resolution: spec-addition | direct-measured-assertion | spec-correction | out-of-scope-form; detail ' +
+        'carries the measured count). Keep derivation.unparsed as the raw derivation output (ace#2497).',
     );
   }
 
@@ -655,6 +703,9 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
     ? `; ${exempted.length} declared omission(s) exempted — ` +
       exempted.map((f) => `${f}: ${evidenced.get(f)}`).join('; ')
     : '';
+  const resolvedTxt = resolvedNote.length
+    ? `; ${resolvedNote.length} unparsed gate(s) resolved — ${resolvedNote.join('; ')}`
+    : '';
 
   if (problems.length === 0) {
     const derivedNote = input.derivation
@@ -667,13 +718,13 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
       pass: true,
       detail:
         `0 unexempted violations across ${input.report.total} records (measured) — ` +
-        `${derivedNote}${scrubNote}${exemptNote}`,
+        `${derivedNote}${scrubNote}${resolvedTxt}${exemptNote}`,
     };
   }
 
   return {
     pass: false,
-    detail: problems.join('; ') + exemptNote,
+    detail: problems.join('; ') + resolvedTxt + exemptNote,
     auto_fix_hint: hints.join(' '),
   };
 }

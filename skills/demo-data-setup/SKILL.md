@@ -76,12 +76,17 @@ front half (how the labs-only opp + its data come to exist) differs.
     opportunity_id: <connect opp id>
     questions_seen: <int>
     gates_parsed: <int>
-    unparsed:                      # gates/bounds NOT audited — never silently dropped
+    unparsed:                      # the RAW specFromDeliverApp output — never edit to []
       - kind: relevant             # relevant | constraint
         field: <leaf name>
         path: /data/<group>/<question>
         expression: "<verbatim>"
         reason: "<why it could not be derived>"
+    unparsed_resolutions:          # how each unparsed gate WAS audited (ace#2497); check 9
+      - field: <leaf name>         # clears an unparsed entry only on a field+expression match
+        expression: "<verbatim>"   # with a known resolution and a non-empty detail
+        resolution: spec-addition  # spec-addition | direct-measured-assertion | spec-correction | out-of-scope-form
+        detail: "<the measured count, e.g. 0 of 167 violate>"
     additions:                     # hand-declared, merged via mergeDatasetSpecs
       whole_currency_fields: []
       cross_field_rules: []
