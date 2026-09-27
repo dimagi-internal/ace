@@ -1436,8 +1436,18 @@ written, not profiled. Mechanics that bite (all observed, ace#2510):
    partner present, no indicator null that should not be.
 
 **C5. Saved weekly history + hand-down.** Create the partner opp reports FIRST
-so hand-down has somewhere to go:
-`benchmarks_cohort_create({organization_id: 'labs-synthetic-<slug of org_name>',
+so hand-down has somewhere to go. **Read the synthetic org's slug from
+`labs_context({search: '<run-id>'})`, never derive it** — take the `slug` of the
+organization whose `name` is the `org_name` you passed to
+`synthetic_create_labs_only` (the sweep-handle name carries the run id, so the
+search finds it; `synthetic_create_labs_only` does not return the slug). Labs mints
+it as `labs-synthetic-` + a char-by-char slug (every non-alphanumeric → `-`, runs
+NOT collapsed; `synthetic_org_slug`, `connect_labs/labs/synthetic/org_tree.py`), so
+a conventional slugify of the name misses: `… partners (ace spark-facilitator/20260926-1413)`
+is `…-partners--ace-spark-facilitator-20260926-1413`, and the guessed
+`…-partners-ace-spark-facilitator20260926-1413` fails with "organization … is not
+accessible to your account" (ace#2522, spark-facilitator/20260926-1413). Then
+`benchmarks_cohort_create({organization_id: <that slug>,
 min_peers: 2, min_denominator: 1, require_complete_series: false})` →
 `benchmarks_cohort_add_opportunities` →
 `benchmarks_create_opp_reports({cohort_id, template_key: 'indicator_opp_report',
