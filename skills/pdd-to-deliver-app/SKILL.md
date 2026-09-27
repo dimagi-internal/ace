@@ -677,6 +677,15 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        a gate question immediately AFTER the repeat. A cap (`count(…) <= 10`)
        is the opposite case and correctly stays inside. Verified at Step 2.8
        by `app-release-qa` over the released binds.
+     - `repeat-count-source` — any repeat with a fixed row count (Nova
+       `count_bound`). The count must be known when the form OPENS (case
+       property, session, lookup, constant) — never a question in the same
+       form: Nova snapshots a root count once on `xforms-ready`, so a
+       same-form "how many?" answer is still blank and the repeat renders
+       ZERO rows (ace#2517 — all 5 on `spark-facilitator/20260926-1413`).
+       "Worker states N, then fills N rows" → `user_controlled` repeat with
+       the number derived as `count(<repeat>)`. Verified at Step 2.8 by
+       `app-release-qa` (`dead-repeat-count`, `lib/repeat-count-audit.ts`).
      - `screen-grouping` — always, for any form that puts more than one
        question in a `group`. A group is a CommCare field-list, so its children
        share ONE scrollable screen. Multiple questions per screen is GOOD

@@ -566,6 +566,37 @@ when measured and is false now. The lesson worth keeping is that a refuted
 claim is not refuted forever, which is exactly why this is a check against
 the artifact rather than a sentence in a skill.
 
+**Count-bound repeat snapshots an unanswered question — always, every form of
+both apps (dimagi-internal/ace#2517).** Nova compiles a root `count_bound`
+repeat's count into a reserved `__nova_count_<id>` node written by ONE
+`<setvalue event="xforms-ready">` and no `calculate` — by design: Nova's
+compiler notes say root counts "initialize on `xforms-ready` … They do not
+later track answer changes". So a count that reads a question in the same
+form is read at form open, while that question is still empty: `jr:count` is
+`""`, CommCare renders **zero** instances, and the worker is carried straight
+past the repeat. `commcare-cli play` (Step 4.5) cannot see it — it exercises
+form init, not a repeat entered after an answer.
+
+```ts
+import { auditRepeatCounts, formatRepeatCountAudit }
+  from '../../lib/repeat-count-audit';
+const audit = auditRepeatCounts(formXml);
+```
+
+Any violation → halt with `[BLOCKER]` `dead-repeat-count`, emitting
+`formatRepeatCountAudit(audit, formPath)`. Record per-app under
+`repeat_counts`. A count with a `calculate`, an `xforms-value-changed`
+writer, a `jr-insert` (nested-row) snapshot, or a snapshot of a case
+property / session value / constant passes — those are live or legitimate.
+
+**Measured, not hypothetical:** the released Deliver CCZ of
+`spark-facilitator/20260926-1413` (HQ app `3b7ec74d9883452a8747796e2f777262`,
+build `a556b0725f4d465cbe3377fa51d6e382`) flags **5 of 5** count-bound
+repeats across three forms — the meeting activities and independent-project
+rows on both meeting records, and Participant Feedback's `participants`, so
+every feedback round submitted with no participants. It was found by a
+Phase 6 device walk; this gate moves it to Phase 3.
+
 **Grid menu display — always, both apps (dimagi-internal/ace#1009).**
 `app-hq-settings` sets `display_style = 'grid'` on every module of both
 apps and then declares this skill its downstream backstop. Until ace#1009
@@ -1390,6 +1421,9 @@ per_app:
 #   geopoint_binds:        pass | [<offending field paths>]
 #   casedb_preloads:       pass | [<visible question refs answered from the case>]
 #                          # BLOCKER-gated (ace#2006); Deliver app
+#   repeat_counts:         pass | { count_bound, violations: [{ repeat, countRef,
+#                            workerSources }] }
+#                          # BLOCKER-gated (ace#2517); both apps, every form
 #   payable_cap_arithmetic: { status: checked|unable, reason, ok, node, timing,
 #                            clamp: { threshold, clampedValue }, capacity, cap,
 #                            cap_source: declared|is_payable, indices: [...],
@@ -1587,6 +1621,16 @@ defects.
   drop the inside-the-repeat copy; then re-release and re-run
   `app-release-qa`. Not fixable on the repeat container: Nova answers
   `kind "repeat" carries no 'validate' slot` (ace#1560).
+- `dead-repeat-count` — a count-bound repeat's `jr:count` node is written
+  only by an `xforms-ready` setvalue that reads a question the worker answers
+  in the same form, so the count is empty at form open and the repeat renders
+  zero rows on every submission (see Step 4 + dimagi-internal/ace#2517).
+  Operator fix is in the Nova blueprint, not HQ: re-run `pdd-to-deliver-app`
+  with its `repeat-count-source` rule (a worker-stated count becomes a
+  `user_controlled` repeat whose number is derived as `count(<repeat>)`), re-deploy,
+  re-release, re-run `app-release-qa`. Do not patch the XForm to add a
+  `calculate` on the helper — the next Nova upload overwrites it, and the
+  patch has never been validated on a device.
 - `cross-screen-constraint` — `[WARN]`, not a halt. A `constraint` reaches
   into another screen, but it also references its own node, so the FLW
   clears it by changing the answer in front of them. Worth tightening

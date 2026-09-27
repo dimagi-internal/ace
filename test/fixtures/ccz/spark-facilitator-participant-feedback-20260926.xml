@@ -1,0 +1,556 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Participant Feedback</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/df9ebabd1b6704de" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="9" name="participant_feedback">
+          <before_you_start>
+            <already_done_warning/>
+            <feedback_intro/>
+          </before_you_start>
+          <people_to_ask/>
+          <participants jr:template="">
+            <consent>
+              <feedback_script/>
+              <feedback_consent/>
+            </consent>
+            <about_the_meetings>
+              <participant_gender/>
+              <attended_last_meeting/>
+              <can_name_decision/>
+              <decision_named/>
+              <spoke_this_month/>
+            </about_the_meetings>
+            <recommendation>
+              <nps/>
+              <nps_probe/>
+            </recommendation>
+          </participants>
+          <__nova_count_participants/>
+          <feedback_end/>
+          <participant_count/>
+          <feedback_done_value/>
+          <feedback_date_value/>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <update>
+              <feedback_date/>
+              <feedback_done/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance src="jr://instance/casedb" id="casedb"/>
+      <instance src="jr://instance/session" id="commcaresession"/>
+      <bind nodeset="/data/before_you_start/already_done_warning" relevant="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/feedback_done = 'yes'"/>
+      <bind nodeset="/data/before_you_start/feedback_intro"/>
+      <bind nodeset="/data/people_to_ask" type="xsd:int" required="true()" constraint=". &gt;= 1 and . &lt;= 8" jr:constraintMsg="jr:itext('people_to_ask-constraintMsg')"/>
+      <bind nodeset="/data/participants/consent/feedback_script"/>
+      <bind nodeset="/data/participants/consent/feedback_consent" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/participants/about_the_meetings" relevant="/data/participants/consent/feedback_consent = 'yes'"/>
+      <bind nodeset="/data/participants/about_the_meetings/participant_gender" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/participants/about_the_meetings/attended_last_meeting" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/participants/about_the_meetings/can_name_decision" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/participants/about_the_meetings/decision_named" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 100" jr:constraintMsg="jr:itext('participants-about_the_meetings-decision_named-constraintMsg')" relevant="/data/participants/about_the_meetings/can_name_decision = 'named'"/>
+      <bind nodeset="/data/participants/about_the_meetings/spoke_this_month" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/participants/recommendation" relevant="/data/participants/consent/feedback_consent = 'yes'"/>
+      <bind nodeset="/data/participants/recommendation/nps" type="xsd:int" required="true()" constraint=". &gt;= 0 and . &lt;= 10" jr:constraintMsg="jr:itext('participants-recommendation-nps-constraintMsg')"/>
+      <bind nodeset="/data/participants/recommendation/nps_probe" type="xsd:string" constraint="string-length(.) &lt;= 200" jr:constraintMsg="jr:itext('participants-recommendation-nps_probe-constraintMsg')"/>
+      <bind nodeset="/data/__nova_count_participants" type="xsd:string"/>
+      <bind nodeset="/data/feedback_end"/>
+      <bind nodeset="/data/participant_count" type="xsd:string" calculate="count(/data/participants)"/>
+      <bind nodeset="/data/feedback_done_value" type="xsd:string" calculate="if(count(/data/participants) &gt;= 1, 'yes', 'no')"/>
+      <bind nodeset="/data/feedback_date_value" type="xsd:string" calculate="today()"/>
+      <setvalue event="xforms-ready" ref="/data/__nova_count_participants" value="string(/data/people_to_ask)"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="before_you_start-label">
+            <value>Before you start</value>
+            <value form="markdown">Before you start</value>
+          </text>
+          <text id="before_you_start-already_done_warning-label">
+            <value>A feedback round was already recorded for this community. Only continue if your supervisor asked you to.</value>
+            <value form="markdown">A feedback round was already recorded for this community. Only continue if your supervisor asked you to.</value>
+          </text>
+          <text id="before_you_start-feedback_intro-label">
+            <value>Read the questions aloud in the local language to 8 people who attended: 4 women and 4 men. Do not write any names or phone numbers.</value>
+            <value form="markdown">Read the questions aloud in the local language to 8 people who attended: 4 women and 4 men. Do not write any names or phone numbers.</value>
+          </text>
+          <text id="people_to_ask-label">
+            <value>How many people will you ask? Ask 8: 4 women and 4 men.</value>
+            <value form="markdown">How many people will you ask? Ask 8: 4 women and 4 men.</value>
+          </text>
+          <text id="people_to_ask-constraintMsg">
+            <value>Enter a number from 1 to 8.</value>
+            <value form="markdown">Enter a number from 1 to 8.</value>
+          </text>
+          <text id="participants-label">
+            <value>Person</value>
+            <value form="markdown">Person</value>
+          </text>
+          <text id="participants-consent-label">
+            <value>Consent</value>
+            <value form="markdown">Consent</value>
+          </text>
+          <text id="participants-consent-feedback_script-label">
+            <value>We are asking a few people about the community meetings, to learn whether the meetings share information well. Your answers go to the implementing organisation and to Spark MicroGrants. Supervisors read them; they are not used to pay or judge anyone. Your answers are not linked to your name. Answering is your choice, and you can stop at any time, even after we start. Answering gives you no payment or benefit, and saying no costs you nothing. Would you like to answer?</value>
+            <value form="markdown">We are asking a few people about the community meetings, to learn whether the meetings share information well. Your answers go to the implementing organisation and to Spark MicroGrants. Supervisors read them; they are not used to pay or judge anyone. Your answers are not linked to your name. Answering is your choice, and you can stop at any time, even after we start. Answering gives you no payment or benefit, and saying no costs you nothing. Would you like to answer?</value>
+          </text>
+          <text id="participants-consent-feedback_consent-label">
+            <value>Does this person agree to answer?</value>
+            <value form="markdown">Does this person agree to answer?</value>
+          </text>
+          <text id="participants-about_the_meetings-label">
+            <value>About the meetings</value>
+            <value form="markdown">About the meetings</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-label">
+            <value>Gender, as the person states it</value>
+            <value form="markdown">Gender, as the person states it</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt0-label">
+            <value>Female</value>
+            <value form="markdown">Female</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt1-label">
+            <value>Male</value>
+            <value form="markdown">Male</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-label">
+            <value>Did you attend the last community meeting?</value>
+            <value form="markdown">Did you attend the last community meeting?</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-label">
+            <value>Can you tell me one thing your community decided or agreed at a recent meeting?</value>
+            <value form="markdown">Can you tell me one thing your community decided or agreed at a recent meeting?</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt0-label">
+            <value>Named a decision</value>
+            <value form="markdown">Named a decision</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt1-label">
+            <value>Could not name one</value>
+            <value form="markdown">Could not name one</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-label">
+            <value>What decision did they name?</value>
+            <value form="markdown">What decision did they name?</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-constraintMsg">
+            <value>Use 100 characters or fewer.</value>
+            <value form="markdown">Use 100 characters or fewer.</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-label">
+            <value>Did you speak at a community meeting this month?</value>
+            <value form="markdown">Did you speak at a community meeting this month?</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-opt2-label">
+            <value>Not sure</value>
+            <value form="markdown">Not sure</value>
+          </text>
+          <text id="participants-recommendation-label">
+            <value>Recommendation</value>
+            <value form="markdown">Recommendation</value>
+          </text>
+          <text id="participants-recommendation-nps-label">
+            <value>On a scale from 0 to 10, how likely are you to recommend FCAP to another community?</value>
+            <value form="markdown">On a scale from 0 to 10, how likely are you to recommend FCAP to another community?</value>
+          </text>
+          <text id="participants-recommendation-nps-constraintMsg">
+            <value>Enter a number from 0 to 10.</value>
+            <value form="markdown">Enter a number from 0 to 10.</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-label">
+            <value>What is the main reason for the score you gave?</value>
+            <value form="markdown">What is the main reason for the score you gave?</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-constraintMsg">
+            <value>Use 200 characters or fewer.</value>
+            <value form="markdown">Use 200 characters or fewer.</value>
+          </text>
+          <text id="feedback_end-label">
+            <value>Thank you. Submit when you have asked all 8 people.</value>
+            <value form="markdown">Thank you. Submit when you have asked all 8 people.</value>
+          </text>
+        </translation>
+        <translation lang="nya">
+          <text id="before_you_start-label">
+            <value>Musanayambe</value>
+            <value form="markdown">Musanayambe</value>
+          </text>
+          <text id="before_you_start-already_done_warning-label">
+            <value>Ndemanga za mudzi uno zinalembedwa kale. Pitirizani pokhapokha ngati woyang'anira wanu wakuuzani kutero.</value>
+            <value form="markdown">Ndemanga za mudzi uno zinalembedwa kale. Pitirizani pokhapokha ngati woyang'anira wanu wakuuzani kutero.</value>
+          </text>
+          <text id="before_you_start-feedback_intro-label">
+            <value>Werengerani mokweza mafunsowa m'chinenero cha kumaloko kwa anthu 8 amene anabwera: akazi 4 ndi amuna 4. Musalembe dzina kapena nambala ya foni ya munthu aliyense.</value>
+            <value form="markdown">Werengerani mokweza mafunsowa m'chinenero cha kumaloko kwa anthu 8 amene anabwera: akazi 4 ndi amuna 4. Musalembe dzina kapena nambala ya foni ya munthu aliyense.</value>
+          </text>
+          <text id="people_to_ask-label">
+            <value>Mufunsa anthu angati? Funsani anthu 8: akazi 4 ndi amuna 4.</value>
+            <value form="markdown">Mufunsa anthu angati? Funsani anthu 8: akazi 4 ndi amuna 4.</value>
+          </text>
+          <text id="people_to_ask-constraintMsg">
+            <value>Lembani nambala kuyambira 1 mpaka 8.</value>
+            <value form="markdown">Lembani nambala kuyambira 1 mpaka 8.</value>
+          </text>
+          <text id="participants-label">
+            <value>Munthu</value>
+            <value form="markdown">Munthu</value>
+          </text>
+          <text id="participants-consent-label">
+            <value>Chilolezo</value>
+            <value form="markdown">Chilolezo</value>
+          </text>
+          <text id="participants-consent-feedback_script-label">
+            <value>Tikufunsa anthu ochepa za misonkhano ya mudzi, kuti tidziwe ngati misonkhanoyi ikufalitsa uthenga bwino. Mayankho anu amapita ku bungwe loyendetsa ntchitoyi komanso ku Spark MicroGrants. Oyang'anira amawawerenga; sagwiritsidwa ntchito polipira kapena poweruza munthu aliyense. Mayankho anu sagwirizanitsidwa ndi dzina lanu. Kuyankha ndi chisankho chanu, ndipo mungathe kusiya nthawi ina iliyonse, ngakhale titayamba kale. Kuyankha sikukupatsani malipiro kapena phindu lililonse, ndipo kukana sikukutayitsani kanthu. Kodi mungakonde kuyankha?</value>
+            <value form="markdown">Tikufunsa anthu ochepa za misonkhano ya mudzi, kuti tidziwe ngati misonkhanoyi ikufalitsa uthenga bwino. Mayankho anu amapita ku bungwe loyendetsa ntchitoyi komanso ku Spark MicroGrants. Oyang'anira amawawerenga; sagwiritsidwa ntchito polipira kapena poweruza munthu aliyense. Mayankho anu sagwirizanitsidwa ndi dzina lanu. Kuyankha ndi chisankho chanu, ndipo mungathe kusiya nthawi ina iliyonse, ngakhale titayamba kale. Kuyankha sikukupatsani malipiro kapena phindu lililonse, ndipo kukana sikukutayitsani kanthu. Kodi mungakonde kuyankha?</value>
+          </text>
+          <text id="participants-consent-feedback_consent-label">
+            <value>Kodi munthu uyu akuvomera kuyankha?</value>
+            <value form="markdown">Kodi munthu uyu akuvomera kuyankha?</value>
+          </text>
+          <text id="participants-about_the_meetings-label">
+            <value>Za misonkhano</value>
+            <value form="markdown">Za misonkhano</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-label">
+            <value>Jenda, monga momwe munthuyo wanenera</value>
+            <value form="markdown">Jenda, monga momwe munthuyo wanenera</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt0-label">
+            <value>Mkazi</value>
+            <value form="markdown">Mkazi</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt1-label">
+            <value>Mwamuna</value>
+            <value form="markdown">Mwamuna</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-label">
+            <value>Kodi munabwera ku msonkhano wa mudzi womaliza?</value>
+            <value form="markdown">Kodi munabwera ku msonkhano wa mudzi womaliza?</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt0-label">
+            <value>Eya</value>
+            <value form="markdown">Eya</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt1-label">
+            <value>Ayi</value>
+            <value form="markdown">Ayi</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-label">
+            <value>Kodi mungandiuze chinthu chimodzi chimene mudzi wanu unagwirizana kapena kusankha pa msonkhano waposachedwa?</value>
+            <value form="markdown">Kodi mungandiuze chinthu chimodzi chimene mudzi wanu unagwirizana kapena kusankha pa msonkhano waposachedwa?</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt0-label">
+            <value>Watchula chimene anagwirizana</value>
+            <value form="markdown">Watchula chimene anagwirizana</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt1-label">
+            <value>Walephera kutchula chilichonse</value>
+            <value form="markdown">Walephera kutchula chilichonse</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-label">
+            <value>Kodi watchula chiyani chimene anagwirizana?</value>
+            <value form="markdown">Kodi watchula chiyani chimene anagwirizana?</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-constraintMsg">
+            <value>Gwiritsani ntchito zilembo zosapitirira 100.</value>
+            <value form="markdown">Gwiritsani ntchito zilembo zosapitirira 100.</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-label">
+            <value>Kodi munayankhulapo pa msonkhano wa mudzi mwezi uno?</value>
+            <value form="markdown">Kodi munayankhulapo pa msonkhano wa mudzi mwezi uno?</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-opt2-label">
+            <value>Sindikudziwa bwino</value>
+            <value form="markdown">Sindikudziwa bwino</value>
+          </text>
+          <text id="participants-recommendation-label">
+            <value>Kulimbikitsa ena</value>
+            <value form="markdown">Kulimbikitsa ena</value>
+          </text>
+          <text id="participants-recommendation-nps-label">
+            <value>Pa sikelo kuyambira 0 mpaka 10, kodi mungalimbikitse bwanji mudzi wina kuti ulowe mu FCAP?</value>
+            <value form="markdown">Pa sikelo kuyambira 0 mpaka 10, kodi mungalimbikitse bwanji mudzi wina kuti ulowe mu FCAP?</value>
+          </text>
+          <text id="participants-recommendation-nps-constraintMsg">
+            <value>Lembani nambala kuyambira 0 mpaka 10.</value>
+            <value form="markdown">Lembani nambala kuyambira 0 mpaka 10.</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-label">
+            <value>Kodi chifukwa chachikulu cha nambala imene mwapereka ndi chiyani?</value>
+            <value form="markdown">Kodi chifukwa chachikulu cha nambala imene mwapereka ndi chiyani?</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-constraintMsg">
+            <value>Gwiritsani ntchito zilembo zosapitirira 200.</value>
+            <value form="markdown">Gwiritsani ntchito zilembo zosapitirira 200.</value>
+          </text>
+          <text id="feedback_end-label">
+            <value>Zikomo. Tumizani fomuyi mukamaliza kufunsa anthu onse 8.</value>
+            <value form="markdown">Zikomo. Tumizani fomuyi mukamaliza kufunsa anthu onse 8.</value>
+          </text>
+        </translation>
+        <translation lang="tum">
+          <text id="before_you_start-label">
+            <value>Pambere mundambe</value>
+            <value form="markdown">Pambere mundambe</value>
+          </text>
+          <text id="before_you_start-already_done_warning-label">
+            <value>Maghanoghano gha ŵanthu ghali kulembeka kale pa muzi uwu. Lutilirani pera usange mulongozgi winu wamuphalirani kuti mulutilire.</value>
+            <value form="markdown">Maghanoghano gha ŵanthu ghali kulembeka kale pa muzi uwu. Lutilirani pera usange mulongozgi winu wamuphalirani kuti mulutilire.</value>
+          </text>
+          <text id="before_you_start-feedback_intro-label">
+            <value>Ŵazgerani mafumbo mwakukwezga mu chiyowoyero cha kwinu kwa ŵanthu 8 awo ŵakaŵapo pa wungano: ŵanakazi 4 na ŵanalume 4. Mungalembanga mazina panji manambala gha foni yayi.</value>
+            <value form="markdown">Ŵazgerani mafumbo mwakukwezga mu chiyowoyero cha kwinu kwa ŵanthu 8 awo ŵakaŵapo pa wungano: ŵanakazi 4 na ŵanalume 4. Mungalembanga mazina panji manambala gha foni yayi.</value>
+          </text>
+          <text id="people_to_ask-label">
+            <value>Kasi mufumbenge ŵanthu ŵalinga? Fumbani 8: ŵanakazi 4 na ŵanalume 4.</value>
+            <value form="markdown">Kasi mufumbenge ŵanthu ŵalinga? Fumbani 8: ŵanakazi 4 na ŵanalume 4.</value>
+          </text>
+          <text id="people_to_ask-constraintMsg">
+            <value>Lembani nambala kufuma pa 1 mpaka 8.</value>
+            <value form="markdown">Lembani nambala kufuma pa 1 mpaka 8.</value>
+          </text>
+          <text id="participants-label">
+            <value>Munthu</value>
+            <value form="markdown">Munthu</value>
+          </text>
+          <text id="participants-consent-label">
+            <value>Kuzomera</value>
+            <value form="markdown">Kuzomera</value>
+          </text>
+          <text id="participants-consent-feedback_script-label">
+            <value>Tikufumba ŵanthu ŵachoko vyakukhwaskana na maungano gha muzi, kuti timanye usange maungano ghakupeleka uthenga makora. Mazgoro ghinu ghakuluta ku bungwe ilo likuchitiska ntchito iyi na ku Spark MicroGrants. Ŵakulaŵilira ŵakuwona mazgoro agha; ghakugwiliskirika ntchito kulipira panji kweruzgira munthu yayi. Mazgoro ghinu ghakukolerana na zina linu yayi. Kuzgora nkhusankha kwinu, ndipo mungaleka nyengo yiliyose, nanga ni pamanyuma pakuti tamba. Kuzgora kukumupani malipiro panji chandulo chilichose yayi, ndipo kukana kukumuluskani kanthu yayi. Kasi mukukhumba kuzgora?</value>
+            <value form="markdown">Tikufumba ŵanthu ŵachoko vyakukhwaskana na maungano gha muzi, kuti timanye usange maungano ghakupeleka uthenga makora. Mazgoro ghinu ghakuluta ku bungwe ilo likuchitiska ntchito iyi na ku Spark MicroGrants. Ŵakulaŵilira ŵakuwona mazgoro agha; ghakugwiliskirika ntchito kulipira panji kweruzgira munthu yayi. Mazgoro ghinu ghakukolerana na zina linu yayi. Kuzgora nkhusankha kwinu, ndipo mungaleka nyengo yiliyose, nanga ni pamanyuma pakuti tamba. Kuzgora kukumupani malipiro panji chandulo chilichose yayi, ndipo kukana kukumuluskani kanthu yayi. Kasi mukukhumba kuzgora?</value>
+          </text>
+          <text id="participants-consent-feedback_consent-label">
+            <value>Kasi munthu uyu wakuzomera kuzgora?</value>
+            <value form="markdown">Kasi munthu uyu wakuzomera kuzgora?</value>
+          </text>
+          <text id="participants-about_the_meetings-label">
+            <value>Vyakukhwaskana na maungano</value>
+            <value form="markdown">Vyakukhwaskana na maungano</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-label">
+            <value>Kasi ni mwanakazi panji mwanalume (umo munthu wakuyowoyera)?</value>
+            <value form="markdown">Kasi ni mwanakazi panji mwanalume (umo munthu wakuyowoyera)?</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt0-label">
+            <value>Mwanakazi</value>
+            <value form="markdown">Mwanakazi</value>
+          </text>
+          <text id="participants-about_the_meetings-participant_gender-opt1-label">
+            <value>Mwanalume</value>
+            <value form="markdown">Mwanalume</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-label">
+            <value>Kasi mukaŵapo pa wungano wa muzi wakumalizira?</value>
+            <value form="markdown">Kasi mukaŵapo pa wungano wa muzi wakumalizira?</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt0-label">
+            <value>Enya</value>
+            <value form="markdown">Enya</value>
+          </text>
+          <text id="participants-about_the_meetings-attended_last_meeting-opt1-label">
+            <value>Yayi</value>
+            <value form="markdown">Yayi</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-label">
+            <value>Kasi mungandiphalirako chinthu chimoza icho muzi winu ukadumura panji kuzomerezgana pa wungano wa pafupi apa?</value>
+            <value form="markdown">Kasi mungandiphalirako chinthu chimoza icho muzi winu ukadumura panji kuzomerezgana pa wungano wa pafupi apa?</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt0-label">
+            <value>Wayowoyapo chinthu icho chikadumulika</value>
+            <value form="markdown">Wayowoyapo chinthu icho chikadumulika</value>
+          </text>
+          <text id="participants-about_the_meetings-can_name_decision-opt1-label">
+            <value>Wandayowoye chilichose</value>
+            <value form="markdown">Wandayowoye chilichose</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-label">
+            <value>Kasi wayowoya chinthu wuli icho chikadumulika?</value>
+            <value form="markdown">Kasi wayowoya chinthu wuli icho chikadumulika?</value>
+          </text>
+          <text id="participants-about_the_meetings-decision_named-constraintMsg">
+            <value>Lembani malembo 100 panji ghachoko.</value>
+            <value form="markdown">Lembani malembo 100 panji ghachoko.</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-label">
+            <value>Kasi mukayowoyapo pa wungano wa muzi mwezi uno?</value>
+            <value form="markdown">Kasi mukayowoyapo pa wungano wa muzi mwezi uno?</value>
+          </text>
+          <text id="participants-about_the_meetings-spoke_this_month-opt2-label">
+            <value>Nkhumanya makora yayi</value>
+            <value form="markdown">Nkhumanya makora yayi</value>
+          </text>
+          <text id="participants-recommendation-label">
+            <value>Kuchiska ŵanyake</value>
+            <value form="markdown">Kuchiska ŵanyake</value>
+          </text>
+          <text id="participants-recommendation-nps-label">
+            <value>Kufuma pa 0 mpaka 10, kasi mungachiska muzi unyake kuti unjire mu FCAP chomene wuli?</value>
+            <value form="markdown">Kufuma pa 0 mpaka 10, kasi mungachiska muzi unyake kuti unjire mu FCAP chomene wuli?</value>
+          </text>
+          <text id="participants-recommendation-nps-constraintMsg">
+            <value>Lembani nambala kufuma pa 0 mpaka 10.</value>
+            <value form="markdown">Lembani nambala kufuma pa 0 mpaka 10.</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-label">
+            <value>Kasi chifukwa chikuru cha nambala iyo mwapeleka ni vichi?</value>
+            <value form="markdown">Kasi chifukwa chikuru cha nambala iyo mwapeleka ni vichi?</value>
+          </text>
+          <text id="participants-recommendation-nps_probe-constraintMsg">
+            <value>Lembani malembo 200 panji ghachoko.</value>
+            <value form="markdown">Lembani malembo 200 panji ghachoko.</value>
+          </text>
+          <text id="feedback_end-label">
+            <value>Yewo. Tumizgani fomu pamanyuma pa kufumba ŵanthu wose 8.</value>
+            <value form="markdown">Yewo. Tumizgani fomu pamanyuma pa kufumba ŵanthu wose 8.</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+      <bind nodeset="/data/case/update/feedback_date" calculate="/data/feedback_date_value" relevant="count(/data/feedback_date_value) &gt; 0"/>
+      <bind nodeset="/data/case/update/feedback_done" calculate="/data/feedback_done_value" relevant="count(/data/feedback_done_value) &gt; 0"/>
+      <setvalue ref="/data/feedback_done_value" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/feedback_done" event="xforms-ready"/>
+      <setvalue ref="/data/feedback_date_value" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/feedback_date" event="xforms-ready"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+    <vellum:hashtags>{"#case/feedback_done":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/feedback_done"}</vellum:hashtags>
+    <vellum:hashtagTransforms>{"prefixes":{"#case/":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/"}}</vellum:hashtagTransforms>
+  </h:head>
+  <h:body>
+    <group ref="/data/before_you_start" appearance="field-list">
+      <label ref="jr:itext('before_you_start-label')"/>
+      <trigger ref="/data/before_you_start/already_done_warning" appearance="minimal">
+        <label ref="jr:itext('before_you_start-already_done_warning-label')"/>
+      </trigger>
+      <trigger ref="/data/before_you_start/feedback_intro" appearance="minimal">
+        <label ref="jr:itext('before_you_start-feedback_intro-label')"/>
+      </trigger>
+    </group>
+    <input ref="/data/people_to_ask">
+      <label ref="jr:itext('people_to_ask-label')"/>
+    </input>
+    <group ref="/data/participants">
+      <label ref="jr:itext('participants-label')"/>
+      <repeat nodeset="/data/participants" jr:count="/data/__nova_count_participants" jr:noAddRemove="true()">
+        <group ref="/data/participants/consent" appearance="field-list">
+          <label ref="jr:itext('participants-consent-label')"/>
+          <trigger ref="/data/participants/consent/feedback_script" appearance="minimal">
+            <label ref="jr:itext('participants-consent-feedback_script-label')"/>
+          </trigger>
+          <select1 ref="/data/participants/consent/feedback_consent">
+            <label ref="jr:itext('participants-consent-feedback_consent-label')"/>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt0-label')"/>
+              <value>yes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt1-label')"/>
+              <value>no</value>
+            </item>
+          </select1>
+        </group>
+        <group ref="/data/participants/about_the_meetings" appearance="field-list">
+          <label ref="jr:itext('participants-about_the_meetings-label')"/>
+          <select1 ref="/data/participants/about_the_meetings/participant_gender">
+            <label ref="jr:itext('participants-about_the_meetings-participant_gender-label')"/>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-participant_gender-opt0-label')"/>
+              <value>female</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-participant_gender-opt1-label')"/>
+              <value>male</value>
+            </item>
+          </select1>
+          <select1 ref="/data/participants/about_the_meetings/attended_last_meeting">
+            <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-label')"/>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt0-label')"/>
+              <value>yes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt1-label')"/>
+              <value>no</value>
+            </item>
+          </select1>
+          <select1 ref="/data/participants/about_the_meetings/can_name_decision">
+            <label ref="jr:itext('participants-about_the_meetings-can_name_decision-label')"/>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-can_name_decision-opt0-label')"/>
+              <value>named</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-can_name_decision-opt1-label')"/>
+              <value>could_not_name</value>
+            </item>
+          </select1>
+          <input ref="/data/participants/about_the_meetings/decision_named">
+            <label ref="jr:itext('participants-about_the_meetings-decision_named-label')"/>
+          </input>
+          <select1 ref="/data/participants/about_the_meetings/spoke_this_month">
+            <label ref="jr:itext('participants-about_the_meetings-spoke_this_month-label')"/>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt0-label')"/>
+              <value>yes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-attended_last_meeting-opt1-label')"/>
+              <value>no</value>
+            </item>
+            <item>
+              <label ref="jr:itext('participants-about_the_meetings-spoke_this_month-opt2-label')"/>
+              <value>not_sure</value>
+            </item>
+          </select1>
+        </group>
+        <group ref="/data/participants/recommendation" appearance="field-list">
+          <label ref="jr:itext('participants-recommendation-label')"/>
+          <input ref="/data/participants/recommendation/nps">
+            <label ref="jr:itext('participants-recommendation-nps-label')"/>
+          </input>
+          <input ref="/data/participants/recommendation/nps_probe">
+            <label ref="jr:itext('participants-recommendation-nps_probe-label')"/>
+          </input>
+        </group>
+      </repeat>
+    </group>
+    <trigger ref="/data/feedback_end" appearance="minimal">
+      <label ref="jr:itext('feedback_end-label')"/>
+    </trigger>
+  </h:body>
+</h:html>

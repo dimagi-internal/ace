@@ -82,6 +82,7 @@ authored from the PDD per run):
 | [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`screen-grouping`](#screen-grouping) | Deliver (+ Learn) | Always, for any form that puts more than one question in a `group` | `pdd-to-deliver-app-eval § field_answerability`; `pdd-to-deliver-app § Step 4g` (mechanical, `lib/screen-shape.ts`) |
+| [`repeat-count-source`](#repeat-count-source) | Deliver (+ Learn) | Any repeat whose row count is known in advance (`count_bound`) | `app-release-qa § Step 4` dead-repeat-count check (mechanical, `lib/repeat-count-audit.ts`, ace#2517) |
 | [`consent-script-floor`](#consent-script-floor) | Deliver | The PDD describes consent being sought from the people whose data/images are captured — **whether or not it declares a consent FIELD** (a read-aloud announcement counts) | `pdd-to-deliver-app-eval § consent_floor` (hard-gate — backstop only; this is a BUILD-TIME component) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
@@ -1486,6 +1487,44 @@ respondent may never have heard read out.
 > the later answer in a hidden calculate does NOT help — the calculate inherits
 > the position of the latest question it depends on.
 
+### repeat-count-source
+
+- **App:** Deliver (+ Learn — any form with a repeat)
+- **Trigger:** any repeat whose number of rows is fixed in advance — a Nova
+  `repeat.mode: "count_bound"`.
+- **Enforced by:** the mechanical CCZ check in `app-release-qa § Step 4`
+  (`lib/repeat-count-audit.ts`, `auditRepeatCounts`, halts as
+  `dead-repeat-count`).
+- **Origin:** ace#2517 — on `spark-facilitator/20260926-1413` all 5 count-bound
+  repeats in the Deliver app (meeting activities, independent projects,
+  Participant Feedback participants) counted from a question answered in the
+  same form, so every one rendered zero rows on device.
+
+Nova snapshots a ROOT `count_bound` count once, when the form opens
+(`<setvalue event="xforms-ready">` into `__nova_count_<id>`, no `calculate`),
+and does not track later answers — its own tool schema says "Count is fixed when
+the enclosing instance opens. Use user_controlled for rows added while
+answering." Nova's validator does not refuse the misuse (upstream ask:
+`voidcraft-labs/commcare-nova#692`), so the brief must.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Repeat count source: a `count_bound` repeat's `count` MUST be known
+> when the form OPENS — a case property, a session value, a lookup, or a
+> constant. NEVER set it to a question answered in the same form ("How many
+> activities were handled?" → N rows): Nova captures the count at form open,
+> while that question is still blank, so the repeat renders ZERO rows and the
+> worker is carried straight past it. For "the worker states how many, then
+> fills that many rows", use `repeat.mode: "user_controlled"` (the worker adds
+> each row), drop the how-many question, and derive the number as a hidden
+> `calculate` of `count(<repeat>)` wherever a case property or report needs it.
+> If the PDD requires at least one row, that minimum goes on a gate question
+> IMMEDIATELY AFTER the repeat, never inside it (`constraint-locality`'s
+> ace#1560 carve-out).
+> A nested `count_bound` repeat (inside another repeat) snapshots when its parent
+> row is created, so it may read an answer given BEFORE that parent row; it may
+> never read a field of its own row.
+
 ### branch-scoped-groups
 
 - **App:** Deliver
@@ -2220,6 +2259,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-09-27 | **New component `repeat-count-source` (ace#2517).** Nova compiles a root `count_bound` repeat's count as a one-shot `xforms-ready` snapshot — documented Nova semantics, not a compiler slip — and its validator accepts a count read from a same-form question, which is therefore always blank at snapshot time. `spark-facilitator/20260926-1413` shipped 5 of 5 count-bound repeats that way; every one rendered zero rows and a Phase 6 device walk was the first thing to notice. The brief now forbids the shape and routes "worker states N, then fills N rows" to a `user_controlled` repeat whose count is derived, not asked. *Enforced:* `lib/repeat-count-audit.ts` + `test/lib/repeat-count-audit.test.ts` (the released Participant Feedback form as the positive fixture), halting in `app-release-qa` as `dead-repeat-count`. | ACE |
 | 2026-09-17 | **`payability-scoped-key` states the CAPPED-INDEX timing invariant, and a helper now checks it (ace#2148).** The component described the mechanism — the per-entity cap is enforced by deduplication, not by the app refusing a submission — and never stated the relationship between the clamp constant and WHEN the counter is read. A `casedb` read is the state BEFORE this submission (the case property is written on submit), so `min(<casedb count>, cap)` admits `cap + 1` distinct keys: the (cap+1)-th mints an index that has never existed and Connect pays it. On `spark-facilitator/20260906-2233` a cap of 3 shipped binding at 4 — 4 x 7 steps = 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green and the app internally consistent with its own wrong key. The app's own `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. **Not gateable by comparing the clamp to the cap:** both correct constructions are live in this same opportunity and share no constant — `min(<casedb count> + 1, 3)` on build `b08533bdf26a48a295a362ff204fb88d` (indices 1..3) and `if(pcts >= 3, 2, pcts)` on `0cb63a78fd9949b696876ee7a642b685` (indices 0..2). So `checkPayableCapArithmetic` SIMULATES the first submissions and counts distinct keys, and falls back to the app's own `is_payable` guard when no cap is plumbed through — which is what makes the ace#2148 build self-contradictory and therefore catchable. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts`, whose controls are the two real released forms and whose negative control is the shipped defect reconstructed from the fixed artifact by the single character the fix changed. | ACE team |
 | 2026-09-16 | **`consent-branch-completeness` resolves the gate's LOCATION, not just its presence (ace#2415).** `checkConsentBranchCompleteness` read one flat `relevant` string per field, and in a Nova blueprint the consent gate almost always sits on the enclosing GROUP — so run over the blueprint exactly as this section and `pdd-to-deliver-app-eval § conditional_logic_match` both instruct, every question inside a correctly gated group came back `ungated-required-after-consent`, which hard-gates that dimension to ≤ 3 and fails the suite. Measured on `poverty-graduation/20260915-1518`: **14 false findings on a correct build**, each with a paragraph of correct-sounding reasoning, on the one check those callers explicitly say to run *instead of* eyeballing; the single field that passed did so by accident, having happened to carry the gate on itself. The inverse of ace#1509, which closed the SCOPE gap ("the gate governs too much") — that asked *which fields the gate covers*, this asks *where the gate is*. The helper now takes the field TREE and resolves effective relevance itself (own ∧ every ancestor's), plus one hop of hidden-calculate indirection for a gate written over a named outcome; the resolution lives in the helper rather than at each call site because a caller that must pre-flatten is a caller that can forget to, and both of them did. An ancestor gate on something other than consent is still `undisclosed-narrowing`, so nothing here disables the check. *Enforced:* `test/lib/consent-branch.test.ts` — the group-nested fixtures the suite lacked, with a genuinely-ungated control. | ACE |
 | 2026-09-11 | **`threshold-coherence-flag` recognises an accuracy-conditioned dedup radius (ace#2373).** The brief read "dedup radius vs accepted GPS accuracy" as two scalars, so the Targeting PDD author's v1.1 §6 [FIXED] rule — 15 m applied only where both readings beat 15 m, identifiers otherwise — was briefed to the builder as a conflict against a 50 m tolerance, and #984's recommended remedy ("raise the radius or tie them") sat one step away. The paragraph now names the conditioned radius as coherent by construction, keeps the unconditioned radius at or below the tolerance as the incoherent case, and forbids moving a `[FIXED]` or author-attributed threshold in any direction to resolve a noticed conflict. The two §6 wordings are pinned as a controls table and executed by `lib/gps-dedup-coherence.ts`; the canonical `program_parameters.duplicate_gps_rule` key carries the condition the bare `duplicate_gps_radius_m` scalar dropped. *Enforced:* `test/lib/gps-dedup-coherence.test.ts` + `test/skills/threshold-coherence-conditioned-radius.test.ts`. | ACE (Sophie Feintuch review) |
