@@ -1468,7 +1468,7 @@ re-described to match what came out. `demo-data-setup-qa` re-runs this check.
 {
   "primary_par_url": "<programme report run URL>",
   "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/<prog>/run/?run_id=<latest>&program_id=<program>",
-  "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/<review>/run/?owning_program_id=<program>&run_id=<review run>&flw=<opp>%3A%3A<username>&source_run=<latest>",
+  "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>&flw=<opp>%3A%3A<username>&source_run=<latest>",
   "lagging_partner_label": "Partner C",
   "standout_worker": "cbf_b03",
   "data_quality_worker": "cbf_a07",
@@ -1477,7 +1477,14 @@ re-described to match what came out. `demo-data-setup-qa` re-runs this check.
 ```
 
 one `<partner>_opp_report_par_url` per partner, and a `worker_review_url` for each
-worker carrier. Write `products.synthetic.cascade` (`registry`, `program_id`,
+worker carrier. **Every `*worker_review_url` carries `&program_id=`, never
+`owning_program_id` alone** — the programme report's own "Review →" links use
+`owning_program_id`, but that is only a labs data-access hint, not a page-scope
+param (`labs.context.CONTEXT_PARAMS` is `organization_id`/`program_id`/
+`opportunity_id`). A scene that opens the review cold gets the session's last
+`opportunity_id` appended and renders "Workflow definition <id> not found under
+opportunity <n>" (ace#2521, spark-facilitator/20260926-1413). `demo-data-setup-qa`
+check 2 fails it (`checkWorkerReviewUrlScope`). Write `products.synthetic.cascade` (`registry`, `program_id`,
 `partners`, `programme_report`, `worker_review`, `opp_reports[]`, `cohort_id`,
 `history`, `story_verified`) AND mirror the reports into `products.synthetic.workflows`
 (`{programme_report: {workflow_id, run_url}, <partner>_opp_report: {...}}`) — that

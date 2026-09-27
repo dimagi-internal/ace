@@ -1,0 +1,6 @@
+{
+  "_source": "spark-facilitator/20260926-1413 Phase 7, ace#2521. Both URLs fetched with a restored labs session. owning_program_id form: 302 -> appends &opportunity_id=10087 -> 200 'Workflow definition 6439 not found under opportunity 10087.' (no #workflow-data). program_id form: 200, #workflow-data present, 'Indicator Worker Review', renders cbf_a07's indicator table.",
+  "broken_owning_program_id": "https://labs.connect.dimagi.com/labs/workflow/6439/run/?owning_program_id=10085&run_id=6441&flw=10085%3A%3Acbf_a07&source_run=6460",
+  "working_program_id": "https://labs.connect.dimagi.com/labs/workflow/6439/run/?run_id=6441&program_id=10085&flw=10085%3A%3Acbf_a07&source_run=6460",
+  "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/6437/run/?run_id=6460&program_id=10085"
+}
