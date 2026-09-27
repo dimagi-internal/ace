@@ -840,3 +840,53 @@ describe('lintRecipeText — ace#1690 rules do not fire on the shipped palette',
     expect(offenders).toEqual([]);
   });
 });
+
+describe('lintRecipeText — date-picker-next-cell-tap-noop (ace#2518)', () => {
+  // The exact idiom spark-facilitator/20260926-1413 shipped and that did
+  // nothing on 2.64.0.
+  const idiom = [
+    'appId: org.commcare.dalvik',
+    '---',
+    '- tapOn:',
+    '    below:   { id: "${SELECTOR:form-date-picker-input}", index: 1 }',
+    '    rightOf: { id: "${SELECTOR:form-date-picker-input}", index: 0 }',
+    '    leftOf:  { id: "${SELECTOR:form-date-picker-input}", index: 2 }',
+    '',
+  ].join('\n');
+
+  it('rejects the ace#1081 relational tap for APK 2.64.0', () => {
+    const { ok, violations } = lintRecipeText(idiom, { apkVersion: '2.64.0' });
+    expect(ok).toBe(false);
+    expect(violations.map((v) => v.rule)).toEqual(['date-picker-next-cell-tap-noop']);
+    expect(violations[0].line).toBe(3);
+    expect(violations[0].remediation).toMatch(/dayStepFlingYaml/);
+  });
+
+  it('also catches the resolved resource-id form', () => {
+    const resolved = idiom.replaceAll('${SELECTOR:form-date-picker-input}', 'android:id/numberpicker_input');
+    expect(lintRecipeText(resolved, { apkVersion: '2.64.0' }).ok).toBe(false);
+  });
+
+  it('abstains on 2.63.2, where the tap is the calibrated drive', () => {
+    expect(lintRecipeText(idiom, { apkVersion: '2.63.2' }).ok).toBe(true);
+  });
+
+  it('abstains when no APK is named', () => {
+    expect(lintRecipeText(idiom).ok).toBe(true);
+  });
+
+  it('passes the 2.64.0 fling', () => {
+    const fling = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- assertVisible:',
+      '    id: "${SELECTOR:form-date-picker-input}"',
+      '- swipe:',
+      '    start: 529, 968',
+      '    end: 529, 818',
+      '    duration: 600',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(fling, { apkVersion: '2.64.0' }).ok).toBe(true);
+  });
+});

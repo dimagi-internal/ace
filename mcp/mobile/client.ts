@@ -1960,7 +1960,7 @@ export class MobileClient {
         } catch {
           selectorTypes = undefined;
         }
-        const lint = lintRecipeText(recipeText, { selectorTypes });
+        const lint = lintRecipeText(recipeText, { selectorTypes, apkVersion });
         if (!lint.ok) {
           const first = lint.violations[0];
           throw new MobileError(

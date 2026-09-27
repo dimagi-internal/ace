@@ -18,6 +18,12 @@
 # first written and flagged unverified — that surface is DORMANT on a
 # 2.64.0 device, because the prompt fires only on version skew.
 # TOTAL 91 rows: 46 verified, 45 unverified.
+# UPDATED 2026-09-27 (dimagi-internal/ace#2518): the date-picker rows were
+# reached live on spark-facilitator/20260926-1413 Phase 6 (evidence is the
+# read-back table recorded in ace#2518, not a committed dump). The column and
+# input rows are now verified, the next-cell tap row is verified as a NO-OP,
+# and one row is new (form-date-picker-step-fling).
+# TOTAL 92 rows: 51 verified, 41 unverified (counted from the file, not carried from the line above).
 #
 # WHAT ACTUALLY CHANGED IN 2.64.0
 # -----------------------------------------------------------------------------
@@ -484,20 +490,23 @@ selectors:
   form-date-picker-column:
     type: class
     value: "android.widget.NumberPicker"
-    unverified: true
-    purpose: "One spinner column of the native date widget; scrollable=true, which is why it swallows a page swipe. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+    purpose: "One spinner column of the native date widget; scrollable=true, which is why it swallows a page swipe. RE-OBSERVED live on 2.64.0 (spark-facilitator/20260926-1413 Phase 6, 2026-09-27, ace#2518), 1080x2400, date question at the top of its field-list screen: columns month x 235..403, day x 445..613, year x 655..823 — the same x-ranges as 2.63.2. Row centres y 671 (previous), 818 (current), 968 (next); the next-value cell measured [445,881][613,1055]. The y-positions depend on where the question sits on its screen; the x-ranges are what safeScrollOriginX needs."
 
   form-date-picker-step-next:
     type: doc
     value: "the Button immediately BELOW each column's numberpicker_input"
-    unverified: true
-    purpose: "How to DRIVE the date picker one step at a time, with read-back from form-date-picker-input. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0. Bounds cited in the 2.63.2 map are 2.63.2 observations and must not be treated as 2.64.0 measurements."
+    purpose: "DO NOT USE ON 2.64.0 — a MEASURED SILENT NO-OP (ace#2518). The ace#1081 drive (tap the Button below the day column's numberpicker_input) works on 2.63.2 but not here: on spark-facilitator/20260926-1413 Phase 6 (2026-09-27) the relational tap below/rightOf/leftOf numberpicker_input AND a direct `tapOn: {text: '28', below: {text: '27'}}` on the next cell [445,881][613,1055] were both reported COMPLETED by Maestro and both left the day at 27 (ui-dump read-back); a `. > today()` constraint then refused FINISH. Typing does not work either: tapOn the day numberpicker_input + eraseText + inputText '28' + hideKeyboard — hideKeyboard fell through to BACK and opened 'Exit Form?', and after STAY IN FORM the day read 27. Use form-date-picker-step-fling instead. `mcp/mobile/recipe-lint.ts` rule `date-picker-next-cell-tap-noop` rejects the relational form for this APK."
+
+  form-date-picker-step-fling:
+    type: doc
+    value: "a one-row upward swipe on the DAY column: next-value cell centre -> current-value cell centre, duration 600"
+    purpose: "How to advance the date one day on 2.64.0 — the only one of four candidates that worked (ace#2518). Measured live on spark-facilitator/20260926-1413 Phase 6, 2026-09-27, 1080x2400: `swipe: {start: 529, 968, end: 529, 818, duration: 600}` moved the day 27 -> 28 (ui-dump read-back) and cleared the form's `. > today()` constraint. Maestro 2.5.1 cannot anchor a BOUNDED swipe on an element (`swipe: {from: <selector>, direction: UP}` flings to 10% of screen height — many rows, the ace#1300 hazard), so the recipe carries coordinates derived at authoring time by `lib/date-picker-drive.ts dayStepFling` from the day column's cell bounds; `DATE_PICKER_2_64_0_OBSERVED` reproduces the device pixels exactly. OBSERVED: direction, one-row distance, column, duration, +1 result. GENERALISED (not re-observed): the same derivation for a picker at a different screen position, and more than one fling in a row. Falsified by a derived fling that leaves the day unchanged or moves it by more than one."
+
 
   form-date-picker-input:
     type: id
     value: "android:id/numberpicker_input"
-    unverified: true
-    purpose: "The EditText inside each date column holding the CURRENT value — the read-back to assert a date against. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+    purpose: "The EditText inside each date column holding the CURRENT value — the read-back to assert a date against. RE-OBSERVED live on 2.64.0 (spark-facilitator/20260926-1413 Phase 6, 2026-09-27, ace#2518): it was the read-back surface for all four drive candidates (day '27' -> '28' only after the row fling). Current-row centre y 818 on that screen."
 
   form-photo-capture:
     type: text
