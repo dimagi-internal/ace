@@ -145,6 +145,55 @@ export function checkParUrlScope(dashboards: DashboardRef[]): QACheckResult {
   };
 }
 
+/**
+ * Every `*worker_review_url` in realized.json is a run deep-link that carries
+ * `program_id=` — the page-scope param a program-owned worker review needs
+ * when it is opened COLD (a DDD scene `url:`), not after a click-through.
+ *
+ * `owning_program_id` is NOT a substitute. In labs it is only a data-access
+ * hint (`_run_program_hint`, connect_labs/workflow/views.py) and is
+ * deliberately not one of `labs.context.CONTEXT_PARAMS`
+ * (`organization_id`, `program_id`, `opportunity_id`). With no context param
+ * on the URL, labs appends the session's last-selected `opportunity_id` and
+ * the page reads "Workflow definition <id> not found under opportunity <n>."
+ * Observed spark-facilitator/20260926-1413 (ace#2521): the `owning_program_id`
+ * form 302s to `&opportunity_id=10087` and renders no `#workflow-data`; the
+ * `&program_id=10085` form renders the review.
+ */
+export function checkWorkerReviewUrlScope(realized: Record<string, unknown>): QACheckResult {
+  const keys = Object.keys(realized).filter((k) => /(^|_)worker_review_url$/.test(k));
+  const problems: string[] = [];
+  for (const key of keys) {
+    const raw = realized[key];
+    let url: URL;
+    try {
+      url = new URL(String(raw));
+    } catch {
+      problems.push(`${key}: not a URL — got ${String(raw)}`);
+      continue;
+    }
+    if (!/^\/labs\/workflow\/\d+\/run\/$/.test(url.pathname) || !/^\d+$/.test(url.searchParams.get('run_id') ?? '')) {
+      problems.push(`${key}: not a run deep-link (need /labs/workflow/<id>/run/?run_id=<id>&program_id=<id>) — got ${raw}`);
+      continue;
+    }
+    if (!/^\d+$/.test(url.searchParams.get('program_id') ?? '')) {
+      const hint = url.searchParams.has('owning_program_id')
+        ? ' — owning_program_id is a data hint, not a page-scope param; opened cold, labs scopes the page to the ' +
+          "session's last opportunity and renders \"Workflow definition <id> not found\""
+        : '';
+      problems.push(`${key}: worker review is program-owned, so its URL MUST carry &program_id=<id>${hint}`);
+    }
+  }
+  if (problems.length === 0) return { pass: true, detail: `${keys.length} worker_review_url(s) correctly scoped` };
+  return {
+    pass: false,
+    detail: problems.join('; '),
+    auto_fix_hint:
+      'build each worker_review_url as /labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>' +
+      '&flw=<opp>%3A%3A<username>&source_run=<latest> (demo-data-setup § C7; dimagi-internal/ace#2521).',
+  };
+}
+
 export type PayloadFindingKind =
   | 'snapshot-missing-pipelines'
   | 'field-all-null'
