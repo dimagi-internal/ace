@@ -18,6 +18,7 @@
 // wrong."
 
 import { parseAllDocuments, isMap, isSeq, type Node } from 'yaml';
+import { nextCellTapIsNoop } from '../../lib/date-picker-drive.js';
 
 /** A single violation surfaced by the linter. */
 export interface LintViolation {
@@ -30,7 +31,8 @@ export interface LintViolation {
     | 'pre-submit-screenshot-name-claims-outcome'
     | 'repeat-palette-invocation-without-discriminator'
     | 'selector-inline-key-position'
-    | 'selector-value-position-type-mismatch';
+    | 'selector-value-position-type-mismatch'
+    | 'date-picker-next-cell-tap-noop';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -56,6 +58,12 @@ export interface LintOptions {
    * every other rule is unaffected.
    */
   selectorTypes?: Record<string, 'id' | 'text' | 'point'>;
+  /**
+   * The APK version the recipe will run against. Unlocks APK-specific rules
+   * (today: `date-picker-next-cell-tap-noop`). Omit it and those rules
+   * abstain.
+   */
+  apkVersion?: string;
 }
 
 /**
@@ -359,6 +367,19 @@ export function lintRecipeText(yaml: string, options: LintOptions = {}): LintRes
   // active selector map) — no device, no Maestro (dimagi-internal/ace#1690).
   for (const v of findSelectorPlacementDefects(yaml, options.selectorTypes)) {
     violations.push(v);
+  }
+
+  // Rule: date-picker-next-cell-tap-noop (dimagi-internal/ace#2518).
+  //
+  // The ace#1081 idiom taps the Button below the day column's
+  // `numberpicker_input` via a relational matcher. Calibrated on 2.63.2; on
+  // 2.64.0 it is a MEASURED silent no-op (Maestro says COMPLETED, the date
+  // stays on today, FINISH is refused by `. > today()`). Only fires when the
+  // caller names an APK on which the tap is known dead.
+  if (options.apkVersion && nextCellTapIsNoop(options.apkVersion)) {
+    for (const v of findDatePickerNextCellTaps(yaml, options.apkVersion)) {
+      violations.push(v);
+    }
   }
 
   return { ok: violations.length === 0, violations };
@@ -892,5 +913,66 @@ function findRepeatPaletteInvocations(yaml: string): LintViolation[] {
     }
   }
 
+  return out;
+}
+
+/** Does this matcher reference the date column's current-value EditText? */
+function isDatePickerInputRef(node: unknown): boolean {
+  if (!isMap(node)) return false;
+  const id = node.get('id');
+  return (
+    typeof id === 'string' &&
+    (id.includes('${SELECTOR:form-date-picker-input}') || id.includes('numberpicker_input'))
+  );
+}
+
+/**
+ * Flag every `tapOn` scoped RELATIVE to `numberpicker_input` (below / above /
+ * leftOf / rightOf) — the ace#1081 next-cell tap — for an APK where that tap
+ * is a measured no-op. A tap ON the input itself (no relational scope) is not
+ * this idiom and is left alone.
+ */
+function findDatePickerNextCellTaps(yaml: string, apkVersion: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(yaml);
+  } catch {
+    return out;
+  }
+  const visit = (node: Node | null): void => {
+    if (node == null) return;
+    if (isSeq(node)) {
+      for (const item of node.items) visit(item as Node);
+      return;
+    }
+    if (!isMap(node)) return;
+    const tap = node.get('tapOn', true);
+    if (isMap(tap)) {
+      const relational = ['below', 'above', 'leftOf', 'rightOf'].some((k) =>
+        isDatePickerInputRef(tap.get(k, true)),
+      );
+      if (relational) {
+        const rangeStart = (node.range && node.range[0]) ?? 0;
+        const line = yaml.slice(0, rangeStart).split('\n').length;
+        out.push({
+          rule: 'date-picker-next-cell-tap-noop',
+          line,
+          detail:
+            `tapOn at line ${line} is the ace#1081 date-picker next-cell tap (scoped relative to numberpicker_input). ` +
+            `On APK ${apkVersion} that tap is a measured silent no-op: Maestro reports COMPLETED, the date stays on today, ` +
+            'and a `. > today()` constraint then refuses FINISH (dimagi-internal/ace#2518).',
+          remediation:
+            'replace it with a one-row upward fling on the DAY column — `dayStepFlingYaml()` from lib/date-picker-drive.ts ' +
+            '(next-cell centre -> current-cell centre, duration 600) — and keep the form\'s own constraint as the loud check. ' +
+            'See skills/app-test-cases/SKILL.md § `kind: date` questions.',
+        });
+      }
+    }
+    for (const pair of node.items) visit(pair.value as Node);
+  };
+  for (const doc of docs) {
+    if (doc.contents) visit(doc.contents as Node);
+  }
   return out;
 }

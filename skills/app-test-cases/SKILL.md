@@ -1382,8 +1382,69 @@ error and nothing able to assert against it. Use `safeScrollOriginX`
 x-range, and assert the date via `form-date-picker-input` afterwards —
 that read-back is the only surface that reports what the picker now holds.
 
-**Driving the picker — one tap per step, live-calibrated (ace#1081).** Each
-column renders three children in order:
+**Driving the picker is APK-SPECIFIC — look it up, never transcribe it
+across versions.** `lib/date-picker-drive.ts` `datePickerDriveFor(apk)`
+returns the calibrated mechanism for the selector map's APK; an APK it does
+not list has **no** calibrated drive (calibrate live first).
+
+| APK | drive | evidence |
+|-----|-------|----------|
+| 2.63.2 | `tap-next-cell` — tap the Button below `numberpicker_input` | ace#1081: Aug 14 → 15 → 16, read back |
+| **2.64.0** | **`row-fling`** — one-row upward swipe on the DAY column | ace#2518: 27 → 28, read back; the tap is a no-op |
+
+**2.64.0 — one-row fling (ace#2518).** On APK 2.64.0 the next-cell tap is a
+**silent no-op**: Maestro reports `COMPLETED`, the picker stays on today,
+and FINISH is then refused by the form's constraint. Measured on
+spark-facilitator/20260926-1413 Phase 6, four candidates on one open form,
+each read back from a ui dump — only the fling moved the day:
+
+```
+relational tap below/rightOf/leftOf numberpicker_input     27 -> 27
+tapOn {text: "28", below: {text: "27"}}  (the next cell)   27 -> 27
+tap input + eraseText + inputText "28" + hideKeyboard      27 -> 27  (hideKeyboard = BACK -> "Exit Form?")
+swipe start 529,968 end 529,818 duration 600               27 -> 28  constraint cleared
+```
+
+Emit the fling from the helper, never from hand-typed pixels:
+
+```ts
+import { dayStepFlingYaml } from '../../lib/date-picker-drive';
+dayStepFlingYaml();   // - swipe: { start: 529, 968, end: 529, 818, duration: 600 }
+```
+
+```yaml
+# group `next_meeting_date` — `. > today()`: advance the day by one (ace#2518, 2.64.0)
+- assertVisible:
+    ${SELECTOR:form-date-picker}
+- swipe:
+    start: 529, 968
+    end: 529, 818
+    duration: 600
+```
+
+The gesture runs from the centre of the day column's NEXT cell to the centre
+of its CURRENT cell — exactly one row. Maestro 2.5.1 cannot anchor a
+*bounded* swipe on an element (`swipe: {from: <selector>, direction: UP}`
+flings to 10% of screen height — many rows, the ace#1300 hazard), so the
+coordinates are derived at authoring time: `dayStepFling(cells)` takes the
+day column's current/next cell bounds, and its default
+(`DATE_PICKER_2_64_0_OBSERVED`) is the recorded layout — a date question at
+the **top of its field-list screen** on 1080x2400. If the date question sits
+lower on its screen (another question above it on the same screen), pass the
+bounds from a ui dump of that screen instead of the default. **Keep the
+form's own constraint as the loud check**: if the fling misses, FINISH is
+refused with the constraint message rather than a wrong date being filed.
+Never emit the ace#1081 relational tap for 2.64.0 — `recipe-lint`'s
+`date-picker-next-cell-tap-noop` rule rejects it at `mobile_validate_recipe`
+and at dispatch.
+
+Residuals (not yet observed on-device): the derivation for a picker at a
+different screen position, more than one fling in a row, and month/year
+rollover. A constraint with a far-future floor still needs live calibration
+before authoring.
+
+**2.63.2 — one tap per step (ace#1081).** Each column renders three
+children in order:
 
 ```
 Button    previous value      day column [445,1250][613,1423]   "13"
@@ -1391,26 +1452,24 @@ EditText  numberpicker_input  day column [445,1423][613,1549]   "14"   <- curren
 Button    next value          day column [445,1549][613,1723]   "15"
 ```
 
-**Tapping the lower Button increments that column by exactly one** —
-measured with read-back: Aug 14 → 15 → 16 on two separate taps. Always read
-the result back from `${SELECTOR:form-date-picker-input}`; never assume the
-tap landed.
+**On 2.63.2, tapping the lower Button increments that column by exactly
+one** — measured with read-back: Aug 14 → 15 → 16 on two separate taps.
+Always read the result back from `${SELECTOR:form-date-picker-input}`; never
+assume the tap landed. On 2.63.2, do **not** swipe inside a column to set a
+value: a *centre-of-screen* swipe moves it by an unpredictable number of
+steps (Aug 14 → 22) — the ace#1300 hazard. (The 2.64.0 fling above is a
+bounded one-row gesture, not that.)
 
-Do **not** swipe inside a column to set a value. A swipe also moves it, but
-by an unpredictable number of steps (one centre swipe jumped Aug 14 → 22) —
-that is the ace#1300 hazard, not a drive mechanism.
-
-So a strictly-future constraint IS walkable, and usually with a single tap:
+So a strictly-future constraint IS walkable on both calibrated APKs, with a
+single step:
 
 ```
 next_meeting_date   validate: . > today() and . <= date(today() + 30)
 ```
 
-The widget defaults to today, which fails `. > today()`. **One** tap on the
-day column's next-value Button makes it tomorrow, satisfying both clauses.
-Only a constraint with a far-future floor needs a longer sequence — and
-there, bounds stability across a long burst and month/year rollover are
-**not yet calibrated**, so verify on-device before authoring one.
+The widget defaults to today, which fails `. > today()`. **One** step on the
+day column (2.63.2: tap; 2.64.0: fling) makes it tomorrow, satisfying both
+clauses.
 
 #### Quiz / required-input answer-tap rule — MANDATORY
 
@@ -1606,17 +1665,17 @@ For each form-walk segment of a recipe:
    `. >= today()` constraints both fall in this class). A
    **strictly-future or strictly-past** constraint (e.g.
    `. > today() and . <= date(today() + 30)`) is different: today
-   violates it, and there is currently **NO calibrated date-widget
-   selector** in the APK selector map (no picker / spinner / calendar
-   row — dimagi-internal/ace#1081), so the recipe **cannot** drive the
-   widget to any other date. Do NOT guess a selector (banned by "close
-   the loop to the source of truth") and do NOT chain `form-advance`
-   into the constraint error. Instead the journey must **flag it**: the
-   Step 5 date-default static gate (below) fails loud naming the field;
-   route the smoke through a branch that avoids the field when the form
-   has one, and otherwise halt with a `[BLOCKER]` referencing ace#1081
-   (the selector row needs live-device calibration before such a field
-   is walkable). Statically verify with
+   violates it, so the recipe must DRIVE the widget one day forward
+   before advancing, using the APK's calibrated mechanism from
+   § `kind: date` questions (2.63.2: next-cell tap, ace#1081; 2.64.0:
+   one-row fling, ace#2518 — the tap is a no-op there). On an APK with
+   no calibrated drive (`datePickerDriveFor(apk)` is undefined), do NOT
+   guess one (banned by "close the loop to the source of truth") and do
+   NOT chain `form-advance` into the constraint error: the Step 5
+   date-default static gate (below) fails loud naming the field; route
+   the smoke through a branch that avoids the field when the form has
+   one, and otherwise halt with a `[BLOCKER]` naming the missing
+   calibration. Statically verify with
    `lib/date-default-validate.ts` rather than eyeballing the
    expression. `recipe-sanity-probe`'s `form-advance-without-answer-tap`
    honours this rule: a default-accepted date — and a `kind: group`
@@ -1798,10 +1857,12 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   leep-paint-collection run hit this exact gap and required two
   manual `/ace:step` retries to recover).
 - **Date-default static gate — every smoke-walked form
-  (dimagi-internal/ace#1081).** The date widget defaults to today and no
-  calibrated date-widget selector exists, so a required `kind: date`
-  field whose `validate` rejects today is un-walkable — and without this
-  gate that is discovered on the emulator in Phase 6, not here.
+  (dimagi-internal/ace#1081).** The date widget defaults to today, so a
+  required `kind: date` field whose `validate` rejects today is
+  un-walkable UNLESS the recipe drives it with the APK's calibrated
+  mechanism (§ `kind: date` questions; `datePickerDriveFor(apk)` —
+  2.63.2 tap, 2.64.0 fling per ace#2518) — and without this gate that is
+  discovered on the emulator in Phase 6, not here.
 
   **"Defaults to today" is TRUE ONLY ON A FIRST VISIT TO A CASE
   (dimagi-internal/ace#1982).** A `kind: date` field that is ALSO a case
@@ -1841,7 +1902,10 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   - A `verdict: 'violated'` row → **`[BLOCKER]` naming the field** (its
     `fieldId` + the `validate` expression, via
     `formatDateDefaultValidateReport`): the recipe cannot advance past
-    that screen. Remediation options, in order: rebind the journey to a
+    that screen as-is. Remediation options, in order: drive the field
+    one step with the APK's calibrated mechanism immediately before the
+    advance (2.64.0: `dayStepFlingYaml()`, ace#2518) when one step
+    satisfies the constraint; rebind the journey to a
     branch that avoids the field (record which branch and why — the
     payable-path coverage loss must be explicit, per ace#1081's
     spark-facilitator repro); otherwise halt — the field needs the
@@ -1985,6 +2049,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-27 | **The ace#1081 next-cell tap is a no-op on APK 2.64.0 — drive the date picker with a one-row fling (dimagi-internal/ace#2518).** spark-facilitator/20260926-1413 Phase 6: Maestro reported the relational tap `COMPLETED`, the picker stayed on today, and `. > today()` refused FINISH. Of four candidates probed on the same form (ui-dump read-back), only a one-row upward swipe on the day column (529,968 → 529,818, 600 ms) moved 27 → 28. § `kind: date` questions now carries a per-APK drive table; the fling is emitted from `lib/date-picker-drive.ts` `dayStepFlingYaml()` (element-relative derivation from the day column's cell bounds — Maestro 2.5.1 cannot anchor a bounded swipe on an element). *Enforced:* `recipe-lint` rule `date-picker-next-cell-tap-noop` rejects the relational tap for 2.64.0 (`test/mcp/mobile/recipe-lint.test.ts`), and `test/lib/date-picker-drive.test.ts` pins the helper to the observed pixels. | ACE team |
 | 2026-09-05 | **A case-bound date field does NOT default to today on a repeat visit (closes dimagi-internal/ace#1982).** The Step 5 date-default gate's premise — "the date widget defaults to today" — holds only on a FIRST visit. Nova preloads a `kind: date` field that is also a case property, so on a follow-up journey it arrives holding the previous visit's date, and a recipe that advances past it files the old date as the new meeting's. Live on `spark-facilitator/20260828-0703`: `journey-deliver-followup-preload` declared the date "Not driven", and three meetings walked on 01 Sep each submitted `date_of_meeting = 2026-08-29` with a correct device clock. Because `last_meeting_date` is calculated from it, the case's Last-meeting column never moved and the deep app-UX verdict opened with a BLOCKER blaming the product's case-write path — which was working correctly throughout. A journey returning to an existing case must now drive or assert a case-bound date field explicitly. | ACE team |
 | 2026-09-01 | **A transition criterion must assert a DELTA, not presence (dimagi-internal/ace#1885).** Step 5 gains a static gate: a criterion whose NAME claims a state transition (`updated`, `changed`, `advanced`, `incremented`, `refreshed`, `moved`, `cleared`, …) must be verified either by a captured-pair comparison (`copyTextFrom` / `evalScript` before, `assertTrue` reading it after) or by a declared `expected_value` the recipe asserts and never taps. Earned by `spark-facilitator/20260828-0703`, where `journey-deliver-followup-preload` declared `case_state_updated_after_submit` and asserted it as `assertVisible "Chilanga.*"` — proof the ROW EXISTS, not that the date moved — and went green over a real `blocks-e2e` defect (`last_meeting_date` stale across three synced meetings while a control case updated in the same frame). The test could not fail for the reason it existed. *Enforced:* `lib/transition-criteria.ts` + `test/lib/transition-criteria.test.ts`, whose calibration fixture is that exact criterion and assertion. | ACE team |
 | 2026-08-29 | **Every emitted `- inputText` must be immediately preceded by `- eraseText` (closes dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor rather than replacing, so any field carrying a Nova casedb preload (ace#1809), an XForm default, or a stray character received the recipe's value concatenated onto the existing one. Live on `spark-facilitator/20260828-0703` Phase 6 (ACE 0.13.1080, APK 2.63.2): the recipe typed `40` into `hh_represented_at_the_meeting`, the field held `140`, the form's cross-field constraint correctly refused to advance, and the leg died two screens later on a Participation scroll — reading as a selector fault it was not. Re-running the identical leg with `eraseText` inserted before each of the 6 `inputText` calls passed end-to-end (`{delivered: 1, approved: 1, rejected: 0}`). The dangerous half is that wherever the concatenation does NOT trip a constraint the corruption is silent and the leg reports `pass` on wrong data. *Enforced:* `recipe-sanity-probe`'s new `input-without-erase` — pure recipe shape, so unlike its field-gated siblings it runs unconditionally, and unlike them it carries no false-positive tax (a redundant erase on an empty field is a runtime no-op). `findInputFocusSteps` now sees through the interposed `eraseText`, so the ace#1554 checks don't go silently dead on recipes authored under the new rule. | ACE team |
