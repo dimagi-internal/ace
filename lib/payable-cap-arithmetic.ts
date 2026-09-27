@@ -747,3 +747,74 @@ export function formatPayableCapReport(report: PayableCapReport): string {
     ...report.findings.map((f) => `  remedy: ${f.node} = ${f.remedy}`),
   ].join('\n');
 }
+
+/**
+ * Rewrite Nova blueprint references into the XForm spelling this module
+ * evaluates: `#form/a/b` -> `/data/a/b`, and a case read `#<case_type>/p` —
+ * Nova names the CASE TYPE, e.g. `#community/step_meeting_index`, not a
+ * literal `#case/` (captured read-back, ace#2515) — -> a `casedb` read of the
+ * current case's `p`. `#user/…` is not a case read and passes through, as
+ * does everything else.
+ */
+export function novaToXPath(expr: string): string {
+  return expr.replace(
+    /#([A-Za-z_][\w-]*)\/([A-Za-z_][\w-]*(?:\/[A-Za-z_][\w-]*)*)/g,
+    (whole, root: string, path: string) => {
+      if (root === 'form') return `/data/${path}`;
+      if (root === 'user' || path.includes('/')) return whole;
+      return `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/${path}`;
+    },
+  );
+}
+
+export interface BuiltClampExtra {
+  clamp: Clamp;
+  timing: CounterTiming;
+  capacity: number;
+  cap: number;
+}
+
+export type BuiltClampReport = CheckOutcome<string, BuiltClampExtra>;
+
+/**
+ * The BUILD-TIME cap check `pdd-to-deliver-app § Step 4j` sub-step 6 runs on
+ * the `get_field` read-back of `capped_index`, before any release exists.
+ *
+ * It resolves the counter's timing from the expression rather than taking it
+ * as an argument (ace#2515): the skill's snippet used to hard-code
+ * `'pre-increment'`, which reads a correct `min(<casedb count> + 1, cap)` as
+ * capacity `cap + 1` and HALTs it — then "repairs" it into an under-pay.
+ *
+ * `binds` maps each node the counter reads to its calculate (Nova `#form/…`
+ * keys or XForm `/data/…` keys, and Nova or XForm expressions — both are
+ * normalised). An undecidable timing is `unable`, never a default.
+ */
+export function checkBuiltClampCapacity(
+  cappedIndexCalculate: string,
+  binds: Record<string, string> | Map<string, string>,
+  declaredCap: number,
+): BuiltClampReport {
+  const clamp = findClamp(novaToXPath(cappedIndexCalculate));
+  if (!clamp) {
+    return unable(`no clamp found in \`${cappedIndexCalculate}\` — read the built calculate back and trace it by hand`);
+  }
+  const entries = binds instanceof Map ? Array.from(binds.entries()) : Object.entries(binds);
+  const xbinds = new Map(entries.map(([k, v]) => [novaToXPath(k), novaToXPath(v)]));
+  const timing = classifyCounterTiming(clamp.counter, xbinds);
+  if (!timing) {
+    return unable(
+      `cannot reduce the counter \`${clamp.counter}\` to a casedb read plus 0 or 1 — ` +
+        'supply the calculate of every node it reads in `binds`, or trace it by hand. ' +
+        'Never assume a timing.',
+    );
+  }
+  const capacity = payableCapacity(clamp, timing);
+  const ok = capacity === declaredCap;
+  const findings = ok
+    ? []
+    : [
+        `\`${clamp.raw}\` (${timing}) admits ${capacity} distinct payable key(s) against a declared cap of ${declaredCap}` +
+          ` — canonical ${timing} spelling: \`${canonicalClampExpression(clamp.counter, declaredCap, timing)}\``,
+      ];
+  return { ...checked<string>(ok, findings), clamp, timing, capacity, cap: declaredCap };
+}

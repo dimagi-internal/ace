@@ -1,0 +1,7 @@
+{
+  "_provenance": "Verbatim mcp__nova__get_field responses, captured 2026-09-26 from Deliver app d41602e3-5423-4bcd-b873-51aa0434ee59 (spark-facilitator/20260926-1413, Phase 3), form 'Community Meeting Record'. Both fields sit in the step_info group, so their form path is #form/step_info/<id>. ace#2515: the correct post-increment clamp Step 4j sub-step 6 would have HALTed.",
+  "declared_cap": 3,
+  "group_path": "#form/step_info",
+  "prior_index": {"moduleUuid":"9f624611-01ef-44c9-b281-050ed00dc39b","formUuid":"d7544af1-7c25-49ec-8b88-3d27ac540e4b","fieldUuid":"3105031f-cd90-4815-9328-86a0234b45e9","field":{"uuid":"3105031f-cd90-4815-9328-86a0234b45e9","id":"prior_index","kind":"hidden","calculate":"if(#community/step_meeting_index = '', 0, #community/step_meeting_index)","initialValue":{"source":"calculation"}}},
+  "capped_index": {"moduleUuid":"9f624611-01ef-44c9-b281-050ed00dc39b","formUuid":"d7544af1-7c25-49ec-8b88-3d27ac540e4b","fieldUuid":"5b7c2b1d-7a5c-4956-aac5-3bca0fbfc42c","field":{"uuid":"5b7c2b1d-7a5c-4956-aac5-3bca0fbfc42c","id":"capped_index","kind":"hidden","calculate":"min(#form/step_info/prior_index + 1, 3)","initialValue":{"source":"calculation"}}}
+}

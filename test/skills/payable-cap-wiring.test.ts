@@ -53,7 +53,9 @@ describe('the capped-index gate has callers', () => {
 
   it('pdd-to-deliver-app checks it at BUILD time, where the repair is cheap', () => {
     expect(DELIVER).toContain('lib/payable-cap-arithmetic');
-    expect(DELIVER).toContain('payableCapacity');
+    // The timing-resolving wrapper, not a bare payableCapacity call with a
+    // hard-coded timing (ace#2515).
+    expect(DELIVER).toContain('checkBuiltClampCapacity');
   });
 
   it('the eval points at the helper instead of re-deriving the arithmetic', () => {
