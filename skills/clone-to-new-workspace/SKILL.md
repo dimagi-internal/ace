@@ -59,7 +59,8 @@ start Step 2 with a failed preflight.
 2. **Target tenancy.** `GET ${ACE_WEB_BASE_URL}/api/workspaces/<to>` →
    `default_tenancy`. Every field the source run has products for must be set:
    `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect),
-   `labs_allowed_domains` (Labs). `ocs_team` is not needed (see 4d). A missing field is a setup
+   `labs_allowed_domains` (Labs — must name the partner's domain, not only
+   Dimagi's). `ocs_team` is not needed (see 4d). A missing field is a setup
    item: "workspace owner: set default_tenancy.<field>".
 3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
    (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
@@ -141,12 +142,41 @@ the Workbench and every later skill see the new assets, not the shared ones.
 **Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
 step.
 
-### 4b–4c. Connect, Labs — not built yet
+### 4b. Connect — not built yet
 
-Report each as `NOT DONE — not built yet (spec § E)` and record
-`clone.<system>: {status: not-done, reason: not-built}`. **Do not** leave the
-copied products pointing at the shared tenants silently: the report must say
-the target run's Connect / Labs products still name the SOURCE assets.
+Waiting on how per-partner Connect program-manager orgs get created (open
+decision). Report `NOT DONE — not built yet` and record
+`clone.connect: {status: not-done, reason: not-built}`. The report must say the
+target run's Connect products still name the SOURCE opportunity.
+
+### 4c. Labs — widen the run's own labs-only opps
+
+A run's Phase 7 labs assets (its synthetic opps, their program, registry and
+dashboards) were created for that run alone — nothing else lives in them. So
+the Labs step does NOT rebuild them: it lets the target tenancy's domain see
+them, and both runs keep pointing at the same labs assets.
+
+1. From the source `products.synthetic`, collect every labs-only opp id:
+   `cascade.partners[].opportunity_id` and `labs_opp_id` (skip ids < 10000 —
+   those are real-backed opps, gated by Connect membership; report them as
+   `NOT DONE — real-backed, needs the Connect step`).
+2. For each id: `synthetic_set_allowed_domains(opportunity_id, allowed_domains:
+   <tenancy.labs_allowed_domains>)`. Dimagi staff keep access regardless (labs
+   treats Dimagi-internal users as operators), so the list is just the
+   partner's domain(s). The tenancy guard checks every domain is in the bound
+   tenancy. A `PERMISSION_DENIED` means ace@ is neither the creator nor
+   Dimagi-internal on that opp — report it, do not work around it.
+3. Leave `products.synthetic` unchanged in the target run (same assets).
+   Record `clone.labs: {status: done, opportunity_ids: [...], allowed_domains:
+   [...]}`.
+4. **Report the sign-in caveat:** a partner opens labs by logging in through
+   Connect (HQ sign-in). Labs matches the email Connect returns, so the
+   partner's Connect account must carry their `@<domain>` email — check with
+   one reviewer before telling everyone it works.
+
+Requires connect-labs with `synthetic_set_allowed_domains`
+(dimagi-internal/connect-labs#2100). If the tool is missing, report
+`NOT DONE — labs tool not deployed`.
 
 ### 4d. OCS — deliberately not rebuilt
 
