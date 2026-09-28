@@ -1,0 +1,40 @@
+{
+  "_doc": "Which tool arguments name a tenant target, for hooks/tenancy_guard.py. When a session is bound to an opp (bin/ace-bind), every matching MCP write is checked against that opp's tenancy (ace-web GET /api/w/{ws}/opps/{slug}/tenancy) and refused if it points anywhere else. 'tool_pattern' is a regex on the tool NAME (suffix-matched, because hosts register plugins as mcp__plugin_ace_ace-connect__X or mcp__ace-connect__X). Each 'args' entry maps an argument path (dot = nested key, [] = every list element) to the tenancy field(s) it must equal; a list of fields means any of them. An ABSENT argument is not checked (the tool's own default applies — see 'server_env' for tools whose tenant is fixed at server start). Read-only tools are deliberately absent: reading a shared source (e.g. copying FROM the shared HQ space into a partner space) is allowed, so upstream/source arguments are not listed. Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.",
+  "rules": [
+    {
+      "name": "connect-org-writes",
+      "tool_pattern": "(?:^|__)connect_(?:create_program|update_program|update_opportunity|set_learn_passing_score|set_verification_flags|create_payment_units?|activate_opportunity|send_llo_invite|accept_program_application|send_flw_invite|delete_unaccepted_flw_invites|add_org_member)$",
+      "args": {"organization_slug": ["connect_pm_org", "connect_holding_org"]}
+    },
+    {
+      "name": "connect-create-opportunity",
+      "tool_pattern": "(?:^|__)connect_create_opportunity$",
+      "args": {
+        "organization_slug": ["connect_pm_org"],
+        "target_organization_slug": ["connect_holding_org"],
+        "learn_app.cc_domain": ["hq_domain"],
+        "deliver_app.cc_domain": ["hq_domain"]
+      }
+    },
+    {
+      "name": "hq-domain-writes",
+      "tool_pattern": "(?:^|__)commcare_(?:delete_app|create_lookup_table|set_user_fields|create_ucr_expression|create_inbound_api|create_repeater|create_connection|invite_web_user|update_user_field|lookup_table_append_rows|make_build|release_build|patch_xform|upload_multimedia|set_menu_display|set_app_menu_display)$",
+      "args": {"domain": ["hq_domain"]}
+    },
+    {
+      "name": "hq-copy-into",
+      "tool_pattern": "(?:^|__)commcare_(?:linked_app_copy|link_domains)$",
+      "args": {"downstream_domain": ["hq_domain"]}
+    },
+    {
+      "name": "labs-synthetic-allowlist",
+      "tool_pattern": "(?:^|__)synthetic_(?:create|clone)\\w*$",
+      "args": {"allowed_domains[]": ["labs_allowed_domains[]"]}
+    },
+    {
+      "name": "ocs-team-writes",
+      "tool_pattern": "(?:^|__)ocs_(?:clone_chatbot|create_chatbot|link_action_to_node|add_custom_action|add_chatbot_event|add_pipeline_node|set_chatbot_system_prompt|set_chatbot_pipeline|create_collection|upload_collection_files|attach_knowledge|set_chatbot_tools|set_source_material|publish_chatbot_version|delete_chatbot|delete_pipeline|delete_collection|remove_collection_file|add_team_member|trigger_bot_message|update_participant_data)$",
+      "server_env": {"OCS_TEAM_SLUG": ["ocs_team"]}
+    }
+  ]
+}

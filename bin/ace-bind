@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Bind this Claude session to one opp, so ACE may only write into its tenancy.
+
+  bin/ace-bind <workspace>/<opp>     fetch the opp's tenancy from ace-web and bind
+  bin/ace-bind <opp>                 same, workspace = $ACE_WEB_WORKSPACE
+  bin/ace-bind --show                print the current binding
+  bin/ace-bind --clear               unbind
+
+The binding is a file keyed by $CLAUDE_CODE_SESSION_ID that
+hooks/tenancy_guard.py reads on every ACE tool call. Tenancy comes from
+GET ${ACE_WEB_BASE_URL}/api/w/<workspace>/opps/<opp>/tenancy with
+$ACE_WEB_PAT_TOKEN (both from the environment or the installed plugin .env).
+`--tenancy-json '<json>'` binds to the given tenancy without calling ace-web
+(tests, offline).
+
+Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"))
+import tenancy_guard as tg  # noqa: E402
+
+
+def _fail(msg: str) -> int:
+    sys.stderr.write(f"ace-bind: {msg}\n")
+    return 1
+
+
+def _fetch(workspace: str, opp: str) -> dict:
+    base = (tg.plugin_env("ACE_WEB_BASE_URL") or "").rstrip("/")
+    token = tg.plugin_env("ACE_WEB_PAT_TOKEN")
+    if not base or not token:
+        raise RuntimeError(
+            "ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN are required to fetch tenancy "
+            "(mint a token with /ace:ace-web-pat-mint)."
+        )
+    req = urllib.request.Request(
+        f"{base}/api/w/{workspace}/opps/{opp}/tenancy",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            body = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise RuntimeError(
+                f"ace-web has no workspace {workspace!r} you belong to (404). Check the "
+                "workspace slug, or ask a workspace owner to invite this token's owner."
+            ) from exc
+        raise RuntimeError(f"ace-web returned HTTP {exc.code} for the tenancy read.") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"could not reach ace-web at {base}: {exc.reason}") from exc
+    return body.get("tenancy") or {}
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(prog="ace-bind", description=__doc__.split("\n\n")[0])
+    p.add_argument("target", nargs="?", help="<workspace>/<opp> or <opp>")
+    p.add_argument("--show", action="store_true")
+    p.add_argument("--clear", action="store_true")
+    p.add_argument("--tenancy-json")
+    args = p.parse_args()
+
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if not session:
+        return _fail("CLAUDE_CODE_SESSION_ID is not set; run this from inside a Claude Code session.")
+    path = tg.bind_path(session)
+
+    if args.show:
+        bound = tg.read_bind(session)
+        if bound is None:
+            print("unbound (writes are allowed and logged; see hooks/tenancy_guard.py)")
+        else:
+            print(f"bound to {bound['workspace']}/{bound['opp']}")
+            print(json.dumps(bound.get("tenancy") or {}, indent=2, sort_keys=True))
+        return 0
+    if args.clear:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        print("unbound")
+        return 0
+    if not args.target:
+        return _fail("give <workspace>/<opp>, --show or --clear")
+
+    if "/" in args.target:
+        workspace, _, opp = args.target.partition("/")
+    else:
+        workspace, opp = tg.plugin_env("ACE_WEB_WORKSPACE") or "", args.target
+    if not workspace or not opp:
+        return _fail("need a workspace: <workspace>/<opp>, or set ACE_WEB_WORKSPACE")
+
+    try:
+        tenancy = json.loads(args.tenancy_json) if args.tenancy_json is not None else _fetch(workspace, opp)
+    except (RuntimeError, ValueError) as exc:
+        return _fail(str(exc))
+
+    os.makedirs(tg.bind_dir(), exist_ok=True)
+    record = {
+        "workspace": workspace,
+        "opp": opp,
+        "tenancy": tenancy,
+        "bound_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "session_id": session,
+    }
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, sort_keys=True)
+    os.replace(tmp, path)
+    print(f"bound to {workspace}/{opp}: {json.dumps(tenancy, sort_keys=True)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

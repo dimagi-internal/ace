@@ -21,6 +21,15 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/gating_guard.py\""
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*(ace-connect|ace-ocs|connect-labs)__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/tenancy_guard.py\""
+          }
+        ]
       }
     ]
   }
