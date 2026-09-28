@@ -349,6 +349,32 @@ if [ "$PREFLIGHT" = "1" ]; then
     PF_SEL_REMEDIATION="ACE_CONNECT_APK_VERSION is stale (pinned $PF_SEL_PIN, behind $PF_SEL_STALE_PIN) — refresh the installed .env: /ace:setup --force-env (NOT /ace:update, which never touches it)"
   fi
 
+  # nova_header_readiness — will the Nova MCP actually GET an Authorization
+  # header in this session? A HALT class, and the one that supersedes the
+  # cache/Clear-authentication remedy above whenever it reports `fail`.
+  #
+  # Every prior Nova probe answered a different question and reported the
+  # answer to this one: `nova_shell_env` tested the DOCTOR's own env (which is
+  # rc-initialised and therefore always has the key), and
+  # `nova_needs_auth_cache` tests a cache file plus key PRESENCE. Both reported
+  # green on 2026-08-28 while nova was completely unauthenticated, because
+  # Claude Code 2.1.238+ stopped passing that env to `headersHelper` and nova's
+  # helper is env-var dependent (ace#1629, voidcraft-labs/nova-plugin#52).
+  #
+  # `--heal` is deliberate and matches the auto-clear precedent one block up:
+  # when the probe PROVES no header will be sent and a valid PAT is on disk,
+  # there is nothing for a human to decide. It also RE-ASSERTS the override on
+  # every run — it was found missing on two machines that had been working —
+  # and re-points it after a key rotation, which a static header cannot follow
+  # on its own. Status stays `fail` after a successful heal: MCP subprocesses
+  # bind at session start, so the restart remains mandatory.
+  PF_NOVA_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
+  # Its verdict gates nova_needs_auth_cache below (ace#2529). Under nova plugin
+  # v2 the bundled `plugin:nova:nova` connection is OAuth-only; when the
+  # user-scope `nova` entry carries the key, Claude Code uses that entry, so a
+  # needs-auth mark on the plugin connection is expected and harmless.
+  PF_NOVA_HDR_STATUS="$(printf '%s\n' "$PF_NOVA_HDR_YAML" | sed -n 's/^  status: //p' | head -1)"
+
   # nova_needs_auth_cache — STATIC check (no network), mirrors the named
   # human-readable probe (~line 1700). A stuck `plugin:nova:nova` entry in
   # Claude Code's needs-auth cache means only
@@ -366,6 +392,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   PF_NOVA_CACHE_STATUS=pass
   PF_NOVA_CACHE_REMEDIATION=""
   PF_NOVA_CACHE_CLEARED=false
+  PF_NOVA_CACHE_SUPERSEDED=false
   # ace#1769. Preflight already prints the handoff from the session that halted
   # before this one; when that handoff names a Nova auth halt it is PROOF a
   # restart has happened and did not work. Until this field existed the two
@@ -384,7 +411,13 @@ if [ "$PREFLIGHT" = "1" ]; then
     " 2>/dev/null)"
     if [ "$PF_NOVA_CACHE_HAS" = "1" ]; then
       PF_NOVA_CACHE_KEY_PRESENT=true
-      if [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then
+      if [ "$PF_NOVA_HDR_STATUS" = "pass" ]; then
+        # nova plugin v2: the key travels on the user-scope entry, which
+        # nova_header_readiness just proved will send it. The plugin's own
+        # OAuth-only connection being marked needs-auth changes nothing, so
+        # this is neither a halt nor something to clear (ace#2529).
+        PF_NOVA_CACHE_SUPERSEDED=true
+      elif [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then
         PF_NOVA_CACHE_STATUS=fail
         # cache_key_present AND a valid NOVA_API_KEY together PROVE the entry is
         # stale, so there is nothing to decide — clear it here rather than
@@ -396,8 +429,10 @@ if [ "$PREFLIGHT" = "1" ]; then
         # sufficient FOR THE STALE-CACHE CLASS ONLY. See ace#1579.
         #
         # It is NOT sufficient when no Authorization header is reaching Nova
-        # (Claude Code 2.1.238+ drops NOVA_API_KEY from the env headersHelper
-        # sees): there the fresh session rewrites the entry itself, so no number
+        # (under nova plugin v2 that means no working user-scope nova entry —
+        # the plugin connection itself is OAuth-only; pre-v2 it meant Claude
+        # Code 2.1.238+ starving the env-dependent headersHelper): there the
+        # fresh session rewrites the entry itself, so no number
         # of restarts helps. The stored-OAuth-precedence reading below was
         # DISPROVED upstream 2026-08-25 -- see nova_header_readiness, which
         # outranks this block. Measured on
@@ -415,9 +450,9 @@ if [ "$PREFLIGHT" = "1" ]; then
         fi
         if [ "$PF_NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
           PF_NOVA_CACHE_CLEARED=true
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Since nova plugin v2 (voidcraft-labs/nova-plugin#64) the plugin's own connection is OAuth-only -- it has no headersHelper -- so the API key reaches Nova ONLY through the user-scope nova MCP entry that /ace:setup installs; without that entry the client falls back to OAuth, whose token lacks nova.hq.read. Read the nova_header_readiness block, which OUTRANKS this one and installs that entry automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
         else
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Since nova plugin v2 (voidcraft-labs/nova-plugin#64) the plugin's own connection is OAuth-only -- it has no headersHelper -- so the API key reaches Nova ONLY through the user-scope nova MCP entry that /ace:setup installs; without that entry the client falls back to OAuth, whose token lacks nova.hq.read. Read the nova_header_readiness block, which OUTRANKS this one and installs that entry automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
         fi
         # The correlation. Both strings above list BOTH branches and leave the
         # choice to the reader; this asks lib/nova-cache-routing.ts whether the
@@ -450,27 +485,6 @@ if [ "$PREFLIGHT" = "1" ]; then
       PF_NOVA_CACHE_REMEDIATION="$PF_NOVA_CACHE_FILE present but unparseable; inspect or remove it (Claude Code recreates as needed)"
     fi
   fi
-
-  # nova_header_readiness — will the Nova MCP actually GET an Authorization
-  # header in this session? A HALT class, and the one that supersedes the
-  # cache/Clear-authentication remedy above whenever it reports `fail`.
-  #
-  # Every prior Nova probe answered a different question and reported the
-  # answer to this one: `nova_shell_env` tested the DOCTOR's own env (which is
-  # rc-initialised and therefore always has the key), and
-  # `nova_needs_auth_cache` tests a cache file plus key PRESENCE. Both reported
-  # green on 2026-08-28 while nova was completely unauthenticated, because
-  # Claude Code 2.1.238+ stopped passing that env to `headersHelper` and nova's
-  # helper is env-var dependent (ace#1629, voidcraft-labs/nova-plugin#52).
-  #
-  # `--heal` is deliberate and matches the auto-clear precedent one block up:
-  # when the probe PROVES no header will be sent and a valid PAT is on disk,
-  # there is nothing for a human to decide. It also RE-ASSERTS the override on
-  # every run — it was found missing on two machines that had been working —
-  # and re-points it after a key rotation, which a static header cannot follow
-  # on its own. Status stays `fail` after a successful heal: MCP subprocesses
-  # bind at session start, so the restart remains mandatory.
-  PF_NOVA_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
 
   # static_header_drift — ace#2159. The generalization of the drift branch
   # inside nova_header_readiness above, applied to EVERY user-scope MCP entry
@@ -642,10 +656,11 @@ selector_map_currency:
 ${PF_CONNECT_ORGS_YAML}
 nova_needs_auth_cache:
   status: ${PF_NOVA_CACHE_STATUS}
-  scope: "cache-file + NOVA_API_KEY presence only; says nothing about which principal the live Nova MCP connection bound (ace#1604)"
+  scope: "cache-file + NOVA_API_KEY presence, gated on nova_header_readiness; says nothing about which principal the live Nova MCP connection bound (ace#1604, ace#2529)"
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   cleared: ${PF_NOVA_CACHE_CLEARED}
+  superseded_by_user_scope_entry: ${PF_NOVA_CACHE_SUPERSEDED}
   recurrence: ${PF_NOVA_CACHE_RECURRENCE}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 ${PF_NOVA_HDR_YAML}
@@ -2636,17 +2651,25 @@ else
   fi
 fi
 
-# 7b. nova_shell_env — verify NOVA_API_KEY is in the Claude Code parent
-# shell's env. Nova plugin v1.1.0's .mcp.json uses a headersHelper that
-# reads NOVA_API_KEY from the process env; without it in the shell, the
-# helper emits `{}` and every Nova call 401s. ACE's .env is loaded only
-# into ACE's own MCP subprocesses, so the operator must source
-# ~/.ace/env.sh from their shell rc once per machine.
-#
-# Also flag (and remove) any leftover user-scope `nova:` MCP override
-# from the pre-1.1.0 setup — that entry shadows the plugin's PAT-aware
-# entry under Claude Code's URL-dedup and re-introduces the identity
-# divergence Braxton fixed in voidcraft-labs/nova-plugin#11 / #13.
+# 7b-0. nova_header_readiness VERDICT — computed first because it decides
+# whether the two probes after it mean anything (ace#2529). Under nova plugin v2
+# (voidcraft-labs/nova-plugin#64) there is no headersHelper: the API key reaches
+# Nova only through the user-scope `nova` MCP entry /ace:setup installs. When
+# that entry will send a header (PASS), NOVA_API_KEY in Claude Code's env and a
+# needs-auth mark on the OAuth-only `plugin:nova:nova` connection are both
+# irrelevant. Output is printed at 7b-ii below.
+NOVA_HDR_LINES=""
+if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
+  NOVA_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
+fi
+NOVA_HDR_READY=0
+printf '%s\n' "$NOVA_HDR_LINES" | grep -q '^PASS nova_header_readiness' && NOVA_HDR_READY=1
+
+# 7b. nova_shell_env — is NOVA_API_KEY in the Claude Code parent shell's env?
+# Only matters when the user-scope nova entry uses Nova's `${NOVA_API_KEY}`
+# header form, which Claude Code expands from its own env at startup. ACE
+# installs a LITERAL header, which needs no env at all — so once
+# nova_header_readiness PASSes, this probe defers to it (ace#2529).
 # Determine which rc file ACE's auto-append targets on this machine
 # (matches the picker in bin/ace-setup). Used to give a precise
 # remediation when the marker block is missing or present-but-not-applied.
@@ -2664,7 +2687,9 @@ if [ -n "$NOVA_RC_FILE" ] && [ -f "$NOVA_RC_FILE" ] && grep -qF "# >>> ACE manag
   NOVA_MARKER_PRESENT=1
 fi
 
-if [ -n "${NOVA_API_KEY:-}" ]; then
+if [ "$NOVA_HDR_READY" = "1" ] && [ -z "${NOVA_API_KEY:-}" ]; then
+  pass "nova_shell_env: not required — nova_header_readiness PASS: the user-scope nova entry sends the key itself (nova plugin v2 has no headersHelper that would read this env)"
+elif [ -n "${NOVA_API_KEY:-}" ]; then
   # NOTE the narrowed claim. This used to read "(Nova plugin headersHelper will
   # authenticate)" — a conclusion about the CLAUDE CODE process drawn from the
   # DOCTOR's own env. bin/ace-doctor runs under a shell initialised from the
@@ -2739,13 +2764,12 @@ fi
 # Authorization header will actually be sent; self-heals by installing /
 # re-pointing the voidcraft-labs/nova-plugin#52 static-header override. Full rationale in
 # scripts/doctor-nova-header.ts and lib/nova-header-readiness.ts.
-if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
-  NOVA_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
-  # Printed verbatim: the script already emits the exact PASS/INFO/WARN shape
-  # pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
-  # counts it without any bookkeeping here.
-  [ -n "$NOVA_HDR_LINES" ] && printf '%s\n' "$NOVA_HDR_LINES"
-fi
+# Computed early (before nova_shell_env) because both nova_shell_env and
+# nova_needs_auth_cache key on it; printed here, where it always was.
+# Printed verbatim: the script already emits the exact PASS/INFO/WARN shape
+# pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
+# counts it without any bookkeeping here.
+[ -n "$NOVA_HDR_LINES" ] && printf '%s\n' "$NOVA_HDR_LINES"
 
 # 7b-iii. static_header_drift — the same question, asked of EVERY user-scope
 # MCP entry rather than only nova (ace#2159). Runs AFTER nova_header_readiness
@@ -2783,6 +2807,11 @@ else
   " 2>/dev/null)"
   if [ "$NOVA_CACHE_HAS_NOVA" = "error" ]; then
     warn "nova_needs_auth_cache: $NOVA_NEEDS_AUTH_CACHE present but unparseable" "node failed to parse the file. Inspect manually or remove it; Claude Code will recreate as needed"
+  elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ] && [ "$NOVA_HDR_READY" = "1" ]; then
+    # nova plugin v2: `plugin:nova:nova` is the plugin's OAuth-only connection.
+    # The key travels on the user-scope entry, which nova_header_readiness just
+    # proved will send it, so this mark is expected and harmless (ace#2529).
+    pass "nova_needs_auth_cache: plugin:nova:nova marked needs-auth — expected under nova plugin v2 (that bundled connection is OAuth-only); the user-scope nova entry carries the key (nova_header_readiness PASS)"
   elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ]; then
     # Hard fail when nova_auth has confirmed the upstream key works —
     # in that case the cache is anchored on stale auth state and Nova
@@ -2828,11 +2857,11 @@ else
 
        IF YOU HAVE ALREADY RESTARTED once since the last clear and nova still exposes
        only \`authenticate\`, the cache is NOT the cause and a further restart will loop:
-       no Authorization header is reaching Nova (Claude Code 2.1.238+ drops NOVA_API_KEY
-       from the env headersHelper sees, so it emits {} and the client falls back to OAuth).
-       The stored-OAuth-precedence reading was DISPROVED upstream 2026-08-25.
+       no Authorization header is reaching Nova. Since nova plugin v2 (voidcraft-labs/nova-plugin#64)
+       the plugin's own connection is OAuth-only (no headersHelper), so the API key reaches
+       Nova ONLY through the user-scope nova MCP entry that /ace:setup installs.
          1. read the nova_header_readiness block above — it OUTRANKS this one and
-            installs the static-header override automatically. Do NOT go to /mcp:
+            installs that entry automatically. Do NOT go to /mcp:
             'Clear authentication' restores no credential (no-op by construction here)
             and 'Authenticate' mints a token without nova.hq.read, so Phase 3 dies
             later at upload_app_to_hq instead
@@ -2843,7 +2872,7 @@ else
          curl -s https://mcp.commcare.app/mcp -H \"Authorization: Bearer \$NOVA_API_KEY\" \\
            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \\
            -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_hq_connection\",\"arguments\":{}}}'
-       See dimagi-internal/ace#1624, ace#1614, voidcraft-labs/nova-plugin#52."
+       See dimagi-internal/ace#2529, ace#1624, voidcraft-labs/nova-plugin#52, #64."
       else
         fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "auto-clear did not apply ($NOVA_CACHE_CLEAR_RESULT); remove the stuck entry by hand and restart Claude Code (running process won't re-connect on its own):
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
