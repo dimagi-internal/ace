@@ -165,6 +165,19 @@ export class NovaWork {
       if (w.stale === true) throw new Error(`Nova work ${this.workId} is stale with nothing pending`);
       return { kind: 'nothing-pending' };
     }
+    // A content-refused stage still opens a candidate: a revision with ZERO
+    // steps, which save_work refuses ("no staged steps"). Nothing is pending, so
+    // say so, and discard the empty candidate rather than leave it to read as
+    // stale later (ace#2536, observed live 2026-09-28).
+    if (w.pending_changes === 0) {
+      await this.call('discard_work', {
+        work_id: this.workId,
+        request_id: newRequestId('discard'),
+        expected_revision: this.revision,
+      });
+      this.revision = null;
+      return { kind: 'nothing-pending' };
+    }
     const outcome = classifySaveResult(
       await this.call('save_work', {
         work_id: this.workId,

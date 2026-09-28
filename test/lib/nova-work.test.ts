@@ -77,18 +77,28 @@ describe('newRequestId', () => {
 });
 
 /** A fake Nova that mimics the observed lifecycle. */
-function fakeNova(opts: { staleOnSave?: boolean } = {}) {
+function fakeNova(opts: { staleOnSave?: boolean; emptyCandidate?: boolean } = {}) {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   let seq = 0;
-  let revision: string | null = null;
+  // emptyCandidate: a content-refused stage still opens a candidate — a
+  // revision with ZERO steps (observed live 2026-09-28, ace#2536).
+  let revision: string | null = opts.emptyCandidate ? 'R:0' : null;
   const call = async (name: string, args: Record<string, unknown>) => {
     calls.push({ name, args });
     switch (name) {
       case 'begin_work':
         return { work_id: 'W', project_id: 'P', app_id: (args.app_id as string) ?? null };
       case 'get_work':
-        return { work_id: 'W', revision, pending_changes: revision ? 1 : 0, stale: !!opts.staleOnSave };
+        return {
+          work_id: 'W',
+          revision,
+          pending_changes: revision && revision !== 'R:0' ? 1 : 0,
+          stale: !!opts.staleOnSave,
+        };
       case 'save_work':
+        if (revision === 'R:0') {
+          return { success: false, saved: false, error_type: 'invalid_input', message: 'This change set has no staged steps, so there is nothing to commit.' };
+        }
         if (args.expected_revision !== revision) {
           throw new Error('Nova save_work rejected the call: Read the work and use its current revision');
         }
@@ -154,6 +164,19 @@ describe('NovaWork', () => {
     const w = await NovaWork.begin({ appId: 'A' }, { call: nova.call });
     expect(await w.save()).toEqual({ kind: 'nothing-pending' });
     expect(nova.calls.some((c) => c.name === 'save_work')).toBe(false);
+  });
+
+  it('an EMPTY candidate (revision, zero steps) is nothing-pending, and is discarded rather than saved (ace#2536)', async () => {
+    // Live: three content-refused add_fields left get_work at
+    // {revision: "…:0", pending_changes: 0}; save() then called save_work and threw
+    // "refused … no staged steps" — the right direction, the wrong cause.
+    const nova = fakeNova({ emptyCandidate: true });
+    const w = await NovaWork.begin({ appId: 'A' }, { call: nova.call });
+    expect(await w.save()).toEqual({ kind: 'nothing-pending' });
+    expect(nova.calls.some((c) => c.name === 'save_work')).toBe(false);
+    const discard = nova.calls.find((c) => c.name === 'discard_work');
+    expect(discard?.args.expected_revision).toBe('R:0');
+    expect(w.revision).toBeNull();
   });
 
   it('a refusal returned as data from a stage() throws', async () => {
