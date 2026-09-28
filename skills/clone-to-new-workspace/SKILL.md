@@ -2,10 +2,9 @@
 name: clone-to-new-workspace
 description: >
   Copy a completed ACE run into another ace-web workspace and rebuild its
-  assets in that workspace's tenancy (its own HQ project space, Connect orgs,
-  OCS team, Labs domains), so the run can be reviewed there without exposing
-  anything else. Generic and mechanical: no invites, no redirects — that is
-  `release`. Use before an external party reviews a run.
+  assets in that workspace's own HQ space, Connect orgs and Labs scope, so it
+  can be reviewed there without exposing anything else. No invites or
+  redirects (that is `release`). Use before an external review.
 disable-model-invocation: false
 ---
 
@@ -53,14 +52,14 @@ start Step 2 with a failed preflight.
    list `<run-id>`. Read the source `run_state.yaml`
    (`resolve_opp_path` → `drive_read_file`) and keep its
    `phases.commcare-setup.products.apps`, `phases.connect-setup.products.connect`,
-   `phases.ocs-setup.products.ocs_chatbot`,
+   `phases.ocs-setup.products.ocs_chatbot` (its `public_url` is reported),
    `phases.synthetic-data-and-workflows.products.synthetic`. A run without
    `products.apps.learn.hq_app_id` / `deliver.hq_app_id` cannot be cloned past
    the ace-web step — say so.
 2. **Target tenancy.** `GET ${ACE_WEB_BASE_URL}/api/workspaces/<to>` →
    `default_tenancy`. Every field the source run has products for must be set:
    `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect),
-   `ocs_team` (OCS), `labs_allowed_domains` (Labs). A missing field is a setup
+   `labs_allowed_domains` (Labs). `ocs_team` is not needed (see 4d). A missing field is a setup
    item: "workspace owner: set default_tenancy.<field>".
 3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
    (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
@@ -76,10 +75,7 @@ start Step 2 with a failed preflight.
      failure is a setup item: "Connect staff: create program-manager org
      <connect_pm_org> / org <connect_holding_org> and make ace@dimagi-ai.com an
      admin; the holding org needs an accepted program application".
-   - **OCS:** this ACE install's `OCS_TEAM_SLUG` must equal `ocs_team` (the OCS
-     tools act on the team fixed at server start). If not: "OCS: create team
-     <ocs_team>, give ace@ a login + API token, and run this from an install
-     configured for it".
+   - **OCS: nothing.** The bot is not rebuilt (see 4d).
 5. **Already cloned?** `GET …/api/w/<from>/opps/<opp>/runs/<run-id>/clones` —
    a `done` clone into `<to>` means resume (Step 3 onward, skipping finished
    `clone.<system>` entries in the TARGET run_state), not a second copy.
@@ -145,12 +141,23 @@ the Workbench and every later skill see the new assets, not the shared ones.
 **Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
 step.
 
-### 4b–4d. Connect, Labs, OCS — not built yet
+### 4b–4c. Connect, Labs — not built yet
 
 Report each as `NOT DONE — not built yet (spec § E)` and record
 `clone.<system>: {status: not-done, reason: not-built}`. **Do not** leave the
 copied products pointing at the shared tenants silently: the report must say
-the target run's Connect / Labs / OCS products still name the SOURCE assets.
+the target run's Connect / Labs products still name the SOURCE assets.
+
+### 4d. OCS — deliberately not rebuilt
+
+The bot stays on ACE's OCS team and the copied `products.ocs_chatbot` is kept
+as is. Reviewers chat with it through its public link (`public_url`), which
+needs no OCS account and exposes nothing else on the team (Jon, 2026-09-28:
+no OCS accounts for reviewers). OCS permissions are team-wide — there is no way
+to let someone into OCS and see only one bot — so a per-partner OCS team is
+only worth it when a partner takes the bot over, which is a handover step, not
+a clone step. Record `clone.ocs: {status: kept, reason: public-link}` and
+report the `public_url`.
 
 ## Step 5 — Report
 

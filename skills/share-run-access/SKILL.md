@@ -102,7 +102,7 @@ links, each a separate membership system:
 | **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
 | **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` into the org that **HOLDS** the opportunity (`run_state` → `connect.products.connect.holding_org_slug`; legacy runs: `organization_slug`). Connect's `org_opportunity_access` gives the holding org's members access to its opportunity; on a PM→NM run that is the NM org, not the PM org (live 2026-09-26, `playbook/integrations/connect-api.md § PM→NM org-URL matrix`). |
 | **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | `commcare_invite_web_user` (ships since ace#905; defaults to the **`App Editor`** role — load-bearing, see below; reconciles an existing member's role rather than skipping). |
-| **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` (defaults to the "Chatbot Admin" group — the least-privilege group that opens the linked chatbot page; reconciles an existing member's groups additively). Internal-tool surface; most reviewers don't need it. |
+| **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` ("Chatbot Admin" group). **Internal (Dimagi) only.** OCS has NO per-chatbot permissions: every group is team-wide, and Chatbot Admin (the only group that opens a chatbot's config page) grants view + edit + delete on **every chatbot on ACE's team**; Chat Viewer (transcripts only) still reads every bot's transcripts. **External reviewers get no OCS account** (Jon, 2026-09-28) — they chat through the public link, which needs no login and exposes nothing else: `products.ocs_chatbot.public_url`. |
 
 **The account precondition threads through all of them:** every gated surface authenticates via
 CommCareHQ/Connect OAuth, so a person can only reach ANY of them once they have a Connect/CommCare
@@ -167,6 +167,10 @@ grants membership and tells the person the one sign-in they must do themselves.
 3. **Classify each email once** (per-person isolation — one person, one decision, like inbox-triage):
    - `@dimagi.com` / `@dimagi-ai.com` → **internal**: ace-web auto-joins on sign-in (no invite needed);
      Connect/HQ/OCS grants apply normally.
+   - **OCS is internal-only.** An external collaborator is NEVER invited to the OCS team — every OCS
+     group is team-wide, so any invite exposes (and, as Chatbot Admin, lets them edit or delete)
+     every chatbot on ACE's team. Give them the public chat link
+     (`products.ocs_chatbot.public_url`) instead and report OCS as `public link (no account)`.
    - anything else → **external collaborator**: **ace-web is blocked for them outright** (allowlist
      box above — report it, don't invite); for Connect, a deliberate external add —
      `add-org-member`'s @dimagi.com guard is intentional, so external Connect adds go through THIS
@@ -227,7 +231,8 @@ grants membership and tells the person the one sign-in they must do themselves.
      **NOT DONE** with the read-back evidence. Do not defer to "an HQ admin will do it" unless ACE
      genuinely lacks admin on the domain — and if so, that's a **NOT DONE** with a named owner.
 
-   - **OCS chatbot admin.** Call `ocs_add_team_member({email})` (ships since ace#906; default group
+   - **OCS chatbot admin — internal people only** (see the classification step: externals get the
+     public link, never an OCS account). Call `ocs_add_team_member({email})` (ships since ace#906; default group
      "Chatbot Admin" is load-bearing — it carries `experiments.view_experiment`, the permission the
      linked chatbot page needs; a member on any other group 403s there). The atom handles all three
      states itself with fresh-read proof: fresh invite, pending-invite idempotent skip (or
