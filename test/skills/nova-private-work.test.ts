@@ -39,7 +39,8 @@ const STAGED = [
 
 /**
  * ACE atoms that share a bare Nova name but talk to CommCare HQ
- * (`commcare_create_lookup_table`, …). The `(?<![A-Za-z_])` guard below
+ * (`commcare_create_lookup_table`, …; Nova's own lookup bind is
+ * voidcraft-labs/commcare-nova#545). The `(?<![A-Za-z_])` guard below
  * already excludes a prefixed name; this list documents why.
  */
 const SCOPE = ['skills', 'agents', 'commands', 'lib', 'scripts', 'bin', 'playbook'];

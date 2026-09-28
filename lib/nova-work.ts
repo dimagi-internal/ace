@@ -26,7 +26,8 @@
 //  3. **`request_id` is an idempotency key.** Replaying one with identical
 //     input returns the original receipt; replaying it with different input is
 //     refused ("already used with different input"). Mint a fresh id per call.
-//  4. **Project data is NOT staged.** `create_lookup_table` (and the other
+//  4. **Project data is NOT staged.** `create_lookup_table` (bind adopted after
+//     voidcraft-labs/commcare-nova#545; and the other
 //     lookup writers) take `work_id` for authority but commit to the Project at
 //     call time: the table is visible through the saved app before any save,
 //     adds nothing to `pending_changes`, and survives `discard_work`. Only the
