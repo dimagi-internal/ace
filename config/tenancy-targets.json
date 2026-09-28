@@ -28,7 +28,7 @@
     },
     {
       "name": "labs-synthetic-allowlist",
-      "tool_pattern": "(?:^|__)synthetic_(?:create|clone)\\w*$",
+      "tool_pattern": "(?:^|__)synthetic_(?:create\\w*|clone\\w*|set_allowed_domains)$",
       "args": {"allowed_domains[]": ["labs_allowed_domains[]"]}
     },
     {

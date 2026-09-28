@@ -140,6 +140,12 @@ describe('bound session', () => {
     expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@dimagi.com'] }).code).toBe(2);
   });
 
+  it('checks synthetic_set_allowed_domains against the opp domains', () => {
+    const SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
+    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@sparkmicrogrants.org'] }).code).toBe(0);
+    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@evil.org'] }).code).toBe(2);
+  });
+
   it('checks the OCS team the server was started with', () => {
     expect(guard(OCS, { name: 'bot' }, { OCS_TEAM_SLUG: 'spark' }).code).toBe(0);
     const r = guard(OCS, { name: 'bot' }, { OCS_TEAM_SLUG: 'connect-ace' });
