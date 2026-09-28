@@ -1094,6 +1094,9 @@ Throwaway app `ACE probe work-lifecycle` (deleted), plus two clean runs of
 > uuid ADDRESSING below still holds (ids are still how ACE addresses objects), but every
 > `app_id` in a MUTATION shape below is now `work_id` + `request_id`, the uuid regex is gone
 > (a name is accepted too), and `create_module` / `create_form` no longer nest children.
+> **Expressions are plain strings again** (contract fact 12): every `{parts: [...]}` bullet
+> below is RETIRED — `{parts}` is refused at the schema, and a bare id is refused as an unknown
+> reference. Write `#form/<path>` / `#case/<prop>` text (ace#2537).
 
 Nova redeployed mid-run at ~15:45Z on 2026-07-31 and moved its **entire**
 surface from index-based to uuid-based addressing in one shot. A call
@@ -1211,7 +1214,11 @@ property.)
   case-bound field on a followup form preloads implicitly, with no
   expression needed. Don't author a preload expression to "fix" a field
   that already reads its case value.
-- **Expressions are STRUCTURED, not strings.** `label`, `hint`,
+- **RETIRED 2026-09-27 — expressions are plain strings now; see contract fact 12.**
+  Kept as history of the 2026-07-31 shape. Live 2026-09-28: `{parts:[…]}` →
+  `fields.0.calculate: Invalid input`; `"#form/children_under_5 * 2"` saved and read
+  back verbatim (ace#2537). The two bullets below applied only to that shape.
+  *Was:* **Expressions are STRUCTURED, not strings.** `label`, `hint`,
   `required`, `relevant`, `validate`, `calculate`, `default_value`,
   `deliver_unit.entity_id` / `entity_name`, and `assessment.user_score`
   all take `{parts: [...]}`, where a part is one of:
@@ -1219,8 +1226,8 @@ property.)
   `{kind:'path-ref', uuid}` · `{kind:'case-ref', caseType, property}` ·
   `{kind:'user-ref', property}` ·
   `{kind:'user-property-ref', userPropertyUuid}`.
-  **A plain string is rejected.**
-- **Two ADJACENT `text` parts are rejected — merge them before sending.**
+  **A plain string is rejected.** *(no longer true)*
+- *(retired with `{parts}`)* **Two ADJACENT `text` parts are rejected — merge them before sending.**
   Nova's canonical print merges adjacent text runs, so a `parts` array
   carrying two `text` atoms in a row re-parses to a *different* array than
   the one it was handed and the identity round trip fails. The rejection
