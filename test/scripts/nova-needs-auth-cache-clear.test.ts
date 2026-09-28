@@ -109,7 +109,8 @@ describe('bin/ace-doctor wires the auto-clear', () => {
   });
 
   it('only clears when NOVA_API_KEY is present — a keyless entry may be correct', () => {
-    const guard = DOCTOR.indexOf('if [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then');
+    // `elif` since ace#2529: a readiness-PASS branch now precedes it.
+    const guard = DOCTOR.indexOf('elif [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then');
     const clear = DOCTOR.indexOf('clear-nova-needs-auth-cache.mjs');
     expect(guard).toBeGreaterThan(-1);
     expect(clear).toBeGreaterThan(guard);

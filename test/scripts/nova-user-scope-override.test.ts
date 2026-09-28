@@ -147,3 +147,67 @@ describe('bin/ace-doctor wires the classification (ace#1629)', () => {
     ).not.toMatch(/^\s*NOVA_[A-Z_]*="\$\(claude mcp get nova 2>\/dev\/null\)"/m);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#2529. Nova plugin v2 (voidcraft-labs/nova-plugin#64)
+// removed the headersHelper: the key reaches Nova only through the user-scope
+// `nova` entry /ace:setup installs, and the bundled `plugin:nova:nova`
+// connection is OAuth-only. On the first v2 setup, `nova_shell_env` WARNed that
+// NOVA_API_KEY was missing from Claude's env and `nova_needs_auth_cache` FAILed
+// on a needs-auth mark for the plugin connection — both while
+// `nova_header_readiness` PASSed. Both probes must now defer to that verdict.
+// ---------------------------------------------------------------------------
+describe('bin/ace-doctor keys nova_shell_env + nova_needs_auth_cache on nova_header_readiness (ace#2529)', () => {
+  it('computes the readiness verdict BEFORE either dependent probe, on the full-doctor surface', () => {
+    const verdict = DOCTOR.indexOf('NOVA_HDR_READY=0');
+    expect(verdict).toBeGreaterThan(-1);
+    expect(verdict).toBeLessThan(DOCTOR.indexOf('pass "nova_shell_env:'));
+    expect(verdict).toBeLessThan(DOCTOR.indexOf('NOVA_NEEDS_AUTH_CACHE="$HOME/.claude/mcp-needs-auth-cache.json"'));
+    expect(DOCTOR).toContain(`grep -q '^PASS nova_header_readiness' && NOVA_HDR_READY=1`);
+  });
+
+  it('computes the readiness verdict BEFORE the cache block on the preflight surface', () => {
+    const yaml = DOCTOR.indexOf('PF_NOVA_HDR_YAML="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=yaml');
+    const status = DOCTOR.indexOf('PF_NOVA_HDR_STATUS="$(');
+    const cache = DOCTOR.indexOf('PF_NOVA_CACHE_FILE="$HOME/.claude/mcp-needs-auth-cache.json"');
+    expect(yaml).toBeGreaterThan(-1);
+    expect(status).toBeGreaterThan(yaml);
+    expect(cache).toBeGreaterThan(status);
+  });
+
+  it('nova_shell_env PASSes on a missing session key when readiness PASSes', () => {
+    const branch = DOCTOR.indexOf('if [ "$NOVA_HDR_READY" = "1" ] && [ -z "${NOVA_API_KEY:-}" ]; then');
+    expect(branch).toBeGreaterThan(-1);
+    const next = DOCTOR.slice(branch, DOCTOR.indexOf('\nelif', branch));
+    expect(next).toMatch(/^\s*pass "nova_shell_env: not required/m);
+  });
+
+  it('a needs-auth mark on plugin:nova:nova is neither a FAIL nor cleared when readiness PASSes', () => {
+    // Full doctor: the readiness branch comes before the key-present fail branch.
+    const ready = DOCTOR.indexOf('elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ] && [ "$NOVA_HDR_READY" = "1" ]; then');
+    const failing = DOCTOR.indexOf('elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ]; then');
+    expect(ready).toBeGreaterThan(-1);
+    expect(failing).toBeGreaterThan(ready);
+    const body = DOCTOR.slice(ready, failing);
+    expect(body).toMatch(/pass "nova_needs_auth_cache:/);
+    expect(body).not.toMatch(/\bfail "|clear-nova-needs-auth-cache/);
+
+    // Preflight: same precedence, and the supersession is visible in the YAML.
+    const pfReady = DOCTOR.indexOf('if [ "$PF_NOVA_HDR_STATUS" = "pass" ]; then');
+    const pfFail = DOCTOR.indexOf('elif [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then');
+    expect(pfReady).toBeGreaterThan(-1);
+    expect(pfFail).toBeGreaterThan(pfReady);
+    const pfBody = DOCTOR.slice(pfReady, pfFail);
+    expect(pfBody).toContain('PF_NOVA_CACHE_SUPERSEDED=true');
+    expect(pfBody).not.toMatch(/PF_NOVA_CACHE_STATUS=fail|clear-nova-needs-auth-cache/);
+    expect(DOCTOR).toContain('superseded_by_user_scope_entry: ${PF_NOVA_CACHE_SUPERSEDED}');
+  });
+
+  it('remediation text describes the v2 mechanism, not the retired headersHelper env story', () => {
+    // The pre-v2 explanation told operators the key was lost from the env a
+    // headersHelper reads. v2 has no helper; the fix is the user-scope entry.
+    expect(DOCTOR).not.toMatch(/drops NOVA_API_KEY\s+from the env headersHelper sees/);
+    expect(DOCTOR).not.toContain("stopped passing its process env to nova's env-dependent headersHelper");
+    expect(DOCTOR).toContain('voidcraft-labs/nova-plugin#64');
+  });
+});
