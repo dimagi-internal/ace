@@ -1,0 +1,160 @@
+---
+name: clone-to-new-workspace
+description: >
+  Copy a completed ACE run into another ace-web workspace and rebuild its
+  assets in that workspace's tenancy (its own HQ project space, Connect orgs,
+  OCS team, Labs domains), so the run can be reviewed there without exposing
+  anything else. Generic and mechanical: no invites, no redirects — that is
+  `release`. Use before an external party reviews a run.
+disable-model-invocation: false
+---
+
+# clone-to-new-workspace
+
+`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>]`
+
+While ACE iterates, every run is built in shared tenants (one HQ project space,
+one Connect org pair, one OCS team, Dimagi-only Labs). Granting an outsider
+access there exposes every run. This skill makes a copy of one run whose assets
+live ONLY in the target workspace's areas — the end state the partner would have
+if they had built and configured it themselves.
+
+Nothing outside Drive can be *moved* (a Connect opportunity's holding org is
+fixed at creation; an OCS clone stays in its team), so the copy's assets are
+**rebuilt**. The source run is never modified.
+
+Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
+
+## What this does NOT do
+
+- **Invite anyone.** Reviewers are invited last, by `release`, after everything
+  is set up — nobody should see a half-built clone.
+- **Redirect the source's links.** Also `release`.
+- **Create a Connect org or an OCS team.** No API exists; the preflight lists
+  them as manual steps.
+
+## Inputs
+
+- `<opp>/<run-id>` — the source run.
+- `--from <workspace>` — source workspace; default `$ACE_WEB_WORKSPACE`.
+- `--to <workspace>` — target workspace. Its **default tenancy** (ace-web
+  Workspace Settings / `PATCH /api/workspaces/<slug>` `default_tenancy`) says
+  where the rebuilt assets go.
+
+Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN` (same as `fork-run`). The PAT's
+owner must be an **owner of both** workspaces.
+
+## Step 1 — Preflight (creates nothing)
+
+Collect every problem, then stop and print them all if there are any. Do not
+start Step 2 with a failed preflight.
+
+1. **Source run.** `GET ${ACE_WEB_BASE_URL}/api/w/<from>/opps/<opp>/runs` must
+   list `<run-id>`. Read the source `run_state.yaml`
+   (`resolve_opp_path` → `drive_read_file`) and keep its
+   `phases.commcare-setup.products.apps`, `phases.connect-setup.products.connect`,
+   `phases.ocs-setup.products.ocs_chatbot`,
+   `phases.synthetic-data-and-workflows.products.synthetic`. A run without
+   `products.apps.learn.hq_app_id` / `deliver.hq_app_id` cannot be cloned past
+   the ace-web step — say so.
+2. **Target tenancy.** `GET ${ACE_WEB_BASE_URL}/api/workspaces/<to>` →
+   `default_tenancy`. Every field the source run has products for must be set:
+   `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect),
+   `ocs_team` (OCS), `labs_allowed_domains` (Labs). A missing field is a setup
+   item: "workspace owner: set default_tenancy.<field>".
+3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
+   (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
+   source's (e.g. `hq_domain: connect-ace-prod` in both) defeats the purpose —
+   refuse it and name the field.
+4. **Per system, one-time setup the target needs:**
+   - **HQ:** `commcare_list_apps(domain: <hq_domain>)` succeeds → exists and ACE
+     is a member. A "not found" is fine — Step 3 creates it. Any other error
+     (forbidden) is a setup item: "add ace@dimagi-ai.com to HQ project
+     <hq_domain> as admin".
+   - **Connect:** `connect_list_programs(organization_slug: <connect_pm_org>)`
+     succeeds, and the holding org accepts `connect_list_opportunities`. A
+     failure is a setup item: "Connect staff: create program-manager org
+     <connect_pm_org> / org <connect_holding_org> and make ace@dimagi-ai.com an
+     admin; the holding org needs an accepted program application".
+   - **OCS:** this ACE install's `OCS_TEAM_SLUG` must equal `ocs_team` (the OCS
+     tools act on the team fixed at server start). If not: "OCS: create team
+     <ocs_team>, give ace@ a login + API token, and run this from an install
+     configured for it".
+5. **Already cloned?** `GET …/api/w/<from>/opps/<opp>/runs/<run-id>/clones` —
+   a `done` clone into `<to>` means resume (Step 3 onward, skipping finished
+   `clone.<system>` entries in the TARGET run_state), not a second copy.
+
+## Step 2 — Copy the run into the target workspace (ace-web)
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"to_workspace\": \"<to>\"}" \
+  "${ACE_WEB_BASE_URL%/}/api/w/<from>/opps/<opp>/runs/<run-id>/clone"
+```
+
+Blocking (~150 ms per file; minutes on a large run). `201` → the run now exists
+at `<to>`'s Drive root as `<opp>/runs/<run-id>/`, and the target opp has the
+target's default tenancy. `409` → already copied: go to Step 3 (resume). On a
+client timeout, poll `…/clones` — never re-POST blindly.
+
+## Step 3 — Bind this session to the NEW opp
+
+```bash
+"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <to>/<opp>
+```
+
+From here the tenancy guard refuses any write outside the target's tenancy —
+so a mistake cannot rebuild into the shared tenants. Reading FROM the source
+(`upstream_domain`, the source products) is allowed. **Never** clear or rebind
+to the source to get a write through; a refusal here means a wrong argument.
+
+## Step 4 — Rebuild, one system at a time
+
+Each step writes its result to the TARGET run's `run_state.yaml` under a root
+`clone:` block (`update_yaml_file`), so a rerun skips finished steps:
+
+```yaml
+clone:
+  from: {workspace: <from>, opp: <opp>, run: <run-id>}
+  hq: {status: done, domain: <hq_domain>, learn_app_id: …, deliver_app_id: …}
+  connect: {status: not-done, reason: …}
+```
+
+Then rewrite the matching `phases.<phase>.products` in the TARGET run_state so
+the Workbench and every later skill see the new assets, not the shared ones.
+
+### 4a. HQ
+
+1. If Step 1 found no `<hq_domain>`: `commcare_create_domain(hr_name:
+   <hq_domain>)`. The returned `domain` MUST equal `<hq_domain>` — if HQ derived
+   a different slug, stop and report it (the tenancy is then wrong).
+2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
+   <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
+   downstream_domain: <hq_domain>, name: <source app name>, linked: false)`.
+   Unlinked: no Pro Edition needed; the copy keeps camera-only and grid-menu
+   settings. **A timeout does not mean it failed** — `commcare_list_apps` on
+   `<hq_domain>` and match by name before any retry.
+3. `commcare_make_build` then `commcare_release_build` for each new app.
+4. Rewrite `phases.commcare-setup.products.apps` in the target run_state:
+   `domain`, and per app `hq_app_id`, `hq_url`, `domain`, `build_status`.
+   Keep `nova_app_id` / `nova_url` (same Nova source).
+5. **First live use:** a cross-space unlinked copy was only live-tested inside
+   one space (2026-09-01). The first clone verifies it; report what happened.
+
+**Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
+step.
+
+### 4b–4d. Connect, Labs, OCS — not built yet
+
+Report each as `NOT DONE — not built yet (spec § E)` and record
+`clone.<system>: {status: not-done, reason: not-built}`. **Do not** leave the
+copied products pointing at the shared tenants silently: the report must say
+the target run's Connect / Labs / OCS products still name the SOURCE assets.
+
+## Step 5 — Report
+
+One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
+on the new domain, not the call's own return value), or `NOT DONE` + reason,
+plus every manual setup item. End with: "Nothing was shared with anyone. When
+everything is ready, run `/ace:release <to>/<opp>/<run-id>`."
