@@ -186,21 +186,22 @@ describe('Nova uuid addressing (ace#1132)', () => {
 
   // The uuid lint above only inspects argument lists of spelled-out tool
   // CALLS, so it cannot see a shape documented in prose or in a decision
-  // table. That blind spot let `user_score: "#form/user_score"` survive the
-  // 2026-07-31 migration in app-connect-coverage Step 2 while Step 4a's
-  // example already used the structured form — a self-inconsistent skill.
-  it('no skill documents a Connect expression sub-config as a bare string', () => {
-    // user_score / entity_id / entity_name are Expression slots: each takes
-    // `{ parts: [...] }`. A quote straight after the colon is a string.
-    const bareStringRe = /\b(user_score|entity_id|entity_name)\s*:\s*["']/g;
+  // table. From 2026-07-31 these slots took `{ parts: [...] }` and this test
+  // banned the bare string; since voidcraft-labs/commcare-nova#693
+  // (2026-09-27) it is the REVERSE — configure_connect / update_form declare
+  // user_score / entity_id / entity_name as an expression STRING
+  // (`type: ["string","boolean"]`, verified against the live tools/list
+  // 2026-09-28), naming answers as `#form/<path>`. So the retired shape is
+  // what is banned now.
+  it('no skill documents a Connect expression sub-config in the retired {parts} shape', () => {
+    const retiredRe = /\b(user_score|entity_id|entity_name)\s*:\s*\{\s*parts\b/g;
     const offenders = SKILL_MD.flatMap((f) => {
       const hits: string[] = [];
       let m: RegExpExecArray | null;
-      // Fresh regex per file — /g lastIndex is stateful across .exec calls.
-      const re = new RegExp(bareStringRe.source, 'g');
+      const re = new RegExp(retiredRe.source, 'g');
       while ((m = re.exec(f.body)) !== null) {
         const line = f.body.slice(0, m.index).split('\n').length;
-        hits.push(`  ${f.rel}:${line} — \`${m[1]}\` given a string`);
+        hits.push(`  ${f.rel}:${line} — \`${m[1]}\` given the retired {parts} shape`);
       }
       return hits;
     });
@@ -208,13 +209,10 @@ describe('Nova uuid addressing (ace#1132)', () => {
       offenders,
       offenders.length === 0
         ? ''
-        : `Connect expression sub-configs are structured since 2026-07-31 ` +
-            `(ace#1132/#1133): \`user_score\`, \`entity_id\` and \`entity_name\` each ` +
-            `take \`{ parts: [...] }\` with \`field-ref\` / \`case-ref\` / \`path-ref\` / ` +
-            `\`text\` parts — an XPath string is rejected by Nova.\n` +
-            `Note Nova's own field description still calls user_score "an XPath", ` +
-            `which is a doc bug on its side; the schema is authoritative.\n` +
-            `${offenders.join('\n')}`,
+        : `Connect expression sub-configs are expression STRINGS since ` +
+            `voidcraft-labs/commcare-nova#693 (2026-09-27): write \`#form/<path>\`, ` +
+            `not \`{ parts: [...] }\`. See playbook/integrations/nova-integration.md ` +
+            `§ The private-work authoring contract.\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
 });

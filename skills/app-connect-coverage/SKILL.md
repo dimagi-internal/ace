@@ -58,10 +58,10 @@ Per-form Connect-block coverage:
 | App `Connect type` | Form pattern | Expected `connect` block |
 |---|---|---|
 | `learn` | content-only (labels, no inputs) | `learn_module: { name, description, time_estimate }` |
-| `learn` | quiz-only, **the gating post-test** (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: { parts: [{ kind: "field-ref", uuid: <user_score field uuid> }] } }` |
+| `learn` | quiz-only, **the gating post-test** (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: "#form/<user_score field path>" }` (an expression string since voidcraft-labs/commcare-nova#693) |
 | `learn` | quiz-only, **a baseline pre-test** (same shape, but NOT the gate) | `learn_module` only — **never `assessment`** (ace#1131) |
 | `learn` | content + quiz mixed | both `learn_module` and `assessment` |
-| `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` — both expressions take the `{ parts: […] }` shape, never an XPath string |
+| `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` — both are expression strings (`"#form/entity_key"`); a bare id is refused |
 | `deliver` | label-only delivery / no case action | `task: { name, description }` |
 
 Out of scope (separate sibling skills): multimedia attachments,
@@ -161,8 +161,8 @@ right answer by *defaulting* rather than by knowing.
 - Form has zero `single_select` / `multi_select` / `text` inputs (only
   `label` and `hidden` kinds) → `learn_module` only.
 - Form has a `user_score` hidden field AND select inputs → at minimum
-  `assessment: { user_score: { parts: [{ kind: "field-ref", uuid:
-  <the user_score field's uuid from the Step 1 map> }] } }` — **but ONLY if
+  `assessment: { user_score: "#form/<the user_score field's path from the
+  Step 1 map>" }` — **but ONLY if
   this form is the gating post-test.** A `user_score` + selects shape does NOT
   by itself mean the form is the gate: a **baseline pre-test has exactly the
   same shape** and must carry `learn_module` only. Decide by role, not by
@@ -210,6 +210,18 @@ For each form:
 
 ### Step 4: Auto-fix
 
+**Every fix is a private-work edit (voidcraft-labs/commcare-nova#693).**
+Open ONE work per fix pass with `begin_work({app_id, request_id})`, stage the
+Step 4a/4b calls with that `work_id` and a fresh `request_id` each (never
+`app_id`), then `save_work({work_id, request_id, expected_revision})` with the
+latest candidate `revision`. The pass is only applied when the save answers
+`saved: true` — a stale or refused save comes back as DATA, not an error, and
+an unsaved fix never reaches HQ. Scripted passes use `lib/nova-work.ts`
+(`NovaWork.begin` → `stage` → `save`, which throws unless Nova saved). On
+`stale-base`, `discard_work` and redo the pass from current saved state. Full
+contract: `playbook/integrations/nova-integration.md § The private-work
+authoring contract`.
+
 Two tools, **opposite semantics**. Picking the wrong one is the single
 most damaging mistake this skill can make, so branch explicitly:
 
@@ -236,12 +248,11 @@ expectations:
 
 ```
 configure_connect({
-  app_id,
+  work_id, request_id,
   mode: "learn" | "deliver",
   participants: [
     { formUuid: "<uuid>", connect: { learn_module: { name, description, time_estimate } } },
-    { formUuid: "<uuid>", connect: { assessment: { user_score: { parts: [
-        { kind: "field-ref", uuid: "<user_score field uuid>" } ] } } } },
+    { formUuid: "<uuid>", connect: { assessment: { user_score: "#form/user_score" } } },
     { formUuid: "<uuid>", connect: { deliver_unit: { name } } },
     …every other participating form…
   ]
@@ -249,19 +260,20 @@ configure_connect({
 ```
 
 Sub-config values that are expressions (`assessment.user_score`,
-`deliver_unit.entity_id` / `entity_name`) take the **structured**
-`{parts: [...]}` shape — a plain XPath string is rejected. Part kinds:
-`text` · `field-ref` · `path-ref` · `case-ref` · `user-ref` ·
-`user-property-ref`. Omit each block's `id` and let Nova derive it.
+`deliver_unit.entity_id` / `entity_name`) are expression **strings** since
+voidcraft-labs/commcare-nova#693 (live schema 2026-09-28: *"#form/age reads an
+answer; #case/age reads the current record"*): `user_score: "#form/user_score"`.
+A bare id is refused as an unknown reference; the retired `{parts: […]}` object
+shape is gone. Omit each block's `id` and let Nova derive it.
 `learn_module.time_estimate` is in **hours** despite upstream's schema
-saying minutes (nova-plugin#36).
+saying minutes (voidcraft-labs/nova-plugin#36).
 
 `mode: null` turns Connect off and clears every form block — never call
 that as a "reset" mid-repair.
 
 #### 4b. `update_form` — the single-form refinement path
 
-`update_form({app_id, moduleUuid, formUuid, connect})` refines a form
+`update_form({work_id, request_id, moduleUuid, formUuid, connect})` refines a form
 that already participates: omitted sub-configs keep their current value,
 a stated one replaces it. It **cannot** enable Connect, switch mode, add
 a participant, or clear the whole slot (a whole-slot null is refused).
@@ -269,14 +281,17 @@ Use it only for a genuine one-form additive tweak.
 
 **Batch these when there are several.** Dispatch all `update_form` calls
 for a single iteration in **one assistant message** (multiple tool-use
-blocks side by side). They are independent — each targets a distinct
-`(moduleUuid, formUuid)` pair — and Nova does not require ordering.
+blocks side by side), all in the same work, each with its own `request_id`.
+They are independent — each targets a distinct `(moduleUuid, formUuid)`
+pair — and Nova does not require ordering. Then ONE `save_work` for the pass,
+using the revision from the last staged answer (or a fresh `get_work`).
 
-#### 4c. Re-fetch gate (both paths)
+#### 4c. Save, then re-fetch from SAVED state (both paths)
 
-After EVERY mutation, re-fetch via `get_form({app_id, moduleUuid,
-formUuid})` to confirm the change took effect. Batch the re-fetches in
-one message.
+After the pass's `save_work` answers `saved: true`, re-fetch via
+`get_form({app_id, moduleUuid, formUuid})` — `app_id`, not `work_id`: a
+work read shows the candidate even when the save failed, so it cannot prove
+the fix shipped. Batch the re-fetches in one message.
 
 **After a `configure_connect` call, re-fetch EVERY form, not just the
 ones you changed** — that is the only way to catch an accidentally-cleared
@@ -284,20 +299,22 @@ participant. Any form that carried a Connect block before the call and
 does not after it is a replace-all mistake: rebuild the full participant
 list and re-issue.
 
-Nova validates on write and **applies nothing on rejection** ("Nothing
-was changed"), naming the exact problem — so a rejected call is safe to
-read and retry against; there is no partial-apply state to defend
-against.
+Nova checks each staged call's input and **stages nothing on rejection**,
+naming the exact problem; `save_work` then validates the complete candidate
+and commits the whole batch or nothing. So a rejected call or save is safe
+to read and retry against — there is no partial-apply state to defend
+against, only an unsaved one (which the `saved: true` check catches).
 
 ### Step 5: Confirm save-time validation raised no errors
 
 Nova's platform-rule validation (broken XPath, schema mismatches,
 missing required references) runs **server-side at save time on every
 mutation** — there is no callable `validate_app` tool at the L0/user
-surface (jjackson/ace#821; still absent from the live 63-tool surface as
-of 2026-07-31). Any Step 4 mutation that violated a platform rule failed
-at the `configure_connect` / `update_form` call itself — surface those
-errors directly. The per-mutation `get_form` re-fetch (Step 4c) remains
+surface (jjackson/ace#821; still absent from the live 127-tool surface as
+of 2026-09-28). A platform-rule violation now surfaces either at the staged
+`configure_connect` / `update_form` call, in the candidate's `diagnostics`
+(`canCommit: false`), or as a refused `save_work` (`saved: false` with a
+message) — surface those errors directly. The per-mutation `get_form` re-fetch (Step 4c) remains
 the structural gate that the intended change actually persisted.
 
 ### Step 6: Loop or exit
@@ -305,8 +322,10 @@ the structural gate that the intended change actually persisted.
 If Step 4 found nothing to fix AND no Step 4 mutation errored (Step
 5), the app is clean. Exit with success.
 
-If Step 4 fixed things, go back to Step 2 (re-derive expectations
-against the now-mutated app, in case our edits revealed new issues).
+If Step 4 fixed things (and its save answered `saved: true`), go back to
+Step 2 (re-derive expectations against the now-SAVED app, read with
+`app_id`, in case our edits revealed new issues). Each loop iteration is its
+own work + save.
 
 After max iterations (default 3), exit with failure listing the
 remaining gaps. Don't loop forever — Nova bugs can prevent
@@ -368,8 +387,8 @@ When `--dry-run` is active:
 ## Failure modes
 
 - **No app-level `Connect type` but the PDD specified a Connect app.**
-  Recoverable in-place since 2026-07-31: `configure_connect({app_id,
-  mode, participants})` sets the app-level mode and every form block
+  Recoverable in-place since 2026-07-31: `configure_connect({work_id,
+  request_id, mode, participants})` (then `save_work`) sets the app-level mode and every form block
   atomically (Step 4a). Only halt and re-run
   `pdd-to-{learn,deliver}-app` if that call fails after 3 iterations, or
   if the app's module/form structure is itself wrong (a misclassified
@@ -381,13 +400,20 @@ When `--dry-run` is active:
   set — the state is fully recoverable, but it costs an iteration, so
   build the full list before the first call.
 - **`update_form` delivers empty `entity_id`/`entity_name` on re-fetch
-  (defensive).** Fixed upstream (nova-plugin#6). If Step 4's re-fetch
+  (defensive).** Fixed upstream (voidcraft-labs/nova-plugin#6). If Step 4's re-fetch
   ever shows empty entity fields after a mutation, exit `blocked`.
   Don't retry — treat it as a regression.
 - **Save-time validation misses malformed deliver_unit binds
   (defensive).** Don't rely on Nova's save-time platform validation
   alone to catch coverage failures — Step 4's per-mutation re-fetch is
   the actual gate.
+- **Fix pass not saved.** A `save_work` that answers `saved: false`
+  (`kind: "stale-base"` when the architect or another work saved first, or
+  a validation message) leaves the app exactly as it was — the Step 4c
+  `app_id` re-fetch still shows the gap. On stale: `discard_work` and redo
+  the pass from current state; on a validation refusal: fix the named
+  problem in the same work and save again. Never report a fix from a staged
+  receipt (`ok: true, saved: false`).
 - **Iteration budget exhausted (3+ rounds with no convergence).**
   Either the heuristic is wrong (we keep "fixing" something that
   Nova then resets) or there's an unknown Nova bug. Halt with the
@@ -435,17 +461,20 @@ verify+fix discipline is reliable across concerns.
 
 - Google Drive: `drive_read_file`, `drive_create_file`
 - Nova: `get_app` (blueprint + uuid map), `search_blueprint` (single-name
-  uuid resolver), `get_form`, `configure_connect` (app mode + complete
-  participant set), `update_form` (single-form additive refinement)
+  uuid resolver), `get_form`, `begin_work` / `get_work` / `save_work` /
+  `discard_work` (the private-work lifecycle), `configure_connect` (app mode
+  + complete participant set), `update_form` (single-form additive refinement)
 
 Signatures live in `docs/atom-schemas.md` and Nova's own `tools/list`;
 `playbook/integrations/nova-integration.md § The 2026-07-31 uuid-addressing
-migration` carries the division of labour and the replace-all warning.
+migration` carries the division of labour and the replace-all warning;
+`§ The private-work authoring contract` carries the work/save lifecycle.
 
 ## Change log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-28 | **Fixes are private-work edits (voidcraft-labs/commcare-nova#693).** Nova now stages every mutation: `configure_connect` / `update_form` take `work_id` + `request_id` (no `app_id`) and change nothing until `save_work`. Step 4 opens one work per fix pass and saves it, requiring `saved: true` (a stale save is returned as data, not an error); Step 4c re-fetches with `app_id` AFTER the save, because a work read shows the unsaved candidate. New failure mode: fix pass not saved. | ACE team |
 | 2026-08-14 | **Step 2's Deliver branch is now role-keyed, not type-keyed (ace#1327).** It expected `deliver_unit` from `type === "registration"`, so a deliberately-unpaid registration form classified `missing` and Step 4 would have added a deliver_unit to a form the PDD says is never payable — via `configure_connect`, which is replace-all. It also had no row for a paid `close`-type form, which reached the right answer only by defaulting. Expectations now come from the PDD's payable-stage declaration; shape votes only when the PDD is silent, and every fallback is recorded. New verdict `extra` (a deliver_unit on an unpaid form is a defect to REMOVE) mirrors the Learn side's pre-test rule (ace#1131). Decision extracted to `deliver-expectations.ts` with a two-form fixture pair — paid/unpaid roles swapped — so the type-keyed reading cannot come back. | ACE team |
 | 2026-08-11 | **Finished the 2026-07-31 expression migration in Step 2 (residual of ace#1132/#1133).** Step 4a's `configure_connect` example already emitted the structured `{parts: […]}` shape, but the Step 2 decision table and the Learn per-form rule still specified the `assessment` slot's `user_score` as the bare XPath string `#form/user_score`. The skill therefore computed a string *expectation*, compared it against the structured value Nova returns, and classified correct forms as `wrong`; the "fix" is then a `configure_connect` call, which is replace-all and can clear markers off every form omitted from `participants[]`. Same residual fixed in `pdd-to-deliver-app` for `entity_id`/`entity_name` (case-CREATE now shows `field-ref` parts, case-UPDATE `case-ref` parts, the optional per-form suffix a `text` part). Preventer added: `test/skills/nova-uuid-addressing.test.ts` now fails on any skill documenting `user_score`/`entity_id`/`entity_name` as a string — the pre-existing uuid lint only inspected spelled-out tool-call argument lists, so a shape stated in prose or a table was invisible to it. | ACE team |
 | 2026-04-29 | Initial version. First in the post-Nova verify+fix family. Detection of Connect markers per form, auto-fix via `nova_update_form`, loop until clean or until a known Nova-side blocker is hit. Documents the pattern for future `app-<concern>-coverage` siblings. (0.10.7) | ACE team |

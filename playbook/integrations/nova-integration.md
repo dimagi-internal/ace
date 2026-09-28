@@ -7,19 +7,20 @@
 
 ## Status
 
-**Live (via the Nova Claude Code plugin's native PAT path, v1.1.0+).**
-First end-to-end smoke test on 2026-04-28; migrated to API-key auth via
-user-scope MCP override 2026-05-08 (voidcraft-labs/nova-plugin#9);
-migrated to plugin-native PAT path 2026-05-21 (voidcraft-labs/nova-plugin#11
-/ #13 / #16) — override dropped.
+**Live — on nova plugin v2.0.0 and the private-work authoring contract
+(2026-09-27; adopted 2026-09-28, see § The private-work authoring contract).**
+First end-to-end smoke test on 2026-04-28. Auth history: user-scope override
+2026-05-08 (voidcraft-labs/nova-plugin#9) → plugin-native `headersHelper`
+2026-05-21 (voidcraft-labs/nova-plugin#11 / #13 / #16) → static-header user-scope override
+again after the helper stopped receiving the env (voidcraft-labs/nova-plugin#52, ace#1629) →
+**plugin v2 removed the helper entirely (voidcraft-labs/nova-plugin#64)**, so the user-scope
+entry is now Nova's own documented API-key path.
 
 Braxton (voidcraft-labs) ships Nova as a Claude Code plugin. ACE
 consumes it as a sibling plugin: install once per machine, mint an
-API key, expose it as `NOVA_API_KEY` in the Claude Code parent shell's
-env, and ACE invokes Nova through its slash commands and MCP tools.
-Both `/nova:autobuild` and `/nova:upload_to_hq` round-trip cleanly
-under the ACE service identity, including across multiple concurrent
-worktrees and into dispatched subagents.
+API key, and let `/ace:setup` install the user-scope `nova` MCP entry
+that carries it. ACE invokes Nova through its slash commands and MCP
+tools, and over direct JSON-RPC (`lib/nova-rpc.ts` + `lib/nova-work.ts`).
 
 ## Install + auth
 
@@ -28,46 +29,43 @@ worktrees and into dispatched subagents.
 /plugin install nova@nova-marketplace
 ```
 
-Mint an API key once, store in 1Password, run `/ace:setup`, and add
-one line to your shell rc:
+**Plugin v2 has no API-key path of its own.** Its `.mcp.json` is just
+`{"type": "http", "url": "https://mcp.commcare.app/mcp"}` — browser sign-in
+(OAuth). Nova's docs (docs.commcare.app/mcp/api-keys) make the API-key path a
+**user-scope** MCP entry to the same URL, which Claude Code prefers over the
+plugin's connection:
+
+```
+# Nova's documented form — only as good as the Claude Code process env:
+claude mcp add-json --scope user nova '{"type":"http","url":"https://mcp.commcare.app/mcp","headers":{"Authorization":"Bearer ${NOVA_API_KEY}"}}'
+# ACE's form — a literal header, installed by /ace:setup and /ace:doctor:
+claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp --header 'Authorization: Bearer <PAT>'
+```
+
+ACE installs the **literal** form: the env-expanded one fails whenever the
+Claude Code process lacks `NOVA_API_KEY`, which is exactly the state ace#1629
+measured (GUI-launched Claude Code, 0/53 sessions). With either form, tools
+surface as `mcp__nova__*` (the plugin's own `mcp__plugin_nova_nova__*` is the
+OAuth connection); the plugin's skills and architect accept both namespaces.
+
+Setup, once per machine:
 
 1. Sign in at `https://commcare.app/settings` as the ACE Gmail
    identity (`ACE_GMAIL_ACCOUNT` in `.env`).
 2. Mint a key with Read+Write floor + the HQ scopes
    `/nova:upload_to_hq` needs.
-3. Save to 1Password vault `AI-Agents`, item `ACE - Nova`, field
+3. Save to 1Password vault `Agent-Ace`, item `ACE - Nova`, field
    `api_key`.
-4. Run `/ace:setup --force-env`. The setup script re-injects `.env`
-   from 1Password, writes `~/.ace/env.sh` containing
-   `export NOVA_API_KEY=…`, and (since 0.13.298) auto-appends a
-   marker-fenced source block to the right shell rc for this machine:
-
-   - macOS + zsh → `~/.zshenv` (launchd-spawned GUI Claude Code reads
-     this; `~/.zshrc` is interactive-only)
-   - macOS + bash → `~/.bash_profile`
-   - Linux + zsh → `~/.zshrc`
-   - Linux + bash → `~/.bashrc`
-
-   The appended block looks like:
-
-   ```
-   # >>> ACE managed >>>
-   [ -f "$HOME/.ace/env.sh" ] && source "$HOME/.ace/env.sh"
-   # <<< ACE managed <<<
-   ```
-
-   Idempotent (marker grep) and reversible (delete the block). Pass
-   `--no-shell-edit` to opt out.
-
-5. **Restart Claude Code** (Cmd-Q + reopen) so the Nova plugin's
-   `headersHelper` reads `NOVA_API_KEY` from the new process env.
-
-The Nova plugin v1.1.0 `.mcp.json` ships a `headersHelper` that reads
-`NOVA_API_KEY` from the Claude Code process env and emits
-`Authorization: Bearer …` on every Nova MCP call. Without the shell-env
-wiring, the helper emits `{}` and every Nova call 401s.
-
-Tools surface in the canonical plugin namespace `mcp__plugin_nova_nova__*`.
+4. Run `/ace:setup --force-env`. It re-injects `.env` from 1Password,
+   writes `~/.ace/env.sh` (`export NOVA_API_KEY=…`, for Bash-invoked
+   scripts), appends a marker-fenced source line to the shell rc, and
+   **installs or re-points the user-scope `nova` entry** via
+   `scripts/doctor-nova-header.ts --heal`. (Until 2026-09-28 it did the
+   opposite — it DELETED that entry on every run — which under plugin v2
+   drops every session onto a human's OAuth token.) Pass `--no-shell-edit`
+   to skip the rc append.
+5. **Restart Claude Code** (Cmd-Q + reopen) so the MCP connection
+   rebinds with the header.
 
 `/ace:doctor` exposes five Nova-related liveness lines:
 - `nova_env: NOVA_API_KEY present` (in ACE's .env)
@@ -100,29 +98,23 @@ Tools surface in the canonical plugin namespace `mcp__plugin_nova_nova__*`.
 The Nova MCP server is hosted by voidcraft at `mcp.commcare.app`;
 ACE doesn't run a Nova MCP itself.
 
-## Migrating from the pre-1.1.0 user-scope override
-
-If you previously ran an ACE version before 0.13.294, your Claude Code
-config has a user-scope `nova:` MCP override registered. Drop it (it
-shadows the plugin's PAT-aware MCP entry under Claude Code's URL-dedup
-and re-introduces the subagent identity divergence Braxton fixed):
+## Migrating to plugin v2 (2026-09-27)
 
 ```
-/plugin marketplace update                                  # in Claude Code
-/plugin update nova                                         # ditto
-/ace:update                                                 # ditto
-/ace:setup --force-env                                      # writes ~/.ace/env.sh,
-                                                            # removes stale override,
-                                                            # auto-appends source line
-                                                            # to shell rc (since 0.13.298)
-# then Cmd-Q Claude Code and reopen so the plugin re-registers under PAT
+/plugin marketplace update
+/plugin update nova
+/ace:update
+/ace:setup --force-env      # installs the user-scope nova entry with the PAT
+# then Cmd-Q Claude Code and reopen so MCP rebinds
 ```
 
-`/ace:setup` automates three pieces idempotently (post-0.13.298):
-the `claude mcp remove nova --scope user` cleanup, the `~/.ace/env.sh`
-write, and the marker-fenced shell-rc append. Manual steps are only
-needed if you pass `--no-shell-edit` or run on a shell ACE can't
-auto-detect.
+Check with `/ace:doctor`: `nova_header_readiness` must read
+`static-header-override` (or `key-in-claude-env` for Nova's env-expanded
+form). `plugin-connection-is-oauth-only` means no entry exists and the session
+is on whoever last signed in at a browser.
+
+The pre-1.1.0 advice to *remove* the user-scope entry is RETIRED: under v2
+removing it is how you opt OUT of API-key auth.
 
 ## Resolved blockers (kept for record)
 
@@ -182,7 +174,7 @@ Five blockers landed and were cleared between 2026-04-27 and
   > **MECHANISM CORRECTED 2026-08-25 — read this before the narrative below.**
   > This entry originally attributed the failure to *a stored OAuth credential
   > outranking the `headersHelper` PAT*. That was **DISPROVED** by the client
-  > logs in nova-plugin#52's third correction: `Successfully retrieved 0
+  > logs in voidcraft-labs/nova-plugin#52's third correction: `Successfully retrieved 0
   > headers from headersHelper` followed by `No access token in storage` —
   > there was no stored token to outrank anything. The real cause is that
   > Claude Code **2.1.238** changed what environment `headersHelper` receives
@@ -270,7 +262,7 @@ use (one user, one Claude Code session, no concurrent sessions).
 
 **ACE does not CHOOSE that path — but it can silently END UP on it,
 and then ACE's service identity becomes whichever human last signed
-in at a browser.** That is nova-plugin#52 above, and it is the single
+in at a browser.** That is voidcraft-labs/nova-plugin#52 above, and it is the single
 most expensive Nova failure mode ACE has hit, precisely because every
 call keeps succeeding. If you are ever unsure which identity a session
 is on, `get_hq_connection` answers it in one call: `configured: true`
@@ -286,14 +278,21 @@ Three skills consume Nova directly:
 | `pdd-to-deliver-app` | `/nova:autobuild "<brief>"` | Build the Deliver app |
 | `app-deploy` | `/nova:upload_to_hq <app_id> <ACE_HQ_DOMAIN>` | Push both apps to the named HQ project space |
 
+ACE also edits Nova apps from its OWN session after the architect returns
+(Connect markers in `app-connect-coverage`, media in `app-media-coverage`,
+registers in `pdd-to-deliver-app § Step 4f`, the Learn result labels in
+`pdd-to-learn-app § 4c`). Every one of those is a private-work edit and must
+be SAVED — see § The private-work authoring contract.
+
 Helpful read-only commands:
 - `/nova:show <app_id>` — blueprint summary; useful for cross-checking
   Nova's output against the PDD before writing the app summary.
 - `/nova:list` — 10 most recently updated Nova apps, for human
   inspection / debugging.
-- `/nova:edit <app_id> "<instruction>"` — atomic targeted edit; ACE
-  does not call this in the default flow but it's the right tool for
-  hot-fixing a specific form/module without rebuilding the whole app.
+- `/nova:edit <app_id> "<instruction>"` — targeted edit in private work,
+  saved as a checkpoint; ACE does not call this in the default flow but
+  it's the right tool for hot-fixing a specific form/module without
+  rebuilding the whole app.
 
 Inputs Nova **does not** accept:
 - File paths or attachments. The brief is the entire description
@@ -401,8 +400,9 @@ place, then re-paste into Nova settings.
 | Surface | Auth |
 |---------|------|
 | Nova web app | Google OAuth (sign-in with Google, ACE Gmail identity) |
-| Nova MCP / plugin (ACE path) | Long-lived API key (`sk-nova-v1-…`) read from `NOVA_API_KEY` shell env by the plugin's `headersHelper` (v1.1.0+) |
-| Nova MCP / plugin (human path) | Real OAuth 2.1 (RFC-compliant DCR) — Braxton: "yank a client and the next call from it 401s instantly" |
+| Nova MCP (ACE path) | Long-lived API key (`sk-nova-v1-…`) in a literal `Authorization` header on the user-scope `nova` MCP entry `/ace:setup` installs (plugin v2 has no helper) |
+| Nova direct JSON-RPC (ACE scripts) | Same key, read from `.env` / `~/.ace/env.sh` by `lib/nova-rpc.ts` |
+| Nova MCP / plugin v2 bundled connection (human path) | Real OAuth 2.1 (RFC-compliant DCR) — Braxton: "yank a client and the next call from it 401s instantly" |
 | HQ upload (downstream of Nova) | HQ API key from `account/api_keys/`, scoped per project space |
 
 There's no ACE-side service account on Nova — the API key is bound
@@ -497,33 +497,27 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
 - **App lives on Nova until uploaded.** A built app stays in Nova's
   storage as a durable record (`/nova:list`, `/nova:show`). HQ only
   receives a copy when `/nova:upload_to_hq` runs.
-- **Nova edits are atomic.** Don't rebuild a whole app to add one
-  form — that's what `/nova:edit` is for.
+- **Nova saves are atomic; edits are staged.** Each `save_work` commits one
+  validated batch or nothing. Don't rebuild a whole app to add one form —
+  that's what `/nova:edit` (private work + checkpoint save) is for.
 
 ## Gotchas
 
-- **`NOVA_API_KEY` must be in the Claude Code parent shell's env.**
-  Nova plugin v1.1.0's `headersHelper` reads `NOVA_API_KEY` from the
-  process env at MCP-connection time. ACE's `.env` lives at
-  `${CLAUDE_PLUGIN_DATA}/.env` and is loaded only into ACE's own MCP
-  subprocesses, not the parent shell. `/ace:setup` writes the export
-  to `~/.ace/env.sh`; the operator sources it from `~/.zshrc` once
-  per machine. If you skip the source line, Nova calls 401 even though
-  `/ace:doctor`'s `nova_auth` HTTP probe passes — the probe verifies
-  the key is accepted by the server, not that Claude Code is sending
-  it. The `nova_shell_env` probe catches this mismatch, and
-  `nova_header_readiness` gives the verdict it cannot. `nova_scopes`
-  sits on the other axis: it says what the configured key is ALLOWED to
-  do, and is deliberately silent about what this session bound.
+- **The user-scope `nova` entry IS the key path — never remove it to "fix"
+  auth.** Since plugin v2 the bundled connection is OAuth-only, so with no
+  user-scope entry every Nova call answers as whoever signed in at a browser,
+  typically without `nova.hq.read`. `nova_auth` (a curl with the PAT) still
+  passes in that state because it never touches Claude Code's connection;
+  `nova_header_readiness` is the probe that reads the entry and says
+  `plugin-connection-is-oauth-only`. `nova_scopes` sits on the other axis:
+  it says what the configured key is ALLOWED to do, and is deliberately silent
+  about what this session bound.
 
-- **Stale user-scope `nova:` override from pre-1.1.0 setup.** If you
-  upgraded from an ACE version before 0.13.294 without restarting
-  Claude Code, the obsolete override may still be registered. It
-  shadows the plugin's PAT-aware MCP entry under Claude Code's
-  URL-dedup and re-introduces the subagent identity divergence
-  (voidcraft-labs/nova-plugin#13). Detected by `nova_shell_env`;
-  remediation: `claude mcp remove nova --scope user`, then restart
-  Claude Code. `/ace:setup` removes it idempotently on every run.
+- **Nova's documented `${NOVA_API_KEY}` header needs the key in Claude Code's
+  OWN env.** If you install Nova's env-expanded form instead of ACE's literal
+  one and Claude Code was launched without the key, Nova answers 401 (API keys
+  never fall back to OAuth). `nova_header_readiness` reports
+  `env-expanded-header-unset` and `/ace:doctor --heal` rewrites it literal.
 
 - **Open upstream bugs (2, both filed 2026-08-13).** Neither halts a run;
   both silently degrade what Phase 3 can express.
@@ -589,7 +583,7 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
   "N of M filed issues closed" are deliberately not kept here — they go
   stale silently and did (this line previously claimed 16 of 18 closed
   with the remainder being feature requests, while
-  `voidcraft-labs/nova-plugin#25` — `create_app` failing 100% — was open
+  `voidcraft-labs/nova-plugin#25` — `create_app` (since removed, voidcraft-labs/commcare-nova#693) failing 100% — was open
   and is not a feature request). Check the tracker.
   - `update_form` with nullable properties (e.g. `connect: null`)
     correctly clears on disk.
@@ -875,13 +869,16 @@ is now the whole point of this section.
 - **A select cannot be created without an options source.** `add_fields` with
   `kind: 'single_select'` and no `optionsSource` is refused outright — so there
   is no window in which a select exists un-sourced. Inline sources work normally.
-- **Options are never a create-time key.** `options` on a field in
-  `create_module` / `create_form` is rejected as unrecognised; choices arrive
-  only through `optionsSource`. Labels are prose objects
-  (`{parts:[{kind:'text',text}]}`), never bare strings.
+- **Options are never a create-time key.** Choices arrive only through
+  `optionsSource` (or inline `options` on `add_fields`). Since
+  voidcraft-labs/commcare-nova#693 labels are authored as plain TEXT (`"label": "Pick"`,
+  with `{{name}}` insertions); the 2026-09-01 prose-object shape
+  (`{parts:[…]}`) predates it. Observed 2026-09-28.
 - **`get_app` returns PROSE, not JSON** — a human-readable structure listing.
-  Take uuids from `create_app`'s `blueprint` / `starter`, or from
-  `search_blueprint`; do not try to parse `get_app`.
+  Take uuids from the creation receipts (`create_module` → `moduleUuid`,
+  `create_form` → `formUuid`, `add_fields` → `fields[].uuid`; the retired
+  `create_app` starter is gone since #693), or from `search_blueprint`; do not
+  try to parse `get_app`.
 - **Writes are revision-guarded.** Every mutating lookup call requires
   `expectedTableRevision`, and the response carries `definitionRevision` /
   `rowsRevision` / `tableRevision` separately. Read the revision back from the
@@ -933,7 +930,7 @@ yet?"*; it now answers *"is a capability ACE depends on still there?"*
 | Exit | Verdict | Do |
 |---|---|---|
 | `0` | `both` | Expected. Step 4f creates, populates and binds autonomously |
-| `2` | `create-only` | **Regression** — the bind no longer lands. Step 4f must HALT on declared registers rather than degrade → `skills/upstream-regression-triage`; prior occurrence `commcare-nova#545` |
+| `2` | `create-only` | **Regression** — the bind no longer lands. Step 4f must HALT on declared registers rather than degrade → `skills/upstream-regression-triage`; prior occurrence `voidcraft-labs/commcare-nova#545` |
 | `3` | `none` | The create atom regressed too → `skills/upstream-regression-triage` |
 
 Run it when a Nova release lands, when `probe-nova-contract.ts` reports a new
@@ -944,7 +941,159 @@ tool count, or when a build reports a register bind it could not verify.
 `test/docs/upstream-absence-claims.test.ts` keeps both retired claims — "no
 create atom" and "the bind is refused" — from coming back.
 
+## The private-work authoring contract — shipped 2026-09-27, adopted 2026-09-28
+
+**Read this before writing ANY Nova mutation.** Nova PR
+[`voidcraft-labs/commcare-nova#693`](https://github.com/voidcraft-labs/commcare-nova/pull/693)
+(merged and deployed 2026-09-27) moved every app edit into **private work**,
+and nova-plugin v2.0.0 (`voidcraft-labs/nova-plugin#64`, same day) rewrote
+`/nova:build`, `/nova:edit`, `/nova:autobuild` and `nova-architect-autonomous`
+around it. Upstream: *"This intentionally breaks the old plugin authoring
+contract … no old-client bridge is retained."* ACE's `probe-nova-contract.ts`
+reported it with 19 violations on its first run afterwards.
+
+The same deploy also dropped the uuid regex from address params (an address
+now takes a stable id OR an unambiguous name) and took the surface from
+110 tools (2026-09-01) to **127**. `create_app` was removed — the only removal.
+
+### The lifecycle
+
+```
+begin_work({request_id, app_id})                          → {work_id, app_id}
+begin_work({request_id, new_app: {name, project_id?}})    → {work_id, app_id: null}
+<mutation>({work_id, request_id, ...inputs})              → {ok, saved: false, revision, diagnostics}
+get_work({work_id})                                       → {revision, pending_changes, stale, diagnostics, app}
+save_work({work_id, request_id, expected_revision})       → {saved: true, app_id, saved_revision}
+discard_work({work_id, request_id, expected_revision})    → {discarded: true}
+list_work({app_id?, project_id?})                         → retained work
+```
+
+| Tool | What it does |
+|---|---|
+| `begin_work` | Open private work on an existing app (`app_id`) or a new one (`new_app`). **Replaces `create_app`.** |
+| `get_work` | The candidate: opaque `revision`, `pending_changes`, `stale`, validation `diagnostics`. |
+| `save_work` | Publish the candidate as one validated batch. The **only** call that changes a saved app; the first save creates a new app. |
+| `discard_work` | Abandon pending changes; the work id and earlier saves remain. |
+| `list_work` | Find retained work (resume instead of opening a second candidate). |
+| `start_app_test` / `continue_app_test` / `read_app_test` | Isolated worker-journey tests against the SAVED app (disposable records). |
+| `evaluate_form` | Run one form with supplied answers and optional scenario records, no transaction. |
+
+**Every mutation** — `create_module`, `create_form`, `add_fields`,
+`edit_field`, `remove_field`, `update_form`, `update_module`, `update_app`,
+`configure_connect`, `set_field_options_source`, the media attachers,
+`update_translations`, … — now requires `work_id` + `request_id` and **no
+longer accepts `app_id`**. Reads take **exactly one** of `app_id` (saved state)
+or `work_id` (the candidate). `get_app`, `upload_app_to_hq`, `compile_app` and
+`delete_app` take `app_id` and only ever see saved state.
+
+Creation is focused: `create_module` makes one module (no nested `forms`),
+`create_form` makes one EMPTY form (no nested `fields`), `add_fields` adds the
+questions. Each returns the ids it minted.
+
+### Contract facts — observed live 2026-09-28, not inferred
+
+Throwaway app `ACE probe work-lifecycle` (deleted), plus two clean runs of
+`scripts/probe-nova-fixtures.ts`. Every response shape is quoted verbatim in
+`test/lib/nova-work.test.ts`.
+
+1. **An unsaved edit is invisible to everything that ships.** `edit_field`
+   answered `ok: true, saved: false`; `get_field` with `app_id` still returned
+   `"label": "Original label"` while the same read with `work_id` returned
+   `"Edited label"`. `upload_app_to_hq` and `compile_app` read the saved app. So
+   **an ACE edit that is never saved produces no error anywhere and is simply
+   absent from HQ**, which is the silent failure class ACE most needs to guard.
+2. **A refused save is returned as DATA, not an error.** A save against a base
+   another work had moved answered
+   `{"kind":"stale-base","saved":false,"success":false,"message":"The saved app changed after this work began. …"}`
+   with no `isError`, so `novaCall` returns it normally. **"It did not throw"
+   is not "it saved".** The check is `saved === true` — `classifySaveResult`
+   in `lib/nova-work.ts`. `remove_lookup_table`'s `referenced` refusal is data
+   too (`{code, error, blockingApps}`); `refusalOf` recognises both.
+3. **`save_work` echoes the LATEST candidate revision.** Every staged mutation
+   returns a new opaque `revision` (`"<uuid>:<n>"`); a wrong one is refused with
+   *"Read the work and use its current revision to save or discard it."*
+4. **`request_id` is an idempotency key.** Same id + same input → the original
+   receipt, byte for byte. Same id + different input → *"This request identity
+   was already used with different input."* Mint a fresh id per call.
+5. **A save must leave a buildable app.** A candidate whose form has no
+   fields is refused ("… has no fields. CommCare can't build"), as are an
+   empty new module/form (`canCommit: false` until questions exist). Build
+   the complete unit before the first save; when REMOVING, never empty a form.
+6. **A new app has an id before it exists.** `begin_work({new_app})` returns
+   `app_id: null`, and `get_work` already shows `app.appId`. That id is not
+   usable as `app_id` until the first `save_work` returns it. Record the
+   `app_id` from the SAVE, never from `get_work`.
+7. **Project data is NOT staged.** `create_lookup_table` requires `work_id`
+   (for authority) but commits to the Project at call time: the table was
+   visible through `get_lookup_tables({app_id})` before any save, added 0 to
+   `pending_changes`, and is not undone by `discard_work`. Only the BIND of a
+   field to it is staged. Media uploads and deployment are likewise immediate.
+8. **A staged UNBIND does not release a lookup table.** `remove_lookup_table`
+   stayed `referenced` (naming the app) until the `remove_field` was SAVED.
+   Teardown order: `remove_field` → `save_work` → re-read `tableRevision` →
+   `remove_lookup_table` → `delete_app`.
+9. **Concurrent work is detected, never merged.** A second work saved first;
+   the first then read `stale: true` and its save returned `stale-base`. The
+   only recovery is `discard_work` and redo from current saved state.
+10. **The work survives its save.** After `save_work` the same `work_id` read
+    `revision: null, pending_changes: 0` and accepted further edits. It is
+    gone (`not_found`) once the app is deleted.
+11. **`evaluate_form` takes `answers` as an ARRAY**, not a `{field: value}`
+    map (refused: *"answers: expected array, received object"*).
+    `start_app_test({app_id, request_id, purpose})` opened the saved app at its
+    home screen with the persona "Myself" and the app's menus.
+12. **Expressions and wording are plain TEXT.** `relevant`, `calculate`,
+    `default_value` and Connect's `user_score` / `entity_id` / `entity_name`
+    are expression strings (`type: ["string","boolean"]`) that name answers as
+    `#form/<path>` and record values as `#case/<prop>`; reads return the same
+    text. Labels and choice labels are Markdown strings with `{{id}}`
+    insertions. The 2026-07-31 `{parts: [...]}` objects are gone, and a BARE
+    id in an expression is now refused ("Unknown or ambiguous reference") —
+    the silent ace#1119 class fails loudly. Language atoms take an identity
+    object (`{language: 'nya'}`, ISO 639-3), not a two-letter code.
+
+### What this means for ACE, exactly
+
+- **Every ACE-side Nova edit goes through `lib/nova-work.ts`**
+  (`NovaWork.begin` → `stage` → `save`). `save()` throws unless Nova saved, so
+  the silent-unsaved class cannot occur through it. A skill that edits Nova
+  from its own session by MCP tool calls follows the same sequence by hand
+  and must check `saved: true` on the `save_work` answer.
+- **Save before anything reads the saved app.** Upload, compile, `get_app`
+  read-backs and app tests all see saved state only, so a skill must save
+  BEFORE `app-deploy`, and read back with `app_id` after the save to prove an
+  edit shipped. A `work_id` read shows the candidate even when a save failed.
+- **One work per edit pass, then save.** Do not hold a candidate open across
+  an architect dispatch: the architect's own saves make ACE's candidate
+  `stale`, and a stale candidate can only be discarded.
+- **`nova_app_id` is the `app_id` from the first successful `save_work`.**
+  `begin_work` returns no app id for a new app; `get_work`'s `appId` must not
+  be recorded as it does not exist yet.
+- **The architect owns its own lifecycle.** Plugin v2's
+  `nova-architect-autonomous` opens work, saves checkpoints, and runs
+  app-test journeys. Its report distinguishes saved configuration from
+  observed behaviour, and, if unfinished, names a **work id with pending
+  changes**. ACE treats that as an incomplete build, not a delivered app.
+- **Adopt `start_app_test` where a pre-HQ smoke is useful.** It exercises the
+  saved app with disposable records and never touches live cases. It does not
+  replace Phase 6 device QA: it proves nothing about native devices, offline
+  sync or HQ.
+
+### The tripwires
+
+- `scripts/probe-nova-contract.ts`: its pinned shapes are the private-work
+  shapes, and a `RETIRED_TOOLS` check fails if `create_app` returns.
+- `scripts/probe-nova-fixtures.ts` builds its throwaway app through `NovaWork`,
+  so it exercises the lifecycle end to end on every run (exit 0 expected).
+- `test/lib/nova-work.test.ts` covers the save classifier against the verbatim
+  stale and staged receipts above.
+
 ## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
+
+> **Superseded in part on 2026-09-27** — see § The private-work authoring contract above. The
+> uuid ADDRESSING below still holds (ids are still how ACE addresses objects), but every
+> `app_id` in a MUTATION shape below is now `work_id` + `request_id`, the uuid regex is gone
+> (a name is accepted too), and `create_module` / `create_form` no longer nest children.
 
 Nova redeployed mid-run at ~15:45Z on 2026-07-31 and moved its **entire**
 surface from index-based to uuid-based addressing in one shot. A call
@@ -1015,7 +1164,7 @@ can mint uuids up front and never look them up at all.
 moved to a new tool:
 
 ```
-configure_connect({ app_id, mode, participants })
+configure_connect({ work_id, request_id, mode, participants })   // app_id until 2026-09-27; then save_work
   mode: "learn" | "deliver" | null
   participants: [{ formUuid, connect: { learn_module?, assessment?, deliver_unit?, task? } }]
 ```

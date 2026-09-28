@@ -457,6 +457,14 @@ function decodeXmlText(s: string): string {
  *   "optionsSource":{"kind":"lookup","tableId":"…","valueColumnId":"…",
  *                    "labelColumnId":"…"}
  *
+ * Since `voidcraft-labs/commcare-nova#693` (2026-09-27) the bind is also
+ * STAGED in private work: it reaches the saved app — the only thing
+ * `upload_app_to_hq` ships — only when `save_work` answers `saved: true`. So
+ * the read-back must be `get_field({app_id, …})` AFTER the save; a
+ * `get_field({work_id, …})` read shows the candidate's bind even when the save
+ * was refused (playbook/integrations/nova-integration.md § The private-work
+ * authoring contract).
+ *
  * This is the whole reason the function exists. The failure it guards has no
  * downstream symptom — a select with an unbound source renders empty to a
  * field worker and passes every structural gate ACE runs, exactly like the
@@ -617,7 +625,8 @@ export interface BindVerification {
 /**
  * Verify a lookup bind against what Nova reads back — never against the write.
  *
- * Pure. `readBack` is `get_field(...).field.optionsSource`; pass `null` when
+ * Pure. `readBack` is `get_field({app_id, …}).field.optionsSource`, read from
+ * the SAVED app after `save_work` (never a `work_id` read); pass `null` when
  * the read-back could not be performed at all, which is NOT a pass ("I could
  * not check" and "it is correct" are different answers — the same rule
  * `diffOptionRegister` applies to an unreadable register source).

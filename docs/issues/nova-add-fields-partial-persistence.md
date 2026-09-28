@@ -1,5 +1,13 @@
 # Nova issue draft — `add_fields` silently persists only the first item of multi-item arrays
 
+> **2026-09-28 — contract changed upstream.** Since voidcraft-labs/commcare-nova#693
+> (2026-09-27) every Nova mutation, `add_fields` included, is staged in private work
+> (`work_id` + `request_id`, then `save_work`), and apps are created by `begin_work`
+> rather than the call in the repro below. The repro's call shapes are historical;
+> re-derive one against `playbook/integrations/nova-integration.md § The private-work
+> authoring contract` before filing or citing this. `add_fields` now returns every
+> created field uuid in input order, which is the direct check for this defect.
+
 **Repo:** `voidcraft-labs/nova-plugin`
 **Reporter:** ACE team (Dimagi)
 **Severity:** Medium — silent partial commit; subsequent `validate_app` catches the resulting count mismatch, but architect has to notice and re-issue

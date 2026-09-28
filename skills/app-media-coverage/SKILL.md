@@ -224,10 +224,21 @@ dedupes on content, so re-running is free and returns the same `asset_id`.
 
 Built-in icon rows need no upload and keep `asset_id: null`.
 
-### 8. Apply the plan to Nova
+The upload is an IMMEDIATE Project-library effect — it takes no `work_id` and
+is not undone by `discard_work`. Only the attaches in step 8 are staged.
 
-Batch by call — Nova commits each batch as a whole, so one call per surface is
-both cheaper and atomic:
+### 8. Apply the plan to Nova — in private work, saved in two checkpoints
+
+Every attach is a staged private-work edit (voidcraft-labs/commcare-nova#693;
+contract in `playbook/integrations/nova-integration.md § The private-work
+authoring contract`). Open one work with `begin_work({app_id, request_id})`;
+each call below takes that `work_id` plus its own fresh `request_id`, never
+`app_id`, and answers `ok: true, saved: false` — nothing is attached until
+`save_work({work_id, request_id, expected_revision})` answers `saved: true`.
+A stale or refused save comes back as DATA, not an error, so check `saved`.
+
+Batch by call — Nova validates each batch as a whole, so one call per surface
+is both cheaper and atomic:
 
 - `attach_field_media` — every `field` row, in one call, spanning forms
 - `attach_option_media` — every `option` row, in one call
@@ -239,21 +250,24 @@ both cheaper and atomic:
   slot you mean to keep, or it clears.
 - `set_app_logo` — if a logo row exists
 
+**Save checkpoint 1** after the field, option, MODULE-tile and logo batches
+(`saved: true` required). **Then** stage the FORM-tile batch and go to step 9
+before saving it — so the form-tile write that step 9 may have to revert is
+the only thing pending, and the safe media is already saved.
+
 `partitionForNova` in `lib/media-plan.ts` does the grouping and drops
 `operator_override: 'skip'` rows.
 
-On a batch rejection, Nova names the offending attachment and changes nothing.
-Fix that row and re-send the batch — do not fall back to one call per row,
+On a batch rejection, Nova names the offending attachment and stages nothing.
+Fix that row and re-send the batch in the same work — do not fall back to one call per row,
 which turns one atomic failure into a partly-attached app.
 
 ### 9. Verify against the blueprint — and revert form tiles if `get_form` breaks
 
-Re-read each touched form with `get_form` and confirm every non-skipped row is
-present. This is a read-back against the system of record, not a check of the
-call's own return value.
-
-**Do one `get_form` on a single touched form immediately after the FORM-tile
-batch, before any other work.** A form-tile icon slug taken from Nova's own
+**Do one `get_form({work_id, moduleUuid, formUuid})` on a single touched form
+immediately after staging the FORM-tile batch, before saving it** — the
+candidate read is how the defect below is caught before it reaches the saved
+app. A form-tile icon slug taken from Nova's own
 published `set_menu_media` enum is accepted by the write and then breaks
 `get_form` for **every form in the app** — `{"error_type":"invalid_input",
 "message":"Choose one valid value at icon."}`. Observed live on both apps of
@@ -264,9 +278,11 @@ returns a full payload throughout — which is why step 8 sends them separately.
 On an `invalid_input` rejection naming `icon`:
 
 1. **Re-send the FORM-tile batch with `icon: null`** on every item (keep the
-   other slot's stored value — each item still sets both). Do not touch the
-   module-tile batch; those icons are correct and still attached.
-2. `get_form` again on the same form. It recovers immediately.
+   other slot's stored value — each item still sets both), in the same work.
+   Do not touch the module tiles; checkpoint 1 already saved them.
+   (`discard_work` is equivalent here, since the form tiles are the only
+   pending change.)
+2. `get_form` again on the same form (`work_id`). It recovers immediately.
 3. Record `form_tiles: reverted-upstream-defect` in the report frontmatter, and
    a line in the report body naming `voidcraft-labs/commcare-nova#625`.
 4. **Continue — do not halt, and do not retry with a different slug.** Menu
@@ -281,7 +297,12 @@ tiles ship — `scripts/probe-upstream-asks.ts` surfaces the citation once
 upstream closes it, which is why the reference is written in `owner/repo#n`
 form.
 
-Then finish the normal read-back across the remaining touched forms.
+**Save checkpoint 2** (`saved: true` required; skip it if the revert left
+nothing pending). Then re-read each touched form with `get_form({app_id, …})`
+— `app_id`, i.e. the SAVED app, not the work — and confirm every non-skipped
+row is present. This is a read-back against the system of record, not a check
+of the call's own return value, and a `work_id` read would show the candidate
+even if a save had failed.
 
 Do **not** attempt a CCZ-level check here — the app has not been uploaded yet.
 Media reaching the released CCZ is verified downstream by `app-release-qa`.
@@ -334,8 +355,9 @@ with status and the counts above.
 ## MCP tools and scripts used
 
 **Nova (read):** `get_app`, `get_form`, `search_blueprint`, `list_media_assets`
-**Nova (write):** `attach_field_media`, `attach_option_media`, `set_menu_media`,
-`set_app_logo`
+**Nova (write, staged):** `attach_field_media`, `attach_option_media`,
+`set_menu_media`, `set_app_logo` — inside `begin_work` / `save_work`
+(`get_work`, `discard_work` as needed)
 **Drive:** `resolve_opp_path`, `drive_list_folder`, `drive_read_file`,
 `drive_download_binary`, `drive_create_file`, `update_yaml_file`
 
@@ -352,5 +374,6 @@ with status and the counts above.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-28 | **Attaches are private-work edits, saved in two checkpoints (voidcraft-labs/commcare-nova#693).** Every attach tool now takes `work_id` + `request_id` (no `app_id`) and stages until `save_work`. Step 8 opens one work, saves field/option/module-tile/logo media as checkpoint 1, then stages the form tiles alone; step 9 reads the CANDIDATE with `get_form({work_id})` to catch the #625 icon defect before saving checkpoint 2, and the final read-back uses `app_id` (saved state). Uploads stay immediate Project-library writes. | ACE team |
 | 2026-09-16 | **Form-tile icons are guarded, not trusted (ace#2413).** Step 4(b) promised built-in menu icons were free and side-effect-free; that holds for module tiles but not form tiles — `set_menu_media` accepts a form-tile slug from its own published enum and every subsequent `get_form` on the app then fails `invalid_input` "Choose one valid value at icon" (`voidcraft-labs/commcare-nova#625`, reproduced live on both apps of `poverty-graduation/20260915-1518`). That took out `app-deploy`'s XML-escape lint, `app-test-cases`, `app-release-qa` and both `pdd-to-*-app-eval` skills four steps later, surfacing as "Nova broke" in a skill that never touched media. Step 8 now sends module and form tiles as separate batches so a form-tile problem cannot cost the module tiles; step 9 does a `get_form` read-back straight after the form-tile batch and, on that rejection, re-sends the batch with `icon: null`, records `form_tiles: reverted-upstream-defect`, and continues rather than halting. *Enforced:* `test/skills/media-form-tile-revert-guard.test.ts`. | ACE team |
 | 2026-08-27 | Initial version, replacing `app-multimedia-coverage`. Nova shipped a first-class media channel (`voidcraft-labs/nova-plugin#8`, closed 2026-06-03) — asset library, per-slot field media, option media, menu icons, app logo — and `compile_app`/`upload_app_to_hq` carry it to HQ. Verified live end-to-end 2026-08-27: attached image reached the released CCZ at `commcare/<sha256>.png` with matching `<value form="image">` itext, and built-in icon slugs materialised as real bundled assets. That retires the whole post-release XML-patch pipeline, its orphan-pruning ordering hazard, and its loss-on-every-rebuild. Adds two capabilities the old skill had no way to reach: supplied files from `inputs/media/` with free-form operator guidance, and picture-choice select options. Upload goes through a server-side proxy script because base64 through a tool call costs ~1 token/char. | ACE team |

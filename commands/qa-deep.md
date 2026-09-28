@@ -1,7 +1,7 @@
 ---
 description: Run deep QA (OCS + apps) against an existing opportunity. Manual gate, not part of /ace:run.
 argument-hint: <opp-name> [--ocs-only | --apps-only]
-allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__plugin_nova_nova__get_app]
+allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__nova__get_form, mcp__plugin_nova_nova__get_app, mcp__nova__get_app]
 ---
 
 # /ace:qa-deep — Manual Deep QA

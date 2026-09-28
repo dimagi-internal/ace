@@ -389,7 +389,7 @@ if [ "$PREFLIGHT" = "1" ]; then
         # cache_key_present AND a valid NOVA_API_KEY together PROVE the entry is
         # stale, so there is nothing to decide — clear it here rather than
         # printing a one-liner a human has to run. Claude Code rewrites the
-        # entry at every startup without re-attempting auth (nova-plugin#11), so
+        # entry at every startup without re-attempting auth (voidcraft-labs/nova-plugin#11), so
         # a restart alone does NOT clear it and the halt repeats on every
         # restart. Still `fail`: MCP subprocesses cannot be respawned
         # in-session, so the restart stays mandatory — this makes ONE restart
@@ -2695,8 +2695,9 @@ fi
 # 2.1.238+ = 0/53, with a same-session control on 2.1.243 showing canopy's
 # helper (reads a FILE) at hdr=1 while nova's (reads an ENV VAR) sat at hdr=0.
 #
-# The ONLY working fix today is a user-scope server carrying a STATIC header,
-# which bypasses the helper entirely:
+# Nova plugin v2 (2026-09-27) then REMOVED the helper outright: the bundled
+# connection is OAuth-only and Nova's docs make a user-scope entry THE API-key
+# path. ACE installs it with a STATIC header (the env is what went missing):
 #   claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp \
 #     --header 'Authorization: Bearer <PAT>'
 #
@@ -2717,10 +2718,10 @@ if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '
     | node "$ROOT/scripts/classify-nova-user-scope-override.mjs" 2>/dev/null || true)"
   case "$NOVA_OVERRIDE_CLASS" in
     workaround)
-      info "nova_shell_env: user-scope nova: MCP override carries a static Authorization header — this is the voidcraft-labs/nova-plugin#52 workaround, NOT stale cruft. Leave it in place; remove it only once #52 ships a file-based or static-header helper (dimagi-internal/ace#1629)."
+      info "nova_shell_env: user-scope nova: MCP entry carries an Authorization header — the voidcraft-labs/nova-plugin#52 workaround, NOT stale cruft, and since nova plugin v2 (no headersHelper) Nova's DOCUMENTED API-key path (docs.commcare.app/mcp/api-keys). Leave it in place: without it the plugin connection is OAuth-only (dimagi-internal/ace#1629)."
       ;;
     stale)
-      warn "nova_shell_env: stale user-scope nova: MCP override detected — no static Authorization header (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry AND carries no credential of its own. Run: claude mcp remove nova --scope user  (then restart Claude Code). If you meant to install the nova-plugin#52 workaround, re-add it WITH --header 'Authorization: Bearer <PAT>'"
+      warn "nova_shell_env: stale user-scope nova: MCP entry detected — no Authorization header" "the entry shadows the Nova plugin's connection AND carries no key, so Nova authenticates by browser sign-in. Re-add it WITH the key (adding again overwrites): claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp --header 'Authorization: Bearer <PAT>'  — or run /ace:setup, which installs it. Only 'claude mcp remove nova --scope user' if you deliberately want browser sign-in. Restart Claude Code after either."
       ;;
     *)
       # Classification could not run (node missing, `claude mcp get` shape
@@ -2728,7 +2729,7 @@ if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '
       # whole point of ace#1629 is that the removal advice is destructive when
       # the entry IS the working credential path, so an unclassified entry must
       # never inherit it by default.
-      warn "nova_shell_env: user-scope nova: MCP override present but could not be classified" "inspect it yourself with: claude mcp get nova  — if it carries a static 'Authorization: Bearer …' header it is the nova-plugin#52 workaround and MUST BE LEFT ALONE. Do not remove it on the strength of this warning"
+      warn "nova_shell_env: user-scope nova: MCP override present but could not be classified" "inspect it yourself with: claude mcp get nova  — if it carries a static 'Authorization: Bearer …' header it is the voidcraft-labs/nova-plugin#52 workaround and MUST BE LEFT ALONE. Do not remove it on the strength of this warning"
       ;;
   esac
 fi
@@ -2736,7 +2737,7 @@ fi
 # 7b-ii. nova_header_readiness — the verdict nova_shell_env above cannot give.
 # Reads the CLAUDE CODE process env (not the doctor's) and answers whether an
 # Authorization header will actually be sent; self-heals by installing /
-# re-pointing the nova-plugin#52 static-header override. Full rationale in
+# re-pointing the voidcraft-labs/nova-plugin#52 static-header override. Full rationale in
 # scripts/doctor-nova-header.ts and lib/nova-header-readiness.ts.
 if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
   NOVA_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
@@ -2823,7 +2824,7 @@ else
         fail "nova_needs_auth_cache: plugin:nova:nova was cached as needs-auth despite valid NOVA_API_KEY" "the stale entry has been CLEARED automatically from $NOVA_NEEDS_AUTH_CACHE.
        ${NOVA_CACHE_RECURRENCE_BANNER}FIRST occurrence: Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
        Symptom this fixes: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
-       Per Braxton's nova-plugin#11.
+       Per Braxton's voidcraft-labs/nova-plugin#11.
 
        IF YOU HAVE ALREADY RESTARTED once since the last clear and nova still exposes
        only \`authenticate\`, the cache is NOT the cause and a further restart will loop:
@@ -2847,7 +2848,7 @@ else
         fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "auto-clear did not apply ($NOVA_CACHE_CLEAR_RESULT); remove the stuck entry by hand and restart Claude Code (running process won't re-connect on its own):
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
        Then Cmd-Q Claude Code and reopen. Symptom: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
-       Per Braxton's nova-plugin#11."
+       Per Braxton's voidcraft-labs/nova-plugin#11."
       fi
     else
       warn "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth (NOVA_API_KEY not set — possibly correct)" "if you intend to use Nova, see nova_env above; otherwise this entry is benign"

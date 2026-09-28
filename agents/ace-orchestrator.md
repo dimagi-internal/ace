@@ -366,11 +366,11 @@ in-session:
 > only the binding is wrong. **A plain restart is NOT sufficient for the
 > principal case — it has been tried and it did not clear
 > (dimagi-internal/ace#1614).** The cause is that NO `Authorization` header
-> is reaching Nova: Claude Code 2.1.238+ stopped passing its process env to
-> nova's env-dependent `headersHelper`, which emits `{}`, and the client falls
-> back to OAuth — whose token lacks `nova.hq.read`
-> (voidcraft-labs/nova-plugin#52). Run `/ace:doctor`: its
-> `nova_header_readiness` probe installs the static-header override
+> is reaching Nova: there is no user-scope `nova` MCP entry carrying the PAT,
+> and since nova plugin v2 (2026-09-27, voidcraft-labs/nova-plugin#64) the
+> plugin's bundled connection is OAuth-only — whose token lacks
+> `nova.hq.read` (voidcraft-labs/nova-plugin#52). Run `/ace:doctor`: its
+> `nova_header_readiness` probe installs the user-scope entry
 > automatically. Then **quit and reopen Claude Code**, and resume
 > `/ace:run <opp>/<run-id>`. Do **NOT** go to `/mcp` — see below.
 >
@@ -390,7 +390,7 @@ restores **no** credential, so when no header is being sent the session simply
 re-prompts OAuth and lands in the identical state. The earlier explanation —
 *a stored OAuth credential outranks the `headersHelper` PAT* — was
 **DISPROVED** by client logs showing `No access token in storage` alongside
-`Successfully retrieved 0 headers from headersHelper` (nova-plugin#52, third
+`Successfully retrieved 0 headers from headersHelper` (voidcraft-labs/nova-plugin#52, third
 correction). There was never a stored token to outrank anything. The lever is
 the **static-header override**, which `nova_header_readiness --heal` installs;
 the restart is what binds it, since MCP subprocesses only rebind at startup.
@@ -403,9 +403,12 @@ just re-establishes it: measured on `spark-facilitator/20260820-0817`, where
 the second halt came from a claude process started **after** the first halt
 and bound exactly the same wrong principal. Prescribing a restart there sends
 the operator around a loop that produces no new information and costs a
-session each lap. `nova` is a `type: http` server whose `headersHelper` reads
-`$NOVA_API_KEY` from Claude Code's own process env — and on 2.1.238+ that env
-does not carry it. Read the premise the right way round: `ps -Eww -p
+session each lap. Until nova plugin v2, `nova` was a `type: http` server whose
+`headersHelper` read `$NOVA_API_KEY` from Claude Code's own process env — and
+on 2.1.238+ that env did not carry it. Since v2 (2026-09-27) there is no
+helper at all: the key reaches Nova ONLY through the user-scope entry, so the
+diagnosis is simply whether that entry exists and carries the current PAT
+(`nova_header_readiness`). For history, the pre-v2 premise read: `ps -Eww -p
 <claude-pid> | tr ' ' '\n' | grep -c '^NOVA_API_KEY='` returning **0** (with
 `grep -cE '^[A-Z_]+='` as the readability control) is the diagnosis, not a
 contradiction of it — the helper emitted `{}` and no header was ever sent,
@@ -416,7 +419,7 @@ non-interactive shell.
 
 Full mechanism, the three non-fixes, and why every PAT-side health check
 reports green throughout: `playbook/integrations/nova-integration.md`
-§ Auth history → the nova-plugin#52 entry.
+§ Auth history → the voidcraft-labs/nova-plugin#52 entry.
 
 `bin/ace-doctor`'s `nova_needs_auth_cache` cannot stand in for this. It is a
 static check of a cache FILE plus the key's PRESENCE — it reported a green

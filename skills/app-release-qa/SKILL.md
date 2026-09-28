@@ -101,9 +101,12 @@ For each app, compute:
 **Module identity — the starter module (dimagi-internal/ace#1787).**
 
 > **Form count equality cannot catch this one, and that is not a near miss —
-> it is structural.** Nova's `create_app` seeds every new app with a
-> placeholder module: a top-level menu **"Survey"** holding one form
-> **"Survey"** holding one text field **`question_1`** labelled "Question 1".
+> it is structural.** Until 2026-09-27 Nova's app-creation call seeded every
+> new app with a placeholder module: a top-level menu **"Survey"** holding one
+> form **"Survey"** holding one text field **`question_1`** labelled "Question 1".
+> (`voidcraft-labs/commcare-nova#693` retired that call; `begin_work({new_app})`
+> creates no starter. The check stays: apps created before then can still carry
+> the seed, and a regression would be invisible to every other gate.)
 > That module is present in the released CCZ *and* in the Nova blueprint, so
 > the two totals above are **equal on both sides** and the count check passes
 > on a dirty app by construction. The Connect-marker checks below are keyed on
@@ -194,7 +197,7 @@ non-blocking note reproduces exactly that. Record the classifier's output under
 - Each Nova form whose blueprint declares `connect.assessment` MUST
   have an `assessment` element in that same namespace (equivalently: an
   `assessments[]` entry).
-- Per nova-plugin#7 closure (2026-05-22): these wrappers are
+- Per voidcraft-labs/nova-plugin#7 closure (2026-05-22): these wrappers are
   **required** for Connect's HQ→Connect sync to register learn
   modules. Their absence is a structural defect.
 - **CARDINALITY, not just presence (dimagi-internal/ace#1131).** Count the

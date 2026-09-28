@@ -235,7 +235,9 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      For the reproducer, the `app-release` Step 6 backstop, and removal
      criteria, see reference.md § ≤40-char name fallback.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
-     call.** Nova's `add_fields` has a partial-persistence quirk: a
+     call.** (Since `voidcraft-labs/commcare-nova#693` the architect's `add_fields` stages
+     into private work, so the verifying `get_form` reads the CANDIDATE —
+     `work_id`, not `app_id` — until its next `save_work`.) Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few.
      Mid-build sessions where the architect skipped verification have
      shipped forms that look complete in the build summary but render
@@ -404,9 +406,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `learn-app-naming` — always. App name must contain "Learn app".
-     - `no-starter-module` — always (Learn + Deliver). Nova's `create_app`
-       seeds a placeholder module (top-level menu "Survey" → form "Survey" →
-       one text field `question_1` labelled "Question 1"). Emit the component
+     - `no-starter-module` — always (Learn + Deliver). Apps created before
+       2026-09-27 were seeded with a placeholder module (top-level menu
+       "Survey" → form "Survey" → one text field `question_1` labelled
+       "Question 1"); since `voidcraft-labs/commcare-nova#693` a new app starts EMPTY
+       (`begin_work({new_app})`, no seed), so the component is now a
+       regression guard rather than a live defect. Emit the component
        so the brief tells the architect to DELETE it, and to report whether it
        was present. Removal is currently architect discretion, and discretion
        is what varies run to run: on `bednet-check-2-visit/20260828-0629` the
@@ -506,9 +511,31 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the
    response:
-   - `app_id` — durable Nova handle, written to the summary as `nova_app_id`
-   - Build summary
+   - `app_id` — durable Nova handle, written to the summary as `nova_app_id`.
+     Since nova plugin v2 the architect builds in private work and saves
+     checkpoints; the `app_id` is the one its first successful `save_work`
+     returned. **If the report instead names a `work_id` with pending
+     changes, the build is UNFINISHED** — unsaved work is invisible to
+     `get_app`, upload and compile. Treat that as an incomplete build, not a
+     delivered app.
+   - Build summary (the architect distinguishes saved configuration from
+     behaviour it observed in app-test journeys — keep that distinction)
    - Any warnings Nova emits
+
+   **Every ACE-DIRECT Nova edit below (§§ 4b, 4c, 4e and § Repair mode) is a
+   private-work edit** (`voidcraft-labs/commcare-nova#693`; contract:
+   `playbook/integrations/nova-integration.md § The private-work authoring
+   contract`). Open work on the built app with `begin_work({app_id,
+   request_id})`, stage each mutation with `work_id` + a fresh `request_id`
+   (never `app_id`), then `save_work({work_id, request_id,
+   expected_revision})` using the revision from the latest staged result.
+   **Require `saved: true` in the save answer** — a stale or refused save
+   comes back as data (`saved: false`), not as an error, and an unsaved edit
+   never reaches HQ. Scripted edits use `lib/nova-work.ts` (`NovaWork.begin`
+   → `stage` → `save`, which throws unless Nova saved). Every re-assert
+   below reads with `app_id` AFTER the save; a `work_id` read shows the
+   candidate even when the save failed. All of this completes before
+   `app-deploy` uploads the app.
 
 4a. **Post-build field-count verification — runnable recipe (skill-side safety net).**
 
@@ -639,37 +666,41 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        `get_app` response first**, then call once:
 
        ```
+       begin_work({ app_id, request_id })          // → work_id
        configure_connect({
-         app_id,
+         work_id, request_id,                       // staged — never app_id
          mode: "learn",
          participants: [
            // EVERY content/quiz form in the app, addressed by formUuid.
            { formUuid: "<content form uuid>",
              connect: { learn_module: { name, description, time_estimate } } },
            { formUuid: "<quiz form uuid>",
-             connect: { assessment: { user_score: { parts: [
-               { kind: "field-ref", uuid: "<user_score field uuid>" } ] } } } },
+             connect: { assessment: { user_score: "#form/<user_score field id>" } } },
            …
          ]
        })
+       save_work({ work_id, request_id, expected_revision })  // require saved: true
        ```
 
-       Note the **structured expression shape** — `user_score` (like
-       `label`, `relevant`, `calculate`, `default_value`) takes
-       `{parts: [...]}`, not a plain XPath string; a bare string is
-       rejected. Omit each block's `id` and let Nova derive it.
+       Note the **expression shape** — since `voidcraft-labs/commcare-nova#693`
+       `user_score` (like `relevant`, `calculate`, `default_value`) is a
+       plain expression STRING that names answers as `#form/<path>`; Nova
+       binds the reference to the field's stable identity at request time
+       and reads return the same text. The 2026-07-31 `{parts: [...]}`
+       shape is gone. Omit each block's `id` and let Nova derive it.
        `time_estimate` is in **hours** despite upstream's schema
        description saying minutes (nova-plugin#36).
 
-       Then re-run `get_app` and re-assert BOTH the header and that every
-       form that carried a Connect block before still carries one.
+       Then, AFTER the save, re-run `get_app({app_id})` and re-assert BOTH
+       the header and that every form that carried a Connect block before
+       still carries one.
        **Bounded loop, max 3 iterations.** If the header still does not
        read `Connect type: learn` after the third attempt (or
        `configure_connect` is itself unavailable), halt with a clear
        `learn-marker-wont-compile` failure and do NOT write the success
        summary.
 
-    Use `update_form({moduleUuid, formUuid, connect})` **only** to refine
+    Use `update_form({work_id, request_id, moduleUuid, formUuid, connect})` **only** to refine
     one sub-config on a form that ALREADY participates — it cannot enable
     Connect, switch mode, or add a participant, and it refuses a
     whole-slot null. Full division of labour:
@@ -740,16 +771,19 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
     3. On a miss, heal ACE-direct (`edit_field` / `add_fields` are
        available to the ACE session that executes this skill):
-       `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates})`
+       in ONE private work on the built app (`begin_work({app_id,
+       request_id})`), stage
+       `edit_field({work_id, request_id, moduleUuid, formUuid, fieldUuid, updates})`
        to add a pass condition to the existing pass label, and
-       `add_fields({app_id, moduleUuid, formUuid, fields})` to append a
+       `add_fields({work_id, request_id, moduleUuid, formUuid, fields})` to append a
        `result_fail` label carrying retry guidance (review the content,
-       answer again). Use `<threshold>` = the SAME resolved value the
+       answer again), then `save_work({work_id, request_id,
+       expected_revision})` and require `saved: true`. Use `<threshold>` = the SAME resolved value the
        brief used (`learn_passing_score` → PDD § Program Parameters →
        80), never a hardcoded 80 — an on-screen pass label that
        disagrees with Connect's live gate tells a worker they passed
-       while Deliver stays locked (ace#1333). Then re-fetch via
-       `get_form({app_id, moduleUuid, formUuid})` and re-assert.
+       while Deliver stays locked (ace#1333). Then, after the save, re-fetch
+       via `get_form({app_id, moduleUuid, formUuid})` and re-assert.
        **Bounded loop, max 3 iterations.** If the form still lacks a
        conditional pass+fail pair after the third attempt, halt with a
        clear `assessment-result-unconditional` failure and do NOT write
@@ -836,21 +870,20 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        get paid. Pass that predicate as
        `untestedPaymentPredicate` so the finding names it.
 
-       **`relevant` is a STRUCTURED expression, not a string** (Nova's
-       2026-07-31 redeploy — a bare string is rejected). Reference the
-       score field by uuid rather than by `#form/` path:
+       **`relevant` is an expression STRING that names the score by
+       `#form/` path** (since `voidcraft-labs/commcare-nova#693`; the 2026-07-31
+       `{parts: [...]}` shape is retired):
 
        ```
-       relevant: { parts: [
-         { kind: "field-ref", uuid: "<user_score field uuid>" },
-         { kind: "text", text: " >= <threshold>" }
-       ] }
+       relevant: "#form/<user_score field id> >= <threshold>"
        ```
 
-       The same `{parts: [...]}` shape applies to `label`, `hint`,
-       `required`, `validate`, `calculate`, and `default_value`. Part
-       kinds: `text` · `field-ref` · `path-ref` · `case-ref` ·
-       `user-ref` · `user-property-ref`. Two rules that bite here:
+       `required`, `validate.expr`, `calculate` and `default_value` take
+       the same string form; `label`, `hint` and `help` are Markdown
+       strings where `{{field_id}}` inserts an answer. A BARE id in an
+       expression (`user_score >= 80`) is now REFUSED with *"Unknown or
+       ambiguous reference"* — observed live 2026-09-28 — so the ace#1119
+       silent-raw-text failure fails loud instead. Two rules that bite here:
        a **`hidden` field is rejected unless it has `calculate` or
        `default_value`**, and Nova **applies nothing on rejection**
        ("Nothing was changed") while naming the exact problem — so read
@@ -919,11 +952,16 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     nothing can demote a translation to `out-of-date` behind you.
 
     Execute `_app-component-library.md § app-language-layer` **ACE's ACE-direct
-    recipe** verbatim — `get_languages` → `add_language(copyFrom: 'en')` →
+    recipe** verbatim — `get_languages` → `add_language` (ISO 639-3 identity, `copyFrom: {language: 'eng'}`) →
     page `get_translatable_content` and author real values via
     `update_translations` (≤50 units/call, echoing each just-read
-    `sourceFingerprint`) → `get_languages` again. Read the atoms' live schemas
-    from Nova's `tools/list`; do not paraphrase them here.
+    `sourceFingerprint`) → `get_languages` again. `add_language` and
+    `update_translations` are STAGED private-work mutations (`work_id` +
+    `request_id`); read `get_translatable_content` with the same `work_id` so
+    fingerprints match the candidate, then `save_work` and require
+    `saved: true` — the gate below reads `get_languages({app_id})` AFTER
+    that save, because unsaved translations ship nothing. Read the atoms'
+    live schemas from Nova's `tools/list`; do not paraphrase them here.
 
     **Gate:** `out-of-date` and `missing` must both be 0 at hand-off. Record
     the final per-language coverage counts in the build memo, plus one line
@@ -1045,7 +1083,9 @@ When invoked with a `repairs[]` list:
 
 1. **Re-key, don't grow.** For each entry, edit the `suggested_target` item in
    place via `edit_field` (and `set_field_options_source` when the options
-   change). Keep the stem's subject where you can; change what the options
+   change) — staged in one private work on the app and saved with
+   `save_work` (require `saved: true`) before step 3's read-back, which
+   uses `app_id`. Keep the stem's subject where you can; change what the options
    *differ on*, so the answer turns on the uncovered rule rather than on general
    judgment. Adding items instead of re-keying inflates the bank and lowers the
    effective bar the gate applies.
@@ -1060,8 +1100,10 @@ When invoked with a `repairs[]` list:
    never the architect, ace#1556) for the repaired units and re-confirm
    `out-of-date` is 0 before hand-off.
 3. **Read back the scoring chain.** After any pass that rewrites options or
-   keys, `get_field` on the edited `qN_score` and on `user_score` and assert
-   each `calculate.parts` still contains a `field-ref` part, not only text.
+   keys, `get_field({app_id, …})` (after the save) on the edited `qN_score`
+   and on `user_score` and assert each `calculate` string still references
+   the question as `#form/<id>` — reads return the authored text, e.g.
+   `"if(#form/q1 = 'c', 1, 0)"`.
 4. **Update the build memo's per-item table** for every item you touched, and
    record which `repairs[]` entries you applied.
 5. **One round.** Return after applying the list; the orchestrator re-runs the
@@ -1295,4 +1337,5 @@ write semantics` (top-level `decisions:`, not `rows:`).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-28 | **ACE-direct edits move to Nova private work (`voidcraft-labs/commcare-nova#693`).** Nova's 2026-09-27 deploy removed `create_app` and made every mutation staged: `work_id` + `request_id`, no `app_id`, nothing lands until `save_work`, and a refused save answers `saved: false` as data. §§ 4b / 4c / 4e and § Repair mode now open work, stage, save (requiring `saved: true`) and read back with `app_id` after the save; Step 4 treats an architect report naming unsaved work as an unfinished build; `no-starter-module` is re-framed as a regression guard (new apps are unseeded). Contract: `playbook/integrations/nova-integration.md § The private-work authoring contract`. | ACE team |
 | 2026-09-11 | **Added § Decisions Log: every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** The skill had no Decisions Log section, so the Learn build contributed zero rows to the register a reviewer comments on and answers — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3. Rows derive from the same entry list as Step 7a's tables, with the spot-check location in `reasoning` because ace-web drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |

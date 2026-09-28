@@ -665,34 +665,31 @@ $DIAG"
   fi
 fi
 
-# ---- Nova PAT wiring via ~/.ace/env.sh + shell rc auto-append
+# ---- Nova PAT wiring: the user-scope `nova` MCP entry, plus ~/.ace/env.sh
 #
-# Nova plugin v1.1.0 reads NOVA_API_KEY from the Claude Code process's
-# shell env via a headersHelper in its .mcp.json. ACE stores
-# NOVA_API_KEY in ${CLAUDE_PLUGIN_DATA}/.env (loaded only into ACE's own
-# MCP subprocesses, not the parent shell), so we write a sourceable
-# shim at ~/.ace/env.sh and append a marker-fenced source line to the
-# operator's shell rc once per machine. See
-# `playbook/integrations/nova-integration.md` and
-# voidcraft-labs/nova-plugin#11 / #13 / #16.
+# Nova plugin v2 (2026-09-27, voidcraft-labs/nova-plugin#64) REMOVED the
+# `headersHelper` that used to read NOVA_API_KEY from the Claude Code env.
+# The bundled connection is now OAuth-only, and Nova's documented API-key
+# path is a USER-SCOPE `nova` MCP entry carrying the Authorization header
+# (docs.commcare.app/mcp/api-keys). Claude Code prefers that entry over the
+# plugin's connection to the same URL.
 #
-# Marker-fenced shell-rc edits are the standard pattern (conda init,
-# nvm, rustup, fnm, etc.). Idempotent (marker grep), reversible (delete
-# the block), and operator-triggered (only runs via /ace:setup).
+# So this block now INSTALLS that entry (it used to DELETE it, which since v2
+# would silently drop every ACE session onto a human's OAuth token). The
+# install is delegated to `scripts/doctor-nova-header.ts --heal`, the same
+# code `/ace:doctor` runs, so setup and doctor cannot disagree about it. ACE
+# writes a LITERAL Bearer header rather than Nova's `${NOVA_API_KEY}` form:
+# the env-expanded form is only as good as the Claude Code process env, and
+# that env is exactly what went missing in ace#1629.
 #
-# Also removes any stale user-scope `nova:` MCP entry left over from the
-# pre-1.1.0 override workaround — that path is obsolete and shadows the
-# plugin's PAT-aware MCP entry under Claude Code's URL-dedup.
+# ~/.ace/env.sh + the shell-rc source line stay: Bash-invoked scripts and a
+# user who prefers Nova's env-expanded entry both still read the key there.
+# Marker-fenced shell-rc edits are the standard pattern (conda init, nvm,
+# rustup). Idempotent (marker grep), reversible (delete the block).
 if [ -f "$ENV_OUT" ]; then
   NOVA_KEY="$(grep -E '^NOVA_API_KEY=' "$ENV_OUT" | head -1 | sed -E 's/^NOVA_API_KEY=//' | sed -E 's/^"(.*)"$/\1/')"
 else
   NOVA_KEY=""
-fi
-# Always clean up any pre-1.1.0 user-scope override (idempotent; the
-# entry may not exist). Required even when NOVA_API_KEY is missing —
-# a stale override with a revoked key 401s every Nova call.
-if command -v claude >/dev/null 2>&1; then
-  claude mcp remove nova --scope user >/dev/null 2>&1 || true
 fi
 if [ -z "$NOVA_KEY" ] || [ "${NOVA_KEY#op://}" != "$NOVA_KEY" ]; then
   warn "nova_env: NOVA_API_KEY not resolved in $ENV_OUT" \
@@ -706,14 +703,34 @@ else
   ACE_ENV_TMP="$(mktemp "${ACE_ENV_FILE}.XXXXXX")"
   cat > "$ACE_ENV_TMP" <<EOF
 # Managed by bin/ace-setup — do not edit by hand.
-# Sourced from your shell rc so Nova plugin v1.1.0's headersHelper can
-# read NOVA_API_KEY from the shell env. Re-run /ace:setup after
-# rotating the key in 1Password.
+# Sourced from your shell rc so Bash-invoked ACE scripts (lib/nova-rpc.ts)
+# and an env-expanded user-scope nova entry can read NOVA_API_KEY. The
+# Claude Code MCP connection itself uses the literal header /ace:setup
+# installs. Re-run /ace:setup after rotating the key in 1Password.
 export NOVA_API_KEY="$NOVA_KEY"
 EOF
   chmod 600 "$ACE_ENV_TMP"
   mv "$ACE_ENV_TMP" "$ACE_ENV_FILE"
   pass "nova_env: wrote $ACE_ENV_FILE"
+
+  # ---- Install / re-point the user-scope nova entry (the only API-key path
+  # since nova plugin v2). Never removes it.
+  NOVA_HDR_TSX="$ROOT/node_modules/tsx/dist/cli.mjs"
+  if [ -f "$NOVA_HDR_TSX" ] && [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
+    NOVA_HDR_OUT="$(cd "$ROOT" && node "$NOVA_HDR_TSX" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
+    case "$NOVA_HDR_OUT" in
+      *"healed: true"*|*"INSTALLED automatically"*|*"RE-POINTED"*|*"REWRITTEN"*)
+        pass "nova_mcp_entry: user-scope nova entry installed with the configured PAT — Cmd-Q + reopen Claude Code so it binds" ;;
+      *PASS*)
+        pass "nova_mcp_entry: user-scope nova entry already authenticates with the configured PAT" ;;
+      *)
+        warn "nova_mcp_entry: could not confirm the user-scope nova entry" \
+             "run /ace:doctor and read nova_header_readiness; or by hand: claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp --header 'Authorization: Bearer <PAT>'" ;;
+    esac
+  else
+    warn "nova_mcp_entry: deps not installed, cannot install the user-scope nova entry" \
+         "run /ace:setup again after npm install, or add it by hand (see playbook/integrations/nova-integration.md § Install + auth)"
+  fi
 
   # ---- Auto-append marker-fenced source line to shell rc
   #
@@ -761,7 +778,7 @@ EOF
     {
       printf '\n%s\n' "$MARKER_OPEN"
       printf '%s\n' "# Sources ACE's NOVA_API_KEY (and any future env exports) so"
-      printf '%s\n' "# Claude Code plugins (Nova v1.1.0+) can read them. Managed by"
+      printf '%s\n' "# ACE scripts and Claude Code can read them. Managed by"
       printf '%s\n' "# /ace:setup; remove this block to opt out."
       printf '%s\n' '[ -f "$HOME/.ace/env.sh" ] && source "$HOME/.ace/env.sh"'
       printf '%s\n' "$MARKER_CLOSE"

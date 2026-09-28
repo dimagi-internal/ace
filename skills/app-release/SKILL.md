@@ -282,10 +282,18 @@ procedure below to rediscover.
            `get_form` + the per-field `edit_field` getter. For any
            string that contains a literal `<`, `>`, `&`, or `"`,
            replace with words ("three letters") or backticks
-           (`three letters`) via `update_form` / `edit_field`. After
-           your edits, call `validate_app` to confirm clean.
+           (`three letters`) via `update_form` / `edit_field`, then
+           SAVE the checkpoint with `save_work` and confirm it answered
+           `saved: true` — only saved changes are uploaded, and the
+           save is where Nova validates the whole candidate. If you
+           cannot save, report the work id instead of claiming a fix.
 
-    4. **Re-upload via `/nova:upload_to_hq <nova_app_id> <ACE_HQ_DOMAIN>`.**
+    4. **Re-upload via `/nova:upload_to_hq <nova_app_id> <ACE_HQ_DOMAIN>`**
+       — only once the edit's return names a saved checkpoint. `/nova:edit`
+       (plugin v2) works in private work (voidcraft-labs/commcare-nova#693):
+       if it returns a `work_id` with pending changes, the fix is NOT in the
+       saved app and re-uploading changes nothing — treat that iteration as
+       a failed fix, not a retry of the build.
        Pass the target project space explicitly (same as `app-deploy`,
        Nova plugin voidcraft-labs/nova-plugin#12). Nova **updates the
        HQ app in place**: the id is unchanged and `hq_app_action` comes
@@ -582,3 +590,4 @@ When `--dry-run` is active:
   ace#1644 fix (`lib/hq-unique-id.ts`). Seeing the old behaviour means
   the running MCP subprocess predates it — **quit and reopen Claude Code**;
   `/ace:update` + `/reload-plugins` do not respawn MCP children.
+| 2026-09-28 | **The build-rejection fix loop requires a SAVED `/nova:edit` checkpoint (voidcraft-labs/commcare-nova#693).** Nova now stages edits until `save_work`, and upload reads only the saved app. The edit brief now asks the architect to save and confirm `saved: true` (replacing a call to the non-existent `validate_app`), and step 4 re-uploads only after a saved checkpoint — a returned `work_id` with pending changes is a failed fix. | ACE team |

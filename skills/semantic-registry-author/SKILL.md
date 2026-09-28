@@ -35,7 +35,7 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | the PDD (`phases.idea-to-design.products.pdd`, read with `writeToPath`) | archetype, the followed entity, § Success Metrics, § Evidence Model, payment rule, state vocabulary |
-| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` + the Nova app (`mcp__nova__get_form`) | the REAL form paths of the paid form — the registry reads what the app submits, nothing else |
+| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` + the Nova app (`get_form` — `mcp__nova__get_form` via ACE's user-scope PAT entry, or `mcp__plugin_nova_nova__get_form` on the plugin's OAuth connection; accept either) | the REAL form paths of the paid form — the registry reads what the app submits, nothing else |
 | Caller | `partners: [{label, opportunity_id}]` | the synthetic partner opportunities → `deployment.llo_map` (supplied by `demo-data-setup` § C1, which creates them) |
 | Caller | `program_id` | the labs-only program the record lives in |
 
@@ -165,4 +165,5 @@ the trend is restated under one definition.
 
 | Date | Change |
 |---|---|
+| 2026-09-28 | The Nova `get_form` read accepts either tool namespace: since nova plugin v2 (voidcraft-labs/commcare-nova#693, voidcraft-labs/nova-plugin#64) ACE's PAT connection is the user-scope entry (`mcp__nova__*`), the plugin's own namespace is OAuth. | ACE team |
 | 2026-09-26 | Created (ace#2510). Proved on `spark-facilitator/20260926-1800`: registry 6369, 10 indicators from PDD §8.1/§8.2 and the §5.4/§5.6/§7.2 review flags; P2 and P4 recorded as not computable. |

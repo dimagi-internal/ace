@@ -20,6 +20,36 @@ hollow build that a domain expert would not deploy. See
 `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` and the comparison doc
 `1Ch8Hb9byn3mIz1p0oi7qqB_KS2CHPIlrgrgWmEJsSDA`.
 
+## Nova's authoring contract (read before any tool shape below)
+
+Since `voidcraft-labs/commcare-nova#693` (2026-09-27) every Nova mutation is a
+**private-work** edit: open with `begin_work({app_id | new_app, request_id})`,
+stage each mutation with `work_id` + a fresh `request_id` (**never `app_id`**),
+and nothing reaches the app until `save_work({work_id, request_id,
+expected_revision})` answers `saved: true`. Reads take exactly one of `app_id`
+(saved state — what HQ receives) or `work_id` (the candidate). Wording
+(`label`, `hint`, `help`, option `label`) is a Markdown **string** where
+`{{field_id}}` inserts an answer; expressions (`relevant`, `calculate`,
+`default_value`, `required`, `validate.expr`) are **strings** naming answers
+as `#form/<path>`. The 2026-07-31 `{parts: [...]}` shapes are retired, and
+address params accept a stable id OR an unambiguous name.
+
+Two consequences for this library:
+
+- **The architect owns its own lifecycle.** nova plugin v2's
+  `nova-architect-autonomous` opens work, builds module → empty form →
+  `add_fields`, saves checkpoints and runs isolated app-test journeys itself.
+  Brief paragraphs therefore name WHAT to build, not `app_id`-shaped calls;
+  a brief that dictates an `app_id` argument to a mutation is now wrong.
+- **ACE-direct edits** (the language layer, marker/label heals, register
+  binds) open their own work, stage, and save — via `lib/nova-work.ts`
+  (`NovaWork.begin` → `stage` → `save`, which throws unless Nova saved) or the
+  same sequence by hand, checking `saved: true`. Read back with `app_id`
+  AFTER the save.
+
+Contract and observed behaviour: `playbook/integrations/nova-integration.md
+§ The private-work authoring contract`.
+
 ## How the build skills use this file
 
 In Step 3 (brief assembly), the build skill:
@@ -424,20 +454,22 @@ The architect has a lookup-backed option source available today; there is no
 "couldn't enumerate it" excuse. Two Nova tools do the whole job, and this
 library is the only place ACE names them:
 
-- **`get_lookup_tables({app_id})`** — lists the app Project's data tables and
+- **`get_lookup_tables({app_id | work_id})`** — lists the app Project's data tables and
   their columns, with the stable `tableId` / column ids you need. Call it
   **once per build, before authoring any select whose options are not in the
   PDD**, and read the result before deciding a field's kind.
-- **`create_lookup_table({app_id, name, tag, columns, rows})`** — creates the
+- **`create_lookup_table({work_id, request_id, name, tag, columns, rows})`** — creates the
   table AND up to 5000 rows in ONE atomic write, returning every table, column
-  and row id. So "no table exists yet" is not a reason to degrade a field:
+  and row id. It takes `work_id` for authority but is **not staged**: the table
+  lands on the PROJECT at call time and `discard_work` does not undo it; only
+  the field BIND is staged and needs `save_work`. So "no table exists yet" is not a reason to degrade a field:
   build the table. (Lookup ids are **UUIDv7**; a regex written for Nova's
   app/module/form/field uuids rejects them.)
-- **`set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
-  source})`** — atomically replaces a single/multi-select field's COMPLETE
-  choice source. `source` is either
-  `{kind: 'inline', options: [{value, label: {parts: [{kind: 'text', text}]}}, …]}`
-  (≥2 options) or
+- **`set_field_options_source({work_id, request_id, moduleUuid, formUuid,
+  fieldUuid, source})`** — replaces a single/multi-select field's COMPLETE
+  choice source in the candidate (save to ship it). `source` is either
+  `{kind: 'inline', options: [{value, label}, …]}` with `label` a string and
+  `value` a lowercase slug (≥2 options) or
   `{kind: 'lookup', tableId, valueColumnId, labelColumnId, filter?}`.
   It is a REPLACE, not a patch — there is no retained inactive source, so send
   the complete set. (`edit_field`'s `updates.optionsSource` takes the same
@@ -446,7 +478,7 @@ library is the only place ACE names them:
 Nova is **uuid-addressed** — `moduleUuid` / `formUuid` / `fieldUuid`, not
 indexes. Resolve them from `get_app` / `get_module` / `get_form`, or in one
 call from a semantic id with
-`search_blueprint({query: '<field id>', app_id})`.
+`search_blueprint({query: '<field id>', app_id | work_id})`.
 
 **When no suitable lookup table exists.** Do NOT fall through to `kind: text` —
 that is the exact failure this rule exists to stop.
@@ -535,15 +567,15 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > OPTION SOURCES — read this before you type `kind: text`. When the PDD spells a
 > field `select` / `lookup` / "choose from" / "from the registered <X>" and you
 > do NOT have the option list in front of you, that is NOT permission to ship
-> free text. Call `get_lookup_tables({app_id})` FIRST — it lists this app
+> free text. Call `get_lookup_tables` FIRST (with your `work_id`) — it lists this app
 > Project's data tables and columns with their stable ids — and if a table
 > holds the option set, bind it with
-> `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid, source:
-> {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`. That call is an
+> `set_field_options_source({work_id, request_id, moduleUuid, formUuid, fieldUuid, source:
+> {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`, then save. That call is an
 > atomic REPLACE of the field's complete choice source (there is no retained
 > inactive source), and Nova is uuid-addressed — resolve moduleUuid / formUuid /
 > fieldUuid from `get_app` / `get_form`, or in one call from a semantic id via
-> `search_blueprint({query, app_id})`. If NO table holds the set: enumerate the
+> `search_blueprint({query, work_id})`. If NO table holds the set: enumerate the
 > options inline with `set_field_options_source({… source: {kind: 'inline',
 > options: [...]}})` when the set is knowable from the PDD or the source
 > material; otherwise ship a select over the values you DO have plus an "Other"
@@ -736,10 +768,12 @@ a select, say so in the build memo next to the `entity_id` you shipped.
   `pdd-to-learn-app § user_score MUST be a PERCENTAGE`.)
 
 **MANDATORY — write every cross-field reference as `#form/<id>`, never a
-bare `<id>`** (dimagi-internal/ace#1119). `edit_field` with
-`calculate: "if(q1 = 'c', 1, 0)"` persists `q1` as a **raw text part**:
-Nova does not resolve a bare id into a `field-ref`, and it does not
-error. `if(#form/q1 = 'c', 1, 0)` resolves correctly. Because every
+bare `<id>`** (dimagi-internal/ace#1119). Until 2026-09-27, `edit_field` with
+`calculate: "if(q1 = 'c', 1, 0)"` persisted `q1` as raw text and did not
+error. Since `voidcraft-labs/commcare-nova#693` a bare id is **refused** (*"Unknown or
+ambiguous reference: q1. Use #form/<full-path> for an answer…"*, observed live
+2026-09-28), which makes the class loud — but only if the caller reads the
+refusal. `if(#form/q1 = 'c', 1, 0)` resolves correctly. Because every
 `qN_score` is `if(qN = '<key>', 1, 0)` and `user_score` sums those refs,
 a single re-authoring pass that drops the `#form/` prefix silently
 breaks the whole scoring chain — `get_app` still shows every field, the
@@ -773,11 +807,12 @@ QA cannot see it, which is why `app-release-qa` checks marker CARDINALITY
 instead.
 
 **Read back after any pass that rewrites scoring calculates.** Two tool
-calls, and it converts a silent class into a checked one: `get_field` on
-one `qN_score` and on `user_score`, then assert each returned
-`calculate.parts` contains a **`field-ref`** part (not only text parts).
-If it does not, the reference did not resolve — re-issue the `edit_field`
-with the `#form/` prefix before moving on. Cheap enough to run every
+calls, and it converts a silent class into a checked one: after the
+`save_work`, `get_field({app_id, …})` on one `qN_score` and on `user_score`,
+then assert each returned `calculate` string references the question as
+`#form/<id>` (reads return the authored text, e.g.
+`"if(#form/q1 = 'c', 1, 0)"`). If it does not, re-issue the `edit_field`
+with the `#form/` prefix, save, and re-read before moving on. Cheap enough to run every
 time; do not skip it because the app "looks right" structurally.
 
 **Brief paragraph (verbatim):**
@@ -894,12 +929,14 @@ by construction and nothing is marked reviewed on anyone's behalf.
 | Fact | Consequence for the build |
 |---|---|
 | An app is born `sourceLanguage: en`, `defaultLanguage: en` | English is the substrate. Never relabel or remove it |
-| `add_language(code, copyFrom)` **copies** source strings — `origin: copied`, `review: needs-review`. It does NOT translate | Adding a language alone ships an English app wearing a second language's name |
+| `add_language({language, copyFrom})` **copies** source strings — `origin: copied`, `review: needs-review`. It does NOT translate | Adding a language alone ships an English app wearing a second language's name |
 | Automatic translation covers only a checked-in **57-language set**, and **no MCP atom triggers it**. Chichewa/Nyanja returns `status: not-evaluated` | Translations are **authored by ACE** via `update_translations`. Assume no machine-translation service exists |
 | `needs-review` translations **ARE served to workers** (`effective` = the translation) | `review` is bookkeeping, **not a publish gate**. Nothing withholds unreviewed text |
 | Editing an English string demotes its translation to `out-of-date`, and `effective` **falls back to the English source** | **Translate LAST.** A mid-build language add is silently undone by every later edit |
 | `update_translations` needs an exact `expectedSourceFingerprint`; max 50 units per call | Read `get_translatable_content` immediately before writing; page with `nextCursor` |
-| A `prose` unit rejects a bare string — `"requires a prose value."` | Labels/hints/help take `{parts:[{kind:'text',text:…}]}`; app/module/form names take a bare string |
+| Since `voidcraft-labs/commcare-nova#693`, a translation `value` is a plain STRING for every unit (the `{parts}` prose shape is retired) | Preserve `{{field_id}}` insertions exactly as the source carries them |
+| A language is an identity OBJECT `{language, script?, region?}` — ISO 639-3 (`nya`, `eng`), never a two-letter or combined code string | Two-letter and macrolanguage codes are refused with the identifiers to use instead |
+| `add_language` / `update_translations` are STAGED private-work edits | Nothing ships until `save_work` answers `saved: true`; `get_languages({app_id})` after the save is the gate |
 | ACE's writes are auto-tagged `origin: "ai"` | Provenance is recorded for you. Never claim a human review you did not do |
 
 **Build order — the load-bearing rule.** Steps 2–4 are ACE's, run ACE-direct
@@ -910,8 +947,8 @@ the build skill has finished. Nothing may edit an English string after step 3.
    The architect adds NO language and calls NO language atom.
 2. **ACE-direct:** only once the English is settled and the app has passed
    its build checks, add the language:
-   `add_language(code: <CODE>, copyFrom: 'en')`.
-3. **ACE-direct:** page `get_translatable_content(language: <CODE>)` to
+   `add_language({language: {language: <CODE>}, copyFrom: {language: 'eng'}})`.
+3. **ACE-direct:** page `get_translatable_content({language: {language: <CODE>}})` to
    completion and author real `<LANGUAGE>` values through
    `update_translations`, echoing each unit's current `sourceFingerprint`.
 4. **ACE-direct:** re-read `get_languages`. **`out-of-date` must be 0 at
@@ -959,20 +996,27 @@ every English-editing step has completed, immediately before the summary is
 written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4m` are the two
 homes; both are thin wrappers over this recipe.
 
-1. `get_languages(appId)` — confirm English is still `sourceLanguage` and that
-   `<CODE>` is not already present. If it is present (a rerun), skip the add.
-2. `add_language(appId, code: <CODE>, copyFrom: 'en')`.
-3. Loop until `nextCursor` is absent: `get_translatable_content(appId,
-   language: <CODE>)` → author real `<LANGUAGE>` values for every unit in the
-   page → `update_translations` with at most **50** unit IDs per call, echoing
-   each unit's just-read `sourceFingerprint` as `expectedSourceFingerprint`.
-   `prose` units (labels, hints, help, validation messages) take
-   `{parts:[{kind:'text',text:'…'}]}`; app / module / form names are `text`
-   units and take a bare string. Preserve every typed `protectedParts` entry
-   exactly as read. Keep sibling choice labels semantically distinct — a
+`<CODE>` is the ISO 639-3 identity (`{language: 'nya'}`), never a two-letter
+code. Steps 1–3 run in ONE private work on the app (`begin_work({app_id,
+request_id})`); every write carries `work_id` + a fresh `request_id`.
+
+1. `get_languages({work_id})` — confirm English is still `sourceLanguage` and
+   that `<CODE>` is not already present. If it is present (a rerun), skip the add.
+2. `add_language({work_id, request_id, language: {language: <CODE>},
+   copyFrom: {language: 'eng'}})`.
+3. Loop until `nextCursor` is absent: `get_translatable_content({work_id,
+   language: {language: <CODE>}})` → author real `<LANGUAGE>` values for every
+   unit in the page → `update_translations({work_id, request_id, language,
+   updates})` with at most **50** `{operation: 'set', unitId, value,
+   expectedSourceFingerprint}` entries per call, echoing each unit's just-read
+   `sourceFingerprint`. `value` is a plain string for every unit; preserve
+   every `{{…}}` insertion exactly as the source carries it. Keep sibling choice labels semantically distinct — a
    translation that collapses two options destroys an assessment item's
    discrimination.
-4. `get_languages(appId)` again. Record the counts. **`out-of-date` must be 0
+3b. `save_work({work_id, request_id, expected_revision})` — **require
+   `saved: true`**. A refused or stale save answers as data, not an error, and
+   unsaved translations ship nothing.
+4. `get_languages({app_id})` again, AFTER the save. Record the counts. **`out-of-date` must be 0
    and `missing` must be 0.** Non-zero `out-of-date` means an English string
    moved after step 3 — re-run step 3 for those units. Never mark anything
    reviewed; `needs-review` is the correct resting state for ACE-authored text.
@@ -1036,7 +1080,8 @@ worker cannot tell them apart from real translations.
 > app- and form-level **build settings** (naming, menu display, end-of-form
 > navigation, photo appearance, assessment form Display Conditions, terminology),
 > not field/calculate/constraint patterns. Several are CommCare-HQ settings that
-> Nova's documented MCP tools (`update_app` / `update_form` / `edit_field`) do
+> Nova's documented MCP tools (`update_app` / `update_form` / `edit_field`, all
+> staged private-work edits since `voidcraft-labs/commcare-nova#693`) do
 > not surface — they are emitted as brief instructions on the understanding that
 > Nova's autonomous architect can apply them. The first Learn + Deliver test
 > build is the gate that confirms (a) Nova actually applies each setting and
@@ -1233,8 +1278,9 @@ brief (see the DO NOT BRIEF THIS bullet above)**:**
 
 - **App:** Learn **and** Deliver
 - **Trigger:** always.
-- **Enforced by:** `app-deploy`'s feature-flag verification
-  (`get_app_hq_feature_flags`) — a required flag other than `commcare_connect`
+- **Enforced by:** `app-deploy` Step 4.5's project-space check
+  (`check_project_space_compatibility`, which replaced the retired
+  `get_app_hq_feature_flags`) — a required flag other than `commcare_connect`
   is a BUILD DEFECT to fix in the app, not an operator email to send.
 - **Origin:** dimagi-internal/ace#1195. `spark-facilitator/20260810-0737` built
   the first ACE Deliver app to use **case-search inputs** — two per module,
@@ -2166,9 +2212,13 @@ transitive — two builds that each match the PDD cannot contradict each other.
   (`auditReleasedModules` from `lib/starter-module.ts`). A surviving seed is a
   `starter-module-present` halt.
 
-**Why this exists.** `create_app` seeds every new Nova app with a placeholder
-module: a top-level menu **"Survey"** holding one form **"Survey"** holding one
-text field **`question_1`** labelled "Question 1". Nothing in ACE ever told the
+**Why this exists.** Until 2026-09-27 Nova seeded every new app with a
+placeholder module: a top-level menu **"Survey"** holding one form **"Survey"**
+holding one text field **`question_1`** labelled "Question 1". Since
+`voidcraft-labs/commcare-nova#693` a new app is `begin_work({new_app})` and starts EMPTY —
+*"There is no starter module or placeholder app to replace"* (Nova docs) — so
+this component is now a **regression guard**: it still catches an app created
+before that date, an app edited in place from one, or the seed coming back. Nothing in ACE ever told the
 architect to remove it, so removal depended on whether the architect happened to
 notice — and on `bednet-check-2-visit/20260828-0629` the Deliver app shipped
 carrying it while the Learn app, briefed from the same template in the same
@@ -2179,9 +2229,10 @@ payable unit.
 **Brief paragraph (verbatim):**
 
 > REQUIRED — No starter module: the finished app must contain ONLY the modules
-> the brief specifies. Nova's `create_app` seeds a canonical starter module — a
-> top-level menu named "Survey" containing one form named "Survey" containing a
-> single text field `question_1` labelled "Question 1". DELETE that module and
+> the brief specifies. New apps are no longer seeded, but an app created before
+> 2026-09-27 may still carry Nova's old starter module — a top-level menu named
+> "Survey" containing one form named "Survey" containing a single text field
+> `question_1` labelled "Question 1". If it is present, DELETE that module and
 > its placeholder form before you report the build complete, and say in your
 > report whether it was present and removed. Do not repurpose it into a real
 > module: build the brief's modules explicitly and remove the seed.
@@ -2259,6 +2310,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-09-28 | **Tool shapes move to Nova private work (`voidcraft-labs/commcare-nova#693`).** New § Nova's authoring contract: mutations take `work_id` + `request_id` (never `app_id`) and land only on a `save_work` answering `saved: true`; wording and expressions are plain strings (`{{id}}` / `#form/<path>`), the `{parts}` shapes are retired; the plugin-v2 architect owns its own begin/save/app-test. Lookup-tool, language-layer recipe (identity objects, string values, save before the gate) and ace#1119 read-back (bare ids are now REFUSED; assert the `#form/` text) updated. `no-starter-module` re-framed as a regression guard — new apps are unseeded. | ACE team |
 | 2026-09-27 | **New component `repeat-count-source` (ace#2517).** Nova compiles a root `count_bound` repeat's count as a one-shot `xforms-ready` snapshot — documented Nova semantics, not a compiler slip — and its validator accepts a count read from a same-form question, which is therefore always blank at snapshot time. `spark-facilitator/20260926-1413` shipped 5 of 5 count-bound repeats that way; every one rendered zero rows and a Phase 6 device walk was the first thing to notice. The brief now forbids the shape and routes "worker states N, then fills N rows" to a `user_controlled` repeat whose count is derived, not asked. *Enforced:* `lib/repeat-count-audit.ts` + `test/lib/repeat-count-audit.test.ts` (the released Participant Feedback form as the positive fixture), halting in `app-release-qa` as `dead-repeat-count`. | ACE |
 | 2026-09-17 | **`payability-scoped-key` states the CAPPED-INDEX timing invariant, and a helper now checks it (ace#2148).** The component described the mechanism — the per-entity cap is enforced by deduplication, not by the app refusing a submission — and never stated the relationship between the clamp constant and WHEN the counter is read. A `casedb` read is the state BEFORE this submission (the case property is written on submit), so `min(<casedb count>, cap)` admits `cap + 1` distinct keys: the (cap+1)-th mints an index that has never existed and Connect pays it. On `spark-facilitator/20260906-2233` a cap of 3 shipped binding at 4 — 4 x 7 steps = 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green and the app internally consistent with its own wrong key. The app's own `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. **Not gateable by comparing the clamp to the cap:** both correct constructions are live in this same opportunity and share no constant — `min(<casedb count> + 1, 3)` on build `b08533bdf26a48a295a362ff204fb88d` (indices 1..3) and `if(pcts >= 3, 2, pcts)` on `0cb63a78fd9949b696876ee7a642b685` (indices 0..2). So `checkPayableCapArithmetic` SIMULATES the first submissions and counts distinct keys, and falls back to the app's own `is_payable` guard when no cap is plumbed through — which is what makes the ace#2148 build self-contradictory and therefore catchable. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts`, whose controls are the two real released forms and whose negative control is the shipped defect reconstructed from the fixed artifact by the single character the fix changed. | ACE team |
 | 2026-09-16 | **`consent-branch-completeness` resolves the gate's LOCATION, not just its presence (ace#2415).** `checkConsentBranchCompleteness` read one flat `relevant` string per field, and in a Nova blueprint the consent gate almost always sits on the enclosing GROUP — so run over the blueprint exactly as this section and `pdd-to-deliver-app-eval § conditional_logic_match` both instruct, every question inside a correctly gated group came back `ungated-required-after-consent`, which hard-gates that dimension to ≤ 3 and fails the suite. Measured on `poverty-graduation/20260915-1518`: **14 false findings on a correct build**, each with a paragraph of correct-sounding reasoning, on the one check those callers explicitly say to run *instead of* eyeballing; the single field that passed did so by accident, having happened to carry the gate on itself. The inverse of ace#1509, which closed the SCOPE gap ("the gate governs too much") — that asked *which fields the gate covers*, this asks *where the gate is*. The helper now takes the field TREE and resolves effective relevance itself (own ∧ every ancestor's), plus one hop of hidden-calculate indirection for a gate written over a named outcome; the resolution lives in the helper rather than at each call site because a caller that must pre-flatten is a caller that can forget to, and both of them did. An ancestor gate on something other than consent is still `undisclosed-narrowing`, so nothing here disables the check. *Enforced:* `test/lib/consent-branch.test.ts` — the group-nested fixtures the suite lacked, with a genuinely-ungated control. | ACE |
@@ -2282,7 +2334,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 | 2026-07-27 | **Walkability components (first external domain-expert iteration).** Sophie Feintuch reviewed `hh-poverty-targeting/20260722-1341` and found 6 defect classes ACE's own evals passed (ace#979–#984). New components: `observable-before-derived`, `constraint-locality`, `consent-script-floor`, `threshold-coherence-flag` (Deliver); `discriminating-assessment-items`, `instrument-grounded-examples` (Learn). Root cause shared across all six: the build was graded against the PDD and a structural bar, never against **the lived sequence of a real visit or the competence of a real worker**. Two enforcement lessons baked in: (1) `constraint-locality` is checked **mechanically** in `app-release-qa` (bind-level, no LLM) because the class is 100% detectable; (2) `assessment_discrimination` is an **executed blind-guess probe**, not a prose criterion — `instructional_depth` already required "anti-guess (plausible distractors)" and still scored the decorative bank 9.4/10, so the fix is forcing the judge to show per-item work. Every finding verified against the deployed CCZ, not the Nova blueprint. | ACE (Sophie Feintuch review) |
 | 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |
 | 2026-07-30 | **`discriminating-assessment-items` gets an authoring PROCEDURE, and `localization-layer` stops instructing an unbuildable mechanism.** (1) **ace#1014** — three measured authoring passes on the same 12-item bank (`spark-facilitator/20260730-1718`) showed the component's adjectives don't bite: 12/12 cold-guessable as built, 10/12 after full typography normalization, 9–10/12 after deliberate virtue-inversion. Typography is not the lever (q5 was exactly uniform at 65/65/65/65 chars and still fell; 7 of 10 misses were general competence alone) and virtue-inversion is not sufficient either (q1/q4 were properly inverted and still fell on structural tells). Rewrote the brief as **two gates** — Gate 1 behavioural plausibility, Gate 2 no structural giveaway (self-justifying key, minimal-claim tell, odd-one-out on a binary, absurdity elimination) — with virtue-inversion demoted to a third, weaker heuristic, plus a **mandatory pre-release self-check** cheap enough to run inside the build brief. Eval side: `assessment_discrimination` gains per-item structural-tell deductions, a **gate-margin hard-gate** (`ratio × 100 >= the PDD's unlock threshold` → fail; a 75% gate has zero margin, `9 * 100 div 12` = exactly 75.0), pre-test coverage, and the blind-probe harness contract — `get_form` returns stems, options AND the `qN_score` calculates atomically, so a self-probe is contaminated by construction and the probe must be run by separate agents on independently permuted neutral labels with picks committed before reveal. (2) **ace#968** — the component said to ship translations "via itext", but Nova exposes **no per-language / locale / itext channel on any tool** (`update_app` carries only `name` and `connect_type`), so it instructed something unbuildable; four architect instances across two opps each independently fell back to inline stacking and reported it as a deviation. Rewrote both brief paragraphs to name **inline multilingual authoring as the sanctioned mechanism**, require COMPLETE COVERAGE (English-only stays a hard fail), permit two degradations (bare proper nouns; compact slash form in short strings), and require short English source sentences plus a build-memo note where the PDD carries a literacy constraint. Eval side: `localization_match` in **both** `pdd-to-{learn,deliver}-app-eval` now grades coverage rather than mechanism — inline coverage takes full credit with an `[INFO]`, incomplete coverage and English-only both hard-fail, and the literacy/reading-load tension surfaces as a `[WARN]` for a human rather than a deduction against the build. | ACE team |
-| 2026-07-31 | **`structured-capture` learns where options COME FROM (ace#1136), and `consent-script-floor` becomes a build-time component with a trigger that fires on spoken consent (ace#1137).** Both from `spark-facilitator/20260731-0656`, Deliver app `657a4bb7-fb2f-4a10-af43-8414707b2c43`. (1) **ace#1136** — the PDD spelled four fields `select`/`lookup` (`traditional_authority`, `group_village`, `village` "from registered communities", `community_id`) and the build shipped all four as free `text`; only `district`, whose option set was inline-enumerable from the source `.ccz`, came through as a real `single_select`. Root cause: neither this library nor `pdd-to-deliver-app` said anything about option SOURCES, so an architect with no list in hand degraded silently to `kind: text`. Nova's post-2026-07-31 surface makes a lookup-backed source buildable — `get_lookup_tables({app_id})` lists the app Project's data tables + column ids, `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid, source})` atomically replaces a select's complete choice source with `{kind:'lookup', tableId, valueColumnId, labelColumnId}` or `{kind:'inline', options}` — and this component is the only place ACE names them. Widened the trigger to include "the PDD spells it select/lookup" and "the field feeds a Connect `entity_id`"; added the no-table-exists ladder (inline-enumerate → partial select + Other + build-memo entry → never a silent `text`); made a silent degradation an explicit defect; and stated that free text must never feed an `entity_id` (it forced a mid-run dedup-key change on this very run, and the replacement key `community_id` was free text too, so only the name-collision mode closed). (2) **ace#1137** — `photo_consent_script`, read aloud verbatim to an assembled village meeting before photographing them and the programme's only consent language, scored 4/6: `confidential` and `where the data goes / who sees it` both missing, on a programme whose photos go to an AI verification layer plus a 10% human audit sample. The PDD declared no consent *field*, so the old trigger ("the PDD requires recorded consent (any form with a consent gate)") read as not firing and the orchestrator emitted `embedded-bc-script` instead. Widened the trigger to any consent sought from the people whose data/images are captured — spoken, read-aloud, announced, Learn-taught, or field-gated; marked the component BUILD-TIME (the eval gate is the backstop, and discovering the floor one step before deploy means re-authoring consent language in N languages); noted the `embedded-bc-script` overlap explicitly (both fire; this one wins); added a worked six-element script; and named (d)/(e)/(f) as the elements builds actually omit. Eval-side wording still says "when the PDD requires recorded consent" / "read the consent field's hint" — flagged in the component for the owner of `pdd-to-deliver-app-eval` rather than edited here. | ACE team |
+| 2026-07-31 | **`structured-capture` learns where options COME FROM (ace#1136), and `consent-script-floor` becomes a build-time component with a trigger that fires on spoken consent (ace#1137).** Both from `spark-facilitator/20260731-0656`, Deliver app `657a4bb7-fb2f-4a10-af43-8414707b2c43`. (1) **ace#1136** — the PDD spelled four fields `select`/`lookup` (`traditional_authority`, `group_village`, `village` "from registered communities", `community_id`) and the build shipped all four as free `text`; only `district`, whose option set was inline-enumerable from the source `.ccz`, came through as a real `single_select`. Root cause: neither this library nor `pdd-to-deliver-app` said anything about option SOURCES, so an architect with no list in hand degraded silently to `kind: text`. Nova's post-2026-07-31 surface makes a lookup-backed source buildable — `get_lookup_tables({app_id})` lists the app Project's data tables + column ids, `set_field_options_source` (then addressed by `app_id`; a staged private-work edit since 2026-09-28) atomically replaces a select's complete choice source with `{kind:'lookup', tableId, valueColumnId, labelColumnId}` or `{kind:'inline', options}` — and this component is the only place ACE names them. Widened the trigger to include "the PDD spells it select/lookup" and "the field feeds a Connect `entity_id`"; added the no-table-exists ladder (inline-enumerate → partial select + Other + build-memo entry → never a silent `text`); made a silent degradation an explicit defect; and stated that free text must never feed an `entity_id` (it forced a mid-run dedup-key change on this very run, and the replacement key `community_id` was free text too, so only the name-collision mode closed). (2) **ace#1137** — `photo_consent_script`, read aloud verbatim to an assembled village meeting before photographing them and the programme's only consent language, scored 4/6: `confidential` and `where the data goes / who sees it` both missing, on a programme whose photos go to an AI verification layer plus a 10% human audit sample. The PDD declared no consent *field*, so the old trigger ("the PDD requires recorded consent (any form with a consent gate)") read as not firing and the orchestrator emitted `embedded-bc-script` instead. Widened the trigger to any consent sought from the people whose data/images are captured — spoken, read-aloud, announced, Learn-taught, or field-gated; marked the component BUILD-TIME (the eval gate is the backstop, and discovering the floor one step before deploy means re-authoring consent language in N languages); noted the `embedded-bc-script` overlap explicitly (both fire; this one wins); added a worked six-element script; and named (d)/(e)/(f) as the elements builds actually omit. Eval-side wording still says "when the PDD requires recorded consent" / "read the consent field's hint" — flagged in the component for the owner of `pdd-to-deliver-app-eval` rather than edited here. | ACE team |
 | 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |
 | 2026-08-02 | **`assessment-gate` gains the bare-id calculate rule + a read-back check (ace#1119, partial).** `edit_field` with `calculate: "if(q1 = 'c', 1, 0)"` persists `q1` as a raw TEXT part — Nova does not resolve a bare id into a `field-ref` and emits no error, so `if(#form/q1 = 'c', 1, 0)` is the only form that resolves. Since every `qN_score` is `if(qN = '<key>', 1, 0)` and `user_score` sums those refs, one re-authoring pass using bare ids silently zeroes the scoring chain while the app still looks structurally correct. The component now mandates `#form/<id>` for every cross-field reference and requires a two-call read-back (`get_field` on one `qN_score` and on `user_score`; assert `calculate.parts` contains a `field-ref`) after any pass that rewrites scoring calculates. Cross-referenced from `init-safe-calculates` so Deliver authors hit it too. Does NOT close #1119 — its main finding (the authoring procedure doesn't produce discriminating items) is untouched. | ACE team |
 | 2026-08-12 | **`discriminating-assessment-items` is re-pointed at item TOPIC selection and bank INDEPENDENCE; option-craft demoted to hygiene (ace#1187).** Re-measurement of the same 20-item bank (`spark-facilitator/20260810-0737`, Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`) with three readers — trained field persona **19.0/20**, untrained field persona **8.0/20**, untrained M&E domain expert **11/20** — showed the *reader*, not the options, was carrying the ace#1014 plateau. The expert proxy the eval had been briefing sat 15pp above the population the Deliver gate protects and understated true discrimination by 27% (A−C = 8.0 vs A−B = 11.0), and its edge was stability of exam technique rather than knowledge the training supplies. The component's own **"Ceiling, not field, measurement"** caveat had documented exactly this since 2026-07-30 while the eval hard-gated on the number anyway; that is now resolved rather than merely noted. Build-side rewrite: **Step 1 (the lever)** — before writing any option, name the taught rule, the module that teaches it, and the operation it protects (unpaid visit / blocked form / corrupted data); an item with no module is testing general competence, which an untrained worker already has, so it cannot move the contrast however its options are written. **Step 2** — at most ~1 item per underlying rule; duplicated rules inflate the nominal item count while effective resolution stays flat. **Step 3** — Gates 1 and 2 retained verbatim but explicitly reframed as *necessary, not sufficient*, and unable to rescue a Step-1 failure; the brief no longer implies option-craft can move the number. Padding is now named as what it is — a free mark that lowers the effective bar (5 free items turned a nominal 16/20 = 80% gate into 11/15 = 73%). The pre-release self-check leads with rule/module/operation + independence, and demotes the author's own cold pick to weak evidence (rewrite 2 self-predicted 5–7/12 and measured 9–10/12). Paired 1:1 with the contrast statistic in `pdd-to-learn-app-eval § assessment_discrimination` and the new `assessment_operation_coverage` dimension. | ACE team |

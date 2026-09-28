@@ -39,6 +39,17 @@ describe('staticAuthBearer', () => {
   });
 });
 
+describe('staticAuthBearer — env references are not pinned tokens', () => {
+  it("reads Nova's documented `Bearer ${NOVA_API_KEY}` entry as unpinned (nova plugin v2)", () => {
+    expect(staticAuthBearer({ Authorization: 'Bearer ${NOVA_API_KEY}' })).toBe('');
+    expect(staticAuthBearer({ Authorization: 'Bearer ${NOVA_API_KEY:-}' })).toBe('');
+  });
+
+  it('still reads a literal token that merely contains a dollar sign', () => {
+    expect(staticAuthBearer({ Authorization: 'Bearer sk-$abc' })).toBe('sk-$abc');
+  });
+});
+
 describe('staticHeaderMatchesConfiguredKey never guesses', () => {
   it('compares when both sides exist', () => {
     expect(staticHeaderMatchesConfiguredKey({ Authorization: `Bearer ${CURRENT}` }, CURRENT)).toBe(true);

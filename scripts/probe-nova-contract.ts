@@ -23,6 +23,11 @@
  *   - `fetchNovaToolList()` hits the live server. Gated behind an env flag
  *     everywhere it is used.
  *
+ * Second migration (2026-09-27, voidcraft-labs/commcare-nova#693): every
+ * mutation moved into private work (`work_id` + `request_id`, then
+ * `save_work`) and `create_app` was removed. This probe is what reported it
+ * first — 19 violations on the first run after the deploy.
+ *
  * Run:
  *   npx tsx scripts/probe-nova-contract.ts
  *
@@ -45,7 +50,12 @@ const PLUGIN_ENV = loadPluginEnv(import.meta.url);
 
 export const NOVA_MCP_URL = process.env.NOVA_MCP_URL ?? 'https://mcp.commcare.app/mcp';
 
-/** Canonical lowercase RFC-UUID pattern Nova regex-validates uuid params against. */
+/**
+ * Canonical lowercase RFC-UUID pattern Nova regex-validated uuid params against
+ * from 2026-07-31 until 2026-09-27. #693 dropped it: an address now accepts a
+ * stable id OR an unambiguous name, so no entry pins it any more. The
+ * `uuidProps` mechanism stays for the next time a format IS the contract.
+ */
 export const UUID_PATTERN =
   '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
 
@@ -85,68 +95,89 @@ export interface ToolExpectation {
 }
 
 /**
+ * Tools that no longer exist and must not come back unnoticed. `create_app`
+ * was removed on 2026-09-27 (voidcraft-labs/commcare-nova#693): a new app is
+ * now `begin_work({new_app})` and only exists after its first `save_work`.
+ * If it reappears, the authoring model moved again.
+ */
+export const RETIRED_TOOLS = ['create_app'];
+
+/** The two envelope params every staged Nova mutation takes since #693. */
+const WORK = ['work_id', 'request_id'];
+
+/**
  * The contract ACE actually depends on. Every entry here is sent by a skill,
- * an agent procedure, or the eval rubrics. Verified live 2026-07-31 against
- * `POST https://mcp.commcare.app/mcp` `tools/list` (63 tools).
+ * an agent procedure, a script, or the eval rubrics. Verified live 2026-09-28
+ * against `POST https://mcp.commcare.app/mcp` `tools/list` (127 tools) —
+ * captured in `test/fixtures/nova/tools-list-2026-09-28.json`.
+ *
+ * Since voidcraft-labs/commcare-nova#693 (2026-09-27) every app MUTATION is
+ * staged in private work: it requires `work_id` + `request_id`, takes no
+ * `app_id`, and changes nothing until `save_work`. Reads take EXACTLY ONE of
+ * `app_id` (saved state) or `work_id` (the candidate), which Nova expresses as
+ * a union — so their `required` no longer lists either. The 2026-07-31 uuid
+ * regex on address params is gone too: an address now accepts a stable id OR
+ * an unambiguous name. See `playbook/integrations/nova-integration.md § The
+ * private-work authoring contract`.
  *
  * Keep this list to what ACE SENDS. It is not a mirror of Nova's surface —
  * a tool ACE never calls does not belong here, because pinning it would make
  * CI red for an upstream change that costs ACE nothing.
  */
 export const NOVA_CONTRACT: Record<string, ToolExpectation> = {
+  // ---- the private-work lifecycle (new 2026-09-27) ----
+  begin_work: {
+    required: ['request_id'],
+    mustHaveProps: ['app_id', 'new_app'],
+    why: 'Every ACE edit of a Nova app opens private work first (lib/nova-work.ts). `new_app` replaces create_app.',
+  },
+  get_work: {
+    required: ['work_id'],
+    why: 'Reads the candidate revision that save_work/discard_work must echo, plus `stale` and `pending_changes`.',
+  },
+  save_work: {
+    required: ['work_id', 'request_id', 'expected_revision'],
+    why: 'The ONLY call that changes a saved app. A stale or refused save answers saved:false WITHOUT isError, so lib/nova-work.ts checks `saved === true`.',
+  },
+  discard_work: {
+    required: ['work_id', 'request_id', 'expected_revision'],
+    why: 'Abandons a stale or refused candidate so a retry restarts from current saved state.',
+  },
+  list_work: {
+    required: [],
+    mustHaveProps: ['app_id'],
+    why: 'Finds retained work on an app before opening a second concurrent candidate.',
+  },
+
+  // ---- reads (exactly one of app_id | work_id) ----
   get_app: {
     required: ['app_id'],
-    why: 'The one-call whole-app resolver. Returns Connect type, per-form [Connect enabled], and EVERY module/form/field uuid — the index→uuid entry point for every skill.',
+    why: 'The one-call whole-app resolver for SAVED state. Returns Connect type, per-form [Connect enabled], and every module/form/field id.',
   },
   get_module: {
-    required: ['moduleUuid', 'app_id'],
-    uuidProps: ['moduleUuid'],
+    required: ['moduleUuid'],
+    mustHaveProps: ['app_id', 'work_id'],
     why: 'app-connect-coverage and pdd-to-deliver-app read case-list config per module.',
   },
   get_form: {
-    required: ['moduleUuid', 'formUuid', 'app_id'],
-    uuidProps: ['moduleUuid', 'formUuid'],
-    why: 'pdd-to-learn-app §4a/§4c, app-connect-coverage §3, and both -eval rubrics read forms. The assessment_discrimination blind-probe harness depends on this returning stems + options + qN_score atomically.',
+    required: ['formUuid'],
+    mustHaveProps: ['app_id', 'work_id', 'moduleUuid'],
+    why: 'pdd-to-learn-app §4a/§4c, app-connect-coverage §3, and both -eval rubrics read forms.',
   },
   get_field: {
-    required: ['moduleUuid', 'formUuid', 'fieldUuid', 'app_id'],
-    uuidProps: ['moduleUuid', 'formUuid', 'fieldUuid'],
-    why: 'Targeted field read during marker repair. This is the exact call that broke mid-run in #1132.',
-  },
-  add_fields: {
-    required: ['moduleUuid', 'formUuid', 'fields', 'app_id'],
-    uuidProps: ['moduleUuid', 'formUuid'],
-    why: 'pdd-to-learn-app §4c adds the conditional result_fail label.',
-  },
-  edit_field: {
-    required: ['moduleUuid', 'formUuid', 'fieldUuid', 'updates', 'app_id'],
-    uuidProps: ['moduleUuid', 'formUuid', 'fieldUuid'],
-    why: 'pdd-to-learn-app §4c adds a `relevant` condition to an existing pass label.',
-  },
-  update_form: {
-    required: ['moduleUuid', 'formUuid', 'app_id'],
-    mustHaveProps: ['connect'],
-    uuidProps: ['moduleUuid', 'formUuid'],
-    why: 'The per-form ADDITIVE Connect refinement path. Only valid on an already-participating form; enable / mode-switch / participant-set changes must go through configure_connect.',
-  },
-  update_module: {
-    required: ['moduleUuid', 'app_id'],
-    uuidProps: ['moduleUuid'],
-    why: 'Module rename / case-type / display-condition edits.',
-  },
-  update_app: {
-    required: ['name', 'app_id'],
-    forbiddenProps: ['connect_type'],
-    why: 'App display name ONLY. `connect_type` was removed 2026-07-31 (#1133) — configure_connect replaced it. If connect_type reappears here, the §4b/§4e heal text needs revisiting.',
-  },
-  configure_connect: {
-    required: ['mode', 'app_id'],
-    mustHaveProps: ['participants'],
-    why: 'The atomic app-level Connect setter that replaced update_app({connect_type}). REPLACE-ALL: every form absent from participants[] has its Connect block CLEARED.',
+    required: ['fieldUuid'],
+    mustHaveProps: ['app_id', 'work_id', 'formUuid', 'moduleUuid'],
+    why: 'Read-back that settles whether a write landed (verifyLookupBind, marker repair). Read with app_id AFTER save_work — a work_id read shows the unsaved candidate.',
   },
   search_blueprint: {
-    required: ['query', 'app_id'],
-    why: 'Targeted semantic-name → uuid resolver; the fallback wherever a skill held a field id rather than a uuid.',
+    required: ['query'],
+    mustHaveProps: ['app_id', 'work_id'],
+    why: 'Targeted semantic-name → id resolver; the fallback wherever a skill held a field id rather than a uuid.',
+  },
+  get_lookup_tables: {
+    required: [],
+    mustHaveProps: ['app_id', 'work_id'],
+    why: 'pdd-to-deliver-app Step 4f and the fixtures probe read table + column ids and tableRevision.',
   },
   list_apps: {
     required: [],
@@ -156,25 +187,104 @@ export const NOVA_CONTRACT: Record<string, ToolExpectation> = {
     required: [],
     why: 'commcare-setup Step 0b probes the HQ binding with this.',
   },
+
+  // ---- staged mutations (work_id + request_id, never app_id) ----
+  create_module: {
+    required: ['name', ...WORK],
+    mustHaveProps: ['moduleUuid', 'case_type'],
+    forbiddenProps: ['app_id', 'forms'],
+    why: 'Focused creation: one module per call, no nested forms. Returns the minted moduleUuid.',
+  },
+  create_form: {
+    required: ['moduleUuid', 'name', 'type', ...WORK],
+    mustHaveProps: ['formUuid'],
+    forbiddenProps: ['app_id', 'fields'],
+    why: 'Focused creation: an EMPTY form; questions go in through add_fields.',
+  },
+  add_fields: {
+    required: ['formUuid', 'fields', ...WORK],
+    forbiddenProps: ['app_id'],
+    why: 'pdd-to-learn-app §4c adds the conditional result_fail label; Step 4f adds lookup-bound selects.',
+  },
+  edit_field: {
+    required: ['fieldUuid', 'updates', ...WORK],
+    forbiddenProps: ['app_id'],
+    why: 'pdd-to-learn-app §4c adds a `relevant` condition; Step 4f converts text → select.',
+  },
+  remove_field: {
+    required: ['fieldUuid', ...WORK],
+    why: 'Fixtures probe teardown drops the bind before remove_lookup_table.',
+  },
+  update_form: {
+    required: ['formUuid', ...WORK],
+    mustHaveProps: ['connect'],
+    forbiddenProps: ['app_id'],
+    why: 'The per-form ADDITIVE Connect refinement path. Only valid on an already-participating form; enable / mode-switch / participant-set changes must go through configure_connect.',
+  },
+  update_module: {
+    required: ['moduleUuid', ...WORK],
+    forbiddenProps: ['app_id'],
+    why: 'Module rename / case-type / display-condition edits.',
+  },
+  update_app: {
+    required: ['name', ...WORK],
+    forbiddenProps: ['connect_type', 'app_id'],
+    why: 'App display name ONLY. `connect_type` was removed 2026-07-31 (#1133) — configure_connect replaced it.',
+  },
+  configure_connect: {
+    required: ['mode', ...WORK],
+    mustHaveProps: ['participants'],
+    forbiddenProps: ['app_id'],
+    why: 'The atomic app-level Connect setter. REPLACE-ALL: every form absent from participants[] has its Connect block CLEARED.',
+  },
+  set_field_options_source: {
+    required: ['fieldUuid', 'source', ...WORK],
+    why: 'pdd-to-deliver-app Step 4f binds an existing select to a partner register.',
+  },
+  attach_field_media: {
+    required: ['attachments', ...WORK],
+    why: 'app-media-coverage attaches label/hint images.',
+  },
+  attach_option_media: {
+    required: ['attachments', ...WORK],
+    why: 'app-media-coverage attaches picture-choice option images.',
+  },
+  set_menu_media: {
+    required: ['items', ...WORK],
+    why: 'app-media-coverage sets module + form menu icons.',
+  },
+  set_app_logo: {
+    required: ['logo', ...WORK],
+    why: 'app-media-coverage sets the app logo.',
+  },
+  update_translations: {
+    required: ['language', 'updates', ...WORK],
+    why: 'The per-language channel — translate LAST, then save_work.',
+  },
+
+  // ---- Project data: takes work_id for authority, but COMMITS IMMEDIATELY ----
+  create_lookup_table: {
+    required: ['name', 'tag', 'columns', ...WORK],
+    why: 'Step 4f builds a partner register (bind adopted after voidcraft-labs/commcare-nova#545). Written to the PROJECT at call time — not staged, not undone by discard_work.',
+  },
+  remove_lookup_table: {
+    required: ['tableId', 'expectedTableRevision', ...WORK],
+    why: 'Fixtures probe teardown. Refuses `referenced` (as data, not isError) until the unbind is SAVED.',
+  },
+
+  // ---- saved-app consumers (app_id; never see pending work) ----
   upload_app_to_hq: {
     required: ['app_id'],
     mustHaveProps: ['domain'],
-    why: 'app-deploy passes ACE_HQ_DOMAIN explicitly so a multi-space HQ key cannot upload to an unintended space.',
+    why: 'app-deploy passes ACE_HQ_DOMAIN explicitly. Uploads the SAVED app only — unsaved work is silently excluded.',
   },
   compile_app: {
     required: ['app_id', 'format'],
     why: 'CCZ / HQ-JSON export used by app-release-qa.',
   },
-  create_module: {
-    required: ['name', 'app_id'],
-    mustHaveProps: ['moduleUuid'],
-    why: 'Accepts a CALLER-SUPPLIED moduleUuid — this is how a build can mint and persist uuids instead of re-deriving them later.',
-  },
-  create_form: {
-    required: ['moduleUuid', 'name', 'type', 'fields', 'app_id'],
-    mustHaveProps: ['formUuid'],
-    uuidProps: ['moduleUuid'],
-    why: 'Accepts a CALLER-SUPPLIED formUuid, same reason as create_module.',
+  delete_app: {
+    required: ['app_id'],
+    why: 'Probe teardown. Soft delete; the app still pins lookup tables for the ~30-day restore window.',
   },
 };
 
@@ -184,7 +294,8 @@ export type ViolationKind =
   | 'prop_missing'
   | 'prop_forbidden'
   | 'uuid_pattern_drift'
-  | 'index_addressing_returned';
+  | 'index_addressing_returned'
+  | 'retired_tool_returned';
 
 export interface Violation {
   kind: ViolationKind;
@@ -222,6 +333,18 @@ export function checkNovaContract(tools: NovaTool[]): Violation[] {
           detail: `accepts addressing param \`${p}\` — Nova's addressing model changed. Every ACE skill that passes uuids must be re-checked.`,
         });
       }
+    }
+  }
+
+  // 1b. Retired tools. A tool ACE's docs teach as GONE must stay gone, or the
+  //     authoring model moved again (create_app, voidcraft-labs/commcare-nova#693).
+  for (const r of RETIRED_TOOLS) {
+    if (byName.has(r)) {
+      violations.push({
+        kind: 'retired_tool_returned',
+        tool: r,
+        detail: 'is back in tools/list — the private-work authoring model may have changed; re-read commcare-nova before trusting lib/nova-work.ts',
+      });
     }
   }
 

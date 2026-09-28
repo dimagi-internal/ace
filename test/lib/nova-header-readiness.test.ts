@@ -15,7 +15,15 @@ import {
 // shell env, which is exactly the mistake these tests exist to pin shut.
 // ---------------------------------------------------------------------------
 
-/** Verbatim from `.mcp.json` in nova-marketplace/nova/1.28.0. */
+/** Verbatim from `.mcp.json` in nova-marketplace/nova/2.0.0 — no headersHelper at all. */
+const NOVA_V2_MCP_JSON = {
+  mcpServers: { nova: { type: 'http', url: 'https://mcp.commcare.app/mcp' } },
+};
+
+/** Verbatim from Nova's documented API-key entry (docs.commcare.app/mcp/api-keys, 2026-09-28). */
+const NOVA_DOCUMENTED_HEADERS = { Authorization: 'Bearer ${NOVA_API_KEY}' };
+
+/** Verbatim from `.mcp.json` in nova-marketplace/nova/1.28.0 (pre-v2; kept for history). */
 const NOVA_HELPER =
   'if [ -n "$NOVA_API_KEY" ]; then printf \'{"Authorization":"Bearer %s"}\' "$NOVA_API_KEY"; else printf \'{}\'; fi';
 
@@ -64,14 +72,43 @@ describe('hasStaticAuthHeader', () => {
 });
 
 describe('classifyNovaHeaderReadiness', () => {
-  it('FAILS the exact 2026-08-28 broken state (key absent from claude env, no override)', () => {
+  it('FAILS with no override — since plugin v2 that is OAuth whatever the env says', () => {
     const v = classifyNovaHeaderReadiness(base);
     expect(v.status).toBe('fail');
-    expect(v.reason).toBe('helper-will-emit-empty');
+    expect(v.reason).toBe('plugin-connection-is-oauth-only');
     expect(v.autoHealable).toBe(true);
   });
 
-  it('PASSES once the nova-plugin#52 static-header override is installed', () => {
+  it('FAILS with no override EVEN when the key is in the Claude env (v2 has no helper to read it)', () => {
+    const v = classifyNovaHeaderReadiness({ ...base, claudeEnvNames: [...CLAUDE_ENV_BROKEN, 'NOVA_API_KEY'] });
+    expect(v.status).toBe('fail');
+    expect(v.reason).toBe('plugin-connection-is-oauth-only');
+  });
+
+  it("does not SKIP a missing override on an unreadable env — the env no longer decides it", () => {
+    const v = classifyNovaHeaderReadiness({ ...base, claudeEnvNames: null, claudeEnvTokenCount: 0 });
+    expect(v.status).toBe('fail');
+  });
+
+  it("PASSES Nova's documented env-expanded entry when the key is in the Claude env", () => {
+    const v = classifyNovaHeaderReadiness({
+      ...base,
+      userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS,
+      claudeEnvNames: [...CLAUDE_ENV_BROKEN, 'NOVA_API_KEY'],
+      staticHeaderMatchesConfiguredKey: false, // the literal "${NOVA_API_KEY}" is not the key — must not read as stale
+    });
+    expect(v.status).toBe('pass');
+    expect(v.reason).toBe('key-in-claude-env');
+  });
+
+  it('FAILS the documented env-expanded entry when the Claude env lacks the key (the ace#1629 env)', () => {
+    const v = classifyNovaHeaderReadiness({ ...base, userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS });
+    expect(v.status).toBe('fail');
+    expect(v.reason).toBe('env-expanded-header-unset');
+    expect(v.autoHealable).toBe(true);
+  });
+
+  it('PASSES once the voidcraft-labs/nova-plugin#52 static-header override is installed', () => {
     // This is the state after the fix — the process env is STILL missing the
     // key, which is the whole point: the override makes the env irrelevant.
     const v = classifyNovaHeaderReadiness({
@@ -110,21 +147,18 @@ describe('classifyNovaHeaderReadiness', () => {
     }
   });
 
-  it('PASSES when the key really is in the Claude Code process env', () => {
-    const v = classifyNovaHeaderReadiness({
-      ...base,
-      claudeEnvNames: [...CLAUDE_ENV_BROKEN, 'NOVA_API_KEY'],
-    });
-    expect(v.status).toBe('pass');
-    expect(v.reason).toBe('key-in-claude-env');
-  });
 
   // -- the control ---------------------------------------------------------
   // Without this, an unreadable env is indistinguishable from a clean one and
   // the probe reproduces the false-negative it exists to eliminate.
 
-  it('SKIPS (never fails) when ps -Eww returned no environment at all', () => {
-    const v = classifyNovaHeaderReadiness({ ...base, claudeEnvNames: null, claudeEnvTokenCount: 0 });
+  it('SKIPS (never fails) an env-expanded entry when ps -Eww returned no environment at all', () => {
+    const v = classifyNovaHeaderReadiness({
+      ...base,
+      userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS,
+      claudeEnvNames: null,
+      claudeEnvTokenCount: 0,
+    });
     expect(v.status).toBe('skip');
     expect(v.reason).toBe('env-unreadable');
     expect(v.autoHealable).toBe(false);
@@ -132,14 +166,19 @@ describe('classifyNovaHeaderReadiness', () => {
 
   it('SKIPS when the name list is empty AND the token control is zero', () => {
     // Observed reading another user's claude process: 0 tokens visible.
-    const v = classifyNovaHeaderReadiness({ ...base, claudeEnvNames: [], claudeEnvTokenCount: 0 });
+    const v = classifyNovaHeaderReadiness({
+      ...base,
+      userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS,
+      claudeEnvNames: [],
+      claudeEnvTokenCount: 0,
+    });
     expect(v.status).toBe('skip');
     expect(v.reason).toBe('env-unreadable');
   });
 
   it('does NOT skip when the env is genuinely readable but merely lacks the key', () => {
     // The control is non-zero, so "NOVA_API_KEY absent" is a real observation.
-    const v = classifyNovaHeaderReadiness({ ...base, claudeEnvTokenCount: 25 });
+    const v = classifyNovaHeaderReadiness({ ...base, userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS });
     expect(v.status).toBe('fail');
   });
 
@@ -152,7 +191,7 @@ describe('classifyNovaHeaderReadiness', () => {
 
   it('never marks a skip auto-healable', () => {
     for (const input of [
-      { ...base, claudeEnvNames: null, claudeEnvTokenCount: 0 },
+      { ...base, userScopeNovaHeaders: NOVA_DOCUMENTED_HEADERS, claudeEnvNames: null, claudeEnvTokenCount: 0 },
       { ...base, keyConfigured: false },
     ]) {
       expect(classifyNovaHeaderReadiness(input).autoHealable).toBe(false);
@@ -197,10 +236,10 @@ describe('remediationFor', () => {
     ).toBe('');
   });
 
-  it('the helper it defends against is still env-var dependent upstream', () => {
-    // If nova ever ships a file-based helper this probe can be retired; pin the
-    // shape so the change is noticed rather than assumed.
-    expect(NOVA_HELPER).toContain('$NOVA_API_KEY');
-    expect(NOVA_HELPER).toContain("printf '{}'");
+  it('plugin v2 ships no headersHelper — the pre-v2 helper this probe was written against is gone', () => {
+    // voidcraft-labs/nova-plugin#64 (2026-09-27). If a helper ever comes back,
+    // the no-override arm's "env is irrelevant" premise must be re-checked.
+    expect(JSON.stringify(NOVA_V2_MCP_JSON)).not.toMatch(/headersHelper/);
+    expect(NOVA_HELPER).toContain('$NOVA_API_KEY'); // history only
   });
 });

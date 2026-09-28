@@ -1988,7 +1988,7 @@ check for a `pending`/`in_progress` `commcare-setup`) and
 see (dimagi-internal/ace#2159).** A user-scope MCP entry in `~/.claude.json`
 may pin a literal `Authorization` header. Claude Code binds it at connection
 time for the life of the MCP subprocess, and unlike every other credential path
-ACE has — the plugin's `headersHelper`, `.env`, `~/.ace/env.sh`, 1Password — it
+ACE has — `.env`, `~/.ace/env.sh`, 1Password (and, before nova plugin v2, the plugin's `headersHelper`) — it
 does not re-read its source, so it cannot follow a rotation. Rotate
 `LABS_MCP_TOKEN`, run `/ace:setup --force-env`, and the file on disk is correct
 while `connect_labs` keeps sending the old bearer.
