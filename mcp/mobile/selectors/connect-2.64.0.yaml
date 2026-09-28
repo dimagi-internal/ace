@@ -24,6 +24,11 @@
 # input rows are now verified, the next-cell tap row is verified as a NO-OP,
 # and one row is new (form-date-picker-step-fling).
 # TOTAL 92 rows: 51 verified, 41 unverified (counted from the file, not carried from the line above).
+# UPDATED 2026-09-28 (dimagi-internal/ace#2517): the three repeat-juncture
+# rows were reached live on the same run's post-fix Deliver re-walk (user-
+# controlled repeats). Evidence: rewalk-2517-activity-juncture.xml in Drive
+# 6-qa-and-training/screenshots/rewalk-ace2517.
+# TOTAL 92 rows: 54 verified, 38 unverified.
 #
 # WHAT ACTUALLY CHANGED IN 2.64.0
 # -----------------------------------------------------------------------------
@@ -460,20 +465,17 @@ selectors:
   form-repeat-juncture-button:
     type: id
     value: "org.commcare.dalvik:id/choice_dialog_panel_2"
-    unverified: true
-    purpose: "The ADD action on a repeat juncture ('ADD A NEW <LABEL>?'). Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0 — no repeat was reached. Prefer the INDEX over the text; the label interpolates the repeat's own name."
+    purpose: "The ADD action on a repeat juncture ('ADD A NEW <LABEL>?', then 'ADD ANOTHER <LABEL>?'). Live-verified on 2.63.2 (ace#1007). Live-verified on 2.64.0 2026-09-28 (spark-facilitator/20260926-1413 ace#2517 re-walk, rewalk-2517-activity-juncture.xml): dialog_title_text 'Add a new Activity?' then 'Add another Activity?' on the second pass; choice_dialog_panel_1 GO BACK [133,1137][374,1357], _2 'ADD A NEW ACTIVITY?' / 'ADD ANOTHER ACTIVITY?' [419,1137][660,1467], _3 DO NOT ADD [705,1137][947,1412]. Tapped _2 and _3 by id on Activity, Independent project and Person junctures; all advanced. Prefer the INDEX over the text; the label interpolates the repeat's own name AND changes between the first and later passes."
 
   form-repeat-juncture-skip:
     type: id
     value: "org.commcare.dalvik:id/choice_dialog_panel_3"
-    unverified: true
-    purpose: "'DO NOT ADD' on a repeat juncture — the way PAST a repeat. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+    purpose: "'DO NOT ADD' on a repeat juncture — the way PAST a repeat. Live-verified on 2.63.2 (ace#1007) and on 2.64.0 2026-09-28 (see form-repeat-juncture-button)."
 
   form-repeat-juncture-back:
     type: id
     value: "org.commcare.dalvik:id/choice_dialog_panel_1"
-    unverified: true
-    purpose: "'GO BACK' on a repeat juncture. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+    purpose: "'GO BACK' on a repeat juncture. Live-verified on 2.63.2 (ace#1007); OBSERVED on 2.64.0 2026-09-28 with its bounds (see form-repeat-juncture-button) but not tapped."
 
   form-date-picker:
     type: class
