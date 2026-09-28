@@ -112,6 +112,14 @@ architect skipped verification have shipped forms that look complete in
 the build summary but render with missing questions. See
 `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 3.
 
+Since `voidcraft-labs/commcare-nova#693` (2026-09-27) `add_fields` stages
+into private work (`work_id` + `request_id`) and persists nothing to the
+saved app until `save_work`. Verify the COUNT against the candidate with
+`get_form({work_id, …})`, and verify it SHIPPED with `get_form({app_id, …})`
+after a save that answered `saved: true` — see
+`playbook/integrations/nova-integration.md § The private-work authoring
+contract`.
+
 ### user_score percentage scoring
 
 Connect's `passing_score` field is on a 0-100 scale (`passing_score: 80`

@@ -126,7 +126,8 @@ describe('bin/ace-doctor wires the classification (ace#1629)', () => {
 
   it('has a workaround branch that tells the operator to LEAVE the entry alone', () => {
     expect(DOCTOR).toMatch(/workaround\)/);
-    expect(DOCTOR).toContain('nova-plugin#52 workaround, NOT stale cruft');
+    expect(DOCTOR).toContain('voidcraft-labs/nova-plugin#52 workaround, NOT stale cruft');
+    expect(DOCTOR).toMatch(/DOCUMENTED API-key path/);
   });
 
   it('does not fall back to the removal prescription when classification fails', () => {

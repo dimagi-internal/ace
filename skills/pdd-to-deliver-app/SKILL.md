@@ -51,7 +51,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      § Bug 1 for the prompt-quality dependency.
    - **State the marker MECHANISM: a Deliver app must carry an APP-LEVEL
      Connect mode of `deliver` — set via
-     `configure_connect({app_id, mode: "deliver", participants})` — AND
+     `configure_connect({work_id, request_id, mode: "deliver", participants})` — AND
      every paid form must carry a `connect.deliver_unit` block.** The
      app-level mode is what makes Nova's compiler emit the
      `<learn:deliver>` marker into the released CCZ. **Leaving the app
@@ -76,7 +76,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        the `malaria-rdt/20260603-1600` Phase 3 halt.
      - **`update_app` no longer carries `connect_type`** — it was removed
        in Nova's 2026-07-31 redeploy (dimagi-internal/ace#1133) and
-       `update_app({name, app_id})` now sets the display name only.
+       `update_app({work_id, request_id, name})` now sets the display name only.
        `configure_connect` is the ONLY path to the app-level mode, and it
        is **REPLACE-ALL**: every form omitted from `participants[]` has
        its Connect block CLEARED. See Step 4e.
@@ -262,52 +262,36 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > natural-identifier fields that define a unique entity per the
      > PDD's duplicate-detection key, then set
      > `entity_id` to reference that field and `entity_name` to the
-     > human-readable label field. Both are structured expressions, NOT
-     > XPath strings — each takes `{ parts: [...] }`, where a part is
-     > `{ kind: "field-ref", uuid: <field uuid> }`,
-     > `{ kind: "user-ref", property: "username" }`, or
-     > `{ kind: "text", text }`. (`{ kind: "case-ref", caseType,
-     > property }` has no case to read on a CASE-CREATE form — case reads
-     > belong on followup forms; see the case-UPDATE rule below.) So
-     > `entity_id: { parts: [{ kind: "field-ref", uuid: <entity_key uuid> }] }`
-     > and
-     > `entity_name: { parts: [{ kind: "field-ref", uuid: <beneficiary_name uuid> }] }`.
+     > human-readable label field. Both are expression STRINGS (live
+     > schema 2026-09-28: `type: ["string","boolean"]`, *"#form/age reads
+     > an answer; #case/age reads the current record"*): `entity_id:
+     > "#form/entity_key"`, `entity_name: "#form/beneficiary_name"`. A bare
+     > id (`entity_key`) is refused as an unknown reference. (`#case/…` has
+     > no case to read on a CASE-CREATE form — case reads belong on
+     > followup forms; see the case-UPDATE rule below.) The pre-2026-09-27
+     > `{ parts: [...] }` object shape is gone (voidcraft-labs/commcare-nova#693).
      >
-     > **`parts` is XPath SOURCE, not a template — it does NOT concatenate
-     > for you.** Every part is interpolated RAW into the compiled
-     > `calculate`, and nothing quotes a `text` part. A bare
-     > `{ kind: "text", text: " - " }` sitting between two references
-     > therefore compiles to the XPath **minus operator**, and the key
-     > evaluates to `NaN` — the same constant for every worker, so Connect
-     > collapses the whole programme into ONE payable entity and everyone
-     > after the first goes unpaid. `configure_connect` accepts that
-     > payload with no error and the app builds clean; the only symptom is
-     > unpaid work (ace#1232, proven against a compiled CCZ). **Any
-     > literal separator MUST be quoted inside a `concat(...)` you write
-     > yourself, in the parts list:**
-     >
-     > ```
-     > parts: [ { kind: "text",     text: "concat(" },
-     >          { kind: "user-ref", property: "username" },
-     >          { kind: "text",     text: ", ' - ', " },
-     >          { kind: "field-ref", uuid: <date field uuid> },
-     >          { kind: "text",     text: ")" } ]
-     > ```
-     >
-     > That verbosity is the only correct form, not defensive style —
-     > "simplifying" it back to a bare `" - "` separator silently breaks
-     > the payment key. The hidden-`entity_key`-field shape below sidesteps
-     > the trap entirely: build the `concat(...)` in the field's own
-     > `calculate`, then point `entity_id` at ONE `field-ref` part.
+     > **It is raw XPath — nothing concatenates or quotes for you.** A
+     > literal separator written between two references (`#form/a - #form/b`)
+     > is the XPath **minus operator**; the key evaluates to `NaN` — the same
+     > constant for every worker — so Connect collapses the whole programme
+     > into ONE payable entity and everyone after the first goes unpaid.
+     > Nova accepts it with no error and the app builds clean; the only
+     > symptom is unpaid work (ace#1232, proven against a compiled CCZ).
+     > **Any literal separator MUST be quoted inside a `concat(...)`:**
+     > `concat(#user/username, ' - ', #form/visit_date)` — or, better, use
+     > the hidden-`entity_key`-field shape below, which builds the
+     > `concat(...)` in the field's own `calculate` and points `entity_id`
+     > at that one field.
      >
      > Example for a malaria RDT outlet visit whose dedup key is
      > (outlet, brand, batch): `entity_key` =
      > `concat(/data/outlet_name, ' - ', /data/rdt_brand,
      > ' - ', /data/batch_number)`. **Build the composite inside
      > `concat(...)`, as shown — do NOT express it as alternating
-     > reference and `{ kind: "text", text: " - " }` parts.** An earlier
-     > version of this section offered that shape as an equivalent, on a
-     > since-disproven claim that `parts` joins its members for you; it
+     > reference and bare `" - "` text.** An earlier version of this
+     > section offered that shape as an equivalent, on a since-disproven
+     > claim that the expression joins its members for you; it
      > does not. (The two statements contradicted each other between
      > ace#1230 and ace#969; the live-derived rule above wins.) The
      > hidden `entity_key` calculate
@@ -540,7 +524,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > REQUIRED: a large `add_fields` call can fail with
      > `InputValidationError: could not be parsed as JSON`. This is a
      > HARNESS-side failure, not a Nova one, and not a size limit —
-     > `commcare-nova#459` was closed NOT_PLANNED on 2026-08-16 after
+     > `voidcraft-labs/commcare-nova#459` was closed NOT_PLANNED on 2026-08-16 after
      > Nova's request logs showed zero malformed bodies and payloads up
      > to 23.4 KB returning 200. The error is Claude Code's own
      > client-side error, raised when the model's streamed tool-call
@@ -609,9 +593,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
-     - `no-starter-module` — always (Learn + Deliver). Nova's `create_app`
-       seeds a placeholder module (top-level menu "Survey" → form "Survey" →
-       one text field `question_1` labelled "Question 1"). Emit the component
+     - `no-starter-module` — always (Learn + Deliver). Apps created before
+       2026-09-27 were seeded with a placeholder module (top-level menu
+       "Survey" → form "Survey" → one text field `question_1` labelled
+       "Question 1"); since `voidcraft-labs/commcare-nova#693` a new app
+       starts empty (`begin_work({new_app})`, no seed), so the component is
+       now a guard for reused/older apps and a regression tripwire. Emit the component
        so the brief tells the architect to DELETE it, and to report whether it
        was present. Removal is currently architect discretion, and discretion
        is what varies run to run: on `bednet-check-2-visit/20260828-0629` the
@@ -764,9 +751,46 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 4. **Invoke `/nova:autobuild "<brief>"`.** Capture from the response:
    - `app_id` — durable Nova handle, written to the summary as
-     `nova_app_id`
+     `nova_app_id`. Since nova plugin v2 the architect builds in private
+     work and SAVES checkpoints; the app id is the one its `save_work`
+     returned. **If the report names a `work_id` with pending changes (the
+     build stopped before a final save), the build is INCOMPLETE** — the
+     saved app lacks that work, and upload/compile never see it. Treat it
+     as an unfinished build (re-dispatch or `/nova:edit` to finish), never
+     record it as delivered.
    - Build summary
    - Any warnings
+
+   **Every ACE-direct Nova edit in Steps 4a–4l runs in PRIVATE WORK
+   (`voidcraft-labs/commcare-nova#693`, 2026-09-27).** Contract and observed
+   behaviour: `playbook/integrations/nova-integration.md § The private-work authoring contract`. The rules this
+   skill depends on:
+
+   - Open work **after** `/nova:autobuild` has returned — never while an
+     architect dispatch is in flight (its saves would make ACE's candidate
+     `stale`, and a stale candidate can only be discarded):
+     `begin_work({request_id, app_id})` → keep the `work_id`.
+   - Every mutation below (`add_case_list_columns`, `configure_connect`,
+     `update_form`, `set_field_options_source`, `edit_field`, `remove_field`,
+     `update_case_list_column`, `add_fields`, `update_translations`, …) takes
+     `work_id` + a fresh `request_id` and **no `app_id`**. It answers
+     `saved: false`: the saved app is unchanged until
+     `save_work({work_id, request_id, expected_revision})`, with
+     `expected_revision` = the `revision` from the latest mutation (or
+     `get_work`).
+   - **Require `saved: true` on the save answer.** A stale or refused save
+     comes back as DATA (`saved: false`, `kind: "stale-base"` …), not as an
+     error. On `stale`, `discard_work` and redo the edit from current saved
+     state. Scripted edits use `lib/nova-work.ts` (`NovaWork.begin` →
+     `stage` → `save`), whose `save()` throws unless Nova saved.
+   - **Save before every read-back that proves an edit**, and read back with
+     `app_id` (saved state). A `work_id` read shows the candidate even when
+     the save failed. Wherever a step below says "re-fetch" / "re-run
+     `get_app`" after an edit, the save comes first.
+   - A save must leave a buildable app — never empty a form.
+   - Before Step 5, `get_work` must read `pending_changes: 0`. An unsaved
+     edit raises no error anywhere; it is simply absent from what
+     `app-deploy` uploads.
 
 4a. **Post-build field-count verification — runnable recipe (skill-side safety net).**
 
@@ -972,12 +996,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        case-create modules — skip the rest of this step; there is
        nothing to heal.
     2. For each offending module, call
-       `add_case_list_columns({app_id, moduleUuid, ...})` to add ONE
+       `add_case_list_columns({work_id, request_id, moduleUuid, ...})` to add ONE
        plain column over the case name field (the module's `case_name` /
        case-name field). A single default column is sufficient to clear
        the architect-side validate error; this is the same one-column
        heal an operator applies by hand.
-    3. Re-fetch via `get_module({app_id, moduleUuid})` and re-assert
+    3. `save_work` (require `saved: true`), then re-fetch via
+       `get_module({app_id, moduleUuid})` and re-assert
        the case list is now non-empty. **Bounded loop, max 3
        iterations** over steps 1–3. If any case-create module still has
        an empty `caseListConfig.columns` after the third iteration,
@@ -1050,7 +1075,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
        ```
        configure_connect({
-         app_id,
+         work_id, request_id,
          mode: "deliver",
          participants: [
            // EVERY paid form in the app, addressed by formUuid.
@@ -1061,13 +1086,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        })
        ```
 
-       Note the **structured expression shape** — `entity_id` /
-       `entity_name` (like `label`, `relevant`, `calculate`,
-       `default_value`) take `{parts: [...]}`, not a plain XPath string;
-       a bare string is rejected. Omit each block's `id` and let Nova
-       derive it.
+       Note the **expression shape** — since voidcraft-labs/commcare-nova#693
+       `entity_id` / `entity_name` (like `relevant`, `calculate`,
+       `default_value`) are expression STRINGS that name answers as
+       `#form/<path>`; a bare id is refused as an unknown reference.
+       Omit each block's `id` and let Nova derive it.
 
-       Then re-run `get_app` and re-assert BOTH the header and that every
+       Then `save_work` (require `saved: true`), re-run `get_app({app_id})`
+       and re-assert BOTH the header and that every
        form that carried a Connect block before still carries one.
        **Bounded loop, max 3 iterations.** The per-form
        `connect.deliver_unit` blocks the architect already built stay
@@ -1089,7 +1115,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     no app-level Connect mode; both the original and a fresh
     re-upload+re-release produced `connect_markers.deliver = 0` (that
     session predated the L0 heal and fell back to a rebuild, blocked by a
-    concurrent Nova `create_app` outage). See jjackson/ace#694. The L0
+    concurrent Nova `create_app` outage — a tool since removed, #693). See jjackson/ace#694. The L0
     heal in step 3 above was confirmed live on
     `bednet-spot-check/20260616-0618` — one call flipped the header from
     absent to `Connect type: deliver` with the per-form blocks intact, no
@@ -1129,12 +1155,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        this app Project's data tables and their columns with the stable ids
        `set_field_options_source` needs — then, per offender:
        - **A table holds the option set** → convert the field and bind it:
-         `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
-         source: {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`.
+         `set_field_options_source({work_id, request_id, moduleUuid, formUuid,
+         fieldUuid, source: {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`.
          The call is an atomic REPLACE of the field's complete choice source
          (there is no retained inactive source), so send the whole thing.
          Convert a `text` field to a select first via
-         `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates:
+         `edit_field({work_id, request_id, moduleUuid, formUuid, fieldUuid, updates:
          {kind: 'single_select', optionsSource: {...}}})` — a kind conversion
          that would set saved case values aside returns `needsConfirmation`;
          on a fresh build there is nothing to set aside, so re-call with
@@ -1142,8 +1168,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          step-8 sweep** — do not verify it ad hoc.
        - **No table, but the set is knowable** from the PDD / inputs / a source
          `.ccz` → bind it inline:
-         `source: {kind: 'inline', options: [{value, label: {parts: [{kind:
-         'text', text}]}}, …]}` (≥2 options).
+         `source: {kind: 'inline', options: [{value, label}, …]}` — `label`
+         is plain text since voidcraft-labs/commcare-nova#693 (≥2 options).
        - **Neither** → ship a select over the values you DO have plus an
          explicit "Other" with a relevance-gated `_other` free-text follow-up.
 
@@ -1155,7 +1181,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          exist and must be read rather than composed. Go to the register
          procedure in step 7, which now **builds and binds** the register
          rather than handing it to an operator (ace#1886).
-    6. **Re-run steps 2–3. Bounded loop, max 3 iterations.**
+    6. **`save_work` (require `saved: true`), then re-run steps 2–3 against
+       the SAVED app (`app_id` reads). Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
        still on `degraded` after the third iteration MUST appear in the build
        memo and in the Step 7 summary's `option_source_gaps` list, with the
@@ -1204,19 +1231,28 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
        1. Extract the register (`parseFixtureRegister` over the partner's
           `.ccz` fixture XML, per the paragraph above).
-       2. `create_lookup_table({app_id, name, tag, columns, rows})` — one call,
-          up to 5000 rows, returns durable table and column uuids in input
-          order. Use the tag the PDD declares.
+       2. `create_lookup_table({work_id, request_id, name, tag, columns, rows})`
+          — one call, up to 5000 rows, returns durable table and column uuids
+          in input order. Use the tag the PDD declares. **This write is NOT
+          staged**: Project data commits at call time, is visible before any
+          save, and is not undone by `discard_work` (the tag stays taken). Only
+          the bind in step 3 is staged.
        3. Bind the field. On a field that is already a select,
-          `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
-          source: {kind:'lookup', tableId, valueColumnId, labelColumnId}})`.
+          `set_field_options_source({work_id, request_id, moduleUuid, formUuid,
+          fieldUuid, source: {kind:'lookup', tableId, valueColumnId, labelColumnId}})`.
           On a field that shipped as `text`, `edit_field` with
           `updates: {kind:'single_select', optionsSource: {...}}` converts and
           binds in one call. **`set_field_options_source` refuses a `text`
           field outright** (*"is not a single- or multiple-choice field"*), so
           convert first — observed live 2026-09-06.
-       4. **Verify by READ-BACK, never by the write's response.** Call
-          `get_field` for the field AND
+
+          Then **`save_work` and require `saved: true`.** Until the save lands
+          the bind exists only in the candidate: `upload_app_to_hq` would ship
+          the unbound field with no error.
+       4. **Verify by READ-BACK of the SAVED app, never by the write's
+          response.** Call `get_field({app_id, moduleUuid, formUuid, fieldUuid})`
+          for the field (with `app_id`, after step 3's save — a `work_id` read
+          would show the candidate's bind even if the save was refused) AND
           `get_lookup_table_rows({app_id, tableId})` for the table, and pass
           BOTH to `verifyLookupBind` in `lib/option-register.ts`
           (`{requested, readBack: field.optionsSource, rows}`). This is not
@@ -1304,7 +1340,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
        1. Collect every field in the built app whose options source reads back
           `kind: 'lookup'`, whoever created it — walk the `get_form` responses
-          already fetched in Step 4a and read each one's `optionsSource`.
+          already fetched in Step 4a and read each one's `optionsSource`. For
+          any form Steps 4b–4f EDITED, re-read `get_form({app_id, …})` after
+          its save; the Step 4a response predates those binds.
        2. For each distinct `tableId` in that set, read the rows:
           `get_lookup_table_rows({app_id, tableId})`, paging to the end (100
           rows/page) and passing the concatenated rows with `complete: true`.
@@ -1773,7 +1811,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     5. **Any mismatch, or `clampDead: true`, is a HALT — this is not a warn.**
        Repair in a **bounded loop, max 3 iterations**: `edit_field` the offending
-       literal → re-fetch → re-diff. If anything still disagrees after the third,
+       literal → `save_work` (require `saved: true`) → re-fetch with `app_id` →
+       re-diff. If anything still disagrees after the third,
        surface a structured failure naming every `{key, source, built}` plus
        `sourceMax` vs `builtMax`, and do NOT write the success summary.
        `clampDead: true` alongside `clampReachableInSource: true` means the built
@@ -1863,7 +1902,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     4. **Any finding is a HALT — this is not a warn.** Repair in a **bounded
        loop, max 3 iterations**: `edit_field` the offending option value / label
-       / member list → re-fetch → re-diff. If anything still disagrees after the
+       / member list → `save_work` (require `saved: true`) → re-fetch with
+       `app_id` → re-diff. If anything still disagrees after the
        third, surface a structured failure listing every finding line and do NOT
        write the success summary. Never "fix" the diff by editing the PDD's
        declared taxonomy to match what was built.
@@ -1912,9 +1952,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           tile deliberately shows a SUBSET of the options, keep that subset —
           the rule is subset, not equality — but every entry it does keep must
           come from the itemset.
-       3. `update_case_list_column({app_id, moduleUuid, columnUuid, column})`
-          with the full column body (the uuid carries over; never supply one).
-       4. Re-fetch via `get_module` and re-assert value-for-value against the
+       3. `update_case_list_column({work_id, request_id, moduleUuid, columnUuid,
+          column})` with the full column body (the uuid carries over; never
+          supply one).
+       4. `save_work` (require `saved: true`), then re-fetch via
+          `get_module({app_id, …})` and re-assert value-for-value against the
           itemset. **Bounded loop, max 3 iterations**, same shape as 3–4. Still
           disagreeing after the third → structured failure naming each column
           and the values that differ; do NOT write the success summary.
@@ -2320,14 +2362,20 @@ form, Stage 2 = atomic household-visit form).
 - **ACE decisions MCP:** `decisions_append_rows` (Step 7 — § Decisions Log)
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
-- **Nova MCP tools ACE calls directly** (Steps 4a–4h): `get_app`,
+- **Nova MCP tools ACE calls directly** (Steps 4a–4l): `get_app`,
   `get_module`, `get_form`, `search_blueprint` (semantic id → uuids in one
   call), `add_case_list_columns`, `edit_field`, `configure_connect`,
-  `update_form`, `get_lookup_tables`, `set_field_options_source`. Nova is
+  `update_form`, `get_lookup_tables`, `set_field_options_source`,
+  `create_lookup_table`, `update_case_list_column`, and the private-work
+  lifecycle `begin_work` / `get_work` / `save_work` / `discard_work`
+  (voidcraft-labs/commcare-nova#693, 2026-09-27). Every mutation is staged — `work_id` +
+  `request_id`, no `app_id` — and lands only on a `save_work` answering
+  `saved: true`; reads take `app_id` (saved) or `work_id` (candidate). See
+  `playbook/integrations/nova-integration.md § The private-work authoring contract`. Nova is
   **uuid-addressed** since 2026-07-31 (dimagi-internal/ace#1132) —
   `moduleUuid` / `formUuid` / `fieldUuid`, never indexes; resolve the whole
   map with ONE `get_app({app_id})` at Step 4a and reuse it. The app-level
-  Connect mode is set by `configure_connect({app_id, mode, participants})`,
+  Connect mode is set by `configure_connect({work_id, request_id, mode, participants})`,
   which is **REPLACE-ALL** (ace#1133) — `update_app` no longer carries
   `connect_type`. Enforced by `test/skills/nova-uuid-addressing.test.ts`.
 
@@ -2479,12 +2527,13 @@ Each row this skill writes uses `phase: 3-commcare` and
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-09-26 | **Step 4j sub-step 6 no longer hard-codes the counter timing (ace#2515).** The snippet hard-coded a pre-increment timing into its `payableCapacity` call, which reads a correct `min(<casedb count> + 1, cap)` clamp as capacity `cap + 1` and HALTs it — then "repairs" it into an under-pay. Observed on `spark-facilitator/20260926-1413` (`min(#form/step_info/prior_index + 1, 3)`, correct, would have halted). It now calls `checkBuiltClampCapacity`, which resolves the timing via `classifyCounterTiming` over the `get_field` read-backs (Nova `#form/` and `#<case_type>/` spellings accepted — captured read-back spells the case read `#community/…`) and returns `unable` rather than assuming one. *Enforced:* `test/lib/payable-cap-build-time.test.ts` (the repro as positive control; `min(<casedb>, cap)` and an under-paying `min(<casedb> + 1, cap - 1)` as negative controls; a skill-text guard against a literal timing), fed from the captured `get_field` read-back `test/fixtures/nova/capped-index-readback-spark-20260926-1413.json`. | ACE team |
-| 2026-09-25 | **The case-UPDATE `entity_id` rule now SANCTIONS the case read it used to forbid (ace#2199).** The REQUIRED paragraph still told the architect that a followup `case-ref` could never be built (citing `commcare-nova#458`, closed COMPLETED 2026-08-15) and steered followup forms to `concat(username, <date>)` — the `atomic-visit` grain, which cannot express a per-entity cap and is the ace#1462 failure for a `longitudinal-visits` design. The paragraph's own re-open condition ("re-verify against a live compiled CCZ") is now met: on `spark-facilitator/20260925-1536` the Deliver followup form was briefed with `#case/` reads and the released build `5c1eef4323224550b1c36a7da9521e71` compiles `entity_key` as a live `calculate` over `instance('casedb')` (`@case_id`, `pilot_fcap_step`). The rule now says: read the case with `#case/<property>` in a hidden calculate; `caseWrite` + literal default is still not a read (ace#1224); a visible case-bound field pre-fills the previous answer (ace#2006); never fall back to the username grain for a longitudinal design. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` (inverted to require the read and forbid the retired closure). | ACE team |
+| 2026-09-25 | **The case-UPDATE `entity_id` rule now SANCTIONS the case read it used to forbid (ace#2199).** The REQUIRED paragraph still told the architect that a followup `case-ref` could never be built (citing `voidcraft-labs/commcare-nova#458`, closed COMPLETED 2026-08-15) and steered followup forms to `concat(username, <date>)` — the `atomic-visit` grain, which cannot express a per-entity cap and is the ace#1462 failure for a `longitudinal-visits` design. The paragraph's own re-open condition ("re-verify against a live compiled CCZ") is now met: on `spark-facilitator/20260925-1536` the Deliver followup form was briefed with `#case/` reads and the released build `5c1eef4323224550b1c36a7da9521e71` compiles `entity_key` as a live `calculate` over `instance('casedb')` (`@case_id`, `pilot_fcap_step`). The rule now says: read the case with `#case/<property>` in a hidden calculate; `caseWrite` + literal default is still not a read (ace#1224); a visible case-bound field pre-fills the previous answer (ace#2006); never fall back to the username grain for a longitudinal design. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` (inverted to require the read and forbid the retired closure). | ACE team |
 | 2026-09-17 | **Step 4j gains sub-step 6 — capped-index arithmetic (ace#2148).** When a per-entity cap rides in `entity_id` as a clamped counter, the clamp constant is NOT the cap: a `casedb` read is the state BEFORE this submission, so `min(<casedb count>, N)` admits `N + 1` distinct keys and the (N+1)-th mints an index that has never existed, which Connect pays. `spark-facilitator/20260906-2233` shipped a cap of 3 binding at 4 — 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green, the CCZ structurally perfect, and the app internally consistent with its own wrong key; `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. Nothing on this path re-derived the arithmetic, so it surfaced only in `pdd-to-deliver-app-eval`, one Nova build later. The step deliberately does NOT compare the clamp to the cap — both correct spellings are live in this same opportunity five weeks apart and share no constant (`min(<casedb count> + 1, 3)` vs `if(pcts >= 3, 2, pcts)`) — it traces the first `cap + 1` submissions, mechanically via `lib/payable-cap-arithmetic.ts`. Paired with `_app-component-library § payability-scoped-key` CAPPED INDEX and the released-form backstop in `app-release-qa § Step 4`. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts` + `test/skills/payable-cap-wiring.test.ts`. | ACE team |
 | 2026-09-17 | **Step 4f gains step 8: EVERY lookup-backed select in the app is audited, not just the ones 4f bound (ace#2143).** On `spark-facilitator/20260906-2233` `app-deploy` could not upload the Deliver app — Nova's `upload_app_to_hq` preflight refused it: *"A lookup-powered choice list uses activity_id for its saved values, but malawi_activities repeats the same value in several rows."* The table carried `other` on seven rows, one per FCAP step: unique WITHIN each filter partition (`step_id = step`, so a worker never sees two at once) and not unique across the table, which is what Nova requires. ACE owned the uniqueness rule already — `diffOptionRegister` has carried it since ace#1621 — but only on the PARTNER-REGISTER path, where the PDD names a register file in `inputs/`. `malawi_activities` was authored by the build itself, so that path never fired; and 4f's per-field verify was unreachable too, because steps 1–7 only ever touch a field that FAILED an assertion and this one shipped as a correctly-shaped `single_select` from the start. Every ACE artifact recorded it as "BOUND and read-back-verified" and Nova's preflight was the first thing in the run that noticed — after a full Nova build, media coverage and two translation layers. **The fix is scope, not a second copy of the check.** Nova's preflight sweeps every lookup-powered choice list in the app, so ACE's does too: `auditLookupBinds` over one site per bound field, run unconditionally, including when `degraded` is empty and when no register is declared. `verifyLookupBind` now takes the bound table's ROWS as a **required** argument (an optional one is a check a caller skips by forgetting) and refuses `duplicate-values`, `empty-table`, `no-rows-read-back` and `partial-rows-read-back` — the last because `get_lookup_table_rows` pages at 100 rows and a duplicate on an unread page is invisible. It also splits `bindLanded` out of `verified`, so `scripts/probe-nova-fixtures.ts` keeps reporting on Nova's BINDING capability and never reads a table-content finding as an upstream regression. *Enforced:* `test/lib/option-register.test.ts` (the seven-row `other` repro, blank-value collision, absent/partial/empty rows, and a whole-app sweep whose only failure is an architect-built site the run never bound). | ACE team |
 | 2026-09-11 | **Every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** § Decisions Log was a catalogue "not a required set" and the app build wrote none — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3, while Step 7's memo listed four latitudes in prose. The rows derive from the same entry list as the memo tables ("one source, two renderings"); the spot-check location goes in `reasoning` because ace-web's summary drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows under this skill's tag. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
 | 2026-09-11 | **Step 7 names the Deliver build-memo section `## Build memo`, with `[ACE] latitudes taken` and `[FIXED] ambiguities hit` sub-tables (ace#2371).** Steps 3–4n direct notes "into the build memo" throughout, but the memo had no fixed home: on `poverty-graduation/20260908-0510` it existed as a section headed "Deliver app — build memo" inside this summary, not named as a memo and never linked to a reviewer. `skills/build-memo` now collates this section into the run's programme memo at the end of Phase 4; the section content itself is unchanged. | ACE team |
 | 2026-09-06 | **Step 4k records WHAT it diffed against — a derived extraction is no longer indistinguishable from the published source (ace#2110).** 4k's premise is that its oracle is UPSTREAM of ACE; its own text says "read the SOURCE, never the Nova brief and never the PDD's restatement: both are model-authored, and one of them is the artifact this step exists to test." It named two model-authored intermediates and was blind to a third — an EXTRACTION of the workbook, published into `inputs/` as the instrument. `resolveInstrumentSource` proceeded on the mere existence of a manifest entry, with no inspection of mime type, name or provenance, so on `poverty-graduation/20260905-1345` the check resolved a `text/markdown` "(official, extracted verbatim)" file, diffed the build against it, and reported `mismatches: 0` — a fidelity check that compared ACE to ACE, while the publisher's workbook sat in a DIFFERENT opportunity's inputs (`hh-poverty-targeting`, folder `official-nigeria-ppi-2020 (povertyindex.org)`). Sibling of #1648 and its exact inverse: that one is the *unresolvable* branch taking a silent skip, this is the *resolvable-but-wrong-artifact* branch where no branch fires and the run reports green. **Disclosure, not a gate** — a derived source still PROCEEDS, because on that run it was the only instrument artifact in the frozen inputs and halting would block a build over a file that is very likely correct. What changes is what the run may CLAIM: `classifyInstrumentArtifact` ties go to `derived` (under-claiming costs a memo line; over-claiming reports a published-source check that never happened), the memo carries the caveat verbatim, and Step 7 gains `artifact_class`. The point is that a derived check is real but **unfalsifiable** — an error in the extraction is reproduced faithfully by the build and the diff still reads clean. *Enforced:* `test/lib/instrument-constants.test.ts` (positive control is the real poverty-graduation entry; negative controls cover a derivation pasted into a spreadsheet, an unknown container, and a published PDF). | ACE team |
+| 2026-09-28 | **ACE-direct edits move into Nova private work (`voidcraft-labs/commcare-nova#693`, deployed 2026-09-27).** Every mutation in Steps 4a–4l now takes `work_id` + `request_id` (no `app_id`) and is staged (`saved: false`) until `save_work`; a stale/refused save is returned as data, so the skill requires `saved: true`, saves before every read-back, and reads back with `app_id`. Step 4f: `create_lookup_table` commits to the Project immediately but the bind is staged — it is now saved before `verifyLookupBind` reads it back, so an unsaved bind can no longer pass as verified while HQ receives the unbound field. Step 4 treats an architect report that names a `work_id` with pending changes as an incomplete build. `no-starter-module` premise corrected (new apps start empty). Contract: `playbook/integrations/nova-integration.md § The private-work authoring contract`. | ACE team |
 | 2026-09-06 | **Step 4f's partner-register handoff is RETIRED — ACE builds, binds and PROVES the register (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02 and `scripts/probe-nova-fixtures.ts` returned `both` on 2026-09-06: a select accepts a `{kind:'lookup'}` options source and `get_field` reads it back. All three routes were confirmed live — `add_fields optionsSource`, `set_field_options_source` on an existing select, and `edit_field` converting a `text` field (`set_field_options_source` refuses a `text` field outright, so the conversion is not optional). So 4f now extracts, creates, populates AND binds, and `renderRegisterCsv` is deleted along with the operator step it existed for. **The halt is narrowed, not dropped:** it still fires on an undeclared register (Phase-1 gap), an unreadable declared source, any `diffOptionRegister` finding, and — new — a bind that does not VERIFY. That last one is the point. `add_fields` answers a correctly bound lookup field with `"options": []` and no mention of the source, so the write response cannot distinguish a landed bind from a missing one in either direction; only a `get_field` read-back can, via `verifyLookupBind`. An unverified bind is the ace#1621 defect wearing a better disguise — the select renders empty to a worker while every ACE artifact reports the register shipped. *Enforced:* `test/lib/option-register.test.ts` (`verifyLookupBind`, positive + four negative controls), `test/scripts/nova-fixtures-probe.test.ts`. | ACE team |
 | 2026-09-02 | **New Step 4n — derived-chain guard check (ace#1823).** The released `hh-poverty-targeting` Deliver form guards ONE node of its derived PPI chain and leaves twelve unguarded at form root. `/data/roster` is gated on consent, so on a vacant / refused / no-eligible-respondent visit `count()` over the empty nodeset returns 0 and the form submits `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` — the 31-point band, by construction, on **1,072 non-payable doors of 3,794** (28%), on the exact field the PDD's Layer-C band-boundary fraud control groups on. `ppi_score` IS guarded (`if(visit_outcome = 'completed', …)`), which is why it survived: nothing looks wrong at the score level and the corruption sits one layer down. A `calculate` over an empty nodeset is valid XForm, so `validate_app`, `app-release-qa`, install, play and submit all pass. Phase 7 blanked the chain in the fixture and declared the deviation — the app still ships this way, so a real deployment would too. 4n runs `lib/derived-chain-guard.ts` over the Step-4a field list: taint PROPAGATES along the chain (guarding the leaf or the final score is not enough), and a conditional whose TEST reads only tainted fields is not a guard — `if(member_count <= 3, 'le3', …)` is the corruption wearing an `if()`. A finding clears by applying the payable path's own discriminator OR by a recorded justification, because a zero over an empty nodeset is sometimes exactly right; what the check forbids is silence. Placed before 4m so every structural check stays ahead of the language layer. *Enforced:* `test/lib/derived-chain-guard.test.ts` (negative control: a naive detector that ignores the inline-guard shape fails 3 assertions, incl. flagging the correct `ppi_score`) + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available ACE-direct (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |

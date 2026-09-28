@@ -131,23 +131,25 @@ If `nova_auth` fails:
 - `nova_auth: HTTP 401` → key invalid or revoked. Rotate at
   `commcare.app/settings`, update the 1Password item in place, then
   `/ace:setup --force-env`.
-- `nova_shell_env: NOVA_API_KEY not in shell env` → operator hasn't
-  sourced `~/.ace/env.sh` from their shell rc. Run the remediation
-  command doctor prints (`echo 'source ~/.ace/env.sh' >> ~/.zshrc &&
-  exec zsh`) and restart Claude Code so the Nova plugin re-reads the
-  env.
-- `nova_shell_env: stale user-scope nova: MCP override detected` →
-  pre-1.1.0 setup carried over. `/ace:setup` removes it idempotently;
-  if doctor still flags it, run `claude mcp remove nova --scope user`
-  manually and restart Claude Code.
+- `nova_header_readiness: plugin-connection-is-oauth-only` → no
+  user-scope `nova` MCP entry exists. Since nova plugin v2 (2026-09-27,
+  voidcraft-labs/nova-plugin#64) the plugin's bundled connection has NO
+  API-key path — it is browser sign-in only — so the PAT reaches Nova
+  only through that user-scope entry. Run `/ace:setup --force-env` (it
+  installs the entry) or `/ace:doctor` (auto-heals it), then restart
+  Claude Code.
+- `nova_shell_env: stale user-scope nova: MCP entry detected` → an entry
+  with no Authorization header. Re-add it WITH the key (or run
+  `/ace:setup`); removing it opts the machine out of API-key auth.
 
-Halt Phase 3 until `nova_auth` and `nova_shell_env` are both green.
-Authentication uses Nova plugin v1.1.0's PAT path (voidcraft-labs/nova-plugin#11
-/ #13 / #16) — there is no OAuth refresh-token rotation, no per-session
-sign-in, no needs-auth cache to manage, and Claude Code's
-`~/.claude/.credentials.json` does not hold Nova credentials under this
-path. The plugin's `headersHelper` reads `NOVA_API_KEY` from the
-Claude Code parent shell's env.
+Halt Phase 3 until `nova_auth` and `nova_header_readiness` are both
+green. Authentication is the PAT in a literal `Authorization` header on
+the user-scope `nova` MCP entry that `/ace:setup` installs — see
+`playbook/integrations/nova-integration.md § Install + auth`. With that
+entry the Nova tools surface as `mcp__nova__*`; the plugin's own
+`mcp__plugin_nova_nova__*` namespace is the OAuth connection. **Accept
+either namespace** wherever this procedure loads or names a Nova tool
+(e.g. `ToolSearch select:mcp__nova__get_hq_connection,mcp__plugin_nova_nova__get_hq_connection`).
 
 #### Step 0b: Probe HQ binding
 
@@ -198,12 +200,12 @@ On a miss, **HALT**: *"The Nova MCP bound a different principal than
 NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
 `<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
 in-session. A plain restart is NOT the remedy here — it has been tried and the
-wrong principal came back (dimagi-internal/ace#1614). The cause is that NO `Authorization` header is reaching Nova. Claude Code 2.1.238+ stopped
-passing its process env to nova's env-dependent `headersHelper`, which then
-emits `{}`, and the client falls back to OAuth — whose token lacks
-`nova.hq.read` (voidcraft-labs/nova-plugin#52).
-Run `/ace:doctor` — its `nova_header_readiness` probe installs the static-header
-override automatically — then quit and reopen Claude Code and resume
+wrong principal came back (dimagi-internal/ace#1614). The cause is that NO `Authorization` header is reaching Nova: there is no
+user-scope `nova` entry carrying the PAT, and since nova plugin v2 the bundled
+connection is OAuth-only, whose token lacks `nova.hq.read`
+(voidcraft-labs/nova-plugin#52, #64).
+Run `/ace:doctor` — its `nova_header_readiness` probe installs the user-scope
+entry automatically — then quit and reopen Claude Code and resume
 `/ace:run <opp>/<run-id>`. Do **NOT** go to `/mcp`: `Clear authentication`
 removes an OAuth token but restores no credential, so with no header the session
 re-prompts OAuth immediately, and `Authenticate` mints a token without
@@ -316,10 +318,12 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/probe-nova-con
 
 **2. Build-path callability.**
 
-`ToolSearch select:create_form` to confirm the schema loads at L0, then confirm
-the bound `create_form` schema's params match what the live server expects (if
-the bound schema has no `fields` param but the server demands one — or vice
-versa — that is the drift). The `-32602`-on-call class is real: on
+`ToolSearch select:mcp__nova__create_form,mcp__plugin_nova_nova__create_form`
+to confirm the schema loads at L0, then confirm the bound `create_form`
+schema's params match what the live server expects. Since
+voidcraft-labs/commcare-nova#693 (2026-09-27) the live shape requires
+`work_id` + `request_id` and takes no `app_id` and no nested `fields`; a
+bound schema that still carries `app_id` or `fields` is the drift. The `-32602`-on-call class is real: on
 `bednet-spot-check/20260613-2313` a tool whose full schema loaded at L0 was not
 served by the running subprocess at all. (Note: `generate_scaffold` does **not**
 exist on the live surface — the schema-generation tool is `generate_schema`. An
@@ -402,10 +406,13 @@ So probe the architect itself:
 > task — *"Call `list_projects`, report how many projects came back, then
 > stop. Do not build anything."* — and assert it returns a number.
 
-The probe tool MUST be one on the architect's own allowlist. `list_apps` is
-NOT on it (the architect's `tools:` list carries `list_projects`, `get_app`,
-`create_app` … but no `list_apps`), so an earlier revision of this probe
-could never return a number even from a perfectly bound architect — on
+The probe tool MUST be one the architect can call. Since plugin v2 its
+`tools:` is the namespace wildcard (`mcp__plugin_nova_nova__*`,
+`mcp__nova__*`), so any Nova tool qualifies, but the probe keeps
+`list_projects` because the v2 prompt resolves the Project with it first.
+(An earlier plugin carried an explicit allowlist without `list_apps`, so an
+earlier revision of this probe could never return a number even from a
+perfectly bound architect — on
 `spark-facilitator/20260925-1536` the architect bound, made three tool calls,
 and reported "no tool by that name". **Judge the probe by whether the agent
 RAN** (made any tool call), not only by the number: a bind fault kills it
@@ -429,14 +436,25 @@ including the ones that will not bind — without going through tool binding at
 all:
 
 ```ts
-import { novaCall } from '../lib/nova-rpc.js';
-await novaCall('create_module', { app_id, name, case_type: null, forms: [...] });
+import { NovaWork } from '../lib/nova-work.js';
+const work = await NovaWork.begin({ newApp: { name } });          // begin_work; app_id is null until the first save
+const { moduleUuid } = await work.stage('create_module', { name: 'Training', case_type: null });
+const { formUuid } = await work.stage('create_form', { moduleUuid, name: 'Module 1', type: 'survey' }); // EMPTY form
+await work.stage('add_fields', { moduleUuid, formUuid, fields: [/* the questions */] });
+// … further modules/forms, then configure_connect({mode, participants}) …
+const { appId } = await work.save();   // throws unless Nova answered saved:true
+// write appId to run_state.yaml NOW — this is nova_app_id (§ Completion)
 ```
 
-`create_module` accepts its forms (and their fields) inline and
-`configure_connect` sets the app mode plus every form's Connect block in one
-atomic REPLACE-ALL call, so a whole Learn or Deliver app is buildable this
-way. The model never holds a Nova schema, which is also why
+Since voidcraft-labs/commcare-nova#693 (2026-09-27) creation is focused —
+`create_module` takes no nested forms and `create_form` no nested fields — and
+every mutation is staged in private work until `save_work` (see
+`playbook/integrations/nova-integration.md § The private-work authoring
+contract`). Two things that bite: a save must leave a buildable app (an empty
+form or module is refused), so stage a complete unit before the first save;
+and `configure_connect` sets the app mode plus every form's Connect block in
+one atomic REPLACE-ALL call. Save in checkpoints (one per module is fine) —
+`save()` throws on a refused or stale save, which is the point. The model never holds a Nova schema, which is also why
 `scripts/run-nova-media-upload.ts` has used this transport since 2026-08-27.
 
 Reaching for it is a deliberate downgrade and the build memo must say so: the
@@ -496,12 +514,23 @@ issue, not transient).
 
 #### Turn-0 halt detection (defensive)
 
-After **each** Nova `Agent` dispatch returns, verify an app was created:
+After **each** Nova `Agent` dispatch returns, verify an app was created
+**and saved**:
 
 1. Inspect the Agent's return string for a `nova_app_id`. The return
    message reliably includes the canonical `**App Name** (app_id)` line.
    Fall back to `list_apps` (filter by `created` within the last few
    minutes and name match) if the return string is malformed.
+1b. **A returned app id does not prove the build's last edits were
+   saved.** Since plugin v2 the architect works in private work
+   (voidcraft-labs/commcare-nova#693) and only `save_work` changes the
+   app; an unfinished architect reports a **work id** and what remains
+   instead of claiming delivery. Call `list_work({app_id})` and assert
+   every entry reads `pending_changes: 0` and `stale: false`. Pending
+   changes = an **incomplete build**, never a delivered app: resume the
+   architect (below) or finish the work (`get_work` → correct → save)
+   before Step 1.5. `upload_app_to_hq` reads the saved app only, so
+   unsaved work is silently absent from HQ.
 2. If no new app is present, **re-dispatch up to two more times** (3
    total attempts).
 3. If the third attempt also produces no app, surface a hard error.
@@ -521,7 +550,8 @@ failures. Go straight to the JSON-RPC fallback in § Step 0c.3.
 re-dispatch (dimagi-internal/ace#1504).** The rule above covers "the architect
 never got started." A Nova build is long, so the likelier interruption is a
 transport failure (`Connection lost mid-response`, an API 5xx) that kills the
-agent *after* `create_app` returned and partway through the field work. The
+agent *after* its first `save_work` created the app and partway through the
+field work. The
 return string is missing or truncated, so a literal reading of step 2 says
 "no app → re-dispatch" — and `/nova:autobuild` **creates a second Nova app**,
 leaving a duplicate for `app-deploy` to choose between and an orphan for the
@@ -923,7 +953,10 @@ the form-patch over-stripping incident at Phase 3 instead of Phase 6).
 
 ### Completion
 
-**Before you get here: `nova_app_id` is written the moment `create_app` returns,
+**Before you get here: `nova_app_id` is written the moment the build's FIRST
+`save_work` returns `saved: true` (its `app_id`) — not at `begin_work`, which
+returns `app_id: null` for a new app, and never from `get_work`'s `app.appId`,
+which names an app that does not exist until that save,
 and each `hq_app_id` / released build id the moment its call returns — NOT
 batched into this block (ace#2412).** A Nova app and an HQ app are external,
 non-idempotent objects; a phase killed between building them and reaching this

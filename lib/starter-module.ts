@@ -2,6 +2,16 @@
  * Nova's canonical STARTER MODULE, and the identity check that can see it
  * (dimagi-internal/ace#1787).
  *
+ * ## Since 2026-09-27: new apps are no longer seeded
+ *
+ * voidcraft-labs/commcare-nova#693 retired the create call that seeded the
+ * placeholder; a new app is now `begin_work({new_app})` and Nova's tool docs
+ * say "There is no starter module or placeholder app to replace." The check
+ * below STAYS, unchanged: apps created before 2026-09-27 can still carry the
+ * seed, and an upstream regression that re-seeds would be invisible to every
+ * count-based gate for the reason given under "Why the existing gate could not
+ * catch it". It is a tripwire now, not the expected path.
+ *
  * ## The defect
  *
  * `create_app` seeds every new Nova app with a placeholder module — a

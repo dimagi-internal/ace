@@ -61,6 +61,8 @@
  *   1  usage / transport / auth error. Says nothing about the capability.
  */
 import { NOVA_MCP_URL, resolveNovaApiKey } from './probe-nova-contract.js';
+import { novaCall } from '../lib/nova-rpc.js';
+import { NovaWork } from '../lib/nova-work.js';
 import { verifyLookupBind } from '../lib/option-register.js';
 
 /** What the probe observed. Pure data, so the classifier is unit-testable. */
@@ -120,124 +122,104 @@ export function remedyFor(v: FixtureVerdict): string {
   }
 }
 
-let rpcId = 0;
-
-/** One `tools/call` against Nova's streamable-HTTP MCP endpoint. */
-async function callNovaTool(apiKey: string, name: string, args: unknown): Promise<any> {
-  const res = await fetch(NOVA_MCP_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json, text/event-stream',
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: ++rpcId,
-      method: 'tools/call',
-      params: { name, arguments: args },
-    }),
-  });
-  if (!res.ok) throw new Error(`${name} → HTTP ${res.status} ${res.statusText}`);
-  const text = await res.text();
-  // The transport may frame the reply as SSE; take the first data line if so.
-  const dataLine = text.split('\n').find((l) => l.startsWith('data: '));
-  const payload = JSON.parse(dataLine ? dataLine.slice(6) : text);
-  if (payload.error) throw new Error(`${name}: ${JSON.stringify(payload.error)}`);
-  const block = payload.result?.content?.[0];
-  if (block?.type === 'text') {
-    try {
-      return JSON.parse(block.text);
-    } catch {
-      return block.text;
-    }
-  }
-  return payload.result;
-}
-
 /**
- * Live end-to-end probe. Creates a throwaway app, a table with rows, and
- * attempts to bind a select to it. Deletes the app unless `keep`.
+ * Live end-to-end probe. Builds a throwaway app in private work, a table with
+ * rows, and a select bound to it; saves; reads the bind back from the SAVED
+ * app. Deletes everything unless `keep`.
+ *
+ * Since voidcraft-labs/commcare-nova#693 (2026-09-27) there is no `create_app`
+ * and no starter module: the app is `begin_work({new_app})`, it only exists
+ * after the first `save_work`, and a save needs a complete, valid candidate —
+ * so the module, form and bound field go in before the first save.
  */
 export async function probeNovaFixtures(
   apiKey: string,
   opts: { keep?: boolean } = {},
 ): Promise<FixtureProbeResult & { appId?: string; tableId?: string }> {
-  const app = await callNovaTool(apiKey, 'create_app', {
-    app_name: `ACE fixtures probe ${new Date().toISOString()}`,
-  });
-  const appId: string = app.app_id;
-  const { module_uuid: moduleUuid, form_uuid: formUuid } = app.starter;
+  const call = (name: string, args: Record<string, unknown>) => novaCall(name, args, { apiKey });
+  const work = await NovaWork.begin(
+    { newApp: { name: `ACE fixtures probe ${new Date().toISOString()}` } },
+    { call },
+  );
+  let appId: string | undefined;
+  let moduleUuid: string | undefined;
+  let formUuid: string | undefined;
   let createdTableId: string | undefined;
-  let createdTableRevision: string | undefined;
   let createdFieldUuid: string | undefined;
 
   try {
+    moduleUuid = (await work.stage('create_module', { name: 'Probe', case_type: null })).moduleUuid as string;
+    formUuid = (await work.stage('create_form', { moduleUuid, name: 'Probe form', type: 'survey' }))
+      .formUuid as string;
+
     // Tags are unique per PROJECT and the table OUTLIVES the app, so a fixed
     // tag makes the second run fail with `tag_taken` — which reads exactly
     // like a regression. Unique per run, and removed in the finally below.
-    const table = await callNovaTool(apiKey, 'create_lookup_table', {
-      app_id: appId,
-      name: 'ACE fixture probe',
-      tag: `ace_fixture_probe_${Date.now().toString(36)}`,
-      columns: [
-        { key: 'v', wireName: 'value', label: 'Value', dataType: 'text' },
-        { key: 'l', wireName: 'label', label: 'Label', dataType: 'text' },
-      ],
-      rows: [
-        { cells: [{ columnKey: 'v', value: 'x' }, { columnKey: 'l', value: 'X' }] },
-        { cells: [{ columnKey: 'v', value: 'y' }, { columnKey: 'l', value: 'Y' }] },
-      ],
-    });
+    // Project data is NOT staged: this commits now, whatever happens to the work.
+    let table: any;
+    try {
+      table = await work.stage('create_lookup_table', {
+        name: 'ACE fixture probe',
+        tag: `ace_fixture_probe_${Date.now().toString(36)}`,
+        columns: [
+          { key: 'v', wireName: 'value', label: 'Value', dataType: 'text' },
+          { key: 'l', wireName: 'label', label: 'Label', dataType: 'text' },
+        ],
+        rows: [
+          { cells: [{ columnKey: 'v', value: 'x' }, { columnKey: 'l', value: 'X' }] },
+          { cells: [{ columnKey: 'v', value: 'y' }, { columnKey: 'l', value: 'Y' }] },
+        ],
+      });
+    } catch (e) {
+      return { canCreateTable: false, canBindSelect: false, bindError: `create failed: ${(e as Error).message}` };
+    }
 
     const tableId: string | undefined = table?.tableId;
     createdTableId = tableId;
-    // Read the revision back; do not assume '1'. A guessed revision makes the
-    // cleanup below fail silently and leak a Project-scoped tag forever.
-    createdTableRevision = table?.revisions?.tableRevision;
     const canCreateTable = Boolean(tableId) && Array.isArray(table?.rows) && table.rows.length === 2;
     if (!canCreateTable) {
-      return {
-        canCreateTable: false,
-        canBindSelect: false,
-        bindError: table?.error ? `create failed: ${table.error}` : undefined,
-        appId,
-        tableId,
-      };
+      return { canCreateTable: false, canBindSelect: false, tableId };
     }
 
     const [valueColumnId, labelColumnId] = table.columns.map((c: any) => c.columnId);
-    // `canCreateTable` above required a truthy tableId and returned early
-    // otherwise; TS cannot narrow across that return, so re-bind here.
     const requested = {
       tableId: tableId as string,
       valueColumnId: valueColumnId as string,
       labelColumnId: labelColumnId as string,
     };
-    const bound = await callNovaTool(apiKey, 'add_fields', {
-      app_id: appId,
-      moduleUuid,
-      formUuid,
-      fields: [
-        {
-          kind: 'single_select',
-          id: 'probe_pick',
-          parentUuid: null,
-          label: { parts: [{ kind: 'text', text: 'Pick' }] },
-          optionsSource: { kind: 'lookup', tableId, valueColumnId, labelColumnId },
-        },
-      ],
-    });
-
-    const bindError: string | undefined = bound?.error;
-    const bindAccepted = !bindError;
-    createdFieldUuid = bound?.fields?.[0]?.uuid;
+    let bindError: string | undefined;
+    try {
+      const bound = await work.stage('add_fields', {
+        moduleUuid,
+        formUuid,
+        fields: [
+          // A second, unbound field. `save_work` refuses a candidate whose form
+          // has no fields ("CommCare can't build"), so without it the teardown's
+          // remove_field can never be saved, the bind is never dropped, and the
+          // table leaks (observed 2026-09-28 — two tables pinned for 30 days).
+          { kind: 'text', id: 'probe_note', label: 'Note' },
+          {
+            kind: 'single_select',
+            id: 'probe_pick',
+            label: 'Pick',
+            optionsSource: { kind: 'lookup', tableId, valueColumnId, labelColumnId },
+          },
+        ],
+      });
+      createdFieldUuid = (bound as any)?.fields?.find((f: any) => f.id === 'probe_pick')?.uuid;
+      // The first save CREATES the app. Until it succeeds nothing is bound.
+      appId = (await work.save() as { appId?: string }).appId;
+    } catch (e) {
+      bindError = (e as Error).message;
+    }
+    const bindAccepted = !bindError && Boolean(appId);
 
     // The write says nothing useful — a correctly bound field comes back with
-    // `options: []`. Read the source back or claim nothing.
+    // `options: []`. Read the source back FROM THE SAVED APP (app_id, not
+    // work_id: a work read would show the candidate even if the save failed).
     let readBack: any = null;
     if (bindAccepted && createdFieldUuid) {
-      const got = await callNovaTool(apiKey, 'get_field', {
+      const got: any = await call('get_field', {
         app_id: appId,
         moduleUuid,
         formUuid,
@@ -246,24 +228,18 @@ export async function probeNovaFixtures(
       readBack = got?.field?.optionsSource ?? null;
     }
 
-    // Read the table's rows back too (ace#2143). Two reasons, and the second is
-    // the one that earns the extra call: `verifyLookupBind` now requires them,
-    // and doing it live here means Nova's row shape is exercised by the probe
-    // rather than only by a run — a drift in `{cells:[{columnId,value}]}` fails
-    // loudly in the tripwire instead of silently in `findDuplicateLookupValues`.
-    const rowsRead = await callNovaTool(apiKey, 'get_lookup_table_rows', {
-      app_id: appId,
-      tableId,
-    }).catch(() => null);
-    const check = verifyLookupBind({ requested, readBack, rows: rowsRead });
+    // Read the table's rows back too (ace#2143): `verifyLookupBind` requires
+    // them, and reading them live exercises Nova's row shape in the tripwire.
+    const rowsRead = appId
+      ? await call('get_lookup_table_rows', { app_id: appId, tableId }).catch(() => null)
+      : null;
+    const check = verifyLookupBind({ requested, readBack, rows: rowsRead as any });
 
     return {
       canCreateTable,
-      // Keyed on `bindLanded`, NOT `verified`. This probe's verdict is about
-      // Nova's BINDING capability; a duplicate-value or unreadable-rows finding
-      // is a fact about the throwaway table (which the probe writes itself with
-      // unique values), and reporting it as `create-only` would raise a false
-      // upstream regression. `bindReadBackIssue` still carries the message.
+      // Keyed on `bindLanded`, NOT `verified`: a duplicate-value or
+      // unreadable-rows finding is a fact about the throwaway table, not an
+      // upstream binding regression. `bindReadBackIssue` still carries it.
       canBindSelect: bindAccepted && check.bindLanded,
       bindAccepted,
       bindReadBackIssue: check.verified ? undefined : check.message,
@@ -274,48 +250,44 @@ export async function probeNovaFixtures(
   } finally {
     if (!opts.keep) {
       // Order matters, and it is not the obvious order. The table lives on the
-      // PROJECT, so deleting the app leaves it — and its tag — behind forever.
-      // But now that binding WORKS, the bound field is itself a reference, and
-      // `remove_lookup_table` refuses while any app holds one. Worse, a
-      // soft-deleted app still counts: `delete_app` returns
-      // `recoverable_until` ~30 days out, and removing the table afterwards
-      // fails `referenced` with `blockingApps:[{deleted:true}]` — from ANY
-      // app_id, while scoping the call to the deleted app's own id fails
-      // `not_found`. So there is no ordering of (delete app, remove table)
-      // that works once a field is bound; the reference must be dropped first.
-      // Measured 2026-09-06: this leaked three Project-scoped tables before it
-      // was understood, and they are stuck until the soft-deleted apps expire.
-      if (createdFieldUuid) {
-        await callNovaTool(apiKey, 'remove_field', {
-          app_id: appId,
-          moduleUuid,
-          formUuid,
-          fieldUuid: createdFieldUuid,
-        }).catch(() => undefined);
+      // PROJECT, so deleting the app leaves it — and its tag — behind. The
+      // bound field is a reference, and `remove_lookup_table` refuses
+      // `referenced` while any app holds one — INCLUDING a soft-deleted app for
+      // its ~30-day restore window, and including an unbind that is only
+      // STAGED (observed 2026-09-28: the refusal named the app until the
+      // remove_field was SAVED). So: remove_field → save_work →
+      // re-read the table revision → remove_lookup_table → delete_app.
+      // Measured 2026-09-06: getting this wrong leaked three Project tables.
+      const warn = (what: string, e: unknown) =>
+        process.stderr.write(
+          `probe-nova-fixtures: WARNING — ${what} (${String((e as Error)?.message ?? e).slice(0, 200)}). ` +
+            'Clean it up by hand or the next run may report a false regression.\n',
+        );
+      if (appId && createdFieldUuid) {
+        try {
+          await work.stage('remove_field', { moduleUuid, formUuid, fieldUuid: createdFieldUuid });
+          await work.save();
+        } catch (e) {
+          warn(`could not unbind field ${createdFieldUuid}`, e);
+        }
+      } else {
+        await work.discard().catch(() => undefined);
       }
       if (createdTableId) {
-        // Removing the field bumps the table revision, so the one returned by
-        // `create_lookup_table` is stale by now and `expectedTableRevision`
-        // would be rejected. Re-read it rather than assuming.
-        const listed = await callNovaTool(apiKey, 'get_lookup_tables', { app_id: appId }).catch(
-          () => null,
-        );
-        const live = (listed?.tables ?? []).find((t: any) => t.id === createdTableId);
-        const removed = await callNovaTool(apiKey, 'remove_lookup_table', {
-          app_id: appId,
-          tableId: createdTableId,
-          expectedTableRevision: live?.tableRevision ?? createdTableRevision ?? '1',
-        }).catch((e: Error) => ({ error: e.message }));
-        // Never swallow this. A silent leak means the NEXT run fails with
-        // `tag_taken`, which reads exactly like an upstream regression.
-        if (removed?.error) {
-          process.stderr.write(
-            `probe-nova-fixtures: WARNING — could not remove table ${createdTableId} ` +
-              `(${String(removed.error).slice(0, 160)}). Remove it by hand or the tag stays taken.\n`,
-          );
+        try {
+          const listed: any = appId
+            ? await call('get_lookup_tables', { app_id: appId })
+            : await call('get_lookup_tables', { work_id: work.workId });
+          const live = (listed?.tables ?? []).find((t: any) => t.id === createdTableId);
+          await work.stage('remove_lookup_table', {
+            tableId: createdTableId,
+            expectedTableRevision: live?.tableRevision,
+          });
+        } catch (e) {
+          warn(`could not remove table ${createdTableId}`, e);
         }
       }
-      await callNovaTool(apiKey, 'delete_app', { app_id: appId }).catch(() => undefined);
+      if (appId) await call('delete_app', { app_id: appId }).catch((e) => warn(`could not delete app ${appId}`, e));
     }
   }
 }

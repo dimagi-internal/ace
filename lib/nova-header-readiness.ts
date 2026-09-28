@@ -37,6 +37,15 @@
  * while a direct `curl` with the very same PAT returned
  * `get_hq_connection -> configured:true`.
  *
+ * PLUGIN v2 (2026-09-27, voidcraft-labs/nova-plugin#64) REMOVED THE HELPER.
+ * Nova's bundled `.mcp.json` is now `{type:'http', url}` and nothing else, so
+ * the plugin's own connection is OAuth-ONLY. A key in the Claude Code env no
+ * longer authenticates anything by itself: the API-key path is now Nova's
+ * DOCUMENTED user-scope `nova` entry (docs.commcare.app/mcp/api-keys), i.e.
+ * exactly the override this probe installs. Nova's docs write that entry with
+ * an env-expanded header (`Bearer ${NOVA_API_KEY}`); ACE writes a literal one,
+ * because the env is what went missing in ace#1629. Both are recognised here.
+ *
  * TWO DESIGN RULES worth stating, because both were violated by the probe this
  * replaces:
  *
@@ -72,14 +81,39 @@ export type NovaHeaderReason =
    * other and none of them is what the connection is using.
    */
   | 'static-header-stale'
-  /** `NOVA_API_KEY` is present in the Claude Code process env. */
+  /**
+   * The user-scope entry uses Nova's documented env-expanded header
+   * (`Bearer ${NOVA_API_KEY}`) AND the key is present in the Claude Code env.
+   */
   | 'key-in-claude-env'
+  /** An env-expanded override exists but the Claude Code env lacks the key. */
+  | 'env-expanded-header-unset'
+  /**
+   * No user-scope override. Since nova plugin v2 the bundled connection has
+   * no headersHelper, so this is OAuth whatever the env holds.
+   */
+  | 'plugin-connection-is-oauth-only'
   /** `ps -Eww` returned nothing usable — cannot conclude either way. */
   | 'env-unreadable'
   /** No PAT configured anywhere; `nova_env` already reports this. */
   | 'no-key-configured'
-  /** Proven: the helper will emit `{}` and no header will be sent. */
+  /**
+   * Pre-v2 only: the plugin's helper would emit `{}`. Retained so a report
+   * from an old plugin still classifies; `classifyNovaHeaderReadiness` no
+   * longer returns it.
+   */
   | 'helper-will-emit-empty';
+
+/** Matches a header value that defers to Claude Code's `${NOVA_API_KEY}` expansion. */
+const ENV_EXPANDED_BEARER = /\$\{NOVA_API_KEY(?::-[^}]*)?\}/;
+
+/** True when the override's Authorization header is Nova's documented env-expanded form. */
+export function isEnvExpandedNovaHeader(headers: Record<string, string> | null | undefined): boolean {
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (name.toLowerCase() === 'authorization' && ENV_EXPANDED_BEARER.test(String(value))) return true;
+  }
+  return false;
+}
 
 export interface NovaHeaderInput {
   /**
@@ -134,11 +168,42 @@ export { hasStaticAuthHeader };
  * Decide whether the Nova MCP will get an `Authorization` header.
  *
  * Order matters. The static-header override is checked FIRST because it makes
- * the process env irrelevant — that entry is precisely the nova-plugin#52
+ * the process env irrelevant — that entry is precisely the voidcraft-labs/nova-plugin#52
  * workaround, and a machine carrying it is healthy even though the helper would
  * still emit `{}` if it ran.
  */
 export function classifyNovaHeaderReadiness(input: NovaHeaderInput): NovaHeaderVerdict {
+  // Nova's documented form. It is only as good as the Claude Code env, which
+  // is the thing ace#1629 showed can go missing — so read the env to judge it.
+  if (isEnvExpandedNovaHeader(input.userScopeNovaHeaders)) {
+    if (input.claudeEnvNames === null || input.claudeEnvTokenCount === 0) {
+      return {
+        status: 'skip',
+        reason: 'env-unreadable',
+        summary:
+          'the user-scope nova entry expands ${NOVA_API_KEY} at startup, and the Claude Code process env ' +
+          'could not be read (ps -Eww returned nothing) — cannot tell whether it expanded to a key',
+        autoHealable: false,
+      };
+    }
+    if (input.claudeEnvNames.includes('NOVA_API_KEY')) {
+      return {
+        status: 'pass',
+        reason: 'key-in-claude-env',
+        summary: 'user-scope nova entry expands ${NOVA_API_KEY}, and the key is in the Claude Code process env',
+        autoHealable: false,
+      };
+    }
+    return {
+      status: input.keyConfigured ? 'fail' : 'skip',
+      reason: input.keyConfigured ? 'env-expanded-header-unset' : 'no-key-configured',
+      summary:
+        'the user-scope nova entry expands ${NOVA_API_KEY}, but the Claude Code process env has no ' +
+        'NOVA_API_KEY — Nova answers 401 (API keys never fall back to OAuth)',
+      autoHealable: input.keyConfigured,
+    };
+  }
+
   if (hasStaticAuthHeader(input.userScopeNovaHeaders)) {
     // Drift check BEFORE declaring victory. A static header does not follow a
     // key rotation, and it outranks every other credential path — so a stale
@@ -158,30 +223,8 @@ export function classifyNovaHeaderReadiness(input: NovaHeaderInput): NovaHeaderV
       status: 'pass',
       reason: 'static-header-override',
       summary:
-        'user-scope nova entry carries a static Authorization header ' +
-        '(voidcraft-labs/nova-plugin#52 workaround active) — the headersHelper is bypassed',
-      autoHealable: false,
-    };
-  }
-
-  // CONTROL before conclusion: an unreadable env must never look like a clean one.
-  if (input.claudeEnvNames === null || input.claudeEnvTokenCount === 0) {
-    return {
-      status: 'skip',
-      reason: 'env-unreadable',
-      summary:
-        "could not read the Claude Code process env (ps -Eww returned no environment) — " +
-        'cannot tell whether the headersHelper will authenticate',
-      autoHealable: false,
-    };
-  }
-
-  if (input.claudeEnvNames.includes('NOVA_API_KEY')) {
-    return {
-      status: 'pass',
-      reason: 'key-in-claude-env',
-      summary:
-        'NOVA_API_KEY is present in the Claude Code process env — the headersHelper will emit a Bearer header',
+        'user-scope nova entry carries a static Authorization header — the API-key connection ' +
+        '(nova plugin v2 has no headersHelper; this entry IS the key path)',
       autoHealable: false,
     };
   }
@@ -195,12 +238,15 @@ export function classifyNovaHeaderReadiness(input: NovaHeaderInput): NovaHeaderV
     };
   }
 
+  // No override. Before plugin v2 the env decided this (the helper read it);
+  // since v2 nothing reads it, so the env is IRRELEVANT and not consulted —
+  // an unreadable env cannot turn this into a skip.
   return {
     status: 'fail',
-    reason: 'helper-will-emit-empty',
+    reason: 'plugin-connection-is-oauth-only',
     summary:
-      "NOVA_API_KEY is absent from the Claude Code process env and no static-header override exists — " +
-      "nova's headersHelper will emit {} and Claude Code will fall back to OAuth (which lacks nova.hq.read)",
+      'no user-scope nova entry — since nova plugin v2 the bundled connection is OAuth-only (no ' +
+      'headersHelper), so Nova authenticates as whoever signed in at a browser, whose token lacks nova.hq.read',
     autoHealable: true,
   };
 }
@@ -215,6 +261,13 @@ export function remediationFor(verdict: NovaHeaderVerdict, opts: { autoInstalled
     case 'static-header-override':
     case 'key-in-claude-env':
       return '';
+    case 'env-expanded-header-unset':
+      return opts.autoInstalled
+        ? 'the entry has been REWRITTEN with a literal Bearer header automatically. Cmd-Q + reopen ' +
+            'Claude Code so the MCP connection rebinds.'
+        : 'either start Claude Code from a shell that exports NOVA_API_KEY, or replace the entry with a ' +
+            "literal header: claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp " +
+            "--header 'Authorization: Bearer <PAT>'  then Cmd-Q + reopen.";
     case 'static-header-stale':
       return opts.autoInstalled
         ? 'the override has been RE-POINTED at the current NOVA_API_KEY automatically. Cmd-Q + reopen ' +
@@ -231,6 +284,7 @@ export function remediationFor(verdict: NovaHeaderVerdict, opts: { autoInstalled
     case 'no-key-configured':
       return 'run /ace:setup --force-env (writes ~/.ace/env.sh and the ACE .env)';
     case 'helper-will-emit-empty':
+    case 'plugin-connection-is-oauth-only':
       return opts.autoInstalled
         ? 'the static-header override has been INSTALLED automatically (voidcraft-labs/nova-plugin#52 / ' +
             'dimagi-internal/ace#1629). MCP subprocesses only rebind on a full restart: Cmd-Q + reopen ' +

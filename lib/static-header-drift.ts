@@ -123,13 +123,23 @@ export interface StaticHeaderDriftVerdict {
   healOwner?: string;
 }
 
-/** Case-insensitive read of the bearer token out of a headers object. */
+/**
+ * Case-insensitive read of the bearer token out of a headers object.
+ *
+ * A `${VAR}` reference is NOT a pinned token: Claude Code expands it from its
+ * own env at startup, so it follows a rotation and cannot drift. That is the
+ * form Nova's own docs prescribe since plugin v2 (`Bearer ${NOVA_API_KEY}`);
+ * comparing the literal text against the key would call every such entry
+ * stale and "heal" it on every doctor run.
+ */
 export function staticAuthBearer(headers: Record<string, string> | null | undefined): string {
   if (!headers) return '';
   for (const [name, value] of Object.entries(headers)) {
     if (name.toLowerCase() !== 'authorization') continue;
     if (typeof value !== 'string') continue;
-    return value.replace(/^Bearer\s+/i, '').trim();
+    const token = value.replace(/^Bearer\s+/i, '').trim();
+    if (/^\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}$/.test(token)) return '';
+    return token;
   }
   return '';
 }

@@ -198,6 +198,13 @@ The 10 producers classified as `inline QA` are filling **real gaps** in MCP-boun
 | CCHQ build accepts apps Connect can't sync — no Connect-compatibility validation at build time | `app-release` Step 6 CCZ projection check | Inline `commcare_download_ccz` projection (`projected_connect_state.collision_count`, per-type record counts > 0) | CCHQ adds Connect-aware validation to the build endpoint. Cross-system; would need coordination with the Connect team. |
 | Slides API render success isn't always machine-detectable (e.g., partial render with no error) | `training-deck-render` | Inline post-render `slides_get` verification of slide count | Slides API itself is third-party (Google); workaround stays. |
 
+**Since 2026-09-28 every Nova-side fix in this table is a private-work edit**
+(voidcraft-labs/commcare-nova#693; `playbook/integrations/nova-integration.md
+§ The private-work authoring contract`). An `edit_field` / `add_fields` repair
+is staged until `save_work` answers `saved: true`, and a verify-and-retry
+count check must read the SAVED app (`get_form` with `app_id`, after the save)
+— a `work_id` read shows the candidate even when the save was refused.
+
 When a row above ships its upstream fix, the corresponding ACE-side `inline QA` flips to `NO QA` (covered by the now-improved MCP/external system). Re-audit cadence: when any of these upstream fixes lands, walk back through the affected producers and update their registry rows.
 
 ## Maintenance

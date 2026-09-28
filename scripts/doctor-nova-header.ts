@@ -18,7 +18,7 @@
  * process, and the only way to read it is `ps -Eww` against that pid.
  *
  * SELF-HEAL (--heal). When the verdict is `fail` AND auto-healable, install the
- * nova-plugin#52 static-header override with the configured PAT. Precedent:
+ * voidcraft-labs/nova-plugin#52 static-header override with the configured PAT. Precedent:
  * `nova_needs_auth_cache` already auto-clears rather than printing a one-liner
  * for a human to run (ace#1579 — "the entry is PROVEN stale, so there is
  * nothing to decide"). The same reasoning applies here, and more strongly: the
@@ -44,6 +44,7 @@ import {
   remediationFor,
   type NovaHeaderVerdict,
 } from '../lib/nova-header-readiness.js';
+import { staticAuthBearer } from '../lib/static-header-drift.js';
 
 const NOVA_MCP_URL = 'https://mcp.commcare.app/mcp';
 
@@ -149,16 +150,13 @@ function readUserScopeNovaHeaders(): Record<string, string> | null {
   }
 }
 
-function bearerOf(headers: Record<string, string> | null): string {
-  if (!headers) return '';
-  for (const [name, value] of Object.entries(headers)) {
-    if (name.toLowerCase() !== 'authorization') continue;
-    return String(value).replace(/^Bearer\s+/i, '').trim();
-  }
-  return '';
-}
+/** The pinned bearer, or '' — a `${NOVA_API_KEY}` reference is not a pin (lib/static-header-drift.ts). */
+const bearerOf = staticAuthBearer;
 
-/** Install (or re-point) the nova-plugin#52 static-header override. */
+/**
+ * Install (or re-point) the user-scope nova entry with a literal Bearer header —
+ * since nova plugin v2 the ONLY API-key path (docs.commcare.app/mcp/api-keys).
+ */
 function installOverride(key: string): { ok: boolean; detail: string } {
   const candidates = [
     path.join(process.env.HOME || '', '.local/bin/claude'),

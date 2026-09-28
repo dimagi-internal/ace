@@ -1,0 +1,3109 @@
+[
+ {
+  "name": "add_automations",
+  "properties": {
+   "afterAutomationUuid": {
+    "union": true
+   },
+   "automations": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "automations",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_case_list_columns",
+  "properties": {
+   "columns": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columns",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_case_operations",
+  "properties": {
+   "afterOperationUuid": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "operations": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "operations",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_entry_point",
+  "properties": {
+   "entryPointUuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "id": {
+    "type": "string",
+    "pattern": "^[a-z0-9_-]+$"
+   },
+   "ignoreDisplayConditions": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "target": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "target",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_fields",
+  "properties": {
+   "afterFieldUuid": {
+    "type": "string"
+   },
+   "beforeFieldUuid": {
+    "type": "string"
+   },
+   "fields": {
+    "type": "array"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "parentUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "fields",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_form_links",
+  "properties": {
+   "afterLinkUuid": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "links": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "links",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_language",
+  "properties": {
+   "copyFrom": {
+    "union": true
+   },
+   "language": {},
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "language",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_location_properties",
+  "properties": {
+   "properties": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "properties",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_organization_levels",
+  "properties": {
+   "levels": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "levels",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_personas",
+  "properties": {
+   "personas": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "personas",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_search_inputs",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchInputs": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputs",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_user_properties",
+  "properties": {
+   "properties": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "properties",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "add_user_types",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "userTypes": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "userTypes",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "attach_field_media",
+  "properties": {
+   "attachments": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "attachments",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "attach_option_media",
+  "properties": {
+   "attachments": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "attachments",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "begin_work",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "new_app": {
+    "type": "object"
+   },
+   "request_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "request_id"
+  ]
+ },
+ {
+  "name": "check_project_space_compatibility",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id",
+   "domain"
+  ]
+ },
+ {
+  "name": "compile_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "format": {
+    "type": "string",
+    "enum": [
+     "json",
+     "ccz"
+    ]
+   },
+   "server": {
+    "type": "string",
+    "enum": [
+     "production",
+     "india",
+     "eu"
+    ]
+   }
+  },
+  "required": [
+   "app_id",
+   "format"
+  ]
+ },
+ {
+  "name": "configure_case_list",
+  "properties": {
+   "columns": {
+    "type": "array"
+   },
+   "detailsColumnOrder": {
+    "type": "array"
+   },
+   "filter": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "resultsColumnOrder": {
+    "type": "array"
+   },
+   "searchButtonDisplayCondition": {
+    "union": true
+   },
+   "searchButtonLabel": {
+    "union": true
+   },
+   "searchFirst": {
+    "union": true
+   },
+   "searchInputOrder": {
+    "type": "array"
+   },
+   "searchInputs": {
+    "type": "array"
+   },
+   "searchScreenSubtitle": {
+    "union": true
+   },
+   "searchScreenTitle": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "configure_case_selection",
+  "properties": {
+   "confirmationToken": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "confirmedModuleUuids": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "selection": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "selection",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "configure_connect",
+  "properties": {
+   "mode": {
+    "union": true
+   },
+   "participants": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "mode",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "continue_app_test",
+  "properties": {
+   "action": {
+    "union": true
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "expectedStep": {
+    "type": "integer"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "testId": {
+    "type": "string",
+    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "testId",
+   "expectedStep",
+   "action",
+   "request_id"
+  ]
+ },
+ {
+  "name": "create_form",
+  "properties": {
+   "entry": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "post_submit": {
+    "union": true
+   },
+   "purpose": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "type": {
+    "type": "string",
+    "enum": [
+     "registration",
+     "followup",
+     "close",
+     "survey"
+    ]
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "name",
+   "type",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "create_location",
+  "properties": {
+   "afterSiblingId": {
+    "union": true
+   },
+   "descendants": {
+    "type": "array"
+   },
+   "expectedRevision": {
+    "type": "string",
+    "pattern": "^(0|[1-9]\\d*)$"
+   },
+   "externalId": {
+    "union": true
+   },
+   "latitude": {
+    "union": true
+   },
+   "levelUuid": {
+    "type": "string"
+   },
+   "longitude": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "parentId": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "siteCode": {
+    "type": "string",
+    "pattern": "^[-\\w]+$"
+   },
+   "values": {},
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "levelUuid",
+   "name",
+   "expectedRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "create_lookup_table",
+  "properties": {
+   "columns": {
+    "type": "array"
+   },
+   "name": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "rows": {
+    "type": "array"
+   },
+   "tag": {
+    "type": "string",
+    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name",
+   "tag",
+   "columns",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "create_module",
+  "properties": {
+   "case_list_only": {
+    "type": [
+     "boolean",
+     "null"
+    ]
+   },
+   "case_type": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "name": {
+    "type": "string"
+   },
+   "parentCaseModuleUuid": {
+    "type": "string"
+   },
+   "parentModuleUuid": {
+    "type": "string"
+   },
+   "purpose": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "create_project",
+  "properties": {
+   "name": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name"
+  ]
+ },
+ {
+  "name": "delete_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "discard_work",
+  "properties": {
+   "expected_revision": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "work_id",
+   "request_id",
+   "expected_revision"
+  ]
+ },
+ {
+  "name": "edit_field",
+  "properties": {
+   "confirmConversion": {
+    "type": "boolean"
+   },
+   "fieldUuid": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "updates": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "fieldUuid",
+   "updates",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "edit_lookup_columns",
+  "properties": {
+   "expectedTableRevision": {
+    "type": "string",
+    "pattern": "^(?:0|[1-9][0-9]*)$"
+   },
+   "operations": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId",
+   "expectedTableRevision",
+   "operations",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "edit_lookup_rows",
+  "properties": {
+   "expectedTableRevision": {
+    "type": "string",
+    "pattern": "^(?:0|[1-9][0-9]*)$"
+   },
+   "operations": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId",
+   "expectedTableRevision",
+   "operations",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "evaluate_form",
+  "properties": {
+   "answers": {
+    "type": "array"
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "caseIds": {
+    "type": "array"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "language": {
+    "type": "string",
+    "pattern": "^[a-z]{3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2})?$"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "personaUuid": {
+    "type": "string"
+   },
+   "repeats": {
+    "type": "array"
+   },
+   "scenario": {
+    "type": "object"
+   },
+   "searchAnswers": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "answers"
+  ]
+ },
+ {
+  "name": "generate_schema",
+  "properties": {
+   "caseTypes": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "caseTypes",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "get_agent_prompt",
+  "properties": {
+   "mode": {
+    "type": "string",
+    "enum": [
+     "build",
+     "autonomous_build",
+     "edit"
+    ]
+   }
+  },
+  "required": [
+   "mode"
+  ]
+ },
+ {
+  "name": "get_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_authoring_guide",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "functionName": {
+    "type": "string"
+   },
+   "topic": {
+    "type": "string",
+    "enum": [
+     "workflows",
+     "fields",
+     "forms",
+     "expressions",
+     "languages",
+     "peopleAndPlaces",
+     "sharedData",
+     "automations"
+    ]
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "topic"
+  ]
+ },
+ {
+  "name": "get_automations",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "automationUuid": {
+    "type": "string"
+   },
+   "includeSetupGuide": {
+    "type": "boolean"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_case_operations",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid"
+  ]
+ },
+ {
+  "name": "get_case_property",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "caseType": {
+    "type": "string"
+   },
+   "property": {
+    "type": "string",
+    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "caseType",
+   "property"
+  ]
+ },
+ {
+  "name": "get_deployment",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_entry_point_link",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   },
+   "entry_point_uuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "selections": {
+    "type": "array"
+   },
+   "server": {
+    "type": "string",
+    "enum": [
+     "production",
+     "india",
+     "eu"
+    ]
+   }
+  },
+  "required": [
+   "app_id",
+   "server",
+   "domain",
+   "entry_point_uuid",
+   "selections"
+  ]
+ },
+ {
+  "name": "get_entry_points",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_field",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "fieldUuid": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "fieldUuid"
+  ]
+ },
+ {
+  "name": "get_form",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid"
+  ]
+ },
+ {
+  "name": "get_hq_connection",
+  "properties": {}
+ },
+ {
+  "name": "get_languages",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_lookup_table_rows",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "columnIds": {
+    "type": "array"
+   },
+   "cursor": {
+    "type": "string"
+   },
+   "query": {
+    "type": "string"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId"
+  ]
+ },
+ {
+  "name": "get_lookup_tables",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "cursor": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_module",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid"
+  ]
+ },
+ {
+  "name": "get_organization",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "cursor": {
+    "union": true
+   },
+   "includeValues": {
+    "type": [
+     "boolean",
+     "null"
+    ]
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "query": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_translatable_content",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "cursor": {
+    "union": true
+   },
+   "formUuid": {
+    "union": true
+   },
+   "language": {
+    "type": "object"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "moduleUuid": {
+    "union": true
+   },
+   "ownerKind": {
+    "union": true
+   },
+   "query": {
+    "union": true
+   },
+   "role": {
+    "union": true
+   },
+   "status": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "language"
+  ]
+ },
+ {
+  "name": "get_users",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "get_work",
+  "properties": {
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "work_id"
+  ]
+ },
+ {
+  "name": "invite_member",
+  "properties": {
+   "email": {
+    "type": "string"
+   },
+   "project_id": {
+    "type": "string"
+   },
+   "role": {
+    "type": "string",
+    "enum": [
+     "viewer",
+     "editor",
+     "admin"
+    ]
+   }
+  },
+  "required": [
+   "project_id",
+   "email",
+   "role"
+  ]
+ },
+ {
+  "name": "list_apps",
+  "properties": {
+   "cursor": {
+    "type": "string"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "sort": {
+    "type": "string",
+    "enum": [
+     "updated_desc",
+     "updated_asc",
+     "name_asc",
+     "name_desc"
+    ]
+   },
+   "status": {
+    "type": "string",
+    "enum": [
+     "generating",
+     "complete",
+     "error"
+    ]
+   }
+  }
+ },
+ {
+  "name": "list_media_assets",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "cursor": {
+    "type": "string"
+   },
+   "kind": {
+    "type": "string",
+    "enum": [
+     "image",
+     "audio",
+     "video"
+    ]
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "list_members",
+  "properties": {
+   "project_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "project_id"
+  ]
+ },
+ {
+  "name": "list_projects",
+  "properties": {}
+ },
+ {
+  "name": "list_work",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "offset": {
+    "type": "integer"
+   },
+   "project_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "move_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "to_project_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id",
+   "to_project_id"
+  ]
+ },
+ {
+  "name": "move_case_operation",
+  "properties": {
+   "afterOperationUuid": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "operationUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "operationUuid",
+   "afterOperationUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "move_field",
+  "properties": {
+   "afterFieldUuid": {
+    "type": "string"
+   },
+   "beforeFieldUuid": {
+    "type": "string"
+   },
+   "fieldUuid": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "parentUuid": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "fieldUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "move_form_link",
+  "properties": {
+   "afterLinkUuid": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "linkUuid": {},
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "linkUuid",
+   "afterLinkUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "move_location",
+  "properties": {
+   "afterSiblingUuid": {
+    "union": true
+   },
+   "expectedRevision": {
+    "type": "string",
+    "pattern": "^(0|[1-9]\\d*)$"
+   },
+   "locationUuid": {
+    "type": "string"
+   },
+   "parentUuid": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "locationUuid",
+   "parentUuid",
+   "expectedRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "move_module",
+  "properties": {
+   "after": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "parentModuleUuid": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "after",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "provision_workers",
+  "properties": {
+   "adopt_personas": {
+    "type": "array"
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   },
+   "server": {
+    "type": "string",
+    "enum": [
+     "production",
+     "india",
+     "eu"
+    ]
+   },
+   "workers": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "app_id",
+   "server",
+   "domain",
+   "workers"
+  ]
+ },
+ {
+  "name": "read_app_test",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "testId": {
+    "type": "string",
+    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "name": "refresh_deployment",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   },
+   "server": {
+    "type": "string",
+    "enum": [
+     "production",
+     "india",
+     "eu"
+    ]
+   }
+  },
+  "required": [
+   "app_id",
+   "server",
+   "domain"
+  ]
+ },
+ {
+  "name": "remove_automation",
+  "properties": {
+   "automationUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "automationUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_case_list_column",
+  "properties": {
+   "columnUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columnUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_case_operation",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "operationUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "operationUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_case_properties",
+  "properties": {
+   "properties": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "properties",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_entry_point",
+  "properties": {
+   "entryPointUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "entryPointUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_field",
+  "properties": {
+   "fieldUuid": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "fieldUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_form",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_form_link",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "linkUuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "linkUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_language",
+  "properties": {
+   "language": {
+    "type": "object"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "language",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_location_property",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_lookup_table",
+  "properties": {
+   "expectedTableRevision": {
+    "type": "string",
+    "pattern": "^(?:0|[1-9][0-9]*)$"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId",
+   "expectedTableRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_media_asset",
+  "properties": {
+   "assetId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "assetId",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_module",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_organization_level",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_persona",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_search_input",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchInputUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_user_property",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "remove_user_type",
+  "properties": {
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "rename_case_properties",
+  "properties": {
+   "renames": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "renames",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "reorder_case_list_columns",
+  "properties": {
+   "columnUuids": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "surface": {
+    "type": "string",
+    "enum": [
+     "results",
+     "details"
+    ]
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "surface",
+   "columnUuids",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "reorder_search_inputs",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchInputUuids": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuids",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "replace_lookup_rows",
+  "properties": {
+   "expectedTableRevision": {
+    "type": "string",
+    "pattern": "^(?:0|[1-9][0-9]*)$"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "rows": {
+    "type": "array"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId",
+   "expectedTableRevision",
+   "rows",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "save_work",
+  "properties": {
+   "expected_revision": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "work_id",
+   "request_id",
+   "expected_revision"
+  ]
+ },
+ {
+  "name": "search_apps",
+  "properties": {
+   "cursor": {
+    "type": "string"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "query": {
+    "type": "string"
+   },
+   "status": {
+    "type": "string",
+    "enum": [
+     "generating",
+     "complete",
+     "error"
+    ]
+   }
+  },
+  "required": [
+   "query"
+  ]
+ },
+ {
+  "name": "search_blueprint",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "query": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "query"
+  ]
+ },
+ {
+  "name": "set_app_logo",
+  "properties": {
+   "logo": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "logo",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_case_list_filter",
+  "properties": {
+   "filter": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "filter",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_case_list_tile",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "placements": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "tile": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_case_search_advanced",
+  "properties": {
+   "excludedOwnerIds": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchFirst": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "excludedOwnerIds",
+   "searchFirst",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_case_search_display",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchButtonDisplayCondition": {
+    "union": true
+   },
+   "searchButtonLabel": {
+    "union": true
+   },
+   "searchScreenSubtitle": {
+    "union": true
+   },
+   "searchScreenTitle": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchScreenTitle",
+   "searchScreenSubtitle",
+   "searchButtonLabel",
+   "searchButtonDisplayCondition",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_case_type_parent",
+  "properties": {
+   "caseType": {
+    "type": "string"
+   },
+   "parentType": {
+    "union": true
+   },
+   "relationship": {
+    "type": "string",
+    "enum": [
+     "child",
+     "extension"
+    ]
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "caseType",
+   "parentType",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_field_options_source",
+  "properties": {
+   "fieldUuid": {
+    "type": "string"
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "source": {
+    "union": true
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "fieldUuid",
+   "source",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_form_sections",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "sections": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "sections",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_location_archived",
+  "properties": {
+   "archived": {
+    "type": "boolean"
+   },
+   "confirm": {
+    "type": "boolean"
+   },
+   "confirmedImpact": {
+    "type": "object"
+   },
+   "expectedRevision": {
+    "type": "string",
+    "pattern": "^(0|[1-9]\\d*)$"
+   },
+   "locationUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "locationUuid",
+   "archived",
+   "expectedRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "set_menu_media",
+  "properties": {
+   "items": {
+    "type": "array"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "start_app_test",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "assignments": {
+    "type": "array"
+   },
+   "owners": {
+    "type": "array"
+   },
+   "places": {
+    "type": "array"
+   },
+   "purpose": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "scenario": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "purpose",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_app",
+  "properties": {
+   "name": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_automation",
+  "properties": {
+   "automation": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "automation",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_case_list_column",
+  "properties": {
+   "column": {
+    "union": true
+   },
+   "columnUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columnUuid",
+   "column",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_case_operation",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "operation": {
+    "union": true
+   },
+   "operationUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "operationUuid",
+   "operation",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_case_property",
+  "properties": {
+   "caseType": {
+    "type": "string"
+   },
+   "property": {
+    "type": "string",
+    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "updates": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "caseType",
+   "property",
+   "updates",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_entry_point",
+  "properties": {
+   "entryPointUuid": {
+    "type": "string"
+   },
+   "patch": {
+    "type": "object"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "entryPointUuid",
+   "patch",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_form",
+  "properties": {
+   "close_condition": {
+    "union": true
+   },
+   "connect": {
+    "union": true
+   },
+   "displayCondition": {
+    "union": true
+   },
+   "entry": {
+    "union": true
+   },
+   "formUuid": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "post_submit": {
+    "union": true
+   },
+   "purpose": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "recordName": {},
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_form_link",
+  "properties": {
+   "formUuid": {
+    "type": "string"
+   },
+   "link": {
+    "type": "object"
+   },
+   "linkUuid": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "formUuid",
+   "linkUuid",
+   "link",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_language",
+  "properties": {
+   "action": {
+    "type": "string",
+    "enum": [
+     "set-default",
+     "change-identity"
+    ]
+   },
+   "language": {},
+   "replacement": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "action",
+   "language",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_location",
+  "properties": {
+   "afterSiblingId": {
+    "union": true
+   },
+   "expectedRevision": {
+    "type": "string",
+    "pattern": "^(0|[1-9]\\d*)$"
+   },
+   "externalId": {
+    "union": true
+   },
+   "latitude": {
+    "union": true
+   },
+   "levelUuid": {
+    "type": "string"
+   },
+   "locationUuid": {
+    "type": "string"
+   },
+   "longitude": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "parentId": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "valuePatch": {
+    "type": "object"
+   },
+   "values": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "locationUuid",
+   "expectedRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_location_property",
+  "properties": {
+   "choices": {
+    "union": true
+   },
+   "label": {
+    "type": "string"
+   },
+   "levelUuids": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "required": {
+    "type": [
+     "boolean",
+     "null"
+    ]
+   },
+   "slug": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_lookup_table",
+  "properties": {
+   "expectedTableRevision": {
+    "type": "string",
+    "pattern": "^(?:0|[1-9][0-9]*)$"
+   },
+   "name": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "tableId": {
+    "type": "string"
+   },
+   "tag": {
+    "type": "string",
+    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "tableId",
+   "expectedTableRevision",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_member_role",
+  "properties": {
+   "member_id": {
+    "type": "string"
+   },
+   "project_id": {
+    "type": "string"
+   },
+   "role": {
+    "type": "string",
+    "enum": [
+     "viewer",
+     "editor",
+     "admin"
+    ]
+   }
+  },
+  "required": [
+   "project_id",
+   "member_id",
+   "role"
+  ]
+ },
+ {
+  "name": "update_module",
+  "properties": {
+   "case_list_columns": {
+    "type": "array"
+   },
+   "case_type": {
+    "type": "string"
+   },
+   "displayCondition": {
+    "union": true
+   },
+   "moduleUuid": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "parentCaseModuleUuid": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_organization_level",
+  "properties": {
+   "addressBook": {
+    "union": true
+   },
+   "caseFlow": {
+    "union": true
+   },
+   "description": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "parentLevelUuid": {
+    "union": true
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_persona",
+  "properties": {
+   "description": {
+    "union": true
+   },
+   "locationUuids": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "userTypeUuid": {
+    "union": true
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "valuePatch": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_search_input",
+  "properties": {
+   "moduleUuid": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "searchInput": {
+    "union": true
+   },
+   "searchInputUuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuid",
+   "searchInput",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_translations",
+  "properties": {
+   "language": {},
+   "request_id": {
+    "type": "string"
+   },
+   "updates": {
+    "type": "array"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "language",
+   "updates",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_user_property",
+  "properties": {
+   "choices": {
+    "union": true
+   },
+   "label": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "required": {
+    "type": [
+     "boolean",
+     "null"
+    ]
+   },
+   "slug": {
+    "type": "string",
+    "pattern": "^[a-zA-Z_][-a-zA-Z0-9_]*$"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "update_user_type",
+  "properties": {
+   "description": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "request_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "type": "string"
+   },
+   "valuePatch": {
+    "type": "object"
+   },
+   "work_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "work_id",
+   "request_id"
+  ]
+ },
+ {
+  "name": "upload_app_to_hq",
+  "properties": {
+   "adopt_resources": {
+    "type": "array"
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "app_name": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "upload_media_asset",
+  "properties": {
+   "data_base64": {
+    "type": "string"
+   },
+   "filename": {
+    "type": "string"
+   },
+   "mime_type": {
+    "type": "string"
+   },
+   "project_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "filename",
+   "mime_type",
+   "data_base64"
+  ]
+ }
+]

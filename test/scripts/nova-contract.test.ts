@@ -5,9 +5,10 @@
  * Two tiers, on purpose:
  *
  *  1. OFFLINE (always runs, no network). Exercises the pure `checkNovaContract`
- *     against `test/fixtures/nova/tools-list-2026-07-31.json` — a capture of the
- *     real post-migration `tools/list` (63 tools, top-level parameter shape only,
- *     descriptions stripped). Also replays the PRE-migration index-addressed
+ *     against `test/fixtures/nova/tools-list-2026-09-28.json` — a capture of the
+ *     real post-#693 `tools/list` (127 tools, top-level parameter shape only,
+ *     descriptions stripped). The 2026-07-31 capture (63 tools) is kept as the
+ *     PRE-private-work shape so the checker is proven to fire on that migration too. Also replays the PRE-migration index-addressed
  *     shape to prove the checker actually fires; a green checker that cannot go
  *     red is the failure mode this whole file exists to prevent.
  *
@@ -23,21 +24,28 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  RETIRED_TOOLS,
   checkNovaContract,
   fetchNovaToolList,
   resolveNovaApiKey,
   NOVA_CONTRACT,
-  UUID_PATTERN,
   FORBIDDEN_ADDRESSING_PARAMS,
   type NovaTool,
 } from '../../scripts/probe-nova-contract.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, '..', 'fixtures', 'nova', 'tools-list-2026-07-31.json');
+const FIXTURE = path.join(HERE, '..', 'fixtures', 'nova', 'tools-list-2026-09-28.json');
 const LIVE = process.env.NOVA_INTEGRATION === '1';
 
 function liveShape(): NovaTool[] {
   return JSON.parse(fs.readFileSync(FIXTURE, 'utf8')) as NovaTool[];
+}
+
+/** The 2026-07-31 capture: uuid-addressed, but app_id-addressed immediate saves. */
+function prePrivateWorkShape(): NovaTool[] {
+  return JSON.parse(
+    fs.readFileSync(path.join(HERE, '..', 'fixtures', 'nova', 'tools-list-2026-07-31.json'), 'utf8')
+  ) as NovaTool[];
 }
 
 /** The pre-2026-07-31 index-addressed shape, as it actually was. */
@@ -79,8 +87,8 @@ function preMigrationShape(): NovaTool[] {
 describe('nova contract fixture (offline)', () => {
   it('captures the whole live surface', () => {
     const tools = liveShape();
-    expect(tools).toHaveLength(63);
-    expect(new Set(tools.map((t) => t.name)).size).toBe(63);
+    expect(tools).toHaveLength(127);
+    expect(new Set(tools.map((t) => t.name)).size).toBe(127);
   });
 
   it('accepts the captured live shape with zero violations', () => {
@@ -102,36 +110,57 @@ describe('nova contract fixture (offline)', () => {
     }
   });
 
-  it('update_app carries name + app_id only — connect_type is gone (ace#1133)', () => {
-    const t = liveShape().find((x) => x.name === 'update_app')!;
-    expect(Object.keys(t.properties ?? {}).sort()).toEqual(['app_id', 'name']);
+  it('create_app is gone — a new app is begin_work({new_app}) + save_work (voidcraft-labs/commcare-nova#693)', () => {
+    const names = liveShape().map((t) => t.name);
+    expect(RETIRED_TOOLS).toContain('create_app');
+    for (const r of RETIRED_TOOLS) expect(names).not.toContain(r);
+    const bw = liveShape().find((x) => x.name === 'begin_work')!;
+    expect(Object.keys(bw.properties ?? {})).toEqual(expect.arrayContaining(['app_id', 'new_app', 'request_id']));
   });
 
-  it('configure_connect is the replacement and takes a participant set (ace#1133)', () => {
-    const t = liveShape().find((x) => x.name === 'configure_connect')!;
-    expect(t.required).toEqual(expect.arrayContaining(['mode', 'app_id']));
-    expect(Object.keys(t.properties ?? {})).toContain('participants');
-  });
-
-  it('search_blueprint is the targeted index→uuid resolver (ace#1132)', () => {
-    const t = liveShape().find((x) => x.name === 'search_blueprint')!;
-    expect([...(t.required ?? [])].sort()).toEqual(['app_id', 'query']);
-  });
-
-  it('create_module / create_form accept caller-minted uuids', () => {
-    for (const [name, prop] of [
-      ['create_module', 'moduleUuid'],
-      ['create_form', 'formUuid'],
-    ] as const) {
+  it('every pinned mutation is staged: requires work_id + request_id, takes no app_id', () => {
+    const staged = [
+      'create_module', 'create_form', 'add_fields', 'edit_field', 'update_form',
+      'update_module', 'update_app', 'configure_connect', 'set_field_options_source',
+      'attach_field_media', 'set_menu_media', 'update_translations',
+    ];
+    for (const name of staged) {
       const t = liveShape().find((x) => x.name === name)!;
-      expect(Object.keys(t.properties ?? {}), name).toContain(prop);
+      expect(t.required, name).toEqual(expect.arrayContaining(['work_id', 'request_id']));
+      expect(Object.keys(t.properties ?? {}), name).not.toContain('app_id');
     }
   });
 
-  it('uuid params carry the canonical lowercase RFC-UUID regex', () => {
+  it('save_work binds the candidate revision', () => {
+    const t = liveShape().find((x) => x.name === 'save_work')!;
+    expect([...(t.required ?? [])].sort()).toEqual(['expected_revision', 'request_id', 'work_id']);
+  });
+
+  it('update_app carries no connect_type (ace#1133)', () => {
+    const t = liveShape().find((x) => x.name === 'update_app')!;
+    expect(Object.keys(t.properties ?? {})).not.toContain('connect_type');
+  });
+
+  it('configure_connect takes a participant set (ace#1133)', () => {
+    const t = liveShape().find((x) => x.name === 'configure_connect')!;
+    expect(Object.keys(t.properties ?? {})).toContain('participants');
+  });
+
+  it('create_module / create_form accept caller-minted uuids but no nested children', () => {
+    for (const [name, prop, nested] of [
+      ['create_module', 'moduleUuid', 'forms'],
+      ['create_form', 'formUuid', 'fields'],
+    ] as const) {
+      const t = liveShape().find((x) => x.name === name)!;
+      expect(Object.keys(t.properties ?? {}), name).toContain(prop);
+      expect(Object.keys(t.properties ?? {}), name).not.toContain(nested);
+    }
+  });
+
+  it('address params no longer carry the uuid regex — ids OR names are accepted (#693)', () => {
     const t = liveShape().find((x) => x.name === 'get_field')!;
     for (const p of ['moduleUuid', 'formUuid', 'fieldUuid']) {
-      expect((t.properties as Record<string, { pattern?: string }>)[p].pattern).toBe(UUID_PATTERN);
+      expect((t.properties as Record<string, { pattern?: string }>)[p].pattern).toBeUndefined();
     }
   });
 });
@@ -139,16 +168,18 @@ describe('nova contract fixture (offline)', () => {
 describe('checkNovaContract detects the drift it was written for', () => {
   it('flags the pre-migration index-addressed surface', () => {
     const v = checkNovaContract(preMigrationShape());
-    expect(v.length).toBeGreaterThan(0);
-
-    // The generalizing assertion: index addressing anywhere is a violation.
     const idx = v.filter((x) => x.kind === 'index_addressing_returned');
     expect(idx.map((x) => x.tool).sort()).toEqual(['get_field', 'get_field', 'get_field', 'get_form', 'get_form', 'get_module']);
-
-    // And the exact call that broke mid-run in #1132.
-    expect(v.some((x) => x.tool === 'get_field' && x.kind === 'required_drift')).toBe(true);
-    // And the removed-then-restored parameter from #1133.
     expect(v.some((x) => x.tool === 'update_app' && x.kind === 'prop_forbidden')).toBe(true);
+  });
+
+  it('flags the pre-private-work (2026-07-31) surface — the drift that hit on 2026-09-27', () => {
+    const v = checkNovaContract(prePrivateWorkShape());
+    expect(v).toContainEqual(expect.objectContaining({ kind: 'retired_tool_returned', tool: 'create_app' }));
+    expect(v).toContainEqual(expect.objectContaining({ kind: 'tool_missing', tool: 'begin_work' }));
+    expect(v).toContainEqual(expect.objectContaining({ kind: 'tool_missing', tool: 'save_work' }));
+    expect(v.some((x) => x.tool === 'add_fields' && x.kind === 'required_drift')).toBe(true);
+    expect(v.some((x) => x.tool === 'create_form' && x.kind === 'prop_forbidden')).toBe(true);
   });
 
   it('flags a removed tool', () => {
@@ -167,12 +198,12 @@ describe('checkNovaContract detects the drift it was written for', () => {
     );
   });
 
-  it('flags a uuid format change', () => {
+  it('flags an app_id creeping back onto a staged mutation', () => {
     const tools = liveShape();
-    const gf = tools.find((t) => t.name === 'get_form')!;
-    (gf.properties as Record<string, { pattern?: string }>).formUuid.pattern = '^[A-Z0-9]+$';
+    const af = tools.find((t) => t.name === 'add_fields')!;
+    (af.properties as Record<string, unknown>).app_id = { type: 'string' };
     expect(checkNovaContract(tools)).toContainEqual(
-      expect.objectContaining({ kind: 'uuid_pattern_drift', tool: 'get_form' })
+      expect.objectContaining({ kind: 'prop_forbidden', tool: 'add_fields' })
     );
   });
 

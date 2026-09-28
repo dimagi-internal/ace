@@ -10,7 +10,8 @@ skill (to keep the per-run context small) is not lost.
 
 The `<learn:deliver>` marker compiles into the released CCZ only when the
 app carries an **app-level Connect mode of `deliver`** — set by
-`configure_connect({app_id, mode: "deliver", participants})` — plus a
+`configure_connect({work_id, request_id, mode: "deliver", participants})`
+(a staged private-work edit, saved by `save_work` — voidcraft-labs/commcare-nova#693) — plus a
 per-form `connect.deliver_unit` block on each paid form. The app-level
 mode is the lever; the per-form block alone is **not** sufficient — with
 no app-level mode the compiler emits zero markers even though every form
@@ -22,7 +23,8 @@ carries a `connect.deliver_unit` and `get_app` / `get_form` report
 (Before Nova's 2026-07-31 redeploy the app-level mode was a
 `connect_type` property set at scaffold time and healable via
 `update_app({connect_type})`. Both are gone: `update_app` now takes
-`{name, app_id}` only, and `configure_connect` is the sole path —
+a display `name` only (inside private work since 2026-09-27), and
+`configure_connect` is the sole path —
 dimagi-internal/ace#1133. It is **REPLACE-ALL**: a form omitted from
 `participants[]` has its Connect block cleared. Historical run notes
 below that speak of `connect_type: ""` describe the same defect —

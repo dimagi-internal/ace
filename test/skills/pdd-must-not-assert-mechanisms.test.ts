@@ -264,7 +264,7 @@ function flatten(md: string): string {
 describe('pdd-to-deliver-app entity_id guidance (ace#1232)', () => {
   const deliver = () => readFileSync(DELIVER, 'utf8');
 
-  it('states that parts is XPath source, and never that it concatenates for you', () => {
+  it('states that the entity_id expression is raw XPath, and never that it concatenates for you', () => {
     const source = deliver();
 
     expect(
@@ -274,13 +274,14 @@ describe('pdd-to-deliver-app entity_id guidance (ace#1232)', () => {
         'operator — the key evaluates to NaN for every worker (ace#1232).',
     ).not.toMatch(/concatenat\w*\s+natively/i);
 
+    // Since voidcraft-labs/commcare-nova#693 the expression is a plain string,
+    // not a {parts} list — the hazard is identical: nothing joins or quotes.
     expect(flatten(source), 'the rule itself must be stated').toMatch(
-      /`parts` is XPath SOURCE/i,
+      /raw XPath — nothing concatenates or quotes for you/i,
     );
     // The only correct construction: an explicit concat() the author writes,
     // with the separator quoted INSIDE it.
-    expect(source).toMatch(/text:\s*"concat\("/);
-    expect(source).toMatch(/text:\s*", ' - ', "/);
+    expect(source).toMatch(/concat\(#user\/username, ' - ', #form\/visit_date\)/);
   });
 
   it('sanctions a #case/ read in a calculate for a followup entity_id — and no preload shape', () => {

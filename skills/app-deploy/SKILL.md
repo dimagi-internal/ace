@@ -88,7 +88,14 @@ orchestrator from per-skill QA + eval verdicts. -->
       `<`, `>`, `&` that isn't part of a recognized XML entity.)
    3. For each hit, fix via `edit_field` —
       replace `<` with `&lt;`, `>` with `&gt;`, `&` (not in an entity)
-      with `&amp;`. Document each change in
+      with `&amp;`. The fixes are private-work edits
+      (voidcraft-labs/commcare-nova#693): one `begin_work({app_id,
+      request_id})` per app, each `edit_field` with that `work_id` and a
+      fresh `request_id` (no `app_id`), then `save_work({work_id,
+      request_id, expected_revision})` — which must answer `saved: true`
+      BEFORE Step 3, because the upload reads only the saved app. Contract:
+      `playbook/integrations/nova-integration.md § The private-work
+      authoring contract`. Document each change in
       `ACE/<opp-name>/app-summaries/{learn,deliver}-app-summary.md` under
       a `## XML-escape lint fixes` section.
    4. Note: this is a **class-level preventer**, not a one-time
@@ -101,6 +108,16 @@ orchestrator from per-skill QA + eval verdicts. -->
    If the lint is skipped (e.g. Nova MCP unauthed at this point), log
    `app-deploy-xml-lint: skipped-nova-unauthed` in `run_state.yaml` and add
    a `[WARN]` to `auto_surfaced`.
+
+2.9. **No unsaved ACE work on either app.** `upload_app_to_hq` reads the
+   SAVED app; pending private-work edits are silently excluded, with no
+   error anywhere. Every earlier ACE edit pass on these apps (Step 2.5,
+   `app-connect-coverage`, `app-media-coverage`, `pdd-to-*-app` post-build
+   steps) must have ended in a `save_work` that answered `saved: true`. Confirm
+   with one `list_work({app_id})` per app: any entry with `pending_changes > 0`
+   is an edit that will NOT ship. Halt with `[BLOCKER] unsaved-nova-work`
+   naming the `work_id` — do not save it blind (it may be stale or
+   half-finished; the skill that opened it owns it) and do not upload past it.
 
 3. **Upload Learn app.** Run (always pass the target project space as
    the trailing argument):
@@ -127,29 +144,37 @@ orchestrator from per-skill QA + eval verdicts. -->
 
 4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` handling.
 
-4.5. **Verify HQ feature flags for the target space** (ace#1048). Some
-   CommCare capabilities only work when a **domain feature flag** is on, and
-   an app that works in a space where a flag happens to be enabled silently
-   does not in one where it isn't. Ask Nova, per app, against the space we
-   just uploaded to:
+4.5. **Verify the target space can run each app** (ace#1048). Some
+   CommCare capabilities only work when the project space supports them (a
+   domain feature flag, most often), and an app that works in a space where a
+   flag happens to be on silently does not in one where it isn't. Ask Nova,
+   per app, about the space we just uploaded to:
 
    ```
-   get_app_hq_feature_flags({ app_id: <nova_app_id>, domain: <ACE_HQ_DOMAIN> })
+   check_project_space_compatibility({ app_id: <nova_app_id>, domain: <ACE_HQ_DOMAIN> })
    ```
 
    Use the **Nova** `app_id` (not the HQ app id). Run it for **both** apps.
-   The tool is read-only and never enables anything.
+   The tool is read-only; it never enables anything. (It replaced the
+   retired `get_app_hq_feature_flags`, which is absent from the 127-tool
+   surface verified 2026-09-28. `upload_app_to_hq` now also runs this check
+   itself before any remote write and refuses a `blocked` app with
+   `project_space_incompatible` — so reaching this step means the upload
+   passed it; this re-read records the result and its advisories.)
 
-   Branch on `feature_flag_requirements.verification`:
+   Branch on `project_space_compatibility.status` and each entry's state:
 
    | result | disposition |
    |---|---|
-   | `verified`, `missing_flags` empty | `[PASS]` — record and move on |
-   | `verified`, `missing_flags` non-empty | **`[BLOCKER]`** — the app needs a flag the target space does not have |
-   | `not_checked` / any `unverified_flags` | **`[WARN]`** — record as explicitly UNVERIFIED |
+   | `not_needed`, or `ready` with no `unverified` advisories | `[PASS]` — record and move on |
+   | `blocked` with a `missing` blocker | **`[BLOCKER]`** — the app needs a capability the target space does not have |
+   | `blocked` with an `unverified` blocker, or any `unverified` advisory | **`[WARN]`** — record as explicitly UNVERIFIED |
 
-   On `missing_flags`: surface each flag's `label`, `slug`, and the
-   `reasons[]` naming the app configuration that caused the requirement. Then
+   Advisories never block (e.g. slower large Search results); record them.
+
+   On a `missing` blocker: surface its friendly `label`, `description`, and
+   the app-specific `reasons` naming the configuration that caused the
+   requirement (Nova deliberately hides flag slugs here). Then
    **branch on WHERE the requirement came from** — the two cases have opposite
    remedies, and emitting the wrong one costs a redeploy (ace#1195):
 
@@ -404,7 +429,9 @@ producer no longer authors a separate gate-brief artifact. -->
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:upload_to_hq`, `/nova:show`
-- **Nova MCP:** `get_app_hq_feature_flags` (Step 4.5 — read-only; never enables a flag)
+- **Nova MCP (private work):** `list_work` (Step 2.9), and for Step 2.5 fixes
+  `begin_work` → `edit_field` → `save_work`
+- **Nova MCP:** `check_project_space_compatibility` (Step 4.5 — read-only; never enables anything; replaced `get_app_hq_feature_flags`)
 - **ace-connect MCP:** `commcare_delete_app` (Step 4.6 — soft-deletes a
   superseded HQ app returned in `deployment.left_behind`; reversible from HQ's
   deleted-applications list)
@@ -437,3 +464,4 @@ When `--dry-run` is active:
 | 2026-08-13 | **Step 4.6 — clean up `deployment.left_behind` instead of only naming it.** HQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document; Nova returns the superseded id(s) in `deployment.left_behind`. Nova's own guidance stops at naming them, which is the right boundary for Nova (it will not delete a user's app) and the wrong one for ACE — the superseded draft is ours, seconds old, unreferenced, and leaving it behind means every re-upload silently adds an orphan for `/ace:sweep hq`. Observed on hh-poverty-targeting/20260812-2034, where a screen-split re-upload stranded `07f9b7c8…`. Now soft-deleted via `commcare_delete_app` (HQ's own reversible delete — restorable from the deleted-applications list, which is why it is safe automatically), with guard rails: only ids from THIS call's `left_behind`, never one read from an artifact, never the id just uploaded to; a failed delete is a `[WARN]` named in the summary for sweep to finish, never a halt. Adds `{learn,deliver}_superseded_hq_app_id` to the summary frontmatter and REQUIRES an explicit re-upload callout in the summary body whenever `left_behind` is non-empty — the new HQ id is what Phase 4 wires into the Connect opportunity at create time, and Connect's edit form does not expose those fields, so a stale id costs a delete-and-recreate. | ACE team |
 | 2026-08-18 | **Step 4.6 — HQ uploads UPDATE IN PLACE; the fresh-app-id premise is retired.** The 2026-08-13 entry above rested on "CCHQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document." That is no longer true, and the whole orphan-per-re-upload model went with it. Verified live against `connect-ace-prod` on 2026-08-18: Nova app `4dd0325b…` re-uploaded twice returned `hq_app_action: "updated"` both times, held `hq_app_id: c0d7027316bc46f8b4fdf4b47fd8d90b` constant, advanced `deployment.remote_revision` 6 → 8, and returned `left_behind: []` each time. So a mid-run re-upload no longer changes the id Phase 4 wires into the Connect opportunity, and no longer strands an orphan for `/ace:sweep hq`. The `left_behind` cleanup and its guard rails STAY — Nova still returns the field, and the id can still change via `remote_app_missing` (the linked HQ app was deleted there, so the next upload creates a fresh one). Adds `{learn,deliver}_hq_app_action` to the summary frontmatter; the loud callout now fires on an id that actually CHANGED (non-empty `left_behind`, or `hq_app_action: created` for an app already uploaded this run) rather than on every re-upload. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-28 | **Private-work edits and an unsaved-work gate (voidcraft-labs/commcare-nova#693).** Nova now stages every mutation until `save_work`, and `upload_app_to_hq` reads only the SAVED app — so an unsaved ACE edit ships nowhere with no error. Step 2.5's `edit_field` fixes run in `begin_work` / `save_work` and must answer `saved: true` before upload; new Step 2.9 checks `list_work({app_id})` for pending changes and halts `unsaved-nova-work` rather than uploading past them. | ACE team |
