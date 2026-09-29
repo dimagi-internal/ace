@@ -2061,7 +2061,7 @@ export class AvdBackend {
     return {
       avdName,
       snapshotName,
-      saved: r.exitCode === 0 && !/error/i.test(r.stdout + r.stderr),
+      saved: snapshotSaveSucceeded(r.exitCode, r.stdout + r.stderr),
       output: (r.stdout + r.stderr).trim(),
     };
   }
@@ -2492,4 +2492,17 @@ export class AvdBackend {
     }
     return out;
   }
+}
+
+/**
+ * Did `adb emu avd snapshot save` actually save? `adb emu` exits 0 either way;
+ * the emulator console answers `OK` or `KO: <reason>` (same convention as
+ * `geo fix`). A `-read-only` instance — every heal-funnel boot — replies
+ * `KO: Snapshot save is disabled because "-read-only" was specified`, which the
+ * old `/error/i` test read as success (ace#2545).
+ */
+export function snapshotSaveSucceeded(exitCode: number | null, output: string): boolean {
+  if (exitCode !== 0) return false;
+  if (/^\s*KO\b/m.test(output)) return false;
+  return !/error/i.test(output);
 }
