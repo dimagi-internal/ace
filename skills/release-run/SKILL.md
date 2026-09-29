@@ -96,9 +96,10 @@ curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${ACE_WEB_BASE_URL%/}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release"
 ```
 
-From then on the source run's public summary 308-redirects to this run's, and
+From then on the source run's public summary 307-redirects (uncacheable, so
+turning forwarding off takes effect) to this run's, and
 the page moves its own address there. Verify: an anonymous `curl -sI` of the
-source summary API shows `308` and a `Location` naming this run. A `400` means
+source summary API shows `307` and a `Location` naming this run. A `400` means
 this run is not a finished clone — there is no source link to forward.
 
 ## Step 4 — Invite, last
