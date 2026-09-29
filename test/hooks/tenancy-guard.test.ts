@@ -169,6 +169,30 @@ describe('bound session', () => {
   });
 });
 
+describe('warn mode (rollout for /ace:run and /ace:turn)', () => {
+  it('lets a would-be refusal through and records it', () => {
+    const r = spawnSync(BIND, ['spark/spark-facilitator', '--warn', '--tenancy-json', JSON.stringify(SPARK)], {
+      env: env({ CLAUDE_CODE_SESSION_ID: SESSION }),
+      encoding: 'utf8',
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('(warn)');
+    expect(guard(HQ, { domain: 'connect-ace-prod' }).code).toBe(0);
+    const log = fs.readFileSync(path.join(bindDir, 'bound-violations.log'), 'utf8');
+    expect(log).toContain('connect-ace-prod');
+    expect(log).toContain('spark/spark-facilitator');
+  });
+
+  it('records nothing for an allowed write', () => {
+    spawnSync(BIND, ['spark/spark-facilitator', '--warn', '--tenancy-json', JSON.stringify(SPARK)], {
+      env: env({ CLAUDE_CODE_SESSION_ID: SESSION }),
+      encoding: 'utf8',
+    });
+    expect(guard(HQ, { domain: 'connect-ace-spark' }).code).toBe(0);
+    expect(fs.existsSync(path.join(bindDir, 'bound-violations.log'))).toBe(false);
+  });
+});
+
 describe('bin/ace-bind', () => {
   it('writes the bind file for the current session and --show prints it', () => {
     bind(SPARK);

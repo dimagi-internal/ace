@@ -179,7 +179,7 @@ def matching_rule(tool_name: str, rules: list[dict]) -> dict | None:
     return None
 
 
-def _log_unbound(session_id: str, tool_name: str, tool_input: dict) -> None:
+def _log(name: str, session_id: str, tool_name: str, tool_input: dict, **extra) -> None:
     try:
         os.makedirs(bind_dir(), exist_ok=True)
         line = json.dumps({
@@ -187,9 +187,10 @@ def _log_unbound(session_id: str, tool_name: str, tool_input: dict) -> None:
             "session_id": session_id,
             "tool": tool_name,
             "input": tool_input,
+            **extra,
         }, sort_keys=True, default=str)
-        with open(os.path.join(bind_dir(), "unbound-writes.log"), "a", encoding="utf-8") as f:
-            f.write(line[:2000] + "\n")
+        with open(os.path.join(bind_dir(), name), "a", encoding="utf-8") as f:
+            f.write(line[:4000] + "\n")
     except OSError:
         pass
 
@@ -217,13 +218,19 @@ def main() -> int:
     session_id = payload.get("session_id") or ""
     bound = read_bind(session_id)
     if bound is None:
-        _log_unbound(session_id, tool_name, tool_input)
+        _log("unbound-writes.log", session_id, tool_name, tool_input)
         return 0
 
     problems = violations(rule, tool_input, bound.get("tenancy") or {})
     if not problems:
         return 0
     opp = f"{bound.get('workspace', '?')}/{bound.get('opp', '?')}"
+    if bound.get("mode") == "warn":
+        # Rollout mode for /ace:run and /ace:turn: record what enforcement WOULD
+        # refuse, and let the call through. Clone and release bind in enforce.
+        _log("bound-violations.log", session_id, tool_name, tool_input,
+             opp=opp, problems=problems)
+        return 0
     sys.stderr.write(
         f"BLOCKED by the tenancy guard: this session is bound to opp {opp}, and "
         f"{tool_name.rsplit('__', 1)[-1]} would write outside that opp's tenancy.\n"
