@@ -156,10 +156,20 @@ curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${ACE_WEB_BASE_URL%/}/api/w/<from>/opps/<opp>/runs/<run-id>/clone"
 ```
 
-Blocking (~150 ms per file; minutes on a large run). `201` → the run now exists
-at `<to>`'s Drive root as `<opp>/runs/<run-id>/`, and the target opp has the
-target's default tenancy. `409` → already copied: go to Step 3 (resume). On a
-client timeout, poll `…/clones` — never re-POST blindly.
+`202` → the copy has started on ace-web's side (ace-web#824): poll `GET
+…/api/w/<from>/opps/<opp>/runs/<run-id>/clones` every ~30 s until that
+record's `status` is `done` (the run now exists at `<to>`'s Drive root as
+`<opp>/runs/<run-id>/` and the target opp has the target's default tenancy)
+or `error` (report it; re-POST replaces the partial run). Budget ~2.4 s per
+file — the first real clone, 347 files, took ~14 min. `files_copied` rising
+means it is alive. `409` → already copied, or a copy still in progress: go to
+Step 3 (resume) once `…/clones` says `done`. Never re-POST while a record is
+`copying` and still progressing. Comms-logs are not copied (internal; ACE
+routes inbound mail by them). An older ace-web answers `201` after copying
+in-request — then treat a 504 as "still copying" and poll the same way.
+
+Steps 3–4 do not depend on the Drive copy finishing except where they write
+the TARGET `run_state.yaml`; wait for `done` before 4's first write.
 
 ## Step 3 — Bind this session to the NEW opp
 
