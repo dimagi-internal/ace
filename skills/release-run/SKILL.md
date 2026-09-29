@@ -26,6 +26,12 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 - `--reviewers` — emails, each optionally `:viewer|editor` (default `viewer`).
 - `--forward-source` — the source run's public summary link was already sent
   to these reviewers (Spark's case): make it land on this run.
+- `--allow-shared connect` — **interim exception** (Jon, 2026-09-29): invite
+  outside reviewers into the SHARED Connect orgs (the tenancy's
+  `connect_pm_org` and `connect_holding_org`, i.e. `ace-pm-org` /
+  `ace-nm-org`) even though that exposes every ACE opportunity in them. Every
+  such grant is recorded as a shared grant to revoke once per-partner Connect
+  orgs exist. Connect is the only system this flag applies to.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`.
@@ -41,9 +47,11 @@ owner of `<workspace>`.
      which holds nothing else).
    - **Connect:** `clone.connect.status == done`.
    - **Labs:** `clone.labs.status == done`.
-   A system that is still the shared tenant (no clone, or `not-done`) is
-   **never** granted to an outside reviewer — every grant there opens every
-   ACE run. Report it `NOT GRANTED — shared tenant` instead.
+   A system that is still the shared tenant (no clone, `not-done`, or
+   `kept-shared`) is **never** granted to an outside reviewer — every grant
+   there opens every ACE run. Report it `NOT GRANTED — shared tenant` instead.
+   **The one exception** is Connect with `--allow-shared connect`: grant it,
+   and record it as a shared grant (Step 5).
 3. **OCS: nobody gets an account.** Reviewers chat through the bot's public
    link (`products.ocs_chatbot.public_url`), which goes in the invite email.
    OCS permissions are team-wide (see `share-run-access`).
@@ -89,7 +97,10 @@ Then, in this order:
    "App Editor")`. App Editor is acceptable only because the space holds just
    this run's apps; stock Read Only 403s on app pages.
 2. **Connect** — `connect_add_org_member(organization_slug:
-   tenancy.connect_holding_org, email, role: "viewer")`. Tell the reviewer to
+   tenancy.connect_holding_org, email, role: "viewer")`. With
+   `--allow-shared connect`, ALSO add them as `viewer` to
+   `tenancy.connect_pm_org` (the program lives there), and mark both grants
+   shared. Tell the reviewer to
    sign in to Connect with "Log in with CommCare HQ" BEFORE accepting — an
    invite accepted first creates a password account that breaks HQ sign-in.
 3. **Labs** — no call: the clone already allowed their domain.
@@ -114,10 +125,16 @@ curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
 ```
 
 Also write `released: {at, by, to: [emails]}` into the run's `run_state.yaml`
-(`update_yaml_file`).
+(`update_yaml_file`). With `--allow-shared connect`, add
+`released.shared_grants: [{system: connect, org, email, role, at}]` — one row
+per grant into a shared org. That list is the revocation checklist: ACE has no
+tool to remove a Connect org member, so revoking is manual in Connect's org
+settings once per-partner orgs exist.
 
 ## Report
 
-Per reviewer × system: `granted` (with read-back), `NOT GRANTED — shared
-tenant`, `public link (no account)` for OCS, or `NOT DONE` + reason; the audit
+Per reviewer × system: `granted` (with read-back), `granted — SHARED, revoke
+later` (Connect under `--allow-shared connect`, listed again at the end as the
+revocation checklist), `NOT GRANTED — shared tenant`, `public link (no
+account)` for OCS, or `NOT DONE` + reason; the audit
 result and the polish changes; whether the source link now forwards.

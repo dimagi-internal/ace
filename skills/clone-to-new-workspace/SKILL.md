@@ -39,6 +39,12 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - `--to <workspace>` — target workspace. Its **default tenancy** (ace-web
   Workspace Settings / `PATCH /api/workspaces/<slug>` `default_tenancy`) says
   where the rebuilt assets go.
+- `--keep-shared connect` — **interim exception** (Jon, 2026-09-29): partner
+  Connect orgs can't be created yet, so the clone KEEPS the source's Connect
+  program + opportunity in the shared orgs instead of re-running Phase 4. The
+  target tenancy's Connect orgs are then the shared ones
+  (`ace-pm-org` / `ace-nm-org`), which Step 1.3 would otherwise refuse. Use it
+  only until per-partner org creation exists.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN` (same as `fork-run`). The PAT's
 owner must be an **owner of both** workspaces.
@@ -65,7 +71,9 @@ start Step 2 with a failed preflight.
 3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
    (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
    source's (e.g. `hq_domain: connect-ace-prod` in both) defeats the purpose —
-   refuse it and name the field.
+   refuse it and name the field. **Exception:** with `--keep-shared connect`,
+   equal `connect_pm_org` / `connect_holding_org` are accepted (say so in the
+   report); every other field still must differ.
 4. **Per system, one-time setup the target needs:**
    - **HQ:** `commcare_list_apps(domain: <hq_domain>)` succeeds → exists and ACE
      is a member. A "not found" is fine — Step 3 creates it. Any other error
@@ -154,6 +162,19 @@ the Workbench and every later skill see the new assets, not the shared ones.
 step.
 
 ### 4b. Connect — re-run Phase 4 in the target's orgs
+
+**With `--keep-shared connect`: skip this step.** Keep the target run's copied
+`products.connect` and `opp.yaml` `connect:` block as they are (they name the
+source program and opportunity in the shared orgs), and record
+`clone.connect: {status: kept-shared, pm_org, holding_org, opportunity_id}`.
+Report it loudly: the Connect opportunity still points at the SOURCE HQ apps
+(`connect-ace-prod`), while the partner's HQ access is to the copies in
+`<hq_domain>` — identical content, different project space. The minted
+`hq-key:` (3b) is unused until the Connect step runs for real. `release`
+treats `kept-shared` as a shared tenant (only `--allow-shared connect` grants
+it).
+
+Otherwise:
 
 Connect cannot move an opportunity (its holding org is fixed at creation), so
 the clone gets its own program and opportunity, built by the SAME Phase 4 skills

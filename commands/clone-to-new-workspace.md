@@ -1,6 +1,6 @@
 ---
 description: Copy a completed ACE run into another ace-web workspace and rebuild its assets in that workspace's own HQ space, Connect orgs and Labs scope (the OCS bot is reviewed by its public link) — so it can be reviewed there without exposing other runs. No invites (that is /ace:release).
-argument-hint: "<opp>/<run-id> --to <workspace> [--from <workspace>]"
+argument-hint: "<opp>/<run-id> --to <workspace> [--from <workspace>] [--keep-shared connect]"
 allowed-tools: [Bash, Read, Skill, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-gdrive__update_yaml_file, mcp__plugin_ace_ace-connect__commcare_list_apps, mcp__plugin_ace_ace-connect__commcare_create_domain, mcp__plugin_ace_ace-connect__commcare_linked_app_copy, mcp__plugin_ace_ace-connect__commcare_make_build, mcp__plugin_ace_ace-connect__commcare_release_build, mcp__plugin_ace_ace-connect__connect_list_programs, mcp__plugin_ace_ace-connect__connect_list_opportunities, mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains]
 ---
 
