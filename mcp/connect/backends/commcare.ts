@@ -96,6 +96,54 @@ export interface CreateDomainResult {
   domain: string;
 }
 
+export interface CreateApiKeyArgs {
+  /** Project space the key is restricted to (HQ `HQApiKey.domain`). */
+  domain: string;
+  /** Key name — unique per HQ user. */
+  name: string;
+  /** Optional IPv4 allowlist. */
+  ip_allowlist?: string[];
+  /**
+   * HQ never shows an existing key's plaintext again, so a key with this name
+   * that already exists cannot be reused. true = delete it and mint a new one
+   * (rotation — only safe when nothing uses the old key yet).
+   */
+  replace_existing?: boolean;
+}
+
+export interface CreateApiKeyResult {
+  id: number;
+  name: string;
+  domain: string;
+  /** Plaintext key — the MCP layer stores it and never returns it. */
+  key: string;
+  rotated: boolean;
+}
+
+interface ApiKeyRow {
+  id: number;
+  name: string;
+  domain: string;
+}
+
+/**
+ * The plaintext key from HQ's create response. `ApiKeyView._to_json(redacted=False)`
+ * sets `key` to a 1-tuple `("<key>(Copy this in a secure place…)",)` — a JSON
+ * list — unless the user's SSO provider makes keys viewable, in which case
+ * `key` is the bare key and `full_key` is set. Accept all three shapes.
+ */
+export function extractPlaintextApiKey(itemData: Record<string, unknown>): string {
+  const raw =
+    typeof itemData.full_key === 'string'
+      ? itemData.full_key
+      : Array.isArray(itemData.key)
+        ? String(itemData.key[0] ?? '')
+        : String(itemData.key ?? '');
+  const m = /^([A-Za-z0-9]{20,})/.exec(raw.trim());
+  if (!m) throw new Error('commcare_create_api_key: HQ response did not carry a readable key');
+  return m[1];
+}
+
 export interface LinkDomainsArgs {
   /** Slug of the upstream/master domain. Caller must have access here. */
   upstream_domain: string;
@@ -946,6 +994,101 @@ export class CommCareBackend {
    * cookies satisfy both. No superuser requirement on
    * connect.dimagi.com (settings.RESTRICT_DOMAIN_CREATION is unset).
    */
+  /**
+   * Mint a CommCare HQ API key restricted to one project space.
+   *
+   * HQ has no REST endpoint for this: `ApiKeyView` (corehq/apps/settings/
+   * views.py, `/account/api_keys/`) is a CRUD form view — POST
+   * `action=create|paginate|delete` form-encoded with CSRF, as the logged-in
+   * key owner (ACE's session user). `HQApiKeyForm.domain` must be one of the
+   * user's domains; a domain-restricted key is rejected (401) on any other
+   * domain by `HQApiKeyAuthentication`. The plaintext appears ONLY in the
+   * create response (`extractPlaintextApiKey`).
+   */
+  async createApiKey(args: CreateApiKeyArgs): Promise<CreateApiKeyResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = '/account/api_keys/';
+      const url = `${this.opts.baseUrl}${path}`;
+      const refresh = await request.get(url, { maxRedirects: 0 });
+      if (refresh.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refresh, `commcare_create_api_key GET ${path}`);
+      }
+      if (refresh.status() !== 200) {
+        throw new Error(`commcare_create_api_key GET ${path} returned ${refresh.status()}`);
+      }
+      const csrf = (await this.csrfFromCookies(request)) ?? '';
+      const post = async (fields: Record<string, string>): Promise<Record<string, unknown>> => {
+        const body = Object.entries({ csrfmiddlewaretoken: csrf, ...fields })
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join('&');
+        const res = await request.post(url, {
+          data: body,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrf,
+            Referer: url,
+          },
+          maxRedirects: 0,
+        });
+        if (res.status() === 302) {
+          CommCareBackend.assertNotLoginRedirect(res, `commcare_create_api_key POST ${path}`);
+        }
+        if (res.status() !== 200) {
+          throw new Error(
+            `commcare_create_api_key POST ${path} (${fields.action}) returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+          );
+        }
+        return JSON.parse(await res.text()) as Record<string, unknown>;
+      };
+
+      // Find an existing key with this name (names are unique per user).
+      const existing: ApiKeyRow[] = [];
+      for (let page = 1; page <= 20; page++) {
+        const listed = await post({ action: 'paginate', page: String(page), limit: '50' });
+        const rows = (listed.paginatedList as Array<{ itemData: ApiKeyRow }> | undefined) ?? [];
+        existing.push(...rows.map((r) => r.itemData));
+        if (rows.length < 50 || existing.length >= Number(listed.total ?? 0)) break;
+      }
+      const same = existing.find((r) => r.name === args.name);
+      let rotated = false;
+      if (same) {
+        if (!args.replace_existing) {
+          throw new Error(
+            `commcare_create_api_key: a key named "${args.name}" already exists (id ${same.id}, ` +
+              `project ${same.domain}). HQ never shows an existing key again; pass ` +
+              `replace_existing: true to delete and re-mint it — only when nothing uses it yet.`,
+          );
+        }
+        await post({ action: 'delete', itemId: String(same.id) });
+        rotated = true;
+      }
+
+      const created = await post({
+        action: 'create',
+        name: args.name,
+        domain: args.domain,
+        ip_allowlist: (args.ip_allowlist ?? []).join(','),
+      });
+      const item = created.newItem as { itemData?: Record<string, unknown>; error?: string } | null;
+      if (!item) {
+        const errors = parseFormErrors(String(created.form ?? ''));
+        throw new Error(
+          `commcare_create_api_key: HQ rejected the form${errors.length ? `: ${errors.join(' | ')}` : ''}. ` +
+            `The domain must be a project space ace@ belongs to.`,
+        );
+      }
+      if (item.error) throw new Error(`commcare_create_api_key: ${item.error}`);
+      const data = item.itemData ?? {};
+      return {
+        id: Number(data.id),
+        name: String(data.name ?? args.name),
+        domain: String(data.domain ?? args.domain),
+        key: extractPlaintextApiKey(data),
+        rotated,
+      };
+    });
+  }
+
   async createDomain(args: CreateDomainArgs): Promise<CreateDomainResult> {
     return this.runWithSessionRetry(async (request) => {
       if (args.hr_name.length > 25) {
