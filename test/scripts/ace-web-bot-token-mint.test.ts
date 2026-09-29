@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tokenFromCallback } from '../../scripts/ace-web-bot-token-mint.js';
+import { machineLabel, tokenFromCallback } from '../../scripts/ace-web-bot-token-mint.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p: string) => readFileSync(path.join(ROOT, p), 'utf8');
@@ -56,15 +56,27 @@ describe('the mint is ACE-owned and uses only public surfaces', () => {
   });
 });
 
-describe('provisioning: 1Password, not a per-machine browser flow', () => {
-  it('.env.tpl injects ACE_WEB_PAT_TOKEN from Agent-Ace', () => {
-    expect(read('.env.tpl')).toMatch(/^ACE_WEB_PAT_TOKEN=op:\/\/Agent-Ace\/ACE - ace-web\/pat_token$/m);
+describe('provisioning: automatic per machine — no 1Password, no browser, no separate step', () => {
+  it('.env.tpl declares the name but does NOT ask op inject to resolve it', () => {
+    const tpl = read('.env.tpl');
+    expect(tpl).toMatch(/^# ACE_WEB_PAT_TOKEN=/m);
+    expect(tpl).not.toMatch(/^ACE_WEB_PAT_TOKEN=op:/m);
   });
 
-  it('the doctor points at /ace:setup and the headless mint, not the per-human flow', () => {
+  it('bin/ace-setup obtains it with --ensure', () => {
+    expect(read('bin/ace-setup')).toMatch(/scripts\/ace-web-bot-token-mint\.ts --ensure/);
+  });
+
+  it('the doctor points at /ace:setup, not a manual mint', () => {
     const line = read('bin/ace-doctor').split('\n').find((l) => l.includes('warn "ace_web_pat_token:'))!;
-    expect(line).toMatch(/ace:setup --force-env/);
-    expect(line).toMatch(/ace-web-token-mint/);
-    expect(line).not.toMatch(/ace-web-pat-mint/);
+    expect(line).toMatch(/ace:setup/);
+    expect(line).not.toMatch(/ace-web-pat-mint|ace-web-token-mint/);
+  });
+});
+
+describe('machineLabel', () => {
+  it('is stable per machine, so a re-mint can revoke its predecessors', () => {
+    expect(machineLabel('Jonathans-MBP.localdomain')).toBe('ace-bot-jonathans-mbp');
+    expect(machineLabel('Jonathans-MBP.localdomain')).toBe(machineLabel('Jonathans-MBP.localdomain'));
   });
 });

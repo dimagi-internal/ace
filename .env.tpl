@@ -396,24 +396,23 @@ ACE_WEB_WORKSPACE=dimagi-team
 #
 # ACE_WEB_UPLOAD_SESSIONS=1   # uncomment to enable
 
-# ── ace-web token — ACE's OWN (1Password-backed) ────────────────────
+# ── ace-web token — ACE's own, obtained automatically per machine ────
 #
 # ACE's credential for ace-web's API: bin/ace-bind (opp tenancy), fork-run,
 # clone-to-new-workspace, /ace:release, share-run-access invites,
 # sweep-ace-web, the video skills, upload-transcript, the cloud mobile backend.
 #
-# It belongs to ace@dimagi-ai.com — a first-class ace-web user and OWNER of
-# `dimagi-team` since ace-web#670 — so ACE's writes are attributed to ACE, not
-# to whichever human last signed in at a browser. Minted headlessly, as ACE,
-# through ace-web's own sign-in + /auth/cli/authorize/ pages by
-# /ace:ace-web-token-mint (scripts/ace-web-bot-token-mint.ts), which stores it
-# here. No server-side command and no per-machine browser flow.
+# NOT 1Password-backed, and nobody mints it by hand. ace-web's login is the
+# Connect login, which ACE already performs automatically as ace@dimagi-ai.com
+# (same as its Connect/OCS sessions), so /ace:setup signs in to ace-web as ACE
+# and writes the token to the local-only block at the bottom of the resolved
+# .env (scripts/ace-web-bot-token-mint.ts --ensure). The token belongs to
+# ace@dimagi-ai.com — an ace-web OWNER since ace-web#670 — so ace-web
+# attributes ACE's writes to ACE, not to a human.
 #
-# Replaces the per-human, per-machine token /ace:ace-web-pat-mint wrote into
-# the local-only block. A human who deliberately wants their own name on
-# ace-web calls can still mint one that way and set it by hand; this template
-# value wins on the next /ace:setup (template keys are authoritative).
-ACE_WEB_PAT_TOKEN=op://Agent-Ace/ACE - ace-web/pat_token
+# Commented on purpose: declaring the name documents it without asking
+# `op inject` to resolve it.
+# ACE_WEB_PAT_TOKEN=  # written by /ace:setup (scripts/ace-web-bot-token-mint.ts --ensure)
 
 # ─── ACE Drive Templates ───────────────────────────────────────────
 # File IDs of Google Drive templates ACE skills copy from at runtime.
