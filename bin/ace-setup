@@ -490,7 +490,10 @@ $LINT_BAD"
       NEEDS_INJECT=1
       echo "INFO env: drift detected (missing keys: $DIFF), re-injecting"
     else
-      UNRESOLVED_EXISTING="$(grep -cE '=op://' "$ENV_OUT" 2>/dev/null || echo 0)"
+      # `grep -c` PRINTS 0 and exits 1 on no match, so `|| echo 0` made it "0\n0" and the
+      # -gt test below errored ("integer expected") on every healthy re-run.
+      UNRESOLVED_EXISTING="$(grep -cE '=op://' "$ENV_OUT" 2>/dev/null)"
+      UNRESOLVED_EXISTING="${UNRESOLVED_EXISTING:-0}"
       if [ "$UNRESOLVED_EXISTING" -gt 0 ]; then
         NEEDS_INJECT=1
         echo "INFO env: $UNRESOLVED_EXISTING unresolved op:// refs in $ENV_OUT, re-injecting"
