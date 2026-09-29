@@ -272,13 +272,15 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      recovery all run automatically as part of `mobile_ensure_avd_running`
      (see `AvdBackend.runPostBootPrep`); no operator action needed.
 
-10. **Save a `registered-test-user` snapshot (recommended).**
-    - Tool: `mcp__ace_mobile__mobile_save_snapshot`
-    - Args: `{ "avdName": "${ACE_AVD_NAME}", "name": "registered-test-user" }`
-    - Future selector-discovery sessions can `mobile_load_snapshot` to
-      this state in ~3s instead of replaying the 4-minute registration
-      flow. Skip this step if `alreadyRegistered: true` was returned in
-      step 9 — the existing snapshot is already good.
+10. **Do NOT save a snapshot.** (Retired — ace#2545.) The heal funnel boots
+    every instance `-read-only -no-snapshot-save -no-snapshot-load` and
+    cold-boots with `-wipe-data` on each dispatch, so a snapshot can neither be
+    written (`KO: Snapshot save is disabled because "-read-only" was
+    specified`) nor ever loaded. Provisioning evidence is the
+    `.ace-provisioned.json` marker that `mobile_register_test_user` writes —
+    confirm it with `scripts/plan-avd-pool.ts --size 1` (reference shows
+    `(proven)`). `mobile_save_snapshot` remains a manual debugging atom for a
+    hand-launched, non-read-only emulator.
 
 11. **Print success summary.**
     - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
