@@ -44,9 +44,9 @@ describe('parseOrgMemberTable', () => {
       row(7, 'sfeintuch@dimagi-associate.com', 'Member'),
     );
     expect(parseOrgMemberTable(html)).toEqual([
-      { email: 'ace@dimagi-ai.com', role: 'admin' },
-      { email: 'jjackson@dimagi.com', role: 'admin' },
-      { email: 'sfeintuch@dimagi-associate.com', role: 'member' },
+      { email: 'ace@dimagi-ai.com', role: 'admin', id: '1' },
+      { email: 'jjackson@dimagi.com', role: 'admin', id: '2' },
+      { email: 'sfeintuch@dimagi-associate.com', role: 'member', id: '7' },
     ]);
   });
 
@@ -122,7 +122,8 @@ describe('parseOrgMemberTable', () => {
         </td>
       </tr>`;
     expect(parseOrgMemberTable(verbatim)).toEqual([
-      { email: 'sfeintuch@dimagi-associate.com', role: 'member' },
+      // id = the membership pk from the live row_checkbox_<pk> (remove_members' membership_ids)
+      { email: 'sfeintuch@dimagi-associate.com', role: 'member', id: '1187' },
     ]);
   });
 

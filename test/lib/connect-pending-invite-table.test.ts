@@ -14,12 +14,12 @@ const rowsHtml = readFileSync(join(FIXTURES, 'pending_invites_table-rows.html'),
 const emptyHtml = readFileSync(join(FIXTURES, 'pending_invites_table-empty.html'), 'utf8');
 
 describe('parsePendingInviteTable', () => {
-  it('parses one row per pending invite with the stored role and dates', () => {
+  it('parses one row per pending invite with the stored role, dates, and invite pk (from the revoke URL)', () => {
     expect(parsePendingInviteTable(rowsHtml)).toEqual([
-      { email: 'stewari@dimagi.com', role: 'admin', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
-      { email: 'smazumdar@dimagi.com', role: 'admin', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
-      { email: 'aking@dimagi.com', role: 'viewer', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
-      { email: 'mtheis@dimagi.com', role: 'member', invited_on: '26-Sep-2026 13:18', expires_on: '03-Oct-2026 13:18' },
+      { id: '41', email: 'stewari@dimagi.com', role: 'admin', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
+      { id: '40', email: 'smazumdar@dimagi.com', role: 'admin', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
+      { id: '39', email: 'aking@dimagi.com', role: 'viewer', invited_on: '26-Sep-2026 13:19', expires_on: '03-Oct-2026 13:19' },
+      { id: '38', email: 'mtheis@dimagi.com', role: 'member', invited_on: '26-Sep-2026 13:18', expires_on: '03-Oct-2026 13:18' },
     ]);
   });
 
