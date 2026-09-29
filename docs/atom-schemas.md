@@ -485,7 +485,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 61 atoms
+Source: `mcp/connect-server.ts` — 62 atoms
 
 ### `connect_list_programs`
 
@@ -794,6 +794,18 @@ Create a new CommCare HQ project space (domain). POST /register/domain/ via the 
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `hr_name` | `z.string` | **required** | Human-readable project name; HQ derives the URL slug from this. Max 25 chars. Pass a slug-shaped value (lowercase + hyphens) for predictable results. |
 | `org` | `z.string` | optional | Optional organization id (hidden form field; usually empty). |
+
+### `commcare_create_api_key`
+
+Mint a CommCare HQ API key RESTRICTED TO ONE project space, owned by ACE's HQ user. POSTs the `/account/api_keys/` CRUD form (ApiKeyView — HQ has no REST endpoint for keys) with action=create. HQ enforces the restriction at auth: the key gets 401 on any other project space. HQ shows the plaintext ONLY in the create response, so this atom stores it owner-only under ~/.ace/hq-api-keys/<name>.key and returns a REFERENCE, `hq-key:<name>`, plus the last 4 characters — never the key. Pass the reference as `api_key` to connect_create_opportunity (and connect_preflight_learn_app_user); it is resolved server-side. Use it for a partner-scoped opportunity so the opportunity does not hold ACE's all-spaces key (clone-to-new-workspace). A key with the same name that already exists cannot be re-read: the call fails unless `replace_existing: true`, which deletes and re-mints it (rotation — only safe when nothing uses the old key yet). `domain` must be a project space ace@ belongs to.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | Project space the key is restricted to. |
+| `name` | `z.string` | **required** | Key name, unique per HQ user; also the local store name. e.g. "ace-clone-connect-ace-spark". |
+| `ip_allowlist` | `z.array` | optional | Optional IPv4 allowlist. |
+| `replace_existing` | `z.boolean` | optional | Delete and re-mint a same-named key (HQ never re-shows a key). Only when nothing uses it yet. |
 
 ### `commcare_get_lookup_table`
 

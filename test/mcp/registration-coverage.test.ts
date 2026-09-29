@@ -61,7 +61,7 @@ interface ServerSpec {
 const SERVERS: Record<string, ServerSpec> = {
   connect: {
     file: 'mcp/connect-server.ts',
-    expectedCount: 61, // +1: commcare_linked_app_copy (Connect Interviews atom gap, ace#1461-adjacent)
+    expectedCount: 62, // +1: commcare_create_api_key (project-space-restricted HQ keys for partner opportunities)
     // `connect_*` are Connect atoms; `commcare_*` are CommCare HQ atoms
     // (build/release/upload-multimedia) registered alongside because they
     // close the LLO-deploy loop through the same MCP.

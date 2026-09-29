@@ -18,7 +18,7 @@
     },
     {
       "name": "hq-domain-writes",
-      "tool_pattern": "(?:^|__)commcare_(?:delete_app|create_lookup_table|set_user_fields|create_ucr_expression|create_inbound_api|create_repeater|create_connection|invite_web_user|update_user_field|lookup_table_append_rows|make_build|release_build|patch_xform|upload_multimedia|set_menu_display|set_app_menu_display)$",
+      "tool_pattern": "(?:^|__)commcare_(?:create_api_key|delete_app|create_lookup_table|set_user_fields|create_ucr_expression|create_inbound_api|create_repeater|create_connection|invite_web_user|update_user_field|lookup_table_append_rows|make_build|release_build|patch_xform|upload_multimedia|set_menu_display|set_app_menu_display)$",
       "args": {"domain": ["hq_domain"]}
     },
     {

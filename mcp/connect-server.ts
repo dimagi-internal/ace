@@ -70,6 +70,7 @@ import {
   pluginRootFromCommand,
 } from '../lib/plugin-cache-freshness.js';
 import { HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT } from '../lib/hq-unique-id.js';
+import { resolveHqKeyRef, saveHqKey } from '../lib/hq-api-key-store.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -421,6 +422,8 @@ const HqAppZ = z.object({
     'Raw 40-char HQ API key. Connect creates an HQApiKey record on first use. ' +
       'Accepts `${VAR}` syntax to substitute from the MCP server\'s env (e.g. ' +
       '`${ACE_HQ_API_KEY}`); the env var must be set in $CLAUDE_PLUGIN_DATA/.env. ' +
+      'Also accepts `hq-key:<name>` — a project-space-restricted key minted by ' +
+      '`commcare_create_api_key`, resolved server-side so the key never enters the transcript. ' +
       'Use `\\${VAR}` to pass the literal string.',
   ),
   cc_domain: z.string().describe('HQ project space slug.'),
@@ -520,8 +523,8 @@ server.tool('connect_create_opportunity',
       // CommCare HQ" validation error.
       const resolved = {
         ...args,
-        learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(args.learn_app.api_key, process.env, ENV_ALLOW.hqApiKey) },
-        deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(args.deliver_app.api_key, process.env, ENV_ALLOW.hqApiKey) },
+        learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(resolveHqKeyRef(args.learn_app.api_key), process.env, ENV_ALLOW.hqApiKey) },
+        deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(resolveHqKeyRef(args.deliver_app.api_key), process.env, ENV_ALLOW.hqApiKey) },
       };
       return (await client()).createOpportunity(resolved);
     })
@@ -857,6 +860,36 @@ server.tool('commcare_create_domain',
     org: z.string().optional().describe('Optional organization id (hidden form field; usually empty).'),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).createDomain(args))
+);
+
+server.tool('commcare_create_api_key',
+  'Mint a CommCare HQ API key RESTRICTED TO ONE project space, owned by ACE\'s HQ user. POSTs the `/account/api_keys/` CRUD form (ApiKeyView — HQ has no REST endpoint for keys) with action=create. HQ enforces the restriction at auth: the key gets 401 on any other project space. HQ shows the plaintext ONLY in the create response, so this atom stores it owner-only under ~/.ace/hq-api-keys/<name>.key and returns a REFERENCE, `hq-key:<name>`, plus the last 4 characters — never the key. Pass the reference as `api_key` to connect_create_opportunity (and connect_preflight_learn_app_user); it is resolved server-side. Use it for a partner-scoped opportunity so the opportunity does not hold ACE\'s all-spaces key (clone-to-new-workspace). A key with the same name that already exists cannot be re-read: the call fails unless `replace_existing: true`, which deletes and re-mints it (rotation — only safe when nothing uses the old key yet). `domain` must be a project space ace@ belongs to.',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string().describe('Project space the key is restricted to.'),
+    name: z
+      .string()
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/)
+      .describe('Key name, unique per HQ user; also the local store name. e.g. "ace-clone-connect-ace-spark".'),
+    ip_allowlist: z.array(z.string()).optional().describe('Optional IPv4 allowlist.'),
+    replace_existing: z
+      .boolean()
+      .optional()
+      .describe('Delete and re-mint a same-named key (HQ never re-shows a key). Only when nothing uses it yet.'),
+  },
+  async (args) =>
+    runAtom(async () => {
+      const created = await (await commcareClient(args.server)).createApiKey(args);
+      const ref = saveHqKey(args.name, created.key);
+      return {
+        key_ref: ref,
+        key_last4: created.key.slice(-4),
+        id: created.id,
+        name: created.name,
+        domain: created.domain,
+        rotated: created.rotated,
+      };
+    }),
 );
 
 server.tool('commcare_get_lookup_table',
@@ -1547,7 +1580,7 @@ server.tool('connect_preflight_learn_app_user',
       // Same env-substitution helper, same `.env` rules.
       const resolved = {
         ...args,
-        api_key: resolveEnvSubstitution(args.api_key, process.env, ENV_ALLOW.hqApiKey),
+        api_key: resolveEnvSubstitution(resolveHqKeyRef(args.api_key), process.env, ENV_ALLOW.hqApiKey),
         hq_username: resolveEnvSubstitution(args.hq_username, process.env, ENV_ALLOW.hqUsername),
       };
       return preflightLearnAppUser(resolved);

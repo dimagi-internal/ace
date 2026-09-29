@@ -133,6 +133,17 @@ the Workbench and every later skill see the new assets, not the shared ones.
    settings. **A timeout does not mean it failed** — `commcare_list_apps` on
    `<hq_domain>` and match by name before any retry.
 3. `commcare_make_build` then `commcare_release_build` for each new app.
+3b. **Mint the opportunity's HQ key, restricted to this space:**
+   `commcare_create_api_key(domain: <hq_domain>, name: "ace-clone-<hq_domain>")`
+   → `{key_ref: "hq-key:ace-clone-<hq_domain>", key_last4, id}`. The partner's
+   Connect opportunity will hold THIS key, not ACE's all-spaces
+   `ACE_HQ_API_KEY` — a Connect org admin can attach any stored key id to
+   their own opportunity, so the partner's must reach only the partner's
+   space. The plaintext is stored owner-only on this machine and never
+   returned; only the reference travels. On a RESUME where Step 4b has not run
+   yet and the local key file is missing, pass `replace_existing: true`
+   (rotation is safe: nothing uses the key yet). Record `clone.hq.key: {ref,
+   id, last4}` — never the key.
 4. Rewrite `phases.commcare-setup.products.apps` in the target run_state:
    `domain`, and per app `hq_app_id`, `hq_url`, `domain`, `build_status`.
    Keep `nova_app_id` / `nova_url` (same Nova source).
@@ -171,6 +182,10 @@ opportunity must point at the rebuilt HQ apps).
      nm_org: <tenancy.connect_holding_org>
      source: tenancy
    ```
+
+   and tell it to use `api_key: hq-key:ace-clone-<hq_domain>` (from 4a step
+   3b) for BOTH `learn_app` and `deliver_app` in `connect_create_opportunity`
+   (and in `connect_preflight_learn_app_user`) instead of `${ACE_HQ_API_KEY}`.
 
    With `nm_org ≠ pm_org` this is the normal PM→NM shape: the program is
    created in the partner's PM org, the holding org is invited and accepted,
