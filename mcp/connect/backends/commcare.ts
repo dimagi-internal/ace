@@ -937,6 +937,27 @@ export class BuildRejectedError extends Error {
   }
 }
 
+/**
+ * The new app's id from HQ copy_app's redirect, or null when the redirect is
+ * not a successful copy INTO `downstreamDomain`. HQ redirects an unlinked copy
+ * to `/a/<downstream>/apps/view/<new id>/` (`back_to_main`), but a failed
+ * LINKED copy redirects to the SOURCE app's settings
+ * (`/a/<upstream>/apps/view/<source id>/settings/`) — also a 302 — so the
+ * domain and id are both checked, never just the shape (ace#2551).
+ */
+export function newAppIdFromCopyRedirect(
+  location: string,
+  downstreamDomain: string,
+  upstreamAppId: string,
+): string | null {
+  const m = location.match(/\/a\/([^/]+)\/apps\/view\/([0-9a-f]{32})\b/);
+  if (!m) return null;
+  const [, domain, id] = m;
+  if (decodeURIComponent(domain) !== downstreamDomain) return null;
+  if (id === upstreamAppId) return null;
+  return id;
+}
+
 export class CommCareBackend {
   constructor(private opts: CommCareBackendOptions) {}
 
@@ -1978,12 +1999,13 @@ export class CommCareBackend {
         },
         maxRedirects: 0,
       });
+      let fromRedirect: string | null = null;
       if (res.status() === 302) {
         const location = res.headers()['location'] || '';
         if (/\/login\/?(\?|$)/.test(location)) {
           throw new SessionExpiredError();
         }
-        // Success — redirects to the new (linked) app's settings page.
+        fromRedirect = newAppIdFromCopyRedirect(location, args.downstream_domain, args.upstream_app_id);
       } else if (res.status() === 200) {
         const html = await res.text();
         const errors = parseFormErrors(html);
@@ -1997,6 +2019,13 @@ export class CommCareBackend {
           `commcare_linked_app_copy POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
         );
       }
+      // The redirect names the new app (HQ `_copy_app_helper` →
+      // `back_to_main(app_copy.domain, app_copy._id)`). Prefer it: the re-list
+      // below goes through HQ's REST API, which a project space without an
+      // API-enabled plan answers with 401 — every space clone-to-new-workspace
+      // creates is one, so the old path reported failure after every
+      // successful copy (ace#2551).
+      if (fromRedirect) return { id: fromRedirect, name: args.name };
       // Re-list the downstream domain's apps to find the new one by name.
       const list = await this.listApps({ domain: args.downstream_domain });
       const match = list.apps.filter((a) => a.name === args.name);
@@ -3321,10 +3350,19 @@ export class CommCareBackend {
         CommCareBackend.assertNotLoginRedirect(res, `commcare_list_apps GET ${path}`);
       }
       if (res.status() !== 200) {
-        throw new Error(
-          `commcare_list_apps GET ${path} returned ${res.status()}: ` +
-            (await res.text()).slice(0, 300),
-        );
+        const body = (await res.text()).slice(0, 300);
+        if (res.status() === 401 && /subscription does not have access/i.test(body)) {
+          // HQ gives this SAME answer for a space whose plan has no API access
+          // AND for a space that does not exist, so it proves neither
+          // (ace#2551, ace#2552). Say so instead of letting a caller read it
+          // as "not found".
+          throw new Error(
+            `HQ_API_NOT_IN_PLAN: commcare_list_apps GET ${path} returned 401 ${body}. HQ answers this for a ` +
+              `project space whose subscription has no API access AND for one that does not exist — it is not ` +
+              `a "not found". Web views (app copy, build, release) still work on such a space.`,
+          );
+        }
+        throw new Error(`commcare_list_apps GET ${path} returned ${res.status()}: ` + body);
       }
       const parsed = JSON.parse(await res.text()) as {
         objects?: Array<{ id?: string; _id?: string; name?: string; doc_type?: string }>;

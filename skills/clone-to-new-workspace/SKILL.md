@@ -129,10 +129,11 @@ start Step 2 with a failed preflight.
    equal `connect_pm_org` / `connect_holding_org` are accepted (say so in the
    report); every other field still must differ.
 4. **Per system, one-time setup the target needs:**
-   - **HQ:** `commcare_list_apps(domain: <hq_domain>)` succeeds → exists and ACE
-     is a member. A "not found" is fine — Step 3 creates it. Any other error
-     (forbidden) is a setup item: "add ace@dimagi-ai.com to HQ project
-     <hq_domain> as admin".
+   - **HQ:** nothing to check up front. `commcare_list_apps` cannot answer
+     "does this space exist": HQ returns the same `HQ_API_NOT_IN_PLAN` 401 for
+     a space whose plan has no REST API and for one that does not exist
+     (observed 2026-09-29 on a made-up slug; ace#2551). 4a.1 attempts the
+     create instead, and that answer is authoritative.
    - **Connect:** `connect_list_programs(organization_slug: <connect_pm_org>)`
      succeeds, and the holding org accepts `connect_list_opportunities`. A
      failure is a setup item: "Connect staff: create program-manager org
@@ -196,9 +197,18 @@ reviewer to a workspace they cannot open.
 
 ### 4a. HQ
 
-1. If Step 1 found no `<hq_domain>`: `commcare_create_domain(hr_name:
-   <hq_domain>)`. The returned `domain` MUST equal `<hq_domain>` — if HQ derived
-   a different slug, stop and report it (the tenancy is then wrong).
+1. `commcare_create_domain(hr_name: <hq_domain>)` — attempt it; a "taken" /
+   already-exists error is the skip (the space exists), not a failure. The
+   returned `domain` MUST equal `<hq_domain>` — if HQ derived a different slug,
+   stop and report it (the tenancy is then wrong). A forbidden on an existing
+   space ace@ is not in is a setup item: "add ace@dimagi-ai.com to HQ project
+   <hq_domain> as admin".
+1b. **API access.** `commcare_list_apps(domain: <hq_domain>)`: `200` → record
+   `clone.hq.api: enabled`; `HQ_API_NOT_IN_PLAN` → record `clone.hq.api:
+   not-in-plan`. A space ACE just created is on HQ's free plan and is
+   `not-in-plan` (connect-ace-spark, 2026-09-29; ace#2552). That is fine for
+   the copy, build, release and reviewers' web access — all web views. It
+   decides 3b and is reported in 4b and Step 5.
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
    downstream_domain: <hq_domain>, name: <source app name>, linked: false,
@@ -206,10 +216,16 @@ reviewer to a workspace they cannot open.
    one>)`. Copy the RELEASED build the source run was reviewed on, not "latest
    saved", which may carry later edits.
    Unlinked: no Pro Edition needed; the copy keeps camera-only and grid-menu
-   settings. **A timeout does not mean it failed** — `commcare_list_apps` on
-   `<hq_domain>` and match by name before any retry.
+   settings. The atom reads the new id from HQ's redirect, so it works on a
+   `not-in-plan` space. **A timeout does not mean it failed** — before any
+   retry, look: `commcare_list_apps` on an `enabled` space, else the HQ project
+   dashboard (`/a/<hq_domain>/dashboard/project/`, session auth) lists every
+   app id. A blind retry makes a duplicate.
 3. `commcare_make_build` then `commcare_release_build` for each new app.
-3b. **Mint the opportunity's HQ key, restricted to this space:**
+3b. **Mint the opportunity's HQ key, restricted to this space** — skip it, and
+   record `clone.hq.key: {status: skipped, reason}`, when `--keep-shared
+   connect` (no opportunity will use it) or `clone.hq.api: not-in-plan` (a key
+   restricted to a space without API access reaches nothing). Otherwise:
    `commcare_create_api_key(domain: <hq_domain>, name: "ace-clone-<hq_domain>")`
    → `{key_ref: "hq-key:ace-clone-<hq_domain>", key_last4, id}`. The partner's
    Connect opportunity will hold THIS key, not ACE's all-spaces
@@ -223,13 +239,22 @@ reviewer to a workspace they cannot open.
 4. Rewrite `phases.commcare-setup.products.apps` in the target run_state:
    `domain`, and per app `hq_app_id`, `hq_url`, `domain`, `build_status`.
    Keep `nova_app_id` / `nova_url` (same Nova source).
-5. **First live use:** a cross-space unlinked copy was only live-tested inside
-   one space (2026-09-01). The first clone verifies it; report what happened.
+5. Cross-space unlinked copy is live-verified (connect-ace-prod →
+   connect-ace-spark, 2026-09-29: Learn at latest, Deliver at its released
+   build, both then built and released).
 
 **Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
 step.
 
 ### 4b. Connect — re-run Phase 4 in the target's orgs
+
+**Unverified on a `not-in-plan` space (ace#2552):** Connect reads the apps it
+is pointed at through HQ with the opportunity's key. No clone has yet run 4b
+against a space without HQ API access. On the first one, if Phase 4 fails
+while creating the opportunity or reading its apps, report
+`clone.hq.api: not-in-plan` as the likely cause and the setup item "a
+subscription with API access on HQ project <hq_domain>" — and record what
+Connect actually returned, so the next clone knows.
 
 **With `--keep-shared connect`: skip this step.** Keep the target run's copied
 `products.connect` and `opp.yaml` `connect:` block as they are (they name the
