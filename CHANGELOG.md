@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1593 — 2026-09-28
+
+**`hooks/gating_guard.py` is now the fleet-standard canopy LOADER.** The standalone engine (its own
+matcher, its own approve/ask code path) is replaced by the canopy factory template, which runs
+canopy's `agent-core/gating_guard.py` from the installed plugin — engine fixes now reach ACE via
+`/canopy:update`. ACE keeps only config: every deny rail in `config/gating.json` is unchanged and
+still blocks what it blocked, now tested through both the real engine and the loader's degraded
+mode. `config/gating.json` gains `slug: "ace"` and an explicit empty `channels` (the hook is
+plugin-level and fires in every session, so a channel mount would go machine-wide — see its
+`_doc`). New in every session with ACE installed: the fleet baseline's `always` rails (fixed-/tmp
+`git worktree add`, zsh `echo =`, PowerShell write-method `Invoke-RestMethod`).
+
 ## 0.13.1556 — 2026-09-24
 
 **`gdoc-email-drafts` points at canopy's fleet procedure (canopy#680).** Email blocks are now a
