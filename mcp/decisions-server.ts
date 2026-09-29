@@ -28,6 +28,7 @@ import { fileURLToPath } from 'url';
 import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 import { DecisionRowStrictSchema } from '../lib/decisions-schema.js';
+import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
 import {
   DECISIONS_FILENAME,
   DecisionsWriteError,
@@ -397,6 +398,9 @@ const server = new McpServer({
   name: 'ace-decisions',
   version: '0.1.0',
 });
+// Tenancy guard (Drive half): a session bound to an opp writes only inside its
+// folder. Must run before the first registration.
+installDriveTenancyGuard(server as never, googleDriveLookup(drive as never));
 
 function result(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };

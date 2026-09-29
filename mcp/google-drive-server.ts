@@ -74,6 +74,7 @@ import {
   type ReplacementCoverage,
 } from '../lib/replacement-coverage.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
+import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -334,6 +335,9 @@ const server = new McpServer({
   name: 'ace-gdrive',
   version: '0.2.0',
 });
+// Tenancy guard (Drive half): a session bound to an opp writes only inside its
+// folder. Must run before the first registration.
+installDriveTenancyGuard(server as never, googleDriveLookup(drive as never));
 
 // 1. List sheets (tabs) in a spreadsheet
 server.tool(

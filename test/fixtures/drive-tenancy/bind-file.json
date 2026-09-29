@@ -1,0 +1,19 @@
+{
+  "_source": "Written by bin/ace-bind (ace 0.13.159x) with --tenancy-json + --drive-root ROOT, 2026-09-28; bound_at pinned for stability. This is the exact file hooks/tenancy_guard.py and lib/drive-tenancy-guard.ts read.",
+  "binding": {
+    "bound_at": "2026-09-28T23:59:00+00:00",
+    "drive_root_folder_id": "ROOT",
+    "mode": "enforce",
+    "opp": "spark-facilitator",
+    "session_id": "fixture-session",
+    "tenancy": {
+      "connect_holding_org": "spark",
+      "connect_pm_org": "spark-pm",
+      "hq_domain": "connect-ace-spark",
+      "labs_allowed_domains": [
+        "@sparkmicrogrants.org"
+      ]
+    },
+    "workspace": "spark"
+  }
+}

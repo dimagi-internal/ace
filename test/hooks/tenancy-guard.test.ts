@@ -201,6 +201,7 @@ describe('bin/ace-bind', () => {
     expect(body.workspace).toBe('spark');
     expect(body.opp).toBe('spark-facilitator');
     expect(body.tenancy.hq_domain).toBe('connect-ace-spark');
+    expect(body.mode).toBe('enforce');
     const show = spawnSync(BIND, ['--show'], { env: env({ CLAUDE_CODE_SESSION_ID: SESSION }), encoding: 'utf8' });
     expect(show.stdout).toContain('spark/spark-facilitator');
   });
