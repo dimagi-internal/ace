@@ -142,12 +142,46 @@ the Workbench and every later skill see the new assets, not the shared ones.
 **Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
 step.
 
-### 4b. Connect — not built yet
+### 4b. Connect — re-run Phase 4 in the target's orgs
 
-Waiting on how per-partner Connect program-manager orgs get created (open
-decision). Report `NOT DONE — not built yet` and record
-`clone.connect: {status: not-done, reason: not-built}`. The report must say the
-target run's Connect products still name the SOURCE opportunity.
+Connect cannot move an opportunity (its holding org is fixed at creation), so
+the clone gets its own program and opportunity, built by the SAME Phase 4 skills
+that built the source — not a hand-rolled copy of them. Requires 4a (the
+opportunity must point at the rebuilt HQ apps).
+
+1. **Preflight already proved** both orgs exist with ace@ as admin and the
+   holding org can hold opportunities (Step 1.4). Connect org creation for a
+   partner is outside ACE — a missing org is a setup item, never guessed.
+2. **Clear the copied Connect state in the TARGET only.**
+   - Target `opp.yaml`: delete the `connect:` block. It names the SOURCE
+     program, and `connect-program-setup` reuses whatever program is recorded
+     there — which would put the clone's opportunity back in the shared org.
+     (The session is bound in enforce mode, so the guard would refuse those
+     writes anyway; clearing it avoids the detour.)
+   - Target `run_state.yaml`: set `phases.connect-setup` to
+     `{status: pending, products: {}}`.
+3. **Dispatch the Phase 4 agent** (`Agent(connect-setup)`) against
+   `<to>/<opp>/<run-id>`, passing this `connect_orgs` block instead of the
+   preflight's:
+
+   ```yaml
+   connect_orgs:
+     status: ok
+     pm_org: <tenancy.connect_pm_org>
+     nm_org: <tenancy.connect_holding_org>
+     source: tenancy
+   ```
+
+   With `nm_org ≠ pm_org` this is the normal PM→NM shape: the program is
+   created in the partner's PM org, the holding org is invited and accepted,
+   and the opportunity — payment units, verification rules, dates, the ACE
+   test user — is created HELD by the partner's org, pointing at the apps 4a
+   rebuilt. It also re-composes the build memo from the clone's own products.
+4. Read back `connect_get_opportunity(holding_org, <new id>)`: its
+   `learn_app` / `deliver_app` `cc_domain` must be `tenancy.hq_domain`. Record
+   `clone.connect: {status: done, program_id, opportunity_id, pm_org,
+   holding_org}`. A Phase 4 halt is `NOT DONE` with its reason — never fall
+   back to the source opportunity.
 
 ### 4c. Labs — widen the run's own labs-only opps
 
