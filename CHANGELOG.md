@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1610 — 2026-09-29
+
+**Output previews contract v1 — a screenshot of an output lives with the phase that BUILT it.**
+Shared with ace-web (`docs/specs/2026-09-29-output-previews-design.md` there):
+`<run>/<N>-<phase>/previews/<output-slug>/{_previews.yaml,<NN>-<step>.png}`, where `<output-slug>`
+is the output's dotted key under `phases.<phase>.products` slugged (`apps.learn` → `apps-learn`).
+`app-screenshot-capture` (Phase 6) now uploads each passing smoke leg's PNGs to
+`3-commcare/previews/apps-{learn,deliver}/` — app from the journey's `app:` binding, output key
+read from THIS run's `phases.commcare-setup.products` — clears that leg's folder before
+re-capture, and writes one authoritative `_previews.yaml` per app (real YAML bytes, read back and
+asserted; `items: []` for a leg that did not pass). Phase 6 forensics (ui-dumps, `*-FAILURE.*`,
+post-Learn landing) stay in `6-qa-and-training/screenshots/`; the capture manifest stays in Phase 6
+and keeps listing every frame by `file_id`, so the training consumers are unaffected. Phase 7 gains
+§ Step 3.95: one or two DDD render frames per dashboard in `products.synthetic.workflows`, matched
+by labs workflow id, into `7-synthetic/previews/` (best effort, never fails the phase). New
+`lib/output-previews.ts` (`outputSlug`, `resolveAppOutputKey`, `buildPreviewsIndex`,
+`assertPreviewsIndexReadable`, `pickDashboardScenes`) + `test/lib/output-previews.test.ts`;
+`lib/artifact-manifest.ts` declares the new paths.
+
 ## 0.13.1593 — 2026-09-28
 
 **`hooks/gating_guard.py` is now the fleet-standard canopy LOADER.** The standalone engine (its own

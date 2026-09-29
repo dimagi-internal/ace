@@ -25,7 +25,7 @@ contracts.
 |---|---|---|
 | Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |
 | Phase 3 | `3-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
-| Phase 6 | `6-qa-and-training/screenshots/<journey>/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
+| Phase 6 | `6-qa-and-training/app-screenshot-capture_manifest.yaml` → each frame by `file_id` (smoke frames live in `3-commcare/previews/<app-output-slug>/`, deep frames in `6-qa-and-training/screenshots/<recipe-base>/`) | captured PNGs to grade |
 
 ## Products
 
@@ -42,10 +42,12 @@ contracts.
   Maestro recipe corresponds to which journey, smoke flag, forms
   exercised)
 - The captured screenshots from the recent execution run — look up by
-  the `--run-id` argument passed in. Paths:
-  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` plus
+  the `--run-id` argument passed in. Resolve every frame through
   `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
-  (which step → which PNG)
+  (which step → which PNG, by `file_id`) — never by listing a folder: smoke
+  frames sit in `3-commcare/previews/<app-output-slug>/` (output previews
+  contract v1) and `/ace:qa-deep`'s deep frames in
+  `6-qa-and-training/screenshots/<recipe-base>/`
 - `inputs/pdd.md` — for persona context (the FLW the rubric is judging
   "good experience" against; pulled from the "Target FLW" section)
 - `3-commcare/app-deploy_summary.md` — for the `learn_build_id` and
@@ -234,3 +236,4 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 | 2026-05-31 | **Meaningful journey ids.** `per_item[].ref`/`journey` keys now use the journey's meaningful slug id (`learn-happy-path`, `deliver-yes`) from `app-test-cases.yaml` instead of `J<n>` ordinals; example verdict updated. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
 | 2026-05-31 | **`journey-` prefix.** `per_item[].ref`/`journey` example values now carry the `journey-` prefix (`journey-deliver-submit`, `journey-deliver-alt-answer`) to match the amended id convention. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
 | 2026-05-29 | **Fitness dim + time_budget fix (ITN post-mortem).** Added `capture_robustness` (0.30) — grades negative-path journeys (blank-required / out-of-range / low-GPS / "Other") for whether the form *refuses bad data*, with an adversarial-coverage cap (zero negative-path journeys → ≤2, not pass). Fixed `time_budget`: being far UNDER budget is now a thinness WARN (≤2), not a 9.5 — the old rule only penalized "too slow," which rewarded the ITN-style skeletal build. Reweighted to 6 dims (capture_robustness heaviest at 0.30). Per `_eval-template.md § out-of-chain fitness requirement` + `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. Note: in-`/ace:run` build-fitness gating is handled cheaply (no AVD) by the revised `pdd-to-*-app-eval` blueprint checks; this deep screenshot check is complementary. | ACE team |
+| 2026-09-29 | **Frames resolved by `file_id`, not by folder (output previews contract v1).** Smoke frames moved to `3-commcare/previews/<app-output-slug>/`; deep frames stay in `6-qa-and-training/screenshots/<recipe-base>/`. The capture manifest is the only reference. | ACE team |

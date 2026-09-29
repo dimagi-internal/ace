@@ -22,6 +22,10 @@ QA-plan synthesis moved upstream to Phase 1 (`pdd-to-app-journeys`) and Phase 3 
 
 Spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
 
+### App previews filed with Phase 3 — 2026-09-29 (output previews contract v1)
+
+`app-screenshot-capture` now uploads each passing smoke leg's PNGs to `3-commcare/previews/<app-output-slug>/` with an authoritative `_previews.yaml`, instead of `6-qa-and-training/screenshots/<recipe-base>/`: a preview lives with the phase that BUILT its output, whoever captured it, so a reader looking at Phase 3's apps sees them. Forensics (ui-dumps, `*-FAILURE.*`) stay in Phase 6's folder; the capture manifest stays in Phase 6 and keeps listing every frame by `file_id`. Spec: ace-web `docs/specs/2026-09-29-output-previews-design.md`; helpers `lib/output-previews.ts`.
+
 ## Phase 7 (synthetic-data-and-workflows)
 
 ### Initial Phase 7 agent — 2026-05-06 (Plan B Stage 4a)
@@ -29,3 +33,7 @@ Spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
 Agent created. Skill list reflects Stages 1-3 ship state at the time; eval skills were declared but not yet implemented.
 
 Authored by: ACE team (Plan B Stage 4a).
+
+### Dashboard previews — 2026-09-29 (output previews contract v1)
+
+New § Step 3.95: after the DDD render, one or two per-scene frames per dashboard in `products.synthetic.workflows` (matched by labs workflow id) are copied to `7-synthetic/previews/<slug of synthetic.workflows.<key>>/` with a `_previews.yaml` (`captured_by: ddd-run`). Best effort — never fails the phase; the summary says what was and was not previewed.

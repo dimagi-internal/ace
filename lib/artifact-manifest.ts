@@ -759,6 +759,32 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: false,
     description: "Deliver-app smoke Maestro recipe (the is_smoke: true Deliver journey). Phase 6 degrades without it (Learn leg still captures; Deliver leg records incomplete), so optional at the fence — but expected on every two-app opp.",
   },
+  // ── Output previews (contract v1, ace-web docs/specs/2026-09-29-output-previews-design.md).
+  // A preview lives with the phase that BUILT its output, whoever captured it —
+  // so these sit in Phase 3's folder although Phase 6 (qa-and-training) takes
+  // them. `phase` is the FOLDER's phase (the lint pins that); `producedBy` is the
+  // capturing skill. Optional: a run whose smoke walk failed has no frames, and
+  // previews never gate a phase. Helpers + readback: `lib/output-previews.ts`.
+  {
+    path: '3-commcare/previews/<app-output-slug>/_previews.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: [],
+    phase: 'commcare',
+    required: false,
+    description:
+      "Authoritative preview index for one app (`apps-learn` / `apps-deliver`, the slug of the app's key under `phases.commcare-setup.products`): `{schema_version: 1, phase: commcare-setup, output_key, captured_by: app-screenshot-capture, captured_phase: qa-and-training, captured_at, items[{file_id, name, caption?}]}`. Only a passing smoke leg's non-duplicate frames; `items: []` for a leg that did not pass. Real YAML bytes (drive_upload_binary text/yaml), never a Google Doc. Read by ace-web, which attaches the frames to the app output.",
+  },
+  {
+    path: '3-commcare/previews/<app-output-slug>/<NN>-<step>.png',
+    producedBy: 'app-screenshot-capture',
+    // Read by id THROUGH the capture manifest (whose consumedBy names the
+    // training skills), never listed or opened by path — so no direct consumer.
+    consumedBy: [],
+    phase: 'commcare',
+    required: false,
+    description:
+      "One smoke-leg frame of the Learn or Deliver app, uploaded anyone-with-link (Slides image import needs it). Consumers reach it by `file_id` through `6-qa-and-training/app-screenshot-capture_manifest.yaml`, never by path. The folder is cleared before each re-capture of that leg.",
+  },
   {
     path: '3-commcare/pdd-to-learn-app-eval_verdict.yaml',
     producedBy: 'pdd-to-learn-app-eval',
@@ -1095,6 +1121,15 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'qa-and-training',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
+  },
+  {
+    path: '6-qa-and-training/screenshots/<recipe-base>/<step-name>.xml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description:
+      "Phase 6 walk FORENSICS: per-step uiautomator dumps, `*-FAILURE.{png,xml}` from a failed dispatch, and the unconditional `journey-deliver/00-postlearn-landing.xml`. Passing-leg PNGs are NOT here any more — they are previews of the apps and live in `3-commcare/previews/<app-output-slug>/`. `/ace:qa-deep`'s deep-journey frames also land under this folder.",
   },
   {
     path: '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
@@ -1514,6 +1549,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: false,
     description:
       'One full-page frame per scene, captured from the live dashboard during the render. The fallback deliverable when mp4 conversion fails, and the input the DDD concept/visual judges score.',
+  },
+  {
+    path: '7-synthetic/previews/<output-slug>/_previews.yaml',
+    producedBy: 'synthetic-data-and-workflows',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "Authoritative preview index for one labs dashboard (`<output-slug>` = slug of `synthetic.workflows.<key>`): `{schema_version: 1, phase: synthetic-data-and-workflows, output_key: synthetic.workflows.<key>, captured_by: ddd-run, captured_phase: synthetic-data-and-workflows, captured_at, items[]}` — one or two of the DDD render's per-scene frames whose scene opens on that dashboard. Best effort: absent when the render produced no snapshots. Real YAML bytes, never a Google Doc.",
+  },
+  {
+    path: '7-synthetic/previews/<output-slug>/<NN>-scene-<N>.png',
+    producedBy: 'synthetic-data-and-workflows',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "A per-scene frame of the DDD render (canopy `snapshots/scene_<N>.png`), copied next to the dashboard it shows so ace-web can preview the output.",
   },
   {
     path: '7-synthetic/synthetic-data-and-workflows_summary.md',

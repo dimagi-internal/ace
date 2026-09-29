@@ -64,8 +64,12 @@ Training materials draw from two asset pools:
   captured once per Connect-app version by the standalone
   `connect-baseline-screenshots` skill (NOT part of Phase 6; invoked
   manually when the Connect APK ships an update).
-- **Per-opp assets** at `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/...` — captured fresh each
-  cycle for THIS opp's actual Learn-app modules and Deliver form.
+- **Per-opp assets** at `ACE/<opp>/runs/<run-id>/3-commcare/previews/<app-output-slug>/` — captured fresh each
+  cycle for THIS opp's actual Learn-app modules and Deliver form. Phase 6 takes
+  them, but they are filed with the phase that BUILT the apps (output previews
+  contract v1, `app-screenshot-capture` § Step 4.9); training skills reach them by
+  `file_id` through `6-qa-and-training/app-screenshot-capture_manifest.yaml`, never
+  by path.
 
 `training-materials` stitches both pools into the final deck spec and
 video script. Per-opp content is always re-captured (it changes per opp);
@@ -451,7 +455,7 @@ jjackson/ace#791).
 
 Dispatch `app-screenshot-capture`:
 - Reads: `2-scenarios/pdd-to-app-journeys.md` (Phase 2), `3-commcare/app-test-cases.yaml` (Phase 3)
-- Writes: `6-qa-and-training/screenshots/journey-*/*.png` + `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`
+- Writes: `3-commcare/previews/apps-{learn,deliver}/<NN>-<step>.png` + one `_previews.yaml` per app (the preview index ace-web reads), Phase 6 forensics (`.xml` ui-dumps, `*-FAILURE.*`) under `6-qa-and-training/screenshots/journey-*/`, `6-qa-and-training/app-screenshot-capture_manifest.yaml` + `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`
 - Runs the Learn leg then the Deliver leg independently; records a per-app verdict. A Deliver-leg failure yields a non-pass phase verdict but Learn screenshots still ship — it does not abort Learn capture.
 
 The skill filters `app-test-cases.yaml` to entries with `is_smoke: true`
@@ -614,7 +618,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/journey-<app>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
+- `ACE/<opp>/runs/<run-id>/3-commcare/previews/<app-output-slug>/{_previews.yaml,<NN>-<step>.png}` (written INTO Phase 3's folder — a preview lives with the phase that built its output) + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` + forensics under `6-qa-and-training/screenshots/journey-<app>/`
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/{training-llo-guide,training-quick-reference,training-faq,training-onboarding-email}.md` (training-materials)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` (training-flw-guide)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` (training-deck-generate)

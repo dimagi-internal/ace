@@ -85,6 +85,12 @@ phase depth, so the most valuable forks were the most likely to die. A skill
 fork of the walk's OWN phase still keeps its media; the skip is strictly
 upstream.
 
+**What a fork DOES carry: `previews/`.** Output previews
+(`<N>-<phase>/previews/<output-slug>/`, contract v1 — e.g. the Learn/Deliver app
+screenshots Phase 6 writes into `3-commcare/previews/`) are not in the skipped
+media subtrees. A fork that carries Phase 3 carries its app previews, which is
+correct: they show the same apps the fork carries.
+
 `copy_file` also retries a 429 now (five attempts, 2/4/8/16s) and still does
 NOT retry a 5xx: a rate limit proves the write never ran, a 5xx does not, and
 retrying that duplicates.

@@ -351,8 +351,11 @@ favor of one skill per artifact. The decomposition gives:
 All per-artifact training skills write to:
 `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
 
-All consume per-opp screenshots from:
-`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/screenshots/`
+All consume per-opp screenshots BY `file_id` through
+`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`.
+The PNGs live in `ACE/<opp-name>/runs/<run-id>/3-commcare/previews/<app-output-slug>/`
+(output previews contract v1 — a preview is filed with the phase that built its
+output); never build a path to them, the manifest's id is the reference.
 
 All consume cross-opp Connect screenshots from:
 `ACE/_common/connect-screenshots/<connect-version>/`

@@ -22,6 +22,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | Phase 3 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
 | Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
+| Phase 3 (run_state.yaml) | `phases.commcare-setup.products` (the `apps` block, sole writer `app-deploy`) | the output key each app's previews index names — § Step 4.9, read via `resolveAppOutputKey` |
 | Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.pm_org_slug` (legacy: `organization_slug`) | `organization_slug` for EVERY Connect call in this skill. On a PM→NM run the opportunity is HELD by the NM org, but the PM org's URL serves every surface this skill reads (invite read-back, dashboard, learn/deliver progress) — live matrix in `playbook/integrations/connect-api.md § PM→NM org-URL matrix`. `runConnectOrgs()` (`lib/connect-orgs.ts`) is the rule. |
 | Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + top-level `run_id` + ACE test user invite | `${OPP_RUN_ID}` (verbatim from `run_state.yaml.run_id`, the deterministic tile matcher), `${OPP_NAME}` (verbatim from `opportunity.name`, logging/screenshot context only), `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
@@ -33,8 +34,10 @@ point at `app-test-cases`.
 
 ## Products
 
-- `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
-- `6-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-generate`
+- `3-commcare/previews/<app-output-slug>/<NN>-<step-name>.png` — per-step PNGs of a smoke leg, filed with the phase that BUILT the app (Phase 3), not the phase that walked it (anyone-with-link permission set at upload for Slides ingest). § Step 4.9 says which folder each leg writes.
+- `3-commcare/previews/<app-output-slug>/_previews.yaml` — one per app: the authoritative preview index ace-web reads (§ Step 6.2). This skill is the ONLY writer of both app folders.
+- `6-qa-and-training/screenshots/<recipe-base>/…` — Phase 6's own FORENSICS only: per-step `.xml` ui-dumps, `*-FAILURE.{png,xml}`, `00-postlearn-landing.xml`. No passing-leg PNG goes here any more.
+- `6-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-generate`. Still lists EVERY frame by `file_id`; its consumers read by id, so the PNGs moving folder does not touch them.
 - `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` — thin per-app UX smoke verdict
 
 Per-opp content only. Common Connect navigation screenshots come from
@@ -690,6 +693,61 @@ fallback re-hunt after its primary tile scroll (claim-opp re-anchors on the
 O(section) instead of O(list)); the same suite pins that too. The residual
 tracked on #1289 is the unbounded list itself, not the budget.
 
+### Step 4.9: Resolve each leg's previews folder (output previews contract v1)
+
+A preview of an output lives in the folder of the phase that **built** the
+output, whoever captured it (ace-web `docs/specs/2026-09-29-output-previews-design.md`;
+helpers in `lib/output-previews.ts`, pinned by `test/lib/output-previews.test.ts`).
+Phase 3 built the Learn and Deliver apps, so this skill — although it runs in
+Phase 6 — writes each smoke leg's PNGs into Phase 3's folder:
+
+```
+<run>/3-commcare/previews/<app-output-slug>/_previews.yaml   # § Step 6.2
+<run>/3-commcare/previews/<app-output-slug>/<NN>-<step>.png
+```
+
+Resolve, per leg, before anything is uploaded:
+
+1. **The app — from the authoritative binding, never from a name.** The leg's
+   smoke journey carries `app: learn | deliver` in `3-commcare/app-test-cases.yaml`
+   (the field Step 2 already groups by). Every frame the leg uploads belongs to
+   that app — including the frames of the `connect-resume-opp` dispatch that
+   opens the Deliver leg. Do not infer it from a journey id, a recipe file name or
+   a substring match.
+2. **The output key — from THIS run's `run_state.yaml`, never assumed.** Read
+   `phases.commcare-setup.products` and call
+   `resolveAppOutputKey(products, app)`. The declared shape
+   (`lib/phase-products-schema.ts`, sole writer `app-deploy`) is `apps.learn` /
+   `apps.deliver`, but runs have drifted to `apps.learn_app` or a flat
+   `learn_app`; the helper returns the key the run ACTUALLY carries, preferring
+   the declared one. The index must name that exact key — it is how ace-web
+   attaches the frames to the app. `present: false` (no app entry at all) →
+   use the returned declared key and log a WARN in `auto_surfaced`; it means
+   Phase 3's `products.apps` write-back is missing, which is Phase 3's defect,
+   not a reason to skip previews.
+3. **The folder.** `previewsFolderPath('3-commcare', key)` →
+   `3-commcare/previews/<slug>` (`apps.learn` → `apps-learn`). Create it with
+   `drive_create_folder` (find-or-create) under the run's `3-commcare` folder:
+   `previews/` first, then `<slug>/` inside it.
+4. **Clear it — per leg, immediately before that leg's first upload.** A
+   re-capture REPLACES: `drive_list_folder` the leg's folder and
+   `drive_trash_file` every child (PNGs and the old `_previews.yaml`), so two
+   captures never mix. Clear only the folder of the leg you are about to run,
+   and only then — never both folders at dispatch start. Learn completion is
+   one-way per (test user, opportunity) (Step 2.7), so a Deliver-only re-run that
+   wiped `apps-learn/` would destroy previews nothing can recapture.
+5. **Names.** `previewFileName(n, step)` → `<NN>-<step>.png`, with `n` counting
+   from 1 across ALL of the leg's dispatches in capture order (the Deliver leg's
+   `connect-resume-opp` frames first, then `journey-deliver`'s). The prefix keeps
+   a name-ordered listing in capture order; the index is still what a reader
+   follows.
+
+**One writer per output folder.** Only this skill writes
+`3-commcare/previews/apps-*/`. `/ace:qa-deep`'s deep journeys, forensics, ui-dumps
+and videos do NOT go there (see Step 5's upload rule); and nothing about previews
+is ever written under `phases.<phase>.products` — ace-web reads any mapping there
+with a `file_id` as an output, so a pointer would show up as a bogus one.
+
 ### Step 5: Run the smoke recipes — two independent legs
 
 **Palette-composition footguns (jjackson/ace#592) — read before composing recipes:**
@@ -780,9 +838,16 @@ whole fresh `/ace:run`. Two rules follow:
   `connect-resume-opp/`, `journey-deliver/`, …), so a glob over the root
   spans journeys and re-opens exactly the confusion #756 closed.
 - **Upload each dispatch's artifacts to Drive right after that dispatch
-  returns**, from its own returned paths, into the leg's Drive folder
-  (`6-qa-and-training/screenshots/<recipe-base>/`). Don't batch uploads
-  to the end of the phase off a directory listing.
+  returns**, from its own returned paths. Don't batch uploads to the end of
+  the phase off a directory listing. Two destinations, split by WHAT the file
+  is, not by which recipe made it:
+  - **PNGs of a `status: pass` dispatch** → the leg's previews folder from
+    § Step 4.9, `3-commcare/previews/<app-output-slug>/<NN>-<step-name>.png`
+    (`shareAnyoneWithLink: true`, `mimeType: image/png`).
+  - **Everything else** — each PNG's sibling `<step-name>.xml` ui-dump, the
+    `*-FAILURE.{png,xml}` forensics of a failed dispatch, `00-postlearn-landing.xml`
+    — stays Phase 6 forensics in `6-qa-and-training/screenshots/<recipe-base>/`.
+    A preview folder holds previews only; a failure frame is never one.
 
 Do NOT hand-roll per-leg roots to work around the old collision — the
 namespacing is structural now, and a per-leg root would only bury the
@@ -792,11 +857,13 @@ Capture is split into a **Learn leg** and a **Deliver leg**. The legs
 are graded independently; a Deliver failure never suppresses Learn
 capture.
 
-**Learn leg (always runs first).** Run `journey-learn.yaml` against the
-AVD. Upload every captured screenshot to
-`6-qa-and-training/screenshots/journey-learn/<step-name>.png`
-(`shareAnyoneWithLink: true`, `mimeType: image/png`; upload any sibling
-`<step-name>.xml` ui-dump with `mimeType: application/xml`). Record the
+**Learn leg (always runs first).** Clear the Learn previews folder
+(§ Step 4.9 step 4), then run `journey-learn.yaml` against the AVD. Upload every
+captured screenshot to `3-commcare/previews/<learn-output-slug>/<NN>-<step-name>.png`
+(normally `apps-learn/`; `shareAnyoneWithLink: true`, `mimeType: image/png`);
+upload any sibling `<step-name>.xml` ui-dump to
+`6-qa-and-training/screenshots/journey-learn/<step-name>.xml` with
+`mimeType: application/xml`. Record the
 Learn leg outcome (`pass` iff the recipe status is pass AND every
 screenshot is non-zero bytes). A Learn failure records the Learn
 sub-verdict and does NOT abort the dispatch — but the Deliver leg then
@@ -1000,12 +1067,16 @@ on the Learn side: the device is not authoritative about completion — Connect 
 **Deliver leg (runs second; depends on the Learn leg).** Only attempt
 if the Learn leg reached completion **AND the Connect learn-completion gate above passed (`learn_complete == true`)**. `journey-deliver.yaml` resumes
 from the now-unlocked state in the same device session (no re-login).
-Upload to `6-qa-and-training/screenshots/journey-deliver/<step-name>.png`.
+Clear the Deliver previews folder (§ Step 4.9 step 4) before the leg's first
+upload, then upload its PNGs to
+`3-commcare/previews/<deliver-output-slug>/<NN>-<step-name>.png` (normally
+`apps-deliver/`) and its ui-dumps to `6-qa-and-training/screenshots/journey-deliver/`.
 Record the Deliver leg outcome independently.
 
 **FIRST, before any Deliver recipe — capture the post-Learn landing
 (unconditional, #618 ground truth).** The instant the Learn leg completes,
-`mobile_capture_ui_dump` and upload it to
+`mobile_capture_ui_dump` and upload it — into the Phase 6 forensics folder
+`6-qa-and-training/screenshots/`, never a previews folder — to
 `journey-deliver/00-postlearn-landing.xml` (`drive_upload_binary`,
 `mimeType: "application/xml"`, `shareAnyoneWithLink: true`; then § Step 5.8's
 readback — ace#1831). This is captured BEFORE the Deliver leg
@@ -1068,6 +1139,8 @@ per-leg classifier — apply it to whichever leg failed.
   Android `uiautomator dump` output captured at the same moment as the
   PNG. When present, upload it to
   `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/<step-name>.xml`
+  (the Phase 6 forensics folder — NOT beside its PNG, which is a preview in
+  `3-commcare/previews/<app-output-slug>/`; the manifest row joins the two by `step`)
   via `drive_upload_binary` with `mimeType: "application/xml"` **and
   `shareAnyoneWithLink: true`**. The old rationale here — "not needed, XMLs
   aren't consumed by Slides" — asked the wrong question: Slides is one consumer,
@@ -1448,7 +1521,7 @@ returned `unknown-id` for all 9 cited frames on
 captures:
   - journey_id: journey-learn-pass          # slug from app-test-cases.yaml
     step: journey-learn-posttest-result     # the takeScreenshot: label
-    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-posttest-result.png
+    drive_path: 3-commcare/previews/apps-learn/07-journey-learn-posttest-result.png
     file_id: <drive fileId>
     md5: <content hash from Step 5.5>
     shows: "…"                              # Step 5.6, on every frame you opened
@@ -1510,6 +1583,73 @@ videos:
 ```
 
 Omit the block entirely when no videos were captured.
+
+### Step 6.2: Write each app's `_previews.yaml` — the index ace-web reads
+
+After the manifest is written and read back, write ONE index per app into the
+folder § Step 4.9 resolved. The index is **authoritative**: ace-web shows
+exactly its `items`, in order, as the app's preview, and replays them at this
+skill's beat (`captured_by`), not at the app's.
+
+**Which frames.** The leg's manifest `captures[]` rows, in capture order, and
+only when the leg's FINAL status is `pass` — i.e. after the Connect
+learn-completion / deliver gates in Step 5, not merely the recipe's `status`
+(the Step 5 hard rule, jjackson/ace#756). Leave out `duplicate_of` aliases
+(Step 5.5 — one moment is one preview) and any frame whose Step 5.8 readback was
+not `ok`. Caption each from its `shows:` line (Step 5.6) where it has one.
+
+```ts
+import {
+  buildPreviewsIndex, serializePreviewsIndex, assertPreviewsIndexReadable,
+  PREVIEWS_INDEX_NAME, PREVIEWS_INDEX_MIME, outputSlug,
+} from '../../lib/output-previews';
+
+const index = buildPreviewsIndex({
+  phase: 'commcare-setup',                // the phase that OWNS the output
+  outputKey,                              // § Step 4.9 — exactly as run_state writes it
+  capturedBy: 'app-screenshot-capture',
+  capturedPhase: 'qa-and-training',
+  capturedAt: new Date().toISOString(),
+  frames: legPassed ? legCaptures : [],   // manifest rows: {file_id, name, step, shows, duplicate_of}
+});
+// write serializePreviewsIndex(index) to a LOCAL file, then:
+// drive_upload_binary({name: PREVIEWS_INDEX_NAME, mimeType: PREVIEWS_INDEX_MIME,
+//                      parentFolderId: <the leg's previews folder>, localFilePath})
+```
+
+**Real bytes, never a Google Doc.** `drive_upload_binary` with
+`mimeType: 'text/yaml'` — the same rule as the manifest (ace#2490): a Doc's
+export comes back with every `\n` as `\r\n\r\n\r\n` and the reader parses
+nothing.
+
+**Then read it back and assert (required, not advice).** `drive_read_file` the
+uploaded id and run the TEXT through:
+
+```ts
+const rb = assertPreviewsIndexReadable(text, {
+  folderSlug: outputSlug(outputKey), phase: 'commcare-setup', outputKey,
+  capturedBy: 'app-screenshot-capture', expectedCount: index.items.length,
+});
+```
+
+`ok: false` is a halt for that app's previews: fix and re-write, and record the
+finding in the structural verdict's `auto_surfaced`. An index the reader cannot
+parse is an app with no pictures, and nothing downstream reports it.
+
+**A leg that did not pass still gets an index — with `items: []`.** Frames
+may already sit in its folder (the Deliver leg's `connect-resume-opp` frames
+upload before `journey-deliver` runs; a Learn walk can pass on the device and
+then fail the Connect gate). The empty index is what tells a reader to show
+none of them. The same holds for a leg that never ran this dispatch
+(`blocked-by-learn`, `blocked-by-learn-incomplete`): clear its folder
+(§ Step 4.9 step 4) and write the empty index, so a stale capture never
+outlives the verdict that superseded it. **Exception:** a Learn leg recorded
+`satisfied-by-prior-completion` (Step 2.7) did not re-walk and cannot — leave
+its folder and index exactly as they are.
+
+Nothing is written under `phases.commcare-setup.products` for this. The index
+file is found by its folder; a pointer in products would render as a bogus
+output.
 
 ### Step 6.5: Harvest selector-drift signal (atlas-drift)
 
@@ -1840,7 +1980,7 @@ Notes:
 
 ## MCP Tools Used
 
-- `ace-gdrive`: `drive_read_file`, `drive_upload_binary`, `drive_create_file`, `drive_list_folder`.
+- `ace-gdrive`: `drive_read_file`, `drive_upload_binary`, `drive_create_file`, `drive_list_folder`, `drive_create_folder`, `drive_trash_file` (§ Step 4.9 clears a leg's previews folder before re-capture).
 - `ace-mobile`: `mobile_ensure_avd_running`, `mobile_install_apk`, `mobile_run_recipe`.
 
 ## Mode Behavior
@@ -1870,6 +2010,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-29 | **Output previews contract v1 — smoke-leg PNGs move to the phase that BUILT the app.** New § Step 4.9 resolves each leg's folder `3-commcare/previews/<app-output-slug>/` from the journey's `app:` binding and the output key THIS run's `phases.commcare-setup.products` actually carries (`resolveAppOutputKey` — `apps.learn` declared, drifted spellings honoured), and clears it per leg before upload (never the other leg's — Learn is one-way). New § Step 6.2 writes one authoritative `_previews.yaml` per app (real bytes, read back through `assertPreviewsIndexReadable`; `items: []` for a leg that did not pass). `6-qa-and-training/screenshots/` keeps Phase 6's forensics only (ui-dumps, `*-FAILURE.*`, post-Learn landing). Manifest unchanged in shape; each row's Drive path now points at the preview folder. Helpers: `lib/output-previews.ts`. Spec: ace-web `docs/specs/2026-09-29-output-previews-design.md`. | ACE team |
 | 2026-08-29 | **Step 9 required check: the verdicts must agree with the manifest's `journeys[].status` (dimagi-internal/ace#1830).** Both verdict files are now gated on `checkVerdictManifestAgreement` (`lib/verdict-manifest-agreement.ts`) before they are written, and again after any re-run that changes a leg's status. It names three kinds — `stale-verdict` (manifest passes, verdict says failed/ungradeable: the ace#1830 recovery direction), `unsupported-pass` (manifest failed, verdict says pass: the Step 5 hard rule, jjackson/ace#756, which this skill has asserted in prose since 2026-06-12 with nothing enforcing it), and `unreported-leg`. Surfaced by hh-poverty-targeting/20260828-0702, where a Deliver leg recovered at 15:02Z rewrote the manifest and the structural verdict while `app-screenshot-capture_verdict-shallow.yaml` sat at `3.0 / fail` for five hours still carrying a `[BLOCKER]` reading "no Deliver screenshots exist for this run" — `opp-eval` aggregates verdict files by directory discovery and Phase 9's `llo-launch` reads them, so the run misreported itself to every downstream consumer in the direction that keeps a healthy run gated. The guard keys on data that already exists on both sides rather than on a new staleness stamp, because a stamp needs every writer to remember it — the same by-hand honouring that failed here. *Enforced:* `test/lib/verdict-manifest-agreement.test.ts`, calibrated against both real states of that run (the 14:10Z stale file as the positive control, the 19:30Z re-graded 2.5/pass as the negative). | ACE team |
 | 2026-08-29 | **Step 2.6 gains the `input-without-erase` recipe-sanity class (dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor, so an `inputText` with no `eraseText` before it concatenates onto whatever the field already held. Live on `spark-facilitator/20260828-0703`: `40` typed into a field holding a preload submitted `140`, the form's cross-field constraint refused to advance, and the leg died two screens later on an unrelated scroll. Pure recipe shape — runs unconditionally, never gated on `fields`. | ACE team |
 | 2026-07-31 | **Step 5 output-dir contract: one run-scoped ROOT, MCP-namespaced per dispatch (dimagi-internal/ace#1130).** Pass the SAME `screenshotDir` root to every `mobile_run_recipe` call in the phase; the MCP writes each dispatch into `<root>/<recipeId>/` and confines #756's start-of-run wipe to that subdir, so the Deliver leg can no longer destroy the Learn leg's finished captures. Read artifacts back from `result.screenshotsDir` / `result.screenshots[].path` (never a glob over the root) and upload per dispatch as it returns. Step 5.5's hash command, Step 6.5's atlas-drift invocation (recursive — point it at the root), and the `00-postlearn-landing.xml` local-copy location updated to match. Surfaced by bednet-spot-check/20260731-1353, where a PASSING Learn leg's screenshots + video were wiped by the Deliver dispatch and could not be re-captured (Learn completion is one-way per test user + opportunity, #568/#570). | ACE team |

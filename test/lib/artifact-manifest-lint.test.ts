@@ -57,7 +57,8 @@ const RUN_LEVEL_EXEMPT = new Set([
 const STRUCTURAL_SUB_FOLDERS = new Set([
   'recipes',          // 3-commcare/recipes/journey-{learn,deliver}.yaml (app-test-cases smoke recipes, ace#892)
   'mobile-recipes',   // 6-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
-  'screenshots',      // 6-qa-and-training/screenshots/...
+  'screenshots',      // 6-qa-and-training/screenshots/<recipe-base>/ — Phase 6 walk forensics (ui-dumps, FAILURE frames)
+  'previews',         // <N>-<phase>/previews/<output-slug>/ — output previews contract v1 (3-commcare app frames, 7-synthetic dashboard frames)
   'walkthroughs',     // 7-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html
   'timeline-monitor', // 9-execution-manager/timeline-monitor/YYYY-MM-DD.md
   'flw-data-review',  // 9-execution-manager/flw-data-review/YYYY-MM-DD.md
