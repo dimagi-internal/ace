@@ -10,6 +10,12 @@ description: >
 
 # /ace:ace-web-pat-mint
 
+> **Not the default any more.** ACE's `ACE_WEB_PAT_TOKEN` is ACE's OWN token,
+> provisioned from 1Password by `/ace:setup` and minted/rotated headlessly by
+> **`/ace:ace-web-token-mint`**. Use this command only when a HUMAN deliberately
+> wants ace-web calls made under their own name — and note the next
+> `/ace:setup` replaces a hand-set value with the 1Password one.
+
 Mints `ACE_WEB_PAT_TOKEN` for the human operator (whoever is signed
 into ace-web in their default browser, e.g. `jjackson@dimagi.com`) via
 a `gh auth login` style loopback flow. The token belongs to *you* —

@@ -5,8 +5,7 @@
 #
 # ⚠️ Do NOT run a raw `op inject -i .env.tpl -o <plugin-data>/.env` — it
 # overwrites the whole file and DROPS local-only secrets that aren't in this
-# template (ACE_WEB_PAT_TOKEN, minted per-machine via /ace:ace-web-pat-mint,
-# and anything else you added by hand). `/ace:setup --force-env` snapshots the
+# template (anything you added by hand). `/ace:setup --force-env` snapshots the
 # `# --- ACE local-only secrets ---` marker block and re-appends it after the
 # inject, so those survive. (A PreToolUse rail — config/gating.json — blocks the
 # raw form for Claude; it can't stop a human terminal — hence this warning.)
@@ -397,27 +396,24 @@ ACE_WEB_WORKSPACE=dimagi-team
 #
 # ACE_WEB_UPLOAD_SESSIONS=1   # uncomment to enable
 
-# ── ace-web Personal Access Token (per-human, per-machine) ─────────
+# ── ace-web token — ACE's OWN (1Password-backed) ────────────────────
 #
-# NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style
-# loopback flow); written by that script to the local-only-secrets
-# marker block at the bottom of the resolved .env. `bin/ace-setup`
-# preserves keys not declared in this template across `op inject`, so
-# the value survives env re-injection.
+# ACE's credential for ace-web's API: bin/ace-bind (opp tenancy), fork-run,
+# clone-to-new-workspace, /ace:release, share-run-access invites,
+# sweep-ace-web, the video skills, upload-transcript, the cloud mobile backend.
 #
-# Replaces the deployment-wide ACE_E2E_AUTH_TOKEN shared secret. Token
-# represents the actual human operator (whoever signs in to ace-web in
-# their browser at mint time), not the ace@dimagi-ai.com service
-# account — so ace-web actions are attributable to a real person.
+# It belongs to ace@dimagi-ai.com — a first-class ace-web user and OWNER of
+# `dimagi-team` since ace-web#670 — so ACE's writes are attributed to ACE, not
+# to whichever human last signed in at a browser. Minted headlessly, as ACE,
+# through ace-web's own sign-in + /auth/cli/authorize/ pages by
+# /ace:ace-web-token-mint (scripts/ace-web-bot-token-mint.ts), which stores it
+# here. No server-side command and no per-machine browser flow.
 #
-# Consumers: skills/upload-transcript, /ace:run --ace-web-url. Doctor
-# verifies presence + Bearer-auth liveness in the [Auth liveness]
-# block.
-#
-# This commented declaration is intentional: it documents the key for
-# operators reading the template without forcing an `op inject`
-# resolution (the script writes the real value below the marker).
-# ACE_WEB_PAT_TOKEN=  # populated by /ace:ace-web-pat-mint
+# Replaces the per-human, per-machine token /ace:ace-web-pat-mint wrote into
+# the local-only block. A human who deliberately wants their own name on
+# ace-web calls can still mint one that way and set it by hand; this template
+# value wins on the next /ace:setup (template keys are authoritative).
+ACE_WEB_PAT_TOKEN=op://Agent-Ace/ACE - ace-web/pat_token
 
 # ─── ACE Drive Templates ───────────────────────────────────────────
 # File IDs of Google Drive templates ACE skills copy from at runtime.
