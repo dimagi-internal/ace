@@ -186,6 +186,14 @@ clone:
 Then rewrite the matching `phases.<phase>.products` in the TARGET run_state so
 the Workbench and every later skill see the new assets, not the shared ones.
 
+Before the first system step, also point the TARGET run at its own page: the
+copied `run_state.yaml` still carries the SOURCE's top-level
+`ace_web_summary_url` (ace-web copies files verbatim). `update_yaml_file(merge:
+"two-level", patch: {ace_web_summary_url:
+"${ACE_WEB_BASE_URL}/opps/<to>/<opp>/runs/<run-id>/summary"})` — every reply,
+README and `release` email leads with that link, and the source's would send a
+reviewer to a workspace they cannot open.
+
 ### 4a. HQ
 
 1. If Step 1 found no `<hq_domain>`: `commcare_create_domain(hr_name:
