@@ -1104,6 +1104,16 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
       § Fallback below. Do NOT silently fall through to the legacy
       `PDD/` picker.
 
+2b. **Bind this session to the opp.** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" "${ACE_WEB_WORKSPACE:-dimagi-team}/<opp>" --warn`
+   locks this session to the opp's tenancy (its HQ space, Connect orgs, Labs
+   domains — recorded per opp in ace-web). `--warn` is the rollout mode: the
+   tenancy guard (`hooks/tenancy_guard.py`) records a write that would leave
+   the tenancy in `~/.ace/opp-bind/bound-violations.log` instead of refusing
+   it. Best-effort: if the bind fails (no `ACE_WEB_PAT_TOKEN`, ace-web
+   unreachable, the opp has no row yet), note it and continue unbound — never
+   block a run on it. Switching to a DIFFERENT opp mid-session means binding
+   again first.
+
 3. **Resolve the run-id.**
 
    - **Resume mode** — `<opp>/<run-id>` was passed: load existing

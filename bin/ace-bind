@@ -5,6 +5,8 @@
   bin/ace-bind <opp>                 same, workspace = $ACE_WEB_WORKSPACE
   bin/ace-bind --show                print the current binding
   bin/ace-bind --clear               unbind
+  --warn                             record would-be refusals instead of refusing
+                                     (rollout mode for /ace:run and /ace:turn)
 
 The binding is a file keyed by $CLAUDE_CODE_SESSION_ID that
 hooks/tenancy_guard.py reads on every ACE tool call. Tenancy comes from
@@ -67,6 +69,7 @@ def main() -> int:
     p.add_argument("--show", action="store_true")
     p.add_argument("--clear", action="store_true")
     p.add_argument("--tenancy-json")
+    p.add_argument("--warn", action="store_true")
     args = p.parse_args()
 
     session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
@@ -79,7 +82,7 @@ def main() -> int:
         if bound is None:
             print("unbound (writes are allowed and logged; see hooks/tenancy_guard.py)")
         else:
-            print(f"bound to {bound['workspace']}/{bound['opp']}")
+            print(f"bound to {bound['workspace']}/{bound['opp']} ({bound.get('mode', 'enforce')})")
             print(json.dumps(bound.get("tenancy") or {}, indent=2, sort_keys=True))
         return 0
     if args.clear:
@@ -111,12 +114,13 @@ def main() -> int:
         "tenancy": tenancy,
         "bound_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "session_id": session,
+        "mode": "warn" if args.warn else "enforce",
     }
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2, sort_keys=True)
     os.replace(tmp, path)
-    print(f"bound to {workspace}/{opp}: {json.dumps(tenancy, sort_keys=True)}")
+    print(f"bound to {workspace}/{opp} ({record['mode']}): {json.dumps(tenancy, sort_keys=True)}")
     return 0
 
 
