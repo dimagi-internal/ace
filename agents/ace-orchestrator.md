@@ -1104,7 +1104,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
       § Fallback below. Do NOT silently fall through to the legacy
       `PDD/` picker.
 
-2b. **Bind this session to the opp.** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" "${ACE_WEB_WORKSPACE:-dimagi-team}/<opp>" --warn`
+2b. **Bind this session to the opp.** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <opp> --warn` (a bare opp: ace-bind takes the workspace from the installed plugin `.env` `ACE_WEB_WORKSPACE` — a shell `${ACE_WEB_WORKSPACE}` is always empty, so never expand it here; pass `<workspace>/<opp>` explicitly when the run belongs to a different workspace)
    locks this session to the opp's tenancy (its HQ space, Connect orgs, Labs
    domains — recorded per opp in ace-web). `--warn` is the rollout mode: the
    tenancy guard (`hooks/tenancy_guard.py`) records a write that would leave

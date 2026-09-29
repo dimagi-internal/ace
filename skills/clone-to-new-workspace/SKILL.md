@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 # clone-to-new-workspace
 
-`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>]`
+`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--labs-domain <@domain>] [--co-owner <email>] [--keep-shared connect]`
 
 While ACE iterates, every run is built in shared tenants (one HQ project space,
 one Connect org pair, one OCS team, Dimagi-only Labs). Granting an outsider
@@ -30,7 +30,11 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
   is set up — nobody should see a half-built clone.
 - **Redirect the source's links.** Also `release`.
 - **Create a Connect org or an OCS team.** No API exists; the preflight lists
-  them as manual steps.
+  a missing Connect org as a setup item (or use `--keep-shared connect`).
+
+Everything else a clone needs is ACE's own job, not a note to a human: a
+missing target workspace, its Drive root, its default tenancy and its HQ
+project space are all created here (Step 0 and 4a).
 
 ## Inputs
 
@@ -45,9 +49,59 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
   target tenancy's Connect orgs are then the shared ones
   (`ace-pm-org` / `ace-nm-org`), which Step 1.3 would otherwise refuse. Use it
   only until per-partner org creation exists.
+- `--hq-domain <slug>` — the target's HQ project space when Step 0 has to set
+  it. Default `connect-ace-<to>` (≤ 25 chars — HQ's cap).
+- `--labs-domain <@domain>` — the partner's email domain(s), comma-separated,
+  when Step 0 has to set `labs_allowed_domains`. No default: derive it from the
+  reviewers' addresses on the thread that asked for the clone (e.g. the ace@
+  thread's `@sparkmicrogrants.org` recipients), and stop if you cannot.
+- `--co-owner <email>` — a human to invite as an owner of a workspace Step 0
+  creates (default: the operator who asked, e.g. `jjackson@dimagi.com`), so
+  the workspace is not visible to ace@ alone.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN` (same as `fork-run`). The PAT's
 owner must be an **owner of both** workspaces.
+
+## Step 0 — Ensure the target workspace and its default tenancy
+
+A partner workspace is set up here, by ACE — not handed to a human. Skip any
+part that already holds.
+
+1. `GET ${ACE_WEB_BASE_URL}/api/workspaces` (ace@'s PAT). If `<to>` is listed,
+   go to 5.
+2. **Drive root.** Workspace roots live under `ACE/_workspaces/<to>/` in the
+   ACE Shared Drive folder: `drive_create_folder(name: "_workspaces",
+   parentFolderId: $ACE_DRIVE_ROOT_FOLDER_ID)` then `drive_create_folder(name:
+   <to>, parentFolderId: <_workspaces id>)` (both find-or-create). Why there:
+   the service account is shared on the `ACE` folder, not the Shared Drive
+   itself, so it cannot create a sibling of `ACE`; ace-web and ACE use the
+   SAME service account (`ace-service-account@connect-labs`), so anything ACE
+   creates here ace-web can write; `_`-prefixed folders are skipped by
+   `sweep-drive`, and ace-web lists as opps only folders holding `idea.md` /
+   `opp.yaml` / `run_state.yaml` / `runs`, so `_workspaces` never shows up as
+   a `dimagi-team` opp. Drive visibility is Dimagi-only either way — reviewers
+   are never given Drive access.
+3. `POST ${ACE_WEB_BASE_URL}/api/workspaces` `{"slug": "<to>", "name":
+   "<To>", "drive_root_folder_id": "<folder id>"}` → ace@ is its owner. **The
+   returned `slug` must equal `<to>`**: ace-web silently suffixes (`<to>-2`)
+   when the slug is taken by a workspace ace@ cannot see. If it differs, stop
+   and report both slugs — do not clone into the suffixed one.
+4. **Co-owner.** `POST …/api/workspaces/<to>/members/invite` `{"email":
+   <co-owner>, "role": "owner"}` and report the accept link
+   (`${ACE_WEB_BASE_URL}/invite/<token>`). This is a Dimagi colleague, not a
+   reviewer, so it is not held back to `release`.
+5. **Default tenancy.** `GET …/api/workspaces/<to>` → `default_tenancy`. Fill
+   ONLY the fields that are empty (never overwrite an owner's value), with
+   `PATCH …/api/workspaces/<to>` `{"default_tenancy": {...merged}}`:
+   - `hq_domain`: `--hq-domain`, default `connect-ace-<to>`;
+   - `connect_pm_org` / `connect_holding_org`: with `--keep-shared connect`,
+     the SOURCE opp's values (`GET …/api/w/<from>/opps/<opp>/tenancy`);
+     otherwise leave empty — Step 1.4 then names the Connect setup item;
+   - `labs_allowed_domains`: `--labs-domain` (with the leading `@`);
+   - `ocs_team`: leave empty (not used — 4d).
+   Read it back and print it. A `403` means ace@ is a member but not an owner of
+   an existing `<to>` — that IS a human item ("an owner of `<to>` makes
+   ace@dimagi-ai.com an owner").
 
 ## Step 1 — Preflight (creates nothing)
 
@@ -83,7 +137,10 @@ start Step 2 with a failed preflight.
      succeeds, and the holding org accepts `connect_list_opportunities`. A
      failure is a setup item: "Connect staff: create program-manager org
      <connect_pm_org> / org <connect_holding_org> and make ace@dimagi-ai.com an
-     admin; the holding org needs an accepted program application".
+     admin". (No program application is needed up front: Phase 4 creates the
+     program, then sends and accepts the holding org's application itself —
+     4b.) With `--keep-shared connect` this check is skipped: the shared orgs
+     are the ones every run already writes to.
    - **OCS: nothing.** The bot is not rebuilt (see 4d).
 5. **Already cloned?** `GET …/api/w/<from>/opps/<opp>/runs/<run-id>/clones` —
    a `done` clone into `<to>` means resume (Step 3 onward, skipping finished
@@ -136,7 +193,10 @@ the Workbench and every later skill see the new assets, not the shared ones.
    a different slug, stop and report it (the tenancy is then wrong).
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
-   downstream_domain: <hq_domain>, name: <source app name>, linked: false)`.
+   downstream_domain: <hq_domain>, name: <source app name>, linked: false,
+   build_id: <the source's released build id, when products.apps.<k> records
+   one>)`. Copy the RELEASED build the source run was reviewed on, not "latest
+   saved", which may carry later edits.
    Unlinked: no Pro Edition needed; the copy keeps camera-only and grid-menu
    settings. **A timeout does not mean it failed** — `commcare_list_apps` on
    `<hq_domain>` and match by name before any retry.
@@ -185,13 +245,19 @@ opportunity must point at the rebuilt HQ apps).
    holding org can hold opportunities (Step 1.4). Connect org creation for a
    partner is outside ACE — a missing org is a setup item, never guessed.
 2. **Clear the copied Connect state in the TARGET only.**
-   - Target `opp.yaml`: delete the `connect:` block. It names the SOURCE
-     program, and `connect-program-setup` reuses whatever program is recorded
-     there — which would put the clone's opportunity back in the shared org.
-     (The session is bound in enforce mode, so the guard would refuse those
-     writes anyway; clearing it avoids the detour.)
-   - Target `run_state.yaml`: set `phases.connect-setup` to
-     `{status: pending, products: {}}`.
+   - Target `opp.yaml`: `update_yaml_file(merge: "two-level", patch:
+     {connect: null})`. It names the SOURCE program, and
+     `connect-program-setup` reuses whatever program is recorded there — which
+     would put the clone's opportunity back in the shared org. (The session is
+     bound in enforce mode, so the guard would refuse those writes anyway;
+     clearing it avoids the detour.) `update_yaml_file` has no delete; `null`
+     is the clear.
+   - Target `run_state.yaml`: `update_yaml_file(merge: "two-level", patch:
+     {phases: {connect-setup: {status: pending, products: {}}}})`.
+     **Not `deep`**: a deep merge of `products: {}` changes nothing and the
+     source's Connect products survive in the clone. `two-level` replaces the
+     `connect-setup` child wholesale and leaves the other phases alone.
+     Read it back and confirm `products` is empty.
 3. **Dispatch the Phase 4 agent** (`Agent(connect-setup)`) against
    `<to>/<opp>/<run-id>`, passing this `connect_orgs` block instead of the
    preflight's:

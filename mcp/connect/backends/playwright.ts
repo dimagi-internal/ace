@@ -1490,6 +1490,86 @@ export class PlaywrightBackend implements ConnectClient {
     };
   };
 
+  /**
+   * Inverse of addOrgMember — full contract on `ConnectClient.removeOrgMember`.
+   * Probed against commcare-connect `organization/views.py`:
+   *   remove_members: POST /a/<org>/organization/member/remove, form
+   *     `membership_ids` (UserOrganizationMembership pk, the member table's
+   *     `row_checkbox_<pk>`); refuses the caller's own membership; 302.
+   *   revoke_invite: POST /a/<org>/organization/invite/<pk>/revoke (htmx; the
+   *     pending table's Revoke button); 200 with the re-rendered table.
+   * Neither echoes the outcome reliably, so both tables are read after.
+   */
+  removeOrgMember: ConnectClient['removeOrgMember'] = async ({ organization_slug, email }) => {
+    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
+    const pendingPath = `/a/${organization_slug}/organization/pending_invites_table?page_size=100`;
+    const readTable = async <R>(path: string, parse: (html: string) => R[]): Promise<R[]> => {
+      const res = await this.request.get(path);
+      if (res.status() !== 200) throw await httpErrorFor(res, path);
+      return parse(await res.text());
+    };
+    const findRow = <R extends OrgMemberRow>(rows: R[]): R | null =>
+      rows.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
+    const readBoth = async () => ({
+      member: findRow(await readTable(tablePath, parseOrgMemberTable)),
+      pending: findRow(await readTable(pendingPath, parsePendingInviteTable)),
+    });
+
+    const pre = await readBoth();
+    if (!pre.member && !pre.pending) {
+      return { organization_slug, email, status: 'not-present' as const };
+    }
+    const target = pre.member ?? pre.pending!;
+    if (!target.id) {
+      throw new ConnectValidationError(
+        [
+          `Found '${email}' in workspace '${organization_slug}' but its row carries no id ` +
+            `(no row_checkbox_<pk> / invite revoke link) — Connect's table markup changed. Remove it in the Connect UI.`,
+        ],
+        { email: ['row id not found'] },
+      );
+    }
+
+    const homePath = `/a/${organization_slug}/organization/`;
+    const homeRes = await this.request.get(homePath);
+    if (homeRes.status() !== 200) throw await httpErrorFor(homeRes, homePath);
+    const csrf = extractFormCsrfToken(await homeRes.text()) ?? this.opts.csrfToken;
+    const headers = { Referer: `${this.opts.baseUrl}${homePath}`, 'X-CSRFToken': csrf };
+
+    const postPath = pre.member
+      ? `/a/${organization_slug}/organization/member/remove`
+      : `/a/${organization_slug}/organization/invite/${target.id}/revoke`;
+    const form: Record<string, string> = { csrfmiddlewaretoken: csrf };
+    if (pre.member) form.membership_ids = target.id;
+    const postRes = await this.request.post(postPath, {
+      form,
+      maxRedirects: 0,
+      headers: pre.member ? headers : { ...headers, 'HX-Request': 'true' },
+    });
+    if (postRes.status() !== 302 && postRes.status() !== 200) {
+      throw await httpErrorFor(postRes, postPath, 'POST');
+    }
+
+    const post = await readBoth();
+    const stillThere = pre.member ? post.member : post.pending;
+    if (stillThere) {
+      throw new ConnectValidationError(
+        [
+          `'${email}' is still ${pre.member ? 'a member of' : 'invited to'} workspace '${organization_slug}' after the ` +
+            `${pre.member ? 'remove-members' : 'revoke-invite'} POST. Connect does not echo why (it refuses to remove ` +
+            `the caller's own membership). Check the workspace's Members tab in the Connect UI.`,
+        ],
+        { email: ['still present after removal'] },
+      );
+    }
+    return {
+      organization_slug,
+      email,
+      status: pre.member ? ('removed' as const) : ('invite-revoked' as const),
+      role: target.role,
+    };
+  };
+
   // ── Learn progression (authoritative Deliver-gate read) ──────────
 
   getLearnProgress: ConnectClient['getLearnProgress'] = async ({ domain, opportunity_id }) => {

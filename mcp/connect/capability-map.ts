@@ -55,6 +55,7 @@ export type Capability =
   | 'delete_unaccepted_flw_invites'
   | 'list_flw_invites'
   | 'add_org_member'
+  | 'remove_org_member'
   // Observation (11)
   | 'list_programs'
   | 'get_program'
@@ -88,6 +89,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   delete_unaccepted_flw_invites: { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/opportunities/{id}/invites/ (not yet shipped)' },
   list_flw_invites:             { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/workers/ (not yet shipped — the workers table is an htmx HTML fragment; see lib/connect-flw-invites.ts)' },
   add_org_member:               { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member (HTML form; no REST equiv)' },
+  remove_org_member:            { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member/remove | /organization/invite/{id}/revoke (HTML; no REST equiv)' },
 
   // Observation — still HTML-scrape; PR #1135 didn't ship reads
   list_programs:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/ (not yet shipped)' },

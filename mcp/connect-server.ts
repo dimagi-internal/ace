@@ -798,6 +798,15 @@ server.tool('connect_add_org_member',
   async (args) => runAtom(async () => (await client()).addOrgMember(args))
 );
 
+server.tool('connect_remove_org_member',
+  'Take a person out of a Connect workspace (organization) by email — the inverse of `connect_add_org_member`. Removes a MEMBERSHIP (POST `/a/<org>/organization/member/remove` with its membership id) or, if they never accepted, REVOKES their PENDING INVITE (POST `/a/<org>/organization/invite/<id>/revoke`). Reads both the member and pending-invite tables before and after, so the outcome is observed: `status` is `"removed"`, `"invite-revoked"`, or `"not-present"` (in neither table; nothing posted), with the `role` the row carried. Raises a typed validation error if the person is still present afterwards. Connect refuses to remove the caller, so this cannot remove ace@ itself. The ACE session user MUST be an admin of `organization_slug`. Used to revoke the interim shared-org grants recorded in `released.shared_grants` by `/ace:release --allow-shared connect`.',
+  {
+    organization_slug: z.string().describe('Workspace (organization) slug, e.g. "ace-nm-org".'),
+    email: z.string().email().describe('Email of the member or pending invitee to remove.'),
+  },
+  async (args) => runAtom(async () => (await client()).removeOrgMember(args))
+);
+
 // ── Invoices ─────────────────────────────────────────────────────
 
 server.tool('connect_list_invoices',

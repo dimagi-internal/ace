@@ -25,6 +25,23 @@ export interface OrgMemberRow {
   email: string;
   /** Display label as stored ("admin" | "member" | "viewer"), lowercased; null if unparseable. */
   role: string | null;
+  /**
+   * The row's primary key, needed to REMOVE it: a membership's
+   * `UserOrganizationMembership.pk` (the select checkbox, `row_checkbox_<pk>`,
+   * which `remove_members` takes as `membership_ids`), or a pending invite's
+   * `OrganizationInvite.pk` (its `/organization/invite/<pk>/revoke` button).
+   * null when the row renders neither.
+   */
+  id: string | null;
+}
+
+/** Row id: the member select checkbox, else the pending invite's revoke URL. */
+function rowId(rowHtml: string): string | null {
+  return (
+    rowHtml.match(/id="row_checkbox_(\d+)"/)?.[1] ??
+    rowHtml.match(/\/organization\/invite\/(\d+)\/revoke/)?.[1] ??
+    null
+  );
 }
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/;
@@ -79,7 +96,7 @@ export function parseOrgMemberTable(html: string): OrgMemberRow[] {
     });
     if (!roleCell) continue;
 
-    rows.push({ email, role: roleCell.toLowerCase().trim() });
+    rows.push({ email, role: roleCell.toLowerCase().trim(), id: rowId(rowHtml) });
   }
 
   return rows;

@@ -434,6 +434,32 @@ export interface ConnectClient {
     role_unchanged?: { requested: string; actual: string | null; note: string };
   }>;
 
+  /**
+   * Take a person OUT of a Connect workspace (organization): the inverse of
+   * `addOrgMember`, used to revoke the interim shared-org grants `/ace:release
+   * --allow-shared connect` records. Handles both states an `addOrgMember`
+   * can leave behind:
+   *   - a MEMBERSHIP → POST `/a/<org>/organization/member/remove`
+   *     (`membership_ids=<pk>`, commcare-connect `remove_members`);
+   *   - a PENDING INVITE (not yet accepted) → POST
+   *     `/a/<org>/organization/invite/<pk>/revoke` (`revoke_invite`).
+   * Both views 302/200 without saying what happened, so the outcome is read
+   * back from both tables. `remove_members` refuses to remove the caller, so
+   * this cannot unseat ace@ itself.
+   */
+  removeOrgMember(args: { organization_slug: string; email: string }): Promise<{
+    organization_slug: string;
+    email: string;
+    /**
+     * `removed` — was a member, is not after. `invite-revoked` — had a pending
+     * invite, has none after. `not-present` — in neither table before; nothing
+     * was posted.
+     */
+    status: 'removed' | 'invite-revoked' | 'not-present';
+    /** The role the removed membership / revoked invite carried. */
+    role?: string | null;
+  }>;
+
   // Invoices
   listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
   getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;

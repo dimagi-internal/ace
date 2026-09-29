@@ -131,7 +131,7 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
      dispatching a skill, writing run state), re-read the thread for opp identifiers and confirm
      they resolve to the routed run. Any mismatch = halt and re-route; a misroute at act tier
      executes real work against the wrong opp. Then **bind the session to the routed opp**
-     (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" "${ACE_WEB_WORKSPACE:-dimagi-team}/<opp>" --warn`) before
+     (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <opp> --warn` — a bare opp; ace-bind reads the workspace from the plugin `.env`) before
      the mutation, and `bin/ace-bind --clear` when the thread is done — the next thread may be a
      different opp. Triage itself (reading, routing, drafting) runs unbound. Best-effort: a
      failed bind is noted in the report, never a reason to skip the thread.

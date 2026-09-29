@@ -23,7 +23,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*(ace-connect|ace-ocs|connect-labs)__.*",
+        "matcher": "mcp__.*(ace-connect|ace-ocs|connect-labs|connect_labs|nova)__.*",
         "hooks": [
           {
             "type": "command",

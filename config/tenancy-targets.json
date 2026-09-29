@@ -1,9 +1,9 @@
 {
-  "_doc": "Which tool arguments name a tenant target, for hooks/tenancy_guard.py. When a session is bound to an opp (bin/ace-bind), every matching MCP write is checked against that opp's tenancy (ace-web GET /api/w/{ws}/opps/{slug}/tenancy) and refused if it points anywhere else. 'tool_pattern' is a regex on the tool NAME (suffix-matched, because hosts register plugins as mcp__plugin_ace_ace-connect__X or mcp__ace-connect__X). Each 'args' entry maps an argument path (dot = nested key, [] = every list element) to the tenancy field(s) it must equal; a list of fields means any of them. An ABSENT argument is not checked (the tool's own default applies — see 'server_env' for tools whose tenant is fixed at server start). Read-only tools are deliberately absent: reading a shared source (e.g. copying FROM the shared HQ space into a partner space) is allowed, so upstream/source arguments are not listed. Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.",
+  "_doc": "Which tool arguments name a tenant target, for hooks/tenancy_guard.py. When a session is bound to an opp (bin/ace-bind), every matching MCP write is checked against that opp's tenancy (ace-web GET /api/w/{ws}/opps/{slug}/tenancy) and refused if it points anywhere else. 'tool_pattern' is a regex on the tool NAME (suffix-matched, because hosts register plugins as mcp__plugin_ace_ace-connect__X or mcp__ace-connect__X, and connect-labs / Nova may be registered user-scope as mcp__connect_labs__X / mcp__nova__X — hooks/hooks.json's PreToolUse matcher must cover every one of those spellings or the rule never runs). Each 'args' entry maps an argument path (dot = nested key, [] = every list element) to the tenancy field(s) it must equal; a list of fields means any of them. An ABSENT argument is not checked (the tool's own default applies — see 'server_env' for tools whose tenant is fixed at server start). Read-only tools are deliberately absent: reading a shared source (e.g. copying FROM the shared HQ space into a partner space) is allowed, so upstream/source arguments are not listed. Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.",
   "rules": [
     {
       "name": "connect-org-writes",
-      "tool_pattern": "(?:^|__)connect_(?:create_program|update_program|update_opportunity|set_learn_passing_score|set_verification_flags|create_payment_units?|activate_opportunity|send_llo_invite|accept_program_application|send_flw_invite|delete_unaccepted_flw_invites|add_org_member)$",
+      "tool_pattern": "(?:^|__)connect_(?:create_program|update_program|update_opportunity|set_learn_passing_score|set_verification_flags|create_payment_units?|activate_opportunity|send_llo_invite|accept_program_application|send_flw_invite|delete_unaccepted_flw_invites|add_org_member|remove_org_member)$",
       "args": {"organization_slug": ["connect_pm_org", "connect_holding_org"]}
     },
     {
@@ -19,6 +19,11 @@
     {
       "name": "hq-domain-writes",
       "tool_pattern": "(?:^|__)commcare_(?:create_api_key|delete_app|create_lookup_table|set_user_fields|create_ucr_expression|create_inbound_api|create_repeater|create_connection|invite_web_user|update_user_field|lookup_table_append_rows|make_build|release_build|patch_xform|upload_multimedia|set_menu_display|set_app_menu_display)$",
+      "args": {"domain": ["hq_domain"]}
+    },
+    {
+      "name": "nova-hq-writes",
+      "tool_pattern": "(?:^|__)(?:upload_app_to_hq|provision_workers)$",
       "args": {"domain": ["hq_domain"]}
     },
     {

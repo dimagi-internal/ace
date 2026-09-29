@@ -229,3 +229,76 @@ describe('bin/ace-bind', () => {
     expect(body.workspace).toBe('dimagi-team');
   });
 });
+
+describe('hook matcher covers every spelling a rule targets', () => {
+  // The rules suffix-match tool names, but the hook only RUNS for tool names
+  // hooks/hooks.json's PreToolUse matcher lets through. connect-labs and Nova
+  // are registered user-scope on some machines (mcp__connect_labs__X,
+  // mcp__nova__X), and a matcher written for the plugin spelling alone silently
+  // skipped every Labs write there — the guard's own tests called the hook
+  // directly and never saw it.
+  const hooks = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf8'));
+  const entry = hooks.hooks.PreToolUse.find((h: { hooks: { command: string }[] }) =>
+    h.hooks.some((c) => c.command.includes('tenancy_guard.py')),
+  );
+  const matcher = new RegExp(`^(?:${entry.matcher})$`);
+
+  it.each([
+    'mcp__plugin_ace_ace-connect__commcare_make_build',
+    'mcp__ace-connect__connect_remove_org_member',
+    'mcp__plugin_ace_ace-ocs__ocs_create_chatbot',
+    'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains',
+    'mcp__connect_labs__synthetic_set_allowed_domains',
+    'mcp__nova__upload_app_to_hq',
+    'mcp__plugin_nova_nova__provision_workers',
+  ])('%s reaches the guard', (tool) => {
+    expect(matcher.test(tool)).toBe(true);
+  });
+});
+
+describe('writes added after v1', () => {
+  beforeEach(() => bind(SPARK));
+
+  it('checks the user-scope connect_labs spelling', () => {
+    const SET = 'mcp__connect_labs__synthetic_set_allowed_domains';
+    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@sparkmicrogrants.org'] }).code).toBe(0);
+    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@evil.org'] }).code).toBe(2);
+  });
+
+  it('checks Nova uploads and worker provisioning against the HQ space', () => {
+    expect(guard('mcp__nova__upload_app_to_hq', { app_id: 'a', domain: 'connect-ace-spark' }).code).toBe(0);
+    expect(guard('mcp__nova__upload_app_to_hq', { app_id: 'a', domain: 'connect-ace-prod' }).code).toBe(2);
+    expect(guard('mcp__plugin_nova_nova__provision_workers', { app_id: 'a', domain: 'connect-ace-prod' }).code).toBe(2);
+  });
+
+  it('checks connect_remove_org_member against the opp orgs', () => {
+    const RM = 'mcp__plugin_ace_ace-connect__connect_remove_org_member';
+    expect(guard(RM, { organization_slug: 'spark', email: 'a@x.org' }).code).toBe(0);
+    expect(guard(RM, { organization_slug: 'ace-nm-org', email: 'a@x.org' }).code).toBe(2);
+  });
+});
+
+describe('entry points bind to the configured workspace', () => {
+  it('a bare opp reads ACE_WEB_WORKSPACE from the installed plugin .env, not the shell', () => {
+    // .env values are loaded into MCP subprocesses, not the shell, so a shell
+    // expansion like ${ACE_WEB_WORKSPACE:-dimagi-team} always took the
+    // fallback. ace-bind reads the plugin .env itself when given a bare opp.
+    const data = path.join(bindDir, 'plugin-data');
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(path.join(data, '.env'), 'ACE_WEB_WORKSPACE=spark\n');
+    const r = spawnSync(BIND, ['spark-facilitator', '--tenancy-json', '{}'], {
+      env: { ...env({ CLAUDE_CODE_SESSION_ID: SESSION }), CLAUDE_PLUGIN_DATA: data },
+      encoding: 'utf8',
+    });
+    expect(r.status, r.stderr).toBe(0);
+    const body = JSON.parse(fs.readFileSync(path.join(bindDir, `${SESSION}.json`), 'utf8'));
+    expect(body.workspace).toBe('spark');
+  });
+
+  it('no entry point hardcodes a shell fallback workspace', () => {
+    for (const rel of ['agents/ace-orchestrator.md', 'commands/step.md', 'skills/inbox-triage/SKILL.md']) {
+      const text = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+      expect(text, rel).not.toMatch(/ace-bind"?\s+"?\$\{ACE_WEB_WORKSPACE/);
+    }
+  });
+});

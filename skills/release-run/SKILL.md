@@ -10,7 +10,8 @@ disable-model-invocation: true
 
 # release-run
 
-`/ace:release <workspace>/<opp>/<run-id> --reviewers <email[:role]>,... [--forward-source]`
+`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--forward-source] [--allow-shared connect]`
+`/ace:release <workspace>/<opp>/<run-id> --revoke-shared`
 
 The external-facing step after `clone-to-new-workspace`. The clone put the run
 in its own workspace and tenancy; this makes it ready to look at and then lets
@@ -24,6 +25,12 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 
 - `<workspace>/<opp>/<run-id>` — the run to release, normally a clone.
 - `--reviewers` — emails, each optionally `:viewer|editor` (default `viewer`).
+- `--from-thread <gmail-thread-id>` — instead of `--reviewers`: read the ace@
+  thread that asked for the review (`canopy email read <id>`, or `gog gmail
+  thread get <id> -a ace@dimagi-ai.com --client canopy -j`) and take every
+  participant whose domain is in `tenancy.labs_allowed_domains` — the partner's
+  own people, never Dimagi staff on the cc line. Show the derived list in the
+  Step 4 approval table; the human approves names, not a lookup.
 - `--forward-source` — the source run's public summary link was already sent
   to these reviewers (Spark's case): make it land on this run.
 - `--allow-shared connect` — **interim exception** (Jon, 2026-09-29): invite
@@ -35,6 +42,17 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`.
+
+## Revoke mode (`--revoke-shared`)
+
+Run once per-partner Connect orgs exist (or when a review ends). Bind (Step 0.1),
+read `released.shared_grants` from the run's `run_state.yaml`, show them all
+for approval as one list, then for each row not yet revoked:
+`connect_remove_org_member(organization_slug: <org>, email)`. It reads back
+both member tables itself; `removed` / `invite-revoked` / `not-present` are all
+a revoked grant. Write each row back with `revoked_at` (the whole
+`shared_grants` array via `localFilePath` — arrays are replaced wholesale by
+every merge mode). Report per row. Nothing else runs in this mode.
 
 ## Step 0 — Bind and check the tenancy is the reviewers' own
 
@@ -113,8 +131,13 @@ Then, in this order:
    first" instruction; the run summary URL; the bot's public chat link; what
    they can and cannot open.
 
-Each grant is proven by a read-back (member list / invite list), never by the
-call's own return value. A failure is `NOT DONE` with the evidence.
+Each grant is proven by a read-back, never by an assumed success: HQ by
+`commcare_list_users` / the invite list, ace-web by the workspace's pending
+invites. `connect_add_org_member` IS its own read-back — it reads Connect's
+member and pending-invite tables before and after the POST and reports what it
+found there (`invited-pending`, `already-member`, …), and there is no separate
+Connect member-list tool — so its `status` is the evidence; a thrown error is
+the failure. A failure is `NOT DONE` with the evidence.
 
 ## Step 5 — Record
 
@@ -127,9 +150,9 @@ curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
 Also write `released: {at, by, to: [emails]}` into the run's `run_state.yaml`
 (`update_yaml_file`). With `--allow-shared connect`, add
 `released.shared_grants: [{system: connect, org, email, role, at}]` — one row
-per grant into a shared org. That list is the revocation checklist: ACE has no
-tool to remove a Connect org member, so revoking is manual in Connect's org
-settings once per-partner orgs exist.
+per grant into a shared org. That list is the revocation checklist:
+`/ace:release <run> --revoke-shared` removes every row with
+`connect_remove_org_member` once per-partner orgs exist.
 
 ## Report
 
