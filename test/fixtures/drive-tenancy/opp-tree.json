@@ -1,0 +1,52 @@
+{
+  "_source": "Parent map of the canonical ACE Drive layout \u2014 ACE/<opp>/{opp.yaml, inputs/, runs/<run-id>/{run_state.yaml, decisions.yaml, <N>-<phase>/...}} \u2014 per agents/orchestrator-reference.md and ace-web apps/opps/opp_forker.py. Folder/file ids are synthetic; names and nesting are the real layout. 'other-opp' is a sibling opp in the same workspace root; 'TEMPLATES' stands for a shared template folder outside the ACE root.",
+  "parents": {
+    "ROOT": [],
+    "spark-facilitator": [
+      "ROOT"
+    ],
+    "opp.yaml": [
+      "spark-facilitator"
+    ],
+    "inputs": [
+      "spark-facilitator"
+    ],
+    "runs": [
+      "spark-facilitator"
+    ],
+    "20260926-1413": [
+      "runs"
+    ],
+    "run_state.yaml": [
+      "20260926-1413"
+    ],
+    "decisions.yaml": [
+      "20260926-1413"
+    ],
+    "6-qa-and-training": [
+      "20260926-1413"
+    ],
+    "screenshots": [
+      "6-qa-and-training"
+    ],
+    "training-flw-guide.md": [
+      "6-qa-and-training"
+    ],
+    "other-opp": [
+      "ROOT"
+    ],
+    "other-opp/run_state.yaml": [
+      "other-opp"
+    ],
+    "TEMPLATES": [],
+    "training-deck-template": [
+      "TEMPLATES"
+    ]
+  },
+  "folders_by_parent": {
+    "ROOT": {
+      "spark-facilitator": "spark-facilitator",
+      "other-opp": "other-opp"
+    }
+  }
+}

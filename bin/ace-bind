@@ -60,7 +60,7 @@ def _fetch(workspace: str, opp: str) -> dict:
         raise RuntimeError(f"ace-web returned HTTP {exc.code} for the tenancy read.") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"could not reach ace-web at {base}: {exc.reason}") from exc
-    return body.get("tenancy") or {}
+    return body
 
 
 def main() -> int:
@@ -70,6 +70,7 @@ def main() -> int:
     p.add_argument("--clear", action="store_true")
     p.add_argument("--tenancy-json")
     p.add_argument("--warn", action="store_true")
+    p.add_argument("--drive-root", help="workspace Drive root (with --tenancy-json)")
     args = p.parse_args()
 
     session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
@@ -103,7 +104,11 @@ def main() -> int:
         return _fail("need a workspace: <workspace>/<opp>, or set ACE_WEB_WORKSPACE")
 
     try:
-        tenancy = json.loads(args.tenancy_json) if args.tenancy_json is not None else _fetch(workspace, opp)
+        if args.tenancy_json is not None:
+            tenancy, drive_root = json.loads(args.tenancy_json), args.drive_root
+        else:
+            body = _fetch(workspace, opp)
+            tenancy, drive_root = body.get("tenancy") or {}, body.get("drive_root_folder_id")
     except (RuntimeError, ValueError) as exc:
         return _fail(str(exc))
 
@@ -112,6 +117,7 @@ def main() -> int:
         "workspace": workspace,
         "opp": opp,
         "tenancy": tenancy,
+        "drive_root_folder_id": drive_root,
         "bound_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "session_id": session,
         "mode": "warn" if args.warn else "enforce",
