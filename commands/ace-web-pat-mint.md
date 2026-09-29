@@ -10,6 +10,12 @@ description: >
 
 # /ace:ace-web-pat-mint
 
+> **Not the default any more.** `/ace:setup` gets ACE's OWN ace-web token
+> automatically (it signs in to ace-web as ace@dimagi-ai.com through the same
+> Connect login ACE uses everywhere). Use this command only when a HUMAN
+> deliberately wants ace-web calls made under their own name — and note the
+> next `/ace:setup` replaces a token that doesn't authenticate as ACE.
+
 Mints `ACE_WEB_PAT_TOKEN` for the human operator (whoever is signed
 into ace-web in their default browser, e.g. `jjackson@dimagi.com`) via
 a `gh auth login` style loopback flow. The token belongs to *you* —

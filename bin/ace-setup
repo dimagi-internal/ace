@@ -790,6 +790,27 @@ EOF
   fi
 fi
 
+# ---- ace-web: ACE's own token, obtained the way ACE gets into Connect/OCS
+#
+# ace-web's API accepts only a browser session or a personal token. Its login
+# IS the Connect login, and ACE already signs in to Connect automatically as
+# ace@dimagi-ai.com — so setup does the same for ace-web and keeps the result
+# on this machine only (the local-only block of $ENV_OUT). Nothing is stored in
+# 1Password and no one clicks through a browser: re-running setup keeps a
+# token that still works, or mints a fresh one labelled for this machine and
+# revokes this machine's older ones. See scripts/ace-web-bot-token-mint.ts.
+if [ "$SKIP_ENV" != "1" ] && [ -f "$ENV_OUT" ]; then
+  ACEWEB_TSX="$ROOT/node_modules/tsx/dist/cli.mjs"
+  if [ -f "$ACEWEB_TSX" ] && [ -f "$ROOT/scripts/ace-web-bot-token-mint.ts" ]; then
+    ACEWEB_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" node "$ACEWEB_TSX" scripts/ace-web-bot-token-mint.ts --ensure 2>/dev/null | grep -E '^(PASS|WARN) ace_web_token' | tail -1)"
+    case "$ACEWEB_OUT" in
+      PASS*) pass "${ACEWEB_OUT#PASS }" ;;
+      WARN*) warn "${ACEWEB_OUT#WARN }" "only ace-web features need it (ace-bind, clone, release, fork-run, invites, videos, transcript upload). If Playwright's Chromium is missing: cd \"$ROOT\" && npx playwright install chromium, then re-run /ace:setup" ;;
+      *)     warn "ace_web_token: could not get ACE's ace-web token (no output)" "re-run /ace:setup; if it persists: cd \"$ROOT\" && CLAUDE_PLUGIN_DATA=\"$DATA_DIR\" npx tsx scripts/ace-web-bot-token-mint.ts --ensure" ;;
+    esac
+  fi
+fi
+
 # ---- commcare-cli.jar (Phase 3 install-gate dependency)
 #
 # `app-release-smoke` Step 4.5 wraps Dimagi's `commcare-cli.jar validate`
