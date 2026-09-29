@@ -136,16 +136,18 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
    them as-is.)
 3. For each journey: call `mobile_run_recipe` against a fresh AVD,
    capture screenshots into
-   `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/`, appending
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/`, appending
    entries to `6-qa-and-training/app-screenshot-capture_manifest.yaml`.
-   Deep runs may overwrite or augment screenshots from a prior shallow
-   Phase 6 run — the deep set is authoritative when both exist.
+   The deep set is authoritative for GRADING when both exist. It does NOT
+   write `3-commcare/previews/` — the app previews folder has exactly one
+   writer, `app-screenshot-capture` (output previews contract v1, its
+   § Step 4.9), so a deep run never replaces or mixes into the apps' previews.
 4. Dispatch `app-ux-eval` to grade the captured set.
 
 Writes:
 - 3-commcare/recipes/journey-<app>-<slug>.yaml (lazily generated for each `recipe: deferred` deep journey on first qa-deep run)
 - 3-commcare/app-test-cases.yaml (updated — each generated deep journey's `recipe:` flipped from `deferred` to its written path)
-- 6-qa-and-training/screenshots/*.png (full per-journey set, supersedes any shallow run)
+- 6-qa-and-training/screenshots/<recipe-base>/*.png (full per-journey deep set; never `3-commcare/previews/`)
 - 6-qa-and-training/app-screenshot-capture_manifest.yaml (updated)
 - 6-qa-and-training/app-ux-eval_verdict-deep.yaml
 - ACE/$1/eval-calibration/app-ux-eval-runs.md (opp-level audit trail; appended row)

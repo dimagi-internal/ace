@@ -512,6 +512,7 @@ forking:**
 | `runs/<run-id>/<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml` | Eval-side judgment from the matching `*-eval` skill. |
 | `runs/<run-id>/<N>-<phase>/<producer>_transcript[-<mode>].md` | QA-captured evidence (chatbot transcripts, etc.). |
 | `runs/<run-id>/<N>-<phase>/<producer>_comms-log[-<mode>].md` | Reject-pause reasons, dry-run logs. |
+| `runs/<run-id>/<N>-<phase>/previews/<output-slug>/{_previews.yaml,<NN>-<step>.png}` | Output previews (contract v1): screenshots of an OUTPUT, in the folder of the phase that BUILT it, whoever captured them — Phase 6 writes the app frames into `3-commcare/previews/apps-{learn,deliver}/`, Phase 7 the dashboard frames into `7-synthetic/previews/`. `_previews.yaml` is authoritative and real YAML bytes; nothing about previews goes under `products`. `lib/output-previews.ts`. |
 
 **No top-level `verdicts/`, `gate-briefs/`, or `comms-log/`
 directories.** Verdicts and comms-logs live next to their phase work

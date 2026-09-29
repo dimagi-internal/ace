@@ -358,6 +358,84 @@ judges found defects that were never fixed; promoting it propagates them to
 every future run of that shape, which is strictly worse than not learning. The
 gate is the loop's own `terminal_status`, not anyone's read of the screenshots.
 
+### Step 3.95: Dashboard previews — one or two render frames per dashboard (best effort)
+
+Every dashboard this phase built is an OUTPUT, and the DDD render has already
+photographed it. Put a picture of each next to it, so ace-web can show what the
+dashboard looks like where it lists it (output previews contract v1, ace-web
+`docs/specs/2026-09-29-output-previews-design.md`; helpers `lib/output-previews.ts`,
+pinned by `test/lib/output-previews.test.ts`):
+
+```
+<run>/7-synthetic/previews/<slug of synthetic.workflows.<key>>/_previews.yaml
+<run>/7-synthetic/previews/<slug of synthetic.workflows.<key>>/<NN>-scene-<N>.png
+```
+
+**Where the frames are.** canopy's render writes one frame per scene to the DDD
+run dir, `$CANOPY_DDD_RUNS_DIR/<ddd_run_id>/snapshots/scene_<N>.png` (`N` = the
+scene's 1-based ORIGINAL spec index; `canopy:ddd-run` passes
+`--snapshots "<run_dir>/snapshots/"`). A scene dropped by `--skip-empty-scenes`
+has no frame; ignore `scene_<N>_before.png` / `*_page_text.json` / `*_visual.json`.
+The snapshots dir holds the LATEST render's frames — the one the loop ended on.
+
+**Which scene shows which dashboard.** Each scene's OPENING url, from
+`<run_dir>/walkthrough-run-data.json` (`slides[]` with `type: scene` carry
+`scene_index` + the resolved `url`), else from the unified spec
+(`7-synthetic/<narrative-slug>.yaml` `scenes[i].url`, or a leading `goto`'s
+target) resolved through `7-synthetic/realized.json`. Then:
+
+```ts
+import { pickDashboardScenes, workflowOutputKey, previewsFolderPath,
+         previewFileName, buildPreviewsIndex, serializePreviewsIndex,
+         assertPreviewsIndexReadable, outputSlug } from '../lib/output-previews';
+
+const picks = pickDashboardScenes({
+  scenes,                                   // [{scene_index, url}]
+  workflows: products.synthetic.workflows,  // the map Step 4 writes — cascade trio included
+  vars: realized,                           // resolves ${…_par_url} in a spec url
+  available: sceneIndicesWithAPng,
+  perOutput: 2,
+});
+```
+
+It matches by the labs workflow id in the url (`…/labs/workflow/<id>/run/…`)
+against each dashboard's `workflow_id` / `run_url` — NOT by var name: the
+cascade's programme report is `programme_par_url` in realized.json but
+`programme_report` in `workflows`. It returns at most two scenes per dashboard,
+in spec order (the first scene on a dashboard is usually its headline).
+
+**For each dashboard with picks**, in this order:
+
+1. Folder `previewsFolderPath('7-synthetic', workflowOutputKey(key))` — create
+   `previews/` then `<slug>/` under the run's `7-synthetic` folder
+   (`drive_create_folder`, find-or-create).
+2. **Clear it:** `drive_list_folder` + `drive_trash_file` every child. A
+   re-render replaces; frames of two renders never mix. This phase is the only
+   writer of `7-synthetic/previews/`.
+3. Upload each frame as `previewFileName(n, 'scene-<N>')` → `01-scene-3.png`
+   (`drive_upload_binary`, `mimeType: image/png`, `shareAnyoneWithLink: true`,
+   `localFilePath` = the snapshot).
+4. Write the index: `buildPreviewsIndex({phase: 'synthetic-data-and-workflows',
+   outputKey: workflowOutputKey(key), capturedBy: 'ddd-run', capturedPhase:
+   'synthetic-data-and-workflows', capturedAt: <ISO>, frames})` with each frame's
+   `caption` = the scene's `title`. `captured_by: ddd-run` is the render step in
+   this phase's `steps` block — the replay reveals the frames at that beat.
+   Serialize to a LOCAL file and upload it as `_previews.yaml` with
+   `drive_upload_binary({mimeType: 'text/yaml'})` — **never** `drive_create_file`
+   (a Google Doc, whose export mangles every newline).
+5. `drive_read_file` it back and run `assertPreviewsIndexReadable(text,
+   {folderSlug, phase, outputKey, capturedBy: 'ddd-run', expectedCount})`. A
+   finding is logged in the phase summary and that dashboard's previews are
+   re-written or dropped — it never fails the phase.
+
+**Best effort — this step can never fail Phase 7.** No render, no snapshots,
+a scene set that lands on none of the dashboards (e.g. a legacy-path narrative),
+a Drive error: write nothing for the affected dashboards and SAY SO in the phase
+summary (`Dashboard previews: 3 of 4 dashboards; worker_review had no scene`).
+**Nothing about previews goes under `products.synthetic`** — ace-web reads any
+mapping in products with a `file_id` as an output, so a pointer to an index
+would render as a bogus one. The index is found by its folder.
+
 ### Step 4: Write-back + summary
 
 **Write each external identifier the moment its create call returns — do NOT batch
@@ -375,7 +453,9 @@ Write the `phases.synthetic-data-and-workflows` block per
 (`apps/opps/summary.py::_read_walkthroughs`): `labs_opp_id`, `workflows{}` (one per
 dashboard `demo-data-setup` built — map `dashboards[]` to `{workflow_id, run_url}`),
 and `walkthroughs[]` (one entry per DDD render — `{web_view_link: <deck/package URL>,
-eval_score}`). `summary_artifact:` = the DDD package (or a one-page summary) file id.
+eval_score}`). `summary_artifact:` = the DDD package (or a one-page summary) file id. The phase
+summary also states Step 3.95's outcome — how many dashboards got previews, and
+why any did not.
 Use `update_yaml_file({merge: 'deep'})` — never `two-level` (drops siblings, #572).
 
 ```yaml

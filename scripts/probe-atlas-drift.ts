@@ -26,8 +26,10 @@
  *                      optionally subdirectories — the script walks
  *                      recursively). The Phase 6 layout produces
  *                      `6-qa-and-training/screenshots/<journey-id>/
- *                      <step-name>.xml` so pointing at any ancestor
- *                      of those XMLs works.
+ *                      <step-name>.xml` (forensics stay there; the
+ *                      passing-leg PNGs moved to
+ *                      `3-commcare/previews/<app-output-slug>/`) so
+ *                      pointing at any ancestor of those XMLs works.
  *   --apk <version>    Connect APK version to compare against. Defaults
  *                      to `$ACE_CONNECT_APK_VERSION` (the pin in
  *                      `.env.tpl`), falling back to 2.63.2 if unset.
