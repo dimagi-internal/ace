@@ -324,6 +324,21 @@ async function shootCard(page: Page, shot: Shot, file: string): Promise<ShotResu
     }
     return tall ?? (el as HTMLElement);
   }, VIEWPORT.width);
+  if (shot.clamp) {
+    await handle.evaluate(
+      (card: Node, c: { selector: string; lines: number }) => {
+        for (const el of Array.from((card as HTMLElement).querySelectorAll<HTMLElement>(c.selector))) {
+          el.style.maxWidth = 'none';
+          el.style.display = '-webkit-box';
+          el.style.setProperty('-webkit-line-clamp', String(c.lines));
+          el.style.setProperty('-webkit-box-orient', 'vertical');
+          el.style.overflow = 'hidden';
+        }
+      },
+      shot.clamp,
+    );
+    await page.waitForTimeout(200);
+  }
   await hideFloating(page);
   await handle.asElement()!.scrollIntoViewIfNeeded();
   await handle.asElement()!.screenshot({ path: file });

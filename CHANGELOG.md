@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1618 — 2026-09-30
+
+**`output-preview-capture`: the Connect program card is a readable landscape frame.** Connect renders the
+program description in a half-width column (`.card_description … max-w-1/2`), so a PDD-length description
+made the card frame a 891×1570 strip of tiny wrapped text, with the name, delivery type, dates, budget and
+invite funnel squeezed at the ends (spark-facilitator/20260926-1800). Card shots can now declare a
+`clamp` (`{selector, lines}`), applied inside the matched card before the shot. The program plan clamps
+`.card_description` to 3 full-width lines. The live frame is now 891×410: name, three lines of description,
+delivery type, dates and budget, and the invite funnel. Test added.
+
 ## 0.13.1614 — 2026-09-30
 
 **`output-preview-capture`: a nameless Connect program's caption no longer leaks a placeholder.** When
