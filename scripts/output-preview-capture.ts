@@ -2,7 +2,7 @@
 /**
  * Output preview capture — the browser half of `skills/output-preview-capture`.
  *
- *   npx tsx scripts/output-preview-capture.ts gaps    --opp O --run R [--phase P] [--workspace W]
+ *   npx tsx scripts/output-preview-capture.ts gaps    --opp O --run R [--phase P] [--workspace W] [--refresh]
  *   npx tsx scripts/output-preview-capture.ts capture --opp O --run R --captured-phase P --out DIR
  *                                                     [--phase P] [--run-end] [--workspace W]
  *                                                     [--run-state FILE] [--test-prompts FILE]
@@ -38,7 +38,7 @@
  *   public       none.
  */
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type ElementHandle, type Page } from 'playwright';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -105,7 +105,7 @@ function log(msg: string): void {
 // ace-web
 // ---------------------------------------------------------------------------
 
-async function fetchGaps(opp: string, run: string): Promise<ReturnType<typeof parsePreviewGaps>> {
+async function fetchGaps(opp: string, run: string, refresh = false): Promise<ReturnType<typeof parsePreviewGaps>> {
   const local = arg('gaps-json');
   if (local) return parsePreviewGaps(JSON.parse(fs.readFileSync(local, 'utf8')));
   const base = process.env.ACE_WEB_BASE_URL;
@@ -113,7 +113,7 @@ async function fetchGaps(opp: string, run: string): Promise<ReturnType<typeof pa
   const workspace = arg('workspace') ?? process.env.ACE_WEB_WORKSPACE;
   if (!base || !token) die('ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN are required (run /ace:setup — it writes ACE’s own ace-web token)');
   if (!workspace) die('no workspace: pass --workspace or set ACE_WEB_WORKSPACE in the plugin .env');
-  const url = previewGapsUrl(base as string, workspace as string, opp, run);
+  const url = previewGapsUrl(base as string, workspace as string, opp, run, refresh);
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if (!res.ok) die(`GET ${url} → HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
   return parsePreviewGaps(await res.json());
@@ -264,6 +264,7 @@ async function shoot(page: Page, shot: Shot, file: string): Promise<string | nul
     await page.screenshot({ path: file });
     return null;
   }
+  if (shot.mode === 'card') return shootCard(page, shot, file);
   const exact = page.getByText(shot.text ?? '', { exact: true });
   const loc = (await exact.count()) > 0 ? exact.first() : page.getByText(shot.text ?? '').first();
   if ((await loc.count()) === 0) return `text ${JSON.stringify(shot.text)} not on the page`;
@@ -276,12 +277,39 @@ async function shoot(page: Page, shot: Shot, file: string): Promise<string | nul
     await page.screenshot({ path: file });
     return null;
   }
-  // card: the nearest ancestor that LOOKS like a card (shadow, or a rounded
-  // filled box) and is narrower than the page; else the first tall ancestor.
-  const handle = await loc.evaluateHandle((el, vw) => {
+  return null;
+}
+
+/**
+ * The card holding THIS output — never "the first card on the page". Anchored
+ * on an element whose attribute carries `shot.href` (a Connect program card's
+ * edit / invite / new-opportunity controls all carry `/program/<uuid>/`), else
+ * on an element whose text is EXACTLY `shot.text`. Neither → no frame.
+ */
+async function shootCard(page: Page, shot: Shot, file: string): Promise<string | null> {
+  let anchor: ElementHandle<Node> | null = null;
+  if (shot.href) {
+    const h = await page.evaluateHandle((needle) => {
+      for (const el of Array.from(document.querySelectorAll('body *'))) {
+        for (const a of Array.from(el.attributes)) if (a.value.includes(needle)) return el;
+      }
+      return null;
+    }, shot.href);
+    anchor = h.asElement();
+  }
+  if (!anchor && shot.text) {
+    const exact = page.getByText(shot.text, { exact: true });
+    if ((await exact.count()) > 0) anchor = await exact.first().elementHandle();
+  }
+  if (!anchor) {
+    return `could not identify the output's card (${[shot.href && `no element carries ${shot.href}`, shot.text && `no text exactly ${JSON.stringify(shot.text)}`].filter(Boolean).join('; ')})`;
+  }
+  // The nearest ancestor that LOOKS like a card (shadow, or a rounded filled
+  // box) and is narrower than the page; else the first tall ancestor.
+  const handle = await anchor.evaluateHandle((el: Node, vw: number) => {
     let e: HTMLElement | null = el as HTMLElement;
     let tall: HTMLElement | null = null;
-    for (let i = 0; i < 12 && e && e !== document.body; i++) {
+    for (let i = 0; i < 14 && e && e !== document.body; i++) {
       const r = e.getBoundingClientRect();
       const cs = getComputedStyle(e);
       const filled = cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent';
@@ -290,7 +318,7 @@ async function shoot(page: Page, shot: Shot, file: string): Promise<string | nul
       if (!tall && r.height >= 180 && r.width < vw * 0.9) tall = e;
       e = e.parentElement;
     }
-    return tall ?? el;
+    return tall ?? (el as HTMLElement);
   }, VIEWPORT.width);
   await hideFloating(page);
   await handle.asElement()!.scrollIntoViewIfNeeded();
@@ -307,6 +335,7 @@ async function capturePage(ctx: BrowserContext, plan: CapturePlan, dir: string):
     const screen = screenPage(sig);
     if (!screen.ok) return { frames: [], fail: `${screen.reason}: ${screen.detail}` };
     const frames: FrameOut[] = [];
+    const misses: string[] = [];
     let n = 0;
     for (const shot of plan.shots) {
       const name = captureFileName(n + 1, shot);
@@ -314,12 +343,13 @@ async function capturePage(ctx: BrowserContext, plan: CapturePlan, dir: string):
       const miss = await shoot(page, shot, file);
       if (miss) {
         log(`${plan.gap.id}: shot ${shot.step} skipped — ${miss}`);
+        misses.push(miss);
         continue;
       }
       n += 1;
       frames.push({ path: file, name, step: shot.step, caption: shot.caption, screen });
     }
-    return frames.length ? { frames } : { frames, fail: 'no shot landed' };
+    return frames.length ? { frames } : { frames, fail: misses.join('; ') || 'no shot landed' };
   } finally {
     await page.close().catch(() => {});
   }
@@ -350,6 +380,7 @@ async function captureChat(ctx: BrowserContext, plan: CapturePlan, dir: string):
     }
     if (last.trim().length <= 20) return { frames: [], fail: 'the bot did not answer within 120s' };
     if (/something went wrong|intermittent error/i.test(last)) return { frames: [], fail: `the bot answered with an error: ${last.slice(0, 120)}` };
+    await frameExchange(page);
     const shot = plan.shots[0];
     const name = captureFileName(1, shot);
     const file = path.join(dir, name);
@@ -358,6 +389,42 @@ async function captureChat(ctx: BrowserContext, plan: CapturePlan, dir: string):
   } finally {
     await page.close().catch(() => {});
   }
+}
+
+/**
+ * Frame the question AND its answer. The chat pane scrolls to its newest
+ * message, so a long answer leaves the user's question off the top — the first
+ * real run's frame showed only the tail of the answer. Hide the widget's
+ * `[no tag]` debug line, grow the viewport (bounded) to fit the exchange, then
+ * put the user's message at the top.
+ */
+async function frameExchange(page: Page): Promise<void> {
+  const height = await page.evaluate(() => {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('#message-list .chat-message-system *'))) {
+      if (el.children.length === 0 && /^\s*\[no tag\]\s*$/i.test(el.textContent ?? '')) el.style.display = 'none';
+    }
+    const users = document.querySelectorAll<HTMLElement>('#message-list .chat-message-user');
+    const bots = document.querySelectorAll<HTMLElement>('#message-list .chat-message-system');
+    const q = users[users.length - 1];
+    const a = bots[bots.length - 1];
+    if (!q || !a) return 0;
+    return a.getBoundingClientRect().bottom - q.getBoundingClientRect().top;
+  });
+  if (height > 0) {
+    const vp = page.viewportSize() ?? CHAT_VIEWPORT;
+    await page.setViewportSize({ width: vp.width, height: Math.min(Math.max(vp.height, Math.ceil(height) + 220), 2000) });
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(() => {
+    const users = document.querySelectorAll<HTMLElement>('#message-list .chat-message-user');
+    const q = users[users.length - 1];
+    if (!q) return;
+    q.scrollIntoView({ block: 'start' });
+    // leave the bot's greeting edge visible above the question
+    const pane = document.querySelector<HTMLElement>('#message-list');
+    if (pane && pane.scrollHeight > pane.clientHeight) pane.scrollTop = Math.max(0, pane.scrollTop - 16);
+  });
+  await page.waitForTimeout(400);
 }
 
 function saKeyPath(): string {
@@ -538,7 +605,7 @@ function runVerify(): void {
 }
 
 async function runGaps(): Promise<void> {
-  const list = await fetchGaps(need('opp'), need('run'));
+  const list = await fetchGaps(need('opp'), need('run'), flag('refresh'));
   const phase = arg('phase');
   const sel = phase ? selectGaps(list.outputs, { phaseFilter: phase, capturedPhase: phase, runEnd: true }).capture : list.outputs;
   process.stdout.write(JSON.stringify({ run_id: list.run_id, covered: list.covered, outputs: sel }) + '\n');

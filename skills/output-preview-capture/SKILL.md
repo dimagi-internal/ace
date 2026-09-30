@@ -28,7 +28,7 @@ Drive I/O and the one thing no script can do: **looking at every frame**.
 | Source | Artifact | Used for |
 |---|---|---|
 | ace-web | `GET {ACE_WEB_BASE_URL}/api/w/{workspace}/opps/{opp}/runs/{run}/preview-gaps` | the gap list — `output_key`, `phase`, `kind`, `url`, `auth` per output. Used VERBATIM; never re-derive ace-web's product walk |
-| Per-run state | `run_state.yaml` | product fields the gap does not carry: a chatbot's `public_url` / `team_slug` + `public_id`, a solicitation's `labs_program_id`, a program's `name` |
+| Per-run state | `run_state.yaml` | product fields the gap does not carry: a program's `id` / `name`, a solicitation's `labs_program_id`, and — for ace-web older than #831, whose gaps carry no `public_url` — a chatbot's `public_url` / `team_slug` + `public_id` |
 | Phase 2 | `2-scenarios/pdd-to-test-prompts.md` | the ONE real question the chatbot picture shows answered |
 | Caller | `opp`, `run_id`, `captured_phase` (the run_state phase key this runs in), optional phase filter, `--run-end` | scope |
 
@@ -49,8 +49,8 @@ reads any mapping there with a `file_id` as an output.
 | Kind | Frame(s) | Session |
 |---|---|---|
 | `connect_opportunity` | top of the opportunity page (apps, payment units, dates, budget); then its Verification / payments section | connect |
-| `connect_program` | its CARD on `…/a/<org>/program/` — Connect has no program detail route; the recorded `/program/<uuid>/` 404s | connect |
-| `chatbot` | the PUBLIC chat page (`public_url`) with one real Phase 2 question answered — never the OCS admin page | none (anonymous) |
+| `connect_program` | its CARD on `…/a/<org>/program/` — Connect has no program detail route; the recorded `/program/<uuid>/` 404s. The card is found by the program's UUID (its edit / invite / new-opportunity controls carry `/program/<uuid>/`), else by its EXACT recorded name — never by the gap title. Neither → **skipped** (`could not identify the program's card`): a frame of the wrong program is never the fallback | connect |
+| `chatbot` | the PUBLIC chat page (the gap's `public_url`, else run_state's) with one real Phase 2 question answered — the question with the SHORTEST expected answer — framed so the user's question sits at the top and the whole answer fits (viewport grown to ≤2000px), the widget's `[no tag]` debug line hidden. Never the OCS admin page | none (anonymous) |
 | `solicitation` | its labs page opened with `?program_id=<labs_program_id>` — labs' sticky context otherwise 404s it | labs |
 | `dashboard` / labs report | the rendered report, top of page, with data loaded | labs |
 | `walkthrough` (canopy DDD package) | the package page at its walkthrough's first scene — its hero video is H.264, which headless Chromium paints white | canopy |
@@ -145,6 +145,17 @@ reads any mapping there with a `file_id` as an output.
       rewrote a caption in step 3, edit it in `plan.json` first. Upload it with
       `drive_upload_binary({name: '_previews.yaml', mimeType: 'text/yaml', localFilePath, parentFolderId})`
       — **never** `drive_create_file`.
+
+      Looping over several gaps in one Bash call? ACE's shell is **zsh**, which
+      does NOT word-split an unquoted `$var` — `for id in $ids` runs ONCE with
+      the whole list as one argument (seen live as `missing --gap`). Read one id
+      per line instead:
+      ```bash
+      printf '%s\n' "${GAP_IDS[@]}" | while IFS= read -r id; do
+        node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/output-preview-capture.ts" index \
+          --plan "$PLAN" --gap "$id" --uploaded "$SCRATCH/uploads-${id//[^A-Za-z0-9]/-}.json"
+      done
+      ```
    5. **Read it back and assert.** `drive_read_file({fileId, writeToPath})`, then
       `… output-preview-capture.ts verify --plan … --gap <id> --readback <file> --count <N>`.
       Exit 1 → re-upload once; still failing → trash the folder's contents and
@@ -154,11 +165,16 @@ reads any mapping there with a `file_id` as an output.
 5. **Re-fetch the gap list and report.**
    ```bash
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/output-preview-capture.ts" gaps \
-     --opp <opp> --run <run_id> [--phase <phase>]
+     --opp <opp> --run <run_id> [--phase <phase>] --refresh
    ```
-   (ace-web's snapshot cache follows Drive's Changes API, so a just-written
-   index can take one request to show; a gap you just filled that is still
-   listed is reported as "written, not yet visible", not as a failure.)
+   **`--refresh` is required here** — it sends `?refresh=true` (ace-web#832),
+   which drops ace-web's cached snapshot and rebuilds it from Drive. Without it
+   the cached snapshot predates the `previews/` folders just created, and every
+   gap just filled still reads as open (seen live on
+   spark-facilitator/20260926-1800: 9 of 9 "left" right after writing 8). Step 2's
+   fetch does not need it. On an ace-web that ignores the parameter, a gap you
+   just filled that is still listed is reported as "written, not yet visible",
+   not as a failure.
    Return ONE line the caller puts in its phase summary:
    `previews: N captured, M gaps left (<output_key>: <why>; …)`, plus the
    deferred app gaps at Phase 3 (`apps.learn: waits for the Phase 6 walk`).
@@ -197,4 +213,5 @@ restore.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-30 | **First real run fixes (spark-facilitator/20260926-1800).** (1) The program card matched the WRONG program: run_state recorded the program with no name, the plan fell back to the gap title "Connect program", and the card shot took the first card on the page (a probe program). The card is now found by the program's UUID, else its exact recorded name, and otherwise SKIPPED — never a wrong-thing fallback. (2) The chatbot frame showed the tail of a long answer without the question: prefer the shortest-expected-answer prompt, put the question at the top, grow the viewport to fit, hide `[no tag]`. (3) Step 5 re-fetches with `--refresh` (ace-web#832). Gap `public_url` (ace-web#831) is used directly; zsh-safe loop pattern in Step 4.4. | ACE team |
 | 2026-09-29 | Initial skill (ace-web output previews addendum: every output is a doc or has screenshots). Reads ace-web's `preview-gaps` list and photographs the Connect program/opportunity, the chatbot's public chat with a real Phase 2 question answered, the solicitation, labs reports, the canopy DDD package, Drive files the viewer cannot draw, and — as a fallback after Phase 6 — CommCare apps via HQ's form summary. Every frame is looked at before upload. Called at the end of Phases 3–8 and at run end. Smoke-tested live on spark-facilitator/20260926-1800's outputs (8/8 kinds captured; Drive write + readback verified in a scratch folder). | ACE team |

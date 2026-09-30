@@ -5,6 +5,7 @@ import {
   authForUrl,
   buildCaptureIndex,
   captureFolderPath,
+  connectProgramId,
   connectProgramListUrl,
   driveFileId,
   effectiveAuth,
@@ -44,6 +45,7 @@ describe('gap list', () => {
       'https://labs.connect.dimagi.com/ace/api/w/dimagi-team/opps/bednet/runs/20260908-1544/preview-gaps',
     );
     expect(() => previewGapsUrl('', 'w', 'o', 'r')).toThrow(/base/);
+    expect(previewGapsUrl('https://h/ace', 'w', 'o', 'r', true)).toBe('https://h/ace/api/w/w/opps/o/runs/r/preview-gaps?refresh=true');
   });
 
   it('parses the documented response and fills auth from the url when absent', () => {
@@ -199,6 +201,37 @@ describe('shot plan', () => {
     expect(p.shots[0]).toMatchObject({ mode: 'card', text: 'Spark FCAP' });
   });
 
+  it('matches a program card by its UUID even when run_state records no name', () => {
+    const url = 'https://connect.dimagi.com/a/ai-demo-space/program/9e82982e-7638-44bc-9de2-2bfcefae550d/';
+    const g = gap({ output_key: 'connect.program', kind: 'connect_program', title: 'Connect program', url });
+    const p = planCapture(g, { product: { id: '9e82982e-7638-44bc-9de2-2bfcefae550d', url } });
+    expect(p.skip).toBeUndefined();
+    expect(p.shots[0]).toMatchObject({ mode: 'card', href: '/program/9e82982e-7638-44bc-9de2-2bfcefae550d/' });
+    // the gap title is ace-web's default label — never used to find the card
+    expect(p.shots[0].text).toBeUndefined();
+    expect(connectProgramId(url)).toBe('9e82982e-7638-44bc-9de2-2bfcefae550d');
+  });
+
+  it('skips a nameless program with no id rather than shooting the first card on the page', () => {
+    const g = gap({ output_key: 'connect.program', kind: 'connect_program', title: 'Connect program', url: 'https://connect.dimagi.com/a/org/program/not-a-uuid/' });
+    const p = planCapture(g, { product: {} });
+    expect(p.shots).toEqual([]);
+    expect(p.skip).toMatch(/could not identify the program's card/);
+  });
+
+  it("uses ace-web's public_url for the chatbot and solicitation when the gap carries one", () => {
+    const bot = planCapture(
+      gap({ phase: 'ocs-setup', output_key: 'ocs_chatbot', kind: 'chatbot', url: 'https://www.openchatstudio.com/a/t/chatbots/1/', auth: 'ocs', public_url: 'https://www.openchatstudio.com/a/t/chatbots/pub/start/' }),
+      { product: null, chatQuestion: 'q?' },
+    );
+    expect(bot.url).toBe('https://www.openchatstudio.com/a/t/chatbots/pub/start/');
+    const sol = planCapture(
+      gap({ phase: 'solicitation-management', output_key: 'solicitation', kind: 'solicitation', url: 'https://labs.connect.dimagi.com/solicitations/7/edit/', auth: 'labs', public_url: 'https://labs.connect.dimagi.com/solicitations/7/' }),
+      { product: { labs_program_id: 3 } },
+    );
+    expect(sol.url).toBe('https://labs.connect.dimagi.com/solicitations/7/?program_id=3');
+  });
+
   it('uses the HQ form summary for the app fallback and the SA for an undrawable file', () => {
     const app = planCapture(gap({ phase: 'commcare-setup', output_key: 'apps.learn', kind: 'commcare_app', url: 'https://www.commcarehq.org/a/d/apps/view/abc123/', auth: 'hq' }));
     expect(app.url).toMatch(/\/summary\/$/);
@@ -244,6 +277,22 @@ Total prompts: 3
   it('reads a text/markdown export with escaped markers', () => {
     const escaped = doc.replace(/##/g, '\\#\\#').replace(/\*\*/g, '\\*\\*');
     expect(pickChatQuestion(escaped)).toBe('How many days after the first visit do I return?');
+  });
+  it('prefers the question with the SHORTEST expected answer, so the frame holds question and answer', () => {
+    const two = `## Prompt 1
+**Category:** payment
+**Question:** How am I paid and verified?
+**Expected answer summary:** The rate, the caps, all three verification layers,
+the exclusions and the review sample, in detail.
+**Expected escalation:** none
+
+## Prompt 2
+**Category:** visit-flow
+**Question:** How many days between visits?
+**Expected answer summary:** At least 3 days.
+**Expected escalation:** none
+`;
+    expect(pickChatQuestion(two)).toBe('How many days between visits?');
   });
   it('falls back to the generic opener, and returns null on no prompts', () => {
     expect(pickChatQuestion(doc.split('## Prompt 2')[0])).toBe('What is this opportunity about?');

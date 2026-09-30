@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1613 — 2026-09-30
+
+**`output-preview-capture`: fixes from its first real run (spark-facilitator/20260926-1800).**
+(1) The Connect program card matched the WRONG program. run_state recorded the program with no name, so
+the plan fell back to the gap title "Connect program" and the card shot took the first card on the page, a
+probe program. The card is now found by the program's UUID (the card's edit / invite / new-opportunity
+controls carry `/program/<uuid>/`), else by its exact recorded name. When neither matches, the gap is
+skipped as `could not identify the program's card` — a wrong-thing frame is never the fallback. Pinned by
+a test. (2) The chatbot frame showed the tail of a long answer with the question off-screen. The chosen
+question is now the eligible Phase 2 prompt with the shortest expected answer; the exchange is framed with
+the user's question at the top in a viewport grown to fit (≤2000px); the widget's `[no tag]` line is
+hidden. (3) Step 5 re-fetches the gap list with `gaps --refresh` → `?refresh=true` (ace-web#832), so a
+just-written preview no longer reads as a gap still open. The gap's own `public_url` (ace-web#831) is used
+for the chatbot and the solicitation, with the run_state fallback kept for older ace-web. Also: a zsh-safe
+per-gap loop in Step 4.4.
+
 ## 0.13.1612 — 2026-09-29
 
 **Every run output is a doc ace-web can show, or has good screenshots — new utility skill

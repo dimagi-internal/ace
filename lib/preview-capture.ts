@@ -47,6 +47,12 @@ export interface PreviewGap {
   file_id: string | null;
   reason: GapReason;
   auth: PreviewAuth;
+  /**
+   * The anonymous page for the output, when ace-web knows one (ace-web#831:
+   * the chatbot's public chat, the solicitation's page). Absent on older
+   * ace-web — the run_state fallback covers that.
+   */
+  public_url?: string | null;
 }
 
 export interface PreviewGapList {
@@ -59,13 +65,20 @@ export interface PreviewGapList {
 // The gap list
 // ---------------------------------------------------------------------------
 
-/** `GET` URL for a run's gap list. `base` is `ACE_WEB_BASE_URL` (…/ace). */
-export function previewGapsUrl(base: string, workspace: string, opp: string, runId: string): string {
+/**
+ * `GET` URL for a run's gap list. `base` is `ACE_WEB_BASE_URL` (…/ace).
+ * `refresh` sends `?refresh=true` (ace-web#832): ace-web drops its cached
+ * snapshot and rebuilds from Drive. The re-fetch AFTER writing previews must
+ * use it — the cached snapshot can predate the new `previews/` folders, and
+ * then every gap just filled still reads as open.
+ */
+export function previewGapsUrl(base: string, workspace: string, opp: string, runId: string, refresh = false): string {
   for (const [name, v] of [['base', base], ['workspace', workspace], ['opp', opp], ['runId', runId]] as const) {
     if (!v || !String(v).trim()) throw new Error(`previewGapsUrl: ${name} is required`);
   }
   const enc = encodeURIComponent;
-  return `${base.replace(/\/+$/, '')}/api/w/${enc(workspace)}/opps/${enc(opp)}/runs/${enc(runId)}/preview-gaps`;
+  const url = `${base.replace(/\/+$/, '')}/api/w/${enc(workspace)}/opps/${enc(opp)}/runs/${enc(runId)}/preview-gaps`;
+  return refresh ? `${url}?refresh=true` : url;
 }
 
 /**
@@ -94,6 +107,7 @@ export function parsePreviewGaps(body: unknown): PreviewGapList {
       file_id: str(r.file_id) || null,
       reason: r.reason === 'not-viewable-file' ? 'not-viewable-file' : 'no-preview',
       auth: isAuth(r.auth) ? r.auth : authForUrl(url),
+      public_url: str(r.public_url) || null,
     };
   });
   return {
@@ -230,13 +244,20 @@ export type ShotMode =
   | 'viewport'
   /** Scroll the first element containing `text` to the top, then the viewport. */
   | 'scroll-to-text'
-  /** The smallest card that contains `text`, as an element screenshot. */
+  /**
+   * The card that holds the output: found by an element whose attribute
+   * contains `href` (a program's `/program/<uuid>/` — its edit / invite /
+   * new-opportunity controls carry it), else by EXACT `text`. No confident
+   * match → no frame; the first card on the page is never a fallback.
+   */
   | 'card';
 
 export interface Shot {
   step: string;
   mode: ShotMode;
   text?: string;
+  /** card mode: a substring an attribute of an element INSIDE the card carries. */
+  href?: string;
   caption: string;
 }
 
@@ -268,7 +289,7 @@ export interface PlanContext {
  *
  * | Kind | Screenshot(s) |
  * |---|---|
- * | Connect program | its card on the org's Programs page (Connect has no program detail route — the recorded `/program/<uuid>/` 404s) |
+ * | Connect program | its card on the org's Programs page, found by UUID or exact name, else skipped (Connect has no program detail route — the recorded `/program/<uuid>/` 404s) |
  * | Connect opportunity | top of its page; then its Verification / payments section |
  * | Chatbot | the PUBLIC chat with one real Phase 2 question answered — never the admin page |
  * | Solicitation | its labs page, opened in the solicitation's own program context |
@@ -300,13 +321,30 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
   switch (gap.kind) {
     case 'connect_program': {
       const listUrl = connectProgramListUrl(gap.url);
-      const name = str(product?.name) || str(product?.title) || t;
       if (!listUrl) return { ...base, strategy: 'page', url: gap.url, shots: [], skip: `not a Connect program url: ${gap.url}` };
+      // Identify THIS program's card — by its UUID first, by its recorded name
+      // second. Never by the gap title: "Connect program" is ace-web's default
+      // label, and matching it (or nothing) photographed the first card on the
+      // page — a probe program — on spark-facilitator/20260926-1800.
+      const id = connectProgramId(gap.url) ?? (UUID.test(str(product?.id)) ? str(product?.id) : '');
+      const name = str(product?.name) || str(product?.title);
+      if (!id && !name) {
+        return { ...base, strategy: 'page', url: listUrl, shots: [], skip: "could not identify the program's card (no program id in the url and no name in run_state)" };
+      }
+      const label = name || 'this program';
       return {
         ...base,
         strategy: 'page',
         url: listUrl,
-        shots: [{ step: 'program-card', mode: 'card', text: name, caption: `Connect program "${name}" — its card on the Programs page: delivery type, dates, budget and invite funnel` }],
+        shots: [
+          {
+            step: 'program-card',
+            mode: 'card',
+            ...(id ? { href: `/program/${id}/` } : {}),
+            ...(name ? { text: name } : {}),
+            caption: `Connect program ${name ? `"${name}"` : label} — its card on the Programs page: delivery type, dates, budget and invite funnel`,
+          },
+        ],
       };
     }
     case 'connect_opportunity':
@@ -320,7 +358,7 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
         ],
       };
     case 'chatbot': {
-      const publicUrl = ocsPublicUrl(product);
+      const publicUrl = str(gap.public_url) || ocsPublicUrl(product);
       if (!publicUrl) return { ...base, strategy: 'ocs-chat', url: null, shots: [], skip: 'no public chat url (products.ocs_chatbot.public_url, or team_slug + public_id)' };
       const q = (ctx.chatQuestion ?? '').trim();
       if (!q) return { ...base, strategy: 'ocs-chat', url: publicUrl, shots: [], skip: 'no Phase 2 test question to ask (2-scenarios/pdd-to-test-prompts.md)' };
@@ -336,7 +374,7 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
       return {
         ...base,
         strategy: 'page',
-        url: withLabsProgramContext(gap.url, product),
+        url: withLabsProgramContext(str(gap.public_url) || gap.url, product),
         shots: [{ step: 'solicitation', mode: 'viewport', caption: `Solicitation "${t}" as a candidate organisation sees it on labs` }],
       };
     case 'commcare_app': {
@@ -381,6 +419,14 @@ export function captureFileName(ordinal: number, shot: Pick<Shot, 'step'>): stri
 // ---------------------------------------------------------------------------
 // URL helpers
 // ---------------------------------------------------------------------------
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The program UUID in `…/a/<org>/program/<uuid>/…`, or null. */
+export function connectProgramId(url: string | null | undefined): string | null {
+  const m = /\/program\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$|\?)/i.exec(String(url ?? ''));
+  return m ? m[1].toLowerCase() : null;
+}
 
 /**
  * `…/a/<org>/program/<uuid>/` → `…/a/<org>/program/`. Connect serves no program
@@ -451,9 +497,11 @@ const ADVERSARIAL = new Set([
 
 /**
  * One REAL question from Phase 2's `pdd-to-test-prompts.md` for the chatbot
- * picture: the first prompt that is not adversarial, expects no escalation and
- * is not the generic "what is this opportunity about" opener (a picture of the
- * bot answering a specific worker question says more). Falls back to the first
+ * picture. Eligible: not adversarial, expects no escalation, not the generic
+ * "what is this opportunity about" opener. Among those, the one whose EXPECTED
+ * ANSWER is shortest — the frame has to hold the question and the whole answer,
+ * and a long answer pushes the question off the top (the first real run's
+ * frame showed only the tail of an answer). Falls back to the first
  * non-adversarial prompt. Tolerates a `text/markdown` export's escapes.
  */
 export function pickChatQuestion(markdown: string): string | null {
@@ -467,13 +515,19 @@ export function pickChatQuestion(markdown: string): string | null {
       const r = new RegExp(`\\*\\*${name}:?\\*\\*:?\\s*([^\\n]+)`, 'i').exec(body);
       return r ? r[1].trim() : '';
     };
-    return { category: field('Category').toLowerCase(), question: field('Question'), escalation: field('Expected escalation').toLowerCase() };
+    // The summary may wrap onto following lines, up to the next **Field:**.
+    const summary = /\*\*Expected answer summary:?\*\*:?\s*([\s\S]*?)(?=\n\s*\*\*|$)/i.exec(body)?.[1].trim() ?? '';
+    return { category: field('Category').toLowerCase(), question: field('Question'), escalation: field('Expected escalation').toLowerCase(), summary };
   });
   const usable = prompts.filter((p) => p.question && !ADVERSARIAL.has(p.category));
-  const specific = usable.find(
+  const specific = usable.filter(
     (p) => (p.escalation === '' || p.escalation.startsWith('none')) && !/what is this (opportunity|programme|program) about/i.test(p.question),
   );
-  return (specific ?? usable[0])?.question ?? null;
+  const withSummary = specific.filter((p) => p.summary);
+  const shortest = withSummary.length
+    ? withSummary.reduce((a, b) => (b.summary.length < a.summary.length ? b : a))
+    : specific[0];
+  return (shortest ?? usable[0])?.question ?? null;
 }
 
 // ---------------------------------------------------------------------------
