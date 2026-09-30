@@ -5,6 +5,7 @@ import {
   authForUrl,
   buildCaptureIndex,
   captureFolderPath,
+  cardCaption,
   connectProgramId,
   connectProgramListUrl,
   driveFileId,
@@ -14,6 +15,7 @@ import {
   parsePreviewGaps,
   phaseFolderForGap,
   pickChatQuestion,
+  programCardCaption,
   planCapture,
   previewGapsUrl,
   productNodeAt,
@@ -210,6 +212,25 @@ describe('shot plan', () => {
     // the gap title is ace-web's default label — never used to find the card
     expect(p.shots[0].text).toBeUndefined();
     expect(connectProgramId(url)).toBe('9e82982e-7638-44bc-9de2-2bfcefae550d');
+  });
+
+  it('captions a nameless program from its card heading, and never leaks a placeholder', () => {
+    const url = 'https://connect.dimagi.com/a/ai-demo-space/program/9e82982e-7638-44bc-9de2-2bfcefae550d/';
+    const p = planCapture(gap({ output_key: 'connect.program', kind: 'connect_program', title: 'Connect program', url }), { product: { id: '9e82982e-7638-44bc-9de2-2bfcefae550d' } });
+    const shot = p.shots[0];
+    // before the card is read: a caption that names nothing
+    expect(shot.caption).toBe('Connect program — its card on the Programs page: delivery type, dates, budget and invite funnel');
+    expect(shot.caption).not.toMatch(/this program/);
+    // once the matched card's heading is read, it names the program
+    expect(cardCaption(shot, '  Spark FCAP Facilitation — Malawi Follow-Up Study (MWK) ')).toBe(
+      'Spark FCAP Facilitation — Malawi Follow-Up Study (MWK) — its card on the Programs page: delivery type, dates, budget and invite funnel',
+    );
+    // a blank heading keeps the name-free caption
+    expect(cardCaption(shot, '')).toBe(shot.caption);
+    // a recorded name wins and is not overridden by the heading
+    const named = planCapture(gap({ output_key: 'connect.program', kind: 'connect_program', url }), { product: { name: 'Spark FCAP' } }).shots[0];
+    expect(named.caption).toBe(programCardCaption('Spark FCAP'));
+    expect(cardCaption(named, 'Something else')).toBe(named.caption);
   });
 
   it('skips a nameless program with no id rather than shooting the first card on the page', () => {

@@ -259,6 +259,11 @@ export interface Shot {
   /** card mode: a substring an attribute of an element INSIDE the card carries. */
   href?: string;
   caption: string;
+  /**
+   * card mode: once the card is found, re-caption the frame from the card's own
+   * heading via `cardCaption` — the name run_state did not record.
+   */
+  captionFromCardHeading?: 'connect_program';
 }
 
 export type CaptureStrategy = 'page' | 'ocs-chat' | 'drive-file';
@@ -331,7 +336,6 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
       if (!id && !name) {
         return { ...base, strategy: 'page', url: listUrl, shots: [], skip: "could not identify the program's card (no program id in the url and no name in run_state)" };
       }
-      const label = name || 'this program';
       return {
         ...base,
         strategy: 'page',
@@ -342,7 +346,8 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
             mode: 'card',
             ...(id ? { href: `/program/${id}/` } : {}),
             ...(name ? { text: name } : {}),
-            caption: `Connect program ${name ? `"${name}"` : label} — its card on the Programs page: delivery type, dates, budget and invite funnel`,
+            caption: programCardCaption(name),
+            ...(name ? {} : { captionFromCardHeading: 'connect_program' as const }),
           },
         ],
       };
@@ -409,6 +414,29 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
         shots: [{ step: auth === 'labs' ? 'report' : 'page', mode: 'viewport', caption: `${t} — ${auth === 'labs' ? 'the rendered report with its data' : 'top of the page'}` }],
       };
   }
+}
+
+const PROGRAM_CARD_DETAIL = 'its card on the Programs page: delivery type, dates, budget and invite funnel';
+
+/**
+ * Caption for a Connect program's card. With a name: `<name> — its card …`.
+ * Without one: `Connect program — its card …`. Never a placeholder standing in
+ * for a name ("Connect program this program — …" shipped once, 0.13.1613).
+ */
+export function programCardCaption(name?: string | null): string {
+  const n = str(name);
+  return n ? `${n} — ${PROGRAM_CARD_DETAIL}` : `Connect program — ${PROGRAM_CARD_DETAIL}`;
+}
+
+/**
+ * The caption for a card frame once the card's heading has been read: the
+ * heading names the output when run_state did not. Blank heading → the plan's
+ * own (name-free) caption.
+ */
+export function cardCaption(shot: Pick<Shot, 'caption' | 'captionFromCardHeading'>, heading: string | null | undefined): string {
+  const h = str(heading).replace(/\s+/g, ' ');
+  if (shot.captionFromCardHeading === 'connect_program' && h) return programCardCaption(h);
+  return shot.caption;
 }
 
 /** File name for the Nth accepted frame of a plan. */

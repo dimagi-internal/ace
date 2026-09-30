@@ -5,6 +5,15 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1614 — 2026-09-30
+
+**`output-preview-capture`: a nameless Connect program's caption no longer leaks a placeholder.** When
+run_state recorded the program with no name, 0.13.1613 matched the right card (by UUID) but captioned it
+`Connect program this program — its card …`. The caption now comes from the matched card's own heading
+(`<program name> — its card on the Programs page: …`), and when no name is available it says
+`Connect program — its card …`, without naming anything. New `programCardCaption` / `cardCaption` in
+`lib/preview-capture.ts`, with a test.
+
 ## 0.13.1613 — 2026-09-30
 
 **`output-preview-capture`: fixes from its first real run (spark-facilitator/20260926-1800).**

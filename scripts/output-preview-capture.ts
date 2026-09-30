@@ -52,6 +52,7 @@ import { assertPreviewsIndexReadable, outputSlug, serializePreviewsIndex } from 
 import {
   buildCaptureIndex,
   captureFileName,
+  cardCaption,
   parsePreviewGaps,
   pickChatQuestion,
   planCapture,
@@ -258,16 +259,19 @@ async function hideFloating(page: Page): Promise<void> {
   });
 }
 
-async function shoot(page: Page, shot: Shot, file: string): Promise<string | null> {
+/** `miss` = why no frame was taken; `heading` = a card's own heading (card mode). */
+type ShotResult = { miss?: string; heading?: string };
+
+async function shoot(page: Page, shot: Shot, file: string): Promise<ShotResult> {
   if (shot.mode === 'viewport') {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: file });
-    return null;
+    return {};
   }
   if (shot.mode === 'card') return shootCard(page, shot, file);
   const exact = page.getByText(shot.text ?? '', { exact: true });
   const loc = (await exact.count()) > 0 ? exact.first() : page.getByText(shot.text ?? '').first();
-  if ((await loc.count()) === 0) return `text ${JSON.stringify(shot.text)} not on the page`;
+  if ((await loc.count()) === 0) return { miss: `text ${JSON.stringify(shot.text)} not on the page` };
   if (shot.mode === 'scroll-to-text') {
     await loc.evaluate((el) => {
       el.scrollIntoView({ block: 'start' });
@@ -275,9 +279,9 @@ async function shoot(page: Page, shot: Shot, file: string): Promise<string | nul
     });
     await page.waitForTimeout(800);
     await page.screenshot({ path: file });
-    return null;
+    return {};
   }
-  return null;
+  return {};
 }
 
 /**
@@ -286,7 +290,7 @@ async function shoot(page: Page, shot: Shot, file: string): Promise<string | nul
  * edit / invite / new-opportunity controls all carry `/program/<uuid>/`), else
  * on an element whose text is EXACTLY `shot.text`. Neither → no frame.
  */
-async function shootCard(page: Page, shot: Shot, file: string): Promise<string | null> {
+async function shootCard(page: Page, shot: Shot, file: string): Promise<ShotResult> {
   let anchor: ElementHandle<Node> | null = null;
   if (shot.href) {
     const h = await page.evaluateHandle((needle) => {
@@ -302,7 +306,7 @@ async function shootCard(page: Page, shot: Shot, file: string): Promise<string |
     if ((await exact.count()) > 0) anchor = await exact.first().elementHandle();
   }
   if (!anchor) {
-    return `could not identify the output's card (${[shot.href && `no element carries ${shot.href}`, shot.text && `no text exactly ${JSON.stringify(shot.text)}`].filter(Boolean).join('; ')})`;
+    return { miss: `could not identify the output's card (${[shot.href && `no element carries ${shot.href}`, shot.text && `no text exactly ${JSON.stringify(shot.text)}`].filter(Boolean).join('; ')})` };
   }
   // The nearest ancestor that LOOKS like a card (shadow, or a rounded filled
   // box) and is narrower than the page; else the first tall ancestor.
@@ -323,7 +327,12 @@ async function shootCard(page: Page, shot: Shot, file: string): Promise<string |
   await hideFloating(page);
   await handle.asElement()!.scrollIntoViewIfNeeded();
   await handle.asElement()!.screenshot({ path: file });
-  return null;
+  // The card's own heading names the output when run_state did not.
+  const heading = (await handle.evaluate((card: Node) => {
+    const h = (card as HTMLElement).querySelector('.card_title, h1, h2, h3, h4, h5');
+    return (h?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  })) as string;
+  return heading ? { heading } : {};
 }
 
 async function capturePage(ctx: BrowserContext, plan: CapturePlan, dir: string): Promise<{ frames: FrameOut[]; fail?: string }> {
@@ -340,14 +349,14 @@ async function capturePage(ctx: BrowserContext, plan: CapturePlan, dir: string):
     for (const shot of plan.shots) {
       const name = captureFileName(n + 1, shot);
       const file = path.join(dir, name);
-      const miss = await shoot(page, shot, file);
+      const { miss, heading } = await shoot(page, shot, file);
       if (miss) {
         log(`${plan.gap.id}: shot ${shot.step} skipped — ${miss}`);
         misses.push(miss);
         continue;
       }
       n += 1;
-      frames.push({ path: file, name, step: shot.step, caption: shot.caption, screen });
+      frames.push({ path: file, name, step: shot.step, caption: cardCaption(shot, heading), screen });
     }
     return frames.length ? { frames } : { frames, fail: misses.join('; ') || 'no shot landed' };
   } finally {
