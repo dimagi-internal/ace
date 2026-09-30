@@ -112,11 +112,11 @@ cross a threshold?", and the tools answer it unevenly. Know this before you
 start, or you will spend a dozen calls finding it out (ace#2560).
 
 - **`resolution: national` answers only what a national method's sources carry.**
-  `national_igme` is `u5mr` (and `imr`) for 54 countries; `national_modelled`
-  is `lbw_rate`; `national_surface` is the gridded MAP/access/DEGURBA layers.
-  Ask `nmr`, `ors_coverage`, `exclusive_breastfeeding` or any other survey
-  indicator at national resolution and you get `empty_because_unanswerable:
-  true` — which is not a finding.
+  `national_igme` is `u5mr`, `imr` and `nmr` for 54 countries (IGME 2024);
+  `national_modelled` is `lbw_rate`; `national_surface` is the gridded
+  MAP/access/DEGURBA layers. Ask `ors_coverage`, `exclusive_breastfeeding` or
+  any other survey indicator at national resolution and you get
+  `empty_because_unanswerable: true` — which is not a finding.
 - **Survey indicators come from `method: subnational_survey`, which rolls a
   country up to one ADM0 row only when every region clears the threshold.** A
   country whose regions straddle the cut stays split, even at a threshold above
@@ -125,10 +125,12 @@ start, or you will spend a dozen calls finding it out (ace#2560).
   fourteen others. Quote a **range across regions** for those countries,
   labelled as such; never average regions into a national figure yourself — the
   weights you would need are not in the response.
-- **`nmr` is thin.** Through `subnational_survey` it returns UNICEF's 2021
-  national value for 24 countries only; DR Congo, Niger, Somalia, South Sudan,
-  CAR, Uganda, Mozambique, Sudan, Burkina Faso and Côte d'Ivoire are absent.
-  Rank on `u5mr` (full coverage) and let `nmr` adjust, and say so.
+- **Rank neonatal mortality with `method: national_igme`, never the survey
+  route.** Since connect-labs#2116 it answers `nmr` for 54 countries.
+  `subnational_survey` still returns UNICEF's 2021 national value for only 24,
+  and the two disagree by more than rounding (Zimbabwe 33.7 under IGME 2024
+  against 22.8 under UNICEF 2021), so do not mix them in one ranking.
+  National ORS/EBF values are still missing (connect-labs#2117).
 - **Keep the calls small.** A survey select returns up to `limit` region rows at
   ~400 tokens each. For a ranking, `limit: 60` on the survey indicators is
   enough to see every whole-country row plus the split countries' regions.
@@ -174,3 +176,4 @@ current version rather than this file's.
 | 2026-08-29 | 29 indicators; countable families now include access (`pop_beyond_2h`) and settlement (`pop_rural`), not malaria alone | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units` — a source a method does not declare is no longer used at all, so what remains to report is how much was inherited | ACE team |
 | 2026-09-30 | Added § Ranking countries against each other — national resolution answers only u5mr/lbw/surfaces; survey indicators split into regions; nmr covers 24 countries (ace#2560) | ACE team |
+| 2026-09-30 | `nmr` now answers nationally for 54 countries via `national_igme` (connect-labs#2116); use it, not the 24-country survey route | ACE team |
