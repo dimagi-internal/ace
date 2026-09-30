@@ -36,9 +36,9 @@ counts and cost scenarios. This agent is the judgement around those tools.
   finding is due a rescan.
 
 A **country ranking** (tiering countries for an EOI or a portfolio) works, with a
-catch: only `u5mr` has a clean national value everywhere. Neonatal mortality,
-ORS, breastfeeding and the other survey indicators come back per region for
-large or uneven countries — see `target-geographies` § Ranking countries against
+catch: `u5mr`, `imr` and `nmr` have a clean national value everywhere
+(`national_igme`), but ORS, breastfeeding and the other survey indicators come
+back per region for large or uneven countries — see `target-geographies` § Ranking countries against
 each other before the first call.
 
 Not for: microplanning inside a known area (that is `microplans`), or opportunity
