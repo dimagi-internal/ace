@@ -35,6 +35,12 @@ counts and cost scenarios. This agent is the judgement around those tools.
 - **"Is there better data for X?"** — an indicator is thinly covered, or a stored
   finding is due a rescan.
 
+A **country ranking** (tiering countries for an EOI or a portfolio) works, with a
+catch: only `u5mr` has a clean national value everywhere. Neonatal mortality,
+ORS, breastfeeding and the other survey indicators come back per region for
+large or uneven countries — see `target-geographies` § Ranking countries against
+each other before the first call.
+
 Not for: microplanning inside a known area (that is `microplans`), or opportunity
 design (that is Phase 1).
 
@@ -107,3 +113,4 @@ something better has since been published.
 | 2026-09-01 | `off_method_units` became `inherited_units`; each indicator now names the sources that may answer it, so a method's label is literally true | ACE team |
 | 2026-09-07 | 52 indicators (was 29); ADM1 is the real resolution ceiling; `targeting_compare_criteria` wired into `defend-a-figure` | ACE team |
 | 2026-09-07 | Corrected same-day: ADM2 works for 18/55 countries — the ceiling is geoBoundaries coverage, not the indicators (connect-labs #1535) | ACE team |
+| 2026-09-30 | When to use: country rankings, and why only u5mr has a clean national value (ace#2560) | ACE team |
