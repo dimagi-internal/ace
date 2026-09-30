@@ -1884,12 +1884,18 @@ mode: shallow
 ran_at: <ISO timestamp>
 capture_path: 6-qa-and-training/app-screenshot-capture_manifest.yaml
 
-overall_score: 2.5             # average of per-app smoke-judge scores (0-3 scale)
+overall_score: 8.3             # mean per-app smoke score, NORMALIZED to 0–10: mean(0–3) × 10 / 3
 verdict: pass | fail | incomplete
 # pass iff every per-app smoke-judge score >= 2/3.
+smoke_raw_mean: 2.5            # the same mean on the judge's own 0–3 scale
 
 dimensions:
-  ux_smoke:           { score: 2.5, weight: 1.00 }   # mean of per-app smoke judge
+  ux_smoke:           { score: 8.3, weight: 1.00, raw_scale: "0-3", raw: 2.5 }
+# per_item scores stay on the judge's 0–3 scale (they are the judge's answers).
+# overall_score and dimension scores MUST be 0–10 — lib/verdict-schema.ts
+# `overall_score: min(0).max(10)` is the uniform shape ace-web and opp-eval read;
+# writing the raw 0–3 mean there rendered a good 2.5/3 as a red "25/100"
+# (spark-facilitator/20260925-1536).
 
 per_item:
   - ref: "learn"
