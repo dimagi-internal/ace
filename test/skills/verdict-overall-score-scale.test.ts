@@ -6,7 +6,7 @@
  * Two skills documented their shallow/quick verdict with a 0–3 judge mean
  * written straight into overall_score. spark-facilitator/20260925-1536's
  * shallow smoke (learn 3, deliver 2 → 2.5/3, good) showed on the Workbench
- * as a red "25/100". Judges may rate 0–3; per_item scores may stay there;
+ * as a red "25/100" (ace#2563). Judges may rate 0–3; per_item scores may stay there;
  * the rolled-up fields may not.
  */
 import { describe, it, expect } from 'vitest';

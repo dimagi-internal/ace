@@ -288,6 +288,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/upstream-repo-slugs.test.ts': { issues: ['ace#1492'] },
   'test/skills/standing-design-assumptions.test.ts': { issues: [], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/verdict-freshness-contract.test.ts': { issues: [], observed: 'spark-facilitator/20260828-0703' },
+  'test/skills/verdict-overall-score-scale.test.ts': { issues: ['ace#2563'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/widget-handoff-no-phantom-paste-target.test.ts': { issues: ['ace#1811', 'ace#1680', 'ace#1026'], observed: 'hh-poverty-targeting/20260828-0702' },
   'test/skills/work-order-hedging-pronoun-consistency.test.ts': { issues: ['ace#2164'], observed: 'bednet-check-2-visit/20260907-1126' },
   'test/skills/work-order-period-of-performance-producer.test.ts': { issues: ['ace#1781', 'ace#1092'], observed: 'hh-poverty-targeting/20260828-0702' },
