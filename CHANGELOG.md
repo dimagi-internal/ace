@@ -5,6 +5,27 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1612 — 2026-09-29
+
+**Every run output is a doc ace-web can show, or has good screenshots — new utility skill
+`output-preview-capture`.** ace-web's `GET /api/w/{ws}/opps/{slug}/runs/{run}/preview-gaps` lists the
+outputs with neither (ace-web `docs/specs/2026-09-29-output-previews-design.md`, addendum); the skill
+photographs each one headlessly, LOOKS at every frame before upload (rejecting login pages, errors,
+404s, spinners, empty reports, blank pages), and files the good ones under
+`<N>-<phase>/previews/<slug of output_key>/` with a `_previews.yaml` (`captured_by:
+output-preview-capture`). Per kind: the Connect opportunity (overview + verification), the Connect
+program (its card on the org Programs page — Connect has no program detail route, the recorded
+`/program/<uuid>/` 404s), the chatbot's PUBLIC chat answering one Phase 2 test question, the
+solicitation (opened in its own labs program context — labs' sticky context 404s it otherwise), labs
+reports with data loaded, the canopy DDD package at its first walkthrough scene (canopy PAT; a labs
+session bounces to Google sign-in), Drive files the viewer cannot draw (SA thumbnail / HTML render),
+and — only after the Phase 6 walk — the HQ form summary for an app left with no frames. Sessions reuse
+`PlaywrightSession` (Connect + HQ auto-login), `bin/labs-walkthrough-login.ts` (labs), canopy's PAT
+resolution order, and anonymous OCS — all headless. Called at the end of Phases 3–8 (best effort,
+never blocks) and once at run end in the orchestrator. New `lib/preview-capture.ts` (+ tests) and
+`scripts/output-preview-capture.ts` (`gaps` / `capture` / `index` / `verify`);
+`lib/artifact-manifest.ts` declares the new previews paths for Phases 4, 5, 6, 7 and 8.
+
 ## 0.13.1610 — 2026-09-29
 
 **Output previews contract v1 — a screenshot of an output lives with the phase that BUILT it.**

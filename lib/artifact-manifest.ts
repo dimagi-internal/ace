@@ -772,7 +772,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: false,
     description:
-      "Authoritative preview index for one app (`apps-learn` / `apps-deliver`, the slug of the app's key under `phases.commcare-setup.products`): `{schema_version: 1, phase: commcare-setup, output_key, captured_by: app-screenshot-capture, captured_phase: qa-and-training, captured_at, items[{file_id, name, caption?}]}`. Only a passing smoke leg's non-duplicate frames; `items: []` for a leg that did not pass. Real YAML bytes (drive_upload_binary text/yaml), never a Google Doc. Read by ace-web, which attaches the frames to the app output.",
+      "Authoritative preview index for one app (`apps-learn` / `apps-deliver`, the slug of the app's key under `phases.commcare-setup.products`): `{schema_version: 1, phase: commcare-setup, output_key, captured_by: app-screenshot-capture, captured_phase: qa-and-training, captured_at, items[{file_id, name, caption?}]}`. Only a passing smoke leg's non-duplicate frames; `items: []` for a leg that did not pass. When the walk left an app with no frames, the output-preview-capture utility skill may fill this folder instead with the app's HQ form summary (captured_by output-preview-capture). Real YAML bytes (drive_upload_binary text/yaml), never a Google Doc. Read by ace-web, which attaches the frames to the app output.",
   },
   {
     path: '3-commcare/previews/<app-output-slug>/<NN>-<step>.png',
@@ -842,6 +842,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // ── Connect phase (Phase 4) ────────────────────────────────────
 
+  {
+    path: '4-connect/previews/<connect-output-slug>/_previews.yaml',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'connect',
+    required: false,
+    description:
+      "Preview index for one output of this phase that had no picture: the Connect program (its card on the org Programs page) or the opportunity (overview plus verification). Written by the output-preview-capture utility skill from the ace-web gap list, with captured_by output-preview-capture. Real YAML bytes, never a Google Doc. Best effort, so it may be absent.",
+  },
+  {
+    path: '4-connect/previews/<connect-output-slug>/<NN>-<step>.png',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'connect',
+    required: false,
+    description:
+      "One screenshot of that output, looked at before upload and kept only if it shows the real thing (no login page, error, empty report or blank page).",
+  },
   {
     path: '4-connect/connect-program-setup.md',
     producedBy: 'connect-program-setup',
@@ -920,6 +938,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // ── OCS phase (Phase 5) ────────────────────────────────────────
 
+  {
+    path: '5-ocs/previews/<chatbot-output-slug>/_previews.yaml',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'ocs',
+    required: false,
+    description:
+      "Preview index for one output of this phase that had no picture: the support chatbot, shown answering one real question on its public chat page. Written by the output-preview-capture utility skill from the ace-web gap list, with captured_by output-preview-capture. Real YAML bytes, never a Google Doc. Best effort, so it may be absent.",
+  },
+  {
+    path: '5-ocs/previews/<chatbot-output-slug>/<NN>-<step>.png',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'ocs',
+    required: false,
+    description:
+      "One screenshot of that output, looked at before upload and kept only if it shows the real thing (no login page, error, empty report or blank page).",
+  },
   {
     path: '5-ocs/ocs-agent-setup.md',
     producedBy: 'ocs-agent-setup',
@@ -1113,6 +1149,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
 
   // ── QA + Training phase (Phase 6) ──────────────────────────────
+  {
+    path: '6-qa-and-training/previews/<training-output-slug>/_previews.yaml',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description:
+      "Preview index for one output of this phase that had no picture: a Drive file of this phase the in-page viewer cannot draw, shown as its first page or thumbnail. Written by the output-preview-capture utility skill from the ace-web gap list, with captured_by output-preview-capture. Real YAML bytes, never a Google Doc. Best effort, so it may be absent.",
+  },
+  {
+    path: '6-qa-and-training/previews/<training-output-slug>/<NN>-<step>.png',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description:
+      "One screenshot of that output, looked at before upload and kept only if it shows the real thing (no login page, error, empty report or blank page).",
+  },
   {
     path: '6-qa-and-training/app-screenshot-capture_manifest.yaml',
     producedBy: 'app-screenshot-capture',
@@ -1414,6 +1468,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // Semantic-layer cascade (ace#2510): the registry is authored from the PDD
   // FIRST, then demo-data-setup(ace-run) builds a multi-partner programme and
   // the labs indicator trio over it.
+  {
+    path: '7-synthetic/previews/<report-output-slug>/_previews.yaml',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "Preview index for one output of this phase that had no picture: a labs report with its data loaded, or the canopy demo package at its first walkthrough scene. Dashboards in synthetic.workflows are previewed by this phase itself (Step 3.95) and are never rewritten here. Written by the output-preview-capture utility skill from the ace-web gap list, with captured_by output-preview-capture. Real YAML bytes, never a Google Doc. Best effort, so it may be absent.",
+  },
+  {
+    path: '7-synthetic/previews/<report-output-slug>/<NN>-<step>.png',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "One screenshot of that output, looked at before upload and kept only if it shows the real thing (no login page, error, empty report or blank page).",
+  },
   {
     path: '7-synthetic/semantic-registry-author_registry.json',
     producedBy: 'semantic-registry-author',
@@ -1746,6 +1818,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // ── Solicitation Management phase (Phase 8) ────────────────────
   // New in 0.12.0; renumbered + rerooted into 8-solicitation-management/ in 0.13.5x.
 
+  {
+    path: '8-solicitation-management/previews/<solicitation-output-slug>/_previews.yaml',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'solicitation-management',
+    required: false,
+    description:
+      "Preview index for one output of this phase that had no picture: the solicitation, as its labs page shows it. Written by the output-preview-capture utility skill from the ace-web gap list, with captured_by output-preview-capture. Real YAML bytes, never a Google Doc. Best effort, so it may be absent.",
+  },
+  {
+    path: '8-solicitation-management/previews/<solicitation-output-slug>/<NN>-<step>.png',
+    producedBy: 'output-preview-capture',
+    consumedBy: [],
+    phase: 'solicitation-management',
+    required: false,
+    description:
+      "One screenshot of that output, looked at before upload and kept only if it shows the real thing (no login page, error, empty report or blank page).",
+  },
   {
     path: '8-solicitation-management/solicitation-create_draft.md',
     producedBy: 'solicitation-create',

@@ -670,6 +670,19 @@ After Step 2 finishes:
 
    Note the scope: this gates the deck on *this run's own* captures. Pool images and committed template artwork (ace#873) are excluded from the coverage ratio by construction, so the gate cannot fire on a permanently-uncapturable surface.
 
+### Output previews (best effort — after the write-back, before you return)
+
+Every output this phase built must end up either a doc ace-web can draw or with
+one or more good screenshots (ace-web `docs/specs/2026-09-29-output-previews-design.md`,
+addendum). **After** the `phases.qa-and-training` write-back above — ace-web reads this
+phase's outputs from `run_state.yaml` — invoke `Skill(output-preview-capture)` with
+`opp`, `run_id`, `captured_phase: qa-and-training` and the phase filter `qa-and-training`. Then invoke it a SECOND time with the phase filter `commcare-setup` (still `captured_phase: qa-and-training`): the emulator walk above is the apps' primary preview writer, so only now can the skill tell an app it left WITHOUT frames (a failed or skipped leg) and give that app its fallback, the HQ form summary. An app the walk did photograph is not in the gap list and is never touched.
+It photographs what ace-web's gap list still shows for this phase, looks at every
+frame, and files the good ones under this phase's `previews/` folder. It **never
+fails or blocks the phase**: whatever it returns, put its one line —
+`previews: N captured, M gaps left (<why>)` — in the phase summary (update
+`<phase>_summary.md` if it is already written) and in the text you return.
+
 Phase 6 has no named gate (`/ace:qa-deep` is the actual quality gate, run separately before Phase 9 `llo-launch`).
 
 ## Topology note

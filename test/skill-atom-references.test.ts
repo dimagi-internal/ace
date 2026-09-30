@@ -86,6 +86,9 @@ const ALLOWLIST = new Set([
   // ---- Another plugin's tools, named so a skill can warn against them ----
   'docs_insert_email_block',  // chrome-sales' gdrive MCP, NOT an ACE atom — gdoc-email-drafts names it as the provenance of ACE's own docs_insert_email_blocks and says not to call it from ACE
   // ---- Field names / payload keys (not atoms) ----
+  'connect_opportunity',     // ace-web product KIND (apps/opps/run_products.py), named by output-preview-capture's shot table
+  'connect_program',         // ace-web product KIND, same table
+  'commcare_app',            // ace-web product KIND, same table
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
   'connect_user_id',         // ConnectID user pk on a UserInvite row — a products.connect.ace_test_user field (ace#1286), not an atom
   'connect_program_id',      // bookkeeping field

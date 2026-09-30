@@ -37,3 +37,9 @@ Authored by: ACE team (Plan B Stage 4a).
 ### Dashboard previews — 2026-09-29 (output previews contract v1)
 
 New § Step 3.95: after the DDD render, one or two per-scene frames per dashboard in `products.synthetic.workflows` (matched by labs workflow id) are copied to `7-synthetic/previews/<slug of synthetic.workflows.<key>>/` with a `_previews.yaml` (`captured_by: ddd-run`). Best effort — never fails the phase; the summary says what was and was not previewed.
+
+## Cross-phase — output previews
+
+### `output-preview-capture` at every phase end — 2026-09-29 (output previews addendum)
+
+Phases 3–8 now end their write-back by invoking `Skill(output-preview-capture)` filtered to their own phase (Phase 6 also runs it once for `commcare-setup`, the app fallback after the emulator walk; Phase 7 as § Step 4.5, after Step 3.95's render frames), and the orchestrator runs it once more at run end over all phases (`## Run end: capture remaining output previews`). Best effort: the phase summary states `previews: N captured, M gaps left (why)`; it never fails or blocks a phase.

@@ -181,6 +181,7 @@ Dispatched at two natural points: inline self-check by each `-eval` skill after 
 |---|---|---|
 | `email-communicator` | not applicable | Utility skill — sends mail; no Drive artifact. |
 | `decisions-render` | not applicable | Utility skill — renders `decisions.yaml` to HTML. Already has unit tests on the renderer; no per-opp artifact under QA scope. |
+| `output-preview-capture` | **inline QA** | Utility skill (every phase end + run end). Structural checks inline: a deterministic page screen (login / 404 / maintenance / blank / loading, `lib/preview-capture.ts::screenPage`), a mandatory LOOK at every frame before upload, and `_previews.yaml` read back from Drive through `assertPreviewsIndexReadable`. Best effort — never gates a phase. |
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |
 | `eval-calibration` | not applicable | Meta-skill — calibrates other evals' rubrics. Not a producer of a per-opp artifact. |
 | `verdict-yaml-qa` | not applicable | Cross-cutting QA skill — structurally checks any `-eval` verdict YAML. Not a producer of a per-opp artifact. See `### Eval-self-QA (cross-cutting)` above for the contract. |

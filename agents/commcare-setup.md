@@ -1000,6 +1000,19 @@ residuals and blocks dependent training-material claims — see
 after the step has been performed AND re-verified via its
 `verifiable_by`.
 
+#### Output previews (best effort — after the write-back, before you return)
+
+Every output this phase built must end up either a doc ace-web can draw or with
+one or more good screenshots (ace-web `docs/specs/2026-09-29-output-previews-design.md`,
+addendum). **After** the `phases.commcare-setup` write-back above — ace-web reads this
+phase's outputs from `run_state.yaml` — invoke `Skill(output-preview-capture)` with
+`opp`, `run_id`, `captured_phase: commcare-setup` and the phase filter `commcare-setup`. The Learn / Deliver apps are DEFERRED here by design — their pictures come from the Phase 6 emulator walk (`app-screenshot-capture`), and the HQ form-summary fallback runs from Phase 6 on.
+It photographs what ace-web's gap list still shows for this phase, looks at every
+frame, and files the good ones under this phase's `previews/` folder. It **never
+fails or blocks the phase**: whatever it returns, put its one line —
+`previews: N captured, M gaps left (<why>)` — in the phase summary (update
+`<phase>_summary.md` if it is already written) and in the text you return.
+
 #### Verdict-gate rule for `-eval` skills (since 0.13.207)
 
 The skills frontmatter declares which producers have a paired `-eval`

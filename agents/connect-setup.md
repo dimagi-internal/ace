@@ -168,6 +168,19 @@ Write the phase summary to `connect-setup_summary.md` with
   `complete` / `gaps[]` exactly as Step 3 returned them — a memo with gaps is
   reported as such, never as complete.
 
+### Output previews (best effort — after the write-back, before you return)
+
+Every output this phase built must end up either a doc ace-web can draw or with
+one or more good screenshots (ace-web `docs/specs/2026-09-29-output-previews-design.md`,
+addendum). **After** the `phases.connect-setup` write-back above — ace-web reads this
+phase's outputs from `run_state.yaml` — invoke `Skill(output-preview-capture)` with
+`opp`, `run_id`, `captured_phase: connect-setup` and the phase filter `connect-setup`. Expect the Connect program (its card on the Programs page) and the opportunity (overview + verification).
+It photographs what ace-web's gap list still shows for this phase, looks at every
+frame, and files the good ones under this phase's `previews/` folder. It **never
+fails or blocks the phase**: whatever it returns, put its one line —
+`previews: N captured, M gaps left (<why>)` — in the phase summary (update
+`<phase>_summary.md` if it is already written) and in the text you return.
+
 ### Self-check (fail loud if artifacts didn't land in 4-connect)
 
 Before returning, call
