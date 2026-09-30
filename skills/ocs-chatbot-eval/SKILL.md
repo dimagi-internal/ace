@@ -775,11 +775,15 @@ rubric is improving over time, not just changing.
    ran_at: <ISO timestamp>
    capture_path: 5-ocs/ocs-chatbot-qa_transcript-quick.md   # relative to runs/<run-id>/
 
-   overall_score: 2.7        # mean of per-prompt overall_quality (0-3)
+   overall_score: 9.0        # mean per-prompt overall_quality, NORMALIZED to 0–10: mean(0–3) × 10 / 3
    verdict: pass | fail
+   quality_raw_mean: 2.7     # the same mean on the judge's own 0–3 scale
 
    dimensions:
-     overall_quality:     { score: 2.7, weight: 1.0, scale: "0-3" }
+     overall_quality:     { score: 9.0, weight: 1.0, raw_scale: "0-3", raw: 2.7 }
+   # per_item scores and gate.threshold stay on 0–3; overall_score and
+   # dimension scores are 0–10 (lib/verdict-schema.ts), or ace-web shows
+   # 2.7/3 as 27/100.
 
    per_item:
      - ref: "How do I claim an opportunity?"
