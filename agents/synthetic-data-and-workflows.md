@@ -498,6 +498,23 @@ phases:
       ddd-run:          { status: done }
 ```
 
+### Step 4.5: Output previews for everything Step 3.95 did not cover (best effort)
+
+Step 3.95 previews the dashboards in `products.synthetic.workflows` from the
+render's own frames. The phase builds more outputs than that — the cascade's
+`programme_report`, `worker_review` and `opp_reports`, `source.dashboards`, the
+DDD package in `walkthroughs` — and any dashboard 3.95 could not match. **After**
+the Step 4 write-back (ace-web reads the outputs from `run_state.yaml`), invoke
+`Skill(output-preview-capture)` with `opp`, `run_id`,
+`captured_phase: synthetic-data-and-workflows` and the phase filter
+`synthetic-data-and-workflows`. It works from ace-web's gap list, so a dashboard
+3.95 already previewed is not in it and its folder is never touched; each labs
+report is photographed with the rendered data loaded, and the DDD package at its
+walkthrough's first scene (canopy PAT, not the labs session). It **never fails
+or blocks the phase**: put its one line — `previews: N captured, M gaps left
+(<why>)` — in `synthetic-data-and-workflows_summary.md` next to Step 3.95's line,
+and in the text you return.
+
 ## Preconditions
 
 - [ ] `phases.connect-setup.products.connect.opportunity(.connect_int_id)` present

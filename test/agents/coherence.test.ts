@@ -179,6 +179,9 @@ const UNCLAIMED_BASELINE = new Set<string>([
   'decisions-render',  // cross-phase utility; renders decisions.yaml -> gdoc.
                        // Invoked directly by ace-orchestrator (which has no
                        // phase_ordinal so no skills: list of its own).
+  'output-preview-capture',  // cross-phase utility (ace-web output previews addendum):
+                             // invoked at the end of Phases 3-8 and at run end, like
+                             // decisions-render — never a run_state step of any one phase.
   'eval-calibration',  // produces an opp-level artifact (eval-calibration/
                        // known-issues.md), not a per-run skill any phase
                        // agent dispatches.

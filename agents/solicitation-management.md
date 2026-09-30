@@ -175,6 +175,19 @@ After Step 2:
 
    `products.selected_llo` stays absent here — it's populated only at award time by `solicitation-review`.
 
+### Output previews (best effort — after the write-back, before you return)
+
+Every output this phase built must end up either a doc ace-web can draw or with
+one or more good screenshots (ace-web `docs/specs/2026-09-29-output-previews-design.md`,
+addendum). **After** the `phases.solicitation-management` write-back above — ace-web reads this
+phase's outputs from `run_state.yaml` — invoke `Skill(output-preview-capture)` with
+`opp`, `run_id`, `captured_phase: solicitation-management` and the phase filter `solicitation-management`. Expect the solicitation, opened in its own labs program context.
+It photographs what ace-web's gap list still shows for this phase, looks at every
+frame, and files the good ones under this phase's `previews/` folder. It **never
+fails or blocks the phase**: whatever it returns, put its one line —
+`previews: N captured, M gaps left (<why>)` — in the phase summary (update
+`<phase>_summary.md` if it is already written) and in the text you return.
+
 ## MCP Tools Used (across all skills in this phase)
 
 - `connect-labs`: `create_solicitation`, `generate_criteria`,

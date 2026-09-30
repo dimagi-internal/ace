@@ -2530,6 +2530,23 @@ Report the claim tally in the run's closing summary alongside the phase
 verdicts, and lead the counterpart-facing section with it
 (`lib/render-claims.ts`).
 
+## Run end: capture remaining output previews
+
+**Whenever the run stops — completion, the Phase 8→9 gate, or a halt — after
+the claims sweep, invoke `Skill(output-preview-capture)` once over ALL phases:**
+`opp`, `run_id`, `captured_phase` = the last phase that ran, NO phase filter, and
+`--run-end`. Each phase agent from Phase 3 to 8 already ran it for its own
+outputs; this pass catches what they could not — an output a later phase changed,
+a capture that failed transiently, a phase that halted before its write-back,
+and the CommCare-app fallback (the HQ form summary) for an app the Phase 6 walk
+left without frames, including a run that halted before Phase 6 (`--run-end`
+never defers).
+
+Best effort, like every call of it: it never fails the run and is not a
+boundary-fence check. Report its one line — `previews: N captured, M gaps left
+(<why>)` — in the run's closing summary next to the claim tally, so "every
+output is a doc or has a picture" is a stated result, not an assumption.
+
 ## Error Handling
 
 If a skill fails:

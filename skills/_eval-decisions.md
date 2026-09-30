@@ -175,6 +175,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 |---|---|---|
 | `email-communicator` | not applicable | Utility — sends mail. |
 | `decisions-render` | not applicable | Utility — renders decisions.yaml. |
+| `output-preview-capture` | not applicable | Utility — screenshots of outputs other skills built; the frame-by-frame look in its own Process is the only judgement, and it never gates. |
 | `decisions-sync` | not applicable | Utility — syncs decisions log. |
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |
 | `eval-calibration` | not applicable | Meta-skill listed above; not a per-opp producer. |
