@@ -233,6 +233,11 @@ describe('shot plan', () => {
     expect(cardCaption(named, 'Something else')).toBe(named.caption);
   });
 
+  it('clamps the program description so the card frame stays a landscape card', () => {
+    const p = planCapture(gap({ output_key: 'connect.program', kind: 'connect_program', url: 'https://connect.dimagi.com/a/o/program/9e82982e-7638-44bc-9de2-2bfcefae550d/' }), { product: {} });
+    expect(p.shots[0].clamp).toEqual({ selector: '.card_description', lines: 3 });
+  });
+
   it('skips a nameless program with no id rather than shooting the first card on the page', () => {
     const g = gap({ output_key: 'connect.program', kind: 'connect_program', title: 'Connect program', url: 'https://connect.dimagi.com/a/org/program/not-a-uuid/' });
     const p = planCapture(g, { product: {} });

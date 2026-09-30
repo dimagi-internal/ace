@@ -264,6 +264,12 @@ export interface Shot {
    * heading via `cardCaption` — the name run_state did not record.
    */
   captionFromCardHeading?: 'connect_program';
+  /**
+   * card mode: before the shot, clamp the card's elements matching `selector`
+   * to `lines` lines and let them use the card's full width. A long free-text
+   * field would otherwise turn the card into a tall, unreadable strip.
+   */
+  clamp?: { selector: string; lines: number };
 }
 
 export type CaptureStrategy = 'page' | 'ocs-chat' | 'drive-file';
@@ -347,6 +353,12 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
             ...(id ? { href: `/program/${id}/` } : {}),
             ...(name ? { text: name } : {}),
             caption: programCardCaption(name),
+            // Connect renders the program description in a half-width column
+            // (`.card_description … max-w-1/2`). A PDD-length description made
+            // the frame a 891×1570 strip of tiny text with the name, dates,
+            // budget and invite funnel squeezed at the ends (spark-facilitator
+            // /20260926-1800). Three full-width lines keep it a landscape card.
+            clamp: { selector: '.card_description', lines: 3 },
             ...(name ? {} : { captionFromCardHeading: 'connect_program' as const }),
           },
         ],
