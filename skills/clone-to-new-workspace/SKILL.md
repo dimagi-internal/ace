@@ -171,6 +171,17 @@ in-request — then treat a 504 as "still copying" and poll the same way.
 Steps 3–4 do not depend on the Drive copy finishing except where they write
 the TARGET `run_state.yaml`; wait for `done` before 4's first write.
 
+**Drive links are ace-web's job, and you verify them.** Once `done`, ace-web
+has rewritten every source Drive id in the target `run_state.yaml` /
+`decisions.yaml` to its copy and given each copy its original's
+anyone-with-link role (ace-web#829). Read-back before Step 4: list the SOURCE
+run folder's file ids and grep the TARGET `run_state.yaml` for them — any hit
+other than a comms-log file (deliberately not cloned) means the rewrite did
+not run; stop and report it rather than hand-patching, because the page would
+send reviewers to the source workspace's documents. (First Spark clone,
+before #829: 99 ids / 125 occurrences, and 26 copies without their sharing —
+fixed by hand then.)
+
 ## Step 3 — Bind this session to the NEW opp
 
 ```bash
@@ -371,6 +382,8 @@ report the `public_url`.
 ## Step 5 — Report
 
 One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
-on the new domain, not the call's own return value), or `NOT DONE` + reason,
+on the new domain, or the HQ project dashboard on a `not-in-plan` space; not the
+call's own return value), or `NOT DONE` + reason, plus the Drive-link read-back
+(source ids remaining in the target run_state: expected 0 outside comms-logs),
 plus every manual setup item. End with: "Nothing was shared with anyone. When
 everything is ready, run `/ace:release <to>/<opp>/<run-id>`."
