@@ -11,7 +11,7 @@ phase_ordinal: 4
 skills:
   - { name: connect-program-setup, has_judge: true,  eval_skill: connect-program-setup-eval }
   - { name: connect-opp-setup,     has_judge: false }
-  - { name: build-memo,            has_judge: false }
+  - { name: build-memo,            has_judge: true,  eval_skill: build-memo-eval }
 ---
 
 # Connect Setup Agent (Phase 4)
@@ -135,6 +135,20 @@ Invoke the `build-memo` skill with `phaseFolderId` and `runFolderId`.
   (`connect_set_verification_flags` refuses `duplicate` / `gps` /
   `gps_radius_meters`, ace#1013).
 
+
+### Step 3b: Build memo eval (quality of the review artifact)
+Unless `--no-evals` was passed, dispatch `build-memo-eval` once Step 3 has
+written the memo. `build-memo` checks only that every producer section is
+present; nothing else judged whether the memo is RIGHT — and ace-web's public
+summary renders it first, so a reviewer acts on it. The eval grades it against
+a fact sheet of what was built (run_state + live `connect_get_opportunity` /
+`connect_list_payment_units`, `lib/build-memo-facts.ts`), for honesty about
+gaps and decisions, for a reviewer who has never seen ACE, and for
+actionability. Writes `4-connect/build-memo-eval_verdict.yaml`. A `fail`
+(a memo contradicting Connect) is surfaced in the phase summary with the
+contradiction quoted; the remedy is to correct the PRODUCER section that
+carried the wrong fact and re-run Step 3 — the memo composes, it never
+re-derives. Record `steps.build-memo-eval` in the write-back.
 ### Completion
 
 **Write each external identifier the moment its create call returns — do NOT

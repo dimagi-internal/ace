@@ -1,0 +1,3314 @@
+{
+"pageSize": {
+"width": {
+"magnitude": 9144000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 5143500,
+"unit": "EMU"
+}
+},
+"slides": [
+{
+"objectId": "ace_slide_1",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_0",
+"size": {
+"width": {
+"magnitude": 22075,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 15675,
+"unit": "EMU"
+}
+},
+"transform": {
+"shearX": 143.9841,
+"shearY": 233.4326,
+"translateX": 6860624.275,
+"translateY": 2850,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"cropProperties": {
+"leftOffset": 0.015829854,
+"rightOffset": 0.013013542,
+"topOffset": 0,
+"bottomOffset": 0.35128123
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_1",
+"size": {
+"width": {
+"magnitude": 51200,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 16375,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 17.1152,
+"scaleY": 17.116,
+"translateX": 515299.78250000003,
+"translateY": 1372349.845,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_2",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": -0.0248,
+"scaleY": 1.7145,
+"translateX": 9145199.05,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.89411765,
+"green": 0.26666668,
+"blue": 0.20392157
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_3",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.6765,
+"scaleY": 0.35,
+"translateX": 457200,
+"translateY": 1800000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 18,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 18,
+"textRun": {
+"content": "Spark Facilitator\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+}
+},
+"bold": true,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 32,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 700
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_4",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.6765,
+"scaleY": 0.1867,
+"translateX": 457200,
+"translateY": 2980000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 13,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 13,
+"textRun": {
+"content": "FLW Training\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 18,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_5",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.6765,
+"scaleY": 0.1533,
+"translateX": 457200,
+"translateY": 3640000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 15,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 15,
+"textRun": {
+"content": "September 2026\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 14,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+}
+],
+"slideProperties": {
+"layoutObjectId": "p12",
+"masterObjectId": "simple-light-2",
+"notesPage": {
+"objectId": "ace_slide_1:notes",
+"pageType": "NOTES",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_6",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.032,
+"scaleY": 1.143,
+"translateX": 381300,
+"translateY": 685800,
+"unit": "EMU"
+},
+"shape": {
+"shapeProperties": {
+"outline": {
+"propertyState": "INHERIT"
+}
+},
+"placeholder": {
+"type": "SLIDE_IMAGE",
+"parentObjectId": "n:slide"
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_7",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 1.8288,
+"scaleY": 1.3716,
+"translateX": 685800,
+"translateY": 4343400,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 290,
+"paragraphMarker": {
+"style": {
+"indentStart": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT"
+}
+}
+},
+{
+"endIndex": 290,
+"textRun": {
+"content": "Welcome everyone and introduce yourself and the organisation. Explain that today covers how to record FCAP community meetings on the phone and how payment works, not how to facilitate FCAP, which they already do. Ask people to keep their phones charged and ready; there are hands-on parts.\n",
+"style": {}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "INHERIT"
+},
+"outline": {
+"propertyState": "INHERIT"
+},
+"shadow": {
+"propertyState": "INHERIT"
+},
+"autofit": {
+"fontScale": 1
+}
+},
+"placeholder": {
+"type": "BODY",
+"index": 1,
+"parentObjectId": "n:text"
+}
+}
+}
+],
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+},
+"notesProperties": {
+"speakerNotesObjectId": "SLIDES_API561352947_7"
+}
+}
+},
+"pageProperties": {
+"pageBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+},
+"alpha": 1
+}
+}
+}
+},
+{
+"objectId": "ace_slide_2",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_8",
+"size": {
+"width": {
+"magnitude": 22075,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 15675,
+"unit": "EMU"
+}
+},
+"transform": {
+"shearX": 143.9841,
+"shearY": 232.8018,
+"translateX": 6860625,
+"translateY": 2850,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"cropProperties": {
+"leftOffset": 0.015786925,
+"rightOffset": 0.015690088,
+"topOffset": 0,
+"bottomOffset": 0.35128123
+},
+"transparency": 0.74,
+"recolor": {
+"recolorStops": [
+{
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+},
+{
+"color": {
+"rgbColor": {
+"red": 0.41960785,
+"green": 0.41960785,
+"blue": 0.41960785
+}
+},
+"alpha": 1,
+"position": 0.3
+},
+{
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1,
+"position": 1
+}
+],
+"name": "CUSTOM"
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_9",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0228,
+"scaleY": 0.236,
+"translateY": 175775,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.99607843,
+"green": 0.6862745,
+"blue": 0.19215687
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_10",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0248,
+"scaleY": 1.7145,
+"translateX": 9069600,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_11",
+"size": {
+"width": {
+"magnitude": 12725,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 12725,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 26.5678,
+"scaleY": 26.5678,
+"translateX": 8636748,
+"translateY": 62325,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+},
+"sourceUrl": "<stripped>"
+}
+},
+{
+"objectId": "SLIDES_API561352947_12",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 0.2333,
+"translateX": 457200,
+"translateY": 457200,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 15,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 15,
+"textRun": {
+"content": "Today's Agenda\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+}
+},
+"bold": true,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 24,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 700
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_13",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 1.1621,
+"translateX": 457200,
+"translateY": 1200000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 11,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 11,
+"textRun": {
+"content": "\u2022  Welcome\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 11,
+"endIndex": 33,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 11,
+"endIndex": 33,
+"textRun": {
+"content": "\u2022  Setting up Connect\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 33,
+"endIndex": 82,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 33,
+"endIndex": 82,
+"textRun": {
+"content": "\u2022  Your opportunity: Learn, Deliver, Verify, Pay\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 82,
+"endIndex": 94,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 82,
+"endIndex": 94,
+"textRun": {
+"content": "\u2022  Practice\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 94,
+"endIndex": 118,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 94,
+"endIndex": 118,
+"textRun": {
+"content": "\u2022  Check and next steps\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 118,
+"endIndex": 140,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 118,
+"endIndex": 140,
+"textRun": {
+"content": "\u2022  Help and resources\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+}
+],
+"slideProperties": {
+"layoutObjectId": "p12",
+"masterObjectId": "simple-light-2",
+"notesPage": {
+"objectId": "ace_slide_2:notes",
+"pageType": "NOTES",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_14",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.032,
+"scaleY": 1.143,
+"translateX": 381300,
+"translateY": 685800,
+"unit": "EMU"
+},
+"shape": {
+"shapeProperties": {
+"outline": {
+"propertyState": "INHERIT"
+}
+},
+"placeholder": {
+"type": "SLIDE_IMAGE",
+"parentObjectId": "n:slide"
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_15",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 1.8288,
+"scaleY": 1.3716,
+"translateX": 685800,
+"translateY": 4343400,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 250,
+"paragraphMarker": {
+"style": {
+"direction": "LEFT_TO_RIGHT"
+}
+}
+},
+{
+"endIndex": 250,
+"textRun": {
+"content": "Highlight that the Deliver part, especially the Community Meeting Record, is the most important for getting paid correctly, and that there is hands-on practice after it. Take questions at the end of each part rather than holding them all to the end.\n",
+"style": {}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "INHERIT"
+},
+"outline": {
+"propertyState": "INHERIT"
+},
+"shadow": {
+"propertyState": "INHERIT"
+},
+"autofit": {
+"fontScale": 1
+}
+},
+"placeholder": {
+"type": "BODY",
+"index": 1,
+"parentObjectId": "n:text"
+}
+}
+}
+],
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+},
+"notesProperties": {
+"speakerNotesObjectId": "SLIDES_API561352947_15"
+}
+}
+},
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+}
+},
+{
+"objectId": "ace_slide_3",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_16",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0228,
+"scaleY": 0.236,
+"translateY": 175775,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.99607843,
+"green": 0.6862745,
+"blue": 0.19215687
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_17",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0248,
+"scaleY": 1.7145,
+"translateX": 9069600,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_18",
+"size": {
+"width": {
+"magnitude": 12725,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 12725,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 26.5678,
+"scaleY": 26.5678,
+"translateX": 8636748,
+"translateY": 62325,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+},
+"sourceUrl": "<stripped>"
+}
+},
+{
+"objectId": "SLIDES_API561352947_19",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 0.2333,
+"translateX": 457200,
+"translateY": 457200,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 21,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 21,
+"textRun": {
+"content": "Two Truths and a Lie\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+}
+},
+"bold": true,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 24,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 700
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_20",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 1.0621,
+"translateX": 457200,
+"translateY": 1500000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 165,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 165,
+"textRun": {
+"content": "Each person shares three statements about themselves: two true, one false. The group guesses which one is the lie. Go around the room until everyone has had a turn.\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+}
+],
+"slideProperties": {
+"layoutObjectId": "p12",
+"masterObjectId": "simple-light-2",
+"notesPage": {
+"objectId": "ace_slide_3:notes",
+"pageType": "NOTES",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_21",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.032,
+"scaleY": 1.143,
+"translateX": 381300,
+"translateY": 685800,
+"unit": "EMU"
+},
+"shape": {
+"shapeProperties": {
+"outline": {
+"propertyState": "INHERIT"
+}
+},
+"placeholder": {
+"type": "SLIDE_IMAGE",
+"parentObjectId": "n:slide"
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_22",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 1.8288,
+"scaleY": 1.3716,
+"translateX": 685800,
+"translateY": 4343400,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 235,
+"paragraphMarker": {
+"style": {
+"indentStart": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT"
+}
+}
+},
+{
+"endIndex": 235,
+"textRun": {
+"content": "With about twelve CBFs this works well. Keep it light and fast. If the group already knows each other well, ask for statements about their communities instead, which also warms people up for the community-focused content that follows.\n",
+"style": {}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "INHERIT"
+},
+"outline": {
+"propertyState": "INHERIT"
+},
+"shadow": {
+"propertyState": "INHERIT"
+},
+"autofit": {
+"fontScale": 1
+}
+},
+"placeholder": {
+"type": "BODY",
+"index": 1,
+"parentObjectId": "n:text"
+}
+}
+}
+],
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+},
+"notesProperties": {
+"speakerNotesObjectId": "SLIDES_API561352947_22"
+}
+}
+},
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+}
+},
+{
+"objectId": "ace_slide_4",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_23",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0228,
+"scaleY": 0.236,
+"translateY": 175775,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.99607843,
+"green": 0.6862745,
+"blue": 0.19215687
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_24",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 0.0248,
+"scaleY": 1.7145,
+"translateX": 9069600,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "RECTANGLE",
+"shapeProperties": {
+"shapeBackgroundFill": {
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_25",
+"size": {
+"width": {
+"magnitude": 12725,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 12725,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 26.5678,
+"scaleY": 26.5678,
+"translateX": 8636748,
+"translateY": 62325,
+"unit": "EMU"
+},
+"image": {
+"contentUrl": "<stripped>",
+"imageProperties": {
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"themeColor": "DARK2"
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+}
+},
+"sourceUrl": "<stripped>"
+}
+},
+{
+"objectId": "SLIDES_API561352947_26",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 0.2333,
+"translateX": 457200,
+"translateY": 457200,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 17,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 17,
+"textRun": {
+"content": "What is Connect?\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.07450981,
+"green": 0.003921569,
+"blue": 0.40784314
+}
+}
+},
+"bold": true,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 24,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 700
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "TOP",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_27",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.7432,
+"scaleY": 1.1621,
+"translateX": 457200,
+"translateY": 1200000,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 50,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"endIndex": 50,
+"textRun": {
+"content": "Connect matches you with paid work opportunities:\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 50,
+"endIndex": 99,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 50,
+"endIndex": 99,
+"textRun": {
+"content": "- Learn: Complete training modules on your phone\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 99,
+"endIndex": 143,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 99,
+"endIndex": 143,
+"textRun": {
+"content": "- Deliver: Do field work using guided forms\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 143,
+"endIndex": 186,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 143,
+"endIndex": 186,
+"textRun": {
+"content": "- Verify: Your work is checked for quality\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 186,
+"endIndex": 229,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 186,
+"endIndex": 229,
+"textRun": {
+"content": "- Pay: Get paid for verified, quality work\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+},
+{
+"startIndex": 229,
+"endIndex": 230,
+"paragraphMarker": {
+"style": {
+"lineSpacing": 100,
+"alignment": "START",
+"indentStart": {
+"unit": "PT"
+},
+"indentEnd": {
+"unit": "PT"
+},
+"spaceAbove": {
+"unit": "PT"
+},
+"spaceBelow": {
+"unit": "PT"
+},
+"indentFirstLine": {
+"unit": "PT"
+},
+"direction": "LEFT_TO_RIGHT",
+"spacingMode": "COLLAPSE_LISTS"
+}
+}
+},
+{
+"startIndex": 229,
+"endIndex": 230,
+"textRun": {
+"content": "\n",
+"style": {
+"backgroundColor": {},
+"foregroundColor": {
+"opaqueColor": {
+"rgbColor": {
+"red": 0.37254903,
+"green": 0.41568628,
+"blue": 0.49019608
+}
+}
+},
+"bold": false,
+"italic": false,
+"fontFamily": "Work Sans",
+"fontSize": {
+"magnitude": 16,
+"unit": "PT"
+},
+"baselineOffset": "NONE",
+"smallCaps": false,
+"strikethrough": false,
+"underline": false,
+"weightedFontFamily": {
+"fontFamily": "Work Sans",
+"weight": 400
+}
+}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "NOT_RENDERED",
+"solidFill": {
+"color": {
+"rgbColor": {
+"red": 1,
+"green": 1,
+"blue": 1
+}
+},
+"alpha": 1
+}
+},
+"outline": {
+"outlineFill": {
+"solidFill": {
+"color": {
+"rgbColor": {}
+},
+"alpha": 1
+}
+},
+"weight": {
+"magnitude": 9525,
+"unit": "EMU"
+},
+"dashStyle": "SOLID",
+"propertyState": "NOT_RENDERED"
+},
+"shadow": {
+"type": "OUTER",
+"transform": {
+"scaleX": 1,
+"scaleY": 1,
+"unit": "EMU"
+},
+"alignment": "BOTTOM_LEFT",
+"blurRadius": {
+"unit": "EMU"
+},
+"color": {
+"rgbColor": {}
+},
+"alpha": 1,
+"rotateWithShape": false,
+"propertyState": "NOT_RENDERED"
+},
+"contentAlignment": "MIDDLE",
+"autofit": {
+"autofitType": "NONE",
+"fontScale": 1
+}
+}
+}
+}
+],
+"slideProperties": {
+"layoutObjectId": "p12",
+"masterObjectId": "simple-light-2",
+"notesPage": {
+"objectId": "ace_slide_4:notes",
+"pageType": "NOTES",
+"pageElements": [
+{
+"objectId": "SLIDES_API561352947_28",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 2.032,
+"scaleY": 1.143,
+"translateX": 381300,
+"translateY": 685800,
+"unit": "EMU"
+},
+"shape": {
+"shapeProperties": {
+"outline": {
+"propertyState": "INHERIT"
+}
+},
+"placeholder": {
+"type": "SLIDE_IMAGE",
+"parentObjectId": "n:slide"
+}
+}
+},
+{
+"objectId": "SLIDES_API561352947_29",
+"size": {
+"width": {
+"magnitude": 3000000,
+"unit": "EMU"
+},
+"height": {
+"magnitude": 3000000,
+"unit": "EMU"
+}
+},
+"transform": {
+"scaleX": 1.8288,
+"scaleY": 1.3716,
+"translateX": 685800,
+"translateY": 4343400,
+"unit": "EMU"
+},
+"shape": {
+"shapeType": "TEXT_BOX",
+"text": {
+"textElements": [
+{
+"endIndex": 81,
+"paragraphMarker": {
+"style": {
+"direction": "LEFT_TO_RIGHT"
+}
+}
+},
+{
+"endIndex": 81,
+"textRun": {
+"content": "Talk through this slide in plain words and check understanding before moving on.\n",
+"style": {}
+}
+}
+]
+},
+"shapeProperties": {
+"shapeBackgroundFill": {
+"propertyState": "INHERIT"
+},
+"outline": {
+"propertyState": "INHERIT"
+},
+"shadow": {
+"propertyState": "INHERIT"
+},
+"autofit": {
+"fontScale": 1
+}
+},
+"placeholder": {
+"type": "BODY",
+"index": 1,
+"parentObjectId": "n:text"
+}
+}
+}
+],
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+},
+"notesProperties": {
+"speakerNotesObjectId": "SLIDES_API561352947_29"
+}
+}
+},
+"pageProperties": {
+"pageBackgroundFill": {
+"propertyState": "INHERIT"
+}
+}
+}
+],
+"_source": "spark-facilitator/20260926-1800 training deck 17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc, slides.presentations.get, first 4 slides, 2026-10-01"
+}

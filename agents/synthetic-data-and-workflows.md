@@ -133,6 +133,15 @@ plan holds AND every signal landed in the saved runs. On `fail`, apply the
 auto-fix hints and re-run before proceeding — a partner table where nothing
 stands out must not reach a stakeholder.
 
+**The gate is not optional, and it always leaves a result.** Run it for every
+provider, including a "proof" run that skips the render: invoke
+`demo-data-setup-qa`, which writes `7-synthetic/demo-data-setup-qa_result.yaml`
+through `scripts/demo-data-setup-qa.ts` (canonical `lib/qa-types.ts` shape, every
+check that applies to the provider evaluated or failed), and record
+`steps.demo-data-setup-qa: {status: done, verdict: <pass|fail>}` in this phase's
+write-back. `spark-facilitator/20260926-1800` skipped it and has no result;
+`bednet-check-2-visit/20260908-1544` hand-wrote one ace-web read as "Passed (0/0)".
+
 **Bounded run-time.** Generation is three `synthetic_generate_from_manifest`
 calls; history is one `workflow_rebuild_history` call (13 weekly periods in
 ~1 min on the proof); the trio is five creates. The cascade adds minutes, not

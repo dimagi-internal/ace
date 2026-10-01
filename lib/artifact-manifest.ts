@@ -886,6 +886,17 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for the Connect program/opportunity setup: program-fit decision (reuse vs create), opportunity verification rules, delivery units, payment units, entity-id wiring against PDD spec.',
   },
   {
+    path: '4-connect/build-memo-eval_verdict.yaml',
+    producedBy: 'build-memo-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'connect',
+    // Optional, like every eval a run may skip with --no-evals: the memo itself
+    // is the required artifact; its grade is advisory to the boundary fence.
+    required: false,
+    description: 'Quality grade of the build memo, the run review artifact: accuracy against what was actually built (a fact sheet from run_state and live Connect reads, never the memo own claims), gaps and decisions surfaced honestly, clarity for a reviewer who has never seen ACE, and actionability.',
+  },
+  {
     path: '4-connect/connect-opp-setup-eval_verdict.yaml',
     producedBy: 'connect-opp-setup-eval',
     role: 'verdict',
@@ -1370,6 +1381,16 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'qa-and-training',
     required: false,
     description: 'YAML spec for the training deck. Validated by Zod schema in `lib/training-deck-spec.ts`. Rendered to Google Slides by `training-deck-render`.',
+  },
+  {
+    path: '6-qa-and-training/training-deck-render-eval_verdict.yaml',
+    producedBy: 'training-deck-render-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    // Optional: the render itself is optional (no template id → skipped), and so is its grade.
+    required: false,
+    description: 'Visual grade of the RENDERED training deck: every slide captured through the Slides API and judged with the Tough Judge method for legibility, image placement and content presence, rolled up into projector readiness.',
   },
   {
     path: '6-qa-and-training/training-deck-render_verdict.yaml',

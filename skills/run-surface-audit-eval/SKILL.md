@@ -1,13 +1,7 @@
 ---
 name: run-surface-audit-eval
 description: >
-  Judge the EXTERNAL REVIEW SURFACE of a run as an outsider reads it — would a
-  partner with no ACE context understand what they are looking at and what they
-  are being asked to do? Grades orientation, insider jargon, claim accuracy
-  against what the run actually produced, internal consistency, and whether the
-  ask is actually actionable on the page in front of them. Gated by
-  run-surface-audit; runs before a run-summary URL is shared with anyone
-  external.
+  Judge a run's review page as an outsider reads it — orientation, jargon, accuracy, actionability. Use before sharing a run-summary URL.
 ---
 
 # Run-surface audit — eval

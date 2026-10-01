@@ -1,0 +1,43 @@
+{
+ "_source": "spark-facilitator/20260926-1800 opportunity d5deee9b-e32e-4fae-81dd-a9a11d393f50, live read-back 2026-10-01 (connect_get_opportunity, connect_list_payment_units, connect_list_flw_invites with phone)",
+ "opportunity": {
+  "id": "d5deee9b-e32e-4fae-81dd-a9a11d393f50",
+  "name": "20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation",
+  "active": true,
+  "currency": "MWK",
+  "country": "MWI",
+  "end_date": "2027-02-26",
+  "is_test": true,
+  "total_budget": 3276000,
+  "start_date": "2026-11-02",
+  "program_name": "Spark FCAP Facilitation — Malawi Follow-Up Study (MWK)",
+  "dashboard_read": "ok"
+ },
+ "payment_units": [
+  {
+   "id": 1,
+   "name": "Per verified community meeting",
+   "description": "",
+   "max_total": 21,
+   "max_daily": 1,
+   "start_date": "11/02/2026",
+   "end_date": "02/26/2027",
+   "required_deliver_units": [],
+   "optional_deliver_units": []
+  }
+ ],
+ "flw_invites_match": {
+  "phone": "+74260000101",
+  "name": "ACE Test",
+  "claimed": true,
+  "status": "accepted",
+  "invited_date": null
+ },
+ "decided": {
+  "payment_unit_names": [
+   "Per verified community meeting"
+  ],
+  "form_field_rules_expected": 2,
+  "form_field_rules_saved": 0
+ }
+}

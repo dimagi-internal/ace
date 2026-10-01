@@ -17,7 +17,7 @@ skills:
   - { name: training-quick-reference,  has_judge: true, eval_skill: training-quick-reference-eval }
   - { name: training-faq,              has_judge: true, eval_skill: training-faq-eval }
   - { name: training-deck-generate,    has_judge: true, eval_skill: training-deck-generate-eval }
-  - { name: training-deck-render,      has_judge: false }
+  - { name: training-deck-render,      has_judge: true, eval_skill: training-deck-render-eval }
   - { name: training-onboarding-email, has_judge: true, eval_skill: training-onboarding-email-eval }
   - { name: ocs-knowledge-refresh,     has_judge: false } # LAST — puts this phase's docs into the Phase 5 chatbot's RAG collection
 # Note: `training-materials` umbrella was removed in 0.10.87. The
@@ -92,6 +92,15 @@ even when the phase resumes mid-way. Restore, don't adapt (CLAUDE.md § Phase
 preconditions are restored, not adapted). The class was measured on Phase 3's
 twin gate: dimagi-internal/ace#1604.
 
+- [ ] **Phase 4's post-condition has no Phase 6 blocker.** Read
+      `phases.connect-setup.products.connect.postcondition` from `run_state.yaml`.
+      If `phase6_blockers` is non-empty, **HALT before booting anything** and
+      report each blocker verbatim (e.g. `test_user_invited: no invite row for
+      the ACE test user`) with the remedy: re-run `connect-opp-setup` Steps 6.5–7
+      and its Step 11 read-back. The walk would otherwise spend a full AVD
+      session hunting a tile that cannot exist (ace#824). An absent
+      `postcondition` (a run older than 2026-10-01) is not a blocker — fall back
+      to `ace_test_user.invite_row_present`.
 - [ ] **The `ace-mobile` MCP is bound in this Claude Code process — CHECK
       THIS FIRST, before any AVD probe.** Every mobile step below calls an
       `ace-mobile` atom (`mobile_ensure_avd_running`,
@@ -488,8 +497,7 @@ applicable) per-opp + common screenshot manifests. Each writes its
 single artifact under `ACE/<opp>/runs/<run-id>/6-qa-and-training/`.
 
 **Immediately after each producer completes, dispatch its paired
-`-eval` skill** (declared in the frontmatter above; one per producer
-except `training-deck-render`). Each `-eval` skill writes
+`-eval` skill** (declared in the frontmatter above; `training-deck-render`'s eval runs in 2b, after the render). Each `-eval` skill writes
 `6-qa-and-training/<producer>-eval_verdict.yaml`. These are required
 artifacts per `lib/artifact-manifest.ts`; skipping them leaves
 `verify_phase_artifacts` failing at the boundary fence with N
@@ -515,6 +523,16 @@ Halt the phase on any non-pass eval verdict.
   doesn't depend on the Slides deck — `training-onboarding-email.md` is
   the load-bearing Phase 9 input — so a missing template doesn't
   block go-live.
+- **Then `training-deck-render-eval`** (unless `--no-evals`, or the render was
+  skipped): it captures every slide headlessly through the Slides API
+  (`scripts/deck-visual-capture.ts`), pre-checks the page model for empty,
+  placeholder, off-page and overflowing elements, and judges each slide with
+  canopy's Tough Judge — the only check that looks at the deck as it will be
+  projected. Writes `6-qa-and-training/training-deck-render-eval_verdict.yaml`.
+  A `fail` does not halt the phase (Phase 9 does not depend on the deck), but the
+  deck is then reported as NOT ready to project — the summary names the failing
+  slides and omits the deck from the deliverables list, as for a hollow deck
+  (ace#856). Record `steps.training-deck-render-eval`.
 
 **2c. Sequential — onboarding email (after the other 5 text artifacts):**
 

@@ -43,3 +43,9 @@ New § Step 3.95: after the DDD render, one or two per-scene frames per dashboar
 ### `output-preview-capture` at every phase end — 2026-09-29 (output previews addendum)
 
 Phases 3–8 now end their write-back by invoking `Skill(output-preview-capture)` filtered to their own phase (Phase 6 also runs it once for `commcare-setup`, the app fallback after the emulator walk; Phase 7 as § Step 4.5, after Step 3.95's render frames), and the orchestrator runs it once more at run end over all phases (`## Run end: capture remaining output previews`). Best effort: the phase summary states `previews: N captured, M gaps left (why)`; it never fails or blocks a phase.
+
+## QA/eval gaps — 2026-10-01
+
+- **Phase 4 (`connect-setup`):** new Step 3b dispatches `build-memo-eval` after the memo; `connect-opp-setup` gains Step 11, a post-condition read-back whose `phase6_blockers` Phase 6's pre-flight now honours.
+- **Phase 6 (`qa-and-training`):** `training-deck-render-eval` runs after the render (2b). A `fail` does not halt the phase, but the deck is reported as not ready to project.
+- **Phase 7 (`synthetic-data-and-workflows`):** `demo-data-setup-qa` is mandatory for every provider and always writes its result through `scripts/demo-data-setup-qa.ts`.

@@ -12,14 +12,7 @@
  * this same helper.
  */
 
-import {
-  QACheck,
-  QACheckContext,
-  QAFailure,
-  QAPassedSchema,
-  QAResult,
-} from './qa-types';
-import { z } from 'zod';
+import { aggregateQAResult, QACheck, QACheckContext, QACheckOutcome, QAResult } from './qa-types';
 
 export interface RunChecksOptions {
   /** This skill's name (matches the QA skill's frontmatter `name:`). */
@@ -41,44 +34,30 @@ export interface RunChecksOptions {
 }
 
 export async function runChecks(opts: RunChecksOptions): Promise<QAResult> {
-  const failures: QAFailure[] = [];
-  const passed: z.infer<typeof QAPassedSchema>[] = [];
-
+  const outcomes: QACheckOutcome[] = [];
   for (const check of opts.checks) {
     const result = await check.run(opts.artifact, opts.context);
-    if (result.pass) {
-      passed.push({ check: check.id, detail: result.detail });
-    } else {
-      failures.push({
-        check: check.id,
-        type: check.type,
-        detail: result.detail ?? `check '${check.id}' failed`,
-        auto_fix_hint:
-          result.auto_fix_hint ??
-          `re-run the producer with explicit instruction to address: ${result.detail ?? check.description}`,
-        severity: 'blocker',
-      });
-    }
+    outcomes.push({
+      check: check.id,
+      type: check.type,
+      result: result.pass
+        ? result
+        : {
+            ...result,
+            detail: result.detail ?? `check '${check.id}' failed`,
+            auto_fix_hint:
+              result.auto_fix_hint ??
+              `re-run the producer with explicit instruction to address: ${result.detail ?? check.description}`,
+          },
+    });
   }
-
-  const result: QAResult = {
+  // One aggregation for tests and production: zero checks is a FAIL there too.
+  return aggregateQAResult({
     skill: opts.skill,
     target: opts.target,
-    ran_at: opts.ran_at ?? new Date().toISOString(),
     capture_path: opts.capture_path,
-    schema_version: 1,
-    verdict: failures.length === 0 ? 'pass' : 'fail',
-    stats: {
-      checks_run: opts.checks.length,
-      checks_passed: passed.length,
-      checks_failed: failures.length,
-    },
-    failures,
-  };
-
-  if (opts.include_passed) {
-    result.passed = passed;
-  }
-
-  return result;
+    ran_at: opts.ran_at,
+    outcomes,
+    include_passed: opts.include_passed ?? false,
+  });
 }

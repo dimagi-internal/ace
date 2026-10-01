@@ -1397,6 +1397,11 @@ alone makes the artifact land outside `4-connect` and fail
               # contract to PER_RUN_TEST_USER_REQUIRED_KEYS, which additionally
               # requires `phone` (the minted number) — see lib/phase-products-schema.ts.
               per_run: true
+            postcondition:                     # Step 11 — the live read-back of the end state
+              ok: <bool>
+              checked_at: <ISO timestamp>
+              failed: [<check id>: <detail>, ...]      # empty when ok
+              phase6_blockers: [<check id>: <detail>, ...]   # non-empty ⇒ Phase 6 must not walk
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
@@ -1436,6 +1441,44 @@ alone makes the artifact land outside `4-connect` and fail
     this run's `products.connect`. `opp.yaml.connect.program` is the
     *only* durable Connect reference — written by
     `connect-program-setup`, never mutated here.
+
+11. **Post-condition: read the live opportunity back and check the END STATE
+    (inline QA).** Every atom above validated its own CALL; none of that proves
+    the opportunity Connect now holds is the one this skill decided. A valid-but-
+    wrong end state — a payment unit that never landed, the test flag off, an
+    invite that was "queued" and never existed (ace#824), an opportunity that
+    never made the `/activate/` transition (ace#617/#624) — otherwise surfaces two
+    phases later as a Phase 6 walk hunting a tile that cannot exist. Run the three
+    reads in ONE parallel message, against the holding org's URL:
+
+    - `connect_get_opportunity({organization_slug: <holding_org_slug>, opportunity_id})`
+    - `connect_list_payment_units({organization_slug: <holding_org_slug>, opportunity_id})`
+    - `connect_list_flw_invites({organization_slug: <holding_org_slug>, opportunity_id, phone: "${ACE_E2E_PHONE}"})`
+
+    Then evaluate them with `checkOppPostcondition(read, decided)`
+    (`lib/connect-opp-postcondition.ts`, pinned by
+    `test/lib/connect-opp-postcondition.test.ts`). `decided` is what THIS skill
+    did: the payment-unit names Step 6 created, the rules Step 5 decided and its
+    `form_field_rules_saved`, `expectActive: true` (Step 6.5 activates every ACE
+    build opportunity), `expectTestUserInvited: true` (Step 7). The checks:
+
+    | Check | Passes when | Blocks Phase 6? |
+    |---|---|---|
+    | `opportunity_readable` | the read returns the opportunity | yes |
+    | `is_test` | `is_test === true` (undefined is unknown, not a pass) | no |
+    | `activated` | not `active: false` AND an invite row exists — `active` alone is the create-side flag (ace#617); `invite_users/` rejects a non-active opportunity, so the row is the proof | yes |
+    | `payment_units_match` | every Step 6 unit is listed by name and nothing else is (`name` is the only reliable column) | no |
+    | `verification_rules_persisted` | Step 5's `form_field_rules_saved` ≥ the rules decided (Connect has no read surface for them) | no |
+    | `test_user_invited` | `connect_list_flw_invites` has a row for the test user (`match !== null` — never `claimed`) | yes |
+
+    Write the result to `products.connect.postcondition` (`ok`, `checked_at`,
+    `failed[]`, `phase6_blockers[]`) in Step 10's patch (re-apply it if Step 10
+    already ran), and add a `## Post-condition` table to
+    `4-connect/connect-opp-setup.md`. **A failure does not fail the skill or
+    re-run anything** — it names the end-state defect in the Phase 4 summary.
+    A non-empty `phase6_blockers` is what Phase 6's pre-flight reads to refuse
+    the walk with that reason instead of failing on the device. A read that
+    errors is reported as unconfirmed, never as fine.
 
 ## Archetypes
 
@@ -1683,6 +1726,7 @@ decisions_append_rows({
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **Step 11: post-condition read-back (inline QA).** The atoms validate each call at the boundary, which catches a bad call but not a valid-but-wrong end state. Step 11 reads the live opportunity back (`connect_get_opportunity`, `connect_list_payment_units`, `connect_list_flw_invites`) and checks it against what the skill decided with `checkOppPostcondition` (`lib/connect-opp-postcondition.ts`): readable, `is_test`, activation PROVEN by an invite row (not the create-side `active` flag, ace#617), payment units by name, verification rules persisted, test user invited. Writes `products.connect.postcondition`; a non-empty `phase6_blockers` makes Phase 6 refuse the walk with the reason. Live on spark-facilitator/20260926-1800: 5 of 6 pass; `verification_rules_persisted` fails (2 decided, 0 saved — the self-managed refusal, ace#2419); no Phase 6 blocker. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
 | 2026-06-01 | **Step 6.5: always attempt `/activate/`; treat only the "already active" error as the skip signal (jjackson/ace#624).** The managed-opp create endpoint returns a create-side `active: true` flag that is NOT the `/activate/` state transition `invite_users/` requires — so the old "read `active`, skip if true" pre-check skipped the only call that enables invites, and Step 7 failed. Calling `/activate/` on such an opp succeeds; it rejects only an opp that already completed the transition. Removed the pre-check; now call unconditionally and branch on the result, not the read-back flag. | ACE team |

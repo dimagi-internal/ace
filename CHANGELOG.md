@@ -5,6 +5,46 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1620 — 2026-10-01
+
+**Four QA/eval gaps closed, each exercised on real run artifacts.**
+
+- **`build-memo-eval` (new).** The build memo is the review artifact ace-web renders first, and nothing
+  graded it; `build-memo` checks only completeness. The new eval grades it against a fact sheet of what was
+  BUILT (`lib/build-memo-facts.ts`: run_state + live `connect_get_opportunity` / `connect_list_payment_units`,
+  never the memo's own claims), with a hard gate on a contradicted verification rule or payment fact, plus
+  honesty about gaps, clarity for a reviewer who has never seen ACE, and actionability. Wired as Phase 4 Step 3b.
+  On spark-facilitator/20260926-1800: **6.2 `warn`**. Every figure matched Connect, but the memo is still titled
+  with the fork's source run, it credits two per-worker caps to per-community form checks, and its internal
+  identifiers make it hard for a partner to read.
+- **`connect-opp-setup` Step 11: post-condition read-back (inline QA).** The skill now reads the live
+  opportunity back and checks the end state with `checkOppPostcondition` (`lib/connect-opp-postcondition.ts`):
+  readable, `is_test`, activation PROVEN by an invite row (not the create-side `active` flag), payment units by
+  name, verification rules persisted, test user invited. Writes `products.connect.postcondition`, and Phase 6's
+  pre-flight refuses the walk on a `phase6_blockers` entry. On Spark: 5 of 6 pass;
+  `verification_rules_persisted` fails (2 rules decided, 0 saved — ace#2419); no Phase 6 blocker.
+- **`demo-data-setup-qa` always runs, always writes, and 0 checks is a FAIL.** bednet-check-2-visit/20260908-1544
+  hand-wrote its 19 checks in a shape no reader parses (ace-web showed "Passed (0/0)"), and
+  spark-facilitator/20260926-1800 (ace-run provider) never ran the gate at all. Generic fix in
+  `lib/qa-types.ts`:
+  - `aggregateQAResult` derives the counts and fails a result that evaluated nothing.
+  - `validateQAResult` rejects a pass with 0 checks run, and counts that do not add up.
+  - `runChecks` uses the same aggregation.
+
+  New `scripts/demo-data-setup-qa.ts` runs every check that applies to the provider (`checksForProvider`) and
+  writes the canonical shape. New ace-run checks: 22 `worker_review_url_scoped` and 23 `cascade_handoff_complete`,
+  plus `periodsFromHistoryRuns` for check 21. Phase 7 makes the gate mandatory. On Spark: 4 of 5 pass, and
+  check 22 FAILS — all three worker-review URLs carry `owning_program_id` but no `program_id` (ace#2521).
+- **`training-deck-render-eval` (new).** Captures every slide headlessly through the Slides API
+  (`scripts/deck-visual-capture.ts`) and pre-checks the page model (`lib/deck-visual-checks.ts`: empty,
+  placeholder, off-page, suspected overflow). It then judges each slide with canopy's Tough Judge on legibility,
+  image placement and content presence, rolled up into projector readiness (hard gate). Wired into Phase 6
+  after the render. On Spark (54 slides): **4.66 `fail`** — slide 53's body overlaps its title, and 10
+  walkthrough / app-screen slides have no screenshot.
+
+Also: the `app-release-qa` and `run-surface-audit-eval` descriptions are trimmed to the ≤200-char contract,
+which frees room in the dispatchable-catalog budget.
+
 ## 0.13.1618 — 2026-09-30
 
 **`output-preview-capture`: the Connect program card is a readable landscape frame.** Connect renders the

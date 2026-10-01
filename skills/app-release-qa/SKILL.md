@@ -1,14 +1,7 @@
 ---
 name: app-release-qa
 description: >
-  Phase 3 § Step 2.8 — structural + install-time QA on the released
-  Learn + Deliver CCZs. Downloads each CCZ via commcare_download_ccz,
-  parses the zip + suite.xml + form XMLs, verifies form counts +
-  Connect-marker presence match the Nova blueprint, then runs
-  commcare-cli `validate` + `play` as install-time runtime gates, and
-  compares each CCZ's minimum CommCare version against the APK Phase 6
-  will run. AVD-free, Connect-free — purely CCHQ-side. Halts loud on
-  mismatch.
+  Structural and install-time QA on the released Learn and Deliver CCZs. Use after app-release, before Connect reads the apps.
 disable-model-invocation: false
 ---
 

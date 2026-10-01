@@ -109,3 +109,34 @@ describe('QACheckResultSchema', () => {
     expect(() => QACheckResultSchema.parse({ pass: 'yes' })).toThrow();
   });
 });
+
+describe('aggregateQAResult / zero-check rule', () => {
+  test('fails when every check was not judged', async () => {
+    const { aggregateQAResult } = await import('./qa-types');
+    const r = aggregateQAResult({ skill: 's', target: 't', capture_path: 'p', outcomes: [{ check: 'a', not_judged: 'spec not written yet' }] });
+    expect(r.verdict).toBe('fail');
+    expect(r.failures[0].check).toBe('no-checks-ran');
+    expect(r.not_judged).toEqual([{ check: 'a', detail: 'spec not written yet' }]);
+  });
+  test('derives counts and keeps not-judged out of them', async () => {
+    const { aggregateQAResult } = await import('./qa-types');
+    const r = aggregateQAResult({
+      skill: 's', target: 't', capture_path: 'p',
+      outcomes: [
+        { check: 'a', result: { pass: true, detail: 'ok' } },
+        { check: 'b', result: { pass: false, detail: 'bad' } },
+        { check: 'c', not_judged: 'later' },
+      ],
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.stats).toEqual({ checks_run: 2, checks_passed: 1, checks_failed: 1 });
+    expect(r.failures[0].auto_fix_hint).toMatch(/bad/);
+  });
+  test('rejects a hand-written pass with 0 checks run, and counts that do not add up', async () => {
+    const { validateQAResult } = await import('./qa-types');
+    const base = { skill: 's', target: 't', ran_at: 'x', capture_path: 'p', failures: [] };
+    expect(() => validateQAResult({ ...base, verdict: 'pass', stats: { checks_run: 0, checks_passed: 0, checks_failed: 0 } })).toThrow(/nothing was checked/);
+    expect(() => validateQAResult({ ...base, verdict: 'pass', stats: { checks_run: 3, checks_passed: 2, checks_failed: 0 } })).toThrow(/must equal/);
+    expect(validateQAResult({ ...base, verdict: 'pass', stats: { checks_run: 2, checks_passed: 2, checks_failed: 0 } }).verdict).toBe('pass');
+  });
+});
