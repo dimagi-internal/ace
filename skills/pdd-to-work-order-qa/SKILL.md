@@ -124,3 +124,23 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 
 - Google Drive: `drive_read_file` — **always with `exportAs: 'text/plain'`** for the work-order gdoc (the PDD body read in step 3 takes `text/markdown`, per its own sibling's convention) (see § Process step 1; the inverse of `idea-to-pdd-qa`, which requires `text/markdown`), and the default for `decisions.yaml`, `drive_create_file`
 - Bash: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
+
+## Writing the result (shared writer — every `-qa` skill)
+
+Write the result file through the shared writer, never by hand:
+collect one outcome per check you evaluated (`{check, type, result: {pass,
+detail, auto_fix_hint}}`, or `{check, not_judged: "<why>"}` for a check whose
+input does not exist yet) into a local JSON file, then
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-result.ts" write \
+  --skill <this skill> --target <opp>/<run-id> --capture-path <artifact path> \
+  --outcomes <outcomes.json> --out <local result.yaml>
+```
+
+and upload that file. It derives `stats` from the outcomes and a result that
+evaluated nothing is a FAIL (`aggregateQAResult`, `lib/qa-types.ts`); ACE's own
+ace-gdrive write guard turns a `*-qa_result.yaml` in any other shape into an
+`INVALID_QA_RESULT` error (`lib/qa-result-write-guard.ts`). A hand-written shape reads on ace-web as
+"Passed (0/0 checks)" — `skills/_qa-template.md § QA result YAML contract`.
+

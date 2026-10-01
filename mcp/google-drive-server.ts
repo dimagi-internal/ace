@@ -28,6 +28,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+import { qaResultWriteRefusal } from '../lib/qa-result-write-guard.js';
 import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
@@ -824,6 +825,15 @@ server.tool(
   async ({ fileId, content, localFilePath, ifMatchRevisionId }) => {
     try {
       const newContent = resolveUpdateFileContent({ content, localFilePath });
+      // A QA result rewritten in place goes through the same guard as a create.
+      // Only content that names a -qa skill costs the extra metadata read.
+      if (/^skill:\s*\S+-qa\s*$/m.test(newContent)) {
+        const meta = await withTransientRetry(() =>
+          drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }),
+        );
+        const qaRefusal = qaResultWriteRefusal(String((meta.data as any).name ?? ''), newContent);
+        if (qaRefusal) return error(qaRefusal);
+      }
       // Optimistic concurrency: re-read the file's `version` and compare. Drive's
       // files.update has no native If-Match equivalent, so we do the check
       // server-side here. This narrows but does not eliminate the race; for
@@ -905,6 +915,8 @@ server.tool(
         atom: 'drive_create_file', inlineParam: 'content',
         inline: fileContent, localFilePath,
       });
+      const qaRefusal = qaResultWriteRefusal(fileName, resolved);
+      if (qaRefusal) return error(qaRefusal);
       const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
     } catch (e: any) {
@@ -1005,6 +1017,8 @@ server.tool(
       if (buf.length === 0) {
         return error('File is empty (0 bytes).');
       }
+      const qaRefusal = qaResultWriteRefusal(fileName, buf.toString('utf8'));
+      if (qaRefusal) return error(qaRefusal);
       return result(
         await handleUploadBinary(
           { name: fileName, buffer: buf, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate },

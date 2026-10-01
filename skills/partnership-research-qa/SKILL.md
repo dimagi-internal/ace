@@ -98,6 +98,25 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 - **Auto:** Run checks, write QA result, return verdict + failures (if any).
 - **Review:** Same as Auto — QA is binary; there is no human pause-and-review. (Eval has Review mode for quality judgments; QA does not because there is nothing to weigh in on.)
 
+## Writing the result (shared writer — every `-qa` skill)
+
+Write the result file through the shared writer, never by hand:
+collect one outcome per check you evaluated (`{check, type, result: {pass,
+detail, auto_fix_hint}}`, or `{check, not_judged: "<why>"}` for a check whose
+input does not exist yet) into a local JSON file, then
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-result.ts" write \
+  --skill <this skill> --target <opp>/<run-id> --capture-path <artifact path> \
+  --outcomes <outcomes.json> --out <local result.yaml>
+```
+
+and upload that file. It derives `stats` from the outcomes and a result that
+evaluated nothing is a FAIL (`aggregateQAResult`, `lib/qa-types.ts`); ACE's own
+ace-gdrive write guard turns a `*-qa_result.yaml` in any other shape into an
+`INVALID_QA_RESULT` error (`lib/qa-result-write-guard.ts`). A hand-written shape reads on ace-web as
+"Passed (0/0 checks)" — `skills/_qa-template.md § QA result YAML contract`.
+
 ## Change Log
 
 | Date | Change | Author |

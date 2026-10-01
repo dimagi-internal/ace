@@ -180,11 +180,20 @@ not_judged:
 
 **"Nothing was checked" is never a pass.** `verdict: pass` requires `checks_run ≥ 1`,
 and `checks_passed + checks_failed == checks_run`; `validateQAResult` enforces both.
-Build the file with `aggregateQAResult` (`lib/qa-types.ts`) — it derives the counts
-and turns an all-not-judged run into `fail` with a `no-checks-ran` failure — rather
-than typing the YAML by hand. A hand-rolled shape is invisible to readers:
+Build the file with the shared writer — `scripts/qa-result.ts write --skill … --target …
+--capture-path … --outcomes <outcomes.json> --out <result.yaml>` (or `aggregateQAResult`,
+`lib/qa-types.ts`, from a skill's own script) — which derives the counts and turns an
+all-not-judged run into `fail` with a `no-checks-ran` failure, rather than typing the
+YAML by hand. **This is enforced at the one place every result passes:** ace-gdrive's
+`drive_create_file`, `drive_upload_binary` and `drive_update_file` run
+`qaResultWriteRefusal` (`lib/qa-result-write-guard.ts`) on any file named
+`*-qa_result.yaml` and turn a non-canonical one into an `INVALID_QA_RESULT` error,
+writing nothing. `test/skills/qa-result-shared-writer.test.ts` keeps every QA skill's
+instructions on the writer. A hand-rolled shape is invisible to readers:
 `bednet-check-2-visit/20260908-1544`'s demo-data-setup-qa wrote `checks_total` /
-`checks[]` for 19 checks and ace-web displayed "Passed (0/0 checks)". **A QA skill
+`checks[]` for 19 checks, and `spark-facilitator/20260926-1800`'s
+semantic-registry-author-qa wrote `{verdict, findings}` for 11 — ace-web displayed both
+as "Passed (0/0 checks)". **A QA skill
 writes its result on every invocation** — pass, fail or incomplete; a gate that
 leaves no file reads as a step that never had a gate.
 
