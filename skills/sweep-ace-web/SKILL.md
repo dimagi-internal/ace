@@ -24,9 +24,9 @@ into wiping all visible sessions; opp-orphan filtering is not its job.
 - `ACE_WEB_BASE_URL` — env var; deployed ace-web base URL (no trailing slash).
   Defaults to `https://labs.connect.dimagi.com/ace` to match
   `--ace-web-url` elsewhere in the plugin.
-- `ACE_WEB_PAT_TOKEN` — env var; per-human Personal Access Token minted via
-  `/ace:ace-web-pat-mint`. The sweep is scoped to whichever workspaces this
-  human belongs to on the ace-web side.
+- `ACE_WEB_PAT_TOKEN` — env var; ACE's own ace-web token by default (written by `/ace:setup`),
+  or yours if you minted one with `/ace:ace-web-pat-mint`. The sweep is scoped
+  to whichever workspaces that identity belongs to on the ace-web side.
 - `sweepFolder` — timestamped sweep folder created by the orchestrator
   (e.g. `ACE/_sweep/<timestamp>/`). Products land here.
 - `mode` — `recommend` (default) | `execute`. In `recommend` the skill is

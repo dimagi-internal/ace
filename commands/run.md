@@ -66,9 +66,9 @@ Run the full ACE lifecycle for a Connect opportunity.
   > The ace-web transcript upload is enabled (`<which opt-in>`) but
   > `ACE_WEB_PAT_TOKEN` is unset in `<resolved-env-path>`. The upload
   > would fail with an authentication error after the full lifecycle
-  > had already burned runtime. Mint a per-human PAT via
-  > `/ace:ace-web-pat-mint` (one-time per machine, ~30s gh-style
-  > browser flow), or turn the upload off (drop `--ace-web-url` /
+  > had already burned runtime. Run `/ace:setup` (it writes ACE's own
+  > ace-web token), or `/ace:ace-web-pat-mint` to upload under your own
+  > name, or turn the upload off (drop `--ace-web-url` /
   > unset `ACE_WEB_UPLOAD_SESSIONS`).
 
   Failing fast here is right *because* the upload was asked for. When

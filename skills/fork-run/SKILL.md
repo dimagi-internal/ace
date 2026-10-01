@@ -17,7 +17,9 @@ point and everything after it are left empty so they re-run fresh.
 
 Calls ace-web's REST fork endpoint — the server does the Drive copy (it holds
 the user's Drive OAuth credentials, so they never reach the client).
-Authenticates via the per-human `ACE_WEB_PAT_TOKEN` (same as `upload-transcript`).
+Authenticates with `ACE_WEB_PAT_TOKEN` — ACE's own ace-web token by default — and
+names the human it is acting for in `requested_by` (see
+[`skills/_ace-web-attribution.md`](../_ace-web-attribution.md)).
 
 > **A fork point is ONE concept with TWO spellings.** Name a **phase**
 > (`fork_at_phase`) to re-run it whole, or a **skill** (`fork_at_skill`) to keep
@@ -65,6 +67,7 @@ POST ${ACE_WEB_BASE_URL}/api/w/<workspace_slug>/opps/<slug>/fork
 | `mode` | no | `keep-all` (default) or `keep-overrides-only` |
 | `edits` | no | list of `{row_id, new_answer}` decision overrides applied during the fork |
 | `feedback` | no | ≤8000 chars; seeded as the **first user turn** of the new run's working session |
+| `requested_by` | **yes (ACE rule)** | email of the human this fork is for — resolve per [`_ace-web-attribution.md`](../_ace-web-attribution.md). ace-web records it next to `initiated_by` |
 
 Exactly one of `fork_at_phase` / `fork_at_skill` — neither or both is a 422.
 
@@ -171,7 +174,10 @@ partial fork is garbage.
 ## Env vars
 
 - `ACE_WEB_BASE_URL` — e.g. `https://labs.connect.dimagi.com/ace`. Source: `.env`.
-- `ACE_WEB_PAT_TOKEN` — per-human PAT. Mint via `/ace:ace-web-pat-mint`.
+- `ACE_WEB_PAT_TOKEN` — ACE's own ace-web token, written by `/ace:setup`
+  (or your own, if you minted one with `/ace:ace-web-pat-mint`).
+- `requested_by` — not in `.env`. The human this fork is for; see
+  [`_ace-web-attribution.md`](../_ace-web-attribution.md).
 - `workspace_slug` — **not** in `.env`. Resolve it from `GET /api/workspaces`,
   or read it off any ace-web run URL (`/ace/opps/<workspace>/<opp>/runs/...`).
   For the Dimagi tenant it is `dimagi-team`.
@@ -184,9 +190,13 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    the missing var and the fix:
 
    ```
-   ACE_WEB_PAT_TOKEN not set. Mint a PAT via /ace:ace-web-pat-mint
-   (one-time per machine, ~30s gh-style browser flow), then retry.
+   ACE_WEB_PAT_TOKEN not set. Run /ace:setup (it writes ACE's own
+   ace-web token), then retry.
    ```
+
+   Then resolve `requested_by` per
+   [`_ace-web-attribution.md`](../_ace-web-attribution.md). With no
+   resolvable human, stop and ask. Never omit the field.
 
 2. **Resolve `workspace_slug`** if the caller didn't supply it (see above).
 
@@ -207,7 +217,8 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
      --arg src "${source_run_id:-}" \
      --arg mode "${mode:-keep-all}" \
      --arg fb "${feedback:-}" \
-     '{mode: $mode}
+     --arg rb "${requested_by:?requested_by is required — see skills/_ace-web-attribution.md}" \
+     '{mode: $mode, requested_by: $rb}
       + (if $phase == "" then {} else {fork_at_phase: $phase} end)
       + (if $skill == "" then {} else {fork_at_skill: $skill} end)
       + (if $src   == "" then {} else {source_run_id: $src} end)
@@ -263,7 +274,9 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    | 404 | `no-runs` | opp has no `runs/` folder — old single-run layout |
    | 404 | `source-run-not-found` | `source_run_id` not under `runs/` |
    | 422 | `extra_forbidden` in `extras.errors[].type` | you sent a field the schema doesn't have |
-   | 401/403 | — | PAT invalid/revoked → `/ace:ace-web-pat-mint` |
+   | 401/403 | — | token invalid/revoked → `/ace:setup` (ACE's token) or `/ace:ace-web-pat-mint` (yours) |
+| 400 | `requested_by` | a HUMAN token sent a `requested_by` other than its owner. Drop it or use ACE's token |
+| 409 | `run_actor_unresolvable` | canopy cannot resolve the run's owner to an account, so the run would be confined and never execute. Nothing was forked. Fix the identity, don't retry |
    | HTML body | — | **wrong route.** An unrouted path falls through to the SPA catch-all and returns a bare HTML 404, not JSON. Check `/api/w/<ws>/opps/...`. |
    | *no response* | — | **not an error.** The POST blocks; you timed out, the fork didn't. Go to step 4b — never re-POST. |
 

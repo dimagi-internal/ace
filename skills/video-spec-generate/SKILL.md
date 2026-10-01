@@ -38,7 +38,7 @@ Adding a new video template requires only `meta` + `intent` + `skeleton` +
 | `gdrive_folder_id` | no | — | Drive folder holding the program's media. When set, enumerates it and populates `manifest:` + clip refs. |
 | `base_url` | no | `$ACE_WEB_BASE_URL` or `https://labs.connect.dimagi.com/ace` | ace-web base URL. |
 | `no_post` | no | false | When set, print the filled spec to stdout instead of POSTing (useful for eval or manual inspection). |
-| `ACE_WEB_PAT_TOKEN` | yes (env) | — | Per-human Bearer token; mint via `/ace:ace-web-pat-mint`. |
+| `ACE_WEB_PAT_TOKEN` | yes (env) | — | Bearer token. ACE's own by default (`/ace:setup`); yours via `/ace:ace-web-pat-mint`. |
 
 ## Outputs
 
