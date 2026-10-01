@@ -212,17 +212,28 @@ describe('the composer composes; it never re-derives', () => {
     expect(doc).toMatch(/ABSENT — <path>/);
   });
 
-  it('carries the four compilation parts plus a completeness table', () => {
+  it('carries the reviewer frame, the plain account, the four compilation parts and a completeness table', () => {
     for (const h of [
-      '## 1. Every [ACE] latitude taken and every [FIXED] ambiguity hit',
-      '## 2. Deliver app',
-      '## 3. Learn app',
-      '## 4. Opportunity configuration and verification flags',
-      '## 5. Completeness',
+      'Known limitations',
+      'Decisions you own',
+      'Where each rule is enforced',
+      '## What was built, and the choices the build made',
+      '### Appendix B — Deliver app build notes, verbatim',
+      '### Appendix C — Learn app build notes, verbatim',
+      '### Appendix D — Connect setup notes, verbatim',
+      '### Appendix E — Completeness',
     ]) {
       expect(doc, `memo structure lacks "${h}"`).toContain(h);
     }
     expect(doc).toContain('"Not configurable on Connect" is a valid answer and must be stated');
+  });
+
+  it('renders the deterministic parts and gates the memo with scripts/build-memo-compose.ts (build-memo-eval 6.2 warn)', () => {
+    expect(doc).toMatch(/scripts\/build-memo-compose\.ts"[^\n]*\n[^\n]*\n[^\n]*--frame/);
+    expect(doc).toMatch(/--check <memo\.md>/);
+    expect(doc).toContain('Exit 0 is required');
+    expect(doc).toContain('## On a forked run');
+    expect(read('skills/fork-run/SKILL.md')).toContain('/ace:step build-memo <opp>/<run_id>');
   });
 
   it('publishes at one stable per-run path and records the link in typed state', () => {

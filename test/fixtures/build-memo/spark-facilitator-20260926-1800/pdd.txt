@@ -1,0 +1,915 @@
+Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation
+Archetype: longitudinal-visits Opportunity: spark-facilitator Run: 20260925-1536 Status: Draft for review — Phase 1 output, not a partner-agreed document Prepared by: ACE (Dimagi's AI Connect Engine), 25 September 2026 Supersedes: run 20260910-1624 (fresh run; design re-synthesized from inputs/; the prior run's 66 decisions were read as advisory evidence, not authority) Sources: FCAP App & M&E structured extract (Enock Tusingwire's workbook, 2026-07-24) · Malawi Green FCAP app v1392 (.ccz, 2026-07-24) · FCAP Structure, Phases, and Activities (Spark, 2026-07-21) · FIYP Overview (Spark, 2026-07-21) · Spark MicroGrants Program Model Research Brief (ACE, 2026-07-13) · Spark Q&A — Enock's answers to ACE's 3 design questions (2026-07-24) · opp-level open-questions.md (all 23 open rows read)
+
+
+________________
+
+
+Overview
+This pilot puts a Connect verify-and-pay layer under the work Spark MicroGrants' Community Based Facilitators (CBFs) already do: facilitating the weekly community meetings of the Facilitated Collective Action Process (FCAP). A CBF records each community meeting on a mobile form built from Spark's own Village Monitoring Form; Connect checks the record against the field predicate Spark's M&E Director named, and pays the CBF per verified meeting. The pilot covers the FCAP Goal Setting subphase (steps 1–7, about three months) for about 12 communities in Malawi, one CBF per community, and uses the slice Spark confirmed for a first version: facilitator registration, the per-meeting monitoring record, and savings.
+
+
+What changed from the previous run, and why. Four things. (1) Facilitator registration is back in scope — Enock named it as part of the slice and earlier drafts had dropped it. (2) The meeting photo Spark already requires is reused — earlier drafts said the record had no image, but Spark's Village Monitoring Form makes a meeting photo mandatory; reusing it is not a new ask and it is the strongest evidence a meeting happened. (3) The review layers now actually check the thing a per-meeting payment tempts people to fake: the human review sample is risk-stratified rather than uniform, and a light phone confirmation with the community's own contact person (a field Spark already collects) is added as Layer C. (4) Every number Phase 3 and Phase 4 need is now written down, including a proposed payment band. The band is marked [PROPOSED]: no source says what Spark pays CBFs today, so it is ACE's placeholder for the responding organisation to replace with a justified figure — not an agreed price.
+
+
+________________
+
+
+1. Archetype
+longitudinal-visits.
+
+
+The entity followed over time is the community. It is visited repeatedly, in an ordered sequence, and it carries state between visits: which FCAP step it has reached, how many meetings it has held on that step, and whether community-wide savings have started. The visits are not interchangeable — Step 2 (elections and bylaws) is a different piece of facilitation from Step 5 (savings).
+
+
+* Not atomic-visit. Someone in this programme will ask "is this community on track through Goal Setting?" — a question atomic-visit cannot answer because it has no entity to track, and its duplicate test cannot express a duplicate within this community's own step sequence, which is exactly the payment rule this design needs.
+* Not multi-stage. Communities move through the FCAP steps independently, each on its own clock. multi-stage stages the programme on one clock and would build separate apps and payment units per stage. Here there is one app set and one payment unit for the whole pilot, and the "gate" is data the meetings themselves write.
+
+
+________________
+
+
+2. Problem Statement
+Spark runs FCAP, a roughly two-year village-driven planning and microgrant process, through facilitators drawn from the communities themselves. Spark's FCAP Structure guide describes 4 phases and 78 activities; Goal Setting alone is 7 steps over about 3 months of weekly meetings.
+
+
+Three things are true at once in the source material:
+
+
+1. The facilitation is the programme. Community outcomes depend on whether meetings happen, whether attendance is broad, and whether people other than the loudest members speak. Spark's own indicator set measures exactly this — household attendance, female attendance, overall participation, female participation, and a "% communities in green" quality composite.
+2. The record already exists. Spark's Malawi Green FCAP app (v1392) has a Village Monitoring Form the CBF completes after every community meeting: attendance, participation, the FCAP step and activities covered, savings, and a required meeting photo.
+3. What the CBF is paid, and on what basis, is not documented anywhere in the sources. ACE's research brief lists CBF compensation first among the things it could not learn. Enock confirmed the CBF is the person to verify and compensate, but not what they receive today.
+
+
+So the problem is narrow and concrete: there is a well-defined unit of facilitation work and a well-defined record of it, but no mechanism that reliably turns one into a payment to the person who did it. Connect supplies that mechanism. The pilot tests whether the conversion is trustworthy — whether a meeting recorded as held was held, whether the record is complete enough to pay on, and whether the payment rhythm matches how the work actually arrives.
+
+
+What this pilot is not. It is not a change to FCAP, not an evaluation of FCAP, and not an intervention on communities. It is a payment and verification layer for facilitators. The four-arm FCAP randomised trial described in ACE's research brief is separate, and the pilot is designed to stay clear of its instrument (§3.3).
+
+
+________________
+
+
+3. Intervention Design
+3.1 The paid unit
+One verified community meeting, for one community, at one FCAP step.
+
+
+A meeting is verified when the CBF's meeting record carries, in the raw codes of Spark's own form:
+
+
+meeting_conducted   = yes
+
+
+meeting_type        = community_meeting
+
+
+This predicate is partner-stated: Enock wrote on 2026-07-24 that "a meeting is confirmed to have happened when, in the Village Monitoring Form (menu1_form5): meeting_conducted = 'Yes' AND meeting_type = 'Community meeting'." ACE re-checked both fields in the shipped app (modules-0/forms-4.xml, binds at lines 146 and 150; stored values yes and community_meeting, the only other type being committee_meeting). The pilot uses the stored codes, so a later comparison with Spark's own submissions is a join, not a re-mapping.
+
+
+A committee meeting is not payable. It is real work, and that makes this the most counter-intuitive rule in the design — but it comes straight from Spark's own predicate.
+3.2 What makes the design longitudinal
+Whether a meeting is payable depends on the community's history, not only on the form in front of the CBF:
+
+
+* Every meeting belongs to the FCAP step the community is on. The step moves forward one at a time, only when the CBF records that the community completed it; it never moves back and never skips.
+* Up to 3 community meetings per community per FCAP step are payable. Steps usually take more than one meeting — about 13 weekly meetings across 7 steps averages 1.9 per step — so a one-per-step rule would leave real continuation work unpaid.
+* A 4th or later meeting on the same step is recorded in full but earns nothing.
+* Out-of-order meetings cannot happen by construction. Because the step can only advance, a meeting that revisits earlier content is recorded against the step the community is on now, and counts toward that step's cap.
+
+
+Requirement, not mechanism. The requirement: each community earns at most 3 paid meetings per FCAP step; the 4th onward on the same step is recorded and unpaid; a meeting is always attributed to the community's current step. Mechanism (advisory): the Connect de-duplication key is concat(<community case id>, '-', <pilot_fcap_step>, '-', min(<step_meeting_index>, 3)), where step_meeting_index is the value after this meeting is counted (the first meeting on a step is 1, the third is 3). A 4th meeting therefore produces the same key as the 3rd and collapses on Connect's own de-duplication. Phase 3 may implement the cap differently; doing so is a normal build choice, not a deviation.
+3.3 Reused vs net-new — the explicit split
+Spark's v1392 app is ground truth, and the pilot is designed around it.
+
+
+Element
+	Status
+	Evidence in v1392
+	Verification predicate (meeting_conducted, meeting_type)
+	Reused verbatim, stored codes and field names
+	modules-0/forms-4.xml:146,150
+	Meeting photo (attach_a_photo_for_the_meeting), required on a held meeting
+	Reused verbatim — required in Spark's form today
+	forms-4.xml bind type="binary" required="true()"
+	Attendance and participation (hh_represented_at_the_meeting, male_attendance, female_attendance, male_participants, female_participants) and participants ≤ attendance
+	Reused verbatim
+	forms-4.xml
+	Meeting details (leaders attending, Spark trainer present, partner staff present, started on time + reason)
+	Reused verbatim
+	forms-4.xml meeting_details group
+	Not-held branch (reason codes bad_weather · poor_mobilization · transport_difficulty · community_delayed · other, reschedule date)
+	Reused verbatim
+	forms-4.xml meeting_did_not_happen group
+	Savings block (currently_saving and dependants)
+	Reused, with one disclosed deviation (§5.5)
+	forms-4.xml:221–228
+	Facilitator registration fields (name, gender, age 15–90, education, 10-digit phone, recruitment date)
+	Reused verbatim from the CF Registration Form
+	modules-2/forms-0.xml
+	Community location, community contact name + 10-digit number
+	Reused verbatim from the Village Profile Form
+	modules-0/forms-0.xml
+	Per-meeting location fix
+	Net-new — the Village Monitoring Form has no location field
+	forms-4.xml has 0 geopoint binds
+	Household count kept on the community record
+	Net-new — Spark's form asks it and discards it (§5.3)
+	forms-0.xml, forms-1.xml
+	Step pointer that only moves forward + per-step meeting counter
+	Net-new — needed for the payment key (§5.4 disclosure)
+	forms-4.xml case update block
+	Consent to verification calls
+	Net-new — Layer C only
+	—
+	Connect markers, Learn app
+	Net-new — Spark's app carries none
+	grep -rl commcareconnect over all form XMLs: 0 files
+	
+
+The pilot runs a parallel app; it does not instrument Spark's. v1392 carries zero Connect markers, so adding them would be the first instrumentation of an app a live randomised trial depends on — Spark's call, not ACE's. Reusing Spark's field names and stored codes keeps either end state cheap. Whether CBFs file the pilot record instead of or in addition to Spark's own form is an open question only Spark can answer (§15).
+
+
+________________
+
+
+4. Learn App Specification
+Working language: English source, with Chichewa (nya) and Tumbuka (tum) — the language set of Spark's own Malawi app and of the FIYP media library. Labels, choices, hints and assessment items appear in all three. The translations are ACE-authored and land marked needs-review; native-speaker review is a normal downstream task, like review of the English copy, and is not claimed as done at delivery.
+
+
+Runtime default: English. Spark's own app opens in English (profile.ccpr: cur_locale = en), so English-first matches what a CBF already using it expects. CommCare's own language switcher stays available. Whether Spark would prefer Chichewa-first is an open question.
+
+
+Scope discipline. This Learn app teaches the pilot's recording and payment rules. It does not reproduce Spark's facilitation curriculum, which Spark delivers through Partner Trainer sessions and its FIYP media library (35 presenter-to-camera videos, 12 community videos, 280+ slides, an offline content player).
+4.1 Modules
+#
+	Module
+	What the CBF must be able to do afterwards
+	1
+	Your role in this pilot
+	Say what the pilot pays for, what it does not change about FCAP, and who reviews the records
+	2
+	Registering yourself and your community
+	Complete facilitator registration once and community enrolment once, including the household count and the community contact's consent to verification calls
+	3
+	Recording a meeting
+	Walk the meeting record screen by screen; take the meeting photo correctly; record a meeting that did not happen
+	4
+	Counting attendance and participation
+	Count households represented, men and women attending, and men and women who spoke; know why speakers can never exceed attendees
+	5
+	Steps and savings
+	Know that the step is read from the record and only moves forward when the community completes it; know that savings questions appear only from Step 5
+	6
+	How payment works
+	Know what makes a meeting payable, the 3-per-step cap, the one-meeting-per-day limit, and which work is recorded but unpaid
+	
+
+Module 3's photo guidance: one wide photo of the meeting while it is in session, taken at the venue with the device's camera, showing the gathered participants; no close-ups of individuals are needed. The app accepts only a live camera photo, not a gallery upload (Phase 3 applies camera-only capture as a standard HQ setting).
+
+
+If Spark can share FIYP's "Running an Effective Meeting" walkthrough (filmed with a real CBF), it belongs in Module 3; the module is written to stand alone if not (open question fiyp-media-assets).
+4.2 Assessment
+* One fixed bank of 12 scored items. Pass at 80% (10 of 12). Passing unlocks the Deliver app.
+* Coverage. The bank must include at least one item for each of the 7 counter-intuitive rules in §8.3, with the remaining items on the high-consequence recording operations (registering the community once, the household count, the step-completed answer, the not-held branch, attendance vs participation counts, the photo, the savings amounts). With 7 counter-intuitive rules and 9 high-consequence operations, 12 items reach roughly 0.83 weighted coverage, well above the 0.50 floor.
+* Result screen shows pass or fail and, on fail, which modules to revisit.
+* Retakes are unlimited against the fixed bank. That softens the gate: a worker can in principle pass by memorising answers. Rotating items per attempt is expressible in CommCare forms and is not a platform impossibility; what is missing is an authoring primitive in ACE's build tools today. It is carried as an open question and a capability request, not designed around.
+
+
+Illustrative item — the required shape, not mandated content. "A CBF records a committee meeting on Tuesday and a community meeting on Thursday, both for her community at Step 3. How many payable meetings has she recorded?" → 1. Phase 3 authors the bank and may harden or discard this item.
+
+
+________________
+
+
+5. Deliver App Specification
+Working language: as §4. Case types: cbf (one per facilitator) and community (the followed entity).
+
+
+Three forms, matching the slice Spark confirmed:
+
+
+Form
+	Filed
+	Paid?
+	Facilitator Registration
+	once per CBF, before the first meeting
+	no
+	Community Enrolment
+	once per community
+	no
+	Community Meeting Record
+	after every community or committee meeting, and for a planned meeting that did not happen
+	only a verified community meeting (§3)
+	5.1 Facilitator Registration
+Mirrors Spark's CF Registration Form (modules-2/forms-0.xml), reduced to what the pilot and Spark's CBF indicators ("number of CBFs recruited", attrition) use.
+
+
+Field
+	Type
+	Constraint
+	Source
+	cbf_name
+	text
+	required
+	reused
+	cbf_gender
+	select: female · male
+	required
+	reused
+	cbf_age
+	integer
+	required, 15–90
+	reused (. >= 15 and . <= 90)
+	cbf_education
+	select: none · primary · secondary · tertiary · other
+	required
+	reused field; option list to be reconciled with Spark's
+	cbf_primary_contact
+	phone text
+	required, exactly 10 digits
+	reused (string-length(.) = 10)
+	cbf_secondary_contact
+	phone text
+	optional, exactly 10 digits if given
+	reused
+	cbf_recruitment_date
+	date
+	required, not in the future
+	reused
+	cf_district, traditional_authority
+	text
+	required
+	reused names; free text until a register is supplied
+	
+
+A CBF registers once. If the device already holds a facilitator record with the same primary phone number, the form warns "This facilitator is already registered" (Spark's own duplicate check); the CBF should not continue.
+5.2 Community Enrolment
+Creates the community case and captures what the metrics and review layers need.
+
+
+Field
+	Type
+	Constraint
+	Notes
+	village (community name)
+	text
+	required
+	reused
+	community_id
+	text
+	required
+	reused; Spark's community identifier where known
+	District, traditional_authority, group_village
+	text
+	required
+	reused names; free text (register open question lookup-table-provisioning)
+	partnership_date
+	date
+	required, not in the future
+	reused — "On what date was the CBF in this community selected?"
+	number_of_households
+	integer
+	required, 1–400
+	reused (Spark: ≤ 400); kept on the community record
+	average_household_size
+	decimal
+	required, 4–12
+	reused; kept on the record
+	primary_contact_name
+	text
+	required
+	reused — the community's primary contact
+	primary_contact_number
+	phone text
+	required, exactly 10 digits
+	reused
+	contact_consents_to_calls
+	yes / no
+	required
+	net-new. "Does this contact agree to receive an occasional short phone call from the implementing organisation to confirm that a meeting took place?" A no keeps the community in the pilot but out of the Layer C call sample
+	gps_coordinates_of_the_community
+	location + accuracy
+	required
+	reused — the reference point for per-meeting location review
+	
+
+On submit the community record starts at pilot_fcap_step = 1 and step_meeting_index = 0.
+5.3 The household-count problem (verified, and load-bearing)
+Spark's attendance and savings indicators are percentages of "total # households in community". That count does not usably exist in Spark's app, for three verified reasons:
+
+
+1. The Village Profile Form asks it and discards it. number_of_households (required, ≤ 400) and average_household_size (required, 4–12) are asked, and neither is written to the village record.
+2. The stored value starts at zero. forms-0.xml has <bind nodeset="/data/hh_tt" calculate="0"/> feeding /data/case/update/hh_count_tt.
+3. hh_count_tt counts registered households, raised one at a time by the RCT Household Registration Form (forms-1.xml) — it reads 0 until that registration has run.
+
+
+So at Goal Setting time an attendance percentage against Spark's stored figure is undefined. The pilot's own enrolment count is the only figure that exists.
+5.4 Community Meeting Record — screen by screen
+Every field is answerable from what the CBF knows or has seen at that point. Nothing depends on a later screen, and nothing is set and then recoded.
+
+
+Screen
+	Fields
+	Rules
+	1
+	Select community
+	Only communities this CBF enrolled; communities that have completed Step 7 are not listed
+	2
+	date_of_meeting; meeting_gps with accuracy
+	Date required, not in the future and not before the community's enrolment date. For a held community meeting the date must be later than the community's last_community_meeting_date — at most one community meeting per community per day, so re-filing a meeting already recorded is refused in the form. Location captured at the venue, with an on-screen note inviting a retry when the reading is poor
+	3
+	meeting_conducted (yes / no)
+	Required. Label reused: "Did the planned community/committee meeting happen"
+	3a
+	question2 — why it did not happen (multi-select, Spark's 5 codes), other_reason, reschedule_date
+	Shown only when meeting_conducted = no. reschedule_date required, today or later. The form then ends — recorded, not payable
+	4
+	Display only: "This community is on Step N: step name"
+	Read from the community record. The CBF does not choose the step
+	5
+	meeting_type (community_meeting / committee_meeting)
+	Required
+	6
+	attach_a_photo_for_the_meeting
+	Required, live camera only (§4.1)
+	7
+	hh_represented_at_the_meeting, male_attendance, female_attendance
+	Integers, required. Households represented ≤ the community's enrolled number_of_households (net-new check)
+	8
+	male_participants, female_participants
+	Required; men who spoke ≤ men attending, women who spoke ≤ women attending (Spark's own constraints)
+	9
+	male_leader_attendence, female_leader_attendence, SparkTrainer_attendance, SEDO_attendance (partner staff/trainer present), meeting_on_time + why_did_the_meeting_start_late
+	Required; reason shown only when the meeting started late
+	10
+	currently_saving; then savings_use or currently_not-saving; hh_saving, males_saving, females_saving, amt_savings
+	Whole block shown only when the community is on Step 5 or later. Detail fields shown only when currently_saving = 1 (Spark's own relevance)
+	11
+	step_completed — "Did the community complete Step N at this meeting?" (yes / no)
+	Shown only for a community meeting. Required
+	12
+	meeting_notes
+	Optional free text, at most 500 characters
+	
+
+Written back to the community record on every held community meeting: date_of_meeting, Total_Attendance (= men + women attending), Total_participation (= men + women who spoke), last_male_attendance, last_female_attendance, and the step state:
+
+
+* step_meeting_index goes up by 1 for each held community meeting on the current step (committee meetings and not-held records do not change it). The payment key uses the value after this increment — the first community meeting on a step carries index 1, so indices 1, 2 and 3 are payable and 4 onward collapse onto 3;
+* last_community_meeting_date is set to this meeting's date;
+* when step_completed = yes, pilot_fcap_step advances by exactly 1 and step_meeting_index returns to 0; completing Step 7 marks the community pilot_complete and removes it from the meeting list.
+
+
+A not-held record and a committee meeting write only date_of_meeting; every derived value on the community record keeps its stored value.
+
+
+Review flag computed in the form (not a gate): repeat_counts_flag = yes when this meeting's men and women attending both equal the previous meeting's (last_male_attendance, last_female_attendance). It is submitted with the record and used only to target human review (§7.2).
+
+
+Aggregates agree with their qualifiers. Every savings total the pilot reports is computed only over records where currently_saving = 1; participation rates are computed against Total_Attendance; the household-attendance rate is computed against the enrolment number_of_households.
+
+
+Disclosed deviation — the step is read, not chosen. Spark's form asks the CBF "Which FCAP step is the Village in?" at every meeting (a select filtered by phase). The pilot reads the step from the community record instead and moves it only through step_completed. The reason is payment integrity: a freely-chosen step would let the same content be paid under several steps. Spark may prefer its own behaviour; that is part of open question phase-pointer-maintenance.
+5.5 The savings-block deviation (disclosed)
+Spark's currently_saving is required="true()" with no relevance condition (forms-4.xml:221), so it is asked at every meeting, including Steps 1–4 — before community-wide savings are introduced at Step 5 ("Initiative Pathway & Savings … establish a community-wide savings system"). The pilot shows the block only from Step 5. A CBF should not have to answer a question that cannot yet have a meaningful answer. This is a deliberate, disclosed deviation; it also raises a question back to Spark about whether their own "% of Communities saving" indicator is pulled down by pre-Step-5 meetings (§15).
+5.6 Location
+Each meeting submits a location fix with its accuracy value, and the screen invites a retry when accuracy is poor.
+
+
+Location is captured and submitted for review only. Fixes worse than 50 m, or more than 2 km from the community's enrolment location, are flagged and down-weighted in review. Location is not a payment condition, not part of the de-duplication key, and nothing in the app or in Connect refuses a submission because of it.
+
+
+Per-meeting location is genuinely new for Spark — their Village Monitoring Form has none, while five other forms in the same app do. Whether it is acceptable to Spark and to communities meeting in public is open (gps-capture-acceptability); the design keeps location out of the payment path so a "no" costs nothing.
+
+
+________________
+
+
+6. Entity Lifecycle
+Entity: the community. Case type: community. One case per community, owned by one CBF (Malawi, Uganda and Ghana: 1 CBF per community; Rwanda: 2 — see §15).
+
+
+Source conflict, resolved in favour of the partner. ACE's own public-source research brief says each village elects two CBFs (one man, one woman). Enock, Spark's M&E Director, says one CBF covers one community in Malawi. The partner's direct answer wins; if Malawi practice turns out to be two, case ownership and the payment key both need redesign (decision cbfs-per-community-malawi).
+
+
+State
+	Meaning
+	What moves it
+	Enrolled
+	Community case exists; pilot_fcap_step = 1, step_meeting_index = 0
+	Community Enrolment
+	On step N (1 ≤ N ≤ 7)
+	Working through FCAP step N
+	Each held community meeting adds 1 to step_meeting_index
+	Step N complete
+	step_completed = yes recorded at a community meeting
+	Step advances to N+1; counter returns to 0
+	Pilot complete
+	Step 7 (Vision) completed
+	Community leaves the meeting list; no further payable meetings
+	6.1 State vocabulary — Spark's step names, verbatim
+A community's state is the FCAP step it is on. These seven values are the community case's pilot_fcap_step, and the labels are transcribed verbatim from Spark's FCAP Structure, Phases, and Activities guide — not ACE's words, and not to be paraphrased in the build.
+
+
+pilot_fcap_step
+	Step name (verbatim)
+	1
+	Our Partnership
+	2
+	Community Dynamics, Governance & Leadership
+	3
+	Understanding the Present – Situational Analysis
+	4
+	Getting to the Future – Microgrant Pathway & Goals
+	5
+	Initiative Pathway & Savings
+	6
+	Advocacy Pathway
+	7
+	Vision
+	
+
+Phase 3 reads the entity_state_taxonomy row in §14, not this prose; the two are transcriptions of each other and must stay in step.
+
+
+Sequence and cadence: weekly meetings advancing through Steps 1–7 over about 3 months (Enock: "communities meet weekly during the planning phase, and once a month in the other phases"; FCAP Structure: Goal Setting ≈ 3 months).
+
+
+Payability against history: at most 3 paid community meetings per community per step; 4th onward recorded and unpaid; meetings always count against the current step (no backward or skipped steps); payable only from the CBF who owns the community; progression does not affect payment (§7.4).
+
+
+A step marked complete by mistake cannot be undone in the app. The CBF reports it to the implementing organisation's supervisor, who corrects the community record on CommCare HQ. The only payment effect is that later meetings are counted against the next step; the review in §7.2 looks for communities whose step advanced after a single meeting.
+
+
+Completion: a community completes the pilot at Step 7. Full FCAP graduation (~21.5 months) is out of window.
+
+
+________________
+
+
+7. Evidence Model
+7.1 Layer A — automated, on every record
+1. The verification predicate. meeting_conducted = yes AND meeting_type = community_meeting. Anything else is recorded and not payable. Phase 4 configures both as Connect form-field rules — the one server-side surface Connect offers for this.
+2. Ownership. The submitting CBF owns the community case.
+3. Longitudinal clause — the case facts payment reads. Layer A reads the community's pilot_fcap_step and step_meeting_index, not just the current form. The resulting de-duplication key, concat(<case id>, '-', <pilot_fcap_step>, '-', min(<step_meeting_index>, 3)), is what makes the 3-per-step cap real. Re-filing the same meeting is stopped separately, in the form: a held community meeting must carry a date later than the community's last recorded community meeting (§5.4 screen 2), so one community cannot produce two paid meetings on one day.
+4. In-form checks. Speakers ≤ attendees (men and women separately); households represented ≤ enrolled households; a live meeting photo present on every held meeting; a held community meeting dated after the community's previous one.
+5. Completeness. Every required field for the community's current step present.
+6. Daily limit. At most 1 payable meeting per CBF per day — consistent with one community per CBF and the one-community-meeting-per-day date check (§10).
+
+
+Without clause 3 this design silently becomes "any meeting counts" — the prose stays longitudinal while payment quietly stops reading history. It is stated here for that reason.
+
+
+Location and the repeat-counts flag are not Layer A criteria. Connect does not check photos or location (its attachment and GPS verification settings are no longer available), so both feed human review only.
+7.2 Layer B — risk-stratified human review
+Review covers at least 20% of paid meetings, plus 10% of unpaid records. Independent checks use the observation instruments Spark already has in its own app — the Facilitator Quality Monitoring Form and the Facilitator Monitoring Form – RCT (menu 2), both completed by a Partner Trainer who attends a community meeting — and the Layer C confirmation call (§7.3). A meeting that has already happened cannot be observed, so a flag on a submitted record is checked by a Layer C call on that record and by a Partner Trainer attending that CBF's next meeting. The implementing organisation's supervisor also reviews the record and photo on CommCare HQ; that desk review supports the independent checks but does not count as one.
+
+
+Photo comparison procedure. Each week the supervisor views each community's meeting photos side by side on CommCare HQ; a photo that shows the same scene, crowd and framing as an earlier meeting's is flagged into S-1.
+
+
+The sample is drawn by risk, not uniformly, because Layer A cannot see the failure a per-meeting payment most rewards — a meeting recorded as held that never happened:
+
+
+Stratum
+	What is in it
+	Review
+	S-1 Flagged
+	Any paid meeting with: repeat_counts_flag = yes; location worse than 50 m or more than 2 km from the enrolment point; a photo that looks like another meeting's; the 3rd paid meeting on a step; a step advanced after a single meeting
+	All get desk review and a Layer C call on the flagged record (or, where the contact declined calls, a Partner Trainer at that CBF's next meeting); a CBF with two or more flags in a month gets an attended observation
+	S-2 Random verified
+	A random draw from the remaining paid meetings
+	Enough to bring independent checks to ≥ 20% of paid meetings, split between attended observations and Layer C calls
+	S-3 Not paid
+	A random 10% of not-held records and committee meetings
+	Checked that they were correctly recorded as not payable
+	
+
+Agreement is reported per stratum, not only overall — that is what makes Layer B test Layer A's decisions rather than run beside them. A Partner Trainer observation that contradicts a paid record triggers a supervisor review of that CBF's other records.
+
+
+Caveat. The 20% sample assumes Partner Trainer capacity no source quantifies (open question supervision-ratios). The 12-community cohort was sized to sit under any plausible ratio; the solicitation asks the responding organisation to state its capacity.
+7.3 Layer C — community confirmation call (light)
+For at least 10% of paid meetings in communities whose contact agreed to calls (§5.2), prioritising meetings not already observed in Layer B, a supervisor at the implementing organisation phones the community's primary contact and asks two questions: did a community meeting take place on (date)? and roughly how many people came? The answer is kept in a simple call log (date, community, meeting date, confirmed yes/no, rough attendance) and compared with the record.
+
+
+Spark's own Village Profile Form already requires the community contact's name and number, so this reuses a field Spark collects; only the consent question is new. The call is a check on the record, not on the CBF's facilitation quality, and a "no" to consent never affects the community's participation.
+7.4 Progression is monitored, not priced
+On-time step progression is reported (§8, P3) and does not affect payment. A community can stall for reasons a competent CBF does not control — season, a contested secret-ballot election (Step 2), community delay. Pricing progression would move programme risk onto the lowest-paid person in the chain.
+
+
+________________
+
+
+8. Success Metrics
+8.1 Primary metrics
+The primary metrics are an upstream proxy, labelled honestly: the programme's goal is community self-determination and community-designed projects, and the pilot window closes at Step 7, long before any project launches. What the pilot can measure is whether facilitation reliably happened and was reliably paid for.
+
+
+#
+	Metric
+	Definition (every term is a captured field)
+	Target
+	P1
+	Meeting regularity
+	Community-weeks containing ≥ 1 verified community meeting ÷ community-weeks in each community's active window (enrolment date to Step-7 completion or pilot end)
+	≥ 80%
+	P2
+	Payment integrity
+	Verified meetings paid correctly by Connect the first time, without manual intervention ÷ verified meetings
+	≥ 98%
+	P3
+	On-time step progression
+	Communities completing Step 7 within 15 weeks of enrolment (13 expected + 2 for holidays) ÷ enrolled communities
+	≥ 75% (reported, not priced)
+	P4
+	Review agreement
+	Paid meetings whose independent check (an attended Partner Trainer observation or a Layer C call) agrees the meeting took place as recorded ÷ paid meetings that received an independent check (desk-only reviews excluded) — reported per stratum
+	≥ 95% overall and ≥ 90% in S-1
+	8.2 Secondary metrics (from Spark's own indicator set)
+#
+	Metric
+	Definition
+	S1
+	Household attendance
+	Households represented ÷ enrolled number_of_households
+	S2
+	Female attendance
+	Women attending ÷ total attending
+	S3
+	Overall participation
+	People who spoke ÷ people who attended
+	S4
+	Female participation
+	Women who spoke ÷ women who attended
+	S5
+	Communities saving
+	Communities reporting currently_saving = 1 at their latest meeting ÷ communities on Step 5 or later
+	S6
+	Verified share of records
+	Verified community meetings ÷ all meeting records filed (held + not held, community + committee)
+	
+
+S1–S4 are Spark's own definitions, so the pilot's numbers compare directly with theirs. S5 restricts the denominator to Step 5 and later, because earlier meetings structurally cannot report savings (§5.5).
+8.3 Counter-intuitive rules the pilot must teach
+These drive the Learn assessment (§4.2):
+
+
+1. A committee meeting is real work and is not payable.
+2. People who spoke can never exceed people who attended.
+3. Only 3 meetings per FCAP step are payable; the 4th is recorded and earns nothing.
+4. The step is read from the record and only moves forward when the community completes it — the CBF cannot pick it.
+5. Savings questions are absent before Step 5 — that is correct, not a bug.
+6. A planned meeting that did not happen is still recorded (with a reason) and is not payable.
+7. Payment is per verified meeting — not per hour, per attendee or per household — and at most one per day.
+
+
+________________
+
+
+9. Target Population
+Direct beneficiaries of the payment layer: about 12 CBFs, one per community.
+
+
+Communities: about 12, in one Malawi district, entering FCAP Goal Setting during the pilot window. The district, Traditional Authority and communities are not named in any source; the responding organisation proposes them.
+
+
+Community members reached: not projected. The household count per community is captured at enrolment; Spark's own form bounds it (≤ 400 households, household size 4–12) without estimating it. ACE's research brief cites a public figure of about 64 participants at a typical weekly meeting — context only, not a target.
+
+
+________________
+
+
+10. FLW Requirements
+Who: Community Based Facilitators. Enock confirmed the CBF — not the Partner Trainer, Finance Officer or GRM Focal Person — is the person to verify and compensate. CBFs come from the communities they facilitate, so travel to the meeting is typically short.
+
+
+Count: about 12, one per community.
+
+
+Skills assumed: facilitation competence already exists (CBFs are trained by Spark or its partner on FCAP); the pilot trains only on recording and payment rules (§4).
+
+
+Equipment — the go/no-go dependency. Connect needs a smartphone and a PersonalID for each CBF. The sources point against assuming either: Spark's FIYP programme provisions offline-first Samsung A9 tablets (~$150) with headphones and power banks and distributes content "via file share rather than download" — a stack chosen because connectivity could not be assumed. This is the largest go/no-go risk on the opportunity; the solicitation requires the responding organisation to confirm smartphone and connectivity availability, or to cost providing them.
+10.1 Workload, pay and what is not paid
+Payable volume per CBF over the ~13-week delivery window:
+
+
+* Expected: ~13 paid meetings (weekly × ~13 weeks) — about 4.3 a month.
+* Ceiling: 21 (7 steps × 3 per step), the per-CBF total cap. It binds only if steps run long.
+* Daily limit: 1. One community per CBF, and the meeting record accepts at most one community meeting per community per day (§5.4), so a second paid meeting on the same day cannot arise. A genuine same-day continuation session is recorded on the same record and is not separately payable — the price of closing the duplicate-filing gap.
+
+
+Proposed rate [PROPOSED]: MWK 5,000–10,000 per verified community meeting, plus MWK 3,000 per verified meeting to the implementing organisation toward supervision, Layer B observations and Layer C calls.
+
+
+The organisation fee is a floor, not a costing. At ~156 expected paid meetings it totals about MWK 468,000 for 16 weeks of supervision, attended observations and calls across 12 communities, which may not cover the review work. The solicitation asks the responding organisation to cost that work explicitly; the fee is re-set from its costing rather than subsidised silently.
+
+
+How the band was set, and what it is not. No source states what CBFs are paid today, and ACE has no sourced local wage floor for Malawi. The band is an ACE placeholder sized so that one paid meeting covers roughly one field day of work around it (below). It is written down because Phase 4 needs a number to configure; it is not an agreed price. The responding organisation proposes its own rate with written justification, and the awarded rate replaces this band.
+
+
+Hours behind one paid meeting (ACE estimate, to be corrected by the responding organisation):
+
+
+Work
+	Paid?
+	Estimated time per paid meeting
+	Facilitating the community meeting
+	yes
+	~3 h
+	Preparation (step guide, materials)
+	no
+	~1 h
+	Mobilising attendance (notices, reminders)
+	no
+	~1 h
+	Recording the meeting on the phone
+	no
+	~0.5 h
+	Committee meetings (not payable by Spark's own rule)
+	no
+	unknown — ~2 h if one a week
+	Follow-up with members between meetings
+	no
+	unknown
+	Possible double entry into Spark's own Village Monitoring Form
+	no
+	~0.5 h, if the pilot record is in addition to Spark's (§15)
+	
+
+Earnings arithmetic:
+
+
+* Gross per meeting day: MWK 5,000–10,000.
+* Per hour of total work: ~5.5 h per paid meeting without committee meetings → MWK ~900–1,800 per hour; with a weekly 2-hour committee meeting, ~7.5 h → MWK ~670–1,330 per hour. Only ~3 of the 5.5–7.5 hours are the paid meeting itself, so reading the rate as pay for the meeting alone overstates hourly earnings by roughly 1.8–2.5×.
+* Per CBF over the pilot: ~13 meetings × MWK 7,500 (band midpoint) ≈ MWK 97,500, about MWK 32,500 a month.
+
+
+Whether that is fair cannot be judged without a local reference rate, which no source gives. The solicitation asks the responding organisation to state current CBF compensation and a local reference rate, and to justify its proposed rate against the table above.
+
+
+The income cliff, stated but not priced. Meeting cadence drops from weekly to monthly once Planning ends (Enock), roughly a fourfold fall in monthly paid meetings for a role that continues another ~16 months; about 24 of a CBF's ~40 lifetime FCAP meetings fall in the first 5.5 of 21.5 months. The pilot ends inside Goal Setting and never reaches the cliff. Any extension past Planning must address it — a phase-differentiated rate or a retainer (open question cross-phase-income-cliff).
+
+
+________________
+
+
+11. LLO Preference
+FOCCAD appears in Spark's own app as its Malawi Green FCAP delivery partner: the Partner Trainer Exit Form covers "recovery of FOCCAD resources assigned to trainer", and the app references a foccad_activities lookup table. FOCCAD is therefore a candidate to invite, not a selection. No source says FOCCAD would run this pilot, Spark has not been asked, and the inputs carry no FOCCAD contact or Connect workspace — so no LLO is pre-set and the solicitation runs.
+
+
+________________
+
+
+12. Solicitation
+* Type: EOI
+* Deadline: 14 days from publication
+* Response template: default
+* Candidates: FOCCAD named; listing public on the labs marketplace
+
+
+Responses must state:
+
+
+1. CBF smartphone and connectivity availability — explicitly (go/no-go, §10), or a separately costed device plan (devices are funded only if Dimagi agrees that cost at contract execution).
+2. District, Traditional Authority and candidate communities entering FCAP Goal Setting between November 2026 and February 2027.
+3. A proposed per-meeting CBF rate and an organisation fee per meeting, with written justification against the workload table in §10.1, the current CBF compensation arrangement, and a local reference rate.
+4. Partner Trainer and supervisor capacity, costed, for the Layer B sample (≥ 20% of paid meetings independently checked, risk-stratified) and Layer C calls (≥ 10%).
+5. Whether CBFs would file the pilot record instead of or in addition to Spark's Village Monitoring Form, if Spark has agreed either.
+
+
+________________
+
+
+13. Timeline
+Stage
+	Duration
+	Proposed dates
+	Solicitation open
+	14 days
+	early–mid October 2026
+	Award, onboarding, CBF Learn completion
+	~2 weeks
+	to 1 November 2026
+	Facilitator registration + community enrolment
+	~1 week
+	from 2 November 2026
+	Delivery — FCAP Goal Setting, Steps 1–7
+	~13 weeks
+	to early February 2027
+	Buffer (holiday period, step overruns)
+	~2 weeks
+	to 26 February 2027
+	Review and closeout
+	~2 weeks
+	March 2027
+	
+
+The delivery window is set by FCAP's own Goal Setting duration (~3 months), not by ACE convenience. The real start is when the named communities enter Goal Setting; dates are [PROPOSED] and move with the awarded response. The Connect opportunity runs 2 November 2026 – 26 February 2027, inside the existing Connect program window (to 31 March 2027).
+
+
+________________
+
+
+14. Program Parameters
+Key
+	Value
+	archetype
+	longitudinal-visits
+	learn_passing_score
+	80
+	assessment_items
+	12
+	payment_rate_min
+	5000 [PROPOSED]
+	payment_rate_max
+	10000 [PROPOSED]
+	payment_rate_currency
+	MWK
+	payment_rate_unit
+	verified community meeting
+	llo_payment_per_visit
+	3000 [PROPOSED]
+	daily_cap_per_flw
+	1
+	total_cap_per_flw
+	21
+	campaign_target_visits
+	156 (12 CBFs × ~13 expected meetings; ceiling 252)
+	flw_count_min
+	12
+	flw_count_max
+	12
+	expected_reach_min
+	12 (communities)
+	expected_reach_max
+	12 (communities)
+	total_budget
+	3276000 [PROPOSED] (MWK; = 12 × 21 × (10,000 + 3,000), funds all 12 CBFs at the top of the band; expected spend ≈ 1,638,000 at the band midpoint)
+	opportunity_start_date
+	2026-11-02 [PROPOSED]
+	opportunity_end_date
+	2027-02-26 [PROPOSED]
+	verification_flags
+	form_field_rules: meeting_conducted = yes; meeting_type = community_meeting. No duplicate or GPS flags (not available on Connect) — de-duplication rides on entity_id
+	connect_delivery_type
+	ace — none of the 19 delivery types on ai-demo-space describes community-meeting facilitation; the durable program already carries ace; raised with the Connect team (§15)
+	opportunity_country
+	MWI
+	opportunity_currency
+	MWK
+	entity_id_grain
+	concat(case_id, '-', pilot_fcap_step, '-', min(step_meeting_index, 3))
+	entity_state_taxonomy
+	1=Our Partnership (steps 1); 2=Community Dynamics, Governance & Leadership (steps 2); 3=Understanding the Present – Situational Analysis (steps 3); 4=Getting to the Future – Microgrant Pathway & Goals (steps 4); 5=Initiative Pathway & Savings (steps 5); 6=Advocacy Pathway (steps 6); 7=Vision (steps 7) [source: FCAP Structure, Phases, and Activities (Spark, shared 2026-07-21).pdf]
+	cap_rationale
+	7 FCAP steps × 3 payable meetings per step = 21 structural maximum per CBF; ~13 expected at weekly cadence, so the total cap binds only on step overrun
+	verification_predicate
+	meeting_conducted = yes AND meeting_type = community_meeting
+	working_language
+	en (source), nya, tum
+	app_runtime_default_language
+	en
+	verification_layers
+	A+B+C
+	layer_b_review_sample
+	≥ 20% of paid meetings independently checked, risk-stratified (S-1 all flagged, S-2 random verified), plus S-3 10% of unpaid records
+	layer_c_call_sample
+	≥ 10% of paid meetings in consenting communities
+	solicitation_type
+	EOI
+	solicitation_deadline_days
+	14
+	
+
+Locale warning for Phase 4. The design is denominated in Malawi kwacha. The durable Connect program for this opportunity (a115e4f2…, created on an earlier run) carries country MWI with currency USD, and currency cannot be changed after a program is created. Phase 4's reuse check will stop on the mismatch; the operator decides between reusing the USD program (and converting every figure above at award) or creating a replacement MWK program.
+
+
+________________
+
+
+15. Open Questions
+This section reconciles all 23 rows of the opportunity's open-questions.md ledger. The handoff inlined 6; the other 17 were read from the ledger directly, so no row is carried forward unreconciled.
+
+
+Summary: 0 resolved · 20 carried forward · 3 contradictions upheld · 3 new. No new contradiction. Two rows carry forward with materially changed content (cbf-compensation-baseline, supervision-ratios).
+15.1 Contradictions (upheld, re-verified this run)
+⚠ C1 — fcap-step-numbering — UPHELD. Re-extracted the FCAP Structure PDF this run: the header says "4 phases, 24 steps", the body carries Step 19: Transition Timeline (closing Phase 2) and Step 19: Needs, Pathways, Goal(s), and Vision (opening Phase 3) — 25 headings. The pilot declares Steps 1–7 only; no payment is affected. Owner: Spark.
+
+
+⚠ C2 — household-count-denominator — UPHELD. Re-verified in §5.3: number_of_households asked and discarded; /data/hh_tt calculate="0" feeding hh_count_tt; hh_count_tt counts registered households only. The pilot's enrolment count remains the only usable figure. Owner: Spark / ACE.
+
+
+⚠ C3 — phase-pointer-maintenance — UPHELD. Four forms write Spark's phase (m0f0, m0f3, m0f5, m0f8); the Village Monitoring Form (m0f4) does not. New this run: m0f4 does ask the CBF to pick the step at every meeting ("Which FCAP step is the Village in?", filtered by phase), while the pilot reads the step instead (§5.4 disclosure). Spark should say whether it prefers its own behaviour. Owner: Spark / ACE.
+15.2 Carried forward
+id
+	Blocking
+	This run
+	cbf-smartphones-and-connectivity
+	Go/no-go
+	Carried forward, unchanged. FIYP's tablet-and-file-share stack remains evidence against assuming smartphones; the solicitation requires explicit confirmation or a costed device plan.
+	cbf-compensation-baseline
+	Before Phase 8
+	Carried forward, changed: ACE now writes a [PROPOSED] band (MWK 5,000–10,000 per meeting + 3,000 organisation fee) because the design rules now require Phase 4 to have a number. The band is ungrounded in any source and the response must replace it with a justified rate.
+	cross-phase-income-cliff
+	Before Phase 8
+	Carried forward. Stated in §10.1, not priced; the pilot ends before the cliff.
+	continuation-meeting-reduced-payment
+	Before Phase 8
+	Carried forward. Past the cap real facilitation earns zero.
+	per-step-payable-cap-value
+	Before Phase 8
+	Carried forward. ~1.9 meetings per step expected; a cap of 3 has headroom. Still ACE's inference.
+	supervision-ratios
+	Before Phase 8
+	Carried forward, more load-bearing: Layer B is now risk-stratified (all flagged meetings reviewed) and Layer C adds calls, so supervisor capacity matters more. The solicitation asks for it.
+	pilot-district-and-communities
+	Before Phase 4
+	Carried forward. Set by the solicitation response; dates now proposed as Nov 2026 – Feb 2027.
+	savings-block-relevance-deviation
+	Before Phase 3
+	Carried forward. Re-verified forms-4.xml:221. Deviation disclosed (§5.5).
+	savings-indicator-denominator-bias
+	Non-blocking
+	Carried forward. S5 restricts to Step ≥ 5.
+	lookup-table-provisioning
+	Before Phase 3
+	Carried forward. The CCZ still carries only table references (Spark's step select reads malawi_steps), no data. The pilot mints Steps 1–7 from the FCAP PDF; district, TA and group village are free text.
+	gps-capture-acceptability
+	Before Phase 3
+	Carried forward. Per-meeting location remains the only net-new location capture; kept out of payment.
+	pilot-record-instead-of-or-in-addition
+	Before Phase 6
+	Carried forward. Cost shown in §10.1. Now also asked in the solicitation.
+	connect-markers-in-sparks-own-app
+	Before closeout
+	Carried forward. Zero markers in v1392, re-verified.
+	phase-authoritative-writer
+	Before instrumenting Spark's app
+	Carried forward.
+	fiyp-media-assets
+	Non-blocking
+	Carried forward; the ask is the "Running an Effective Meeting" walkthrough for Learn Module 3.
+	app-runtime-default-language
+	Before Phase 6
+	Carried forward. English default, from Spark's cur_locale = en.
+	proposal-generator-boundary
+	Before extending into Proposal Development
+	Carried forward; outside the Steps 1–7 window.
+	rwanda-two-cbf-attribution
+	Before expansion
+	Carried forward. Now also linked to the Malawi source conflict (§6): ACE's own brief says two CBFs per village; Enock says one in Malawi.
+	progression-affects-payment
+	Post-pilot
+	Carried forward; monitoring-only (§7.4).
+	assessment-item-rotation
+	Non-blocking
+	Carried forward; a capability request, not a platform limit.
+	15.3 New questions raised by this run
+id
+	Question
+	Owner
+	Blocking
+	program-currency-usd-vs-mwk
+	The durable Connect program was created with country MWI and currency USD; the design is in MWK and currency is fixed at program creation. Reuse the USD program and convert at award, or create a replacement MWK program?
+	Operator / ACE
+	Before Phase 4
+	connect-delivery-type-fit
+	None of Connect's 19 delivery types describes community-meeting facilitation; the program runs as ace. Should the Connect team add a fitting type (for example "Community Facilitation")?
+	Connect team
+	Non-blocking
+	layer-c-community-contact-calls
+	Is Spark comfortable with the implementing organisation phoning the community's primary contact (a field Spark already collects) to confirm a sample of meetings, with the contact's consent?
+	Spark
+	Before Phase 3
+	
+
+________________
+
+
+16. Stress Test Results
+Self-evaluation against the 6-question rubric. Two or more non-pass grades on checks 1–5 would block approval; any non-pass on check 6 blocks on its own.
+1. Executability — pass
+An implementing organisation could start from this document: the verification predicate is field-level and partner-stated (§3.1); all three forms are specified field by field with constraints (§5.1–5.4); Learn modules, the assessment and its coverage are enumerated (§4); entity states and transitions are explicit (§6); consent (Layer C calls), photo protocol and language are stated.
+
+
+Answerability walk. The 12 screens of the meeting record (§5.4) were walked in order. Date and location precede the held/not-held question; the not-held branch asks only what the CBF knows then (reason, reschedule date) and ends; the step is displayed from the record before any count; meeting type precedes the photo and counts; speakers follow attendees; the savings block keys on a step already on the record; "did the community complete this step?" comes last, after the meeting has happened. No field depends on a later screen and nothing is set then recoded. The facilitator and enrolment forms ask only facts known at registration.
+2. Verifiability — pass
+Every paid meeting resolves to a stored record, a required live photo, and a deterministic predicate plus two case facts (§7.1). Layer B uses instruments Spark already runs and is stratified by risk with per-stratum agreement (§7.2); Layer C adds an independent confirmation from someone who is not the CBF (§7.3). Nothing is claimed that the platform does not do: location and photos are review inputs only, not Connect checks.
+3. Measurability — pass
+Four primary metrics with numeric targets; every denominator is a captured field (P1 now uses community-weeks from captured dates instead of "scheduled meetings", which no field recorded). Six secondary metrics reuse Spark's own definitions, and S5 restricts its denominator where Spark's is structurally biased.
+4. Stage-gate clarity — pass
+Single-stage pilot. Entity progression is fully specified instead (§6), and the boundary to any extension is stated: the pilot ends at Step 7, and §10.1 names the income cliff an extension must price.
+5. Resource realism — partial
+Capability is matched (CBFs already facilitate; the pilot trains recording only). The labour is now costed: a proposed band, an hours table for the work behind one paid meeting, gross per meeting day (MWK 5,000–10,000), effective per hour of total work (MWK ~670–1,800), and the ~2× gap between them, stated plainly. Held at partial because the band has no sourced anchor and no local wage floor exists in the inputs, so affordability cannot be confirmed; the solicitation requires a justified rate and a local reference rate against the hours table.
+6. Launch readiness — pass
+Every Phase 3 / Phase 4 parameter is a row in §14: FLW pay band, organisation pay per meeting, daily and total caps, campaign target, total budget, start and end dates, verification flags, delivery type, country and currency, the passing score, item count, entity_id_grain and the state taxonomy. Six values are [PROPOSED] (the two ends of the rate band, the organisation fee, the budget, and the two dates) and are flagged unapproved in the phase summary for sign-off at the Phase 1 pause. One Phase 4 hazard is called out rather than hidden: the existing program's USD currency (§14 locale warning).
+Result
+5 pass, 1 partial (resource realism) → approved. Check 6 passes.
+Waived / not applicable
+* Reviewer comments: none exist. drive_list_comments on the prior run's PDD and on the three Google-Doc inputs returned zero threads, so no disposition table is included.
+* Payment unit vs entity_id grain: reconciled — the rate is per verified meeting, and the first three meetings on a step each resolve to their own key; the only collapse is the intended, unpaid 4th onward.
+Revisions after the independent grade
+The independent idea-to-pdd-eval pass on this run's first draft (7.75, pass) raised six warnings; five were fixed in this version rather than carried: the payment key now states it uses the post-increment meeting index (§3.2, §5.4), re-filing a meeting is stopped by a one-community-meeting-per-day date check (§5.4, §7.1), flagged records are checked by a Layer C call and an attended observation of the CBF's next meeting rather than an impossible after-the-fact observation (§7.2), P4 counts only independently checked meetings (§8.1), and the organisation fee rose from MWK 1,500 to 3,000 with an explicit request that the responding organisation cost the review work (§10.1). The work-order grade then surfaced that the new date check made the daily cap of 2 unreachable, so the cap is now 1 (§7.1, §10.1, §14). The verdict file records the grade of the first draft.

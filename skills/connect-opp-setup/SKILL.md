@@ -1287,6 +1287,9 @@ alone makes the artifact land outside `4-connect` and fail
         on a componentized run every component and program-level PDD (see
         § Inputs). `Where applied` is exactly one of:
         - `Connect form_field_rules: <name>` — evidence: `form_field_rules_saved`;
+        - `Connect payment unit max_daily = <n>` / `Connect payment unit
+          max_total = <n>` (per worker) — evidence: the payment unit's create
+          response;
         - `Connect deliver_unit_checks.duration_minutes` / `Connect form
           submission window` — evidence: the value persisted;
         - `CCZ: <form> / <field> — <constraint or relevant>` — evidence: the
@@ -1301,6 +1304,22 @@ alone makes the artifact land outside `4-connect` and fail
         find anywhere else. A rule with no row is the defect this section
         exists to prevent; a blank `Where applied` cell is rendered in the
         memo as `NOT STATED by connect-opp-setup`.
+
+        **Name the enforcement point that holds the rule AT ITS SCOPE, first.**
+        A rule about a WORKER ("at most 1 payable meeting per CBF per day",
+        "total cap 21 per CBF") is held on Connect by the payment unit's
+        `max_daily` / `max_total`, which count per worker. An app (CCZ) check
+        is keyed on the case its form is filled against — a community, a
+        household — so it cannot stop one worker recording two communities on
+        one day, and a per-step clamp of 7 × 3 is 21 per COMMUNITY, not per
+        worker. Write the payment-unit limit first; an app check may follow as
+        support, stated at its own scope (`also CCZ: date_of_meeting check —
+        per community`). On `spark-facilitator/20260926-1800` both caps were
+        written `CCZ: … ; also Connect payment unit …`, and the build memo told
+        the reviewer the app enforced them. `skills/build-memo`'s
+        `scripts/build-memo-compose.ts --check` (`checkEnforcementScope`) fails
+        that order, and its frame corrects it in the memo — fix it here so the
+        decision row is right too.
      2. `### [ACE] latitudes taken` — `| PDD § | Value ACE chose | Why |`,
         one row per opportunity-configuration value the PDD left to ACE
         (dates, budget, max visits, payment amounts, flag thresholds).
@@ -1672,7 +1691,7 @@ without the other.
 | `phase`, `skill` | `4-connect`, `connect-opp-setup` |
 | `question` | rule: "Where is the PDD verification rule '<quoted>' enforced?"; latitude / ambiguity: what the PDD left open or said two ways at that § |
 | `ai-default` | rule: the `Where applied` category as one of the `options` below; latitude / ambiguity: the chosen value or resolution as a short label |
-| `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed |
+| `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `Connect payment unit limit`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed. A per-worker rule (a daily or total cap per worker) is `Connect payment unit limit`, never `CCZ constraint` — see Step 8's scope paragraph |
 | `source` | the entry's PDD § cell, naming the document |
 | `evidence_basis` | `[ACE]` latitude → `inferred`; `[FIXED]` ambiguity → `conflicting`; rule → `stated` when the PDD itself names where it is enforced, `inferred` when ACE chose, `conflicting` for `Not configurable on Connect — not applied` (the PDD requires it and Connect cannot hold it) |
 | `conflict_signals` | `conflicting` rows only, at least 2 entries, each cited |
@@ -1726,6 +1745,7 @@ decisions_append_rows({
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **Step 8 names a per-worker rule's PER-WORKER enforcement point first (build-memo-eval, spark-facilitator/20260926-1800).** Both per-worker caps — "at most 1 payable meeting per CBF per day" and "total cap 21 per CBF" — were written `CCZ: … ; also Connect payment unit …` and recorded as `CCZ constraint` decisions, so the build memo told the reviewer the app enforced them. The app checks are keyed on the COMMUNITY case (the date check, the 7 × 3 per-step clamp) and cannot bound a worker across communities; only the payment unit's `max_daily` / `max_total` do. `Where applied` gains `Connect payment unit max_daily / max_total (per worker)`, the decision `options` gain `Connect payment unit limit`, and a scope paragraph says which goes first. *Enforced:* `lib/build-memo-compose.ts` `checkEnforcementScope` via `scripts/build-memo-compose.ts --check` (`test/lib/build-memo-compose.test.ts`, on that run's table and decision rows). | ACE team |
 | 2026-10-01 | **Step 11: post-condition read-back (inline QA).** The atoms validate each call at the boundary, which catches a bad call but not a valid-but-wrong end state. Step 11 reads the live opportunity back (`connect_get_opportunity`, `connect_list_payment_units`, `connect_list_flw_invites`) and checks it against what the skill decided with `checkOppPostcondition` (`lib/connect-opp-postcondition.ts`): readable, `is_test`, activation PROVEN by an invite row (not the create-side `active` flag, ace#617), payment units by name, verification rules persisted, test user invited. Writes `products.connect.postcondition`; a non-empty `phase6_blockers` makes Phase 6 refuse the walk with the reason. Live on spark-facilitator/20260926-1800: 5 of 6 pass; `verification_rules_persisted` fails (2 decided, 0 saved — the self-managed refusal, ace#2419); no Phase 6 blocker. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
