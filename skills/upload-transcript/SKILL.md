@@ -11,8 +11,8 @@ disable-model-invocation: false
 
 POSTs a `.jsonl` transcript file to `<base-url>/api/ingest/upload` so the
 deployed ace-web can render it as a chat Session. Authenticates with a
-per-human Bearer PAT (`ACE_WEB_PAT_TOKEN`) minted via
-`/ace:ace-web-pat-mint`.
+Bearer token (`ACE_WEB_PAT_TOKEN`). That's ACE's own ace-web token by default,
+written by `/ace:setup`, or yours if minted via `/ace:ace-web-pat-mint`.
 
 **This skill is opt-in and is never invoked implicitly.** A transcript is
 the operator's full working record, so publishing it is always a
@@ -27,8 +27,8 @@ silently enrolled every operator until 2026-07-28. Enforced by
 ## Inputs
 
 - `base_url` — deployed ace-web URL, e.g. `https://labs.connect.dimagi.com/ace`.
-- `ACE_WEB_PAT_TOKEN` — env var; per-human Personal Access Token minted
-  via `/ace:ace-web-pat-mint`. Lives as a local-only secret in
+- `ACE_WEB_PAT_TOKEN` — env var; ACE's own ace-web token by default
+  (`/ace:setup`), or yours via `/ace:ace-web-pat-mint`. Lives as a local-only secret in
   `${CLAUDE_PLUGIN_DATA}/.env` (preserved by `/ace:setup --force-env`,
   which snapshots the local-only marker block; a raw `op inject` would
   drop it). The

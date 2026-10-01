@@ -290,7 +290,17 @@ effect. Treat a missing value as "never validated", not as "valid".
      workspace whose `drive_root_folder_id` matches the ACE root (for
      labs/`dimagi-team` this is the only one). Then:
      `POST <ACE_WEB_BASE_URL>/api/w/<ws>/opps/<opp>/actions/seeded-run`
-     with `{"golden_run_id": "<golden>", "only": "3,4,6"}`. Returns **202**
+     with `{"golden_run_id": "<golden>", "only": "3,4,6", "requested_by": "<email>"}`.
+     `requested_by` is the human this iteration is for (the operator who invoked
+     `/ace:iterate`). It's required, and resolved per
+     [`skills/_ace-web-attribution.md`](../skills/_ace-web-attribution.md), because
+     the token is ACE's own and would otherwise attribute the run to nobody.
+     Error codes are at `extras.code`. **409 `run_actor_unresolvable`** means canopy
+     resolves the run's owner as a contact, so the run would be confined to ask-only
+     and never execute. **502 `run_actor_unverified`** means canopy was unreachable
+     for that check. Either way nothing was forked: stop and report, don't retry
+     blindly. **400 `requested_by_forbidden`** means a human token named someone else.
+     Returns **202**
      `{session_slug, assistant_message_id, run_id}` — `run_id` is the **new**
      forked run the action minted (use it directly; do NOT list `runs/` to
      guess it). The action seeds the resume command as a user turn AND starts

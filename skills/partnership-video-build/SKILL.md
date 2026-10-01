@@ -244,7 +244,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ACE_WEB_PAT_TOKEN` | (required) | Per-human Bearer token; mint via `/ace:ace-web-pat-mint` |
+| `ACE_WEB_PAT_TOKEN` | (required) | Bearer token. ACE's own by default (`/ace:setup`); yours via `/ace:ace-web-pat-mint` |
 | `ACE_WEB_BASE_URL` | `https://labs.connect.dimagi.com/ace` | ace-web base URL (strip trailing slash) |
 | `WORKSPACE_SLUG` | `dimagi-team` | ace-web workspace slug |
 
