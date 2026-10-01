@@ -128,7 +128,7 @@ describe('runChecks', () => {
     expect(result.ran_at).toBe('2026-01-01T00:00:00Z');
   });
 
-  test('empty checks list produces verdict: pass with stats 0/0/0', async () => {
+  test('empty checks list is a FAIL — nothing was checked is not a pass (bednet-check-2-visit/20260908-1544 read "Passed (0/0)")', async () => {
     const result = await runChecks({
       skill: 'test-qa',
       target: 'test-target',
@@ -136,7 +136,8 @@ describe('runChecks', () => {
       artifact: '',
       checks: [],
     });
-    expect(result.verdict).toBe('pass');
-    expect(result.stats).toEqual({ checks_run: 0, checks_passed: 0, checks_failed: 0 });
+    expect(result.verdict).toBe('fail');
+    expect(result.failures.map((f) => f.check)).toEqual(['no-checks-ran']);
+    expect(result.stats).toEqual({ checks_run: 1, checks_passed: 0, checks_failed: 1 });
   });
 });

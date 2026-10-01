@@ -1092,3 +1092,184 @@ export function checkCrossDashboardConsistency(
       '(dimagi-internal/ace#1683).',
   };
 }
+
+// ---------------------------------------------------------------------------
+// ace-run (cascade) provider — what the gate checks when there is no `source`
+// ---------------------------------------------------------------------------
+//
+// Why this exists: the ace-run provider (ace#2510) writes `products.synthetic.
+// cascade` + `workflows`, NOT the denovo `source` block that checks 2b–6 and
+// 8–13 read. On spark-facilitator/20260926-1800 the gate was never run at all
+// (no result file, no step in run_state), and nothing said which checks even
+// apply to a cascade. `checksForProvider` names them, and the cascade checks
+// below read what the provider actually writes, so a cascade run is checked
+// rather than skipped.
+
+export interface CascadeReportRef {
+  workflow_id?: number;
+  run_id?: number;
+  url?: string;
+  partner?: string;
+  opportunity_id?: number;
+}
+
+export interface CascadeBlock {
+  registry?: { registry_id?: number; indicators?: string[] };
+  program_id?: number;
+  partners?: Array<{ label?: string; opportunity_id?: number }>;
+  programme_report?: CascadeReportRef;
+  worker_review?: CascadeReportRef;
+  opp_reports?: CascadeReportRef[];
+  history?: { run_ids?: number[]; first_period_end?: string; last_period_end?: string };
+}
+
+export interface SyntheticProducts {
+  provider?: string;
+  cascade?: CascadeBlock;
+  workflows?: Record<string, { workflow_id?: number; run_url?: string } | undefined>;
+  source?: unknown;
+}
+
+/** The cascade's dashboards as `checkParUrlScope` inputs (programme report is program-owned). */
+export function cascadeDashboards(synthetic: SyntheticProducts | null | undefined): DashboardRef[] {
+  const c = synthetic?.cascade;
+  if (!c) return [];
+  const out: DashboardRef[] = [];
+  if (c.programme_report?.url) out.push({ key: 'programme_report', template: 'indicator_programme_report', par_url: c.programme_report.url });
+  for (const [i, r] of (c.opp_reports ?? []).entries()) {
+    out.push({ key: `opp_reports.${i}${r.partner ? ` (${r.partner})` : ''}`, template: 'indicator_opp_report', par_url: r.url ?? '' });
+  }
+  return out;
+}
+
+/**
+ * The cascade handoff is whole: a registry with indicators, ≥ 3 partners on
+ * labs-only opportunities (≥ 10000), a programme report whose run is the LAST
+ * history run, one opp report per partner, and a `workflows` map that mirrors
+ * every report (ace-web's run page renders `workflows`, so a report missing
+ * there is invisible to a reviewer).
+ */
+export function checkCascadeHandoff(synthetic: SyntheticProducts | null | undefined): QACheckResult {
+  const c = synthetic?.cascade;
+  if (!c) {
+    return {
+      pass: false,
+      detail: 'products.synthetic.cascade is missing on an ace-run provider',
+      auto_fix_hint: 'write products.synthetic.cascade as each id is minted (demo-data-setup § C1–C7)',
+    };
+  }
+  const problems: string[] = [];
+  const indicators = c.registry?.indicators ?? [];
+  if (!c.registry?.registry_id || indicators.length === 0) problems.push('registry has no id or no indicators');
+  const partners = c.partners ?? [];
+  if (partners.length < 3) problems.push(`${partners.length} partner(s) — the cascade needs ≥ 3`);
+  for (const p of partners) {
+    if (!(typeof p.opportunity_id === 'number' && p.opportunity_id >= 10000)) {
+      problems.push(`partner ${p.label ?? '?'}: opportunity ${p.opportunity_id} is not a labs-only opp (≥ 10000)`);
+    }
+  }
+  const runIds = c.history?.run_ids ?? [];
+  if (runIds.length === 0) problems.push('history.run_ids is empty — no saved weekly runs');
+  const pr = c.programme_report;
+  if (!pr?.workflow_id || !pr?.run_id || !pr?.url) problems.push('programme_report lacks workflow_id / run_id / url');
+  else if (runIds.length && pr.run_id !== runIds[runIds.length - 1]) {
+    problems.push(`programme_report.run_id ${pr.run_id} is not the latest history run ${runIds[runIds.length - 1]}`);
+  }
+  const opps = c.opp_reports ?? [];
+  const reportOpps = new Set(opps.map((r) => r.opportunity_id));
+  for (const p of partners) {
+    if (!reportOpps.has(p.opportunity_id)) problems.push(`partner ${p.label ?? p.opportunity_id} has no opp report`);
+  }
+  const wfIds = new Set(Object.values(synthetic?.workflows ?? {}).map((w) => w?.workflow_id));
+  for (const r of [pr, ...opps]) {
+    if (r?.workflow_id && !wfIds.has(r.workflow_id)) problems.push(`workflow ${r.workflow_id} is not mirrored in products.synthetic.workflows`);
+  }
+  if (problems.length === 0) {
+    return {
+      pass: true,
+      detail: `registry ${c.registry?.registry_id} (${indicators.length} indicators); ${partners.length} partners; programme report on run ${pr?.run_id} = latest of ${runIds.length} history runs; ${opps.length} opp reports, all mirrored in workflows`,
+    };
+  }
+  return {
+    pass: false,
+    detail: problems.join('; '),
+    auto_fix_hint: 'complete the cascade handoff (demo-data-setup § C4–C7): every report minted, its run the latest history run, mirrored into workflows{}',
+  };
+}
+
+/**
+ * `workflow_history_runs({include_snapshot: true})` → the periods check 21
+ * grades. Each COMPLETED run's `data.snapshot.state.snapshot` carries
+ * `{byLLO, byFLW, programInd}`; an in-progress run (the live one) has none and
+ * is skipped. Sorted by `period_end`, de-duplicated (the last run of a period wins).
+ */
+export function periodsFromHistoryRuns(response: unknown): GradedPeriod[] {
+  const runs = (response as { runs?: unknown[] } | null)?.runs ?? [];
+  const byEnd = new Map<string, GradedPeriod>();
+  for (const raw of runs) {
+    const run = raw as { status?: string; period_end?: string; data?: { snapshot?: { state?: { snapshot?: Record<string, unknown> } } } };
+    const snap = run.data?.snapshot?.state?.snapshot;
+    if (run.status !== 'completed' || !snap || !run.period_end) continue;
+    byEnd.set(run.period_end, {
+      period_end: run.period_end,
+      byLLO: (snap.byLLO as GradedPeriod['byLLO']) ?? [],
+      byFLW: (snap.byFLW as GradedPeriod['byFLW']) ?? [],
+      programInd: snap.programInd as GradedPeriod['programInd'],
+    });
+  }
+  return [...byEnd.values()].sort((a, b) => a.period_end.localeCompare(b.period_end));
+}
+
+/**
+ * Which check ids apply to which provider. The gate runs EVERY applicable
+ * check; a check that applies but cannot be evaluated is a FAILURE of that
+ * check, never a skip — and the result writer fails a run that evaluated none.
+ */
+export const CHECKS_BY_PROVIDER: Record<'ace-run' | 'denovo' | 'clone', readonly string[]> = {
+  'ace-run': [
+    'realized_json_parses',
+    'every_par_url_is_run_deeplink',
+    'worker_review_url_scoped',
+    'cascade_handoff_complete',
+    'cascade_story_landed',
+  ],
+  denovo: [
+    'realized_json_parses',
+    'every_par_url_is_run_deeplink',
+    'dashboards_match_realized',
+    'opp_is_labs_only',
+    'timeline_pinned',
+    'flagged_worker_not_pre_seeded',
+    'deliver_units_present',
+    'par_url_payload_is_populated',
+    'interactive_run_is_live',
+    'dataset_obeys_pdd_constraints',
+    'cross_dashboard_totals_agree',
+  ],
+  clone: [
+    'realized_json_parses',
+    'every_par_url_is_run_deeplink',
+    'dashboards_match_realized',
+    'opp_is_labs_only',
+    'deliver_units_present',
+    'par_url_payload_is_populated',
+  ],
+};
+
+export function checksForProvider(provider: string | null | undefined): readonly string[] {
+  const p = (provider ?? '').trim();
+  if (p === 'ace-run' || p === 'denovo' || p === 'clone') return CHECKS_BY_PROVIDER[p];
+  return [];
+}
+
+/** Check 1 as a function: realized.json is a FLAT object (DDD substitutes `${var}` verbatim). */
+export function checkRealizedFlat(realized: unknown): QACheckResult {
+  if (!realized || typeof realized !== 'object' || Array.isArray(realized)) {
+    return { pass: false, detail: 'realized.json is missing or not a JSON object', auto_fix_hint: 're-run demo-data-setup step 5 / C7 — write the flat handoff' };
+  }
+  const nested = Object.entries(realized as Record<string, unknown>).filter(([, v]) => v !== null && typeof v === 'object');
+  if (nested.length) {
+    return { pass: false, detail: `nested values under ${nested.map(([k]) => k).join(', ')}`, auto_fix_hint: 'flatten realized.json — DDD substitutes ${var} verbatim' };
+  }
+  return { pass: true, detail: `flat JSON object with ${Object.keys(realized as object).length} keys` };
+}

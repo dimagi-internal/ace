@@ -35,7 +35,7 @@ auto-fix protocol, static-vs-LLM rules).
 
 ## Products
 
-- `<demo-run>/7-synthetic/demo-data-setup-qa_result.yaml` — QA result per `lib/qa-types.ts`
+- `<demo-run>/7-synthetic/demo-data-setup-qa_result.yaml` — QA result per `lib/qa-types.ts`, written by `scripts/demo-data-setup-qa.ts` — **always**, on pass, fail or incomplete (§ Writing the result)
 
 ## Checks
 
@@ -70,6 +70,24 @@ auto-fix protocol, static-vs-LLM rules).
 | 20 | `arc_ladder_ends_on_the_action` | static | **The deck's last scene performs a state-changing action.** Runs `checkArcLadder` (`lib/demo-arc-ladder.ts`) over the authored spec's `scenes[]`. `arc_shape` carries a hard cap at 3 when the finale is not the run's strongest moment; weighted .30 against an `overall_rule: lowest` judge and a 4.0 bar, that ceiling alone blocks convergence. **Fails** when no scene performs a state change, and when the last state-changing beat is followed by inert scenes. Stands down on an EVIDENCED `finale_is_read` declaration (a blank flag silences nothing, same discipline as `below_programme_scale`). Silent on an empty deck — reported as judged 0, never a vacuous pass. **Deliberately weaker than `demo-narrative`'s ladder rule, and this is the point:** it PASSES the run that motivated it (`spark-facilitator/20260909-1211`), whose recap finale technically clicked a disclosure control. Telling "a click that reveals prose" from "a click that changes what the product knows" needs rendered frames — the arc judge's job — and a static heuristic for it would be the fourth retracted rule in this family (ace#1660 retracted, ace#1841 pruned). This row catches a genuinely inert finale; the recap finale is caught by authoring, not by a check. | Move the state-changing beat to the LAST scene and fold trailing commentary (caveats, open parameters) into the framing — it is a reorder of material the deck already has, not new work. See `demo-narrative` § the scene ladder (ace#2339) |
 | 21 | `cascade_story_landed` | static | **ace-run only (ace#2510).** `checkCascadeStory` (`checks.ts`, over `lib/cascade-story.ts`): `7-synthetic/cascade-story.yaml` exists; its plan passes `checkCascadeStoryPlan` (≥ 3 partners on labs-only opportunities, ≥ 8 workers each, ≥ 8 weeks, all four signals — lagging partner, standout worker, data-quality problem, trend — each on a registry indicator with a PDD citation); and every signal LANDED in the programme report's saved runs (`workflow_history_runs(include_snapshot)` → `verifyCascadeStoryLanded`: the carrier is the extreme row by ≥ 5 pts, the trend moves ≥ 5 pts in its declared direction). The snapshot is the authority, never the manifest. Skipped (reported, not passed) on the denovo/clone providers. | Fix the pool for the signal that did not land, regenerate that partner, rebuild history (`demo-data-setup` § C5), re-verify. Never re-describe the story to match the output |
 
+| 22 | `worker_review_url_scoped` | static | **ace-run only.** Every `*worker_review_url` in `realized.json` is a run deep-link carrying `&program_id=` (`checkWorkerReviewUrlScope`). `owning_program_id` is a data hint, not a page-scope param: opened cold, labs scopes the page to the session's last opportunity and renders "Workflow definition <id> not found" (ace#2521). | Rebuild each URL as `/labs/workflow/<review>/run/?run_id=<run>&program_id=<program>&flw=<opp>%3A%3A<user>&source_run=<latest>` (`demo-data-setup` § C7) |
+| 23 | `cascade_handoff_complete` | static | **ace-run only.** `checkCascadeHandoff` over `products.synthetic.cascade`: a registry with indicators; ≥ 3 partners, each on a labs-only opp (≥ 10000) with its own opp report; the programme report's run is the LATEST history run; every report mirrored in `products.synthetic.workflows` (ace-web renders that map, so an unmirrored report is invisible to a reviewer). | Complete the handoff (`demo-data-setup` § C4–C7) — record each id as it is minted |
+
+### Which checks apply to which provider
+
+`checksForProvider` (`checks.ts`) is the list; the script fails every applicable
+check it neither computed nor was handed an outcome for:
+
+| Provider | Checks |
+|---|---|
+| `ace-run` (the Phase 7 cascade, ace#2510) | 1, 2 (over the cascade's programme + opp reports), 22, 23, 21 |
+| `denovo` | 1, 2, 2b, 3–13 |
+| `clone` | 1, 2, 2b, 3, 6, 7 |
+
+The spec-dependent rows (14, 17, 18, 19, 20) run once `demo-narrative` has
+written the spec; before that they are passed in as `not_judged` with the reason,
+which the result lists separately and never counts as a pass.
+
 All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 `fail`; else `pass`.
 
@@ -77,6 +95,38 @@ All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 time against `realized.json`. Once the live realized-map shape is pinned in the
 joint test, promote them to an importable `checks.ts` + unit test (mirroring
 `skills/synthetic-narrative-plan-qa/checks.ts`) for static CI enforcement.
+
+## Writing the result — always, and in the canonical shape
+
+**Every invocation writes `7-synthetic/demo-data-setup-qa_result.yaml`**, whatever
+the verdict, and records `phases.synthetic-data-and-workflows.steps.demo-data-setup-qa:
+{status: done, verdict: <pass|fail>}` in run_state. Two runs showed what happens
+otherwise: `bednet-check-2-visit/20260908-1544` ran 19 checks but hand-wrote them as
+`checks_total` / `checks[]` — a shape no reader parses — so ace-web displayed
+"Passed (0/0 checks)"; `spark-facilitator/20260926-1800` (ace-run) never ran the gate
+and has no result at all.
+
+1. Download the inputs locally: `run_state.yaml`, `7-synthetic/realized.json`, and for
+   the ace-run provider `7-synthetic/cascade-story.yaml` (all `drive_read_file`
+   `writeToPath`, default `text/plain`), plus the programme report's saved runs —
+   `workflow_history_runs({definition_id: <programme_report.workflow_id>, program_id,
+   generated_only: false, include_snapshot: true, limit: 100})` saved as JSON.
+2. For the live-labs checks this script cannot compute (7, 8, 10, 12, 16 on
+   `denovo` / `clone`), run their `checks.ts` functions and write their outcomes as
+   JSON: `[{check, result: {pass, detail, auto_fix_hint}}]`, or
+   `{check, not_judged: "<why>"}` for a spec-dependent row.
+3. Run:
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/demo-data-setup-qa.ts" \
+     --run-state <run_state.yaml> --realized <realized.json> \
+     [--story <cascade-story.yaml>] [--history <history.json>] [--outcomes <outcomes.json>] \
+     --target <opp>/<run-id> --out <local demo-data-setup-qa_result.yaml>
+   ```
+   It computes 1, 2, 22, 23 and 21 itself, merges your outcomes, **fails every
+   applicable check that was not evaluated**, and writes the `lib/qa-types.ts` shape
+   through `aggregateQAResult` — which also fails a result that evaluated nothing.
+4. Upload the file as `demo-data-setup-qa_result.yaml` in `7-synthetic/` (find-or-update).
+   Never hand-write the YAML.
 
 ## Why check 7 exists — and what it deliberately does not cover
 
@@ -307,6 +357,7 @@ mistake.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **The gate always runs, always writes a result, and 0 checks is a FAIL.** `bednet-check-2-visit/20260908-1544` ran 19 checks and hand-wrote them as `checks_total` / `checks[]`, so ace-web read the result as "Passed (0/0 checks)"; `spark-facilitator/20260926-1800` (ace-run provider) never ran the gate. New `scripts/demo-data-setup-qa.ts` computes the checks it can from local files, merges the live-labs outcomes, fails every check that applies to the provider (`checksForProvider`) but was not evaluated, and writes the canonical shape via `aggregateQAResult` (`lib/qa-types.ts`), which fails a result that evaluated nothing. New ace-run checks 22 (`worker_review_url_scoped`) and 23 (`cascade_handoff_complete`); check 21 now has `periodsFromHistoryRuns`. Run against Spark's real artifacts: 4/5 pass, and check 22 FAILS — all three worker-review URLs carry `owning_program_id` but no `program_id` (ace#2521). | ACE team |
 | 2026-09-17 | **Check 8 now verifies the mandate it enforces, and carries an evidenced escape (ace#2430).** The row required the interactive run to be `in_progress` and failed it when `completed` — while nothing anywhere had ever loaded that page. The two states are not symmetric: a completed run's page returns early on its snapshot (`workflow-runner.tsx`: `if (snapshotCarriesPipelines) return;`), an `in_progress` one has no snapshot and re-runs the pipeline SSE stream on every load; check 7 even reads the interactive dashboard's data through `api/<def>/pipeline-data/`, a side-channel around the very stream the page uses. On `poverty-graduation/20260915-1518` that stream died after its first event, the dashboard could not load, and this row made the dead configuration the ONLY passing one. Now: an `in_progress` interactive run with no recorded `source.interactive_live_load` fails, one whose own probe says it cannot load fails, and a `completed` one passes only on an evidenced failure (`observed` + `run_id` + `control_run_id` + `upstream_ref`) — reported in `detail`, never silent. Check 18 stands down on the same granted escape, because a completed run's state is immutable (409) and the two gates would otherwise be jointly unsatisfiable. *Enforced:* `test/lib/interactive-live-load.test.ts` plus the new cases in `test/skills/demo-data-setup-qa/checks.test.ts` and `test/lib/labs-run-state-reset.test.ts`. | ACE team |
 | 2026-09-17 | **Check 9's `declared_omissions[]` no longer offers a REPEAT-group roster as an exemption (ace#2432).** `auditDataset` could not see inside an array, so a correctly materialised repeat read as `conditional-missing` on every record and the escape's own remedy text told the next run to exempt it. Both are fixed: `lib/dataset-constraints.ts` descends into an array, and `OMISSION_HINT` now names the two surviving classes (`Trigger`, no-corpus image) and says to BUILD a repeat rather than exempt it. Measured on `poverty-graduation/20260915-1518`: three of its thirteen conditional-missing residuals were repeat children present on all 1,379 completed surveys. The check itself is unchanged — it is field-agnostic; what changed is what it reports as available. | ACE team |
 | 2026-09-10 | **Check 18 gains the `render_reset_command_pinned` finding (ace#2351).** The check verified the reset block EXISTS and was `verified_at`; both were honest on `spark-facilitator/20260909-2242` and `20260910-0541`, whose commands were pinned to `/Users/<name>/.claude/plugins/cache/ace/ace/0.13.1413/…` and `…/0.13.1426/…`. A pinned path keeps resolving after `/ace:update` (the cache retains old versions), so the reset ran pre-ace#2325 code — no `--workflow-id`, every render `run-not-found` — with nothing to fail it. Now `classifyPinnedResetCommand()` flags `/plugins/cache/ace/ace/` and `/Users|/home/<name>/` in the registered command AND in the spec's `setup.command` (the string canopy actually runs). *Enforced:* `test/lib/labs-run-state-reset.test.ts`. | ACE team |

@@ -170,7 +170,23 @@ failures:                          # empty list when verdict: pass
 passed:
   - check: <check-id>
     detail: "<what was verified>"
+
+# Optional — a check deliberately NOT evaluated this time (its input does not
+# exist yet). Never counted in checks_run / checks_passed.
+not_judged:
+  - check: <check-id>
+    detail: "<why it could not be evaluated now>"
 ```
+
+**"Nothing was checked" is never a pass.** `verdict: pass` requires `checks_run ≥ 1`,
+and `checks_passed + checks_failed == checks_run`; `validateQAResult` enforces both.
+Build the file with `aggregateQAResult` (`lib/qa-types.ts`) — it derives the counts
+and turns an all-not-judged run into `fail` with a `no-checks-ran` failure — rather
+than typing the YAML by hand. A hand-rolled shape is invisible to readers:
+`bednet-check-2-visit/20260908-1544`'s demo-data-setup-qa wrote `checks_total` /
+`checks[]` for 19 checks and ace-web displayed "Passed (0/0 checks)". **A QA skill
+writes its result on every invocation** — pass, fail or incomplete; a gate that
+leaves no file reads as a step that never had a gate.
 
 **No score fields.** No `overall_score`, no `dimensions:`, no `weight:`. QA is binary. If you find yourself wanting to add a score, the check belongs in eval, not QA.
 

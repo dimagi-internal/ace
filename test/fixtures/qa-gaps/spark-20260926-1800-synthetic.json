@@ -1,0 +1,112 @@
+{
+ "_source": "spark-facilitator/20260926-1800 run_state.yaml phases.synthetic-data-and-workflows.products.synthetic, read from Drive 2026-10-01",
+ "synthetic": {
+  "provider": "ace-run",
+  "labs_opp_id": 10082,
+  "cascade": {
+   "registry": {
+    "registry_id": 6369,
+    "program_id": 10082,
+    "version": 2,
+    "indicators": [
+     "SF_P1",
+     "SF_P3",
+     "SF_S1",
+     "SF_S2",
+     "SF_S3",
+     "SF_S4",
+     "SF_S5",
+     "SF_S6",
+     "SF_D1",
+     "SF_D2"
+    ]
+   },
+   "program_id": 10082,
+   "partners": [
+    {
+     "label": "Partner A",
+     "opportunity_id": 10082
+    },
+    {
+     "label": "Partner B",
+     "opportunity_id": 10083
+    },
+    {
+     "label": "Partner C",
+     "opportunity_id": 10084
+    }
+   ],
+   "programme_report": {
+    "workflow_id": 6371,
+    "run_id": 6394,
+    "url": "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082"
+   },
+   "worker_review": {
+    "workflow_id": 6373,
+    "run_id": 6375
+   },
+   "opp_reports": [
+    {
+     "partner": "Partner A",
+     "opportunity_id": 10082,
+     "workflow_id": 6376,
+     "run_id": 6431,
+     "url": "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082"
+    },
+    {
+     "partner": "Partner B",
+     "opportunity_id": 10083,
+     "workflow_id": 6378,
+     "run_id": 6432,
+     "url": "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083"
+    },
+    {
+     "partner": "Partner C",
+     "opportunity_id": 10084,
+     "workflow_id": 6380,
+     "run_id": 6433,
+     "url": "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084"
+    }
+   ],
+   "cohort_id": 5,
+   "history": {
+    "first_period_end": "2026-06-28",
+    "last_period_end": "2026-09-20",
+    "run_ids": [
+     6382,
+     6383,
+     6384,
+     6385,
+     6386,
+     6387,
+     6388,
+     6389,
+     6390,
+     6391,
+     6392,
+     6393,
+     6394
+    ]
+   },
+   "story_verified": true
+  },
+  "workflows": {
+   "programme_report": {
+    "workflow_id": 6371,
+    "run_url": "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082"
+   },
+   "partner_a_opp_report": {
+    "workflow_id": 6376,
+    "run_url": "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082"
+   },
+   "partner_b_opp_report": {
+    "workflow_id": 6378,
+    "run_url": "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083"
+   },
+   "partner_c_opp_report": {
+    "workflow_id": 6380,
+    "run_url": "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084"
+   }
+  }
+ }
+}
