@@ -1,0 +1,418 @@
+opportunity: spark-facilitator
+run_id: 20260926-1800
+mode: default
+created: "2026-09-26T18:00:44.981361+00:00"
+initiated_by: ace@dimagi-ai.com
+last_actor: ace@dimagi-ai.com
+last_actor_at: "2026-09-26T18:00:44.981361+00:00"
+current_phase: synthetic-data-and-workflows
+phases:
+  idea-to-design:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    products:
+      pdd:
+        title: Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation
+        description: "A Connect verify-and-pay layer under Spark MicroGrants' Community
+          Based Facilitators: each CBF records FCAP community meetings on a form
+          built from Spark's Village Monitoring Form, and Connect pays per
+          meeting verified as meeting_conducted = yes AND meeting_type =
+          community_meeting, capped at 3 paid meetings per community per FCAP
+          step. The pilot covers Goal Setting (steps 1-7, ~3 months) for ~12
+          communities in one Malawi district, with facilitator registration,
+          per-meeting monitoring and savings in scope."
+        file_id: 1rR_GEZv6J8FGP7iUYs9zwBZO_bICBOyRZI9tQTOEEqI
+        program_parameters:
+          archetype: longitudinal-visits
+          learn_passing_score: 80
+          assessment_items: 12
+          payment_rate_band:
+            currency: MWK
+            min: 5000
+            max: 10000
+            unit: verified community meeting
+            status: PROPOSED
+          llo_payment_per_visit:
+            amount: 3000
+            currency: MWK
+            status: PROPOSED
+          daily_cap: 1
+          total_cap: 21
+          campaign_target_visits: 156
+          flw_count_min: 12
+          flw_count_max: 12
+          expected_reach_min: 12
+          expected_reach_max: 12
+          total_budget:
+            amount: 3276000
+            currency: MWK
+            status: PROPOSED
+          opportunity_start_date: "2026-11-02"
+          opportunity_end_date: "2027-02-26"
+          opportunity_dates_status: PROPOSED
+          verification_flags:
+            form_field_rules:
+              - field: meeting_conducted
+                equals: "yes"
+              - field: meeting_type
+                equals: community_meeting
+            duplicate: false
+            gps: false
+          connect_delivery_type: ace
+          opportunity_country: MWI
+          opportunity_currency: MWK
+          entity_id_grain: concat(case_id, '-', pilot_fcap_step, '-',
+            min(step_meeting_index, 3)) — step_meeting_index is the
+            post-increment value (first meeting on a step = 1)
+          entity_state_taxonomy: "1=Our Partnership (steps 1); 2=Community Dynamics,
+            Governance & Leadership (steps 2); 3=Understanding the Present –
+            Situational Analysis (steps 3); 4=Getting to the Future – Microgrant
+            Pathway & Goals (steps 4); 5=Initiative Pathway & Savings (steps 5);
+            6=Advocacy Pathway (steps 6); 7=Vision (steps 7) [source: FCAP
+            Structure, Phases, and Activities (Spark, shared 2026-07-21).pdf]"
+          cap_rationale: 7 FCAP steps x 3 payable meetings per step = 21 structural
+            maximum per CBF; ~13 expected at weekly cadence
+          verification_predicate: meeting_conducted = yes AND meeting_type = community_meeting
+          working_language:
+            - en
+            - nya
+            - tum
+          app_runtime_default_language: en
+          verification_layers: A+B+C
+          layer_b_review_sample: ">=20% of paid meetings independently checked,
+            risk-stratified; plus 10% of unpaid records"
+          layer_c_call_sample: ">=10% of paid meetings in consenting communities"
+      work_order:
+        title: Work Order — Spark Facilitator — Connect Pilot for FCAP Community Meeting
+          Facilitation
+        file_id: 1QmHS_kfY62R3BwAQGrNpTLOkhxv49Q2LxS48Q9rZRRk
+    steps:
+      idea-to-pdd:
+        status: done
+      pdd-to-work-order:
+        status: done
+  scenarios-and-acceptance:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    steps:
+      pdd-to-test-prompts:
+        status: done
+      pdd-to-app-journeys:
+        status: done
+  commcare-setup:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    products:
+      apps:
+        learn:
+          name: Spark Facilitator Learn app
+          nova_app_id: c57ad3f2-9524-4470-949b-fc02cbaf3810
+          nova_url: https://commcare.app/build/c57ad3f2-9524-4470-949b-fc02cbaf3810
+          hq_app_id: cc3aaedcfa9a47729873d4915e12d226
+          hq_url: https://www.commcarehq.org/a/connect-ace-prod/apps/view/cc3aaedcfa9a47729873d4915e12d226/
+          build_status: success
+          released_build_id: 67add42c093b43a0a840cc2f80501a8c
+          released_version: 22
+        deliver:
+          name: Spark Facilitator Deliver app
+          nova_app_id: ef133601-bd0e-4691-ba11-8339440fd8c5
+          nova_url: https://commcare.app/build/ef133601-bd0e-4691-ba11-8339440fd8c5
+          hq_app_id: 0d877e0f7bc14382b34f4a843803ca0a
+          hq_url: https://www.commcarehq.org/a/connect-ace-prod/apps/view/0d877e0f7bc14382b34f4a843803ca0a/
+          build_status: success
+          released_build_id: 10d624e11c1f474fbeabffbaef33f523
+          released_version: 14
+    steps:
+      pdd-to-learn-app:
+        status: done
+      pdd-to-deliver-app:
+        status: done
+      app-connect-coverage:
+        status: done
+      app-media-coverage:
+        status: done
+      app-deploy:
+        status: done
+      app-test-cases:
+        status: done
+      app-hq-settings:
+        status: done
+      app-release:
+        status: done
+      app-release-qa:
+        status: done
+  connect-setup:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    products:
+      connect:
+        domain: connect-ace-prod
+        organization_slug: ai-demo-space
+        program:
+          id: 9e82982e-7638-44bc-9de2-2bfcefae550d
+          url: https://connect.dimagi.com/a/ai-demo-space/program/9e82982e-7638-44bc-9de2-2bfcefae550d/
+        opportunity:
+          id: d5deee9b-e32e-4fae-81dd-a9a11d393f50
+          name: 20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation
+          url: https://connect.dimagi.com/a/ai-demo-space/opportunity/d5deee9b-e32e-4fae-81dd-a9a11d393f50/
+          connect_int_id: 2296
+          status: active
+          is_test: true
+        payment_units:
+          - payment_unit_id: 7a0d526c-8d52-4a49-a86d-522a9fc7661e
+            server_id: 2592
+            name: Per verified community meeting
+            amount: 7500
+            org_amount: 3000
+            currency: MWK
+            max_total: 21
+            max_daily: 1
+            required_deliver_units:
+              - 7083
+        ace_test_user:
+          phone: "+74260000101"
+          invite_row_present: true
+          connect_user_id: null
+          status: pending
+          checked_at: "2026-09-26T02:25:00Z"
+        verification:
+          form_field_rules: []
+          form_field_rules_saved: 0
+          not_applied_reason: "connect_set_verification_flags refused:
+            /verification_flags_config/ 302-redirects on a self-managed opp
+            (Connect is_opportunity_pm requires requesting org != holding org) —
+            ace#2419. Intended rules:
+            form.about_this_meeting.meeting_conducted=yes,
+            form.about_this_meeting.meeting_type=community_meeting on DU 7083.
+            Carried to Phase 9 (LLO opportunity)."
+        build_memo:
+          file_id: 19E5k7l4NnnbZo8XDzytICRDd0zEb8AqHiEITb0o1EQs
+          title: Build memo
+          web_view_link: https://docs.google.com/document/d/19E5k7l4NnnbZo8XDzytICRDd0zEb8AqHiEITb0o1EQs/edit?usp=drivesdk
+          complete: true
+          gaps: []
+    steps:
+      connect-program-setup:
+        status: done
+      connect-opp-setup:
+        status: done
+      build-memo:
+        status: done
+  ocs-setup:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    products:
+      ocs_chatbot:
+        experiment_id: 13234
+        public_id: 389f6ac5-07ac-4dff-9843-20b0cb80458a
+        team_slug: connect-ace
+        admin_url: https://www.openchatstudio.com/a/connect-ace/chatbots/13234/
+        public_url: https://www.openchatstudio.com/a/connect-ace/chatbots/389f6ac5-07ac-4dff-9843-20b0cb80458a/start/
+        embed_key: REDACTED
+        collection_id: 602
+        version_number: 3
+        last_reindexed_at: "2026-09-26T04:07:41Z"
+        knowledge_sources:
+          - the design doc
+          - Spark's source materials (FCAP structure, FIYP overview, the FCAP
+            app and monitoring extract, the research brief and Spark's design
+            answers)
+          - the Learn and Deliver app guides
+          - the training pack (LLO manager guide, FLW training guide, FAQ, and
+            quick reference card)
+          - the programme contacts
+    steps:
+      ocs-agent-setup:
+        status: done
+      ocs-chatbot-qa:
+        status: done
+      ocs-chatbot-eval:
+        status: done
+  qa-and-training:
+    status: done
+    verdict: seeded
+    completed_at: "2026-09-26T18:00:44.981361+00:00"
+    products:
+      training:
+        docs:
+          llo_guide:
+            file_id: 1pyEwkq6j6pQ1iabgG5QFWMZdTh8uxcqrSistPauKGlY
+            title: LLO manager guide
+            web_view_link: https://docs.google.com/document/d/1pyEwkq6j6pQ1iabgG5QFWMZdTh8uxcqrSistPauKGlY/edit?usp=drivesdk
+          flw_guide:
+            file_id: 1yTTs9d8K9dAFoXd1wW1x0s0U7IYiKHjL_eCxL7dKf24
+            title: FLW training guide
+            web_view_link: https://docs.google.com/document/d/1yTTs9d8K9dAFoXd1wW1x0s0U7IYiKHjL_eCxL7dKf24/edit?usp=drivesdk
+          quick_reference:
+            file_id: 1BxzNOPHN9JD8hUWlDCj_EZkqytVx6t3STVHJD0xahOw
+            title: Quick reference card
+            web_view_link: https://docs.google.com/document/d/1BxzNOPHN9JD8hUWlDCj_EZkqytVx6t3STVHJD0xahOw/edit?usp=drivesdk
+          faq:
+            file_id: 1-hrPAhfJuGCcjIhmjuSwHaELqWkQIzXfN5ifY-s_fyc
+            title: FAQ
+            web_view_link: https://docs.google.com/document/d/1-hrPAhfJuGCcjIhmjuSwHaELqWkQIzXfN5ifY-s_fyc/edit?usp=drivesdk
+          onboarding_email:
+            file_id: 1HxQNxzIkjmDOwFDTugeItJA-lTi3aXLNh98itvFE7yQ
+            title: Onboarding email
+            web_view_link: https://docs.google.com/document/d/1HxQNxzIkjmDOwFDTugeItJA-lTi3aXLNh98itvFE7yQ/edit?usp=drivesdk
+        deck:
+          file_id: 17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc
+          title: Spark Facilitator — FCAP Community Meeting Facilitation — Training Deck
+          web_view_link: https://docs.google.com/presentation/d/17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc/edit?usp=drivesdk
+          slide_count: 54
+          rendered_at: "2026-09-26T04:00:00Z"
+    steps:
+      app-screenshot-capture:
+        status: done
+      training-llo-guide:
+        status: done
+      training-flw-guide:
+        status: done
+      training-quick-reference:
+        status: done
+      training-faq:
+        status: done
+      training-deck-generate:
+        status: done
+      training-deck-render:
+        status: done
+      training-onboarding-email:
+        status: done
+      ocs-knowledge-refresh:
+        status: done
+  synthetic-data-and-workflows:
+    status: partial
+    steps:
+      demo-data-setup:
+        status: done
+      demo-narrative:
+        status: skipped
+        reason: "proof scope: DDD render not run"
+      semantic-registry-author:
+        status: done
+      semantic-registry-author-qa:
+        status: done
+    verdict: passed-with-deferred-evals
+    summary_artifact: 1yZOsl83wXga8_0s3RIR5MC17L1iF6J5g8h5nSU1qnOk
+    note: "ace#2510 proof of the semantic-layer cascade: registry + 3-partner
+      synthetic programme + indicator trio + 13 saved weekly runs, story
+      verified. demo-narrative and the DDD render were deliberately not run in
+      this proof."
+    products:
+      synthetic:
+        provider: ace-run
+        labs_opp_id: 10082
+        cascade:
+          registry:
+            registry_id: 6369
+            program_id: 10082
+            version: 2
+            indicators:
+              - SF_P1
+              - SF_P3
+              - SF_S1
+              - SF_S2
+              - SF_S3
+              - SF_S4
+              - SF_S5
+              - SF_S6
+              - SF_D1
+              - SF_D2
+          program_id: 10082
+          partners:
+            - label: Partner A
+              opportunity_id: 10082
+            - label: Partner B
+              opportunity_id: 10083
+            - label: Partner C
+              opportunity_id: 10084
+          programme_report:
+            workflow_id: 6371
+            run_id: 6394
+            url: https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082
+          worker_review:
+            workflow_id: 6373
+            run_id: 6375
+          opp_reports:
+            - partner: Partner A
+              opportunity_id: 10082
+              workflow_id: 6376
+              run_id: 6431
+              url: https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082
+            - partner: Partner B
+              opportunity_id: 10083
+              workflow_id: 6378
+              run_id: 6432
+              url: https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083
+            - partner: Partner C
+              opportunity_id: 10084
+              workflow_id: 6380
+              run_id: 6433
+              url: https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084
+          cohort_id: 5
+          history:
+            first_period_end: "2026-06-28"
+            last_period_end: "2026-09-20"
+            run_ids:
+              - 6382
+              - 6383
+              - 6384
+              - 6385
+              - 6386
+              - 6387
+              - 6388
+              - 6389
+              - 6390
+              - 6391
+              - 6392
+              - 6393
+              - 6394
+          story_verified: true
+        workflows:
+          programme_report:
+            workflow_id: 6371
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082
+          partner_a_opp_report:
+            workflow_id: 6376
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082
+          partner_b_opp_report:
+            workflow_id: 6378
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083
+          partner_c_opp_report:
+            workflow_id: 6380
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084
+  solicitation-management:
+    status: pending
+    steps:
+      solicitation-create:
+        status: pending
+      llo-invite:
+        status: pending
+  execution-management:
+    status: pending
+    steps:
+      llo-onboarding:
+        status: pending
+      llo-uat:
+        status: pending
+      llo-launch:
+        status: pending
+  closeout:
+    status: pending
+    steps:
+      opp-closeout:
+        status: pending
+      llo-feedback:
+        status: pending
+      learnings-summary:
+        status: pending
+      cycle-grade:
+        status: pending
+forked_from: 20260925-1536
+forked_from_phase: synthetic-data-and-workflows
+forked_at: "2026-09-26T18:00:44.981361+00:00"

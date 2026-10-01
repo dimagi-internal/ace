@@ -298,6 +298,24 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    source of truth" failure (CLAUDE.md § Conventions). Then re-run the check
    until it exits 0.
 
+6b. **Re-compose the build memo when the fork point is after Phase 4.** A fork
+   copies `4-connect/` whole, so the new run starts with the SOURCE run's
+   memo — titled with the source run id — and ace-web's carried `products`
+   block points `products.connect.build_memo` at the SOURCE run's Doc, not
+   the copy in the fork's own `4-connect/`. Both were observed on
+   `spark-facilitator/20260926-1800` (forked from 20260925-1536 at
+   `synthetic-data-and-workflows`): the reviewer was shown a memo for a
+   different run. When `connect-setup` is `done` in the forked run_state:
+
+   ```
+   /ace:step build-memo <opp>/<run_id>
+   ```
+
+   It re-renders the title from the fork's `run_id`, find-or-creates the Doc
+   in the fork's `4-connect/`, and repoints `build_memo` at it
+   (`skills/build-memo § On a forked run`). It writes only Drive and
+   run_state, never Connect, so it is safe on any fork.
+
 7. **Report.**
 
    ```
@@ -305,6 +323,7 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    Fork point: <phase|skill> (earlier work copied; from here on re-runs)
    Mode: <mode>
    Products handoffs: <clean | seeded N phase(s) from <source_run_id>>
+   Build memo: <re-composed for <run_id> | not applicable (fork before Phase 4)>
    Workbench: <ACE_WEB_BASE_URL>/chat/<working_session_slug>
 
    Next: /ace:run <opp>/<run_id> to resume there.
@@ -442,3 +461,9 @@ something a caller can act on — not just that the route exists.
   artifact design this endpoint implements.
 - ace-web source: `apps/opps/api.py`, `apps/opps/schemas.py`,
   `apps/opps/opp_forker.py`.
+
+## Change Log
+
+| Date | Change | Author |
+|---|---|---|
+| 2026-10-01 | **Step 6b: re-compose the build memo after a fork past Phase 4.** `spark-facilitator/20260926-1800` (forked from 20260925-1536) carried its source's memo titled "run 20260925-1536", and its `products.connect.build_memo` pointed at the SOURCE run's Doc rather than the copy in its own `4-connect/` — so the run page showed a memo for a different run, and build-memo-eval flagged the label. `/ace:step build-memo <opp>/<run_id>` now runs after any fork whose `connect-setup` is done; the report states it. | ACE team |

@@ -5,6 +5,33 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1624 — 2026-10-01
+
+**The build memo is written for an outside reviewer, and Phase 7 worker-review links are built by one
+function.** Two generator fixes from spark-facilitator/20260926-1800, whose memo build-memo-eval graded 6.2
+`warn` and whose `realized.json` failed `checkWorkerReviewUrlScope`.
+
+- **Build memo (`skills/build-memo`).** New `lib/build-memo-compose.ts` + `scripts/build-memo-compose.ts`
+  render the parts of the memo that have a right answer (`--frame`) and gate the composed memo (`--check`,
+  exit 0 required before publish):
+  - the title and every run label come from `run_state.run_id` — a fork no longer inherits its source's
+    "run <id>" label; `skills/fork-run` step 6b re-composes the memo after a fork past Phase 4, which also
+    repoints `products.connect.build_memo` (it pointed at the source run's Doc);
+  - each verification rule is credited to the enforcement point that holds it at its scope — per-worker caps
+    lead with Connect's payment-unit `max_daily` / `max_total`, app checks are stated per community;
+    `connect-opp-setup` Step 8 and `pdd-to-deliver-app` Step 7 now write it that way at the source;
+  - "Known limitations — read first" separates the real gap (Connect refused the verification rules on a
+    self-managed opportunity, ace#2419, `form_field_rules_saved: 0`) from rules off Connect by design;
+  - "Decisions you own" lists the reviewer's asks: proposed rate / organisation payment / budget / dates,
+    the unenforced rules, machine-translation sign-off, open items;
+  - the body is plain language (no skill names, decision ids, issue numbers, paths or code identifiers;
+    abbreviations glossed from the PDD); provenance and producer sections move to an appendix.
+  A memo regenerated this way for the Spark inputs passes all four checks and an independent
+  build-memo-eval re-grade at 7.9 `pass` (hard gate not tripped).
+- **Worker-review URLs (`skills/demo-data-setup` § C7).** New `lib/worker-review-url.ts`
+  (`buildWorkerReviewUrl`, `workerReviewUrls`, `rescopeWorkerReviewUrl`) and `scripts/worker-review-url.ts`
+  (`--run-state … --carriers …` to build, `--fix <realized.json>` to repair) — always `program_id`, never
+  `owning_program_id` (ace#2521 recurrence).
 ## 0.13.1623 — 2026-10-01
 
 **`release-check`: "ready to release" is now a gate's verdict, not a claim.** The new skill and

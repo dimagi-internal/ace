@@ -1,0 +1,1985 @@
+schema_version: 5
+opportunity: spark-facilitator
+run_id: 20260925-1536
+generated_at: '2026-09-25T21:43:55.230Z'
+decisions:
+- id: archetype-selection
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which delivery archetype best fits the intervention?
+  ai-default: longitudinal-visits
+  options:
+  - atomic-visit
+  - longitudinal-visits
+  - focus-group
+  - multi-stage
+  reasoning: The community is visited repeatedly in an ordered FCAP step sequence
+    and carries state between meetings; communities progress asynchronously, so not
+    multi-stage.
+  source: "Enock Q&A \xA71 (weekly meetings per community); FCAP Structure PDF (ordered\
+    \ steps 1-7); CCZ m0f4 per-meeting record"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: pilot-scope-window
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which slice of the FCAP arc does the pilot cover?
+  ai-default: Goal Setting subphase, FCAP steps 1-7
+  options:
+  - Goal Setting subphase, FCAP steps 1-7
+  - Whole Planning phase, steps 1-14
+  - Full FCAP arc
+  reasoning: Enock confirmed a focused first slice; the window within FCAP is ACE's
+    choice. Goal Setting is weekly-cadence, self-contained, ends before the Proposal
+    Generator (steps 10-12) boundary.
+  source: "Enock Q&A \xA73 (focused first slice); FCAP Structure PDF (Goal Setting\
+    \ ~3 months, steps 1-7)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: pilot-app-form-slice
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which forms make up the pilot Deliver app?
+  ai-default: CBF registration + community enrolment + meeting record with savings
+  options:
+  - CBF registration + community enrolment + meeting record with savings
+  - Community enrolment + meeting record only
+  - All ~41 Spark forms
+  reasoning: Enock named facilitator registration explicitly; prior runs dropped it.
+    This run restores it by mirroring Spark's CF Registration Form (m2f0). Community
+    enrolment is added because the meeting record needs a community case and a household
+    denominator.
+  source: "Enock Q&A \xA73: 'facilitator registration + per-meeting monitoring record\
+    \ + savings'"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: meeting-verification-predicate
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What field predicate verifies that a payable meeting happened?
+  ai-default: meeting_conducted = yes AND meeting_type = community_meeting
+  options:
+  - meeting_conducted = yes AND meeting_type = community_meeting
+  - meeting_conducted = yes only
+  reasoning: Partner-stated predicate, re-verified against raw option codes in v1392.
+  source: "Enock Q&A \xA71; CCZ modules-0/forms-4.xml binds at lines 146 and 150,\
+    \ option values yes / community_meeting"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: reused-vs-new-app
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Instrument Spark's v1392 app with Connect markers, or run a parallel pilot
+    app?
+  ai-default: Parallel pilot app reusing Spark's field paths
+  options:
+  - Parallel pilot app reusing Spark's field paths
+  - Add Connect markers to Spark's v1392
+  reasoning: Instrumenting an app a live RCT depends on is Spark's call, not ACE's.
+    Verbatim field paths keep a later migration cheap.
+  source: "CCZ: zero commcareconnect markers across all form XMLs; research brief\
+    \ \xA76 (live four-arm RCT in Malawi 2026)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: longitudinal-entity
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What entity is followed over time, and what case type represents it?
+  ai-default: The community, one case per community
+  options:
+  - The community, one case per community
+  - The CBF
+  - The household
+  reasoning: Meetings happen per community and the community carries the step state.
+  source: "Enock Q&A \xA71 (1 CBF per community in Malawi); CCZ m0f0 creates a village\
+    \ case"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: entity-registration-path
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How is the community case created?
+  ai-default: Separate Community Enrolment form in the pilot app
+  options:
+  - Separate Community Enrolment form in the pilot app
+  - Import from Spark's village cases
+  - First meeting creates it
+  reasoning: No Spark case data is available to import; a separate enrolment form
+    mirrors Spark's own practice and captures the household denominator.
+  source: CCZ m0f0 Village Profile Form pattern; lookup-table-provisioning open question
+    (no fixture data in CCZ)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: visit-sequence-and-cadence
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Expected visit sequence and cadence?
+  ai-default: Weekly meetings advancing through FCAP steps 1-7
+  options:
+  - Weekly meetings advancing through FCAP steps 1-7
+  - Monthly meetings
+  reasoning: Partner-stated cadence for the planning phase.
+  source: "Enock Q&A \xA71 (weekly during planning); FCAP Structure PDF (Goal Setting\
+    \ ~3 months)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: payability-against-history
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Is a repeat meeting on the same step payable, and is an out-of-order meeting
+    payable?
+  ai-default: Up to 3 payable meetings per community per FCAP step; no backward steps
+  options:
+  - Up to 3 payable meetings per community per FCAP step; no backward steps
+  - One payable meeting per step
+  - Every meeting payable
+  reasoning: 'Steps take ~1.9 meetings on average, so one-per-step would leave real
+    continuation work unpaid. This run closes the out-of-order gap: the step pointer
+    only moves forward by one, so a meeting cannot be recorded against an earlier
+    or skipped step; revisiting earlier content counts against the current step.'
+  source: ACE inference from weekly cadence (~13 meetings over 7 steps); prior eval
+    WARN on out-of-order silence
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: payment-unit-entity-id
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What Connect entity_id expresses the payability rule?
+  ai-default: community case + FCAP step + clamped meeting index
+  options:
+  - community case + FCAP step + clamped meeting index
+  - community case + FCAP step
+  - worker + date
+  reasoning: concat(case_id, '-', pilot_fcap_step, '-', min(step_meeting_index, 3))
+    gives each of the first three meetings on a step its own key and collapses the
+    4th onward. Advisory mechanism; the requirement is the cap.
+  source: "idea-to-pdd \xA7 longitudinal-visits entity_id lever; payability-against-history\
+    \ row"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: visit-ownership
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Payable only from the owning CBF or from any FLW?
+  ai-default: Payable only from the owning CBF
+  options:
+  - Payable only from the owning CBF
+  - Any FLW
+  reasoning: 1:1 coverage makes ownership unambiguous; breaks at Rwanda's 2:1, carried
+    as rwanda-two-cbf-attribution.
+  source: "Enock Q&A \xA71 (1 CBF per community in Malawi)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: case-state-read-write
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What does each meeting preload and write back?
+  ai-default: Preload step pointer, per-step count and household count; write back
+    step state, attendance and savings
+  options:
+  - Preload step pointer, per-step count and household count; write back step state,
+    attendance and savings
+  - No case state
+  reasoning: Spark's form writes attendance totals; the pilot adds the step pointer
+    and counter the payment key needs.
+  source: CCZ m0f4 case update block (Total_Attendance, Total_Participation, date_of_meeting)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: step-pointer-ownership
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Does the pilot write Spark's phase property?
+  ai-default: Pilot maintains its own pilot_fcap_step and never writes Spark's phase
+  options:
+  - Pilot maintains its own pilot_fcap_step and never writes Spark's phase
+  - Write Spark's phase
+  reasoning: Parallel app; phase ownership in Spark's app is distributed and not ACE's
+    to touch.
+  source: 'CCZ: four forms write phase (m0f0, m0f3, m0f5, m0f8); m0f4 does not'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: progression-affects-payment
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Does a stalled community affect payment?
+  ai-default: Monitoring only
+  options:
+  - Monitoring only
+  - Payment gated on progression
+  reasoning: Pricing progression moves programme risk onto the lowest-paid actor.
+  source: FCAP Structure PDF (step 2 elections, step 13 PRC review can stall)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: entity-completion
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What does complete mean for a community in the pilot?
+  ai-default: Step 7 (Vision) marked complete
+  options:
+  - Step 7 (Vision) marked complete
+  - Full FCAP graduation
+  reasoning: The pilot window closes at Goal Setting; the case stays open in the pilot
+    app but records no further payable meetings past step 7.
+  source: FCAP Structure PDF (Goal Setting ends at Step 7)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: savings-block-gating
+  phase: 1-design
+  skill: idea-to-pdd
+  question: When is the savings block asked?
+  ai-default: Gated on step 5 or later
+  options:
+  - Gated on step 5 or later
+  - Every meeting, as Spark's form does
+  reasoning: Asking an unanswerable question degrades data; the deviation is disclosed
+    and Spark can overrule it (savings-block-relevance-deviation).
+  source: CCZ forms-4.xml:221 currently_saving required with no relevance; FCAP Structure
+    PDF Step 5 introduces savings
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - CCZ modules-0/forms-4.xml:221 - currently_saving is required=true() with no relevant,
+    i.e. asked at every meeting
+  - FCAP Structure PDF Step 5 - community-wide savings is established at Step 5, so
+    steps 1-4 cannot meaningfully report it
+- id: household-count-source
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Where does the household denominator come from?
+  ai-default: Captured by the pilot at community enrolment
+  options:
+  - Captured by the pilot at community enrolment
+  - Spark's hh_count_tt
+  reasoning: The enrolment count is the only figure that exists at Goal Setting time.
+  source: 'CCZ m0f0: number_of_households asked and discarded; hh_count_tt seeded
+    to 0 via /data/hh_tt'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - 'FCAP extract tab 1 - attendance/savings indicators are % of total # households
+    in community'
+  - CCZ m0f0/m0f1 - the only stored household figure, hh_count_tt, is seeded to 0
+    and counts registered households only
+- id: gps-per-meeting-capture
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Is location captured per meeting, and how is it used?
+  ai-default: Captured with accuracy, advisory only
+  options:
+  - Captured with accuracy, advisory only
+  - Not captured
+  - Payment gate
+  reasoning: Location helps Layer B target its sample but cannot be enforced (ace#1006/#1013);
+    kept out of the payment path so a 'no' from Spark costs nothing.
+  source: 'CCZ: m0f4 has zero geopoint binds; five other forms do; _app-component-library
+    must-not-assert (GPS gate)'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: duplicate-detection-key
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What constitutes a duplicate payable meeting?
+  ai-default: identifier-only
+  options:
+  - identifier-only
+  - identifier-plus-gps-radius
+  - identifier-plus-ranked-proximity
+  - gps-only
+  reasoning: Dedup rides on the entity_id; GPS is advisory only.
+  source: payment-unit-entity-id row; Connect refuses duplicate/gps verification flags
+    (ace#1013)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+  params:
+    key_fields:
+    - community case_id
+    - pilot_fcap_step
+    - min(step_meeting_index, 3)
+- id: verification-layers
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which evidence-model layers are in scope?
+  ai-default: A+B+C
+  options:
+  - A
+  - A+B
+  - A+B+C
+  reasoning: Prior runs held Layer C out of scope for lack of a contact roster, but
+    Spark's own Village Profile Form requires a primary community contact name and
+    number, so the pilot can reuse that field and close the fabrication blind spot
+    Layer A cannot see.
+  source: CCZ m0f0 primary_contact_name / primary_contact_number (required); m2f17/m2f19
+    Partner Trainer observation forms
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+  params:
+    caveat: Layer C is a light phone confirmation with the community contact captured
+      at enrolment, LLO-run, sampled
+- id: layer-b-sample-design
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How is the Layer B review sample drawn?
+  ai-default: Risk-stratified 20% with all flagged meetings plus a random draw
+  options:
+  - Risk-stratified 20% with all flagged meetings plus a random draw
+  - Uniform 20% random sample
+  reasoning: A uniform sample gives 20% detection on fabrication, the failure a per-meeting
+    payment incentivises. Stratifying on anomaly flags and reporting per-stratum agreement
+    makes Layer B a validation harness.
+  source: prior run 20260907-1120 eval WARN fallback_validates_primary 6.0
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: working-language
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Working language(s) and who reviews translations?
+  ai-default: English source plus Chichewa (nya) and Tumbuka (tum)
+  options:
+  - English source plus Chichewa (nya) and Tumbuka (tum)
+  - English only
+  reasoning: Matches Spark's own app. Translations are ACE-authored and needs-review;
+    native review is a downstream obligation.
+  source: FCAP extract (app languages en/nya/tum); CCZ has en, nya, tum folders
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: app-runtime-default-language
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which language does the app open in?
+  ai-default: English
+  options:
+  - English
+  - Chichewa
+  - Tumbuka
+  reasoning: Spark's own app opens in English; Spark may overrule (open question).
+  source: CCZ profile.ccpr cur_locale=en
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-assessment-gate
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Learn assessment size and passing score?
+  ai-default: 12 items, 80 percent to pass
+  options:
+  - 12 items, 80 percent to pass
+  - 6 items, 100 percent to pass
+  - No gate
+  reasoning: 12 items can cover every counter-intuitive rule with headroom; 10 of
+    12 tolerates one or two slips.
+  source: 'ACE design; coverage feasibility: 7 counter-intuitive rules + 9 high-consequence
+    operations, 12 items reach ~0.83 weighted coverage'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: payment-rate
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Per-verified-meeting FLW rate band to propose?
+  ai-default: MWK 5,000-10,000 per verified meeting [PROPOSED]
+  options:
+  - MWK 5,000-10,000 per verified meeting [PROPOSED]
+  - No band proposed; LLO proposes
+  - Monthly retainer
+  reasoning: Prior runs proposed no band; check 6 now requires a number Phase 4 can
+    configure. The band is an ACE order-of-magnitude placeholder sized to about one
+    field day per payable meeting (facilitation plus the unpaid travel, preparation
+    and mobilisation around it), not grounded in any sourced wage. The LLO's justified
+    proposal replaces it.
+  source: "No source states CBF compensation (research brief \xA77.1); operator rule\
+    \ 2026-09-09 (idea-to-pdd check 6): propose rather than leave silent"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: llo-payment-per-visit
+  phase: 1-design
+  skill: idea-to-pdd
+  question: LLO (org_amount) payment per verified meeting?
+  ai-default: MWK 1,500 [PROPOSED]
+  options:
+  - MWK 1,500 [PROPOSED]
+  - MWK 0
+  - Percentage set by LLO response
+  reasoning: About 20% of the FLW band midpoint, to cover Partner Trainer Layer B
+    visits and Layer C calls. Placeholder pending the LLO's costed response.
+  source: connect_create_payment_unit requires org_amount on managed opportunities;
+    no source states an LLO fee
+  superseded_by: llo-payment-per-visit-revised
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: per-flw-caps
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Daily and total payable caps per CBF?
+  ai-default: 2 per day, 21 total
+  options:
+  - 2 per day, 21 total
+  - 1 per day, 13 total
+  reasoning: Total cap equals the structural ceiling so it never binds below the per-step
+    rule; a daily cap of 2 tolerates a same-day continuation session while stopping
+    bulk fabrication.
+  source: 7 steps x 3 payable per step = 21; ~13 expected at weekly cadence
+  superseded_by: per-flw-caps-revised
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: flw-count
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How many CBFs in the pilot cohort?
+  ai-default: '12'
+  options:
+  - '12'
+  - '6'
+  - '24'
+  reasoning: Small enough to sit under any plausible Partner Trainer ratio and to
+    get 20% Layer B coverage; set by the LLO response.
+  source: "ACE projection; 1 CBF per community (Enock Q&A \xA71)"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: budget-plausibility
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Is the budget plausible for the implied labour?
+  ai-default: MWK 2,898,000 ceiling [PROPOSED]
+  options:
+  - MWK 2,898,000 ceiling [PROPOSED]
+  - Unpriced pending LLO rate
+  reasoning: Funds exactly 12 CBFs at the top of the band under Connect's number_of_users
+    formula; expected spend ~MWK 1.4M at the band midpoint and ~13 meetings each.
+  source: 12 CBFs x 21 cap x (10,000 + 1,500) MWK
+  superseded_by: budget-plausibility-revised
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: opportunity-dates
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Opportunity start and end dates?
+  ai-default: 2026-11-02 to 2027-02-26 [PROPOSED]
+  options:
+  - 2026-11-02 to 2027-02-26 [PROPOSED]
+  - Set at award
+  reasoning: Fits inside the existing program window; the real start is when the named
+    communities enter Goal Setting.
+  source: 'Timeline: 14-day solicitation + ~2 weeks onboarding; 1 week enrolment +
+    13 weeks Goal Setting + 2 weeks buffer; program end 2027-03-31'
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: connect-delivery-type
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which Connect delivery type does the program run under?
+  ai-default: ace
+  options:
+  - ace
+  - conversation
+  - interview
+  reasoning: None of the 19 types describes community-meeting facilitation; the durable
+    program already carries ace and the field is immutable. Raised as an open question
+    for the Connect team rather than settling on a misleading label.
+  source: connect_list_delivery_types(ai-demo-space), 19 types; existing program a115e4f2
+    delivery_type id 14 = ace
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: opportunity-currency
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which currency are payments denominated in?
+  ai-default: MWK
+  options:
+  - MWK
+  - USD
+  reasoning: The design is denominated in MWK. The existing program's USD shell is
+    incoherent under the locale rule and immutable; connect-program-setup step 3b
+    escalates the currency divergence to the operator at Phase 4 (reuse vs replacement
+    program).
+  source: lib/program-locale.ts (MWI -> MWK); live program a115e4f2 currency=USD
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - 'lib/program-locale.ts and idea-to-pdd step 4: amounts are always in the local
+    currency of opportunity_country (Malawi -> MWK)'
+  - 'connect_get_program a115e4f2 (2026-09-25): the durable program was created with
+    country MWI and currency USD, both create-time-only'
+- id: primary-metric-vs-goal
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Does the primary metric measure the goal or an upstream proxy?
+  ai-default: upstream-proxy
+  options:
+  - direct-goal
+  - upstream-proxy
+  reasoning: The pilot measures verified facilitation and payment integrity; community
+    outcomes arrive long after Step 7.
+  source: PDD Success Metrics
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: primary-metric-denominator
+  phase: 1-design
+  skill: idea-to-pdd
+  question: What denominator does the meeting-regularity metric use?
+  ai-default: Community-weeks in the active window
+  options:
+  - Community-weeks in the active window
+  - Scheduled meetings
+  reasoning: Weeks between a community's enrolment date and its step-7 completion
+    (or pilot end) are observable from captured dates; scheduled meetings are not.
+  source: 'prior run 20260907-1120 eval WARN: ''scheduled meetings'' is not captured
+    by any field'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: named-downstream-consumer
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Is there a pre-committed downstream consumer of pilot data?
+  ai-default: Spark M&E, unconfirmed for pilot data
+  options:
+  - Spark M&E, unconfirmed for pilot data
+  - Spark M&E, committed
+  - None
+  reasoning: The payment path is a committed consumer; Spark's M&E ingestion is scoped,
+    not documented.
+  source: FCAP extract tab 1 indicator framework; Enock is engaged but no source commits
+    Spark to ingest pilot data
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: ai-fallback-design
+  phase: 1-design
+  skill: idea-to-pdd
+  question: True validation harness or parallel sampling?
+  ai-default: Stratified human validation harness, no AI scoring
+  options:
+  - Stratified human validation harness, no AI scoring
+  - Parallel Partner Trainer review sample
+  - AI scoring with human sample
+  reasoning: No AI scoring is proposed. Layer B is stratified by Layer A outcome and
+    anomaly flags, with per-stratum agreement reported, which makes it validate Layer
+    A rather than run beside it.
+  source: CCZ m2f17 Facilitator Quality Monitoring Form, m2f19 Facilitator Monitoring
+    Form - RCT
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: solicitation-type
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which solicitation kind?
+  ai-default: EOI
+  options:
+  - EOI
+  - RFP
+  - custom
+  reasoning: Rate, district and smartphone availability are unknown; an EOI gathers
+    capability and a costed proposal.
+  source: PDD Solicitation
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: solicitation-deadline
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How long from publish to deadline?
+  ai-default: 14-days
+  options:
+  - 7-days
+  - 14-days
+  - 21-days
+  - 30-days
+  reasoning: Default; nothing argues for longer.
+  source: idea-to-pdd default
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: candidate-llo-roster
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Named candidates, public listing, or both?
+  ai-default: named-plus-public
+  options:
+  - public-only
+  - named-plus-public
+  - named-only
+  reasoning: FOCCAD appears in Spark's own app as the Malawi Green FCAP delivery partner;
+    a candidate, not a selection. No contact address is in the inputs, so llo_org_slug
+    stays unset and Phase 8 runs.
+  source: CCZ m3f14 PT Exit Form ('recovery of FOCCAD resources'); foccad_activities
+    lookup reference
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+  params:
+    named:
+    - FOCCAD
+- id: fcap-step-taxonomy
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How is the FCAP step vocabulary declared for the pilot?
+  ai-default: Declare pilot steps 1-7 only; record the 25-heading taxonomy as observed
+  options:
+  - Declare pilot steps 1-7 only; record the 25-heading taxonomy as observed
+  - Declare all 24 steps
+  reasoning: The duplication starts at 19, outside the pilot window; steps 1-7 are
+    unambiguous.
+  source: 'FCAP Structure PDF: header says 24 steps, body carries 25 headings (Step
+    19 twice)'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - FCAP Structure PDF header - '4 phases, 24 steps, and 78 activities'
+  - FCAP Structure PDF body - 25 Step headings, 19 used for both 'Transition Timeline'
+    and 'Needs, Pathways, Goal(s), and Vision'
+- id: verification-flags
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Which Connect verification flags does Phase 4 set?
+  ai-default: Two form_field_rules for the predicate; no duplicate or GPS flags
+  options:
+  - Two form_field_rules for the predicate; no duplicate or GPS flags
+  - No flags
+  reasoning: form_field_rules is the only server-side surface for the Layer A predicate;
+    dedup rides on entity_id.
+  source: docs/atom-schemas.md connect_set_verification_flags (form_field_rules only;
+    duplicate/gps refused, ace#1013)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: cbfs-per-community-malawi
+  phase: 1-design
+  skill: idea-to-pdd
+  question: How many CBFs facilitate one Malawi community?
+  ai-default: One CBF per community
+  options:
+  - One CBF per community
+  - Two CBFs per community (one man, one woman)
+  reasoning: The partner's direct answer outranks ACE's own public-source brief. The
+    two-CBF reading survives only for Rwanda, carried as rwanda-two-cbf-attribution.
+    If Malawi practice turns out to be two, case ownership and the entity_id both
+    break.
+  source: "Enock Q&A \xA71; ACE research brief \xA73"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "ACE research brief \xA73 (public sources): each village elects two CBFs, one\
+    \ man and one woman"
+  - "Enock Q&A \xA71 (Spark M&E Director): one CBF covers one community in Uganda,\
+    \ Malawi and Ghana; two per community in Rwanda"
+- id: community-contact-for-layer-c
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Does community enrolment capture a community contact for verification
+    calls?
+  ai-default: Reuse Spark's primary community contact fields plus a call-consent question
+  options:
+  - Reuse Spark's primary community contact fields plus a call-consent question
+  - No contact captured
+  reasoning: Spark already requires these at village registration, so capturing them
+    is not net-new. The consent question is net-new and scoped to verification calls
+    only.
+  source: 'CCZ modules-0/forms-0.xml: primary_contact_name (required), primary_contact_number
+    (required, 10 digits)'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: wo-number
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Sequence number for this Work Order under the MSA?
+  ai-default: '[WO Number]'
+  options:
+  - '[WO Number]'
+  reasoning: Assigned at contract execution once a partner is selected.
+  source: No MSA or partner in inputs
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-period-of-performance
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: What dates bound the work?
+  ai-default: 2026-10-26 to 2027-03-12
+  options:
+  - 2026-10-26 to 2027-03-12
+  - '[Start and end dates set on contract execution]'
+  reasoning: One onboarding week before the opportunity opens plus two weeks of review
+    and closeout after it closes. Moves with the award.
+  source: "PDD \xA713 Timeline; opportunity dates 2026-11-02 to 2027-02-26 [PROPOSED]"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-total-not-to-exceed-usd
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Total not-to-exceed cap?
+  ai-default: '[Set at contract execution; indicative ceiling MWK 2,898,000]'
+  options:
+  - '[Set at contract execution; indicative ceiling MWK 2,898,000]'
+  - USD equivalent of MWK 2,898,000
+  reasoning: The design is priced in MWK and the rate is negotiated in the solicitation
+    response; the cap is fixed once the rate is agreed. A USD figure would need an
+    exchange rate no source gives.
+  source: "PDD \xA714 total_budget 2898000 [PROPOSED] (MWK)"
+  superseded_by: wo-total-not-to-exceed-revised
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-payment-schedule-split
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Milestone payment percentages?
+  ai-default: 40/60
+  options:
+  - 40/60
+  - 30/70
+  - Per-unit only
+  reasoning: Standard split; the advance is recoverable against verified meetings.
+  source: Dimagi work-order template default
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-mobilization-advance-pct
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Mobilization advance as % of cap?
+  ai-default: '40'
+  options:
+  - '40'
+  - '30'
+  - '0'
+  reasoning: Covers device confirmation, Learn completion and enrolment before the
+    first paid meeting.
+  source: Template default
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-reporting-cadence
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Frequency of progress reports?
+  ai-default: weekly
+  options:
+  - weekly
+  - fortnightly
+  - monthly
+  reasoning: Matches the weekly meeting cadence.
+  source: PDD cadence (weekly meetings)
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: wo-ethics-scope
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: What kind of data does the work touch?
+  ai-default: operational-with-personal-data
+  options:
+  - operational-no-personal-data
+  - operational-with-personal-data
+  - patient-level-clinical
+  reasoning: Non-clinical, but carries worker and community-contact personal data
+    plus meeting photos.
+  source: "PDD \xA75.1-5.4: CBF profile and phone, community contact name and phone,\
+    \ meeting photos, location"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+  params:
+    caveat: meeting photos may show community members' faces
+- id: wo-data-storage-region
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Server region for data storage?
+  ai-default: united-states
+  options:
+  - united-states
+  - european-union
+  - in-country
+  reasoning: Default; to be confirmed before signature.
+  source: Template default
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+  params:
+    caveat: provisional, pending Malawian data-protection confirmation and the HQ
+      cluster actually used
+- id: llo-payment-per-visit-revised
+  phase: 1-design
+  skill: idea-to-pdd
+  question: LLO (org_amount) payment per verified meeting?
+  ai-default: MWK 3,000 [PROPOSED]
+  options:
+  - MWK 3,000 [PROPOSED]
+  - MWK 1,500 [PROPOSED]
+  - Costed by LLO response
+  reasoning: Raised to MWK 3,000 as a floor; the solicitation asks the LLO to cost
+    supervision and review explicitly and the fee is re-set from that costing.
+  source: 'idea-to-pdd-eval (run 20260925-1536) WARN: MWK 1,500 x ~156 meetings cannot
+    fund risk-stratified review plus calls'
+  supersedes: llo-payment-per-visit
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: budget-plausibility-revised
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Is the budget plausible for the implied labour?
+  ai-default: MWK 3,276,000 ceiling [PROPOSED]
+  options:
+  - MWK 3,276,000 ceiling [PROPOSED]
+  - Unpriced pending LLO rate
+  reasoning: Recomputed after the org fee change; expected spend ~MWK 1,638,000 at
+    the band midpoint and ~13 meetings per CBF.
+  source: 12 CBFs x 21 cap x (10,000 + 3,000) MWK
+  supersedes: budget-plausibility
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: wo-total-not-to-exceed-revised
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Total not-to-exceed cap?
+  ai-default: '[Set at contract execution; indicative ceiling MWK 3,276,000]'
+  options:
+  - '[Set at contract execution; indicative ceiling MWK 3,276,000]'
+  - USD equivalent of MWK 3,276,000
+  reasoning: Follows the revised budget; USD conversion at the rate agreed at contract
+    execution.
+  source: "PDD \xA714 total_budget 3276000 [PROPOSED] (MWK)"
+  supersedes: wo-total-not-to-exceed-usd
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: per-flw-caps-revised
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Daily and total payable caps per CBF?
+  ai-default: 1 per day, 21 total
+  options:
+  - 1 per day, 21 total
+  - 2 per day, 21 total
+  reasoning: The duplicate-filing fix makes a second paid meeting per CBF per day
+    unreachable, so a cap of 2 was dead and contradicted the record rule. Total cap
+    unchanged at 7 steps x 3.
+  source: "PDD \xA75.4 screen 2 date check (one community meeting per community per\
+    \ day) + 1 CBF per community; pdd-to-work-order-eval WARN (daily limits contradict)"
+  supersedes: per-flw-caps
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-baseline-pretest
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74.2 names one 12-item bank \u2014 does the Learn app also carry\
+    \ a baseline pre-test?"
+  ai-default: 6-item non-gating pre-test added
+  options:
+  - 6-item non-gating pre-test added
+  - gate only, no pre-test
+  reasoning: "ACE's assessment-gate standard wants a baseline distinct from the gate;\
+    \ it carries learn_module only, never connect.assessment, so it cannot unlock\
+    \ Deliver. Spot-check: Learn app \u203A Before you start \u203A Starting quiz."
+  source: "PDD \xA74.2 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-module-layout
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74.1 lists six modules \u2014 where do the pre-test and the gate\
+    \ live?"
+  ai-default: own modules before and after the six
+  options:
+  - own modules before and after the six
+  - inside the teaching modules
+  reasoning: "Keeps each Connect learn module 1:1 with a PDD module. Spot-check: Learn\
+    \ app \u203A module list."
+  source: "PDD \xA74.1 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-high-consequence-items
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74.2 lists 9 high-consequence operations for 5 remaining items\
+    \ \u2014 which are tested?"
+  ai-default: enrol once, households, photo, step-completed, savings
+  options:
+  - enrol once, households, photo, step-completed, savings
+  - include reschedule date and count-on-the-day
+  reasoning: "Not-held branch and attendance-vs-participation are already covered\
+    \ by rule items q4/q5; the reschedule-date rule and count-on-the-day are taught\
+    \ but not certified by the gate. Spot-check: Learn app \u203A Final assessment\
+    \ \u203A q1-q3, q7, q9."
+  source: "PDD \xA74.2 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-illustrative-item-hardened
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74.2 offers an illustrative committee-vs-community item \u2014\
+    \ ship it verbatim or harden it?"
+  ai-default: hardened (trainer present at committee)
+  options:
+  - hardened (trainer present at committee)
+  - verbatim
+  - discarded
+  reasoning: "PDD says the example is shape-only; adding the trainer makes the committee-not-paid\
+    \ rule decide the answer. Spot-check: Learn app \u203A Final assessment \u203A\
+    \ q10."
+  source: "PDD \xA74.2 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-module3-without-fiyp-video
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74.1 Module 3 may use FIYP's Running an Effective Meeting video\
+    \ \u2014 include it?"
+  ai-default: module stands alone
+  options:
+  - module stands alone
+  - embed FIYP video
+  reasoning: "No FIYP media asset is in inputs/ (open question fiyp-media-assets);\
+    \ the PDD says the module is written to stand alone. Spot-check: Learn app \u203A\
+    \ Recording a meeting \u203A Lesson 3."
+  source: "PDD \xA74.1 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: learn-latitude-pace-marker
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA76 gives ~13 weeks for 7 steps but no mid-point \u2014 what on-track\
+    \ marker is taught?"
+  ai-default: about Step 4 after about 7 weeks
+  options:
+  - about Step 4 after about 7 weeks
+  - no mid-point marker
+  reasoning: "Interpolated from ~1.9 meetings per step at weekly cadence. Spot-check:\
+    \ Learn app \u203A Steps and savings \u203A Lesson 5."
+  source: "PDD \xA76 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-latitude-fictional-examples
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA74 worked examples need a subject \u2014 real or fictional names?"
+  ai-default: fictional names
+  options:
+  - fictional names
+  - no names
+  reasoning: "CBF Grace, Kalumbu village, Chikondi \u2014 no real person or community\
+    \ named. Spot-check: Learn app \u203A Lesson 3 and Final assessment q2, q10."
+  source: "PDD \xA74 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: learn-ambiguity-step-name-ampersand
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA76.1 step names are verbatim but three contain '&', banned from\
+    \ label text \u2014 which wins?"
+  ai-default: '''&'' written as ''and'''
+  options:
+  - '''&'' written as ''and'''
+  - '''&'' kept verbatim'
+  reasoning: "Only the '&' character changes; words and order are Spark's. Deliver\
+    \ app uses the identical substitution. Spot-check: Learn app \u203A Steps and\
+    \ savings \u203A Lesson 5."
+  source: "PDD \xA76.1 and \xA714 entity_state_taxonomy [FIXED]"
+  superseded_by: learn-ambiguity-step-name-ampersand-verbatim
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA76.1 [FIXED]: step labels transcribed verbatim, not to be paraphrased"
+  - 'Build rule (pdd-to-learn-app REQUIRED angle-bracket/ampersand ban): a raw ''&''
+    in label text breaks CCHQ make_build'
+- id: deliver-latitude-community-child-of-cbf
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75 names cbf and community case types \u2014 how are they related\
+    \ and where is enrolment filed?"
+  ai-default: community is child of cbf
+  options:
+  - community is child of cbf
+  - separate registration menus
+  reasoning: "A registration-only cbf menu would carry an unreachable case list (case-list-unreachable\
+    \ BLOCKER); the child link records which CBF enrolled the community. Spot-check:\
+    \ Deliver app \u203A Facilitator \u203A Community Enrolment."
+  source: "PDD \xA75 and \xA76 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-duplicate-enrolment-guard
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.2 specifies no duplicate-community-enrolment check (Phase 2\
+    \ flag) \u2014 add one?"
+  ai-default: blocking check on community_id
+  options:
+  - blocking check on community_id
+  - no check, Layer B review only
+  - warning only
+  reasoning: "Spark's own Village Profile Form carries this exact casedb check; a\
+    \ second enrolment would mint a second 3-per-step cap. Device-local: a duplicate\
+    \ across two CBFs' devices is still caught only in Layer B. Spot-check: Deliver\
+    \ app \u203A Facilitator \u203A Community Enrolment \u203A community_warning."
+  source: "PDD \xA75.2; Spark v1392 Village Profile Form community_warning [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: deliver-latitude-about-this-meeting-screen
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.4 lists date/location, held?, and type as separate screens\
+    \ \u2014 how are they grouped?"
+  ai-default: one screen, same order
+  options:
+  - one screen, same order
+  - three screens as listed
+  reasoning: "Keeps the one-community-meeting-per-day date check local to the screen\
+    \ that can fix it. Spot-check: Deliver app \u203A Community Meeting Record \u203A\
+    \ date_of_meeting."
+  source: "PDD \xA75.4 screens 2, 3, 5 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-payability-discriminator
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA714 pins a 3-part entity_id grain \u2014 add a payability discriminator?"
+  ai-default: add meeting_kind as 4th part
+  options:
+  - add meeting_kind as 4th part
+  - ship the 3-part grain
+  reasoning: "Committee and not-held records must not share the payable key space\
+    \ (ace#969); PDD \xA73.2 allows Phase 3 to implement the cap differently. Capacity\
+    \ still exactly 3 paid per step. Spot-check: Deliver app \u203A Community Meeting\
+    \ Record \u203A entity_key."
+  source: "PDD \xA73.2 and \xA714 entity_id_grain [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-derived-case-writes-only
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.4 lists values written back to the community \u2014 case-write\
+    \ raw answers or derived mirrors?"
+  ai-default: hidden derived mirrors only
+  options:
+  - hidden derived mirrors only
+  - case-write raw answers
+  reasoning: "Nova preloads every case-written property; raw writes would pre-fill\
+    \ meeting_conducted/meeting_type next visit (ace#2006). Spot-check: Deliver app\
+    \ \u203A Community Meeting Record \u203A new_step."
+  source: "PDD \xA75.4 write-back list [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-education-codes
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.1 education option list is to be reconciled with Spark's \u2014\
+    \ which list ships?"
+  ai-default: Spark's five codes
+  options:
+  - Spark's five codes
+  - PDD list with other
+  reasoning: "none/primary/secondary/tertiary/university, verbatim from modules-2/forms-0.xml.\
+    \ Spot-check: Deliver app \u203A Facilitator Registration \u203A cbf_education."
+  source: "PDD \xA75.1; Spark CF Registration Form [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: deliver-latitude-photo-consent-script
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD declares no photo-consent field \u2014 does the meeting photo carry\
+    \ a read-aloud consent statement?"
+  ai-default: read-aloud statement + attestation
+  options:
+  - read-aloud statement + attestation
+  - no consent text
+  reasoning: "Photographing an assembled group fires the consent floor; statement\
+    \ carries all six elements and photo_statement_read must be yes. Spot-check: Deliver\
+    \ app \u203A Community Meeting Record \u203A photo_statement."
+  source: "PDD \xA74.1 photo guidance; consent-script floor [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-field-id-case
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75 reuses Spark field names with capitals and hyphens \u2014 how\
+    \ are ids spelled?"
+  ai-default: lowercased ids, codes verbatim
+  options:
+  - lowercased ids, codes verbatim
+  - Spark spelling verbatim
+  reasoning: "Nova ids are lowercase snake_case (sparktrainer_attendance, sedo_attendance,\
+    \ currently_not_saving, district); meeting_conducted, meeting_type and every option\
+    \ code are exactly Spark's. Spot-check: Deliver app \u203A Community Meeting Record\
+    \ \u203A meeting_details."
+  source: "PDD \xA75.1 and \xA75.4 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-sedo-label
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.4 reuses SEDO_attendance, whose Spark label names specific\
+    \ partner orgs \u2014 reword?"
+  ai-default: partner organisation wording
+  options:
+  - partner organisation wording
+  - Spark label verbatim
+  reasoning: "Spark's label names AFES/SPRODETA/Njira/Soff, which the pilot's implementing\
+    \ organisation may not be. Spot-check: Deliver app \u203A Community Meeting Record\
+    \ \u203A sedo_attendance."
+  source: "PDD \xA75.4 screen 9 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-date-and-count-bounds
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75 states only upper date bounds and a household bound \u2014\
+    \ what open-side bounds ship?"
+  ai-default: ACE plausibility bounds
+  options:
+  - ACE plausibility bounds
+  - PDD bounds only
+  reasoning: "Recruitment \u226410y ago, partnership \u22643y ago, reschedule \u2264\
+    60 days ahead; attendance 0-1000 per sex, leaders 0-50, savers 0-2000, savings\
+    \ \u2264 MWK 100M. Spot-check: Deliver app \u203A Community Meeting Record \u203A\
+    \ who_came."
+  source: "PDD \xA75.1, \xA75.2, \xA75.4 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-savings-on-held-meetings
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.4 gates savings on Step 5+ \u2014 also on meeting type?"
+  ai-default: any held meeting at Step 5+
+  options:
+  - any held meeting at Step 5+
+  - community meetings only
+  reasoning: "PDD gates on step only; not-held records skip it. Spot-check: Deliver\
+    \ app \u203A Community Meeting Record \u203A savings."
+  source: "PDD \xA75.4 screen 10 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-latitude-step-labels-translatable
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA75.4 screen 4 displays the step name \u2014 computed text or per-step\
+    \ labels?"
+  ai-default: seven conditional labels
+  options:
+  - seven conditional labels
+  - computed step name
+  reasoning: "A name inside a hidden calculate cannot be translated into nya/tum.\
+    \ Spot-check: Deliver app \u203A Community Meeting Record \u203A step_display."
+  source: "PDD \xA75.4 screen 4 [ACE]"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: deliver-ambiguity-step-name-ampersand
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA76.1 step names are verbatim but three contain '&', banned from\
+    \ label text \u2014 which wins?"
+  ai-default: '''&'' written as ''and'''
+  options:
+  - '''&'' written as ''and'''
+  - '''&'' kept verbatim'
+  reasoning: "Identical substitution in the Learn app and the case-list enum. Spot-check:\
+    \ Deliver app \u203A Community meetings \u203A case list \u203A Current step."
+  source: "PDD \xA76.1 and \xA714 entity_state_taxonomy [FIXED]"
+  superseded_by: deliver-ambiguity-step-name-ampersand-verbatim
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA76.1 [FIXED]: step labels verbatim, not to be paraphrased"
+  - 'Build rule (pdd-to-deliver-app REQUIRED ampersand ban): a raw ''&'' breaks CCHQ
+    make_build'
+- id: deliver-unit-count
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: How many deliver units does the Deliver app expose?
+  ai-default: '1'
+  options:
+  - '1'
+  - '3'
+  reasoning: "Only the Community Meeting Record is paid; registration and enrolment\
+    \ are recorded, not paid. Spot-check: Deliver app \u203A Community meetings \u203A\
+    \ Community Meeting Record."
+  source: "PDD \xA75 form table"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: learn-ambiguity-step-name-ampersand-verbatim
+  phase: 3-commcare
+  skill: pdd-to-learn-app
+  question: "PDD \xA76.1 step names are verbatim but three contain '&', which a build\
+    \ rule banned from label text \u2014 which wins?"
+  ai-default: '''&'' kept verbatim'
+  options:
+  - '''&'' kept verbatim'
+  - '''&'' written as ''and'''
+  reasoning: "The ban had no reproducer; HQ built a label carrying '&' (compiled to\
+    \ &amp;), so the partner's words win. Spot-check: Learn app \u203A Steps and savings\
+    \ \u203A Lesson 5 \u203A steps_list."
+  source: "PDD \xA76.1 and \xA714 entity_state_taxonomy [FIXED]"
+  supersedes: learn-ambiguity-step-name-ampersand
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA76.1 [FIXED]: step labels verbatim, not to be paraphrased"
+  - pdd-to-learn-app REQUIRED ampersand clause (no reproducer; ace#2150)
+- id: deliver-ambiguity-step-name-ampersand-verbatim
+  phase: 3-commcare
+  skill: pdd-to-deliver-app
+  question: "PDD \xA76.1 step names are verbatim but three contain '&', which a build\
+    \ rule banned from label text \u2014 which wins?"
+  ai-default: '''&'' kept verbatim'
+  options:
+  - '''&'' kept verbatim'
+  - '''&'' written as ''and'''
+  reasoning: "First build wrote 'and' and pdd-to-deliver-app-eval hard-gated it (entity_state_fidelity).\
+    \ Restored verbatim; released v14 carries &amp; and parses. Spot-check: Deliver\
+    \ app \u203A Community meetings \u203A case list \u203A Current step."
+  source: "PDD \xA76.1 and \xA714 entity_state_taxonomy [FIXED]"
+  supersedes: deliver-ambiguity-step-name-ampersand
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA76.1 [FIXED]: step labels verbatim, not to be paraphrased"
+  - pdd-to-deliver-app REQUIRED ampersand clause (no reproducer; ace#2150)
+- id: test-scenario-count
+  phase: 3-commcare
+  skill: app-test-cases
+  question: How many app-walkthrough scenarios feed the qa+eval pair, and how many
+    get Phase 3 recipe files?
+  ai-default: 7 journeys, 2 smoke recipes
+  options:
+  - 7 journeys, 2 smoke recipes
+  - 7 journeys, 7 recipes
+  - 2 smoke journeys only
+  reasoning: 'Every Phase 2 journey is catalogued in app-test-cases.yaml; only the
+    two is_smoke journeys (journey-learn-pass, journey-deliver-submit) get recipe
+    files now. The 5 deep journeys carry recipe: deferred and are generated by /ace:qa-deep
+    on demand.'
+  source: "2-scenarios/pdd-to-app-journeys.md (7 journeys); skills/app-test-cases\
+    \ \xA7 Products (lazy deep recipes, ace#605)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: test-archetype-coverage
+  phase: 3-commcare
+  skill: app-test-cases
+  question: Are all longitudinal-visits journey categories bound to built forms?
+  ai-default: All covered, 5 deep deferred
+  options:
+  - All covered, 5 deep deferred
+  - Partial coverage
+  - All covered, all authored
+  reasoning: registration, case-selection, visit-flow, followup-with-preload, repeat-activity
+    and data-quality-error each bind to the Facilitator / Community meetings forms;
+    the Learn smoke binds all 8 Learn forms. Smoke coverage is one per app, as Phase
+    6 pre-flight requires.
+  source: "pdd-to-app-journeys.md \xA7 Coverage self-check; Nova get_app ef133601\
+    \ / c57ad3f2"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: deliver-smoke-leg-structure
+  phase: 3-commcare
+  skill: app-test-cases
+  question: How does the Deliver smoke reach the payable Community Meeting Record?
+  ai-default: 'Three legs: register, enrol, meeting'
+  options:
+  - 'Three legs: register, enrol, meeting'
+  - Meeting record only
+  - Stop at enrolment
+  reasoning: The payable form needs a community case, which only Community Enrolment
+    creates, and enrolment needs a cbf case, which only Facilitator Registration creates.
+    Substituting a registration form for the payable one is banned (ace#1138). Leg
+    B is an inline menu walk because deliver-form-walk.yaml cannot cross a case list
+    that appears after the form row in a mixed registration+followup module.
+  source: 'Nova get_form: Community Enrolment is a followup on cbf creating child
+    case community; Community Meeting Record is a followup on community'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: deliver-smoke-run-unique-keys
+  phase: 3-commcare
+  skill: app-test-cases
+  question: What values does the Deliver smoke type into the duplicate-guarded key
+    fields?
+  ai-default: Run-id-suffixed values
+  options:
+  - Run-id-suffixed values
+  - Fixed sample values
+  reasoning: Both registration forms become unsaveable when the casedb already holds
+    a match, and cases accumulate across runs for the same test user and domain. CBF
+    phone 0925091536, name Thandiwe Banda 1536, community ID SPK-20260925-1536 and
+    community Kunthembwe 1536 keep the guards hidden and make CASE_NAME matching unambiguous.
+  source: 'Nova get_form: cbf_warning (casedb match on cbf_primary_contact), community_warning
+    (casedb match on community_id); ace#2226 case accumulation'
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: date-picker-screen-scroll-method
+  phase: 3-commcare
+  skill: app-test-cases
+  question: How do the smoke recipes scroll field-list screens that put a date picker
+    above further questions?
+  ai-default: Edge-origin swipes at x=5%
+  options:
+  - Edge-origin swipes at x=5%
+  - scrollUntilVisible from centre
+  - Advance without scrolling
+  reasoning: Registration 'Where you work' and meeting 'About this meeting' carry
+    an inline DatePicker above inputs, selects and the GPS button. A centre-origin
+    scroll is consumed by the picker and spins the date. Picker bounds are 2.63.2
+    observations not re-observed on 2.64.0; a spun date is refused loudly by each
+    field's own constraint.
+  source: "skills/app-test-cases \xA7 kind: date (ace#1300); lib/fieldlist-gestures.ts\
+    \ safeScrollOriginX"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: program-currency-usd-vs-mwk
+  phase: 4-connect
+  skill: connect-program-setup
+  question: Reuse the USD Spark program (convert at award) or create a replacement
+    MWK program?
+  ai-default: Create new MWK program
+  options:
+  - Create new MWK program
+  - Reuse USD program and convert at award
+  reasoning: "HUMAN-DECIDED by the operator (jjackson@dimagi.com, 2026-09-26T00:30Z,\
+    \ orchestrator AskUserQuestion at the Phase 3->4 boundary); recorded as ai-default\
+    \ only because the write boundary refuses a caller-asserted human-decided status\
+    \ (ace#2307) and no inputs/decision-overrides.yaml ruling exists. Created program\
+    \ 9e82982e (MWK, MWI); USD program a115e4f2 left in place, flagged superseded\
+    \ in opp.yaml. Spot-check: Connect \u203A program 9e82982e \u203A currency."
+  source: "run_state.yaml operator_decisions.program-currency-usd-vs-mwk; PDD \xA7\
+    14 locale warning, \xA715.3"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: stated
+  params:
+    decided_by: jjackson@dimagi.com
+    decided_at: '2026-09-26T00:30:00Z'
+    record: 'run_state.yaml operator_decisions.program-currency-usd-vs-mwk (status:
+      human-decided)'
+    new_program: 9e82982e-7638-44bc-9de2-2bfcefae550d
+    superseded_program: a115e4f2-6af6-401b-8add-8b97af80f43c
+- id: program-reuse-vs-create
+  phase: 4-connect
+  skill: connect-program-setup
+  question: Reuse an existing Connect program or create one?
+  ai-default: Create
+  options:
+  - Create
+  - Reuse a115e4f2 (USD)
+  reasoning: 'Only domain+archetype match was a115e4f2, whose currency (USD) diverges
+    from the PDD''s MWK; the operator chose replacement. Spot-check: opp.yaml connect.program.id.'
+  source: connect_list_programs(ai-demo-space) unfiltered, 45 programs; operator decision
+    program-currency-usd-vs-mwk
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: program-delivery-type
+  phase: 4-connect
+  skill: connect-program-setup
+  question: Which Connect delivery type does the program use?
+  ai-default: ace
+  options:
+  - ace
+  - interview
+  - conversation
+  reasoning: "PDD declares ace; present in the live list. No type fits community-meeting\
+    \ facilitation (open question connect-delivery-type-fit). Spot-check: Connect\
+    \ \u203A program \u203A delivery type."
+  source: "PDD \xA714 connect_delivery_type; connect_list_delivery_types (19 types)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: payment-unit-shape
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: What payment unit shape does the opportunity use?
+  ai-default: one PU per verified meeting, max_total 21, max_daily 1
+  options:
+  - one PU per verified meeting, max_total 21, max_daily 1
+  - one PU per step
+  reasoning: "longitudinal-visits: one PU for the whole arc; sequence lives in entity_id.\
+    \ PU 7a0d526c requires DU 7083. Spot-check: Connect \u203A opportunity \u203A\
+    \ payment units."
+  source: "PDD \xA73.1, \xA710.1, \xA714 daily_cap_per_flw, total_cap_per_flw"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: opportunity-end-date
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: When does the opportunity close?
+  ai-default: '2027-02-26'
+  options:
+  - '2027-02-26'
+  - '2027-03-31'
+  reasoning: "PDD proposed end date incl. 2-week buffer; moves with the awarded response.\
+    \ Spot-check: Connect \u203A opportunity \u203A end date."
+  source: "PDD \xA713, \xA714 opportunity_end_date [PROPOSED]"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: stated
+- id: connect-rule-meeting-conducted-yes
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'meeting_conducted = yes' enforced?
+  ai-default: "Not configurable on Connect \u2014 not applied"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Not-held records get their own entity_key space (meeting_kind=not_held)\
+    \ but still carry the deliver block, so they mint work until rejected. Set on\
+    \ the Phase 9 LLO opp. Spot-check: Connect verification config; Deliver app \u203A\
+    \ Community Meeting Record \u203A about_this_meeting \u203A meeting_conducted."
+  source: "PDD \xA73.1, \xA77.1(1), \xA714"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA77.1(1): Phase 4 configures both predicate clauses as Connect form-field\
+    \ rules"
+  - 'connect_set_verification_flags refused on the self-managed opp: /verification_flags_config/
+    302 (ace#2419)'
+- id: connect-rule-meeting-type-community
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'meeting_type = community_meeting'
+    enforced?
+  ai-default: "Not configurable on Connect \u2014 not applied"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Committee meetings keyed under meeting_kind=committee_meeting but still\
+    \ minted as work on this opp. Set on the Phase 9 LLO opp. Spot-check: Deliver\
+    \ app \u203A Community Meeting Record \u203A about_this_meeting \u203A meeting_type."
+  source: "PDD \xA73.1, \xA77.1(1), \xA714"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA77.1(1): Phase 4 configures both predicate clauses as Connect form-field\
+    \ rules"
+  - 'connect_set_verification_flags refused on the self-managed opp: /verification_flags_config/
+    302 (ace#2419)'
+- id: connect-rule-case-ownership
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'the submitting CBF owns the community
+    case' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Community is a child case of the CBF's own cbf case; the meeting menu\
+    \ lists only the worker's cases. Spot-check: Deliver app \u203A Community meetings\
+    \ case list."
+  source: "PDD \xA77.1(2)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-rule-three-per-step-cap
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'at most 3 paid meetings per community
+    per FCAP step' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "entity_key = concat(case_id, step, min(stored_index+1,3), meeting_kind)\
+    \ feeds deliver/entity_id; Connect de-dups on it. Clamp verified in the released\
+    \ CCZ. Spot-check: Deliver app \u203A Community Meeting Record \u203A entity_key\
+    \ / capped_index."
+  source: "PDD \xA73.2, \xA77.1(3), \xA714 entity_id_grain"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-one-meeting-per-day
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'a held community meeting must be dated
+    after the last one' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "date_of_meeting constraint vs last_community_meeting_date. Spot-check:\
+    \ Deliver app \u203A Community Meeting Record \u203A date_of_meeting."
+  source: "PDD \xA75.4 screen 2, \xA77.1(3)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-in-form-consistency
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'speakers <= attendees; households
+    represented <= enrolled' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Form constraints on the who_came group. Spot-check: Deliver app \u203A\
+    \ Community Meeting Record \u203A who_came."
+  source: "PDD \xA77.1(4), \xA75.4"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-live-photo
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'a live meeting photo on every held
+    meeting' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "required binary + appearance=acquire (camera-only). Connect has no attachment\
+    \ check (ace#1013). Spot-check: Deliver app \u203A Community Meeting Record \u203A\
+    \ attach_a_photo_for_the_meeting."
+  source: "PDD \xA77.1(4), \xA74.1"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-completeness
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'every required field for the current
+    step present' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Required binds throughout the meeting record. Spot-check: Deliver app\
+    \ \u203A Community Meeting Record."
+  source: "PDD \xA77.1(5)"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-daily-limit
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'at most 1 payable meeting per CBF
+    per day' enforced?
+  ai-default: CCZ constraint
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - Connect payment unit max_daily
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Date check in the form, backed by Connect payment unit max_daily=1.\
+    \ Spot-check: Connect \u203A payment unit \u203A max_daily; Deliver app \u203A\
+    \ date_of_meeting."
+  source: "PDD \xA77.1(6), \xA710.1, \xA714 daily_cap_per_flw"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-total-cap
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'total cap 21 per CBF' enforced?
+  ai-default: CCZ constraint
+  options:
+  - CCZ constraint
+  - Connect payment unit max_total
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Structural 7 x 3 from the per-step clamp, also Connect PU max_total=21.\
+    \ Spot-check: Connect \u203A payment unit \u203A max_total."
+  source: "PDD \xA714 total_cap_per_flw, cap_rationale"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-location-advisory
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'location captured for review only'
+    enforced?
+  ai-default: "Not configurable on Connect \u2014 applied elsewhere"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "CCZ submits location_review_flag / distance_from_community_m as advisory\
+    \ review inputs; Connect has no GPS flag. Spot-check: Deliver app \u203A Community\
+    \ Meeting Record \u203A meeting_gps."
+  source: "PDD \xA75.6, \xA714 verification_flags"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-no-duplicate-gps-flags
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'no duplicate or GPS flags; de-duplication
+    rides on entity_id' enforced?
+  ai-default: "Not configurable on Connect \u2014 applied elsewhere"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Held in the CCZ entity_key; no dead flags sent (ace#1013). Spot-check:\
+    \ Deliver app \u203A entity_key."
+  source: "PDD \xA714 verification_flags"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: connect-rule-layer-b-review
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'review >= 20% of paid meetings plus
+    10% of unpaid' enforced?
+  ai-default: "Not configurable on Connect \u2014 applied elsewhere"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: 'Implementing organisation''s review procedure (Phase 9 / training);
+    CCZ submits repeat_counts_flag and location flags to target the sample. Spot-check:
+    training LLO guide (Phase 6).'
+  source: "PDD \xA77.2"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-rule-layer-c-calls
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Where is the PDD verification rule 'confirmation calls for >= 10% of paid
+    meetings' enforced?
+  ai-default: "Not configurable on Connect \u2014 applied elsewhere"
+  options:
+  - Connect form_field_rules
+  - CCZ constraint
+  - "Not configurable on Connect \u2014 applied elsewhere"
+  - "Not configurable on Connect \u2014 not applied"
+  reasoning: "Supervisor call procedure; consent captured at enrolment (contact_consents_to_calls).\
+    \ Spot-check: Deliver app \u203A Community Enrolment \u203A contact_consents_to_calls."
+  source: "PDD \xA77.3"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-latitude-payment-amount
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Which single FLW amount does the payment unit carry within the PROPOSED
+    MWK 5,000-10,000 band?
+  ai-default: '7500'
+  options:
+  - '7500'
+  - '5000'
+  - '10000'
+  reasoning: "Band midpoint, the figure PDD \xA710.1 uses for per-CBF earnings; replaced\
+    \ by the awarded rate. Spot-check: Connect \u203A payment unit \u203A amount."
+  source: "PDD \xA710.1, \xA714 payment_rate_min/max [PROPOSED]"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: connect-latitude-opportunity-dates
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Which start/end dates does the build opportunity carry?
+  ai-default: PDD dates 2026-11-02 to 2027-02-26
+  options:
+  - PDD dates 2026-11-02 to 2027-02-26
+  - start today
+  reasoning: "Moving the start to make Phase 6 payable edits the contract to satisfy\
+    \ a test (ace#2427); Phase 6 expects not-started-as-designed. Spot-check: Connect\
+    \ \u203A opportunity \u203A start date."
+  source: "PDD \xA713, \xA714 [PROPOSED]"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+- id: connect-latitude-program-dates
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: Which dates does the new program carry?
+  ai-default: 2026-10-01 to 2027-03-31
+  options:
+  - 2026-10-01 to 2027-03-31
+  - 2026-11-02 to 2027-02-26
+  reasoning: "Contains solicitation, opportunity window and March 2027 closeout. Spot-check:\
+    \ Connect \u203A program \u203A dates."
+  source: "PDD \xA713"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-latitude-program-budget-ceiling
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: What budget ceiling does the program carry?
+  ai-default: 32760000 MWK
+  options:
+  - 32760000 MWK
+  - 3276000 MWK
+  reasoning: "10 x per-opp budget; Sigma 0 at creation (new program). Cross-run ceiling,\
+    \ not pilot cost. Spot-check: Connect \u203A program \u203A budget."
+  source: "PDD \xA714 total_budget; connect-program-setup Step 4a"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-latitude-program-name
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: What name does the new program carry?
+  ai-default: "Spark FCAP Facilitation \u2014 Malawi Follow-Up Study (MWK)"
+  options:
+  - "Spark FCAP Facilitation \u2014 Malawi Follow-Up Study (MWK)"
+  - "Spark FCAP Facilitation \u2014 Malawi Field Deployment"
+  reasoning: "longitudinal-visits naming; (MWK) distinguishes it from the superseded\
+    \ USD program. Spot-check: Connect \u203A program \u203A name."
+  source: "PDD \xA71; connect-program-setup \xA7 Archetypes"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: connect-ambiguity-form-field-rules-unreachable
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: "The PDD fixes form_field_rules on the opportunity, but Connect refuses\
+    \ the rules page on ACE's self-managed build opp \u2014 how is that resolved?"
+  ai-default: "OPEN \u2014 apply on Phase 9 LLO opp"
+  options:
+  - "OPEN \u2014 apply on Phase 9 LLO opp"
+  - accept no server-side Layer A
+  reasoning: "OPEN \u2014 capability decision pending on ace#2419. Spot-check: Connect\
+    \ \u203A opportunity d5deee9b \u203A verification config (redirects)."
+  source: "PDD \xA714 verification_flags [FIXED]; ace#2419"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA714 verification_flags: form_field_rules meeting_conducted = yes; meeting_type\
+    \ = community_meeting"
+  - Connect is_opportunity_pm false when requesting org == holding org -> /verification_flags_config/
+    302 (ace#2419)
+- id: connect-ambiguity-program-currency
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: "The durable program was USD while the PDD is fixed in MWK \u2014 how\
+    \ is that resolved?"
+  ai-default: new MWK program
+  options:
+  - new MWK program
+  - reuse USD and convert
+  reasoning: "Operator decision (jjackson@dimagi.com, 2026-09-26). Spot-check: Connect\
+    \ \u203A program 9e82982e \u203A currency."
+  source: "PDD \xA714 locale warning; run_state operator_decisions.program-currency-usd-vs-mwk"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: conflicting
+  conflict_signals:
+  - "PDD \xA714 opportunity_currency: MWK"
+  - 'Connect program a115e4f2 currency: USD (create-time only)'
+- id: system-prompt-baseline
+  phase: 5-ocs
+  skill: ocs-agent-setup
+  question: What baseline system prompt does the per-opp chatbot inherit (golden template
+    default vs. customized for archetype)?
+  ai-default: Composed per-opp prompt, supplementary surface
+  options:
+  - Golden template default
+  - Composed per-opp prompt, supplementary surface
+  - Composed per-opp prompt, primary surface
+  reasoning: The composed prompt REPLACES the golden template text on publish, so
+    it must carry every protection itself. longitudinal-visits has a real 6-module
+    Learn app, so the bot is framed as supplementary (primary framing is reserved
+    for focus-group). Carries the 4 standing fabrication domains + 8 PDD open questions,
+    contact exactness + retrieval-fallback obligations with zero inlined addresses,
+    the stored-value vs what-happened rule on meeting_type, a correction of the PDD's
+    stale USD locale warning (Phase 4 created an MWK program), and a mandatory closing
+    tag line. Step 7.5 audit exit 0.
+  source: "PDD \xA71, \xA73, \xA74, \xA77, \xA78.3, \xA710.1, \xA715; run_state operator_decisions.program-currency-usd-vs-mwk;\
+    \ ocs-agent-setup Step 7"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: rag-collection-scope
+  phase: 5-ocs
+  skill: ocs-agent-setup
+  question: What documents land in the per-opp RAG collection (golden defaults vs.
+    opp-specific additions)?
+  ai-default: PDD + text inputs + PDFs + app summaries + contacts
+  options:
+  - PDD only
+  - PDD + text inputs + PDFs + app summaries + contacts
+  - Everything in inputs/ including spreadsheets and CCZ
+  reasoning: Canonical recipe (PDD + inputs + app summaries) plus the generated contacts
+    page (ace#1665). The .xlsx is excluded because indexed collections reject spreadsheets
+    (ace#1296); its text extract is indexed instead. The Spark .ccz is a zip and is
+    not indexable. The deep-QA answer key 2-scenarios/pdd-to-test-prompts.md is a
+    hard exclusion (ace#1018). Phase 6 training docs are added later by ocs-knowledge-refresh.
+    Shared Connect collection 350 attached alongside opp collection 602.
+  source: inputs/ folder listing; 3-commcare/ summaries; ocs-agent-setup Step 5
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: test-prompt-count
+  phase: 5-ocs
+  skill: ocs-agent-setup
+  question: How many test prompts feed the Phase 5 smoke-eval gate?
+  ai-default: 3 universal quick prompts
+  options:
+  - 3 universal quick prompts
+  - 3 universal + 1-2 archetype prompts
+  - Full deep suite
+  reasoning: Archetype is longitudinal-visits, not focus-group, so the quick suite
+    is the 3 universal Connect prompts only (270s cap). The 72-prompt opp-specific
+    suite is graded out-of-band by /ace:qa-deep, which gates Phase 9 llo-launch.
+  source: "ocs-chatbot-qa Step 4 --quick suite; PDD \xA71 archetype"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: sol-solicitation-type
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: Which solicitation kind is published?
+  ai-default: EOI
+  options:
+  - EOI
+  - RFP
+  - custom
+  reasoning: "PDD \xA712 names EOI; the rate, geography and device readiness are all\
+    \ to be proposed by respondents, which suits an expression of interest rather\
+    \ than a priced RFP. Published as labs solicitation 22742 (solicitation_type eoi)."
+  source: "PDD \xA712 Solicitation; \xA714 solicitation_type"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: sol-response-deadline
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: Response deadline and engagement window on the listing?
+  ai-default: 14 days (2026-10-10); 2026-10-26 to 2027-03-12
+  options:
+  - 14 days (2026-10-10); 2026-10-26 to 2027-03-12
+  - 21 days
+  - Phase 4 opp dates
+  reasoning: "Deadline = publish 2026-09-26 + 14 d (PDD \xA712). Start = deadline\
+    \ + 16 d contracting allowance, aligned to the work order Period of Performance\
+    \ start. End addend: PDD \xA713 total 22 wk minus the 14-day solicitation-open\
+    \ row (rule 1); the award/onboarding/Learn row is KEPT because it carries partner\
+    \ delivery work (rule 2) -> 20 wk; end set to 2027-03-12 (span 137 d) to match\
+    \ the work order Period of Performance end, under the 140 d ceiling (154 d - 14\
+    \ d). Phase 4 opp dates (2026-11-02..2027-02-26) are not the anchor."
+  source: "PDD \xA712, \xA713; work order \xA75 Period of Performance; solicitation-create\
+    \ Step 2 / 7a"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+- id: sol-response-template-choice
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: Stock template or opp-custom response form?
+  ai-default: Default merged with PDD asks
+  options:
+  - Default merged with PDD asks
+  - Stock default only
+  - Fully custom
+  reasoning: "Default 6-question template for a repeated-visit design, deduped against\
+    \ the five PDD \xA712 required asks (devices/connectivity go-no-go, district and\
+    \ communities, rate with justification, review capacity, instead-of/in-addition-to\
+    \ filing) plus permissions and data; 9 questions, 7 criteria (weights sum to 100),\
+    \ every question scoreable by a criterion naming its subject."
+  source: "PDD \xA712; solicitation-create Step 3"
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: stated
+- id: solicitation-all-in-rate-and-devices
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: How is the rate framed on the listing, and where do device costs sit?
+  ai-default: All-in, devices inside the rate
+  options:
+  - All-in, devices inside the rate
+  - "Devices costed separately (work order \xA72)"
+  reasoning: "Standing operator directive (2026-09-08) requires an all-in per-verified-unit\
+    \ rate with no separately-funded line and an explicit worker-vs-organisation split\
+    \ (ace#2265). The PDD band (MWK 5,000-10,000 to the CBF + MWK 3,000 organisation\
+    \ floor, both PROPOSED; Phase 4 payment unit 7,500 + 3,000) is shown as an indicative\
+    \ all-in MWK 8,000-13,000. This deviates from work order \xA72 / PDD \xA712, which\
+    \ let the partner cost device provision separately; the listing instead asks how\
+    \ any device gap is carried inside the rate. The work order text should be reconciled\
+    \ at contract execution."
+  source: "PDD \xA710.1, \xA712, \xA714; work order \xA72, \xA76.2; run_state connect-setup\
+    \ payment_units"
+  status: ai-default
+  value_set_by: external
+  evidence_basis: conflicting
+  conflict_signals:
+  - "Work order \xA72 / PDD \xA712: device provision costed separately, funded only\
+    \ if Dimagi agrees"
+  - 'Operator directive 2026-09-08 (solicitation-create design principle): rate is
+    all-in, never invite a separately-funded line'

@@ -2186,7 +2186,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
    Cite the PDD section on every row. The programme memo quotes rows as
    written and marks an uncited one `NOT CITED by pdd-to-deliver-app` rather
-   than guessing a section. Until ace#2371 this section had no fixed name —
+   than guessing a section.
+
+   **State every app check at the scope it is keyed on.** A form constraint
+   or a `casedb` read is keyed on the case the form is filled against, so
+   describe it as "per community" / "per household", never as enforcing a
+   per-worker limit. On `spark-facilitator/20260926-1800` the date check was
+   called the "one-community-meeting-per-day check" and the threshold line
+   read "daily cap 1 vs the one-community-meeting-per-day date check —
+   coherent", which Phase 4 and the memo then read as the app enforcing the
+   per-WORKER daily cap. It does not: one worker can record two communities
+   on one day, and only Connect's payment unit `max_daily` stops the second
+   being paid. Say which limit a per-worker rule relies on (Connect's), and
+   what the app check adds at its own scope. Until ace#2371 this section had no fixed name —
    `poverty-graduation/20260908-0510` headed it "Deliver app — build memo" —
    and nothing collected it, so no reviewer ever saw it.
 
@@ -2526,6 +2538,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **Step 7: every app check in the build memo is stated at the scope it is keyed on (build-memo-eval, spark-facilitator/20260926-1800).** The Deliver memo called the per-community date check the "one-community-meeting-per-day check" and judged it "coherent" with the per-worker daily cap of 1; Phase 4 and the programme memo then credited the app with enforcing that cap, which only Connect's payment unit `max_daily` does. Paired with `connect-opp-setup` Step 8's scope paragraph and `skills/build-memo`'s `--check`. | ACE team |
 | 2026-09-26 | **Step 4j sub-step 6 no longer hard-codes the counter timing (ace#2515).** The snippet hard-coded a pre-increment timing into its `payableCapacity` call, which reads a correct `min(<casedb count> + 1, cap)` clamp as capacity `cap + 1` and HALTs it — then "repairs" it into an under-pay. Observed on `spark-facilitator/20260926-1413` (`min(#form/step_info/prior_index + 1, 3)`, correct, would have halted). It now calls `checkBuiltClampCapacity`, which resolves the timing via `classifyCounterTiming` over the `get_field` read-backs (Nova `#form/` and `#<case_type>/` spellings accepted — captured read-back spells the case read `#community/…`) and returns `unable` rather than assuming one. *Enforced:* `test/lib/payable-cap-build-time.test.ts` (the repro as positive control; `min(<casedb>, cap)` and an under-paying `min(<casedb> + 1, cap - 1)` as negative controls; a skill-text guard against a literal timing), fed from the captured `get_field` read-back `test/fixtures/nova/capped-index-readback-spark-20260926-1413.json`. | ACE team |
 | 2026-09-25 | **The case-UPDATE `entity_id` rule now SANCTIONS the case read it used to forbid (ace#2199).** The REQUIRED paragraph still told the architect that a followup `case-ref` could never be built (citing `voidcraft-labs/commcare-nova#458`, closed COMPLETED 2026-08-15) and steered followup forms to `concat(username, <date>)` — the `atomic-visit` grain, which cannot express a per-entity cap and is the ace#1462 failure for a `longitudinal-visits` design. The paragraph's own re-open condition ("re-verify against a live compiled CCZ") is now met: on `spark-facilitator/20260925-1536` the Deliver followup form was briefed with `#case/` reads and the released build `5c1eef4323224550b1c36a7da9521e71` compiles `entity_key` as a live `calculate` over `instance('casedb')` (`@case_id`, `pilot_fcap_step`). The rule now says: read the case with `#case/<property>` in a hidden calculate; `caseWrite` + literal default is still not a read (ace#1224); a visible case-bound field pre-fills the previous answer (ace#2006); never fall back to the username grain for a longitudinal design. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` (inverted to require the read and forbid the retired closure). | ACE team |
 | 2026-09-17 | **Step 4j gains sub-step 6 — capped-index arithmetic (ace#2148).** When a per-entity cap rides in `entity_id` as a clamped counter, the clamp constant is NOT the cap: a `casedb` read is the state BEFORE this submission, so `min(<casedb count>, N)` admits `N + 1` distinct keys and the (N+1)-th mints an index that has never existed, which Connect pays. `spark-facilitator/20260906-2233` shipped a cap of 3 binding at 4 — 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green, the CCZ structurally perfect, and the app internally consistent with its own wrong key; `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. Nothing on this path re-derived the arithmetic, so it surfaced only in `pdd-to-deliver-app-eval`, one Nova build later. The step deliberately does NOT compare the clamp to the cap — both correct spellings are live in this same opportunity five weeks apart and share no constant (`min(<casedb count> + 1, 3)` vs `if(pcts >= 3, 2, pcts)`) — it traces the first `cap + 1` submissions, mechanically via `lib/payable-cap-arithmetic.ts`. Paired with `_app-component-library § payability-scoped-key` CAPPED INDEX and the released-form backstop in `app-release-qa § Step 4`. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts` + `test/skills/payable-cap-wiring.test.ts`. | ACE team |

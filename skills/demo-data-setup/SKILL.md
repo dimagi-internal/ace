@@ -1494,7 +1494,29 @@ param (`labs.context.CONTEXT_PARAMS` is `organization_id`/`program_id`/
 `opportunity_id`). A scene that opens the review cold gets the session's last
 `opportunity_id` appended and renders "Workflow definition <id> not found under
 opportunity <n>" (ace#2521, spark-facilitator/20260926-1413). `demo-data-setup-qa`
-check 2 fails it (`checkWorkerReviewUrlScope`). Write `products.synthetic.cascade` (`registry`, `program_id`,
+check 2 fails it (`checkWorkerReviewUrlScope`).
+
+**Never hand-assemble a worker-review URL, and never copy one off a "Review →"
+link.** Prose alone did not hold: spark-facilitator/20260926-1800 wrote all three
+`*worker_review_url`s with `owning_program_id` after this paragraph already said
+not to. Generate them with the one builder (`lib/worker-review-url.ts`), AFTER
+the cascade block below is in run_state, from a carriers file naming each worker
+(`[{"keyPrefix": "", "opportunityId": <opp>, "username": "<user>"},
+{"keyPrefix": "standout_worker", …}]`), and merge its output into realized.json:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/worker-review-url.ts" \
+  --run-state <local run_state.yaml> --carriers <carriers.json>
+```
+
+A realized.json already written with `owning_program_id` is repaired in place,
+not re-derived by hand:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/worker-review-url.ts" --fix <local realized.json>
+```
+
+Write `products.synthetic.cascade` (`registry`, `program_id`,
 `partners`, `programme_report`, `worker_review`, `opp_reports[]`, `cohort_id`,
 `history`, `story_verified`) AND mirror the reports into `products.synthetic.workflows`
 (`{programme_report: {workflow_id, run_url}, <partner>_opp_report: {...}}`) — that
@@ -1880,6 +1902,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **§ C7 builds every `*worker_review_url` with one builder (ace#2521 recurrence).** spark-facilitator/20260926-1800 wrote all three worker-review links with `owning_program_id` and no `program_id`, after § C7's prose already forbade it — the URL was hand-assembled from the programme report's "Review →" links. `lib/worker-review-url.ts` (`buildWorkerReviewUrl`, `workerReviewUrls`, `rescopeWorkerReviewUrl`) is now the only constructor; § C7 calls `scripts/worker-review-url.ts` to build them from the run_state cascade or repair a written realized.json in place. `checkWorkerReviewUrlScope` stays the gate. *Enforced:* `test/lib/worker-review-url.test.ts` (fixtures: that run's realized.json + run_state). | ACE team |
 | 2026-09-17 | **New step 4c: the `in_progress` mandate is PROVEN before its `par_url` is recorded (ace#2430).** § The interactive run stays live required exactly one run to stay live and check 8 enforced it, but nothing ever loaded that page — step 3 proves the pipeline extracts and check 7 reads the data through `api/<def>/pipeline-data/`, a side-channel around the stream the page itself uses. The two run states are not symmetric: a completed run's page returns early on its snapshot (`workflow-runner.tsx`: `if (snapshotCarriesPipelines) return;`), while an `in_progress` run has no snapshot and re-runs the pipeline SSE stream on every load, every take. On `poverty-graduation/20260915-1518` that stream died after its first event and the interactive dashboard could not load at all — and check 8, being one-sided, *enforced* the dead state: a `completed` interactive run failed, so the only QA-passing configuration was the one that could not render. Now: probe `api/<def>/pipeline-data/stream/` with `refresh=1`, classify it with `classifyLiveLoadStream` (`lib/interactive-live-load.ts`), record `source.interactive_live_load`, and — when the live load fails against a completed control run of the SAME definition that DOES render — ship the run completed under an evidenced escape carrying `control_run_id` + `upstream_ref`. Probed live 2026-09-17 on definitions 5714 and 5695 / labs opp 10065: both streamed to completion (4s / 7s, 137 + 9 rows), i.e. the labs-side failure did NOT reproduce — which is the argument for checking at record time rather than reasoning once. *Enforced:* `test/lib/interactive-live-load.test.ts` (fixtures trimmed from those real captures). | ACE team |
 | 2026-09-17 | **A REPEAT group is no longer a `declared_omissions[]` class — step 2c.4 said it was structurally impossible, and both halves of that premise are refuted (ace#2432).** `auditDataset` resolved a conditional field by leaf name against a flat record, and `leafPaths` treated an array as an opaque LEAF — so `/data/roster/member_name` had no path at all while its gate, at the record's top level, resolved fine. Measured on `poverty-graduation/20260915-1518` (deliver app `e4594937038c42d2be4d01f45df44209` v7, 2,207 records): `member_name`, `is_member` and `member_flag` each reported `conditional-missing` on 1,379 records — exactly the 1,379 carrying a non-empty `form.roster`, whose `roster[].member_flag` sums re-derive the app's own `/data/member_count` with 0 failures. The run spent three `declared_omissions` entries exempting data that was present and correct, so materialising the repeat scored the same as skipping it. `leafPaths` now descends into an array (index elided, so one spec field addresses every row), which fixes `auditDataset` and the scrub's `unresolvedFields` together and makes the scrub clear an off-branch value from EVERY row. The other half: `BeneficiaryCohort.repeat_groups: dict[str, RepeatGroupSpec]` is in the labs manifest schema, so the generator can emit one. *Enforced:* `test/lib/dataset-constraints-repeat-groups.test.ts`, against real captures of that run's deliver app and records — including the negative controls, since an empty repeat and rows lacking the leaf must both still read as absent. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.{provider, labs_opp_id, workflows, source, render_code_patched_this_run}` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to the skill that writes it, and ace-web's skill fork trims by it — so a Phase 7 fork at `demo-narrative` now carries exactly these five keys and drops `narrative` / `ddd_*`. Nothing changes in what this skill writes; if it starts writing a new `synthetic.<key>`, add the attribution there too (the coverage test fails on a schema-declared key with no producer). | ACE team |

@@ -189,7 +189,8 @@ export function checkWorkerReviewUrlScope(realized: Record<string, unknown>): QA
     pass: false,
     detail: problems.join('; '),
     auto_fix_hint:
-      'build each worker_review_url as /labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>' +
+      'rebuild each worker_review_url with scripts/worker-review-url.ts (--fix <realized.json> repairs in place): ' +
+      '/labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>' +
       '&flw=<opp>%3A%3A<username>&source_run=<latest> (demo-data-setup § C7; dimagi-internal/ace#2521).',
   };
 }
