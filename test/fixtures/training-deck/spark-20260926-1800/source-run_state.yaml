@@ -1,0 +1,25 @@
+﻿opportunity: spark-facilitator
+run_id: 20260925-1536
+mode: default
+created: "2026-09-25T21:37:04Z"
+initiated_by: jjackson@dimagi.com
+last_actor: ace-synthetic-data-and-workflows-agent
+last_actor_at: "2026-09-26T06:50:00Z"
+current_phase: solicitation-management
+ace_web_summary_url: https://labs.connect.dimagi.com/ace/opps/dimagi-team/spark-facilitator/runs/20260925-1536/summary
+triggered_by:
+  surface: email
+  thread_id: 19f5ca720cd6a5ff
+  requester: jjackson@dimagi.com
+  requested_at: "2026-09-25T21:32:32Z"
+lineage:
+  supersedes: 20260910-1624
+  reason: Operator (Jon, thread 19f5ca720cd6a5ff, 2026-09-25) asked ACE to take
+    another full shot at building the Spark Facilitator program now that
+    pipeline kinks are worked out. The prior run 20260910-1624 was a seeded
+    Phase-7-only fork, not a full build, so a fresh full run (Phases 1-8) is the
+    right shape rather than a resume.
+# TRIMMED: the header of ACE/spark-facilitator/runs/20260925-1536/run_state.yaml
+# (Drive 1b8d5cnLJSJnRSw_GEugxvYookDfn7AqgRJoyDibRFoM, read 2026-10-01), verbatim
+# down to `lineage:` -- the BOM included. `phases:` and later keys are cut;
+# the lineage walk reads nothing below this point.

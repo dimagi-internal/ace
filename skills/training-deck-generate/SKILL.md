@@ -28,6 +28,8 @@ Upstream of `training-deck-render`.
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver app structure, form names, module names |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | Platform setup screenshots |
 | Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | Per-opp app screenshots |
+| Phase 3 previews (`app-screenshot-capture` § Step 4.9) | `ACE/<opp>/runs/<run-id>/3-commcare/previews/apps-{learn,deliver}/_previews.yaml` | The same frames, indexed per app (output previews contract v1, `lib/output-previews.ts`) |
+| Fork source (when `run_state.yaml` has `forked_from`) | the two rows above, in `ACE/<opp>/runs/<forked_from>/` | Frames a fork inherited but did not copy (ace-web#758) — step 9b reads them |
 | Current run | `run_state.yaml` | Opportunity metadata, payment info, verification rules |
 | Plugin repo | `templates/training-deck/connect-training-atomic/` | Skeleton + generation prompt |
 
@@ -89,10 +91,12 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    Cross-pool alias collisions: `opp` > `common` > `template` — most specific
    wins (`resolveManifest`, `lib/training-deck-spec.ts`).
 
-   **If the per-opp manifest is missing or empty:** the upstream
+   **If the per-opp manifest is missing or empty:** first check the fork
+   source — a forked run's frames live in its `forked_from` run, and step 9b
+   reads them there. Otherwise the upstream
    `app-screenshot-capture` skill in Phase 6 step 1 didn't produce
-   screenshots (likely due to a smoke-recipe failure). Emit the affected
-   walkthrough slides using `content` layout (no image), surface
+   screenshots (likely due to a smoke-recipe failure). Step 9b then merges the
+   affected screen slides (it never ships one empty), surface
    `[WARN] no per-opp screenshots — `your-opportunity` walkthroughs degraded
    to content-only slides` in the verdict's `auto_surfaced` list, **and then
    apply the visual-coverage gate in step 5b — which this case will fail.**
@@ -101,9 +105,8 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    `journey-learn/` screenshots but no `journey-deliver/` (or vice versa)
    when one capture leg failed/was-deferred (see
    `app-screenshot-capture` per-app legs). Use whichever app's screenshots
-   are present; for the missing app, emit the same "screenshot placeholder
-   — capture in a future AVD-enabled QA run" treatment already used when
-   the whole bundle is absent. One missing leg is a WARN that carries its
+   are present; for the missing app, step 9b merges the screen slides it
+   cannot back, as when the whole bundle is absent. One missing leg is a WARN that carries its
    coverage number; **both** legs missing is a gate failure.
 
 ### Step 5b: Visual-coverage gate (dimagi-internal/ace#856)
@@ -248,9 +251,9 @@ screenshot-blocked run cannot lose it.
      6. **C2 REQUIRED:** one `walkthrough` slide per Deliver form.
         Title `"Form N: <display-name>"`, body cites 2-3 actual field
         labels, image is the per-opp `@alias` if the manifest has one
-        (else fall back to `content` layout — do NOT invent screenshot
-        aliases). A 6-form Deliver app produces 6 walkthrough slides;
-        do NOT collapse.
+        (do NOT invent screenshot aliases). A 6-form Deliver app produces
+        6 walkthrough slides; do NOT collapse. Whether a slide ends up with a
+        frame is decided by step 9b, not by eye — see there.
      7. `section` divider titled `"Verify"`
      8. Quality and verification (1-2 content slides)
      9. `section` divider titled `"Pay"`
@@ -358,6 +361,75 @@ screenshot-blocked run cannot lose it.
    with, and they stay on the slides. Withholding them would not be
    deference; it would be withholding the job description. *Enforced:*
    `test/lib/training-deck-durations.test.ts`.
+
+9b. **Bind a real frame to every screen slide — HARD GATE** (lib/training-deck-frames.ts).
+    Write the validated spec to a local file, then:
+
+    ```bash
+    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/bind-deck-frames.ts" \
+      --spec <local spec.yaml> --run-folder <Drive id of ACE/<opp>/runs/<run-id>> \
+      --out <local bound-spec.yaml> --report <local bind-report.json>
+    ```
+
+    It is read-only against Drive. It walks the run's `forked_from` chain,
+    pools every citable frame (capture manifest, `3-commcare/previews/*`,
+    `manifest.common` / `manifest.template`, and the same in each fork
+    source), measures each frame's pixels (`lib/frame-pixels.ts`: a loading
+    screen is near-empty, a soft keyboard covers the screen), and then, per
+    slide:
+
+    - a slide that promises a screen — a Learn-module slide, a `Step N:`
+      slide, or a body saying the trainee will *see* / *tap* / *open*
+      something — gets the best frame OF THAT SCREEN, or is no longer a
+      screen slide. Learn-module slides take only that module's own frames,
+      never its form list ("finished" landings show where a lesson is, not
+      what it teaches);
+    - frameless Learn-module slides merge into ONE "The Other Learn Sections"
+      slide over the Learn home grid (labels verbatim, each module's text in
+      the notes); any other frameless screen slide is folded into its
+      neighbour's speaker notes. **Never write a screen slide with no
+      screen**;
+    - a loading-screen frame is replaced; a keyboard frame is replaced only
+      by one that matches the slide at least as well;
+    - `mobile_flow` becomes one walkthrough per phone (three phones side by
+      side render at ~54% of the slide height — unreadable projected).
+
+    Exit 0 = the gate (`checkDeckScreenBacking`) passes; 1 = it does not
+    (the report names each slide). **Write the BOUND spec in step 10**, and
+    record the report's `actions` in the verdict.
+
+    **Then close the `needs_shows` loop.** A frame the binder newly placed
+    may carry no `shows:`, and `verify_caption_backing` fails a cited opp frame
+    nobody described. Open each frame `report.needs_shows` names, write its
+    `shows:` line into the capture manifest (app-screenshot-capture § Step
+    5.6), and if the frame does NOT show what its slide says, re-run with
+    `--reject <step>` — the slide then merges rather than shipping a wrong
+    picture.
+
+    *Why it is a script and not an instruction* (spark-facilitator/
+    20260926-1800, render eval 4.66 / fail): ten slides that walk the trainee
+    through a screen shipped with none. Five had a frame in the manifest
+    (`commcare-welcome` for "you see its welcome screen", `deliver-sync-*` for
+    "Tap Sync with Server"); the rest had no frame of their screen and shipped
+    empty anyway, because the old fallback — "use `content` layout" — makes a
+    downgraded slide schematically a text slide, invisible to the coverage
+    gate and to the render self-eval. *Enforced:* `test/lib/training-deck-frames.test.ts`
+    over the real spec, manifest, run_states and frame stats.
+
+    **A FORK's frames live in its source run.** A fork copies each earlier
+    phase's artifacts but not their `screenshots/` subtree (ace-web#758), so
+    the capture manifest it inherited names frames in `<forked_from>/6-qa-
+    and-training/screenshots/`. They resolve by `file_id`, which survives the
+    copy; the lineage walk covers a fork whose manifest is missing or lacks a
+    step, and only `forked_from` (top-level, or `lineage.forked_from`) is
+    followed — never `supersedes`, which is a different build.
+
+    **URLs in a body are written as links: `[label](url)`.** The renderer
+    shows the label and attaches the URL (a bare URL gets a short label
+    automatically). `parseTrainingSpec` also refuses a body taller than its
+    stencil frame (`bodyFit`) — slide 53 of the same deck printed four raw
+    URLs over its own title.
 
 10. **Write** the fully-expanded `training-deck-spec.yaml` to
     `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
@@ -535,6 +607,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-10-01: **Every screen slide is bound to a real frame, or merged — never shipped empty (step 9b).** The render eval failed spark-facilitator/20260926-1800 at 4.66: ten walkthrough / app-screen slides carried no screenshot (five had a frame in the manifest; five had none of their screen and shipped empty anyway), slides 10/17/22/28 showed a loading screen or a one-tile form list, slides 6/32 a keyboard, and slide 53's raw URLs overflowed onto its title. Step 9b runs `scripts/bind-deck-frames.ts` (lib/training-deck-frames.ts + lib/frame-pixels.ts): pools frames from the capture manifest, the Phase 3 previews indexes and the fork source along `forked_from`; measures each frame's pixels; binds by the slide's own words within its part of the app; merges frameless Learn modules into one slide over the Learn home grid and folds other frameless screen slides into a neighbour's notes; expands `mobile_flow`. `checkDeckScreenBacking` is the gate. URLs in bodies are written `[label](url)` (resources template updated) and render as link text; `parseTrainingSpec` refuses a body taller than its frame. On the real spec the gate goes from 11 findings to 0. *Enforced:* `test/lib/training-deck-frames.test.ts`, `test/lib/frame-pixels.test.ts`, `test/lib/training-deck-body-fit.test.ts`.
 - 2026-09-08: **`verify_caption_backing` counts the slides' citations, not `manifest.opp`'s inventory (dimagi-internal/ace#2238).** Step 5 builds the resolution map from the whole capture pool and step 5 then makes the caption gate a BLOCKER — and the gate extracted every Drive fileId in the published artifact, which for a deck spec includes the map. On `spark-facilitator/20260907-1120` that read 91 citations over a deck that places 10 images and reported 66 `no-shows` + 12 `duplicate-cited`, every one naming a frame no slide cites. The two instructions were mutually unsatisfiable for any deck that does not place every captured frame, i.e. for every deck. The fix is in `lib/caption-backing.ts`, not here: for a document that parses as a deck spec, the citations are the slides' image refs resolved through `manifest.*`, and everything else in the spec is still read the way a rendered document is read. Trimming the map is no longer needed (and would break nothing but honesty about what was available). *Enforced:* `test/lib/caption-backing.test.ts § a deck spec cites what its SLIDES place`, with negative controls proving an undescribed, aliased or unknown frame a slide really does place still fails.
 - 2026-09-06: **Step 10 composes the spec to a LOCAL FILE and writes it with `localFilePath` (dimagi-internal/ace#1918).** A fully-expanded spec was measured at 55,719 chars in the 2026-09-02 Drive corpus; emitting it inline costs ~1 output token per 4 characters, and having it on disk is also what makes a `TrainingDeckSpecSchema` rejection cheap to fix (edit one leaf, re-push the file) instead of a full re-emission. Follows the `idea-to-pdd` steps 6/6b template (ace#1780). *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`.
 - 2026-09-02: **Module labels are lifted from the Learn app, never renumbered (ace#1829).** The deck numbered the Learn suite TWO incompatible ways at once: slides 16-19 printed the app's names correctly while slides 34-39 renumbered from list position, counting the unnumbered `Pre-Assessment` tile as Module 1 and shifting every real module up by one. Slide 14 carried the contradiction beside its own evidence — an ordinal list item `4. What makes a visit payable` next to the suite-root screenshot labelling it "Module 3". Slides 34-39 are TIMED hands-on blocks, so a first-day FLW follows "Complete Learn Module 4: What Makes a Visit Payable", opens the app, finds Module 3 under that name and stalls. The step-11 slide-COUNT check could never catch it: counting confirms one practice slide per module, and the shipped deck passed that with every one of those slides carrying a wrong number — a count never reads a label. Three changes: the practice title template drops its synthesised `N` for the app's label verbatim; the `your-opportunity` Learn-preview rule says the same thing explicitly (it was only accidentally right, having no template at all); and step 11 gains a HARD GATE running `lib/deck-module-labels.ts`, whose input must include the UNNUMBERED app entries because their presence is the whole cause. *Enforced:* `test/lib/deck-module-labels.test.ts` (negative control: a position-counting detector — the bug's own logic — fails 9 of 13, inverting both controls) + `test/skills/training-deck-module-numbering.test.ts` (all 6 red against the pre-fix skill text).

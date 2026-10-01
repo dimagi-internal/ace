@@ -5,6 +5,29 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1626 — 2026-10-01
+
+**Training decks: every screen slide is bound to a real frame or merged — never shipped empty; phones are
+drawn legibly; URLs render as link text.** From `training-deck-render-eval`'s first live grade
+(spark-facilitator/20260926-1800, **4.66 fail**): ten walkthrough / app-screen slides had no screenshot,
+several showed a loading screen, a one-tile form list or a keyboard, the three-up PersonalID slide was
+unreadable, and slide 53's raw URLs printed over its title.
+
+- **`lib/training-deck-frames.ts` + `scripts/bind-deck-frames.ts`** (new `training-deck-generate` step 9b,
+  read-only against Drive). Pools every citable frame — the capture manifest, the Phase 3
+  `previews/apps-*/_previews.yaml` indexes, `manifest.common/template`, and the same along the run's
+  `forked_from` chain (a fork's frames live in its source run; `supersedes` is never followed). Binds each
+  screen slide by its own words within its part of the app; frameless Learn modules merge into one slide
+  over the Learn home grid, other frameless screen slides fold into a neighbour's notes; `mobile_flow` is
+  expanded to one phone per slide. `checkDeckScreenBacking` is the gate (generate and render step 2b). On the
+  real spec: 11 findings → 0.
+- **`lib/frame-pixels.ts`.** Decodes the PNG (fflate) and measures it: near-empty (loading screen) and
+  soft-keyboard detection, calibrated on the run's 101 real frames.
+- **Legibility.** Walkthrough phones draw at ~91% of the slide height (was 82%; floor 0.85).
+- **Overflow.** Body URLs render as link text (`[label](url)`, bare URLs get a short label) styled onto the
+  slide's named body frame; `parseTrainingSpec` refuses a body taller than its frame (`bodyFit`), and the
+  wrap estimate now starts a long URL on a fresh line (it counted 13 lines where slide 53 drew 17).
+  `_common/resources.yaml` writes its wiki links as `[label](url)`.
 ## 0.13.1625 — 2026-10-01
 
 **Generator fixes from release-check's read-only run on spark-facilitator/20260926-1800.**

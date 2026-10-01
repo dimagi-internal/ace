@@ -76,6 +76,38 @@ export const MOBILE_ZOOM_IMAGE = (() => {
   return { x: left + Math.round((SLIDE_W - MARGIN - left - w) / 2), y: top, w, h };
 })();
 
+/** A phone capture's width / height (1080x2400). */
+export const PHONE_ASPECT = 0.45;
+
+/**
+ * The share of the slide's height a phone screenshot must fill to be read
+ * from the back of a room. The render eval read a phone at ~82% as legible
+ * ("readable and well placed", spark-facilitator/20260926-1800 slide 15) and
+ * the three-up `mobile_flow` at ~54% as not ("in-phone text unreadable at
+ * projector distance", slide 6). In-phone body text is ~1.5% of the frame's
+ * height, so every point of slide height is worth having: 0.85 is the floor.
+ */
+export const MIN_PHONE_HEIGHT_FRAC = 0.85;
+
+/**
+ * `walkthrough` phone — the right column, nearly full height.
+ *
+ * It used to be a 4_343_400 x 4_229_100 box from y=457_200 (82% of the
+ * height). The walkthrough title and body live in the LEFT 45% only
+ * (`buildWalkthroughTextBoxes`), so nothing above or below the phone in the
+ * right column needs the space: the box now runs from a 0.2" top edge to a
+ * 0.2" bottom edge (~91%). Slides fits the image inside the box preserving its
+ * aspect and centres it, so the phone sits mid-column whatever its width, and
+ * a landscape capture still fits. The box stays left of the corner mark
+ * (`CHROME.logo`, x ≥ 8_636_748) and the right rule.
+ */
+export const WALKTHROUGH_IMAGE = (() => {
+  const edge = 182_880; // 0.2"
+  const x = 4_343_400; // the v5.3 column start, ~230k EMU clear of the body column
+  const right = 8_636_748 - 80_000; // left of the corner mark
+  return { x, y: edge, w: right - x, h: SLIDE_H - 2 * edge };
+})();
+
 /**
  * `mobile_flow` four-up band. `captionY` + `captionH` must land inside the
  * slide: captions previously began at SLIDE_H - 700_000 in a 500_000-tall box,
