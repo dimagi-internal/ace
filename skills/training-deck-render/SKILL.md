@@ -35,6 +35,27 @@ training material step before Phase 7.
 2. **Parse and validate** via `parseTrainingSpec(yamlStr)` — halt on
    validation error.
 
+2b. **Refuse a screen slide with no screen — HALT on any finding.**
+    `checkDeckScreenBacking(spec)` (`lib/training-deck-frames.ts`) with no
+    pool: it reads the spec alone and fails a slide that promises a screen
+    (a Learn-module slide, a `Step N:` slide, "you will see / tap / open")
+    yet carries no image, and any `mobile_flow` (three or four phones side by
+    side render at ~54% of the slide height, which the render eval read as
+    unreadable). A finding means `training-deck-generate` step 9b
+    (`scripts/bind-deck-frames.ts`) did not run on this spec — run it, then
+    render the bound spec. Do not "fix" it here by deleting slides: the
+    binder is what knows which frames exist, including a fork source's.
+
+    `parseTrainingSpec` in step 2 already refuses a body taller than its
+    stencil frame (`bodyFit`); URLs render as link text, attached to the
+    label on the slide's body frame (the duplicate names it
+    `<slideId>_body`).
+
+    Phone geometry: a walkthrough phone is drawn ~91% of the slide height in
+    the right column (`WALKTHROUGH_IMAGE`, `lib/training-deck-stencil-geometry.ts`;
+    floor `MIN_PHONE_HEIGHT_FRAC` = 0.85), up from 82%. Image placement is
+    computed at render time, so this needs no template re-mint.
+
 3. **Resolve manifest** via `resolveManifest(spec.manifest)`.
 
 4. **Check image aliases.** Verify all image aliases used in
@@ -348,6 +369,13 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/rerender-train
 
 ## Change Log
 
+- v3 (2026-10-01): Step 2b — refuse a screen slide with no screen and any
+  `mobile_flow` (`checkDeckScreenBacking`); walkthrough phones drawn at ~91%
+  of the slide height (was 82%); body URLs rendered as link text styled onto
+  the slide's named body frame; `parseTrainingSpec` refuses a body taller
+  than its frame. From the render eval of spark-facilitator/20260926-1800
+  (4.66 / fail): ten screen slides with no screenshot, unreadable three-up
+  phones, and slide 53's raw URLs printed over its title.
 - v2: Step 7b — post-copy stencil placeholder-drift scan, blocking.
   Catches builder/template drift in both directions at the one point
   where both halves are in hand (dimagi-internal/ace#2429). Logic in

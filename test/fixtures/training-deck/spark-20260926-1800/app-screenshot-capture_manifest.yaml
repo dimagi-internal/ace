@@ -1,0 +1,1118 @@
+opp: spark-facilitator
+run_id: 20260925-1536
+generated_at: 2026-09-26T03:44:18.981Z
+apk_selector_map: connect-2.64.0.yaml
+opp_run_id_matcher: 20260925-1536
+drive_folders:
+  phase: 1AqWOTfiO0l8DOKPPMD_kyLzbrirw9on5
+  screenshots: 1E8Dkd4MO_EbbG4lLVuoeTLgGSXdKDuSG
+  journey_learn: 1TBBjypO5qV5pt33AMLtscihL8sx2ee2e
+  journey_deliver: 161hq-v_ndEaR8PSOXXsDNLCsrT96xD8G
+  videos: 1si4h5BK1m0cba6J10P8nAuoi8oeAAqUu
+opp_name: 20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation
+device:
+  avd: ACE_Pixel_API_34
+  serial: emulator-5554
+  ace_mcp_version: 0.13.1556
+journeys:
+  - journey_id: journey-learn-pass
+    app: learn
+    recipe_base: journey-learn
+    status: pass
+    frames: 65
+    connect_gate:
+      learn_complete: true
+      modules_completed_pct: 100
+      assessment_status: passed
+      completed_learning_date: 26-Sep-2026 03:11
+  - journey_id: journey-deliver-submit
+    app: deliver
+    recipe_base: journey-deliver
+    status: pass
+    frames: 47
+    connect_gate:
+      outcome: not-started-as-designed
+      delivered: 0
+      approved: 0
+      rejected: 0
+      start_date: 2026-11-02
+      start_date_source: "connect_get_opportunity live (dashboard_read: ok)"
+      run_date: 2026-09-26
+      duration_floor_seconds: 0
+      walk_elapsed_seconds: 262
+      walk_measured_between:
+        - deliver-form-walk-form-question-meeting
+        - journey-deliver-submitted
+      evidence_frame: deliver-sync-final
+postlearn_landing:
+  file_id: 1ZeYH05A5h2tAbk_o58k9ByzALn2xO6Hu
+  drive_path: 6-qa-and-training/screenshots/journey-deliver/00-postlearn-landing.xml
+  surface: Learn app 'Final assessment' module one-row form list (neither Path A Learn home nor Path B jobs list); connect-resume-opp guarded backs recovered it
+  readback: interstitial
+  reviewer_facing: false
+captures:
+  - journey_id: journey-learn-pass
+    step: connect-login-first-start
+    drive_path: 6-qa-and-training/screenshots/journey-learn/connect-login-first-start.png
+    file_id: 1rRBbqa3GIMoHaSuKoJFOkywgkeW-5ZKY
+    md5: d5dea89e9d27708bda84c4e409ab07d2
+    taken_at: 2026-09-26T03:01:27.610Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: connect-login-home
+    drive_path: 6-qa-and-training/screenshots/journey-learn/connect-login-home.png
+    file_id: 1wK3B3oGiP0Uv_ps-zfkchP0sQKTbPO4J
+    md5: 8c2c3b1e1470e782be135deaa13ae856
+    taken_at: 2026-09-26T03:01:43.201Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: claim-opp-list
+    drive_path: 6-qa-and-training/screenshots/journey-learn/claim-opp-list.png
+    file_id: 1V_NxW_xNWOSUakSYPVodz8RsIPc_yXsi
+    md5: e9aa633052cf6d42c22b5d30302094c3
+    taken_at: 2026-09-26T03:01:50.565Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: claim-opp-list-synced
+    drive_path: 6-qa-and-training/screenshots/journey-learn/claim-opp-list-synced.png
+    file_id: 14eXp8bkJtmZ6-mEvkdmdqDdK3CDXnFia
+    md5: 30f3d8b977ddd2f43096ba453173ab3d
+    taken_at: 2026-09-26T03:01:56.870Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: claim-opp-new-tile
+    drive_path: 6-qa-and-training/screenshots/journey-learn/claim-opp-new-tile.png
+    file_id: 1neFwLAGm4P4IRUjMYyWMgAROPHLfKhWT
+    md5: 7b41e495ab5245c679f914471a318865
+    taken_at: 2026-09-26T03:02:36.289Z
+    readback: ok
+    shows: "Connect opportunity list: tiles for several opportunities (incl. prior test runs) with Task-ends dates and 'View Opportunity' buttons; the '20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation' tile reads 'Task ends on Feb 26, 2027'."
+  - journey_id: journey-learn-pass
+    step: claim-opp-detail
+    drive_path: 6-qa-and-training/screenshots/journey-learn/claim-opp-detail.png
+    file_id: 1ZRJoz-TC94xqw7qovDfe53B_z4qgrEMb
+    md5: 67ea9bc6d9703f9cf6723969761d71fc
+    taken_at: 2026-09-26T03:02:38.543Z
+    readback: ok
+    shows: "Connect opp detail: title '20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation', worker-facing description (paid per verified community meeting, up to 3 per step and 1 per day, committee meetings not paid), 'Complete Project by Feb 26, 2027', Start button, Learn Details list of 7 modules in Connect's own order (1 Before you start, 2 Your role, 3 How payment works, 4 Registering..., 5 Recording..., 6 Counting..., 7 Steps and savings) — NOT the app's menu order; Delivery Details '21 maximum Visits'. No run scaffolding leaks into the description."
+  - journey_id: journey-learn-pass
+    step: claim-opp-handoff-learn-home
+    drive_path: 6-qa-and-training/screenshots/journey-learn/claim-opp-handoff-learn-home.png
+    file_id: 1iNN4qOUlPC8rfI_pfAyDWm9_vd7qeXAK
+    md5: c43d42992febdddd4c404659975ba948
+    taken_at: 2026-09-26T03:02:59.770Z
+    readback: ok
+    ui_dump:
+      file_id: 1Uu5Nuv57h9EBS0DxDha_ECRndPHRFfVF
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: learn-launch-home-tiles
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-launch-home-tiles.png
+    file_id: 1YhXfEGjbqktG4XvdqV-bPwSW4f8EvXWH
+    md5: 0511d4142bbfb8f580ace449bc4d905f
+    taken_at: 2026-09-26T03:03:13.410Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-launch-suite-root
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-launch-suite-root.png
+    file_id: 1_zFwN3e9u2B1TUIGFIIcqH0mYJg3-AjL
+    md5: 702da1d0f64d925029519c18555aabe1
+    taken_at: 2026-09-26T03:03:17.116Z
+    readback: ok
+    ui_dump:
+      file_id: 1gqXx-gc4kGP2C9D7sEus4De7wm4VOAK5
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Learn app 'Spark Facilitator Learn app' grid menu with icon tiles: Before you start, Your role in this pilot, Registering yourself and your community, Recording a meeting, Counting attendance and participation, Steps and savings, plus two more tiles below the fold."
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Before you start
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Before you start.png
+    file_id: 1cbVVnscr61jLtP8XVhxDbPixEDWAHoOM
+    md5: 702da1d0f64d925029519c18555aabe1
+    taken_at: 2026-09-26T03:03:24.285Z
+    readback: ok
+    duplicate_of: learn-launch-suite-root
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-form-row-Starting quiz
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Starting quiz.png
+    file_id: 11yV4ndsJ-qpCCEr8UYuNcJiqeel2RfP-
+    md5: f26259fc4e8c65bc1e558ee02b0ce5ce
+    taken_at: 2026-09-26T03:03:34.810Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Before you start
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Before you start.png
+    file_id: 1V0pkrXaKY92MRjKbBRInyOgYCLonWfNV
+    md5: e71ad246f4096d38929a7d1143c6fad0
+    taken_at: 2026-09-26T03:03:38.518Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-pretest-intro
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-pretest-intro.png
+    file_id: 1mZaY3TuJgznL-AxzZV0qQgkXo0rtz1jO
+    md5: 2611d2511e7264377dbf5cbd74f1fad5
+    taken_at: 2026-09-26T03:03:45.148Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q1-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q1-answered.png
+    file_id: 1tNV6U5Yv05Q3PBchbDlOXg7-Y-tsRiRR
+    md5: 92c7cc48f7d6ae092b8388123c442152
+    taken_at: 2026-09-26T03:04:03.953Z
+    readback: ok
+    ui_dump:
+      file_id: 1hjKszRyUONYfEa947buZuNqvpDyCZWs6
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Starting quiz 'Question 1 of 6': 'You open the registration form. It warns This facilitator is already registered. What do you do?' with 'Stop. You register only once, before your first meeting. Do not register again.' selected; CLEAR button."
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q2-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q2-answered.png
+    file_id: 1LAv6Oin-xHtKWuE-9yxUOZHrcYX_5vqp
+    md5: 69fbe089f5722b9d4682425f1380aa0b
+    taken_at: 2026-09-26T03:04:24.380Z
+    readback: ok
+    ui_dump:
+      file_id: 1v0_4fUm-sAobVHZCYDRqaXvco274JVhi
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q3-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q3-answered.png
+    file_id: 1SPbIsQFvnLPq59ytjd_hAcvyGr3trtZE
+    md5: f0503d2b19177f7f6d8113bd581562e7
+    taken_at: 2026-09-26T03:04:43.785Z
+    readback: ok
+    ui_dump:
+      file_id: 18zu9FgYbo7xhxM0p58xKCb2t1pTAobrJ
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q4-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q4-answered.png
+    file_id: 1RKSABX2i0uJCAjdwfuup6sVYxdG6OS4Q
+    md5: 09adb49f80d31d0dd0ec586f7b5cd275
+    taken_at: 2026-09-26T03:05:02.756Z
+    readback: ok
+    ui_dump:
+      file_id: 1rfgFba5AzzsjKuADYoc2AJHvEVa32K6Q
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q5-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q5-answered.png
+    file_id: 1pfqaD056Ays6DfQe5R-8Nug9DZfp5Swz
+    md5: 067b2664e58cc15db34ad5fcb0754f75
+    taken_at: 2026-09-26T03:05:21.492Z
+    readback: ok
+    ui_dump:
+      file_id: 1sdVFjwQC5SSrYAySc80quWwMSOash7G6
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q6-last-item
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q6-last-item.png
+    file_id: 1EvG0xBPwZUE0KHDoezsbdH7BDsHMo8JZ
+    md5: 7463e0e45341e6ca5f527eabf8b55790
+    taken_at: 2026-09-26T03:05:39.996Z
+    readback: ok
+    ui_dump:
+      file_id: 1KDfPx_LM1bchQWqjRXMzFNLdPHnEckTW
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-q6-last-item-result
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-q6-last-item-result.png
+    file_id: 1eyk3jH4eBvcfH_dxgmi-t6zMRy8D14bo
+    md5: d8b590cfe6b2abc1df210472dcfb5192
+    taken_at: 2026-09-26T03:05:49.524Z
+    readback: ok
+    shows: "Starting quiz 'Your result' screen with FINISH: 'Your starting score: 100 out of 100. A good start. This score does not count. It is only a starting point...'"
+  - journey_id: journey-learn-pass
+    step: journey-learn-m0-pretest-submitted
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m0-pretest-submitted.png
+    file_id: 1Ioe7QPuBKhN6RhDlgZLUPZbNOrQwbAEB
+    md5: 93f67aa70a444475eec9ec2b67059537
+    taken_at: 2026-09-26T03:05:54.906Z
+    readback: ok
+    ui_dump:
+      file_id: 16Yi3PsGU_8cbEjITHSR8QbQ2Ek--NBq7
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Your role in this pilot
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Your role in this pilot.png
+    file_id: 1kh6A_DztyHt0Kb77S_Sw8LRjGKlFgkeh
+    md5: 08de01b7f8a5b8f9c4a830672b1d820a
+    taken_at: 2026-09-26T03:06:04.968Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 1: Your role in this pilot"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 1: Your role in this pilot.png"
+    file_id: 1MHOtCb_Qupgpk8QTl12JR5OvlJdkvYYH
+    md5: d9e8d7606e8eb2e8c9f3882c6653ad0c
+    taken_at: 2026-09-26T03:06:15.702Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Your role in this pilot
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Your role in this pilot.png
+    file_id: 1DRhA2tSH4A21oxbZgb-0XDlAiU-XogBG
+    md5: 4632e1a5f3b46ba84b1a57d6e9ec29bc
+    taken_at: 2026-09-26T03:06:19.302Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m1-role-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m1-role-finished.png
+    file_id: 1lcCkpUQrwZmDgtQyhtPUz_ZyDOqRtuVK
+    md5: d9e8d7606e8eb2e8c9f3882c6653ad0c
+    taken_at: 2026-09-26T03:06:53.118Z
+    readback: ok
+    ui_dump:
+      file_id: 1nTjcWjsk9UeJUXGq6K5msJ3oUEt50BCQ
+      readback: interstitial
+      reviewer_facing: false
+    duplicate_of: "learn-tap-module-form-row-Lesson 1: Your role in this pilot"
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Registering yourself and your community
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Registering yourself and your community.png
+    file_id: 1KAx_a9_BLKE4WqXOUu2D3fgXkGKsvrBJ
+    md5: 9a10d1e4be72dd185ca9398a2f312589
+    taken_at: 2026-09-26T03:07:03.086Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 2: Registering yourself and your community"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 2: Registering yourself and your community.png"
+    file_id: 1AZZBvzuC4-yKsSH8UH3_Uyr8qSMrT0OU
+    md5: ebc3299874d7c4662874dea36e77876f
+    taken_at: 2026-09-26T03:07:13.916Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Registering yourself and your community
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Registering yourself and your community.png
+    file_id: 1LzOHE-GjkXhb2bcquhcgmo-cF_aGwdQw
+    md5: b5ea27adfb476bab1f4ee02d66c8e2ce
+    taken_at: 2026-09-26T03:07:17.771Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m2-register-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m2-register-finished.png
+    file_id: 1ZcfIttsU1RLSBwH2qHOFTIXFymHgetcx
+    md5: d45faeb84840abbca7bdc037059a4f79
+    taken_at: 2026-09-26T03:07:50.047Z
+    readback: ok
+    ui_dump:
+      file_id: 1Z6K5PrycbcPlBHJ7Ft9buSOmU5DDf1V-
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Module 'Registering yourself and your...' form list with a single tile 'Lesson 2: Registering yourself and your com...' (grid tile with person-plus icon). No lesson content on this frame."
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Recording a meeting
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Recording a meeting.png
+    file_id: 1ruRsZ33E_gCyLlWoebMX_TxOYTFaPTWe
+    md5: 9828fbe1825e60e418a904ca58ced964
+    taken_at: 2026-09-26T03:07:59.461Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 3: Recording a meeting"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 3: Recording a meeting.png"
+    file_id: 1-mZdZlB-zwEEhqfXbE0xPOg5MDzX6bkJ
+    md5: 8f368d99efe06fc6057bc64970c1488c
+    taken_at: 2026-09-26T03:08:10.386Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Recording a meeting
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Recording a meeting.png
+    file_id: 1-4fOm9zrXNTpaRbdFPtALgMhP5XJ9lpD
+    md5: c619c1d5b20ff0e9ae961c4691ca1b80
+    taken_at: 2026-09-26T03:08:14.152Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m3-record-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m3-record-finished.png
+    file_id: 1ytKRR5m9TGp-gQGEl6WajuzWelZjZYFh
+    md5: 9a65d974450e81b51acfd9c8d8a9cfde
+    taken_at: 2026-09-26T03:08:53.530Z
+    readback: ok
+    ui_dump:
+      file_id: 1CZrCahzc99SjLo8gou0j3yUlFd2yWGLg
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Counting attendance and participation
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Counting attendance and participation.png
+    file_id: 1wAZ9ANcR9cd2SoMQwb5wjJr3k__dNqHx
+    md5: 81d83ab582ec6bb81cd62ae3f3894f75
+    taken_at: 2026-09-26T03:09:02.937Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 4: Counting attendance and participation"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 4: Counting attendance and participation.png"
+    file_id: 1ISlZAvxjg3FogYFB8wrfYDiJjFPql0ne
+    md5: 93f0b460edf99bb63338670ad6cac87e
+    taken_at: 2026-09-26T03:09:19.421Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Counting attendance and participation
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Counting attendance and participation.png
+    file_id: 1n9A3m1qW-HImuFPMqFZmZKivtyoqM5qy
+    md5: cf5dd8585572c4e857317708c15b799c
+    taken_at: 2026-09-26T03:09:23.099Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m4-counts-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m4-counts-finished.png
+    file_id: 1JrrTQ_5YN7Hwa0N5G6SrAM_ogn-GJAQX
+    md5: 93f0b460edf99bb63338670ad6cac87e
+    taken_at: 2026-09-26T03:09:53.485Z
+    readback: ok
+    ui_dump:
+      file_id: 1daWajKbPhTWQy4GiiqSYqWKuS7ew9D7w
+      readback: interstitial
+      reviewer_facing: false
+    duplicate_of: "learn-tap-module-form-row-Lesson 4: Counting attendance and participation"
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Steps and savings
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Steps and savings.png
+    file_id: 1BgUPLxoJBtHZYysKPCPMkNfatV7TE2Zo
+    md5: 471fae74e138f5ebcd4e8f6ff2a4607a
+    taken_at: 2026-09-26T03:10:02.712Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 5: Steps and savings"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 5: Steps and savings.png"
+    file_id: 1_tQ5JU-M9nRqSg5z6vAoy4IqVSUFQlac
+    md5: 6af590802dafb02b4c4ae07a76cc35ab
+    taken_at: 2026-09-26T03:10:18.544Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Steps and savings
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Steps and savings.png
+    file_id: 1WPRss3s9BH1cB0IDOgxO4K42PuggF3HK
+    md5: 31c3605f8b1ba5e5e98ecfc44878e2ea
+    taken_at: 2026-09-26T03:10:23.982Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m5-steps-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m5-steps-finished.png
+    file_id: 1Z7YOTaLI0SIBcdMUKzDAAbBj8OqB052A
+    md5: 54c6adabf58b54ad44a32700375f7cb0
+    taken_at: 2026-09-26T03:11:01.714Z
+    readback: ok
+    ui_dump:
+      file_id: 1dl-43643qxD9a6L4_fko8PR0JYJ7OEYU
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-How payment works
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-How payment works.png
+    file_id: 1ixOx68fdCvv6k0g6fJYi_cGvDODne_2Y
+    md5: 587d13153b0a081691eb1a8466beafb0
+    taken_at: 2026-09-26T03:11:10.664Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: "learn-tap-module-form-row-Lesson 6: How payment works"
+    drive_path: "6-qa-and-training/screenshots/journey-learn/learn-tap-module-form-row-Lesson 6: How payment works.png"
+    file_id: 1-1PH7uNSjTluXHUpAzzVlpGZnDuUWFQD
+    md5: 844d86bc686ed93434647f0b5a2f3737
+    taken_at: 2026-09-26T03:11:26.270Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-How payment works
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-How payment works.png
+    file_id: 1yrc44GSkR0EhLunbtp7pUR-ds-djqDx5
+    md5: cf878dda0023fc549df7e8067ae3093c
+    taken_at: 2026-09-26T03:11:29.790Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m6-payment-finished
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m6-payment-finished.png
+    file_id: 1p9LxWsKUjB7hSIPyzzP_GjPq7vnOCjal
+    md5: 2944cc8a30f7426373b0a587b8ab7888
+    taken_at: 2026-09-26T03:12:06.621Z
+    readback: ok
+    ui_dump:
+      file_id: 1NhSjF2ixhwUC7OMLENU8siVYDu5t3SOJ
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: learn-suite-reentry-from-module-suite-root
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-suite-reentry-from-module-suite-root.png
+    file_id: 1Q6A3ch-Uuq3KNHWz-DZhSS453P_fzMRI
+    md5: ec4a5bfb8b75633c0d5b8905ac2e5758
+    taken_at: 2026-09-26T03:12:14.768Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-before-Final assessment
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-before-Final assessment.png
+    file_id: 1gHyrVJJPlGqmTsu6TF_II-PRk9ReghXA
+    md5: ec4a5bfb8b75633c0d5b8905ac2e5758
+    taken_at: 2026-09-26T03:12:15.338Z
+    readback: ok
+    duplicate_of: learn-suite-reentry-from-module-suite-root
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-intermediate-Final assessment
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-intermediate-Final assessment.png
+    file_id: 1C2tU6I5QJSrsYWgP29Udi8LsTCQYoZ-T
+    md5: 3714d51979ca586b0c471eb168051f9c
+    taken_at: 2026-09-26T03:12:25.052Z
+    readback: ok
+    shows: "'Final assessment' module showing one tile, 'Final assessment' (clipboard-check icon), before the assessment is opened."
+  - journey_id: journey-learn-pass
+    step: learn-tap-module-after-Final assessment
+    drive_path: 6-qa-and-training/screenshots/journey-learn/learn-tap-module-after-Final assessment.png
+    file_id: 188tPsKE-ILS33MkLtJ_vSFmgl8FQFqCx
+    md5: 058bcc294b5c05236469646f607a9b82
+    taken_at: 2026-09-26T03:12:35.752Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-assessment-intro
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-assessment-intro.png
+    file_id: 15Ee1nqD7G5QF8rX8vX28u_5iK5uF3B0J
+    md5: 058bcc294b5c05236469646f607a9b82
+    taken_at: 2026-09-26T03:12:43.050Z
+    readback: ok
+    duplicate_of: learn-tap-module-after-Final assessment
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q1-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q1-answered.png
+    file_id: 1ehhFFSHmyU8jO-X6fQLph3zEQeb3dirA
+    md5: 9a1b479094c8a6b9b9465268970e3614
+    taken_at: 2026-09-26T03:13:01.290Z
+    readback: ok
+    ui_dump:
+      file_id: 1630QQAB2ZdMRu_-DZqx80oLtx-_JxjrS
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q2-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q2-answered.png
+    file_id: 1kBfGiL48JS0yI5jwAQu3xzye0E8O_SI4
+    md5: cb6330454a43f4e8ab17bd9ee7fd35dd
+    taken_at: 2026-09-26T03:13:19.258Z
+    readback: ok
+    ui_dump:
+      file_id: 1k4bSSWVexVrVJGx-2rg_hN4pfZVNZqF_
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q3-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q3-answered.png
+    file_id: 1H_pr1sAOYOeijohIPvxnpukuSGpJlzFm
+    md5: ec6a32996e2dc1f3cdad6416d1e1557a
+    taken_at: 2026-09-26T03:13:38.064Z
+    readback: ok
+    ui_dump:
+      file_id: 1ar25srZqnCxnk21OmnjYU40aFlEp0a4s
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q4-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q4-answered.png
+    file_id: 1X7lPnPZxNX37L6hCuYhXwW45oVf9Ks3X
+    md5: 2b903d305b46e7224bf508d5b85f2d0e
+    taken_at: 2026-09-26T03:13:56.262Z
+    readback: ok
+    ui_dump:
+      file_id: 1VfdrCzw3-LY7S_JAaT8IAUmyZn5COKXy
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q5-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q5-answered.png
+    file_id: 1yxiy9Y8LXFu0viebTF_EIfjipObxSvyC
+    md5: 83b37043ed35530b163e51e3bef8d6c2
+    taken_at: 2026-09-26T03:14:14.275Z
+    readback: ok
+    ui_dump:
+      file_id: 1vDPtnfjhNfwlW-hWU9r-PHicDebGjuRv
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q6-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q6-answered.png
+    file_id: 1dM4a4UjZ8Jl3QK9-cBW_Kb8eNBDKHrB7
+    md5: ab1f67f32d75dc5582f97c0d611da9c5
+    taken_at: 2026-09-26T03:14:33.267Z
+    readback: ok
+    ui_dump:
+      file_id: 1wWc0LmS1cQiaOq0ZFLTWMDq0vWb5tAtd
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q7-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q7-answered.png
+    file_id: 1jQ1Wq6DqA4V_eWfU_PejyKtVxnVS98hy
+    md5: 64655cc60ff3f1bc3364bef401252dc1
+    taken_at: 2026-09-26T03:14:51.648Z
+    readback: ok
+    ui_dump:
+      file_id: 1Lzk8UfBvjpzxtXqnd7gcVzus4GXRCvrj
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q8-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q8-answered.png
+    file_id: 1K7DYNEPsPq9Mj3_PPoiVa5HltB1Uo2wp
+    md5: 0e9597d37212d127f1732cb7621a192e
+    taken_at: 2026-09-26T03:15:10.353Z
+    readback: ok
+    ui_dump:
+      file_id: 13befV-wYAF432EMP0yzYkm0GmvTsCllV
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q9-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q9-answered.png
+    file_id: 1cDGySkyB4Py6aC_ychFCzuAWH7To2Mgs
+    md5: 7ed9c0c66759d675ed114aa83e1aaa0a
+    taken_at: 2026-09-26T03:15:28.632Z
+    readback: ok
+    ui_dump:
+      file_id: 10p3dvbDOMfT_to2IJkQuhN-TAHKayMGK
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q10-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q10-answered.png
+    file_id: 1cJNoPfNOsHEOf5KE4mzfzB5-4lRDl-SW
+    md5: ae432c04aa10230108e0d31d585d39aa
+    taken_at: 2026-09-26T03:15:46.553Z
+    readback: ok
+    ui_dump:
+      file_id: 1NKQkiz75j9TqJPx1ImY1Oeg7nLhCvkMG
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q11-answered
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q11-answered.png
+    file_id: 1fHKPqQyQ5ZkKNyx_98UhVWgsw57gm64y
+    md5: 1e0a483d4c14be8a0bf4aad039c578b7
+    taken_at: 2026-09-26T03:16:04.496Z
+    readback: ok
+    ui_dump:
+      file_id: 1VLcEFAc5NTAG8QtgeqfrP7QI4U0TA5Mm
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q12-last-item
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q12-last-item.png
+    file_id: 10mRNK-NRYy1udU8c0x8TpqKbnBkfHzKw
+    md5: 3060384e1a0d1e7dc76e16acb5391c74
+    taken_at: 2026-09-26T03:16:16.176Z
+    readback: ok
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-q12-last-item-result
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-q12-last-item-result.png
+    file_id: 1BFRSdd4-8AII47Md5HfXCpoPguezBk1_
+    md5: fa50c7f8513848090e1fc43de39a4bde
+    taken_at: 2026-09-26T03:16:26.311Z
+    readback: ok
+    shows: "Final assessment 'Your result' screen with FINISH: 'You passed. Your score is 100 out of 100. You are ready to record meetings in the pilot.' This IS the score frame."
+  - journey_id: journey-learn-pass
+    step: journey-learn-m7-assessment-submitted
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-m7-assessment-submitted.png
+    file_id: 1Bj1NMT0VzDMfcBb0iPFbtZcHM2GBOPhB
+    md5: 71ca7e87fde9626740b20c614ac71957
+    taken_at: 2026-09-26T03:16:31.334Z
+    readback: ok
+    shows: Final assessment one-row form list (module level) with a '1 form sent to server!' toast. NO score on this frame.
+  - journey_id: journey-learn-pass
+    step: journey-learn-final
+    drive_path: 6-qa-and-training/screenshots/journey-learn/journey-learn-final.png
+    file_id: 1JW_OXRCfUjg-SitMhSHheWIvrNzZWW3H
+    md5: 71ca7e87fde9626740b20c614ac71957
+    taken_at: 2026-09-26T03:16:31.421Z
+    readback: ok
+    ui_dump:
+      file_id: 1O95mFUkA9BNN6ZiOnFrqFMZS3mzoaebv
+      readback: interstitial
+      reviewer_facing: false
+    duplicate_of: journey-learn-m7-assessment-submitted
+    shows: Final assessment one-row form list (module level) with a '1 form sent to server!' toast. NO score on this frame.
+  - journey_id: journey-deliver-submit
+    step: connect-resume-opp-list-synced
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/connect-resume-opp-list-synced.png
+    file_id: 1l_nNSO_Dax9BLp4pzAZZ-uz_X44y56cb
+    md5: 64b19bdb89a09797aacd24fdbe329883
+    taken_at: 2026-09-26T03:18:07.856Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: connect-resume-opp-tile
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/connect-resume-opp-tile.png
+    file_id: 1c9MrkYCX5a9_U0YgW0DY8aAz-qzKYChU
+    md5: 879c52fc7d79a7e16d11bab5b4b44c98
+    taken_at: 2026-09-26T03:18:15.958Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: connect-resume-opp-landed
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/connect-resume-opp-landed.png
+    file_id: 1fWglOHZMK1vo_BtcMOIOtACFIbc2gOQt
+    md5: 6b819636d5ed6bbcf606a07ef86d3357
+    taken_at: 2026-09-26T03:18:26.544Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: deliver-launch-opp-detail
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-launch-opp-detail.png
+    file_id: 1VNkQEPp9kfRry-lWQvNyMv79G6qPspOz
+    md5: 6b819636d5ed6bbcf606a07ef86d3357
+    taken_at: 2026-09-26T03:18:34.011Z
+    readback: ok
+    duplicate_of: connect-resume-opp-landed
+  - journey_id: journey-deliver-submit
+    step: deliver-launch-download-gate
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-launch-download-gate.png
+    file_id: 1T163YHNlDldPnM6Fx6YtQSwMDbNPHgji
+    md5: d28ef066cb6a76197d4fa7eae8fcde64
+    taken_at: 2026-09-26T03:18:41.386Z
+    readback: ok
+    shows: "Connect 'Delivery Details' card after Learn: '21 maximum Visits', '155 Days to complete', 'Maximum visits per day 1', 'Earn up to 7500 MWK for visit', 'Start Visit / Download Delivery' with DOWNLOAD button."
+  - journey_id: journey-deliver-submit
+    step: deliver-launch-home
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-launch-home.png
+    file_id: 1NkVDa6Cghp638RGjMEhrlOwwQ-sOSRHX
+    md5: 2248c8708709828d9436124cbb719ccc
+    taken_at: 2026-09-26T03:18:55.455Z
+    readback: ok
+    ui_dump:
+      file_id: 1A0ZP79dCF2dJNW14olG0-ExNUq1PBocI
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Deliver app home 'Spark Facilitator Deliver app': opp card 'Paid per verified FCAP community meeting', Daily Visits 0/1, 'Complete Project by Feb 26, 2027', red banner 'The job has not started yet. You will not earn any progress for work.'; tiles Start, View Job Status, Sync with Server, Log out of CommCare."
+  - journey_id: journey-deliver-submit
+    step: screenshot-⚠️-1790392721193-(chunk-0.yaml)
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/screenshot-⚠️-1790392721193-(chunk-0.yaml).png
+    file_id: 17u0sFax4dQ65Had_GytzqajYv6zlTHFq
+    md5: d28ef066cb6a76197d4fa7eae8fcde64
+    taken_at: 2026-09-26T03:18:55.862Z
+    readback: ok
+    duplicate_of: deliver-launch-download-gate
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-module-list-register
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-module-list-register.png
+    file_id: 1Zc8FnGAzQa_o2ckHgOU_TbhHWCDin9Mh
+    md5: ed8a1f72c4073d46e362e5833758fb7e
+    taken_at: 2026-09-26T03:19:05.508Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-module-row-Facilitator-register
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-module-row-Facilitator-register.png
+    file_id: 1eTdaaNrEquSM4Vca6zp_99-J_jQaLdRy
+    md5: ed8a1f72c4073d46e362e5833758fb7e
+    taken_at: 2026-09-26T03:19:05.704Z
+    readback: ok
+    duplicate_of: deliver-form-walk-module-list-register
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-form-question-register
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-form-question-register.png
+    file_id: 1qavZiJDr4tVUEl_iIFZAhwDKmv4M1jD7
+    md5: 909d5612710c8dfbf346adaf6e7d7654
+    taken_at: 2026-09-26T03:19:20.687Z
+    readback: ok
+    ui_dump:
+      file_id: 1FsSNVfKZdWOMDxEkzMvTj8ZTMOLvNY3k
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-reg-about-you
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-reg-about-you.png
+    file_id: 1M8QamztNDz4m8CyV5CgyK7VC-gJM5MgU
+    md5: 8a9e5df0a24112c627193b3dbfaa073d
+    taken_at: 2026-09-26T03:20:08.773Z
+    readback: ok
+    ui_dump:
+      file_id: 1VHJnoJ3t_sxHOmCT4ZcRr99uqO2AcK90
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Facilitator Registration 'About you': name 'Thandiwe Banda 1536', Gender Female selected, 'Your age in years' 34, 'Your highest level of school' with None/Primary/Secondary(selected)/Tertiary/University."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-reg-phone-numbers
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-reg-phone-numbers.png
+    file_id: 10RUiTegWMn8qQtyK9oGgYNc0anjBBVEl
+    md5: 776935788c137e711ff8462705af03ef
+    taken_at: 2026-09-26T03:20:31.726Z
+    readback: ok
+    ui_dump:
+      file_id: 1rhIO4utKvmwRaAJUMbTADodZ_Zs_JI94
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-reg-where-you-work-last-item
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-reg-where-you-work-last-item.png
+    file_id: 19n7APs0iMDS6if7cyR3_gdmYdMdp652l
+    md5: d9c5ecfacaaef2408ff90d63321c26ac
+    taken_at: 2026-09-26T03:21:01.861Z
+    readback: ok
+    ui_dump:
+      file_id: 1nemRRC_rvxVswaJEyMNixzsiutZN3Sur
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Facilitator Registration 'Where you work' with FINISH: 'Date you were recruited as a facilitator' date wheel at Sep 25 2026, 'Your district' Dedza, 'Your traditional authority' TA Kachindamoto."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-reg-submitted
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-reg-submitted.png
+    file_id: 10Td_T8yZvlokR9ODYHliZ11Yl6VWW7zp
+    md5: 8ca51226c1cbeb6020bdd07ef4bb1fae
+    taken_at: 2026-09-26T03:21:19.796Z
+    readback: ok
+    ui_dump:
+      file_id: 1ySS2XRrOPvSVXCPDpa2zCkNJ2WmHnwVz
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Deliver home after Facilitator Registration submit: same card, Daily Visits 0/1, not-started banner. No confirmation text of its own."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-home-before-enrolment
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-home-before-enrolment.png
+    file_id: 1NSdCfQfseYlkmTu8ip9t0hv-Dh9Bg74G
+    md5: 8ca51226c1cbeb6020bdd07ef4bb1fae
+    taken_at: 2026-09-26T03:21:32.955Z
+    readback: ok
+    ui_dump:
+      file_id: 1kiHivweg3fWyrRyF6-0XT4uder_8pDDU
+      readback: interstitial
+      reviewer_facing: false
+    duplicate_of: journey-deliver-reg-submitted
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-module-list
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-module-list.png
+    file_id: 1MFbfWncq3vuMBdcJpivPbIWlolM53gnI
+    md5: 427fda0d12203d60cec5a875aba2f647
+    taken_at: 2026-09-26T03:21:42.460Z
+    readback: ok
+    ui_dump:
+      file_id: 1-eJaL1EOfdSqEX0CWXTePahyAa8ZULW3
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-form-list
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-form-list.png
+    file_id: 1zvUxpRTAf9TesU_6-SnnosDrG8GlwG9U
+    md5: 45162d57c7d28a26c878213ae4156bc2
+    taken_at: 2026-09-26T03:21:58.616Z
+    readback: ok
+    shows: "'Facilitator' module FORM LIST shown BEFORE any case list: two tiles 'Facilitator Registration' and 'Community Enrolment' (mixed module; ace#2482 ordering evidence)."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-form-question
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-form-question.png
+    file_id: 168U2mrmcRWFtsLAc_Cgo8VAWZqm1Tkbk
+    md5: eaf2f5db7660b2dc1b776c3e0853eda5
+    taken_at: 2026-09-26T03:22:09.967Z
+    readback: ok
+    ui_dump:
+      file_id: 15iARMwIDeo0MzXmc__wqVW7neZTA2SAK
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-the-community
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-the-community.png
+    file_id: 1zGLWg50kj1DMwX2RiOsGUg97eBx17Wfr
+    md5: 0a6ba1a26cae00be683048f03816fe81
+    taken_at: 2026-09-26T03:22:41.048Z
+    readback: ok
+    ui_dump:
+      file_id: 1ReNUJEq8SsTxGovEBdhhSeN5cc6Ggf7e
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Community Enrolment 'The community': Community name 'Kunthembwe 1536' (hint: the name of the village where the meetings take place), Community ID 'SPK-20260925-1536' (hint: Spark's ID for this community. Ask your supervisor if you do not know it.)."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-where
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-where.png
+    file_id: 16lYe5HRf1eKbSewb_v-WqHQ3Ido2XNEB
+    md5: 1572da226df35e43392aa95d816bfbf5
+    taken_at: 2026-09-26T03:23:17.992Z
+    readback: ok
+    ui_dump:
+      file_id: 1WWFc7wwDkXuICkSSSoiLK2afbGY13_Sw
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-partnership-date
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-partnership-date.png
+    file_id: 10SAQq_K52ivVz2m0-og5wnDI5LG4By7S
+    md5: 8c754983259aed5ac1109018ad59fb43
+    taken_at: 2026-09-26T03:23:29.276Z
+    readback: ok
+    ui_dump:
+      file_id: 1d16hKHY5uN2rtZt6DjuaQTbVwYZdfBMp
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-households
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-households.png
+    file_id: 1CvQMnCxsBUrVr9MKj-uYwbPM8FekL-Hm
+    md5: 1998bed5a49585e228936e831d3c4ad0
+    taken_at: 2026-09-26T03:23:52.587Z
+    readback: ok
+    ui_dump:
+      file_id: 11616KTVFsq3tADcz7lxVcuTp0czyOow0
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Community Enrolment 'Households': 'How many households are in this community?' 120 (hint: 'Count carefully. Attendance at every meeting is compared with this number.'), average people per household 5.5."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-contact
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-contact.png
+    file_id: 1waXZpg4f5pDrsd5mvhpgk1ZzV1MCBovL
+    md5: 87c3cb143b817e0b53156234badee5f4
+    taken_at: 2026-09-26T03:24:33.737Z
+    readback: ok
+    ui_dump:
+      file_id: 1cCcIvlt8qbxXnmcFnH5Ne6IalG67GEl3
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Community Enrolment 'Community contact': end of the read-aloud call-consent script (short call to check a meeting took place, voluntary, can stop later, not shared publicly, no payment, community stays either way), then 'Does this contact agree to receive an occasional short phone call to confirm that a meeting took place?' = Yes (hint: 'A No keeps the community in the pilot. It only means no calls.')."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-location-last-item
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-location-last-item.png
+    file_id: 1Qq0HUFEN4bycknXtSyX1fMR4lqUw645a
+    md5: 03a1b4391bc3106304f2f739260cfd51
+    taken_at: 2026-09-26T03:24:56.877Z
+    readback: ok
+    ui_dump:
+      file_id: 11QExEc5V4g6Y0TdO6HHiVpmboMiiRJYZ
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-enrol-submitted
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-enrol-submitted.png
+    file_id: 1ZJDKdDBrHywaLrToATM6qJtOdmOJeoeb
+    md5: d85106c546a53c99607f2710caa65bac
+    taken_at: 2026-09-26T03:25:14.333Z
+    readback: ok
+    ui_dump:
+      file_id: 1x9ACZijJkO8T_uGy0SVAKEnDu7NZPbGT
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-home-before-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-home-before-meeting.png
+    file_id: 1Wt65cM24oQHzlpbXW4c7tq6xcfrraf1q
+    md5: b6de44769b2473cab33d454a5f27e758
+    taken_at: 2026-09-26T03:25:26.184Z
+    readback: ok
+    ui_dump:
+      file_id: 1lmBxEZL0yHI-y6XkiCUPQbpHrmeG9vkZ
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-module-list-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-module-list-meeting.png
+    file_id: 1p15p9wIIa24JOhIbfdxwYoTr1TiTtxvf
+    md5: 0703397d9f6e4b6d597bac7727af5843
+    taken_at: 2026-09-26T03:25:36.275Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-module-row-Community meetings-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-module-row-Community meetings-meeting.png
+    file_id: 1J8QFxTdxTPitjbX0tX9UNH5B0ZBaJ1R7
+    md5: 0703397d9f6e4b6d597bac7727af5843
+    taken_at: 2026-09-26T03:25:36.494Z
+    readback: ok
+    duplicate_of: deliver-form-walk-module-list-meeting
+  - journey_id: journey-deliver-submit
+    step: deliver-case-select-list
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-case-select-list.png
+    file_id: 1zK7XGldT9eto8pXX_fActnv5zFw96LY0
+    md5: 199d8aec274a6c1adc710450834ed9a2
+    taken_at: 2026-09-26T03:25:46.450Z
+    readback: ok
+    shows: "'Community meetings' case list: 5 columns (Community, ID, Current step, Meetings on this step, Last community meeting) squeezed so headers wrap mid-word; visible rows are accumulated prior-run test communities 'Chilanga - Thandiwe Banda' with the other columns blank. Test-user data accumulation, not this run's case."
+  - journey_id: journey-deliver-submit
+    step: deliver-case-select-detail
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-case-select-detail.png
+    file_id: 1Ds9Yxvo-15rzZdfzbCZFcssi0hmI7ksX
+    md5: 18bbfbafbb767597077ef9569104273e
+    taken_at: 2026-09-26T03:26:03.641Z
+    readback: ok
+    shows: "Case detail for the selected community: Community 'Kunthembwe 1536', ID 'SPK-20260925-1536', Current step 'Step 1: Our Partnership', Meetings on this step 0; CONTINUE bar."
+  - journey_id: journey-deliver-submit
+    step: deliver-case-select-selected
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-case-select-selected.png
+    file_id: 1K-fI82bWa2tH0mn0AXLgTiHEQov6Hqd9
+    md5: f3f72689d0ffa44c241000c6314f6a2a
+    taken_at: 2026-09-26T03:26:06.716Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-form-list-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-form-list-meeting.png
+    file_id: 1AGRCT4dmGfnEWXmyJl6RNSlrxNUjtTlJ
+    md5: f3f72689d0ffa44c241000c6314f6a2a
+    taken_at: 2026-09-26T03:26:07.706Z
+    readback: ok
+    duplicate_of: deliver-case-select-selected
+  - journey_id: journey-deliver-submit
+    step: deliver-form-walk-form-question-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-form-walk-form-question-meeting.png
+    file_id: 1_jDkYm8GlUQKDrF1n0G7wuD8AcwLJc9K
+    md5: fc6d61efd74e3037d824fc98b9118a17
+    taken_at: 2026-09-26T03:26:18.627Z
+    readback: ok
+    ui_dump:
+      file_id: 18wPGoKolk7CPzrSZVDPDDrxjnfpa6aF1
+      readback: interstitial
+      reviewer_facing: false
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-about-this-meeting
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-about-this-meeting.png
+    file_id: 14Kln4jgaylsJ928SdyXETcbNDQWakbhq
+    md5: bbc7c1c387f0c20b82c4d6906751d1f9
+    taken_at: 2026-09-26T03:27:06.979Z
+    readback: ok
+    ui_dump:
+      file_id: 16UvL8Bx0P6A7PuoeU2H9ow_jVMY8m9fE
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Community Meeting Record 'About this meeting': meeting happened = Yes, Meeting type = Community meeting (Committee meeting option shown), 'Capture the location of the meeting' hint (target 50 m), RECORD LOCATION button, latitude S 14°22'40\" captured."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-step-display
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-step-display.png
+    file_id: 1xlRn7ejObr_lLHCKfIv7_jZlOvhaj3Oo
+    md5: a16b4b640669b4e369d153bc126ba262
+    taken_at: 2026-09-26T03:27:18.205Z
+    readback: ok
+    ui_dump:
+      file_id: 1QIIfCB1WFjhNdz5cPZl14yEGYZSTfoEa
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Step' screen: 'This community is on Step 1: Our Partnership. You do not choose the step — it is read from the community record.'"
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-photo-attached
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-photo-attached.png
+    file_id: 1cg6eLqvVcMR0zpDLQZti8d8l2dFyGyAU
+    md5: d6fc403a94fb3dd3f6f2a05904c5f6af
+    taken_at: 2026-09-26T03:28:01.597Z
+    readback: ok
+    ui_dump:
+      file_id: 1uU-X5h0C-_m5Gm4WZxUsVq0U2tZ4_lN5
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Meeting photo': 'Did you read this statement to the meeting?' = 'Yes, I read this to the meeting before taking the photo'; 'Attach a photo for the meeting' with a reference illustration of a community meeting and hint 'Use the camera — do not choose an old photo.'; only a TAKE PICTURE button (no gallery/choose-image option); REMOVE IMAGE partly visible below the fold."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-who-came
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-who-came.png
+    file_id: 1tJ6mcETGUKZVrSVFDBhehC67NwEk9Kne
+    md5: 875e6fdd625a6fa23062a86efdb77f06
+    taken_at: 2026-09-26T03:28:53.172Z
+    readback: ok
+    ui_dump:
+      file_id: 16jhpD8hLgR7iWcSQ9A-Ydg1Mv1A2WwP2
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Who came and who spoke': households represented 15 (hint 'This community has 120 households enrolled.'), males attended 12, females attended 19, males spoke 5, females spoke 8."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-meeting-details
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-meeting-details.png
+    file_id: 1G_fE0ORqHg4c1r5ils-twsP8nV__l9lb
+    md5: afa606647b6cdeb295a08e77df1fd78e
+    taken_at: 2026-09-26T03:29:50.634Z
+    readback: ok
+    ui_dump:
+      file_id: 1eL-1b3n-xBKL3a8sws4twRAtAg_7gyhN
+      readback: interstitial
+      reviewer_facing: false
+    shows: "Community Meeting Record 'Meeting details': a leader count of 3 (hint ends 'if not yet elected'), 'Was the meeting attended by a Spark trainer?' No, 'attended by staff or a trainer from the partner organisation?' No, 'Did the meeting start on time?' Yes."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-step-progress
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-step-progress.png
+    file_id: 1KHU3ylcIzHM4F_T5v_cduvbZcYlD9lGT
+    md5: ad4902ae708c586cb79321702d4ee4ef
+    taken_at: 2026-09-26T03:30:09.735Z
+    readback: ok
+    ui_dump:
+      file_id: 1Bn1aa_bENI2hhzRyd60ARfGTYdupqaAc
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Step progress': 'Did the community complete Step 1 at this meeting?' = No; hint 'Answer Yes only if the community really finished this step today. The step then moves forward by one and cannot be moved back in the app.'"
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-notes-last-item
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-notes-last-item.png
+    file_id: 1-DIPQ0iCrFzwrifjfweuxBG_ffb9TbaV
+    md5: 3a7c56d22861d4475a089bda6639e1e6
+    taken_at: 2026-09-26T03:30:22.450Z
+    readback: ok
+    ui_dump:
+      file_id: 1UQNSt3Dyb3L9OFJJb7-WfQd0mV3wOlRd
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Notes and payment' with FINISH: optional notes field empty, label 'This community meeting can be paid (meeting 1 of 3 on this step).'; keyboard open."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-submitted
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-submitted.png
+    file_id: 1zggd2uLfD7t2_GnXhIF5ESm_OMG1tchG
+    md5: c6f58673b01d1d9107011864b9ef7fdb
+    taken_at: 2026-09-26T03:30:40.561Z
+    readback: ok
+    ui_dump:
+      file_id: 1LTQupHinVU_BdC4Zuvkbfa3gZN0QRZ54
+      readback: interstitial
+      reviewer_facing: false
+    shows: "'Community meetings' module form list with a single 'Community Meeting Record' tile after submit. No confirmation text."
+  - journey_id: journey-deliver-submit
+    step: deliver-sync-pre
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-sync-pre.png
+    file_id: 1A1gS80sFpSvtQ3Jg766aw33zGpGWboMB
+    md5: c6f58673b01d1d9107011864b9ef7fdb
+    taken_at: 2026-09-26T03:30:47.729Z
+    readback: ok
+    duplicate_of: journey-deliver-submitted
+  - journey_id: journey-deliver-submit
+    step: deliver-sync-success
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-sync-success.png
+    file_id: 1PmlWg0Ax_zCTpSFW4DDHQQZffaMeYYLT
+    md5: 303b630b0cefcb200953cee0bf3916c6
+    taken_at: 2026-09-26T03:31:05.172Z
+    readback: ok
+  - journey_id: journey-deliver-submit
+    step: deliver-sync-counter-unrefreshed
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-sync-counter-unrefreshed.png
+    file_id: 1-8o57DWv8LEaqAN0CDGDhPzgd6OlZd1j
+    md5: 2821d3e674a2ae4c2885a14a7cc0799e
+    taken_at: 2026-09-26T03:31:35.479Z
+    readback: ok
+    shows: "Deliver home after sync: Daily Visits 0/1 under the red 'The job has not started yet. You will not earn any progress for work.' banner — the not-started-as-designed evidence frame."
+  - journey_id: journey-deliver-submit
+    step: deliver-sync-final
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/deliver-sync-final.png
+    file_id: 1jZKjmLFqMqJXZBgEVNeA00vuFNNKXTFw
+    md5: 2821d3e674a2ae4c2885a14a7cc0799e
+    taken_at: 2026-09-26T03:31:35.593Z
+    readback: ok
+    duplicate_of: deliver-sync-counter-unrefreshed
+    shows: "Deliver home after sync: Daily Visits 0/1 under the red 'The job has not started yet. You will not earn any progress for work.' banner — the not-started-as-designed evidence frame."
+  - journey_id: journey-deliver-submit
+    step: journey-deliver-final
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/journey-deliver-final.png
+    file_id: 1Mrg60CUck2rYV4Ldaxgc0Hj4L2inJTZo
+    md5: 2821d3e674a2ae4c2885a14a7cc0799e
+    taken_at: 2026-09-26T03:31:35.660Z
+    readback: ok
+    ui_dump:
+      file_id: 15dZkl9xx3M-E68O-2BtI9K9kcx-iJ0-o
+      readback: interstitial
+      reviewer_facing: false
+    duplicate_of: deliver-sync-counter-unrefreshed
+  - journey_id: journey-deliver-submit
+    step: screenshot-⚠️-1790393495294-(chunk-26.yaml)
+    drive_path: 6-qa-and-training/screenshots/journey-deliver/screenshot-⚠️-1790393495294-(chunk-26.yaml).png
+    file_id: 14J4p0GRqZjwFyezlhPMCOUIROJ9-uGOu
+    md5: 2821d3e674a2ae4c2885a14a7cc0799e
+    taken_at: 2026-09-26T03:31:35.824Z
+    readback: ok
+    duplicate_of: deliver-sync-counter-unrefreshed
+videos:
+  - journey_id: journey-learn-pass
+    recipe_base: journey-learn
+    attempt: 1
+    drive_path: 6-qa-and-training/videos/journey-learn.mp4
+    file_id: 1259oji2Y6-tWSLoToR5sTtpc_Rd9iLyh
+    bytes: 31248030
+    readback: ok
+  - journey_id: journey-deliver-submit
+    recipe_base: journey-deliver
+    attempt: 1
+    drive_path: 6-qa-and-training/videos/journey-deliver.mp4
+    file_id: 1QCIcffBkwdl9suwUX0Ep1C01pT9dv1X0
+    bytes: 36207712
+    readback: ok
+notes:
+  - XML ui-dumps read back as a Google Drive virus-scan interstitial (sharingWouldNotHelp); kept as internal forensics, not reviewer-facing.
+  - deliver-case-select-* frames are from leg C (Community meetings); leg B's same-named frames were overwritten (ace#1651 class).

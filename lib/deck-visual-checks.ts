@@ -91,12 +91,20 @@ function textOf(e: PageElement): { text: string; maxPt: number | null } {
 
 /**
  * Wrap estimate: paragraphs wrapped at ~0.52·pt per character across the box's
- * inner width (a word longer than a line — a raw URL — breaks across lines),
- * each line 1.2·pt tall. Flags only when that exceeds the box height, and only
+ * inner width, each line 1.2·pt tall. A word longer than a line — a raw URL —
+ * STARTS a new line (Slides will not begin it mid-line) and then breaks across
+ * as many as it needs. Flags only when that exceeds the box height, and only
  * for an explicit font size — an inherited size is unknown here, and unknown
- * is not a finding. It UNDER-reports: paragraph spacing is not modelled, so a
- * box can overflow on screen while passing here (spark-facilitator/20260926-1800
- * slide 53 did). The look is authoritative; this only nominates suspects.
+ * is not a finding.
+ *
+ * Calibrated on spark-facilitator/20260926-1800 slide 53, which overflowed on
+ * screen while an earlier version of this estimate passed it: that version
+ * continued a long URL on the line its label sat on, counting 13 lines where
+ * the slide drew 17. Each "- Setting up your account: <90-char URL>" bullet is
+ * THREE lines (label, URL, URL tail); the estimate now says 17, and the
+ * rendered slide's text block measured ~328pt against 17 × 1.2 × 16pt = 326pt.
+ * The look is still authoritative; this nominates suspects, and
+ * `lintDeckFormatting`'s `bodyFit` uses it to refuse an overflowing SPEC.
  */
 export function estimateTextHeightPt(text: string, pt: number, boxWidthPt: number): number {
   const cpl = Math.max(1, Math.floor((boxWidthPt - 14) / (0.52 * pt)));
@@ -106,9 +114,14 @@ export function estimateTextHeightPt(text: string, pt: number, boxWidthPt: numbe
     let cur = 0;
     for (const word of para.split(' ')) {
       let len = word.length;
-      while (len > cpl) {
-        n += 1;
-        len -= cpl;
+      if (len > cpl) {
+        if (cur) n += 1; // the long word starts on a fresh line
+        while (len > cpl) {
+          n += 1;
+          len -= cpl;
+        }
+        cur = len;
+        continue;
       }
       if (cur && cur + 1 + len > cpl) {
         n += 1;

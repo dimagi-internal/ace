@@ -1,0 +1,10 @@
+schema_version: 1
+phase: commcare-setup
+output_key: apps.learn
+captured_by: output-preview-capture
+captured_phase: synthetic-data-and-workflows
+captured_at: 2026-09-30T04:06:50.877Z
+items:
+  - file_id: 1NkMgF4PHtGdaLLcgCDcDcHR1MrUdVE9h
+    name: 01-form-summary.png
+    caption: "Spark Facilitator Learn app — HQ form summary: modules and forms"

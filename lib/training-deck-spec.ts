@@ -16,12 +16,16 @@ import yaml from 'js-yaml';
 import {
   FONT_FAMILY,
   COLOR_GRAY,
+  COLOR_INDIGO,
   SLIDE_W,
   SLIDE_H,
   MARGIN,
   MOBILE_ZOOM_IMAGE,
   MOBILE_FLOW,
+  WALKTHROUGH_IMAGE,
+  STENCIL_TEXT_BUILDERS,
 } from './training-deck-stencil-geometry.js';
+import { estimateTextHeightPt } from './deck-visual-checks.js';
 
 // ---------------------------------------------------------------------------
 // Individual slide layout schemas
@@ -399,6 +403,18 @@ export function lintDeckFormatting(spec: TrainingDeckSpec): FormattingFinding[] 
         }
       }
 
+      const fit = bodyFit(slide);
+      if (fit && fit.neededPt > fit.boxPt) {
+        add(
+          id,
+          layout,
+          'bodyFit',
+          `body needs ~${Math.round(fit.neededPt)}pt of height and its frame holds ${Math.round(fit.boxPt)}pt — ` +
+            `split the slide or shorten it (long URLs: write [label](url))`,
+          'error',
+        );
+      }
+
       if (layout === 'agenda' && Array.isArray(s.items)) {
         if (s.items.length > FORMATTING_BUDGETS.agendaItems) {
           add(id, layout, 'agendaItems', `${s.items.length} agenda items (budget ${FORMATTING_BUDGETS.agendaItems})`, 'error');
@@ -412,6 +428,143 @@ export function lintDeckFormatting(spec: TrainingDeckSpec): FormattingFinding[] 
   }
 
   return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Body text as the slide will SHOW it — links, and whether it fits its frame
+// ---------------------------------------------------------------------------
+
+/** A hyperlink inside rendered body text: UTF-16 offsets, as the Slides API counts them. */
+export interface BodyLink {
+  start: number;
+  end: number;
+  url: string;
+}
+
+const MD_LINK = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g;
+const BARE_URL = /https?:\/\/[^\s<>()]+/g;
+
+/**
+ * The words a reader should see for a URL that arrived bare. A Confluence page
+ * URL ends in its own title (`…/pages/3146907771/Connect+Mobile+Application`),
+ * so that title is the label; anything else falls back to its host.
+ */
+export function shortLinkLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    const segs = u.pathname.split('/').filter(Boolean);
+    const last = segs[segs.length - 1] ?? '';
+    const words = decodeURIComponent(last.replace(/\+/g, ' ')).replace(/[-_]+/g, ' ').trim();
+    if (/[a-z]/i.test(words) && !/^\d+$/.test(words) && words.length <= 60 && segs.length > 1) return words;
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Body text with every link turned into its LABEL, plus where each label
+ * sits so the renderer can attach the URL to it.
+ *
+ * Why (spark-facilitator/20260926-1800 slide 53, legibility 1 — the render
+ * eval's hard gate): four raw ~90-character help-site URLs each wrapped onto a
+ * second line mid-word, the body outgrew its middle-anchored frame in BOTH
+ * directions and the first line printed over the title. A projected URL is not
+ * transcribable anyway; a link a trainee can click in the shared deck is.
+ *
+ * `[label](url)` keeps the author's label; a bare URL gets `shortLinkLabel`.
+ */
+export function renderBodyText(body: string): { text: string; links: BodyLink[] } {
+  const links: BodyLink[] = [];
+  let text = '';
+  let last = 0;
+  const tokens: Array<{ index: number; length: number; label: string; url: string }> = [];
+  for (const m of body.matchAll(MD_LINK)) tokens.push({ index: m.index!, length: m[0].length, label: m[1], url: m[2] });
+  for (const m of body.matchAll(BARE_URL)) {
+    if (tokens.some((t) => m.index! >= t.index && m.index! < t.index + t.length)) continue;
+    const url = m[0].replace(/[.,;:!?'"]+$/, '');
+    tokens.push({ index: m.index!, length: url.length, label: shortLinkLabel(url), url });
+  }
+  tokens.sort((a, b) => a.index - b.index);
+  for (const t of tokens) {
+    text += body.slice(last, t.index);
+    links.push({ start: text.length, end: text.length + t.label.length, url: t.url });
+    text += t.label;
+    last = t.index + t.length;
+  }
+  text += body.slice(last);
+  return { text, links };
+}
+
+/**
+ * The exact string a layout writes into its `{{BODY}}` frame, or null for a
+ * layout with no single body frame. ONE function, used by the renderer and by
+ * the fit lint, so what is measured is what is drawn.
+ */
+export function renderedBody(slide: SlideSpec_v2): { text: string; links: BodyLink[] } | null {
+  switch (slide.layout) {
+    case 'content':
+    case 'walkthrough':
+    case 'exercise':
+    case 'closing':
+      return renderBodyText(slide.body);
+    case 'agenda':
+      // Bullet markers (•) for visual hierarchy (v5.3). The trailing
+      // "  —  duration" was dropped 2026-09-09: the LLO sets session timing.
+      return { text: slide.items.map((i) => `•  ${i.label}`).join('\n'), links: [] };
+    case 'timeline':
+      // The timeline stencil is a TITLE + BODY text layout — it has NO
+      // per-step boxes. The renderer used to fill {{STEP1_LABEL}} …
+      // {{STEP5_DETAIL}}, none of which exist on the stencil, so all ten
+      // replacements were no-ops, {{BODY}} was never targeted by anything, and
+      // it survived to the rendered slide with every step missing. Verified
+      // against the live template on 2026-08-18: `ace_stencil_timeline`
+      // contains exactly {{BODY}} and {{TITLE}}. Matches the `checklist` and
+      // `agenda` precedent — compose the list into BODY.
+      // dimagi-internal/ace#1503. Parity is now enforced by
+      // STENCIL_PLACEHOLDERS + its test, so this cannot silently drift again.
+      // The RENDER owns the numbering, so a label that ALSO carries one is
+      // stripped rather than concatenated. Left alone it renders "1.  1.
+      // Targeting survey (C2)" — which is what shipped, because a spec author
+      // writing an ordered list naturally numbers the steps and nothing told
+      // them not to. Prose in the generate skill cannot enforce this; making
+      // the consumer tolerant does.
+      return {
+        text: slide.steps
+          .map((step, i) => `${i + 1}.  ${stripLeadingOrdinal(step.label)}  —  ${step.detail}`)
+          .join('\n'),
+        links: [],
+      };
+    case 'checklist':
+      return { text: slide.items.map((item) => `☐ ${item}`).join('\n'), links: [] };
+    default:
+      return null;
+  }
+}
+
+const EMU_PER_PT = 12_700;
+
+/**
+ * Height the rendered body needs vs. the height of the frame the stencil
+ * draws for it — both in points. The frame comes from the SAME builder that
+ * minted the template (`STENCIL_TEXT_BUILDERS`), so a re-layout of the stencil
+ * re-tightens this check with no second number to update.
+ *
+ * The estimate is `estimateTextHeightPt` (lib/deck-visual-checks.ts) — the one
+ * the render eval already uses on the rendered deck, calibrated on slide 53
+ * itself (17 estimated lines, 17 drawn).
+ */
+export function bodyFit(slide: SlideSpec_v2): { neededPt: number; boxPt: number } | null {
+  const body = renderedBody(slide);
+  if (!body || body.text.trim().length === 0) return null;
+  const reqs = STENCIL_TEXT_BUILDERS[slide.layout as StencilKey]?.('p') ?? [];
+  const shape = reqs.find((r) => (r as any).createShape?.objectId === 'p_body') as any;
+  const style = reqs.find((r) => (r as any).updateTextStyle?.objectId === 'p_body') as any;
+  if (!shape || !style) return null;
+  const wPt = shape.createShape.elementProperties.size.width.magnitude / EMU_PER_PT;
+  const hPt = shape.createShape.elementProperties.size.height.magnitude / EMU_PER_PT;
+  const pt = style.updateTextStyle.style.fontSize.magnitude as number;
+  return { neededPt: estimateTextHeightPt(body.text, pt, wPt), boxPt: hPt };
 }
 
 /**
@@ -918,6 +1071,42 @@ function createImage(
   };
 }
 
+/**
+ * The duplicated slide's `{{BODY}}` frame. `duplicateObject` lets the caller
+ * name a child's copy, and the stencil's body frame is `<stencilId>_body` on
+ * every stencil the bootstrap or `--repair` builds (`STENCIL_TEXT_BUILDERS`
+ * names it `${pageId}_body`; read off the live template 2026-10-01, all ten
+ * body stencils). Naming the copy is what lets a link be styled onto it.
+ */
+export function bodyObjectId(pageId: string): string {
+  return `${pageId}_body`;
+}
+
+function bodyRequests(
+  slide: SlideSpec_v2,
+  pageId: string,
+  r: (token: string, value: string) => void,
+  reqs: Array<Record<string, unknown>>,
+): void {
+  const body = renderedBody(slide);
+  if (!body) return;
+  r('{{BODY}}', body.text);
+  for (const link of body.links) {
+    reqs.push({
+      updateTextStyle: {
+        objectId: bodyObjectId(pageId),
+        textRange: { type: 'FIXED_RANGE', startIndex: link.start, endIndex: link.end },
+        style: {
+          link: { url: link.url },
+          underline: true,
+          foregroundColor: { opaqueColor: { rgbColor: COLOR_INDIGO } },
+        },
+        fields: 'link,underline,foregroundColor',
+      },
+    });
+  }
+}
+
 function buildLayoutRequests(
   slide: SlideSpec_v2,
   pageId: string,
@@ -939,25 +1128,27 @@ function buildLayoutRequests(
       // Title only — nothing extra
       break;
     case 'agenda':
-      // Prefix each item with a bullet marker (•) for visual hierarchy (v5.3).
-      // The trailing "  —  duration" was dropped 2026-09-09: agenda items no
-      // longer carry a duration, because the LLO sets session timing.
-      r('{{BODY}}', slide.items.map((i) => `•  ${i.label}`).join('\n'));
-      break;
     case 'content':
-      r('{{BODY}}', slide.body);
+    case 'timeline':
+    case 'checklist':
+    case 'exercise':
+    case 'closing':
+      // The body text is composed by `renderedBody` — the same function the
+      // fit lint measures — so what is checked is exactly what is drawn.
+      // Exercise: no duration replacement — the badge is gone from the stencil
+      // and `{{DURATION}}` is gone from this layout's placeholder contract.
+      bodyRequests(slide, pageId, r, reqs);
       break;
     case 'walkthrough':
-      r('{{BODY}}', slide.body);
-      // v5.3 walkthrough geometry: body widened to ~45% (vs 35% in v5.2)
-      // so longer body sentences don't wrap mid-phrase. Image area
-      // correspondingly starts at 45% from left and is 50% wide.
+      bodyRequests(slide, pageId, r, reqs);
+      // The phone owns the right column at ~91% of the slide height — see
+      // WALKTHROUGH_IMAGE for why (legibility when projected).
       reqs.push(
         createImage(
           `${pageId}_img_0`,
           pageId,
           manifest.resolveImageRef(slide.image),
-          { x: 4343400, y: 457200, w: 4343400, h: 4229100 },
+          WALKTHROUGH_IMAGE,
         ),
       );
       break;
@@ -1095,41 +1286,6 @@ function buildLayoutRequests(
         }
       }
       break;
-    case 'timeline':
-      // The timeline stencil is a TITLE + BODY text layout — it has NO
-      // per-step boxes. This branch used to fill {{STEP1_LABEL}} …
-      // {{STEP5_DETAIL}}, none of which exist on the stencil, so all ten
-      // replacements were no-ops, {{BODY}} was never targeted by anything, and
-      // it survived to the rendered slide with every step missing. Verified
-      // against the live template on 2026-08-18: `ace_stencil_timeline`
-      // contains exactly {{BODY}} and {{TITLE}}. Matches the `checklist` and
-      // `agenda` precedent — compose the list into BODY.
-      // dimagi-internal/ace#1503. Parity is now enforced by
-      // STENCIL_PLACEHOLDERS + its test, so this cannot silently drift again.
-      // The RENDER owns the numbering, so a label that ALSO carries one is
-      // stripped rather than concatenated. Left alone it renders "1.  1.
-      // Targeting survey (C2)" — which is what shipped, because a spec author
-      // writing an ordered list naturally numbers the steps and nothing told
-      // them not to. Prose in the generate skill cannot enforce this; making
-      // the consumer tolerant does.
-      r(
-        '{{BODY}}',
-        slide.steps
-          .map((step, i) => `${i + 1}.  ${stripLeadingOrdinal(step.label)}  —  ${step.detail}`)
-          .join('\n'),
-      );
-      break;
-    case 'checklist':
-      r('{{BODY}}', slide.items.map((item) => `☐ ${item}`).join('\n'));
-      break;
-    case 'exercise':
-      // No duration replacement — the badge is gone from the stencil and
-      // `{{DURATION}}` is gone from this layout's placeholder contract.
-      r('{{BODY}}', slide.body);
-      break;
-    case 'closing':
-      r('{{BODY}}', slide.body);
-      break;
   }
 
   // Speaker notes — fill any {{NOTES}} placeholder in the duplicated
@@ -1187,11 +1343,16 @@ export function buildSlidesRequestsV2(
         );
       }
 
-      // Duplicate the stencil slide
+      // Duplicate the stencil slide. When the body carries a link, also name
+      // the copy of its body frame so the link can be styled onto it.
+      const objectIds: Record<string, string> = { [stencilId]: newSlideId };
+      if ((renderedBody(slide)?.links.length ?? 0) > 0) {
+        objectIds[bodyObjectId(stencilId)] = bodyObjectId(newSlideId);
+      }
       requests.push({
         duplicateObject: {
           objectId: stencilId,
-          objectIds: { [stencilId]: newSlideId },
+          objectIds,
         },
       });
 
