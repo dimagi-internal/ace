@@ -28,7 +28,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
-import { qaResultWriteRefusal } from '../lib/qa-result-write-guard.js';
+import { qaResultWriteRefusal, verdictWriteRefusal } from '../lib/qa-result-write-guard.js';
 import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
@@ -827,11 +827,12 @@ server.tool(
       const newContent = resolveUpdateFileContent({ content, localFilePath });
       // A QA result rewritten in place goes through the same guard as a create.
       // Only content that names a -qa skill costs the extra metadata read.
-      if (/^skill:\s*\S+-qa\s*$/m.test(newContent)) {
+      if (/^skill:\s*\S+-(qa|eval)\s*$/m.test(newContent)) {
         const meta = await withTransientRetry(() =>
           drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }),
         );
-        const qaRefusal = qaResultWriteRefusal(String((meta.data as any).name ?? ''), newContent);
+        const fname = String((meta.data as any).name ?? '');
+        const qaRefusal = qaResultWriteRefusal(fname, newContent) ?? verdictWriteRefusal(fname, newContent);
         if (qaRefusal) return error(qaRefusal);
       }
       // Optimistic concurrency: re-read the file's `version` and compare. Drive's
@@ -915,7 +916,7 @@ server.tool(
         atom: 'drive_create_file', inlineParam: 'content',
         inline: fileContent, localFilePath,
       });
-      const qaRefusal = qaResultWriteRefusal(fileName, resolved);
+      const qaRefusal = qaResultWriteRefusal(fileName, resolved) ?? verdictWriteRefusal(fileName, resolved);
       if (qaRefusal) return error(qaRefusal);
       const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
@@ -1017,7 +1018,7 @@ server.tool(
       if (buf.length === 0) {
         return error('File is empty (0 bytes).');
       }
-      const qaRefusal = qaResultWriteRefusal(fileName, buf.toString('utf8'));
+      const qaRefusal = qaResultWriteRefusal(fileName, buf.toString('utf8')) ?? verdictWriteRefusal(fileName, buf.toString('utf8'));
       if (qaRefusal) return error(qaRefusal);
       return result(
         await handleUploadBinary(

@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1625 — 2026-10-01
+
+**Generator fixes from release-check's read-only run on spark-facilitator/20260926-1800.**
+
+- **`connect-opp-setup-eval` is now dispatched.** The skill existed and was registered as Phase 4's eval,
+  but it was `disable-model-invocation: true` and the agent marked its producer `has_judge: false`, so no
+  run ever got the verdict. Phase 4 Step 2 now runs it.
+- **`semantic-registry-author-eval` is no longer "deferrable".** Phase 7 C2 runs it after the QA gate. The
+  frontmatter now names it.
+- **Verdict write guard.** ace-gdrive's write atoms refuse a `*_verdict*.yaml` that a strict YAML reader
+  rejects, or that has no `verdict` field (`verdictWriteRefusal`, next to the QA-result guard). Spark's
+  `pdd-to-learn-app-eval_verdict.yaml` repeats a key, which ace-web's Python reader silently resolves to
+  the last value. **MCP change: quit and reopen Claude Code.**
+
 ## 0.13.1624 — 2026-10-01
 
 **The build memo is written for an outside reviewer, and Phase 7 worker-review links are built by one

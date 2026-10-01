@@ -44,3 +44,17 @@ describe('qaResultWriteRefusal', () => {
     expect(qaResultWriteRefusal('run_state.yaml', 'not: [valid')).toBeNull();
   });
 });
+
+describe('verdictWriteRefusal', () => {
+  const RC = join(__dirname, '../fixtures/release-check/spark-20260926-1800');
+  it("refuses Spark's real learn-app verdict (a repeated key) and accepts a real well-formed one", async () => {
+    const { verdictWriteRefusal } = await import('../../lib/qa-result-write-guard');
+    const inv = JSON.parse(readFileSync(join(RC, 'inventory.json'), 'utf8')) as Array<{ path: string; text?: string }>;
+    const learn = inv.find((f) => f.path.endsWith('pdd-to-learn-app-eval_verdict.yaml'))!.text!;
+    expect(verdictWriteRefusal('pdd-to-learn-app-eval_verdict.yaml', learn)).toMatch(/INVALID_VERDICT.*Map keys must be unique/);
+    const good = readFileSync(join(RC, 'build-memo-eval_verdict.yaml'), 'utf8');
+    expect(verdictWriteRefusal('build-memo-eval_verdict.yaml', good)).toBeNull();
+    expect(verdictWriteRefusal('build-memo-eval_verdict.yaml', 'just: a map\n')).toMatch(/verdict/);
+    expect(verdictWriteRefusal('run_state.yaml', 'a: 1\na: 2\n')).toBeNull();
+  });
+});
