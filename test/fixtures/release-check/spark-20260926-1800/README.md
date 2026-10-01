@@ -1,0 +1,1 @@
+Real evidence for spark-facilitator/20260926-1800, gathered read-only 2026-10-01 by scripts/release-check.ts (inventory via the Drive SA, links via headless sessions, the anonymous run-surface-audit, the live Connect read-back) plus the three gate results re-run read-only that day. embed_key redacted.

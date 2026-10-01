@@ -1,0 +1,112 @@
+[
+ {
+  "label": "public run summary",
+  "url": "https://labs.connect.dimagi.com/ace/opps/dimagi-team/spark-facilitator/runs/20260926-1800/summary",
+  "audience": "public",
+  "owner": "ace-orchestrator",
+  "session": "public",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://labs.connect.dimagi.com/ace/opps/dimagi-team/spark-facilitator/runs/20260926-1800/summary",
+  "detail": "loads"
+ },
+ {
+  "label": "commcare-setup:apps.learn",
+  "url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/cc3aaedcfa9a47729873d4915e12d226/",
+  "audience": "member",
+  "owner": "app-deploy",
+  "session": "hq",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/cc3aaedcfa9a47729873d4915e12d226/",
+  "detail": "loads"
+ },
+ {
+  "label": "commcare-setup:apps.deliver",
+  "url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/0d877e0f7bc14382b34f4a843803ca0a/",
+  "audience": "member",
+  "owner": "app-deploy",
+  "session": "hq",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/0d877e0f7bc14382b34f4a843803ca0a/",
+  "detail": "loads"
+ },
+ {
+  "label": "connect-setup:connect.program",
+  "url": "https://connect.dimagi.com/a/ai-demo-space/program/",
+  "audience": "member",
+  "owner": "connect-opp-setup",
+  "session": "connect",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://connect.dimagi.com/a/ai-demo-space/program/",
+  "detail": "loads"
+ },
+ {
+  "label": "connect-setup:connect.opportunity",
+  "url": "https://connect.dimagi.com/a/ai-demo-space/opportunity/d5deee9b-e32e-4fae-81dd-a9a11d393f50/",
+  "audience": "member",
+  "owner": "connect-opp-setup",
+  "session": "connect",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://connect.dimagi.com/a/ai-demo-space/opportunity/d5deee9b-e32e-4fae-81dd-a9a11d393f50/",
+  "detail": "loads"
+ },
+ {
+  "label": "ocs-setup:ocs_chatbot (public chat)",
+  "url": "https://www.openchatstudio.com/a/connect-ace/chatbots/389f6ac5-07ac-4dff-9843-20b0cb80458a/start/",
+  "audience": "public",
+  "owner": "ocs-agent-setup",
+  "session": "public",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://www.openchatstudio.com/a/connect-ace/chatbots/389f6ac5-07ac-4dff-9843-20b0cb80458a/s/777e6925-ee6f-4e86-9032-964662ac3bc4/chat/",
+  "detail": "loads"
+ },
+ {
+  "label": "synthetic-data-and-workflows:synthetic.cascade.programme_report",
+  "url": "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082",
+  "audience": "member",
+  "owner": "demo-data-setup",
+  "session": "labs",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082",
+  "detail": "loads"
+ },
+ {
+  "label": "synthetic-data-and-workflows:synthetic.cascade.opp_reports.0",
+  "url": "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082",
+  "audience": "member",
+  "owner": "demo-data-setup",
+  "session": "labs",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082",
+  "detail": "loads"
+ },
+ {
+  "label": "synthetic-data-and-workflows:synthetic.cascade.opp_reports.1",
+  "url": "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083",
+  "audience": "member",
+  "owner": "demo-data-setup",
+  "session": "labs",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083",
+  "detail": "loads"
+ },
+ {
+  "label": "synthetic-data-and-workflows:synthetic.cascade.opp_reports.2",
+  "url": "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084",
+  "audience": "member",
+  "owner": "demo-data-setup",
+  "session": "labs",
+  "ok": true,
+  "status": 200,
+  "final_url": "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084",
+  "detail": "loads"
+ }
+]

@@ -1,0 +1,135 @@
+skill: build-memo-eval
+target: spark-facilitator/20260926-1800
+mode: quick
+ran_at: "2026-10-01T17:30:00Z"
+capture_path: 4-connect/build-memo.md
+
+overall_score: 6.2
+overall_score_pre_cap: 6.2
+verdict: warn
+
+dimensions:
+  accuracy_against_build: { score: 7.5, weight: 0.35 }
+  gaps_surfaced_honestly: { score: 7.0, weight: 0.25 }
+  reviewer_clarity: { score: 4.0, weight: 0.20 }
+  actionability: { score: 5.0, weight: 0.20 }
+# 0.35*7.5 + 0.25*7.0 + 0.20*4.0 + 0.20*5.0 = 2.625 + 1.75 + 0.80 + 1.00 = 6.175 -> 6.2
+# No hard-deduct fired: hard gate not tripped (memo states the predicate is NOT enforced);
+# build_memo.complete = true with gaps [] so the gaps cap does not bind.
+
+per_item:
+  # --- Accuracy: checks against the fact sheet (run_state + live Connect 2026-10-01) ---
+  - ref: accuracy.verification_rules_not_applied
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo 'Read first': 'the PDD's payment predicate (meeting_conducted = yes AND meeting_type = community_meeting) is NOT enforced by Connect'; rows 28/39/40 + section 4 'form_field_rules_saved: 0'. Sheet: rules written 0, persisted 0, not-applied reason ace#2419. Hard gate NOT tripped."
+  - ref: accuracy.payment_amount
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 23 'FLW amount = 7,500 MWK per verified meeting'; sheet worker amount 7500 MWK."
+  - ref: accuracy.caps
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo rows 38/47/48 'max_total 21, max_daily 1'; sheet max_total 21, max_daily 1; live Connect PU 'Per verified community meeting' max_total 21 / max_daily 1."
+  - ref: accuracy.opportunity_dates
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 24 'Opportunity 2026-11-02 -> 2027-02-26'; live start 2026-11-02, end 2027-02-26."
+  - ref: accuracy.budget_currency
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 26 'per-opp 3,276,000' (MWK); live total_budget 3276000, currency MWK. Program ceiling 32,760,000 is not on the sheet."
+  - ref: accuracy.program_name
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 27 'Spark FCAP Facilitation — Malawi Follow-Up Study (MWK)'; live program_name identical."
+  - ref: accuracy.deliver_version
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 14 'HQ build v14'; sheet deliver released version 14. Learn version 22 is never stated (omission, not contradiction)."
+  - ref: accuracy.payment_unit_name_count
+    score: 10
+    verdict: pass
+    note: "MATCHES. Memo row 30/38 one PU per verified meeting; live 1 PU 'Per verified community meeting'."
+  - ref: accuracy.run_id_label
+    score: 5
+    verdict: warn
+    note: "CONTRADICTED (run_state, not a fact-sheet row). Memo title 'Build memo — Spark Facilitator · run 20260925-1536' and section 3 'Run spark-facilitator/20260925-1536'; run_state run_id: 20260926-1800 (forked_from 20260925-1536). The memo was carried over by the fork and still names the source run; a reviewer reaching it from run 20260926-1800 is told it belongs to a different run. The opportunity name legitimately carries 20260925-1536."
+  - ref: accuracy.daily_cap_ccz_claim
+    score: 6
+    verdict: warn
+    note: "NOT ON SHEET, internally overstated. Row 47: 'at most 1 payable meeting per CBF per day' enforced by 'CCZ constraint. Date check in the form'. The form check described in row 43 / section 4 is per COMMUNITY ('. > last_community_meeting_date'), so it cannot stop one CBF recording two communities on one day; only Connect max_daily=1 (which matches the sheet) does. Decision id 'connect-rule-one-meeting-per-day' is attached to the dated-after-last rule."
+  - ref: accuracy.total_cap_ccz_claim
+    score: 6
+    verdict: warn
+    note: "NOT ON SHEET, overstated. Row 48 'total cap 21 per CBF' -> 'CCZ constraint. Structural 7 x 3 from the per-step clamp'. The clamp keys on the community case_id, so 7x3 is per community, not per CBF; per-CBF 21 rests on Connect PU max_total=21 (which matches the sheet)."
+  - ref: accuracy.not_on_sheet
+    score: 7
+    verdict: pass
+    note: "Many claims cannot be settled by the sheet (program dates 2026-10-01 -> 2027-03-31, ceiling 32,760,000, program ids 9e82982e/a115e4f2, PU 7a0d526c, DU 7083, translation unit counts 202/320, CCZ bind line numbers). Program/PU/DU ids agree with run_state where present."
+
+  # --- Gaps and decisions surfaced honestly ---
+  - ref: gaps.not_applied_rule_at_top
+    score: 9
+    verdict: pass
+    note: "The one not-applied rule is the 'Read first' line, repeated as an OPEN row (28) and per-clause rows 39/40 with the consequence ('they mint work until rejected', 'still minted as work on this opp')."
+  - ref: gaps.latitudes_listed
+    score: 8
+    verdict: pass
+    note: "29 latitude/ambiguity rows each with what was chosen and why; payment rate flagged 'Placeholder until the awarded rate replaces it'; operator currency decision named. Could not cross-check against decisions.yaml (55 rows per memo §5; section 1 carries 52) — the 3-row difference is unexplained."
+  - ref: gaps.residuals_buried
+    score: 5
+    verdict: warn
+    note: "Material residuals live only in the verbatim appendices: all nya/tum translations 'origin: ai, needs-review' and 'Tumbuka ŵ spelling is inconsistent in about 12 strings' (§2/§3); 'retakes are unlimited against a fixed bank ... a worker could pass by memorising answers' and 'the correct option is the longest' (§3); 'the eval was not re-run for this non-gating repair' (§3); GPS 'ADVISORY, not enforced' (§2)."
+  - ref: gaps.omitted_build_facts
+    score: 5
+    verdict: warn
+    note: "Absent entirely: the opportunity is is_test=true; the ACE test user invite is pending (connect_user_id null); the organisation amount 3,000 MWK per meeting; the Learn released version 22. 'Not configurable on Connect' labels both the unenforced payment predicate (a real gap) and by-design off-platform rules (rows 49-52) — same wording, very different severity."
+
+  # --- Clarity for a non-ACE reviewer ---
+  - ref: clarity.jargon
+    score: 4
+    verdict: warn
+    note: "Un-glossed terms throughout section 1: CCZ (never defined), CBF, FCAP, DU/PU, LLO, 'Layer B', 'Phase 9 LLO opp', 'self-managed', 'mint work', 'deliver block', casedb, '#case/'; e.g. row 1 'A registration-only `cbf` menu would carry an unreachable case list (`case-list-unreachable` BLOCKER)'."
+  - ref: clarity.internal_ids
+    score: 3
+    verdict: fail
+    note: "Body full of skill names, issue numbers and paths: '`pdd-to-deliver-app-eval` hard-gated it (entity_state_fidelity BLOCKER)', 'ace#2150, PR #2481', 'skills/app-test-cases § kind: date (ace#1300); lib/fieldlist-gestures.ts safeScrollOriginX', 'opp.yaml connect.program.id', 'Nova get_app ef133601 / c57ad3f2', 'From' column of decisions.yaml ids on every row."
+  - ref: clarity.audience_mix_and_duplication
+    score: 4
+    verdict: warn
+    note: "Rows 31-35 are ACE's own test-harness decisions ('Edge-origin swipes at x=5%', 'Picker bounds are 2.63.2 observations not re-observed on 2.64.0') a partner cannot use. Sections 2-4 repeat section 1 nearly verbatim, doubling length; rows 14 and 22 are the same ampersand issue twice."
+
+  # --- Actionability ---
+  - ref: actionability.spot_check_column
+    score: 6
+    verdict: warn
+    note: "Most rows name a place ('Deliver app › Community Meeting Record › who_came'), but 8 rows give '—' (14, 28, 29, 31-35) and others point at internal files ('opp.yaml connect.program.id', 'training LLO guide (Phase 6)')."
+  - ref: actionability.unviewable_targets
+    score: 4
+    verdict: warn
+    note: "Several spot-check targets are hidden calculates a reviewer cannot see on a phone or in Connect: 'Community Meeting Record › entity_key', 'entity_key / capped_index', 'step_display…step_display_7', 'new_step … new_total_participation'. No links to the HQ apps or the Connect opportunity, though run_state holds every URL."
+  - ref: actionability.no_ask
+    score: 4
+    verdict: warn
+    note: "Rows state what was done but not what 'correct' looks like or what the reviewer should decide. The decisions a reviewer actually owns — accept the 7,500 MWK placeholder, choose ace#2419's resolution before Phase 9, sign off unreviewed translations — are not pulled into an explicit ask."
+
+auto_surfaced:
+  - severity: WARN
+    message: "Overall 6.2 is below the 7.0 gate threshold (warn band 5.0-7.0 per sibling evals). Hard gate NOT tripped: every payment amount, cap, date, budget, currency and the not-applied verification predicate match the fact sheet."
+  - severity: WARN
+    message: "Memo names the wrong run: title says 'run 20260925-1536' but run_state.run_id is 20260926-1800 (forked). Fork-carried memo not relabelled."
+  - severity: WARN
+    message: "Rows 47/48 claim the per-CBF daily cap and the per-CBF total cap of 21 are CCZ constraints; the CCZ checks are per community. Only Connect PU max_daily=1 / max_total=21 enforce them per CBF."
+  - severity: WARN
+    message: "reviewer_clarity 4.0: CCZ, CBF, FCAP, DU/PU never glossed; skill names, ace# issue numbers, file paths and decision ids throughout the review table."
+  - severity: WARN
+    message: "actionability 5.0: 8 rows have no spot-check location, several targets are hidden fields, no links, no explicit reviewer ask."
+  - severity: WARN
+    message: "Residuals buried in appendices / absent: AI-only nya+tum translations needing review, memorisable assessment, is_test=true opportunity, pending test-user invite, 3,000 MWK organisation amount."
+  - severity: INFO
+    message: "decisions.yaml and the PDD were not available to this judge; gaps dimension cross-checked against run_state and the memo's own counts only (memo says 55 decision rows, section 1 has 52)."
+
+gate:
+  threshold: 7.0
+  disposition: iterate

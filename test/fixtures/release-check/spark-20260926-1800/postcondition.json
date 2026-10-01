@@ -1,0 +1,42 @@
+{
+ "read": {
+  "opportunity": {
+   "id": "d5deee9b-e32e-4fae-81dd-a9a11d393f50",
+   "name": "20260925-1536 · Spark Facilitator — FCAP Community Meeting Facilitation",
+   "active": true,
+   "currency": "MWK",
+   "country": "MWI",
+   "end_date": "2027-02-26",
+   "is_test": true,
+   "total_budget": 3276000,
+   "start_date": "2026-11-02",
+   "program_name": "Spark FCAP Facilitation — Malawi Follow-Up Study (MWK)",
+   "dashboard_read": "ok"
+  },
+  "paymentUnits": [
+   {
+    "id": 1,
+    "name": "Per verified community meeting",
+    "max_total": 21,
+    "max_daily": 1
+   }
+  ],
+  "testUserInvite": {
+   "match": {
+    "phone": "+74260000101",
+    "name": "ACE Test",
+    "claimed": true,
+    "status": "accepted"
+   }
+  }
+ },
+ "decided": {
+  "paymentUnitNames": [
+   "Per verified community meeting"
+  ],
+  "formFieldRulesExpected": 1,
+  "formFieldRulesSaved": 0,
+  "expectActive": true,
+  "expectTestUserInvited": true
+ }
+}

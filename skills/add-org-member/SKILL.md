@@ -1,13 +1,7 @@
 ---
 name: add-org-member
 description: >
-  Add a Dimagi teammate to a Connect workspace (organization) by email, so
-  they can see the programs/opportunities ACE runs there. Thin wrapper over
-  the `connect_add_org_member` atom: enforces a @dimagi.com guard, defaults
-  the workspace to the instance's configured PM org and the email to the session's own git
-  identity ("add me"), invites via Connect's membership form, and verifies
-  by member-table + pending-invite-table read-back. Anyone running ACE can invoke it; ACE performs
-  the add as its own org-admin identity.
+  Add a Dimagi teammate to a Connect organization by email so they can see ACE's programs there. Use for @dimagi.com staff only.
 disable-model-invocation: false
 ---
 

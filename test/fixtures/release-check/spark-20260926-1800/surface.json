@@ -1,0 +1,231 @@
+{
+  "page_url": "https://labs.connect.dimagi.com/ace/opps/dimagi-team/spark-facilitator/runs/20260926-1800/summary",
+  "summary": {
+    "broken": 0,
+    "misleading": 2,
+    "improvement": 1,
+    "safeToShare": false
+  },
+  "findings": [
+    {
+      "code": "DOC-FIDELITY-UNVERIFIED",
+      "severity": "misleading",
+      "where": "build_memo.url, design.docs[0].url, design.docs[1].url, training.docs[0].url, training.docs[1].url, training.docs[2].url, training.docs[3].url, training.docs[4].url, open_questions.url",
+      "detail": "9 published document(s) had no source markdown supplied, so nothing compared what was PUBLISHED against what was WRITTEN. Content the Drive importer drops is invisible to every other check here — one guide lost 44 screenshots and 224 words with every content check green",
+      "fix": "pass --doc-source <json> mapping each url to the markdown it was published from (drive_read_file on the source artifact). A PARTIAL map is fine and narrows this finding to whatever is still missing — it does not switch the check off. To stand the check down for a document that genuinely has no source artifact, give that url an explicit null (`{\"<url>\": null}`); silence never means that",
+      "defect": "12 (a guide silently lost 44 screenshots and 224 words)"
+    },
+    {
+      "code": "REVIEWERS-UNDECLARED",
+      "severity": "misleading",
+      "where": "apps[0].hq_url, apps[1].hq_url, connect.opportunity.url, assistant.ocs_url",
+      "detail": "4 link(s) on this page require MEMBERSHIP, and no reviewer was named, so nothing checked whether the people this run is being shared with can open them. Anonymous reachability only proves the link works for somebody",
+      "fix": "pass --reviewer <email> per person (plus --memberships), or withhold these links as internal build tools",
+      "defect": "4 (links an external viewer cannot open, shown as if they could)"
+    },
+    {
+      "code": "RENDER-EDIT-NEEDS-EXTRA-COMMIT",
+      "severity": "improvement",
+      "where": "decisions (edit affordance)",
+      "detail": "changing a decision requires a separate commit step (pick → name → Save) on every row, where the Workbench commits on click. A reviewer working through 42 rows pays that three times per row, and the two surfaces disagree about what \"changing an answer\" means",
+      "fix": "commit on pick, as the Workbench does; keep the name prompt once per session, not once per row",
+      "defect": "9 (pick → name → Save on every row; caught only by a human comparing by eye)"
+    }
+  ],
+  "links": [
+    {
+      "label": "build_memo.url",
+      "url": "https://docs.google.com/document/d/19E5k7l4NnnbZo8XDzytICRDd0zEb8AqHiEITb0o1EQs/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "design.docs[0].url",
+      "url": "https://docs.google.com/document/d/1rR_GEZv6J8FGP7iUYs9zwBZO_bICBOyRZI9tQTOEEqI/edit",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "design.docs[1].url",
+      "url": "https://docs.google.com/document/d/1QmHS_kfY62R3BwAQGrNpTLOkhxv49Q2LxS48Q9rZRRk/edit",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "apps[0].hq_url",
+      "url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/cc3aaedcfa9a47729873d4915e12d226/",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "MEMBER-GATED",
+      "note": "requires MEMBERSHIP, not just sign-in — a signed-in non-member gets a flat 404"
+    },
+    {
+      "label": "apps[1].hq_url",
+      "url": "https://www.commcarehq.org/a/connect-ace-prod/apps/view/0d877e0f7bc14382b34f4a843803ca0a/",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "MEMBER-GATED",
+      "note": "requires MEMBERSHIP, not just sign-in — a signed-in non-member gets a flat 404"
+    },
+    {
+      "label": "connect.opportunity.url",
+      "url": "https://connect.dimagi.com/a/ai-demo-space/opportunity/d5deee9b-e32e-4fae-81dd-a9a11d393f50/",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "MEMBER-GATED",
+      "note": "requires MEMBERSHIP, not just sign-in — a signed-in non-member gets a flat 404"
+    },
+    {
+      "label": "training.deck.url",
+      "url": "https://docs.google.com/presentation/d/17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "training.docs[0].url",
+      "url": "https://docs.google.com/document/d/1pyEwkq6j6pQ1iabgG5QFWMZdTh8uxcqrSistPauKGlY/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "training.docs[1].url",
+      "url": "https://docs.google.com/document/d/1yTTs9d8K9dAFoXd1wW1x0s0U7IYiKHjL_eCxL7dKf24/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "training.docs[2].url",
+      "url": "https://docs.google.com/document/d/1BxzNOPHN9JD8hUWlDCj_EZkqytVx6t3STVHJD0xahOw/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "training.docs[3].url",
+      "url": "https://docs.google.com/document/d/1-hrPAhfJuGCcjIhmjuSwHaELqWkQIzXfN5ifY-s_fyc/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "training.docs[4].url",
+      "url": "https://docs.google.com/document/d/1HxQNxzIkjmDOwFDTugeItJA-lTi3aXLNh98itvFE7yQ/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "assistant.ocs_url",
+      "url": "https://www.openchatstudio.com/a/connect-ace/chatbots/13234/",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "MEMBER-GATED",
+      "note": "requires MEMBERSHIP, not just sign-in — a signed-in non-member gets a flat 404"
+    },
+    {
+      "label": "dashboards[0].url",
+      "url": "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "AUTH-GATED",
+      "note": "redirects to sign-in (https://labs.connect.dimagi.com/labs/login/?next=/labs/workf)"
+    },
+    {
+      "label": "dashboards[1].url",
+      "url": "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "AUTH-GATED",
+      "note": "redirects to sign-in (https://labs.connect.dimagi.com/labs/login/?next=/labs/workf)"
+    },
+    {
+      "label": "dashboards[2].url",
+      "url": "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "AUTH-GATED",
+      "note": "redirects to sign-in (https://labs.connect.dimagi.com/labs/login/?next=/labs/workf)"
+    },
+    {
+      "label": "dashboards[3].url",
+      "url": "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "AUTH-GATED",
+      "note": "redirects to sign-in (https://labs.connect.dimagi.com/labs/login/?next=/labs/workf)"
+    },
+    {
+      "label": "open_questions.url",
+      "url": "https://docs.google.com/document/d/1-ALB_Yax5xfDB6U1VpKY3eEjVFfoVjIXsvM_dopIEbo/edit?usp=drivesdk",
+      "declaredAccess": "public",
+      "status": 200,
+      "cls": "OK",
+      "note": ""
+    },
+    {
+      "label": "workbench.url",
+      "url": "https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/spark-facilitator/runs/20260926-1800",
+      "declaredAccess": "admin",
+      "status": 200,
+      "cls": "SPA-GATED",
+      "note": "answered 200 at the requested URL and then asked the reader to sign in: the rendered page navigated to https://labs.connect.dimagi.com/ace/auth/login/?next=%2Face%2Fw%2Fdimagi-team%2Fopps%2Fspark-facilitator%2Fruns%2F202609"
+    }
+  ],
+  "render": {
+    "renderedHrefs": [
+      "mailto:jjackson@dimagi.com",
+      "https://docs.google.com/document/d/19E5k7l4NnnbZo8XDzytICRDd0zEb8AqHiEITb0o1EQs/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1rR_GEZv6J8FGP7iUYs9zwBZO_bICBOyRZI9tQTOEEqI/edit",
+      "https://docs.google.com/document/d/1QmHS_kfY62R3BwAQGrNpTLOkhxv49Q2LxS48Q9rZRRk/edit",
+      "https://www.commcarehq.org/a/connect-ace-prod/apps/view/cc3aaedcfa9a47729873d4915e12d226/",
+      "https://www.commcarehq.org/a/connect-ace-prod/apps/view/0d877e0f7bc14382b34f4a843803ca0a/",
+      "https://connect.dimagi.com/a/ai-demo-space/opportunity/d5deee9b-e32e-4fae-81dd-a9a11d393f50/",
+      "https://www.openchatstudio.com/a/connect-ace/chatbots/13234/",
+      "https://docs.google.com/presentation/d/17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1pyEwkq6j6pQ1iabgG5QFWMZdTh8uxcqrSistPauKGlY/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1yTTs9d8K9dAFoXd1wW1x0s0U7IYiKHjL_eCxL7dKf24/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1BxzNOPHN9JD8hUWlDCj_EZkqytVx6t3STVHJD0xahOw/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1-hrPAhfJuGCcjIhmjuSwHaELqWkQIzXfN5ifY-s_fyc/edit?usp=drivesdk",
+      "https://docs.google.com/document/d/1HxQNxzIkjmDOwFDTugeItJA-lTi3aXLNh98itvFE7yQ/edit?usp=drivesdk",
+      "https://labs.connect.dimagi.com/labs/workflow/6371/run/?run_id=6394&program_id=10082",
+      "https://labs.connect.dimagi.com/labs/workflow/6376/run/?run_id=6431&opportunity_id=10082",
+      "https://labs.connect.dimagi.com/labs/workflow/6378/run/?run_id=6432&opportunity_id=10083",
+      "https://labs.connect.dimagi.com/labs/workflow/6380/run/?run_id=6433&opportunity_id=10084",
+      "https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/spark-facilitator/runs/20260926-1800",
+      "https://docs.google.com/document/d/1-ALB_Yax5xfDB6U1VpKY3eEjVFfoVjIXsvM_dopIEbo/edit?usp=drivesdk"
+    ],
+    "notCreatedLabels": [
+      "Demo"
+    ],
+    "decisionEditCommitsOnPick": false,
+    "provenanceVisibleByDefault": true,
+    "writePaths": {
+      "comment": 422,
+      "edit": 422
+    },
+    "gateProbes": [
+      {
+        "url": "https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/spark-facilitator/runs/20260926-1800",
+        "status": 200,
+        "finalUrl": "https://labs.connect.dimagi.com/ace/auth/login/?next=%2Face%2Fw%2Fdimagi-team%2Fopps%2Fspark-facilitator%2Fruns%2F20260926-1800",
+        "text": "ace-web Sign in with your Connect account to continue. Sign in with Connect"
+      }
+    ],
+    "undetermined": []
+  }
+}

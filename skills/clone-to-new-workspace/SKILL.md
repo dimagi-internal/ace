@@ -229,7 +229,7 @@ reviewer to a workspace they cannot open.
    not-in-plan`. A space ACE just created is on HQ's free plan and is
    `not-in-plan` (connect-ace-spark, 2026-09-29; ace#2552). That is fine for
    the copy, build, release and reviewers' web access — all web views. It
-   decides 3b and is reported in 4b and Step 5.
+   decides 3b and is reported in 4b and Step 6.
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
    downstream_domain: <hq_domain>, name: <source app name>, linked: false,
@@ -379,11 +379,20 @@ only worth it when a partner takes the bot over, which is a handover step, not
 a clone step. Record `clone.ocs: {status: kept, reason: public-link}` and
 report the `public_url`.
 
-## Step 5 — Report
+## Step 5 — Release-check the clone (report, do not block)
+
+Run `Skill(release-check)` on `<to>/<opp>/<run-id>` — the CLONE, in the target
+workspace — so the clone tells you at once whether it is releasable. It writes
+`release-check_verdict.yaml` + `release-check_report.md` into the cloned run.
+NOT READY does not undo or fail the clone; its blockers go into the report below
+under "Before `/ace:release`", each with its owner and fix.
+
+## Step 6 — Report
 
 One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
 on the new domain, or the HQ project dashboard on a `not-in-plan` space; not the
 call's own return value), or `NOT DONE` + reason, plus the Drive-link read-back
 (source ids remaining in the target run_state: expected 0 outside comms-logs),
-plus every manual setup item. End with: "Nothing was shared with anyone. When
+plus every manual setup item, plus Step 5's release-check verdict and its
+blockers. End with: "Nothing was shared with anyone. When
 everything is ready, run `/ace:release <to>/<opp>/<run-id>`."

@@ -1,0 +1,260 @@
+skill: training-deck-render-eval
+target: spark-facilitator/20260926-1800
+mode: quick
+ran_at: '2026-10-01T16:14:22+00:00'
+capture_path: training deck 17s_F1aoc-CcqkK3j3Ax_xQPQiNTYj1Mjak-6jp_YLdc
+overall_score: 4.66
+overall_score_pre_cap: 5.06
+verdict: fail
+dimensions:
+  projector_readiness:
+    score: 3.0
+    weight: 0.4
+  image_placement:
+    score: 4.24
+    weight: 0.3
+  legibility:
+    score: 7.55
+    weight: 0.2
+  content_presence:
+    score: 6.81
+    weight: 0.1
+per_item:
+- ref: slide-01
+  score: 5.0
+  verdict: pass
+  note: 'Title slide: clean, high-contrast, nothing to fix. [L5 I- C5]'
+- ref: slide-02
+  score: 4.0
+  verdict: pass
+  note: Agenda readable; grey body text sits low with a large empty band under the title. [L4 I- C4]
+- ref: slide-03
+  score: 4.0
+  verdict: pass
+  note: Icebreaker instructions readable; text-only stencil, no defect beyond grey-on-white body. [L4 I- C4]
+- ref: slide-04
+  score: 4.0
+  verdict: pass
+  note: Learn/Deliver/Verify/Pay summary readable; hyphen bullets instead of real bullets. [L4 I- C4]
+- ref: slide-05
+  score: 1.0
+  verdict: fail
+  note: 'Walkthrough step with NO screenshot: says ''you see its welcome screen'' but shows nothing. [L4 I1 C3]'
+- ref: slide-06
+  score: 3.0
+  verdict: warn
+  note: Three small screenshots, in-phone text unreadable at projector distance; caption 'Tap Sign Up' but screen shows 'Sign In / Register' behind a half-open drawer. [L4 I3 C3]
+- ref: slide-07
+  score: 1.0
+  verdict: fail
+  note: Walkthrough step (code, photo, location) with NO screenshot. [L4 I1 C3]
+- ref: slide-08
+  score: 3.0
+  verdict: warn
+  note: Screenshot good, but cards show run-id prefixes ('20260925-1536 · Spark Facilitator') and a near-identical second Spark card; text names the card without the prefix. [L4 I4 C3]
+- ref: slide-09
+  score: 4.0
+  verdict: pass
+  note: Opportunity screen readable; in-phone description text small; list shows 7 Learn items while deck says eight sections. [L4 I4 C4]
+- ref: slide-10
+  score: 3.0
+  verdict: warn
+  note: Screenshot is an almost empty blue 'Downloading Learn App' screen; little to learn from it. [L4 I3 C4]
+- ref: slide-11
+  score: 1.0
+  verdict: fail
+  note: App action ('Tap Sync with Server on the Deliver home') with NO screenshot. [L4 I1 C3]
+- ref: slide-12
+  score: 4.0
+  verdict: pass
+  note: Pilot framing slide readable; two short paragraphs. [L4 I- C4]
+- ref: slide-13
+  score: 4.0
+  verdict: pass
+  note: Four-part summary readable; long lines but inside the box. [L4 I- C4]
+- ref: slide-14
+  score: 5.0
+  verdict: pass
+  note: Section divider 'Learn' renders cleanly. [L5 I- C5]
+- ref: slide-15
+  score: 4.0
+  verdict: pass
+  note: Starting-quiz screenshot readable and well placed; lower third of phone frame empty. [L4 I4 C4]
+- ref: slide-16
+  score: 1.0
+  verdict: fail
+  note: Learn-module slide with NO screenshot (siblings 15/17/22 carry one); one-line summary only. [L4 I1 C3]
+- ref: slide-17
+  score: 2.0
+  verdict: fail
+  note: Screenshot is a near-empty grey screen with one tile; conveys nothing about registering. [L4 I2 C3]
+- ref: slide-18
+  score: 1.0
+  verdict: fail
+  note: Promises 'the Community Meeting Record screen by screen' but has NO screenshot; one sentence. [L4 I1 C2]
+- ref: slide-19
+  score: 1.0
+  verdict: fail
+  note: Learn-module slide with NO screenshot; one-line summary only. [L4 I1 C3]
+- ref: slide-20
+  score: 1.0
+  verdict: fail
+  note: Learn-module slide with NO screenshot; one-line summary only. [L4 I1 C3]
+- ref: slide-21
+  score: 1.0
+  verdict: fail
+  note: Learn-module slide with NO screenshot; one-line summary only. [L4 I1 C3]
+- ref: slide-22
+  score: 3.0
+  verdict: warn
+  note: Screenshot is mostly blank white below a '100 out of 100' result; does not show the 80% pass rule the text teaches. [L4 I3 C4]
+- ref: slide-23
+  score: 4.0
+  verdict: pass
+  note: Concept slide readable. [L4 I- C4]
+- ref: slide-24
+  score: 5.0
+  verdict: pass
+  note: Section divider 'Deliver' renders cleanly. [L5 I- C5]
+- ref: slide-25
+  score: 4.0
+  verdict: pass
+  note: Registration form screenshot readable; last option cut by nav bar; test name 'Thandiwe Banda 1536' carries a run suffix. [L4 I4 C4]
+- ref: slide-26
+  score: 4.0
+  verdict: pass
+  note: Households screen readable; lower half of phone blank; text lists more fields than shown. [L4 I4 C4]
+- ref: slide-27
+  score: 4.0
+  verdict: pass
+  note: Meeting-record first screen readable and matches the text; latitude line clipped at bottom. [L4 I4 C4]
+- ref: slide-28
+  score: 3.0
+  verdict: warn
+  note: Screenshot is three lines of text over an otherwise blank white phone frame. [L4 I3 C4]
+- ref: slide-29
+  score: 4.0
+  verdict: pass
+  note: Photo screen readable with illustration; REMOVE IMAGE button half-clipped at bottom. [L4 I4 C4]
+- ref: slide-30
+  score: 4.0
+  verdict: pass
+  note: Attendance screen filled with realistic numbers, matches text; best slide in the deck. [L4 I5 C5]
+- ref: slide-31
+  score: 4.0
+  verdict: pass
+  note: Step-progress screen readable and matches text; lower half empty. [L4 I4 C4]
+- ref: slide-32
+  score: 3.0
+  verdict: warn
+  note: Keyboard occupies half the screenshot, shrinking the payment note it is meant to show. [L4 I3 C4]
+- ref: slide-33
+  score: 5.0
+  verdict: pass
+  note: Section divider 'Verify' renders cleanly. [L5 I- C5]
+- ref: slide-34
+  score: 4.0
+  verdict: pass
+  note: Verification rules readable; one bullet wraps under the hyphen. [L4 I- C4]
+- ref: slide-35
+  score: 4.0
+  verdict: pass
+  note: Review/confirmation-call text readable. [L4 I- C4]
+- ref: slide-36
+  score: 5.0
+  verdict: pass
+  note: Section divider 'Pay' renders cleanly. [L5 I- C5]
+- ref: slide-37
+  score: 4.0
+  verdict: pass
+  note: Big-number payment slide reads well from the back; large empty band under title. [L5 I- C4]
+- ref: slide-38
+  score: 4.0
+  verdict: pass
+  note: Dense four-bullet safety slide; wraps under hyphens but stays inside the box. [L4 I- C4]
+- ref: slide-39
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt; tells trainees the 80% pass mark on an ungraded starting quiz. [L4 I- C3]
+- ref: slide-40
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to 39/41-46. [L4 I- C3]
+- ref: slide-41
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to siblings. [L4 I- C3]
+- ref: slide-42
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to siblings. [L4 I- C3]
+- ref: slide-43
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to siblings. [L4 I- C3]
+- ref: slide-44
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to siblings. [L4 I- C3]
+- ref: slide-45
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt, near-identical to siblings. [L4 I- C3]
+- ref: slide-46
+  score: 3.0
+  verdict: warn
+  note: Boilerplate practice prompt; only variant adds '10 of 12' and retake. [L4 I- C3]
+- ref: slide-47
+  score: 4.0
+  verdict: pass
+  note: Pair exercise instructions readable. [L4 I- C4]
+- ref: slide-48
+  score: 4.0
+  verdict: pass
+  note: Role-play instructions readable. [L4 I- C4]
+- ref: slide-49
+  score: 4.0
+  verdict: pass
+  note: Five knowledge-check questions readable; no answers for the trainer. [L4 I- C4]
+- ref: slide-50
+  score: 4.0
+  verdict: pass
+  note: Checklist readable with checkbox glyphs. [L4 I- C4]
+- ref: slide-51
+  score: 4.0
+  verdict: pass
+  note: Dates and expectations readable. [L4 I- C4]
+- ref: slide-52
+  score: 3.0
+  verdict: warn
+  note: Raw Confluence URL breaks mid-word across two lines; unusable when projected. [L3 I- C4]
+- ref: slide-53
+  score: 1.0
+  verdict: fail
+  note: Body text OVERLAPS the title ('Learn More About Connect' collides with the first line); four raw URLs break mid-word; text runs to the slide's bottom edge. [L1 I- C3]
+- ref: slide-54
+  score: 3.0
+  verdict: warn
+  note: Bullet 'Pass the final assessment before your first meeting' runs to the edge of the right-hand panel. [L3 I- C4]
+auto_surfaced:
+- severity: BLOCKER
+  message: 'Projector-readiness hard gate: slide 53 has legibility 1 (body text overlaps the title ''Learn More About Connect''; raw URLs break mid-word). Projector readiness capped at 3 (pre-cap 4) ->
+    suite verdict fail.'
+- severity: BLOCKER
+  message: 'Projector readiness 3.0 <= 3.0. Beyond slide 53, 8 of 23 walkthrough/app-screen slides carry no screenshot: slides 5, 7, 11, 16, 18, 19, 20, 21.'
+- severity: BLOCKER
+  message: Overall 4.66 is below the 7.0 gate threshold.
+- severity: WARN
+  message: 'Image placement 4.24/10 (mean 2.696/5 over 23 slides that should carry a screen): besides the missing ones, slides 10, 17, 22, 28 show near-empty screens and 6 shows unreadably small screens
+    with a caption/screen mismatch.'
+- severity: WARN
+  message: 'Content presence 6.81/10: slide 18 promises ''screen by screen'' and shows none; practice slides 39-46 are eight near-identical boilerplate prompts; slide 8''s card names carry run-id prefixes
+    the text does not mention.'
+- severity: WARN
+  message: 'Structural pre-checks returned NO findings for any slide, yet slide 53 visibly overlaps text: suspected-text-overflow missed a title/body collision.'
+- severity: INFO
+  message: training-deck-spec.yaml and training-deck-render_verdict.yaml were not read in this judging pass; 'should carry an image' was judged from slide text/layout, and the inflation guard could not
+    be evaluated. All 54 slides were judged, so no spec screenshot slide could have been skipped.
+gate:
+  threshold: 7.0
+  disposition: reject
