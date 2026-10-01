@@ -48,18 +48,35 @@ Two gates, both must pass. Shared QA contract: [`skills/_qa-template.md`](../_qa
 `warn` findings (bands without a target, an over-long `plain`, no `case_fields`)
 are reported and do not fail the gate.
 
-## Result
+## Result — one outcome per check, through the shared writer
 
-```yaml
-skill: semantic-registry-author-qa
-verdict: pass | fail
-labs_validate: {valid: true, errors: []}
-indicators: [SF_P1, SF_P3, ...]
-findings: [{check, severity, indicator?, detail}]
-```
+Run both gates and write the result in one step:
+
+1. `mcp__connect-labs__semantic_registry_validate({properties_doc, indicators_doc,
+   deployment})` → save the JSON response locally.
+2. Read the PDD with **`exportAs: 'text/markdown'`** (`drive_read_file`
+   `writeToPath`). The default `text/plain` export drops the `#` heading markers
+   `pddSectionIds` keys on, which disables the `pdd-anchor` check without a word.
+3. ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/semantic-registry-author-qa.ts" \
+     --registry <semantic-registry-author_registry.json> --pdd <pdd.md> \
+     --partners <opp id,opp id,…> --labs-validate <validate.json> \
+     --target <opp>/<run-id> --out <local semantic-registry-author-qa_result.yaml>
+   ```
+   It runs `checkRegistryAuthoring`, turns the report into ONE outcome per check
+   (`registryQAOutcomes`: `labs-validate` plus the ten rows above), fails a check
+   whose input was not supplied rather than skipping it, and writes the canonical
+   `lib/qa-types.ts` shape through `aggregateQAResult`.
+4. Upload it as `7-synthetic/semantic-registry-author-qa_result.yaml`. ace-gdrive
+   refuses any other shape (`INVALID_QA_RESULT`, `lib/qa-result-write-guard.ts`).
+
+**Why:** `spark-facilitator/20260926-1800` wrote `{verdict: pass, findings: []}` —
+every check had run and passed, but the file carried no `stats`, so ace-web read it
+as "Passed (0/0 checks)". The same result through the writer reads 11/11.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-10-01 | Result goes through the shared writer (`scripts/semantic-registry-author-qa.ts` → `aggregateQAResult`): one outcome per check, so the file counts what it checked. spark-facilitator/20260926-1800's `{verdict, findings}` result displayed as "Passed (0/0 checks)" on ace-web; re-run against its real registry and PDD it reads 11/11 pass. The PDD is read as `text/markdown` and normalised — the plain export left `pddSectionIds` with no headings, which silently disabled `pdd-anchor`; a missing input now FAILS its check. |
 | 2026-09-26 | Created (ace#2510). Positive control: the live-accepted Spark registry (`test/fixtures/cascade/spark-facilitator-registry.json`); one negative control per check in `test/lib/semantic-registry-authoring.test.ts`. |

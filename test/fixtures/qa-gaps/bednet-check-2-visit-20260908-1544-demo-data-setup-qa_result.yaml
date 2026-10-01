@@ -1,0 +1,110 @@
+# demo-data-setup-qa result
+# ACE run bednet-check-2-visit/20260908-1544 - Phase 7 Step 1 gate
+skill: demo-data-setup-qa
+opportunity: bednet-check-2-visit
+run_id: '20260908-1544'
+ran_at: '2026-09-09T12:26:52Z'
+verdict: pass
+checks_total: 19
+checks_passed: 16
+checks_failed: 0
+checks_not_judged: 3
+mode: static
+checks:
+  - id: realized_json_parses
+    verdict: pass
+    detail: >-
+      flat JSON object with 22 keys; no nested values: true
+  - id: every_par_url_is_run_deeplink
+    verdict: pass
+    detail: >-
+      2 par_url(s) correctly scoped
+  - id: dashboards_match_realized
+    verdict: pass
+    detail: >-
+      2 dashboards, all with key/template/role/shape; every key has a matching <key>_par_url in
+      realized.json; primary_par_url == programme_overview_par_url: true
+  - id: opp_is_labs_only
+    verdict: pass
+    detail: >-
+      source.labs_synthetic_opp_id = 10061 (>= 10000)
+  - id: timeline_pinned
+    verdict: pass
+    detail: >-
+      manifest timeline.start_date = 2026-08-10, a fixed ISO Monday (verified: 2026-08-10 is a
+      Monday). No relative/sliding expression. end_date 2026-09-06; period_end passed as 2026-09-07
+      (end_date + 1d, exclusive bound).
+  - id: flagged_worker_not_pre_seeded
+    verdict: pass
+    detail: >-
+      manifest has tasks: [] and coaching_arcs: [] — nothing pre-seeded for any worker, so the
+      coaching task the payoff scene creates is created on camera. (Also: anomalies: [] deliberately,
+      so no platform auto-flag is seeded either — see
+      source.detectable_signal.anomalies_omission_reason.)
+  - id: deliver_units_present
+    verdict: pass
+    detail: >-
+      source.deliver_units = [{slug: followup_visit, name: Follow-Up Visit, server_id: 6862}]
+  - id: par_url_payload_is_populated
+    verdict: pass
+    detail: >-
+      programme_overview: populated — par_url payload: populated — pipelines present and no
+      uniformly-dead bound field flw_review: populated — par_url payload: populated — pipelines
+      present and no uniformly-dead bound field
+  - id: interactive_run_is_live
+    verdict: pass
+    detail: >-
+      2 dashboard run state(s) match their role
+  - id: dataset_obeys_pdd_constraints
+    verdict: pass
+    detail: >-
+      0 unexempted violations across 945 records (measured) — spec derived from 22 question(s), 5
+      gate(s); branch scrub cleared 132 off-branch value(s)
+  - id: cross_dashboard_totals_agree
+    verdict: pass
+    detail: >-
+      visit totals agree across every dashboard in 1 shared-opportunity group(s)
+  - id: declared_detection_has_a_cohort
+    verdict: pass
+    detail: >-
+      ok — a detection control IS declared over 12 rows (below the 24-row floor), and the
+      below_programme_scale escape is accepted because it carries the PDD quote proving the
+      programme's own roster ceiling is 12 workers.
+  - id: scroll_framing_is_anchored
+    verdict: not_judged
+    detail: >-
+      the authored spec does not exist yet — demo-narrative has not run. Judged in Step 2, not here.
+  - id: scenes_show_more_than_one_thing
+    verdict: not_judged
+    detail: >-
+      the authored spec does not exist yet — demo-narrative has not run. Judged in Step 2, not here.
+  - id: render_reset_is_registered
+    verdict: not_judged
+    detail: >-
+      producer half SATISFIED: source.render_reset = {required: true, run_id: 5584, state_keys:
+      [worker_states, spawned_tasks], command: <absolute>, verified_at: 2026-09-09T12:30Z}, and the
+      command was exercised green (exit 0, both keys cleared). Spec half not judgeable until
+      demo-narrative writes setup.rerun: per_render — reported, not silently passed.
+  - id: dashboard_bindings_are_wired
+    verdict: pass
+    detail: >-
+      checkDashboardBindings over the raw workflow_get response: ok on both (5580, 5577).
+  - id: authored_pipeline_fields_extract
+    verdict: pass
+    detail: >-
+      checkPipelineFieldsExtract: pass, 9 fields judged, from_cache false on both, fields_all_null
+      empty.
+  - id: coined_terms_are_defined_on_page
+    verdict: pass
+    detail: >-
+      checkCoinedTerms: pass on both — 7 and 9 labels enumerated, every definition at_point_of_use.
+  - id: rendered_columns_obey_declared_invariants
+    verdict: pass
+    detail: >-
+      checkColumnInvariants: pass, 5 invariants x 12 live rows, 0 findings.
+notes: >-
+  The three not_judged rows all depend on the authored UnifiedSpec, which demo-narrative writes in
+  Step 2. They are reported rather than passed: check 14 and 17 have no spec to read yet, and check
+  18's producer half is satisfied and PROVEN (the reset command ran green, exit 0, clearing both
+  worker_states and spawned_tasks on run 5584) while its spec half cannot exist until the narrative
+  declares setup.rerun: per_render. Re-run this gate after Step 2 to close all three.

@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1621 — 2026-10-01
+
+**"0 checks" can no longer pass for ANY QA skill: the rule is enforced at the Drive write, the one place
+every result passes through.** ace-web flagged a second zero-check pass: spark-facilitator/20260926-1800's
+`semantic-registry-author-qa` ran its checks but wrote `{verdict, findings}` with no `stats`, so it read as
+"Passed (0/0 checks)" — the same failure as bednet-check-2-visit/20260908-1544's demo-data-setup-qa.
+
+- **Shared enforcement.** ace-gdrive's `drive_create_file`, `drive_upload_binary` and `drive_update_file` run
+  `qaResultWriteRefusal` (`lib/qa-result-write-guard.ts` → `validateQAResult`) on any `*-qa_result.yaml`. A
+  non-canonical result, or a pass with 0 checks run, comes back as an `INVALID_QA_RESULT` error and nothing
+  is written. **MCP change: quit and reopen Claude Code to load it.**
+- **Shared writer.** New `scripts/qa-result.ts` (`write` / `check`) builds the canonical shape through
+  `aggregateQAResult`. Every skill that writes a QA result now names it, and
+  `test/skills/qa-result-shared-writer.test.ts` keeps it that way.
+- **`semantic-registry-author-qa`.** It now writes one outcome per check (`registryQAOutcomes`: labs-validate
+  plus the ten authoring checks) via `scripts/semantic-registry-author-qa.ts`. A missing input FAILS its check.
+  The PDD is now read as `text/markdown` and normalised: the plain export dropped the heading markers, which
+  silently disabled `pdd-anchor`, and the markdown export's escapes hid 16 of 39 sections. Re-run on Spark's
+  real registry and PDD: **11/11 pass**.
+
 ## 0.13.1620 — 2026-10-01
 
 **Four QA/eval gaps closed, each exercised on real run artifacts.**

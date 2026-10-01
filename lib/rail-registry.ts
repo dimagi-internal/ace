@@ -213,6 +213,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/demo-data-setup-qa/cascade-story-check.test.ts': { issues: ['ace#2510'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/demo-data-setup-qa/worker-review-url-scope.test.ts': { issues: ['ace#2521'], observed: 'spark-facilitator/20260926-1413' },
   'test/skills/demo-data-setup-qa/cascade-checks.test.ts': { issues: ['ace#2510'], observed: 'spark-facilitator/20260926-1800' },
+  'test/skills/qa-result-shared-writer.test.ts': { issues: [], observed: 'bednet-check-2-visit/20260908-1544' },
   'test/skills/demo-narrative-claim-shapes.test.ts': { issues: ['ace#1395'] },
   'test/skills/deploy-summary-owns-no-release-state.test.ts': { issues: ['ace#1636', 'ace#1010', 'ace#1439', 'ace#1567'], observed: 'bednet-check-2-visit/20260820-0832' },
   'test/skills/entity-state-taxonomy-component.test.ts': { issues: ['ace#1564'] },

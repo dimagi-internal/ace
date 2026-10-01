@@ -222,3 +222,74 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
   const verdict = findings.some((f) => f.severity === 'fail') ? 'fail' : 'pass';
   return { verdict, indicators: inds.map((m) => String(asObj(m.meta).indicator)), findings };
 }
+
+// ---------------------------------------------------------------------------
+// As QA outcomes — what `semantic-registry-author-qa` writes
+// ---------------------------------------------------------------------------
+
+/** Every check `checkRegistryAuthoring` can report, in table order. */
+export const REGISTRY_AUTHORING_CHECKS = [
+  'model',
+  'indicators',
+  'indicator-meta',
+  'measures',
+  'pdd-anchor',
+  'target',
+  'bands',
+  'headline',
+  'display',
+  'llo-map',
+] as const;
+
+export interface LabsValidateResult {
+  valid?: unknown;
+  errors?: unknown;
+}
+
+/**
+ * The gate's result as one outcome PER CHECK, so the result file counts what
+ * was checked. spark-facilitator/20260926-1800 wrote `{verdict, findings: []}`
+ * — every check ran and passed, but the result carried no `stats`, and ace-web
+ * displayed "Passed (0/0 checks)". `warn` findings never fail a check.
+ *
+ * `pdd-anchor` and `llo-map` only run with their inputs; without them the
+ * check FAILS (an input the gate needs is not a reason to skip it), and a
+ * missing labs validation fails `labs-validate`.
+ */
+export function registryQAOutcomes(
+  report: AuthoringReport,
+  labs: LabsValidateResult | null | undefined,
+  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[] },
+): Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> {
+  const out: Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> = [];
+  const labsErrors = Array.isArray(labs?.errors) ? (labs!.errors as unknown[]) : [];
+  out.push({
+    check: 'labs-validate',
+    type: 'static',
+    result: !labs
+      ? { pass: false, detail: 'semantic_registry_validate was not run', auto_fix_hint: 'call mcp__connect-labs__semantic_registry_validate({properties_doc, indicators_doc, deployment}) and pass its result' }
+      : labs.valid === true
+        ? { pass: true, detail: 'labs validated the registry at every scope' }
+        : { pass: false, detail: `labs rejected the registry: ${labsErrors.map((e) => JSON.stringify(e)).join('; ') || 'valid != true'}`, auto_fix_hint: 'fix each labs error in the registry and re-validate' },
+  });
+  for (const check of REGISTRY_AUTHORING_CHECKS) {
+    if (check === 'pdd-anchor' && !inputs.pddSections?.length) {
+      out.push({ check, type: 'static', result: { pass: false, detail: 'the PDD was not supplied, so no indicator anchor was checked', auto_fix_hint: 'pass the PDD markdown (pddSectionIds)' } });
+      continue;
+    }
+    if (check === 'llo-map' && !inputs.opportunityIds?.length) {
+      out.push({ check, type: 'static', result: { pass: false, detail: 'no partner opportunity ids were supplied, so llo_map was not checked', auto_fix_hint: 'pass the cascade partner opportunity ids' } });
+      continue;
+    }
+    const fails = report.findings.filter((f) => f.check === check && f.severity === 'fail');
+    const warns = report.findings.filter((f) => f.check === check && f.severity === 'warn');
+    out.push({
+      check,
+      type: 'static',
+      result: fails.length
+        ? { pass: false, detail: fails.map((f) => `${f.indicator ? `${f.indicator}: ` : ''}${f.detail}`).join('; '), auto_fix_hint: 'see skills/semantic-registry-author-qa § Checks for this row\'s auto-fix' }
+        : { pass: true, detail: warns.length ? `pass with ${warns.length} warning(s): ${warns.map((f) => f.detail).join('; ')}` : `ok over ${report.indicators.length} indicator(s)` },
+    });
+  }
+  return out;
+}
