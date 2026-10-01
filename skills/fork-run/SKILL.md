@@ -67,7 +67,7 @@ POST ${ACE_WEB_BASE_URL}/api/w/<workspace_slug>/opps/<slug>/fork
 | `mode` | no | `keep-all` (default) or `keep-overrides-only` |
 | `edits` | no | list of `{row_id, new_answer}` decision overrides applied during the fork |
 | `feedback` | no | ≤8000 chars; seeded as the **first user turn** of the new run's working session |
-| `requested_by` | **yes (ACE rule)** | email of the human this fork is for — resolve per [`_ace-web-attribution.md`](../_ace-web-attribution.md). ace-web records it next to `initiated_by` |
+| `requested_by` | **yes (ACE rule)** | email of the human this fork is for. Resolve it per [`_ace-web-attribution.md`](../_ace-web-attribution.md). ace-web (#845) records it next to `initiated_by` in run_state, on the working session, and echoes both in the 201 |
 
 Exactly one of `fork_at_phase` / `fork_at_skill` — neither or both is a 422.
 
@@ -275,8 +275,8 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    | 404 | `source-run-not-found` | `source_run_id` not under `runs/` |
    | 422 | `extra_forbidden` in `extras.errors[].type` | you sent a field the schema doesn't have |
    | 401/403 | — | token invalid/revoked → `/ace:setup` (ACE's token) or `/ace:ace-web-pat-mint` (yours) |
-| 400 | `requested_by` | a HUMAN token sent a `requested_by` other than its owner. Drop it or use ACE's token |
-| 409 | `run_actor_unresolvable` | canopy cannot resolve the run's owner to an account, so the run would be confined and never execute. Nothing was forked. Fix the identity, don't retry |
+| 400 | `extras.code: requested_by_forbidden` | a HUMAN token sent a `requested_by` other than its owner. Drop it, or use ACE's token |
+| 422 | `requested_by` in `extras.errors[]` | `requested_by` is not a valid email |
    | HTML body | — | **wrong route.** An unrouted path falls through to the SPA catch-all and returns a bare HTML 404, not JSON. Check `/api/w/<ws>/opps/...`. |
    | *no response* | — | **not an error.** The POST blocks; you timed out, the fork didn't. Go to step 4b — never re-POST. |
 

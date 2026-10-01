@@ -294,9 +294,12 @@ effect. Treat a missing value as "never validated", not as "valid".
      `requested_by` is the human this iteration is for (the operator who invoked
      `/ace:iterate`). It's required, and resolved per
      [`skills/_ace-web-attribution.md`](../skills/_ace-web-attribution.md), because
-     the token is ACE's own and would otherwise attribute the run to nobody. A
-     **409 `run_actor_unresolvable`** means canopy could not resolve the run's owner
-     to an account. Nothing was forked, so stop and report it rather than retrying.
+     the token is ACE's own and would otherwise attribute the run to nobody.
+     Error codes are at `extras.code`. **409 `run_actor_unresolvable`** means canopy
+     resolves the run's owner as a contact, so the run would be confined to ask-only
+     and never execute. **502 `run_actor_unverified`** means canopy was unreachable
+     for that check. Either way nothing was forked: stop and report, don't retry
+     blindly. **400 `requested_by_forbidden`** means a human token named someone else.
      Returns **202**
      `{session_slug, assistant_message_id, run_id}` — `run_id` is the **new**
      forked run the action minted (use it directly; do NOT list `runs/` to

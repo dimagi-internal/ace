@@ -42,10 +42,24 @@ Jonathan asked an interactive session for a fresh Spark run. It POSTed
 canopy turn `2727e227…` showed the asker as contact `ace@dimagi-ai.com`.
 No record anywhere said who wanted the run. (The same run also never executed:
 canopy-web resolved ACE's own login as an outside contact and confined the
-session to ask-only. That is fixed server-side in canopy-web and ace-web, which
-now refuses up front with a 409 `run_actor_unresolvable` instead of returning a
-202 for a run that can't execute.)
+session to ask-only. That is fixed server-side. canopy-web now recognises an
+agent's own login, and ace-web#845's `seeded-run` refuses up front with a 409
+`run_actor_unresolvable` (code at `extras.code`) instead of returning a 202 for a
+run that can't execute.)
+
+## What ace-web does with it (ace-web#845)
+
+- Records `requested_by` next to `initiated_by` in the run's `run_state.yaml`
+  (omitted when unknown), on the ace-web session, and in the canopy session
+  title (`… — requested by <email>`) and metadata.
+- Echoes `initiated_by` and `requested_by` in the `seeded-run` 202 and the
+  `fork` 201.
+- Shows the run's creator as `<requested_by> (via ACE)`.
+- Which callers count as agents is set by ace-web's `ACE_AGENT_IDENTITIES`
+  (default `ace@dimagi-ai.com`). For an agent caller, a missing
+  `requested_by` is recorded as nothing. That's why ACE never omits it.
 
 `/ace:ace-web-pat-mint` is the other option: the call is then made under the
 human's own name and `requested_by` defaults to them. Don't send a
-`requested_by` that differs from a human token's owner. ace-web rejects it.
+`requested_by` that differs from a human token's owner. ace-web rejects it with
+400 `requested_by_forbidden`.
