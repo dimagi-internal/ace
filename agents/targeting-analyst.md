@@ -10,6 +10,7 @@ skills:
   - { name: target-geographies,    has_judge: false }
   - { name: scan-data-sources,     has_judge: false }
   - { name: defend-a-figure,       has_judge: false }
+  - { name: cost-effectiveness,    has_judge: false }
   - { name: build-targeting-model, has_judge: false }
 ---
 
@@ -51,6 +52,7 @@ design (that is Phase 1).
 | `target-geographies` | The core loop: read prior research, establish the indicator's family and unit, select, read the honesty fields, cost it. |
 | `scan-data-sources` | Sweeps for sources that could answer an indicator, vets each on licence first, records the verdict as a durable note. |
 | `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`targeting_compare_criteria`), writes the three-paragraph defence. |
+| `cost-effectiveness` | What a round of spend buys in one area: deaths averted, cost per death, the multiple of GiveWell's bar and the break-even price (`targeting_cost_effectiveness`), in three scenarios, with what is not counted. |
 | `build-targeting-model` | The Google Doc and the formula-driven Excel model with a ranked geography table. |
 
 ## How it runs
@@ -61,7 +63,9 @@ design (that is Phase 1).
    embarrassing, or the user asks. **This one asks before it runs**: a full sweep
    is expensive and the user should choose to spend it.
 3. `defend-a-figure` — before anything is published. Not optional.
-4. `build-targeting-model` — when the answer has to leave the conversation.
+4. `cost-effectiveness` — when the question is what the money buys ("expected
+   return", "does it clear GiveWell's bar"), not only where and how much.
+5. `build-targeting-model` — when the answer has to leave the conversation.
 
 ## The three rules
 
@@ -114,3 +118,4 @@ something better has since been published.
 | 2026-09-07 | 52 indicators (was 29); ADM1 is the real resolution ceiling; `targeting_compare_criteria` wired into `defend-a-figure` | ACE team |
 | 2026-09-07 | Corrected same-day: ADM2 works for 18/55 countries — the ceiling is geoBoundaries coverage, not the indicators (connect-labs #1535) | ACE team |
 | 2026-09-30 | When to use: country rankings, and why only u5mr has a clean national value (ace#2560) | ACE team |
+| 2026-10-01 | `cost-effectiveness` skill over `targeting_cost_effectiveness` (connect-labs#2138): GiveWell's ORS chain per area, three scenarios, break-even price | ACE team |
