@@ -654,6 +654,23 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: false,
     description: 'Prose Google Doc rendering of decisions.yaml at one stable URL per run. Find-or-update semantics; existing content cleared and replaced on every invocation. Re-rendered by the orchestrator at end of every phase via skills/decisions-render. Humans review and iterate on this gdoc rather than the YAML; the gdoc URL appears in each gate brief as the Decisions Log: line.',
   },
+  {
+    path: 'release-check_verdict.yaml',
+    producedBy: 'release-check',
+    consumedBy: ['release-run', 'clone-to-new-workspace'],
+    phase: 'design',
+    required: false,
+    description: 'Run-level release verdict: READY or NOT_READY over every gate of the run (QA results, eval verdicts, the Connect post-condition, output previews, output links, the public summary audit, the chatbot, the apps), with blockers and warnings each naming its owning skill and fix. Real YAML bytes. The release skill refuses to invite anyone unless the latest one is READY, for this run, and newer than every other write in the run.',
+  },
+  {
+    path: 'release-check_report.md',
+    producedBy: 'release-check',
+    consumedBy: [],
+    phase: 'design',
+    required: false,
+    rendered: true,
+    description: 'The release verdict for a human: the verdict line, an area table, then every blocker and warning with its owner and fix. Rendered Google Doc, replaced on every run of the check.',
+  },
   // 0.13.116: gate-brief artifacts removed across all phases. The
   // orchestrator composes pause-time summaries from per-skill QA + eval
   // verdicts on the fly at Pause Points (see agents/ace-orchestrator.md

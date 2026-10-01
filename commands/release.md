@@ -29,6 +29,8 @@ link, never an account.
 
 ## Process
 
+Nothing is invited unless the run's latest `/ace:release-check` is READY and newer than every write to the run (Step 0.5 of the skill).
+
 Read `skills/release-run/SKILL.md` (it is operator-only — not dispatchable as a
 Skill) and follow it exactly with the parsed arguments. Every invite is shown
 for approval before any is sent.

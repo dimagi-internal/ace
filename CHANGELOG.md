@@ -5,6 +5,40 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1623 — 2026-10-01
+
+**`release-check`: "ready to release" is now a gate's verdict, not a claim.** The new skill and
+`/ace:release-check <ws>/<opp>/<run>` make one pass over everything a run produced and give ONE verdict,
+READY or NOT_READY. Each blocker and warning names its owning skill and its fix route. It re-implements no
+gate; it runs or reads the existing ones:
+
+- every QA result and eval verdict (non-canonical / 0-check, fail, below the pass band, missing for a step
+  that ran, or stale by more than a fork's copy window);
+- `connect-opp-setup`'s live post-condition;
+- ace-web's preview gaps (`?refresh=true`), plus a look at sample frames;
+- every output link, each loaded headlessly with the session its host needs (anonymous for the public
+  summary and the chatbot's public chat);
+- `run-surface-audit` (anonymous, rendered) and `verify_run_claims`;
+- the chatbot transcript's age and result;
+- released app builds and `app-release-qa`.
+
+The pure core is `lib/release-check.ts` and the evidence-gathering CLI is `scripts/release-check.ts`
+(`inventory` / `links` / `postcondition` / `assess` / `gate`). The session code is now shared with
+output-preview-capture via `scripts/browser-sessions.ts`.
+
+Outputs, both at the RUN ROOT:
+- `release-check_verdict.yaml` — real YAML bytes, `ReleaseVerdict` schema v1;
+- `release-check_report.md` — a rendered Google Doc.
+
+**`/ace:release` now invites nobody** unless the latest verdict is READY, is for THIS workspace/opp/run,
+was not a read-only dry run, and is newer than every write in the run. It checks at the start and again
+right before the first invite. `/ace:clone-to-new-workspace` runs release-check as its last step, as a
+report rather than a block.
+
+Read-only run on spark-facilitator/20260926-1800: **NOT_READY, 7 blockers, 3 warnings.** Tests run over
+that run's real evidence (`test/fixtures/release-check/`). The `add-org-member` description is trimmed to
+the ≤200-char contract, for catalog budget.
+
 ## 0.13.1621 — 2026-10-01
 
 **"0 checks" can no longer pass for ANY QA skill: the rule is enforced at the Drive write, the one place

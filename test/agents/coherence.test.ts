@@ -182,6 +182,8 @@ const UNCLAIMED_BASELINE = new Set<string>([
   'output-preview-capture',  // cross-phase utility (ace-web output previews addendum):
                              // invoked at the end of Phases 3-8 and at run end, like
                              // decisions-render — never a run_state step of any one phase.
+  'release-check',     // operator-invoked final gate over a whole run (/ace:release-check),
+                       // also called by release-run and clone-to-new-workspace — no phase owns it.
   'eval-calibration',  // produces an opp-level artifact (eval-calibration/
                        // known-issues.md), not a per-run skill any phase
                        // agent dispatches.

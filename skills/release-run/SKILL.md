@@ -74,6 +74,26 @@ every merge mode). Report per row. Nothing else runs in this mode.
    link (`products.ocs_chatbot.public_url`), which goes in the invite email.
    OCS permissions are team-wide (see `share-run-access`).
 
+## Step 0.5 — The run must be READY (release-check)
+
+**Nobody is invited to a run release-check has not passed.** Inventory the run
+and run the gate:
+
+```bash
+RC="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs $ACE_ROOT/scripts/release-check.ts"
+$RC inventory --run-folder <run folder id> --out inventory.json
+# download <run>/release-check_verdict.yaml (drive_read_file writeToPath) — absent is a refusal
+$RC gate --workspace <workspace> --opp <opp> --run <run-id> --verdict release-check_verdict.yaml --inventory inventory.json
+```
+
+Exit 0 only when the latest verdict is READY, is for THIS workspace/opp/run (a
+release happens after a clone, so a verdict from the source workspace does not
+count), was not a read-only dry run, and nothing in the run was written after it.
+Otherwise STOP: print the gate's reason — the blockers with their owners and
+fixes, or "the run changed after the check" — and tell the operator to fix them
+and run `/ace:release-check <workspace>/<opp>/<run-id>`. Do not proceed to any
+step below.
+
 ## Step 1 — Audit
 
 Run `run-surface-audit` on `<workspace>/<opp>/<run-id>` (anonymously, as an
@@ -87,6 +107,8 @@ Fix what an outsider would trip on, in the run's own documents:
   (they will 404 or be `admin only` for the reviewer) — replace or remove;
 - anything the audit marked misleading.
 Re-run the audit if anything changed. Record what you changed for the report.
+**Any change here makes the release-check stale** — run `release-check` again
+after polishing (Step 4 re-checks the gate before the first invite).
 
 ## Step 3 — Forward the source link (only with `--forward-source`)
 
@@ -103,6 +125,9 @@ source summary API shows `307` and a `Location` naming this run. A `400` means
 this run is not a finished clone — there is no source link to forward.
 
 ## Step 4 — Invite, last
+
+**Re-run the Step 0.5 gate first** (fresh inventory) — Steps 2–3 may have
+written to the run. A non-zero exit stops here, before any invite.
 
 Build ONE list of every grant for every reviewer and show it for approval
 before any is made (procedural gate — same posture as `share-run-access`):

@@ -1,0 +1,301 @@
+#!/usr/bin/env npx tsx
+/**
+ * release-check — the evidence-gathering and verdict half of `skills/release-check`.
+ *
+ *   inventory --run-folder <drive id> --out <inventory.json>
+ *       Walk the run folder with the Drive service account: every file's path +
+ *       modifiedTime, and the TEXT of every QA result, eval verdict and chatbot
+ *       transcript (the files the verdict reads).
+ *
+ *   links --workspace W --opp O --run R --out <links.json>
+ *       Read the run's outputs from ace-web (`GET …/opps/<opp>?run_id=<run>`),
+ *       then load each one headlessly with the session its host needs
+ *       (`scripts/browser-sessions.ts`) — anonymously for anything the summary
+ *       presents as public (the run summary page, the chatbot's public chat) —
+ *       and judge the landing with `screenPage` (login page, 404, maintenance,
+ *       blank). Drive documents are left to run-surface-audit, which probes the
+ *       summary's own links anonymously.
+ *
+ *   assess --workspace W --opp O --run R --inventory <json> --run-state <yaml>
+ *          [--gaps <json>] [--postcondition <json>] [--links <json>]
+ *          [--surface <audit json>] [--claims <json>] [--looks <json>]
+ *          [--overlay <json {"<run path>": "<local file>"}>]
+ *          [--read-only] --out-dir <dir>
+ *       Turn the evidence into findings (lib/release-check.ts) and write
+ *       `release-check_verdict.yaml` + `release-check_report.md` in <dir>.
+ *       Missing evidence is a BLOCKER of its own ("not checked"), never a pass.
+ *
+ *   postcondition --run-state <yaml> --opportunity <json> --payment-units <json> --invites <json> --out <json>
+ *       Package connect_get_opportunity / connect_list_payment_units /
+ *       connect_list_flw_invites (saved JSON) with what Phase 4 decided
+ *       (`decidedFromRunState`) for `assess --postcondition`.
+ *
+ *   gate --workspace W --opp O --run R --verdict <yaml> --inventory <json>
+ *       `/ace:release`'s gate: exit 0 iff the latest verdict is READY, for this
+ *       run, not read-only, and newer than every write in the run folder.
+ */
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { google } from '../lib/google-shim.js';
+import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
+import { authForUrl, screenPage, withLabsProgramContext, type PreviewAuth } from '../lib/preview-capture.js';
+import {
+  assessApps,
+  assessChatbot,
+  assessGates,
+  assessLinks,
+  assessPostcondition,
+  assessPreviews,
+  assessSurfaceAudit,
+  buildReleaseVerdict,
+  decidedFromRunState,
+  releaseGate,
+  renderReleaseReport,
+  RELEASE_REPORT_NAME,
+  RELEASE_VERDICT_NAME,
+  type LinkProbe,
+  type ReleaseFinding,
+  type RunFile,
+} from '../lib/release-check.js';
+import { Sessions } from './browser-sessions.js';
+
+// Before any credential read (ACE_WEB_*, ACE_HQ_*, GOOGLE_APPLICATION_CREDENTIALS) — ace#1957.
+loadPluginEnv(import.meta.url);
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const [, , cmd, ...args] = process.argv;
+const arg = (n: string) => {
+  const i = args.indexOf(`--${n}`);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+const flag = (n: string) => args.includes(`--${n}`);
+function need(n: string): string {
+  const v = arg(n);
+  if (!v) {
+    process.stderr.write(`release-check: missing --${n}\n`);
+    process.exit(2);
+  }
+  return v as string;
+}
+const readJson = <T>(p?: string): T | null => (p && fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p, 'utf8')) as T) : null);
+
+function keyFile(): string {
+  const env = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (env && fs.existsSync(env)) return env;
+  const data = resolvePluginDataDir(import.meta.url);
+  const p = data ? path.join(data, 'gws-sa-key.json') : '';
+  if (p && fs.existsSync(p)) return p;
+  throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
+}
+
+const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-check_verdict\.yaml$/;
+
+async function inventory(): Promise<void> {
+  const auth = new google.auth.GoogleAuth({ keyFile: keyFile(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const drive = google.drive({ version: 'v3', auth });
+  const files: RunFile[] = [];
+  async function walk(folder: string, prefix: string): Promise<void> {
+    let pageToken: string | undefined;
+    do {
+      const r = await drive.files.list({
+        q: `'${folder}' in parents and trashed=false`,
+        fields: 'nextPageToken, files(id,name,mimeType,modifiedTime)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        pageSize: 200,
+        pageToken,
+      });
+      for (const f of r.data.files ?? []) {
+        const p = prefix ? `${prefix}/${f.name}` : (f.name as string);
+        if (f.mimeType === 'application/vnd.google-apps.folder') {
+          await walk(f.id as string, p);
+          continue;
+        }
+        const rf: RunFile = { path: p, modifiedTime: f.modifiedTime ?? '', mimeType: f.mimeType ?? undefined };
+        if (TEXT_WANTED.test(p)) {
+          try {
+            const res =
+              f.mimeType === 'application/vnd.google-apps.document'
+                ? await drive.files.export({ fileId: f.id as string, mimeType: 'text/plain' }, { responseType: 'text' })
+                : await drive.files.get({ fileId: f.id as string, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+            rf.text = String(res.data).replace(/^﻿/, '');
+          } catch (e) {
+            process.stderr.write(`inventory: could not read ${p}: ${(e as Error).message}\n`);
+          }
+        }
+        files.push(rf);
+      }
+      pageToken = r.data.nextPageToken ?? undefined;
+    } while (pageToken);
+  }
+  await walk(need('run-folder'), '');
+  fs.writeFileSync(need('out'), JSON.stringify(files, null, 1));
+  process.stdout.write(JSON.stringify({ files: files.length, with_text: files.filter((f) => f.text).length }) + '\n');
+}
+
+interface Product {
+  key?: string;
+  phase?: string;
+  kind?: string;
+  title?: string;
+  url?: string | null;
+  file_id?: string | null;
+  producer?: string | null;
+}
+
+async function links(): Promise<void> {
+  const base = process.env.ACE_WEB_BASE_URL;
+  const token = process.env.ACE_WEB_PAT_TOKEN;
+  if (!base || !token) throw new Error('ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN are required');
+  const ws = need('workspace');
+  const opp = need('opp');
+  const run = need('run');
+  const snapRes = await fetch(`${base.replace(/\/+$/, '')}/api/w/${ws}/opps/${opp}?run_id=${encodeURIComponent(run)}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!snapRes.ok) throw new Error(`ace-web snapshot HTTP ${snapRes.status}`);
+  const snap = (await snapRes.json()) as { current_run?: { run_id?: string; products?: Product[] } };
+  if (snap.current_run?.run_id !== run) throw new Error(`ace-web served run ${snap.current_run?.run_id}, not ${run} (it falls back to the latest run for an unknown id)`);
+
+  const runStatePath = arg('run-state');
+  const runState = runStatePath ? (parseYaml(fs.readFileSync(runStatePath, 'utf8')) as Record<string, unknown>) : {};
+  const probes: Array<Omit<LinkProbe, 'ok' | 'status' | 'final_url' | 'detail' | 'session'> & { auth: PreviewAuth }> = [];
+  // The public summary — run_state's pointer, else the URL the orchestrator gives reviewers.
+  const summary =
+    (runState as { ace_web_summary_url?: string }).ace_web_summary_url ||
+    `${base.replace(/\/+$/, '')}/opps/${ws}/${opp}/runs/${run}/summary`;
+  if (summary) probes.push({ label: 'public run summary', url: summary, audience: 'public', auth: 'public', owner: 'ace-orchestrator' });
+  for (const p of snap.current_run?.products ?? []) {
+    if (!p.url || p.kind === 'document' || p.kind === 'deck' || p.kind === 'sheet') continue; // Drive docs → run-surface-audit
+    const auth = authForUrl(p.url);
+    if (auth === 'google') continue;
+    const label = `${p.phase}:${p.key}`;
+    const owner = p.producer ?? p.phase ?? 'unknown';
+    if (p.kind === 'chatbot') {
+      const node = ((runState.phases as Record<string, { products?: { ocs_chatbot?: { public_url?: string } } }> | undefined)?.['ocs-setup']?.products?.ocs_chatbot) ?? {};
+      if (node.public_url) probes.push({ label: `${label} (public chat)`, url: node.public_url, audience: 'public', auth: 'public', owner: 'ocs-agent-setup' });
+      continue; // the admin console is not for a partner
+    }
+    const url = p.kind === 'solicitation'
+      ? withLabsProgramContext(p.url, ((runState.phases as Record<string, { products?: { solicitation?: Record<string, unknown> } }> | undefined)?.['solicitation-management']?.products?.solicitation) ?? null)
+      : p.url;
+    probes.push({ label, url, audience: 'member', auth, owner });
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const sessions = new Sessions(browser, path.dirname(need('out')));
+  const out: LinkProbe[] = [];
+  try {
+    for (const p of probes) {
+      let probe: LinkProbe;
+      try {
+        const ctx = await sessions.context(p.auth);
+        const page = await ctx.newPage();
+        const res = await page.goto(p.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+        await page.waitForTimeout(1_500);
+        const text = ((await page.evaluate(() => document.body?.innerText ?? '').catch(() => '')) as string).replace(/\s+/g, ' ');
+        let screen = screenPage({ status: res?.status() ?? 0, finalUrl: page.url(), title: await page.title().catch(() => ''), text });
+        // A fresh public chat is short by nature (a greeting); what proves it works is a chat box.
+        if (/public chat/.test(p.label)) {
+          const hasInput = (await page.locator('input[name=message], textarea[name=message]').count()) > 0;
+          screen = hasInput ? { ok: true } : { ok: false, reason: 'blank', detail: 'no chat input on the public chat page' };
+        }
+        probe = { ...p, session: p.auth, ok: screen.ok, status: res?.status() ?? 0, final_url: page.url(), detail: screen.ok ? 'loads' : `${screen.reason}: ${screen.detail}` };
+        await page.close();
+      } catch (e) {
+        probe = { ...p, session: p.auth, ok: false, status: 0, final_url: '', detail: `could not load: ${(e as Error).message.split('\n')[0]}` };
+      }
+      const { auth: _a, ...rest } = probe as LinkProbe & { auth?: unknown };
+      void _a;
+      out.push(rest);
+      process.stderr.write(`[release-check] ${probe.ok ? 'ok  ' : 'FAIL'} ${probe.label} ${probe.detail}\n`);
+    }
+  } finally {
+    await sessions.close();
+    await browser.close();
+  }
+  fs.writeFileSync(need('out'), JSON.stringify(out, null, 1));
+  process.stdout.write(JSON.stringify({ probed: out.length, failed: out.filter((p) => !p.ok).length }) + '\n');
+}
+
+function catalog(): { qaSkills: Set<string>; evalSkills: Set<string> } {
+  const dirs = fs.readdirSync(path.join(ROOT, 'skills'));
+  return {
+    qaSkills: new Set(dirs.filter((d) => d.endsWith('-qa')).map((d) => d.slice(0, -3))),
+    evalSkills: new Set(dirs.filter((d) => d.endsWith('-eval')).map((d) => d.slice(0, -5))),
+  };
+}
+
+function assess(): void {
+  const inv = readJson<RunFile[]>(need('inventory')) ?? [];
+  const runState = parseYaml(fs.readFileSync(need('run-state'), 'utf8'));
+  const now = new Date().toISOString();
+  // --overlay {"<run path>": "<local file>"}: gate results re-run in a READ-ONLY
+  // pass (written locally, not to Drive) count as if written now.
+  const overlay = readJson<Record<string, string>>(arg('overlay')) ?? {};
+  const files: RunFile[] = [
+    ...inv.filter((f) => !(f.path in overlay)),
+    ...Object.entries(overlay).map(([p, local]) => ({ path: p, modifiedTime: now, text: fs.readFileSync(local, 'utf8') })),
+  ];
+  const findings: ReleaseFinding[] = [];
+  findings.push(...assessGates(files, runState, catalog()));
+  const pc = readJson<{ read: never; decided: never }>(arg('postcondition'));
+  findings.push(...assessPostcondition(pc?.read ?? null, pc?.decided ?? null));
+  const gaps = readJson<{ outputs?: unknown[] }>(arg('gaps'));
+  findings.push(...assessPreviews(gaps ? ((gaps.outputs ?? []) as never[]) : null, readJson(arg('looks')) ?? []));
+  findings.push(...assessLinks(readJson<LinkProbe[]>(arg('links'))));
+  findings.push(...assessSurfaceAudit(readJson(arg('surface')), readJson(arg('claims'))));
+  const transcripts = files.filter((f) => /ocs-chatbot-qa_transcript[^/]*\.md$/.test(f.path)).sort((a, b) => Date.parse(b.modifiedTime) - Date.parse(a.modifiedTime));
+  findings.push(...assessChatbot(transcripts[0] ?? null, now));
+  findings.push(...assessApps(files, runState));
+  const verdict = buildReleaseVerdict({ workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only') });
+  const dir = need('out-dir');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, RELEASE_VERDICT_NAME), stringifyYaml(verdict, { lineWidth: 0 }));
+  fs.writeFileSync(path.join(dir, RELEASE_REPORT_NAME), renderReleaseReport(verdict));
+  process.stdout.write(JSON.stringify({ verdict: verdict.verdict, counts: verdict.counts, dir }) + '\n');
+}
+
+/** Turn the three Connect read-backs (saved JSON) + run_state into the post-condition input. */
+function postcondition(): void {
+  const runState = parseYaml(fs.readFileSync(need('run-state'), 'utf8'));
+  const opp = readJson<Record<string, unknown>>(arg('opportunity'));
+  const pus = readJson<{ payment_units?: unknown[] } | unknown[]>(arg('payment-units'));
+  const inv = readJson<{ match?: unknown }>(arg('invites'));
+  const read = {
+    opportunity: opp,
+    paymentUnits: pus ? (Array.isArray(pus) ? pus : (pus.payment_units ?? null)) : null,
+    testUserInvite: inv ? { match: inv.match ?? null } : null,
+  };
+  fs.writeFileSync(need('out'), JSON.stringify({ read, decided: decidedFromRunState(runState) }, null, 1));
+  process.stdout.write(JSON.stringify({ ok: true }) + '\n');
+}
+
+function gate(): void {
+  const verdictPath = arg('verdict');
+  const verdict = verdictPath && fs.existsSync(verdictPath) ? parseYaml(fs.readFileSync(verdictPath, 'utf8')) : null;
+  const files = readJson<RunFile[]>(need('inventory')) ?? [];
+  const r = releaseGate(verdict, { workspace: need('workspace'), opp: need('opp'), runId: need('run'), files });
+  process.stdout.write(JSON.stringify(r) + '\n');
+  if (!r.ok) process.exit(1);
+}
+
+async function main(): Promise<void> {
+  if (cmd === 'inventory') return inventory();
+  if (cmd === 'links') return links();
+  if (cmd === 'assess') return assess();
+  if (cmd === 'postcondition') return postcondition();
+  if (cmd === 'gate') return gate();
+  process.stderr.write('usage: release-check.ts inventory|links|assess|gate … (see the header)\n');
+  process.exit(2);
+}
+
+main().catch((e) => {
+  process.stderr.write(`release-check: ${(e as Error).stack ?? e}\n`);
+  process.exit(1);
+});

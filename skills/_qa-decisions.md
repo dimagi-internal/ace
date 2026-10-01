@@ -181,6 +181,7 @@ Dispatched at two natural points: inline self-check by each `-eval` skill after 
 |---|---|---|
 | `email-communicator` | not applicable | Utility skill — sends mail; no Drive artifact. |
 | `decisions-render` | not applicable | Utility skill — renders `decisions.yaml` to HTML. Already has unit tests on the renderer; no per-opp artifact under QA scope. |
+| `release-check` | not applicable | A gate over other gates, not a producer of a gradable artifact: its verdict IS the aggregate of every step's QA and eval evidence (`lib/release-check.ts`), pinned by tests over a real run's evidence. |
 | `output-preview-capture` | **inline QA** | Utility skill (every phase end + run end). Structural checks inline: a deterministic page screen (login / 404 / maintenance / blank / loading, `lib/preview-capture.ts::screenPage`), a mandatory LOOK at every frame before upload, and `_previews.yaml` read back from Drive through `assertPreviewsIndexReadable`. Best effort — never gates a phase. |
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |
 | `eval-calibration` | not applicable | Meta-skill — calibrates other evals' rubrics. Not a producer of a per-opp artifact. |

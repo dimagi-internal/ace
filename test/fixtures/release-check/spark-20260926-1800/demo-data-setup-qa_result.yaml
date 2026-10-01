@@ -1,0 +1,25 @@
+skill: demo-data-setup-qa
+target: spark-facilitator/20260926-1800
+ran_at: 2026-10-01T16:02:33.045Z
+capture_path: 7-synthetic/realized.json
+schema_version: 1
+verdict: fail
+stats:
+  checks_run: 5
+  checks_passed: 4
+  checks_failed: 1
+failures:
+  - check: worker_review_url_scoped
+    type: static
+    detail: "worker_review_url: worker review is program-owned, so its URL MUST carry &program_id=<id> — owning_program_id is a data hint, not a page-scope param; opened cold, labs scopes the page to the session's last opportunity and renders \"Workflow definition <id> not found\"; standout_worker_review_url: worker review is program-owned, so its URL MUST carry &program_id=<id> — owning_program_id is a data hint, not a page-scope param; opened cold, labs scopes the page to the session's last opportunity and renders \"Workflow definition <id> not found\"; data_quality_worker_review_url: worker review is program-owned, so its URL MUST carry &program_id=<id> — owning_program_id is a data hint, not a page-scope param; opened cold, labs scopes the page to the session's last opportunity and renders \"Workflow definition <id> not found\""
+    auto_fix_hint: build each worker_review_url as /labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>&flw=<opp>%3A%3A<username>&source_run=<latest> (demo-data-setup § C7; dimagi-internal/ace#2521).
+    severity: blocker
+passed:
+  - check: realized_json_parses
+    detail: flat JSON object with 11 keys
+  - check: every_par_url_is_run_deeplink
+    detail: 4 par_url(s) correctly scoped
+  - check: cascade_handoff_complete
+    detail: registry 6369 (10 indicators); 3 partners; programme report on run 6394 = latest of 13 history runs; 3 opp reports, all mirrored in workflows
+  - check: cascade_story_landed
+    detail: lagging_partner landed — Partner C 62.2% vs nearest other 94.6% (gap 32.4 pts); standout_worker landed — cbf_b03 71.9% vs nearest other 37.0% (gap 34.8 pts); data_quality landed — cbf_a07 91.7% vs nearest other 0.0% (gap 91.7 pts); trend landed — Partner B 35.4% → 44.8% over 13 saved runs
