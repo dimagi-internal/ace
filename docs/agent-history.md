@@ -49,3 +49,8 @@ Phases 3–8 now end their write-back by invoking `Skill(output-preview-capture)
 - **Phase 4 (`connect-setup`):** new Step 3b dispatches `build-memo-eval` after the memo; `connect-opp-setup` gains Step 11, a post-condition read-back whose `phase6_blockers` Phase 6's pre-flight now honours.
 - **Phase 6 (`qa-and-training`):** `training-deck-render-eval` runs after the render (2b). A `fail` does not halt the phase, but the deck is reported as not ready to project.
 - **Phase 7 (`synthetic-data-and-workflows`):** `demo-data-setup-qa` is mandatory for every provider and always writes its result through `scripts/demo-data-setup-qa.ts`.
+
+### Unwired evals — 2026-10-01
+
+- **Phase 4:** `connect-opp-setup-eval` is dispatched after Step 2 (it was registered but never run).
+- **Phase 7:** `semantic-registry-author-eval` runs after its QA in C2 rather than being deferred.

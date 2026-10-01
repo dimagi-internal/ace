@@ -50,3 +50,31 @@ function refusal(name: string, problems: string[]): string {
     'shape reads as "Passed (0/0 checks)" on ace-web.'
   );
 }
+
+// ---------------------------------------------------------------------------
+// Eval verdicts — the same seam, a narrower rule
+// ---------------------------------------------------------------------------
+
+export const VERDICT_NAME = /_verdict(?:-[a-z0-9]+)?\.ya?ml$/i;
+
+/**
+ * A verdict file must at least BE YAML a strict reader accepts, as a mapping
+ * with a `verdict`. spark-facilitator/20260926-1800's
+ * `pdd-to-learn-app-eval_verdict.yaml` repeats a key (line 105): ace-web's
+ * Python reader silently keeps the last value, the plugin's reader rejects the
+ * file, and the two disagree about what was graded. Shape beyond that stays
+ * with `lib/verdict-schema.ts`'s own validators — this is the write-time floor.
+ */
+export function verdictWriteRefusal(name: string, text: string): string | null {
+  if (!VERDICT_NAME.test(name ?? '')) return null;
+  let data: unknown;
+  try {
+    data = parseYaml(String(text ?? '').replace(/\r\n/g, '\n'));
+  } catch (e) {
+    return `INVALID_VERDICT: ${name} is not valid YAML — ${(e as Error).message.split('\n')[0]}. Nothing was written. Serialize the verdict (yaml.stringify / scripts) rather than typing it; a duplicated key is read differently by different readers.`;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !('verdict' in (data as object))) {
+    return `INVALID_VERDICT: ${name} is not a verdict mapping with a \`verdict\` field (lib/verdict-schema.ts). Nothing was written.`;
+  }
+  return null;
+}

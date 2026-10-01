@@ -5,7 +5,7 @@ description: >
   flags, payment units, deliver-unit wiring, active window. Sibling of
   connect-program-setup-eval; this rubric judges the opp-side that
   follows program creation.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Connect Opp Setup Eval

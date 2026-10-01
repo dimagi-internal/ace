@@ -14,7 +14,7 @@ phase: synthetic-data-and-workflows
 phase_display: Synthetic Data and Workflows
 phase_ordinal: 7
 skills:
-  - { name: semantic-registry-author, has_judge: true, qa_skill: semantic-registry-author-qa }
+  - { name: semantic-registry-author, has_judge: true, qa_skill: semantic-registry-author-qa, eval_skill: semantic-registry-author-eval }
   - { name: demo-data-setup,   has_judge: false, qa_skill: demo-data-setup-qa }
   - { name: demo-narrative,     has_judge: false } # canopy scripts.ddd.validate is the gate
 ---
@@ -107,7 +107,9 @@ Its § Process (ace-run) C0–C7 runs, in order:
 1. **C1** — one labs-only synthetic opportunity per partner (default 3) under one
    labs-only program. The run's real network-manager org is never touched.
 2. **C2 — `semantic-registry-author`** (gated by `semantic-registry-author-qa`;
-   graded by `semantic-registry-author-eval`, deferrable): the registry from the
+   then graded by `semantic-registry-author-eval` — run it, do not defer it: a
+   deferred eval is a gate release-check reports as never run, as it did on
+   spark-facilitator/20260926-1800): the registry from the
    PDD — the followed entity as the model, one indicator per PDD success metric /
    payment rule / review signal with its PDD section, targets only where the PDD
    states them, the PDD's own nouns, `llo_map` over the partners.
