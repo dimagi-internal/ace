@@ -178,7 +178,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{scope_intro}}` (one-sentence framing of the work, archetype-branched)
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
      - `{{primary_deliverable_body}}` (from PDD Success Metrics)
-     - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
+     - `{{verified_unit_closing}}` (the closing paragraph after the verified-unit bullets, in the ACTIVE voice: "Dimagi verifies units via…" — never "Verification will be performed via…", which `pdd-to-work-order-eval § writing_style` names as its canonical passive strike; ace#2585)
      - `{{payment_unit_closing}}` — § 6.2's closing sentence. **The rate unit
        comes from the PDD's grain, NOT from the archetype.**
 
