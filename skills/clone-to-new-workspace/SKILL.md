@@ -474,6 +474,56 @@ only worth it when a partner takes the bot over, which is a handover step, not
 a clone step. Record `clone.ocs: {status: kept, reason: public-link}` and
 report the `public_url`.
 
+### 4e. Rewrite the copied run's references to the source's assets
+
+4a/4b rewrite `products.*`; nothing above rewrites the PROSE. Every copied
+Phase 3/5/6/7 document still names the source's HQ space, app and build ids
+and versions, and its Connect program, opportunity and orgs — the partner's
+LLO guide pointed at `connect-ace-prod` and an `ace-nm-org` opportunity URL
+on the first Spark clone (ace#2606). Run this after 4a and 4b (and again if
+either is redone); it is idempotent:
+
+```bash
+npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-asset-rewrite.ts" \
+  --source <source-run-folder-id> --target <target-run-folder-id> --out <scratch-dir>
+```
+
+It reads both run_states, pairs every asset that moved, and writes rewritten
+files plus `plan.json` — it writes nothing to Drive. What it does per file
+(`lib/clone-asset-refs.ts`):
+
+- **rewrite** — ids, 8-char prefixes, the HQ space, Connect URLs/org slugs,
+  the opportunity int id in context, and build versions next to their build
+  or app; plus one "Copied into the `<to>` workspace for review from …" note
+  at the top naming each source → copy pair.
+- **note** — eval/QA records (`*_verdict*.yaml`, `*_result.yaml`) describe
+  what a judge saw on the SOURCE assets, so they get the note only, never a
+  rewrite.
+- **left on source** (listed, untouched) — the decisions log (the source's
+  Phase 4 rows are superseded by 4b's own), `4-connect/` after 4b re-authored
+  it, the `clone:` block, and `phases.solicitation-management` + its folder:
+  a Phase 8 solicitation on the source program is an operator decision, not a
+  rewrite. Report each in Step 6.
+
+Apply `plan.json`, then re-run the command — `changes: 0` is the read-back:
+
+- `action: update` → `drive_update_file(fileId, localFilePath)`. It keeps a
+  plain file's own type (`text/markdown`, `text/yaml`) since ace#2215 — on an
+  MCP older than that fix, a `text/yaml` / `text/markdown` file comes back
+  `text/plain`.
+- `action: render` → `drive_create_doc_from_markdown(name, parentFolderId,
+  localFilePath)` (find-or-update in place). A styled Doc (headings, bullets,
+  tables) must never be written back as plain text — that flattens it. An
+  `illustrated: true` guide then needs its screenshots re-embedded
+  (`scripts/embed-doc-screenshots.ts`, the producing skill's step).
+- `run_state` → `update_yaml_file(fileId, localFilePath, merge: "deep")`;
+  each changed phase key is sent whole, arrays included.
+
+Never hand-edit a Doc's `text/plain` export and write it back: the export
+turns n newlines into 2n−1 CRLFs, so every round trip doubles the blank
+lines. The script reads Docs through `docTextFromExport`, which inverts it.
+Record `clone.asset_refs: {status: done, files, left_on_source}`.
+
 ## Step 5 — Release-check the clone (report, do not block)
 
 Run `Skill(release-check)` on `<to>/<opp>/<run-id>` — the CLONE, in the target
@@ -488,6 +538,7 @@ One line per system: `created` (with ids / URLs read back — `commcare_list_app
 on the new domain; not the call's own return value) and the HQ space's plan
 (`commcare_get_subscription`: edition), or `NOT DONE` + reason, plus the Drive-link read-back
 (source ids remaining in the target run_state: expected 0 outside comms-logs),
-plus every manual setup item, plus Step 5's release-check verdict and its
+plus 4e's rewrite (files changed, and every place left on the source on
+purpose — e.g. the Phase 8 solicitation), plus every manual setup item, plus Step 5's release-check verdict and its
 blockers. End with: "Nothing was shared with anyone. When
 everything is ready, run `/ace:release <to>/<opp>/<run-id>`."

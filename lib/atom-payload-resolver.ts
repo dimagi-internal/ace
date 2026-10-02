@@ -55,6 +55,18 @@ export function resolveUpdateFileContent(args: {
 }
 
 /**
+ * The media type `drive_update_file` uploads with. A Drive media update sets
+ * the file's mimeType from the media part, so a hardcoded `text/plain` retyped
+ * every `text/markdown` / `text/yaml` file it touched (ace#2215; again on the
+ * Spark clone, ace#2606). Keep a plain file's own type; a Google Doc (and an
+ * unknown type) takes `text/plain`, which Drive converts into the Doc body.
+ */
+export function updateFileMediaMimeType(existingMimeType: string | undefined | null): string {
+  if (!existingMimeType || existingMimeType.startsWith('application/vnd.google-apps.')) return 'text/plain';
+  return existingMimeType;
+}
+
+/**
  * The both-or-neither rule shared by every "inline payload OR local file path"
  * param pair in the plugin. Extracted so each resolver phrases the refusal
  * identically by construction rather than by copy-paste — ace#2184 added a

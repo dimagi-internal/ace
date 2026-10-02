@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import {
   resolveUpdateFileContent,
+  updateFileMediaMimeType,
   resolveInlineOrLocalFile,
   prepareWritePath,
   resolvePatchXformXml,
@@ -389,5 +390,29 @@ describe('resolveInlineOrLocalFile — the shared write-side handle (#1780)', ()
         inline: 'x'.repeat(11), inlineCeiling: 10,
       }),
     ).toThrow(/oversized_inline_content.*localFilePath/s);
+  });
+});
+
+describe('updateFileMediaMimeType (ace#2215, ace#2606)', () => {
+  it('keeps a plain file its own type — Drive retypes from the media part', () => {
+    expect(updateFileMediaMimeType('text/yaml')).toBe('text/yaml');
+    expect(updateFileMediaMimeType('text/markdown')).toBe('text/markdown');
+    expect(updateFileMediaMimeType('text/x-python')).toBe('text/x-python');
+  });
+
+  it('sends text/plain for a Google Doc (Drive converts it into the body) or an unknown type', () => {
+    expect(updateFileMediaMimeType('application/vnd.google-apps.document')).toBe('text/plain');
+    expect(updateFileMediaMimeType(undefined)).toBe('text/plain');
+    expect(updateFileMediaMimeType(null)).toBe('text/plain');
+  });
+
+  it('drive_update_file no longer hardcodes its media type', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../../mcp/google-drive-server.ts', import.meta.url), 'utf8');
+    const start = src.indexOf("'drive_update_file',");
+    const end = src.indexOf("'update_yaml_file',", start);
+    const body = src.slice(start, end);
+    expect(body).toContain('updateFileMediaMimeType(');
+    expect(body).not.toMatch(/media:\s*\{\s*mimeType:\s*'text\/plain'/);
   });
 });

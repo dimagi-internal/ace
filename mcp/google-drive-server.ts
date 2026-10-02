@@ -29,7 +29,7 @@ import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 import { qaResultWriteRefusal, verdictWriteRefusal } from '../lib/qa-result-write-guard.js';
-import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch } from '../lib/atom-payload-resolver.js';
+import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch, updateFileMediaMimeType } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   validateRunState,
@@ -853,15 +853,23 @@ server.tool(
           );
         }
       }
+      // Upload with the file's OWN type: Drive retypes a plain file to the media
+      // part's type, so a fixed text/plain turned text/markdown and text/yaml
+      // files into text/plain (ace#2215, ace#2606).
+      const typeMeta = await withTransientRetry(() =>
+        drive.files.get({ fileId, fields: 'mimeType', supportsAllDrives: true }),
+      );
+      const mediaType = updateFileMediaMimeType((typeMeta.data as any).mimeType);
       const resp = await withTransientRetry(() => drive.files.update({
         fileId,
-        media: { mimeType: 'text/plain', body: newContent },
-        fields: 'id, name, modifiedTime, version',
+        media: { mimeType: mediaType, body: newContent },
+        fields: 'id, name, mimeType, modifiedTime, version',
         supportsAllDrives: true,
       }));
       return result({
         id: resp.data.id,
         name: resp.data.name,
+        mimeType: (resp.data as any).mimeType,
         modifiedTime: resp.data.modifiedTime,
         revisionVersion: (resp.data as any).version,
       });
