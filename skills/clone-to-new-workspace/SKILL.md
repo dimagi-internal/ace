@@ -179,15 +179,29 @@ Steps 3–4 do not depend on the Drive copy finishing except where they write
 the TARGET `run_state.yaml`; wait for `done` before 4's first write.
 
 **Drive links are ace-web's job, and you verify them.** Once `done`, ace-web
-has rewritten every source Drive id in the target `run_state.yaml` /
-`decisions.yaml` to its copy and given each copy its original's
-anyone-with-link role (ace-web#829). Read-back before Step 4: list the SOURCE
-run folder's file ids and grep the TARGET `run_state.yaml` for them — any hit
-other than a comms-log file (deliberately not cloned) means the rewrite did
-not run; stop and report it rather than hand-patching, because the page would
-send reviewers to the source workspace's documents. (First Spark clone,
-before #829: 99 ids / 125 occurrences, and 26 copies without their sharing —
-fixed by hand then.)
+has rewritten every source Drive id in every YAML file of the target run
+(`run_state.yaml`, `decisions.yaml`, each `previews/<output>/_previews.yaml`,
+the Phase 6 capture manifest, verdicts, …) to its copy, and given each copy
+its original's anyone-with-link role (ace-web#829, ace-web#851). Read-back
+before Step 4. Run it over the same set the rewrite covers, not only
+`run_state.yaml`:
+
+```bash
+npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-drive-readback.ts" \
+  --source <source-run-folder-id> --target <target-run-folder-id>
+```
+
+Exit 0 means clean. Exit 1 means `hits[]` lists each copied file that still names a
+source file, with that file's path. `left_behind[]` lists comms-log ids, which
+are expected: those files are deliberately not cloned. On exit 1, the rewrite
+did not run or did not reach those files. Stop and report it rather than
+hand-patching, because the page would send reviewers to the source
+workspace's documents, or show no screenshots at all. Record the hit count as
+`clone.drive_ids.source_ids_remaining`. History: the first Spark clone, before
+#829, had 99 ids / 125 occurrences in run_state and 26 copies without their
+sharing, all fixed by hand. The second passed a run_state-only grep while
+every `_previews.yaml` still named the source's frames, so ace-web showed 12
+outputs with no screenshots (ace#2603). Logic: `lib/clone-readback.ts`.
 
 ## Step 3 — Bind this session to the NEW opp
 
