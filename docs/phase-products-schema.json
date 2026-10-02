@@ -517,7 +517,10 @@
                     ]
                   },
                   "program_application_id": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "program": {
                     "type": "object",

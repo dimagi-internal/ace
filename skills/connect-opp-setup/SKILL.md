@@ -406,6 +406,22 @@ alone makes the artifact land outside `4-connect` and fail
    `connect_list_deliver_units` after this — the create response already
    carries the full list under `deliver_app.deliver_units`.
 
+   **A 5xx or timeout from the create is an AMBIGUOUS outcome — never retry
+   it blind (ace#2580).** The endpoint fetches app names from HQ and syncs
+   learn modules + deliver units synchronously, so a slow HQ can push it past
+   the gateway while the transaction still commits. Observed on
+   `spark-facilitator/20261001-2208`: `504 Gateway Time-out`, an immediate
+   list showed no new row, and ~2–3 minutes later the opportunity was there.
+   A retry would have minted a second opportunity on the program. So: wait,
+   then `connect_list_opportunities({organization_slug, name: <the exact
+   opportunity name>})` (`name` is EXACT-match here, and the run-id prefix
+   makes it unique) — repeat over a bounded window of ~5 minutes. If the row
+   appears, adopt it: take `deliver_units[].server_id` from
+   `connect_list_deliver_units` and `connect_int_id` from the Step 6.5
+   `/activate/` response (it returns `id`, the integer), and say in the
+   step log that the create response was lost. Re-create only once the
+   bounded wait has confirmed the opportunity is absent.
+
    **App-wire fields are write-once at create.** Connect's `/edit` form
    does NOT expose `learn_app` / `deliver_app` — they're only set at create.
    `connect_update_opportunity` only covers `name` / `short_description` /
