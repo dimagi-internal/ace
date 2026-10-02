@@ -393,6 +393,19 @@ export interface RecipeRunResult {
      * with no Maestro-classified failure attached) or the write failed.
      */
     stderrPath?: string;
+    /**
+     * Set when CommCare (`org.commcare.dalvik`) threw an uncaught exception
+     * WHILE this recipe ran — a FATAL block in `logcat -b crash` that was not
+     * already there when the recipe started. The value is the summary of the
+     * latest such crash (marker + exception + first frames). When present,
+     * the failure screen is a CONSEQUENCE of the crash (CommCare restarted
+     * onto whatever screen it came back on), not a selector or navigation
+     * defect. Local backend only; absent when nothing new crashed, the buffer
+     * was unreadable, or on the cloud backend. ace#2584.
+     */
+    appCrash?: string;
+    /** Sibling `<recipeId>-FAILURE-crash.txt`: the new CommCare crash block(s) verbatim. */
+    crashLogPath?: string;
   };
   /**
    * The static palette dir this run actually resolved `runFlow: file:`
