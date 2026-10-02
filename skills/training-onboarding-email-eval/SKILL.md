@@ -34,7 +34,7 @@ response-rate telemetry.
 
 ## Process
 
-1. Read inputs from Drive.
+1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
 2. Extract the email's structural beats (greeting, context, what-we're-asking,
    what-we-provide, CTA, sign-off).
 3. Apply the rubric and write the verdict YAML.

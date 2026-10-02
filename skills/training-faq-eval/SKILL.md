@@ -49,7 +49,7 @@ produce ground truth.
 
 ## Process
 
-1. Read inputs from Drive.
+1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
 2. Build an "anticipated-questions catalogue" from the PDD: Operational
    Caps (daily visit limits, payment per visit), Evidence Model Layer A
    rules (what photo counts, what GPS accuracy is needed), Stage Gate

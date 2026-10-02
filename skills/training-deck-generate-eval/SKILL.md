@@ -46,7 +46,7 @@ calibration TBD until 3+ shipped deck specs produce ground truth.
 
 ## Process
 
-1. Read inputs from Drive.
+1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
 2. Map the spec's module list to the canonical pedagogical arc
    (Intro / Reference / Walkthrough / Recap). Note missing or
    misordered phases.
