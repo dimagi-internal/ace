@@ -95,3 +95,35 @@ describe('verifyCascadeStoryLanded — against what labs actually graded', () =>
     expect(verifyCascadeStoryLanded(PLAN, []).verdict).toBe('fail');
   });
 });
+
+describe('a programme story with two real partners and no PDD', () => {
+  const CHLORINE: CascadeStoryPlan = JSON.parse(
+    readFileSync(join(__dirname, '../fixtures/cascade/chlorine-story.json'), 'utf8'),
+  );
+  const CL_IDS = ['CL_Q1', 'CL_D1', 'CL_U1', 'CL_D2', 'CL_X1', 'CL_D3', 'CL_R1', 'CL_R2', 'CL_X2'];
+
+  it('passes with the real partner count and app-cited signals, warning about the benchmark', () => {
+    const r = checkCascadeStoryPlan(CHLORINE, CL_IDS);
+    expect(r.verdict).toBe('pass');
+    expect(r.findings.map((f) => f.severity)).toEqual(['warn']);
+  });
+
+  it('refuses two partners when the plan says ACE invented them', () => {
+    const p: CascadeStoryPlan = JSON.parse(JSON.stringify(CHLORINE));
+    p.partner_source = 'invented';
+    expect(checkCascadeStoryPlan(p, CL_IDS).verdict).toBe('fail');
+  });
+
+  it('refuses one partner even for a real programme — nothing to compare', () => {
+    const p: CascadeStoryPlan = JSON.parse(JSON.stringify(CHLORINE));
+    p.partners = p.partners.slice(0, 1);
+    expect(checkCascadeStoryPlan(p, CL_IDS).verdict).toBe('fail');
+  });
+
+  it('refuses an app-anchored signal that names no Deliver app form', () => {
+    const p: CascadeStoryPlan = JSON.parse(JSON.stringify(CHLORINE));
+    p.signals[0].pdd_ref = 'the obvious water-quality metric';
+    expect(checkCascadeStoryPlan(p, CL_IDS).findings.map((f) => f.signal)).toContain(p.signals[0].kind);
+  });
+});
+

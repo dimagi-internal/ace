@@ -24,7 +24,7 @@ Two gates, both must pass. Shared QA contract: [`skills/_qa-template.md`](../_qa
 | Source | Artifact |
 |---|---|
 | `semantic-registry-author` | `7-synthetic/semantic-registry-author_registry.json` |
-| Phase 1 | the PDD markdown (for `pddSectionIds`) |
+| Phase 1 | the PDD markdown (for `pddSectionIds`) — or, with NO PDD, the Deliver app structure (`--app`, `appFormNames`) |
 | `demo-data-setup` § C1 | the partner opportunity ids |
 
 ## Products
@@ -38,12 +38,12 @@ Two gates, both must pass. Shared QA contract: [`skills/_qa-template.md`](../_qa
 | `model` | `entity.{name,plural,key}` or `pipelines.entity` missing | declare them — a registry with no model is read as KMC |
 | `indicators` / `indicator-meta` | no indicator, or one lacks `label` / `plain` / `category` / `direction` / `scope_note` | fill from the PDD row |
 | `measures` | an indicator's `_numerator` / `_denominator` measure is missing or unread by its value | add the measure / fix the value's `sql` |
-| `pdd-anchor` | `scope_note` cites no `PDD §N`, or only sections the PDD lacks | cite the section, or drop the indicator |
+| `pdd-anchor` | `scope_note` cites no `PDD §N`, or only sections the PDD lacks; with no PDD (`--app`), names no form of the released Deliver app | cite the section (or the app form), or drop the indicator |
 | `target` | a target the `scope_note` does not quote, a % target outside 0–100, a target without higher/lower | cite the PDD's number, or remove the target |
 | `bands` | % bands written as fractions (`0.8`) — every cell grades green | write `80` |
 | `headline` | duplicate position, or beyond `display.headline_count` | renumber |
 | `display` | missing title / entity / worker / organisation nouns, an unlisted category, a bad `case_fields` format | fill from the PDD vocabulary |
-| `llo-map` | a partner opportunity missing from `deployment.llo_map`, or fewer than 3 organisations | map every opportunity |
+| `llo-map` | a partner opportunity missing from `deployment.llo_map`, or fewer organisations than the floor: 3 for invented partners, 2 with `--partner-source programme` (below 3 there is a `warn`, since the benchmark then exposes a peer's figures) | map every opportunity |
 
 `warn` findings (bands without a target, an over-long `plain`, no `case_fields`)
 are reported and do not fail the gate.
