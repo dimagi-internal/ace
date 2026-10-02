@@ -30,7 +30,7 @@ slides:
     layout: mobile_flow
     title: "Step 2: Create Your PersonalID"
     steps:
-      - { image: "@personal-id-start", caption: "Tap 'Sign Up'" }
+      - { image: "@personal-id-start", caption: "Tap 'Sign In / Register'" }
       - { image: "@personal-id-name", caption: "Enter your name" }
       - { image: "@personal-id-phone", caption: "Enter your phone number" }
 

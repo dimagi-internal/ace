@@ -2,7 +2,7 @@
 # alias declared in templates/training-deck/_common/platform-setup.yaml.
 #
 # Aliases this recipe can produce (depends on path):
-#   personal-id-start    — Tap 'Sign Up' (the nav-drawer entry surface)
+#   personal-id-start    — Tap 'Sign In / Register' (the nav-drawer entry surface)
 #   personal-id-name     — Enter your name (only fresh signup, may be skipped)
 #   personal-id-phone    — Enter your phone number
 #   personal-id-verify   — Enter the code you received (DEMO USERS BYPASS;
@@ -90,7 +90,7 @@ appId: org.commcare.dalvik
     timeout: 1000
 
 # personal-id-start surface: the nav drawer open with "Sign In/Register"
-# visible — this is the actual "Tap Sign Up" moment for a fresh user.
+# visible — this is the actual "Tap Sign In / Register" moment for a fresh user.
 - takeScreenshot: "personal-id-start"
 
 # Enter the PersonalID activity via the nav-drawer Sign In/Register.
