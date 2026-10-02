@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   probeRecipeSanity,
   extractRecipeParameters,
+  CONTENT_FORM_FINISH_SLOTS,
   type NovaAppSlice,
   type ConnectOpportunitySlice,
 } from '../../../mcp/mobile/recipe-sanity-probe.js';
@@ -2862,5 +2863,166 @@ describe('probeRecipeSanity — ace#2575 advance chain resets at form boundaries
       ...advances(3),
     ].join('\n');
     expect(chainFailure(body)).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#2574 — content-form-finish-overrun. Both
+// content-form-finish*.yaml recipes are UNROLLED loops of guarded
+// nav_btn_next taps (12 / 14 slots). Nova now builds a lesson as one
+// top-level label per screen, and on spark-facilitator/20261001-2208 Learn
+// app 00c8a612 rev 7 Lesson 3 had 20 label screens: composed as the skill
+// prescribed (learn-tap-module -> content-form-finish-to-suite) the loop
+// ran out of taps, the form never finalized, Learn stayed <100%.
+// ---------------------------------------------------------------------------
+
+type LessonField = NonNullable<NovaAppSlice['modules'][0]['forms'][0]['fields']>[number];
+
+function lessonApp(screens: number, extra: LessonField[] = []): NovaAppSlice {
+  return {
+    app_id: 'learn-00c8a612',
+    modules: [
+      {
+        module_name: 'Facilitator Training',
+        forms: [
+          {
+            form_name: 'Lesson 3: Recording a meeting',
+            fields: [
+              { id: 'calc', kind: 'hidden' },
+              ...Array.from({ length: screens }, (_, i) => ({
+                id: `screen_${i + 1}`,
+                kind: 'label',
+                label: `Screen ${i + 1} of the lesson`,
+              })),
+              ...extra,
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function lessonWalk(bareAdvances: number, finishRecipe = 'content-form-finish-to-suite.yaml') {
+  const body = [
+    '- runFlow:',
+    '    file: learn-tap-module.yaml',
+    '    env:',
+    '      MODULE_NAME: "Facilitator Training"',
+    '      FORM_NAME: "Lesson 3: Recording a meeting"',
+    ...Array.from(
+      { length: bareAdvances },
+      (_, i) => `- runFlow:\n    file: form-advance.yaml\n    env:\n      SCREENSHOT_NAME: "l3-adv-${i}"`,
+    ),
+    '- runFlow:',
+    `    file: ${finishRecipe}`,
+    '    env:',
+    '      SCREENSHOT_NAME: "journey-learn-l3-finished"',
+  ].join('\n');
+  return recipeBody('journey-learn.yaml', body);
+}
+
+describe('probeRecipeSanity — failure class: content-form-finish-overrun (#2574)', () => {
+  const classes = (v: ReturnType<typeof probeRecipeSanity>) => v.failures.map((f) => f.class);
+
+  it('flags the live shape: a 20-screen lesson handed straight to the 14-slot -to-suite loop', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(0)],
+      novaApps: [lessonApp(20)],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'content-form-finish-overrun');
+    expect(f).toBeDefined();
+    expect(f!.detail).toContain('Lesson 3: Recording a meeting');
+    expect(f!.value).toBe('screens=20,advances=0,slots=14');
+    expect(f!.remediation).toMatch(/at least 6 more bare form-advance/);
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('passes once enough bare advances precede the call (20 - 6 = 14 screens left for 14 slots)', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(6)],
+      novaApps: [lessonApp(20)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(verdict)).not.toContain('content-form-finish-overrun');
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('is exact at the boundary: one advance short still fails', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(5)],
+      novaApps: [lessonApp(20)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(verdict)).toContain('content-form-finish-overrun');
+  });
+
+  it('a form that exactly fills the loop passes (Lesson 2: 14 screens, 14 slots)', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(0)],
+      novaApps: [lessonApp(14)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(verdict)).not.toContain('content-form-finish-overrun');
+  });
+
+  it("uses the home-grid recipe's own 12-slot bound", () => {
+    const over = probeRecipeSanity({
+      recipes: [lessonWalk(0, 'content-form-finish.yaml')],
+      novaApps: [lessonApp(13)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(over.failures.find((f) => f.class === 'content-form-finish-overrun')?.value).toBe(
+      'screens=13,advances=0,slots=12',
+    );
+    const fits = probeRecipeSanity({
+      recipes: [lessonWalk(0, 'content-form-finish.yaml')],
+      novaApps: [lessonApp(12)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(fits)).not.toContain('content-form-finish-overrun');
+  });
+
+  it('counts a lower bound: relevant-gated fields may not render and are not counted', () => {
+    const gated = Array.from({ length: 6 }, (_, i) => ({
+      id: `result_${i}`,
+      kind: 'label',
+      label: `Result ${i}`,
+      relevant: '/data/score > 0',
+    }));
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(0)],
+      novaApps: [lessonApp(14, gated)],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(verdict)).not.toContain('content-form-finish-overrun');
+  });
+
+  it('negative control: inert when the caller supplies no fields', () => {
+    const noFields: NovaAppSlice = {
+      app_id: 'x',
+      modules: [
+        { module_name: 'Facilitator Training', forms: [{ form_name: 'Lesson 3: Recording a meeting' }] },
+      ],
+    };
+    const verdict = probeRecipeSanity({
+      recipes: [lessonWalk(0)],
+      novaApps: [noFields],
+      connectOpp: LIVE_OPP,
+    });
+    expect(classes(verdict)).not.toContain('content-form-finish-overrun');
+  });
+
+  it('CONTENT_FORM_FINISH_SLOTS matches the guarded nav_btn_next slots in the real palette files', () => {
+    const dir = join(import.meta.dirname, '..', '..', '..', 'mcp', 'mobile', 'recipes', 'static');
+    for (const [file, slots] of Object.entries(CONTENT_FORM_FINISH_SLOTS)) {
+      const text = readFileSync(join(dir, file), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .join('\n');
+      const taps = text.match(/tapOn:\s*\n\s*(?:id:\s*")?\$\{SELECTOR:form-nav-next\}/g) ?? [];
+      expect({ file, slots: taps.length }).toEqual({ file, slots });
+    }
   });
 });

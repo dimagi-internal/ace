@@ -968,13 +968,51 @@ Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 
 Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
 forms — both `content-form-finish*` recipes subsume the single-screen and the
-multi-screen cases (the bounded loop no-ops its remaining advances once the
-form auto-finalizes on its only/last screen). Reserve explicit
+multi-screen cases **up to their slot count** (the bounded loop no-ops its
+remaining advances once the form auto-finalizes on its only/last screen; past
+the bound, see the next paragraph). Reserve explicit
 `form-advance` → answer-tap → `form-submit` sequencing for QUIZ /
 assessment forms with required inputs (per the MANDATORY answer-tap rule
 below) — neither `content-form-finish*` recipe selects answers, so pointing
 one at a required-input quiz stalls on `warning_root` ("Sorry, this response
 is required!"; jjackson/ace#646).
+
+**The loop is bounded — count the form's screens and pre-advance the excess
+(dimagi-internal/ace#2574).** Each `content-form-finish*` recipe is an
+UNROLLED sequence of guarded `nav_btn_next` taps, not a `repeat:`
+(`repeat` is not in the recipe-validator allowlist), so it can cross only a
+fixed number of screens:
+
+| finalize recipe | `nav_btn_next` slots |
+|---|---|
+| `content-form-finish.yaml` | 12 |
+| `content-form-finish-to-suite.yaml` | 14 |
+
+Nova builds a lesson as one top-level `label` per screen, so lessons now
+routinely exceed that (spark-facilitator/20261001-2208: 10, 14, **20**, 11,
+**15**, 12 screens). A form with more screens than the slots runs out of taps,
+the terminal anchor assert fails, the form never finalizes, its `learn_module`
+never registers, and Learn stays below 100% with Deliver locked (#897).
+
+So, per content form: read `get_form`, count its screens `S` (every top-level
+field that is neither `hidden` nor `relevant`-gated; a `group` is ONE screen —
+never over-count, because a bare advance past the last screen finalizes the
+form early and the next one fails on a menu), and if `S` exceeds the
+chosen recipe's slot count `N`, emit **`S - N` bare `form-advance.yaml`
+steps** (no answer tap; each with its own `SCREENSHOT_NAME`) between
+`learn-tap-module` and the `content-form-finish*` call, so at most `N` screens
+are left for the loop. A form with exactly `N` screens fits. Example —
+Lesson 3 (20 label screens) on a `-to-suite` app needs 6 bare advances first.
+Do NOT hand-write a longer finalize loop in the journey recipe; the static
+palette's loop is the calibrated one.
+
+*Enforced:* `recipe-sanity-probe` fails `content-form-finish-overrun` when a
+form walked by `content-form-finish*` has more screens left (after the bare
+advances in front of the call) than that recipe's slots. It counts a LOWER
+bound — `hidden` and `relevant`-gated fields are not counted — and is
+field-gated (inert unless Step 2.6 supplies `fields`). The slot table above is
+pinned in `CONTENT_FORM_FINISH_SLOTS` and locked to the palette files by
+`test/mcp/mobile/recipe-sanity-probe.test.ts`.
 
 ##### Screenshot names are caller-bound — never rely on a palette default (dimagi-internal/ace#1033)
 
@@ -2049,6 +2087,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **`content-form-finish*` loops are bounded — pre-advance the excess (closes dimagi-internal/ace#2574).** § Multi-screen content forms claimed both finalize recipes "subsume the single-screen and the multi-screen cases"; they are unrolled loops of 12 / 14 guarded `nav_btn_next` slots, and Nova now builds lessons as one top-level label per screen. spark-facilitator/20261001-2208's Learn app had lessons of 20 and 15 label screens against the 14-slot `-to-suite` loop, so composed as prescribed they could never finalize (Learn <100%, Deliver locked). The section now states the slot table and prescribes `S - N` bare `form-advance` steps before the call. *Enforced:* `recipe-sanity-probe` class `content-form-finish-overrun` + the slot-count lock in `test/mcp/mobile/recipe-sanity-probe.test.ts`. | ACE team |
 | 2026-09-27 | **The ace#1081 next-cell tap is a no-op on APK 2.64.0 — drive the date picker with a one-row fling (dimagi-internal/ace#2518).** spark-facilitator/20260926-1413 Phase 6: Maestro reported the relational tap `COMPLETED`, the picker stayed on today, and `. > today()` refused FINISH. Of four candidates probed on the same form (ui-dump read-back), only a one-row upward swipe on the day column (529,968 → 529,818, 600 ms) moved 27 → 28. § `kind: date` questions now carries a per-APK drive table; the fling is emitted from `lib/date-picker-drive.ts` `dayStepFlingYaml()` (element-relative derivation from the day column's cell bounds — Maestro 2.5.1 cannot anchor a bounded swipe on an element). *Enforced:* `recipe-lint` rule `date-picker-next-cell-tap-noop` rejects the relational tap for 2.64.0 (`test/mcp/mobile/recipe-lint.test.ts`), and `test/lib/date-picker-drive.test.ts` pins the helper to the observed pixels. | ACE team |
 | 2026-09-05 | **A case-bound date field does NOT default to today on a repeat visit (closes dimagi-internal/ace#1982).** The Step 5 date-default gate's premise — "the date widget defaults to today" — holds only on a FIRST visit. Nova preloads a `kind: date` field that is also a case property, so on a follow-up journey it arrives holding the previous visit's date, and a recipe that advances past it files the old date as the new meeting's. Live on `spark-facilitator/20260828-0703`: `journey-deliver-followup-preload` declared the date "Not driven", and three meetings walked on 01 Sep each submitted `date_of_meeting = 2026-08-29` with a correct device clock. Because `last_meeting_date` is calculated from it, the case's Last-meeting column never moved and the deep app-UX verdict opened with a BLOCKER blaming the product's case-write path — which was working correctly throughout. A journey returning to an existing case must now drive or assert a case-bound date field explicitly. | ACE team |
 | 2026-09-01 | **A transition criterion must assert a DELTA, not presence (dimagi-internal/ace#1885).** Step 5 gains a static gate: a criterion whose NAME claims a state transition (`updated`, `changed`, `advanced`, `incremented`, `refreshed`, `moved`, `cleared`, …) must be verified either by a captured-pair comparison (`copyTextFrom` / `evalScript` before, `assertTrue` reading it after) or by a declared `expected_value` the recipe asserts and never taps. Earned by `spark-facilitator/20260828-0703`, where `journey-deliver-followup-preload` declared `case_state_updated_after_submit` and asserted it as `assertVisible "Chilanga.*"` — proof the ROW EXISTS, not that the date moved — and went green over a real `blocks-e2e` defect (`last_meeting_date` stale across three synced meetings while a control case updated in the same frame). The test could not fail for the reason it existed. *Enforced:* `lib/transition-criteria.ts` + `test/lib/transition-criteria.test.ts`, whose calibration fixture is that exact criterion and assertion. | ACE team |
