@@ -2617,6 +2617,62 @@ elif [ -n "$GMAIL_CLIENT_VAL" ]; then
   pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL from config/agent.json"
 fi
 
+# 7a2c. runner_session_env — the gog keyring password doctor just exported
+# reaches doctor's OWN process. It does not reach a session a canopy runner
+# spawns, and that is now a real execution context.
+#
+# Until a canopy laptop runner was paired, ACE only ever ran in the operator's
+# own Claude Code session, where the `/ace:*` skills load the plugin-data
+# `.env`. A runner is different: launchd starts `com.canopy.runner`, which
+# drives emdash over CDP, and emdash spawns Claude Code with the GUI login
+# environment — no `.env`, no TTY. `GOG_KEYRING_PASSWORD` lives in the
+# plugin-data `.env` and in NO shell profile (see the ace#2358 block above), so
+# gog cannot open its file keyring there.
+#
+# Measured 2026-10-02 on `stewari-mbp-cdp`, on a real caller turn:
+#   canopy email read --repo . <thread>
+#   -> ... read OAuth client secret from keyring: ... no TTY available for
+#      keyring file backend password prompt; set GOG_KEYRING_PASSWORD
+#
+# The same credential path backs SEND, so agent email is dead both ways and
+# `/ace:turn` inbox triage with it. The box still ROUTES correctly — Slack and
+# email turns arrive and claim — so every other light is green while the agent
+# cannot act. That is why this is TURN-BLOCKING rather than a plain warning.
+#
+# `gog_auth` above cannot cover this and must not be changed to: it exports the
+# password into its own process on purpose (ace#2358), because not doing so was
+# a false negative that blocked turns on a working mailbox. It answers "is this
+# mailbox authorized on this machine?"; this answers "will a spawned session be
+# able to use it?". Both are worth knowing, and only the second is new.
+if [ -f "$HOME/.canopy/runner.json" ]; then
+  _rse_pw="$(get_env GOG_KEYRING_PASSWORD)"
+  if [ -n "$_rse_pw" ]; then
+    # Strip the variable before asking, or we would read the copy doctor
+    # exported above and always pass. `-lc` because emdash hands a session a
+    # login shell, which is the only thing that would source a profile.
+    _rse_to="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+    _rse_shell="${SHELL:-/bin/zsh}"
+    _rse_shell_pw=""
+    if [ -x "$_rse_shell" ]; then
+      if [ -n "$_rse_to" ]; then
+        _rse_shell_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_to" 10 "$_rse_shell" -lc 'printf %s "${GOG_KEYRING_PASSWORD:-}"' 2>/dev/null || true)"
+      else
+        _rse_shell_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_shell" -lc 'printf %s "${GOG_KEYRING_PASSWORD:-}"' 2>/dev/null || true)"
+      fi
+    fi
+    # The other legitimate source: `launchctl setenv` puts it in the user's
+    # launchd environment, which a GUI-launched emdash does inherit.
+    _rse_launchd_pw="$(launchctl getenv GOG_KEYRING_PASSWORD 2>/dev/null || true)"
+    if [ -n "$_rse_shell_pw" ] || [ -n "$_rse_launchd_pw" ]; then
+      _rse_src="login shell"
+      [ -z "$_rse_shell_pw" ] && _rse_src="launchd user env"
+      pass "runner_session_env: a canopy runner is paired and a spawned session can reach GOG_KEYRING_PASSWORD (via $_rse_src) — runner-driven email can open the gog keyring"
+    else
+      warn_turn "runner_session_env: a canopy runner is paired here, but a session it spawns sees NO GOG_KEYRING_PASSWORD (checked a login shell and the launchd user env). gog cannot open its file keyring without a TTY, so ACE can neither read nor send email in any runner-driven session, and /ace:turn inbox triage fails with it. gog_auth above PASSES because doctor exports the password into its own process (ace#2358) — the runner does not" "immediate unblock (per-boot, and visible to every process of your user): launchctl setenv GOG_KEYRING_PASSWORD <the value from the plugin-data .env>. Narrower but re-rendered by the next install-runner.sh: add it to EnvironmentVariables in ~/Library/LaunchAgents/com.canopy.runner.plist. The durable fix is canopy's own runner-credential path (set_runner_credential / set_agent_credentials on the canopy-web MCP), which survives runner updates and keeps the secret out of the GUI environment"
+    fi
+  fi
+fi
+
 # 7a3. canopy_email_engine — bin/ace-email + bin/ace-mark-read are thin shims
 # over the shared canopy email engine (ace#826; canopy >= 0.2.255). Without the
 # canopy CLI on PATH, every send + mark-read in turns and Phase 8/9 fails at
