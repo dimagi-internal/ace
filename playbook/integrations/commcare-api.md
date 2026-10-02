@@ -28,7 +28,7 @@ The `scout-data` MCP provides analytics query access to CommCare data. Skills th
 to analyze FLW submission data or aggregate metrics should use `scout-data` rather than
 the CommCare HQ API directly. This covers the `flw-data-review` skill's data needs.
 
-## New project spaces — the ace-enterprise Enterprise subscription
+## New project spaces — set them to "Test or Demo Project"
 
 Every HQ project space ACE creates (`commcare_create_domain` — a partner's
 space from `clone-to-new-workspace`, the interview master/downstream pair) starts
@@ -38,51 +38,47 @@ feature"*; ace#2552). Web views still work (app copy, build, release, a
 reviewer's browser access), but a Connect opportunity reading the apps, a
 space-restricted HQ key, linked spaces and data forwarding do not.
 
-**The path (Gillian Javetski, accounts — 2026-10-02):** Dimagi set up the
-`ace-enterprise` project space for this use case. To put a new space on an
-Enterprise plan:
+**The fix is one setting on the space itself** (Gillian Javetski, accounts —
+2026-10-02; operator decision, Jon 2026-10-02):
 
 1. Create the space as usual (`commcare_create_domain`).
-2. Open **`https://www.commcarehq.org/a/<new-space>/settings/project/internal_subscription_management/`**
-   (the same page Gillian linked under `ace-enterprise`, on the new space's own
-   URL), choose **"Test or Demo Project"**, and press **Update**. HQ moves the
-   space to the default Enterprise plan version, `do_not_invoice`, service
-   type `internal`, under the billing account *"Dimagi Internal Test Account
-   for Project <space>"* (`DimagiOnlyEnterpriseForm`,
-   `corehq/apps/domain/forms.py`). No billing follow-up is needed — Gillian:
-   "Enterprise is much easier".
+2. A Dimagi HQ superuser opens
+   **`https://www.commcarehq.org/a/<space>/settings/project/internal_subscription_management/`**,
+   chooses **Subscription Type → Test or Demo Project**, and presses **Update**.
+   HQ moves the space to the default Enterprise plan, `do_not_invoice`,
+   service type `internal`, under a billing account of its own, *"Dimagi
+   Internal Test Account for Project <space>"* (`DimagiOnlyEnterpriseForm`,
+   `corehq/apps/domain/forms.py`). Nothing is billed and nothing else is needed.
 3. Read it back: `commcare_get_subscription(domain)` → `edition` no longer
    `Free`, `is_paid_edition: true`. Then `commcare_list_apps(domain)` answers
    200.
 
+**The `ace-enterprise` project space is NOT part of this.** The switch does not
+attach the space to `ace-enterprise` or its billing account. Grouping a space
+under `ace-enterprise`, so it appears in that account's Enterprise Console
+(`/a/ace-enterprise/enterprise/dashboard/`, which has no add-space button),
+would mean an accounts admin moving the subscription to that billing account in
+`/hq/accounting/` ("Transfer Subscription To"). It brings no capability ACE
+needs, so ACE does not do or ask for it. Likewise linking spaces from
+`ace-enterprise` (`/a/ace-enterprise/settings/project/domain_links/`) only
+pushes content and does not change a plan. A paid plan (APS) would need
+accounts to stop it being billed. Don't use any of these as substitutes.
+
 **Step 2 is superuser-only, and ace@ is not one.** `InternalSubscriptionManagementView`
 is `@require_superuser`; as ace@ the page 302s to `/no_permissions/`
-(observed 2026-10-02 on both `ace-enterprise` and `connect-ace-spark`), and
-ace@ is not a member of `ace-enterprise` either (its dashboard 404s). So it is
-an **operator step, done during `/ace:release`** (Step 0.4) by whoever runs
-the release (operator decision, Jon 2026-10-02). `release-check` blocks on it
-(`hq-plan-free:<space>`, owner *HQ superuser (operator)*), and the fix it shows
-is the exact URL and clicks. ACE then verifies with `commcare_get_subscription`.
-Wording lives in `lib/hq-enterprise-flip.ts`, printed by `scripts/release-check.ts
-hq-flip-steps --domain <space>`. A clone that rebuilds Connect needs it
-earlier: 4a stops before the API-dependent steps and prints the same text. Never route around it: no other plan change
-(self-serve upgrade, trial) is the agreed path, and anything billable needs
-accounts' involvement.
+(observed 2026-10-02 on `connect-ace-spark`). So it is an **operator step, done
+during `/ace:release`** (Step 0.4) by whoever runs the release. `release-check`
+blocks on it (`hq-plan-free:<space>`, owner *HQ superuser (operator)*) with the
+exact URL and clicks as its fix, and ACE verifies with
+`commcare_get_subscription`. Wording lives in `lib/hq-enterprise-flip.ts`,
+printed by `scripts/release-check.ts hq-flip-steps --domain <space>`. A clone
+that rebuilds Connect needs it earlier: 4a stops before the API-dependent
+steps and prints the same text.
 
-**Not this path:**
-- **APS / a paid subscription** through `ace-enterprise`'s subscription
-  management tool. Possible, but accounts then has to make sure it isn't
-  billed. Enterprise is enough for everything ACE does.
-- **Linking to `ace-enterprise`** (`/a/ace-enterprise/settings/project/domain_links/`)
-  is for pushing content from `ace-enterprise` into a downstream space. It does
-  not change the downstream's plan, and clones use unlinked copies, so ACE does
-  not need it.
-
-The form's own banner says Test or Demo spaces are *"internal Dimagi test
-space[s], not in use by a partner"*. Accounts made `ace-enterprise` for ACE's
-partner review spaces, so this use is sanctioned. A space that moves to
-partner **production** use is a different subscription conversation, outside
-ACE.
+The form's banner calls Test or Demo spaces *"internal Dimagi test space[s],
+not in use by a partner"*. Accounts sanctioned this for ACE's partner
+**review** spaces. A space moving to partner production use is a separate
+subscription conversation, outside ACE.
 
 ---
 

@@ -1,5 +1,7 @@
-// The one HQ step ACE cannot do itself: putting a project space it created onto
-// accounts' `ace-enterprise` Enterprise subscription (ace#2552).
+// The one HQ step ACE cannot do itself: setting a project space it created to
+// "Test or Demo Project", which puts it on HQ's Enterprise plan, not invoiced
+// (ace#2552). It is a setting on the space alone — it does NOT attach the space
+// to the `ace-enterprise` project or its billing account.
 //
 // Every space `commcare_create_domain` makes starts on CommCare Free Edition
 // (REST API closed). HQ's only way onto Enterprise for these spaces is the
@@ -16,7 +18,7 @@
 
 export const HQ_BASE_URL = 'https://www.commcarehq.org';
 
-/** The page the superuser opens — on the NEW space, not on ace-enterprise. */
+/** The page the superuser opens — the space's own settings page. */
 export function hqEnterpriseFlipUrl(domain: string): string {
   return `${HQ_BASE_URL}/a/${encodeURIComponent(domain)}/settings/project/internal_subscription_management/`;
 }
@@ -29,13 +31,12 @@ export function hqSubscriptionUrl(domain: string): string {
 /** Numbered steps, markdown, for a human HQ superuser. */
 export function hqEnterpriseFlipSteps(domain: string): string {
   return [
-    `**HQ superuser step — put \`${domain}\` on the ace-enterprise Enterprise plan** (about a minute; ace@ cannot do this, HQ restricts it to superusers):`,
+    `**HQ superuser step — set \`${domain}\` to "Test or Demo Project"** (about a minute; ace@ cannot do this, HQ restricts it to superusers):`,
     `1. Signed in to CommCare HQ as a Dimagi **superuser**, open ${hqEnterpriseFlipUrl(domain)}`,
-    `   (the new space's own page — not \`ace-enterprise\`'s).`,
     `2. Under **Subscription Type**, choose **Test or Demo Project**.`,
     `3. Press **Update**. HQ redirects to the space's Current Subscription page.`,
     `4. Check that page (${hqSubscriptionUrl(domain)}) now shows an **Enterprise** plan, not "CommCare Free Edition".`,
-    `Not invoiced (accounts set this up for ACE's partner spaces, Gillian Javetski 2026-10-02) — do NOT pick a paid plan or an extended trial instead.`,
+    `Not invoiced (sanctioned by accounts for ACE's partner review spaces, Gillian Javetski 2026-10-02) — do NOT pick a paid plan or an extended trial instead.`,
     `Then tell ACE "done"; it reads the plan back with commcare_get_subscription.`,
   ].join('\n');
 }

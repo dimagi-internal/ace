@@ -36,7 +36,7 @@
  *       run, not read-only, and newer than every write in the run folder.
  *
  *   hq-flip-steps (--domain D | --run-state <yaml>)
- *       Print the HQ superuser step (ace-enterprise "Test or Demo Project")
+ *       Print the HQ superuser step (set the space to "Test or Demo Project")
  *       for the run's HQ space — the exact URL and clicks the operator does in
  *       /ace:release Step 0.4. Same text as the `hq-plan-free` blocker's fix.
  */

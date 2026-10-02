@@ -1,8 +1,8 @@
 /**
  * commcare_get_subscription — the plan read-back for a new project space
  * (ace#2552). A space `commcare_create_domain` makes starts on HQ's Free plan,
- * whose REST API is closed; an HQ superuser converts it to Enterprise under the
- * ace-enterprise subscription ("Test or Demo Project"). This atom is how ACE
+ * whose REST API is closed; an HQ superuser moves it to the Enterprise plan by
+ * setting it to "Test or Demo Project". This atom is how ACE
  * confirms that landed, from HQ's own page rather than a 401 that also means
  * "no such space" (ace#2551).
  *

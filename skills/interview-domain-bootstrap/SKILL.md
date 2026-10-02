@@ -66,7 +66,7 @@ For each of `master_domain` and `downstream_domain`:
 
 1. Check if it exists by attempting `commcare_list_apps({domain})`. If 401 with "Authorization Required" → domain doesn't exist or no access; create it.
 2. `commcare_create_domain({hr_name: <slug>})`. Slug must be ≤25 chars.
-3. **Manual step (prompt operator) — Enterprise via ace-enterprise:** `commcare_get_subscription({domain})` on each space. A new space reads `edition: Free`. Ask a Dimagi HQ superuser (ace@ is not one) to open `https://www.commcarehq.org/a/<domain>/settings/project/internal_subscription_management/`, choose **Test or Demo Project**, and press **Update**. That puts the space on accounts' `ace-enterprise` Enterprise plan, not invoiced, and Enterprise carries the Pro privileges this flow needs (DATA_FORWARDING, linked spaces). See `playbook/integrations/commcare-api.md § New project spaces`. The skill blocks until `commcare_get_subscription` reads `is_paid_edition: true` AND `commcare_list_connections({domain})` returns 200 (not 404, which is the DATA_FORWARDING privilege gate). Do not email accounts@ for a per-space Pro subscription. The old path left this flow blocked from 2026-05-21 (`docs/connect-interviews/v1-acceptance.md`).
+3. **Manual step (prompt operator) — set each space to Test or Demo Project:** `commcare_get_subscription({domain})` on each space. A new space reads `edition: Free`. Ask a Dimagi HQ superuser (ace@ is not one) to open `https://www.commcarehq.org/a/<domain>/settings/project/internal_subscription_management/`, choose **Test or Demo Project**, and press **Update**. That puts the space on HQ's Enterprise plan, not invoiced, and Enterprise carries the Pro privileges this flow needs (DATA_FORWARDING, linked spaces). See `playbook/integrations/commcare-api.md § New project spaces`. The skill blocks until `commcare_get_subscription` reads `is_paid_edition: true` AND `commcare_list_connections({domain})` returns 200 (not 404, which is the DATA_FORWARDING privilege gate). Do not email accounts@ for a per-space Pro subscription. The old path left this flow blocked from 2026-05-21 (`docs/connect-interviews/v1-acceptance.md`).
 
 ### 2. Linked-domain relationship
 
@@ -223,7 +223,7 @@ Steps 1, 2, 3, 4b-f, 5 are idempotent: skill checks existence before creating, s
 
 ## Errors and recovery
 
-- 401 on a Pro-gated endpoint → "space still on Free; a Dimagi HQ superuser does the ace-enterprise Test-or-Demo flip (§1 step 3)". Confirm with `commcare_get_subscription`.
+- 401 on a Pro-gated endpoint → "space still on Free; a Dimagi HQ superuser sets it to Test or Demo Project (§1 step 3)". Confirm with `commcare_get_subscription`.
 - 404 on a domain → "domain doesn't exist; check the slug or run step 1".
 - UCR expression FK not found → "push UCRs from master first; see manual step in §3".
 
@@ -238,7 +238,7 @@ Steps 1, 2, 3, 4b-f, 5 are idempotent: skill checks existence before creating, s
 ## Manual fallbacks
 
 These are atom gaps deferred to V1.5:
-- Subscription: the ace-enterprise Test-or-Demo flip is superuser-only (operator step; ACE verifies with `commcare_get_subscription`)
+- Subscription: setting the space to Test or Demo Project is superuser-only (operator step; ACE verifies with `commcare_get_subscription`)
 - UCR expression creation (manual via HQ admin UI)
 - Custom user data field creation (manual — hidden-JSON form)
 - Conditional alert creation (manual — 3-form combined POST)
