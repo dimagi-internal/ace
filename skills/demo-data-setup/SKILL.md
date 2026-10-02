@@ -1327,6 +1327,33 @@ emit the realized map) are IDENTICAL. Input: a real Connect `--opp <id>`.
    a funder. Fail → regenerate (or fall back to denovo authoring) — never show a
    low-fidelity clone as if it were the real program.
 
+2d. **Copying REAL values into a clone is a PII risk — the operator's call, never
+    yours, and never "the fields look harmless".** A clone deliberately carries no
+    real value (names, villages and GPS come back empty), and a demo often wants them
+    back. Do not overlay real values unless ALL of these hold, and say which ones you
+    checked in the summary:
+    - **The operator asked for it, for THIS workflow, in their own words.** Their
+      knowing the data is safe is the authorisation. Never infer it from field names:
+      a borehole's name is harmless, a household's GPS is identifying, and both are
+      "a name and a location".
+    - **The values are read with the operator's own raw-visit access.** That means the
+      source's `/export/opportunity/<id>/user_visits/` rows, reached via their token.
+      ACE's own labs identity usually cannot read the source, and that refusal is the
+      gate working. Do not route around it.
+    - **The copy is no more visible than the source.** Narrow the clone's
+      `allowed_domains` (`synthetic_set_allowed_domains`) to the people who can already
+      read the source, unless the operator says otherwise.
+    - **The surface says so.** Tell recipients the values are real, in the email and in
+      the scripts doc. The report's own banner still reads "Built on synthetic data",
+      which is now wrong: connect-labs#2150.
+
+    The supported path is connect-labs#2150 (a verbatim copy gated on raw-visit access,
+    audited as a bulk-PHI export). Until it ships, any overlay is a hand-built exception.
+    Name it as one. (Origin: Jon, 2026-10-02, after ACE overlaid real waterpoint
+    names and GPS onto opps 10092/10093: *"this should still be considered a PII risk,
+    I just happen to know its okay on this workflow, so this should only be allowed
+    full fill user-visit permissions."*)
+
 Then run Step 0 (template selection, informed by the real opp) and steps 3–5 exactly
 as denovo. A clone whose real data has no live activity yet → there's nothing to
 profile; use `denovo` for that program until it has real delivery data.
