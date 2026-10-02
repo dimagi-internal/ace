@@ -42,6 +42,7 @@ export type SanityFailureClass =
   | 'answer-tap-before-leading-label-advance'
   | 'group-field-list-per-question-walk'
   | 'score-gated-quiz-over-advance'
+  | 'content-form-finish-overrun'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
   | 'unguarded-option-tap-below-long-label'
@@ -621,6 +622,34 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       });
     }
 
+    // 6.8 content-form-finish-overrun → `content-form-finish*.yaml` is an
+    // UNROLLED loop of guarded nav_btn_next taps with a fixed slot count
+    // (CONTENT_FORM_FINISH_SLOTS). A content form with more screens than
+    // the bare advances in front of the call plus those slots never
+    // finalizes: the terminal anchor assert fails, the form's learn_module
+    // never registers, Learn stays <100% and Deliver stays locked (ace#2574,
+    // live spark-facilitator/20261001-2208: Nova lessons of 14/15/20 label
+    // screens against the 14-slot -to-suite loop).
+    //
+    // Precision guards (same tax as 6.5-6.7):
+    //   * the screen count is a LOWER bound — `hidden` fields and any field
+    //     carrying a `relevant` condition are not counted (they may not
+    //     render), a `group` counts once (one field-list screen);
+    //   * ambiguous candidates (no FORM_NAME) → judged against the FEWEST
+    //     screens, so it fires only when every candidate overruns;
+    //   * inert when the caller supplies no `fields`.
+    const overrun = findContentFormFinishOverrun(recipe.text, formShapes, params.formNames);
+    if (overrun) {
+      failures.push({
+        class: 'content-form-finish-overrun',
+        detail: `recipe ${recipe.name} finalizes form "${overrun.formName}" with ${overrun.finishRecipe} at line ${overrun.line}, but that form renders at least ${overrun.screens} screen(s) and only ${overrun.found} bare form-advance step(s) precede the call — ${overrun.screens - overrun.found} screen(s) remain against the recipe's ${overrun.slots} nav_btn_next slots, so the loop runs out of taps, the form never finalizes, its learn_module never registers and Deliver stays locked (ace#2574)`,
+        remediation: `emit at least ${overrun.screens - overrun.found - overrun.slots} more bare form-advance step(s) (one per label screen, no answer tap) between the entry step and the ${overrun.finishRecipe} call, so at most ${overrun.slots} screens are left for its bounded loop — per skills/app-test-cases/SKILL.md § Multi-screen content forms → The loop is bounded; re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'content-form-finish-screens',
+        value: `screens=${overrun.screens},advances=${overrun.found},slots=${overrun.slots}`,
+      });
+    }
+
     // 7. brief-label-drift → a tapOn:text matcher uses a PDD brief-
     // style prefix (L<n>, F<n>, M<n>, Stage <n> followed by a dash)
     // that Nova rewrites into a different live label during autobuild.
@@ -1097,6 +1126,10 @@ interface FormShape {
    * renders unconditionally as its own screen, so each licenses one
    * bare form-advance between the last answer and form-submit. */
   trailingUngatedLabelBudget: number;
+  /** LOWER bound on the screens the form renders: top-level fields that
+   * are neither `hidden` nor `relevant`-gated, a `group` counting once
+   * (one field-list screen). Read by `content-form-finish-overrun`. */
+  minRenderedScreens: number;
 }
 
 /** One FormShape per supplied form. Empty when no caller passed
@@ -1148,8 +1181,12 @@ function collectFormShapes(apps: NovaAppSlice[]): FormShape[] {
           if (field.relevant) trailingGatedLabels.unshift(field.id);
           else trailingUngatedLabelBudget++;
         }
+        const minRenderedScreens = form.fields.filter(
+          (f) => f.kind !== 'hidden' && !(f.relevant && f.relevant.trim()),
+        ).length;
         out.push({
           formName: form.form_name,
+          minRenderedScreens,
           leadingLabelCount,
           leadingLabels,
           answerMatchers,
@@ -1328,6 +1365,84 @@ function findScoreGatedQuizOverAdvance(
       advancesSinceAnswer++;
       lastAdvanceLine = item.startLine;
     }
+  }
+  return null;
+}
+
+/** Guarded `nav_btn_next` slots in each bounded content-form finalize
+ * recipe under `mcp/mobile/recipes/static/`. Each slot advances one
+ * screen; the slot on the last screen finalizes it (or the FINISH
+ * handler does, on a score-gated form). The probe is pure-data and
+ * cannot read the palette, so these are pinned here and locked to the
+ * real files by test/mcp/mobile/recipe-sanity-probe.test.ts — change a
+ * recipe's slot count and that test fails until this map follows. */
+export const CONTENT_FORM_FINISH_SLOTS: Readonly<Record<string, number>> = {
+  'content-form-finish.yaml': 12,
+  'content-form-finish-to-suite.yaml': 14,
+};
+
+const CONTENT_FORM_FINISH_RE = /file:\s*(content-form-finish(?:-to-suite)?\.yaml)/;
+
+/** Find a `content-form-finish*` call whose walked form has more screens
+ * left than the recipe's bounded loop can tap (ace#2574). Counts the bare
+ * form-advance steps between the entry step and the call; returns null
+ * when no field data was supplied, the form can't be resolved, or every
+ * call fits its loop. */
+function findContentFormFinishOverrun(
+  yaml: string,
+  shapes: FormShape[],
+  recipeFormNames: Set<string>,
+): {
+  formName: string;
+  finishRecipe: string;
+  slots: number;
+  screens: number;
+  found: number;
+  line: number;
+} | null {
+  if (!shapes.length) return null;
+  if (!ENTRY_STEP_RE.test(yaml) || !CONTENT_FORM_FINISH_RE.test(yaml)) return null;
+
+  const items = splitTopLevelSteps(yaml);
+  let candidates: FormShape[] | null = null;
+  let advances = 0;
+
+  for (const item of items) {
+    if (ENTRY_STEP_RE.test(item.text)) {
+      const named = readStepFormName(item.text);
+      const fallback =
+        named === null && recipeFormNames.size === 1 ? [...recipeFormNames][0] : named;
+      const resolved = fallback === null ? shapes : shapes.filter((s) => s.formName === fallback);
+      candidates = resolved.length ? resolved : null;
+      advances = 0;
+      continue;
+    }
+    if (!candidates) continue;
+
+    const finish = item.text.match(CONTENT_FORM_FINISH_RE);
+    if (finish) {
+      const finishRecipe = finish[1];
+      const slots = CONTENT_FORM_FINISH_SLOTS[finishRecipe];
+      // Fewest screens across candidates — fire only when EVERY one overruns.
+      const shape = candidates.reduce((min, s) =>
+        s.minRenderedScreens < min.minRenderedScreens ? s : min,
+      );
+      if (slots !== undefined && shape.minRenderedScreens - advances > slots) {
+        return {
+          formName: shape.formName,
+          finishRecipe,
+          slots,
+          screens: shape.minRenderedScreens,
+          found: advances,
+          line: item.startLine,
+        };
+      }
+      // This form walk is finalized — a later entry step starts the next.
+      candidates = null;
+      continue;
+    }
+
+    if (classifyStepBlock(item.text) === 'form-advance') advances++;
   }
   return null;
 }
