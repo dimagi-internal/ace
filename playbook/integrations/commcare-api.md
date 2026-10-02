@@ -59,9 +59,13 @@ Enterprise plan:
 is `@require_superuser`; as ace@ the page 302s to `/no_permissions/`
 (observed 2026-10-02 on both `ace-enterprise` and `connect-ace-spark`), and
 ace@ is not a member of `ace-enterprise` either (its dashboard 404s). So it is
-an **operator step**: ACE creates the space, asks a Dimagi HQ superuser (Jon)
-to do the flip with the exact URL above, and verifies with
-`commcare_get_subscription`. Never route around it: no other plan change
+an **operator step, done during `/ace:release`** (Step 0.4) by whoever runs
+the release (operator decision, Jon 2026-10-02). `release-check` blocks on it
+(`hq-plan-free:<space>`, owner *HQ superuser (operator)*), and the fix it shows
+is the exact URL and clicks. ACE then verifies with `commcare_get_subscription`.
+Wording lives in `lib/hq-enterprise-flip.ts`, printed by `scripts/release-check.ts
+hq-flip-steps --domain <space>`. A clone that rebuilds Connect needs it
+earlier: 4a stops before the API-dependent steps and prints the same text. Never route around it: no other plan change
 (self-serve upgrade, trial) is the agreed path, and anything billable needs
 accounts' involvement.
 

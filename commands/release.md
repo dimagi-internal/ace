@@ -1,7 +1,7 @@
 ---
 description: Release a run to outside reviewers — audit its public summary, forward an already-shared link to it, then invite each reviewer to the run's own HQ space, Connect org and ace-web workspace (last). Approval-gated. Run after /ace:clone-to-new-workspace.
 argument-hint: "<workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <gmail-thread-id>) [--forward-source] [--allow-shared connect] | --revoke-shared"
-allowed-tools: [Bash, Read, AskUserQuestion, Skill, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-gdrive__update_yaml_file, mcp__plugin_ace_ace-connect__commcare_invite_web_user, mcp__plugin_ace_ace-connect__commcare_list_users, mcp__plugin_ace_ace-connect__connect_add_org_member, mcp__plugin_ace_ace-connect__connect_remove_org_member, mcp__plugin_ace_ace-connect__connect_list_invites]
+allowed-tools: [Bash, Read, AskUserQuestion, Skill, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-gdrive__update_yaml_file, mcp__plugin_ace_ace-connect__commcare_get_subscription, mcp__plugin_ace_ace-connect__commcare_invite_web_user, mcp__plugin_ace_ace-connect__commcare_list_users, mcp__plugin_ace_ace-connect__connect_add_org_member, mcp__plugin_ace_ace-connect__connect_remove_org_member, mcp__plugin_ace_ace-connect__connect_list_invites]
 ---
 
 # /ace:release — let outside reviewers in, last

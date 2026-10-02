@@ -74,6 +74,42 @@ every merge mode). Report per row. Nothing else runs in this mode.
    link (`products.ocs_chatbot.public_url`), which goes in the invite email.
    OCS permissions are team-wide (see `share-run-access`).
 
+## Step 0.4 — The HQ space is on Enterprise (the one superuser step)
+
+A space ACE created for the run (`clone-to-new-workspace` 4a) starts on HQ's
+Free plan. It goes onto accounts' **ace-enterprise** Enterprise subscription by
+ONE click-through that only a Dimagi **HQ superuser** can do. ace@ cannot: HQ
+restricts the page to superusers, and an enterprise subscription gives no
+self-serve path (ace#2552). **This release is where that step happens**, done
+by whoever is running `/ace:release` (or a superuser they ask).
+
+1. `commcare_get_subscription(domain: tenancy.hq_domain)`. If
+   `is_paid_edition: true`, go to Step 0.5. (The shared `connect-ace-prod`
+   reads paid, so a run in the shared space passes here.)
+2. Free → print the step for the operator, **verbatim** from the shared
+   wording, so the URL and clicks never drift:
+   ```bash
+   $RC hq-flip-steps --domain <tenancy.hq_domain>
+   ```
+   It prints this, for `<hq_domain>`:
+   1. Signed in to CommCare HQ as a Dimagi **superuser**, open
+      `https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`.
+      This is the new space's own page, not `ace-enterprise`'s.
+   2. Under **Subscription Type**, choose **Test or Demo Project**.
+   3. Press **Update**. HQ redirects to the space's Current Subscription page.
+   4. Check that `https://www.commcarehq.org/a/<hq_domain>/settings/project/subscription/`
+      now shows an **Enterprise** plan, not "CommCare Free Edition".
+3. `AskUserQuestion`: "Put `<hq_domain>` on Enterprise (steps above) — done?"
+   with options **Done — re-check** / **Stop the release**. On *Done*, re-read
+   `commcare_get_subscription`. Continue only on `is_paid_edition: true`. Still
+   Free → show the read (`edition`, `name`) and the steps again. Never take
+   "done" as the evidence.
+4. The previous release-check verdict still carries the `hq-plan-free`
+   blocker, so run `/ace:release-check <workspace>/<opp>/<run-id>` again (it
+   re-reads the plan) before Step 0.5's gate.
+
+Record `released.hq_plan: {edition, checked_at}` in Step 5.
+
 ## Step 0.5 — The run must be READY (release-check)
 
 **Nobody is invited to a run release-check has not passed.** Inventory the run
