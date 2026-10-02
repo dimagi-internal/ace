@@ -1,0 +1,1036 @@
+{
+ "_provenance": "Verbatim mcp__nova__get_form response, captured 2026-10-01 from saved Deliver app 5b0aa4c3-e235-4c3c-aadc-502f95225883 (spark-facilitator/20261001-2208, HQ 58ef8132e5ac4b5cafa575d9d570c368 v9), form 'Community Meeting Record' - the only paid form. ace#2590: #community/number_of_households (PDD 8.2 S1 denominator) is read in two validates and never submitted.",
+ "get_form": {
+  "moduleUuid": "7141c1c9-0220-4a68-93e9-3a12fab2b4ae",
+  "formUuid": "5fb949b6-0158-4e2a-b807-05bd5fe6ef11",
+  "form": {
+   "uuid": "5fb949b6-0158-4e2a-b807-05bd5fe6ef11",
+   "id": "community_meeting_record",
+   "name": "Community Meeting Record",
+   "type": "followup",
+   "purpose": "Records one held FCAP community meeting: live photo, location, attendance and participation, and the community's step read from its record. The only paid form.",
+   "connect": {
+    "deliver_unit": {
+     "id": "community_meeting",
+     "name": "Community meeting",
+     "entity_id": "#form/entity_key",
+     "entity_name": "#form/entity_label"
+    }
+   },
+   "postSubmit": "previous",
+   "icon": "follow_up",
+   "fields": [
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000001",
+     "id": "meeting_date_and_place",
+     "label": "Meeting date and place",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "74af400b-9eba-4039-8780-f39eeda818ae",
+       "id": "date_of_meeting",
+       "label": "Date of the meeting",
+       "required": "true()",
+       "kind": "date",
+       "validate": {
+        "expr": ". <= today() and (#community/enrolment_date = '' or . >= date(#community/enrolment_date)) and (#community/last_community_meeting_date = '' or . > date(#community/last_community_meeting_date))",
+        "msg": "The date must be today or earlier, not before this community was enrolled, and later than this community's last recorded community meeting. Each community meeting is recorded once."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "416111ee-08b3-437b-9d98-061c9b6d0a2e",
+       "id": "meeting_gps",
+       "label": "Capture the location at the meeting place",
+       "hint": "Target accuracy: 50 m or better.",
+       "kind": "geopoint",
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "033fe823-9490-43b4-b3cb-5afe8bee741e",
+       "id": "gps_accuracy_m",
+       "kind": "hidden",
+       "calculate": "if(#form/meeting_date_and_place/meeting_gps = '', -1, round(number(selected-at(#form/meeting_date_and_place/meeting_gps, 3))))",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "4fbac6b1-90a0-477d-aa67-103df9770676",
+       "id": "lat",
+       "kind": "hidden",
+       "calculate": "if(#form/meeting_date_and_place/meeting_gps = '', '', selected-at(#form/meeting_date_and_place/meeting_gps, 0))",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "ada75e26-8138-4caf-8f74-780c318fcacf",
+       "id": "lon",
+       "kind": "hidden",
+       "calculate": "if(#form/meeting_date_and_place/meeting_gps = '', '', selected-at(#form/meeting_date_and_place/meeting_gps, 1))",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "99b018fb-5b4d-465b-90e9-d73c17e99344",
+       "id": "gps_good",
+       "label": "Location accuracy is {{meeting_date_and_place/gps_accuracy_m}} m. This is good.",
+       "kind": "label",
+       "relevant": "#form/meeting_date_and_place/gps_accuracy_m >= 0 and #form/meeting_date_and_place/gps_accuracy_m <= 15"
+      },
+      {
+       "uuid": "2da9d4d8-c636-4380-aabe-cbd7157542f2",
+       "id": "gps_acceptable",
+       "label": "Location accuracy is {{meeting_date_and_place/gps_accuracy_m}} m. This is acceptable.",
+       "kind": "label",
+       "relevant": "#form/meeting_date_and_place/gps_accuracy_m > 15 and #form/meeting_date_and_place/gps_accuracy_m <= 50"
+      },
+      {
+       "uuid": "b2be447a-458e-4fa3-b7b2-ee0ac5c08967",
+       "id": "gps_poor",
+       "label": "Location accuracy is {{meeting_date_and_place/gps_accuracy_m}} m. This is poor. Move to open sky and capture again.",
+       "kind": "label",
+       "relevant": "#form/meeting_date_and_place/gps_accuracy_m > 50"
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000002",
+     "id": "meeting",
+     "label": "Meeting",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "187fbf77-1ec8-4e4c-b973-1b6e5c388b1e",
+       "id": "meeting_conducted",
+       "label": "Did the planned community/committee meeting happen?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "95408633-3fb3-4140-b4a1-83a9ff15c1d8",
+          "value": "yes",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "73d2b3df-8b1d-4ab4-a7bc-9cda8c68a0f9",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "validate": {
+        "expr": ". = 'yes'",
+        "msg": "Record a meeting that did not happen in Other meetings."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "4f9bb54a-9887-4e6a-90c8-6f7f94f3e200",
+       "id": "meeting_type",
+       "label": "What type of meeting was it?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "5ca388c7-2ee5-4165-afc1-93a15902ee1d",
+          "value": "community_meeting",
+          "label": "Community meeting"
+         },
+         {
+          "optionUuid": "d4c30f3f-76a5-47cc-bd45-4feb343b370c",
+          "value": "committee_meeting",
+          "label": "Committee meeting"
+         }
+        ]
+       },
+       "validate": {
+        "expr": ". = 'community_meeting'",
+        "msg": "Record a committee meeting in Other meetings."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "239e26e1-d2ef-402b-b0a7-751916e8f387",
+       "id": "use_other_meetings_note",
+       "label": "**This form is only for a community meeting that happened.**\n\nClose this form without saving. Then record this meeting in Other meetings.",
+       "kind": "label",
+       "relevant": "#form/meeting/meeting_conducted = 'no' or #form/meeting/meeting_type = 'committee_meeting'"
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000003",
+     "id": "step_info",
+     "label": "Step",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "86183d2e-3afa-4437-8ff5-7fa2688a4fef",
+       "id": "step",
+       "kind": "hidden",
+       "calculate": "#community/pilot_fcap_step",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "18f6235b-d5e7-489c-b9b1-c269469a4c48",
+       "id": "prior_index",
+       "kind": "hidden",
+       "calculate": "if(#community/step_meeting_index = '', 0, #community/step_meeting_index)",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "4828f032-417d-47d0-b95a-ae4e44271f56",
+       "id": "step_meeting_index",
+       "kind": "hidden",
+       "calculate": "#form/step_info/prior_index + 1",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "ae4c0130-f3a9-4289-80df-5d3586d405a4",
+       "id": "payable_slot",
+       "kind": "hidden",
+       "calculate": "if(#form/step_info/step_meeting_index <= 3, 'yes', 'no')",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "ba4f5b95-6f37-4fde-99b1-9113da862546",
+       "id": "capped_index",
+       "kind": "hidden",
+       "calculate": "min(#form/step_info/prior_index + 1, 3)",
+       "initialValue": {
+        "source": "calculation"
+       }
+      },
+      {
+       "uuid": "a13ba7f1-e1ae-4103-adef-d8ca6fd5d294",
+       "id": "step_name_1",
+       "label": "This community is on Step 1: Our Partnership.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 1"
+      },
+      {
+       "uuid": "59104af7-af59-4c22-b666-c2754dba0888",
+       "id": "step_name_2",
+       "label": "This community is on Step 2: Community Dynamics, Governance & Leadership.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 2"
+      },
+      {
+       "uuid": "e1d942c3-4577-4169-9804-2da045b8029c",
+       "id": "step_name_3",
+       "label": "This community is on Step 3: Understanding the Present – Situational Analysis.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 3"
+      },
+      {
+       "uuid": "bbcdbc05-995a-4757-9b0c-8bc31e90ef50",
+       "id": "step_name_4",
+       "label": "This community is on Step 4: Getting to the Future – Microgrant Pathway & Goals.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 4"
+      },
+      {
+       "uuid": "c50f8e6a-6d1e-48db-bac7-d6f68ce4e584",
+       "id": "step_name_5",
+       "label": "This community is on Step 5: Initiative Pathway & Savings.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 5"
+      },
+      {
+       "uuid": "e41a6577-368f-4982-bf14-b72aa8d94121",
+       "id": "step_name_6",
+       "label": "This community is on Step 6: Advocacy Pathway.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 6"
+      },
+      {
+       "uuid": "f92cfd20-5778-46cb-b4f0-b29d80d6062f",
+       "id": "step_name_7",
+       "label": "This community is on Step 7: Vision.",
+       "kind": "label",
+       "relevant": "#form/step_info/step = 7"
+      },
+      {
+       "uuid": "157ff6c5-3364-4c22-af29-82a29f88fe32",
+       "id": "meeting_number_note",
+       "label": "This is community meeting {{step_info/step_meeting_index}} on this step.",
+       "kind": "label"
+      },
+      {
+       "uuid": "09c05ace-4891-48c1-8b1a-00ffb50efda2",
+       "id": "not_paid_note",
+       "label": "Only the first 3 community meetings on a step can be paid. This meeting will be recorded in full, but it will not be paid.",
+       "kind": "label",
+       "relevant": "#form/step_info/payable_slot = 'no'"
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000004",
+     "id": "photo_statement",
+     "label": "Photo statement",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "e4e2eebb-02a3-48f4-afc4-631cd79f9dec",
+       "id": "photo_consent_script",
+       "label": "Read this aloud to the group before you take the photo:\n\nI will take one photo of this meeting. The photo shows that the meeting happened. The photo and this meeting record go to the implementing organisation, Spark MicroGrants and Dimagi, through Connect, the system that pays me. Supervisors at the implementing organisation look at the photos to confirm that meetings happened.\n\nNo names are attached to the photo. The photo is not shared publicly.\n\nBeing in the photo is your choice. If you do not want to be in it, you can sit to one side. You can also ask me, now or later, to leave you out.\n\nBeing in the photo gives you no payment or benefit. Staying out costs you nothing: you are still counted as attending.",
+       "kind": "label"
+      },
+      {
+       "uuid": "6c1e77cf-2f8b-4f6e-993b-c450a0879cb3",
+       "id": "photo_statement_read",
+       "label": "Did you read this statement aloud to the group?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "763f07a5-8662-4a09-98ec-988ea34f8b2f",
+          "value": "yes",
+          "label": "Yes, I read it and left out anyone who asked"
+         },
+         {
+          "optionUuid": "90b114e0-8043-4981-85ec-145cf32b47d7",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "validate": {
+        "expr": ". = 'yes'",
+        "msg": "Read the statement aloud to the group first, then answer Yes."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000005",
+     "id": "meeting_photo",
+     "label": "Meeting photo",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "fc66966e-9a12-4165-8449-c77e6be5d5df",
+       "id": "attach_a_photo_for_the_meeting",
+       "label": "Attach a photo for the meeting",
+       "label_media": {
+        "image": "d53f6618-e98d-4eb4-9364-3ace596e2f49"
+       },
+       "kind": "image",
+       "hint": "One wide photo of the meeting while it is in session, at the venue, showing the gathered people. No close-ups.",
+       "required": "true()",
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000006",
+     "id": "who_came",
+     "label": "Who came and who spoke",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "232d5332-eaee-440f-8acb-dee02eaed5ab",
+       "id": "count_note",
+       "label": "Count on the day, from what you saw at this meeting.",
+       "kind": "label"
+      },
+      {
+       "uuid": "fffcb3da-5f4e-4fc4-91fb-b8dcb1a65bc8",
+       "id": "hh_represented_at_the_meeting",
+       "label": "How many households were represented at the meeting?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= #community/number_of_households",
+        "msg": "Cannot be more than the community's enrolled households."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "154c57c8-2068-4536-a810-f7f482bd51b1",
+       "id": "male_attendance",
+       "label": "How many men attended the meeting?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 1000",
+        "msg": "Enter a number from 0 to 1000."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "8c5f95e8-040c-40cf-bbdf-be060024dbe2",
+       "id": "female_attendance",
+       "label": "How many women attended the meeting?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 1000",
+        "msg": "Enter a number from 0 to 1000."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "b90b655a-1dd5-4ac7-9c0d-dadb3d3dec25",
+       "id": "male_participants",
+       "label": "How many men spoke at the meeting?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= #form/who_came/male_attendance",
+        "msg": "Cannot be more than the men who attended."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "23875301-773b-4387-a6b0-8f8e16a34564",
+       "id": "female_participants",
+       "label": "How many women spoke at the meeting?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= #form/who_came/female_attendance",
+        "msg": "Cannot be more than the women who attended."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000007",
+     "id": "meeting_details",
+     "label": "Meeting details",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "82afa47f-699c-4af6-9e16-0c0cb4c76352",
+       "id": "male_leader_attendence",
+       "label": "How many male committee leaders attended?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 50",
+        "msg": "Enter a number from 0 to 50."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "748e88a8-bbd6-4442-8e33-80978ffd7127",
+       "id": "female_leader_attendence",
+       "label": "How many female committee leaders attended?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 50",
+        "msg": "Enter a number from 0 to 50."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "f99d4a74-2675-4734-b6b1-3619eca0d511",
+       "id": "sparktrainer_attendance",
+       "label": "Did a Spark trainer attend the meeting?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "8a79e274-ef02-4579-8716-bf964c9f832d",
+          "value": "yes",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "29966cc8-7e45-425d-a2db-ffd26cc17f59",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "564f0e99-e2ef-4e18-8dd8-512d5a9e41bd",
+       "id": "sedo_attendance",
+       "label": "Did staff or a trainer from the partner organisation attend the meeting?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "f3de8d54-fb1b-4cda-89c4-e88419964e73",
+          "value": "yes",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "84e68c80-adf0-4fd8-b20e-67945ebbdf72",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "f976bc72-935f-4ca0-ab99-4fa748b25d5a",
+       "id": "meeting_on_time",
+       "label": "Did the meeting start on time?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "68abaf3c-e917-46bb-92d4-6bd02cde48a6",
+          "value": "yes",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "c1f745fb-38aa-4d88-8ded-d58c767a8f5e",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "bac4cec6-7b04-4d86-9e03-f75875cd9b42",
+       "id": "why_did_the_meeting_start_late",
+       "label": "Why did the meeting start late?",
+       "required": "true()",
+       "relevant": "#form/meeting_details/meeting_on_time = 'no'",
+       "kind": "text",
+       "validate": {
+        "expr": "string-length(.) <= 200",
+        "msg": "Use 200 characters or fewer."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000008",
+     "id": "savings",
+     "label": "Savings",
+     "kind": "group",
+     "relevant": "#form/step_info/step >= 5",
+     "children": [
+      {
+       "uuid": "5bff9beb-ff25-4dc1-b761-5b103a33d894",
+       "id": "currently_saving",
+       "label": "Is the community currently saving?",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "bfd5c7ac-d21c-4629-b0e4-b546868d3cdf",
+          "value": "1",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "0787ea75-fa20-4e3c-9dde-ad2f5192f8b9",
+          "value": "2",
+          "label": "No"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "e118af55-61b9-4a50-a1e5-b2daf8fbfff9",
+       "id": "savings_use",
+       "label": "What is the community saving for?",
+       "hint": "Choose all that apply.",
+       "required": "true()",
+       "relevant": "#form/savings/currently_saving = '1'",
+       "kind": "multi_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "e463d1bf-419d-40d7-a405-1f5ba2abc8c4",
+          "value": "independent_project",
+          "label": "Independent project"
+         },
+         {
+          "optionUuid": "25f0ef1e-cf18-41bc-b800-55b8438eca8a",
+          "value": "vsla",
+          "label": "Community savings and loan group (VSLA)"
+         },
+         {
+          "optionUuid": "f7a40533-739d-46f7-837d-3142d9ead607",
+          "value": "mg_project",
+          "label": "To add to the microgrant project"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "61addc6b-bd9a-4452-a46d-7e5af3d7cf0a",
+       "id": "currently_not_saving",
+       "label": "Why is the community not saving?",
+       "required": "true()",
+       "relevant": "#form/savings/currently_saving = '2'",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "d64061e8-b213-4e4f-a7e5-a9dce16824e3",
+          "value": "1",
+          "label": "The community has not started a savings group"
+         },
+         {
+          "optionUuid": "1edf8739-a764-4d10-be94-6eb9e203f874",
+          "value": "2",
+          "label": "The savings cycle has ended"
+         },
+         {
+          "optionUuid": "0a01149f-9e89-4e0f-92f2-659c369f724c",
+          "value": "others_96",
+          "label": "Other"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "15a15e86-e8f0-4f70-a2b3-a1fbe7bbb06f",
+       "id": "currently_not_saving_other",
+       "label": "What is the other reason?",
+       "required": "true()",
+       "relevant": "#form/savings/currently_not_saving = 'others_96'",
+       "kind": "text",
+       "validate": {
+        "expr": "string-length(.) <= 100",
+        "msg": "Use 100 characters or fewer."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-000000000009",
+     "id": "savings_details",
+     "label": "Savings details",
+     "kind": "group",
+     "relevant": "#form/step_info/step >= 5 and #form/savings/currently_saving = '1'",
+     "children": [
+      {
+       "uuid": "47d2dbb9-295a-47e5-8014-68e087ea1c41",
+       "id": "hh_saving",
+       "label": "How many households are saving?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= #community/number_of_households",
+        "msg": "Cannot be more than the community's enrolled households."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "a512d544-acce-49de-b667-168d7c6eb087",
+       "id": "males_saving",
+       "label": "How many men are saving?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 2000",
+        "msg": "Enter a number from 0 to 2000."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "ef096916-154d-4a6c-85a0-ade903e8de87",
+       "id": "females_saving",
+       "label": "How many women are saving?",
+       "required": "true()",
+       "kind": "int",
+       "validate": {
+        "expr": ". >= 0 and . <= 2000",
+        "msg": "Enter a number from 0 to 2000."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "055c7051-3b05-4d2d-adff-05a524ed0088",
+       "id": "amt_savings",
+       "label": "How much money does the community have in savings today (MWK)?",
+       "required": "true()",
+       "kind": "decimal",
+       "validate": {
+        "expr": ". >= 0 and . <= 100000000",
+        "msg": "Enter an amount from 0 to 100,000,000."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "c3000000-0000-4000-8000-00000000000a",
+     "id": "step_progress",
+     "label": "Step progress",
+     "kind": "group",
+     "children": [
+      {
+       "uuid": "38237310-2128-4ba5-849b-eda5346b8b9a",
+       "id": "step_completed",
+       "label": "Did the community complete Step {{step_info/step}} at this meeting?",
+       "hint": "Answer Yes only if the community finished this step's work at this meeting. The step then moves forward by one and cannot be undone in the app.",
+       "required": "true()",
+       "kind": "single_select",
+       "optionsSource": {
+        "kind": "inline",
+        "options": [
+         {
+          "optionUuid": "abd726d8-6013-42f1-a898-37f10a68a337",
+          "value": "yes",
+          "label": "Yes"
+         },
+         {
+          "optionUuid": "ffbc5748-6b2f-4645-97a5-07c960261bcf",
+          "value": "no",
+          "label": "No"
+         }
+        ]
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      },
+      {
+       "uuid": "353f0fa5-06ac-45a2-b4a2-cc9a73e1cc02",
+       "id": "meeting_notes",
+       "label": "Meeting notes (optional)",
+       "kind": "text",
+       "validate": {
+        "expr": "string-length(.) <= 500",
+        "msg": "Use 500 characters or fewer."
+       },
+       "initialValue": {
+        "source": "blank"
+       }
+      }
+     ]
+    },
+    {
+     "uuid": "7b2a0eaf-c7c2-40d7-a158-4d5c2302bc6a",
+     "id": "total_attendance",
+     "kind": "hidden",
+     "calculate": "#form/who_came/male_attendance + #form/who_came/female_attendance",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "Total_Attendance"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "c712f603-467e-45c3-83db-32a0eb8e614c",
+     "id": "total_participation",
+     "kind": "hidden",
+     "calculate": "#form/who_came/male_participants + #form/who_came/female_participants",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "Total_Participation"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "f2af910e-bfca-4492-b3b4-3fa3592728fa",
+     "id": "date_of_meeting_mirror",
+     "kind": "hidden",
+     "calculate": "#form/meeting_date_and_place/date_of_meeting",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "date_of_meeting"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "31fb5b00-f9c4-42ec-b54b-7b0fa2449863",
+     "id": "last_community_meeting_date_mirror",
+     "kind": "hidden",
+     "calculate": "#form/meeting_date_and_place/date_of_meeting",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "last_community_meeting_date"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "655f33af-25cd-4837-b36e-1ecad24d35a5",
+     "id": "last_male_attendance_mirror",
+     "kind": "hidden",
+     "calculate": "#form/who_came/male_attendance",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "last_male_attendance"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "12b84b6a-b652-479e-8273-0c4ca6239020",
+     "id": "last_female_attendance_mirror",
+     "kind": "hidden",
+     "calculate": "#form/who_came/female_attendance",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "last_female_attendance"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "86415b74-459b-4481-8e9f-43781cc8b2a9",
+     "id": "next_pilot_fcap_step",
+     "kind": "hidden",
+     "calculate": "if(#form/step_progress/step_completed = 'yes' and #form/step_info/step < 7, #form/step_info/step + 1, #form/step_info/step)",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "pilot_fcap_step"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "1280419c-0eec-46fc-a54d-91b1c5ecf940",
+     "id": "next_step_meeting_index",
+     "kind": "hidden",
+     "calculate": "if(#form/step_progress/step_completed = 'yes', 0, #form/step_info/step_meeting_index)",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "step_meeting_index"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "20e11aa7-6f8c-4021-9062-8baae4a2b269",
+     "id": "next_pilot_complete",
+     "kind": "hidden",
+     "calculate": "if(#form/step_progress/step_completed = 'yes' and #form/step_info/step = 7, 'yes', 'no')",
+     "caseWrite": {
+      "caseType": "community",
+      "property": "pilot_complete"
+     },
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "40a95c92-8bd3-43ac-8fa0-ab2cbad2d5b7",
+     "id": "repeat_counts_flag",
+     "kind": "hidden",
+     "calculate": "if(#community/last_male_attendance != '' and #form/who_came/male_attendance = #community/last_male_attendance and #form/who_came/female_attendance = #community/last_female_attendance, 'yes', 'no')",
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "8c7f7ac0-5222-447b-999f-d30875b93d0a",
+     "id": "distance_from_community_m",
+     "kind": "hidden",
+     "calculate": "if(#form/meeting_date_and_place/meeting_gps = '' or #community/gps_coordinates_of_the_community = '', '', round(distance(#form/meeting_date_and_place/meeting_gps, #community/gps_coordinates_of_the_community)))",
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "41686dc8-3daf-4e07-a162-2ee9cfe4777d",
+     "id": "location_review_flag",
+     "kind": "hidden",
+     "calculate": "if(#form/meeting_date_and_place/gps_accuracy_m = -1 or #form/meeting_date_and_place/gps_accuracy_m > 50, 'yes', if(#form/distance_from_community_m != '' and #form/distance_from_community_m > 2000, 'yes', 'no'))",
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "1c6f9883-e203-44f5-a4e3-291f617c0197",
+     "id": "entity_key",
+     "kind": "hidden",
+     "calculate": "concat(#community/case_id, '-', #community/pilot_fcap_step, '-', #form/step_info/capped_index, '-', #form/step_info/payable_slot)",
+     "initialValue": {
+      "source": "calculation"
+     }
+    },
+    {
+     "uuid": "e9139b08-ee4e-4ec2-942f-329b2192d875",
+     "id": "entity_label",
+     "kind": "hidden",
+     "calculate": "concat(#community/case_name, ' - Step ', #form/step_info/step, ' - meeting ', #form/step_info/step_meeting_index, if(#form/step_info/payable_slot = 'yes', '', ' (not paid)'))",
+     "initialValue": {
+      "source": "calculation"
+     }
+    }
+   ]
+  },
+  "navigation": {
+   "recordSelection": "required",
+   "afterSubmit": {
+    "fallback": {
+     "screen": "previous"
+    },
+    "links": []
+   }
+  },
+  "answerWrites": [
+   {
+    "caseType": "community",
+    "action": "update",
+    "answers": [
+     {
+      "path": "total_attendance",
+      "property": "Total_Attendance"
+     },
+     {
+      "path": "total_participation",
+      "property": "Total_Participation"
+     },
+     {
+      "path": "date_of_meeting_mirror",
+      "property": "date_of_meeting"
+     },
+     {
+      "path": "last_community_meeting_date_mirror",
+      "property": "last_community_meeting_date"
+     },
+     {
+      "path": "last_male_attendance_mirror",
+      "property": "last_male_attendance"
+     },
+     {
+      "path": "last_female_attendance_mirror",
+      "property": "last_female_attendance"
+     },
+     {
+      "path": "next_pilot_fcap_step",
+      "property": "pilot_fcap_step"
+     },
+     {
+      "path": "next_step_meeting_index",
+      "property": "step_meeting_index"
+     },
+     {
+      "path": "next_pilot_complete",
+      "property": "pilot_complete"
+     }
+    ],
+    "preloadedAnswers": [
+     "7b2a0eaf-c7c2-40d7-a158-4d5c2302bc6a",
+     "c712f603-467e-45c3-83db-32a0eb8e614c",
+     "f2af910e-bfca-4492-b3b4-3fa3592728fa",
+     "31fb5b00-f9c4-42ec-b54b-7b0fa2449863",
+     "655f33af-25cd-4837-b36e-1ecad24d35a5",
+     "12b84b6a-b652-479e-8273-0c4ca6239020",
+     "86415b74-459b-4481-8e9f-43781cc8b2a9",
+     "1280419c-0eec-46fc-a54d-91b1c5ecf940",
+     "20e11aa7-6f8c-4021-9062-8baae4a2b269"
+    ]
+   }
+  ],
+  "recordContext": {
+   "selectedCaseType": "community",
+   "readableRecords": [
+    {
+     "caseType": "community",
+     "ancestorDepth": 0,
+     "propertyReference": "#community/property",
+     "identityReference": "#community/case_id"
+    },
+    {
+     "caseType": "cbf",
+     "ancestorDepth": 1,
+     "propertyReference": "#cbf/property",
+     "identityReference": "#cbf/case_id"
+    }
+   ]
+  }
+ }
+}

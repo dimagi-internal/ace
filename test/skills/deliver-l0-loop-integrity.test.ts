@@ -172,6 +172,27 @@ describe('pdd-to-deliver-app Step 4 L0 verification loop', () => {
     ).toMatch(/justif/);
   });
 
+  it('checks every PDD metric term is submitted on the paid form (ace#2590)', () => {
+    const owning = stepLabels().filter((l) => stepBody(l).includes('checkMetricTermsSubmitted'));
+    expect(
+      owning.length,
+      'No Step-4 block calls checkMetricTermsSubmitted. A metric term held on the ' +
+        'case (e.g. enrolled households) is then READ by the paid form but never ' +
+        'submitted, Connect never receives it, and the indicator silently drops ' +
+        'out of every report (ace#2590, spark-facilitator/20261001-2208 S1).',
+    ).toBeGreaterThan(0);
+    const body = owning.map(stepBody).join('\n');
+    expect(body).toContain('lib/metric-terms-submitted');
+    // Both exits must exist: mirror it, or NAME it as not computable with a reason.
+    expect(body).toMatch(/hidden[\s\S]{0,20}`calculate`/);
+    expect(body.toLowerCase()).toMatch(/not computable[^]*reason/);
+    // An `unable` outcome must not read as a pass.
+    expect(body).toMatch(/'unable'/);
+    // It must land before the language layer (4m), which stays last.
+    const labels = stepLabels();
+    expect(labels.indexOf(owning[0])).toBeLessThan(labels.indexOf('4m'));
+  });
+
   it('names the Phase-4 verification predicate residual when the key is payability-scoped', () => {
     // ace#1434: the scoped key stops a non-payable submission consuming the
     // payable slot, but mints `<identity> - no` as its own countable entity.

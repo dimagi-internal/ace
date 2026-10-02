@@ -2049,6 +2049,72 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     `test/lib/derived-chain-guard.test.ts` +
     `test/skills/deliver-l0-loop-integrity.test.ts`.)
 
+4o. **Metric terms are SUBMITTED on the paid form (ace#2590) — runs
+    ACE-DIRECT.** Placed after 4n and before 4m: a repair adds a hidden
+    `calculate` field and never edits label text, so it cannot demote a
+    translation. Step 4h checks that what is TAUGHT is collectable; nothing
+    else checks that what is MEASURED is submitted.
+
+    **The defect.** Connect receives the paid form as visits and nothing
+    else, so a PDD § Success Metrics indicator is computable from visit data
+    only if every numerator and denominator term rides on that form. A value
+    held on the CASE (or captured on an unpaid form, such as enrolment) is
+    invisible to Connect unless the paid form mirrors it as a hidden
+    `calculate`. On `spark-facilitator/20261001-2208` PDD §8.2 S1 was
+    "Households represented ÷ enrolled number_of_households"; the Community
+    Meeting Record READ `#community/number_of_households` inside the validate
+    of `hh_represented_at_the_meeting` (`. <= #community/number_of_households`)
+    and never submitted it — none of its nine hidden case-write mirrors carried
+    it. Phase 7's `semantic-registry-author` had to list S1 under "Not
+    computable from visit data": the run completed and a partner-owned
+    indicator vanished from every report. The 20260926-1800 build only had S1
+    because it happened to submit `enrolled_households`.
+
+    1. Enumerate, verbatim, every PDD § Success Metrics row the indicator
+       layer will compute, and split each into its terms — `numerator` +
+       `denominator` for a rate, `value` for a count or mean. Resolve EACH term
+       to where its value lives — this is the judgement, made once, per term:
+       `{kind:'field', fieldId}` (captured or calculated on the paid form),
+       `{kind:'case', property, caseType}` (a case property, e.g. one written
+       at enrolment), or `{kind:'external', reason}` (data visits cannot carry:
+       a payment ledger, an external survey, a supervisor log). Do not resolve
+       a term to `external` because mirroring it is inconvenient — `external`
+       means no visit can carry it.
+    2. Run the check against the PAID form's fields from Step 4a's `get_form`
+       (the form whose submission Connect pays — the deliver-unit form):
+
+       ```ts
+       import { checkMetricTermsSubmitted, formatMetricTermsReport }
+         from '../../lib/metric-terms-submitted';
+       const report = checkMetricTermsSubmitted(terms, paidFormFields);
+       ```
+
+    3. **For each `case-not-mirrored` finding, add a hidden field whose
+       `calculate` is the case reference** (e.g. `enrolled_households =
+       #community/number_of_households`; a blank guard `if(#community/x = '',
+       0, #community/x)` also counts) via `add_fields` in the open private work,
+       `save_work`, re-read the form with `app_id`, and re-run until
+       `findings.length === 0`. `readsAt` names where the form already READS
+       the value — that is the proof the value is on the device at submit time.
+       For `field-absent` / `field-not-a-value`, either the resolution in step 1
+       was wrong (fix the mapping) or the PDD's captured field is missing (add
+       it). Bounded at 3 iterations like 4a–4n.
+    4. **Any term still unsubmitted after the loop, and every `external` term,
+       is named in the summary as not computable, with the reason** —
+       `report.notComputable` plus the residual findings, under the build
+       memo's `### Metrics not computable from visit data` (`None.` when
+       empty) and in the `metric_terms` frontmatter block. A metric that
+       silently stops being computable is the defect; a named one is a
+       decision a reviewer can see and answer.
+    5. `report.status === 'unable'` means the check **did not run** — no terms
+       were enumerated, or the paid form read is empty. That is NOT a pass:
+       record `formatMetricTermsReport(report)` with its reason in the build
+       memo and fix the input. Record the report in the build memo either way.
+
+    *Enforced:* `test/lib/metric-terms-submitted.test.ts` (the shipped S1 form
+    as positive control; the same form with `enrolled_households` mirrored as
+    the negative control) + `test/skills/deliver-l0-loop-integrity.test.ts`.
+
 4m. **Language layer — runs ACE-DIRECT, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
@@ -2104,6 +2170,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      captured — spoken or field-gated — does that script carry all six
      `consent-script-floor` elements, `confidential` and where-the-data-goes
      included?
+   - Is every PDD § Success Metrics numerator / denominator term SUBMITTED
+     on the paid form — captured, or mirrored from the case by a hidden
+     `calculate` — and is every term that is not named as not computable,
+     with the reason (Step 4o)?
    - If the PDD marks an instrument `[FIXED]`, was every scoring constant
      diffed against the SOURCE file from `inputs-manifest.yaml` (not the brief,
      not the PDD's restatement) on a `trusted` extraction, with zero mismatches
@@ -2152,6 +2222,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # that HAS one reads as "the sweep did not run".
      sites: <n>             # fields audited via auditLookupBinds
      failures: 0            # >0 HALTED; quote describeLookupBindAudit lines
+   metric_terms:            # Step 4o (ace#2590). Always present when the PDD
+                            # has a § Success Metrics table.
+     submitted: <n>         # terms the paid form carries (report.submitted)
+     not_computable:        # every external term + every residual finding;
+                            # [] is the expected value
+       - metric: <PDD id, e.g. S1>
+         term: <the PDD's words>
+         reason: <why visit data cannot carry it>
    instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
                             # instrument is [FIXED]. There is no other skip
                             # reason: an unresolvable [FIXED] source HALTS the
@@ -2183,6 +2261,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - `### [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How resolved,
      or OPEN |`, one row per `[FIXED]` statement that could not be built
      exactly as written.
+
+   - `### Metrics not computable from visit data` — `| PDD metric | Term |
+     Why |`, from Step 4o; `None.` when every term is submitted.
 
    Cite the PDD section on every row. The programme memo quotes rows as
    written and marks an uncited one `NOT CITED by pdd-to-deliver-app` rather
@@ -2538,6 +2619,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-01 | **New Step 4o — every PDD § Success Metrics term is SUBMITTED on the paid form (ace#2590).** On `spark-facilitator/20261001-2208` the Community Meeting Record read `#community/number_of_households` inside a validate and never submitted it, so PDD §8.2 S1 (households represented ÷ enrolled households) was not computable in Connect and Phase 7 listed it under "Not computable from visit data" — the run completed and a partner-owned indicator silently vanished. 4h covered taught-vs-collectable; nothing covered measured-vs-submitted. 4o resolves each metric term to a paid-form field, a case property, or an `external` source with a reason, runs `checkMetricTermsSubmitted` (`lib/metric-terms-submitted.ts`) over the paid form, mirrors any case-held term as a hidden `calculate`, and names every term still unsubmitted as not computable in the summary (`metric_terms` frontmatter + build memo). *Enforced:* `test/lib/metric-terms-submitted.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-10-01 | **Step 7: every app check in the build memo is stated at the scope it is keyed on (build-memo-eval, spark-facilitator/20260926-1800).** The Deliver memo called the per-community date check the "one-community-meeting-per-day check" and judged it "coherent" with the per-worker daily cap of 1; Phase 4 and the programme memo then credited the app with enforcing that cap, which only Connect's payment unit `max_daily` does. Paired with `connect-opp-setup` Step 8's scope paragraph and `skills/build-memo`'s `--check`. | ACE team |
 | 2026-09-26 | **Step 4j sub-step 6 no longer hard-codes the counter timing (ace#2515).** The snippet hard-coded a pre-increment timing into its `payableCapacity` call, which reads a correct `min(<casedb count> + 1, cap)` clamp as capacity `cap + 1` and HALTs it — then "repairs" it into an under-pay. Observed on `spark-facilitator/20260926-1413` (`min(#form/step_info/prior_index + 1, 3)`, correct, would have halted). It now calls `checkBuiltClampCapacity`, which resolves the timing via `classifyCounterTiming` over the `get_field` read-backs (Nova `#form/` and `#<case_type>/` spellings accepted — captured read-back spells the case read `#community/…`) and returns `unable` rather than assuming one. *Enforced:* `test/lib/payable-cap-build-time.test.ts` (the repro as positive control; `min(<casedb>, cap)` and an under-paying `min(<casedb> + 1, cap - 1)` as negative controls; a skill-text guard against a literal timing), fed from the captured `get_field` read-back `test/fixtures/nova/capped-index-readback-spark-20260926-1413.json`. | ACE team |
 | 2026-09-25 | **The case-UPDATE `entity_id` rule now SANCTIONS the case read it used to forbid (ace#2199).** The REQUIRED paragraph still told the architect that a followup `case-ref` could never be built (citing `voidcraft-labs/commcare-nova#458`, closed COMPLETED 2026-08-15) and steered followup forms to `concat(username, <date>)` — the `atomic-visit` grain, which cannot express a per-entity cap and is the ace#1462 failure for a `longitudinal-visits` design. The paragraph's own re-open condition ("re-verify against a live compiled CCZ") is now met: on `spark-facilitator/20260925-1536` the Deliver followup form was briefed with `#case/` reads and the released build `5c1eef4323224550b1c36a7da9521e71` compiles `entity_key` as a live `calculate` over `instance('casedb')` (`@case_id`, `pilot_fcap_step`). The rule now says: read the case with `#case/<property>` in a hidden calculate; `caseWrite` + literal default is still not a read (ace#1224); a visible case-bound field pre-fills the previous answer (ace#2006); never fall back to the username grain for a longitudinal design. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` (inverted to require the read and forbid the retired closure). | ACE team |
