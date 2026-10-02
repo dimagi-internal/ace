@@ -44,7 +44,7 @@ calibration TBD until 3+ shipped quick-references produce ground truth.
 
 ## Process
 
-1. Read inputs from Drive.
+1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
 2. Build a "must-include numbers" checklist from the PDD: daily-visit
    cap, payment per visit (or per session/stage by archetype), payment
    timing, support contact, any Layer A numeric thresholds (GPS

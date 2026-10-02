@@ -35,6 +35,8 @@ const fakeDrive = {
     create: vi.fn(),
     update: vi.fn(),
     get: vi.fn(),
+    // ace#2592: drive_create_doc_from_markdown reads the imported Doc back.
+    export: vi.fn(),
   },
 };
 
@@ -44,6 +46,8 @@ beforeEach(() => {
   fakeDrive.files.create.mockReset();
   fakeDrive.files.update.mockReset();
   fakeDrive.files.get.mockReset();
+  fakeDrive.files.export.mockReset();
+  fakeDrive.files.export.mockResolvedValue({ data: 'new' });
   fakeDrive.files.get.mockResolvedValue({
     data: {
       id: 'parent-1',

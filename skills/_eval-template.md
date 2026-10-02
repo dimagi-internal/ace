@@ -219,6 +219,34 @@ guard:
 Calibrate the threshold per rubric — see
 `skills/eval-calibration/SKILL.md` for the methodology.
 
+## Grade the published revision (stock)
+
+A verdict describes ONE revision of ONE published file, and it must be
+a revision you read. Three rules:
+
+1. **Read the artifact from its published Drive file** with
+   `drive_read_file` (`writeToPath` for anything large) — never from the
+   producer's local draft, scratch copy or `.source.md`. Record what you
+   read in the verdict as top-level `graded_revision: <revisionVersion>`
+   and `graded_total_length: <total_length>`.
+2. **An empty published artifact is a BLOCKER, verdict `fail`** —
+   `total_length` 0 (or a body with no readable text) from a producer
+   that composed a real document. Do not grade the draft in its place:
+   the reader gets the published file, and a score for a document nobody
+   can open is a false pass.
+3. **If you revise and republish the artifact in response to your own
+   findings, read it back AFTER the republish and grade that revision.**
+   A republish is a new write that can fail on its own; the read you
+   took before it says nothing about what it left.
+
+Measured (ace#2592): `training-faq-eval` read the FAQ at revision 8
+(8,270 chars), found gaps, edited the local draft and republished —
+and the republish left the Doc EMPTY. The verdict, written afterwards
+from the edited draft, scored 8.4 `pass` for a document of 0 words.
+`drive_create_doc_from_markdown` now refuses an empty import
+(`DOC_IMPORT_EMPTY`), but the verdict must still name the revision it
+graded. *Enforced:* `test/skills/eval-grades-published-revision.test.ts`.
+
 ## MCP Tools Used (stock)
 
 ```markdown

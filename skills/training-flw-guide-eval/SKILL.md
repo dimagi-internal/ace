@@ -46,7 +46,7 @@ calibration TBD until 3+ shipped FLW guides produce ground truth.
 
 ## Process
 
-1. Read inputs from Drive.
+1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
 2. Walk the deliver-app flow from `app-deploy_summary.md` (form by form,
    field by field). Build the expected step sequence.
 3. **Run the held-out comprehension test.** Adopt the persona of a naive,
