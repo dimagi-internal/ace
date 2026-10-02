@@ -485,7 +485,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 63 atoms
+Source: `mcp/connect-server.ts` — 64 atoms
 
 ### `connect_list_programs`
 
@@ -796,13 +796,22 @@ Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>
 
 ### `commcare_create_domain`
 
-Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE's ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is capped at 25 chars (HQ's DomainRegistrationForm.max_name_length); pass an already-slug-shaped value (lowercase, hyphens) for predictable slug derivation. Daily-creation rate-limit and `RESTRICT_DOMAIN_CREATION` errors are surfaced explicitly.
+Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE's ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is capped at 25 chars (HQ's DomainRegistrationForm.max_name_length); pass an already-slug-shaped value (lowercase, hyphens) for predictable slug derivation. Daily-creation rate-limit and `RESTRICT_DOMAIN_CREATION` errors are surfaced explicitly. The new space is on HQ's Free plan (REST API closed); converting it to Enterprise is a superuser step under the ace-enterprise subscription — read the result back with `commcare_get_subscription` (playbook/integrations/commcare-api.md § New project spaces).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `hr_name` | `z.string` | **required** | Human-readable project name; HQ derives the URL slug from this. Max 25 chars. Pass a slug-shaped value (lowercase + hyphens) for predictable results. |
 | `org` | `z.string` | optional | Optional organization id (hidden form field; usually empty). |
+
+### `commcare_get_subscription`
+
+Read a CommCare HQ project space's current subscription: `edition` (Free / Standard / Pro / Advanced / Enterprise …), plan `name`, `do_not_invoice`, dates, and `is_paid_edition`. GETs /a/<domain>/settings/project/subscription/ (DomainSubscriptionView, session auth) and parses its `plan` page data, so it answers on a Free-plan space whose REST API is closed. A space `commcare_create_domain` makes starts on Free (no REST API). Getting a new ACE space onto Enterprise is a superuser-only HQ action ace@ cannot perform; the read-back after it is this atom (see playbook/integrations/commcare-api.md § New project spaces).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | Project space slug ace@ is an admin of. |
 
 ### `commcare_create_api_key`
 

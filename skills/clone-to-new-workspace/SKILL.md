@@ -31,6 +31,11 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - **Redirect the source's links.** Also `release`.
 - **Create a Connect org or an OCS team.** No API exists; the preflight lists
   a missing Connect org as a setup item (or use `--keep-shared connect`).
+- **Put the new HQ space on a paid plan.** A space ACE creates starts on Free
+  Edition (REST API closed). The agreed path is accounts' `ace-enterprise`
+  Enterprise subscription, converted per space by a Dimagi HQ **superuser**
+  ("Test or Demo Project"). ace@ is not a superuser, so 4a asks for it as one
+  exact setup item and reads the result back.
 
 Everything else a clone needs is ACE's own job, not a note to a human: a
 missing target workspace, its Drive root, its default tenancy and its HQ
@@ -133,7 +138,9 @@ start Step 2 with a failed preflight.
      "does this space exist": HQ returns the same `HQ_API_NOT_IN_PLAN` 401 for
      a space whose plan has no REST API and for one that does not exist
      (observed 2026-09-29 on a made-up slug; ace#2551). 4a.1 attempts the
-     create instead, and that answer is authoritative.
+     create instead, and that answer is authoritative. (On an existing space,
+     `commcare_get_subscription` tells the two apart: a plan, or a 404 naming
+     "does not exist or ace@ is not a member".)
    - **Connect:** `connect_list_programs(organization_slug: <connect_pm_org>)`
      succeeds, and the holding org accepts `connect_list_opportunities`. A
      failure is a setup item: "Connect staff: create program-manager org
@@ -224,12 +231,36 @@ reviewer to a workspace they cannot open.
    stop and report it (the tenancy is then wrong). A forbidden on an existing
    space ace@ is not in is a setup item: "add ace@dimagi-ai.com to HQ project
    <hq_domain> as admin".
-1b. **API access.** `commcare_list_apps(domain: <hq_domain>)`: `200` → record
-   `clone.hq.api: enabled`; `HQ_API_NOT_IN_PLAN` → record `clone.hq.api:
-   not-in-plan`. A space ACE just created is on HQ's free plan and is
-   `not-in-plan` (connect-ace-spark, 2026-09-29; ace#2552). That is fine for
-   the copy, build, release and reviewers' web access — all web views. It
-   decides 3b and is reported in 4b and Step 6.
+1b. **Plan → Enterprise (ace-enterprise).** `commcare_get_subscription(domain:
+   <hq_domain>)`. A space ACE just created reads `edition: Free`
+   (`is_paid_edition: false`; connect-ace-spark, 2026-09-29, ace#2552), and
+   Free has no REST API. Accounts set up the `ace-enterprise` subscription for
+   exactly these spaces (Gillian Javetski, 2026-10-02). Each space is moved
+   onto it by a **Dimagi HQ superuser**, never by ace@: HQ gates the page with
+   `require_superuser`, and as ace@ it redirects to `/no_permissions/`. So when
+   the read is Free, raise ONE setup item, verbatim:
+
+   > HQ superuser: open
+   > `https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`,
+   > choose **Test or Demo Project**, press **Update** (puts `<hq_domain>` on
+   > the ace-enterprise Enterprise plan, not invoiced).
+
+   Mechanism and what NOT to do instead: `playbook/integrations/commcare-api.md
+   § New project spaces`. Record `clone.hq.plan: {edition, is_paid_edition}`
+   from the read, never from the request.
+   - **Connect will be rebuilt (no `--keep-shared connect`):** 3b and 4b need
+     the API. Do 2–3 (web views, work on Free), then **stop** before 3b with
+     the setup item. A rerun resumes there: re-read
+     `commcare_get_subscription` and continue only once it is paid.
+   - **`--keep-shared connect`:** nothing in the clone needs the API. Continue,
+     and list the setup item in Step 6 under "Before `/ace:release`" (the
+     partner space should be on the plan it will be handed over on).
+
+   Then `commcare_list_apps(domain: <hq_domain>)`: `200` → `clone.hq.api:
+   enabled`; `HQ_API_NOT_IN_PLAN` → `clone.hq.api: not-in-plan`. On a space
+   that reads paid, `not-in-plan` is a defect to report, not a setup item. The
+   copy, build, release and reviewers' web access are web views and work
+   either way. `clone.hq.api` decides 3b and is reported in 4b and Step 6.
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
    downstream_domain: <hq_domain>, name: <source app name>, linked: false,
@@ -269,13 +300,11 @@ step.
 
 ### 4b. Connect — re-run Phase 4 in the target's orgs
 
-**Unverified on a `not-in-plan` space (ace#2552):** Connect reads the apps it
-is pointed at through HQ with the opportunity's key. No clone has yet run 4b
-against a space without HQ API access. On the first one, if Phase 4 fails
-while creating the opportunity or reading its apps, report
-`clone.hq.api: not-in-plan` as the likely cause and the setup item "a
-subscription with API access on HQ project <hq_domain>" — and record what
-Connect actually returned, so the next clone knows.
+**Needs `clone.hq.api: enabled`.** Connect reads the apps it is pointed at
+through HQ with the opportunity's key, so 4b runs only after 4a.1b's
+Enterprise flip has been read back as paid. 4a stops before 3b otherwise.
+No clone has yet run 4b end to end on an ace-enterprise space. Record what
+Connect returns on the first one, so the next clone knows.
 
 **With `--keep-shared connect`: skip this step.** Keep the target run's copied
 `products.connect` and `opp.yaml` `connect:` block as they are (they name the
@@ -391,7 +420,8 @@ under "Before `/ace:release`", each with its owner and fix.
 
 One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
 on the new domain, or the HQ project dashboard on a `not-in-plan` space; not the
-call's own return value), or `NOT DONE` + reason, plus the Drive-link read-back
+call's own return value) and the HQ space's plan (`commcare_get_subscription`:
+edition, or the 4a.1b superuser setup item if it is still Free), or `NOT DONE` + reason, plus the Drive-link read-back
 (source ids remaining in the target run_state: expected 0 outside comms-logs),
 plus every manual setup item, plus Step 5's release-check verdict and its
 blockers. End with: "Nothing was shared with anyone. When

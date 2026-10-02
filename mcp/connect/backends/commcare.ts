@@ -96,6 +96,63 @@ export interface CreateDomainResult {
   domain: string;
 }
 
+export interface GetSubscriptionArgs {
+  domain: string;
+}
+
+/**
+ * A project space's current HQ subscription, read from the `plan`
+ * initial_page_data on `/a/<domain>/settings/project/subscription/`
+ * (DomainSubscriptionView). `edition` is HQ's SoftwarePlanEdition label —
+ * `Free`, `Standard`, `Pro`, `Advanced`, `Enterprise`, … — and is what decides
+ * which privileges (REST API access, linked spaces, data forwarding) the
+ * space has.
+ */
+export interface SubscriptionInfo {
+  domain: string;
+  edition: string;
+  name: string;
+  do_not_invoice: boolean;
+  is_trial: boolean;
+  is_paused: boolean;
+  date_start: string | null;
+  date_end: string | null;
+  /** `edition` is not Free/Community and the plan is not paused. */
+  is_paid_edition: boolean;
+}
+
+/**
+ * Parse HQ's DomainSubscriptionView page into a SubscriptionInfo. Pure, so the
+ * markup contract is unit-tested against real page excerpts. Returns null when
+ * the `plan` page-data div is absent (not the subscription page).
+ */
+export function parseSubscriptionPage(html: string, domain: string): SubscriptionInfo | null {
+  const m = html.match(/<div data-name=["']plan["'] data-value=["']([^"']*)["']/);
+  if (!m) return null;
+  const decoded = m[1]
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  let plan: Record<string, unknown>;
+  try { plan = JSON.parse(decoded) as Record<string, unknown>; } catch { return null; }
+  const edition = String(plan.edition ?? '');
+  const isPaused = !!plan.is_paused;
+  const str = (v: unknown) => (v == null || v === '--' ? null : String(v));
+  return {
+    domain,
+    edition,
+    name: String(plan.name ?? ''),
+    do_not_invoice: !!plan.do_not_invoice,
+    is_trial: !!plan.is_trial,
+    is_paused: isPaused,
+    date_start: str(plan.date_start),
+    date_end: str(plan.date_end),
+    is_paid_edition: !!edition && !/^(free|community|paused)$/i.test(edition) && !isPaused,
+  };
+}
+
 export interface CreateApiKeyArgs {
   /** Project space the key is restricted to (HQ `HQApiKey.domain`). */
   domain: string;
@@ -1107,6 +1164,40 @@ export class CommCareBackend {
         key: extractPlaintextApiKey(data),
         rotated,
       };
+    });
+  }
+
+  /**
+   * Read a project space's current subscription (edition, plan name,
+   * do-not-invoice) from DomainSubscriptionView — session auth, so it answers
+   * on a Free-plan space whose REST API is closed. The authoritative read-back
+   * after an HQ superuser converts a new space to a "Test or Demo Project"
+   * (Enterprise) via internal subscription management (ace#2552).
+   */
+  async getSubscription(args: GetSubscriptionArgs): Promise<SubscriptionInfo> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/settings/project/subscription/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        throw new Error(
+          `commcare_get_subscription GET ${path} redirected to ${location} — ace@ is not an admin of ${args.domain}.`,
+        );
+      }
+      if (res.status() === 404 || res.status() === 403) {
+        throw new Error(
+          `commcare_get_subscription GET ${path} returned ${res.status()} — ${args.domain} does not exist or ace@ is not a member.`,
+        );
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_get_subscription GET ${path} returned ${res.status()}`);
+      }
+      const info = parseSubscriptionPage(await res.text(), args.domain);
+      if (!info) {
+        throw new Error(`commcare_get_subscription GET ${path}: no "plan" page data — HQ page shape changed.`);
+      }
+      return info;
     });
   }
 
