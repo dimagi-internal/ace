@@ -446,3 +446,10 @@ WORK_ORDER_TEMPLATE_ID=op://Agent-Ace/ACE - Drive Templates/work_order_template_
 # host (the EC2 cloud runner) can never produce — minting that file needs an
 # interactive browser login.
 CANOPY_WEB_PAT=op://Agent-Ace/canopy-pat/credential
+
+# ── Agentic Drive root (fleet filing standard) ──────────────────────
+# ACE's own folder for ad-hoc deliverables and process state (NOT opp runs, which
+# file under ACE/<opp>/). `canopy gdoc publish --project <name>` files beneath it
+# and refuses to run without it ("no Drive root resolved"). Used by
+# skills/gdoc-writer. ace#2593.
+GDRIVE_ROOT_FOLDER=op://Agent-Ace/gdrive-root-folder/credential
