@@ -51,7 +51,7 @@ run_last_write: <ISO>      # newest write in the run folder the check saw (relea
 verdict: READY | NOT_READY
 read_only: <bool>          # a dry run — never releasable
 counts: {blockers: N, warnings: N}
-areas:                     # qa | eval | connect | previews | links | public-summary | chatbot | apps | run-state
+areas:                     # qa | eval | connect | previews | links | public-summary | chatbot | apps | hq | run-state
   qa: {blockers: N, warnings: N}
 blockers: [{id, area, severity: blocker, owner, detail, fix}]
 warnings: [{id, area, severity: warning, owner, detail, fix}]
@@ -115,12 +115,23 @@ dir. `$RC` below is
    re-inventory). Apps need a released build per app in run_state and a passing
    `app-release-qa` result — both read from the inventory.
 
+7b. **HQ plan.** `commcare_get_subscription(domain: <the apps' HQ space>)` →
+   save as `hq-plan.json`. The space comes from run_state
+   (`products.apps.domain`, else the domain in an app's `hq_url`;
+   `hqDomainFromRunState`). A space ACE created is on Free until a Dimagi HQ
+   superuser moves it onto the ace-enterprise Enterprise plan. That is
+   blocker `hq-plan-free:<space>`, owned by **HQ superuser (operator)**,
+   whose fix is the exact URL and clicks (`lib/hq-enterprise-flip.ts`, also
+   printed by `$RC hq-flip-steps --domain <space>`). `/ace:release` Step 0.4
+   walks the operator through it. An unread plan is its own blocker, never a
+   pass.
+
 8. **Verdict.**
    ```bash
    $RC assess --workspace <ws> --opp <opp> --run <run-id> --inventory inventory.json \
      --run-state run_state.yaml --gaps gaps.json --postcondition postcondition.json \
      --links links.json --surface surface.json [--claims claims.json] [--looks looks.json] \
-     [--overlay overlay.json] [--read-only] --out-dir <scratch>/out
+     --hq-plan hq-plan.json [--overlay overlay.json] [--read-only] --out-dir <scratch>/out
    ```
    Missing evidence is its own blocker ("not checked"), never a pass. Upload
    `release-check_verdict.yaml` (`drive_upload_binary`, `text/yaml`) and the
@@ -146,7 +157,7 @@ after the check" — and the release stops.
 - **ace-gdrive:** `resolve_opp_path`, `drive_read_file`, `drive_upload_binary`,
   `drive_create_doc_from_markdown`, `verify_run_claims`.
 - **ace-connect:** `connect_get_opportunity`, `connect_list_payment_units`,
-  `connect_list_flw_invites` (read-only).
+  `connect_list_flw_invites`, `commcare_get_subscription` (read-only).
 - Skills it dispatches: the gate skills above, `output-preview-capture`,
   `run-surface-audit-eval`, `ocs-chatbot-qa`.
 

@@ -20,6 +20,7 @@
 import { parse as parseYaml } from 'yaml';
 import { validateQAResult } from './qa-types.js';
 import { checkOppPostcondition, type OppDecided, type OppReadback } from './connect-opp-postcondition.js';
+import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
 
 export const RELEASE_CHECK_SCHEMA_VERSION = 1 as const;
 export const RELEASE_VERDICT_NAME = 'release-check_verdict.yaml';
@@ -34,6 +35,7 @@ export type ReleaseArea =
   | 'public-summary'
   | 'chatbot'
   | 'apps'
+  | 'hq'
   | 'run-state';
 
 export interface ReleaseFinding {
@@ -395,6 +397,36 @@ export function assessApps(files: readonly RunFile[], runState: unknown): Releas
   return out;
 }
 
+/** `commcare_get_subscription`'s output, as release-check reads it. */
+export interface HqPlanLite {
+  domain?: string;
+  edition?: string;
+  is_paid_edition?: boolean;
+}
+
+/**
+ * The run's HQ space must be on a paid plan before outsiders are let in. A
+ * space ACE created starts on Free (ace#2552); the fix is one superuser step,
+ * so the blocker's `fix` IS that step, verbatim, with the URL (ace#2600).
+ */
+export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): ReleaseFinding[] {
+  if (!hqDomain) {
+    return [{ id: 'hq-domain-unknown', area: 'hq', severity: 'blocker', owner: 'commcare-setup', detail: 'run_state records no HQ project space for the apps (phases.commcare-setup.products.apps.domain)', fix: 'record the apps\' domain in run_state (clone-to-new-workspace 4a.4)' }];
+  }
+  if (!plan) {
+    return [{ id: 'hq-plan-unchecked', area: 'hq', severity: 'blocker', owner: 'release-check', detail: `the plan of HQ space ${hqDomain} was not read`, fix: `commcare_get_subscription(domain: ${hqDomain}) → pass it as --hq-plan` }];
+  }
+  if (plan.domain && plan.domain !== hqDomain) {
+    return [{ id: 'hq-plan-wrong-space', area: 'hq', severity: 'blocker', owner: 'release-check', detail: `--hq-plan is for ${plan.domain}, but the run's apps are in ${hqDomain}`, fix: `commcare_get_subscription(domain: ${hqDomain})` }];
+  }
+  if (plan.is_paid_edition) return [];
+  return [{
+    id: `hq-plan-free:${hqDomain}`, area: 'hq', severity: 'blocker', owner: 'HQ superuser (operator)',
+    detail: `HQ space ${hqDomain} is on ${plan.edition || 'an unpaid plan'} — its API is closed, and a partner would be handed a practice-only space`,
+    fix: hqEnterpriseFlipSteps(hqDomain),
+  }];
+}
+
 // ---------------------------------------------------------------------------
 // The verdict
 // ---------------------------------------------------------------------------
@@ -432,7 +464,7 @@ export function runLastWrite(files: readonly RunFile[]): string {
   return iso;
 }
 
-const AREAS: ReleaseArea[] = ['qa', 'eval', 'connect', 'previews', 'links', 'public-summary', 'chatbot', 'apps', 'run-state'];
+const AREAS: ReleaseArea[] = ['qa', 'eval', 'connect', 'previews', 'links', 'public-summary', 'chatbot', 'apps', 'hq', 'run-state'];
 
 export function buildReleaseVerdict(input: {
   workspace: string;
@@ -483,7 +515,7 @@ export function releaseGate(
   }
   if (verdict.read_only) return { ok: false, reason: 'the latest release-check was a read-only dry run — run it for real' };
   if (verdict.verdict !== 'READY') {
-    const list = (verdict.blockers ?? []).map((b) => `- ${b.owner}: ${b.detail} → ${b.fix}`).join('\n');
+    const list = (verdict.blockers ?? []).map((b) => `- ${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')}`).join('\n');
     return { ok: false, reason: `release-check says NOT_READY (${verdict.counts?.blockers ?? '?'} blocker(s)):\n${list}` };
   }
   const last = runLastWrite(current.files);
@@ -508,7 +540,8 @@ export function renderReleaseReport(v: ReleaseVerdict): string {
     lines.push(`## ${title}`);
     lines.push('');
     if (!list.length) lines.push('None.');
-    for (const f of list) lines.push(`- **${f.area} · ${f.owner}** — ${f.detail}. *Fix:* ${f.fix}`);
+    // A multi-line fix (the HQ superuser steps) stays inside its bullet.
+    for (const f of list) lines.push(`- **${f.area} · ${f.owner}** — ${f.detail}. *Fix:* ${f.fix.replace(/\n/g, '\n  ')}`);
   }
   return lines.join('\n') + '\n';
 }

@@ -238,12 +238,14 @@ reviewer to a workspace they cannot open.
    exactly these spaces (Gillian Javetski, 2026-10-02). Each space is moved
    onto it by a **Dimagi HQ superuser**, never by ace@: HQ gates the page with
    `require_superuser`, and as ace@ it redirects to `/no_permissions/`. So when
-   the read is Free, raise ONE setup item, verbatim:
-
-   > HQ superuser: open
-   > `https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`,
-   > choose **Test or Demo Project**, press **Update** (puts `<hq_domain>` on
-   > the ace-enterprise Enterprise plan, not invoiced).
+   the read is Free, the step is the operator's. Print it verbatim, never
+   paraphrased: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs"
+   "$ACE_ROOT/scripts/release-check.ts" hq-flip-steps --domain <hq_domain>`.
+   It prints the exact URL
+   (`https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`),
+   **Subscription Type → Test or Demo Project → Update**, and the read-back
+   page. Its home is `/ace:release` Step 0.4, where the operator does it and
+   release-check blocks until it is done (`hq-plan-free`).
 
    Mechanism and what NOT to do instead: `playbook/integrations/commcare-api.md
    § New project spaces`. Record `clone.hq.plan: {edition, is_paid_edition}`
@@ -252,9 +254,9 @@ reviewer to a workspace they cannot open.
      the API. Do 2–3 (web views, work on Free), then **stop** before 3b with
      the setup item. A rerun resumes there: re-read
      `commcare_get_subscription` and continue only once it is paid.
-   - **`--keep-shared connect`:** nothing in the clone needs the API. Continue,
-     and list the setup item in Step 6 under "Before `/ace:release`" (the
-     partner space should be on the plan it will be handed over on).
+   - **`--keep-shared connect`:** nothing in the clone needs the API. Continue.
+     Step 5's release-check reports the `hq-plan-free` blocker, and the
+     operator does the step during `/ace:release` (Step 0.4).
 
    Then `commcare_list_apps(domain: <hq_domain>)`: `200` → `clone.hq.api:
    enabled`; `HQ_API_NOT_IN_PLAN` → `clone.hq.api: not-in-plan`. On a space

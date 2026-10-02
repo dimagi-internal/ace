@@ -19,6 +19,7 @@
  *   assess --workspace W --opp O --run R --inventory <json> --run-state <yaml>
  *          [--gaps <json>] [--postcondition <json>] [--links <json>]
  *          [--surface <audit json>] [--claims <json>] [--looks <json>]
+ *          [--hq-plan <commcare_get_subscription json for the run's HQ space>]
  *          [--overlay <json {"<run path>": "<local file>"}>]
  *          [--read-only] --out-dir <dir>
  *       Turn the evidence into findings (lib/release-check.ts) and write
@@ -33,6 +34,11 @@
  *   gate --workspace W --opp O --run R --verdict <yaml> --inventory <json>
  *       `/ace:release`'s gate: exit 0 iff the latest verdict is READY, for this
  *       run, not read-only, and newer than every write in the run folder.
+ *
+ *   hq-flip-steps (--domain D | --run-state <yaml>)
+ *       Print the HQ superuser step (ace-enterprise "Test or Demo Project")
+ *       for the run's HQ space — the exact URL and clicks the operator does in
+ *       /ace:release Step 0.4. Same text as the `hq-plan-free` blocker's fix.
  */
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import * as fs from 'node:fs';
@@ -45,6 +51,7 @@ import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { authForUrl, screenPage, withLabsProgramContext, type PreviewAuth } from '../lib/preview-capture.js';
 import {
   assessApps,
+  assessHqPlan,
   assessChatbot,
   assessGates,
   assessLinks,
@@ -61,6 +68,7 @@ import {
   type ReleaseFinding,
   type RunFile,
 } from '../lib/release-check.js';
+import { hqDomainFromRunState, hqEnterpriseFlipSteps } from '../lib/hq-enterprise-flip.js';
 import { Sessions } from './browser-sessions.js';
 
 // Before any credential read (ACE_WEB_*, ACE_HQ_*, GOOGLE_APPLICATION_CREDENTIALS) — ace#1957.
@@ -253,6 +261,7 @@ function assess(): void {
   const transcripts = files.filter((f) => /ocs-chatbot-qa_transcript[^/]*\.md$/.test(f.path)).sort((a, b) => Date.parse(b.modifiedTime) - Date.parse(a.modifiedTime));
   findings.push(...assessChatbot(transcripts[0] ?? null, now));
   findings.push(...assessApps(files, runState));
+  findings.push(...assessHqPlan(hqDomainFromRunState(runState), readJson(arg('hq-plan'))));
   const verdict = buildReleaseVerdict({ workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only') });
   const dir = need('out-dir');
   fs.mkdirSync(dir, { recursive: true });
@@ -291,6 +300,12 @@ async function main(): Promise<void> {
   if (cmd === 'assess') return assess();
   if (cmd === 'postcondition') return postcondition();
   if (cmd === 'gate') return gate();
+  if (cmd === 'hq-flip-steps') {
+    const domain = arg('domain') ?? hqDomainFromRunState(parseYaml(fs.readFileSync(need('run-state'), 'utf8')));
+    if (!domain) throw new Error('hq-flip-steps: no --domain, and run_state records no HQ space for the apps');
+    process.stdout.write(hqEnterpriseFlipSteps(domain) + '\n');
+    return;
+  }
   process.stderr.write('usage: release-check.ts inventory|links|assess|gate … (see the header)\n');
   process.exit(2);
 }
