@@ -383,6 +383,67 @@ export function summarizeCrash(logcat: string): string | undefined {
 }
 
 /**
+ * Every CommCare FATAL block in a crash-buffer excerpt, oldest first.
+ *
+ * A block starts at a `FATAL EXCEPTION` line whose `Process:` line (within the
+ * same 4-line window `detectAppCrashLoop` uses) names `org.commcare.dalvik`,
+ * and runs until the next `FATAL EXCEPTION`, a `--------- beginning of`
+ * buffer marker, or 40 lines. System-app crashes on the same buffer
+ * (`configupdater`, `permissioncontroller` — both present on
+ * spark-facilitator/20261001-2208) are not CommCare's and are skipped.
+ *
+ * Pure: the caller supplies the excerpt (ace#2584).
+ */
+export function commcareCrashBlocks(logcat: string): string[] {
+  const lines = logcat.split('\n');
+  const blocks: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!/FATAL EXCEPTION/.test(lines[i])) continue;
+    if (!/org\.commcare\.dalvik/.test(lines.slice(i, i + 4).join('\n'))) continue;
+    let end = i + 1;
+    while (
+      end < lines.length &&
+      end < i + 40 &&
+      !/FATAL EXCEPTION/.test(lines[end]) &&
+      !/^-+ beginning of /.test(lines[end])
+    ) {
+      end++;
+    }
+    blocks.push(lines.slice(i, end).join('\n'));
+  }
+  return blocks;
+}
+
+/**
+ * The CommCare crash(es) that appeared in the crash buffer between
+ * `baseline` (read at recipe start) and `current` (read at failure time).
+ *
+ * A block is identified by its `FATAL EXCEPTION` header line, which carries
+ * the logcat timestamp + pid + tid and is therefore unique per crash. The
+ * crash buffer spans the whole boot, and one device dispatch runs several
+ * recipes — without the baseline, a crash an EARLIER recipe survived would be
+ * blamed on a later, unrelated failure. `baseline === undefined` (the
+ * start-of-recipe read failed) counts every CommCare block as new.
+ *
+ * Returns the LATEST new crash's summary plus every new block verbatim, or
+ * undefined when nothing new crashed. Pure (ace#2584).
+ */
+export function newCommcareCrash(
+  baseline: string | undefined,
+  current: string,
+): { summary: string; block: string } | undefined {
+  const header = (b: string) => b.split('\n')[0].trim();
+  const seen = new Set(baseline === undefined ? [] : commcareCrashBlocks(baseline).map(header));
+  const fresh = commcareCrashBlocks(current).filter((b) => !seen.has(header(b)));
+  if (fresh.length === 0) return undefined;
+  const latest = fresh[fresh.length - 1];
+  return {
+    summary: summarizeCrash(latest) ?? header(latest).slice(0, 400),
+    block: fresh.join('\n'),
+  };
+}
+
+/**
  * Detect the "another automation client holds the device" failure.
  *
  * Android permits exactly ONE `UiAutomation` client per device. When a second
@@ -2063,6 +2124,11 @@ export class MobileClient {
     const videos: VideoArtifact[] = [];
     let recordAttempt = 0;
 
+    // Crash-buffer baseline (ace#2584): what `logcat -b crash` held BEFORE
+    // this recipe ran, so failure forensics can tell a CommCare crash THIS
+    // recipe caused from one an earlier recipe in the same boot survived.
+    const crashBaseline = await this.readCrashBufferBestEffort(avdName);
+
     let result: RecipeRunResult;
     try {
       if (this.useCloud) {
@@ -2186,6 +2252,7 @@ export class MobileClient {
           runDir,
           recipeId,
           undefined,
+          crashBaseline,
         );
         (e as { failureForensics?: RecipeRunResult['failureForensics'] }).failureForensics =
           forensics;
@@ -2293,7 +2360,14 @@ export class MobileClient {
           runDir,
           recipeId,
           result.failure?.stderrExcerpt,
+          crashBaseline,
         );
+        if (result.failureForensics?.appCrash) {
+          logInfo(
+            `runRecipe: ${recipeId} failed AFTER CommCare crashed — the failure screen is a ` +
+              `consequence, not the cause: ${result.failureForensics.appCrash}`,
+          );
+        }
       } catch (e) {
         logInfo(`runRecipe: failure-forensics capture failed for ${recipeId}: ${String(e)}`);
       }
@@ -2435,6 +2509,7 @@ export class MobileClient {
     screenshotDir: string,
     recipeId: string,
     stderrExcerpt: string | undefined,
+    crashBaseline?: string,
   ): Promise<RecipeRunResult['failureForensics']> {
     const out: NonNullable<RecipeRunResult['failureForensics']> = {};
     const base = `${recipeId}-FAILURE`;
@@ -2523,7 +2598,43 @@ export class MobileClient {
       }
     }
 
+    // 4. CommCare crash (ace#2584). A FATAL in `logcat -b crash` that was not
+    // there when the recipe started means CommCare died mid-recipe and came
+    // back on some other screen — so the ui-dump + screenshot above show a
+    // CONSEQUENCE, and a selector/nav reading of them is wrong. Narrow on
+    // purpose (`commcareCrashBlocks`): system-app crashes on the same buffer
+    // never set it. Local backend only; best-effort like every other step.
+    const crashNow = await this.readCrashBufferBestEffort(avdName);
+    if (crashNow) {
+      const crash = newCommcareCrash(crashBaseline, crashNow);
+      if (crash) {
+        out.appCrash = crash.summary;
+        try {
+          const crashPath = path.join(screenshotDir, `${base}-crash.txt`);
+          fs.writeFileSync(crashPath, `${crash.block}\n`, 'utf8');
+          out.crashLogPath = crashPath;
+        } catch (e) {
+          logInfo(`captureFailureForensics: crash-log write failed for ${recipeId}: ${String(e)}`);
+        }
+      }
+    }
+
     return out;
+  }
+
+  /**
+   * `logcat -b crash` on the local AVD, or undefined when there is no AVD,
+   * the backend is cloud, or the read failed. Diagnostic only: an unreadable
+   * buffer degrades to "no crash seen", never to a thrown error (ace#2584).
+   */
+  private async readCrashBufferBestEffort(avdName: string | undefined): Promise<string | undefined> {
+    if (this.useCloud || !avdName) return undefined;
+    try {
+      return await this.avd.readCrashBuffer(avdName);
+    } catch (e) {
+      logInfo(`readCrashBufferBestEffort: crash buffer unreadable for ${avdName}: ${String(e)}`);
+      return undefined;
+    }
   }
 
   private async resolveAvdInfo(

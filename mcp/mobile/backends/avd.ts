@@ -1992,6 +1992,32 @@ export class AvdBackend {
     return r.stdout;
   }
 
+  /**
+   * Dump Android's dedicated CRASH buffer (`logcat -d -b crash`), for recipe
+   * failure forensics (ace#2584).
+   *
+   * Not `readCrashLogcat`: that reads the last 600 lines of the default
+   * buffers, which is right for the heal funnel (it runs right after a boot)
+   * but wrong after a recipe failure — a recipe that waited out a 180s
+   * timeout after CommCare died has pushed the FATAL far past any fixed
+   * tail. The crash buffer holds only uncaught-throwable blocks, so the whole
+   * buffer is small and nothing scrolls it out. Recorded device evidence: on
+   * spark-facilitator/20261001-2208 exactly this command returned CommCare's
+   * `FATAL EXCEPTION` block alongside two system-app crashes.
+   *
+   * Same bounded timeout as `readCrashLogcat`, for the same reason: adb blocks
+   * unboundedly against a dead device, and forensics run on failures.
+   */
+  async readCrashBuffer(avdName: string): Promise<string> {
+    const avd = await this.requireRunningAvd(avdName);
+    const r = await this.shell(
+      'adb',
+      ['-s', avd.serial, 'logcat', '-d', '-b', 'crash'],
+      { timeoutMs: 15_000 },
+    );
+    return r.stdout;
+  }
+
   async captureUiDump(avdName: string): Promise<UiDumpResult> {
     const avd = await this.requireRunningAvd(avdName);
     // Pass an explicit /data/local/tmp path. The default `uiautomator dump`
