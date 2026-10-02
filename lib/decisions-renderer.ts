@@ -307,14 +307,27 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Supersession (ace#1421). A reader of the rendered log must be able to see
   // at a glance which of two contradicting rows is live — before this, both
   // carried `status: ai-default` and nothing but prose distinguished them.
-  if (row.superseded_by !== undefined) {
+  if (row.superseded_by !== undefined && row.inherited_from_run !== undefined) {
+    // ace#2582: a forked run inherits the source run's rows for the phases it
+    // re-runs. They are not this run's choices — say whose they were.
+    builder.appendBoldPrefix(
+      "SUPERSEDED — inherited, not this run's choice:",
+      `carried in from run ${row.inherited_from_run}, whose phase this run re-runs; ` +
+        `replaced by \`${row.superseded_by}\` once that phase re-runs. Kept for the audit trail.`,
+    );
+  } else if (row.superseded_by !== undefined) {
     builder.appendBoldPrefix(
       "SUPERSEDED — do not use:",
       `corrected by \`${row.superseded_by}\`. Kept for the audit trail.`,
     );
   }
   if (row.supersedes !== undefined) {
-    builder.appendBoldPrefix("Supersedes:", `\`${row.supersedes}\` (this row is the live value)`);
+    builder.appendBoldPrefix(
+      "Supersedes:",
+      row.superseded_by === undefined
+        ? `\`${row.supersedes}\` (this row is the live value)`
+        : `\`${row.supersedes}\``,
+    );
   }
 
   // Evidence basis: <basis> (v4; absent on legacy pre-v4 rows).

@@ -139,7 +139,21 @@ export const DecisionRowSchema = z
       .optional()
       .describe(
         "Set by `decisions_append_rows`, never by an emitting skill. Names the row that replaced this " +
-          "one. A row carrying this is HISTORY: consumers must resolve to the row that does not carry it.",
+          "one. A row carrying this is HISTORY: consumers must resolve to the row that does not carry it. " +
+          "Also stamped by ace-web's fork (ace#2582) on a row INHERITED from the source run for a phase " +
+          "the fork re-runs: the row is moved to `<id>-<source-run-id>` and points at its own canonical " +
+          "`<id>`, which the re-run producer then appends — so the target may be absent until that phase " +
+          "re-runs. Absent-target is legal here; the row is history either way.",
+      ),
+    inherited_from_run: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Set by ace-web's fork, never by an emitting skill (ace#2582). The SOURCE run a forked run " +
+          "inherited this row from, on a row the fork RETIRED because this run re-runs its phase. " +
+          "Always paired with `superseded_by`: the row is kept for the audit trail, never live. " +
+          "Declared here so it survives every re-serialization of the log by `decisions_append_rows`.",
       ),
     status: z
       .enum(["ai-default", "human-decided", "overridden"])
