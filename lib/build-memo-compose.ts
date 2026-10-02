@@ -244,10 +244,21 @@ export function parsePhase4RuleTable(markdown: string): RuleRow[] {
   return rows;
 }
 
+/**
+ * The LIVE decision rows: a row carrying `superseded_by` is history — a later
+ * row corrected it — and must not drive the memo. A forked run inherits its
+ * source's Phase 3/4 rows and corrects them with `supersedes:`; reading the
+ * superseded ones surfaced a resolved OPEN ambiguity as a "Decision you own"
+ * (spark-facilitator/20261001-2208, ace#2578).
+ */
+export function liveDecisionRows(decisions: readonly unknown[]): unknown[] {
+  return decisions.filter((d) => rec(d).superseded_by === undefined);
+}
+
 /** Rule rows from connect-opp-setup's decision rows (`connect-rule-*`). */
 export function ruleRowsFromDecisions(decisions: readonly unknown[]): RuleRow[] {
   const rows: RuleRow[] = [];
-  for (const raw of decisions) {
+  for (const raw of liveDecisionRows(decisions)) {
     const d = rec(raw);
     const m = /^Where is the PDD verification rule '(.+)' enforced\?$/.exec(str(d.question));
     if (!m) continue;
@@ -568,7 +579,7 @@ export function decisionsYouOwn(
   const conn = connectProducts(runState);
   const pus = Array.isArray(conn.payment_units) ? (conn.payment_units as unknown[]).map(rec) : [];
   const pu = pus[0] ?? {};
-  const build = decisions.map(rec).filter((d) => /^(3-commcare|4-connect)$/.test(str(d.phase)));
+  const build = liveDecisionRows(decisions).map(rec).filter((d) => /^(3-commcare|4-connect)$/.test(str(d.phase)));
   const idsMatching = (re: RegExp) => build.map((d) => str(d.id)).filter((id) => re.test(id));
 
   const band = rec(pp.payment_rate_band);

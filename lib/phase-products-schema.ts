@@ -208,8 +208,12 @@ const ConnectProducts = z
         holding_org_slug: z.string().optional(),
         /** `pm-nm` | `self-managed` — `phase4Orgs().mode` at create time. */
         org_mode: z.enum(['pm-nm', 'self-managed']).optional(),
-        /** The accepted ProgramApplication (pm-nm only), captured from the invite POST. */
-        program_application_id: z.string().optional(),
+        /**
+         * The accepted ProgramApplication (pm-nm only), captured from the invite POST.
+         * `null` on the already-applied skip, which names no id (connect-opp-setup
+         * Step 3a.3, ace#1800) — the skill prescribes recording null there (ace#2579).
+         */
+        program_application_id: z.string().nullable().optional(),
         program: z
           .object({
             id: z.string().optional(),

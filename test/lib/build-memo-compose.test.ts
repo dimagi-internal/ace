@@ -182,6 +182,44 @@ describe('(d) decisions you own', () => {
   });
 });
 
+describe('superseded decision rows do not drive the memo (ace#2578)', () => {
+  // A fork inherits its source's Phase 4 rows and corrects them with
+  // `supersedes:`; the write boundary stamps `superseded_by` on the old row.
+  const OPEN_ROW = {
+    id: 'connect-ambiguity-stale-open',
+    phase: '4-connect',
+    skill: 'connect-opp-setup',
+    question: 'Is the stale verification question still open?',
+    'ai-default': 'OPEN — apply on Phase 9 LLO opp',
+    reasoning: 'OPEN — pending.',
+  };
+  const RULE_ROW = {
+    id: 'connect-rule-stale',
+    phase: '4-connect',
+    skill: 'connect-opp-setup',
+    question: "Where is the PDD verification rule 'stale rule' enforced?",
+    'ai-default': 'CCZ constraint',
+    reasoning: 'old placement',
+  };
+  const NO_GAPS = { ...LIM, gaps: [] };
+
+  it('asks the reviewer to resolve a LIVE open row', () => {
+    const asks = decisionsYouOwn(RUN_STATE, [OPEN_ROW], NO_GAPS).map((a) => a.ask);
+    expect(asks).toContain(`Resolve: ${OPEN_ROW.question}`);
+  });
+
+  it('drops the same row once a later row superseded it', () => {
+    const superseded = { ...OPEN_ROW, superseded_by: 'connect-ambiguity-resolved' };
+    const asks = decisionsYouOwn(RUN_STATE, [superseded], NO_GAPS).map((a) => a.ask);
+    expect(asks.some((a) => a.startsWith('Resolve:'))).toBe(false);
+  });
+
+  it('builds rule rows only from live rows', () => {
+    expect(ruleRowsFromDecisions([RULE_ROW]).map((r) => r.rule)).toEqual(['stale rule']);
+    expect(ruleRowsFromDecisions([{ ...RULE_ROW, superseded_by: 'connect-rule-new' }])).toEqual([]);
+  });
+});
+
 describe('(c) plain language in the body', () => {
   it('fails the graded memo on internal references and un-glossed abbreviations', () => {
     const r = checkReviewerLanguage(OLD_MEMO, { decisionIds: DECISIONS.map((d: any) => d.id) });

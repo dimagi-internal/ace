@@ -122,6 +122,13 @@ describe('connect-setup ACE test-user invite read-back gate (ace#1184 / CI-892)'
     expect(res.valid).toBe(true);
   });
 
+  it('accepts program_application_id: null — the documented value on the already-applied skip (ace#2579)', () => {
+    const res = validatePhaseProductsFragment('connect-setup', {
+      connect: { ...OPP, program_application_id: null },
+    });
+    expect(res.valid).toBe(true);
+  });
+
   it('type-checks invite_row_present as a boolean, not a truthy string', () => {
     // Guards the "status: queued" failure mode directly: a phase that pastes the
     // send response in here instead of the read-back result must fail loud.
