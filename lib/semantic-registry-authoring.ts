@@ -41,8 +41,23 @@ export interface AuthoringOptions {
   pddSections?: readonly string[];
   /** Every synthetic partner opportunity id; each must appear in `deployment.llo_map`. */
   opportunityIds?: readonly number[];
-  /** Fewest distinct organisations `llo_map` must name. Default 3 (the cascade story's partner floor). */
+  /** Fewest distinct organisations `llo_map` must name. Default: 3 for invented partners, 2 for a programme's own. */
   minOrganisations?: number;
+  /**
+   * Where the partners come from. `invented` (the default): ACE made them up, so it
+   * can always make three. `programme`: they are the programme's real partners, and a
+   * programme with two partners has two -- the floor drops to 2 (a comparison needs
+   * two) and fewer than 3 is a warning, because a benchmark then shows each partner
+   * its one peer's exact figures.
+   */
+  partnerSource?: 'invented' | 'programme';
+  /**
+   * When there is NO PDD: the released Deliver app's form names. An indicator may
+   * then anchor on the app instead -- its `scope_note` names `Deliver app` and one of
+   * these forms. Ignored when `pddSections` is supplied: a PDD, when it exists, is
+   * the only menu.
+   */
+  appForms?: readonly string[];
 }
 
 const CASE_FIELD_FORMATS = new Set(['date', 'count', 'number', 'text']);
@@ -51,6 +66,30 @@ const DIRECTIONS = new Set(['higher', 'lower', 'mid2', 'none']);
 const SECTION_CITE = /§\s*(\d+(?:\.\d+)*)/g;
 
 type Measure = { name?: string; title?: string; sql?: string; meta?: Record<string, unknown> };
+
+/**
+ * The form names of a released Deliver app, for `appForms`. Accepts the
+ * `get_opportunity_apps` response (`{deliver_app: {...}}`) or a bare app JSON
+ * (`{modules: [{forms: [{name: {en}}]}]}`).
+ */
+export function appFormNames(app: unknown): string[] {
+  const root = asObj(app);
+  const deliver = asObj(root.deliver_app ?? root);
+  const names: string[] = [];
+  for (const m of Array.isArray(deliver.modules) ? deliver.modules : []) {
+    for (const f of Array.isArray(asObj(m).forms) ? (asObj(m).forms as unknown[]) : []) {
+      const n = asObj(asObj(f).name).en ?? asObj(f).name;
+      if (typeof n === 'string' && n.trim() && !names.includes(n.trim())) names.push(n.trim());
+    }
+  }
+  return names;
+}
+
+/** True when `note` names the Deliver app and one of its released forms (case-insensitive). */
+export function citesAppForm(note: string, appForms: readonly string[]): boolean {
+  const n = note.toLowerCase();
+  return n.includes('deliver app') && appForms.some((f) => f.trim() && n.includes(f.trim().toLowerCase()));
+}
 
 function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -138,8 +177,14 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
     }
 
     // PDD anchor: every indicator cites the section it comes from (No inferred backstory).
-    const cites = citedSections(String(meta.scope_note ?? ''));
-    if (cites.length === 0) {
+    const note = String(meta.scope_note ?? '');
+    const cites = citedSections(note);
+    if (!pdd && opts.appForms?.length) {
+      // No PDD: the released app is the source of truth, so the anchor is a form it ships.
+      if (!citesAppForm(note, opts.appForms)) {
+        add('pdd-anchor', '`scope_note` names no form of the released Deliver app (`Deliver app — <form name>`) — with no PDD, an indicator not anchored in the app is an invented metric', id);
+      }
+    } else if (cites.length === 0) {
       add('pdd-anchor', '`scope_note` cites no PDD section (`PDD §N.M`) — an indicator without a PDD anchor is an invented metric', id);
     } else if (pdd) {
       const missing = cites.filter((c) => !pdd.has(c));
@@ -213,10 +258,13 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
       if (!mapped.has(opp)) add('llo-map', `opportunity ${opp} is not in \`deployment.llo_map\` — its cases have no partner and vanish from the partner level`);
     }
   }
-  const minOrgs = opts.minOrganisations ?? 3;
+  const programme = opts.partnerSource === 'programme';
+  const minOrgs = opts.minOrganisations ?? (programme ? 2 : 3);
   const orgs = new Set(mapped.values());
   if (orgs.size < minOrgs) {
     add('llo-map', `\`deployment.llo_map\` names ${orgs.size} organisation(s); the cascade story needs at least ${minOrgs}`);
+  } else if (programme && orgs.size < 3) {
+    add('llo-map', `the programme has ${orgs.size} partners — a benchmark cohort can only run with \`min_peers\` below 3, which shows each partner its peer's exact figures; decide that knowingly`, undefined, 'warn');
   }
 
   const verdict = findings.some((f) => f.severity === 'fail') ? 'fail' : 'pass';
@@ -259,7 +307,7 @@ export interface LabsValidateResult {
 export function registryQAOutcomes(
   report: AuthoringReport,
   labs: LabsValidateResult | null | undefined,
-  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[] },
+  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[]; appForms?: readonly string[] },
 ): Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> {
   const out: Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> = [];
   const labsErrors = Array.isArray(labs?.errors) ? (labs!.errors as unknown[]) : [];
@@ -273,8 +321,8 @@ export function registryQAOutcomes(
         : { pass: false, detail: `labs rejected the registry: ${labsErrors.map((e) => JSON.stringify(e)).join('; ') || 'valid != true'}`, auto_fix_hint: 'fix each labs error in the registry and re-validate' },
   });
   for (const check of REGISTRY_AUTHORING_CHECKS) {
-    if (check === 'pdd-anchor' && !inputs.pddSections?.length) {
-      out.push({ check, type: 'static', result: { pass: false, detail: 'the PDD was not supplied, so no indicator anchor was checked', auto_fix_hint: 'pass the PDD markdown (pddSectionIds)' } });
+    if (check === 'pdd-anchor' && !inputs.pddSections?.length && !inputs.appForms?.length) {
+      out.push({ check, type: 'static', result: { pass: false, detail: 'neither the PDD nor the released app was supplied, so no indicator anchor was checked', auto_fix_hint: 'pass the PDD markdown (pddSectionIds), or with no PDD the Deliver app structure (--app)' } });
       continue;
     }
     if (check === 'llo-map' && !inputs.opportunityIds?.length) {

@@ -54,6 +54,19 @@ export interface CascadeStoryPlan {
   signals: StorySignal[];
   /** Worker usernames the plan names as carriers must exist; the roster lets the check say so. */
   worker_roster?: string[];
+  /**
+   * `invented` (default): ACE made the partners up, so it can always make three.
+   * `programme`: they mirror the programme's real partners -- two is a real
+   * programme's shape, not a thin story, so the floor drops to 2 (a comparison
+   * needs two) and fewer than 3 warns that a benchmark exposes a peer's figures.
+   */
+  partner_source?: 'invented' | 'programme';
+  /**
+   * What each signal's `pdd_ref` cites. `pdd` (default): a PDD section (`§N`).
+   * `app`: there is no PDD, so a signal cites the released Deliver app's form and
+   * rule (`Deliver app — FCR Test, pass = result >= 0.2 mg/L`).
+   */
+  anchor?: 'pdd' | 'app';
 }
 
 export interface StoryFinding {
@@ -79,8 +92,12 @@ export function checkCascadeStoryPlan(
   const findings: StoryFinding[] = [];
   const fail = (detail: string, signal?: SignalKind) => findings.push({ severity: 'fail', detail, ...(signal ? { signal } : {}) });
 
-  if (plan.partners.length < floors.minPartners) {
-    fail(`${plan.partners.length} partner(s); the cascade needs ≥ ${floors.minPartners} so a partner comparison and an anonymous benchmark mean something`);
+  const programme = plan.partner_source === 'programme';
+  const minPartners = programme ? Math.min(floors.minPartners, 2) : floors.minPartners;
+  if (plan.partners.length < minPartners) {
+    fail(`${plan.partners.length} partner(s); the cascade needs ≥ ${minPartners} so a partner comparison and an anonymous benchmark mean something`);
+  } else if (programme && plan.partners.length < 3) {
+    findings.push({ severity: 'warn', detail: `the programme has ${plan.partners.length} partners — its benchmark cohort needs \`min_peers\` below 3, which shows each partner its peer's exact figures` });
   }
   const labels = new Set(plan.partners.map((p) => p.label));
   if (labels.size !== plan.partners.length) fail('partner labels must be distinct — they are the llo_map organisation names');
@@ -99,7 +116,9 @@ export function checkCascadeStoryPlan(
   }
   for (const s of plan.signals) {
     if (!ids.has(s.indicator)) fail(`indicator ${s.indicator} is not in the registry`, s.kind);
-    if (!/§\s*\d/.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" cites no PDD section — an uncited signal is an invented one`, s.kind);
+    if (plan.anchor === 'app') {
+      if (!/deliver app/i.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" names no Deliver app form — with no PDD, an uncited signal is an invented one`, s.kind);
+    } else if (!/§\s*\d/.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" cites no PDD section — an uncited signal is an invented one`, s.kind);
     if (!s.visible_as || s.visible_as.trim().length < 20) fail('`visible_as` must say, in a sentence, what a viewer sees', s.kind);
     const partnerCarrier = s.kind === 'lagging_partner' || (s.kind === 'trend' && s.carrier !== 'programme');
     if (partnerCarrier && !labels.has(s.carrier)) fail(`carrier "${s.carrier}" is not a partner in the plan`, s.kind);

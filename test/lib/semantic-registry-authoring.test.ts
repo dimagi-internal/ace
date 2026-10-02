@@ -101,3 +101,45 @@ describe('checkRegistryAuthoring', () => {
     expect(checks(reg)).toContain('model');
   });
 });
+
+// The chlorine registry: a programme with NO PDD and two real partners. ACE built it
+// from the released Deliver app (opp 2158) and labs accepted it as record 6583
+// (2026-10-02). Its anchors name app forms, and two partners is the programme's shape.
+describe('a programme with no PDD and two real partners', () => {
+  const CHLORINE: RegistryDocs = JSON.parse(
+    readFileSync(join(__dirname, '../fixtures/cascade/chlorine-registry.json'), 'utf8'),
+  );
+  const APP_FORMS: string[] = JSON.parse(
+    readFileSync(join(__dirname, '../fixtures/cascade/chlorine-app-forms.json'), 'utf8'),
+  ).forms;
+  const opts = { appForms: APP_FORMS, opportunityIds: [10093, 10092], partnerSource: 'programme' as const };
+
+  it('passes when anchored on the app and given the real partner count', () => {
+    const r = checkRegistryAuthoring(CHLORINE, opts);
+    expect(r.findings.filter((f) => f.severity === 'fail')).toEqual([]);
+    expect(r.verdict).toBe('pass');
+  });
+
+  it('warns, not fails, that two partners expose each other in a benchmark', () => {
+    const warn = checkRegistryAuthoring(CHLORINE, opts).findings.find((f) => f.check === 'llo-map');
+    expect(warn?.severity).toBe('warn');
+  });
+
+  it('still fails an indicator whose anchor names no released form', () => {
+    const reg: RegistryDocs = JSON.parse(JSON.stringify(CHLORINE));
+    indicator(reg, 'CL_Q1').meta.scope_note = 'Deliver app — Water Quality Census, pass at 0.2 mg/L';
+    const f = checkRegistryAuthoring(reg, opts).findings.filter((x) => x.severity === 'fail');
+    expect(f.map((x) => `${x.check}:${x.indicator}`)).toEqual(['pdd-anchor:CL_Q1']);
+  });
+
+  it('keeps the three-partner floor for partners ACE invented', () => {
+    const r = checkRegistryAuthoring(CHLORINE, { ...opts, partnerSource: 'invented' });
+    expect(r.findings.filter((f) => f.severity === 'fail').map((f) => f.check)).toEqual(['llo-map']);
+  });
+
+  it('does not let a PDD-less anchor through when a PDD exists', () => {
+    const r = checkRegistryAuthoring(CHLORINE, { ...opts, pddSections: ['1', '2'] });
+    expect(r.findings.some((f) => f.check === 'pdd-anchor' && f.severity === 'fail')).toBe(true);
+  });
+});
+

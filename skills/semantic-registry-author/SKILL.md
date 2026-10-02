@@ -106,6 +106,24 @@ something **at the worker level**. When the PDD assigns one entity per worker
 (Spark: one community per CBF) that is `1` — anything higher blanks every worker
 cell.
 
+**No PDD? Anchor on the released app, and use the programme's real partners.**
+Not every opp run starts from a PDD. A programme ACE builds from a real Connect
+opportunity (the chlorine demo, 2026-10-02) has a released Deliver app and no PDD.
+In that case:
+- **The app is the menu.** Each indicator's `scope_note` reads `Deliver app — <form
+  name>, <field> <rule>`, and the rule is the app's own: its calculate or its
+  threshold, e.g. `FCR Test, last_waterpoint_fcr_pass_fail: pass = result >= 0.2
+  mg/L`. Run QA with `--app <get_opportunity_apps JSON>` instead of `--pdd`. It
+  fails any anchor that names no released form.
+- **Set no target.** An app defines pass rules, not programme targets.
+- **Use the real partner count.** Pass `--partner-source programme`. Two partners
+  is the programme's shape, not a thin story, so the floor is 2. Fewer than 3 is
+  only a warning: the benchmark cohort then needs `min_peers` below 3, which shows
+  each partner its peer's exact figures.
+
+  Invented partners (`Partner A/B/C`) keep the floor of 3, because ACE can always
+  make three.
+
 **No inferred backstory.** A metric, threshold, target or noun with no PDD anchor
 does not go in. If a partner-org name is needed it comes from the caller's
 `partners[]` (synthetic labels such as "Partner A") — never an invented real

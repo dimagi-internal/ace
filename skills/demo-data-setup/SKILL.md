@@ -1424,6 +1424,10 @@ the four signals — `lagging_partner`, `standout_worker`, `data_quality`, `tren
 each naming a registry indicator, the PDD clause it derives from (`pdd_ref`, same
 rule as step 1c: an uncited signal is an invented one) and what a viewer sees.
 Gate it with `checkCascadeStoryPlan(plan, registryIndicatorIds)` BEFORE generating.
+When the partners mirror a real programme's own (not invented `Partner A/B/C`), set
+`partner_source: programme`, which makes 2 partners legal. With no PDD, set `anchor: app`
+and cite the Deliver app's form and rule in each `pdd_ref` (`semantic-registry-author`
+§ 2, "No PDD").
 The data-quality signal is step 1c's obligation carried over: pick it from the
 PDD's own review flags / verification controls, never a fraud pattern the design
 does not describe.

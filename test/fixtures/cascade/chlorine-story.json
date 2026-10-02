@@ -1,0 +1,70 @@
+{
+ "partners": [
+  {
+   "label": "Jakusko partner",
+   "opportunity_id": 10093,
+   "workers": 8
+  },
+  {
+   "label": "Gwandu partner",
+   "opportunity_id": 10092,
+   "workers": 8
+  }
+ ],
+ "weeks": 11,
+ "worker_roster": [
+  "cr_j01",
+  "cr_j02",
+  "cr_j03",
+  "cr_j04",
+  "cr_j05",
+  "cr_j06",
+  "cr_j07",
+  "cr_j08",
+  "cr_g01",
+  "cr_g02",
+  "cr_g03",
+  "cr_g04",
+  "cr_g05",
+  "cr_g06",
+  "cr_g07",
+  "cr_g08"
+ ],
+ "signals": [
+  {
+   "kind": "trend",
+   "carrier": "programme",
+   "indicator": "CL_Q1",
+   "higher_is_better": true,
+   "trend_direction": "up",
+   "pdd_ref": "Deliver app — FCR Test, last_waterpoint_fcr_pass_fail: pass = result >= 0.2 mg/L",
+   "visible_as": "The programme's chlorine pass rate climbs week on week as households take up the dispensers."
+  },
+  {
+   "kind": "lagging_partner",
+   "carrier": "Gwandu partner",
+   "indicator": "CL_D2",
+   "higher_is_better": true,
+   "pdd_ref": "Deliver app — Routine Rider Visit, refill_no_reason = not_enough_chlorine (the app’s chlorine supply warning)",
+   "visible_as": "Gwandu's full-refill rate drops during a chlorine shortage and its chlorine pass rate trails Jakusko."
+  },
+  {
+   "kind": "standout_worker",
+   "carrier": "cr_j03",
+   "indicator": "CL_Q1",
+   "higher_is_better": true,
+   "pdd_ref": "Deliver app — FCR Test, pass = result >= 0.2 mg/L",
+   "visible_as": "One Jakusko rider's households pass the chlorine test almost every time, well above every other rider."
+  },
+  {
+   "kind": "data_quality",
+   "carrier": "cr_g05",
+   "indicator": "CL_X1",
+   "higher_is_better": false,
+   "pdd_ref": "Deliver app — Routine Rider Visit, payment_eligible = 0 beyond 30 m of the waterpoint",
+   "visible_as": "One Gwandu rider logs about four in ten visits more than 30 m from the waterpoint, where no other rider does."
+  }
+ ],
+ "partner_source": "programme",
+ "anchor": "app"
+}

@@ -1,0 +1,545 @@
+{
+ "properties_doc": {
+  "version": 1,
+  "entity": {
+   "name": "waterpoint",
+   "plural": "waterpoints",
+   "key": "entity_id",
+   "cohort_date": "first_visit"
+  },
+  "visit_columns": [
+   {
+    "name": "is_reg",
+    "sql": "COALESCE(form_name = 'Waterpoint Registration', FALSE)"
+   },
+   {
+    "name": "is_eligible",
+    "sql": "COALESCE(form_name = 'Waterpoint Registration' AND rf_verdict = '\u2705 ELIGIBLE FOR INSTALLATION', FALSE)"
+   },
+   {
+    "name": "is_install",
+    "sql": "COALESCE(form_name = 'Dispenser Installation', FALSE)"
+   },
+   {
+    "name": "is_rider",
+    "sql": "COALESCE(form_name = 'Routine Rider Visit', FALSE)"
+   },
+   {
+    "name": "is_fcr",
+    "sql": "COALESCE(form_name = 'FCR Test', FALSE)"
+   },
+   {
+    "name": "is_functional",
+    "sql": "COALESCE(form_name = 'Routine Rider Visit' AND dispenser_status = 'functional', FALSE)"
+   },
+   {
+    "name": "is_full_refill",
+    "sql": "COALESCE(form_name = 'Routine Rider Visit' AND refill_completed = 'yes' AND COALESCE(refill_short_flag, '') <> 'short_refill', FALSE)"
+   },
+   {
+    "name": "is_offsite",
+    "sql": "COALESCE(form_name = 'Routine Rider Visit' AND CAST(payment_eligible AS DECIMAL) = 0, FALSE)"
+   },
+   {
+    "name": "fcr_readable",
+    "sql": "COALESCE(form_name = 'FCR Test' AND fcr_pass_fail IN ('pass', 'fail'), FALSE)"
+   },
+   {
+    "name": "fcr_pass",
+    "sql": "COALESCE(form_name = 'FCR Test' AND fcr_pass_fail = 'pass', FALSE)"
+   },
+   {
+    "name": "fcr_unreadable",
+    "sql": "COALESCE(form_name = 'FCR Test' AND fcr_pass_fail = 'unreadable', FALSE)"
+   },
+   {
+    "name": "regular_use",
+    "sql": "COALESCE(form_name = 'FCR Test' AND use_frequency IN ('every_time', 'most_of_the_time'), FALSE)"
+   }
+  ],
+  "pipelines": {
+   "entity": "visits"
+  },
+  "constants": {},
+  "aggregates": [
+   {
+    "name": "num_records",
+    "label": "Records",
+    "means": "Every form filed for the waterpoint: registration, installation, rider visits and household chlorine tests.",
+    "sql": "COUNT(*)"
+   },
+   {
+    "name": "first_visit",
+    "label": "Registered on",
+    "means": "Date of the waterpoint's first record (its registration).",
+    "sql": "MIN(visit_date)"
+   },
+   {
+    "name": "last_visit",
+    "label": "Latest record",
+    "means": "Date of the waterpoint's most recent record.",
+    "sql": "MAX(visit_date)"
+   },
+   {
+    "name": "registrations",
+    "label": "Registrations",
+    "means": "Waterpoint Registration forms filed for the waterpoint.",
+    "sql": "COUNT(*) FILTER (WHERE is_reg)"
+   },
+   {
+    "name": "eligible_regs",
+    "label": "Eligible registrations",
+    "means": "Registrations the form graded ELIGIBLE FOR INSTALLATION (no red flags).",
+    "sql": "COUNT(*) FILTER (WHERE is_eligible)"
+   },
+   {
+    "name": "installs",
+    "label": "Installations",
+    "means": "Dispenser Installation forms filed at the waterpoint.",
+    "sql": "COUNT(*) FILTER (WHERE is_install)"
+   },
+   {
+    "name": "install_date",
+    "label": "Dispenser installed on",
+    "means": "Date the dispenser was installed.",
+    "sql": "MIN(visit_date) FILTER (WHERE is_install)"
+   },
+   {
+    "name": "rider_visits",
+    "label": "Rider visits",
+    "means": "Routine Rider Visits filed at the waterpoint.",
+    "sql": "COUNT(*) FILTER (WHERE is_rider)"
+   },
+   {
+    "name": "rider_weeks",
+    "label": "Weeks with a rider visit",
+    "means": "Distinct calendar weeks with at least one Routine Rider Visit.",
+    "sql": "COUNT(DISTINCT DATE_TRUNC('week', visit_date)) FILTER (WHERE is_rider)"
+   },
+   {
+    "name": "functional_visits",
+    "label": "Visits finding it functional",
+    "means": "Rider visits recording the dispenser's overall status as functional.",
+    "sql": "COUNT(*) FILTER (WHERE is_functional)"
+   },
+   {
+    "name": "full_refills",
+    "label": "Full refills",
+    "means": "Rider visits that filled the dispenser to the fill line, with at least 3 kg after filling (the app's short-refill rule).",
+    "sql": "COUNT(*) FILTER (WHERE is_full_refill)"
+   },
+   {
+    "name": "offsite_visits",
+    "label": "Off-site rider visits",
+    "means": "Rider visits logged more than 30 m from the waterpoint, which the app marks not payment-eligible.",
+    "sql": "COUNT(*) FILTER (WHERE is_offsite)"
+   },
+   {
+    "name": "fcr_tests",
+    "label": "Household chlorine tests",
+    "means": "FCR Tests filed for households collecting from the waterpoint.",
+    "sql": "COUNT(*) FILTER (WHERE is_fcr)"
+   },
+   {
+    "name": "fcr_readable_tests",
+    "label": "Readable chlorine tests",
+    "means": "FCR Tests with a result the worker could read.",
+    "sql": "COUNT(*) FILTER (WHERE fcr_readable)"
+   },
+   {
+    "name": "fcr_passes",
+    "label": "Tests at or above 0.2 mg/L",
+    "means": "FCR Tests the app graded pass: free chlorine of at least 0.2 mg/L.",
+    "sql": "COUNT(*) FILTER (WHERE fcr_pass)"
+   },
+   {
+    "name": "fcr_unreadable_tests",
+    "label": "Unreadable chlorine tests",
+    "means": "FCR Tests where the worker recorded the result as unreadable.",
+    "sql": "COUNT(*) FILTER (WHERE fcr_unreadable)"
+   },
+   {
+    "name": "regular_users",
+    "label": "Households using it regularly",
+    "means": "Tested households saying they use the dispenser every time or most of the time they collect water.",
+    "sql": "COUNT(*) FILTER (WHERE regular_use)"
+   }
+  ],
+  "properties": [
+   {
+    "name": "installed",
+    "label": "Dispenser installed",
+    "means": "A Dispenser Installation form has been filed at this waterpoint.",
+    "type": "bool",
+    "sql": "COALESCE(installs > 0, FALSE)"
+   },
+   {
+    "name": "eligible",
+    "label": "Eligible for a dispenser",
+    "means": "The waterpoint's registration graded it ELIGIBLE FOR INSTALLATION.",
+    "type": "bool",
+    "sql": "COALESCE(eligible_regs > 0, FALSE)"
+   },
+   {
+    "name": "active_weeks",
+    "label": "Weeks since installation",
+    "means": "Weeks from installation to the report date, not counting the installation week.",
+    "type": "int",
+    "sql": "CASE WHEN install_date IS NULL THEN 0 ELSE GREATEST(FLOOR(EXTRACT(EPOCH FROM ((:as_of)::timestamp - install_date::timestamp)) / 604800)::int, 0) END"
+   }
+  ]
+ },
+ "indicators_doc": {
+  "version": 1,
+  "cube": "chlorine_dispenser_waterpoint",
+  "description": "One row per waterpoint, from registration through dispenser installation, weekly rider visits and household chlorine tests. Indicators come from the Deliver app's own forms and rules.",
+  "defaults": {
+   "min_denominator": 1
+  },
+  "series": [
+   "CL"
+  ],
+  "display": {
+   "title": "Chlorine dispenser programme, Nigeria (synthetic)",
+   "entity": {
+    "name": "waterpoint",
+    "plural": "waterpoints"
+   },
+   "worker": {
+    "name": "rider",
+    "plural": "riders"
+   },
+   "organisation": {
+    "name": "partner",
+    "plural": "partners"
+   },
+   "categories": [
+    "Water quality",
+    "Dispenser upkeep",
+    "Household use",
+    "Registration",
+    "Data quality"
+   ],
+   "headline_count": 5,
+   "case_fields": [
+    {
+     "field": "waterpoint_name",
+     "label": "Waterpoint",
+     "format": "text"
+    },
+    {
+     "field": "ward",
+     "label": "Ward",
+     "format": "text"
+    },
+    {
+     "field": "first_visit_date",
+     "label": "Registered",
+     "format": "date"
+    },
+    {
+     "field": "last_visit_date",
+     "label": "Latest record",
+     "format": "date"
+    },
+    {
+     "field": "total_visits",
+     "label": "Records",
+     "format": "count"
+    }
+   ],
+   "reading": {
+    "column": "fcr_value",
+    "label": "Free chlorine (mg/L)",
+    "unit": "mg/L"
+   },
+   "targets_note": "No targets are shown: the app defines pass rules (a chlorine test passes at 0.2 mg/L or more; a visit counts within 30 m) but the programme has not set targets. Registrations, waterpoint names and locations are real; all delivery activity is synthetic."
+  },
+  "measures": [
+   {
+    "name": "cl_q1",
+    "title": "Chlorine test pass rate",
+    "type": "number",
+    "sql": "100.0 * {cl_q1_numerator} / NULLIF({cl_q1_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_Q1",
+     "unit": "%",
+     "category": "Water quality",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Chlorine pass",
+     "headline": 1,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of household water tests that could be read, the share with free chlorine of at least 0.2 mg/L.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 FCR Test, last_waterpoint_fcr_pass_fail: pass = result >= 0.2 mg/L. No programme target."
+    }
+   },
+   {
+    "name": "cl_q1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.fcr_passes"
+   },
+   {
+    "name": "cl_q1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.fcr_readable_tests"
+   },
+   {
+    "name": "cl_d1",
+    "title": "Dispenser functional rate",
+    "type": "number",
+    "sql": "100.0 * {cl_d1_numerator} / NULLIF({cl_d1_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_D1",
+     "unit": "%",
+     "category": "Dispenser upkeep",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Functional",
+     "headline": 2,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of rider visits, the share that found the dispenser fully functional.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Routine Rider Visit, dispenser_overall_status = functional. No programme target."
+    }
+   },
+   {
+    "name": "cl_d1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.functional_visits"
+   },
+   {
+    "name": "cl_d1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.rider_visits"
+   },
+   {
+    "name": "cl_u1",
+    "title": "Regular dispenser use",
+    "type": "number",
+    "sql": "100.0 * {cl_u1_numerator} / NULLIF({cl_u1_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_U1",
+     "unit": "%",
+     "category": "Household use",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Regular use",
+     "headline": 3,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of households tested, the share who use the dispenser every time or most of the time they collect water.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 FCR Test, last_dispenser_use_frequency in (every_time, most_of_the_time). No programme target."
+    }
+   },
+   {
+    "name": "cl_u1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.regular_users"
+   },
+   {
+    "name": "cl_u1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.fcr_tests"
+   },
+   {
+    "name": "cl_d2",
+    "title": "Full refill rate",
+    "type": "number",
+    "sql": "100.0 * {cl_d2_numerator} / NULLIF({cl_d2_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_D2",
+     "unit": "%",
+     "category": "Dispenser upkeep",
+     "prominence": "Top",
+     "direction": "higher",
+     "label": "Full refills",
+     "headline": 4,
+     "order": 2,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of rider visits, the share that refilled the dispenser to the fill line with at least 3 kg of solution.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Routine Rider Visit, refill_completed = yes and not refill_short_flag (post-fill < 3 kg). No programme target."
+    }
+   },
+   {
+    "name": "cl_d2_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.full_refills"
+   },
+   {
+    "name": "cl_d2_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.rider_visits"
+   },
+   {
+    "name": "cl_x1",
+    "title": "Off-site rider visits",
+    "type": "number",
+    "sql": "100.0 * {cl_x1_numerator} / NULLIF({cl_x1_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_X1",
+     "unit": "%",
+     "category": "Data quality",
+     "prominence": "Top",
+     "direction": "lower",
+     "label": "Off-site visits",
+     "headline": 5,
+     "order": 1,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of rider visits, the share logged more than 30 m from the waterpoint, which the app does not count as payable.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Routine Rider Visit, calculations/payment_eligible = 0 (distance_from_waterpoint > 30 m). No programme threshold."
+    }
+   },
+   {
+    "name": "cl_x1_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.offsite_visits"
+   },
+   {
+    "name": "cl_x1_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.rider_visits"
+   },
+   {
+    "name": "cl_d3",
+    "title": "Weekly rider coverage",
+    "type": "number",
+    "sql": "100.0 * {cl_d3_numerator} / NULLIF({cl_d3_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_D3",
+     "unit": "%",
+     "category": "Dispenser upkeep",
+     "prominence": "Lower",
+     "direction": "higher",
+     "label": "Weekly coverage",
+     "order": 3,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of the full weeks since each dispenser was installed, the share with at least one rider visit.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Routine Rider Visit dates against the Dispenser Installation date. No programme target."
+    }
+   },
+   {
+    "name": "cl_d3_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.rider_weeks"
+   },
+   {
+    "name": "cl_d3_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.active_weeks"
+   },
+   {
+    "name": "cl_r1",
+    "title": "Eligible waterpoints",
+    "type": "number",
+    "sql": "100.0 * {cl_r1_numerator} / NULLIF({cl_r1_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_R1",
+     "unit": "%",
+     "category": "Registration",
+     "prominence": "Lower",
+     "direction": "none",
+     "label": "Eligible",
+     "order": 1,
+     "flw_applicable": false,
+     "benchmarkable": true,
+     "plain": "Of registered waterpoints, the share the registration form graded eligible for a dispenser (no red flags).",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Waterpoint Registration, save_assessment/rf_verdict. Real registration data."
+    }
+   },
+   {
+    "name": "cl_r1_numerator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.eligible"
+     }
+    ]
+   },
+   {
+    "name": "cl_r1_denominator",
+    "type": "count"
+   },
+   {
+    "name": "cl_r2",
+    "title": "Eligible waterpoints installed",
+    "type": "number",
+    "sql": "100.0 * {cl_r2_numerator} / NULLIF({cl_r2_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_R2",
+     "unit": "%",
+     "category": "Registration",
+     "prominence": "Lower",
+     "direction": "higher",
+     "label": "Installed",
+     "order": 2,
+     "flw_applicable": false,
+     "benchmarkable": true,
+     "plain": "Of waterpoints graded eligible, the share with a dispenser installed.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 Dispenser Installation filed at an eligible waterpoint. No programme target."
+    }
+   },
+   {
+    "name": "cl_r2_numerator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.installed"
+     }
+    ]
+   },
+   {
+    "name": "cl_r2_denominator",
+    "type": "count",
+    "filters": [
+     {
+      "sql": "{CUBE}.eligible"
+     }
+    ]
+   },
+   {
+    "name": "cl_x2",
+    "title": "Unreadable chlorine tests",
+    "type": "number",
+    "sql": "100.0 * {cl_x2_numerator} / NULLIF({cl_x2_denominator}, 0)",
+    "meta": {
+     "indicator": "CL_X2",
+     "unit": "%",
+     "category": "Data quality",
+     "prominence": "Lower",
+     "direction": "lower",
+     "label": "Unreadable tests",
+     "order": 2,
+     "flw_applicable": true,
+     "benchmarkable": true,
+     "plain": "Of household chlorine tests, the share the worker recorded as unreadable.",
+     "scope_note": "Deliver app (opp 2158, Chlorine Application) \u2014 FCR Test, fcr_entry_mode = unreadable. No programme threshold."
+    }
+   },
+   {
+    "name": "cl_x2_numerator",
+    "type": "sum",
+    "sql": "{CUBE}.fcr_unreadable_tests"
+   },
+   {
+    "name": "cl_x2_denominator",
+    "type": "sum",
+    "sql": "{CUBE}.fcr_tests"
+   }
+  ]
+ },
+ "deployment": {
+  "version": 1,
+  "llo_map": {
+   "10093": "Jakusko partner",
+   "10092": "Gwandu partner"
+  }
+ }
+}
