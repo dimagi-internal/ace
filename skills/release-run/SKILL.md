@@ -33,19 +33,23 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
   Step 4 approval table; the human approves names, not a lookup.
 - `--forward-source` — the source run's public summary link was already sent
   to these reviewers (Spark's case): make it land on this run.
-- `--allow-shared connect` — **interim exception** (Jon, 2026-09-29): invite
-  outside reviewers into the SHARED Connect orgs (the tenancy's
-  `connect_pm_org` and `connect_holding_org`, i.e. `ace-pm-org` /
-  `ace-nm-org`) even though that exposes every ACE opportunity in them. Every
-  such grant is recorded as a shared grant to revoke once per-partner Connect
-  orgs exist. Connect is the only system this flag applies to.
+- `--allow-shared connect` — **escape hatch** (Jon, 2026-09-29), only for a
+  clone made with `--keep-shared connect`: invite outside reviewers into the
+  SHARED Connect orgs (the tenancy's `connect_pm_org` and
+  `connect_holding_org`, i.e. `ace-pm-org` / `ace-nm-org`) even though that
+  exposes every ACE opportunity in them. Since 2026-10-02 a normal clone has
+  the partner's own orgs (the operator creates them from the clone's setup
+  checklist), so its Connect is `done` and needs no flag. Every such grant is
+  recorded as a shared grant to revoke. Connect is the only system this flag
+  applies to.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`.
 
 ## Revoke mode (`--revoke-shared`)
 
-Run once per-partner Connect orgs exist (or when a review ends). Bind (Step 0.1),
+Run when a review on the shared orgs ends, or once the run has been re-cloned
+into the partner's own orgs. Bind (Step 0.1),
 read `released.shared_grants` from the run's `run_state.yaml`, show them all
 for approval as one list, then for each row not yet revoked:
 `connect_remove_org_member(organization_slug: <org>, email)`. It reads back
@@ -76,13 +80,16 @@ every merge mode). Report per row. Nothing else runs in this mode.
 
 ## Step 0.4 — The HQ space is set to Test or Demo Project (the one superuser step)
 
-A space ACE created for the run (`clone-to-new-workspace` 4a) starts on HQ's
-Free plan (API closed). Setting it to **Test or Demo Project** puts it on HQ's
-Enterprise plan, not invoiced. That is ONE click-through on the space's own
-settings, and only a Dimagi **HQ superuser** can do it. ace@ cannot: HQ
-restricts the page to superusers (ace#2552). It does not involve the
-`ace-enterprise` project. **This release is where that step happens**, done
-by whoever is running `/ace:release` (or a superuser they ask).
+A new HQ project space starts on HQ's Free plan (API closed). Setting it to
+**Test or Demo Project** puts it on HQ's Enterprise plan, not invoiced. That is
+ONE click-through on the space's own settings, and only a Dimagi **HQ
+superuser** can do it. ace@ cannot: HQ restricts the page to superusers
+(ace#2552). It does not involve the `ace-enterprise` project. Since
+2026-10-02 the operator does it while setting the space up, from
+`clone-to-new-workspace`'s setup checklist (item 1b), and the clone verifies
+it — so a cloned run normally passes here on the first read. This step stays
+as the re-check, and as the fallback for a space that skipped the checklist,
+done by whoever is running `/ace:release` (or a superuser they ask).
 
 1. `commcare_get_subscription(domain: tenancy.hq_domain)`. If
    `is_paid_edition: true`, go to Step 0.5. (The shared `connect-ace-prod`

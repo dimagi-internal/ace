@@ -1,9 +1,9 @@
-// The one HQ step ACE cannot do itself: setting a project space it created to
+// The one HQ step ACE cannot do itself: setting a new project space to
 // "Test or Demo Project", which puts it on HQ's Enterprise plan, not invoiced
 // (ace#2552). It is a setting on the space alone — it does NOT attach the space
 // to the `ace-enterprise` project or its billing account.
 //
-// Every space `commcare_create_domain` makes starts on CommCare Free Edition
+// Every new space (made in the HQ UI or by `commcare_create_domain`) starts on CommCare Free Edition
 // (REST API closed). HQ's only way onto Enterprise for these spaces is the
 // "Test or Demo Project" option on internal subscription management, and that
 // view is `@require_superuser` (corehq/apps/domain/views/accounting.py
@@ -11,10 +11,13 @@
 // (observed 2026-10-02). Enterprise accounts give no self-serve path: new
 // spaces always get a Free subscription (registration/utils.py
 // `_setup_subscription`), and the enterprise console has no add-space view.
-// So a Dimagi HQ superuser does it, once per space, during `/ace:release`.
+// So a Dimagi HQ superuser does it, once per space: since 2026-10-02 while
+// setting the space up from the clone's operator checklist
+// (lib/clone-setup-checklist.ts, item 1b), with `/ace:release` Step 0.4 as the
+// re-check and fallback.
 //
-// This module is the single wording of that step, so the clone, release-check
-// and release-run all show the operator the same URL and the same clicks.
+// This module is the single wording of that step, so the clone checklist,
+// release-check and release-run all show the operator the same URL and clicks.
 
 export const HQ_BASE_URL = 'https://www.commcarehq.org';
 

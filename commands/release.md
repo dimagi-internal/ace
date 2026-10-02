@@ -21,11 +21,13 @@ link, never an account.
   participants). One of the two is required.
 - **`--forward-source`** (optional) — the source run's summary link was already
   sent; make it land on this run.
-- **`--allow-shared connect`** (optional, interim) — invite outside reviewers
-  into the shared Connect PM + NM orgs until per-partner orgs exist; each
-  grant is recorded for later revocation.
+- **`--allow-shared connect`** (optional, escape hatch) — only for a clone made
+  with `--keep-shared connect`: invite outside reviewers into the shared Connect
+  PM + NM orgs. A normal clone has the partner's own orgs and needs no flag.
+  Each grant is recorded for later revocation.
 - **`--revoke-shared`** — instead of releasing: remove every grant recorded in
-  the run's `released.shared_grants` (once per-partner Connect orgs exist).
+  the run's `released.shared_grants` (when the review ends, or once the run is
+  re-cloned into the partner's own orgs).
 
 ## Process
 

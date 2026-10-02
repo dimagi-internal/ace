@@ -2,15 +2,15 @@
 name: clone-to-new-workspace
 description: >
   Copy a completed ACE run into another ace-web workspace and rebuild its
-  assets in that workspace's own HQ space, Connect orgs and Labs scope, so it
-  can be reviewed there without exposing anything else. No invites or
-  redirects (that is `release`). Use before an external review.
+  assets in the HQ space and Connect orgs the operator sets up from ACE's
+  checklist, so it can be reviewed without exposing anything else. No
+  invites (that is `release`). Use before an external review.
 disable-model-invocation: false
 ---
 
 # clone-to-new-workspace
 
-`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--labs-domain <@domain>] [--co-owner <email>] [--keep-shared connect]`
+`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--labs-domain <@domain>] [--co-owner <email>] [--keep-shared connect]`
 
 While ACE iterates, every run is built in shared tenants (one HQ project space,
 one Connect org pair, one OCS team, Dimagi-only Labs). Granting an outsider
@@ -29,17 +29,21 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - **Invite anyone.** Reviewers are invited last, by `release`, after everything
   is set up — nobody should see a half-built clone.
 - **Redirect the source's links.** Also `release`.
-- **Create a Connect org or an OCS team.** No API exists; the preflight lists
-  a missing Connect org as a setup item (or use `--keep-shared connect`).
-- **Put the new HQ space on a paid plan.** A space ACE creates starts on Free
-  Edition (REST API closed). The fix is a Dimagi HQ **superuser** setting the
-  space to "Test or Demo Project" (Enterprise, not invoiced). ace@ is not a
-  superuser, so 4a asks for it as one exact setup item and reads the result
-  back.
+- **Create the HQ project space, turn on its demo mode, or create the Connect
+  orgs.** The operator does those, from one checklist ACE prints at the start
+  (Step 0.6) — operator decision, Jon 2026-10-02: *"When we are doing a clone,
+  have me create the HQ space and turn on demo mode, and then have me manually
+  create a PM and NM org for you to use, and give me clear URLs to click to do
+  all of this efficiently."* Demo mode ("Test or Demo Project") is
+  superuser-only and Connect has no org-create API, so a human was always on
+  the path; doing it up front, in one sitting, replaces a clone that stalled
+  midway on each item in turn. ACE no longer calls `commcare_create_domain`
+  here.
+- **Create an OCS team.** The bot is reviewed by its public link (4d).
 
-Everything else a clone needs is ACE's own job, not a note to a human: a
-missing target workspace, its Drive root, its default tenancy and its HQ
-project space are all created here (Step 0 and 4a).
+What stays ACE's job: the target workspace, its Drive root and its default
+tenancy (Step 0), accepting the operator's invitations to ace@ and verifying
+every checklist item (Step 0.7), and every rebuild (Step 4).
 
 ## Inputs
 
@@ -48,14 +52,21 @@ project space are all created here (Step 0 and 4a).
 - `--to <workspace>` — target workspace. Its **default tenancy** (ace-web
   Workspace Settings / `PATCH /api/workspaces/<slug>` `default_tenancy`) says
   where the rebuilt assets go.
-- `--keep-shared connect` — **interim exception** (Jon, 2026-09-29): partner
-  Connect orgs can't be created yet, so the clone KEEPS the source's Connect
-  program + opportunity in the shared orgs instead of re-running Phase 4. The
-  target tenancy's Connect orgs are then the shared ones
-  (`ace-pm-org` / `ace-nm-org`), which Step 1.3 would otherwise refuse. Use it
-  only until per-partner org creation exists.
-- `--hq-domain <slug>` — the target's HQ project space when Step 0 has to set
-  it. Default `connect-ace-<to>` (≤ 25 chars — HQ's cap).
+- `--hq-domain <slug>` — the HQ project space the operator created (checklist
+  item 1). Unknown on a first call: the checklist then suggests
+  `connect-ace-<to>` (HQ caps names at 25 chars) and asks for the slug.
+- `--pm-org <slug>` / `--nm-org <slug>` — the two Connect orgs the operator
+  created (checklist items 2 and 3): the one that runs the program, and the one
+  that holds the opportunity. Unknown on a first call: the checklist asks for
+  them.
+- `--keep-shared connect` — **escape hatch only, not the default.** Keeps the
+  source's Connect program + opportunity in the shared orgs instead of
+  rebuilding them (4b skipped), drops the Connect items from the checklist, and
+  takes the shared orgs as the target's Connect tenancy (Step 1.3 then accepts
+  them). Use it only when the operator explicitly asks for it, e.g. a review
+  that cannot wait for org setup. `release` then needs `--allow-shared connect`
+  to grant Connect at all, and every such grant opens every ACE opportunity in
+  those orgs.
 - `--labs-domain <@domain>` — the partner's email domain(s), comma-separated,
   when Step 0 has to set `labs_allowed_domains`. No default: derive it from the
   reviewers' addresses on the thread that asked for the clone (e.g. the ace@
@@ -67,10 +78,12 @@ project space are all created here (Step 0 and 4a).
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN` (same as `fork-run`). The PAT's
 owner must be an **owner of both** workspaces.
 
-## Step 0 — Ensure the target workspace and its default tenancy
+## Step 0 — Target workspace, operator setup, verified tenancy
 
-A partner workspace is set up here, by ACE — not handed to a human. Skip any
-part that already holds.
+The workspace is ACE's to create (0.1–0.4). The HQ space and the Connect orgs
+are the operator's (0.6); ACE accepts its invitations, verifies every item
+(0.7), and only then writes them into the workspace's default tenancy (0.8).
+Skip any part that already holds.
 
 1. `GET ${ACE_WEB_BASE_URL}/api/workspaces` (ace@'s PAT). If `<to>` is listed,
    go to 5.
@@ -95,18 +108,79 @@ part that already holds.
    <co-owner>, "role": "owner"}` and report the accept link
    (`${ACE_WEB_BASE_URL}/invite/<token>`). This is a Dimagi colleague, not a
    reviewer, so it is not held back to `release`.
-5. **Default tenancy.** `GET …/api/workspaces/<to>` → `default_tenancy`. Fill
-   ONLY the fields that are empty (never overwrite an owner's value), with
-   `PATCH …/api/workspaces/<to>` `{"default_tenancy": {...merged}}`:
-   - `hq_domain`: `--hq-domain`, default `connect-ace-<to>`;
-   - `connect_pm_org` / `connect_holding_org`: with `--keep-shared connect`,
-     the SOURCE opp's values (`GET …/api/w/<from>/opps/<opp>/tenancy`);
-     otherwise leave empty — Step 1.4 then names the Connect setup item;
-   - `labs_allowed_domains`: `--labs-domain` (with the leading `@`);
+5. **Read the current tenancy.** `GET …/api/workspaces/<to>` →
+   `default_tenancy`. A 403 means ace@ is a member but not an owner of an
+   existing `<to>` — that IS a human item ("an owner of `<to>` makes
+   ace@dimagi-ai.com an owner"). Take the slugs for the checklist from the
+   flags first, then from this tenancy (`hq_domain`, `connect_pm_org`,
+   `connect_holding_org`) — but never a value equal to the SOURCE opp's
+   (`GET …/api/w/<from>/opps/<opp>/tenancy`): that is the shared tenancy, which
+   Step 1.3 refuses (the Connect pair excepted under `--keep-shared connect`).
+6. **Operator setup checklist — print it and stop.** Unless every slug is
+   known AND 0.7 passes for it, print the checklist **verbatim** — the script
+   is the single source of its URLs; never paraphrase or re-derive them:
+
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-setup-checklist.ts" print --workspace <to> \
+     [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
+   ```
+
+   (`--skip-connect` only with `--keep-shared connect`.) It is one message, in
+   the operator's order: (1) create the HQ space at
+   `https://www.commcarehq.org/register/domain/`, turn on demo mode (Test or
+   Demo Project, superuser), invite `ace@dimagi-ai.com` as Admin; (2) create
+   the org that runs the program at
+   `https://connect.dimagi.com/register/organization/`, tick **Enable Program
+   Manager**, add ace@ as Admin; (3) the same for the org that holds the
+   opportunity — each with its exact URL, slugs filled where known and a
+   "send me the slug" where not. Send it to the operator (in a turn: the reply
+   on the thread that asked for the clone) and **stop**: no ace-web copy, no
+   rebuild. The operator replies with the slugs; rerun with them as flags.
+7. **Accept ACE's invitations, then verify.**
+
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-setup-checklist.ts" accept-invites --workspace <to> \
+     --hq-domain <hq> --pm-org <pm> --nm-org <nm>      # or --skip-connect
+   ```
+
+   **ace@ joins by itself.** HQ and Connect invitations both need the invitee
+   to accept, and ace@ can: the script finds each invitation in ace@'s mailbox
+   (gog, identity from `config/agent.json`; HQ: *"Invitation from … to join
+   CommCareHQ"*, link `/a/<hq>/settings/users/join/<uuid>/`; Connect: *"… has
+   invited you to join … on Connect"*, link
+   `/a/<org>/organization/invite/<token>/`) and accepts it with ACE's own
+   session (HQ: an authenticated POST by the invited user; Connect: an
+   authenticated GET). `no-invitation` means the operator has not sent it yet
+   (item 1c / 2c / 3b); `already-used` is fine — the read-backs decide. It then
+   runs the session read-backs: HQ `/a/<hq>/settings/users/my_role/` →
+   `is_domain_admin: true` (the space exists and ace@ is Admin; 404 = no such
+   space); Connect `/a/<org>/organization/` → 200 for each org (ace@ is Admin)
+   and `/a/<pm>/program/init/` → 200 (Program Manager on; ace@ has no all-org
+   access, so 404 really means off). Then the MCP read-backs:
+   - `commcare_get_subscription(domain: <hq>)` → `is_paid_edition: true`
+     (demo mode on — item 1b);
+   - `commcare_list_apps(domain: <hq>)` → 200 (`HQ_API_NOT_IN_PLAN` = still on
+     Free — item 1b);
+   - `connect_list_programs(organization_slug: <pm>)` and
+     `connect_list_opportunities(organization_slug: <nm>)` succeed.
+
+   The full list with the checklist item that fixes each failure:
+   `clone-setup-checklist.ts verify --workspace <to> --hq-domain … --pm-org …
+   --nm-org …` (`verify --live` reruns the session read-backs without accepting
+   anything). **Any failure: stop**, and send the operator only the failing
+   items, quoted from the checklist with the slugs filled in. Never take the
+   operator's "done" as the evidence; the read-backs are.
+8. **Write the default tenancy.** `PATCH …/api/workspaces/<to>`
+   `{"default_tenancy": {...merged}}` with the VERIFIED slugs:
+   - `hq_domain`: `<hq>`;
+   - `connect_pm_org`: `<pm>`, `connect_holding_org`: `<nm>` — with
+     `--keep-shared connect`, the SOURCE opp's values instead;
+   - `labs_allowed_domains`: `--labs-domain` (with the leading `@`), when
+     empty;
    - `ocs_team`: leave empty (not used — 4d).
-   Read it back and print it. A `403` means ace@ is a member but not an owner of
-   an existing `<to>` — that IS a human item ("an owner of `<to>` makes
-   ace@dimagi-ai.com an owner").
+   Never overwrite an owner's different non-empty value: if `default_tenancy`
+   already names a different HQ space or org, stop and report both. Read it
+   back and print it.
 
 ## Step 1 — Preflight (creates nothing)
 
@@ -134,21 +208,17 @@ start Step 2 with a failed preflight.
    equal `connect_pm_org` / `connect_holding_org` are accepted (say so in the
    report); every other field still must differ.
 4. **Per system, one-time setup the target needs:**
-   - **HQ:** nothing to check up front. `commcare_list_apps` cannot answer
-     "does this space exist": HQ returns the same `HQ_API_NOT_IN_PLAN` 401 for
-     a space whose plan has no REST API and for one that does not exist
-     (observed 2026-09-29 on a made-up slug; ace#2551). 4a.1 attempts the
-     create instead, and that answer is authoritative. (On an existing space,
-     `commcare_get_subscription` tells the two apart: a plan, or a 404 naming
-     "does not exist or ace@ is not a member".)
-   - **Connect:** `connect_list_programs(organization_slug: <connect_pm_org>)`
-     succeeds, and the holding org accepts `connect_list_opportunities`. A
-     failure is a setup item: "Connect staff: create program-manager org
-     <connect_pm_org> / org <connect_holding_org> and make ace@dimagi-ai.com an
-     admin". (No program application is needed up front: Phase 4 creates the
-     program, then sends and accepts the holding org's application itself —
-     4b.) With `--keep-shared connect` this check is skipped: the shared orgs
-     are the ones every run already writes to.
+   - **HQ and Connect:** Step 0.7 verified them (space exists with ace@ as
+     Admin, paid plan, API open; both orgs with ace@ as Admin, Program Manager
+     on). On a resume, rerun `clone-setup-checklist.ts verify --live` and the
+     four MCP read-backs rather than trusting an earlier pass; a failure sends
+     the operator back to the named checklist item. (Existence is read from
+     `my_role`, not `commcare_list_apps`: HQ answers the same
+     `HQ_API_NOT_IN_PLAN` 401 for a space on Free and for one that does not
+     exist — ace#2551.) No program application is needed up front: Phase 4
+     creates the program, then sends and accepts the holding org's application
+     itself (4b). With `--keep-shared connect` the Connect checks are skipped:
+     the shared orgs are the ones every run already writes to.
    - **OCS: nothing.** The bot is not rebuilt (see 4d).
 5. **Already cloned?** `GET …/api/w/<from>/opps/<opp>/runs/<run-id>/clones` —
    a `done` clone into `<to>` means resume (Step 3 onward, skipping finished
@@ -239,46 +309,21 @@ reviewer to a workspace they cannot open.
 
 ### 4a. HQ
 
-1. `commcare_create_domain(hr_name: <hq_domain>)` — attempt it; a "taken" /
-   already-exists error is the skip (the space exists), not a failure. The
-   returned `domain` MUST equal `<hq_domain>` — if HQ derived a different slug,
-   stop and report it (the tenancy is then wrong). A forbidden on an existing
-   space ace@ is not in is a setup item: "add ace@dimagi-ai.com to HQ project
-   <hq_domain> as admin".
-1b. **Plan → Test or Demo Project.** `commcare_get_subscription(domain:
-   <hq_domain>)`. A space ACE just created reads `edition: Free`
-   (`is_paid_edition: false`; connect-ace-spark, 2026-09-29, ace#2552), and
-   Free has no REST API. Setting the space to "Test or Demo Project" puts it on
-   Enterprise, not invoiced (sanctioned by accounts, Gillian Javetski,
-   2026-10-02). It is a setting on the space alone. It has nothing to do with
-   the `ace-enterprise` project. A **Dimagi HQ superuser** makes it, never
-   ace@: HQ gates the page with
-   `require_superuser`, and as ace@ it redirects to `/no_permissions/`. So when
-   the read is Free, the step is the operator's. Print it verbatim, never
-   paraphrased: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs"
-   "$ACE_ROOT/scripts/release-check.ts" hq-flip-steps --domain <hq_domain>`.
-   It prints the exact URL
-   (`https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`),
-   **Subscription Type → Test or Demo Project → Update**, and the read-back
-   page. Its home is `/ace:release` Step 0.4, where the operator does it and
-   release-check blocks until it is done (`hq-plan-free`).
-
-   Mechanism and what NOT to do instead: `playbook/integrations/commcare-api.md
-   § New project spaces`. Record `clone.hq.plan: {edition, is_paid_edition}`
-   from the read, never from the request.
-   - **Connect will be rebuilt (no `--keep-shared connect`):** 3b and 4b need
-     the API. Do 2–3 (web views, work on Free), then **stop** before 3b with
-     the setup item. A rerun resumes there: re-read
-     `commcare_get_subscription` and continue only once it is paid.
-   - **`--keep-shared connect`:** nothing in the clone needs the API. Continue.
-     Step 5's release-check reports the `hq-plan-free` blocker, and the
-     operator does the step during `/ace:release` (Step 0.4).
-
-   Then `commcare_list_apps(domain: <hq_domain>)`: `200` → `clone.hq.api:
-   enabled`; `HQ_API_NOT_IN_PLAN` → `clone.hq.api: not-in-plan`. On a space
-   that reads paid, `not-in-plan` is a defect to report, not a setup item. The
-   copy, build, release and reviewers' web access are web views and work
-   either way. `clone.hq.api` decides 3b and is reported in 4b and Step 6.
+1. **The space is the operator's** (Step 0.6, item 1) — ACE does not create
+   it. Re-read it here, because 3b and 4b depend on it:
+   `commcare_get_subscription(domain: <hq_domain>)` must read
+   `is_paid_edition: true` (Test or Demo Project puts it on Enterprise, not
+   invoiced — sanctioned by accounts, Gillian Javetski, 2026-10-02), and
+   `commcare_list_apps(domain: <hq_domain>)` must answer 200. Record
+   `clone.hq.plan: {edition, is_paid_edition}` and `clone.hq.api: enabled`
+   from the reads, never from the operator's "done". Either read failing means
+   Step 0.7 was skipped or the space changed: **stop** and send the operator
+   checklist item 1b — the demo-mode step, verbatim: `npx tsx
+   "$CLAUDE_PLUGIN_ROOT/scripts/release-check.ts" hq-flip-steps --domain
+   <hq_domain>`. Mechanism and what NOT to do instead:
+   `playbook/integrations/commcare-api.md § New project spaces`. On a space
+   that reads paid, `HQ_API_NOT_IN_PLAN` is a defect to report, not a setup
+   item. The copy, build and release below are web views either way.
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
    downstream_domain: <hq_domain>, name: <source app name>, linked: false,
@@ -293,9 +338,8 @@ reviewer to a workspace they cannot open.
    app id. A blind retry makes a duplicate.
 3. `commcare_make_build` then `commcare_release_build` for each new app.
 3b. **Mint the opportunity's HQ key, restricted to this space** — skip it, and
-   record `clone.hq.key: {status: skipped, reason}`, when `--keep-shared
-   connect` (no opportunity will use it) or `clone.hq.api: not-in-plan` (a key
-   restricted to a space without API access reaches nothing). Otherwise:
+   record `clone.hq.key: {status: skipped, reason}`, only with `--keep-shared
+   connect` (no opportunity will use it). Otherwise (the default):
    `commcare_create_api_key(domain: <hq_domain>, name: "ace-clone-<hq_domain>")`
    → `{key_ref: "hq-key:ace-clone-<hq_domain>", key_last4, id}`. The partner's
    Connect opportunity will hold THIS key, not ACE's all-spaces
@@ -318,33 +362,37 @@ step.
 
 ### 4b. Connect — re-run Phase 4 in the target's orgs
 
-**Needs `clone.hq.api: enabled`.** Connect reads the apps it is pointed at
-through HQ with the opportunity's key, so 4b runs only after 4a.1b's
-Enterprise flip has been read back as paid. 4a stops before 3b otherwise.
+**This runs by default.** With the operator's orgs verified in Step 0.7, the
+clone rebuilds Connect for real: the program in the partner's program org, the
+opportunity held by the partner's org, reading the apps 4a copied through the
+space-restricted `hq-key:` from 4a.3b. Needs `clone.hq.api: enabled` (4a.1).
 No clone has yet run 4b end to end on a Test or Demo space. Record what
 Connect returns on the first one, so the next clone knows.
 
-**With `--keep-shared connect`: skip this step.** Keep the target run's copied
+**Escape hatch — `--keep-shared connect`: skip this step.** Only when the
+operator explicitly asked for it. Keep the target run's copied
 `products.connect` and `opp.yaml` `connect:` block as they are (they name the
 source program and opportunity in the shared orgs), and record
 `clone.connect: {status: kept-shared, pm_org, holding_org, opportunity_id}`.
 Report it loudly: the Connect opportunity still points at the SOURCE HQ apps
 (`connect-ace-prod`), while the partner's HQ access is to the copies in
-`<hq_domain>` — identical content, different project space. The minted
-`hq-key:` (3b) is unused until the Connect step runs for real. `release`
+`<hq_domain>` — identical content, different project space. To end the
+exception later, rerun the clone without the flag (the checklist then asks for
+the two orgs, and 3b + 4b run). `release`
 treats `kept-shared` as a shared tenant (only `--allow-shared connect` grants
 it).
 
-Otherwise:
+Otherwise (the normal path):
 
 Connect cannot move an opportunity (its holding org is fixed at creation), so
 the clone gets its own program and opportunity, built by the SAME Phase 4 skills
 that built the source — not a hand-rolled copy of them. Requires 4a (the
 opportunity must point at the rebuilt HQ apps).
 
-1. **Preflight already proved** both orgs exist with ace@ as admin and the
-   holding org can hold opportunities (Step 1.4). Connect org creation for a
-   partner is outside ACE — a missing org is a setup item, never guessed.
+1. **Step 0.7 already proved** both orgs exist with ace@ as Admin, the
+   program org has Program Manager on, and the holding org answers
+   `connect_list_opportunities`. The operator created them from the checklist
+   (items 2–3) — a missing org sends them back to it, never a guess.
 2. **Clear the copied Connect state in the TARGET only.**
    - Target `opp.yaml`: `update_yaml_file(merge: "two-level", patch:
      {connect: null})`. It names the SOURCE program, and
@@ -437,9 +485,8 @@ under "Before `/ace:release`", each with its owner and fix.
 ## Step 6 — Report
 
 One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
-on the new domain, or the HQ project dashboard on a `not-in-plan` space; not the
-call's own return value) and the HQ space's plan (`commcare_get_subscription`:
-edition, or the 4a.1b superuser setup item if it is still Free), or `NOT DONE` + reason, plus the Drive-link read-back
+on the new domain; not the call's own return value) and the HQ space's plan
+(`commcare_get_subscription`: edition), or `NOT DONE` + reason, plus the Drive-link read-back
 (source ids remaining in the target run_state: expected 0 outside comms-logs),
 plus every manual setup item, plus Step 5's release-check verdict and its
 blockers. End with: "Nothing was shared with anyone. When

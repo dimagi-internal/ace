@@ -331,6 +331,30 @@ To grant admin role:
 2. Members tab → either change the existing member's role to `Admin` or use the
    "Add Member" form (email + role=admin)
 
+### Org setup for a partner clone
+
+A clone (`/ace:clone-to-new-workspace`) rebuilds Connect in the partner's OWN
+two orgs, and the operator creates them (operator decision, Jon 2026-10-02):
+there is no org-create API, and "Enable Program Manager" is a staff-only
+field. **The single source of the URLs and clicks is
+`npx tsx scripts/clone-setup-checklist.ts print --workspace <ws> [--pm-org …] [--nm-org …]`**
+(`lib/clone-setup-checklist.ts`) — use it, don't copy URLs from here. In
+short: create each org at `https://connect.dimagi.com/register/organization/`
+(the creator becomes its Admin and lands on `/a/<slug>/opportunity/`, which is
+where the slug comes from); on the program org's
+`/a/<org>/organization/` tick **Enable Program Manager**
+(`OrganizationChangeForm.program_manager`, rendered only for
+`ORG_MANAGEMENT_SETTINGS_ACCESS` holders); on both, Members → Add Member →
+`ace@dimagi-ai.com`, role Admin. That add is a PENDING invite until accepted;
+`clone-setup-checklist.ts accept-invites` finds it in ace@'s mailbox and
+accepts it (an authenticated GET of `/a/<org>/organization/invite/<token>/`).
+Read-backs, live 2026-10-02: `/a/<org>/organization/` is 200 only for an org
+Admin (`org_admin_access_required`), and `/a/<org>/program/init/` is 200 only
+when the org has Program Manager on AND the user is its Admin
+(`OrgPMRequiredMixin`) — ace@ has no all-org access, so a 404 there really
+means "off" (the configured PM org 200, the NM org 404). `connect_list_programs`
+alone cannot tell: `program_home` renders for any org member.
+
 Without admin role, ace@dimagi-ai.com's view defaults to the
 network-member-side ("Apply to Program" buttons) and authoring atoms will
 fail with 403.

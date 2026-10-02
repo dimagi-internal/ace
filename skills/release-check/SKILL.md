@@ -118,8 +118,9 @@ dir. `$RC` below is
 7b. **HQ plan.** `commcare_get_subscription(domain: <the apps' HQ space>)` →
    save as `hq-plan.json`. The space comes from run_state
    (`products.apps.domain`, else the domain in an app's `hq_url`;
-   `hqDomainFromRunState`). A space ACE created is on Free until a Dimagi HQ
-   superuser sets it to "Test or Demo Project" (Enterprise, not invoiced). That is
+   `hqDomainFromRunState`). A new space is on Free until a Dimagi HQ
+   superuser sets it to "Test or Demo Project" (Enterprise, not invoiced) —
+   normally done at clone setup (`clone-to-new-workspace` checklist item 1b). That is
    blocker `hq-plan-free:<space>`, owned by **HQ superuser (operator)**,
    whose fix is the exact URL and clicks (`lib/hq-enterprise-flip.ts`, also
    printed by `$RC hq-flip-steps --domain <space>`). `/ace:release` Step 0.4

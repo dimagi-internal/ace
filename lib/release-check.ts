@@ -406,7 +406,8 @@ export interface HqPlanLite {
 
 /**
  * The run's HQ space must be on a paid plan before outsiders are let in. A
- * space ACE created starts on Free (ace#2552); the fix is one superuser step,
+ * new space starts on Free (ace#2552); the fix is one superuser step, normally
+ * done at clone setup (lib/clone-setup-checklist.ts item 1b),
  * so the blocker's `fix` IS that step, verbatim, with the URL (ace#2600).
  */
 export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): ReleaseFinding[] {
