@@ -124,11 +124,39 @@ trust this table):
 
 **`mode`:**
 
-- `keep-all` (default) — `decisions.yaml` carries ALL upstream rows, both AI
-  defaults and overrides. Use when iterating on one downstream phase.
-- `keep-overrides-only` — carries only rows with `status: overridden` from
-  phases before the fork. AI defaults are dropped so downstream re-derives them.
-  Use when you suspect upstream AI defaults shaped downstream phases badly.
+- `keep-all` (default) — every upstream row (phases before the fork) stays
+  LIVE, both AI defaults and overrides. Use when iterating on one downstream phase.
+- `keep-overrides-only` — only human-ruled rows (`overridden` /
+  `human-decided`) stay live; every AI default is RETIRED (below) so
+  downstream re-derives it. Use when you suspect upstream AI defaults shaped
+  downstream phases badly.
+
+**What the fork does to `decisions.yaml` — the history is kept, never
+dropped (ace#2582, operator decision 2026-10-02).** A row the fork does not
+keep live is RETIRED by ace-web (`opp_forker.py::_retire_decision_rows`):
+
+- its id moves to `<id>-<source-run-id>`, so the canonical id is FREE for the
+  re-run producer (`decisions_append_rows` skips an existing id — which is how
+  inherited rows used to beat the re-run);
+- it gets `superseded_by: <id>` — the plugin's own supersession field
+  (ace#1421), so `liveDecisions`, the decisions Doc, the build memo, the
+  run-summary page and carry-forward all already read it as history. The
+  target is absent until the phase re-runs; then the chain is ordinary;
+- it gets `inherited_from_run: <source-run-id>` (declared in
+  `lib/decisions-schema.ts` so appends preserve it), and the Doc labels it
+  *inherited, not this run's choice*.
+
+Retired: every row whose `<N>-` phase tag is at or after the fork phase (on a
+skill fork, the fork phase's rows whose `skill` ran before the fork skill stay
+live, like their artifacts). Never retired: human rulings, and pre-fork rows,
+which carry forward byte-for-byte. Contract test:
+`test/lib/decisions-fork-retired.test.ts` (fixture = the real
+`spark-facilitator/20261001-2208` rows run through ace-web's transform).
+Before this, ace-web resolved the row's `phase` tag (`3-commcare`) against
+AGENT names (`commcare-setup`), matched nothing, and kept every row live — the
+trim never fired on any real run. A fork made on a deploy older than ace-web's
+fix shows it: no `inherited_from_run` anywhere, and Phase 3+ rows live under
+their canonical ids.
 
 **Response** — `OppForkOut`: `{slug, run_id, working_session_slug}`. Note the
 field is `run_id`, not `new_run_id`.
@@ -479,4 +507,5 @@ something a caller can act on — not just that the route exists.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-02 | **A fork keeps the decision history but retires what it re-runs (ace#2582).** Rows at/after the fork point are moved to `<id>-<source-run-id>` and marked `superseded_by: <id>` + `inherited_from_run` by ace-web, instead of staying live under their canonical ids (where they silently beat the re-run's appends) — `spark-facilitator/20261001-2208` carried 33 Phase 4/5/8 rows it never ran and hand-minted 27 `-2208` corrections. Schema declares `inherited_from_run`; the Doc labels such rows as inherited. | ACE team |
 | 2026-10-01 | **Step 6b: re-compose the build memo after a fork past Phase 4.** `spark-facilitator/20260926-1800` (forked from 20260925-1536) carried its source's memo titled "run 20260925-1536", and its `products.connect.build_memo` pointed at the SOURCE run's Doc rather than the copy in its own `4-connect/` — so the run page showed a memo for a different run, and build-memo-eval flagged the label. `/ace:step build-memo <opp>/<run_id>` now runs after any fork whose `connect-setup` is done; the report states it. | ACE team |
