@@ -1643,6 +1643,14 @@ function findGroupInternalAdvance(
   return null;
 }
 
+/** Palette runFlows that ENTER a form (menu walk / case select / suite
+ * launch or re-entry) or LEAVE one (finalize). No form-advance chain can
+ * legitimately span one of these, so findFormAdvanceChain resets on them
+ * (ace#2575). Broader than ENTRY_STEP_RE, which marks only the steps that
+ * land on a form's FIRST screen. */
+const FORM_BOUNDARY_STEP_RE =
+  /file:\s*(?:learn-tap-module|learn-launch|learn-suite-reentry(?:-from-module)?|deliver-form-walk|deliver-case-select|deliver-launch|content-form-finish(?:-to-suite)?|form-submit)\.yaml/;
+
 /** Walk a recipe's step list and return the first chain of `minChain`+
  * consecutive form-advance steps with no answer step between them.
  * Returns null when no such chain exists. */
@@ -1658,9 +1666,21 @@ function findFormAdvanceChain(
   // they don't reset the chain (an extendedWaitUntil between two
   // chained form-advances is still the antipattern). The chain breaks
   // only on an explicit answer step.
+  //
+  // A FORM BOUNDARY also resets it (ace#2575). The threshold the caller
+  // passes is derived PER FORM (longest label run in one form + 2), so a
+  // chain must never span two forms — otherwise bare advances across
+  // several consecutive label-only lessons add up into one "chain" and
+  // fire on a correct walk. A boundary step is a palette runFlow that
+  // enters a form or leaves one (FORM_BOUNDARY_STEP_RE).
   let chainCount = 0;
   let chainStartLine = -1;
   for (const item of items) {
+    if (FORM_BOUNDARY_STEP_RE.test(item.text)) {
+      chainCount = 0;
+      chainStartLine = -1;
+      continue;
+    }
     const kind = classifyStepBlock(item.text);
     if (kind === 'form-advance') {
       if (chainCount === 0) chainStartLine = item.startLine;
