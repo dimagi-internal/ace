@@ -74,13 +74,14 @@ every merge mode). Report per row. Nothing else runs in this mode.
    link (`products.ocs_chatbot.public_url`), which goes in the invite email.
    OCS permissions are team-wide (see `share-run-access`).
 
-## Step 0.4 — The HQ space is on Enterprise (the one superuser step)
+## Step 0.4 — The HQ space is set to Test or Demo Project (the one superuser step)
 
 A space ACE created for the run (`clone-to-new-workspace` 4a) starts on HQ's
-Free plan. It goes onto accounts' **ace-enterprise** Enterprise subscription by
-ONE click-through that only a Dimagi **HQ superuser** can do. ace@ cannot: HQ
-restricts the page to superusers, and an enterprise subscription gives no
-self-serve path (ace#2552). **This release is where that step happens**, done
+Free plan (API closed). Setting it to **Test or Demo Project** puts it on HQ's
+Enterprise plan, not invoiced. That is ONE click-through on the space's own
+settings, and only a Dimagi **HQ superuser** can do it. ace@ cannot: HQ
+restricts the page to superusers (ace#2552). It does not involve the
+`ace-enterprise` project. **This release is where that step happens**, done
 by whoever is running `/ace:release` (or a superuser they ask).
 
 1. `commcare_get_subscription(domain: tenancy.hq_domain)`. If
@@ -94,12 +95,11 @@ by whoever is running `/ace:release` (or a superuser they ask).
    It prints this, for `<hq_domain>`:
    1. Signed in to CommCare HQ as a Dimagi **superuser**, open
       `https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`.
-      This is the new space's own page, not `ace-enterprise`'s.
    2. Under **Subscription Type**, choose **Test or Demo Project**.
    3. Press **Update**. HQ redirects to the space's Current Subscription page.
    4. Check that `https://www.commcarehq.org/a/<hq_domain>/settings/project/subscription/`
       now shows an **Enterprise** plan, not "CommCare Free Edition".
-3. `AskUserQuestion`: "Put `<hq_domain>` on Enterprise (steps above) — done?"
+3. `AskUserQuestion`: "Set `<hq_domain>` to Test or Demo Project (steps above) — done?"
    with options **Done — re-check** / **Stop the release**. On *Done*, re-read
    `commcare_get_subscription`. Continue only on `is_paid_edition: true`. Still
    Free → show the read (`edition`, `name`) and the steps again. Never take

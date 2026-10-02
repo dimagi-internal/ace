@@ -119,7 +119,7 @@ dir. `$RC` below is
    save as `hq-plan.json`. The space comes from run_state
    (`products.apps.domain`, else the domain in an app's `hq_url`;
    `hqDomainFromRunState`). A space ACE created is on Free until a Dimagi HQ
-   superuser moves it onto the ace-enterprise Enterprise plan. That is
+   superuser sets it to "Test or Demo Project" (Enterprise, not invoiced). That is
    blocker `hq-plan-free:<space>`, owned by **HQ superuser (operator)**,
    whose fix is the exact URL and clicks (`lib/hq-enterprise-flip.ts`, also
    printed by `$RC hq-flip-steps --domain <space>`). `/ace:release` Step 0.4

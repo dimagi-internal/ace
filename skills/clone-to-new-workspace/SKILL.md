@@ -32,10 +32,10 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - **Create a Connect org or an OCS team.** No API exists; the preflight lists
   a missing Connect org as a setup item (or use `--keep-shared connect`).
 - **Put the new HQ space on a paid plan.** A space ACE creates starts on Free
-  Edition (REST API closed). The agreed path is accounts' `ace-enterprise`
-  Enterprise subscription, converted per space by a Dimagi HQ **superuser**
-  ("Test or Demo Project"). ace@ is not a superuser, so 4a asks for it as one
-  exact setup item and reads the result back.
+  Edition (REST API closed). The fix is a Dimagi HQ **superuser** setting the
+  space to "Test or Demo Project" (Enterprise, not invoiced). ace@ is not a
+  superuser, so 4a asks for it as one exact setup item and reads the result
+  back.
 
 Everything else a clone needs is ACE's own job, not a note to a human: a
 missing target workspace, its Drive root, its default tenancy and its HQ
@@ -231,12 +231,14 @@ reviewer to a workspace they cannot open.
    stop and report it (the tenancy is then wrong). A forbidden on an existing
    space ace@ is not in is a setup item: "add ace@dimagi-ai.com to HQ project
    <hq_domain> as admin".
-1b. **Plan → Enterprise (ace-enterprise).** `commcare_get_subscription(domain:
+1b. **Plan → Test or Demo Project.** `commcare_get_subscription(domain:
    <hq_domain>)`. A space ACE just created reads `edition: Free`
    (`is_paid_edition: false`; connect-ace-spark, 2026-09-29, ace#2552), and
-   Free has no REST API. Accounts set up the `ace-enterprise` subscription for
-   exactly these spaces (Gillian Javetski, 2026-10-02). Each space is moved
-   onto it by a **Dimagi HQ superuser**, never by ace@: HQ gates the page with
+   Free has no REST API. Setting the space to "Test or Demo Project" puts it on
+   Enterprise, not invoiced (sanctioned by accounts, Gillian Javetski,
+   2026-10-02). It is a setting on the space alone. It has nothing to do with
+   the `ace-enterprise` project. A **Dimagi HQ superuser** makes it, never
+   ace@: HQ gates the page with
    `require_superuser`, and as ace@ it redirects to `/no_permissions/`. So when
    the read is Free, the step is the operator's. Print it verbatim, never
    paraphrased: `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs"
@@ -305,7 +307,7 @@ step.
 **Needs `clone.hq.api: enabled`.** Connect reads the apps it is pointed at
 through HQ with the opportunity's key, so 4b runs only after 4a.1b's
 Enterprise flip has been read back as paid. 4a stops before 3b otherwise.
-No clone has yet run 4b end to end on an ace-enterprise space. Record what
+No clone has yet run 4b end to end on a Test or Demo space. Record what
 Connect returns on the first one, so the next clone knows.
 
 **With `--keep-shared connect`: skip this step.** Keep the target run's copied
