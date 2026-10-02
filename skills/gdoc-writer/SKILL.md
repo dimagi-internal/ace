@@ -1,10 +1,6 @@
 ---
 name: gdoc-writer
-description: >
-  Publish an ad-hoc ACE deliverable (a scripts doc, a brief, a draft for review) as a Google Doc
-  authored by ace@dimagi-ai.com, filed under ACE's own Drive root in Projects/<project>/. Thin
-  stub over the shared `canopy gdoc` engine. NOT for opp-run artifacts, which file under
-  ACE/<opp>/runs/<run>/ through the run's own skills.
+description: Publish an ad-hoc ACE deliverable (not an opp run) as a Google Doc under ACE's Drive root, Projects/<project>/.
 ---
 
 # Google Doc Writer — ACE (stub over the shared `canopy gdoc` engine)
