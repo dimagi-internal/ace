@@ -2785,3 +2785,82 @@ describe('probeRecipeSanity — ace#1554 anchor spelling', () => {
     expect(verdict.failures.find((x) => x.class === 'input-anchor-skips-hint')).toBeUndefined();
   });
 });
+
+// ace#2575 — the chain must reset at a FORM BOUNDARY. The threshold is
+// per-form (longest label run in ONE form + 2), but the walker used to
+// count across the whole recipe, so bare advances over several
+// consecutive label-only lessons summed into one chain. Repro:
+// spark-facilitator/20261001-2208 journey-learn.yaml — 22 advances over
+// Lessons 2-6 (5 forms) against a per-form allowance of 21.
+describe('probeRecipeSanity — ace#2575 advance chain resets at form boundaries', () => {
+  const ADV = '- runFlow:\n    file: form-advance.yaml';
+  const advances = (n: number) => Array.from({ length: n }, () => ADV);
+  const enter = (form: string) =>
+    `- runFlow:\n    file: learn-tap-module.yaml\n    env:\n      FORM_NAME: "${form}"`;
+  const finishToSuite = '- runFlow:\n    file: content-form-finish-to-suite.yaml';
+
+  function chainFailure(body: string) {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [LABEL_HEAVY_LEARN_APP], // longest label run 4 → chains up to 5 legitimate
+      connectOpp: LIVE_OPP,
+    });
+    return verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap');
+  }
+
+  it('does NOT sum legitimate per-form label walks across consecutive lessons', () => {
+    // 5 + 5 + 5 = 15 bare advances in total, but never more than 5 inside
+    // one form. Before the fix this fired with "chains 6 consecutive".
+    const body = [
+      enter('Lesson 2'), ...advances(5), finishToSuite,
+      enter('Lesson 3'), ...advances(5), finishToSuite,
+      enter('Lesson 4'), ...advances(5), finishToSuite,
+    ].join('\n');
+    expect(chainFailure(body)).toBeUndefined();
+  });
+
+  it.each([
+    'learn-tap-module',
+    'learn-launch',
+    'learn-suite-reentry',
+    'learn-suite-reentry-from-module',
+    'deliver-form-walk',
+    'deliver-case-select',
+    'deliver-launch',
+    'content-form-finish',
+    'content-form-finish-to-suite',
+    'form-submit',
+  ])('resets the chain on a %s.yaml step', (flow) => {
+    const body = [...advances(5), `- runFlow:\n    file: ${flow}.yaml`, ...advances(5)].join('\n');
+    expect(chainFailure(body)).toBeUndefined();
+  });
+
+  it('STILL flags an over-long chain INSIDE one form (control)', () => {
+    const body = [enter('Lesson 2'), ...advances(6), finishToSuite].join('\n');
+    const f = chainFailure(body);
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('6');
+  });
+
+  it('STILL flags an over-long chain in the SECOND form after a clean first one (control)', () => {
+    const body = [
+      enter('Lesson 2'), ...advances(5), finishToSuite,
+      enter('Lesson 3'), ...advances(6), finishToSuite,
+    ].join('\n');
+    expect(chainFailure(body)).toBeDefined();
+  });
+
+  it('does NOT reset on non-boundary pass-through steps (control)', () => {
+    // takeScreenshot / extendedWaitUntil / an unrelated runFlow sit inside
+    // the form — the chain must carry across them as before.
+    const body = [
+      enter('Lesson 2'),
+      ...advances(3),
+      '- takeScreenshot: mid',
+      '- extendedWaitUntil:\n    visible: "x"\n    timeout: 5000',
+      '- runFlow:\n    file: some-helper.yaml',
+      ...advances(3),
+    ].join('\n');
+    expect(chainFailure(body)).toBeDefined();
+  });
+});
