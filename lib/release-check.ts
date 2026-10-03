@@ -21,6 +21,7 @@ import { parse as parseYaml } from 'yaml';
 import { validateQAResult } from './qa-types.js';
 import { checkOppPostcondition, type OppDecided, type OppReadback } from './connect-opp-postcondition.js';
 import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
+import { collapseSharedCauses, plainFinding } from './release-check-plain.js';
 
 export const RELEASE_CHECK_SCHEMA_VERSION = 1 as const;
 export const RELEASE_VERDICT_NAME = 'release-check_verdict.yaml';
@@ -47,6 +48,16 @@ export interface ReleaseFinding {
   detail: string;
   /** What to run / change to clear it. */
   fix: string;
+  /**
+   * Plain language for whoever releases the run — what is wrong, no ACE
+   * internals (skill names, payload paths). Filled by `buildReleaseVerdict`
+   * (lib/release-check-plain.ts); ace-web prefers it over `detail`.
+   */
+  summary?: string;
+  /** What to do, addressed to a person. ace-web prefers it over `fix`. */
+  action?: string;
+  /** ids of findings folded into this one because they share its root cause. */
+  merged?: string[];
 }
 
 /** One file in the run folder, as the inventory reads it. */
@@ -338,6 +349,8 @@ export interface SurfaceAuditFinding {
   where: string;
   detail: string;
   fix: string;
+  summary?: string;
+  action?: string;
 }
 
 export function assessSurfaceAudit(audit: { findings?: SurfaceAuditFinding[] } | null, claims?: { all_met?: boolean; unmet?: number; not_reached?: number } | null): ReleaseFinding[] {
@@ -351,6 +364,9 @@ export function assessSurfaceAudit(audit: { findings?: SurfaceAuditFinding[] } |
         id: `surface:${f.code}:${f.where}`.slice(0, 160), area: 'public-summary',
         severity: f.severity === 'broken' ? 'blocker' : 'warning', owner: 'run-surface-audit',
         detail: `${f.detail} (${f.where})`, fix: f.fix,
+        // REVIEWERS-UNDECLARED gets a sharper, link-naming plain line in
+        // lib/release-check-plain.ts; any other code keeps the audit's own.
+        ...(f.code !== 'REVIEWERS-UNDECLARED' && f.summary && f.action ? { summary: f.summary, action: f.action } : {}),
       });
     }
   }
@@ -477,7 +493,13 @@ export function buildReleaseVerdict(input: {
   readOnly?: boolean;
 }): ReleaseVerdict {
   const seen = new Set<string>();
-  const unique = input.findings.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
+  const deduped = input.findings.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
+  // One item per root cause, each with a plain `summary` / `action`
+  // (lib/release-check-plain.ts). `detail` / `fix` are kept for compatibility.
+  const unique = collapseSharedCauses(deduped).map((f) => ({
+    ...f,
+    ...(f.summary && f.action ? {} : plainFinding(f, { workspace: input.workspace })),
+  }));
   const blockers = unique.filter((f) => f.severity === 'blocker');
   const warnings = unique.filter((f) => f.severity === 'warning');
   const areas = Object.fromEntries(
@@ -516,7 +538,13 @@ export function releaseGate(
   }
   if (verdict.read_only) return { ok: false, reason: 'the latest release-check was a read-only dry run — run it for real' };
   if (verdict.verdict !== 'READY') {
-    const list = (verdict.blockers ?? []).map((b) => `- ${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')}`).join('\n');
+    const list = (verdict.blockers ?? [])
+      .map((b) =>
+        b.summary
+          ? `- ${b.summary} → ${b.action ?? b.fix}\n    (${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')})`
+          : `- ${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')}`,
+      )
+      .join('\n');
     return { ok: false, reason: `release-check says NOT_READY (${verdict.counts?.blockers ?? '?'} blocker(s)):\n${list}` };
   }
   const last = runLastWrite(current.files);
@@ -542,7 +570,15 @@ export function renderReleaseReport(v: ReleaseVerdict): string {
     lines.push('');
     if (!list.length) lines.push('None.');
     // A multi-line fix (the HQ superuser steps) stays inside its bullet.
-    for (const f of list) lines.push(`- **${f.area} · ${f.owner}** — ${f.detail}. *Fix:* ${f.fix.replace(/\n/g, '\n  ')}`);
+    for (const f of list) {
+      if (f.summary) {
+        lines.push(`- **${f.summary}** ${f.action ?? ''}`.trimEnd());
+        lines.push(`  - *For the build team (${f.area} · ${f.owner}):* ${f.detail}. *Fix:* ${f.fix.replace(/\n/g, '\n    ')}`);
+        if (f.merged?.length) lines.push(`  - *Same cause as:* ${f.merged.join(', ')}`);
+      } else {
+        lines.push(`- **${f.area} · ${f.owner}** — ${f.detail}. *Fix:* ${f.fix.replace(/\n/g, '\n  ')}`);
+      }
+    }
   }
   return lines.join('\n') + '\n';
 }
