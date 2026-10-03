@@ -253,6 +253,46 @@ payment. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts` fails if
 skill, template or playbook prose re-asserts that a repeated key is paid
 once.
 
+### A paid visit found false — what the holding org can do
+
+Read from `dimagi/commcare-connect` main @ `27223cc5` (2026-10-02; ace#2610).
+This is the mechanism that `training-llo-guide` and LLO-facing content must
+describe. The intuitive answer, "reject the visit", mostly does not work on
+an ACE opportunity.
+
+- **Manual approve/reject is off under automatic verification.**
+  `opportunity/decorators.py` `require_manual_visit_verification` returns 403
+  when `opportunity.automatic_visit_verification` is set. It wraps
+  `approve_visits`, `reject_visits`, `update_visit_status_import`,
+  `review_visit_import` and `user_visit_review` (`opportunity/views.py`). The
+  flag is set at create from the `automatic_visit_verification` switch
+  (`opportunity/forms.py`, `program/api/serializers.py`). See the section
+  above for why ACE opportunities run with it on.
+- **An auto-approved visit is locked anyway.** `reject_visits` excludes
+  `review_status = agree`, and `bulk_update_visit_status` puts those visits
+  in `locked_visits`. Auto-approval sets exactly `approved` / `agree`
+  (`form_receiver/processor.py`).
+- **The lever that works is the Payment Verification import.**
+  `update_completed_work_status_import` is `opp_standard_access_required` and
+  NOT wrapped by the manual-verification guard. `_bulk_update_completed_work_status`
+  (`visit_import.py`) sets a `CompletedWork` to `rejected` with a reason.
+  `tasks.bulk_update_payment_accrued` then recomputes with
+  `exclude(status=rejected)`. Unverified residual: whether the worker's
+  displayed earned total drops at once has not been observed live, so content
+  tells the LLO to check the Worker Payments tile before paying.
+- **Recorded payments are records, not money.** `payment_delete` deletes a
+  `Payment` row and pushes "There has been an adjustment to your earnings"
+  (`key: payment_rollback`). The LLO pays workers off-platform, so Connect
+  cannot claw anything back.
+- **Suspension is the PM's action.** `suspend_user` / `revoke_user_suspension`
+  are `opportunity_pm_required`. A suspended worker's subsequent visits are
+  set to `rejected` on arrival (`processor.py`: `if access.suspended`).
+
+What would falsify this: a holding-org admin rejecting an auto-approved visit
+from the Deliver view on an ACE opportunity, or a Payment Verification import
+row set to `rejected` that leaves `saved_payment_accrued` counted in the
+worker's earned total.
+
 ### Every Connect list VIEW is paginated at 20, and the payload never says so
 
 Connect renders its list pages through `django_tables2`, and the shared

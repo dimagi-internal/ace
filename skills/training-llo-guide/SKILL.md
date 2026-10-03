@@ -28,6 +28,8 @@ rebuilds only `training-llo-guide.md`.
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | LLO context on per-visit data shape |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain quoted in the "where the data lives" section |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
+| Connect (live) | `connect_get_opportunity(holding_org_slug, opportunity.id)` → `start_date`, `end_date` | **the delivery window**. This is the authoritative source; `run_state.yaml` does not carry the window under `products.connect`. Fallback: PDD `program_parameters.opportunity_{start,end}_date` |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/previews/connect-opportunity/_previews.yaml` (+ its PNGs) | **the LLO's own Connect screens**, captured as the holding (Network Manager) org: `01-overview` (dates, budget, Workers / Services Delivered / Worker Payments) and `02-verification` (Approved/Rejected, Earned/Paid). Required for screenshot grounding of every LLO-side action |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to ask questions" link |
 | Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
 | Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
@@ -67,6 +69,18 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - Verification rules (from `connect.verification_flags`):
   <human-readable list — GPS fence radius, photo-required, duplicate
   detection window, etc.>
+- Window: <start_date> to <end_date> (<N> days). Read the dates with
+  `connect_get_opportunity` and compute N with `opportunityWindow()`.
+- <the LLO's Connect opportunity overview, cited by its Drive link from
+  `4-connect/previews/connect-opportunity/` so step 7b embeds it>
+
+## When a paid record turns out to be false
+<REQUIRED. What to do when review shows a record was fabricated AFTER
+Connect approved it and accrued payment for it. Use only the mechanism in
+§ "A paid record found false" below. Cover: stopping further accrual,
+correcting the record, what to do about money already paid, and the
+consequence for the worker. Cite the verification-panel frame from
+`4-connect/previews`.>
 
 ## Pre-deployment UAT (do this before inviting FLWs)
 <derive a checklist from each journey's pass criteria in
@@ -82,6 +96,9 @@ For LLO operators overseeing FLW deployment of this opportunity.
   this opportunity in particular
 - For Connect platform issues: <support contact>
 - ACE program team: <ACE_GMAIL_ACCOUNT>
+- <partner/funder escalation contact. Name a person only if the run's
+  inputs, PDD or run_state carry one; otherwise use the marked placeholder
+  in § "Escalation contacts — no inferred backstory" below>
 ```
 
 ## Format rules
@@ -92,6 +109,23 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - **Quote real numbers from `run_state.yaml`.** Payment amounts, max
   counts, GPS fence values come from the actual Connect config — don't
   paraphrase or round.
+- **Take the window from the opportunity, never from a picture.** Read
+  `start_date` / `end_date` with `connect_get_opportunity` and compute the
+  length with `opportunityWindow()` from `lib/opportunity-window.ts`.
+  **Never quote a number of days you read off a screenshot.** The job card's
+  "Days to complete" counts down from the device clock to the end date
+  (`dimagi/commcare-android` `ConnectJobRecord.getDaysRemaining()`). A frame
+  captured on 2026-10-01 for a window ending 2027-02-26 reads 149. The
+  spark-facilitator guide printed that 149 next to a 116-day window
+  (ace#2610). If you describe the card, say it counts down to <end_date> and
+  leave the number out. `findDayCountDrift()` is the pre-write check.
+- **Show the LLO's own screens, not only the worker's.** Every LLO-side
+  action the guide names needs a frame: reading the opportunity overview,
+  the Workers tab, the verification and payment panels. Cite the matching
+  frame from `4-connect/previews/connect-opportunity/` by its Drive link.
+  Phone frames from `app-screenshot-capture` show what the worker sees. A
+  guide grounded only on those never shows the reader their own job; the
+  spark guide scored 5.0 on screenshot grounding for exactly this (ace#2610).
 - **Derive the Pre-deployment UAT checklist from per-journey
   `pass_criteria` in `pdd-to-app-journeys.md`.** Every journey's
   pass-criterion line becomes a tickable item. Don't paraphrase —
@@ -108,6 +142,67 @@ For LLO operators overseeing FLW deployment of this opportunity.
   zero of them, and its content eval passed anyway (ace#1418). See
   `skills/_training-template.md § Illustrated guides — render, THEN embed`.
 
+## A paid record found false — what Connect actually lets the LLO do
+
+Build the guide's "When a paid record turns out to be false" section on
+THIS mechanism and nothing else. It was read from `dimagi/commcare-connect`
+main @ `27223cc5` (2026-10-02, ace#2610). The durable copy, with source
+lines, is `playbook/integrations/connect-api.md § A paid visit found false —
+what the holding org can do`.
+
+1. **The per-visit Reject button is usually unavailable.** ACE opportunities
+   run with `automatic_visit_verification` on. Under that setting,
+   `require_manual_visit_verification` returns 403 on `reject_visits`,
+   `approve_visits`, the visit-status import and the review import. Even on a
+   manual-review opportunity, reject and the import both skip a visit that
+   was already auto-approved (`review_status = agree`). Do NOT tell the LLO to
+   "reject the visit in Connect".
+2. **Stop the accrual on the completed work.** Use the Payment Verification
+   import: export the completed-work status sheet from the opportunity, set
+   that row's status to `rejected` with a reason, and re-import it. The
+   holding org can do this (`opp_standard_access`), and automatic
+   verification does not gate it. Rejected completed work drops out of the
+   payment recompute. Before the next payment run, **check that the worker's
+   earned total on the opportunity's Worker Payments tile went down**. If it
+   did not, do not pay the record; escalate to the program manager.
+3. **Connect does not claw back money already paid.** The LLO pays workers
+   off-platform and records those payments in Connect. Deleting a recorded
+   payment (`payment_delete`) removes only the RECORD, and Connect pushes
+   "There has been an adjustment to your earnings" to the worker. Use it only
+   when a payment was recorded but never actually made. Recovering money a
+   worker was actually paid is between the LLO and the worker, under the
+   LLO's own terms. The guide must say so, and must tell the LLO not to
+   offset it against other workers' payments.
+4. **Stopping future payment to that worker is the program manager's
+   action.** `suspend_user` is PM-only. Once a worker is suspended, Connect
+   rejects their later visits on arrival. The LLO requests the suspension
+   and supplies the evidence.
+5. **The organisation fee follows the record.** A record rejected in step 2
+   stops accruing the per-visit organisation amount. Do not invoice it.
+
+If the PDD names a consequence ladder for the worker, quote it. If it does
+not, say the consequence is the LLO's decision under its own terms with the
+worker, and that the decision should be recorded. Do not invent a ladder.
+
+## Escalation contacts — no inferred backstory
+
+Name a partner, funder or program contact ONLY when the run's inputs, PDD
+or `run_state.yaml` name that person **in that role, with a way to reach
+them**. A person the PDD cites as a source of design answers is not, on
+that basis, the LLO's operational contact. In every other case, write a
+clearly marked placeholder that says who fills it and when:
+
+```markdown
+- **<Partner> programme contact:** _[to be named by <Partner> at onboarding — name, email, expected reply time]_
+```
+
+An honest placeholder is the correct output here, not a gap. CLAUDE.md
+§ "No inferred backstory" forbids the alternative, and
+`training-llo-guide-eval` scores a placeholder with an owner and a deadline
+the same as a named contact (ace#2610). For every tier you CAN name (the
+ACE program team, the support chatbot), give a channel and an expected
+response time.
+
 ## Process
 
 1. **Read inputs.** Drive paths in the table above.
@@ -117,6 +212,15 @@ For LLO operators overseeing FLW deployment of this opportunity.
    `connect.payment_units[].{unit_name, amount, max_visits_per_day,
    max_total_visits}`, `connect.verification_flags`. These are the
    non-negotiable values that get quoted verbatim in the guide.
+   **Then read the window:** call `connect_get_opportunity(organization_slug:
+   <products.connect.holding_org_slug>, opportunity_id:
+   <products.connect.opportunity.id>)` for `start_date` and `end_date`, then
+   compute `opportunityWindow(start_date, end_date)`. Use those dates and
+   that length everywhere the guide mentions time.
+   **Then list the LLO frames:** read
+   `4-connect/previews/connect-opportunity/_previews.yaml`. Wherever the guide
+   describes the opportunity overview or the verification / payment panels,
+   cite the matching frame by its Drive link.
 
 3. **Determine archetype.** From PDD frontmatter. For `focus-group`,
    "Quality watch" reframes around session conduct (consent flow,
@@ -134,6 +238,13 @@ For LLO operators overseeing FLW deployment of this opportunity.
 6. **Self-check before write.** Verify:
    - Every payment-unit number quoted matches `run_state.yaml` exactly
    - Every escalation trigger from PDD § Escalation is referenced
+   - `findDayCountDrift(markdown, opportunityWindow(start, end))` returns
+     `[]`, meaning no stated duration contradicts the configured window
+   - The "When a paid record turns out to be false" section is present and
+     uses only the mechanism in § "A paid record found false"
+   - At least one LLO-side frame from `4-connect/previews` is cited
+   - Every named contact traces to the inputs; every other contact is the
+     marked placeholder
    - The UAT checklist section has at least 5 line items (real
      checklists do)
    - Word count 500-1200 — operations docs should be scannable
@@ -207,7 +318,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
    - **Hard-number fidelity:** every payment / cap / GPS-fence number
      matches `run_state.yaml`
    - **Coverage:** every Layer-A verification rule + every PDD
-     escalation trigger referenced
+     escalation trigger referenced, plus the false-paid-record procedure
    - **Audience fit:** operations-tone, not FLW-walkthrough-tone
    - **UAT completeness:** every journey in `pdd-to-app-journeys.md`
      is represented by at least one checklist item, and each item's
@@ -244,6 +355,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 ## MCP Tools Used
 - `ace-gdrive`: `drive_set_anyone_with_link` — share the deliverable (ace#902).
 
+- `ace-connect`: `connect_get_opportunity` — the delivery window (ace#2610).
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
   human-facing prose, must render), `docs_batch_update` (step 7b — the
   `insertInlineImage` requests that put the screenshots on the page; driven by
@@ -295,3 +407,10 @@ The self-eval criterion must assert duplicate handling explicitly.
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
 - 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`), plus a format rule making filename citations first-class and a `screenshot grounding` self-eval criterion keyed to the PUBLISHED image count. The guide cited nine frames in prose and rendered none. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.
+- 2026-10-02: **Window from the opportunity, false paid records, LLO screens, honest contacts (ace#2610).** On `spark/spark-facilitator/20261001-2208` the guide had four defects. It printed "149 days to complete", which is the app's countdown on the capture date (`ConnectJobRecord.getDaysRemaining()`), next to a 116-day window. It had no procedure for a paid meeting later found fabricated. It showed only CBF phone screens. It could not name a Spark contact without inventing one. Fixes:
+  - Step 2 reads `start_date`/`end_date` via `connect_get_opportunity` and computes the length with `lib/opportunity-window.ts`; `findDayCountDrift` is the pre-write check.
+  - A new required "When a paid record turns out to be false" section is built on the Connect mechanism read from source (`commcare-connect` @ `27223cc5`).
+  - `4-connect/previews` is now an input for LLO-side grounding.
+  - A named contact must trace to the inputs; otherwise the guide uses a marked placeholder.
+
+  *Enforced:* `test/lib/opportunity-window.test.ts`, `test/skills/training-llo-guide-contract.test.ts`.
