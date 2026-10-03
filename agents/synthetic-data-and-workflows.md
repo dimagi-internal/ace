@@ -108,7 +108,7 @@ Its § Process (ace-run) C0–C7 runs, in order:
    labs-only program. The run's real network-manager org is never touched.
 2. **C2 — `semantic-registry-author`** (gated by `semantic-registry-author-qa`;
    then graded by `semantic-registry-author-eval` — run it, do not defer it: a
-   deferred eval is a gate release-check reports as never run, as it did on
+   deferred eval is a gate validate-release-readiness reports as never run, as it did on
    spark-facilitator/20260926-1800): the registry from the
    PDD — the followed entity as the model, one indicator per PDD success metric /
    payment rule / review signal with its PDD section, targets only where the PDD

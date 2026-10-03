@@ -1236,7 +1236,7 @@ if [ -n "$ENV_FILE" ]; then
   if [ -n "$PAT_TOKEN" ]; then
     pass "ace_web_pat_token: ACE_WEB_PAT_TOKEN is set (${#PAT_TOKEN} chars)"
   else
-    warn "ace_web_pat_token: ACE_WEB_PAT_TOKEN not set" "run /ace:setup — it signs in to ace-web as ace@dimagi-ai.com (the same automatic Connect login ACE uses everywhere) and writes ACE's own token to this machine's .env. Only ace-web features need it: bin/ace-bind, fork-run, clone-to-new-workspace, /ace:release, share-run-access, the video skills, upload-transcript."
+    warn "ace_web_pat_token: ACE_WEB_PAT_TOKEN not set" "run /ace:setup — it signs in to ace-web as ace@dimagi-ai.com (the same automatic Connect login ACE uses everywhere) and writes ACE's own token to this machine's .env. Only ace-web features need it: bin/ace-bind, fork-run, clone-to-new-workspace, /ace:validate-release-readiness, /ace:release, share-run-access, the video skills, upload-transcript."
   fi
 
   # ACE_WEB_BASE_URL is the public base URL of the ace-web deployment. The

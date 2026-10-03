@@ -1,5 +1,6 @@
 //
-// release-check — is this run ready to put in front of a partner?
+// validate-release-readiness (formerly release-check) — is this run ready to
+// put in front of a partner, and exactly what will releasing it share?
 //
 // "Ready" used to be a claim. This module makes it a verdict a gate computes,
 // over EVIDENCE the existing gates already produce — it re-implements none of
@@ -10,9 +11,12 @@
 // READY iff there are no blockers.
 //
 // Every finding names its OWNER (the skill whose output it is about) and the
-// FIX ROUTE (what to run). `releaseGate` is what `/ace:release` calls before it
-// invites anyone: the most recent verdict must be READY and newer than the
-// run's last write.
+// FIX ROUTE (what to run). On READY the verdict also carries the RELEASE PLAN
+// (lib/release-plan.ts) — the exact share actions `/ace:release` will execute,
+// hashed. `releaseGate` is what `/ace:release` calls before it shares anything:
+// the most recent verdict must be READY, for this run, newer than the run's
+// last write, over the same run_state, for exactly the requested reviewers and
+// options, with an untampered plan. Any mismatch is a refusal, never adapted to.
 //
 // Pure. `scripts/release-check.ts` gathers the evidence (Drive inventory via
 // the service account, live probes) and writes the files.
@@ -22,10 +26,18 @@ import { validateQAResult } from './qa-types.js';
 import { checkOppPostcondition, type OppDecided, type OppReadback } from './connect-opp-postcondition.js';
 import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
 import { collapseSharedCauses, plainFinding } from './release-check-plain.js';
+import { driveFileId } from './preview-capture.js';
+import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
-export const RELEASE_CHECK_SCHEMA_VERSION = 1 as const;
-export const RELEASE_VERDICT_NAME = 'release-check_verdict.yaml';
-export const RELEASE_REPORT_NAME = 'release-check_report.md';
+export const RELEASE_CHECK_SCHEMA_VERSION = 2 as const;
+export const RELEASE_VERDICT_KIND = 'release-readiness' as const;
+export const RELEASE_VERDICT_NAME = 'release-readiness_verdict.yaml';
+export const RELEASE_REPORT_NAME = 'release-readiness_report.md';
+/** The v1 (`release-check`) pair — still read by ace-web; never releasable (no plan). */
+export const LEGACY_VERDICT_NAME = 'release-check_verdict.yaml';
+export const LEGACY_REPORT_NAME = 'release-check_report.md';
+/** The verdict's own files, excluded from "the run's last write". */
+export const VERDICT_FILE = /(^|\/)release-(?:check|readiness)_[^/]*$/;
 
 export type ReleaseArea =
   | 'qa'
@@ -37,6 +49,9 @@ export type ReleaseArea =
   | 'chatbot'
   | 'apps'
   | 'hq'
+  | 'reviewers'
+  | 'drive'
+  | 'release-plan'
   | 'run-state';
 
 export interface ReleaseFinding {
@@ -114,7 +129,7 @@ function producerLatest(files: readonly RunFile[], producer: string): RunFile | 
     const base = f.path.split('/').pop() ?? '';
     // `<producer>.md`, `<producer>_<role>.yaml`, `<producer>.source.md` — not another skill sharing the prefix.
     if (!(base.startsWith(`${producer}.`) || base.startsWith(`${producer}_`))) continue;
-    if (/_verdict|qa_result|release-check/.test(base)) continue;
+    if (/_verdict|qa_result|release-(?:check|readiness)_/.test(base)) continue;
     if (!best || t(f.modifiedTime) > t(best.modifiedTime)) best = f;
   }
   return best;
@@ -329,7 +344,7 @@ export interface LinkProbe {
 }
 
 export function assessLinks(probes: readonly LinkProbe[] | null): ReleaseFinding[] {
-  if (probes === null) return [{ id: 'links-unchecked', area: 'links', severity: 'blocker', owner: 'release-check', detail: 'output links were not probed', fix: 'scripts/release-check.ts links' }];
+  if (probes === null) return [{ id: 'links-unchecked', area: 'links', severity: 'blocker', owner: 'validate-release-readiness', detail: 'output links were not probed', fix: 'scripts/release-check.ts links' }];
   return probes
     .filter((p) => !p.ok)
     .map((p) => ({
@@ -353,13 +368,23 @@ export interface SurfaceAuditFinding {
   action?: string;
 }
 
-export function assessSurfaceAudit(audit: { findings?: SurfaceAuditFinding[] } | null, claims?: { all_met?: boolean; unmet?: number; not_reached?: number } | null): ReleaseFinding[] {
+export function assessSurfaceAudit(
+  audit: { findings?: SurfaceAuditFinding[] } | null,
+  claims?: { all_met?: boolean; unmet?: number; not_reached?: number } | null,
+  opts: { plannedDriveIds?: ReadonlySet<string> } = {},
+): ReleaseFinding[] {
   const out: ReleaseFinding[] = [];
   if (!audit) {
     out.push({ id: 'surface-unaudited', area: 'public-summary', severity: 'blocker', owner: 'run-surface-audit', detail: 'the public run summary was not audited', fix: 'npx tsx scripts/audit-run-surface.ts <opp> <run> --json --run-state … --run-files …' });
   } else {
     for (const f of audit.findings ?? []) {
       if (f.severity === 'improvement') continue;
+      // A private document the release plan shares (a `drive_share` action) is
+      // the plan doing its job, not a blocker: sharing happens at release.
+      if (f.code === 'LINK-PRIVATE-DELIVERABLE') {
+        const id = driveFileId(f.detail.split(' ')[0]);
+        if (id && opts.plannedDriveIds?.has(id)) continue;
+      }
       out.push({
         id: `surface:${f.code}:${f.where}`.slice(0, 160), area: 'public-summary',
         severity: f.severity === 'broken' ? 'blocker' : 'warning', owner: 'run-surface-audit',
@@ -431,10 +456,10 @@ export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): 
     return [{ id: 'hq-domain-unknown', area: 'hq', severity: 'blocker', owner: 'commcare-setup', detail: 'run_state records no HQ project space for the apps (phases.commcare-setup.products.apps.domain)', fix: 'record the apps\' domain in run_state (clone-to-new-workspace 4a.4)' }];
   }
   if (!plan) {
-    return [{ id: 'hq-plan-unchecked', area: 'hq', severity: 'blocker', owner: 'release-check', detail: `the plan of HQ space ${hqDomain} was not read`, fix: `commcare_get_subscription(domain: ${hqDomain}) → pass it as --hq-plan` }];
+    return [{ id: 'hq-plan-unchecked', area: 'hq', severity: 'blocker', owner: 'validate-release-readiness', detail: `the plan of HQ space ${hqDomain} was not read`, fix: `commcare_get_subscription(domain: ${hqDomain}) → pass it as --hq-plan` }];
   }
   if (plan.domain && plan.domain !== hqDomain) {
-    return [{ id: 'hq-plan-wrong-space', area: 'hq', severity: 'blocker', owner: 'release-check', detail: `--hq-plan is for ${plan.domain}, but the run's apps are in ${hqDomain}`, fix: `commcare_get_subscription(domain: ${hqDomain})` }];
+    return [{ id: 'hq-plan-wrong-space', area: 'hq', severity: 'blocker', owner: 'validate-release-readiness', detail: `--hq-plan is for ${plan.domain}, but the run's apps are in ${hqDomain}`, fix: `commcare_get_subscription(domain: ${hqDomain})` }];
   }
   if (plan.is_paid_edition) return [];
   return [{
@@ -448,14 +473,28 @@ export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): 
 // The verdict
 // ---------------------------------------------------------------------------
 
+/** The release plan's problems (lib/release-plan.ts) as findings. */
+export function assessPlan(problems: readonly PlanProblem[]): ReleaseFinding[] {
+  return problems.map((p) => ({
+    id: p.id,
+    area: (p.id.startsWith('reviewers') ? 'reviewers' : p.id.startsWith('drive') ? 'drive' : 'release-plan') as ReleaseArea,
+    severity: p.severity,
+    owner: 'validate-release-readiness',
+    detail: p.detail,
+    fix: p.fix,
+    summary: p.summary,
+    action: p.action,
+  }));
+}
+
 export interface ReleaseVerdict {
   schema_version: typeof RELEASE_CHECK_SCHEMA_VERSION;
-  kind: 'release-check';
+  kind: typeof RELEASE_VERDICT_KIND;
   workspace: string;
   opp: string;
   run_id: string;
   checked_at: string;
-  /** Newest write in the run folder the check saw (release-check files excluded). */
+  /** Newest write in the run folder the check saw (the verdict's own files excluded). */
   run_last_write: string;
   verdict: 'READY' | 'NOT_READY';
   /** True when the check ran read-only (no gate re-runs, no writes) — informational, never releasable. */
@@ -465,13 +504,21 @@ export interface ReleaseVerdict {
   areas: Record<ReleaseArea, { blockers: number; warnings: number }>;
   blockers: ReleaseFinding[];
   warnings: ReleaseFinding[];
+  /** Who the run is being released to (required for READY). */
+  reviewers: Reviewer[];
+  /** `runStateHash` of run_state.yaml as validated — the release refuses a different one. */
+  run_state_hash: string;
+  /** `planHash(release_plan)`, or null when there is no plan. */
+  plan_hash: string | null;
+  /** The exact share actions `/ace:release` executes — present only on READY. */
+  release_plan: ReleasePlan | null;
 }
 
 export function runLastWrite(files: readonly RunFile[]): string {
   let max = 0;
   let iso = '';
   for (const f of files) {
-    if (/release-check_/.test(f.path)) continue;
+    if (VERDICT_FILE.test(f.path)) continue;
     const v = t(f.modifiedTime);
     if (v > max) {
       max = v;
@@ -481,7 +528,7 @@ export function runLastWrite(files: readonly RunFile[]): string {
   return iso;
 }
 
-const AREAS: ReleaseArea[] = ['qa', 'eval', 'connect', 'previews', 'links', 'public-summary', 'chatbot', 'apps', 'hq', 'run-state'];
+const AREAS: ReleaseArea[] = ['qa', 'eval', 'connect', 'previews', 'links', 'public-summary', 'chatbot', 'apps', 'hq', 'reviewers', 'drive', 'release-plan', 'run-state'];
 
 export function buildReleaseVerdict(input: {
   workspace: string;
@@ -491,6 +538,9 @@ export function buildReleaseVerdict(input: {
   files: readonly RunFile[];
   findings: readonly ReleaseFinding[];
   readOnly?: boolean;
+  reviewers?: readonly Reviewer[];
+  runStateHash?: string;
+  plan?: ReleasePlan | null;
 }): ReleaseVerdict {
   const seen = new Set<string>();
   const deduped = input.findings.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
@@ -505,38 +555,62 @@ export function buildReleaseVerdict(input: {
   const areas = Object.fromEntries(
     AREAS.map((a) => [a, { blockers: blockers.filter((f) => f.area === a).length, warnings: warnings.filter((f) => f.area === a).length }]),
   ) as ReleaseVerdict['areas'];
+  const reviewers = [...(input.reviewers ?? [])];
+  // No reviewers → no plan → never READY, whatever else passed.
+  const ready = blockers.length === 0 && reviewers.length > 0 && !!input.plan;
+  const plan = ready ? input.plan! : null;
   return {
     schema_version: RELEASE_CHECK_SCHEMA_VERSION,
-    kind: 'release-check',
+    kind: RELEASE_VERDICT_KIND,
     workspace: input.workspace,
     opp: input.opp,
     run_id: input.runId,
     checked_at: input.checkedAt,
     run_last_write: runLastWrite(input.files),
-    verdict: blockers.length === 0 ? 'READY' : 'NOT_READY',
+    verdict: ready ? 'READY' : 'NOT_READY',
     read_only: !!input.readOnly,
     counts: { blockers: blockers.length, warnings: warnings.length },
     areas,
     blockers,
     warnings,
+    reviewers,
+    run_state_hash: input.runStateHash ?? '',
+    plan_hash: plan ? planHash(plan) : null,
+    release_plan: plan,
   };
 }
 
+/** What `/ace:release` was asked to do — compared to the plan, never adapted to it. */
+export interface ReleaseRequest {
+  workspace: string;
+  opp: string;
+  runId: string;
+  files: readonly RunFile[];
+  /** `runStateHash` of run_state.yaml as it is now. */
+  runStateHash: string;
+  reviewers: readonly Reviewer[];
+  options: ReleaseOptions;
+}
+
 /**
- * `/ace:release`'s gate. Releasable iff the most recent verdict is READY, was
- * not a read-only dry run, belongs to THIS workspace/opp/run, and is newer than
- * every write in the run folder since (a gate re-run or a fix after the check
- * makes it stale).
+ * `/ace:release`'s gate. Releasable iff the most recent verdict is a READY
+ * release-readiness verdict, was not a read-only dry run, belongs to THIS
+ * workspace/opp/run, is newer than every write in the run folder, was taken
+ * over the same run_state, carries an untampered plan, and that plan is for
+ * exactly the reviewers and options requested now. Every mismatch refuses
+ * with its reason; none is adapted to.
  */
-export function releaseGate(
-  verdict: Partial<ReleaseVerdict> | null,
-  current: { workspace: string; opp: string; runId: string; files: readonly RunFile[] },
-): { ok: boolean; reason: string } {
-  if (!verdict) return { ok: false, reason: `no ${RELEASE_VERDICT_NAME} in the run — run release-check first` };
-  if (verdict.workspace !== current.workspace || verdict.opp !== current.opp || verdict.run_id !== current.runId) {
-    return { ok: false, reason: `the verdict is for ${verdict.workspace}/${verdict.opp}/${verdict.run_id}, not ${current.workspace}/${current.opp}/${current.runId} — run release-check on this run (in this workspace)` };
+export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: ReleaseRequest): { ok: boolean; reason: string } {
+  const again = 'run /ace:validate-release-readiness on this run with the same reviewers and flags';
+  const kind = (verdict as { kind?: string } | null)?.kind;
+  if (!verdict) return { ok: false, reason: `no ${RELEASE_VERDICT_NAME} in the run — ${again}` };
+  if (kind !== RELEASE_VERDICT_KIND || verdict.schema_version !== RELEASE_CHECK_SCHEMA_VERSION) {
+    return { ok: false, reason: `the verdict is a ${kind ?? 'unknown'} v${verdict.schema_version ?? '?'} verdict with no release plan — ${again}` };
   }
-  if (verdict.read_only) return { ok: false, reason: 'the latest release-check was a read-only dry run — run it for real' };
+  if (verdict.workspace !== current.workspace || verdict.opp !== current.opp || verdict.run_id !== current.runId) {
+    return { ok: false, reason: `the verdict is for ${verdict.workspace}/${verdict.opp}/${verdict.run_id}, not ${current.workspace}/${current.opp}/${current.runId} — ${again} (in this workspace)` };
+  }
+  if (verdict.read_only) return { ok: false, reason: `the latest validation was a read-only dry run — ${again}` };
   if (verdict.verdict !== 'READY') {
     const list = (verdict.blockers ?? [])
       .map((b) =>
@@ -545,21 +619,44 @@ export function releaseGate(
           : `- ${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')}`,
       )
       .join('\n');
-    return { ok: false, reason: `release-check says NOT_READY (${verdict.counts?.blockers ?? '?'} blocker(s)):\n${list}` };
+    return { ok: false, reason: `validate-release-readiness says NOT_READY (${verdict.counts?.blockers ?? '?'} blocker(s)):\n${list}` };
+  }
+  const plan = verdict.release_plan;
+  if (!plan || !Array.isArray(plan.actions)) return { ok: false, reason: `the READY verdict carries no release plan — ${again}` };
+  if (!verdict.plan_hash || planHash(plan) !== verdict.plan_hash) {
+    return { ok: false, reason: 'the release plan does not match its recorded hash — it was edited after validation; refusing' };
+  }
+  if (plan.workspace !== current.workspace || plan.opp !== current.opp || plan.run_id !== current.runId) {
+    return { ok: false, reason: `the release plan is for ${plan.workspace}/${plan.opp}/${plan.run_id} — ${again}` };
+  }
+  const want = reviewersKey(current.reviewers);
+  const have = reviewersKey(plan.reviewers ?? []);
+  if (want !== have) {
+    return { ok: false, reason: `the reviewers requested (${want || 'none'}) are not the reviewers validated (${have || 'none'}) — ${again}` };
+  }
+  for (const k of ['forward_source', 'allow_cross_workspace_forward', 'allow_shared_connect'] as const) {
+    if (!!current.options[k] !== !!plan.options?.[k]) {
+      return { ok: false, reason: `${k.replace(/_/g, '-')} is ${current.options[k] ? 'on' : 'off'} now but was ${plan.options?.[k] ? 'on' : 'off'} when validated — ${again}` };
+    }
+  }
+  if (!verdict.run_state_hash || verdict.run_state_hash !== current.runStateHash) {
+    return { ok: false, reason: `run_state.yaml changed after validation (hash ${verdict.run_state_hash || 'none'} → ${current.runStateHash}) — ${again}` };
   }
   const last = runLastWrite(current.files);
   if (t(last) > t(verdict.checked_at)) {
-    return { ok: false, reason: `the run changed after the check (last write ${last}, checked ${verdict.checked_at}) — re-run release-check` };
+    return { ok: false, reason: `the run changed after the validation (last write ${last}, validated ${verdict.checked_at}) — ${again}` };
   }
-  return { ok: true, reason: `READY, checked ${verdict.checked_at}, nothing written since` };
+  return { ok: true, reason: `READY, validated ${verdict.checked_at}, nothing written since; plan ${verdict.plan_hash} (${plan.actions.length} share actions)` };
 }
 
 /** The human report — plain markdown (rendered as a Google Doc by the skill). */
-export function renderReleaseReport(v: ReleaseVerdict): string {
+export function renderReleaseReport(v: ReleaseVerdict, planText?: string): string {
   const lines: string[] = [];
-  lines.push(`# Release check — ${v.opp} / ${v.run_id}`);
+  lines.push(`# Release readiness — ${v.opp} / ${v.run_id}`);
   lines.push('');
-  lines.push(`**${v.verdict === 'READY' ? 'READY to release' : 'NOT READY to release'}** — ${v.counts.blockers} blocker(s), ${v.counts.warnings} warning(s). Checked ${v.checked_at} in workspace \`${v.workspace}\`${v.read_only ? ' (read-only dry run — not releasable as recorded)' : ''}.`);
+  lines.push(`**${v.verdict === 'READY' ? 'READY to release' : 'NOT READY to release'}** — ${v.counts.blockers} blocker(s), ${v.counts.warnings} warning(s). Validated ${v.checked_at} in workspace \`${v.workspace}\`${v.read_only ? ' (read-only dry run — not releasable as recorded)' : ''}.`);
+  lines.push('');
+  lines.push(`Reviewers: ${v.reviewers?.length ? v.reviewers.map((r) => `${r.email} (${r.role})`).join(', ') : 'none named — a run cannot be READY without them'}.`);
   lines.push('');
   lines.push('| Area | Blockers | Warnings |');
   lines.push('|---|---|---|');
@@ -579,6 +676,14 @@ export function renderReleaseReport(v: ReleaseVerdict): string {
         lines.push(`- **${f.area} · ${f.owner}** — ${f.detail}. *Fix:* ${f.fix.replace(/\n/g, '\n  ')}`);
       }
     }
+  }
+  if (v.release_plan && planText) {
+    lines.push('');
+    lines.push('## Release plan — what `/ace:release` will share, and nothing else');
+    lines.push('');
+    lines.push('```');
+    lines.push(planText.trimEnd());
+    lines.push('```');
   }
   return lines.join('\n') + '\n';
 }

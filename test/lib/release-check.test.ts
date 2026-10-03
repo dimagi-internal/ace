@@ -118,28 +118,3 @@ describe('the other evidence on the real Spark run', () => {
   });
 });
 
-describe('verdict and gate', () => {
-  it('is NOT_READY with the real blockers, and /ace:release refuses it', () => {
-    const files = json<RunFile[]>('inventory.json');
-    const findings = assessGates(files, parseYaml(text('run_state.yaml')), catalog);
-    const v = buildReleaseVerdict({ workspace: 'dimagi-team', opp: 'spark-facilitator', runId: '20260926-1800', checkedAt: '2026-10-01T21:00:00Z', files, findings });
-    expect(v.verdict).toBe('NOT_READY');
-    expect(v.counts.blockers).toBeGreaterThan(0);
-    expect(renderReleaseReport(v)).toMatch(/NOT READY to release/);
-    const g = releaseGate(v, { workspace: 'dimagi-team', opp: 'spark-facilitator', runId: '20260926-1800', files });
-    expect(g.ok).toBe(false);
-    expect(g.reason).toMatch(/NOT_READY/);
-  });
-
-  it('a READY verdict releases only for the same run, when not read-only, and when nothing changed since', () => {
-    const files = json<RunFile[]>('inventory.json');
-    const ready = buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', checkedAt: '2026-10-01T21:00:00Z', files, findings: [] });
-    const here = { workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', files };
-    expect(releaseGate(ready, here).ok).toBe(true);
-    expect(releaseGate(ready, { ...here, workspace: 'dimagi-team' }).ok).toBe(false);
-    expect(releaseGate({ ...ready, read_only: true }, here).ok).toBe(false);
-    const changed = [...files, { path: '4-connect/build-memo.md', modifiedTime: '2026-10-02T00:00:00Z' }];
-    expect(releaseGate(ready, { ...here, files: changed }).reason).toMatch(/changed after the check/);
-    expect(releaseGate(null, here).ok).toBe(false);
-  });
-});

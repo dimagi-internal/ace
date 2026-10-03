@@ -26,9 +26,12 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 
 ## What this does NOT do
 
-- **Invite anyone.** Reviewers are invited last, by `release`, after everything
-  is set up — nobody should see a half-built clone.
-- **Redirect the source's links.** Also `release`.
+- **Invite anyone.** Reviewers are invited last, by `release`, after
+  `validate-release-readiness` has checked and repaired everything and planned
+  every grant — nobody should see a half-built clone.
+- **Redirect the source's links.** That is an explicit, opt-in item of the
+  release plan (`--forward-source`), and validation refuses it for a source in
+  another workspace (every clone's case) unless the operator overrides it.
 - **Create the HQ project space, turn on its demo mode, or create the Connect
   orgs.** The operator does those, from one checklist ACE prints at the start
   (Step 0.6) — operator decision, Jon 2026-10-02: *"When we are doing a clone,
@@ -555,13 +558,16 @@ turns n newlines into 2n−1 CRLFs, so every round trip doubles the blank
 lines. The script reads Docs through `docTextFromExport`, which inverts it.
 Record `clone.asset_refs: {status: done, files, left_on_source}`.
 
-## Step 5 — Release-check the clone (report, do not block)
+## Step 5 — Validate the clone's release readiness (report, do not block)
 
-Run `Skill(release-check)` on `<to>/<opp>/<run-id>` — the CLONE, in the target
-workspace — so the clone tells you at once whether it is releasable. It writes
-`release-check_verdict.yaml` + `release-check_report.md` into the cloned run.
-NOT READY does not undo or fail the clone; its blockers go into the report below
-under "Before `/ace:release`", each with its owner and fix.
+Run `Skill(validate-release-readiness)` on `<to>/<opp>/<run-id>` — the CLONE,
+in the target workspace — so the clone tells you at once what stands between it
+and a release. Pass the reviewers if the operator named them; without them the
+verdict is NOT READY by construction (`reviewers-missing`) and everything else
+is still checked and repaired. It writes `release-readiness_verdict.yaml` +
+`release-readiness_report.md` into the cloned run. NOT READY does not undo or
+fail the clone; its blockers go into the report below under "Before
+`/ace:release`", each with its owner and fix.
 
 ## Step 6 — Report
 
@@ -570,6 +576,9 @@ on the new domain; not the call's own return value) and the HQ space's plan
 (`commcare_get_subscription`: edition), or `NOT DONE` + reason, plus the Drive-link read-back
 (source ids remaining in the target run_state: expected 0 outside comms-logs),
 plus 4e's rewrite (files changed, and every place left on the source on
-purpose — e.g. the Phase 8 solicitation), plus every manual setup item, plus Step 5's release-check verdict and its
-blockers. End with: "Nothing was shared with anyone. When
-everything is ready, run `/ace:release <to>/<opp>/<run-id>`."
+purpose — e.g. the Phase 8 solicitation), plus every manual setup item, plus Step 5's release-readiness verdict and its
+blockers. End with: "Nothing was shared with anyone. Next:
+`/ace:validate-release-readiness <to>/<opp>/<run-id> --reviewers <email[:role]>,…`
+— it checks and fixes everything and, when READY, shows you exactly what will
+be shared and every email. Then `/ace:release <to>/<opp>/<run-id> --reviewers …`
+(the same reviewers) shares exactly that, and nothing else."

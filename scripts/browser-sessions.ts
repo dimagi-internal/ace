@@ -1,6 +1,6 @@
 /**
  * Headless browser sessions for every host an ACE run's outputs live on —
- * shared by `scripts/output-preview-capture.ts` and `scripts/release-check.ts`
+ * shared by `scripts/output-preview-capture.ts` and `scripts/release-check.ts` (validate-release-readiness)
  * so the two never disagree about how a session is obtained.
  *
  *   connect, hq  PlaywrightSession (mcp/connect/auth) — probes Connect AND HQ,

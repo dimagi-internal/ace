@@ -52,7 +52,9 @@ describe('release-check plain language', () => {
   it('never makes a NOT READY verdict READY (control: a lone surface warning stays a warning)', () => {
     expect(collapseSharedCauses([SPARK[1]])).toEqual([SPARK[1]]);
     const v = buildReleaseVerdict({ workspace: 'spark', opp: 'o', runId: 'r', checkedAt: 'x', files: [], findings: [SPARK[1]] });
-    expect(v.verdict).toBe('READY');
+    expect(v.counts.blockers).toBe(0);
+    // …READY additionally needs named reviewers and a release plan (validate-release-readiness).
+    expect(v.verdict).toBe('NOT_READY');
     expect(v.warnings[0].summary).toBeTruthy();
   });
 
@@ -77,7 +79,7 @@ describe('release-check plain language', () => {
     const report = renderReleaseReport(v);
     expect(report).toContain("**Nobody has checked that the Spark reviewers");
     expect(report).toContain('For the build team');
-    const gate = releaseGate(v, { workspace: 'spark', opp: 'spark-facilitator', runId: '20261001-2208', files: [] });
+    const gate = releaseGate(v, { workspace: 'spark', opp: 'spark-facilitator', runId: '20261001-2208', files: [], runStateHash: '', reviewers: [], options: { forward_source: false, allow_cross_workspace_forward: false, allow_shared_connect: false } });
     expect(gate.ok).toBe(false);
     expect(gate.reason).toContain('Name the Spark reviewers');
   });

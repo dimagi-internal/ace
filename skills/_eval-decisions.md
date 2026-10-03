@@ -174,7 +174,8 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 |---|---|---|
 | `email-communicator` | not applicable | Utility — sends mail. |
 | `decisions-render` | not applicable | Utility — renders decisions.yaml. |
-| `release-check` | not applicable | Deterministic roll-up of other gates' verdicts; the judgement lives in the gates it consumes. |
+| `validate-release-readiness` | not applicable | Deterministic roll-up of other gates' verdicts plus a deterministic release plan; the judgement lives in the gates it consumes. |
+| `release-check` | not applicable | Retired name of `validate-release-readiness` (a stub). |
 | `output-preview-capture` | not applicable | Utility — screenshots of outputs other skills built; the frame-by-frame look in its own Process is the only judgement, and it never gates. |
 | `decisions-sync` | not applicable | Utility — syncs decisions log. |
 | `upload-transcript` | not applicable | Utility — ingests JSONL transcripts. |

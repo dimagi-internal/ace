@@ -81,9 +81,9 @@ export interface Finding {
   fix: string;
   /** Which of the twelve 2026-08-14 defects this rule exists to catch. */
   defect?: string;
-  /** Plain language for whoever releases the run (no payload paths, no flags). release-check prefers it. */
+  /** Plain language for whoever releases the run (no payload paths, no flags). validate-release-readiness prefers it. */
   summary?: string;
-  /** What to do, addressed to a person. release-check prefers it. */
+  /** What to do, addressed to a person. validate-release-readiness prefers it. */
   action?: string;
 }
 
