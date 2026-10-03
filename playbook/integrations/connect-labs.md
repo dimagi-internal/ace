@@ -466,6 +466,26 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
   computed-style probe returns a plausible colour for a utility that does
   not exist and yields false passes. (ace#1662.)
 
+- **Style `render_code` with `window.LabsReport`, not hand-written Tailwind.**
+  labs publishes its shared report library on `window.LabsReport` to every
+  render (source `components/workflow/report/` in connect-labs; the authoring
+  guide's §4c lists it). It is the house look of the KMC and generic indicator
+  reports: `ReportHeader`, `Card`, `SectionTitle`, `Tabs`, `Notice`, `Pill`,
+  `Button`, `HeadlineTiles`, scorecard cells, peer and trend charts, and since
+  VERSION 4 the scenario pieces (`StatTiles`, `Field`, `NumberField`,
+  `RangeField`, `Segmented`, `RangeStrip`). A render built from them looks like
+  every other report, picks up improvements on deploy, and sidesteps most of
+  the purge trap above, because the library's own classes ship in the bundle.
+  **When a render needs a look the library lacks, add it to the library** (a
+  connect-labs PR with a contract test) instead of inlining it; until that
+  deploys, gate on `R.VERSION` and fall back to a copy compiled from the same
+  source. The utility lint above still applies to whatever page-level classes
+  remain. Worked example: the KMC cost-effectiveness explorer (workflow 6627)
+  and connect-labs#2178. Origin: 2026-10-03, Jon — "use the improved styling
+  the semantic reports have ... we should be building up really strong styles
+  we can re-use"; the explorer's first cut was hand-styled because neither the
+  authoring guide nor these skills mentioned the library.
+
 - **`award_response` succeeded but `opp.yaml.selected_llo` is null.**
   The labs `award_response` call is server-side authoritative for the
   award, but the ACE-side write to `opp.yaml.selected_llo` is the
