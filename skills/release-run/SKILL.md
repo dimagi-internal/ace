@@ -44,7 +44,7 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`. `$RC` is
-`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-check.ts"`;
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`;
 `$FLAGS` is `--reviewers "<list>"` plus the flags given.
 
 ## Revoke mode (`--revoke-shared`)

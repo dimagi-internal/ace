@@ -46,7 +46,7 @@ describe('qaResultWriteRefusal', () => {
 });
 
 describe('verdictWriteRefusal', () => {
-  const RC = join(__dirname, '../fixtures/release-check/spark-20260926-1800');
+  const RC = join(__dirname, '../fixtures/release-readiness/spark-20260926-1800');
   it("refuses Spark's real learn-app verdict (a repeated key) and accepts a real well-formed one", async () => {
     const { verdictWriteRefusal } = await import('../../lib/qa-result-write-guard');
     const inv = JSON.parse(readFileSync(join(RC, 'inventory.json'), 'utf8')) as Array<{ path: string; text?: string }>;

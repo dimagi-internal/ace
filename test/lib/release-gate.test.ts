@@ -11,10 +11,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { assessGates, buildReleaseVerdict, releaseGate, renderReleaseReport, type RunFile } from '../../lib/release-check';
+import { assessGates, buildReleaseVerdict, releaseGate, renderReleaseReport, type RunFile } from '../../lib/release-readiness';
 import { buildReleasePlan, runStateHash } from '../../lib/release-plan';
 
-const FIX = join(__dirname, '../fixtures/release-check/spark-20260926-1800');
+const FIX = join(__dirname, '../fixtures/release-readiness/spark-20260926-1800');
 const json = <T>(n: string): T => JSON.parse(readFileSync(join(FIX, n), 'utf8')) as T;
 const rsText = readFileSync(join(FIX, 'run_state.yaml'), 'utf8');
 const catalog = { qaSkills: new Set(['idea-to-pdd']), evalSkills: new Set(['build-memo']) };
@@ -100,7 +100,7 @@ describe('the release gate refuses every mismatch', () => {
     tampered.release_plan.actions.push({ step: 99, id: 'hq:evil@x.org', system: 'hq', kind: 'hq_invite', email: 'evil@x.org', target: 'connect-ace-spark' });
     expect(releaseGate(tampered, here).reason).toMatch(/does not match its recorded hash/);
   });
-  it('a legacy release-check (v1) verdict has no plan and is refused', () => {
-    expect(releaseGate({ ...ready, kind: 'release-check', schema_version: 1 } as never, here).reason).toMatch(/no release plan/);
+  it('a verdict of any other kind or schema has no plan and is refused', () => {
+    expect(releaseGate({ ...ready, kind: 'other', schema_version: 1 } as never, here).reason).toMatch(/no release plan/);
   });
 });

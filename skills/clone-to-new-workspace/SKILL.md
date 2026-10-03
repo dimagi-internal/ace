@@ -333,7 +333,7 @@ reviewer to a workspace they cannot open.
    from the reads, never from the operator's "done". Either read failing means
    Step 0.7 was skipped or the space changed: **stop** and send the operator
    checklist item 1b — the demo-mode step, verbatim: `npx tsx
-   "$CLAUDE_PLUGIN_ROOT/scripts/release-check.ts" hq-flip-steps --domain
+   "$CLAUDE_PLUGIN_ROOT/scripts/release-readiness.ts" hq-flip-steps --domain
    <hq_domain>`. Mechanism and what NOT to do instead:
    `playbook/integrations/commcare-api.md § New project spaces`. On a space
    that reads paid, `HQ_API_NOT_IN_PLAN` is a defect to report, not a setup

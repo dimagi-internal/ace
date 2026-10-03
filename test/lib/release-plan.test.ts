@@ -2,8 +2,8 @@
  * lib/release-plan.ts — the exact share actions /ace:release executes.
  */
 import { describe, expect, it } from 'vitest';
-import { assessSurfaceAudit } from '../../lib/release-check';
-import { collapseSharedCauses } from '../../lib/release-check-plain';
+import { assessSurfaceAudit } from '../../lib/release-readiness';
+import { collapseSharedCauses } from '../../lib/release-readiness-plain';
 import {
   ACCEPT_LINK_TOKEN,
   buildReleasePlan,

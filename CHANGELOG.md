@@ -5,6 +5,15 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1655 — 2026-10-03
+
+**`release-check` is gone (owner instruction, 2026-10-03).** The deprecated `/ace:release-check` alias
+and the `skills/release-check` stub are deleted; `lib/release-check*.ts` → `lib/release-readiness*.ts`,
+`scripts/release-check.ts` → `scripts/release-readiness.ts`, tests and fixtures likewise. Nothing reads
+or accepts `release-check_verdict.yaml` / `release-check_report.md` any more: the gate, the run-write
+filter and the clone path classifier know only `release-readiness_*`. Entries below this one are
+history and keep the old name.
+
 ## 0.13.1626 — 2026-10-01
 
 **Training decks: every screen slide is bound to a real frame or merged — never shipped empty; phones are

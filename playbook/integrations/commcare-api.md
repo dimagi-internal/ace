@@ -86,7 +86,7 @@ operator through it when run interactively, and is the fallback. It
 blocks on it (`hq-plan-free:<space>`, owner *HQ superuser (operator)*) with the
 exact URL and clicks as its fix, and ACE verifies with
 `commcare_get_subscription`. Wording lives in `lib/hq-enterprise-flip.ts`,
-printed by `scripts/release-check.ts hq-flip-steps --domain <space>` and used by
+printed by `scripts/release-readiness.ts hq-flip-steps --domain <space>` and used by
 the clone checklist.
 
 The form's banner calls Test or Demo spaces *"internal Dimagi test space[s],

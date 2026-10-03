@@ -1,12 +1,12 @@
 /**
- * release-check findings carry a plain `summary` + `action`, and one root
+ * release-readiness findings carry a plain `summary` + `action`, and one root
  * cause is one item. Fixture: the two findings spark/spark-facilitator/
  * 20261001-2208's verdict carried on 2026-10-03, verbatim.
  */
 import { describe, expect, it } from 'vitest';
 
-import { buildReleaseVerdict, renderReleaseReport, releaseGate, type ReleaseFinding } from '../../lib/release-check';
-import { collapseSharedCauses, linkList, plainFinding, productLabel } from '../../lib/release-check-plain';
+import { buildReleaseVerdict, renderReleaseReport, releaseGate, type ReleaseFinding } from '../../lib/release-readiness';
+import { collapseSharedCauses, linkList, plainFinding, productLabel } from '../../lib/release-readiness-plain';
 import { plainLanguageFindings } from '../../lib/decision-review';
 
 const SPARK: ReleaseFinding[] = [
@@ -32,7 +32,7 @@ const SPARK: ReleaseFinding[] = [
 const verdict = () =>
   buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20261001-2208', checkedAt: '2026-10-03T12:00:00Z', files: [], findings: SPARK });
 
-describe('release-check plain language', () => {
+describe('release-readiness plain language', () => {
   it('folds the incomplete review-page eval into the finding that stopped it — one item, still NOT READY', () => {
     const v = verdict();
     expect(v.verdict).toBe('NOT_READY');

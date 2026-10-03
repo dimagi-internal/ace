@@ -97,7 +97,7 @@ Invoke the `connect-opp-setup` skill.
   `connect-opp-setup-eval` once the opportunity is configured. Writes
   `4-connect/connect-opp-setup-eval_verdict.yaml`. The eval existed and was
   registered (`_eval-decisions.md`: has eval) but nothing dispatched it, so no
-  run ever had the verdict — release-check (now validate-release-readiness) flagged it missing on
+  run ever had the verdict — validate-release-readiness flagged it missing on
   spark-facilitator/20260926-1800.
 - **Depends on:** Step 1 (needs program UUID); Phase 3 outputs (needs
   CommCare app metadata).
