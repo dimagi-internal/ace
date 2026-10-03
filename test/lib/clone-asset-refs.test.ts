@@ -177,6 +177,7 @@ describe('classifyClonePath', () => {
     ['decisions.gdoc', 'skip'],
     ['8-solicitation-management/solicitation-create_published.md', 'skip'],
     ['release-check_report.md', 'skip'],
+    ['release-readiness_verdict.yaml', 'skip'],
     ['4-connect/connect-setup_summary.md', 'skip'],
     ['3-commcare/app-release-qa_result.yaml', 'note'],
     ['5-ocs/ocs-widget-handoff-eval_verdict.yaml', 'note'],

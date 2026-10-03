@@ -22,7 +22,7 @@
  *   - skip:    an audit trail (decisions log — its source rows are superseded
  *     by the rebuild's own rows), a phase the operator has kept on the source
  *     (Phase 8 solicitation by default), files a rebuild re-authored itself
- *     (4-connect after 4b), or a file regenerated later (release-check, README).
+ *     (4-connect after 4b), or a file regenerated later (validate-release-readiness, README).
  *
  * Pure: the caller walks Drive (`scripts/clone-asset-rewrite.ts`).
  */
@@ -306,7 +306,7 @@ export function classifyClonePath(path: string, opts: ClassifyOpts = {}): CloneF
   if (keep.includes(top)) return 'skip';
   if (segs.some((x) => x === 'comms-log' || x.endsWith('_comms-log'))) return 'skip';
   if (/^decisions\b/.test(base)) return 'skip';
-  if (/^release-check_/.test(base) || base === 'README.md' || base === 'run_state.yaml') return 'skip';
+  if (/^release-(?:check|readiness)_/.test(base) || base === 'README.md' || base === 'run_state.yaml') return 'skip';
   // 4b re-runs Phase 4, which re-authors 4-connect from the clone's own products;
   // what it says about the source there is deliberate provenance.
   if (opts.connectRebuilt && top === '4-connect') return 'skip';

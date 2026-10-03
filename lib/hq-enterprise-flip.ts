@@ -13,11 +13,11 @@
 // `_setup_subscription`), and the enterprise console has no add-space view.
 // So a Dimagi HQ superuser does it, once per space: since 2026-10-02 while
 // setting the space up from the clone's operator checklist
-// (lib/clone-setup-checklist.ts, item 1b), with `/ace:release` Step 0.4 as the
-// re-check and fallback.
+// (lib/clone-setup-checklist.ts, item 1b), with `/ace:validate-release-readiness`
+// (step 5) as the re-check and fallback.
 //
 // This module is the single wording of that step, so the clone checklist,
-// release-check and release-run all show the operator the same URL and clicks.
+// and validate-release-readiness both show the operator the same URL and clicks.
 
 export const HQ_BASE_URL = 'https://www.commcarehq.org';
 

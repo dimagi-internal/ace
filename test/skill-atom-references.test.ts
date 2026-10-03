@@ -83,6 +83,9 @@ const ALLOWLIST = new Set([
   'connect_pm_org',
   'connect_holding_org',
   'ocs_team',
+  // Release-plan action KINDS (lib/release-plan.ts ReleaseAction.kind), not atoms.
+  'connect_org_member',
+  'drive_share',
   // ---- Another plugin's tools, named so a skill can warn against them ----
   'docs_insert_email_block',  // chrome-sales' gdrive MCP, NOT an ACE atom — gdoc-email-drafts names it as the provenance of ACE's own docs_insert_email_blocks and says not to call it from ACE
   // ---- Field names / payload keys (not atoms) ----

@@ -145,7 +145,17 @@ function sentence(s: string): string {
  * Readiness never changes: a fold keeps the highest severity.
  */
 export function collapseSharedCauses(findings: readonly ReleaseFinding[]): ReleaseFinding[] {
-  const out = findings.map((f) => ({ ...f }));
+  let out = findings.map((f) => ({ ...f }));
+  // No reviewers named (validate-release-readiness `reviewers-missing`) IS why
+  // the review page reports its member-only links unchecked — one cause.
+  const missing = out.find((f) => f.id === 'reviewers-missing');
+  if (missing) {
+    const folded = out.filter((f) => /^surface:REVIEWERS-UNDECLARED:/.test(f.id));
+    if (folded.length) {
+      missing.merged = [...(missing.merged ?? []), ...folded.map((f) => f.id)];
+      out = out.filter((f) => !folded.includes(f));
+    }
+  }
   const evalIdx = out.findIndex((f) => /^eval-below-band:run-surface-audit-eval/.test(f.id) && /\bincomplete\b/.test(f.detail));
   const surface = out.filter((f) => /^surface:/.test(f.id));
   if (evalIdx >= 0 && surface.length > 0) {

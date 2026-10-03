@@ -81,7 +81,8 @@ accounts to stop it being billed. Don't use any of these as substitutes.
 is `@require_superuser`; as ace@ the page 302s to `/no_permissions/`
 (observed 2026-10-02 on `connect-ace-spark`). So it is an **operator step**:
 for a clone, done at setup (checklist item 1b) and verified before anything is
-rebuilt; `/ace:release` Step 0.4 re-checks it and is the fallback. `release-check`
+rebuilt; `/ace:validate-release-readiness` (step 5) re-checks it, walks the
+operator through it when run interactively, and is the fallback. It
 blocks on it (`hq-plan-free:<space>`, owner *HQ superuser (operator)*) with the
 exact URL and clicks as its fix, and ACE verifies with
 `commcare_get_subscription`. Wording lives in `lib/hq-enterprise-flip.ts`,

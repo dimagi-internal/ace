@@ -1,214 +1,121 @@
 ---
 name: release-run
 description: >
-  Release a run to outside reviewers: audit its public summary, forward an
-  already-shared link to it, then — last — invite each reviewer to the run's
-  own HQ space, Connect org and ace-web workspace. Approval-gated. Run after
-  clone-to-new-workspace, when everything is set up.
+  Release a run to outside reviewers: execute the release plan that
+  validate-release-readiness wrote — the HQ, Connect, Drive and ace-web grants
+  and the emails, in order — and nothing else. Approval-gated. Makes no
+  content changes.
 disable-model-invocation: true
 ---
 
 # release-run
 
-`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--forward-source] [--allow-shared connect]`
+`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
 `/ace:release <workspace>/<opp>/<run-id> --revoke-shared`
 
-The external-facing step after `clone-to-new-workspace`. The clone put the run
-in its own workspace and tenancy; this makes it ready to look at and then lets
-the reviewers in. **Everything is set up before anyone is invited** — nobody
-should see a half-built run — and the ace-web workspace invite is the very last
-thing, because it is what the reviewer actually opens.
+**Releasing is sharing, and only sharing.** Owner decision (Jonathan,
+2026-10-03): *"when validate release readiness passes it means executing
+release doesn't change anything other than sharing externally."* Every check
+and every content change — the gates, the HQ plan, the review-page audit, the
+repairs, which systems each reviewer may be granted, which Drive documents need
+sharing, the text of every email — happened in
+`/ace:validate-release-readiness` (`skills/validate-release-readiness`), which
+wrote them into the run's verdict as a hashed **release plan**. This skill
+re-reads that plan, refuses it on any mismatch, shows it for approval, executes
+its share actions in order, proves each by read-back, and records the release.
+
+It makes **NO content changes**: no audit, no polish, no gate re-runs, no doc
+edits, no decisions or run_state changes beyond the `released:` record. If
+something looks wrong, STOP and re-validate; never fix it here.
+*Enforced:* `test/skills/release-run-shares-only.test.ts`.
 
 Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 
 ## Inputs
 
 - `<workspace>/<opp>/<run-id>` — the run to release, normally a clone.
-- `--reviewers` — emails, each optionally `:viewer|editor` (default `viewer`).
-- `--from-thread <gmail-thread-id>` — instead of `--reviewers`: read the ace@
-  thread that asked for the review (`canopy email read <id>`, or `gog gmail
-  thread get <id> -a ace@dimagi-ai.com --client canopy -j`) and take every
-  participant whose domain is in `tenancy.labs_allowed_domains` — the partner's
-  own people, never Dimagi staff on the cc line. Show the derived list in the
-  Step 4 approval table; the human approves names, not a lookup.
-- `--forward-source` — the source run's public summary link was already sent
-  to these reviewers (Spark's case): make it land on this run.
-- `--allow-shared connect` — **escape hatch** (Jon, 2026-09-29), only for a
-  clone made with `--keep-shared connect`: invite outside reviewers into the
-  SHARED Connect orgs (the tenancy's `connect_pm_org` and
-  `connect_holding_org`, i.e. `ace-pm-org` / `ace-nm-org`) even though that
-  exposes every ACE opportunity in them. Since 2026-10-02 a normal clone has
-  the partner's own orgs (the operator creates them from the clone's setup
-  checklist), so its Connect is `done` and needs no flag. Every such grant is
-  recorded as a shared grant to revoke. Connect is the only system this flag
-  applies to.
+- `--reviewers` / `--from-thread` — **the same reviewers given to the
+  validation** (from a thread: the same derivation, its non-Dimagi participants
+  whose domain is in the tenancy's `labs_allowed_domains`). The gate compares
+  them exactly — one extra, one missing or one different role is a refusal.
+- `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared
+  connect` — must be exactly the flags the validation was run with (they are
+  plan options). They do not change what is executed; the plan does.
 
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
-owner of `<workspace>`.
+owner of `<workspace>`. `$RC` is
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-check.ts"`;
+`$FLAGS` is `--reviewers "<list>"` plus the flags given.
 
 ## Revoke mode (`--revoke-shared`)
 
-Run when a review on the shared orgs ends, or once the run has been re-cloned
-into the partner's own orgs. Bind (Step 0.1),
-read `released.shared_grants` from the run's `run_state.yaml`, show them all
-for approval as one list, then for each row not yet revoked:
+Un-sharing, not releasing: run when a review on the shared orgs ends, or once
+the run has been re-cloned into the partner's own orgs. Bind (Step 1), read
+`released.shared_grants` from the run's `run_state.yaml`, show them all for
+approval as one list, then for each row not yet revoked:
 `connect_remove_org_member(organization_slug: <org>, email)`. It reads back
 both member tables itself; `removed` / `invite-revoked` / `not-present` are all
 a revoked grant. Write each row back with `revoked_at` (the whole
-`shared_grants` array via `localFilePath` — arrays are replaced wholesale by
-every merge mode). Report per row. Nothing else runs in this mode.
+`released.shared_grants` array via `localFilePath` — arrays are replaced
+wholesale by every merge mode). Report per row. Nothing else runs in this mode.
 
-## Step 0 — Bind and check the tenancy is the reviewers' own
+## Step 1 — Bind and gate
 
 1. `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <workspace>/<opp>` — every grant below is
    then checked against this opp's tenancy by the tenancy guard.
-2. Read the tenancy (`bin/ace-bind --show`) and the run's `run_state.yaml`
-   `clone:` block. For each **non-Dimagi** reviewer, a system is grantable only
-   if the run's asset there was rebuilt into this run's own area:
-   - **HQ:** `clone.hq.status == done` (the apps live in `tenancy.hq_domain`,
-     which holds nothing else).
-   - **Connect:** `clone.connect.status == done`.
-   - **Labs:** `clone.labs.status == done`.
-   A system that is still the shared tenant (no clone, `not-done`, or
-   `kept-shared`) is **never** granted to an outside reviewer — every grant
-   there opens every ACE run. Report it `NOT GRANTED — shared tenant` instead.
-   **The one exception** is Connect with `--allow-shared connect`: grant it,
-   and record it as a shared grant (Step 5).
-3. **OCS: nobody gets an account.** Reviewers chat through the bot's public
-   link (`products.ocs_chatbot.public_url`), which goes in the invite email.
-   OCS permissions are team-wide (see `share-run-access`).
-
-## Step 0.4 — The HQ space is set to Test or Demo Project (the one superuser step)
-
-A new HQ project space starts on HQ's Free plan (API closed). Setting it to
-**Test or Demo Project** puts it on HQ's Enterprise plan, not invoiced. That is
-ONE click-through on the space's own settings, and only a Dimagi **HQ
-superuser** can do it. ace@ cannot: HQ restricts the page to superusers
-(ace#2552). It does not involve the `ace-enterprise` project. Since
-2026-10-02 the operator does it while setting the space up, from
-`clone-to-new-workspace`'s setup checklist (item 1b), and the clone verifies
-it — so a cloned run normally passes here on the first read. This step stays
-as the re-check, and as the fallback for a space that skipped the checklist,
-done by whoever is running `/ace:release` (or a superuser they ask).
-
-1. `commcare_get_subscription(domain: tenancy.hq_domain)`. If
-   `is_paid_edition: true`, go to Step 0.5. (The shared `connect-ace-prod`
-   reads paid, so a run in the shared space passes here.)
-2. Free → print the step for the operator, **verbatim** from the shared
-   wording, so the URL and clicks never drift:
+2. Resolve the run folder (`resolve_opp_path`), download
+   `release-readiness_verdict.yaml` and `run_state.yaml` (`drive_read_file`
+   `writeToPath`; an absent verdict is a refusal), and inventory the run:
    ```bash
-   $RC hq-flip-steps --domain <tenancy.hq_domain>
+   $RC inventory --run-folder <run folder id> --out inventory.json
+   $RC gate --workspace <ws> --opp <opp> --run <run-id> --verdict release-readiness_verdict.yaml \
+     --inventory inventory.json --run-state run_state.yaml $FLAGS
    ```
-   It prints this, for `<hq_domain>`:
-   1. Signed in to CommCare HQ as a Dimagi **superuser**, open
-      `https://www.commcarehq.org/a/<hq_domain>/settings/project/internal_subscription_management/`.
-   2. Under **Subscription Type**, choose **Test or Demo Project**.
-   3. Press **Update**. HQ redirects to the space's Current Subscription page.
-   4. Check that `https://www.commcarehq.org/a/<hq_domain>/settings/project/subscription/`
-      now shows an **Enterprise** plan, not "CommCare Free Edition".
-3. `AskUserQuestion`: "Set `<hq_domain>` to Test or Demo Project (steps above) — done?"
-   with options **Done — re-check** / **Stop the release**. On *Done*, re-read
-   `commcare_get_subscription`. Continue only on `is_paid_edition: true`. Still
-   Free → show the read (`edition`, `name`) and the steps again. Never take
-   "done" as the evidence.
-4. The previous release-check verdict still carries the `hq-plan-free`
-   blocker, so run `/ace:release-check <workspace>/<opp>/<run-id>` again (it
-   re-reads the plan) before Step 0.5's gate.
+   Exit 0 only when the verdict is a READY release-readiness verdict for THIS
+   workspace/opp/run, not a dry run, nothing in the run was written after it,
+   `run_state.yaml` hashes the same as when validated, the plan matches its
+   hash, and the reviewers and flags are exactly the validated ones.
+   Otherwise **STOP**: print the gate's reason and tell the operator to run
+   `/ace:validate-release-readiness <workspace>/<opp>/<run-id> $FLAGS`. Do not
+   adapt to a mismatch — not by dropping a reviewer, not by skipping an action,
+   not by fixing anything.
 
-Record `released.hq_plan: {edition, checked_at}` in Step 5.
+## Step 2 — Show the plan, approve once
 
-## Step 0.5 — The run must be READY (release-check)
+`$RC plan-show --verdict release-readiness_verdict.yaml` prints the grant table
+(Reviewer × HQ / Connect / Labs / OCS / ace-web), the Drive shares, whether the
+source link is forwarded (and, if so, whether it is another workspace's page),
+the ordered steps, and the full text of every email. Show it verbatim and
+`AskUserQuestion`: **Release — execute exactly this** / **Stop**. Nothing is
+shared before *Release*. Then re-run the Step 1 gate (fresh inventory, fresh
+run_state) — the approval may have taken a while — and stop on a non-zero exit.
 
-**Nobody is invited to a run release-check has not passed.** Inventory the run
-and run the gate:
+## Step 3 — Execute the plan, in order, nothing else
 
-```bash
-RC="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs $ACE_ROOT/scripts/release-check.ts"
-$RC inventory --run-folder <run folder id> --out inventory.json
-# download <run>/release-check_verdict.yaml (drive_read_file writeToPath) — absent is a refusal
-$RC gate --workspace <workspace> --opp <opp> --run <run-id> --verdict release-check_verdict.yaml --inventory inventory.json
-```
+`$RC plan-actions --verdict release-readiness_verdict.yaml` lists the actions
+in `step` order. Execute each one exactly as written — its `target`, `email`
+and `role` come from the plan, never re-derived:
 
-Exit 0 only when the latest verdict is READY, is for THIS workspace/opp/run (a
-release happens after a clone, so a verdict from the source workspace does not
-count), was not a read-only dry run, and nothing in the run was written after it.
-Otherwise STOP: print the gate's reason — the blockers with their owners and
-fixes, or "the run changed after the check" — and tell the operator to fix them
-and run `/ace:release-check <workspace>/<opp>/<run-id>`. Do not proceed to any
-step below.
+| `kind` | Call | Read-back (the evidence) |
+|---|---|---|
+| `hq_invite` | `commcare_invite_web_user(domain: target, email, role)` | `commcare_list_users` / the invite list shows the email on `role` |
+| `connect_org_member` | `connect_add_org_member(organization_slug: target, email, role)` | the call IS its read-back (member + pending tables before/after): its `status` |
+| `drive_share` | `drive_set_anyone_with_link(fileId: target, role)` | an anonymous `curl -sI` of `url` no longer lands on a sign-in page |
+| `forward_source` | `POST ${ACE_WEB_BASE_URL}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release` `{"forward_source": true}` | an anonymous `curl -sI` of the source summary API is `307` with a `Location` naming this run |
+| `ace_web_invite` | `POST ${ACE_WEB_BASE_URL}/api/workspaces/<target>/members/invite` `{"email", "role"}` → `token` | the workspace's pending invites list the email; the accept link is `${ACE_WEB_BASE_URL}/invite/<token>` |
+| `email` | `$RC email-body --verdict … --to <email> --accept-link <that link> --out body.txt --subject-out subject.txt`, then `bin/ace-email --to <email> --subject-file subject.txt --body-file body.txt` | the send's JSON (`message_id`, `thread_id`) |
 
-## Step 1 — Audit
+`email-body` fills in the accept link and changes nothing else; it refuses a
+link that is not an ace-web invite link. The email for a reviewer is sent only
+after that reviewer's grants above it succeeded. A failed step is `NOT DONE`
+with its evidence: stop there, record what was done (Step 4), and report — do
+not retry with different arguments, and do not continue past a failed grant to
+that reviewer's email.
 
-Run `run-surface-audit` on `<workspace>/<opp>/<run-id>` (anonymously, as an
-outsider sees it). Any **broken** finding stops the release — fix it first and
-re-run. Carry **misleading** findings into Step 2.
+Nothing outside this table is called. Labs needs no call (the clone already
+allowed the reviewer's domain); OCS is the public chat link in the email.
 
-## Step 2 — Polish
-
-Fix what an outsider would trip on, in the run's own documents:
-- links on the summary that point into the SOURCE workspace or shared tenants
-  (they will 404 or be `admin only` for the reviewer) — replace or remove;
-- anything the audit marked misleading.
-Re-run the audit if anything changed. Record what you changed for the report.
-**Any change here makes the release-check stale** — run `release-check` again
-after polishing (Step 4 re-checks the gate before the first invite).
-
-## Step 3 — Forward the source link (only with `--forward-source`)
-
-```bash
-curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
-  -H "Content-Type: application/json" -d '{"forward_source": true}' \
-  "${ACE_WEB_BASE_URL%/}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release"
-```
-
-From then on the source run's public summary 307-redirects (uncacheable, so
-turning forwarding off takes effect) to this run's, and
-the page moves its own address there. Verify: an anonymous `curl -sI` of the
-source summary API shows `307` and a `Location` naming this run. A `400` means
-this run is not a finished clone — there is no source link to forward.
-
-## Step 4 — Invite, last
-
-**Re-run the Step 0.5 gate first** (fresh inventory) — Steps 2–3 may have
-written to the run. A non-zero exit stops here, before any invite.
-
-Build ONE list of every grant for every reviewer and show it for approval
-before any is made (procedural gate — same posture as `share-run-access`):
-
-| Reviewer | HQ | Connect | Labs | OCS | ace-web |
-|---|---|---|---|---|---|
-
-Then, in this order:
-
-1. **HQ** — `commcare_invite_web_user(domain: tenancy.hq_domain, email, role:
-   "App Editor")`. App Editor is acceptable only because the space holds just
-   this run's apps; stock Read Only 403s on app pages.
-2. **Connect** — `connect_add_org_member(organization_slug:
-   tenancy.connect_holding_org, email, role: "viewer")`. With
-   `--allow-shared connect`, ALSO add them as `viewer` to
-   `tenancy.connect_pm_org` (the program lives there), and mark both grants
-   shared. Tell the reviewer to
-   sign in to Connect with "Log in with CommCare HQ" BEFORE accepting — an
-   invite accepted first creates a password account that breaks HQ sign-in.
-3. **Labs** — no call: the clone already allowed their domain.
-4. **ace-web, last** — `POST ${ACE_WEB_BASE_URL}/api/workspaces/<workspace>/members/invite`
-   `{"email": ..., "role": ...}` → `token`. The accept link is
-   `${ACE_WEB_BASE_URL}/invite/<token>`. Their sign-in is admitted by the
-   pending invite (invite-only login), so no domain allowlisting is needed.
-5. **Email each reviewer** through `bin/ace-email` (approval-gated), one email
-   per reviewer containing: the accept link; the "Log in with CommCare HQ
-   first" instruction; the run summary URL; the bot's public chat link; what
-   they can and cannot open.
-
-Each grant is proven by a read-back, never by an assumed success: HQ by
-`commcare_list_users` / the invite list, ace-web by the workspace's pending
-invites. `connect_add_org_member` IS its own read-back — it reads Connect's
-member and pending-invite tables before and after the POST and reports what it
-found there (`invited-pending`, `already-member`, …), and there is no separate
-Connect member-list tool — so its `status` is the evidence; a thrown error is
-the failure. A failure is `NOT DONE` with the evidence.
-
-## Step 5 — Record
+## Step 4 — Record (the only run write)
 
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
@@ -216,17 +123,18 @@ curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${ACE_WEB_BASE_URL%/}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release"
 ```
 
-Also write `released: {at, by, to: [emails]}` into the run's `run_state.yaml`
-(`update_yaml_file`). With `--allow-shared connect`, add
-`released.shared_grants: [{system: connect, org, email, role, at}]` — one row
-per grant into a shared org. That list is the revocation checklist:
-`/ace:release <run> --revoke-shared` removes every row with
-`connect_remove_org_member` once per-partner orgs exist.
+Then `update_yaml_file(merge: "deep")` on the run's `run_state.yaml` with ONLY
+the `released:` key:
+`released: {at, by, to: [emails], plan_hash, steps: [{step, id, status, evidence}]}`,
+plus `released.shared_grants: [{system: connect, org, email, role, at}]` for
+every executed action with `shared: true` — the revocation checklist for
+`--revoke-shared`. No other key is written. (This write makes the verdict stale
+on purpose: a second release needs a fresh validation.)
 
 ## Report
 
 Per reviewer × system: `granted` (with read-back), `granted — SHARED, revoke
-later` (Connect under `--allow-shared connect`, listed again at the end as the
-revocation checklist), `NOT GRANTED — shared tenant`, `public link (no
-account)` for OCS, or `NOT DONE` + reason; the audit
-result and the polish changes; whether the source link now forwards.
+later` (listed again at the end as the revocation checklist), `NOT GRANTED —
+<reason from the plan>`, `public link (no account)` for OCS, or `NOT DONE` +
+evidence; the Drive shares; whether the source link now forwards; each email's
+`thread_id`; and the plan hash executed.

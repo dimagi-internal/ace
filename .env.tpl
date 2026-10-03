@@ -399,7 +399,8 @@ ACE_WEB_WORKSPACE=dimagi-team
 # ── ace-web token — ACE's own, obtained automatically per machine ────
 #
 # ACE's credential for ace-web's API: bin/ace-bind (opp tenancy), fork-run,
-# clone-to-new-workspace, /ace:release, share-run-access invites,
+# clone-to-new-workspace, /ace:validate-release-readiness, /ace:release,
+# share-run-access invites,
 # sweep-ace-web, the video skills, upload-transcript, the cloud mobile backend.
 #
 # NOT 1Password-backed, and nobody mints it by hand. ace-web's login is the
