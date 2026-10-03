@@ -291,7 +291,8 @@ export interface ClassifyOpts {
   /** Phase folders left on the source by operator decision (default: Phase 8). */
   keepPhaseFolders?: string[];
   connectRebuilt?: boolean;
-  /** The text is markdown that will be RENDERED into a styled Doc (see `addProvenanceNote`). */
+  /** The text lands in a Google Doc — styled render or plain text alike. A Doc
+   *  has no comment syntax, so the HTML-comment marker would print (see `addProvenanceNote`). */
   rich?: boolean;
 }
 
@@ -372,10 +373,10 @@ function wrap(text: string, width: number, prefix: string): string[] {
  * Insert the note at the top in the file's own comment syntax: `#` for
  * YAML / Python (stays parseable; closed by a `# /clone-provenance` line so a
  * file's own leading comments are never mistaken for it), a blockquote after
- * any front matter for Markdown. `rich: true` is for markdown that will be
- * RENDERED into a styled Doc — no HTML-comment marker, which the importer
- * would print; the note line itself is recognisable. Replaces a note already
- * there.
+ * any front matter for Markdown. `rich: true` is for text that lands in ANY
+ * Google Doc, styled or plain — no HTML-comment marker, which a Doc prints as
+ * text; the note line itself is recognisable. Replaces a note already there
+ * (with or without a marker).
  */
 export function addProvenanceNote(text: string, path: string, note: string, opts: { rich?: boolean } = {}): string {
   const body = stripProvenanceNote(text);
@@ -425,7 +426,10 @@ export function processCloneFile(
   const body = stripProvenanceNote(text);
   const sourceRefs = findSourceRefs(body, map);
   if (kind === 'skip' || sourceRefs.length === 0) {
-    return { kind, changed: false, text, replacements: 0, sourceRefs };
+    // A Doc an earlier pass already rewrote may still carry the marker it
+    // printed; drop it so re-running the rewrite heals the copy.
+    const own = opts.rich && kind !== 'skip' ? text.replace(`<!-- ${PROVENANCE_MARKER} -->\n`, '') : text;
+    return { kind, changed: own !== text, text: own, replacements: 0, sourceRefs };
   }
   if (kind === 'note') {
     const t = addProvenanceNote(body, path, provenanceNote('note', map, label), { rich: opts.rich });

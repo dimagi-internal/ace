@@ -210,6 +210,20 @@ describe('processCloneFile', () => {
     expect(again.changed).toBe(false);
   });
 
+  it('writes no HTML-comment marker into a Google Doc, and a re-run removes one already there', () => {
+    // A Doc has no comment syntax: the marker printed as text on the clone's
+    // app summary in ace-web ("<!-- clone-provenance -->" above the note).
+    const r = processCloneFile('3-commcare/app-deploy_summary.md', md, map, LABEL, { rich: true });
+    expect(r.text).not.toContain('<!--');
+    expect(r.text).toContain('> **Note:** Copied into the spark workspace');
+    expect(processCloneFile('3-commcare/app-deploy_summary.md', r.text, map, LABEL, { rich: true }).changed).toBe(false);
+    const marked = processCloneFile('3-commcare/app-deploy_summary.md', md, map, LABEL).text;
+    expect(marked).toContain('<!-- clone-provenance -->');
+    const healed = processCloneFile('3-commcare/app-deploy_summary.md', marked, map, LABEL, { rich: true });
+    expect(healed.changed).toBe(true);
+    expect(healed.text).toBe(r.text);
+  });
+
   it('keeps YAML parseable and never eats the file\'s own leading comments', () => {
     const r = processCloneFile('3-commcare/recipes/journey-deliver.yaml', yml, map, LABEL);
     expect(YAML.parse(r.text)).toEqual({ appId: 'org.commcare.dalvik' });
