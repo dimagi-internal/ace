@@ -264,6 +264,24 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Bold question
   builder.appendBold(row.question);
 
+  // v6 review fields (docs/decisions-contract.md) — what a reviewer reads first.
+  if (row.plain !== undefined) builder.appendBoldPrefix("In plain words:", row.plain);
+  if (row.review_ask !== undefined) {
+    builder.appendBoldPrefix("PLEASE CONFIRM:", row.confirm_reason ?? "someone with authority should confirm this before launch");
+  }
+  if (row.audience === "internal") {
+    builder.appendBoldPrefix("Internal:", "ACE's own test-harness choice, not a programme decision.");
+  }
+  if (row.scope !== undefined && row.enforcement !== undefined) {
+    builder.appendBoldPrefix(
+      "Rule scope / enforcement:",
+      `${row.scope} / ${row.enforcement === "gap" ? "GAP — nothing in the build enforces it yet" : row.enforcement}`,
+    );
+  }
+  if (row.check_at !== undefined) builder.appendBoldPrefix("Where to check:", row.check_at);
+  if (row.correct_looks_like !== undefined) builder.appendBoldPrefix("What correct looks like:", row.correct_looks_like);
+  if (row.also_raised_by?.length) builder.appendBoldPrefix("Also raised by:", row.also_raised_by.join(", "));
+
   // AI-default: <value>
   builder.appendBoldPrefix("AI-default:", row["ai-default"]);
 
@@ -383,6 +401,21 @@ export function renderDecisionsLog(log: DecisionsLog): BatchUpdateRequest[] {
   const intro = INTRO.replace("{generated_at}", log.generated_at);
   builder.appendItalic(intro);
   builder.appendParagraph(""); // blank line after intro
+
+  // ── To confirm before launch (v6 review asks) ─────────────────────
+  // The list the build memo's "Decisions you own" used to carry: every live
+  // row marked `review_ask`, first, so a reviewer meets it before 100+ rows.
+  const asks = log.decisions.filter((d) => d.superseded_by === undefined && d.review_ask !== undefined);
+  if (asks.length > 0) {
+    builder.appendHeading("To confirm before launch", "HEADING_2");
+    builder.appendItalic(
+      "The build runs on each of these values, but someone with authority should confirm them before launch.",
+    );
+    builder.appendBulletList(
+      asks.map((d) => `${d.plain ?? d.question} — ${d.confirm_reason ?? ""} (${d.id})`.replace(/ — {2}\(/, " (")),
+    );
+    builder.appendParagraph("");
+  }
 
   // ── Group decisions by phase (preserve order) ─────────────────────
   const phaseGroups: Map<string, DecisionRow[]> = new Map();

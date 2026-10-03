@@ -1,0 +1,1001 @@
+opportunity: spark-facilitator
+run_id: 20261001-2208
+mode: default
+created: "2026-10-01T22:08:59.972432+00:00"
+initiated_by: ace@dimagi-ai.com
+last_actor: ace-orchestrator
+last_actor_at: "2026-10-02T02:30:00Z"
+current_phase: solicitation-management
+phases:
+  idea-to-design:
+    status: done
+    verdict: seeded
+    completed_at: "2026-10-01T22:08:59.972432+00:00"
+    products:
+      pdd:
+        title: Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation
+        description: "A Connect verify-and-pay layer under Spark MicroGrants' Community
+          Based Facilitators: each CBF records FCAP community meetings on a form
+          built from Spark's Village Monitoring Form, and Connect pays per
+          meeting verified as meeting_conducted = yes AND meeting_type =
+          community_meeting, capped at 3 paid meetings per community per FCAP
+          step. The pilot covers Goal Setting (steps 1-7, ~3 months) for ~12
+          communities in one Malawi district, with facilitator registration,
+          per-meeting monitoring and savings in scope."
+        file_id: 1iEuQY_hpcCImQeY-pyhjYDYTNfTC2cOTN-pDT1aIqNA
+        program_parameters:
+          archetype: longitudinal-visits
+          learn_passing_score: 80
+          assessment_items: 12
+          payment_rate_band:
+            currency: MWK
+            min: 5000
+            max: 10000
+            unit: verified community meeting
+            status: PROPOSED
+          llo_payment_per_visit:
+            amount: 3000
+            currency: MWK
+            status: PROPOSED
+          daily_cap: 1
+          total_cap: 21
+          campaign_target_visits: 156
+          flw_count_min: 12
+          flw_count_max: 12
+          expected_reach_min: 12
+          expected_reach_max: 12
+          total_budget:
+            amount: 3276000
+            currency: MWK
+            status: PROPOSED
+          opportunity_start_date: "2026-11-02"
+          opportunity_end_date: "2027-02-26"
+          opportunity_dates_status: PROPOSED
+          verification_flags:
+            form_field_rules:
+              - field: meeting_conducted
+                equals: "yes"
+              - field: meeting_type
+                equals: community_meeting
+            duplicate: false
+            gps: false
+          connect_delivery_type: ace
+          opportunity_country: MWI
+          opportunity_currency: MWK
+          entity_id_grain: concat(case_id, '-', pilot_fcap_step, '-',
+            min(step_meeting_index, 3)) — step_meeting_index is the
+            post-increment value (first meeting on a step = 1)
+          entity_state_taxonomy: "1=Our Partnership (steps 1); 2=Community Dynamics,
+            Governance & Leadership (steps 2); 3=Understanding the Present –
+            Situational Analysis (steps 3); 4=Getting to the Future – Microgrant
+            Pathway & Goals (steps 4); 5=Initiative Pathway & Savings (steps 5);
+            6=Advocacy Pathway (steps 6); 7=Vision (steps 7) [source: FCAP
+            Structure, Phases, and Activities (Spark, shared 2026-07-21).pdf]"
+          cap_rationale: 7 FCAP steps x 3 payable meetings per step = 21 structural
+            maximum per CBF; ~13 expected at weekly cadence
+          verification_predicate: meeting_conducted = yes AND meeting_type = community_meeting
+          working_language:
+            - en
+            - nya
+            - tum
+          app_runtime_default_language: en
+          verification_layers: A+B+C
+          layer_b_review_sample: ">=20% of paid meetings independently checked,
+            risk-stratified; plus 10% of unpaid records"
+          layer_c_call_sample: ">=10% of paid meetings in consenting communities"
+      work_order:
+        title: Work Order — Spark Facilitator — Connect Pilot for FCAP Community Meeting
+          Facilitation
+        file_id: 1BqfZJUc1_Y90Q-5WfMC5whZPeZkt4XN3tQn-jDWXF_s
+    steps:
+      idea-to-pdd:
+        status: done
+        artifact: 1-design/idea-to-pdd.md
+        file_id: 1iEuQY_hpcCImQeY-pyhjYDYTNfTC2cOTN-pDT1aIqNA
+      pdd-to-work-order:
+        status: done
+        artifact: 1-design/pdd-to-work-order.gdoc
+        file_id: 1BqfZJUc1_Y90Q-5WfMC5whZPeZkt4XN3tQn-jDWXF_s
+  scenarios-and-acceptance:
+    status: done
+    verdict: seeded
+    completed_at: "2026-10-01T22:08:59.972432+00:00"
+    steps:
+      pdd-to-test-prompts:
+        status: done
+        artifact: 2-scenarios/pdd-to-test-prompts.md
+        file_id: 16WRjeISH48Pyv8wKM1LsLfZ7T6wkF0fwfw50304_SuE
+      pdd-to-app-journeys:
+        status: done
+        artifact: 2-scenarios/pdd-to-app-journeys.md
+        file_id: 15khx4ddKrtfAL4Ds9ACaTOn-t11Z_RJZVorHt3PZmOI
+  commcare-setup:
+    status: done
+    steps:
+      pdd-to-learn-app:
+        status: done
+        artifact: 3-commcare/pdd-to-learn-app_summary.md
+        file_id: 1Tm3kZSxeiU81f-8zcN2i9LP6Hw4ik-r1V-ECbT_9qiY
+      pdd-to-deliver-app:
+        status: done
+        artifact: 3-commcare/pdd-to-deliver-app_summary.md
+        file_id: 18ZLkomsP_DEzQtQ8ZeVxCLsCGRUIg0C6HtJM90_yFPk
+      app-connect-coverage:
+        status: done
+        learn: clean
+        deliver: clean
+        artifact: 3-commcare/app-connect-coverage_deliver.md
+        file_id: 1BVghEJu6JEhtoOAQN9-psj0rNzYTt9oKpmIkCB-B0ls
+        learn_file_id: 1XrV0WtQln1rxF7AK0-Cwy_spAc72SZ-JUjwbaqPyqMA
+      app-media-coverage:
+        status: done
+        learn:
+          builtin_icons: 16
+          generated: 0
+          cache_hits: 1
+          attachments_applied: 17
+        deliver:
+          builtin_icons: 7
+          generated: 0
+          cache_hits: 1
+          attachments_applied: 8
+        artifact: 3-commcare/app-media-coverage_report-2026-10-01-deliver.md
+        file_id: 1_Ex6wO2BQipGAt5oH0-ANd-ql8oKAO6ZPs5BKDmles4
+        learn_file_id: 1ocVFCRd8lz2OOLnYPCA054HqQVKKqD009WWLT28sIQ8
+      app-deploy:
+        status: done
+        artifact: 3-commcare/app-deploy_summary.md
+        file_id: 15lRZRUAz0dkMCuHB6gN3zwS3AEJ9B7OLeF3bsuDXA5A
+      app-test-cases:
+        status: done
+        smoke_recipes: 2
+        deferred_journeys: 5
+        artifact: 3-commcare/app-test-cases.yaml
+        file_id: 1COLVLnQKoH51aoI0TvhtVq10sHIqULrv_mgyEzAnvF8
+      app-hq-settings:
+        status: done
+        camera_only: applied
+        grid: applied
+        artifact: 3-commcare/app-hq-settings_summary.md
+        file_id: 19Kz924MqvdD1lq-vifJzsC0tsZes8IuboeqFM2gK2wo
+      app-release:
+        status: done
+        artifact: 3-commcare/app-release_summary.md
+        file_id: 1UL15M2Zoo5BYD9qFciS2eCSQxEAFW4GnFBcX2wGG-5M
+      app-release-qa:
+        status: done
+        verdict: pass
+        blockers: 0
+        artifact: 3-commcare/app-release-qa_result.yaml
+        file_id: 18VnZJBwh3iRkc3Nh4TkMVkOQ09Ke5Oc8gi85vri5drw
+      pdd-to-learn-app-eval:
+        status: done
+        verdict: pass
+        score: 8.5
+        regrade: true
+        artifact: 3-commcare/pdd-to-learn-app-eval_verdict.yaml
+        file_id: 12G2h0craYGYZQ-8exwoS5YRKnQGTaQNHpW_BPocymVQ
+      pdd-to-deliver-app-eval:
+        status: done
+        verdict: pass
+        score: 8.5
+        artifact: 3-commcare/pdd-to-deliver-app-eval_verdict.yaml
+        file_id: 1OMwamZV8Yvz2jgsxSBfXb10-VKIiEnoprpCTXOvET2E
+        regrade: true
+        regraded_at: "2026-10-03T00:40:00Z"
+        graded_build: 255249b659bf4f2d82fb852674995209 (v1, connect-ace-spark app
+          7c34a5505182408c99c537b97fe3e56b; Nova 5b0aa4c3 rev 7)
+        report_artifact: 3-commcare/pdd-to-deliver-app-eval_report.md
+        report_file_id: 1XGV9QIoOh4uAbkNSiRGv-XLkX0oVZiYC0s3WTCD-JTE
+      app-release-eval:
+        status: done
+        verdict: pass
+        score: 9.8
+        artifact: 3-commcare/app-release-eval_verdict.yaml
+        file_id: 1AjckZ3cJNXG7SwjXnv2x4OpLFk5IBBq_AFxqPe0e1HI
+    started_at: "2026-10-01T22:33:11Z"
+    products:
+      apps:
+        learn:
+          name: Spark Facilitator Learn app
+          nova_app_id: 00c8a612-7094-4762-a75b-aa88229588dd
+          nova_url: https://commcare.app/build/00c8a612-7094-4762-a75b-aa88229588dd
+          hq_app_id: 8c073531bbb94350a7f0e8b894709ec0
+          hq_url: https://www.commcarehq.org/a/connect-ace-spark/apps/view/8c073531bbb94350a7f0e8b894709ec0/
+          build_status: success
+          released_build_id: eb192e6880ad4b20bab2dff83f1425ac
+          released_version: 1
+          domain: connect-ace-spark
+        deliver:
+          name: Spark Facilitator Deliver app
+          nova_app_id: 5b0aa4c3-e235-4c3c-aadc-502f95225883
+          nova_url: https://commcare.app/build/5b0aa4c3-e235-4c3c-aadc-502f95225883
+          hq_app_id: 7c34a5505182408c99c537b97fe3e56b
+          hq_url: https://www.commcarehq.org/a/connect-ace-spark/apps/view/7c34a5505182408c99c537b97fe3e56b/
+          build_status: success
+          released_build_id: 255249b659bf4f2d82fb852674995209
+          released_version: 1
+          domain: connect-ace-spark
+        domain: connect-ace-spark
+    verdict: pass
+    completed_at: "2026-10-01T23:52:00Z"
+    summary_artifact: 3-commcare/commcare-setup_summary.md
+    status_note: "Both apps built fresh, deployed to connect-ace-spark, released
+      (Learn v1, Deliver v1); all three judges pass (8.5 / 8.5 / 9.8);
+      app-release-qa 36/36. Deliver adds an unpaid Other Meeting Record (named
+      deviation, ace#2512); Phase 4 must add form_field_rules payable_slot =
+      yes. [Copied into the spark workspace for review: the ids name spark's
+      copies of the source run's assets.]"
+    residuals:
+      - what: Connect verification rule payable_slot = yes (in addition to
+          meeting_conducted = yes and meeting_type = community_meeting) so a
+          4th+ community meeting on an FCAP step is never auto-approved
+        where_to_apply: Phase 4 connect-opp-setup → connect_set_verification_flags
+          form_field_rules on the opportunity built on Deliver HQ app
+          7c34a5505182408c99c537b97fe3e56b (deliver unit community_meeting)
+        verifiable_by: "read back the opportunity's verification flags
+          (connect_get_opportunity) and confirm three form_field_rules rows:
+          payable_slot=yes, meeting_conducted=yes,
+          meeting_type=community_meeting"
+      - what: "Payment-unit max_total / max_daily headroom: over-cap community meetings
+          (payable_slot = no) still count toward Connect's caps
+          (pdd-to-deliver-app-eval R3)"
+        where_to_apply: "Phase 4 connect-opp-setup → payment unit for deliver unit
+          community_meeting (PDD §14: daily_cap 1, total_cap 21)"
+        verifiable_by: build memo / connect-opp-setup summary states the sized max_total
+          with the over-cap arithmetic for 2026-11-02 to 2027-02-26
+      - what: No recording path when a whole community group declines the meeting photo
+          (photo is required on the paid form; the statement lets individuals
+          step out of frame) — pdd-to-deliver-app-eval R1
+        where_to_apply: Design decision for Spark / the awarded LLO; if adopted, add a
+          'photo declined' path to the Deliver app (e.g. on the Other Meeting
+          Record) in a later run
+        verifiable_by: PDD revision or decisions.yaml ruling on group photo refusal;
+          Deliver app shows a recordable path for it
+      - what: Native-speaker review of the ACE-authored Chichewa (nya) and Tumbuka (tum)
+          translations on both apps (needs-review), starting with the two
+          read-aloud consent scripts and the Tumbuka lesson text; confirm Learn
+          final q10 options c/d read distinctly in nya
+        where_to_apply: Nova apps 00c8a612-7094-4762-a75b-aa88229588dd and
+          5b0aa4c3-e235-4c3c-aadc-502f95225883 (update_translations review),
+          then re-upload + re-apply app-hq-settings + re-release
+        verifiable_by: get_languages shows nya/tum units at ready (reviewed) with 0
+          out-of-date
+    summary_artifact_file_id: 16lw2NJgt61owtEQQqB0DeiWoq7VPCz8ByxNFkmwStAI
+    residuals_resolved_by_phase4:
+      - payable_slot = yes form_field_rule saved on opportunity ad6c2d40 (spark
+        rebuild, Deliver HQ app 7c34a550 in connect-ace-spark;
+        form_field_rules_saved 3)
+      - "max_total/max_daily headroom: kept 21/1 — <=17 records per CBF in the
+        117-day window at weekly cadence, below 21 (connect-opp-setup.md)"
+  connect-setup:
+    status: done
+    products:
+      connect:
+        domain: connect-ace-spark
+        organization_slug: spark-pm-org-test
+        pm_org_slug: spark-pm-org-test
+        holding_org_slug: spark-nm-org-test
+        org_mode: pm-nm
+        program_application_id: c5b586e5-0f1b-4612-bed5-3f2e93744f43
+        program:
+          id: f537601b-9a58-40de-add0-fe3fed10f2ef
+          url: https://connect.dimagi.com/a/spark-pm-org-test/program/f537601b-9a58-40de-add0-fe3fed10f2ef/
+        opportunity:
+          id: ad6c2d40-474f-4b52-a334-82d17387aeaf
+          name: 20261001-2208 · Spark Facilitator — FCAP Community Meeting Facilitation
+          url: https://connect.dimagi.com/a/spark-nm-org-test/opportunity/ad6c2d40-474f-4b52-a334-82d17387aeaf/
+          connect_int_id: 2319
+        verification:
+          form_field_rules:
+            - name: meeting_conducted=yes
+              question_path: form.meeting.meeting_conducted
+              question_value: "yes"
+              deliver_unit_id: 7148
+            - name: meeting_type=community
+              question_path: form.meeting.meeting_type
+              question_value: community_meeting
+              deliver_unit_id: 7148
+            - name: payable_slot=yes
+              question_path: form.step_info.payable_slot
+              question_value: "yes"
+              deliver_unit_id: 7148
+          form_field_rules_saved: 3
+        payment_units:
+          - payment_unit_id: abd5684d-1261-4b00-b0e4-556f57511e1e
+            server_id: 2622
+            name: Verified community meeting
+            amount: 7500
+            org_amount: 3000
+            max_total: 21
+            max_daily: 1
+            required_deliver_units:
+              - 7148
+        deliver_units:
+          - slug: community_meeting
+            server_id: 7148
+        learn_app:
+          cc_domain: connect-ace-spark
+          cc_app_id: 8c073531bbb94350a7f0e8b894709ec0
+          passing_score: 80
+        deliver_app:
+          cc_domain: connect-ace-spark
+          cc_app_id: 7c34a5505182408c99c537b97fe3e56b
+        hq_key_ref: hq-key:ace-clone-connect-ace-spark
+        ace_test_user:
+          phone: "+74260000101"
+          invite_row_present: true
+          connect_user_id: null
+          status: pending
+          checked_at: "2026-10-02T22:47:30Z"
+        postcondition:
+          ok: true
+          checked_at: "2026-10-02T22:47:40Z"
+          failed: []
+          phase6_blockers: []
+        build_memo:
+          file_id: 1nOoAio1ceIV4wB4pVycNHmbhn_WGiEXkiyM5k8cF094
+          title: Build memo
+          web_view_link: https://docs.google.com/document/d/1nOoAio1ceIV4wB4pVycNHmbhn_WGiEXkiyM5k8cF094/edit?usp=drivesdk
+          complete: true
+          gaps: []
+    steps:
+      connect-program-setup:
+        status: done
+        artifact: 4-connect/connect-program-setup.md
+        file_id: 1CsCt5ij2xmjT88wjA8MVHvN0FlwsLI6LUmf9vLVoaKY
+      connect-opp-setup:
+        status: done
+        artifact: 4-connect/connect-opp-setup.md
+        file_id: 1Z5O_ZH3HnmlvA0c_FaTZXXcFhCxOvgGMiry79U83-Uo
+      build-memo:
+        status: done
+        artifact: 4-connect/build-memo.md
+        file_id: 1nOoAio1ceIV4wB4pVycNHmbhn_WGiEXkiyM5k8cF094
+      connect-program-setup-eval:
+        status: done
+        verdict: pass
+        score: 9
+        file_id: 1Dgcy1C3zasPJCNEF30QvSK-iQdqrtTS6e-WquhHS-3Y
+      connect-opp-setup-eval:
+        status: done
+        verdict: pass
+        score: 8.6
+        file_id: 19ZcNC2DA77lBucNsGkyV1p9sKlt545ofU4w71ddTGFE
+      build-memo-eval:
+        status: done
+        verdict: pass
+        score: 8.1
+        file_id: 1jyWiun8QOeceK6w0p8gGwoun1Ycsust1
+    verdict: pass
+    completed_at: "2026-10-02T22:55:30Z"
+    summary_artifact: 4-connect/connect-setup_summary.md
+    summary_artifact_file_id: 1FQIaUB9V0uX2oL-d5pUoj2xQEDRoh4CoKd_YR2ab43I
+    summary: "Rebuilt in Spark's own Connect orgs (pm-nm): program f537601b created
+      in spark-pm-org-test; opportunity ad6c2d40 (int 2319) held by
+      spark-nm-org-test, active, is_test, wired to connect-ace-spark apps; 3
+      verification rules saved; 1 payment unit (7500+3000 MWK, 21/1); test user
+      invited; build memo complete."
+  ocs-setup:
+    status: done
+    steps:
+      ocs-agent-setup:
+        status: done
+        artifact: 5-ocs/ocs-agent-setup.md
+        file_id: 1FsETG5jSt-oIAXhm4K2Jm-1upYNN6_iSXYld0ZRdn1Y
+      ocs-chatbot-qa:
+        status: done
+        artifact: 5-ocs/ocs-chatbot-qa_transcript-quick.md
+        file_id: 1Bto_hJsRpf7iO_yJQ_6W-ViOWHOp90zlNN0jhIeJStk
+        structural_pass: 3/3
+      ocs-chatbot-eval:
+        status: done
+        verdict: pass
+        score: 8.9
+        artifact: 5-ocs/ocs-chatbot-eval_verdict-quick.yaml
+        file_id: 1Ll0bNfZY7VPKE1WmTi06yhoTyAE38Y1jKoDVus8uR3w
+      widget-handoff:
+        status: done
+        artifact: 5-ocs/ocs-setup_widget-handoff.md
+        file_id: 1w8yuVIJuZtFJRywzvI66USb_LFuWiPQRt4VI42bV8Ow
+      ocs-widget-handoff-eval:
+        status: done
+        verdict: pass
+        score: 9.3
+        artifact: 5-ocs/ocs-widget-handoff-eval_verdict.yaml
+        file_id: 1EAVDY7BO_WBgd9Dq8ReT2lPB_tVkI9zzY2tRi5A4J9Y
+    products:
+      ocs_chatbot:
+        experiment_id: 13887
+        public_id: 0cb06878-cbfb-4b9a-b823-e553cde828af
+        pipeline_id: 6617
+        team_slug: connect-ace
+        admin_url: https://www.openchatstudio.com/a/connect-ace/chatbots/13887/
+        public_url: https://www.openchatstudio.com/a/connect-ace/chatbots/0cb06878-cbfb-4b9a-b823-e553cde828af/start/
+        collection_id: 604
+        embed_key: 7SxJUDdeyvDqoskvAjP93SvRZ91Sur4b
+        version_number: 3
+        last_reindexed_at: "2026-10-02T02:26:00Z"
+        knowledge_sources:
+          - the design doc
+          - Spark's own source material (the FCAP structure, the FIYP overview,
+            the app and M&E extract, the research brief and Spark's design
+            answers)
+          - the Learn and Deliver app guides and build notes
+          - the Connect opportunity setup and programme contacts
+          - the training pack (LLO manager guide, FLW training guide, FAQ, and
+            quick reference card)
+    verdict: pass
+    started_at: "2026-10-02T00:30:00Z"
+    completed_at: "2026-10-02T00:55:00Z"
+    phase_folder_id: 11gq4owOiDiKi1lr8NC6msG8HjItw5gaI
+    summary_artifact: 5-ocs/ocs-setup_summary.md
+    summary_artifact_file_id: 1WvecCZa5qmkzB2oryewimYsf2YOmVmHU01tnua4S06o
+    status_note: Fresh run-scoped bot 13887 cloned from golden 11792; collection 604
+      (12 files) + shared 350; composed-prompt audit exit 0; v2 published (api)
+      and round-trip verified; quick qa 3/3, quick eval 2.67/3 (8.9) pass;
+      public URL 200; handoff eval 9.3 pass. KB still lacks Phase 6 training
+      docs until ocs-knowledge-refresh.
+    issues_filed: []
+  qa-and-training:
+    status: done
+    steps:
+      app-screenshot-capture:
+        status: done
+        verdict: pass
+        score: 9.2
+        shallow_verdict: pass
+        shallow_score: 8.3
+        artifact: 6-qa-and-training/app-screenshot-capture_manifest.yaml
+        file_id: 1luxgU5tI-4PGsFyNRYDLrMz4Lux4xKfz
+        verdict_file_id: 15w_275CjnrspYMjVyn9WwyCjbsZNqHTp
+        shallow_verdict_file_id: 1CIb4noqPrUZM-nCYreJro4FSpyupztKV
+        learn: pass (attempt 2; attempt 1 CommCare crash on Start handoff); Connect
+          learn_complete true 100%
+        deliver: pass; Connect not-started-as-designed (start 2026-11-02, delivered 0)
+      training-llo-guide:
+        status: done
+        verdict: pass
+        score: 8.6
+        file_id: 1EPxW_ZmQ55fDSmUVEK_t5iFoIpGQxUqimesasVOUCr4
+        images_embedded: 6
+        artifact: 6-qa-and-training/training-llo-guide.md
+        source_file_id: 1G_jER8EJx9PVLE4IrheSet2eOcMw9Wzk
+        regenerated_at: "2026-10-03T10:53:55Z"
+        regenerated_by: training-llo-guide @ 0.13.1648 (ace#2610)
+        window: 2026-11-02 to 2027-02-26 (116 days, from connect_get_opportunity)
+        note: "Regenerated in place: 149-day countdown removed (findDayCountDrift = []),
+          false-paid-record section added, 2 LLO-side Connect frames from
+          4-connect/previews embedded, Spark contact as marked placeholder."
+      training-flw-guide:
+        status: done
+        verdict: pass
+        score: 8.8
+        file_id: 1n2LIdq5Ve1gK-HAgNbM9UTLd6IGhpw6knUFlSU2NzR8
+        images_embedded: 25
+        artifact: 6-qa-and-training/training-flw-guide.md
+      training-quick-reference:
+        status: done
+        verdict: pass
+        score: 8.9
+        file_id: 1K5mb3R0eOlhlJfUzb62kVdMs2ba4yoXCocBj8ihzpNI
+        artifact: 6-qa-and-training/training-quick-reference.md
+      training-faq:
+        status: done
+        verdict: pass
+        score: 8.7
+        file_id: 1oW4aTZ58yVN4vfg375KRrslAllm4gVuquNA1MPGdE6E
+        artifact: 6-qa-and-training/training-faq.md
+      training-deck-generate:
+        status: done
+        verdict: pass
+        score: 8.6
+        artifact: 6-qa-and-training/training-deck-spec.yaml
+        file_id: 17Knt478b1Hdh1YEUFN6g1QPhMUrfEaas
+        slides: 53
+        visual_coverage: 1
+      training-deck-render:
+        status: done
+        verdict: pass
+        score: 9
+        file_id: 1RLcjrQMkGmiCCdtUA6dbTkLJDxz8uXxr
+        artifact: 6-qa-and-training/training-deck-render_verdict.yaml
+      training-onboarding-email:
+        status: done
+        verdict: pass
+        score: 8.8
+        file_id: 1za_nWMSiYcHxGdpOgOVQH_KMZM-OM4ZgylohOMmasLE
+        send_scope: unscoped — all 5 training artifacts
+        artifact: 6-qa-and-training/training-onboarding-email.md
+      ocs-knowledge-refresh:
+        status: done
+        verdict: pass
+        artifact: 6-qa-and-training/ocs-knowledge-refresh.md
+        file_id: 1w7TINJGgCrXtmLx1dK07QmXckCZ5gZ0nqvj2q4TG0DA
+        uploaded: 4
+        expected: 4
+        missing: []
+        published_version: 3
+        last_reindexed_at: "2026-10-02T02:26:00Z"
+      training-llo-guide-eval:
+        status: done
+        verdict: pass
+        score: 8.2
+        file_id: 1L7ag2NbE1lo3DEZty502F-WuRdvR61y2
+        note: "Re-graded after regeneration (prior file revision: warn 7.6).
+          screenshot_grounding 5.5 remains a WARN (ace#2613)."
+        artifact: 6-qa-and-training/training-llo-guide-eval_verdict.yaml
+        graded_revision: "35"
+        ran_at: "2026-10-03T11:00:16Z"
+      training-flw-guide-eval:
+        status: done
+        verdict: pass
+        score: 8.3
+        file_id: 1RcBJsUk85zD8QP8tMaj4sQFbty4KdIUk
+        artifact: 6-qa-and-training/training-flw-guide-eval_verdict.yaml
+      training-quick-reference-eval:
+        status: done
+        verdict: pass
+        score: 8.5
+        file_id: 1VR660Dd1jqtU5fBKnSgQILZqYCS2vyc8
+        note: one iterate round (5.0 -> 8.5)
+        artifact: 6-qa-and-training/training-quick-reference-eval_verdict.yaml
+      training-faq-eval:
+        status: done
+        verdict: pass
+        score: 8.4
+        file_id: 1eDLzaBfbG26p3sUbrZaXSiSDTrvoaAAm
+        artifact: 6-qa-and-training/training-faq-eval_verdict.yaml
+      training-deck-generate-eval:
+        status: done
+        verdict: pass
+        score: 8.4
+        file_id: 1C1HN6BO1gyRZ7tY__NRAcgB3XA444S69
+        artifact: 6-qa-and-training/training-deck-generate-eval_verdict.yaml
+      training-onboarding-email-eval:
+        status: done
+        verdict: pass
+        score: 8.4
+        file_id: 11sQxDm9I4WC55s-fDQ4SwnGVrTcbuQCO
+        artifact: 6-qa-and-training/training-onboarding-email-eval_verdict.yaml
+      training-deck-render-eval:
+        status: done
+        verdict: pass
+        score: 7.5
+        file_id: 1kgVN-ITDrIweA9Hdnu4eZhTSN1ueUVyA
+        artifact: 6-qa-and-training/training-deck-render-eval_verdict.yaml
+    started_at: "2026-10-02T00:56:00Z"
+    phase_folder_id: 1uls_qOjKkW2Npo92YF3T5fcY-ixu1FMi
+    products:
+      training:
+        docs:
+          llo_guide:
+            file_id: 1EPxW_ZmQ55fDSmUVEK_t5iFoIpGQxUqimesasVOUCr4
+            title: LLO manager guide
+            web_view_link: https://docs.google.com/document/d/1EPxW_ZmQ55fDSmUVEK_t5iFoIpGQxUqimesasVOUCr4/edit?usp=drivesdk
+          flw_guide:
+            file_id: 1n2LIdq5Ve1gK-HAgNbM9UTLd6IGhpw6knUFlSU2NzR8
+            title: FLW training guide
+            web_view_link: https://docs.google.com/document/d/1n2LIdq5Ve1gK-HAgNbM9UTLd6IGhpw6knUFlSU2NzR8/edit?usp=drivesdk
+          quick_reference:
+            file_id: 1K5mb3R0eOlhlJfUzb62kVdMs2ba4yoXCocBj8ihzpNI
+            title: Quick reference card
+            web_view_link: https://docs.google.com/document/d/1K5mb3R0eOlhlJfUzb62kVdMs2ba4yoXCocBj8ihzpNI/edit?usp=drivesdk
+          faq:
+            file_id: 1oW4aTZ58yVN4vfg375KRrslAllm4gVuquNA1MPGdE6E
+            title: FAQ
+            web_view_link: https://docs.google.com/document/d/1oW4aTZ58yVN4vfg375KRrslAllm4gVuquNA1MPGdE6E/edit?usp=drivesdk
+          onboarding_email:
+            file_id: 1za_nWMSiYcHxGdpOgOVQH_KMZM-OM4ZgylohOMmasLE
+            title: Onboarding email
+            web_view_link: https://docs.google.com/document/d/1za_nWMSiYcHxGdpOgOVQH_KMZM-OM4ZgylohOMmasLE/edit?usp=drivesdk
+        deck:
+          file_id: 1f-VuN7IDsJCQsAhUYw6sksERfp1D5IqMM1P-eHGX64A
+          title: Spark Facilitator — FCAP Community Meeting Facilitation — Training Deck
+          web_view_link: https://docs.google.com/presentation/d/1f-VuN7IDsJCQsAhUYw6sksERfp1D5IqMM1P-eHGX64A/edit
+          slide_count: 53
+          rendered_at: "2026-10-02T02:18:05Z"
+    verdict: proceed-with-warn
+    completed_at: "2026-10-02T02:30:00Z"
+    summary_artifact: 6-qa-and-training/qa-and-training_summary.md
+    summary_artifact_file_id: 12zYfC04r0n42_G9OjW3RsXhTJk4B4leacSqn4oTItxs
+    status_note: "Learn smoke pass (attempt 2; attempt 1 CommCare FATAL crash on
+      Start handoff, ace#2584) with Connect learn_complete 100%; Deliver smoke
+      pass, Connect not-started-as-designed (start 2026-11-02). Thin UX judge
+      8.3. Training pack: LLO 7.9, FLW 8.3, quick ref 8.5, FAQ 8.4, deck spec
+      8.4 / render 7.5 (53 slides, coverage 1.0), onboarding email 8.4 - all
+      paired evals pass. OCS collection 604 now holds the training pack; chatbot
+      published v3. Open residuals: group photo refusal path; nya/tum
+      translations unreviewed."
+    issues_filed:
+      - dimagi-internal/ace#2584 (open, harness)
+      - dimagi-internal/ace#2587 (open, polish)
+      - "dimagi-internal/ace#1828 (comment: recurrence)"
+    open_residuals:
+      - No recording path when a whole community group declines the meeting
+        photo (design decision for Spark / LLO)
+      - nya/tum translations needs-review on both apps
+  synthetic-data-and-workflows:
+    status: done
+    steps:
+      semantic-registry-author:
+        status: done
+        artifact: 7-synthetic/semantic-registry-author_registry.json
+        file_id: 18sZoYtp7HKUKbGR8Kzh3MxZ02W7ismtl
+      demo-data-setup:
+        status: done
+        artifact: 7-synthetic/realized.json
+        file_id: 1SF_MzmjoI0OMS0vA3g_kV-JfgOGR0jBo
+      demo-narrative:
+        status: done
+        artifact: 7-synthetic/spark-facilitator-programme-cascade.yaml
+        file_id: 1AXOLD1xNUTSEH-JZ4rH_l-5f5qlC8dpt
+      semantic-registry-author-qa:
+        status: done
+        verdict: pass
+        artifact: 7-synthetic/semantic-registry-author-qa_result.yaml
+        file_id: 1thUKZoYfko4E8VwP2mEBN_rtATXRglXFuP2TbID6abc
+      demo-data-setup-qa:
+        status: done
+        verdict: pass
+        artifact: 7-synthetic/demo-data-setup-qa_result.yaml
+        file_id: 1ERkMQhDXYeWhmpucnRaaF3t7CH6gmkug0mySYvKvFYw
+      semantic-registry-author-eval:
+        status: done
+        verdict: pass
+        score: 8.5
+        artifact: 7-synthetic/semantic-registry-author-eval_verdict.yaml
+        file_id: 1w7tG1zy795ZvISZaEAEX92P3o7ibuVls4uAwve8s_xk
+      ddd-run:
+        status: done
+        runs_dir: ~/.canopy/ddd/runs/ace-spark-facilitator-20261001-2208
+        adoption: start-fresh
+        run_id: spark-facilitator-programme-cascade-2026-10-01-001
+        terminal_status: stopped_not_converged
+        score_history:
+          - 2
+          - 2
+          - 2
+          - 2
+          - 2
+          - 2
+          - 2
+        final_judges:
+          concept: 3
+          user_artifact: 2
+          arc: 3
+          actionability: 4
+        deferred_product_findings: 48
+        artifact: 7-synthetic/ddd-deferred-findings.md
+        file_id: 1-m4bbdaUn4RmuwzNf6hR2KOVOsmWucOD
+    started_at: "2026-10-02T02:40:00Z"
+    products:
+      synthetic:
+        provider: ace-run
+        labs_opp_id: 10088
+        cascade:
+          program_id: 10088
+          partners:
+            - label: Partner A
+              opportunity_id: 10088
+            - label: Partner B
+              opportunity_id: 10089
+            - label: Partner C
+              opportunity_id: 10090
+          registry:
+            registry_id: 6515
+            program_id: 10088
+            version: 1
+            indicators:
+              - SF_P1
+              - SF_P3
+              - SF_S2
+              - SF_S3
+              - SF_S4
+              - SF_S5
+              - SF_D1
+              - SF_D2
+          programme_report:
+            workflow_id: 6517
+            run_id: 6540
+            url: https://labs.connect.dimagi.com/labs/workflow/6517/run/?run_id=6540&program_id=10088
+          worker_review:
+            workflow_id: 6519
+            run_id: 6521
+          cohort_id: 7
+          opp_reports:
+            - partner: Partner A
+              opportunity_id: 10088
+              workflow_id: 6522
+              run_id: 6577
+              url: https://labs.connect.dimagi.com/labs/workflow/6522/run/?run_id=6577&opportunity_id=10088
+            - partner: Partner B
+              opportunity_id: 10089
+              workflow_id: 6524
+              run_id: 6578
+              url: https://labs.connect.dimagi.com/labs/workflow/6524/run/?run_id=6578&opportunity_id=10089
+            - partner: Partner C
+              opportunity_id: 10090
+              workflow_id: 6526
+              run_id: 6579
+              url: https://labs.connect.dimagi.com/labs/workflow/6526/run/?run_id=6579&opportunity_id=10090
+          history:
+            first_period_end: "2026-07-05"
+            last_period_end: "2026-09-27"
+            run_ids:
+              - 6528
+              - 6529
+              - 6530
+              - 6531
+              - 6532
+              - 6533
+              - 6534
+              - 6535
+              - 6536
+              - 6537
+              - 6538
+              - 6539
+              - 6540
+          benchmark:
+            min_peers: 2
+            min_denominator: 1
+            publications: 56-68 (13, chronological)
+          story_verified: true
+        workflows:
+          programme_report:
+            workflow_id: 6517
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6517/run/?run_id=6540&program_id=10088
+          worker_review:
+            workflow_id: 6519
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6519/run/?run_id=6521&program_id=10088&flw=10090%3A%3Acbf_c01&source_run=6540
+          partner_a_opp_report:
+            workflow_id: 6522
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6522/run/?run_id=6577&opportunity_id=10088
+          partner_b_opp_report:
+            workflow_id: 6524
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6524/run/?run_id=6578&opportunity_id=10089
+          partner_c_opp_report:
+            workflow_id: 6526
+            run_url: https://labs.connect.dimagi.com/labs/workflow/6526/run/?run_id=6579&opportunity_id=10090
+        source:
+          provider: ace-run
+          labs_synthetic_opp_id: 10088
+          deliver_units:
+            - slug: community_meeting
+              name: Community meeting
+          narrative_context_ref: 7-synthetic/cascade-story.yaml
+          record_counts:
+            partner_a:
+              opportunity: 1
+              user_visits: 126
+              user_data: 12
+              completed_works: 0
+              completed_module: 0
+            partner_b:
+              opportunity: 1
+              user_visits: 135
+              user_data: 12
+              completed_works: 0
+              completed_module: 0
+            partner_c:
+              opportunity: 1
+              user_visits: 105
+              user_data: 12
+              completed_works: 0
+              completed_module: 0
+          data_shape:
+            rows: 36
+            periods: 13
+            groups: 3
+          dashboards:
+            - key: programme
+              template: indicator_programme_report
+              role: overview
+              shape: run
+              par_url: https://labs.connect.dimagi.com/labs/workflow/6517/run/?run_id=6540&program_id=10088
+            - key: partner_a_opp_report
+              template: indicator_opp_report
+              role: overview
+              shape: run
+              par_url: https://labs.connect.dimagi.com/labs/workflow/6522/run/?run_id=6577&opportunity_id=10088
+            - key: partner_b_opp_report
+              template: indicator_opp_report
+              role: overview
+              shape: run
+              par_url: https://labs.connect.dimagi.com/labs/workflow/6524/run/?run_id=6578&opportunity_id=10089
+            - key: partner_c_opp_report
+              template: indicator_opp_report
+              role: overview
+              shape: run
+              par_url: https://labs.connect.dimagi.com/labs/workflow/6526/run/?run_id=6579&opportunity_id=10090
+          primary_dashboard: programme
+          realized_vars_ref: 7-synthetic/realized.json
+          timeline:
+            start_date: "2026-06-29"
+            end_date: "2026-09-27"
+            weeks: 13
+        narrative:
+          why_brief_ref: 7-synthetic/why_brief.yaml
+          unified_spec_ref: 7-synthetic/spark-facilitator-programme-cascade.yaml
+          validated: true
+        walkthroughs:
+          - web_view_link: https://labs.connect.dimagi.com/canopy/ddd/spark-facilitator-programme-cascade/spark-facilitator-programme-cascade-2026-10-01-001
+            eval_score: 2
+        ddd_terminal_status: stopped_not_converged
+        ddd_open_strategy_findings: 1
+    completed_at: "2026-10-02T04:25:00Z"
+    verdict: passed-with-deferred-evals
+    summary_artifact: 1AV-RSnOAuMfciRNoRdqwj_XT2Z16jIHedVvO0O_Lm4o
+  solicitation-management:
+    status: done
+    steps:
+      solicitation-create:
+        status: done
+        verdict: pass
+        started_at: "2026-10-02T04:28:00Z"
+        completed_at: "2026-10-02T04:41:00Z"
+        artifact: 8-solicitation-management/solicitation-create_published.md
+        file_id: 1HQT67z4DMFNMtNehR3oI7ozXRqZw8yZMWgR1bIvB_AA
+        draft_file_id: 1IsNZyMxB420uw10gi2CmOtwrW1UiRePiKbHivLdlvlg
+        eval_verdict: pass
+        eval_score: 8.97
+        verdict_artifact: 8-solicitation-management/solicitation-create-eval_verdict.yaml
+        verdict_file_id: 1uVNKQKmmUDTo3euBkWmqGe4_CChR0cgZbf1sNnmXDSw
+      llo-invite:
+        status: skipped
+        verdict: skipped-publish-only
+        completed_at: "2026-10-02T04:36:00Z"
+        artifact: 8-solicitation-management/llo-invite_invitations.md
+        file_id: 1kRWVzGwHQwekO6wGVicXPPBHHmTpPVN863Jbmw19aKs
+        reason: no --invite-candidates and ACE_SOLICITATION_INVITE_CANDIDATES unset;
+          PDD-named FOCCAD has no contact email
+    products:
+      solicitation:
+        solicitation_id: 23665
+        labs_program_id: 309
+        connect_program_id: e7ca0792-4e2b-4b9e-afd7-cea6b6745a1e
+        connect_opportunity_id: 2318
+        url: https://labs.connect.dimagi.com/solicitations/23665/
+        public_url: https://labs.connect.dimagi.com/solicitations/23665/
+        manage_url: https://labs.connect.dimagi.com/solicitations/23665/edit/
+        type: EOI
+        published_at: "2026-10-02T04:40:00Z"
+        deadline: "2026-10-15"
+        status: open
+        is_public: true
+        awarded:
+          response_id: null
+          awarded_at: null
+          awarded_org_slug: null
+          awarded_org_name: null
+          awarded_contact_email: null
+          award_amount: null
+    started_at: "2026-10-02T04:28:00Z"
+    completed_at: "2026-10-02T04:42:00Z"
+    verdict: halt-at-phase-8-to-9-boundary
+    summary_artifact: 1fTNpV-y2NLevzCJJ_Z93urqga22IkcTzz55DkVEHCFo
+  execution-management:
+    status: skipped
+    steps:
+      llo-onboarding:
+        status: skipped
+      llo-uat:
+        status: skipped
+      llo-launch:
+        status: skipped
+  closeout:
+    status: skipped
+    steps:
+      opp-closeout:
+        status: skipped
+      llo-feedback:
+        status: skipped
+      learnings-summary:
+        status: skipped
+      cycle-grade:
+        status: skipped
+forked_from: 20260926-1800
+forked_from_phase: commcare-setup
+forked_at: "2026-10-01T22:08:59.972432+00:00"
+seeded_from: 20260926-1800
+orchestrator_notes:
+  plugin_currency: "Session started on 0.13.1626 (MCP children + bound skills).
+    /ace:update taken at the Phase 4->5 boundary: installed 0.13.1630
+    (MCP_CHANGED yes: mcp/mobile/recipe-sanity-probe.ts, ace#2574/#2575).
+    Remaining phases run on 0.13.1626 skills + MCP until operator
+    /reload-plugins + restart. Bound-skill diff vs pending phases: only
+    skills/app-screenshot-capture (Phase 6) changed, and only by a
+    remediation-table row for the new content-form-finish-overrun probe class,
+    which this session's 0.13.1626 probe cannot emit — decided: no halt, Phase 6
+    unaffected. Phase 3 recipes already carry workarounds for both issues."
+  self_heal: "Phase 3: ace#2575 fixed (PR #2576), ace#2574 fixed (PR #2577). Phase
+    4: ace#2578/#2579/#2580 fixed in-phase (PR #2581); ace#2582 left open (spans
+    fork-run + ace-web fork endpoint — cross-repo, not bounded)."
+  plugin_currency_p6_p7: "Phase 6->7 boundary: /ace:update 0.13.1630 -> 0.13.1631
+    (MCP_CHANGED no; only skills/pdd-to-work-order changed, Phase 1 — not
+    pending). Remaining phases still run 0.13.1626 skills+MCP in this session."
+  plugin_currency_p7_p8: "Phase 7->8 boundary: /ace:update 0.13.1631 -> 0.13.1633
+    (MCP_CHANGED yes: mobile crash forensics ace#2584 — Phase 8 does not use
+    mobile; no Phase 8 skill changed vs bound 0.13.1626)."
+  run_end: "Halted by design at the Phase 8->9 boundary (Phases 9-10 not live).
+    claims.yaml: none (sweep skipped). previews: 0 captured, 0 gaps left (all 21
+    outputs covered). run-surface-audit final: 0 broken, 1 misleading (no
+    reviewer list to verify 4 member-gated links — re-run with reviewer emails
+    before external share), 1 improvement (ace-web by design). Fixed at source:
+    PDD/work-order product file_ids repointed to this run's copies + shared
+    commenter; empty training-faq.md republished from source; Phase 7 step
+    artifacts filled. audit-eval: incomplete (blocked on the misleading
+    finding). open-questions.md: +7 rows, 0 archived."
+  issues_this_run: "Filed 10: #2574 #2575 #2578 #2579 #2580 #2584 #2587 #2590
+    fixed+merged (PRs #2577 #2576 #2581 #2589 #2588 #2591); #2582 open
+    (cross-repo fork-run + ace-web); #2592 open (empty FAQ publish — root cause
+    not established, not self-healable this session). #1828 commented (closed)."
+ace_web_summary_url: https://labs.connect.dimagi.com/ace/opps/spark/spark-facilitator/runs/20261001-2208/summary
+clone:
+  from:
+    workspace: dimagi-team
+    opp: spark-facilitator
+    run: 20261001-2208
+  replaced:
+    run: 20260926-1413
+    how: "prior spark clone removed 2026-10-02 at Jon's request: its HQ apps
+      e8d1bb1f…/ca0e16cd… soft-deleted in connect-ace-spark, labs opps
+      10085-10087 reverted to @dimagi.com/@dimagi-ai.com, spark opp folder
+      10Aa3LQuktjJvZhWQWhFgnMARM4OJpdeR trashed (30-day recoverable). The
+      ace-web DELETE opp endpoint was not used because its session cascade also
+      matches workspace-less sessions for the same slug."
+  ace_web:
+    status: done
+    clone_record_id: 2
+    files_copied: 348
+  drive_ids:
+    status: done
+    source_ids_remaining_in_run_state: 0
+  hq:
+    status: done
+    domain: connect-ace-spark
+    api: enabled
+    learn_app_id: 8c073531bbb94350a7f0e8b894709ec0
+    deliver_app_id: 7c34a5505182408c99c537b97fe3e56b
+    learn_build_id: eb192e6880ad4b20bab2dff83f1425ac
+    deliver_build_id: 255249b659bf4f2d82fb852674995209
+    copied_from_builds:
+      learn: 7876e5bca74f4e21adda296c6478af25 (v22)
+      deliver: 4aa52f2fb5ff40b392797d00aaca1585 (v9)
+    key:
+      status: done
+      reason: minted 2026-10-02, restricted to connect-ace-spark; used by the spark
+        Connect opportunity ad6c2d40 (learn + deliver)
+      ref: hq-key:ace-clone-connect-ace-spark
+      id: 17493
+      last4: bf07
+    plan: not read (commcare_get_subscription not in this session's MCP);
+      commcare_list_apps answered 200, so the REST API is open
+  connect:
+    status: done
+    pm_org: spark-pm-org-test
+    holding_org: spark-nm-org-test
+    program_id: f537601b-9a58-40de-add0-fe3fed10f2ef
+    opportunity_id: ad6c2d40-474f-4b52-a334-82d17387aeaf
+    note: "Phase 4 re-run in Spark's own Connect orgs (pm-nm) 2026-10-02;
+      opportunity wired to the connect-ace-spark apps (read back: learn/deliver
+      cc_domain connect-ace-spark). Source program e7ca0792 / opportunity
+      308a6932 in ace-pm-org / ace-nm-org are no longer referenced by this
+      copy."
+    hq_key_ref: hq-key:ace-clone-connect-ace-spark
+  labs:
+    status: done
+    opportunity_ids:
+      - 10088
+      - 10089
+      - 10090
+    allowed_domains:
+      - "@sparkmicrogrants.org"
+    previous_allowed_domains:
+      - "@dimagi.com"
+      - "@dimagi-ai.com"
+  ocs:
+    status: kept
+    reason: public-link
+    public_url: https://www.openchatstudio.com/a/connect-ace/chatbots/0cb06878-cbfb-4b9a-b823-e553cde828af/start/
+  completed_at: "2026-10-02T20:45:00Z"

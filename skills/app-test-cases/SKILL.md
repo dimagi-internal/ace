@@ -2054,6 +2054,8 @@ judging happens later in `app-ux-eval`).
 
 ## Decisions Log
 
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. This skill's rows are ACE's own test harness: send `audience: internal` (the atom stamps it on `test-*` / `*smoke*` ids anyway); internal rows need no `plain`. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 This skill writes load-bearing defaults to the per-run
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
 schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`

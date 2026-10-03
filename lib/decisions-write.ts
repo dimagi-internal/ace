@@ -22,9 +22,11 @@ import {
   DECISIONS_SCHEMA_VERSION,
   DecisionRowStrictSchema,
   DecisionsLogSchema,
+  REVIEW_FIELDS,
   type DecisionRow,
   type DecisionsLog,
 } from "./decisions-schema.js";
+import { stampRow } from "./decisions-enrich.js";
 import {
   applyDecisionOverrides,
   type DecisionOverrideRow,
@@ -171,6 +173,17 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     { existingYamlText, opportunity, run_id, generated_at: now() },
     warnings,
   );
+
+  // v6 (docs/decisions-contract.md): fill the review fields a row's own
+  // content decides — `audience: internal` on ACE's test-harness rows,
+  // `scope`/`enforcement` on rule rows, `check_at` from a `Spot-check:`
+  // sentence — so they never depend on the producer remembering to.
+  let carriesV6 = false;
+  for (const row of overridden.rows) {
+    stampRow(row);
+    if (REVIEW_FIELDS.some((f) => (row as Record<string, unknown>)[f] !== undefined)) carriesV6 = true;
+  }
+  if (carriesV6) log.schema_version = DECISIONS_SCHEMA_VERSION;
 
   const existingIds = new Set(log.decisions.map((d) => d.id));
   const skipped: string[] = [];

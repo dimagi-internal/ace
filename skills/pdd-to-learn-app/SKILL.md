@@ -1232,6 +1232,8 @@ When `--dry-run` is active:
 
 ## Decisions Log
 
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. Every framework gap the build hit (§6(5)) is a row too, with `review_ask: recommended-confirmation` when only the design owner or operator can close it. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 This skill writes to the per-run `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
 — the register ace-web renders on the public run page, where a reviewer
 comments on and answers each row and the answer carries into the next run.
@@ -1304,6 +1306,8 @@ decisions_append_rows({
       source: "Learn PDD §5 [ACE]",
       status: "ai-default",
       evidence_basis: "inferred",
+      plain: "The final quiz has 10 questions.",
+      check_at: "Learn app › Final quiz",
       value_set_by: "ace",
       reasoning: "Ten keeps one item per taught rule at the stated pass mark. Spot-check: Learn app › Assessment › Final quiz."
     },
@@ -1317,6 +1321,8 @@ decisions_append_rows({
       source: "Learn PDD §1 and §2 [FIXED]",
       status: "ai-default",
       evidence_basis: "conflicting",
+      plain: "The training has a lesson for each part of the framework this programme uses, not for every part.",
+      check_at: "Learn app › module list",
       conflict_signals: [
         "Learn PDD §1 [FIXED]: a training module per component, all present",
         "Learn PDD §2 [FIXED], 1 Sep edit: modules only for the components this programme carries"

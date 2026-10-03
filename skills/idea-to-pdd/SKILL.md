@@ -1452,6 +1452,8 @@ includes a `Decisions Log: <gdoc-url>` line.
 
 ## Decisions Log Convention
 
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. Mark a value outside ACE's authority that no `PROPOSED` tag covers with `review_ask: recommended-confirmation` + `confirm_reason`; every `[PROPOSED]` program parameter is asked about automatically once the build configures it. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 Every Phase 1 run emits `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
 with a calibrated set of load-bearing default-decisions the skill applied
 while drafting the PDD. The log is the per-run audit trail and the
@@ -1776,6 +1778,7 @@ decisions_append_rows({
       source: "idea.md §1; one-FLW-one-delivery pattern",
       status: "ai-default",
       evidence_basis: "stated",
+      plain: "Each household is visited once; there is no follow-up visit.",
       value_set_by: "ace",
       reasoning: "Single per-FLW visit producing one structured delivery."
     },
@@ -1789,6 +1792,7 @@ decisions_append_rows({
       source: "ITN Exploration App doc",
       status: "ai-default",
       evidence_basis: "conflicting",
+      plain: "Each household is visited twice, and each visit has its own form.",
       conflict_signals: [
         "Exploration App § Visit structure: describes ONE instrument (Sections 1-6); no distinct Visit-2 content",
         "Exploration App § Open-Q4 + Photos: households are 'visited twice' / 'across both visits'"

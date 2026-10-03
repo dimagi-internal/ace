@@ -418,6 +418,24 @@ opportunity must point at the rebuilt HQ apps).
      source's Connect products survive in the clone. `two-level` replaces the
      `connect-setup` child wholesale and leaves the other phases alone.
      Read it back and confirm `products` is empty.
+   - Target `decisions.yaml`: **retire the copied Phase 4 rows before Phase 4
+     re-runs** (`docs/decisions-contract.md § Re-runs`). `decisions_append_rows`
+     skips an id the log already holds, so a copied row silently beats the
+     rebuild's own answer — or sits live next to a reworded one. The first
+     Spark clone hand-minted `-spark` ids to get around it and still left
+     `program-delivery-type` and `program-currency-usd-vs-mwk` live from the
+     source build. Read the file with `drive_read_file writeToPath`, then:
+
+     ```bash
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/decisions-retire-for-rerun.ts" \
+       --decisions <local decisions.yaml> --phase-tags 4-connect \
+       --label <from-workspace> --inherited-from <from-workspace>/<run-id> --out <local out>
+     ```
+
+     and write it back with `drive_update_file localFilePath`. Each live
+     `4-connect` row moves to `<id>-<from-workspace>`, marked `superseded_by:
+     <id>` + `inherited_from_run`; the Phase 4 re-run then appends under the
+     canonical ids. Human rulings stay live.
 3. **Dispatch the Phase 4 agent** (`Agent(connect-setup)`) against
    `<to>/<opp>/<run-id>`, passing this `connect_orgs` block instead of the
    preflight's:
