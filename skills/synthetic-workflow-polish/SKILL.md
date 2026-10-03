@@ -155,6 +155,8 @@ call — see the seed skill's alias-consistency guardrail.
      domain. Turmeric → market/vendor language; KMC → maternal-health
      iconography; vaccine focus group → immunization framing.
 
+   **Style with `window.LabsReport` first** (`playbook/integrations/connect-labs.md` § "Style `render_code` with `window.LabsReport`"): build the page from the shared report library, and add a missing look to the library rather than inlining it. The utility lint below covers whatever page-level classes remain.
+
    **Utility-resolution gate — lint the POST-PATCH source before you call
    either write atom (ace#1662). A non-resolving Tailwind utility is a
    pre-upload FAILURE, not a silent no-op.** labs purges its Tailwind bundle

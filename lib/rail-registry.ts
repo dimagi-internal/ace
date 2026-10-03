@@ -272,6 +272,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
       'guard-lifecycle review, not from a single defect — this rail IS the registry',
   },
   'test/skills/remedy-verification-contract.test.ts': { issues: ['ace#1900', 'ace#2004', 'ace#2027', 'ace#1768', 'ace#1766', 'ace#1466', 'ace#1468'] },
+  'test/skills/render-code-uses-labsreport.test.ts': { issues: ['ace#2623', 'dimagi-internal/connect-labs#2178'] },
   'test/skills/repeat-entity-id-payment.test.ts': { issues: ['ace#2512', 'ace#2513'], observed: 'spark-facilitator/20260926-1413' },
   'test/skills/retired-widget-handoff-path.test.ts': { issues: ['ace#2300'], observed: 'bednet-check-2-visit/20260908-1544' },
   'test/skills/runtime-resolution.test.ts': { issues: ['ace#395'] },

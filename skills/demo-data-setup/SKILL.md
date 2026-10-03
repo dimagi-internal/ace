@@ -768,6 +768,7 @@ front half (how the labs-only opp + its data come to exist) differs.
       writes, and verify with `checkDashboardBindings` before minting a run
       (step 3 — ace#1160, ace#1894). This is where reuse genuinely pays and
       where de-novo work genuinely risks a dead page.
+   **Style with `window.LabsReport` first** (`playbook/integrations/connect-labs.md` § "Style `render_code` with `window.LabsReport`"): build the page from the shared report library, and add a missing look to the library rather than inlining it.
    2. **Lint utilities pre-upload** (step 3b — ace#1662): labs purges Tailwind
       against its own Django templates, so a utility only your `render_code`
       uses is dropped silently.
