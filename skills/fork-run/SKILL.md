@@ -158,6 +158,24 @@ trim never fired on any real run. A fork made on a deploy older than ace-web's
 fix shows it: no `inherited_from_run` anywhere, and Phase 3+ rows live under
 their canonical ids.
 
+**The plugin checks it, and repairs it (schema v6, `docs/decisions-contract.md
+§ Re-runs`).** After the fork returns, read the new run's `decisions.yaml`. If
+no row carries `inherited_from_run` while a live row's phase ordinal is at or
+after the fork point, the fork came from an old deploy — retire those rows
+BEFORE the re-run starts, the same transform ace-web applies:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/decisions-retire-for-rerun.ts" \
+  --decisions <local decisions.yaml> --from-ordinal <fork phase ordinal> \
+  --label <source_run_id> --out <local out>
+```
+
+then `drive_update_file localFilePath`. A fork that already RE-RAN with the
+inherited rows live (every fork before ace#2582 — `spark-facilitator/20261001-2208`
+is the reference case) is repaired after the fact by
+`scripts/backfill-decisions-contract.ts`, which supersedes each inherited row
+onto the re-run row that replaced it.
+
 **Response** — `OppForkOut`: `{slug, run_id, working_session_slug}`. Note the
 field is `run_id`, not `new_run_id`.
 

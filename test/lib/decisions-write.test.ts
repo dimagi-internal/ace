@@ -27,6 +27,7 @@ const VALID_ROW = {
   reasoning: "Single per-FLW visit producing one structured delivery.",
   evidence_basis: "stated" as const,
   value_set_by: "ace" as const,
+  plain: "A plain line for a reviewer.",
 };
 
 const WO_ROW = {
@@ -40,6 +41,7 @@ const WO_ROW = {
   status: "ai-default" as const,
   evidence_basis: "inferred" as const,
   value_set_by: "external" as const,
+  plain: "A plain line for a reviewer.",
 };
 
 describe("composeAppendedLog — seeding a new log", () => {

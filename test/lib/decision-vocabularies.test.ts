@@ -14,6 +14,7 @@ const base = {
   status: "ai-default" as const,
   evidence_basis: "stated" as const,
   value_set_by: "ace" as const,
+  plain: "A plain line for a reviewer.",
 };
 
 describe("checkVocabulary", () => {

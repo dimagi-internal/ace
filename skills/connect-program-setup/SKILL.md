@@ -563,6 +563,12 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
    name is an operator's decision, and because nothing needs it to be
    correct: the name is not authoritative for the archetype, the PDD is.
 
+## Decisions Log
+
+Rows this skill writes use `phase: "4-connect"` and `skill: "connect-program-setup"`, appended via `decisions_append_rows`.
+
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 ## Change Log
 
 | Date | Change | Author |

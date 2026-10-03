@@ -58,6 +58,7 @@ const reRunRow = {
   status: 'ai-default',
   evidence_basis: 'stated',
   value_set_by: 'ace',
+  plain: 'A plain line for a reviewer.',
 };
 
 const append = (existing: string, rows: unknown[]) =>

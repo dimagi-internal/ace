@@ -1041,6 +1041,23 @@ Scope and `skills/idea-to-pdd/SKILL.md` § Decisions Log Convention §
 Bar criterion). Each phase's primary writing skill owns the rows it
 writes. Schema and YAML helpers live in `lib/decisions-schema.ts`.
 
+**The decisions log is the run's review artifact (schema v6, 2026-10-03).**
+The per-run build memo is retired (owner decision: *"get rid of the build memo
+and improve decisions so it serves the same purpose"*); what it carried now
+lives on the rows. Field contract — ace-web renders against it, so field names
+are fixed: [`docs/decisions-contract.md`](../docs/decisions-contract.md).
+Producers write `plain` on every partner-facing row (REQUIRED at the write
+boundary) plus `check_at` / `correct_looks_like` where a reviewer can look
+(`skills/_decisions-review-fields.md`). The write boundary stamps `audience:
+internal` on harness rows and `scope` / `enforcement` on rule rows. At every
+phase end, `skills/decisions-render` runs `decisions_enrich` before the render:
+it folds cross-skill duplicates and marks `review_ask:
+recommended-confirmation` on every `PROPOSED` program parameter the build
+configured, every machine-translated language, every enforcement gap, every
+`OPEN` row and every open residual a person must decide — the list the memo's
+"Decisions you own" used to carry, and which the decisions Doc now opens with
+("To confirm before launch"). A pause summary names the count of live asks.
+
 **Build phases owe rows by construction, and the fence fails a silent one
 (ace#2384).** In `commcare-setup` and `connect-setup`, every entry a
 producer lists in its build-memo sections — `[ACE] latitudes taken`,
@@ -1198,7 +1215,8 @@ phase-subagent completion (commcare-setup):
 4. **Re-render the decisions log gdoc.** After verifying the phase
    wrote back its rows to `decisions.yaml` (see § Phase Write-Back
    Contract § Decisions log clause), invoke `Skill(decisions-render)`
-   against the run-id. The renderer produces
+   against the run-id — it runs `decisions_enrich` (the v6 review fields)
+   first, then renders. The renderer produces
    `ACE/<opp>/runs/<run-id>/decisions.gdoc` — a prose Google Doc at
    one stable URL — and is idempotent across re-runs. Capture the
    gdoc's `webViewLink` and inject it into the next pause-time

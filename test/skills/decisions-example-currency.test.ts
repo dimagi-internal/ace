@@ -75,6 +75,32 @@ describe('decisions_append_rows examples in SKILL.md stay current with the schem
     ).toEqual([]);
   });
 
+  it('every worked example carries `plain` on each partner-facing row (schema v6)', () => {
+    // v6 made `plain` REQUIRED on new partner-facing rows — the decisions log
+    // replaced the build memo as the review artifact (docs/decisions-contract.md).
+    // An example without it is rejected verbatim at the atom, the ace#1485 shape.
+    const offenders: string[] = [];
+    for (const { rel, text } of docs) {
+      for (const block of appendRowsExamples(text)) {
+        const rowCount = (block.match(/^\s*id\s*:/gm) ?? []).length;
+        const internal = (block.match(/audience\s*:\s*["']internal["']/g) ?? []).length;
+        const plainCount = (block.match(/^\s*plain\s*:/gm) ?? []).length;
+        if (rowCount > 0 && plainCount < rowCount - internal) {
+          offenders.push(`${rel}: ${rowCount} example row(s), ${plainCount} plain`);
+        }
+      }
+    }
+    expect(offenders, 'Add `plain: "<one line for a programme partner>"` to each example row.').toEqual([]);
+  });
+
+  it('every skill that writes decision rows links the shared review-fields contract', () => {
+    const offenders = docs
+      .filter(({ text }) => /^## Decisions Log\b/m.test(text) || appendRowsExamples(text).length > 0)
+      .filter(({ text }) => !text.includes('_decisions-review-fields.md'))
+      .map(({ rel }) => rel);
+    expect(offenders, 'Link skills/_decisions-review-fields.md from the Decisions Log section.').toEqual([]);
+  });
+
   it('no SKILL.md cites a superseded decisions-schema version', () => {
     const offenders: string[] = [];
     for (const { rel, text } of docs) {

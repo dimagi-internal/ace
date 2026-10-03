@@ -2491,6 +2491,8 @@ When `--dry-run` is active:
 
 ## Decisions Log
 
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. An open design question the build could not settle (e.g. no recording path when a whole group refuses the photo) is a row with `review_ask: recommended-confirmation` + `confirm_reason`, not only a residual. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 This skill writes to the per-run `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
 — the register ace-web renders on the public run page, where a reviewer
 comments on and answers each row and the answer carries into the next run.
@@ -2565,6 +2567,8 @@ decisions_append_rows({
       source: "C6 PDD §12 Q1 [ACE]",
       status: "ai-default",
       evidence_basis: "inferred",
+      plain: "One form covers every transfer method, showing only the questions for the method chosen.",
+      check_at: "Deliver app › Transfer record › transfer method",
       value_set_by: "ace",
       reasoning: "One flow reads the method off the household case and relevance-gates three artifact branches. An assumption, not a resolution. Spot-check: Deliver app › Consumption support distribution › consumption_dist › transfer_method."
     },
@@ -2578,6 +2582,7 @@ decisions_append_rows({
       source: "Targeting PDD §3 and C5 PDD §2 [FIXED]",
       status: "ai-default",
       evidence_basis: "conflicting",
+      plain: "Payment is counted per household, so one household is paid at most once.",
       conflict_signals: [
         "Targeting PDD §3 [FIXED]: one payable survey per household",
         "C5 PDD §2 [FIXED]: an asset is delivered to a named member"

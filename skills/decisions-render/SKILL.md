@@ -27,6 +27,27 @@ write the result to `decisions.gdoc` at one stable URL.
 
    Use `drive_list_folder` from the opp folder to find the run folder.
 
+1.5. **Enrich the log first — `decisions_enrich` (REQUIRED, schema v6).** The
+   decisions log is the run's review artifact (the build memo is retired), and
+   the parts of it with a right answer are computed, not left to the producers:
+
+   ```
+   mcp__plugin_ace_ace-decisions__decisions_enrich
+     { runFolderId: "<run-folder file ID from step 1>" }
+   ```
+
+   It reads `decisions.yaml` + `run_state.yaml` from the folder and stamps
+   rule `scope`/`enforcement`, `audience: internal` on harness rows, folds
+   cross-skill duplicates, and marks `review_ask: recommended-confirmation` on
+   every `PROPOSED` program parameter the build configured, every
+   machine-translated language, every enforcement gap, every `OPEN` row and
+   every open residual a person must decide (`docs/decisions-contract.md §
+   What earns a review_ask`). Idempotent; writes only on change. Carry its
+   `reviewAsks` list into the pause summary's `Decisions Log:` line ("N to
+   confirm before launch"), and treat a non-empty `missingPlain` / `jargon` as
+   a `[WARN]` naming the producer skill — the producer owes `plain` on every
+   partner-facing row (`skills/_decisions-review-fields.md`).
+
 2. **Render via the `render_decisions_log` atom** (the canonical, single-call
    path). Pass the run-folder file ID; the atom reads `decisions.yaml` from it,
    renders the prose log via `lib/decisions-renderer.ts`, and find-or-updates
@@ -62,6 +83,7 @@ write the result to `decisions.gdoc` at one stable URL.
 ## MCP Tools Used
 
 - Google Drive: `drive_list_folder` (step 1, resolve run folder), `render_decisions_log` (step 2, the single-call render)
+- ace-decisions: `decisions_enrich` (step 1.5, the deterministic v6 review fields)
 
 ## Mode Behavior
 
@@ -75,3 +97,4 @@ write the result to `decisions.gdoc` at one stable URL.
 | 2026-05-08 | Initial skill — pairs with `lib/decisions-renderer.ts` and `scripts/decisions-render.ts`. Renders decisions.yaml as a prose Google Doc; idempotent; runs at end of every phase. | ACE team (decisions-log PR #2) |
 | 2026-05-31 | Canonical path is now the `render_decisions_log` MCP atom (wraps `runDecisionsRender` server-side) — one call with the run-folder file ID instead of hand-relaying ~65KB of `docs_batch_update` JSON per phase (jjackson/ace#574). | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-10-03 | **Step 1.5: `decisions_enrich` before the render (schema v6).** The decisions log replaced the build memo as the review artifact; the enrichment computes rule scope/enforcement, harness `audience`, cross-skill dedupe and every derived `review_ask`, and the Doc now opens with "To confirm before launch". Contract: `docs/decisions-contract.md`. | ACE team |

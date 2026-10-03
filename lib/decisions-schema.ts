@@ -2,6 +2,7 @@ import { z } from "zod";
 import yaml from "yaml";
 
 import { checkVocabulary } from "./decision-vocabularies.js";
+import { isInternalDecision, plainLanguageFindings } from "./decision-review.js";
 
 /**
  * Canonical schema version for the decisions log.
@@ -49,15 +50,39 @@ import { checkVocabulary } from "./decision-vocabularies.js";
  *
  * All three fields are OPTIONAL on the permissive read schema (pre-v5 logs
  * lack them). `value_set_by` is REQUIRED on new strict writes.
+ *
+ * v6 (2026-10-03): the decisions log IS the review artifact — the per-run
+ * build memo is retired (owner decision 2026-10-03: "get rid of the build memo
+ * and improve decisions so it serves the same purpose"). Rows carry what the
+ * memo used to: `review_ask` + `confirm_reason` (what a person with authority
+ * should confirm before launch), `plain` (one line for a programme partner),
+ * `check_at` + `correct_looks_like` (where to spot-check and what right looks
+ * like), `audience` (`internal` for ACE's own test harness), and on rule rows
+ * `scope` + `enforcement`. Field contract: `docs/decisions-contract.md` — ace-web
+ * renders against it, so the field NAMES are fixed. All are optional on read;
+ * `plain` is REQUIRED on new strict writes of partner-facing rows.
  */
-export const DECISIONS_SCHEMA_VERSION = 5 as const;
+export const DECISIONS_SCHEMA_VERSION = 6 as const;
 
 /**
  * Schema versions a reader will accept. New writes seed `DECISIONS_SCHEMA_VERSION`;
  * reads degrade gracefully across the supported set so a log started under an
  * older writer keeps parsing after a version bump.
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [3, 4, 5] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [3, 4, 5, 6] as const;
+
+/** The v6 review fields (docs/decisions-contract.md). */
+export const REVIEW_FIELDS = [
+  "review_ask",
+  "confirm_reason",
+  "plain",
+  "check_at",
+  "correct_looks_like",
+  "audience",
+  "scope",
+  "enforcement",
+  "also_raised_by",
+] as const;
 
 /**
  * One row in a per-run decisions log. Represents a load-bearing default
@@ -246,6 +271,79 @@ export const DecisionRowSchema = z
           "that gets compared, diffed and overridden; `params` is the part that would otherwise be " +
           "smuggled into it as prose.",
       ),
+    // ── v6 review fields (docs/decisions-contract.md) ─────────────────────
+    review_ask: z
+      .enum(["recommended-confirmation"])
+      .optional()
+      .describe(
+        "`recommended-confirmation`: the run is BUILT on this value, but someone with authority should " +
+          "confirm it before launch — a placeholder for a [PROPOSED] design parameter, a value outside ACE's " +
+          "authority, a machine translation awaiting native-speaker sign-off, an enforcement gap, or an open " +
+          "design question. Absent = no ask. Requires `confirm_reason`. Never blocks a run.",
+      ),
+    confirm_reason: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "One plain sentence saying why the value needs confirming (e.g. 'The design marks the rate as proposed; " +
+          "the build uses 7,500 MWK as a placeholder.'). Required with `review_ask`; only valid with it.",
+      ),
+    plain: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "One line, in plain language, for a programme partner who has never seen ACE: what was chosen. " +
+          "No field ids, no section-references, no ACE jargon (PDD, CCZ, skill names, issue numbers); a quoted " +
+          "design rule may keep its own words. Required on new partner-facing rows.",
+      ),
+    check_at: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Where to spot-check it, as a path a reviewer can follow (e.g. 'Deliver app › Community Meeting Record › meeting photo').",
+      ),
+    correct_looks_like: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "The observation at `check_at` that means the choice was built right (e.g. 'The form cannot be saved without a photo').",
+      ),
+    audience: z
+      .enum(["partner", "internal"])
+      .optional()
+      .describe(
+        "`internal` for ACE's own test-harness and build-infrastructure rows (scenario counts, smoke recipes, " +
+          "scroll methods) — kept in the log, hidden from partner views. Absent = `partner`. The write " +
+          "boundary stamps `internal` on rows `isInternalDecision` recognises.",
+      ),
+    scope: z
+      .enum(["record", "entity", "worker", "programme"])
+      .optional()
+      .describe(
+        "Rule rows only: what one application of the rule limits — one submitted `record`, one tracked " +
+          "`entity` (a community, household), one `worker`, or the `programme` as a whole (a review sample). " +
+          "Paired with `enforcement`.",
+      ),
+    enforcement: z
+      .enum(["enforced", "by-design", "gap"])
+      .optional()
+      .describe(
+        "Rule rows only: `enforced` (a Connect rule, payment limit or app check holds it at its scope), " +
+          "`by-design` (the design places it off the platform on purpose), `gap` (the design needs it and " +
+          "nothing in the build holds it). A per-worker rule held only by an app check is a `gap`: app " +
+          "checks are keyed on one case. Paired with `scope`.",
+      ),
+    also_raised_by: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "Other skills that raised the SAME question with the same answer. Set by the enrichment pass when it " +
+          "folds a cross-skill duplicate into this row (the duplicate is marked `superseded_by` this row).",
+      ),
     feedback_ref: z
       .string()
       .regex(/^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/, {
@@ -300,6 +398,28 @@ export const DecisionRowSchema = z
           path: ["override"],
         });
       }
+    }
+    if (row.review_ask !== undefined && row.confirm_reason === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`review_ask` requires `confirm_reason` — one plain sentence saying why someone should confirm this value",
+        path: ["confirm_reason"],
+      });
+    }
+    if (row.review_ask === undefined && row.confirm_reason !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "`confirm_reason` is only valid with `review_ask`",
+        path: ["confirm_reason"],
+      });
+    }
+    if ((row.scope === undefined) !== (row.enforcement === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "`scope` and `enforcement` describe a rule row together — set both or neither",
+        path: [row.scope === undefined ? "scope" : "enforcement"],
+      });
     }
     if (row.status !== "human-decided" && row.decided_by !== undefined) {
       ctx.addIssue({
@@ -413,6 +533,39 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue, path: ["options"] });
       }
     }
+    // v6: the decisions log is the review artifact (the build memo is retired).
+    // A partner-facing row must say what it chose in words a programme
+    // partner can read. ACE's own test-harness rows are exempt — they are
+    // `audience: internal`, which the write boundary stamps from
+    // `isInternalDecision` when the caller omits it.
+    {
+      const internal = row.audience === "internal" || (row.audience === undefined && isInternalDecision(row));
+      if (!internal && row.plain === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "`plain` is required on every new partner-facing decision row (schema v6) — one line, in plain " +
+            "language, saying what was chosen, for a reader who has never seen ACE. No field ids, section-refs or " +
+            "ACE jargon. For a test-harness row send `audience: internal` instead. Contract: " +
+            "docs/decisions-contract.md.",
+          path: ["plain"],
+        });
+      }
+      for (const field of ["plain", "confirm_reason"] as const) {
+        const text = row[field];
+        if (text === undefined) continue;
+        const findings = plainLanguageFindings(text);
+        if (findings.length > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              `\`${field}\` must read for a programme partner (docs/decisions-contract.md): ` +
+              `${findings.join("; ")}. Quote a design rule in double quotes to keep its own words.`,
+            path: [field],
+          });
+        }
+      }
+    }
     // v5: every new row must declare whether the value is ACE's to set or
     // arrives later from outside. This does NOT gate the run — ACE fills its
     // best estimate and proceeds either way. It exists so a projection is not
@@ -488,7 +641,7 @@ export const DecisionsLogSchema = z
       )
       .describe(
         `Decisions-log schema version. Reads accept ${SUPPORTED_SCHEMA_VERSIONS.join(", ")} ` +
-          `(v3 legacy has no \`evidence_basis\`; v4 has no \`value_set_by\`); ` +
+          `(v3 legacy has no \`evidence_basis\`; v4 has no \`value_set_by\`; v5 has no review fields); ` +
           `new logs are seeded at v${DECISIONS_SCHEMA_VERSION} (DECISIONS_SCHEMA_VERSION).`,
       ),
     opportunity: z.string().min(1),

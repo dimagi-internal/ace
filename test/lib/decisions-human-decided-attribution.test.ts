@@ -88,6 +88,7 @@ const FABRICATED_ROW = {
   decided_by: "jjackson@dimagi.com",
   decided_at: "2026-09-08",
   value_set_by: "ace",
+  plain: 'A plain line for a reviewer.',
   evidence_basis: "stated",
 } as const;
 
@@ -172,6 +173,7 @@ describe("the legitimate human-decided path is untouched (ace#2307)", () => {
     status: "ai-default",
     evidence_basis: "stated",
     value_set_by: "ace",
+    plain: 'A plain line for a reviewer.',
     feedback_ref: "20260727-sophie-feintuch/g",
   };
 

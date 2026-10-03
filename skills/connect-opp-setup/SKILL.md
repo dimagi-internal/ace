@@ -1626,6 +1626,8 @@ When `--dry-run` is active:
 
 ## Decisions Log
 
+**Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. Rule rows carry `scope` (`record` | `entity` | `worker` | `programme`) and `enforcement` (`enforced` | `by-design` | `gap`) — or omit both and the atom computes them; a per-worker limit is enforced by the payment unit's `max_daily` / `max_total`, never first by an app check, and a rule Connect refused is a `gap`, never `by-design`. The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 This skill writes load-bearing defaults to the per-run
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
 schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
@@ -1651,7 +1653,7 @@ Each row this skill writes uses `phase: "4-connect"` and
 `skill: "connect-opp-setup"`. Append via the `decisions_append_rows` MCP
 atom (ace-decisions server) — do not hand-construct YAML and do not
 write decisions.yaml via `update_yaml_file`. The atom validates each row
-against `lib/decisions-schema.ts` v5 at the call boundary; misspelled
+against `lib/decisions-schema.ts` v6 at the call boundary; misspelled
 keys (`decision`, `rationale`, `default`, `options_considered`, `notes`)
 are rejected before they touch Drive, and so is any row missing
 `evidence_basis` (`stated` | `inferred` | `conflicting` — mandatory on
@@ -1680,6 +1682,7 @@ decisions_append_rows({
       source: "PDD §6/§8 verification mechanism",
       status: "ai-default",
       evidence_basis: "stated",
+      plain: "Connect checks each visit for duplicates only; it does not check location.",
       value_set_by: "ace",
       reasoning: "Smoke opp — no GPS or photo capture in scope; duplicate guard only."
     },
@@ -1746,6 +1749,7 @@ decisions_append_rows({
       source: "Targeting PDD §9 [FIXED]",
       status: "ai-default",
       evidence_basis: "conflicting",
+      plain: "\"one payable survey per household\" applies to each household and is checked outside Connect, by design.",
       conflict_signals: [
         "Targeting PDD §9 [FIXED]: one payable survey per household",
         "connect_set_verification_flags refuses duplicate (ace#1013): no Connect-side duplicate check"

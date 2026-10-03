@@ -190,8 +190,8 @@ describe("DecisionsLogSchema", () => {
     expect(() => DecisionsLogSchema.parse(log)).not.toThrow();
   });
 
-  it.each([[1], [2], [6]])(
-    "rejects unsupported schema_version %s (only 3, 4 and 5 are read)",
+  it.each([[1], [2], [7]])(
+    "rejects unsupported schema_version %s (only 3, 4, 5 and 6 are read)",
     (version) => {
       const log = {
         schema_version: version,
@@ -517,6 +517,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       reasoning: "Per-FLW per-POC visit, no group facilitation, no stage gates.",
       evidence_basis: "stated",
       value_set_by: "ace",
+      plain: "A plain line for a reviewer.",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -613,6 +614,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       status: "overridden",
       evidence_basis: "stated",
       value_set_by: "ace",
+      plain: "A plain line for a reviewer.",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -679,6 +681,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
           ...base,
           evidence_basis: basis,
           value_set_by: "ace",
+          plain: "A plain line for a reviewer.",
         }),
       ).not.toThrow();
     },
@@ -690,6 +693,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
         ...base,
         evidence_basis: "inferred",
         value_set_by: "ace",
+        plain: "A plain line for a reviewer.",
         conflict_signals: ["a", "b"],
       }),
     ).toThrow(/conflict_signals.*only valid when.*conflicting/);
@@ -701,6 +705,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
         ...base,
         evidence_basis: "conflicting",
         value_set_by: "ace",
+        plain: "A plain line for a reviewer.",
       }),
     ).toThrow(/conflict_signals.*at least 2/);
   });
@@ -711,6 +716,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
         ...base,
         evidence_basis: "conflicting",
         value_set_by: "ace",
+        plain: "A plain line for a reviewer.",
         conflict_signals: ["only one reading"],
       }),
     ).toThrow(/conflict_signals.*at least 2/);
@@ -721,6 +727,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
       ...base,
       evidence_basis: "conflicting" as const,
       value_set_by: "ace" as const,
+      plain: "A plain line for a reviewer.",
       conflict_signals: [
         "Exploration App § Visit structure: describes ONE instrument (Sections 1-6), no distinct Visit-2 content",
         "Exploration App § Open-Q4 + Photos: households are 'visited twice' / 'across both visits'",
@@ -742,6 +749,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
           ...base,
           evidence_basis: "conflicting" as const,
           value_set_by: "ace" as const,
+          plain: "A plain line for a reviewer.",
           conflict_signals: [
             "Exploration App § Visit structure: one instrument",
             "Exploration App § Open-Q4: visited twice",
@@ -768,6 +776,7 @@ describe("provenance + resolution owner (v5)", () => {
     source: "REVIEWER FEEDBACK D2 [c]",
     evidence_basis: "stated" as const,
     value_set_by: "ace" as const,
+    plain: "A plain line for a reviewer.",
   };
 
   // ── status: human-decided ───────────────────────────────────────────────
@@ -877,6 +886,7 @@ describe("provenance + resolution owner (v5)", () => {
       status: "ai-default",
       evidence_basis: "inferred",
       value_set_by: "external",
+      plain: "A plain line for a reviewer.",
     });
     expect(parsed.status).toBe("ai-default");
     expect(effectiveValue(parsed)).toBe("USD 1.50-3.00 per verified survey");

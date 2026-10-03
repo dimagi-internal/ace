@@ -115,6 +115,7 @@ const ROW_1 = {
   status: 'ai-default' as const,
   evidence_basis: 'stated' as const,
   value_set_by: "ace" as const,
+  plain: "A plain line for a reviewer.",
 };
 
 const ROW_2_WO = {
@@ -128,6 +129,7 @@ const ROW_2_WO = {
   status: 'ai-default' as const,
   evidence_basis: 'inferred' as const,
   value_set_by: "external" as const,
+  plain: "A plain line for a reviewer.",
 };
 
 describe('findDecisionsFile', () => {

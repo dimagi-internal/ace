@@ -95,7 +95,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   decisions: {
     file: 'mcp/decisions-server.ts',
-    expectedCount: 1,
+    expectedCount: 2,
     allowedPrefixes: ['decisions_'],
   },
   'google-drive': {

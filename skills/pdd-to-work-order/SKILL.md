@@ -56,7 +56,10 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-ethics-scope` | What kind of data does the work touch? **Options:** `operational-no-personal-data` · `operational-with-personal-data` · `patient-level-clinical` | Ethics section |
    | `wo-data-storage-region` | Server region for data storage (default: `united-states`). A qualifier such as "provisional, pending confirmation" goes in `params.caveat`. **Options:** `united-states` · `european-union` · `in-country` | Data Handling section |
 
-4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v5 at the call boundary and is idempotent on re-runs.
+4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v6 at the call boundary and is idempotent on re-runs.
+
+   **Review fields (schema v6 — REQUIRED).** The decisions log is the run's review artifact (the build memo is retired). Every row this skill appends carries `plain` — one plain-language line for a programme partner who has never seen ACE — and, where the choice is visible somewhere a reviewer can open, `check_at` + `correct_looks_like`. Contract values fixed at signature are `value_set_by: external`; say so in `plain` ("set when the contract is signed"). The atom rejects a partner-facing row without `plain`, or with jargon in it. Rules, a worked row and the `review_ask` semantics: [`skills/_decisions-review-fields.md`](../_decisions-review-fields.md); field contract: `docs/decisions-contract.md`.
+
 
    Tool call:
 
@@ -76,6 +79,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
          source: "pdd-timeline",
          status: "ai-default",
          evidence_basis: "stated",
+         plain: "The work runs from 22 May to 31 July 2026.",
          value_set_by: "external"
        },
        ...
