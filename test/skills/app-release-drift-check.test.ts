@@ -35,7 +35,7 @@ function processBody(md: string): string {
 
 const proc = processBody(release);
 
-describe('app-release checks for Nova↔HQ-draft drift BEFORE it builds', () => {
+describe('app-release looks for Nova↔HQ-draft drift BEFORE it builds', () => {
   it('has a drift-check step in the Process', () => {
     expect(proc).toMatch(/drift/i);
   });

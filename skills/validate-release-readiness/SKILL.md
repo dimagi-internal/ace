@@ -17,7 +17,7 @@ validate release readiness passes it means executing release doesn't change
 anything other than sharing externally."*
 
 So this skill does **every check and every content change** a release could
-need — the old `release-check`'s gates, the HQ plan, the per-reviewer audit of
+need — every readiness gate, the HQ plan, the per-reviewer audit of
 the review page, the repairs `/ace:release` used to "polish" — and ends in ONE
 verdict, **READY** or **NOT READY**. On READY the verdict carries the **release
 plan**: the exact, ordered share actions `/ace:release` will execute and the
@@ -25,14 +25,11 @@ full text of every email it will send, hashed, with a hash of `run_state.yaml`
 as validated. `/ace:release` executes that plan and nothing else
 (`skills/release-run`), and refuses it if anything differs.
 
-It replaces `release-check`; `/ace:release-check` is a deprecated alias for
-this command.
-
 **It re-implements no gate.** It runs or reads the gates that already exist —
 every `-qa` result, every `-eval` verdict, `connect-opp-setup`'s
 post-condition, `output-preview-capture`, `run-surface-audit`,
 `ocs-chatbot-qa`, `app-release-qa` — and rolls their evidence up
-(`lib/release-check.ts`, pinned by `test/lib/release-check.test.ts` over the
+(`lib/release-readiness.ts`, pinned by `test/lib/release-readiness.test.ts` over the
 real evidence of `spark-facilitator/20260926-1800`). The plan is
 `lib/release-plan.ts` (`test/lib/release-plan.test.ts`), the gate
 `releaseGate` (`test/lib/release-gate.test.ts`). Re-runnable and idempotent:
@@ -59,11 +56,10 @@ reviewers (the gate compares them exactly).
 
 ## Products
 
-- `<run>/release-readiness_verdict.yaml` — `lib/release-check.ts`
+- `<run>/release-readiness_verdict.yaml` — `lib/release-readiness.ts`
   `ReleaseVerdict` v2, real YAML bytes (`drive_upload_binary`, `text/yaml`), at
-  the RUN ROOT next to `run_state.yaml`. ace-web shows it on the run's tab row
-  (it still reads the legacy `release-check_verdict.yaml` of older runs; a
-  legacy verdict has no plan, so it never releases).
+  the RUN ROOT next to `run_state.yaml`. ace-web shows it on the run's tab row.
+  It is the only verdict file the gate reads; no other name is accepted.
 - `<run>/release-readiness_report.md` — the same verdict and plan for a human,
   rendered as a Google Doc (`drive_create_doc_from_markdown`).
 
@@ -140,7 +136,7 @@ Resolve the run folder (`resolve_opp_path` → `runs/<run-id>`), download
 `run_state.yaml` locally (`drive_read_file` `writeToPath`), bind the session
 (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <workspace>/<opp>`), and pick a scratch
 dir. `$RC` below is
-`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-check.ts"`,
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`,
 and `$FLAGS` is `--reviewers "<list>"` plus whichever of
 `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared connect`
 were given — the SAME `$FLAGS` on every command below and later on
@@ -278,11 +274,10 @@ prints why and the release stops — it never adapts.
 
 - `release-run` (`/ace:release`) — executes this verdict's plan and nothing else.
 - `clone-to-new-workspace` — runs this as its last step, to report (not block).
-- `release-check` — the retired name; its stub points here.
 
 ## Change Log
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-10-01 | `release-check`: READY / NOT READY over every gate's evidence. | ACE team |
+| 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |

@@ -1,7 +1,7 @@
 //
-// Plain-language release-check findings.
+// Plain-language release-readiness findings.
 //
-// A release-check finding was written for ACE: on spark/spark-facilitator/
+// A release-readiness finding was written for ACE: on spark/spark-facilitator/
 // 20261001-2208 the verdict ace-web showed a reviewer read
 //
 //   blocker  run-surface-audit-eval incomplete (pass band ≥ 7)
@@ -24,7 +24,7 @@
 // Pure.
 
 import { plainText } from './decision-review.js';
-import type { ReleaseFinding } from './release-check.js';
+import type { ReleaseFinding } from './release-readiness.js';
 
 /** What a producing skill IS, to an outside reader. */
 const PRODUCT: Array<[RegExp, string]> = [

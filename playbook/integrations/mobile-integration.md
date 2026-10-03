@@ -542,7 +542,7 @@ Both files land in the failing dispatch's own output dir (`<screenshotDir>/<reci
 - `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md` — read the trace before agreeing with the diagnosis
 - `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` — shift-left principle for recipe lint
 - `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` — `commcare_validate_ccz` install gate + session-rescan governance rule
-- `skills/connect-apk-upgrade/SKILL.md` — the end-to-end APK version bump (release check → calibrate → pin flip → activate → verify → rollback)
+- `skills/connect-apk-upgrade/SKILL.md` — the end-to-end APK version bump (release lookup → calibrate → pin flip → activate → verify → rollback)
 - `commands/mobile-bootstrap.md` — operator-facing one-time setup
 - `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md` — design rationale
 - `docs/atom-schemas.md` — canonical Zod-schema catalog (regenerate via `npx tsx scripts/dump-atom-schemas.ts`)

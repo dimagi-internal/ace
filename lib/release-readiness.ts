@@ -1,5 +1,5 @@
 //
-// validate-release-readiness (formerly release-check) — is this run ready to
+// validate-release-readiness — is this run ready to
 // put in front of a partner, and exactly what will releasing it share?
 //
 // "Ready" used to be a claim. This module makes it a verdict a gate computes,
@@ -18,26 +18,23 @@
 // last write, over the same run_state, for exactly the requested reviewers and
 // options, with an untampered plan. Any mismatch is a refusal, never adapted to.
 //
-// Pure. `scripts/release-check.ts` gathers the evidence (Drive inventory via
+// Pure. `scripts/release-readiness.ts` gathers the evidence (Drive inventory via
 // the service account, live probes) and writes the files.
 
 import { parse as parseYaml } from 'yaml';
 import { validateQAResult } from './qa-types.js';
 import { checkOppPostcondition, type OppDecided, type OppReadback } from './connect-opp-postcondition.js';
 import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
-import { collapseSharedCauses, plainFinding } from './release-check-plain.js';
+import { collapseSharedCauses, plainFinding } from './release-readiness-plain.js';
 import { driveFileId } from './preview-capture.js';
 import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
-export const RELEASE_CHECK_SCHEMA_VERSION = 2 as const;
+export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
 export const RELEASE_VERDICT_KIND = 'release-readiness' as const;
 export const RELEASE_VERDICT_NAME = 'release-readiness_verdict.yaml';
 export const RELEASE_REPORT_NAME = 'release-readiness_report.md';
-/** The v1 (`release-check`) pair — still read by ace-web; never releasable (no plan). */
-export const LEGACY_VERDICT_NAME = 'release-check_verdict.yaml';
-export const LEGACY_REPORT_NAME = 'release-check_report.md';
 /** The verdict's own files, excluded from "the run's last write". */
-export const VERDICT_FILE = /(^|\/)release-(?:check|readiness)_[^/]*$/;
+export const VERDICT_FILE = /(^|\/)release-readiness_[^/]*$/;
 
 export type ReleaseArea =
   | 'qa'
@@ -66,7 +63,7 @@ export interface ReleaseFinding {
   /**
    * Plain language for whoever releases the run — what is wrong, no ACE
    * internals (skill names, payload paths). Filled by `buildReleaseVerdict`
-   * (lib/release-check-plain.ts); ace-web prefers it over `detail`.
+   * (lib/release-readiness-plain.ts); ace-web prefers it over `detail`.
    */
   summary?: string;
   /** What to do, addressed to a person. ace-web prefers it over `fix`. */
@@ -129,7 +126,7 @@ function producerLatest(files: readonly RunFile[], producer: string): RunFile | 
     const base = f.path.split('/').pop() ?? '';
     // `<producer>.md`, `<producer>_<role>.yaml`, `<producer>.source.md` — not another skill sharing the prefix.
     if (!(base.startsWith(`${producer}.`) || base.startsWith(`${producer}_`))) continue;
-    if (/_verdict|qa_result|release-(?:check|readiness)_/.test(base)) continue;
+    if (/_verdict|qa_result|release-readiness_/.test(base)) continue;
     if (!best || t(f.modifiedTime) > t(best.modifiedTime)) best = f;
   }
   return best;
@@ -344,7 +341,7 @@ export interface LinkProbe {
 }
 
 export function assessLinks(probes: readonly LinkProbe[] | null): ReleaseFinding[] {
-  if (probes === null) return [{ id: 'links-unchecked', area: 'links', severity: 'blocker', owner: 'validate-release-readiness', detail: 'output links were not probed', fix: 'scripts/release-check.ts links' }];
+  if (probes === null) return [{ id: 'links-unchecked', area: 'links', severity: 'blocker', owner: 'validate-release-readiness', detail: 'output links were not probed', fix: 'scripts/release-readiness.ts links' }];
   return probes
     .filter((p) => !p.ok)
     .map((p) => ({
@@ -390,7 +387,7 @@ export function assessSurfaceAudit(
         severity: f.severity === 'broken' ? 'blocker' : 'warning', owner: 'run-surface-audit',
         detail: `${f.detail} (${f.where})`, fix: f.fix,
         // REVIEWERS-UNDECLARED gets a sharper, link-naming plain line in
-        // lib/release-check-plain.ts; any other code keeps the audit's own.
+        // lib/release-readiness-plain.ts; any other code keeps the audit's own.
         ...(f.code !== 'REVIEWERS-UNDECLARED' && f.summary && f.action ? { summary: f.summary, action: f.action } : {}),
       });
     }
@@ -438,7 +435,7 @@ export function assessApps(files: readonly RunFile[], runState: unknown): Releas
   return out;
 }
 
-/** `commcare_get_subscription`'s output, as release-check reads it. */
+/** `commcare_get_subscription`'s output, as validate-release-readiness reads it. */
 export interface HqPlanLite {
   domain?: string;
   edition?: string;
@@ -488,7 +485,7 @@ export function assessPlan(problems: readonly PlanProblem[]): ReleaseFinding[] {
 }
 
 export interface ReleaseVerdict {
-  schema_version: typeof RELEASE_CHECK_SCHEMA_VERSION;
+  schema_version: typeof RELEASE_READINESS_SCHEMA_VERSION;
   kind: typeof RELEASE_VERDICT_KIND;
   workspace: string;
   opp: string;
@@ -545,7 +542,7 @@ export function buildReleaseVerdict(input: {
   const seen = new Set<string>();
   const deduped = input.findings.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
   // One item per root cause, each with a plain `summary` / `action`
-  // (lib/release-check-plain.ts). `detail` / `fix` are kept for compatibility.
+  // (lib/release-readiness-plain.ts). `detail` / `fix` are kept for compatibility.
   const unique = collapseSharedCauses(deduped).map((f) => ({
     ...f,
     ...(f.summary && f.action ? {} : plainFinding(f, { workspace: input.workspace })),
@@ -560,7 +557,7 @@ export function buildReleaseVerdict(input: {
   const ready = blockers.length === 0 && reviewers.length > 0 && !!input.plan;
   const plan = ready ? input.plan! : null;
   return {
-    schema_version: RELEASE_CHECK_SCHEMA_VERSION,
+    schema_version: RELEASE_READINESS_SCHEMA_VERSION,
     kind: RELEASE_VERDICT_KIND,
     workspace: input.workspace,
     opp: input.opp,
@@ -604,7 +601,7 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
   const again = 'run /ace:validate-release-readiness on this run with the same reviewers and flags';
   const kind = (verdict as { kind?: string } | null)?.kind;
   if (!verdict) return { ok: false, reason: `no ${RELEASE_VERDICT_NAME} in the run — ${again}` };
-  if (kind !== RELEASE_VERDICT_KIND || verdict.schema_version !== RELEASE_CHECK_SCHEMA_VERSION) {
+  if (kind !== RELEASE_VERDICT_KIND || verdict.schema_version !== RELEASE_READINESS_SCHEMA_VERSION) {
     return { ok: false, reason: `the verdict is a ${kind ?? 'unknown'} v${verdict.schema_version ?? '?'} verdict with no release plan — ${again}` };
   }
   if (verdict.workspace !== current.workspace || verdict.opp !== current.opp || verdict.run_id !== current.runId) {
@@ -690,7 +687,7 @@ export function renderReleaseReport(v: ReleaseVerdict, planText?: string): strin
 
 /**
  * What Phase 4 DECIDED, read back from run_state — the `decided` half of the
- * post-condition when release-check re-runs it after the fact. A rule Connect
+ * post-condition when validate-release-readiness re-runs it after the fact. A rule Connect
  * refused is recorded as `not_applied_reason` with an empty rule list
  * (spark-facilitator/20260926-1800, ace#2419); that counts as a decided rule
  * that did not persist, not as "no rules were decided".

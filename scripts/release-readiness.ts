@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * release-check — the evidence-gathering, verdict and release-plan half of
- * `skills/validate-release-readiness` (formerly `skills/release-check`), and
+ * release-readiness — the evidence-gathering, verdict and release-plan half of
+ * `skills/validate-release-readiness`, and
  * the gate + plan reader `skills/release-run` (`/ace:release`) uses.
  *
  * Reviewer/flag arguments shared by `memberships`, `assess` and `gate`:
@@ -39,7 +39,7 @@
  *          [--hq-plan <commcare_get_subscription json for the run's HQ space>]
  *          [--overlay <json {"<run path>": "<local file>"}>]
  *          [--read-only] --out-dir <dir>
- *       Turn the evidence into findings (lib/release-check.ts), build the
+ *       Turn the evidence into findings (lib/release-readiness.ts), build the
  *       release plan (lib/release-plan.ts), and write
  *       `release-readiness_verdict.yaml` + `release-readiness_report.md` in
  *       <dir>. Missing evidence is a BLOCKER of its own ("not checked"), never
@@ -96,7 +96,7 @@ import {
   type ReleaseFinding,
   type ReleaseVerdict,
   type RunFile,
-} from '../lib/release-check.js';
+} from '../lib/release-readiness.js';
 import {
   buildReleasePlan,
   emailBody,
@@ -126,7 +126,7 @@ const flag = (n: string) => args.includes(`--${n}`);
 function need(n: string): string {
   const v = arg(n);
   if (!v) {
-    process.stderr.write(`release-check: missing --${n}\n`);
+    process.stderr.write(`release-readiness: missing --${n}\n`);
     process.exit(2);
   }
   return v as string;
@@ -142,7 +142,7 @@ function keyFile(): string {
   throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
 }
 
-const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-(?:check|readiness)_verdict\.yaml$/;
+const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$/;
 
 function options(): ReleaseOptions {
   const shared = arg('allow-shared');
@@ -285,7 +285,7 @@ async function links(): Promise<void> {
       const { auth: _a, ...rest } = probe as LinkProbe & { auth?: unknown };
       void _a;
       out.push(rest);
-      process.stderr.write(`[release-check] ${probe.ok ? 'ok  ' : 'FAIL'} ${probe.label} ${probe.detail}\n`);
+      process.stderr.write(`[release-readiness] ${probe.ok ? 'ok  ' : 'FAIL'} ${probe.label} ${probe.detail}\n`);
     }
   } finally {
     await sessions.close();
@@ -462,11 +462,11 @@ async function main(): Promise<void> {
     process.stdout.write(hqEnterpriseFlipSteps(domain) + '\n');
     return;
   }
-  process.stderr.write('usage: release-check.ts inventory|links|memberships|drive-access|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
+  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
   process.exit(2);
 }
 
 main().catch((e) => {
-  process.stderr.write(`release-check: ${(e as Error).stack ?? e}\n`);
+  process.stderr.write(`release-readiness: ${(e as Error).stack ?? e}\n`);
   process.exit(1);
 });

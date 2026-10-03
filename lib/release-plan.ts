@@ -320,7 +320,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
 
   // 3. Drive — every document the review page links to must open for the reviewer.
   if (input.driveDocs === null) {
-    problems.push(problem('drive-access-unchecked', 'blocker', "the sharing of the Drive documents on the review page was not read", 'scripts/release-check.ts drive-access --surface surface.json', 'Nobody checked that the documents on the review page will open for the reviewers.', 'Run the Drive sharing check, then validate again.'));
+    problems.push(problem('drive-access-unchecked', 'blocker', "the sharing of the Drive documents on the review page was not read", 'scripts/release-readiness.ts drive-access --surface surface.json', 'Nobody checked that the documents on the review page will open for the reviewers.', 'Run the Drive sharing check, then validate again.'));
   } else {
     for (const d of input.driveDocs) {
       if (d.error) {

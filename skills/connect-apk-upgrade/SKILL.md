@@ -1,7 +1,7 @@
 ---
 name: connect-apk-upgrade
 description: >
-  Upgrade the pinned Connect/CommCare APK end to end — release check,
+  Upgrade the pinned Connect/CommCare APK end to end — release lookup,
   calibrate, flip every pin, activate, verify, roll back.
   Use when a new APK becomes ACE's default.
 disable-model-invocation: true

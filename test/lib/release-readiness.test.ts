@@ -1,6 +1,6 @@
 /**
- * release-check over the REAL evidence of spark-facilitator/20260926-1800,
- * gathered read-only 2026-10-01 (test/fixtures/release-check/spark-20260926-1800/README.md).
+ * validate-release-readiness over the REAL evidence of spark-facilitator/20260926-1800,
+ * gathered read-only 2026-10-01 (test/fixtures/release-readiness/spark-20260926-1800/README.md).
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -19,9 +19,9 @@ import {
   releaseGate,
   renderReleaseReport,
   type RunFile,
-} from '../../lib/release-check';
+} from '../../lib/release-readiness';
 
-const FIX = join(__dirname, '../fixtures/release-check/spark-20260926-1800');
+const FIX = join(__dirname, '../fixtures/release-readiness/spark-20260926-1800');
 const json = <T>(n: string): T => JSON.parse(readFileSync(join(FIX, n), 'utf8')) as T;
 const text = (n: string) => readFileSync(join(FIX, n), 'utf8');
 const catalog = {

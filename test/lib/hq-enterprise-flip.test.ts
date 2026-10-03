@@ -1,7 +1,7 @@
 /**
  * The HQ superuser step at release time (ace#2552 → ace#2600). A space ACE
  * created is on Free until a Dimagi HQ superuser picks "Test or Demo Project"
- * on its internal subscription management page; release-check blocks on it
+ * on its internal subscription management page; validate-release-readiness blocks on it
  * and its `fix` is that step, verbatim, so whoever runs /ace:release sees the
  * exact URL and clicks.
  */
@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { hqDomainFromRunState, hqEnterpriseFlipSteps, hqEnterpriseFlipUrl } from '../../lib/hq-enterprise-flip';
-import { assessHqPlan, buildReleaseVerdict, renderReleaseReport } from '../../lib/release-check';
+import { assessHqPlan, buildReleaseVerdict, renderReleaseReport } from '../../lib/release-readiness';
 import { parseSubscriptionPage } from '../../mcp/connect/backends/commcare';
 
 const fixture = (n: string) => readFileSync(join(__dirname, '../fixtures/hq-subscription', `${n}.html`), 'utf8');
@@ -29,7 +29,7 @@ describe('hqEnterpriseFlipSteps', () => {
 
 describe('hqDomainFromRunState', () => {
   it('reads the apps domain from the real Spark run', () => {
-    const rs = parseYaml(readFileSync(join(__dirname, '../fixtures/release-check/spark-20260926-1800/run_state.yaml'), 'utf8'));
+    const rs = parseYaml(readFileSync(join(__dirname, '../fixtures/release-readiness/spark-20260926-1800/run_state.yaml'), 'utf8'));
     expect(hqDomainFromRunState(rs)).toBe('connect-ace-prod');
   });
   it('falls back to a per-app domain, and is null when nothing is recorded', () => {
