@@ -81,6 +81,10 @@ export interface Finding {
   fix: string;
   /** Which of the twelve 2026-08-14 defects this rule exists to catch. */
   defect?: string;
+  /** Plain language for whoever releases the run (no payload paths, no flags). release-check prefers it. */
+  summary?: string;
+  /** What to do, addressed to a person. release-check prefers it. */
+  action?: string;
 }
 
 export function isBlocking(f: Finding): boolean {
@@ -2718,6 +2722,9 @@ export function auditUnresolvedMemberGates(links: ProbedLink[], reviewers: strin
         `Anonymous reachability only proves the link works for somebody`,
       fix: 'pass --reviewer <email> per person (plus --memberships), or withhold these links as internal build tools',
       defect: '4 (links an external viewer cannot open, shown as if they could)',
+      summary:
+        `Nobody has checked that the reviewers can open the ${gated.length} member-only link(s) on the review page.`,
+      action: "Name the reviewers — we'll check they can open each member-only link before anyone is sent the page.",
     },
   ];
 }

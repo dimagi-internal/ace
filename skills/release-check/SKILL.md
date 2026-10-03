@@ -53,9 +53,17 @@ read_only: <bool>          # a dry run — never releasable
 counts: {blockers: N, warnings: N}
 areas:                     # qa | eval | connect | previews | links | public-summary | chatbot | apps | hq | run-state
   qa: {blockers: N, warnings: N}
-blockers: [{id, area, severity: blocker, owner, detail, fix}]
-warnings: [{id, area, severity: warning, owner, detail, fix}]
+blockers: [{id, area, severity: blocker, owner, detail, fix, summary, action, merged?}]
+warnings: [{id, area, severity: warning, owner, detail, fix, summary, action, merged?}]
 ```
+
+`summary` / `action` are plain language for whoever releases the run (no skill
+names or payload paths); `detail` / `fix` stay for the build team and existing
+readers, and ace-web prefers `summary` / `action`. Findings that share one root
+cause are ONE item: the folded ids are in `merged` and the item keeps the
+highest severity, so readiness never changes (`lib/release-check-plain.ts`;
+e.g. the review-page eval that stops on a missing reviewer list folds into that
+finding).
 
 ## Process
 
@@ -139,8 +147,8 @@ dir. `$RC` below is
    report (`drive_create_doc_from_markdown`, name `release-check_report.md`) to
    the RUN ROOT — **except under `--read-only`, which writes nothing to Drive.**
 
-9. **Report** the verdict line, then every blocker with its owner and fix, then
-   the warnings. A NOT READY run is not a failure of this skill — it is its answer.
+9. **Report** the verdict line, then every blocker as its `summary` and `action`
+   (owner and technical fix beneath), then the warnings. A NOT READY run is not a failure of this skill — it is its answer.
 
 ## The gate `/ace:release` calls
 
