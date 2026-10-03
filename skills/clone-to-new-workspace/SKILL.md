@@ -252,9 +252,14 @@ the TARGET `run_state.yaml`; wait for `done` before 4's first write.
 has rewritten every source Drive id in every YAML file of the target run
 (`run_state.yaml`, `decisions.yaml`, each `previews/<output>/_previews.yaml`,
 the Phase 6 capture manifest, verdicts, …) to its copy, and given each copy
-its original's anyone-with-link role (ace-web#829, ace-web#851). Read-back
-before Step 4. Run it over the same set the rewrite covers, not only
-`run_state.yaml`:
+its original's anyone-with-link role (ace-web#829, ace-web#851) — and, since
+its ace#2607 fix, every other TEXT copy too: markdown and plain files keep their
+own type, and Google Docs are retargeted in place through the Docs API (link
+targets and visible ids; formatting untouched). Read-back before Step 4. It
+checks every text copy and every Doc's hyperlink TARGETS, not only YAML — the
+YAML-only check passed a clone whose partner-facing onboarding email linked
+the source's FAQ, deck and quick-reference card, and whose FLW guide hid 23
+source screenshot links behind its link text (ace#2607):
 
 ```bash
 npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-drive-readback.ts" \
@@ -263,10 +268,16 @@ npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-drive-readback.ts" \
 
 Exit 0 means clean. Exit 1 means `hits[]` lists each copied file that still names a
 source file, with that file's path. `left_behind[]` lists comms-log ids, which
-are expected: those files are deliberately not cloned. On exit 1, the rewrite
-did not run or did not reach those files. Stop and report it rather than
-hand-patching, because the page would send reviewers to the source
-workspace's documents, or show no screenshots at all. Record the hit count as
+are expected: those files are deliberately not cloned. `provenance[]` lists ids
+in the decisions log and eval/QA records — history, left as is, never a
+failure. On exit 1, the rewrite did not run or did not reach those files (an
+ace-web without its ace#2607 fix rewrote YAML only). Repair through the guarded atoms,
+never by hand-patching text: add `--plan <scratch-dir>` and apply `plan.json` —
+`action: update` → `drive_update_file(fileId, localFilePath)` (keeps a plain
+file's type on an MCP ≥ ace#2215; re-check the type after on an older one),
+`action: docs` → `docs_batch_update(fileId, requests)` from `requestsPath`
+(link-only `updateTextStyle` + `replaceAllText`; a formatted Doc is never
+written back as text) — then re-run without `--plan`. Record the hit count as
 `clone.drive_ids.source_ids_remaining`. History: the first Spark clone, before
 #829, had 99 ids / 125 occurrences in run_state and 26 copies without their
 sharing, all fixed by hand. The second passed a run_state-only grep while
