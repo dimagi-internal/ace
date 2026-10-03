@@ -3,7 +3,7 @@ name: connect-setup
 description: >
   Orchestrates Connect platform setup for an ACE opportunity:
   program creation, opportunity shell, verification flags, payment units,
-  and the run's build memo (the review artifact). Now atom-driven via the ace-connect MCP (no HITL).
+  and the Phase 4 decision rows a reviewer reads (decisions.yaml is the review artifact). Now atom-driven via the ace-connect MCP (no HITL).
 model: inherit
 phase: connect-setup
 phase_display: Connect Setup
@@ -11,7 +11,6 @@ phase_ordinal: 4
 skills:
   - { name: connect-program-setup, has_judge: true,  eval_skill: connect-program-setup-eval }
   - { name: connect-opp-setup,     has_judge: true,  eval_skill: connect-opp-setup-eval }
-  - { name: build-memo,            has_judge: true,  eval_skill: build-memo-eval }
 ---
 
 # Connect Setup Agent (Phase 4)
@@ -93,7 +92,7 @@ Invoke the `connect-opp-setup` skill.
     `4-connect` folder), surfaced under
     `ACE/<opp-name>/runs/<run-id>/4-connect/` with the opportunity UUID.
   - Appended `verification-flags`, `payment-unit-shape`, `opportunity-end-date` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — only rows that meet the bar are emitted).
-  - **One `decisions.yaml` row per entry in the Step 8 build-memo section** — each verification rule, each `[ACE]` latitude, each `[FIXED]` ambiguity — with `phase: 4-connect`, `skill: connect-opp-setup`, derived from the same entry list the memo tables render (`skills/connect-opp-setup/SKILL.md § Decisions Log`). The Phase 4 boundary fails if that section lists items and the skill wrote zero rows (`verify_phase_artifacts(phase='connect').decisions`; ace#2384).
+  - **One `decisions.yaml` row per verification rule, per `[ACE]` latitude and per `[FIXED]` ambiguity** (Step 8a) — with `phase: 4-connect`, `skill: connect-opp-setup`, each carrying `plain` and, for rule rows, `scope` + `enforcement` (a rule Connect refused is `enforcement: gap`, which becomes a review ask). The decisions log is the run's review artifact — the build memo is retired (`docs/decisions-contract.md`, `skills/connect-opp-setup/SKILL.md § Decisions Log`). The Phase 4 boundary fails if `connect-opp-setup.md` exists and the skill wrote zero live rows (`verify_phase_artifacts(phase='connect').decisions`; ace#2384).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `connect-opp-setup-eval` once the opportunity is configured. Writes
   `4-connect/connect-opp-setup-eval_verdict.yaml`. The eval existed and was
@@ -111,50 +110,6 @@ Invoke the `connect-opp-setup` skill.
   idempotent on already-active opps (skip-and-log) and still owns the
   real-LLO invite.
 
-### Step 3: Build memo (the run's review artifact — last, after Step 2)
-Invoke the `build-memo` skill with `phaseFolderId` and `runFolderId`.
-
-- **Why here.** The PDD names a build memo as a compilation target alongside
-  the Learn app, the Deliver app, the opportunity configuration and the
-  verification flags (poverty-graduation Targeting §11 [FIXED]: *"humans
-  review the memo and spot-check the apps, rather than reviewing every
-  screen"*). The end of this phase is the earliest point the other four all
-  exist, so it is the earliest point the memo can be complete. Until ace#2371
-  no run delivered one, and the design author reviewed every screen instead.
-- **Output:** `4-connect/build-memo.md` (a Google Doc, shared anyone-with-link
-  as commenter) + `4-connect/build-memo.source.md` +
-  `products.connect.build_memo` in `run_state.yaml`.
-- **It composes; it never re-derives.** It collates the Deliver `## Build
-  memo` section, `3-commcare/pdd-to-learn-app_build-memo.md`, Step 2's
-  `## Build memo — opportunity configuration and verification` section, and
-  the Phase 3–4 `decisions.yaml` rows. A missing producer section is stated in
-  the memo and returned in `gaps[]` — it does not stop the memo.
-- **Required on every run.** `lib/artifact-manifest.ts` declares
-  `4-connect/build-memo.md` `required: true`, so the boundary fence's
-  `verify_phase_artifacts(phase='connect')` fails a run that reaches it without
-  the memo, instead of passing it silently. It is required whether or not the
-  PDD names one: a conditional requirement would need a detector, and a
-  detector that misses is the silent pass this step exists to end.
-- **Ordering:** after Step 2, because Step 2 writes the Phase 4 section. Step 2
-  is what records each PDD verification rule against where it is applied —
-  including "Not configurable on Connect", which must be stated, never omitted
-  (`connect_set_verification_flags` refuses `duplicate` / `gps` /
-  `gps_radius_meters`, ace#1013).
-
-
-### Step 3b: Build memo eval (quality of the review artifact)
-Unless `--no-evals` was passed, dispatch `build-memo-eval` once Step 3 has
-written the memo. `build-memo` checks only that every producer section is
-present; nothing else judged whether the memo is RIGHT — and ace-web's public
-summary renders it first, so a reviewer acts on it. The eval grades it against
-a fact sheet of what was built (run_state + live `connect_get_opportunity` /
-`connect_list_payment_units`, `lib/build-memo-facts.ts`), for honesty about
-gaps and decisions, for a reviewer who has never seen ACE, and for
-actionability. Writes `4-connect/build-memo-eval_verdict.yaml`. A `fail`
-(a memo contradicting Connect) is surfaced in the phase summary with the
-contradiction quoted; the remedy is to correct the PRODUCER section that
-carried the wrong fact and re-run Step 3 — the memo composes, it never
-re-derives. Record `steps.build-memo-eval` in the write-back.
 ### Completion
 
 **Write each external identifier the moment its create call returns — do NOT
@@ -184,9 +139,8 @@ Write the phase summary to `connect-setup_summary.md` with
 - Orgs: `pm_org_slug` (program) and `holding_org_slug` (opportunity) plus
   `org_mode` (`pm-nm` | `self-managed`)
 - Connect deep-link: `<CONNECT_BASE_URL>/a/<holding_org_slug>/opportunity/<uuid>/`
-- **Build memo:** its link (`products.connect.build_memo.web_view_link`), and
-  `complete` / `gaps[]` exactly as Step 3 returned them — a memo with gaps is
-  reported as such, never as complete.
+- **To confirm before launch:** the live `review_ask` rows `decisions_enrich`
+  reports (id + `plain` + `confirm_reason`) — the list a reviewer must settle.
 
 ### Output previews (best effort — after the write-back, before you return)
 
@@ -205,15 +159,13 @@ fails or blocks the phase**: whatever it returns, put its one line —
 
 Before returning, call
 `verify_phase_artifacts(runFolderId, phase='connect')` and confirm `ok: true` —
-all **5** required artifacts present (`connect-program-setup.md`,
+all **4** required artifacts present (`connect-program-setup.md`,
 `connect-opp-setup.md`, `connect-program-setup-eval_verdict.yaml`,
-`connect-setup_summary.md`, `build-memo.md`). If anything is missing, either the
+`connect-setup_summary.md`). If anything is missing, either the
 writes landed outside the run folder (the `phaseFolderId` anchor was missed) or a
 step never wrote its artifact — STOP and fail loud with the missing-artifact
-list; do NOT report the phase complete. A missing `build-memo.md` is healed by
-re-running Step 3 alone (`build-memo` never touches Connect, so it is safe to
-repeat). This self-check is the structural preventer for jjackson/ace#635 and,
-for the memo, ace#2371.
+list; do NOT report the phase complete. This self-check is the structural
+preventer for jjackson/ace#635.
 
 ## Failure Modes
 
@@ -233,5 +185,4 @@ for the memo, ace#2371.
 
 When `--dry-run` is active, both Connect skills write their full configuration
 specs to `comms-log/dry-run-*.md` without calling any `connect_*`
-mutation atom, and `build-memo` composes to `comms-log/dry-run-build-memo.md`
-without publishing. State tracks as `dry-run-success`.
+mutation atom. State tracks as `dry-run-success`.

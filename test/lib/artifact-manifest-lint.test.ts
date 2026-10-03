@@ -426,15 +426,6 @@ const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
   // rather than emit `mode: componentized` with no components, which is the
   // failure this lint is really guarding against.
   '1-design/component-set.yaml',
-  // The Learn build memo. Written on every path since ace#2371 (Step 7a), but
-  // still optional at the Phase 3 fence: that fence heals a miss by
-  // re-dispatching its producer, and re-dispatching pdd-to-learn-app is a full
-  // Nova rebuild. Its absence is instead stated loudly in the programme memo
-  // (`4-connect/build-memo.md`, required), which is the reader it feeds. The
-  // §6(5) condition it carries — "name the gaps, and say so when the inventory
-  // is unavailable rather than reporting none" — is enforced in
-  // lib/learn-module-plan.ts, not by this boolean.
-  '3-commcare/pdd-to-learn-app_build-memo.md',
   'opp.yaml',
   'decisions.yaml',
   'decisions.gdoc',

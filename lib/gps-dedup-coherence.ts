@@ -50,7 +50,7 @@
  * ## What this module deliberately does NOT do
  *
  * It never proposes a value. When the verdict is `incoherent` the answer is a
- * build-memo entry naming the pair; picking the radius or the tolerance is the
+ * decision row naming the pair; picking the radius or the tolerance is the
  * PM's or the PDD author's decision, and a `[FIXED]` value is never moved by a
  * builder to satisfy this check. Noticing is ACE's job; choosing is not.
  *
@@ -99,7 +99,7 @@ export interface GpsDedupClassification {
   verdict: GpsDedupVerdict;
   basis: GpsDedupBasis;
   detail: string;
-  /** Non-verdict observations worth a build-memo line (e.g. no stated fallback). */
+  /** Non-verdict observations worth a build note (e.g. no stated fallback). */
   notes: string[];
 }
 
@@ -246,7 +246,7 @@ export function classifyGpsDedupCoherence(
     if (rule.fallback === null) {
       notes.push(
         'the rule does not say what decides duplicates when either reading is too coarse for the GPS test — ' +
-          'record that in the build memo (it is not an incoherence)',
+          'record that in a decision row (it is not an incoherence)',
       );
     }
     return {
@@ -284,7 +284,7 @@ export function classifyGpsDedupCoherence(
     basis: 'radius-within-tolerance',
     detail:
       `an unconditioned ${r} m radius against readings accepted up to ${w} m carries no signal ` +
-      `(ace#984) — surface it in the build memo; do not move either value`,
+      `(ace#984) — surface it in a decision row; do not move either value`,
     notes,
   };
 }

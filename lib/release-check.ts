@@ -62,7 +62,7 @@ export interface ReleaseFinding {
 
 /** One file in the run folder, as the inventory reads it. */
 export interface RunFile {
-  /** Path relative to the run folder, e.g. `4-connect/build-memo.md`. */
+  /** Path relative to the run folder, e.g. `4-connect/connect-opp-setup.md`. */
   path: string;
   modifiedTime: string;
   mimeType?: string;
@@ -267,7 +267,7 @@ export function assessPostcondition(read: OppReadback | null, decided: OppDecide
       owner: 'connect-opp-setup',
       detail: c.detail,
       fix: c.id === 'verification_rules_persisted'
-        ? 'state it in the build memo as a known limitation; apply the rules on the partner (PM→NM) opportunity (ace#2419)'
+        ? 'record it as a rule row with `enforcement: gap` in decisions.yaml (it becomes a review ask); apply the rules on the partner (PM→NM) opportunity (ace#2419)'
         : 're-run connect-opp-setup Steps 6.5–7 and its Step 11 read-back',
     }));
 }

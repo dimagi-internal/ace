@@ -732,7 +732,7 @@ export function checkPayableCapArithmetic(
   };
 }
 
-/** Render a report for a build memo / verdict. Never green on `unable`. */
+/** Render a report for a decision rows / verdict. Never green on `unable`. */
 export function formatPayableCapReport(report: PayableCapReport): string {
   if (report.status === 'unable') return formatUnable('payable-cap-arithmetic', report.reason);
   if (report.ok) {

@@ -240,8 +240,6 @@ const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
   'lib/recipe-state-contract.ts::checkChainContinuity',
   'lib/run-surface-audit.ts::auditArchetypeContradiction',
   'lib/run-surface-audit.ts::auditAssistantAccess',
-  'lib/run-surface-audit.ts::auditBuildMemo',
-  'lib/run-surface-audit.ts::auditBuildMemoParity',
   'lib/run-surface-audit.ts::auditBuildStatusParity',
   'lib/run-surface-audit.ts::auditClaimRows',
   'lib/run-surface-audit.ts::auditCompleteness',

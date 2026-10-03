@@ -456,7 +456,9 @@ opportunity must point at the rebuilt HQ apps).
    created in the partner's PM org, the holding org is invited and accepted,
    and the opportunity — payment units, verification rules, dates, the ACE
    test user — is created HELD by the partner's org, pointing at the apps 4a
-   rebuilt. It also re-composes the build memo from the clone's own products.
+   rebuilt. Its `connect-opp-setup` re-emits the Phase 4 decision rows
+   (verification-rule, latitude and ambiguity rows) against the clone's own
+   products.
 4. Read back `connect_get_opportunity(holding_org, <new id>)`: its
    `learn_app` / `deliver_app` `cc_domain` must be `tenancy.hq_domain`. Record
    `clone.connect: {status: done, program_id, opportunity_id, pm_org,

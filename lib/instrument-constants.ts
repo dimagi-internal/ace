@@ -760,7 +760,7 @@ export interface InstrumentSourceResolution {
   /**
    * What class of artifact the check will diff against, when it proceeds
    * (ace#2110). `null` on skip and halt, where nothing was resolved. Record it
-   * in the build memo and in Step 7's `instrument_constants:` frontmatter — a
+   * in a decision row and in Step 7's `instrument_constants:` frontmatter — a
    * `derived` check is real but unfalsifiable, and a reader must be able to
    * tell the two apart without opening Drive.
    */

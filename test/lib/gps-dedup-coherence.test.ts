@@ -141,11 +141,11 @@ describe('classifyGpsDedupCoherence — the other branches', () => {
     expect(c.basis).toBe('condition-looser-than-radius');
   });
 
-  it('a conditioned rule with no stated fallback is coherent, with a build-memo note', () => {
+  it('a conditioned rule with no stated fallback is coherent, with a decision-row note', () => {
     const rule = parseGpsDedupWording('Same GPS point (< 15m) where both readings have accuracy better than 15m.');
     const c = classifyGpsDedupCoherence(rule!, TOLERANCE_M);
     expect(c.verdict).toBe('coherent');
-    expect(c.notes.join(' ')).toMatch(/build memo/);
+    expect(c.notes.join(' ')).toMatch(/decision row/);
   });
 
   it('"better than the radius" resolves to the radius itself', () => {

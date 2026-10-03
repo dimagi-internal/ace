@@ -117,7 +117,7 @@ export interface PddFieldSpec {
 export type ConsentBranchKind =
   /** Required observation downstream of the consent gate, with no gate on it. */
   | 'ungated-required-after-consent'
-  /** Correctly gated on consent AND named in the build memo. */
+  /** Correctly gated on consent AND named in a decision row. */
   | 'disclosed-consent-gate'
   /** Correctly gated on consent but the memo is silent. */
   | 'undisclosed-consent-gate'
@@ -138,7 +138,7 @@ export interface ConsentBranchReport {
 export interface ConsentBranchOptions {
   /** The consent gate's field id. Absent = no consent gate; the check is inert. */
   consentField?: string;
-  /** Field ids the build memo explicitly discloses as consent-gated. */
+  /** Field ids the decision rows explicitly discloses as consent-gated. */
   disclosedInMemo?: string[];
   /**
    * The field ids this consent gate actually GOVERNS. When non-empty, only
@@ -338,10 +338,10 @@ export function checkConsentBranchCompleteness(
       detail:
         `gated on ${consentField} — the correct resolution of the element-(c) collision. ` +
         (disclosed.has(field.id)
-          ? `Disclosed in the build memo. Denominator consequence: any metric computed over this field ` +
+          ? `Disclosed in a decision row. Denominator consequence: any metric computed over this field ` +
             `now excludes withdrawn-consent records that the PDD's denominator does not exclude — say so ` +
             `where the metric is defined`
-          : `NOT disclosed in the build memo. The build is right and the record is wrong: this silently ` +
+          : `NOT disclosed in a decision row. The build is right and the record is wrong: this silently ` +
             `changes an observable program fact and alters a denominator the PDD defined without an ` +
             `exclusion`),
     });

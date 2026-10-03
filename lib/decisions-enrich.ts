@@ -37,6 +37,7 @@ import { PHASE_DEFS } from './artifact-manifest.js';
 import {
   spotCheckPlaceFromReasoning,
   classifyRuleRow,
+  humanDate,
   isInternalDecision,
   joinAnd,
   languageName,
@@ -44,7 +45,9 @@ import {
   plainForRule,
   plainLanguageFindings,
   plainText,
+  plainValueFor,
   rec,
+  ruleOf,
   str,
 } from './decision-review.js';
 import {
@@ -77,6 +80,13 @@ export function stampRow(row: DecisionRow): string[] {
     if (row.plain === undefined) {
       row.plain = plainForRule(rule);
       filled.push('plain');
+    }
+  }
+  if (row.plain_value === undefined) {
+    const v = plainValueFor(row.override ?? row['ai-default'], `${row.question} ${row.source}`);
+    if (v) {
+      row.plain_value = v;
+      filled.push('plain_value');
     }
   }
   if (row.check_at === undefined && row.reasoning) {
@@ -199,6 +209,10 @@ export interface ReviewAsk {
   reason: string;
   /** `plain` to use when the target row has none. */
   plain: string;
+  /** `plain_question` to use when the target row has none. */
+  plainQuestion?: string;
+  /** `plain_value` to use (overrides a mechanically formatted one). */
+  plainValue?: string;
   /** The row to append when no existing row carries the value. */
   synthesize?: DecisionRow;
   /** What produced the ask, for the report. */
@@ -216,6 +230,7 @@ function synthRow(fields: {
   plain: string;
   reason: string;
   check_at?: string;
+  plain_question?: string;
   value_set_by?: 'ace' | 'external';
   evidence_basis?: 'stated' | 'inferred';
 }): DecisionRow {
@@ -235,6 +250,7 @@ function synthRow(fields: {
     review_ask: ASK,
     confirm_reason: fields.reason,
     ...(fields.check_at ? { check_at: fields.check_at } : {}),
+    ...(fields.plain_question ? { plain_question: fields.plain_question } : {}),
   } as DecisionRow;
 }
 
@@ -351,14 +367,19 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
     reason: (target: DecisionRow | undefined) => string,
     plain: string,
     synth: () => DecisionRow,
+    plainQuestion?: string,
+    plainValue?: string,
   ) => {
     const target = findTarget(rows, patterns);
     if (target && humanRuled(target)) return;
     const r = reason(target);
-    if (target) asks.push({ id: target.id, reason: r, plain, basis });
+    const extra = { plainQuestion, plainValue };
+    if (target) asks.push({ id: target.id, reason: r, plain, basis, ...extra });
     else {
       const row = synth();
-      asks.push({ id: row.id, reason: r, plain, synthesize: row, basis });
+      if (plainQuestion) row.plain_question = plainQuestion;
+      if (plainValue) row.plain_value = plainValue;
+      asks.push({ id: row.id, reason: r, plain, synthesize: row, basis, ...extra });
     }
   };
 
@@ -389,6 +410,8 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
           plain: `The worker rate is proposed as ${range || 'a band'} per ${unit}.`,
           reason: `The design marks the worker rate as proposed${range ? ` (${range} per ${unit})` : ''}, not agreed.`,
         }),
+      `What should a worker be paid per ${unit}?`,
+      amt !== null ? `${fmt(amt)} ${cur}` : range || undefined,
     );
   }
   const llo = rec(pp.llo_payment_per_visit);
@@ -412,6 +435,8 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
           plain: `The implementing organisation is paid ${fig} per ${unit}.`,
           reason: `The design marks the payment to the implementing organisation (${fig} per ${unit}) as proposed, not agreed.`,
         }),
+      `What should the implementing organisation be paid per ${unit}?`,
+      amt !== null ? fig : undefined,
     );
   }
   const budget = rec(pp.total_budget);
@@ -436,15 +461,18 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
           plain: `The total budget is ${fig}.`,
           reason: `The design marks the total budget (${fig}) as proposed, not agreed.`,
         }),
+      'What is the total budget for delivery?',
+      fig,
     );
   }
   if (isProposed(pp.opportunity_dates_status) && str(pp.opportunity_start_date) && str(pp.opportunity_end_date)) {
     const span = `${str(pp.opportunity_start_date)} to ${str(pp.opportunity_end_date)}`;
+    const humanSpan = `${humanDate(str(pp.opportunity_start_date))} to ${humanDate(str(pp.opportunity_end_date))}`;
     param(
       'program_parameters.opportunity_dates_status: PROPOSED',
       [/(^|-)opportunity-dates(-|$)/, /(^|-)opportunity-end-date(-|$)/],
-      () => `The design marks the delivery dates (${span}) as proposed. Workers earn nothing for work recorded before the start date.`,
-      `Delivery runs from ${span}.`,
+      () => `The design marks the delivery dates (${humanSpan}) as proposed. Workers earn nothing for work recorded before the start date.`,
+      `Delivery runs from ${humanSpan}.`,
       () =>
         synthRow({
           id: 'confirm-delivery-dates',
@@ -453,9 +481,11 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
           question: 'Confirm the proposed delivery dates',
           value: span,
           source: 'PDD § Program Parameters (opportunity dates, PROPOSED)',
-          plain: `Delivery runs from ${span}.`,
-          reason: `The design marks the delivery dates (${span}) as proposed. Workers earn nothing for work recorded before the start date.`,
+          plain: `Delivery runs from ${humanSpan}.`,
+          reason: `The design marks the delivery dates (${humanSpan}) as proposed. Workers earn nothing for work recorded before the start date.`,
         }),
+      'When should delivery start and end?',
+      humanSpan,
     );
   }
 
@@ -485,6 +515,8 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
           plain: `The apps are written in English, with ${names} translations made by AI.`,
           reason,
         }),
+      `Have the ${names} translations been checked by a native speaker?`,
+      undefined,
     );
   }
 
@@ -495,6 +527,7 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
       id: r.id,
       reason: 'Nothing in this build enforces this rule yet; decide how it will be enforced before any worker is paid.',
       plain: r.plain ?? 'A rule the design needs is not enforced yet.',
+      plainQuestion: ruleOf(r) ? `How will the rule "${ruleOf(r)}" be enforced?` : undefined,
       basis: 'enforcement: gap',
     });
   }
@@ -553,13 +586,18 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
     const id = `open-question-${slug(what)}`;
     const existing = rows.find((r) => r.id === id);
     if (existing && humanRuled(existing)) continue;
-    const reason = sentence(where || 'The build recorded no fix; a person must decide how this is handled');
+    const owner = /\bdesign decision for ([^;.]+?)(?:[;.]|$)/i.exec(where)?.[1]?.trim();
+    const reason = owner
+      ? `Only ${owner.replace(/\s*\/\s*/g, ' and ')} can decide how this is handled; as built, the app has no way to handle it.`
+      : sentence(where || 'The build recorded no fix; a person must decide how this is handled');
     asks.push({
       id,
       reason,
       plain: sentence(`Open question: ${what}`),
+      plainQuestion: `How should this be handled: ${what.replace(/[.?]$/, '')}?`,
       basis: `run_state phases.${res.phaseKey} residual`,
       synthesize: synthRow({
+        plain_question: `How should this be handled: ${what.replace(/[.?]$/, '')}?`,
         id,
         phase: tag,
         skill: skillFromResidual(res.what, res.phaseKey),
@@ -633,13 +671,15 @@ export function enrichDecisionsLog(input: DecisionsLog, opts: EnrichOptions): { 
       report.asked.push(row.id);
     }
     if (row.plain === undefined) row.plain = ask.plain;
+    if (row.plain_question === undefined && ask.plainQuestion) row.plain_question = ask.plainQuestion;
+    if (ask.plainValue) row.plain_value = ask.plainValue;
   }
 
   for (const row of log.decisions) {
     if (row.superseded_by !== undefined) continue;
     const internal = row.audience === 'internal';
     if (!internal && row.plain === undefined) report.missingPlain.push(row.id);
-    for (const f of ['plain', 'confirm_reason'] as const) {
+    for (const f of ['plain', 'confirm_reason', 'plain_question'] as const) {
       const t = row[f];
       if (t !== undefined) {
         const found = plainLanguageFindings(t);
@@ -649,7 +689,7 @@ export function enrichDecisionsLog(input: DecisionsLog, opts: EnrichOptions): { 
   }
 
   const usesV6 = log.decisions.some((r) =>
-    ['review_ask', 'plain', 'check_at', 'correct_looks_like', 'audience', 'scope', 'enforcement', 'also_raised_by'].some(
+    ['review_ask', 'plain', 'plain_question', 'plain_value', 'check_at', 'correct_looks_like', 'audience', 'scope', 'enforcement', 'also_raised_by'].some(
       (f) => (r as Rec)[f] !== undefined,
     ),
   );

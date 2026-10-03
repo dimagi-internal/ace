@@ -269,7 +269,7 @@ export function checkScreenShape(
   return { screensChecked, findings };
 }
 
-/** One-line-per-finding human summary for a build memo / QA gate. */
+/** One-line-per-finding human summary for a decision rows / QA gate. */
 export function formatScreenShapeReport(report: ScreenShapeReport): string {
   if (report.findings.length === 0) {
     return (

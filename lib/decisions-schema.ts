@@ -82,6 +82,8 @@ export const REVIEW_FIELDS = [
   "scope",
   "enforcement",
   "also_raised_by",
+  "plain_question",
+  "plain_value",
 ] as const;
 
 /**
@@ -337,6 +339,22 @@ export const DecisionRowSchema = z
           "nothing in the build holds it). A per-worker rule held only by an app check is a `gap`: app " +
           "checks are keyed on one case. Paired with `scope`.",
       ),
+    plain_question: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "The question in words a programme partner would ask (e.g. 'What should a facilitator be paid per verified meeting?'). " +
+          "Partner views show it instead of `question`, which is written for the build. Same plain-language rules as `plain`.",
+      ),
+    plain_value: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "The effective value formatted for a reader (e.g. '7,500 MWK' for an `ai-default` of '7500'). Partner views show it " +
+          "instead of `ai-default`, which stays the exact option string the override UI keys on.",
+      ),
     also_raised_by: z
       .array(z.string().min(1))
       .optional()
@@ -551,7 +569,7 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
           path: ["plain"],
         });
       }
-      for (const field of ["plain", "confirm_reason"] as const) {
+      for (const field of ["plain", "confirm_reason", "plain_question"] as const) {
         const text = row[field];
         if (text === undefined) continue;
         const findings = plainLanguageFindings(text);

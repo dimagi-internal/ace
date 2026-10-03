@@ -84,7 +84,7 @@ export function resolveEntityIdGrain(input: GrainInputs): GrainResolution {
       reason:
         'A non-payable branch exists but no form field expresses payability, so the ' +
         'discriminator cannot be a key component. Ship the pinned grain and RECORD in ' +
-        'the build memo that non-payable submissions share the payable key space, ' +
+        'a decision row that non-payable submissions share the payable key space, ' +
         'naming the field that would fix it. Do not ship this silently.',
     };
   }

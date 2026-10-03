@@ -129,6 +129,10 @@ export function harvestMemo(markdown: string): MemoHarvest {
 
 export interface RowOverlay {
   plain?: string;
+  plain_question?: string;
+  plain_value?: string;
+  /** Applied after enrichment, to a row that carries (or gets) a review ask. */
+  confirm_reason?: string;
   check_at?: string;
   correct_looks_like?: string;
   audience?: 'partner' | 'internal';
@@ -238,9 +242,10 @@ export function backfillDecisionsLog(input: BackfillInput): { log: DecisionsLog;
         missing.push(id);
         continue;
       }
-      for (const f of ['plain', 'check_at', 'correct_looks_like', 'audience'] as const) {
+      for (const f of ['plain', 'plain_question', 'plain_value', 'check_at', 'correct_looks_like', 'audience'] as const) {
         if (o[f] !== undefined) (r as Record<string, unknown>)[f] = o[f];
       }
+      if (o.confirm_reason !== undefined && r.review_ask !== undefined) r.confirm_reason = o.confirm_reason;
       report.fromOverlay.push(id);
     }
     return missing;
@@ -249,7 +254,9 @@ export function backfillDecisionsLog(input: BackfillInput): { log: DecisionsLog;
 
   // 5. Everything deterministic.
   const enriched = enrichDecisionsLog(log, { runState: input.runState });
-  report.unknownIds.push(...applyOverlay(enriched.log, new Set(deferred)));
+  const after = applyOverlay(enriched.log);
+  report.unknownIds.push(...after);
+  report.fromOverlay = [...new Set(report.fromOverlay)];
   if (deferred.length) {
     // the overlay may have filled `plain` on a synthesized row
     enriched.report.missingPlain = enriched.report.missingPlain.filter(

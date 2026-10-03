@@ -344,7 +344,7 @@ twin gate: dimagi-internal/ace#1604.
       one-time note. An open residual does NOT halt the phase; it
       constrains what the training materials may claim. Live instance:
       hh-poverty-targeting/20260702-1456 — the camera-only photo flip
-      sat un-applied in the Phase 3 build memo while the training deck
+      sat un-applied in the Phase 3 build notes while the training deck
       asserted "there is no gallery option, on purpose" over a widget
       showing CHOOSE IMAGE.
 

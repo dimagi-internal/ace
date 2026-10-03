@@ -27,8 +27,8 @@ acts in`).
 | Phase 4 | `4-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
 | Phase 8 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 3 | `3-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
-| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read ONLY for their verification rules — Step 8's build-memo section needs every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview |
-| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Step 8's build-memo section: the CCZ-side enforcement a rule relies on when Connect cannot carry it |
+| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read ONLY for their verification rules — Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview |
+| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Step 8a's rule rows: the CCZ-side enforcement a rule relies on when Connect cannot carry it |
 
 ## Phase folder anchor
 
@@ -42,7 +42,8 @@ alone makes the artifact land outside `4-connect` and fail
 
 ## Products
 
-- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response), and — last — the Phase 4 half of the run's build memo (Step 8, `## Build memo — opportunity configuration and verification`), which `skills/build-memo` collates at the end of Phase 4
+- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response)
+- `decisions.yaml` rows (`phase: 4-connect`, `skill: connect-opp-setup`) — one rule row per PDD verification rule, plus `[ACE]` latitude and `[FIXED]` ambiguity rows (Step 8a, § Decisions Log). The decisions log is the run's review artifact; these rows are the only record of where each rule is enforced
 - `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
 
 ## Process
@@ -621,7 +622,8 @@ alone makes the artifact land outside `4-connect` and fail
      holding org). The atom now raises a typed `verification_page_pm_only`
      error instead of mis-blaming the payload. Do not retry; record every
      intended rule under `verification.not_applied_reason` citing ace#2419,
-     name it in the build memo as a `[PLATFORM]` gap, and carry the rules
+     record each as a rule decision row with `enforcement: gap` (Step 8a),
+     and carry the rules
      to Phase 9's partner opportunity. Configuring `ACE_CONNECT_NM_ORG` is
      the fix.
 
@@ -1277,10 +1279,9 @@ alone makes the artifact land outside `4-connect` and fail
    - Opportunity ID (UUID) and URL
      (`<CONNECT_BASE_URL>/a/<holding_org>/opportunity/<uuid>/`)
    - **Both orgs and the mode:** program org (`pm_org`), holding org
-     (`holding_org`), `org_mode`, and the `program_application_id` from 3a.
-     The build memo's opportunity section states them too, so a reviewer
-     knows which org the opportunity lives in (and so which org's
-     membership lets them see it).
+     (`holding_org`), `org_mode`, and the `program_application_id` from 3a,
+     so a reviewer knows which org the opportunity lives in (and so which
+     org's membership lets them see it).
    - All configuration details (dates, total_budget)
    - Verification flags (final values, including which were inherited
      from defaults vs. set explicitly)
@@ -1288,20 +1289,26 @@ alone makes the artifact land outside `4-connect` and fail
    - Whether the FLW pre-invite landed or is deferred until activation
    - **ConnectProd int_id** (`connect_int_id`, from the Step 4 create
      response; see step 9)
-   - **Last: the Phase 4 half of the run's build memo**, under a section
-     headed exactly
-     `## Build memo — opportunity configuration and verification`.
-     `skills/build-memo` (connect-setup Step 3) collates it
-     verbatim into `4-connect/build-memo.md`, the review artifact the PDD names
-     — so what is not written here is not in the memo. Until ace#2371 Phase 4
-     wrote no memo content at all, and a reviewer had no way to learn where a
-     PDD verification rule was actually applied. Three sub-sections, each
-     present even when empty (write `None.` — never omit the heading):
-     1. `### Verification rules — where each is applied` — a table
-        `| Rule (quoted) | PDD § | Where applied | Evidence |` with **one row
+8a. **Record the opportunity's calls as decision rows** — ONE
+   `decisions_append_rows` call right after the Step 8 write (§ Decisions
+   Log). The decisions log (`decisions.yaml`, schema v6) is the run's review
+   artifact: ace-web renders every row with a comment box and an answer
+   editor, so "where is each PDD verification rule enforced" is a question a
+   reviewer can answer on the run page. These rows are the ONLY record of
+   these calls — `connect-opp-setup.md` does not restate them. Three kinds:
+     1. **Rule rows** — `connect-rule-<slug>`, question exactly
+        `Where is the PDD verification rule '<rule>' enforced?`, with **one row
         per verification rule stated in ANY PDD of the run**: the overview, and
         on a componentized run every component and program-level PDD (see
-        § Inputs). `Where applied` is exactly one of:
+        § Inputs). Each carries `plain`, `check_at` (the Connect setting or
+        app form/field a reviewer opens) and `correct_looks_like`, plus
+        `scope` (`record` | `entity` | `worker` | `programme`) and
+        `enforcement` (`enforced` | `by-design` | `gap`) — set them, or omit
+        both and the write boundary computes them (`classifyRule`,
+        `lib/decision-review.ts`); never contradict its rules (below).
+        `ai-default` is the short `options` label (§ Decisions Log table);
+        `reasoning` names the precise placement and its evidence, which is
+        exactly one of:
         - `Connect form_field_rules: <name>` — evidence: `form_field_rules_saved`;
         - `Connect payment unit max_daily = <n>` / `Connect payment unit
           max_total = <n>` (per worker) — evidence: the payment unit's create
@@ -1317,9 +1324,15 @@ alone makes the artifact land outside `4-connect` and fail
         stated, never omitted.** `connect_set_verification_flags` refuses
         `duplicate`, `gps` and `gps_radius_meters` (Step 5, ace#1013), so a
         PDD's duplicate-visit or GPS rule is exactly the row a reviewer cannot
-        find anywhere else. A rule with no row is the defect this section
-        exists to prevent; a blank `Where applied` cell is rendered in the
-        memo as `NOT STATED by connect-opp-setup`.
+        find anywhere else. A rule with no row is the defect this step exists
+        to prevent.
+
+        **A known limitation is a rule row with `enforcement: gap`** — a rule
+        Connect refused (the `self-managed`-mode `verification_page_pm_only`
+        case in Step 5, a refused flag) and that nothing else in the build
+        holds. Never `by-design`: the design needs it and the build does not
+        carry it. `decisions_enrich` turns every `gap` row into a review ask
+        at phase end, so you do not set `review_ask` on it yourself.
 
         **Name the enforcement point that holds the rule AT ITS SCOPE, first.**
         A rule about a WORKER ("at most 1 payable meeting per CBF per day",
@@ -1330,27 +1343,21 @@ alone makes the artifact land outside `4-connect` and fail
         one day, and a per-step clamp of 7 × 3 is 21 per COMMUNITY, not per
         worker. Write the payment-unit limit first; an app check may follow as
         support, stated at its own scope (`also CCZ: date_of_meeting check —
-        per community`). On `spark-facilitator/20260926-1800` both caps were
-        written `CCZ: … ; also Connect payment unit …`, and the build memo told
-        the reviewer the app enforced them. `skills/build-memo`'s
-        `scripts/build-memo-compose.ts --check` (`checkEnforcementScope`) fails
-        that order, and its frame corrects it in the memo — fix it here so the
-        decision row is right too.
-     2. `### [ACE] latitudes taken` — `| PDD § | Value ACE chose | Why |`,
-        one row per opportunity-configuration value the PDD left to ACE
-        (dates, budget, max visits, payment amounts, flag thresholds).
-     3. `### [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How
-        resolved, or OPEN |`, one row per `[FIXED]` statement Phase 4 could
-        not configure exactly as written.
+        per community`), and the row's `scope` is `worker`. On
+        `spark-facilitator/20260926-1800` both caps were written `CCZ: … ;
+        also Connect payment unit …` and recorded as `CCZ constraint`, which
+        told the reviewer the app enforced them. The write boundary's
+        `classifyRule` treats a per-worker rule held only by an app check as a
+        `gap` — get the order right here so the row says what holds it.
+     2. **`[ACE]` latitude rows** — `connect-latitude-<slug>`, one per
+        opportunity-configuration value the PDD left to ACE (dates, budget,
+        max visits, payment amounts, flag thresholds).
+     3. **`[FIXED]` ambiguity rows** — `connect-ambiguity-<slug>`, one per
+        `[FIXED]` statement Phase 4 could not configure exactly as written.
 
-     **Every row of these three tables is ALSO a decision row** — append
-     them with ONE `decisions_append_rows` call right after this write,
-     derived from the same entry list the tables render (§ Decisions Log §
-     Every build-memo entry is also a decision row). "Where is each PDD
-     verification rule enforced" is then a question a reviewer can answer on
-     the run page, not only read in the memo. The Phase 4 boundary fails if
-     this section lists any entry and zero rows carry `phase: 4-connect` +
-     `skill: connect-opp-setup` (ace#2384).
+     The Phase 4 boundary fails this skill if it wrote `connect-opp-setup.md`
+     but zero rows carry `phase: 4-connect` + `skill: connect-opp-setup`
+     (ace#2384), and warns on any live partner-facing row with no `plain`.
 
 9. **Capture the ConnectProd integer opportunity ID** (Phase 7 prerequisite).
 
@@ -1447,9 +1454,7 @@ alone makes the artifact land outside `4-connect` and fail
     `status`, `steps`, etc. when the orchestrator already set them (the
     #572/#587 lost-update footgun). `deep` recursively merges
     `products.connect` while preserving every sibling at every depth.
-    This skill is the sole writer of `products.connect` **except
-    `products.connect.build_memo`**, which `skills/build-memo` writes at the
-    end of Phase 4 (ace#2371) — a `deep` merge here preserves it on a re-run.
+    This skill is the sole writer of `products.connect`.
 
     **Pass `validateAs: { kind: 'phase-products', phase: 'connect-setup' }`
     on this `update_yaml_file` call.** The server validates the
@@ -1691,42 +1696,41 @@ decisions_append_rows({
 })
 ```
 
-### Every build-memo entry is also a decision row (REQUIRED)
+### Every verification rule, latitude and ambiguity is a decision row (REQUIRED)
 
-Every row Step 8 writes under the Phase 4 build-memo section —
-`### Verification rules — where each is applied`, `### [ACE] latitudes
-taken`, `### [FIXED] ambiguities hit` — is ALSO a `decisions.yaml` row, in the
-same `decisions_append_rows` call as the catalogue rows above. The catalogue
-alone left "where is the PDD's duplicates rule enforced" readable in the memo
-and unanswerable on the run page (ace#2384).
-
-**One source, two renderings.** Build the entry list ONCE, then render the
-memo table rows AND the decision rows from it; never add an entry to one
-without the other.
+Step 8a's rule, `[ACE]` latitude and `[FIXED]` ambiguity rows go in the same
+`decisions_append_rows` call as the catalogue rows above, and the row is the
+only rendering — nothing else lists these calls. The catalogue alone left
+"where is the PDD's duplicates rule enforced" unanswerable on the run page
+(ace#2384).
 
 | Row field | From the entry |
 |---|---|
 | `id` | `connect-rule-<slug>` / `connect-latitude-<slug>` / `connect-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run re-derives the same id |
 | `phase`, `skill` | `4-connect`, `connect-opp-setup` |
 | `question` | rule: "Where is the PDD verification rule '<quoted>' enforced?"; latitude / ambiguity: what the PDD left open or said two ways at that § |
-| `ai-default` | rule: the `Where applied` category as one of the `options` below; latitude / ambiguity: the chosen value or resolution as a short label |
-| `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `Connect payment unit limit`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed. A per-worker rule (a daily or total cap per worker) is `Connect payment unit limit`, never `CCZ constraint` — see Step 8's scope paragraph |
-| `source` | the entry's PDD § cell, naming the document |
+| `ai-default` | rule: the enforcement-point category as one of the `options` below; latitude / ambiguity: the chosen value or resolution as a short label |
+| `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `Connect payment unit limit`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed. A per-worker rule (a daily or total cap per worker) is `Connect payment unit limit`, never `CCZ constraint` — see Step 8a's scope paragraph |
+| `scope`, `enforcement` | rule rows only: `record` \| `entity` \| `worker` \| `programme` and `enforced` \| `by-design` \| `gap` — set, or omit both for the write boundary's `classifyRule`. A rule Connect refused and nothing else holds is `gap`, never `by-design` |
+| `plain`, `check_at`, `correct_looks_like` | `plain` REQUIRED (one line for a partner, the rule may be quoted); `check_at` the Connect setting or app form › field a reviewer opens; `correct_looks_like` what they see there when it is right |
+| `source` | the entry's PDD §, naming the document |
 | `evidence_basis` | `[ACE]` latitude → `inferred`; `[FIXED]` ambiguity → `conflicting`; rule → `stated` when the PDD itself names where it is enforced, `inferred` when ACE chose, `conflicting` for `Not configurable on Connect — not applied` (the PDD requires it and Connect cannot hold it) |
 | `conflict_signals` | `conflicting` rows only, at least 2 entries, each cited |
 | `value_set_by` | `ace` |
 | `status` | `ai-default`, always |
-| `reasoning` | the Why / Evidence cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <the Connect setting, or the CCZ form › field>.` |
+| `reasoning` | why, plus — on a rule row — the precise placement and its evidence (Step 8a's list); an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <the Connect setting, or the CCZ form › field>.` |
 
-The spot-check location goes in `reasoning` because ace-web's summary drops
-keys outside its fixed set (`apps/opps/summary.py`, ace-web `main` c20ef34),
-`params` included. **The boundary checks it:**
+Keep the `Spot-check:` sentence at the end of `reasoning` even when you set
+`check_at`: the write boundary derives `check_at` from it when a producer
+omits the field. **The boundary checks it:**
 `verify_phase_artifacts(phase='connect')` returns a `decisions` report
-(`lib/build-phase-decisions.ts`) that fails when the section lists entries and
-this skill wrote zero rows in `4-connect`.
+(`lib/build-phase-decisions.ts`) that fails when this skill wrote
+`connect-opp-setup.md` but zero rows in `4-connect` under
+`skill: connect-opp-setup`, and warns on live partner rows with no `plain`.
 
-Worked example — a rule Connect cannot hold (`connect_set_verification_flags`
-refuses `duplicate` / `gps` / `gps_radius_meters`, ace#1013):
+Worked example — two rules Connect cannot hold (`connect_set_verification_flags`
+refuses `duplicate` / `gps` / `gps_radius_meters`, ace#1013): one the app
+holds instead, and one nothing holds (a known limitation, `enforcement: gap`):
 
 ```
 decisions_append_rows({
@@ -1749,13 +1753,44 @@ decisions_append_rows({
       source: "Targeting PDD §9 [FIXED]",
       status: "ai-default",
       evidence_basis: "conflicting",
-      plain: "\"one payable survey per household\" applies to each household and is checked outside Connect, by design.",
+      scope: "entity",
+      enforcement: "enforced",
+      plain: "\"one payable survey per household\" applies to each household; Connect cannot check it, so the app holds it by giving each household a single payable record.",
+      check_at: "Deliver app › Targeting survey › registration",
+      correct_looks_like: "A second survey of the same household is not counted as a new payable record.",
       conflict_signals: [
         "Targeting PDD §9 [FIXED]: one payable survey per household",
         "connect_set_verification_flags refuses duplicate (ace#1013): no Connect-side duplicate check"
       ],
       value_set_by: "ace",
-      reasoning: "Held in the CCZ by the payability-scoped entity_id key instead. Spot-check: Deliver app › Targeting survey › registration › entity_id."
+      reasoning: "CCZ: Targeting survey / entity_id — payability-scoped key. Spot-check: Deliver app › Targeting survey › registration › entity_id."
+    },
+    {
+      id: "connect-rule-gps-within-50m",
+      phase: "4-connect",
+      skill: "connect-opp-setup",
+      question: "Where is the PDD verification rule 'visit GPS within 50 m of the household' enforced?",
+      "ai-default": "Not configurable on Connect — not applied",
+      options: [
+        "Connect form_field_rules",
+        "CCZ constraint",
+        "Not configurable on Connect — applied elsewhere",
+        "Not configurable on Connect — not applied"
+      ],
+      source: "Targeting PDD §9 [FIXED]",
+      status: "ai-default",
+      evidence_basis: "conflicting",
+      scope: "record",
+      enforcement: "gap",
+      plain: "\"visit GPS within 50 m of the household\" is not checked anywhere in this build; Connect has no setting for it.",
+      check_at: "Connect › opportunity › verification",
+      correct_looks_like: "No location-distance check is listed.",
+      conflict_signals: [
+        "Targeting PDD §9 [FIXED]: visit GPS within 50 m of the household",
+        "connect_set_verification_flags refuses gps / gps_radius_meters (ace#1013)"
+      ],
+      value_set_by: "ace",
+      reasoning: "Not configurable on Connect — not applied anywhere in this build. Spot-check: Connect › opportunity › verification."
     }
   ]
 })
@@ -1765,6 +1800,7 @@ decisions_append_rows({
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 8 no longer ends `connect-opp-setup.md` with a memo section; new Step 8a records one rule row per PDD verification rule (`Where is the PDD verification rule '<rule>' enforced?`, with `plain`, `check_at`, and `scope` / `enforcement` set or computed by `classifyRule`), plus latitude and ambiguity rows, and a rule Connect refused is a rule row with `enforcement: gap` that `decisions_enrich` turns into a review ask; `products.connect.build_memo` is no longer written, and the Phase 4 boundary fails a written summary with zero rows under `skill: connect-opp-setup`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **Step 8 names a per-worker rule's PER-WORKER enforcement point first (build-memo-eval, spark-facilitator/20260926-1800).** Both per-worker caps — "at most 1 payable meeting per CBF per day" and "total cap 21 per CBF" — were written `CCZ: … ; also Connect payment unit …` and recorded as `CCZ constraint` decisions, so the build memo told the reviewer the app enforced them. The app checks are keyed on the COMMUNITY case (the date check, the 7 × 3 per-step clamp) and cannot bound a worker across communities; only the payment unit's `max_daily` / `max_total` do. `Where applied` gains `Connect payment unit max_daily / max_total (per worker)`, the decision `options` gain `Connect payment unit limit`, and a scope paragraph says which goes first. *Enforced:* `lib/build-memo-compose.ts` `checkEnforcementScope` via `scripts/build-memo-compose.ts --check` (`test/lib/build-memo-compose.test.ts`, on that run's table and decision rows). | ACE team |
 | 2026-10-01 | **Step 11: post-condition read-back (inline QA).** The atoms validate each call at the boundary, which catches a bad call but not a valid-but-wrong end state. Step 11 reads the live opportunity back (`connect_get_opportunity`, `connect_list_payment_units`, `connect_list_flw_invites`) and checks it against what the skill decided with `checkOppPostcondition` (`lib/connect-opp-postcondition.ts`): readable, `is_test`, activation PROVEN by an invite row (not the create-side `active` flag, ace#617), payment units by name, verification rules persisted, test user invited. Writes `products.connect.postcondition`; a non-empty `phase6_blockers` makes Phase 6 refuse the walk with the reason. Live on spark-facilitator/20260926-1800: 5 of 6 pass; `verification_rules_persisted` fails (2 decided, 0 saved — the self-managed refusal, ace#2419); no Phase 6 blocker. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

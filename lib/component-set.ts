@@ -378,7 +378,7 @@ export function classifyComponentSet(inputs: ComponentSetInput[]): ComponentSet 
         detail:
           `${declarations.length} documents declare a component inventory and they disagree: ` +
           `${declarations.map((d) => `${d.name} → ${d.ids.join(', ')}`).join('; ')}. ` +
-          'No inventory is carried, so the Learn build memo degrades to the evidence-based ' +
+          'No inventory is carried, so the Learn decision rows degrades to the evidence-based ' +
           'gap list rather than picking one authority or unioning two.',
         fix: 'Leave the inventory declared on exactly one document — the framework — and remove the others.',
       });

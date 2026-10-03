@@ -199,7 +199,6 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/app-release-drift-check.test.ts': { issues: ['ace#1643'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/app-release-step-integrity.test.ts': { issues: ['ace#1490'] },
   'test/skills/archetype-enum-drift.test.ts': { issues: ['ace#1486', 'ace#2312'] },
-  'test/skills/build-memo-contract.test.ts': { issues: ['ace#2371', 'ace#892', 'ace#2174'], observed: 'poverty-graduation/20260905-1345' },
   'test/skills/build-phase-decision-rows.test.ts': { issues: ['ace#2384', 'ace#399'], observed: 'poverty-graduation/20260905-1345' },
   'test/skills/claims-authoring.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file; states a write-side convention and names no incident' },
   'test/skills/component-brief-case-list-scoping.test.ts': { issues: ['ace#1652', 'ace#1195', 'ace#977', 'ace#1281'], observed: 'hh-poverty-targeting/20260824-1404' },

@@ -64,7 +64,6 @@ import { fileURLToPath } from 'node:url';
 
 import {
   auditAssistantAccess,
-  auditBuildMemo,
   auditClaimRows,
   auditCompleteness,
   auditConfidentiality,
@@ -399,9 +398,6 @@ async function main(): Promise<number> {
   // being granted anything; the page offers them the admin console (ace#1839).
   findings.push(...auditAssistantAccess(payload));
 
-  // The build memo is the review artifact the page leads with (ace-web#768);
-  // say so when it is incomplete or its text could not be rendered.
-  findings.push(...auditBuildMemo(payload));
 
   // The claim rows one level below `claims.people[]`, where the two
   // markings that make the mechanism safe live — and the denominator

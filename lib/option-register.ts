@@ -352,7 +352,7 @@ export function diffRegisterRows(input: {
   return { ok: findings.length === 0, findings };
 }
 
-/** Human-readable finding lines for the build memo / verdict. */
+/** Human-readable finding lines for the decision rows / verdict. */
 export function describeRegisterDiff(diff: RegisterDiff): string[] {
   return diff.findings.map((f) => `[${f.code}] ${f.message}`);
 }
@@ -594,7 +594,7 @@ export interface BindVerification {
   /**
    * True only when the read-back proves the requested lookup source is live
    * AND the table behind it can actually back a select. Step 4f halts on
-   * anything else; this is the field a build memo records.
+   * anything else; this is the field a decision row records.
    */
   verified: boolean;
   /**
@@ -618,7 +618,7 @@ export interface BindVerification {
     | 'partial-rows-read-back'
     | 'empty-table'
     | 'duplicate-values';
-  /** Human-readable, quoted into the build memo. */
+  /** Human-readable, quoted into the decision rows. */
   message: string;
 }
 
@@ -819,7 +819,7 @@ export function auditLookupBinds(sites: readonly LookupBindSite[]): LookupBindAu
   return { ok: failures.length === 0, sites: results, failures };
 }
 
-/** Human-readable halt lines for the build memo / a Step 4f halt. */
+/** Human-readable halt lines for the decision rows / a Step 4f halt. */
 export function describeLookupBindAudit(audit: LookupBindAudit): string[] {
   return audit.failures.map((f) => `[${f.code}] ${f.field}: ${f.message}`);
 }

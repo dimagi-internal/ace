@@ -62,6 +62,28 @@ In Step 3 (brief assembly), the build skill:
 3. Skips components whose trigger doesn't fire (e.g. no GPS radius in the
    Evidence Model → no `gps-accuracy-capture`).
 
+**Where a component's disclosures land.** The run's review artifact is its
+decision rows (`decisions.yaml`, schema v6 — `docs/decisions-contract.md`,
+producer obligations in `skills/_decisions-review-fields.md`). So wherever a
+component below says a build must *record*, *name*, *disclose* or *justify*
+something:
+
+- a **choice a reviewer could disagree with** — a deviation, a stated
+  exemption, a degraded select, a re-allocated gate, a named gap — is a
+  **decision row** the build skill appends with `decisions_append_rows`
+  (`plain`, plus `check_at` / `correct_looks_like` where it is visible in the
+  app; `review_ask: recommended-confirmation` + `confirm_reason` when a person
+  must settle it before launch);
+- a **check record with no decision in it** — threshold-coherence verdicts,
+  screen-grouping notes, consent-floor checklists, case-read notes, GPS
+  advisory notes, language coverage counts, self-check tables — goes under the
+  `## Build notes` section of the build skill's summary file (for the Deliver
+  app, `3-commcare/pdd-to-deliver-app_summary.md`).
+
+A **Brief paragraph** goes to the Nova architect, which writes neither: where it
+says "name it in your build report", the build skill reads the architect's
+report and records each item in one of the two places above.
+
 **The symmetry that makes this safe.** Every component pairs 1:1 with the eval
 dimension that **hard-fails** a build which omits it (the **Enforced by**
 field). If the brief assembly drops a triggered component, the matching
@@ -264,9 +286,9 @@ accuracy advisory MUST have a branch for `gps_accuracy_m > <MINIMUM_M>` — the
 loudest one — as well as the marginal band beneath it. Enumerate the branches
 and check they partition the range with no gap.
 
-**Build memo requirement (mandatory).** Whenever the PDD, Work Order, or
-Evidence Model states a GPS accuracy tolerance, the Phase 3 build memo MUST
-carry an explicit line recording that **the stated tolerance is advisory, not
+**Build-notes requirement (mandatory).** Whenever the PDD, Work Order, or
+Evidence Model states a GPS accuracy tolerance, the build summary's `## Build
+notes` MUST carry an explicit line recording that **the stated tolerance is advisory, not
 enforced** — naming both closed surfaces above. Shipping a build whose
 artifacts assert a control that cannot fire is the ace#995 / ace#981 family
 (dead `now()` duration floor; decorative assessment gate) and is what this
@@ -297,8 +319,8 @@ rediscovered from scratch.)*
 > exists to catch. Do NOT emit a `constraint` / `validate` accuracy gate on the
 > geopoint, and do NOT emit a separate adjacent `gps_accuracy_gate` question —
 > the first is rejected by Nova, the second hard-fails `app-release-qa`'s
-> constraint-locality check. Record in the build memo that the stated tolerance
-> is ADVISORY, not enforced.
+> constraint-locality check. State in your build report that the stated
+> tolerance is ADVISORY, not enforced.
 > INIT-SAFETY (load-bearing — do NOT skip): the hidden `lat` / `lon` /
 > accuracy calculates that split the geopoint via
 > `selected-at(<GEOPOINT_ID>, N)` MUST be guarded against an empty geopoint.
@@ -373,7 +395,7 @@ never resolves. Full rule + the two-call read-back check in
 > sides** — an upper bound (typically `. <= today()` for a past event, or
 > `. >= today()` for a future one) AND a plausible bound on the open side,
 > derived from the programme's own window (its enrolment period, visit cadence,
-> or recall horizon) and stated in the build memo; any phone field MUST carry a
+> or recall horizon) and stated in your build report; any phone field MUST carry a
 > format regex (e.g. `regex(., '^[0-9]{10,13}$')`); every free-text field MUST
 > carry a character limit; every credit-bearing field (photo, GPS, consent) MUST
 > be `required` with a `validate`. Do NOT ship a data-capture instrument whose
@@ -532,12 +554,12 @@ In priority order:
 3. **If the set is real but not in hand** (a roster of registered communities
    that lives with the LLO), ship a `single_select` over the values you
    DO have plus an explicit "Other" with a relevance-gated `_other` free-text
-   follow-up — and name the field in the build memo as an open item with the
-   exact table + value column + label column that needs to exist before
-   go-live. A partially-enumerated select degrades gracefully; free text does
+   follow-up — and record the field as a decision row (with `review_ask:
+   recommended-confirmation` + `confirm_reason`) naming the exact table +
+   value column + label column that needs to exist before go-live. A partially-enumerated select degrades gracefully; free text does
    not degrade, it just loses the constraint.
-4. **Never** ship free `text` for a PDD-declared select without a build-memo
-   line saying so. An unrecorded degradation is what made #1136 invisible until
+4. **Never** ship free `text` for a PDD-declared select without a decision
+   row saying so. An unrecorded degradation is what made #1136 invisible until
    the eval caught it.
 
 *(Build the table through **Nova**, not HQ. `create_lookup_table` puts it in
@@ -554,7 +576,7 @@ entities that share a name collapse into one. On the run above the operator had
 to repoint the key mid-run from `village + date_of_meeting` to `community_id`
 — which closed the name-collision mode only, because `community_id` was free
 text too. A lookup-backed select closes both. If a key component cannot be made
-a select, say so in the build memo next to the `entity_id` you shipped.
+a select, record it as a decision row naming the `entity_id` you shipped.
 
 **Brief paragraph (verbatim):**
 
@@ -579,10 +601,10 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > options inline with `set_field_options_source({… source: {kind: 'inline',
 > options: [...]}})` when the set is knowable from the PDD or the source
 > material; otherwise ship a select over the values you DO have plus an "Other"
-> + relevance-gated `_other` follow-up, and record in the build memo the exact
+> + relevance-gated `_other` follow-up, and name in your build report the exact
 > table + value column + label column that still needs to exist. Degrading a
 > PDD-declared select to `kind: text` SILENTLY is a build defect — if you must
-> degrade, name the field and the reason in the build memo. And never let free
+> degrade, name the field and the reason in your build report. And never let free
 > text feed a Connect `entity_id`: an editable key component means one typo
 > mints a second payable delivery and two same-named entities collapse into one.
 
@@ -618,12 +640,12 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > form-init IS its intended meaning. Before emitting a duration-derived
 > verification threshold (a duration floor, a per-part cap), trace it back to
 > its two timestamps and confirm both can actually vary; if they can't, the
-> threshold is decorative and belongs in the build memo as an open item, not
-> silently compiled.
+> threshold is decorative and belongs in your build report as an open item,
+> not silently compiled.
 > BRANCH CAUTION: an end-of-encounter timestamp anchored to the last question
 > of the *payable* path is never reached on non-payable outcomes. If the PDD
-> has non-payable branches, either anchor per-branch or state in the build memo
-> that duration is measured on completed encounters only — do NOT pick silently.
+> has non-payable branches, either anchor per-branch or state in your build
+> report that duration is measured on completed encounters only — do NOT pick silently.
 
 ### payability-scoped-key
 
@@ -657,15 +679,15 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > becomes `concat(/data/community_code, '-', /data/meeting_date, '-', /data/meeting_type)`.
 > The discriminator is a key component, so the no-free-text rule applies to it:
 > it MUST be a select. If the non-payable set cannot be expressed as a form
-> field, do NOT ship the identity-only key silently — record in the build memo
-> that non-payable submissions share the payable key space, and name the field
-> that would fix it.
+> field, do NOT ship the identity-only key silently — state in your build
+> report that non-payable submissions share the payable key space, and name the
+> field that would fix it.
 > PRECEDENCE (ace#1434) — when the PDD **pins an identity-only `entity_id`
 > grain** (typically in § Program Parameters, often marked source-pinned and
 > "not to be re-litigated per run") AND a non-payable branch exists, **the
 > discriminator wins.** Ship the payability-scoped key and disclose the
-> override as a NAMED deviation at the Phase 3 boundary; record in the build
-> memo which payable-grain invariant is preserved. The two are not symmetric:
+> override as a NAMED deviation at the Phase 3 boundary; state in your build
+> report which payable-grain invariant is preserved. The two are not symmetric:
 > honouring the pin ships a build that is wrong in the field — the non-payable
 > submission mints the key first and the real payable visit dedups against it,
 > so the worker is blocked from payment for work they did (#969) — whereas
@@ -695,8 +717,8 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > display string is the author's call: this is a distinguish-and-disclose
 > requirement, **not a mandated format**. If no available field can
 > distinguish them, do NOT ship indistinguishable names silently — say so in
-> the build memo next to the key you shipped, exactly as for a key that cannot
-> be scoped. (ace#1958, observed on `bednet-check-2-visit/20260902-1555`:
+> your build report next to the key you shipped, exactly as for a key that
+> cannot be scoped. (ace#1958, observed on `bednet-check-2-visit/20260902-1555`:
 > `entity_key` carried `consent_confirmed`, `entity_label` did not.)
 > CAPPED INDEX — the key GROUPS over-cap encounters; it does NOT stop them
 > being paid (ace#2512). A per-entity cap ("at most 3 paid meetings per FCAP
@@ -829,7 +851,7 @@ time; do not skip it because the app "looks right" structurally.
 > the non-gating pre-test is NOT covered by the gate: the worker can certify
 > without ever being examined on it. If you deliberately re-allocate the gate
 > toward harder-to-guess topics (a legitimate trade — it raises discrimination),
-> the topics you moved OUT must be named in the build memo as a reduction in
+> the topics you moved OUT must be named in your build report as a reduction in
 > what the certificate certifies, never left implicit; (c) compute `user_score`
 > as a percentage (per the rule above) and
 > wire it to `connect.assessment` at the PDD's threshold (<THRESHOLD>) so
@@ -985,7 +1007,7 @@ language-selector *question*. Language choice is CommCare's own runtime
 affordance once the app carries real languages. Systematic stacking is
 `language_conformance ≤ 3 → fail`.
 
-**Record in the build memo:** the working language and its code, the coverage
+**Record in the build summary's `## Build notes`:** the working language and its code, the coverage
 counts from the final `get_languages`, and one line stating that the
 translations are ACE-authored (`origin: ai`) and carry `needs-review` until a
 speaker of `<LANGUAGE>` reviews them — a normal ACE review obligation, exactly
@@ -1046,8 +1068,8 @@ worker cannot tell them apart from real translations.
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
-> and the fallback for every stale unit. In the build memo record that the app
-> is English-complete and carries no language layer yet.
+> and the fallback for every stale unit. State in your build report that the
+> app is English-complete and carries no language layer yet.
 
 **Brief paragraph (verbatim) — Learn:**
 
@@ -1069,8 +1091,9 @@ worker cannot tell them apart from real translations.
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
-> and the fallback, and assessment stems are read repeatedly. In the build memo
-> record that the app is English-complete and carries no language layer yet.
+> and the fallback, and assessment stems are read repeatedly. State in your
+> build report that the app is English-complete and carries no language layer
+> yet.
 
 ---
 
@@ -1186,7 +1209,7 @@ worker cannot tell them apart from real translations.
   menu-display-format control, so the Brief paragraph below MUST NOT be emitted
   into a `/nova:autobuild` brief by `pdd-to-learn-app` / `pdd-to-deliver-app` —
   the architect can only search for an atom that does not exist and then report
-  an "unmet requirement", polluting the build memo's deviations list (live on
+  an "unmet requirement", polluting the run's recorded deviations (live on
   `bednet-check-2-visit/20260825-1310`). It is kept below as the statement of
   intent that `app-hq-settings` implements and `app-release-qa` gates.
   **General rule for this library:** when a component's **Enforced by** names a
@@ -1335,7 +1358,7 @@ capability budget, not a blocklist.
 > from a module that declares a case type. If you believe a
 > capability genuinely requires a feature flag and the app cannot meet its
 > requirement without it, do NOT quietly use it: name the capability, the flag
-> it needs, and the requirement it serves in the build memo, and build the
+> it needs, and the requirement it serves in your build report, and build the
 > closest flag-free alternative.
 
 ---
@@ -1646,8 +1669,8 @@ answering." Nova's validator does not refuse the misuse (upstream ask:
 
   **The build MUST:** (1) gate those fields on the consent answer — **element
   (c) wins over a literal completeness rule; collecting data after a
-  withdrawal is never the right resolution**; (2) record the deviation in the
-  build memo naming each gated field; (3) note the denominator consequence for
+  withdrawal is never the right resolution**; (2) record the deviation as a
+  decision row naming each gated field; (3) note the denominator consequence for
   any metric computed over them.
 
   Run `checkConsentBranchCompleteness` from `lib/consent-branch.ts` over the
@@ -1763,7 +1786,7 @@ Forbid angle-bracket placeholder notation`).
 > unconditionally required, gate it on the consent answer (`relevant: <consent>
 > = 'yes'`) rather than leaving a withdrawn household unable to close the form:
 > a respondent who has just been told they may stop must not then be required
-> to answer. Record every field you gate this way in the build memo.
+> to answer. Name every field you gate this way in your build report.
 > before you ship. They matter most on exactly the programs where a participant
 > has the strongest incentive to misreport: a script that says "to help target
 > support to families who need it most" while hiding that most respondents will
@@ -1776,8 +1799,8 @@ Forbid angle-bracket placeholder notation`).
 - **Trigger:** the PDD fixes ≥2 numeric thresholds that constrain the same
   physical quantity.
 - **Enforced by:** `pdd-to-deliver-app-eval § threshold_coherence` — binary
-  hard-gate: an incoherent pair that was compiled *without* a build-memo entry
-  surfaces `[BLOCKER]`.
+  hard-gate: an incoherent pair that was compiled *without* being surfaced (a
+  decision row, or the check in `## Build notes`) surfaces `[BLOCKER]`.
 - **Origin:** ace#984. The PDD dedups households at `< 15m` while the built form
   accepts GPS readings with accuracy up to `50m` — so the discriminator carries no
   signal (honest neighbours flag as duplicates; real duplicates read far apart).
@@ -1806,14 +1829,14 @@ Forbid angle-bracket placeholder notation`).
 **Brief paragraph (verbatim):**
 
 > REQUIRED — Threshold coherence: when two configured numbers constrain the same
-> physical quantity, CHECK them against each other and surface any conflict in the
-> build memo rather than silently compiling both. Pairs to check on every build:
+> physical quantity, CHECK them against each other and surface any conflict in
+> your build report rather than silently compiling both. Pairs to check on every build:
 > GPS de-duplication radius vs accepted GPS accuracy tolerance (an UNCONDITIONED
 > dedup radius at or below the worst accepted accuracy is meaningless — but a
 > radius the PDD applies only where BOTH readings report accuracy better than the
 > radius, with identifiers deciding the rest, is an accuracy-conditioned radius
 > and is coherent by construction: record it as coherent, do not flag it, and
-> carry the condition into the build memo with the radius); form duration floor
+> carry the condition into your build report with the radius); form duration floor
 > vs a realistic completion time for the actual item count; max payable
 > visits/day vs a realistic per-visit duration; any score threshold vs the
 > instrument's attainable score range (compute the true min/max from the point
@@ -1823,7 +1846,7 @@ Forbid angle-bracket placeholder notation`).
 > `[FIXED]` or attributes to its author to resolve a conflict you noticed — not
 > toward "raise the radius or tie them", not toward anything: the value is the
 > PM's or the author's, so surface the conflict and build the number as written.
-> Record each checked pair and its verdict in the build memo.
+> Record each checked pair and its verdict in your build report.
 
 ### discriminating-assessment-items
 
@@ -1904,7 +1927,7 @@ fails Step 1, and it lowers the effective bar the gate applies.
 > (ace#1014, ace#1187). Author for **taught-rule dependence**, not for difficulty.
 
 **Pre-release self-check (do this during the build, record it in the build
-memo).** One table, one row per item: the taught rule · the module that teaches
+summary's `## Build notes`).** One table, one row per item: the taught rule · the module that teaches
 it · the operation it protects · counter-intuitive yes/no · whether any other
 item tests the same rule · whether any option is rejectable on sight. An item
 that cannot fill the first three columns gets discarded, not rewritten.
@@ -1942,7 +1965,7 @@ the effective bar. One repair round, then re-grade.
 > guesser is a bank of arbitrary trivia, which is worse training for a
 > low-literacy cohort, not better. Apply all of this to the pre-test as well as
 > the post-test, and do not pad the bank to hit a count. Record a per-item table
-> in the build memo: rule, module, operation, counter-intuitive yes/no,
+> in your build report: rule, module, operation, counter-intuitive yes/no,
 > independence, and whether any option is rejectable on sight.
 ### instrument-grounded-examples
 
@@ -1987,7 +2010,7 @@ the effective bar. One repair round, then re-grade.
   which runs `lib/instrument-constants.ts` against the source file itself.
 - **Origin:** ace#1527. On `hh-poverty-targeting/20260819-1435` the digitised
   Nigeria PPI 2020 shipped **9 of 17 point values wrong and all 101
-  poverty-likelihood values invented** — the build memo described the latter as
+  poverty-likelihood values invented** — that run's build memo described the latter as
   *"provisional placeholders with the correct monotonic shape"*, and the point
   values were not flagged at all. Nothing caught it: a wrong scorecard produces
   a complete, plausible, fully-verified dataset that ranks the wrong
@@ -2348,3 +2371,4 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 | 2026-08-25 | **`live-photo-capture` is no longer briefed to Nova either (closes dimagi-internal/ace#1640).** The sibling instance of the ace#1632 defect, one component over: it sat in `pdd-to-deliver-app`'s emit-checklist while its own **Enforced by** says it is applied POST-BUILD by `app-hq-settings` § Step 3 (`commcare_get_form_source` -> inject `acquire` -> `commcare_patch_xform`) and gated by `app-release-qa` (`camera-only-appearance-missing`) — and `pdd-to-deliver-app-eval` already said in so many words that it "is not representable in the Nova blueprint". Confirmed against Nova's LIVE `add_fields` / `edit_field` schemas rather than our own docs: no field kind has an `appearance` slot (`caseWrite.mode` saves a link to the attachment, which is a different thing), so the paragraph was unsatisfiable by any call the architect has. Entry now marked **do NOT put it in the Nova brief** with the post-build owner and gate named, plus a `DO NOT BRIEF THIS` bullet here. The `KNOWN_UNMARKED` ledger row in `test/skills/post-build-components-not-briefed.test.ts` is deleted, so the rail now enforces the rule with no exception. | ACE team |
 | 2026-08-25 | **`connect-supported-capabilities-only`'s brief no longer instructs UNCONDITIONAL case-list authoring (closes dimagi-internal/ace#1652).** The clause conflated two different things: *don't use case SEARCH* (correct, always) and *therefore give each menu a case LIST* (correct only for a menu a worker navigates THROUGH to reach an existing record). On a registration-only module the entry's only session datum is `function="uuid()"`, so CommCare pushes no entity-selection screen and the authored columns are unreachable by construction — `app-release-qa` Step 2.8 raises `[BLOCKER] case-list-unreachable` on exactly that shape. ace#1281 closed this class at the OTHER producer (`pdd-to-deliver-app` § 4d's case-list *heal*, which now correctly declines), but § 4d only ever fires on a module whose `caseListConfig.columns` is EMPTY — and this brief, whose trigger is **always**, had already populated it. Same class, different door: the configuration was authored upstream of its own guard. Observed on `hh-poverty-targeting/20260824-1404` (HQ app `f94db1bd…`, build v10 `is_released: true`): one `<entry>`, one `uuid()` datum, a dead 4-column detail set traceable to this paragraph. It is also unhealable after the fact — Nova refuses to remove the last visible Results column from a module that declares a case type — and the PDD (`archetype: atomic-visit`, census-saturation, each household surveyed at most once) implies no followup form, so neither documented remediation was available. The second half of the clause is now scoped to navigate-through menus, with the registration-only carve-out stated explicitly. Checked while in the file: no other always-on component instructs case-list authoring. *Enforced:* `test/skills/component-brief-case-list-scoping.test.ts`. | ACE team |
 | 2026-09-26 | **`payability-scoped-key`: the clamped key no longer claims over-cap encounters "collide onto a key Connect has already paid" (ace#2512).** With the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeat key to `pending`, auto-approves it and pays it again, so the clamp groups the over-cap encounter but does not stop its payment. The cap now also requires a computed `payable_slot` field plus a Phase 4 `form_field_rules` row, and SCOPE adds that a rejected visit still counts toward `max_daily` / `max_total`, so non-payable record kinds go on a form with no `deliver_unit` marker. Source: commcare-connect `form_receiver/processor.py` `clean_form_submission` + `opportunity/models.py` `CompletedWork.payment_accrued`. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts`. | ACE team |
+| 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every "record it in the build memo" now lands as a decision row (choices a reviewer could disagree with) or under the build summary's `## Build notes` (check records with no decision), and Brief paragraphs ask the architect for its build report, which the build skill transcribes; the new "Where a component's disclosures land" note states the split once. Contract: docs/decisions-contract.md. | ACE team |

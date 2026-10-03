@@ -139,7 +139,7 @@ keep live is RETIRED by ace-web (`opp_forker.py::_retire_decision_rows`):
   re-run producer (`decisions_append_rows` skips an existing id — which is how
   inherited rows used to beat the re-run);
 - it gets `superseded_by: <id>` — the plugin's own supersession field
-  (ace#1421), so `liveDecisions`, the decisions Doc, the build memo, the
+  (ace#1421), so `liveDecisions`, the decisions Doc, the
   run-summary page and carry-forward all already read it as history. The
   target is absent until the phase re-runs; then the chain is ordinary;
 - it gets `inherited_from_run: <source-run-id>` (declared in
@@ -357,24 +357,6 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    source of truth" failure (CLAUDE.md § Conventions). Then re-run the check
    until it exits 0.
 
-6b. **Re-compose the build memo when the fork point is after Phase 4.** A fork
-   copies `4-connect/` whole, so the new run starts with the SOURCE run's
-   memo — titled with the source run id — and ace-web's carried `products`
-   block points `products.connect.build_memo` at the SOURCE run's Doc, not
-   the copy in the fork's own `4-connect/`. Both were observed on
-   `spark-facilitator/20260926-1800` (forked from 20260925-1536 at
-   `synthetic-data-and-workflows`): the reviewer was shown a memo for a
-   different run. When `connect-setup` is `done` in the forked run_state:
-
-   ```
-   /ace:step build-memo <opp>/<run_id>
-   ```
-
-   It re-renders the title from the fork's `run_id`, find-or-creates the Doc
-   in the fork's `4-connect/`, and repoints `build_memo` at it
-   (`skills/build-memo § On a forked run`). It writes only Drive and
-   run_state, never Connect, so it is safe on any fork.
-
 7. **Report.**
 
    ```
@@ -382,7 +364,6 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    Fork point: <phase|skill> (earlier work copied; from here on re-runs)
    Mode: <mode>
    Products handoffs: <clean | seeded N phase(s) from <source_run_id>>
-   Build memo: <re-composed for <run_id> | not applicable (fork before Phase 4)>
    Workbench: <ACE_WEB_BASE_URL>/chat/<working_session_slug>
 
    Next: /ace:run <opp>/<run_id> to resume there.
@@ -525,5 +506,6 @@ something a caller can act on — not just that the route exists.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 6b (re-compose the memo after a fork past Phase 4) and the report's `Build memo:` line are removed — a fork's review artifact is its decisions log, whose re-run rows are already retired and re-emitted per phase. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-02 | **A fork keeps the decision history but retires what it re-runs (ace#2582).** Rows at/after the fork point are moved to `<id>-<source-run-id>` and marked `superseded_by: <id>` + `inherited_from_run` by ace-web, instead of staying live under their canonical ids (where they silently beat the re-run's appends) — `spark-facilitator/20261001-2208` carried 33 Phase 4/5/8 rows it never ran and hand-minted 27 `-2208` corrections. Schema declares `inherited_from_run`; the Doc labels such rows as inherited. | ACE team |
 | 2026-10-01 | **Step 6b: re-compose the build memo after a fork past Phase 4.** `spark-facilitator/20260926-1800` (forked from 20260925-1536) carried its source's memo titled "run 20260925-1536", and its `products.connect.build_memo` pointed at the SOURCE run's Doc rather than the copy in its own `4-connect/` — so the run page showed a memo for a different run, and build-memo-eval flagged the label. `/ace:step build-memo <opp>/<run_id>` now runs after any fork whose `connect-setup` is done; the report states it. | ACE team |
