@@ -148,7 +148,7 @@ const DesignProducts = z
     // the concept — `pdd-to-learn-app` reads THIS into
     // `planLearnModules({ frameworkComponentIds })` and derives it from nothing
     // else (ace#2056). Optional: undeclared is a legitimate state that the
-    // Learn build memo reports loudly rather than guessing around.
+    // Learn decision rows reports loudly rather than guessing around.
     framework_component_ids: z.array(z.string().min(1)).optional(),
   })
   .strict();
@@ -344,15 +344,11 @@ const ConnectProducts = z
           .passthrough()
           .optional(),
         /**
-         * The run's programme-level BUILD MEMO — the review artifact the PDD
-         * names ("humans review the memo and spot-check the apps"), composed
-         * at the end of Phase 4 by `skills/build-memo` into
-         * `4-connect/build-memo.md` (ace#2371). Written by `build-memo`, not by
-         * `connect-opp-setup` — see PRODUCT_PRODUCERS below.
-         *
-         * `complete` / `gaps` say whether every producer section was present
-         * when it was composed; a memo with gaps states them in the document
-         * rather than reconstructing them.
+         * LEGACY — the per-run build memo pointer, written by runs between
+         * 2026-09-11 and 2026-10-02 (ace#2371). The build memo is retired;
+         * the decisions log is the review artifact (docs/decisions-contract.md).
+         * Nothing writes this key any more; it stays declared so those runs'
+         * run_state still validates.
          */
         build_memo: DocPointer.extend({
           complete: z.boolean().optional(),
@@ -699,10 +695,6 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // (skills/connect-opp-setup/SKILL.md § Products). connect-program-setup
     // writes opp.yaml, not run_state products.
     connect: 'connect-opp-setup',
-    // … except the build-memo pointer, written at the end of Phase 4 by the
-    // composer that publishes the memo (skills/build-memo/SKILL.md § Process
-    // step 6: "This skill is the sole writer of that key"; ace#2371).
-    'connect.build_memo': 'build-memo',
   },
   'ocs-setup': {
     // "Sole writer" of the typed handoff (skills/ocs-agent-setup/SKILL.md § Products) …

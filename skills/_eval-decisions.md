@@ -81,7 +81,6 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 |---|---|---|
 | `connect-program-setup` | **has eval** | `connect-program-setup-eval`. Grades whether the program shape (name, archetype-match) is appropriate for the opp. |
 | `connect-opp-setup` | **has eval** | `connect-opp-setup-eval`. 5 dimensions weighted to 1.0: verification_flag_fidelity (0.25), payment_unit_fit (0.20), deliver_unit_wiring (0.20), active_window_status (0.20), archetype_config_coherence (0.15). Mirrors `connect-program-setup-eval` structure including BLOCKER/WARN/DRIFT/PLATFORM/INFO/INFO-SKIPPED severity tiers, `partial` verdict tier for live-MCP-unreachable mode, live-state-drift via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`, archetype branches. Provisional. |
-| `build-memo` | **has eval** | `build-memo-eval` (2026-10-01). The memo is a collation, but it is the review artifact ace-web renders first, and a collation can misstate the build: the eval grades it against a fact sheet of run_state + live Connect reads (`lib/build-memo-facts.ts`) with a hard gate on a contradicted verification rule or payment fact, plus honesty about gaps, clarity for a non-ACE reviewer, and actionability. Row quality at source stays with `pdd-to-deliver-app-eval`, `pdd-to-learn-app-eval`, `connect-opp-setup-eval`. |
 
 ### Phase 5 — ocs-setup
 

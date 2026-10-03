@@ -457,7 +457,7 @@ one atomic REPLACE-ALL call. Save in checkpoints (one per module is fine) —
 `save()` throws on a refused or stale save, which is the point. The model never holds a Nova schema, which is also why
 `scripts/run-nova-media-upload.ts` has used this transport since 2026-08-27.
 
-Reaching for it is a deliberate downgrade and the build memo must say so: the
+Reaching for it is a deliberate downgrade and a decision row must say so: the
 architect's operating prompt and Nova's own authoring guidance are no longer
 steering the build, so whatever the brief does not state is not going to
 happen. Author the brief accordingly.
@@ -633,7 +633,7 @@ so nothing from it had saved.
 - Input: approved PDD from GDrive
 - Output:
   - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
-  - From `pdd-to-learn-app` AND `pdd-to-deliver-app`: **one `decisions.yaml` row per entry in each build memo's `[ACE] latitudes taken` and `[FIXED] ambiguities hit` tables**, appended via `decisions_append_rows` with `phase: 3-commcare` and the producer's own `skill` tag — derived from the SAME entry list the memo table renders (each skill's `§ Decisions Log`). This is REQUIRED, not catalogue-optional: the Phase 3 boundary fails a producer whose memo lists any latitude or ambiguity and whose skill wrote zero rows (`verify_phase_artifacts(phase='commcare').decisions`, `lib/build-phase-decisions.ts`; ace#2384 — `poverty-graduation/20260908-0510` shipped 66 rows, 0 from the app build). `pdd-to-deliver-app` may additionally append catalogue rows (`deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy`) when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`.
+  - From `pdd-to-learn-app` AND `pdd-to-deliver-app`: **one `decisions.yaml` row per `[ACE]` latitude, `[FIXED]` ambiguity and (Learn) framework gap, each with `plain`** (the decisions log is the review artifact — the build memo is retired), appended via `decisions_append_rows` with `phase: 3-commcare` and the producer's own `skill` tag — derived from the SAME entry list the memo table renders (each skill's `§ Decisions Log`). This is REQUIRED, not catalogue-optional: the Phase 3 boundary fails a producer whose memo lists any latitude or ambiguity and whose skill wrote zero rows (`verify_phase_artifacts(phase='commcare').decisions`, `lib/build-phase-decisions.ts`; ace#2384 — `poverty-graduation/20260908-0510` shipped 66 rows, 0 from the app build). `pdd-to-deliver-app` may additionally append catalogue rows (`deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy`) when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `pdd-to-learn-app-eval` after the Learn build and
   `pdd-to-deliver-app-eval` after the Deliver build. Each writes
@@ -975,9 +975,9 @@ orchestrator owns this write. Required top-level keys on the patch:
 `phases`, `last_actor`, `last_actor_at`. (0.13.116: legacy `gates.app-deploy`
 flip dropped — derived from phases.commcare-setup.status + per-skill verdicts.)
 
-**Residuals are first-class state, not build-memo prose
+**Residuals are first-class state, not build-note prose
 (dimagi-internal/ace#867).** Any deferred manual step this phase records
-in its summary / build memo — "needs HQ app-builder flip" (e.g. the
+in its summary — "needs HQ app-builder flip" (e.g. the
 camera-only photo `appearance="acquire"` toggle), post-export toggles —
 MUST also be written to `phases.commcare-setup.residuals[]` in the same
 write-back, one entry per deferred step:
@@ -989,9 +989,9 @@ residuals:
     verifiable_by: "app-release-qa camera-only check (image <upload> carries appearance containing 'acquire' in the released CCZ)"
 ```
 
-A build-memo note alone is write-once and gets lost: on
+A build note alone is write-once and gets lost: on
 hh-poverty-targeting/20260702-1456 the camera-only flip sat in the
-build-memo prose ("camera-only photo + Grid menu-display need HQ
+build-note prose ("camera-only photo + Grid menu-display need HQ
 app-builder flip"), was never performed, and Phase 6 shipped training
 materials contradicting the live app. Downstream phases read
 `residuals[]` as standing state (Phase 6's pre-flight surfaces open

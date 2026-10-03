@@ -363,6 +363,33 @@ describe('backfill of spark/spark-facilitator/20261001-2208', () => {
     }
   });
 
+  it('formats the values a reviewer reads and asks each question in partner words', () => {
+    const by = (id: string) => log.decisions.find((d) => d.id === id)!;
+    expect(by('connect-latitude-payment-amount-spark')).toMatchObject({
+      'ai-default': '7500',
+      plain_value: '7,500 MWK',
+      plain_question: 'What should a facilitator be paid per verified community meeting?',
+    });
+    expect(by('connect-latitude-org-amount-spark').plain_value).toBe('3,000 MWK');
+    expect(by('connect-latitude-total-budget-spark').plain_value).toBe('3,276,000 MWK');
+    expect(by('connect-latitude-opportunity-dates-spark').plain_value).toBe('2 November 2026 to 26 February 2027');
+    for (const a of reviewAskRows(log)) {
+      expect(a.plain_question, a.id).toBeTruthy();
+      expect(plainLanguageFindings(a.plain_question!), a.id).toEqual([]);
+      expect(a.plain_value ?? '', a.id).not.toMatch(/\[PROPOSED\]|^\d{4,}$/);
+    }
+    expect(by('open-question-recording-path-whole-community-group-declines').confirm_reason).toMatch(
+      /^Only Spark and the implementing organisation can decide/,
+    );
+  });
+
+  it('derives an ownership reason, not a design suggestion, for a residual a named party must decide (no overlay)', () => {
+    const { log: bare } = backfillDecisionsLog({ log: LOG, runState: RUN_STATE, sourceLog: SOURCE, memo });
+    expect(bare.decisions.find((d) => d.id === 'open-question-recording-path-whole-community-group-declines')?.confirm_reason).toMatch(
+      /^Only Spark and the implementing organisation can decide how this is handled; as built/,
+    );
+  });
+
   it('gives every live partner row a plain line, free of jargon, and marks the harness internal', () => {
     expect(report.enrich.missingPlain).toEqual([]);
     expect(report.enrich.jargon).toEqual([]);

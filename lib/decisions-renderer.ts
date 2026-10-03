@@ -265,7 +265,9 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   builder.appendBold(row.question);
 
   // v6 review fields (docs/decisions-contract.md) — what a reviewer reads first.
+  if (row.plain_question !== undefined) builder.appendBoldPrefix("The question:", row.plain_question);
   if (row.plain !== undefined) builder.appendBoldPrefix("In plain words:", row.plain);
+  if (row.plain_value !== undefined) builder.appendBoldPrefix("Value:", row.plain_value);
   if (row.review_ask !== undefined) {
     builder.appendBoldPrefix("PLEASE CONFIRM:", row.confirm_reason ?? "someone with authority should confirm this before launch");
   }

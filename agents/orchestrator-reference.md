@@ -67,7 +67,6 @@ phases:
   connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
-    build-memo: pending               # last — composes the run's build memo (ace#2371)
   ocs-setup:            # Phase 5 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
@@ -594,7 +593,7 @@ than pairing `present_count/expected_count` into a fraction, since
 `present_count` counts every file in the folder and `expected_count`
 counts only the required set, so the ratio routinely exceeds 1. For the
 build phases (`commcare`, `connect`) it also returns `decisions` — the
-build-memo-entries-are-decision-rows check (`lib/build-phase-decisions.ts`,
+build-producers-wrote-decision-rows check (`lib/build-phase-decisions.ts`,
 § Phase Write-Back Contract § Decisions log clause). That verdict is kept
 out of `missing[]` on purpose: `missing[]` heals by re-dispatching the
 producer, and re-running `pdd-to-deliver-app` to repair a log would rebuild
@@ -1059,14 +1058,13 @@ configured, every machine-translated language, every enforcement gap, every
 ("To confirm before launch"). A pause summary names the count of live asks.
 
 **Build phases owe rows by construction, and the fence fails a silent one
-(ace#2384).** In `commcare-setup` and `connect-setup`, every entry a
-producer lists in its build-memo sections — `[ACE] latitudes taken`,
-`[FIXED] ambiguities hit`, and in Phase 4 `Verification rules — where each is
-applied` — is ALSO a `decisions.yaml` row under that producer's `skill`
-tag, derived from the same entry list (each producer's `§ Decisions Log`).
+(ace#2384).** In `commcare-setup` and `connect-setup`, every `[ACE]` latitude,
+every `[FIXED]` ambiguity, every Learn framework gap and (Phase 4) every
+verification rule is a `decisions.yaml` row under that producer's `skill` tag
+(each producer's `§ Decisions Log`) — there is no memo copy any more.
 `verify_phase_artifacts(phase='commcare'|'connect')` returns a `decisions`
-report (`lib/build-phase-decisions.ts`): a producer whose memo lists any
-entry while its skill wrote zero rows in that phase is `silent`, and
+report (`lib/build-phase-decisions.ts`): a producer whose summary is in Drive
+while its skill wrote zero live rows in that phase is `silent`, and
 `decisions.ok:false` fails the boundary (heal per the Turn N+2 branch in
 `ace-orchestrator.md § Phase boundary fence`). The count is per producer, so
 `app-test-cases` rows tagged `3-commcare` cannot stand in for a build that
@@ -1293,7 +1291,7 @@ external-comms pause points."*
    - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
    - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
    - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
-   - **Build memo:** from Phase 4 on, name the memo as the review artifact the PDD names (ace#2371), plus any `gaps[]`. It is what a reviewer reads instead of every screen. The reviewer reads it on the run's ace-web summary page (`ace_web_summary_url`), where its content renders as the first Overview section (ace-web#768, deployed 2026-09-11). `products.connect.build_memo.web_view_link` is the Doc: storage and the place to comment. It goes under the summary URL as a deep link, next to the `Decisions Log:` line, never as the entry point (ace#2378).
+   - **To confirm before launch:** from Phase 4 on, name the count of live `review_ask` rows (`decisions_enrich`'s `reviewAsks`) and lead with them — the decisions log is the review artifact (the build memo is retired, `docs/decisions-contract.md`). The reviewer reads them on the run's ace-web summary page (`ace_web_summary_url`); the decisions Doc goes under it as a deep link, never as the entry point (ace#2378).
 3. **In `default` and `auto`: halts, without prompting.** If any `[BLOCKER]` is
    present, write `phases.<phase>.status: blocked` with a one-line reason and the
    contributing verdict paths, and stop the run there. Do NOT ask a question — the

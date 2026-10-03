@@ -22,12 +22,20 @@ internal`).
 | `review_ask` | `recommended-confirmation` | The run is built on this value, but someone with authority should confirm it before launch. Absent = no ask. Never blocks a run. |
 | `confirm_reason` | one plain sentence | Why it needs confirming, e.g. *"The design marks the rate as proposed; the build uses 7,500 MWK as a placeholder."* Required with `review_ask`, invalid without it. |
 | `plain` | one line | What was chosen, for a programme partner who has never seen ACE. No field ids, no §-references, no ACE jargon (PDD, CCZ, skill names, issue numbers). A rule quoted in double quotes may keep the design's own words. |
+| `plain_question` | one question | The question as a programme partner would ask it, e.g. *"What should a facilitator be paid per verified community meeting?"*. `question` stays as the build wrote it. Same plain-language rules as `plain`. Derived for every review ask; optional elsewhere. |
+| `plain_value` | display text | The effective value formatted for a reader: *"7,500 MWK"* for an `ai-default` of `7500`, *"3,276,000 MWK"*, *"2 November 2026 to 26 February 2027"*. `ai-default` / `override` stay the exact option strings the override UI keys on. Stamped at the write boundary when formatting changes something. |
 | `check_at` | a path | Where to spot-check it, e.g. *"Deliver app › Community Meeting Record › meeting photo"*. |
 | `correct_looks_like` | one line | What you see at `check_at` when it is right. |
 | `audience` | `partner` \| `internal` | `internal` = ACE's own test harness or build infrastructure (scenario counts, smoke recipes, scroll methods). Absent = `partner`. Partner views hide `internal` rows. |
 | `scope` | `record` \| `entity` \| `worker` \| `programme` | **Rule rows only.** What one application of the rule limits: one submitted record, one tracked case (a community, a household), one worker, or the programme as a whole (a review sample). |
 | `enforcement` | `enforced` \| `by-design` \| `gap` | **Rule rows only.** `enforced`: a Connect rule, a Connect payment limit or an app check holds it at its scope. `by-design`: the design places it off the platform on purpose. `gap`: the design needs it and nothing in the build holds it. Set together with `scope`. |
 | `also_raised_by` | list of skills | Other skills that raised the same question with the same answer; their rows are folded into this one (`superseded_by` it). |
+
+**What a partner view shows, in order of preference:** headline =
+`plain_question` → `plain` → `question`; value = `plain_value` → `override` →
+`ai-default`; then `plain` (when the headline was the question),
+`confirm_reason` for an ask, and `check_at` / `correct_looks_like`. Hide
+`audience: internal` rows and every row with `superseded_by`.
 
 Existing fields that matter to a reviewer: `superseded_by` (the row is history —
 show the row it points to), `inherited_from_run` (the row was carried in from
@@ -91,7 +99,9 @@ supersedes inherited rows onto the row that replaced them.
   status: ai-default
   value_set_by: external
   evidence_basis: inferred
+  plain_question: What should a facilitator be paid per verified community meeting?
   plain: Each worker is paid 7,500 MWK per verified community meeting, the middle of the design's proposed range.
+  plain_value: 7,500 MWK
   check_at: Connect › opportunity › payment units
   correct_looks_like: 7,500 MWK per verified meeting.
   review_ask: recommended-confirmation

@@ -267,7 +267,7 @@ export function diffStateTaxonomy(input: {
   };
 }
 
-/** Human-readable finding lines for the build memo / verdict. */
+/** Human-readable finding lines for the decision rows / verdict. */
 export function describeTaxonomyDiff(diff: TaxonomyDiff): string[] {
   const out: string[] = [];
   for (const v of diff.extraInBuild) out.push(`invented state value "${v}" — not in the PDD`);

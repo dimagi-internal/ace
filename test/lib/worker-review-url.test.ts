@@ -6,7 +6,7 @@
  *   - `cascade/spark-facilitator-20260926-1800-realized.json` — that run's
  *     `7-synthetic/realized.json`, verbatim (BOM stripped). All three
  *     `*worker_review_url`s carry `owning_program_id` and no `program_id`.
- *   - `build-memo/spark-facilitator-20260926-1800/run_state.yaml` — the same
+ *   - `cascade/spark-facilitator-20260926-1800-run_state.yaml` — the same
  *     run's run_state (OCS embed key redacted), whose
  *     `products.synthetic.cascade` the builder reads.
  *   - `cascade/spark-facilitator-worker-review-urls.json` — the live-verified
@@ -28,7 +28,7 @@ const PAIR = JSON.parse(
   readFileSync(join(FIX, 'cascade/spark-facilitator-worker-review-urls.json'), 'utf8'),
 ) as Record<string, string>;
 const RUN_STATE = parseYaml(
-  readFileSync(join(FIX, 'build-memo/spark-facilitator-20260926-1800/run_state.yaml'), 'utf8'),
+  readFileSync(join(FIX, 'cascade/spark-facilitator-20260926-1800-run_state.yaml'), 'utf8'),
 ) as any;
 const CASCADE = RUN_STATE.phases['synthetic-data-and-workflows'].products.synthetic.cascade;
 

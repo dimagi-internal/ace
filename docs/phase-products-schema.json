@@ -664,8 +664,7 @@
         "connect.ace_test_user.invite_row_present"
       ],
       "productProducers": {
-        "connect": "connect-opp-setup",
-        "connect.build_memo": "build-memo"
+        "connect": "connect-opp-setup"
       },
       "unattributedProductKeys": []
     },

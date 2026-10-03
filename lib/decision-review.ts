@@ -344,6 +344,39 @@ export function spotCheckPlaceFromReasoning(reasoning: string): string | null {
   return where || null;
 }
 
+// ── Values for display ─────────────────────────────────────────────────────
+
+const CURRENCY = /\b(MWK|USD|KES|UGX|TZS|NGN|GHS|ZAR|ZMW|RWF|ETB|XOF|XAF|INR|BDT|EUR|GBP)\b/;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** `2026-11-02` → `2 November 2026`; anything else unchanged. */
+export function humanDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : iso;
+}
+
+/**
+ * `ai-default` as a reader sees it: `7500` → `7,500 MWK` (currency from the
+ * row's own question/source when it names one), `3276000 MWK` → `3,276,000
+ * MWK`, `2026-11-02 to 2027-02-26` → `2 November 2026 to 26 February 2027`.
+ * Returns null when formatting would change nothing.
+ */
+export function plainValueFor(value: string, context = ''): string | null {
+  const v = value.trim();
+  let out = v;
+  const bare = /^(\d{4,})$/.exec(v);
+  const withCur = /^(\d{4,})\s+([A-Z]{3})$/.exec(v);
+  if (withCur) out = `${Number(withCur[1]).toLocaleString('en-US')} ${withCur[2]}`;
+  else if (bare) {
+    const cur = CURRENCY.exec(context)?.[1];
+    out = `${Number(bare[1]).toLocaleString('en-US')}${cur ? ` ${cur}` : ''}`;
+  } else if (/\d{4}-\d{2}-\d{2}/.test(v)) {
+    out = v.replace(/(?:PDD dates\s+)?(\d{4}-\d{2}-\d{2})/g, (_m, d: string) => humanDate(d));
+  }
+  out = out.replace(/\s*\[(?:PROPOSED|ACE|FIXED)\]/g, '').trim();
+  return out === v ? null : out;
+}
+
 // ── Languages ──────────────────────────────────────────────────────────────
 
 export const LANGUAGE_NAMES: Record<string, string> = {

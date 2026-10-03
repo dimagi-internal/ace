@@ -722,7 +722,7 @@ export function checkCczCaseListEnumFidelity(input: {
   };
 }
 
-/** Render the findings as the lines a build memo / QA verdict should carry. */
+/** Render the findings as the lines a decision rows / QA verdict should carry. */
 export function describeCczEnumFidelity(findings: CczEnumFidelityFinding[]): string[] {
   return findings.map((f) => {
     const head = `${f.property}="${f.value}": tile shows "${f.caseListLabel}" (${f.detailIds.join(', ')})`;

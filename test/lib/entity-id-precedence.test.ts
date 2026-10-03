@@ -83,7 +83,7 @@ describe('no field expresses payability', () => {
   it('but flags it — the component forbids shipping this silently', () => {
     expect(r.unresolvable).toBe(true);
     expect(r.reason).toMatch(/Do not ship this silently/);
-    expect(r.reason).toMatch(/build memo/);
+    expect(r.reason).toMatch(/decision row/);
   });
 });
 

@@ -252,7 +252,7 @@ export function checkDerivedChainGuards(fields: DerivedField[]): DerivedChainRep
   };
 }
 
-/** Human-readable one-block report for the build memo. */
+/** Human-readable one-block report for the build notes. */
 export function formatDerivedChainReport(r: DerivedChainReport): string {
   if (r.findings.length === 0) {
     return `derived-chain guards: OK — ${r.derivedChecked} root-level calculate(s) checked, 0 unguarded.`;

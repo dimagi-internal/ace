@@ -142,7 +142,7 @@ this assumption — design for it as scope.
 
       Report an `inventory-undeclared` finding in the phase summary the same way
       as `undeclared-pdd`: it is a one-line fix for its author and, left open,
-      the Learn build memo can only name the components another component
+      the Learn build's framework-gap decision rows can only name the components another component
       happens to reference — 3 of 9 on `poverty-graduation/20260905-1345`.
 
       **Do NOT write the inventory yourself.** Not by reading the framework's
@@ -150,7 +150,7 @@ this assumption — design for it as scope.
       `component-set.yaml`, not by any other name. The three-way naming that
       preceded this is exactly what left the field with no producer; a value you
       composed here is a guess wearing a typed field's name, and the loud
-      `inventory-unavailable` degrade in the Learn memo is the correct outcome
+      `inventory-unavailable` decision row from the Learn build is the correct outcome
       until the author declares it.
 
    Design: `docs/superpowers/specs/2026-09-05-multi-component-programmes.md`.
@@ -1076,7 +1076,7 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      | `payment_rate_band` | Phase 4 payment unit; Phase 8 solicitation | The band reads as an agreed price, or the awarded rate is applied without reference to it |
      | `daily_cap` / `total_cap` | Phase 4 opportunity config | Caps that do not match the PDD's stated economics |
      | `entity_id_grain` | Phase 3 `pdd-to-deliver-app`; Phase 4 payment unit | A payment grain chosen per-run rather than per-design |
-     | `duplicate_gps_rule` | Phase 3 `threshold-coherence-flag` + `pdd-to-deliver-app-eval § threshold_coherence`; the build memo's dedup rule (applied in review — Connect carries no GPS-duplicate control, ace#1013) | The accuracy condition is dropped: an accuracy-conditioned radius reads as a bare radius under the GPS tolerance, is flagged incoherent, and invites a builder to "fix" an author's decision (ace#2373) |
+     | `duplicate_gps_rule` | Phase 3 `threshold-coherence-flag` + `pdd-to-deliver-app-eval § threshold_coherence`; the dedup rule's `connect-opp-setup` decision row (applied in review — Connect carries no GPS-duplicate control, ace#1013) | The accuracy condition is dropped: an accuracy-conditioned radius reads as a bare radius under the GPS tolerance, is flagged incoherent, and invites a builder to "fix" an author's decision (ace#2373) |
 
      **`duplicate_gps_rule` is the WHOLE dedup rule, never a bare radius
      (ace#2373).** Emit it as an object —

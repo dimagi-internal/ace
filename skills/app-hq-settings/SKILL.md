@@ -55,9 +55,9 @@ Nova's blueprint schema has no field for the image-widget `appearance`
 hint and no field for per-module menu display style, so a Nova-built app
 lands on CCHQ with gallery-upload-permitting photo questions and
 list-style menus regardless of what the PDD demands. Historically these
-two toggles were recorded as build-memo prose ("camera-only photo + Grid
+two toggles were recorded only as a build note ("camera-only photo + Grid
 menu-display need HQ app-builder flip") and never performed — on
-`hh-poverty-targeting/20260702-1456` the flip sat in the memo, was never
+`hh-poverty-targeting/20260702-1456` the flip sat in that note, was never
 applied, and Phase 6 shipped training materials contradicting the live
 app (a deck claiming "no gallery option, on purpose" over a widget
 showing CHOOSE IMAGE). This skill is the automated apply-step that closes

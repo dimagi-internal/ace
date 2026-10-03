@@ -1185,16 +1185,13 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run-surface-audit-eval` for the judged half; and
      (3) lead the operator-facing close-out with that URL. This is the link an
      operator shares; it should never be reconstructed by hand or left unverified.
-     Once Phase 4 is done, name the **build memo** as the first thing to read
-     on that page — the PDD names it as what humans review instead of every
-     screen (ace#2371). The reviewer reads it on the summary page, which
-     renders its content as the first Overview section, with any gaps above
-     it (ace-web#768, deployed 2026-09-11). The Doc
-     (`products.connect.build_memo.web_view_link`) is storage and the place
+     Once Phase 4 is done, name the run's **decisions to confirm before
+     launch** as the first thing to read — the live `review_ask` rows of
+     `decisions.yaml`, which the summary page renders as cards (the decisions
+     log is the review artifact; the build memo is retired,
+     `docs/decisions-contract.md`). The decisions Doc is storage and the place
      to comment: it goes UNDER the summary URL as a deep link, never in its
-     place. The audit in (2) is what proves the memo reached the page:
-     `MISSING-ARTIFACT` when it did not, `MEMO-GAPS-HIDDEN` when its gaps
-     were dropped (ace#2378; `skills/build-memo § Where a reviewer reads it`).
+     place (ace#2378).
 
      **(4) If `run_state.yaml.triggered_by.thread_id` is set, draft the
      close-out reply (ace#1057).** A run dispatched from a turn is a promise to
@@ -1723,9 +1720,8 @@ exempted 15 live rows from the ace#1201 reconciliation.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`); and the run's **build memo** (`4-connect/build-memo.md`, linked at `products.connect.build_memo`) — the review artifact the PDD names, composed last by `build-memo` because the end of Phase 4 is the earliest point every other compilation target exists.
+**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`); and the Phase 4 decision rows (rule rows with `scope` + `enforcement`, latitudes, ambiguities) — the review artifact is the decisions log (`docs/decisions-contract.md`).
 
-**Gate (build memo):** `4-connect/build-memo.md` is `required: true` in the manifest, so this phase's boundary fence — `verify_phase_artifacts(phase='connect')`, Turn N+1 call #3 — reports it in `missing[]` with `producedBy: build-memo` on any run that reaches the boundary without it, rather than passing silently. Heal per Turn N+2 by `Skill(build-memo)`: it composes from Drive and never touches Connect, so the external-resource no-re-mint override does not apply to it. Still missing after the cap → `[BLOCKER]`. A memo that exists but carries `gaps[]` passes the fence — its gaps are stated in the document and in `connect-setup_summary.md` (ace#2371).
 
 **Notes:** Phase 4 activates the opp and invites the ACE test user (`${ACE_E2E_PHONE}`) so Phase 6 `app-screenshot-capture` has a real signed-in user (not placeholder screenshots). The opp is created with `is_test=true` so prod LLO-facing analytics/payment exports/partner dashboards exclude these dogfood runs; activation here is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` is idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. LLO invite-list prep is deferred to Phase 9. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
@@ -1880,9 +1876,9 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   only the required set, so "7/4" is meaningless.
                 — for phase=commcare|connect ALSO returns `decisions`
                   {ok, failures[], warnings[], summary, unreadable?}:
-                  every build-memo latitude / ambiguity / verification
-                  rule is owed as a decision row, and a producer whose
-                  memo lists any while its skill wrote ZERO rows fails
+                  a build producer that ran (its summary is in Drive)
+                  while its skill wrote ZERO live decision rows fails;
+                  live partner rows with no `plain` warn
                   (lib/build-phase-decisions.ts; ace#2384). Absent on
                   every other phase.
              4. verify_phase_products(fileId=<run_state.yaml>, phase=<phase>)

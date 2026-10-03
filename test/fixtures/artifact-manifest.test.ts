@@ -98,7 +98,6 @@ describe('ACE-Test-001 fixture', () => {
       '4-connect/connect-program-setup-eval_verdict.yaml',
       // ace#2371: the run's build memo is a required Phase 4 artifact; this
       // partial fixture predates it.
-      '4-connect/build-memo.md',
       // Phase 5 OCS artifacts (the fixture covers earlier phases only).
       '5-ocs/ocs-agent-setup.md',
       '5-ocs/ocs-setup_summary.md',

@@ -8,7 +8,7 @@
  * stamped `superseded_by: <id>` (the plugin's existing supersession field,
  * ace#1421) and `inherited_from_run: <source-run-id>`. This file is the
  * PLUGIN half of that contract: the log ace-web writes must parse, render as
- * history, stay out of the build memo, and let the re-run producer append
+ * history, stay out of the live review rows, and let the re-run producer append
  * under the canonical id.
  *
  * Fixtures (`test/fixtures/fork-decisions/spark-facilitator-20261001-2208/`):
@@ -29,7 +29,6 @@ import {
 } from '../../lib/decisions-schema';
 import { composeAppendedLog } from '../../lib/decisions-write';
 import { renderDecisionsLog } from '../../lib/decisions-renderer';
-import { liveDecisionRows } from '../../lib/build-memo-compose';
 
 const DIR = join(__dirname, '..', 'fixtures', 'fork-decisions', 'spark-facilitator-20261001-2208');
 const SOURCE = readFileSync(join(DIR, 'source-decisions.yaml'), 'utf8');
@@ -129,8 +128,8 @@ describe('the retired log ace-web now writes', () => {
     expect(stale?.inherited_from_run).toBe(SRC_RUN);
   });
 
-  it('keeps retired rows out of the build memo', () => {
-    const live = liveDecisionRows(log.decisions) as { id: string }[];
+  it('keeps retired rows out of the live review rows', () => {
+    const live = liveDecisions(log);
     expect(live.map((d) => d.id)).not.toContain(`program-reuse-vs-create-${SRC_RUN}`);
     expect(live).toHaveLength(3);
   });

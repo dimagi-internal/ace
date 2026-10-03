@@ -164,7 +164,7 @@ describe('the unpaid-registration Deliver shape (#1331, #1295)', () => {
     expect(src).toMatch(/feeds_entity_id\D{0,40}PAYABLE/);
     expect(src, 'must name the unpaid exemption').toMatch(/UNPAID/);
     expect(src, 'must name the non-enumerable-by-nature exemption').toMatch(/non-enumerable BY NATURE/i);
-    expect(src, 'exemptions must be recorded, not silent').toMatch(/build memo with the reason/i);
+    expect(src, 'exemptions must be recorded, not silent').toMatch(/decision row with the reason/i);
     expect(src).toMatch(/1295/);
   });
 });

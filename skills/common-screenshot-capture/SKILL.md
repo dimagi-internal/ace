@@ -381,7 +381,7 @@ observed one moment. A pool alias is a semantic promise, not a step:
 `@sync-button` means "a picture of the sync control". Redirecting it to the
 `connect-home` frame IS the defect (ace#866's class — "downstream slides
 claim things the duplicate can't show"; ace#1832 cited this as "#867's
-caption-contradicts-pixels class", but #867 is the camera-only build-memo
+caption-contradicts-pixels class", but #867 is the camera-only HQ-setting
 residual, a different defect),
 not the fix. So the pool rejects; it never redirects.
 

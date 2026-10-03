@@ -81,7 +81,7 @@ dir. `$RC` below is
    `-qa` / `-eval` has no file, or an artifact regenerated after its gate (stale
    by more than the copy window a fork's copies land in). Before assessing,
    **re-run every gate that is missing or stale** — dispatch the gate skill
-   itself (`Skill(build-memo-eval)`, `Skill(training-deck-render-eval)`,
+   itself (`Skill(training-deck-render-eval)`,
    `Skill(demo-data-setup-qa)`, `Skill(semantic-registry-author-qa)`, …) — then
    re-run step 1. Under `--read-only`, run each gate with its writes going to
    the scratch dir instead, and pass them with `--overlay
@@ -93,7 +93,7 @@ dir. `$RC` below is
    `$RC postcondition --run-state … --opportunity … --payment-units … --invites … --out postcondition.json`.
    The rules are `connect-opp-setup`'s Step 11: what would block the Phase 6 walk,
    and `is_test` off, block a release; a refused verification write (ace#2419) is
-   a warning the memo must state.
+   a warning the decisions log must state (a rule row with `enforcement: gap`).
 
 4. **Output previews.** `scripts/output-preview-capture.ts gaps --opp … --run …
    --refresh > gaps.json`. Any gap → run `output-preview-capture` for the run

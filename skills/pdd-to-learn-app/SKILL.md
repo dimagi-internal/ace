@@ -20,9 +20,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 ## Products
 
-- `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
-- `3-commcare/pdd-to-learn-app_build-memo.md` — the Learn half of the run's build memo, written on EVERY path by Step 7a; on a componentized run it carries the gap list Learn PDD §6(5) requires
-- `decisions.yaml` rows (`phase: 3-commcare`, `skill: pdd-to-learn-app`) — one per entry in the build memo's `[ACE] latitudes taken` and `[FIXED] ambiguities hit` tables, appended in Step 7a (§ Decisions Log). REQUIRED: the Phase 3 boundary fails a memo that lists entries while this skill wrote zero rows (ace#2384)
+- `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`), ending with a `## Build notes` section (Step 7a: language layer, repairs applied, per-item assessment table, recorded check outcomes)
+- `decisions.yaml` rows (`phase: 3-commcare`, `skill: pdd-to-learn-app`) — one per `[ACE]` latitude taken, per `[FIXED]` ambiguity hit, and per framework gap (Learn PDD §6(5)), appended in Step 7a (§ Decisions Log). The decisions log is the run's review artifact; these rows are the ONLY place those calls are recorded. REQUIRED: the Phase 3 boundary fails this skill if it wrote its summary but zero rows under `skill: pdd-to-learn-app` (ace#2384)
 
 ## Process
 
@@ -72,9 +71,10 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    (`modules[].pdd_file_id`), not from the programme overview — the overview
    composes, it does not restate.
 
-   **Write `buildMemoNotes` into the build memo (Step 7a), including the gaps.** Learn
-   PDD §6(5) requires naming every framework component skipped for having no
-   PDD. When the framework's inventory is unavailable the plan says so
+   **Record the plan's gap notes (the `buildMemoNotes` field, which keeps its
+   legacy name) as decision rows in Step 7a — one `learn-gap-<slug>` row per
+   gap.** Learn PDD §6(5) requires naming every framework component skipped
+   for having no PDD. When the framework's inventory is unavailable the plan says so
    explicitly rather than reporting none — do not quietly drop that line, and
    do not substitute a parsed guess at the component list.
 
@@ -364,8 +364,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      build correctly shipped one fixed 12-item bank, and **nothing recorded
      that a substitution had happened** — so the PDD, and anything generated
      from it, still told a reader that retakes were draw-resistant. Whenever
-     you substitute, write it into the build memo and the summary as a named
-     deviation: what the PDD asked for, what you built, why the ask is closed,
+     you substitute, record it as a `learn-ambiguity-<slug>` decision row
+     (Step 7a) and in the summary as a named deviation: what the PDD asked for, what you built, why the ask is closed,
      and the residual the operator now owns (for the fixed-bank case: unlimited
      re-attempts against a fixed bank let a worker pass by memorising the
      answers, which is a real retake-resistance loss the PDD assumed away).
@@ -431,8 +431,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
        BLOCKER-gated by `app-release-qa` off the released app's raw doc.
        Briefing it made every architect build report a spurious "unmet
-       requirement" in the build memo — the one artifact meant to carry REAL
-       deviations — and invited the architect to reach for an unrelated atom
+       requirement" in what was then the build memo — the one artifact meant
+       to carry REAL deviations, now the decision rows — and invited the architect to reach for an unrelated atom
        to satisfy the paragraph (dimagi-internal/ace#1632; live on
        bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
        three fields HQ-side on the first attempt).
@@ -448,8 +448,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        `discriminating-assessment-items` standard below and treat every
        PDD example as a candidate that must clear the same two gates —
        **hardening or discarding a PDD example is PDD-COMPLIANT, not a
-       deviation**, and does not belong in the build memo's deviations
-       list. Say so explicitly in the brief when the PDD carries worked
+       deviation**, and does not get a `[FIXED]` ambiguity decision
+       row. Say so explicitly in the brief when the PDD carries worked
        examples. Live case: `hh-poverty-targeting/20260730-2210` promoted
        the PDD's three worked items into the brief as verbatim
        post-assessment items; all three were then guessed cold by both
@@ -477,7 +477,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        learning this across ace#1014 / ace#1187). The component's
        **pre-release self-check** is mandatory and its per-item table
        (rule, module, operation, counter-intuitive?, independence,
-       any-option-rejectable-on-sight) belongs in the build memo.
+       any-option-rejectable-on-sight) belongs in the summary's
+       `## Build notes` (Step 7a).
      - **Randomise the correct-option POSITION independently per item, and
        never rotate through the letters (ace#2061).** Tell the architect this
        explicitly in the brief. "Spread across a/b/c/d" is not enough and is
@@ -802,7 +803,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
        - `status: 'unable'` — the bank has fewer than 2 items, so no period
          fits twice and NOTHING was examined. **This is not a pass.** Record
-         `r.reason` in the build memo verbatim; do not re-key. If a Connect
+         `r.reason` in the summary's `## Build notes` verbatim; do not re-key. If a Connect
          gate depends on a bank this short, that is the finding — a 1-item
          gate is guessable for reasons this check does not measure.
        - `status: 'checked'`, `ok: true` — no periodic guess reaches the mark.
@@ -964,7 +965,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     live schemas from Nova's `tools/list`; do not paraphrase them here.
 
     **Gate:** `out-of-date` and `missing` must both be 0 at hand-off. Record
-    the final per-language coverage counts in the build memo, plus one line
+    the final per-language coverage counts in the summary's `## Build notes`
+    (Step 7a), plus one line
     stating the translations are ACE-authored (`origin: ai`) and carry
     `needs-review` until a speaker of the language reviews them. If the layer
     cannot be completed, halt loud with the counts — do NOT write a summary
@@ -1013,59 +1015,59 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    ```
 
    Body content stays the same as before: module list, Connect
-   configuration, decisions made, Nova warnings.
+   configuration, decisions made, Nova warnings — ending with the
+   `## Build notes` section Step 7a specifies.
 
    Anything downstream that lost this map can re-derive it with one
    `get_app({app_id})` (whole-app) or `search_blueprint({query, app_id})`
    (one semantic name) — but persist it here so they don't have to.
 
-7a. **Write the build memo** to
-   `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-learn-app_build-memo.md`
-   via `drive_create_file` — same atom, same `3-commcare` parent folder as
-   Step 7's summary, immediately after it. **On every path**, not only the
-   componentized one.
+7a. **Record the build's calls as decision rows, and its notes in the
+   summary.** **On every path**, not only the componentized one, immediately
+   after Step 7's summary write. The decisions log (`decisions.yaml`, schema
+   v6) is the run's review artifact: ace-web renders every row with a comment
+   box and an answer editor, and an answer carries into the next run. A call
+   that is not a row is not in front of the reviewer — on
+   `poverty-graduation/20260905-1345` and its fork `20260908-0510` the
+   latitudes taken during authoring were held only in the build's context and
+   lost with it, so the post-hoc summary had to record that they "cannot be
+   established".
 
-   This step did not exist until ace#2371. Step 0, Step 4e and § Repair mode
-   all say to write "into the build memo", and the Products list named the
-   file, but no step ever put it in Drive — so on
-   `poverty-graduation/20260905-1345` and its fork `20260908-0510` the memo
-   was composed inside the build's context and lost with it, and the
-   post-hoc summary had to record that the latitudes taken during authoring
-   "cannot be established". `skills/build-memo` collates this file into the
-   run's programme memo (`4-connect/build-memo.md`) at the end of Phase 4, so
-   what is not written here is not in front of the reviewer.
+   **Decision rows** — ONE `decisions_append_rows` call (§ Decisions Log):
 
-   Five sections, each present even when empty (write `None.` — never drop
-   the heading):
+   - **`[ACE]` latitudes taken** — one `learn-latitude-<slug>` row per place
+     the build exercised latitude the PDD granted.
+   - **`[FIXED]` ambiguities hit** — one `learn-ambiguity-<slug>` row per
+     `[FIXED]` statement that could not be built exactly as written
+     (including a substituted unbuildable ask — Step 4's fixed-bank case —
+     and any `repairs[]` entry that could not be satisfied, § Repair mode).
+   - **Framework gaps (Learn PDD §6(5))** — on a componentized run, ONE
+     `learn-gap-<slug>` row per gap in Step 0's plan notes (the
+     `buildMemoNotes` field): each framework component skipped for having no
+     PDD and, when the framework's inventory was not declared, a
+     `learn-gap-inventory-unavailable` row that says so rather than reporting
+     none. When only the design owner or operator can close a gap (author the
+     missing component PDD, declare the inventory), set
+     `review_ask: recommended-confirmation` with a `confirm_reason` naming who
+     closes it and how. A synthesized run writes no gap rows.
 
-   - `## [ACE] latitudes taken` — `| PDD § | What ACE chose | Why |`, one row
-     per place the build exercised latitude the PDD granted.
-   - `## [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How resolved,
-     or OPEN |`, one row per `[FIXED]` statement that could not be built
-     exactly as written (including any `repairs[]` entry that could not be
-     satisfied, § Repair mode).
-   - `## Framework gaps (Learn PDD §6(5))` — on a componentized run, Step 0's
-     `buildMemoNotes` **verbatim**, including the `inventory-unavailable`
-     line when the framework's inventory was not declared. On a synthesized
-     run, the single line `Not a componentized programme — no framework gap
-     list applies.`
-   - `## Language layer` — Step 4e's final per-language coverage counts and
+   Cite the PDD section in every row's `source`.
+
+   **`## Build notes`** — the last section of Step 7's summary
+   (`3-commcare/pdd-to-learn-app_summary.md`), each subsection present even
+   when empty (write `None.` — never drop the heading):
+
+   - `### Language layer` — Step 4e's final per-language coverage counts and
      the `origin: ai` / `needs-review` line, or `No working language other
      than English.`
-   - `## Repairs applied` — § Repair mode's per-item table, or `None.`
+   - `### Repairs applied` — § Repair mode's per-item table and which
+     `repairs[]` entries were applied, or `None.`
+   - `### Assessment self-check` — the `discriminating-assessment-items`
+     per-item table, plus any `checkAnswerKeyPattern` `unable` reason,
+     verbatim.
 
-   Cite the PDD section on every row. The programme memo marks an uncited
-   row `NOT CITED by pdd-to-learn-app` rather than guessing a section.
-
-   **Every row of the first two tables is ALSO a decision row** — append them
-   with ONE `decisions_append_rows` call immediately after this write, derived
-   from the same entry list the tables render (§ Decisions Log). The memo is
-   prose a reviewer reads; `decisions.yaml` is the register ace-web renders
-   with a comment box and an answer editor on every row, and an answer there
-   carries into the next run. A call that reaches only the memo cannot be
-   answered. The Phase 3 boundary fails this skill if the memo lists any
-   latitude or ambiguity and zero rows carry `skill: pdd-to-learn-app`
-   (ace#2384).
+   The Phase 3 boundary fails this skill if it wrote its summary but zero
+   decision rows carry `skill: pdd-to-learn-app` (ace#2384).
 
 8. **Notify admin group** that Learn app generation is complete, with the
    Nova app URL and a link to the summary in GDrive.
@@ -1104,8 +1106,8 @@ When invoked with a `repairs[]` list:
    and on `user_score` and assert each `calculate` string still references
    the question as `#form/<id>` — reads return the authored text, e.g.
    `"if(#form/q1 = 'c', 1, 0)"`.
-4. **Update the build memo's per-item table** for every item you touched, and
-   record which `repairs[]` entries you applied.
+4. **Update the summary's `## Build notes` per-item table** (Step 7a) for
+   every item you touched, and record which `repairs[]` entries you applied.
 5. **One round.** Return after applying the list; the orchestrator re-runs the
    eval once. Do not iterate against the score — roughly 500K subagent tokens
    were spent across two prior authoring cycles looping against a number that
@@ -1113,7 +1115,8 @@ When invoked with a `repairs[]` list:
 
 If a `repairs[]` entry cannot be satisfied — the rule genuinely has no
 non-guessable formulation, or re-keying would break a load-bearing teaching
-example — say so explicitly in the build memo with the reason, and leave the
+example — say so explicitly in a `learn-ambiguity-<slug>` decision row with
+the reason (`review_ask: recommended-confirmation` + `confirm_reason`), and leave the
 item alone. An unfixable entry is a finding for a human, not a licence to
 fabricate an arbitrary item.
 
@@ -1212,8 +1215,8 @@ slash commands listed above. See
 `playbook/integrations/nova-integration.md` for current status.
 
 ## Mode Behavior
-- **Auto:** Build via `/nova:autobuild`, write summary and build memo,
-  notify admin, proceed.
+- **Auto:** Build via `/nova:autobuild`, write the summary (with
+  `## Build notes`) and the decision rows, notify admin, proceed.
 - **Review:** Build, write summary, present summary for review before
   proceeding.
 
@@ -1244,49 +1247,49 @@ Decisions Log section at all, and the Learn build wrote zero rows:
 none from Phase 3 — including the quiz item count, which was derived rather
 than read (ace#2364). A regression of #399.
 
-### Every build-memo entry is also a decision row (REQUIRED)
+### Every latitude, ambiguity and framework gap is a decision row (REQUIRED)
 
-Every row Step 7a writes under `## [ACE] latitudes taken` and `## [FIXED]
-ambiguities hit` is ALSO a `decisions.yaml` row. These are exactly the calls
-the register exists for: an `[ACE]` latitude is an `inferred` default, a
-`[FIXED]` ambiguity is a `conflicting` one.
+Every `[ACE]` latitude taken, `[FIXED]` ambiguity hit and framework gap
+(Learn PDD §6(5)) the build met is a `decisions.yaml` row — and the row is the
+ONLY rendering; nothing else lists these calls. They are exactly the calls the
+register exists for: an `[ACE]` latitude is an `inferred` default, a `[FIXED]`
+ambiguity is a `conflicting` one, and a framework gap is a value outside the
+build's authority that the design owner or operator must close.
 
-**One source, two renderings.** Build the entry list ONCE —
-`{pdd_section, kind, chose, alternatives, why, spot_check, signals}` per entry —
-then render the memo table rows AND the decision rows from it. Never author one
-from the other after the fact, and never add an entry to one without the other:
-the memo and the register must list the same calls.
+Build each row from one entry —
+`{pdd_section, kind, chose, alternatives, why, spot_check, signals}`.
 
 | Row field | From the entry |
 |---|---|
-| `id` | `learn-latitude-<slug>` / `learn-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run of the same PDD re-derives the same id and the atom's idempotent skip holds |
+| `id` | `learn-latitude-<slug>` / `learn-ambiguity-<slug>` / `learn-gap-<slug>`; slug from the PDD § and the subject, so a re-run of the same PDD re-derives the same id and the atom's idempotent skip holds |
 | `phase`, `skill` | `3-commcare`, `pdd-to-learn-app` |
-| `question` | what the PDD left open (latitude) or said two ways (ambiguity) at that § |
-| `ai-default` | the "What ACE chose" / "How resolved" cell as a short label, an exact member of `options` |
+| `question` | what the PDD left open (latitude), said two ways (ambiguity), or needs and the build could not supply (framework gap) at that § |
+| `ai-default` | what ACE chose / how the ambiguity was resolved / how the build proceeded without the gap closed, as a short label, an exact member of `options` |
 | `options` | that label plus each alternative the build weighed, 1–8 words each |
-| `source` | the entry's PDD § cell, naming the document |
-| `evidence_basis` | `[ACE]` latitude → `inferred` (`stated` only when the PDD itself names the value chosen); `[FIXED]` ambiguity → `conflicting` |
+| `source` | the entry's PDD §, naming the document |
+| `evidence_basis` | `[ACE]` latitude → `inferred` (`stated` only when the PDD itself names the value chosen); `[FIXED]` ambiguity → `conflicting`; framework gap → `inferred` |
 | `conflict_signals` | ambiguity only, at least 2 entries: the `[FIXED]` statement as written, and the reading or constraint that competed with it — each cited |
 | `value_set_by` | `ace` |
 | `status` | `ai-default`, always (a caller-asserted `human-decided` is rejected — ace#2307) |
-| `reasoning` | the Why cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+| `reasoning` | why; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+| `plain` | REQUIRED — one plain-language line for a programme partner (no §-refs, field ids or ACE tags) |
+| `check_at` + `correct_looks_like` | where in the Learn app a reviewer sees the choice, and what they see there when it is right (the atom fills `check_at` from the `Spot-check:` sentence if omitted) |
+| `review_ask` + `confirm_reason` | framework gap (and an unsatisfiable `repairs[]` entry) that only the design owner or operator can close → `recommended-confirmation` + one plain sentence naming who closes it and how. `OPEN` rows get their ask derived by `decisions_enrich`; do not duplicate it |
 
-**Where to spot-check goes in `reasoning`, not a field of its own.** ace-web's
-summary builds each decision from a fixed set of keys (`apps/opps/summary.py`
-on ace-web `main`, c20ef34: id, phase, skill, question, ai-default, override,
-options, source, status, reasoning, override_reasoning, evidence_basis,
-conflict_signals) and drops anything else — `params` included — so a new key
-would never reach the reviewer. `reasoning` renders as the row's note. End it
-with `Spot-check: <app> › <module> › <form> › <field>.`, and end the memo
-row's Why cell with the same sentence so `skills/build-memo` can fill its
-"Where to spot-check" column from what this skill named.
+**Keep the `Spot-check:` sentence at the end of `reasoning`** even when you
+set `check_at`: `reasoning` renders as the row's note, and the write boundary
+derives `check_at` from it when a producer omits the field. End it with
+`Spot-check: <app> › <module> › <form> › <field>.`
 
 **The boundary checks it.** `verify_phase_artifacts(phase='commcare')`
-returns a `decisions` report (`lib/build-phase-decisions.ts`). If this memo
-lists any latitude or ambiguity while zero rows carry `phase: 3-commcare` and
-`skill: pdd-to-learn-app`, the Phase 3 boundary fails. `None.` under both
-headings owes no rows. Rows another skill writes in the same phase
-(`app-test-cases`) do not count toward this one.
+returns a `decisions` report (`lib/build-phase-decisions.ts`). If this skill
+wrote its summary (`3-commcare/pdd-to-learn-app_summary.md`) but zero rows
+carry `phase: 3-commcare` and `skill: pdd-to-learn-app`, the Phase 3 boundary
+fails; it also warns on any live partner-facing row with no `plain`. Rows
+another skill writes in the same phase (`app-test-cases`) do not count toward
+this one. A build that genuinely took no latitude and hit no ambiguity or gap
+still owes at least one row — record the most consequential build choice
+(e.g. the assessment item count) so the reviewer has something to confirm.
 
 Worked example (illustrative values):
 
@@ -1329,6 +1332,24 @@ decisions_append_rows({
       ],
       value_set_by: "ace",
       reasoning: "OPEN — both statements are [FIXED]; built to the later §2 edit and flagged for the design author. Spot-check: Learn app › module list."
+    },
+    {
+      id: "learn-gap-savings-group-component",
+      phase: "3-commcare",
+      skill: "pdd-to-learn-app",
+      question: "Learn PDD §6(5): the framework's savings-group component has no PDD — what does the training carry for it?",
+      "ai-default": "no module until a PDD exists",
+      options: ["no module until a PDD exists", "module from the overview only"],
+      source: "Learn PDD §6(5)",
+      status: "ai-default",
+      evidence_basis: "inferred",
+      plain: "The training has no lesson on savings groups yet, because that part of the programme has not been designed.",
+      check_at: "Learn app › module list",
+      correct_looks_like: "No savings-group lesson appears in the module list.",
+      review_ask: "recommended-confirmation",
+      confirm_reason: "Only the design owner can add the savings-group design; until then workers are not trained on it.",
+      value_set_by: "ace",
+      reasoning: "Learn PDD §6(5) requires naming every component skipped for having no PDD. Spot-check: Learn app › module list."
     }
   ]
 })
@@ -1343,5 +1364,6 @@ write semantics` (top-level `decisions:`, not `rows:`).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 7a no longer writes `3-commcare/pdd-to-learn-app_build-memo.md`: `[ACE]` latitudes, `[FIXED]` ambiguities and every framework gap (`learn-gap-<slug>`, with `review_ask` + `confirm_reason` when only the design owner can close it) are decision rows only, and the language layer, repairs applied and assessment self-check move to a `## Build notes` section of the summary; the Phase 3 boundary now fails a summary with zero rows under `skill: pdd-to-learn-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-28 | **ACE-direct edits move to Nova private work (`voidcraft-labs/commcare-nova#693`).** Nova's 2026-09-27 deploy removed `create_app` and made every mutation staged: `work_id` + `request_id`, no `app_id`, nothing lands until `save_work`, and a refused save answers `saved: false` as data. §§ 4b / 4c / 4e and § Repair mode now open work, stage, save (requiring `saved: true`) and read back with `app_id` after the save; Step 4 treats an architect report naming unsaved work as an unfinished build; `no-starter-module` is re-framed as a regression guard (new apps are unseeded). Contract: `playbook/integrations/nova-integration.md § The private-work authoring contract`. | ACE team |
 | 2026-09-11 | **Added § Decisions Log: every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** The skill had no Decisions Log section, so the Learn build contributed zero rows to the register a reviewer comments on and answers — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3. Rows derive from the same entry list as Step 7a's tables, with the spot-check location in `reasoning` because ace-web drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |

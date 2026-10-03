@@ -24,7 +24,7 @@
 //
 // ## The gap list needs an inventory ACE does not reliably have
 //
-// §6(5) requires the build memo to name "every framework component skipped for
+// §6(5) requires the decision rows to name "every framework component skipped for
 // having no PDD". That needs the framework's full component inventory, and the
 // framework document does not declare one machine-readably — its component
 // table is prose formatting, and parsing it is precisely the fragility the
@@ -81,7 +81,7 @@ export interface LearnModulePlan {
    * they will actually deliver, not on hidden modules."
    */
   questionBankScope: { foundations: true; components: string[] };
-  /** Lines the build memo must carry (Learn PDD §6(5)). */
+  /** Lines the decision rows must carry (Learn PDD §6(5)). */
   buildMemoNotes: string[];
 }
 
@@ -140,7 +140,7 @@ export function planLearnModules(input: LearnPlanInput): LearnModulePlan {
       code: 'inventory-unavailable',
       components: [],
       detail:
-        'The framework\'s full component inventory was not supplied, so the build memo cannot ' +
+        'The framework\'s full component inventory was not supplied, so the decision rows cannot ' +
         'list every component skipped for having no PDD (Learn PDD §6(5)). Only components ' +
         'another component explicitly references are known to be absent.',
     });

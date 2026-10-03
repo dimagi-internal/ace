@@ -28,8 +28,6 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ACCEPTED_PUBLIC_SECRETS,
-  auditBuildMemo,
-  auditBuildMemoParity,
   auditCompleteness,
   auditWalkthroughParity,
   auditSyntheticLabelling,
@@ -1356,7 +1354,7 @@ describe('the claim set on the run page (ace#2420)', () => {
   });
 });
 
-describe('the build memo section (ace-web#768)', () => {
+describe('the legacy build memo section (ace-web#768; memo retired 2026-10-03, content no longer audited)', () => {
   it('mirrors the key set ace-web freezes for it', () => {
     expect([...SURFACE_CONTRACT.build_memo.keys].sort()).toEqual(
       ['access', 'body', 'complete', 'gaps', 'title', 'url'],
@@ -1369,7 +1367,6 @@ describe('the build memo section (ace-web#768)', () => {
     const findings = auditContract(healthyPayload({ build_memo: null, carried_residuals: null }));
     expect(findings.filter((f) => f.where.startsWith('build_memo'))).toEqual([]);
     expect(findings.filter((f) => f.where.startsWith('carried_residuals'))).toEqual([]);
-    expect(auditBuildMemo(healthyPayload())).toEqual([]);
   });
 
   it('positive control: a populated memo in the frozen shape passes the contract', () => {
@@ -1406,64 +1403,6 @@ describe('the build memo section (ace-web#768)', () => {
     expect(codes(findings)).toEqual(['LINK-PRIVATE-DELIVERABLE']);
   });
 
-  it('reports an incomplete memo as an improvement — the page says so, so nothing is false', () => {
-    const findings = auditBuildMemo(healthyPayload({ build_memo: memoSection() }));
-    expect(codes(findings)).toEqual(['MEMO-INCOMPLETE']);
-    expect(findings[0].detail).toContain('connect-opp-setup.md: section missing');
-    expect(findings.some(isBlocking)).toBe(false);
-    // `complete: false` with no gaps recorded is still incomplete.
-    expect(codes(auditBuildMemo(healthyPayload({ build_memo: memoSection({ gaps: [] }) })))).toEqual(['MEMO-INCOMPLETE']);
-  });
-
-  it('is silent on a complete, readable memo', () => {
-    expect(auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: true, gaps: [] }) }))).toEqual([]);
-    // `complete: null` means the run did not say; the page then claims neither.
-    expect(auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: null, gaps: [] }) }))).toEqual([]);
-  });
-
-  it('reports a memo whose text could not be read', () => {
-    const findings = auditBuildMemo(healthyPayload({ build_memo: memoSection({ complete: true, gaps: [], body: null }) }));
-    expect(codes(findings)).toEqual(['MEMO-BODY-UNREAD']);
-    expect(findings.some(isBlocking)).toBe(false);
-  });
-});
-
-describe('a memo the run made must reach the page, gaps and all', () => {
-  it('BLOCKS when the run recorded a memo and the page shows none', () => {
-    const missing = auditCompleteness(healthyPayload({ build_memo: null }), { phases: memoPhases() })
-      .filter((f) => f.code === 'MISSING-ARTIFACT');
-    expect(missing).toHaveLength(1);
-    expect(missing[0].where).toBe('build_memo');
-    expect(missing.every(isBlocking)).toBe(true);
-  });
-
-  it('passes once the page links the memo Doc (matched on the Drive file id)', () => {
-    const findings = auditCompleteness(
-      healthyPayload({ build_memo: memoSection({ url: `${MEMO_DOC}?usp=drivesdk` }) }),
-      { phases: memoPhases() },
-    );
-    expect(findings).toEqual([]);
-  });
-
-  it('BLOCKS when the run recorded gaps and the page renders the memo as complete', () => {
-    const findings = auditBuildMemoParity(
-      healthyPayload({ build_memo: memoSection({ complete: null, gaps: [] }) }),
-      memoPhases(),
-    );
-    expect(codes(findings)).toEqual(['MEMO-GAPS-HIDDEN']);
-    expect(findings.every(isBlocking)).toBe(true);
-  });
-
-  it('is silent when the page carries the gaps, when the memo is complete, and on a run with no memo', () => {
-    expect(auditBuildMemoParity(healthyPayload({ build_memo: memoSection() }), memoPhases())).toEqual([]);
-    expect(auditBuildMemoParity(
-      healthyPayload({ build_memo: memoSection({ complete: true, gaps: [] }) }),
-      memoPhases({ complete: true, gaps: [] }),
-    )).toEqual([]);
-    expect(auditBuildMemoParity(healthyPayload(), {})).toEqual([]);
-    // No memo on the page at all is MISSING-ARTIFACT's finding, not this one.
-    expect(auditBuildMemoParity(healthyPayload({ build_memo: null }), memoPhases())).toEqual([]);
-  });
 });
 
 describe('carried_residuals is a known section (ace-web#744)', () => {

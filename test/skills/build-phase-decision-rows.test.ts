@@ -5,8 +5,10 @@
  *
  * `poverty-graduation/20260905-1345` and `20260908-0510` carried 61 and 66
  * decision rows, none from Phase 3, while the Deliver summary listed four
- * `[ACE]` latitudes in its build memo. Three things let that happen, and
- * each is pinned here:
+ * `[ACE]` latitudes in prose. Since 2026-10-03 the decisions log is the run's
+ * only review artifact (the build memo is retired, docs/decisions-contract.md),
+ * so every call a build makes must be a row. Three things let the defect
+ * happen, and each is pinned here:
  *
  *   1. `pdd-to-learn-app` had no Decisions Log section at all, and
  *      `pdd-to-deliver-app`'s was a catalogue "not a required set" — so no
@@ -39,7 +41,7 @@ const PRODUCERS = [
   { skill: 'connect-opp-setup', tag: '4-connect', fencePhase: 'connect', prefix: 'connect' },
 ] as const;
 
-describe('each build-memo producer derives decision rows from its memo entries', () => {
+describe('each build producer records its calls as decision rows', () => {
   for (const { skill, tag, fencePhase, prefix } of PRODUCERS) {
     const doc = read(`skills/${skill}/SKILL.md`);
     const log = slice(doc, '## Decisions Log', '\n## Change');
@@ -48,9 +50,12 @@ describe('each build-memo producer derives decision rows from its memo entries',
       expect(log, `skills/${skill}/SKILL.md has no ## Decisions Log section`).not.toBe('');
     });
 
-    it(`${skill}: memo entries are REQUIRED rows, from one source`, () => {
-      expect(log).toContain('### Every build-memo entry is also a decision row (REQUIRED)');
-      expect(log).toContain('**One source, two renderings.**');
+    it(`${skill}: every latitude and ambiguity is a REQUIRED row, the only rendering`, () => {
+      expect(log).toMatch(/^### Every .*decision row \(REQUIRED\)$/m);
+      expect(log).not.toContain('**One source, two renderings.**');
+      // schema v6: partner-facing rows say what they chose
+      expect(log).toContain('`plain`');
+      expect(log).toContain('_decisions-review-fields.md');
     });
 
     it(`${skill}: latitude → inferred, ambiguity → conflicting, spot-check in reasoning`, () => {
@@ -58,9 +63,7 @@ describe('each build-memo producer derives decision rows from its memo entries',
       expect(log).toMatch(/`\[FIXED\]` ambiguity → `conflicting`/);
       expect(log).toContain('`conflict_signals`');
       expect(log).toContain('Spot-check:');
-      // ace-web drops keys outside its fixed set, so a new field would never
-      // reach the reviewer — the doc must say why the location is in prose.
-      expect(log).toContain('apps/opps/summary.py');
+      expect(log).toContain('check_at');
     });
 
     it(`${skill}: rows carry its own phase and skill tag, via the atom`, () => {
@@ -76,13 +79,18 @@ describe('each build-memo producer derives decision rows from its memo entries',
     });
   }
 
-  it('the memo-writing steps point at the rows', () => {
-    const learn7a = slice(read('skills/pdd-to-learn-app/SKILL.md'), '7a. **Write the build memo**', '8. **Notify admin group**');
-    expect(learn7a).toContain('ALSO a decision row');
+  it('the steps that used to write memo sections now write rows (no memo artifact remains)', () => {
+    const learn = read('skills/pdd-to-learn-app/SKILL.md');
+    const learn7a = slice(learn, "7a. **Record the build's calls as decision rows", '8. **Notify admin group**');
+    expect(learn7a).toContain('decision row');
+    expect(learn7a).toContain('learn-gap-');
+    expect(learn.split(/\n## Change log/i)[0]).not.toContain('pdd-to-learn-app_build-memo.md');
     const deliver7 = slice(read('skills/pdd-to-deliver-app/SKILL.md'), '7. **Write the summary**', '8. **Notify admin group**');
-    expect(deliver7).toContain('ALSO a decision row');
-    const opp8 = slice(read('skills/connect-opp-setup/SKILL.md'), '8. **Write config summary**', '9. **Capture the ConnectProd');
-    expect(opp8).toContain('ALSO a decision row');
+    expect(deliver7).toContain('decision row');
+    expect(deliver7).toContain('## Build notes');
+    expect(deliver7).not.toMatch(/^## Build memo/m);
+    const opp8 = slice(read('skills/connect-opp-setup/SKILL.md'), "8a. **Record the opportunity's calls as decision rows", '9. **Capture the ConnectProd');
+    expect(opp8).toContain('enforcement');
   });
 
   it('connect-opp-setup turns each verification rule into a row with a closed Where-applied vocabulary', () => {
@@ -101,9 +109,9 @@ describe('the phase agents enumerate the rows (#399: the agent file is the check
     expect(step1).not.toMatch(/the list is a working catalog, not a required set\)\.\s*$/m);
   });
 
-  it('connect-setup Step 2 Output requires one row per Step 8 memo entry', () => {
+  it('connect-setup Step 2 Output requires one row per verification rule, latitude and ambiguity', () => {
     const agent = read('agents/connect-setup.md');
-    const step2 = slice(agent, '### Step 2: Opportunity Setup', '### Step 3');
+    const step2 = slice(agent, '### Step 2: Opportunity Setup', '### Completion');
     expect(step2).toContain("verify_phase_artifacts(phase='connect').decisions");
   });
 });

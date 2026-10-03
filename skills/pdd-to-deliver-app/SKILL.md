@@ -21,7 +21,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 ## Products
 
-- `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`), whose body carries the Deliver half of the run's build memo under `## Build memo` (Step 7)
+- `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`), whose body ends with a `## Build notes` section for the build team's non-decision notes (Step 7)
+- decision rows in the run's `decisions.yaml` (`phase: 3-commcare`, `skill: pdd-to-deliver-app`), one per latitude taken and per ambiguity hit — the run's review artifact (Step 7, § Decisions Log)
 
 ## Process
 
@@ -240,8 +241,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      lookup- or inline-backed select — see
      `_app-component-library.md § structured-capture` § option sources for the
      `get_lookup_tables` + `set_field_options_source` recipe. If a key
-     component genuinely cannot be made a select this run, say so in the build
-     memo next to the `entity_id` you shipped; do not ship it silently.
+     component genuinely cannot be made a select this run, record it as a decision
+     row (§ Decisions Log) naming the `entity_id` you shipped, with
+     `review_ask: recommended-confirmation` + `confirm_reason`; do not ship
+     it silently.
      (Reproducer: `spark-facilitator/20260731-0656` — free-text `village`
      forced a mid-run repoint of the key from `village + date_of_meeting` to
      `community_id`, which was ALSO free text, so only the name-collision mode
@@ -376,8 +379,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > **When the FLW does NOT map 1:1 to the entity**, `#case/case_id`
      > already distinguishes the entities the worker serves — no re-asked
      > select is needed. If a key component genuinely cannot come from
-     > the case or the form, say so in the build memo next to the
-     > `entity_id` you shipped.
+     > the case or the form, record it as a decision row (§ Decisions
+     > Log) naming the `entity_id` you shipped.
      >
      > Caveat that still applies: every literal separator and every
      > per-form suffix goes **inside** `concat(...)`, never as a bare
@@ -416,7 +419,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      >
      > So: put `case_property_on` on the derived summary nodes and NOT on
      > the questions. If a raw answer genuinely must live on the case,
-     > say why in the build memo and declare it as an allowed exception to
+     > say why in a decision row (§ Decisions Log) and declare it as an allowed exception to
      > `app-release-qa`'s `casedb_preloads` gate, so the trade is visible
      > rather than accidental.
 
@@ -487,9 +490,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > a discriminator that "comes off the case" ships as a constant.
      >
      > If the PDD's non-payable set cannot be expressed as a form field
-     > at all, do NOT ship the identity-only key silently — record in
-     > the build memo that non-payable submissions share the payable key
-     > space, and name the field that would fix it.
+     > at all, do NOT ship the identity-only key silently — record as a
+     > decision row (§ Decisions Log, with `review_ask:
+     > recommended-confirmation` + `confirm_reason`) that non-payable
+     > submissions share the payable key space, and name the field that
+     > would fix it.
      >
      > Scope note: this closes the *slot-consumption* mode. A non-payable
      > record still mints a CompletedWork on its own key until Layer A
@@ -570,7 +575,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        degradation: the architect must call `get_lookup_tables` and bind the
        option set with `set_field_options_source` (lookup- or inline-backed)
        rather than falling through to `kind: text`, and any degradation that
-       does happen must be named in the build memo. Verified ACE-direct by
+       does happen must be recorded as a decision row (§ Decisions Log).
+       Verified ACE-direct by
        Step 4f (ace#1136).
      - `section-timestamps` — PDD success metrics reference visit-time / a
        cost model.
@@ -619,8 +625,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        BLOCKER-gates it off the released CCZ form XML as
        `camera-only-appearance-missing`. Briefing it only makes the architect
        search for an atom that does not exist and report a spurious "unmet
-       requirement" in the build memo — the one artifact meant to carry REAL
-       deviations (dimagi-internal/ace#1640; same defect as ace#1632, which
+       requirement" into the run's review record — the one place meant to
+       carry REAL deviations (dimagi-internal/ace#1640; same defect as ace#1632, which
        hit `grid-menu-display` on bednet-check-2-visit/20260825-1310).
      - `no-section-module-language` — always. No user-facing "section" or
        "module" wording anywhere.
@@ -643,8 +649,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
        BLOCKER-gated by `app-release-qa` off the released app's raw doc.
        Briefing it made every architect build report a spurious "unmet
-       requirement" in the build memo — the one artifact meant to carry REAL
-       deviations — and invited the architect to reach for an unrelated atom
+       requirement" into the run's review record — the one place meant to
+       carry REAL deviations — and invited the architect to reach for an unrelated atom
        to satisfy the paragraph (dimagi-internal/ace#1632; live on
        bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
        three fields HQ-side on the first attempt).
@@ -707,8 +713,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        fires alongside `embedded-bc-script` on the same read-aloud passage,
        BOTH are emitted and this one governs the content.
      - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
-       physical quantity. Check the pairs, surface conflicts in the build
-       memo (ace#984). Carry `program_parameters.duplicate_gps_rule` into the
+       physical quantity. Check the pairs and record the check in the
+       summary's `## Build notes`; a conflict the build had to resolve is
+       also a decision row (§ Decisions Log) (ace#984). Carry `program_parameters.duplicate_gps_rule` into the
        brief WHOLE — radius, accuracy condition and fallback — and classify
        the dedup pair with `lib/gps-dedup-coherence.ts`: an
        accuracy-conditioned radius is coherent, and no `[FIXED]` or
@@ -1184,8 +1191,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     6. **`save_work` (require `saved: true`), then re-run steps 2–3 against
        the SAVED app (`app_id` reads). Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
-       still on `degraded` after the third iteration MUST appear in the build
-       memo and in the Step 7 summary's `option_source_gaps` list, with the
+       still on `degraded` after the third iteration MUST appear as a decision
+       row (§ Decisions Log, with `review_ask: recommended-confirmation` +
+       `confirm_reason`, since it is a go-live prerequisite) and in the Step 7
+       summary's `option_source_gaps` list, with the
        field id, what the PDD declared, what shipped, and the exact table +
        value column + label column that needs to exist before go-live.
        **Halt** — do not write the success summary — if any still-degraded
@@ -1284,7 +1293,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           `ends-with(activity, 'other')`). Decide which of the two shapes you
           want before editing rows.
        5. Record the table id, the column ids, and the `verifyLookupBind`
-          verdict in the build memo and in Step 7's summary. That verdict is
+          verdict in Step 7's summary (`option_register` frontmatter and
+          `## Build notes`). That verdict is
           the run's evidence the register is live; without it the build is
           asserting a bind it never observed.
 
@@ -1376,7 +1386,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          hh_head_name, visit_date)` is the STANDARD registration-key shape,
          not a degradation.
 
-       Both exemptions must be **stated in the build memo with the reason**,
+       Both exemptions must be **stated in a decision row with the reason**
+       (§ Decisions Log),
        never taken silently — and when the unit is payable, a non-enumerable
        component still halts. Live false-halt:
        `bednet-check-2-visit/20260813-2313`, Deliver app `74a097c6`, where
@@ -1425,11 +1436,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        - `severity: 'violation'` on `repeat-in-field-list` → `move_field` the
          repeat to the form root, or into a group of its own.
        - `severity: 'warn'` → keep the grouping only if the questions are one
-         coherent set, and say so in the build memo; otherwise split.
+         coherent set, and say so in the summary's `## Build notes`;
+         otherwise split.
     4. Re-fetch and re-run. **Bounded loop, max 3 iterations.** If a violation
        remains after the third, surface a clear failure naming each offending
        group and do NOT write the success summary.
-    5. Record the final `formatScreenShapeReport(...)` line in the build memo,
+    5. Record the final `formatScreenShapeReport(...)` line in the summary's
+       `## Build notes`,
        plus one sentence per surviving `warn` justifying the grouping.
 
     (Forms with no multi-question group skip cleanly — `screensChecked: 0`.)
@@ -1460,12 +1473,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     may over-teach or this form may under-collect, and BOTH can be
     PDD-conformant at once (they were on that run: §5.1 listed the live
     photograph under "a payable visit requires all of", §5.2 gated the photo
-    screen on Consent = yes). Surface each finding in the build memo with both
-    sides quoted, and raise it at the Phase 3 pause so a human decides which
-    side moves. `report.status === 'unable'` means the check **did not run** —
-    the curriculum states no unconditional evidence step, so there was nothing
-    to cross-check. That is NOT "the two apps agree": record it in the build
-    memo with its `reason` (`formatTaughtVsCollectableReport` renders it), and
+    screen on Consent = yes). Surface each finding as a decision row (§ Decisions
+    Log) with both sides quoted in `reasoning` and `review_ask:
+    recommended-confirmation` + `confirm_reason`, and raise it at the Phase 3
+    pause so a human decides which side moves. `report.status === 'unable'`
+    means the check **did not run** — the curriculum states no unconditional
+    evidence step, so there was nothing to cross-check. That is NOT "the two
+    apps agree": record it in the summary's `## Build notes` with its `reason` (`formatTaughtVsCollectableReport` renders it), and
     if the curriculum visibly DOES teach one, the phrase matchers are the bug.
 
 4i. **Fake-preload check (a hidden `caseWrite` field can never hold the case
@@ -1533,8 +1547,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        ```
 
     5. Re-fetch and re-assert. **Bounded loop, max 3 iterations.** Anything
-       still on `fake_preloads` after the third iteration goes in the build
-       memo and the Step 7 summary by field id, case property, and what it
+       still on `fake_preloads` after the third iteration goes in a decision
+       row (§ Decisions Log) and the Step 7 summary's `## Build notes` by field id, case property, and what it
        feeds — and if it feeds a marker, the step halts per step 2 rather
        than recording.
 
@@ -1569,11 +1583,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     3. Branch on the resolution:
        - `deviates: true` → the built key MUST ship `grain.components` in order,
-         and the build memo MUST disclose it using `grain.discloseAs`. Edit the
+         and a decision row (§ Decisions Log) MUST disclose it using
+         `grain.discloseAs`. Edit the
          `entity_id` calculate via Nova if it does not match, then re-fetch.
        - `unresolvable: true` → a non-payable branch exists but **no field
-         expresses payability**. Do NOT ship silently: record `grain.reason` in
-         the build memo verbatim and name the field that would fix it. This is
+         expresses payability**. Do NOT ship silently: record `grain.reason` verbatim
+         in a decision row (§ Decisions Log, with `review_ask:
+         recommended-confirmation` + `confirm_reason`) and name the field that
+         would fix it. This is
          the case the helper exists to stop from passing quietly.
        - otherwise → the PDD-pinned grain stands; record the one-line reason.
 
@@ -1678,7 +1695,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        the run still says green.** Split them:
 
        - **No instrument is `[FIXED]`** → **skip cleanly** and say so in the
-         memo (`instrument_constants: skipped — <reason>`). Legitimate.
+         summary's `## Build notes` (`instrument_constants: skipped —
+         <reason>`). Legitimate.
        - **A `[FIXED]` instrument whose source resolves** (step 2) → run the
          check.
        - **A `[FIXED]` instrument whose source does NOT resolve** → **HALT.**
@@ -1722,7 +1740,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          manifestRecordsSubfolders,    // did the manifest record any folder ids?
          instrumentName,
        });
-       // 'skipped' -> write resolution.memo and move on
+       // 'skipped' -> write resolution.memo into ## Build notes and move on
        // 'halt'    -> print resolution.detail and STOP (no success summary)
        // 'proceed' -> resolution.source.file_id is the source
        ```
@@ -1743,6 +1761,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        instrument artifact in the frozen inputs, and halting would block a
        build over a file that is very likely correct. It changes what you may
        CLAIM. Carry `resolution.memo` verbatim (it already appends the caveat)
+       into the summary's `## Build notes` AND a decision row (§ Decisions
+       Log, with `review_ask: recommended-confirmation` + `confirm_reason`),
        and record the class in Step 7's frontmatter, because a derived check is
        real but **unfalsifiable**: an error in the extraction is reproduced
        faithfully by the build and the diff still reads clean. Name the
@@ -1822,8 +1842,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        consistent with its own wrong numbers. Fix the constants; never delete
        the clamp to make the check pass.
 
-    6. **The memo records the CHECK, not just its verdict.** Write the source
-       `file_id` and file name, **`resolution.artifactClass` — whether the diff
+    6. **`## Build notes` records the CHECK, not just its verdict.** Write
+       into the summary's `## Build notes` the source `file_id` and file name, **`resolution.artifactClass` — whether the diff
        was against the publisher's own file or against a derived extraction of
        it (ace#2110)** — the sheet / column / row range read, the number
        of rows checked, both endpoint values as extracted, `sourceMax` vs
@@ -1833,7 +1853,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        is what the licence permits, and any "improvement", including a tidier
        rounding, is out of scope for this build.
 
-    (No `[FIXED]` instrument → skip cleanly; the memo says so. A `[FIXED]`
+    (No `[FIXED]` instrument → skip cleanly; `## Build notes` says so. A `[FIXED]`
     instrument whose source cannot be resolved — not in `inputs[]`, and not
     found by the one-level walk of the manifest's recorded folder ids — is a
     **HALT**, never a skip (ace#1648). A skip is a legitimate outcome only in
@@ -1859,7 +1879,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        sees — a phase / stage / status / round picker, case-list column, or
        filter. **Always fires for `archetype: longitudinal-visits`**, whose
        case-list requirement makes such a state mandatory. No such state
-       anywhere → skip cleanly and say so in the memo
+       anywhere → skip cleanly and say so in the summary's `## Build notes`
        (`entity_state_taxonomy: skipped — <reason>`).
 
     2. **Parse the DECLARED taxonomy — this is the only authority.**
@@ -1915,7 +1935,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        residual against `pdd-to-learn-app` rather than reconciling Deliver to
        Learn.
 
-    6. **The memo records the CHECK, not just its verdict.** Write the declared
+    6. **`## Build notes` records the CHECK, not just its verdict.** Write
+       into the summary's `## Build notes` the declared
        state values with their labels and step ranges, the source document (or
        `none — declared inline in the PDD`), the number of states and steps
        compared, and the finding count (`0` on success).
@@ -1960,7 +1981,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           itemset. **Bounded loop, max 3 iterations**, same shape as 3–4. Still
           disagreeing after the third → structured failure naming each column
           and the values that differ; do NOT write the success summary.
-       5. Record in the memo: columns rewritten, values per column, and the
+       5. Record in the summary's `## Build notes`: columns rewritten, values per column, and the
           form each was derived from.
 
        **Never reconcile the other way.** The itemset is the authority — it is
@@ -2038,11 +2059,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     3. **A finding may be CLEARED BY JUSTIFICATION instead**, and this is a
        real case, not an escape hatch: sometimes a zero over an empty nodeset
        is exactly right ("units delivered on a refused visit: 0"). The check
-       does not claim otherwise. It claims the form has to SAY so — record one
-       sentence per cleared finding in the build memo naming the field and why
-       its value is meaningful on a skipped visit. Silence is not a
+       does not claim otherwise. It claims the form has to SAY so — record each
+       cleared finding as a decision row (§ Decisions Log) naming the field
+       and why its value is meaningful on a skipped visit. Silence is not a
        justification.
-    4. Record `formatDerivedChainReport(...)` in the build memo either way.
+    4. Record `formatDerivedChainReport(...)` in the summary's `## Build
+       notes` either way.
 
     (Forms with no `relevant`-gated container skip cleanly — `gatedSources` is
     empty and there is nothing to find. *Enforced:*
@@ -2101,15 +2123,18 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        it). Bounded at 3 iterations like 4a–4n.
     4. **Any term still unsubmitted after the loop, and every `external` term,
        is named in the summary as not computable, with the reason** —
-       `report.notComputable` plus the residual findings, under the build
-       memo's `### Metrics not computable from visit data` (`None.` when
-       empty) and in the `metric_terms` frontmatter block. A metric that
+       `report.notComputable` plus the residual findings, as one decision
+       row per term (§ Decisions Log — `deliver-metric-not-computable-<slug>`,
+       with `review_ask: recommended-confirmation` + `confirm_reason`, since
+       a partner-owned indicator is going unmeasured) and in the
+       `metric_terms` frontmatter block. A metric that
        silently stops being computable is the defect; a named one is a
        decision a reviewer can see and answer.
     5. `report.status === 'unable'` means the check **did not run** — no terms
        were enumerated, or the paid form read is empty. That is NOT a pass:
-       record `formatMetricTermsReport(report)` with its reason in the build
-       memo and fix the input. Record the report in the build memo either way.
+       record `formatMetricTermsReport(report)` with its reason in the
+       summary's `## Build notes` and fix the input. Record the report in
+       `## Build notes` either way.
 
     *Enforced:* `test/lib/metric-terms-submitted.test.ts` (the shipped S1 form
     as positive control; the same form with `enrolled_households` mirrored as
@@ -2140,7 +2165,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     from Nova's `tools/list`; do not paraphrase them here.
 
     **Gate:** `out-of-date` and `missing` must both be 0 at hand-off. Record
-    the final per-language coverage counts in the build memo, plus one line
+    the final per-language coverage counts in the summary's `## Build notes`,
+    plus one line
     stating the translations are ACE-authored (`origin: ai`) and carry
     `needs-review` until a speaker of the language reviews them. If the layer
     cannot be completed, halt loud with the counts — do NOT write a summary
@@ -2161,7 +2187,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      with a real option source, and is every remaining gap named (Step 4f)?
    - Does every screen hold a set the worker can hold in view, with no group
      over the ceiling and no `repeat` nested in a field-list (Step 4g), and is
-     each surviving `warn` justified in the build memo?
+     each surviving `warn` justified in `## Build notes`?
    - Does every node feeding `entity_id` / `entity_name` actually vary per
      worker and per entity — no hidden `caseWrite` fake preload (Step 4h), no
      bare `text` separator between two parts (which compiles to subtraction),
@@ -2177,8 +2203,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - If the PDD marks an instrument `[FIXED]`, was every scoring constant
      diffed against the SOURCE file from `inputs-manifest.yaml` (not the brief,
      not the PDD's restatement) on a `trusted` extraction, with zero mismatches
-     and a clamp that can still fire (Step 4k)? If the step skipped, does the
-     memo say why — and was the reason "no instrument is `[FIXED]`"? An
+     and a clamp that can still fire (Step 4k)? If the step skipped, does
+     `## Build notes` say why — and was the reason "no instrument is `[FIXED]`"? An
      unresolvable `[FIXED]` source is a HALT, not a skip (ace#1648).
 
 7. **Write the summary** to
@@ -2248,52 +2274,48 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    ---
    ```
 
-   **The body ends with the Deliver half of the run's build memo, under a
-   section headed exactly `## Build memo`.** Every note Steps 3–4n direct
-   "into the build memo" lands there — the screen-shape and derived-chain
-   reports, the language-layer counts, every stated exemption. Two sub-tables
-   are load-bearing, because `skills/build-memo` (end of Phase 4) collates them
-   row by row into `4-connect/build-memo.md`, the review artifact the PDD
-   names; write `None.` under a heading rather than dropping it:
-
-   - `### [ACE] latitudes taken` — `| PDD § | What ACE chose | Why |`, one row
-     per place the build exercised latitude the PDD granted.
-   - `### [FIXED] ambiguities hit` — `| PDD § | The ambiguity | How resolved,
-     or OPEN |`, one row per `[FIXED]` statement that could not be built
-     exactly as written.
-
-   - `### Metrics not computable from visit data` — `| PDD metric | Term |
-     Why |`, from Step 4o; `None.` when every term is submitted.
-
-   Cite the PDD section on every row. The programme memo quotes rows as
-   written and marks an uncited one `NOT CITED by pdd-to-deliver-app` rather
-   than guessing a section.
-
-   **State every app check at the scope it is keyed on.** A form constraint
-   or a `casedb` read is keyed on the case the form is filled against, so
-   describe it as "per community" / "per household", never as enforcing a
-   per-worker limit. On `spark-facilitator/20260926-1800` the date check was
-   called the "one-community-meeting-per-day check" and the threshold line
-   read "daily cap 1 vs the one-community-meeting-per-day date check —
-   coherent", which Phase 4 and the memo then read as the app enforcing the
-   per-WORKER daily cap. It does not: one worker can record two communities
-   on one day, and only Connect's payment unit `max_daily` stops the second
-   being paid. Say which limit a per-worker rule relies on (Connect's), and
-   what the app check adds at its own scope. Until ace#2371 this section had no fixed name —
-   `poverty-graduation/20260908-0510` headed it "Deliver app — build memo" —
-   and nothing collected it, so no reviewer ever saw it.
-
-   **Every row of the two sub-tables is ALSO a decision row** — append them
-   with ONE `decisions_append_rows` call immediately after this write,
-   derived from the same entry list the tables render (§ Decisions Log). The
-   memo is prose a reviewer reads; `decisions.yaml` is the register ace-web
-   renders with a comment box and an answer editor on every row, and an
-   answer there carries into the next run. On
+   **Every latitude taken and every ambiguity hit is a decision row — the
+   run's review artifact.** Append them with ONE `decisions_append_rows` call
+   immediately after this write (§ Decisions Log): one row per place the build
+   exercised latitude the PDD granted (`deliver-latitude-<slug>`), one per
+   `[FIXED]` statement that could not be built exactly as written
+   (`deliver-ambiguity-<slug>`, `OPEN` when unresolved), plus the rows Steps
+   3–4o direct (stated exemptions, cleared derived-chain findings, metrics not
+   computable from visit data, taught-vs-collectable findings). Cite the PDD
+   section in `source` on every row. Each row carries `plain`, and `check_at` +
+   `correct_looks_like` wherever the choice is visible in the app; an open
+   question a person must settle carries `review_ask: recommended-confirmation`
+   + `confirm_reason` (`skills/_decisions-review-fields.md`). `decisions.yaml`
+   is what ace-web renders with a comment box and an answer editor on every
+   row, and an answer there carries into the next run. On
    `poverty-graduation/20260908-0510` this summary listed four `[ACE]`
-   latitudes (screen shape, transfer-method capture, derived-chain guards,
-   asset menu) and the run's 66 decision rows included none of them. The
-   Phase 3 boundary now fails this skill if the memo lists any latitude or
-   ambiguity and zero rows carry `skill: pdd-to-deliver-app` (ace#2384).
+   latitudes in prose (screen shape, transfer-method capture, derived-chain
+   guards, asset menu) and the run's 66 decision rows included none of them,
+   so no reviewer could see or answer them (ace#2371, ace#2384). The Phase 3
+   boundary now fails this skill if the summary exists and zero rows carry
+   `phase: 3-commcare` + `skill: pdd-to-deliver-app`.
+
+   **The body ends with a section headed exactly `## Build notes`** for the
+   build team's notes that are not decisions: the screen-shape and
+   derived-chain reports, the threshold-coherence checks, the case-read and
+   GPS notes, the consent-floor checklist, the instrument-constants and
+   state-taxonomy check records, the `verifyLookupBind` verdicts, the
+   metric-terms report and the language-layer coverage counts. Write `None.`
+   rather than dropping the heading. A note that records a CHOICE a reviewer
+   could disagree with belongs in a decision row, not here.
+
+   **State every app check at the scope it is keyed on** — in the decision
+   row's `plain` and in `## Build notes` alike. A form constraint or a
+   `casedb` read is keyed on the case the form is filled against, so describe
+   it as "per community" / "per household", never as enforcing a per-worker
+   limit. On `spark-facilitator/20260926-1800` the date check was called the
+   "one-community-meeting-per-day check" and the threshold line read "daily cap
+   1 vs the one-community-meeting-per-day date check — coherent", which Phase 4
+   and the run's review record then read as the app enforcing the per-WORKER
+   daily cap. It does not: one worker can record two communities on one day,
+   and only Connect's payment unit `max_daily` stops the second being paid. Say
+   which limit a per-worker rule relies on (Connect's), and what the app check
+   adds at its own scope.
 
 8. **Notify admin group** that Deliver app generation is complete.
 
@@ -2498,55 +2520,55 @@ This skill writes to the per-run `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
 comments on and answers each row and the answer carries into the next run.
 The bar criterion and schema live in `skills/idea-to-pdd/SKILL.md § Decisions
 Log Convention` (canonical authority). It owes two kinds of row: one per
-build-memo entry (REQUIRED, below), and any catalogue row that meets the bar.
+latitude taken and per ambiguity hit (REQUIRED, below), and any catalogue row
+that meets the bar.
 
-### Every build-memo entry is also a decision row (REQUIRED)
+### Every latitude and ambiguity is a decision row (REQUIRED)
 
-Every row Step 7 writes under `### [ACE] latitudes taken` and `### [FIXED]
-ambiguities hit` is ALSO a `decisions.yaml` row. These are exactly the calls
-the register exists for: an `[ACE]` latitude is an `inferred` default, a
-`[FIXED]` ambiguity is a `conflicting` one. Until ace#2384 this section was
-only a catalogue "not a required set", and the app build wrote zero rows —
-`poverty-graduation/20260905-1345` and `20260908-0510` carried 61 and 66
-rows, none from Phase 3, while this summary listed the latitudes in prose. A
-regression of #399.
-
-**One source, two renderings.** Build the entry list ONCE —
-`{pdd_section, kind, chose, alternatives, why, spot_check, signals}` per entry —
-then render the memo table rows AND the decision rows from it. Never author one
-from the other after the fact, and never add an entry to one without the other:
-the memo and the register must list the same calls.
+Every place the build exercised latitude the PDD granted, and every `[FIXED]`
+statement that could not be built exactly as written, is a `decisions.yaml`
+row — and the row is the only record of it; there is no second rendering to
+keep in step. These are exactly the calls the register exists for: an `[ACE]`
+latitude is an `inferred` default, a `[FIXED]` ambiguity is a `conflicting`
+one. Until ace#2384 this section was only a catalogue "not a required set",
+and the app build wrote zero rows — `poverty-graduation/20260905-1345` and
+`20260908-0510` carried 61 and 66 rows, none from Phase 3, while this summary
+listed the latitudes in prose. A regression of #399.
 
 | Row field | From the entry |
 |---|---|
 | `id` | `deliver-latitude-<slug>` / `deliver-ambiguity-<slug>`; slug from the PDD § and the subject, so a re-run of the same PDD re-derives the same id and the atom's idempotent skip holds |
 | `phase`, `skill` | `3-commcare`, `pdd-to-deliver-app` |
 | `question` | what the PDD left open (latitude) or said two ways (ambiguity) at that § |
-| `ai-default` | the "What ACE chose" / "How resolved" cell as a short label, an exact member of `options` |
+| `ai-default` | what ACE chose (latitude) or how it resolved the ambiguity, as a short label, an exact member of `options` |
 | `options` | that label plus each alternative the build weighed, 1–8 words each |
-| `source` | the entry's PDD § cell, naming the document |
+| `source` | the PDD § it concerns, naming the document |
 | `evidence_basis` | `[ACE]` latitude → `inferred` (`stated` only when the PDD itself names the value chosen); `[FIXED]` ambiguity → `conflicting` |
 | `conflict_signals` | ambiguity only, at least 2 entries: the `[FIXED]` statement as written, and the reading or constraint that competed with it — each cited |
 | `value_set_by` | `ace` |
 | `status` | `ai-default`, always (a caller-asserted `human-decided` is rejected — ace#2307) |
-| `reasoning` | the Why cell; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+| `reasoning` | why ACE chose it; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
+| `plain` | REQUIRED — one line for a programme partner: what was chosen, no field ids, no §-references, no ACE jargon |
+| `check_at`, `correct_looks_like` | where in the app a reviewer sees it, and what is there when it is right — whenever the choice is visible |
+| `review_ask`, `confirm_reason` | `recommended-confirmation` + one plain sentence, when a person must settle it before launch (an OPEN ambiguity, a gap with no fix this run) |
 
-**Where to spot-check goes in `reasoning`, not a field of its own.** ace-web's
-summary builds each decision from a fixed set of keys (`apps/opps/summary.py`
-on ace-web `main`, c20ef34: id, phase, skill, question, ai-default, override,
-options, source, status, reasoning, override_reasoning, evidence_basis,
-conflict_signals) and drops anything else — `params` included — so a new key
-would never reach the reviewer. `reasoning` renders as the row's note. End it
-with `Spot-check: <app> › <module> › <form> › <field>.`, and end the memo
-row's Why cell with the same sentence so `skills/build-memo` can fill its
-"Where to spot-check" column from what this skill named.
+**Prefer `check_at`; keep the `Spot-check:` sentence too.** Schema v6 gives
+the location its own field (`check_at`, `docs/decisions-contract.md`) — write
+it directly. Still end `reasoning` with `Spot-check: <app> › <module> › <form>
+› <field>.`: the write boundary fills `check_at` from that sentence when it is
+absent, and older ace-web summaries built each decision from a fixed set of
+keys (`apps/opps/summary.py` on ace-web `main`, c20ef34: id, phase, skill,
+question, ai-default, override, options, source, status, reasoning,
+override_reasoning, evidence_basis, conflict_signals) and dropped anything
+else, so `reasoning` is the copy every renderer shows.
 
 **The boundary checks it.** `verify_phase_artifacts(phase='commcare')`
-returns a `decisions` report (`lib/build-phase-decisions.ts`). If this memo
-lists any latitude or ambiguity while zero rows carry `phase: 3-commcare` and
-`skill: pdd-to-deliver-app`, the Phase 3 boundary fails. `None.` under both
-headings owes no rows. Catalogue rows below count toward the total, but
-`app-test-cases` rows in the same phase do not.
+returns a `decisions` report (`lib/build-phase-decisions.ts`). If
+`3-commcare/pdd-to-deliver-app_summary.md` exists while zero rows carry
+`phase: 3-commcare` and `skill: pdd-to-deliver-app`, the Phase 3 boundary
+fails — a build that took no latitude still owes its catalogue rows (below).
+A live partner-facing row with no `plain` is a warning. `app-test-cases` rows
+in the same phase do not count.
 
 Worked example (the first entry is the real `20260908-0510` latitude; the
 second is illustrative):
@@ -2569,6 +2591,7 @@ decisions_append_rows({
       evidence_basis: "inferred",
       plain: "One form covers every transfer method, showing only the questions for the method chosen.",
       check_at: "Deliver app › Transfer record › transfer method",
+      correct_looks_like: "Choosing a method shows only that method's questions.",
       value_set_by: "ace",
       reasoning: "One flow reads the method off the household case and relevance-gates three artifact branches. An assumption, not a resolution. Spot-check: Deliver app › Consumption support distribution › consumption_dist › transfer_method."
     },
@@ -2583,6 +2606,10 @@ decisions_append_rows({
       status: "ai-default",
       evidence_basis: "conflicting",
       plain: "Payment is counted per household, so one household is paid at most once.",
+      check_at: "Deliver app › Asset delivery › payment key",
+      correct_looks_like: "Two deliveries to members of the same household share one payment key.",
+      review_ask: "recommended-confirmation",
+      confirm_reason: "Two parts of the design name different payment grains; the build pays per household until the design's author decides.",
       conflict_signals: [
         "Targeting PDD §3 [FIXED]: one payable survey per household",
         "C5 PDD §2 [FIXED]: an asset is delivered to a named member"
@@ -2603,7 +2630,7 @@ write semantics` (top-level `decisions:`, not `rows:`).
 
 A catalogue of decisions that commonly qualify under the bar — a working
 template, not a required set. Emit whichever meet the bar, in the same call
-as the build-memo rows.
+as the latitude and ambiguity rows.
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -2612,7 +2639,7 @@ as the build-memo rows.
 | `multimedia-coverage-strategy` | What multimedia (text vs voice prompts vs both) does the Deliver app surface? | `app-multimedia-coverage` skill output; PDD multimedia note |
 | `option-source-binding` | For each PDD-declared select/lookup field, where did its options come from — a Project data table, an inline enumeration, or a named gap? | Step 4f `option_source_gaps`; `pdd-to-deliver-app-eval § Capture fitness` |
 
-The Phase 3 boundary fence enforces the build-memo rows
+The Phase 3 boundary fence enforces these rows
 (`agents/orchestrator-reference.md § Phase Write-Back Contract § Decisions
 log clause`); the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
@@ -2624,6 +2651,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every `[ACE]` latitude, `[FIXED]` ambiguity, stated exemption and not-computable metric this skill used to tabulate under the summary's `## Build memo` is now a decision row only (`plain`, `check_at`/`correct_looks_like`, `review_ask` + `confirm_reason` for open questions), the non-decision check records move to the summary's `## Build notes`, and the Phase 3 boundary fails a written summary with zero rows under `skill: pdd-to-deliver-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **New Step 4o — every PDD § Success Metrics term is SUBMITTED on the paid form (ace#2590).** On `spark-facilitator/20261001-2208` the Community Meeting Record read `#community/number_of_households` inside a validate and never submitted it, so PDD §8.2 S1 (households represented ÷ enrolled households) was not computable in Connect and Phase 7 listed it under "Not computable from visit data" — the run completed and a partner-owned indicator silently vanished. 4h covered taught-vs-collectable; nothing covered measured-vs-submitted. 4o resolves each metric term to a paid-form field, a case property, or an `external` source with a reason, runs `checkMetricTermsSubmitted` (`lib/metric-terms-submitted.ts`) over the paid form, mirrors any case-held term as a hidden `calculate`, and names every term still unsubmitted as not computable in the summary (`metric_terms` frontmatter + build memo). *Enforced:* `test/lib/metric-terms-submitted.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-10-01 | **Step 7: every app check in the build memo is stated at the scope it is keyed on (build-memo-eval, spark-facilitator/20260926-1800).** The Deliver memo called the per-community date check the "one-community-meeting-per-day check" and judged it "coherent" with the per-worker daily cap of 1; Phase 4 and the programme memo then credited the app with enforcing that cap, which only Connect's payment unit `max_daily` does. Paired with `connect-opp-setup` Step 8's scope paragraph and `skills/build-memo`'s `--check`. | ACE team |
 | 2026-09-26 | **Step 4j sub-step 6 no longer hard-codes the counter timing (ace#2515).** The snippet hard-coded a pre-increment timing into its `payableCapacity` call, which reads a correct `min(<casedb count> + 1, cap)` clamp as capacity `cap + 1` and HALTs it — then "repairs" it into an under-pay. Observed on `spark-facilitator/20260926-1413` (`min(#form/step_info/prior_index + 1, 3)`, correct, would have halted). It now calls `checkBuiltClampCapacity`, which resolves the timing via `classifyCounterTiming` over the `get_field` read-backs (Nova `#form/` and `#<case_type>/` spellings accepted — captured read-back spells the case read `#community/…`) and returns `unable` rather than assuming one. *Enforced:* `test/lib/payable-cap-build-time.test.ts` (the repro as positive control; `min(<casedb>, cap)` and an under-paying `min(<casedb> + 1, cap - 1)` as negative controls; a skill-text guard against a literal timing), fed from the captured `get_field` read-back `test/fixtures/nova/capped-index-readback-spark-20260926-1413.json`. | ACE team |
