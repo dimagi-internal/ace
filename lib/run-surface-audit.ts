@@ -136,19 +136,6 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     kind: 'object',
     keys: ['workspace_slug', 'slug', 'run_id', 'display_name', 'description', 'status'],
   },
-  // LEGACY (runs 2026-09-11 .. 2026-10-02): the per-run build memo, which
-  // ace-web still renders for runs that carry `products.connect.build_memo`.
-  // The memo is retired — the decisions log is the review artifact
-  // (docs/decisions-contract.md) — so its content is no longer audited; the
-  // section stays declared so ace-web sending it for an old run is not
-  // reported as an undeclared key, and its `url` is probed like any link.
-  build_memo: {
-    kind: 'object',
-    keys: ['title', 'url', 'access', 'complete', 'gaps', 'body'],
-    linkKeys: ['url'],
-    reviewerFacing: true,
-    note: 'legacy build memo (retired 2026-10-03; the decisions log is the review artifact)',
-  },
   // "What changed because you asked" — the run's frozen claim set, and
   // the FIRST Overview section (ace#2420). What a named counterpart
   // DECIDED between runs, and whether this run's output acted on it.

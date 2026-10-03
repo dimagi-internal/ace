@@ -82,8 +82,6 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     },
     // Null on every run that authored no claims (ace#2420).
     claims: null,
-    // Null on every run with no `products.connect.build_memo` (ace-web#768).
-    build_memo: null,
     design: { docs: [{ title: 'PDD', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit', access: 'public' }] },
     apps: [],
     // Null on a clean run — the honest default for these three.
@@ -1207,49 +1205,6 @@ describe('a partial build must not render as a clean one', () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════
-// The build memo (ace-web#768, closing ace-web#767) — the review
-// artifact the PDD names, rendered as the page's FIRST Overview section.
-// Before it was registered, every audit of every run page reported the
-// section as unaudited (CONTRACT-UNKNOWN-SECTION, blocking).
-// ═══════════════════════════════════════════════════════════════════
-
-const MEMO_DOC = 'https://docs.google.com/document/d/MEMOMEMOMEMO/edit';
-
-/** The section in ace-web's frozen shape — `SECTION_KEYS["build_memo"]` in
- *  `apps/opps/tests/test_public_surface_contract.py`, incomplete on purpose
- *  exactly as that contract fixture is. */
-function memoSection(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    title: 'Build memo',
-    url: MEMO_DOC,
-    access: 'public',
-    complete: false,
-    gaps: ['4-connect/connect-opp-setup.md: section missing'],
-    body: '# Build memo\n\n## 1. What to check\n\n| Row | Source |\n|---|---|\n',
-    ...over,
-  };
-}
-
-/** `phases.connect-setup.products.connect.build_memo`, as `skills/build-memo` step 6 writes it. */
-function memoPhases(over: Record<string, unknown> = {}) {
-  return {
-    'connect-setup': {
-      products: {
-        connect: {
-          build_memo: {
-            file_id: 'MEMOMEMOMEMO',
-            title: 'Build memo',
-            web_view_link: MEMO_DOC,
-            complete: false,
-            gaps: ['4-connect/connect-opp-setup.md: section missing'],
-            ...over,
-          },
-        },
-      },
-    },
-  };
-}
 
 // ── The claim set on the run page (ace#2420) ───────────────────────
 
@@ -1354,55 +1309,12 @@ describe('the claim set on the run page (ace#2420)', () => {
   });
 });
 
-describe('the legacy build memo section (ace-web#768; memo retired 2026-10-03, content no longer audited)', () => {
-  it('mirrors the key set ace-web freezes for it', () => {
-    expect([...SURFACE_CONTRACT.build_memo.keys].sort()).toEqual(
-      ['access', 'body', 'complete', 'gaps', 'title', 'url'],
-    );
-    expect(SURFACE_CONTRACT.build_memo.reviewerFacing).toBe(true);
-  });
-
-  it('null control: `build_memo: null` (every run with no memo) is known and not a defect', () => {
-    // The live shape of poverty-graduation/20260908-0510, fetched 2026-09-11.
-    const findings = auditContract(healthyPayload({ build_memo: null, carried_residuals: null }));
-    expect(findings.filter((f) => f.where.startsWith('build_memo'))).toEqual([]);
-    expect(findings.filter((f) => f.where.startsWith('carried_residuals'))).toEqual([]);
-  });
-
-  it('positive control: a populated memo in the frozen shape passes the contract', () => {
-    const findings = auditContract(healthyPayload({ build_memo: memoSection() }));
-    expect(codes(findings)).not.toContain('CONTRACT-UNKNOWN-SECTION');
-    expect(findings.filter((f) => f.where.startsWith('build_memo'))).toEqual([]);
-  });
-
-  it('BLOCKS when a populated memo loses a key the auditor reads', () => {
-    const memo = memoSection();
-    delete memo.gaps;
-    const drift = auditContract(healthyPayload({ build_memo: memo }))
-      .filter((f) => f.code === 'CONTRACT-KEY-DRIFT' && f.where === 'build_memo');
-    expect(drift).toHaveLength(1);
-    expect(drift[0].detail).toContain('gaps');
-    expect(isBlocking(drift[0])).toBe(true);
-  });
-
-  it('BLOCKS when the section vanishes entirely — absent is not `null`', () => {
+describe('the retired build memo section (memo retired 2026-10-03)', () => {
+  it('is no longer part of the contract — ace-web stopped sending it (#854)', () => {
+    expect('build_memo' in SURFACE_CONTRACT).toBe(false);
     const p = healthyPayload();
-    delete p.build_memo;
-    const missing = auditContract(p).filter((f) => f.code === 'CONTRACT-MISSING-SECTION');
-    expect(missing.map((f) => f.where)).toEqual(['build_memo']);
+    expect(auditContract(p).filter((f) => f.where === 'build_memo')).toEqual([]);
   });
-
-  it('collects the memo Doc with its own declared access, so auditLinks checks it', () => {
-    const links = collectUrls(healthyPayload({ build_memo: memoSection({ access: 'admin' }) }), PAGE)
-      .filter((l) => l.label.startsWith('build_memo'));
-    expect(links).toEqual([{ label: 'build_memo.url', url: MEMO_DOC, declaredAccess: 'admin' }]);
-    // A private memo Doc is a wall whatever its tag says.
-    const findings = auditLinks([
-      probed({ label: 'build_memo.url', url: MEMO_DOC, declaredAccess: 'public', status: 401, cls: 'PRIVATE-DELIVERABLE' }),
-    ]);
-    expect(codes(findings)).toEqual(['LINK-PRIVATE-DELIVERABLE']);
-  });
-
 });
 
 describe('carried_residuals is a known section (ace-web#744)', () => {
