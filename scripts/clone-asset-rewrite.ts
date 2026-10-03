@@ -153,7 +153,9 @@ async function main(): Promise<number> {
   for (const f of targetFiles) {
     if (!isText(f) || f.path === 'run_state.yaml') continue;
     const text = await readText(drive, f);
-    const r = processCloneFile(f.path, text, map, label, opts);
+    // Any Doc, styled or plain, prints an HTML comment as text (ace-web showed
+    // "<!-- clone-provenance -->" on a plain-text app summary).
+    const r = processCloneFile(f.path, text, map, label, { ...opts, rich: f.mimeType === GOOGLE_DOC });
     texts.set(f.path, r.text);
     pending.push({ f, r });
   }
