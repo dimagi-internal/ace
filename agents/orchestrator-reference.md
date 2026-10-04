@@ -486,7 +486,7 @@ implicitly via path lacking a `runs/` prefix):
 | `ACE/<opp>/opp.yaml` | Identity (`display_name`, `slug`, `tags`, `created_at`, `created_by`) plus `connect.program.{id, url, connect_int_id}` — the durable Connect program reference reused across every run of the opp. Written by `connect-program-setup` on first create; subsequent runs read this to skip program-create. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run's `run_state.yaml.phases.<phase>.products.*`. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. |
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
-| `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
+| `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. Shown to outside owners on the public run-summary page, so each row follows `skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner`. |
 | `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 4/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
 
 **Durable vs refreshed fields WITHIN the reused Connect program**

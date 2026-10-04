@@ -1426,6 +1426,10 @@ Rules:
   `## Archive`, or more than one `Last updated by run` line above `## Open`.
   That shape came from editing the preamble in place and cutting at the
   `## Open` inside a code span instead of at the real heading.
+- **CHECK THE ROWS ARE WRITTEN FOR THEIR OWNER — `checkOpenQuestionsPlainLanguage`
+  (`lib/open-questions-plain-language.ts`).** Run it on the same markdown,
+  after the shape check; on `ok: false` do NOT write. It names each offending
+  row id, field and token. The rules it enforces are § Row contract below.
 - **Rewrite the preamble (everything above `## Open`) as ONE whole block**,
   never by splicing into the old one, and keep exactly one
   `Last updated by run` line. Refer to the sections in prose ("the Open
@@ -1454,6 +1458,45 @@ READ (`lib/open-questions-inline.ts` — fixture opps skip the inline entirely;
 everyone else gets `## Open` capped at `OPEN_QUESTIONS_INLINE_CAP_CHARS`);
 this section bounds the WRITE, so the live list stays small enough that the
 cap is rarely the thing doing the work.
+
+### Row contract — written for the named owner
+
+**This is the ONE canonical statement of what a ledger row's fields may say.
+Every other writer (`agents/ace-orchestrator.md` run-end update,
+`skills/inbox-triage` step 2g, `skills/feedback-ledger`) links here rather
+than restating it.**
+
+The ledger is not only ACE's work list. ace-web renders its `## Open` rows on
+the PUBLIC run-summary page: `question:` is the item an outside partner is
+asked, rows are grouped by `owner:`, `blocking:` becomes a plain stage name,
+and `latest:` / `raised_by:` sit behind "Working notes". So:
+
+- **`question:` must be answerable by its named `owner` without knowing
+  anything about ACE.** No form or field ids (`hh_count_tt`, `m0f3`), no
+  XML, no file names (`decisions.yaml`, `.ccz`), no run ids, no issue
+  numbers (`ace#2590`), no skill, atom or tool names (`Nova`,
+  `update_translations`), no `PDD §` references, no app version tags
+  (`v1392`). Name the thing as the owner knows it — "the household count the
+  app saves on the community record", not `hh_count_tt`; "Spark's own app",
+  not "the v1392 app".
+- **`answered_where:` names a place or process the owner recognises** —
+  "your reply to this review", "the implementing organisation's
+  application", "a call with Dimagi", "the work order". Never
+  `decisions.yaml`, an `ace#` issue, a skill, a Nova tool, or a `§`.
+- **The technical evidence belongs in `latest:`**, which outsiders see only
+  behind "Working notes". Moving it there loses nothing: the field ids, XML
+  and issue numbers that justify the question stay on the row.
+- **Rows whose owner is internal only** (ACE / Operator / Connect team /
+  Dimagi, alone or combined) are exempt — nobody outside is asked them. A row
+  with an outside owner anywhere in `owner:` (`Spark / ACE`) is NOT exempt.
+
+Reproducer: spark-facilitator's ledger (revision 6, 2026-10-03) asked Spark
+about `hh_count_tt`, "the v1392 app" and twelve lookup-table names, forms
+`m0f0, m0f3, m0f5, m0f8` and `currently_saving`, and pointed `answered_where:`
+at "decisions.yaml ruling or PDD revision", "Nova update_translations review",
+"ace#2590" and "work order §6". `run-surface-audit-eval` capped the page's
+jargon at 4/10, which held the release gate at `warn`. Verbatim rows and
+their plain rewrite: `test/fixtures/open-questions/spark-facilitator-outsider-{jargon,plain}.text-markdown.md`.
 
 ## Decisions Log (rendered)
 

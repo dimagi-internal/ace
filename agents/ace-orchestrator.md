@@ -2256,7 +2256,13 @@ After Phase 1 completes — or at the first boundary fence where the PDD
 exists — ensure `<opp>/open-questions.md` carries this run's questions:
 seed from the approved PDD's `## Open Questions` section (one bullet per
 question, each naming its owner + where it gets answered) and append as
-later phases surface new ones. This is also the only route by which a
+later phases surface new ones. **A PDD question is written for ACE; a
+ledger row is written for its owner** — ace-web shows `question:` and
+`answered_where:` to outside partners on the public run-summary page, so
+rewrite each one per
+`skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner` (field ids, file names, issue numbers and tool names go
+in `latest:`), and do not write until `checkOpenQuestionsPlainLanguage`
+(`lib/open-questions-plain-language.ts`) returns `ok`. This is also the only route by which a
 question a later phase raises reaches the NEXT run — Phase 1 reads
 `## Open` back (§ Phase 1, dimagi-internal/ace#1201).
 

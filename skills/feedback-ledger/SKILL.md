@@ -233,7 +233,7 @@ One field, three places. This is the ONLY write-side obligation:
 |---|---|---|
 | `skill-fix` | GitHub issue + PR | `Feedback-Ref: <slug>/<item-id>` trailer line in the issue body |
 | `decision` | the run's `decisions.yaml` | `feedback_ref: <slug>/<item-id>` on the row |
-| `open-question` | `ACE/<opp>/open-questions.md` | `<!-- feedback-ref: <slug>/<item-id> -->` on the entry |
+| `open-question` | `ACE/<opp>/open-questions.md` | `<!-- feedback-ref: <slug>/<item-id> -->` on the entry; the row itself follows `skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner` (checked by `checkOpenQuestionsPlainLanguage`) |
 | `declined` | the ledger call itself | pass a `declined` disposition with a reason |
 | downstream of an **edit** | wherever the work lands | `Feedback-Ref: decision-edits/<decision-id>` — the edit itself needs no stamp; what follows from it does |
 
