@@ -89,6 +89,7 @@ import {
   type Memberships,
   type ProbedLink,
   type RenderReport,
+  visiblePhaseLabels,
 } from '../lib/run-surface-audit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -286,18 +287,6 @@ async function readYaml(file: string): Promise<unknown> {
   return parse(readFileSync(file, 'utf8'));
 }
 
-/**
- * Distinct phase labels the payload says this run's decisions carry.
- *
- * Handed to the browser probe so "is provenance visible by default?" is keyed
- * to THIS run's data rather than to a pattern guessing at the page's copy.
- */
-function phaseLabels(payload: unknown): string[] {
-  const rows = (payload as Record<string, any> | null)?.decisions?.rows;
-  if (!Array.isArray(rows)) return [];
-  return [...new Set(rows.map((r) => String(r?.phase_label ?? '')).filter(Boolean))];
-}
-
 function runRenderProbe(pageUrl: string, labels: string[], gateCandidates: string[] = []): RenderReport {
   const script = path.join(HERE, 'audit-run-surface-render.ts');
   const res = spawnSync('npx', ['tsx', script, pageUrl, JSON.stringify(labels), JSON.stringify(gateCandidates)], {
@@ -380,7 +369,7 @@ async function main(): Promise<number> {
   // the link tier draws its conclusions, not after them.
   let render: RenderReport | null = null;
   if (a.render) {
-    render = runRenderProbe(pageUrl, phaseLabels(payload), sameOriginGateCandidates(probed, pageUrl));
+    render = runRenderProbe(pageUrl, visiblePhaseLabels(payload), sameOriginGateCandidates(probed, pageUrl));
     probed = applyRenderedGates(probed, render.gateProbes);
   }
 

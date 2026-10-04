@@ -2377,6 +2377,27 @@ export interface CommitAffordanceObservation {
 }
 
 /**
+ * Distinct phase labels this run's decision rows carry AS THE PAGE SHOWS THEM —
+ * handed to the browser probe so "is provenance visible by default?" is keyed
+ * to this run's data rather than to a pattern guessing at the page's copy.
+ *
+ * Prefers `stage_label` (ace-web#861: the plain stage name an outsider sees —
+ * "Design", "App build") over `phase_label` (the Workbench name — "Idea to
+ * Design"). Keyed on `phase_label` alone, the probe looked for headings the
+ * outsider view no longer draws and reported RENDER-PROVENANCE-HIDDEN on a page
+ * whose grouping was visible (spark-facilitator/20261001-2208).
+ */
+export function visiblePhaseLabels(payload: unknown): string[] {
+  const rows = (payload as { decisions?: { rows?: unknown } } | null)?.decisions?.rows;
+  if (!Array.isArray(rows)) return [];
+  const labels = rows.map((r) => {
+    const row = (r ?? {}) as { stage_label?: unknown; phase_label?: unknown };
+    return String(row.stage_label || row.phase_label || '');
+  });
+  return [...new Set(labels.filter(Boolean))];
+}
+
+/**
  * Pure verdict for the commit-affordance probe, so the decision is testable
  * without a browser. Order matters:
  *
