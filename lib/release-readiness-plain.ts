@@ -98,9 +98,24 @@ export function plainFinding(f: ReleaseFinding, ctx: PlainContext): { summary: s
   }
   if (/^eval-below-band:/.test(id)) {
     const incomplete = /\bincomplete\b/.test(f.detail);
-    return incomplete
-      ? { summary: `The quality review of ${label} could not finish.`, action: `Clear what stopped it (listed with this item), then run the review of ${label} again.` }
-      : { summary: `The quality review of ${label} scored below its pass mark.`, action: `Fix ${label} as the review says, then run the review again.` };
+    if (incomplete) {
+      return { summary: `The quality review of ${label} could not finish.`, action: `Clear what stopped it (listed with this item), then run the review of ${label} again.` };
+    }
+    // A `warn` that cleared its score band (lib/release-readiness.ts writes
+    // CLEARED_BAND_PHRASE then the dimensions). "Below its pass mark" would be false.
+    const cleared = /cleared the score band but a dimension is still below 7: ([^;]+)/.exec(f.detail);
+    if (cleared) {
+      const names = cleared[1]
+        .split(',')
+        .map((d) => d.trim().replace(/\s+[\d.]+$/, '').replace(/_/g, ' '))
+        .filter(Boolean);
+      const list = names.length ? joinNames(names) : 'see the review';
+      return {
+        summary: `The quality review of ${label} cleared the score band but a dimension is still below 7: ${list}.`,
+        action: `Improve ${label} on ${list} until each scores at least 7, then run the review again — a release needs a clean pass.`,
+      };
+    }
+    return { summary: `The quality review of ${label} scored below its pass mark.`, action: `Fix ${label} as the review says, then run the review again.` };
   }
   if (/^(?:eval|qa)-stale:/.test(id)) return { summary: `${cap(label)} changed after it was checked.`, action: `Run the check on ${label} again.` };
   if (/^(?:eval|qa)-missing:/.test(id)) return { summary: `${cap(label)} was never checked.`, action: `Run the check on ${label}.` };
@@ -167,4 +182,8 @@ export function collapseSharedCauses(findings: readonly ReleaseFinding[]): Relea
     }
   }
   return out;
+}
+
+function joinNames(xs: string[]): string {
+  return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 }

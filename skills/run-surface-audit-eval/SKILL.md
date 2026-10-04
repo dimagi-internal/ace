@@ -172,6 +172,32 @@ for. Two guards:
 
 Record `overall_score_pre_cap` whenever a cap binds.
 
+### Verdict mapping
+
+The pass band is **7.0** (`gate.threshold: 7.0`). Apply this ordered cascade to
+the post-cap `overall_score` and the scored dimensions — **first match wins**:
+
+1. **`fail`** — `overall_score` < 7.0, **or** the teeth fire
+   (`ask_actionability ≤ 3`), **or** any dimension ≤ 3 (a `BLOCKER` per
+   `skills/_eval-template.md § Auto-surfaced severity rules`).
+2. **`warn`** — `overall_score` ≥ 7.0 but **any dimension < 7** (the template's
+   4.0–6.9 `WARN` tier; `< 7` rather than a 4–6.9 range so a fractional 3.5 or
+   6.5 lands somewhere). Name each such dimension in `auto_surfaced` as a `WARN`.
+3. **`pass`** — `overall_score` ≥ 7.0 **and** every dimension ≥ 7.
+
+`incomplete` stays reserved for Process step 1 (the QA reported a `broken` or
+`misleading` finding, so nothing was graded).
+
+**What `warn` means downstream.** The template says a WARN item is "surfaced
+for human review but does not block" — that is true of the *phase* (a run
+continues past a `warn`). It is **not** true of release: `/ace:validate-release-readiness`
+requires `verdict: pass` from this eval (`lib/release-readiness.ts`), so a `warn`
+at 7.4 against the 7.0 band is a release blocker, reported as "cleared the score
+band but a dimension is still below 7: <dimensions>". Raise the named dimensions
+to 7, or the release does not go. *Enforced:* the cascade is data in
+`lib/eval-verdict-bands.ts` (`RUN_SURFACE_AUDIT_BANDS`), audited for totality in
+`test/lib/eval-verdict-bands.test.ts`.
+
 ## Archetypes
 
 | Archetype | Branch |

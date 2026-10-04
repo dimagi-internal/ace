@@ -6,11 +6,17 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { checkCascadeStory, checkParUrlScope } from '../../../skills/demo-data-setup-qa/checks';
 
-const plan = JSON.parse(
+// Relabelled to the illustrative form demo-data-setup § C0 requires for
+// invented partners; the as-authored "Partner A/B/C" plan is refused below.
+const relabel = (text: string) => text.replace(/\bPartner ([ABC])\b/g, 'Example partner $1');
+const authoredPlan = JSON.parse(
   readFileSync(join(__dirname, '../../fixtures/cascade/spark-facilitator-story.json'), 'utf8'),
 );
+const plan = JSON.parse(
+  relabel(readFileSync(join(__dirname, '../../fixtures/cascade/spark-facilitator-story.json'), 'utf8')),
+);
 const periods = JSON.parse(
-  readFileSync(join(__dirname, '../../fixtures/cascade/spark-facilitator-graded-periods.json'), 'utf8'),
+  relabel(readFileSync(join(__dirname, '../../fixtures/cascade/spark-facilitator-graded-periods.json'), 'utf8')),
 ).periods;
 const ids = ['SF_P1', 'SF_P3', 'SF_S1', 'SF_S2', 'SF_S3', 'SF_S4', 'SF_S5', 'SF_S6', 'SF_D1', 'SF_D2'];
 
@@ -18,7 +24,13 @@ describe('checkCascadeStory (check 21)', () => {
   it('passes the live Spark programme, naming what each signal showed', () => {
     const r = checkCascadeStory(plan, ids, periods);
     expect(r.pass).toBe(true);
-    expect(r.detail).toMatch(/lagging_partner landed — Partner C 62\.2%/);
+    expect(r.detail).toMatch(/lagging_partner landed — Example partner C 62\.2%/);
+  });
+
+  it('fails a single-implementer pilot shown as three unlabelled partners (Partner A/B/C)', () => {
+    const r = checkCascadeStory(authoredPlan, ids, periods);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/do not say they are illustrative/);
   });
 
   it('fails when the story file is missing', () => {

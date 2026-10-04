@@ -27,6 +27,7 @@ import {
   type DecisionsLog,
 } from "./decisions-schema.js";
 import { stampRow } from "./decisions-enrich.js";
+import { checkBufferClaims, type BufferClaimRow } from "./buffer-claim.js";
 import {
   applyDecisionOverrides,
   type DecisionOverrideRow,
@@ -77,6 +78,9 @@ export type DecisionsWriteCode =
   | "SELF_SUPERSEDES"
   | "DANGLING_SUPERSEDES"
   | "ALREADY_SUPERSEDED"
+  // spark-facilitator/20261001-2208 — a close date claiming a buffer that the
+  // run's own delivery window does not leave (lib/buffer-claim.ts).
+  | "UNSUPPORTED_BUFFER_CLAIM"
   | "INTERNAL_INVARIANT";
 
 export class DecisionsWriteError extends Error {
@@ -245,6 +249,23 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
       );
     }
     predecessor.superseded_by = row.id;
+  }
+
+  // ── Buffer claims (spark-facilitator/20261001-2208) ─────────────────────
+  // A close date may say "including a buffer" only when the run's live
+  // delivery window ends earlier. Judged only for rows THIS batch appended, so
+  // a historical row never blocks an unrelated write.
+  const appendedIds = new Set(
+    overridden.rows.filter((r) => !skipped.includes(r.id)).map((r) => r.id),
+  );
+  const bufferViolations = checkBufferClaims(
+    log.decisions as unknown as BufferClaimRow[],
+  ).filter((v) => appendedIds.has(v.id));
+  if (bufferViolations.length) {
+    throw new DecisionsWriteError(
+      "UNSUPPORTED_BUFFER_CLAIM",
+      bufferViolations.map((v) => v.detail).join(" "),
+    );
   }
 
   const finalCheck = DecisionsLogSchema.safeParse(log);

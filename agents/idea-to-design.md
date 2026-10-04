@@ -115,7 +115,7 @@ Invoke the `pdd-to-work-order` skill.
 
 ### Step 2.4: PDD-to-Work-Order QA (structural pass/fail)
 
-Invoke the `pdd-to-work-order-qa` skill — runs 15 static structural checks against the produced work order. Read that skill's own checks table for the list. Check 0 (`rendered_from_template`) is the one to read first on a failure: it means the document was not copied from the branded template, so it is a synthesized plain doc rather than a contractual artifact, and every other check's result is beside the point.
+Invoke the `pdd-to-work-order-qa` skill — runs 16 static structural checks against the produced work order. Read that skill's own checks table for the list. Check 0 (`rendered_from_template`) is the one to read first on a failure: it means the document was not copied from the branded template, so it is a synthesized plain doc rather than a contractual artifact, and every other check's result is beside the point.
 
 - Input:
   - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (latest)

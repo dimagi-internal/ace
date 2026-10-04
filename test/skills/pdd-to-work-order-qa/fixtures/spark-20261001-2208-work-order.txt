@@ -1,0 +1,243 @@
+Work Order Agreement #[WO Number]
+Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation
+Work Order Number
+	[WO Number]
+	Work Order Date
+	2026-09-25
+	Work Order Title
+	Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation
+	Period of Performance
+	2026-10-26 to 2027-03-12
+	1. Background
+[Partner Name] (henceforth, referred to as "partner") is the implementing partner for the work described in this Work Order.
+
+
+Spark MicroGrants runs the Facilitated Collective Action Process (FCAP), a village-driven planning and microgrant process delivered through Community Based Facilitators (CBFs) drawn from the communities they serve. During the FCAP Goal Setting subphase a community meets weekly for approximately three months, working through seven structured steps from Our Partnership to Vision. The CBF facilitates each meeting and records it.
+The record already exists. Spark's Malawi Green FCAP CommCare application carries a Village Monitoring Form that the CBF completes after every community meeting, capturing attendance, participation, the FCAP step covered, savings and a required meeting photo. Spark's Monitoring and Evaluation (M&E) Director has confirmed that a meeting is established as held when that form records the meeting as conducted and as a community meeting, and that the CBF is the person to verify and compensate. What does not exist is a reliable mechanism that turns the record into a payment to the person who did the work. Spark's current CBF compensation arrangements are not documented in any material available to Dimagi.
+This Work Order engages the partner to run a pilot in which CBFs record community meetings through Connect and are paid per verified community meeting. The pilot covers the Goal Setting subphase for approximately 12 communities in Malawi, at one CBF per community, and the slice Spark confirmed for a first version: facilitator registration, the per-meeting monitoring record and savings. It is a payment and verification layer for facilitators. It does not change FCAP, does not evaluate FCAP, and does not intervene on communities.
+2. Scope of Work
+The partner will deliver a pilot of Connect verified payments for FCAP community meeting facilitation, covering FCAP Goal Setting steps 1 through 7 for approximately 12 communities, with one CBF assigned to each community. The unit of work is a single facilitated community meeting, the field visit this Work Order pays for. The followed entity is the community: it is visited weekly across an ordered sequence of FCAP steps, each meeting is recorded against the community and the step it is on, and each qualifying visit in that sequence is separately payable rather than treated as a repeat of one already paid.
+
+
+For each engagement, the partner will:
+
+
+* Confirm, before mobilization, that each participating CBF has a smartphone able to run the Connect application and adequate connectivity to submit records. Where a CBF does not, the partner will cost device provision separately in its solicitation response; devices are funded under this Work Order only if Dimagi agrees that cost at contract execution, in addition to the not-to-exceed in section 6.1.
+* Recruit and contract approximately 12 CBFs, one per participating community, and agree the district, Traditional Authority and communities with Dimagi and Spark MicroGrants.
+* Ensure each CBF completes the Learn application and passes its assessment at 80 percent or above before submitting any meeting record.
+* Ensure each CBF completes facilitator registration once, and enrols their community once, recording the household count, the community location and the community contact person, including whether that contact agrees to occasional verification calls.
+* Facilitate weekly community meetings that advance each community through FCAP Goal Setting steps 1 to 7.
+* Record each meeting in the Deliver application on the day it happens, including a live meeting photo, attendance and participation, and community savings from FCAP step 5 onward.
+* Record planned meetings that did not take place, with the reason and the rescheduled date, so that non-occurrence is visible rather than silent.
+* Make a Partner Trainer available to review at least 20 percent of meeting records using the risk-stratified sample described in section 4.2, including, for each flagged record, a confirmation call where the community contact has agreed to calls, or otherwise Partner Trainer attendance at that CBF's next meeting.
+* Run community confirmation calls for at least 10 percent of verified meetings in communities whose contact agreed to be called, and keep a call log.
+* Submit a weekly progress report.
+
+
+The partner will not:
+
+
+* Alter, extend or re-sequence the FCAP process itself.
+* Modify, instrument or otherwise interfere with Spark MicroGrants' own CommCare application, which supports a live randomised controlled trial.
+* Collect any health or clinical data, or record the identity of any individual community member other than the community contact person.
+* Disburse microgrant funds, which sit outside this Work Order.
+* Claim payment for a committee meeting, or for a meeting recorded against a step other than the one the community is on.
+3. Geographic Coverage
+One district in Malawi. The specific district, Traditional Authority and participating communities will be proposed by the partner in its solicitation response and agreed with Dimagi and Spark MicroGrants before mobilization. Approximately 12 communities entering FCAP Goal Setting during the period of performance are in scope. No district is named in this Work Order because none is stated in the underlying design material.
+4. Deliverables and Verification
+4.1 Primary Deliverable
+A verified record of each FCAP community meeting facilitated during the pilot window, submitted through the Deliver application by the CBF who owns the community, against which payment is made. Dimagi expects approximately 13 verified meetings per CBF across the pilot window, with a structural ceiling of 21 per CBF (seven steps, three payable meetings per step). Though these figures indicate expected scale, they are not a hard requirement and no minimum volume is guaranteed.
+4.2 Definition of a Verified Unit
+A unit qualifies as "verified" and is payable under this Work Order only when all of the following are met:
+
+
+* The record is submitted from the Deliver application by the CBF who owns that community.
+* The meeting is recorded as conducted (meeting_conducted = yes).
+* The meeting is recorded as a community meeting (meeting_type = community_meeting). A committee meeting is not payable.
+* The meeting is the first, second or third recorded community meeting for that community on its current FCAP step. A fourth or later meeting on the same step is recorded in full but is not payable.
+* The meeting date is later than the community's previous recorded community meeting, and a live meeting photo, attendance and participation are present, and participation does not exceed attendance.
+* Where the community is on FCAP step 5 or later, the savings section is complete.
+
+
+Dimagi will verify each record automatically, using the community's own history to establish that the meeting is a new payable unit rather than a repeat of one already paid. A location fix and its accuracy are captured with every meeting and are used for review only; they do not gate payment and no submission is refused on the basis of a location reading. The partner will independently check at least 20 percent of paid meetings, by Partner Trainer attendance at a meeting or by a community confirmation call, and will check every meeting flagged for identical attendance to the previous meeting, a poor or distant location reading, a reused-looking photo, a third paid meeting on a step, or a step completed after a single meeting; the partner will also check a random 10 percent of unpaid records to confirm each was correctly recorded as not payable, and the partner will report agreement separately for flagged, randomly drawn and unpaid records. Community confirmation calls cover at least 10 percent of verified meetings in consenting communities. Records that fail one or more of the criteria above are not payable, and where a review finds that a paid meeting did not take place as recorded, Dimagi will deduct that payment from the next payment due or, where none remains, from the final reconciliation.
+4.3 Reporting Deliverables
+* Weekly progress report covering meetings held, communities advanced through FCAP steps, and any community that has not met in the reporting week.
+* A record of every planned meeting that did not take place, with the reason and rescheduled date.
+* The Partner Trainer review sample, with the reviewer's confirmation of whether each meeting took place as recorded, reported per stratum.
+* The community confirmation call log (date, community, meeting date, confirmed yes or no, approximate attendance).
+* Written notice to Dimagi, within 24 hours of identification, of any circumstance likely to prevent a community from completing FCAP step 7 within the pilot window.
+5. Timeline and Milestones
+Week
+	Dates
+	Activities
+	1
+	2026-10-26 to 2026-10-30
+	Partner onboarding. Confirmation that every participating CBF has a suitable smartphone and connectivity, or that devices are provided. District, Traditional Authority and communities agreed with Dimagi and Spark MicroGrants.
+	2
+	2026-11-02 to 2026-11-06
+	Connect opportunity opens. CBFs complete the Learn application and pass at 80 percent or above. Facilitator registration and community enrolment for approximately 12 communities.
+	3
+	2026-11-09 to 2026-11-13
+	FCAP step 1 (Our Partnership) meetings. First paid meeting records. Dimagi confirms the payment path end to end.
+	4
+	2026-11-16 to 2026-11-27
+	FCAP steps 2 and 3, including secret-ballot leadership elections. First Partner Trainer review sample and first confirmation calls.
+	5
+	2026-11-30 to 2026-12-18
+	FCAP steps 3 to 5. The savings section becomes active as each community reaches step 5.
+	6
+	2026-12-21 to 2027-01-15
+	FCAP steps 5 to 7 on the weekly cadence, allowing for the holiday period.
+	7
+	2027-01-18 to 2027-02-26
+	Communities complete FCAP step 7 (Vision). Buffer for step overruns. The Connect opportunity closes on 2027-02-26.
+	8
+	2027-03-01 to 2027-03-12
+	Final review sample, call log and closeout report. Final reconciliation of verified meetings.
+	
+
+The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+6. Payment Terms
+6.1 Total Not-to-Exceed
+Dimagi's total financial commitment under this Work Order is USD [amount set at contract execution; indicative ceiling of 3,276,000 Malawian kwacha (MWK) at the proposed rates], not-to-exceed, inclusive of all field collection costs, CBF compensation, supervision, transport, and partner reporting time.
+6.2 Payment Schedule
+#
+	Milestone
+	% of Cap
+	Amount (USD)
+	Trigger / Deliverable
+	Expected Timing
+	1
+	Mobilization advance
+	40%
+	[Amount derived from the agreed cap]
+	Contract execution and written confirmation of CBF smartphone and connectivity availability
+	Within 30 days of contract execution
+	2
+	Final reconciliation
+	60%
+	[Amount derived from the agreed cap]
+	Acceptance of the verified meeting records, the Partner Trainer review sample and the confirmation call log. Dimagi will review each submission within 15 days of submission; items not disputed in writing within that window are deemed accepted.
+	Within 30 days of acceptance
+	
+
+The payable unit under this Work Order is one verified community meeting. Dimagi will pay only for verified units at the per-meeting rate proposed in the partner's solicitation response, for each verified meeting in the step sequence, up to three meetings per community per FCAP step; a fourth or later meeting on the same step is recorded but is not payable. No more than 1 verified meeting per CBF per day is payable, and no more than 21 verified meetings per CBF are payable across the pilot window. For planning purposes Dimagi has proposed MWK 5,000 to 10,000 per verified meeting for the CBF and MWK 3,000 per verified meeting for the partner toward supervision, observations and confirmation calls; these figures are not grounded in any documented CBF compensation, and the partner is asked to propose its own rates with written justification against the workload described in the Program Design Document, and to cost its supervision and review work explicitly. The agreed rates replace the proposed figures. Rates and the not-to-exceed are denominated in Malawian kwacha; the amounts in the payment schedule are converted to USD at the exchange rate the parties agree at contract execution. The mobilization advance is recoverable: verified meetings accrue against it until it is fully drawn down, after which verified meetings are paid at the agreed rate through the final reconciliation, up to the not-to-exceed. Any advance not drawn down by verified meetings at closeout is deducted from the final reconciliation, and the partner will refund any remaining balance within 30 days of closeout. These percentages are indicative of the agreed split only. No amount is payable under this schedule until the total not-to-exceed in section 6.1 is fixed at contract execution.
+7. Roles and Responsibilities
+Responsibility
+	Dimagi
+	Partner
+	Program design and Work Order
+	Lead
+	Reviews
+	CBF recruitment, devices and connectivity confirmation
+	Reviews
+	Lead
+	Learn and Deliver application configuration
+	Lead
+	Reviews
+	Connect opportunity, payment unit and verification rules
+	Lead
+	—
+	CBF training delivery and Learn completion
+	Supports
+	Lead
+	Facilitator registration and community enrolment, including contact consent
+	—
+	Lead
+	Weekly community meeting facilitation and recording
+	—
+	Lead
+	Risk-stratified Partner Trainer review sample
+	Reviews
+	Lead
+	Community confirmation calls and call log
+	Reviews
+	Lead
+	Correcting a step marked complete in error
+	Lead
+	Supports
+	Payment verification and disbursement
+	Lead
+	Supports
+	8. Permissions, Ethics, and Compliance
+8.1 Permissions
+The partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+
+
+* Written agreement from Spark MicroGrants for the participation of the named communities and CBFs, and for whether CBFs file the pilot record instead of, or in addition to, Spark's own Village Monitoring Form.
+* Any district or Traditional Authority approval required to convene community meetings.
+* Each CBF's informed agreement to the recording of their profile, location and meeting records for verification and payment.
+* Each community contact person's agreement before any confirmation call is made.
+* Any approval required under Malawian data-protection law for the collection and storage of the personal data described in section 9.
+
+
+The partner will provide Dimagi with copies of all written permissions or notifications obtained.
+8.2 Ethics
+The work is operational and involves personal data, but no health or clinical data. The pilot records each CBF's name, gender, age, education, phone numbers and recruitment date, and a location fix at each meeting they facilitate. For each community it records the name and phone number of one community contact person and whether that person agrees to occasional confirmation calls; a contact who declines is never called, and the community's participation is unaffected. Each held meeting carries one wide photo of the gathered meeting, which may show community members' faces; photos are used only to verify that the meeting took place and are not published. Community-side information is otherwise recorded as aggregate counts only: households represented, women and men attending and speaking, and community savings totals. The partner will obtain each CBF's informed agreement, will inform participating communities that meetings are recorded and photographed for program monitoring, and will ensure community participation in FCAP is not conditional on that recording.
+8.3 Security and Duty of Care
+The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy CBFs to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
+9. Data Handling
+Field
+	Value
+	Project overview
+	A pilot of Connect verified payments for FCAP community meeting facilitation, covering FCAP Goal Setting steps 1 to 7 for approximately 12 communities in one Malawi district.
+	Data subjects
+	Community Based Facilitators engaged by the partner (approximately 12), and one community contact person per community (approximately 12). Community members appear only in aggregate counts and in meeting photos.
+	Personal information processed
+	CBF name, gender, age, education, phone numbers and recruitment date; a location fix with accuracy at each meeting. Community name, district, Traditional Authority, household count and location. Community contact name, phone number and call consent. One meeting photo per held meeting. No health or clinical data.
+	Purpose of processing
+	To verify that a facilitated community meeting took place, to pay the CBF who facilitated it, and to report program monitoring indicators to Dimagi and to Spark MicroGrants.
+	Technical and organizational security
+	Data is transmitted from the mobile application over encrypted connections and stored in CommCare HQ under access controls managed by Dimagi. Access is limited to named Dimagi program staff and named partner supervisory staff.
+	Measures by Partner
+	The partner will limit access to submitted records and photos to named supervisory staff with a need to see them, will not export or share personal data outside the program without Dimagi's written agreement, will keep the confirmation call log securely, and will notify Dimagi in writing within 24 hours of any suspected loss or unauthorised disclosure.
+	Data storage location
+	United States. This is provisional and must be confirmed against any Malawian data-protection requirement and the CommCare HQ cluster actually used, before signature.
+	Data protection
+	Data is retained for the duration of the pilot and for the period required to complete payment reconciliation and program reporting, after which personal data and meeting photos are deleted or de-identified. The partner will comply with applicable Malawian data-protection law.
+	Signatures
+IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' Master Services Agreement (MSA) dated __________________.
+
+
+Subcontractor
+	Dimagi, Inc.
+	By: __________________________
+
+
+Name: [Partner Signatory Name]
+
+
+Title: [Partner Signatory Title]
+
+
+Date: ________________________
+
+
+Address for correspondence:
+
+
+[Partner Address]
+	By: __________________________
+
+
+Name: Lucina Tse
+
+
+Title: COO Dimagi, Inc.
+
+
+Date: ________________________
+
+
+Address for correspondence:
+245 Main Street, 2nd Floor,
+Cambridge, MA 02142
+
+
+(617) 649-2214; legal@dimagi.com
+	Annexures
+* Annexure A: Program Design Document — see https://docs.google.com/document/d/1rR_GEZv6J8FGP7iUYs9zwBZO_bICBOyRZI9tQTOEEqI/edit
+* Annexure B: The partner's solicitation response, including its costed rates, to be attached at contract execution
+
+
+Cambridge, Massachusetts, USA ｜ Cape Town, South Africa ｜ New Delhi, India ｜ www.dimagi.com

@@ -67,7 +67,21 @@ export interface CascadeStoryPlan {
    * rule (`Deliver app — FCR Test, pass = result >= 0.2 mg/L`).
    */
   anchor?: 'pdd' | 'app';
+  /**
+   * How many implementing organisations the PDD actually names (default 1 —
+   * a single-LLO pilot). Read from the PDD, never inferred from the demo.
+   * With `partner_source: 'programme'` the partner count must equal it; with
+   * invented partners it is what the illustrative label is honest about.
+   */
+  implementing_orgs?: number;
 }
+
+/**
+ * The words that tell a dashboard viewer a partner is a demo device, not an
+ * organisation in the programme. Checked on each partner label, because the
+ * label IS what the programme report renders (it is the `llo_map` org name).
+ */
+export const ILLUSTRATIVE_LABEL = /\b(illustrative|example)\b/i;
 
 export interface StoryFinding {
   signal?: SignalKind;
@@ -98,6 +112,26 @@ export function checkCascadeStoryPlan(
     fail(`${plan.partners.length} partner(s); the cascade needs ≥ ${minPartners} so a partner comparison and an anonymous benchmark mean something`);
   } else if (programme && plan.partners.length < 3) {
     findings.push({ severity: 'warn', detail: `the programme has ${plan.partners.length} partners — its benchmark cohort needs \`min_peers\` below 3, which shows each partner its peer's exact figures` });
+  }
+  // Invented partners are a deliberate demo device (a comparison and an
+  // anonymous benchmark need peers), but a single-implementer pilot shown as
+  // "Partner A/B/C" reads as a claim that three organisations deliver it — the
+  // outsider eval flagged exactly that on spark-facilitator/20261001-2208. So
+  // the dashboard's own labels must say so ("Example partner A").
+  const implementers = plan.implementing_orgs ?? 1;
+  if (programme) {
+    if (plan.implementing_orgs !== undefined && plan.partners.length !== plan.implementing_orgs) {
+      fail(`\`partner_source: programme\` mirrors the programme, but the plan has ${plan.partners.length} partners and the PDD names ${plan.implementing_orgs} implementing organisation(s)`);
+    }
+  } else {
+    const unlabelled = plan.partners.filter((p) => !ILLUSTRATIVE_LABEL.test(p.label)).map((p) => p.label);
+    if (unlabelled.length) {
+      fail(
+        `partner label(s) ${unlabelled.map((l) => `"${l}"`).join(', ')} do not say they are illustrative — the PDD names ` +
+          `${implementers} implementing organisation(s) and the dashboard shows ${plan.partners.length} invented partners; ` +
+          `label them e.g. "Example partner A" so a viewer is not told the pilot has ${plan.partners.length} implementers`,
+      );
+    }
   }
   const labels = new Set(plan.partners.map((p) => p.label));
   if (labels.size !== plan.partners.length) fail('partner labels must be distinct — they are the llo_map organisation names');
