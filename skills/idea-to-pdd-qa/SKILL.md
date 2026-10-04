@@ -9,7 +9,7 @@ disable-model-invocation: false
 
 # Idea-to-PDD QA
 
-Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 11 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 12 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 This is the canonical first migration to the QA/Eval split (PR #146). The companion `idea-to-pdd-eval` was slimmed to quality-only dimensions in this same PR; structural completeness now lives here.
 
@@ -20,6 +20,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under structural check |
+| Phase 1 producer | `run_state.yaml` `phases.idea-to-design.products.pdd.description` | check 11 — passed as `--pdd-description` (it lives in run_state, not in the PDD body) |
 
 ## Products
 
@@ -40,6 +41,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 8 | `program_parameters_coherent` | static | `## Program Parameters` section present with a parseable `\| key \| value \|` table, and its numbers do not contradict each other: passing score within 0–100; a threshold that is only attainable by scoring EVERY item while written as less than 100; an inverted payment-rate band; and a `total_cap_per_flw` that can never bind against `expected_reach_max` without a `cap_rationale` row acknowledging it. Every rule skips silently when either operand is absent — QA is binary, so a half-specified table must not manufacture a failure. | resolve each contradiction in the table AND in the PDD prose stating the same numbers so the two agree; where the number is a deliberate program decision, keep it and add the row the check asks for |
 | 9 | `payment_unit_matches_entity_grain` | static | The declared `payment_rate_unit` is not FINER than the `entity_id_grain` that actually resolves payable units — a per-visit rate against a per-worker-per-day grain collapses N visits into ONE payment entity and multiplies every money number in the PDD, the Work Order and the Phase 4 payment unit (ace#1420). Skips silently unless both rows are present. | quote the rate per the GRAIN, or narrow `entity_id_grain` so each event is its own entity — then re-derive `payment_rate_min`/`max`, `daily_cap_per_flw`, `total_cap_per_flw` and the worker-economics prose |
 | 10 | `entity_state_taxonomy_declared_for_longitudinal` | static | **When `archetype: longitudinal-visits`** (and only then — an `atomic-visit` PDD has no followed entity to have states), § Program Parameters carries an `entity_state_taxonomy` row that `parseStateTaxonomy` (`lib/entity-state-taxonomy.ts`) reads as `declared: true` with no `problems`. Uses the SAME parser Phase 3 halts on, so any value that would HALT `pdd-to-learn-app` / `pdd-to-deliver-app` fails here instead — where it is a one-line author fix rather than a `[BLOCKER]` after two clean phases (ace#1564 added the halt, ace#1783 added this gate). Defers to `program_parameters_coherent` when the section is absent. | transcribe the states the PDD already describes in § Entity Lifecycle into the one-line grammar `<value>=<label> (steps <a>-<b>); ... [source: <doc>]` |
+| 11 | `pdd_description_plain_language` | static | `products.pdd.description` — the opening paragraph ace-web renders on the PUBLIC run-summary page, the first thing an outside partner reads — carries no snake_case identifiers, `=`/`==` expressions, upper-case `AND`/`OR`/`NOT`, run ids, code spans or `{{template}}` markers (`lib/pdd-description-plain-language.ts`). Reads `ctx.pddDescription` (`--pdd-description`); a MISSING description fails rather than passes. Reproducer: spark-facilitator/20261001-2208 opened its summary with *"meeting_conducted = yes AND meeting_type = community_meeting"* and failed its outsider review. | rewrite ONLY the description in plain words for an outside partner (what the programme does, for whom, what Connect pays for); the PDD body keeps its identifiers. If the description was simply not passed, fix the QA invocation instead |
 
 The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
 
@@ -96,8 +98,12 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 3. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md" --artifact-mime-type "<mimeType from step 1>"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md" --artifact-mime-type "<mimeType from step 1>" --pdd-description "<run_state.yaml phases.idea-to-design.products.pdd.description>"
    ```
+
+   **`--pdd-description` is REQUIRED** too. Check 11 judges the run-summary
+   page's opening paragraph, which lives in `run_state.yaml`, not in the PDD
+   body; omit it and check 11 fails with a hint to fix the invocation.
 
    **`--artifact-mime-type` is REQUIRED** (ace#1061). Check 7 verifies the PDD
    is a native Google Doc, and that is not answerable from the file's bytes —

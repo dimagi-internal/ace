@@ -26,7 +26,7 @@ interface ExpectedQA {
 }
 
 describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
-  test('passes all 11 idea-to-pdd-qa checks', async () => {
+  test('passes all 12 idea-to-pdd-qa checks', async () => {
     const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
@@ -36,11 +36,11 @@ describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
       checks: CHECKS,
       // A real QA run supplies the artifact's Drive mimeType so the format
       // check can verify it (ace#1061). A clean fixture is a native Doc.
-      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+      context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
     expectQAPass(result);
-    expect(result.stats.checks_run).toBe(11);
-    expect(result.stats.checks_passed).toBe(11);
+    expect(result.stats.checks_run).toBe(12);
+    expect(result.stats.checks_passed).toBe(12);
     expect(result.skill).toBe('idea-to-pdd-qa');
   });
 });
@@ -58,7 +58,7 @@ describe('ACE-PDD-Bad-001 (adversarial fixture with intentional defects)', () =>
       checks: CHECKS,
       // The adversarial fixture's defects are all CONTENT defects; its format
       // is fine, so the expected-result file stays about content.
-      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+      context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
 
     // Verdict matches.
@@ -130,7 +130,7 @@ describe('ace#1783 — a longitudinal PDD with no entity_state_taxonomy', () => 
       capture_path: '1-design/idea-to-pdd.md',
       artifact: asLongitudinal(),
       checks: CHECKS,
-      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+      context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
 
   test('the archetype substitution actually took (guards the fixture)', () => {
@@ -155,7 +155,7 @@ describe('ace#1783 — a longitudinal PDD with no entity_state_taxonomy', () => 
       capture_path: '1-design/idea-to-pdd.md',
       artifact: loadFixtureText('ACE-PDD-Pass-001', 'pdd.md'),
       checks: CHECKS,
-      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+      context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
     expectQAPass(result);
   });
@@ -171,7 +171,7 @@ describe('ace#1783 — a longitudinal PDD with no entity_state_taxonomy', () => 
       capture_path: '1-design/idea-to-pdd.md',
       artifact: fixed,
       checks: CHECKS,
-      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+      context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
     expectQAPass(result);
   });

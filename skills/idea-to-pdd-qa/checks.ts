@@ -19,6 +19,10 @@ import { normalizeDriveExport } from '../../lib/drive-export';
 import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
 import { ARCHETYPES } from '../../lib/decisions-archetype-consistency';
 import { checkProgramLocale } from '../../lib/program-locale';
+import {
+  auditPddDescription,
+  describePlainLanguageIssues,
+} from '../../lib/pdd-description-plain-language';
 
 export const REQUIRED_SECTIONS = [
   'Archetype',
@@ -471,6 +475,51 @@ export function checkPddIsNativeGoogleDoc(ctx?: QACheckContext): QACheckResult {
       'The PDD is the artifact a domain expert comments on; a text/* upload has no ' +
       'comment gutter, no suggesting mode, and no way to anchor a comment to a section ' +
       '(dimagi-internal/ace#1061).',
+  };
+}
+
+/**
+ * `products.pdd.description` reads as plain language.
+ *
+ * ace-web renders that one-liner as the OPENING paragraph of the public
+ * run-summary page, so it is the first thing an outside partner reads. On
+ * spark-facilitator/20261001-2208 it carried "meeting_conducted = yes AND
+ * meeting_type = community_meeting", and the page failed its outsider review.
+ * The scan rules (and why each shape has no innocent reading) live in
+ * `lib/pdd-description-plain-language.ts`.
+ *
+ * Reads `ctx.pddDescription` (`--pdd-description`). A MISSING description fails
+ * rather than passes, for the same reason `pdd_is_native_google_doc` does: a
+ * gate that skips when its input is absent reports "fine" for an invocation
+ * nobody checked.
+ */
+export function checkPddDescriptionPlainLanguage(ctx?: QACheckContext): QACheckResult {
+  const desc = ctx?.pddDescription;
+  if (typeof desc !== 'string' || desc.trim() === '') {
+    return {
+      pass: false,
+      detail:
+        'products.pdd.description was not supplied, so whether the run-summary page opens in plain language was not verified',
+      auto_fix_hint:
+        'if run_state.yaml phases.idea-to-design.products.pdd.description is EMPTY, write it (idea-to-pdd step 7.5). ' +
+        'If it is set, this is a QA-invocation gap, not a content defect — re-run the QA passing it: ' +
+        '`npx tsx scripts/qa-run.ts --skill idea-to-pdd-qa ... --pdd-description "<products.pdd.description>"`.',
+    };
+  }
+  const issues = auditPddDescription(desc);
+  if (issues.length === 0) return { pass: true, detail: 'description reads as plain language' };
+  return {
+    pass: false,
+    detail:
+      `products.pdd.description carries engineer-facing text: ${describePlainLanguageIssues(issues)}. ` +
+      'It is the opening paragraph of the public run-summary page an outside partner reads first',
+    auto_fix_hint:
+      'rewrite run_state.yaml phases.idea-to-design.products.pdd.description (idea-to-pdd step 7.5) in plain ' +
+      'language for an outside partner: say what the programme does, for whom, and what Connect pays for, in ' +
+      'words — no form field names, code values, `=`/AND expressions, snake_case identifiers or run ids. ' +
+      'e.g. "paid per community meeting the facilitator confirms took place", not ' +
+      '"meeting_conducted = yes AND meeting_type = community_meeting". Only the description is rewritten; ' +
+      'the PDD body keeps its identifiers.',
   };
 }
 
@@ -989,6 +1038,13 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description: 'PDD artifact is a native Google Doc (reviewers can comment on it)',
     run: (_pdd: string, ctx?: QACheckContext) => checkPddIsNativeGoogleDoc(ctx),
+  },
+  {
+    id: 'pdd_description_plain_language',
+    type: 'static',
+    description:
+      'products.pdd.description (the run-summary page opening paragraph) carries no field names, code values, expressions or run ids',
+    run: (_pdd: string, ctx?: QACheckContext) => checkPddDescriptionPlainLanguage(ctx),
   },
   {
     id: 'all_required_sections_present',
