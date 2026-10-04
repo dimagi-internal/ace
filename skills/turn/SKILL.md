@@ -50,7 +50,7 @@ improvements ship once (a canopy PR) instead of N backports.
   (`No auth for gmail <mailbox>.`) matches none of them, so a mailbox that cannot make a single
   call reports `PASS … live scopes OK`. That is the #1189 gate defeated at its source. So run the
   inbox pull yourself as the real preflight — `gog gmail search "in:inbox is:unread" -a
-  ace@dimagi-ai.com --client canopy -j` — and treat an auth error there as TURN-BLOCKING no matter
+  ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j` — and treat an auth error there as TURN-BLOCKING no matter
   what the doctor printed. If the read fails under the configured client, check
   `gog auth tokens list` for a `token:<client>:<mailbox>` key: the pair, not the account, is what
   gog stores, and `gog auth list` collapses to one row per account so it can hide a working token
@@ -69,8 +69,9 @@ improvements ship once (a canopy PR) instead of N backports.
   not function` on a machine that is in fact HEALTHY, every turn, which is how a preflight verdict
   becomes noise people route around. (`agents/ace-orchestrator.md` § preflight already resolves the
   install path for the same reason — this keeps turns consistent with runs.) Gmail as ACE:
-  `gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client canopy --json`
-  (the mailbox and client are the literals from `config/agent.json` — `$ACE_GMAIL_ACCOUNT` /
+  `gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
+  (the mailbox is the literal from `config/agent.json`; the client comes from `canopy email client`.
+  The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under. `$ACE_GMAIL_ACCOUNT` /
   `$ACE_GMAIL_CLIENT` were RETIRED with ace#1147 and expand to EMPTY in a shell)
   (doubles as the inbox queue pull). **As a queue pull it names the wrong person: each thread row's
   `date` is the NEWEST message's, its `from` is the OLDEST message's, and nothing in the row says
@@ -78,9 +79,9 @@ improvements ship once (a canopy PR) instead of N backports.
   structured read (`canopy email read <threadId>` → `messages[-1].from`) and use the row only for
   the thread id, subject and date; `skills/inbox-triage` § 1 carries the full rule and the two
   failure shapes (ace#2399). Dead gog auth:
-  `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is the SHARED
-  fleet client (`canopy`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
-  (`--account`). `config/agent.json`'s `gog_client` is authoritative for the email engine; setting
+  `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is a SHARED
+  fleet client (`canopy` or `canopy-web`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
+  (`--account`). `config/agent.json`'s `gog_client` is the declared preference that `canopy email client` reconciles; setting
   it to `ace` kills every read/send, because no `credentials-ace.json` exists and the remedy it
   prints is an interactive browser OAuth a headless turn can't run (jjackson/ace#1147).
 - **Board drain is config-gated and best-effort by design** — its absence NEVER blocks a turn (the

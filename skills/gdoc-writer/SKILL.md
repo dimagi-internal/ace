@@ -38,4 +38,4 @@ e.g. a demo's scripts doc that people edit together.
 - **Sharing is an outbound act.** In a manual-mode turn, publish with `--share none`, then
   share the doc with named people only after the operator approves the send. Confirm each
   person appears in the permission list before you hand over the link (`gog drive
-  permissions <docId> -a ace@dimagi-ai.com --client canopy -j`).
+  permissions <docId> -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j`).

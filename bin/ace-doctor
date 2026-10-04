@@ -2465,16 +2465,20 @@ fi
 # standalone list call, so they're covered by the login but not individually
 # probed here.
 #
-# WHICH client to probe: config/agent.json's `gog_client` is what the email engine
-# (`canopy email`, bin/ace-email) actually resolves, so it is authoritative here —
-# $ACE_GMAIL_CLIENT is only consulted as a fallback. Probing the env var alone let
-# the two drift and produced the worst possible verdict: a WARN naming an
-# interactive `gog login --client ace` on a machine whose mail worked fine under
-# the shared `canopy` client, while a genuinely broken email path went unprobed.
-# See jjackson/ace#1147.
+# WHICH client to probe: the one the email engine itself uses — chosen by the
+# ONE common function, `canopy email client` (canopy#748), via
+# bin/ace-gog-client (which falls back to the declared `gog_client` only when
+# canopy cannot answer). The fleet has two interchangeable clients, `canopy`
+# (Desktop) and `canopy-web` (Web — what canopy-web's "Connect Google mailbox"
+# mints under); a token under either reads and sends the same. Probing the
+# declared value verbatim failed a mailbox connected from canopy-web. Probing
+# the env var once produced the worst verdict of all: a WARN naming an
+# interactive `gog login --client ace` on a machine whose mail worked fine
+# (jjackson/ace#1147).
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
-GMAIL_CLIENT_VAL="$(agent_json_field gog_client)"
-GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-<agent.json gog_client>} --services $GOG_SERVICES --force-consent"
+GMAIL_CLIENT_DECLARED="$(agent_json_field gog_client)"
+GMAIL_CLIENT_VAL="$(bash "$ROOT/bin/ace-gog-client" --root "$ROOT" 2>/dev/null)"
+GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-canopy} --services $GOG_SERVICES --force-consent"
 if ! command -v gog >/dev/null 2>&1; then
   warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
@@ -2509,6 +2513,22 @@ else
 
   GOG_TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
   _gog() { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 gog "$@" 2>&1; else gog "$@" 2>&1; fi; }
+  # Either fleet client serves the mailbox. If the resolved one has no stored
+  # credentials here (canopy too old to reconcile, say), take the fleet client
+  # that does rather than failing on the one that is merely declared.
+  if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
+    for _fleet_client in canopy canopy-web; do
+      [ "$_fleet_client" = "$GMAIL_CLIENT_VAL" ] && continue
+      if _gog auth status --account "$GMAIL_ACCT" --client "$_fleet_client" --json | grep -q '"credentials_exists": true'; then
+        info "gog_client: no credentials under '$GMAIL_CLIENT_VAL'; using fleet client '$_fleet_client' (canopy and canopy-web are one app)"
+        GMAIL_CLIENT_VAL="$_fleet_client"
+        break
+      fi
+    done
+  fi
+  if [ -n "$GMAIL_CLIENT_DECLARED" ] && [ "$GMAIL_CLIENT_VAL" != "$GMAIL_CLIENT_DECLARED" ]; then
+    info "gog_client: declared '$GMAIL_CLIENT_DECLARED' in config/agent.json, using '$GMAIL_CLIENT_VAL' (the client this machine holds a token under)"
+  fi
   if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
     warn_turn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_HINT"
   else
@@ -2614,7 +2634,7 @@ done
 if [ -n "$GMAIL_ENV_RESIDUAL" ]; then
   warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client fields from the 1Password Agent-Ace item"
 elif [ -n "$GMAIL_CLIENT_VAL" ]; then
-  pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL from config/agent.json"
+  pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL (resolved by canopy email client from config/agent.json)"
 fi
 
 # 7a2c. runner_session_env — the gog keyring password doctor just exported

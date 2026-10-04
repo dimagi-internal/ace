@@ -887,7 +887,11 @@ _agent_field() {
     "$ROOT/config/agent.json" "$1" 2>/dev/null
 }
 GMAIL_ACCT_VAL="$(_agent_field email)"
-GMAIL_CLIENT_VAL="$(_agent_field gog_client)"
+# The CLIENT is chosen by the one common function (`canopy email client`,
+# canopy#748, via bin/ace-gog-client), never read verbatim: `canopy` and
+# `canopy-web` are one app, and the right one is whichever this machine holds a
+# token under. Falls back to the declared `gog_client` when canopy can't answer.
+GMAIL_CLIENT_VAL="$(bash "$ROOT/bin/ace-gog-client" --root "$ROOT" 2>/dev/null)"
 if ! command -v gog >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
   echo "INFO gog: installing GOG CLI (brew install steipete/tap/gogcli)..."
   brew install steipete/tap/gogcli 2>&1 | tail -3
@@ -895,9 +899,19 @@ fi
 if ! command -v gog >/dev/null 2>&1; then
   warn "gog: GOG CLI not installed (brew unavailable or install failed)" "install manually: brew install steipete/tap/gogcli — then authorize: gog login ${GMAIL_ACCT_VAL:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-<agent.json gog_client>} --services $GOG_SERVICES --force-consent"
 elif [ -z "$GMAIL_ACCT_VAL" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
-  warn "gog: email / gog_client not set in $ROOT/config/agent.json" "that file is the single source of truth for the gog identity (ace#1147) — set both fields, then authorize gog"
+  warn "gog: email not set in $ROOT/config/agent.json (or no gog client resolvable)" "that file is the single source of truth for the gog identity (ace#1147) — set both fields, then authorize gog"
 else
   GOG_LOGIN_CMD="gog login $GMAIL_ACCT_VAL --client $GMAIL_CLIENT_VAL --services $GOG_SERVICES --force-consent"
+  # Either fleet client serves the mailbox — accept whichever holds credentials.
+  if ! gog auth status --account "$GMAIL_ACCT_VAL" --client "$GMAIL_CLIENT_VAL" --json 2>/dev/null | grep -q '"credentials_exists": true'; then
+    for _fleet_client in canopy canopy-web; do
+      [ "$_fleet_client" = "$GMAIL_CLIENT_VAL" ] && continue
+      if gog auth status --account "$GMAIL_ACCT_VAL" --client "$_fleet_client" --json 2>/dev/null | grep -q '"credentials_exists": true'; then
+        GMAIL_CLIENT_VAL="$_fleet_client"
+        break
+      fi
+    done
+  fi
   if gog auth status --account "$GMAIL_ACCT_VAL" --client "$GMAIL_CLIENT_VAL" --json 2>/dev/null | grep -q '"credentials_exists": true'; then
     pass "gog: CLI installed + credentials present for $GMAIL_ACCT_VAL (client=$GMAIL_CLIENT_VAL). If Google ops 403, re-authorize the full scope set: $GOG_LOGIN_CMD"
   else

@@ -46,9 +46,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   extractCounterpartRefs,
   findStaleCounterpartClaims,
@@ -67,21 +67,18 @@ function die(msg: string, code = 1): never {
 }
 
 /**
- * Identity from `config/agent.json` — the SINGLE source (CLAUDE.md). Never from
- * `$ACE_GMAIL_ACCOUNT`, which was retired and expands to EMPTY in a shell, and
- * never from a guessed client: the gog client is the SHARED fleet client, and
- * what is per-agent is the mailbox (jjackson/ace#1147, #1338).
+ * Identity via `lib/gog-identity.ts` — the one function that picks the gog
+ * client (`canopy email client`, canopy#748: either fleet client, `canopy` or
+ * `canopy-web`, whichever this machine holds a token under). The mailbox comes
+ * from `config/agent.json`; never from `$ACE_GMAIL_ACCOUNT`, which was retired
+ * and expands to EMPTY in a shell (jjackson/ace#1147, #1338).
  */
 function identity(): { mailbox: string; client: string } {
   try {
-    const cfg = JSON.parse(readFileSync(join(REPO, 'config/agent.json'), 'utf8')) as {
-      email?: string;
-      gog_client?: string;
-    };
-    if (!cfg.email) die('config/agent.json has no `email`.');
-    return { mailbox: cfg.email, client: cfg.gog_client || 'canopy' };
+    const { account, client } = resolveGogIdentity({ repoRoot: REPO });
+    return { mailbox: account, client };
   } catch (e) {
-    return die(`cannot read config/agent.json: ${(e as Error).message}`);
+    return die((e as Error).message);
   }
 }
 

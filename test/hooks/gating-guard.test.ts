@@ -249,6 +249,23 @@ function railSuites(runGuard: RunGuard, runRaw: RunRaw): void {
       expect(r.decision).toBeNull();
     });
 
+    // The documented read form chooses the client through canopy (canopy#748) —
+    // no rail may mistake the `$(canopy email client …)` substitution for a send.
+    it('allows the canonical read form whose client comes from `canopy email client`', () => {
+      const r = runGuard('Bash', {
+        command: 'gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json',
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.decision).toBeNull();
+    });
+
+    it('still DENIES a raw send under the ACE mailbox when the client is resolved by canopy', () => {
+      const r = runGuard('Bash', {
+        command: 'gog gmail send -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --to x@y.com',
+      });
+      expect(r.exitCode).toBe(2);
+    });
+
     it('does NOT prompt on bin/ace-email — sends are governed procedurally, not by modal asks', () => {
       const r = runGuard('Bash', {
         command: 'bin/ace-email --to llo@example.org --subject "Onboarding" --body-file /tmp/b.txt',
