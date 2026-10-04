@@ -14,7 +14,8 @@
       "plain": "The support chatbot uses instructions written for this programme on top of the standard chatbot setup."
     },
     "rag-collection-scope": {
-      "plain": "The support chatbot answers from the design, Spark's own source material, the app guides and the training pack."
+      "plain": "The support chatbot answers from the design, Spark's own source material, the app guides and the training pack.",
+      "plain_value": "The design, Spark's source material, the app guides and the contacts page"
     },
     "archetype-selection": {
       "plain": "The programme is built as repeated visits to the same community, which moves through the FCAP steps in order."
@@ -26,7 +27,8 @@
       "plain": "The field app has three forms: facilitator registration, community enrolment, and the meeting record (with savings from Step 5)."
     },
     "meeting-verification-predicate": {
-      "plain": "A meeting is paid only when the record says \"the meeting happened\" and \"it was a community meeting\"."
+      "plain": "A meeting is paid only when the record says \"the meeting happened\" and \"it was a community meeting\".",
+      "plain_value": "The meeting happened, and it was a community meeting"
     },
     "reused-vs-new-app": {
       "plain": "The pilot uses its own app, separate from Spark's live app, but keeps Spark's question names so a later move into Spark's app is cheap."
@@ -53,7 +55,8 @@
       "plain": "Each meeting record starts from the community's current step, meeting count and household count, and saves back the new step, attendance and savings."
     },
     "step-pointer-ownership": {
-      "plain": "The pilot keeps its own record of each community's step and never changes the step in Spark's own app."
+      "plain": "The pilot keeps its own record of each community's step and never changes the step in Spark's own app.",
+      "plain_value": "The pilot tracks its own step and never changes Spark's"
     },
     "progression-affects-payment": {
       "plain": "A community that moves slowly through the steps is monitored, but the facilitator's pay does not depend on it."
@@ -125,7 +128,8 @@
       "plain": "Only FCAP steps 1 to 7 are used in the pilot, each under Spark's own step name."
     },
     "verification-flags": {
-      "plain": "Connect is set to pay only records where the meeting happened and was a community meeting; it does not use its duplicate or location flags."
+      "plain": "Connect is set to pay only records where the meeting happened and was a community meeting; it does not use its duplicate or location flags.",
+      "plain_value": "Two payment rules for the meeting; no duplicate or location flags"
     },
     "cbfs-per-community-malawi": {
       "plain": "In Malawi, one facilitator works with each community."
@@ -180,7 +184,8 @@
       "plain": "Responses are due by 15 October 2026, for work from 26 October 2026 to 12 March 2027."
     },
     "sol-response-template-choice-2208": {
-      "plain": "Respondents answer nine questions, including their district, their proposed rate and their review capacity."
+      "plain": "Respondents answer nine questions, including their district, their proposed rate and their review capacity.",
+      "plain_value": "The standard response form plus the design's own questions"
     },
     "sol-devices-and-system-of-record-2208": {
       "plain": "The call does not ask about phones or data; the rate is all-in, split between the worker and the organisation."
@@ -225,6 +230,49 @@
     },
     "working-language": {
       "plain_question": "Have the Chichewa and Tumbuka translations been checked by a native speaker?"
+    },
+    "deliver-latitude-duplicate-enrolment-guard": {
+      "plain_value": "Block a repeat community ID on the same phone"
+    },
+    "deliver-latitude-payable-slot-key-component": {
+      "plain_value": "A paid-slot marker in the record, plus a Connect rule that pays only marked records"
+    },
+    "deliver-latitude-meeting-type-screen-order": {
+      "plain_value": "On the same screen as \"did the meeting happen\", before the step"
+    },
+    "payment-unit-shape-spark": {
+      "plain_value": "One payment line per verified meeting: at most 21 in total and 1 a day per worker"
+    },
+    "connect-rule-meeting-conducted-yes-spark": {
+      "plain": "A meeting is paid only when the record says it happened; a Connect payment rule and a check in the app both hold this.",
+      "plain_value": "A Connect payment rule"
+    },
+    "connect-rule-meeting-type-community-spark": {
+      "plain": "A meeting is paid only when the record says it was a community meeting; a Connect payment rule holds this.",
+      "plain_value": "A Connect payment rule"
+    },
+    "connect-rule-three-per-step-cap-spark": {
+      "plain_value": "A Connect payment rule",
+      "correct_looks_like": "Three rules: the meeting happened, it was a community meeting, and it falls in one of the step's paid slots."
+    },
+    "connect-rule-case-ownership-spark": {
+      "plain_value": "A check in the app"
+    },
+    "connect-rule-one-meeting-per-day-spark": {
+      "plain_value": "A check in the app"
+    },
+    "connect-rule-in-form-consistency-spark": {
+      "plain_value": "A check in the app"
+    },
+    "connect-rule-live-photo-spark": {
+      "plain_value": "A check in the app"
+    },
+    "connect-rule-completeness-spark": {
+      "plain_value": "A check in the app"
+    },
+    "connect-ambiguity-verification-rules-spark": {
+      "plain_value": "Add a third rule: pay only records in a paid slot",
+      "correct_looks_like": "Three rules: the meeting happened, it was a community meeting, and it falls in one of the step's paid slots."
     }
   }
 }

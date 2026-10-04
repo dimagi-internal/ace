@@ -44,9 +44,17 @@ write the result to `decisions.gdoc` at one stable URL.
    every open residual a person must decide (`docs/decisions-contract.md §
    What earns a review_ask`). Idempotent; writes only on change. Carry its
    `reviewAsks` list into the pause summary's `Decisions Log:` line ("N to
-   confirm before launch"), and treat a non-empty `missingPlain` / `jargon` as
-   a `[WARN]` naming the producer skill — the producer owes `plain` on every
-   partner-facing row (`skills/_decisions-review-fields.md`).
+   confirm before launch").
+
+   **Plain-language gate.** `report.plainLanguageGate.verdict: fail` is a
+   **FAIL** for this step, not a warning: list every `findings[]` entry as
+   `<id>.<field>: <finding>` grouped by `skill` (the producer that owes the
+   rewrite — `skills/_decisions-review-fields.md`), and carry the count into
+   the pause summary. It does not halt the render (the Doc is still the
+   reviewer's way in), but the same check blocks release
+   (`assessDecisionsPlainLanguage`), so a failing run cannot reach an outside
+   reviewer. Contract: `docs/decisions-contract.md § Plain-language gate`.
+   (`missingPlain` / `jargon` remain as flat views of the same findings.)
 
 2. **Render via the `render_decisions_log` atom** (the canonical, single-call
    path). Pass the run-folder file ID; the atom reads `decisions.yaml` from it,

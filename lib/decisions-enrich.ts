@@ -631,6 +631,13 @@ export interface EnrichReport {
   missingPlain: string[];
   /** `plain` / `confirm_reason` text that fails the plain-language lint. */
   jargon: string[];
+  /**
+   * The structural gate over every reviewer-visible row
+   * (`auditDecisionsPlainLanguage`). `fail` is a FAIL for the phase-end
+   * render (skills/decisions-render step 1.5) and a release blocker
+   * (`assessDecisionsPlainLanguage`), not a warning.
+   */
+  plainLanguageGate: PlainLanguageGateReport;
 }
 
 export interface EnrichOptions {
@@ -643,7 +650,15 @@ export interface EnrichOptions {
  */
 export function enrichDecisionsLog(input: DecisionsLog, opts: EnrichOptions): { log: DecisionsLog; report: EnrichReport } {
   const log: DecisionsLog = JSON.parse(JSON.stringify(input));
-  const report: EnrichReport = { stamped: [], folded: [], asked: [], appended: [], missingPlain: [], jargon: [] };
+  const report: EnrichReport = {
+    stamped: [],
+    folded: [],
+    asked: [],
+    appended: [],
+    missingPlain: [],
+    jargon: [],
+    plainLanguageGate: { verdict: 'pass', findings: [] },
+  };
 
   for (const row of log.decisions) {
     if (row.superseded_by !== undefined) continue;
@@ -675,18 +690,10 @@ export function enrichDecisionsLog(input: DecisionsLog, opts: EnrichOptions): { 
     if (ask.plainValue) row.plain_value = ask.plainValue;
   }
 
-  for (const row of log.decisions) {
-    if (row.superseded_by !== undefined) continue;
-    const internal = row.audience === 'internal';
-    if (!internal && row.plain === undefined) report.missingPlain.push(row.id);
-    for (const f of ['plain', 'confirm_reason', 'plain_question'] as const) {
-      const t = row[f];
-      if (t !== undefined) {
-        const found = plainLanguageFindings(t);
-        if (found.length) report.jargon.push(`${row.id}.${f}: ${found.join('; ')}`);
-      }
-    }
-  }
+  report.plainLanguageGate = auditDecisionsPlainLanguage(log);
+  const failures = report.plainLanguageGate.findings;
+  report.missingPlain = failures.filter((f) => f.field === 'plain' && f.finding === MISSING).map((f) => f.id);
+  report.jargon = failures.filter((f) => f.finding !== MISSING).map((f) => `${f.id}.${f.field}: ${f.finding}`);
 
   const usesV6 = log.decisions.some((r) =>
     ['review_ask', 'plain', 'plain_question', 'plain_value', 'check_at', 'correct_looks_like', 'audience', 'scope', 'enforcement', 'also_raised_by'].some(
@@ -700,4 +707,87 @@ export function enrichDecisionsLog(input: DecisionsLog, opts: EnrichOptions): { 
 /** The live rows that carry a review ask — what a reviewer must confirm. */
 export function reviewAskRows(log: DecisionsLog): DecisionRow[] {
   return log.decisions.filter((r) => r.superseded_by === undefined && r.review_ask !== undefined);
+}
+
+// ── The plain-language gate ────────────────────────────────────────────────
+
+/** Fields ace-web renders on a partner row (ace-web `decisionDisplay`, DecisionDetailFields). */
+export const REVIEWER_VISIBLE_FIELDS = [
+  'plain',
+  'plain_question',
+  'plain_value',
+  'confirm_reason',
+  'check_at',
+  'correct_looks_like',
+] as const;
+
+const MISSING = 'missing';
+
+export interface PlainLanguageGateFailure {
+  /** Row id. */
+  id: string;
+  /** The producer skill that owes the fix. */
+  skill: string;
+  field: (typeof REVIEWER_VISIBLE_FIELDS)[number];
+  /** `missing`, or `<kind>: "<token>"` from `plainLanguageFindings`. */
+  finding: string;
+}
+
+/** The gate's verdict: `fail` iff any finding. */
+export interface PlainLanguageGateReport {
+  verdict: 'pass' | 'fail';
+  findings: PlainLanguageGateFailure[];
+}
+
+/**
+ * Is this row hidden from a partner? `audience: internal`, or — when the
+ * producer omitted `audience` — a recognisably test-harness row. ace-web hides
+ * these by default (`DecisionsReview.tsx` `isInternal`); the strict write
+ * contract uses the same test.
+ */
+export function isReviewerHidden(row: DecisionRow): boolean {
+  return row.superseded_by !== undefined || row.audience === 'internal' || (row.audience === undefined && isInternalDecision(row));
+}
+
+/**
+ * The plain-language gate over a whole decisions log — every live, partner-
+ * facing row, as the public run-summary page renders it:
+ *
+ *  1. `plain` is present (ace-web leads with it; without it the raw build
+ *     `question` is the row's headline);
+ *  2. `plain_value` is present whenever the value a reader would see is
+ *     itself jargon — the AI default (un-overridden) failing
+ *     `plainLanguageFindings` (`payable_slot in key plus Phase 4 rule`);
+ *  3. no reviewer-visible field carries a field id, `=` expression, snake_case
+ *     identifier, run id, platform record id, issue number, "Phase N" or ACE
+ *     jargon (`plainLanguageFindings`, whose identifier shapes are the shared
+ *     table in `lib/pdd-description-plain-language.ts`).
+ *
+ * Returns every finding with row id + field + token; no findings = pass. The
+ * reproducer is spark-facilitator/20261001-2208 (fixture:
+ * `test/fixtures/decisions-plain/`).
+ */
+export function auditDecisionsPlainLanguage(log: Pick<DecisionsLog, 'decisions'>): PlainLanguageGateReport {
+  const out: PlainLanguageGateFailure[] = [];
+  for (const row of log.decisions) {
+    if (isReviewerHidden(row)) continue;
+    const at = { id: row.id, skill: row.skill };
+    if (row.plain === undefined || !row.plain.trim()) out.push({ ...at, field: 'plain', finding: MISSING });
+    const overridden = row.override !== undefined;
+    if (!overridden && row.plain_value === undefined) {
+      const valueFindings = plainLanguageFindings(row['ai-default']);
+      if (valueFindings.length) out.push({ ...at, field: 'plain_value', finding: `${MISSING} (the option reads ${valueFindings[0]})` });
+    }
+    for (const field of REVIEWER_VISIBLE_FIELDS) {
+      const text = (row as Record<string, unknown>)[field];
+      if (typeof text !== 'string') continue;
+      for (const finding of plainLanguageFindings(text)) out.push({ ...at, field, finding });
+    }
+  }
+  return { verdict: out.length ? 'fail' : 'pass', findings: out };
+}
+
+/** One line per failure, for a QA detail or a refusal message. */
+export function describePlainLanguageGate(failures: readonly PlainLanguageGateFailure[]): string {
+  return failures.map((f) => `${f.id}.${f.field}: ${f.finding}`).join('; ');
 }

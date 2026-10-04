@@ -27,6 +27,8 @@ import { checkOppPostcondition, type OppDecided, type OppReadback } from './conn
 import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
 import { collapseSharedCauses, plainFinding } from './release-readiness-plain.js';
 import { driveFileId } from './preview-capture.js';
+import { auditDecisionsPlainLanguage, describePlainLanguageGate } from './decisions-enrich.js';
+import { parseDecisionsYaml } from './decisions-schema.js';
 import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
 export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
@@ -458,6 +460,57 @@ export function assessApps(files: readonly RunFile[], runState: unknown): Releas
     out.push({ id: 'app-release-qa-missing', area: 'apps', severity: 'blocker', owner: 'app-release-qa', detail: 'no app-release-qa result — the released builds were never shown to install', fix: 'run app-release-qa' });
   }
   return out;
+}
+
+/** The run's decisions log in the inventory (a Google Doc named `decisions.yaml`). */
+export const DECISIONS_FILE = /(^|\/)decisions\.ya?ml$/;
+
+/**
+ * Every decision row a partner reads on the public run-summary page reads as
+ * plain language (`auditDecisionsPlainLanguage`, lib/decisions-enrich.ts): a
+ * `plain` sentence on each, a `plain_value` where the option is jargon, and
+ * no field ids, `=` expressions, run ids, record ids, issue numbers or
+ * "Phase N" in what is shown. One blocker per producing skill, naming each
+ * row id + field + token. Reproducer: spark-facilitator/20261001-2208, whose
+ * public page showed `"meeting_conducted = yes"`, "opportunity ad6c2d40" and
+ * "(Phase 6)" in decision rows.
+ */
+export function assessDecisionsPlainLanguage(files: readonly RunFile[]): ReleaseFinding[] {
+  const file = files.find((f) => DECISIONS_FILE.test(f.path));
+  if (!file) return [];
+  if (!file.text) {
+    return [{
+      id: 'decisions-unread', area: 'public-summary', severity: 'blocker', owner: 'decisions-render',
+      detail: 'decisions.yaml is in the run but its text could not be read, so its plain-language gate did not run',
+      fix: 're-run the inventory step; decisions.yaml must be readable as text',
+      summary: 'The list of build decisions on the review page could not be checked.',
+      action: 'Run the readiness check again; if it repeats, ask the build team to look at the decisions file.',
+    }];
+  }
+  let failures;
+  try {
+    failures = auditDecisionsPlainLanguage(parseDecisionsYaml(file.text)).findings;
+  } catch (e) {
+    return [{
+      id: 'decisions-unparseable', area: 'public-summary', severity: 'blocker', owner: 'decisions-render',
+      detail: `decisions.yaml does not parse: ${(e as Error).message.split('\n')[0]}`,
+      fix: 'repair decisions.yaml so it parses (lib/decisions-schema.ts)',
+      summary: 'The list of build decisions on the review page could not be read.',
+      action: 'Ask the build team to repair the decisions file, then run the readiness check again.',
+    }];
+  }
+  const bySkill = new Map<string, typeof failures>();
+  for (const f of failures) bySkill.set(f.skill, [...(bySkill.get(f.skill) ?? []), f]);
+  return [...bySkill].map(([skill, fs]) => {
+    const rows = new Set(fs.map((f) => f.id)).size;
+    return {
+      id: `decisions-plain:${skill}`, area: 'public-summary' as const, severity: 'blocker' as const, owner: skill,
+      detail: `${rows} decision row(s) a partner reads are not plain language — ${describePlainLanguageGate(fs)}`,
+      fix: 'rewrite plain / plain_value / check_at / correct_looks_like on each row named (docs/decisions-contract.md § Plain-language gate)',
+      summary: `${rows} item${rows === 1 ? '' : 's'} in the list of build decisions would show a partner internal field names, codes or build-stage numbers instead of a plain sentence.`,
+      action: 'Ask the build team to rewrite those decisions in plain words, then run the readiness check again.',
+    };
+  });
 }
 
 /** `commcare_get_subscription`'s output, as validate-release-readiness reads it. */

@@ -89,12 +89,14 @@ describe('schema v6 — the strict write contract', () => {
     expect(() => DecisionRowStrictSchema.parse({ ...noPlain, audience: 'internal' })).not.toThrow();
   });
 
-  it('rejects jargon in `plain` and `confirm_reason`, but lets a quoted design rule keep its words', () => {
+  it('rejects jargon in `plain` and `confirm_reason`; a quoted rule keeps its words but not field ids', () => {
     expect(() => DecisionRowStrictSchema.parse({ ...base, plain: 'Set per PDD §14 on entity_key.' })).toThrow(/must read for a programme partner/);
     expect(() =>
       DecisionRowStrictSchema.parse({ ...base, review_ask: 'recommended-confirmation', confirm_reason: 'See ace#2419.' }),
     ).toThrow(/confirm_reason/);
-    expect(() => DecisionRowStrictSchema.parse({ ...base, plain: '"meeting_conducted = yes" is held by Connect.' })).not.toThrow();
+    expect(() => DecisionRowStrictSchema.parse({ ...base, plain: '"at most 1 payable meeting per CBF per day" is held by Connect.' })).not.toThrow();
+    // Quoting a field expression does not make it plain (spark-facilitator/20261001-2208).
+    expect(() => DecisionRowStrictSchema.parse({ ...base, plain: '"meeting_conducted = yes" is held by Connect.' })).toThrow(/must read for a programme partner/);
   });
 
   it('pairs review_ask with confirm_reason, and scope with enforcement', () => {

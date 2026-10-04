@@ -22,6 +22,8 @@
  * Field contract: `docs/decisions-contract.md`. Pure; no I/O.
  */
 
+import { auditOutsiderText, plainLanguageKindLabel } from './pdd-description-plain-language.js';
+
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
 type Rec = Record<string, unknown>;
@@ -234,7 +236,8 @@ function pointPhrase(p: EnforcementPoint): string {
  */
 export function plainForRule(c: RuleClassification): string {
   const scopeWords = c.scope === 'entity' ? `each ${caseNoun(c.rule, 'case')}` : SCOPE_WORDS[c.scope];
-  const head = `"${c.rule}" applies to ${scopeWords}`;
+  const quoted = quotedRule(c.rule);
+  const head = `${quoted.charAt(0).toUpperCase()}${quoted.slice(1)} applies to ${scopeWords}`;
   if (c.enforcement === 'gap') return `${head}. Nothing in this build enforces it yet.`;
   if (c.enforcement === 'by-design') return `${head}. The design checks it outside Connect, by design.`;
   // One phrase per kind of enforcement point, the most specific one.
@@ -246,6 +249,30 @@ export function plainForRule(c: RuleClassification): string {
     if (!prev || phrase.length > prev.length) byKind.set(p.kind, phrase);
   }
   return `${head}, and is enforced by ${joinAnd([...byKind.values()].slice(0, 2)) || 'the build'}.`;
+}
+
+/**
+ * A design rule as the `plain` line quotes it. A rule already written in words
+ * is quoted verbatim. A rule written as a form-field expression
+ * (`meeting_conducted = yes AND meeting_type = community_meeting`) is spelled
+ * out first — quoting does not exempt it from the plain-language gate, and the
+ * raw rule stays in `question` behind the row's disclosure.
+ */
+export function quotedRule(rule: string): string {
+  if (auditOutsiderText(rule, 'decision').length === 0) return `"${rule}"`;
+  const words = rule
+    .replace(/\s*!=\s*/g, ' is not ')
+    .replace(/\s*>=\s*/g, ' is at least ')
+    .replace(/\s*<=\s*/g, ' is at most ')
+    .replace(/\s*==?\s*/g, ' is ')
+    .replace(/\bAND\b/g, 'and')
+    .replace(/\bOR\b/g, 'or')
+    .replace(/\bNOT\b/g, 'not')
+    .replace(/`/g, '')
+    .replace(/\b([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+)\b/g, (m) => m.replace(/_/g, ' '))
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return auditOutsiderText(words, 'decision').length === 0 ? `the design's rule "${words}"` : "One of the design's rules";
 }
 
 // ── Audience: ACE's own test harness is internal ───────────────────────────
@@ -284,8 +311,7 @@ export function unquoted(text: string): string {
 
 const JARGON: Array<[string, RegExp]> = [
   ['section reference (§)', /§/],
-  ['issue reference', /\b(?:ace|ace-web|[\w-]+\/[\w-]+)#\d+\b|\bPR #\d+\b/],
-  ['code identifier', /`[^`]*`|\b[a-z][a-z0-9]*_[a-z0-9_]+\b/],
+  ['issue reference', /\b(?:ace|ace-web|[\w-]+\/[\w-]+)#\d+\b|\bPR #\d+\b|(?<![\w&])#\d+\b/],
   ['ACE build tag', /\[(?:ACE|FIXED|PROPOSED)\]/],
   ['ACE jargon', /\bPDD\b|\bdecisions\.yaml\b|\brun_state\b|\bCCZ\b|\bentity_id\b/],
   ['repo path', /\b(?:lib|skills|scripts|agents|mcp|bin)\/[\w./-]+/],
@@ -293,8 +319,21 @@ const JARGON: Array<[string, RegExp]> = [
 ];
 
 /**
- * Findings for text a programme partner reads (`plain`, `confirm_reason`):
- * no field ids, no §-refs, no ACE jargon. Quoted spans are exempt.
+ * Findings for text a programme partner reads on the public run-summary page
+ * (`plain`, `plain_question`, `plain_value`, `confirm_reason`, `check_at`,
+ * `correct_looks_like`). One finding per kind, `<label>: "<token>"`.
+ *
+ * Two layers:
+ *  - ACE's own vocabulary (§-refs, issue numbers, skill names, PDD/CCZ, repo
+ *    paths) — scanned OUTSIDE double-quoted spans, so a quoted design rule
+ *    keeps its own words;
+ *  - identifier shapes from the shared table in
+ *    `lib/pdd-description-plain-language.ts`, profile 'decision' (snake_case field ids, `=`
+ *    expressions, upper-case AND/OR/NOT, run ids, code spans, platform record
+ *    ids like `ad6c2d40`, "Phase N") — scanned over the WHOLE text, quotes
+ *    included. Quoting `"meeting_conducted = yes"` does not make it a sentence
+ *    a partner can read: that exemption is how the field expression reached
+ *    the spark-facilitator/20261001-2208 public page.
  */
 export function plainLanguageFindings(text: string): string[] {
   const t = unquoted(text);
@@ -303,13 +342,26 @@ export function plainLanguageFindings(text: string): string[] {
     const m = re.exec(t);
     if (m) out.push(`${label}: ${JSON.stringify(m[0])}`);
   }
+  const seen = new Set<string>();
+  for (const issue of auditOutsiderText(text, 'decision')) {
+    if (seen.has(issue.kind)) continue;
+    seen.add(issue.kind);
+    out.push(`${plainLanguageKindLabel(issue.kind)}: ${JSON.stringify(issue.token)}`);
+  }
   if (/\n/.test(text)) out.push('more than one line');
   return out;
 }
 
+/** A platform record id after the word it names: `opportunity ad6c2d40` → `opportunity`. */
+const OPAQUE_ID_AFTER_NOUN = /(?<=\b[A-Za-z]+)\s+(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,})\b/gi;
+/** A pipeline-stage aside: `training guide (Phase 6)` → `training guide`. */
+const PHASE_PAREN = /\s*\(\s*Phase\s+\d+[^()]*\)/gi;
+
 /** Strip internal identifiers from producer text (best effort, for derived text). */
 export function plainText(s: string): string {
   return s
+    .replace(OPAQUE_ID_AFTER_NOUN, '')
+    .replace(PHASE_PAREN, '')
     .replace(/\bentity_(?:key|id)\b/g, 'de-duplication key')
     .replace(/`[^`]*`/g, '')
     .replace(/\s*[—-]\s*[a-z]+(?:-[a-z]+)+(?:-(?:eval|qa))?\s+R\d+\b/g, '')
@@ -340,7 +392,13 @@ export function plainText(s: string): string {
 export function spotCheckPlaceFromReasoning(reasoning: string): string | null {
   const m = /Spot-check:\s*(.+?)\s*\.?\s*$/s.exec(reasoning);
   if (!m) return null;
-  const where = m[1].replace(/\s+/g, ' ').replace(/_/g, ' ').trim();
+  const where = m[1]
+    .replace(/\s+/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(OPAQUE_ID_AFTER_NOUN, '')
+    .replace(PHASE_PAREN, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   return where || null;
 }
 
