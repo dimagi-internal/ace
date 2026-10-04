@@ -81,6 +81,7 @@ import {
   assessHqPlan,
   assessChatbot,
   assessDecisionsPlainLanguage,
+  assessRequiredBeforeAsks,
   assessGates,
   assessLinks,
   assessPostcondition,
@@ -110,6 +111,7 @@ import {
   type Tenancy,
 } from '../lib/release-plan.js';
 import { driveFileId } from '../lib/preview-capture.js';
+import { parseDecisionOverridesYaml } from '../lib/decision-overrides.js';
 import { DELIVERABLE_HOSTS } from '../lib/run-surface-audit.js';
 import { hqDomainFromRunState, hqEnterpriseFlipSteps } from '../lib/hq-enterprise-flip.js';
 import { Sessions } from './browser-sessions.js';
@@ -343,6 +345,11 @@ async function assess(): Promise<void> {
   findings.push(...assessChatbot(transcripts[0] ?? null, now));
   findings.push(...assessApps(files, runState));
   findings.push(...assessDecisionsPlainLanguage(files));
+  // --decision-overrides <local copy of inputs/decision-overrides.yaml>: a saved
+  // ruling answers a required-before ask even if the row predates it.
+  const overridesPath = arg('decision-overrides');
+  const overrides = overridesPath ? parseDecisionOverridesYaml(fs.readFileSync(overridesPath, 'utf8')).overrides : null;
+  findings.push(...assessRequiredBeforeAsks(files, overrides));
   findings.push(...assessHqPlan(hqDomainFromRunState(runState), readJson(arg('hq-plan'))));
   const verdict = buildReleaseVerdict({
     workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only'),

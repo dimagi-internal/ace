@@ -100,16 +100,22 @@ describe('open-questions.md lives at the opp root (ace#1753)', () => {
     expect(offenders, offenders.join('\n')).toEqual([]);
   });
 
-  it('the boundary fence names the opp-root ledger as the destination', () => {
+  it('the boundary fence emits open-asks.yaml at the opp root, and writes no ledger', () => {
+    // The ledger is retired (owner decision 2026-10-04,
+    // docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md).
+    // Its run-end paragraph is replaced by the generated open-asks.yaml; the
+    // location lesson of ace#1753 carries over unchanged — one opp-root home,
+    // never a run-folder copy.
     const text = readFileSync(join(REPO, 'agents/ace-orchestrator.md'), 'utf8');
-    const idx = text.indexOf('**Open-questions doc (run-end, once).**');
-    expect(idx, 'the boundary-fence open-questions paragraph is gone').toBeGreaterThan(-1);
-    const para = text.slice(idx, idx + 2600);
-    expect(para).toContain('<opp>/open-questions.md');
-    expect(para).toMatch(/never write a run-folder copy/i);
-    // The reason must travel with the rule: without it the next reader
-    // re-derives "the page renders empty" and puts the write back.
-    expect(para).toContain('_read_open_questions');
+    expect(text).not.toContain('**Open-questions doc (run-end, once).**');
+    const idx = text.indexOf('**Open asks (run-end, once).**');
+    expect(idx, 'the boundary-fence open-asks paragraph is gone').toBeGreaterThan(-1);
+    const para = text.slice(idx, idx + 2000);
+    expect(para).toContain('decisions_open_asks');
+    expect(para).toContain("mode: 'emit'");
+    expect(para).toContain('open-asks.yaml');
+    expect(para).toMatch(/never write a\s+run-folder copy/i);
+    expect(para).toMatch(/never read a value back/i);
   });
 
   it('the manifest declares an opp-root path, not a run-folder one', () => {

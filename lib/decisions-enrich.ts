@@ -184,9 +184,13 @@ function ordinal(tag: string): number {
   return Number(tag.split('-')[0]);
 }
 
-/** A row a person already ruled on carries no ask — they decided. */
+/**
+ * A row a person already ruled on carries no ask — they decided. A `deferred`
+ * row carries none either: the question is not needed for this pilot and
+ * renders collapsed (docs/decisions-contract.md § Asks).
+ */
 function humanRuled(row: DecisionRow): boolean {
-  return row.status === 'overridden' || row.status === 'human-decided';
+  return row.status === 'overridden' || row.status === 'human-decided' || row.status === 'deferred';
 }
 
 /**
@@ -719,6 +723,7 @@ export const REVIEWER_VISIBLE_FIELDS = [
   'confirm_reason',
   'check_at',
   'correct_looks_like',
+  'revisit_when',
 ] as const;
 
 const MISSING = 'missing';

@@ -46,6 +46,19 @@ import {
   parseDecisionOverridesYaml,
   type DecisionOverrideRow,
 } from '../lib/decision-overrides.js';
+import {
+  OPEN_ASKS_FILENAME,
+  buildOpenAsksFile,
+  checkOpenAsksCarried,
+  missingAskResiduals,
+  parseOpenAsksYaml,
+  requiredBeforeBlockers,
+  serializeOpenAsks,
+  type CarriedCheck,
+  type MissingAskResidual,
+  type RequiredBeforeAsk,
+} from '../lib/open-asks.js';
+import { NEEDED_BY, type NeededBy } from '../lib/decisions-schema.js';
 
 logPluginDataDirDiag('ace-decisions', import.meta.url);
 
@@ -455,6 +468,162 @@ export async function handleEnrich(args: EnrichArgs, driveClient: typeof drive =
   };
 }
 
+// ─ decisions_open_asks (the folded open-questions ledger) ──────────────────
+
+/** The opp folder that owns a run folder (run → runs/ → opp), or null. */
+export async function findOppFolder(driveClient: typeof drive, runFolderId: string): Promise<string | null> {
+  const parentOf = async (fileId: string): Promise<string | null> => {
+    const resp = await driveClient.files.get({ fileId, fields: 'id, parents', supportsAllDrives: true });
+    return (resp.data as any).parents?.[0] ?? null;
+  };
+  const runsFolderId = await parentOf(runFolderId);
+  if (!runsFolderId) return null;
+  return parentOf(runsFolderId);
+}
+
+/** A named text file directly under a folder (Google Doc exported as text, else raw bytes). */
+async function readNamedText(
+  driveClient: typeof drive,
+  folderId: string,
+  name: string,
+): Promise<{ fileId: string; content: string } | null> {
+  const list = await driveClient.files.list({
+    q: `'${folderId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`,
+    fields: 'files(id, mimeType)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const file = list.data.files?.[0];
+  if (!file?.id) return null;
+  const resp =
+    file.mimeType === 'application/vnd.google-apps.document'
+      ? await driveClient.files.export({ fileId: file.id, mimeType: 'text/plain' }, { responseType: 'text' })
+      : await driveClient.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+  return { fileId: file.id, content: String(resp.data).replace(/^﻿/, '') };
+}
+
+export interface OpenAsksArgs {
+  runFolderId: string;
+  opportunity: string;
+  run_id: string;
+  /** `check` reads only; `emit` also writes `ACE/<opp>/open-asks.yaml` (run end). */
+  mode: 'check' | 'emit';
+  /** Only report required-before asks needed before this gate. */
+  neededBy?: NeededBy;
+  /** Compare against the previous run's asks raised by phases up to this ordinal (Phase 1 passes 1). */
+  throughPhase?: number;
+  /** Solicitation question ids the chosen response answered (solicitation-review). */
+  solicitationAnswered?: string[];
+  /** Override the timestamp (tests). */
+  now?: string;
+}
+
+export interface OpenAsksResult {
+  asks: Array<Pick<RequiredBeforeAsk, 'id' | 'skill' | 'question' | 'owner' | 'answer_channel'> & {
+    phase: string;
+    status: string;
+    review_ask?: string;
+    needed_by?: string;
+    revisit_when?: string;
+  }>;
+  requiredBefore: RequiredBeforeAsk[];
+  closedBySolicitation: RequiredBeforeAsk[];
+  /** null when there was no previous open-asks.yaml to compare against. */
+  carried: (Omit<CarriedCheck, 'missing'> & { missing: string[]; residuals: MissingAskResidual[] }) | null;
+  written: { fileId: string; created: boolean } | null;
+}
+
+/**
+ * Read a run's decisions log (+ the opp's saved rulings and the previous
+ * run's `open-asks.yaml`) and report what is still asked. `emit` writes the
+ * new `open-asks.yaml` at the opp root, AFTER the carried check has read the
+ * previous one.
+ */
+export async function handleOpenAsks(args: OpenAsksArgs, driveClient: typeof drive = drive): Promise<OpenAsksResult> {
+  const existing = await findDecisionsFile(driveClient, args.runFolderId);
+  const log = existing ? parseDecisionsYaml(existing.content.replace(/^﻿/, '')) : { decisions: [] };
+  if (existing && 'opportunity' in log && log.opportunity !== args.opportunity) {
+    throw new DecisionsWriteError(
+      'IDENTITY_MISMATCH',
+      `decisions.yaml under ${args.runFolderId} is for ${JSON.stringify(log.opportunity)}, not ${JSON.stringify(args.opportunity)}`,
+    );
+  }
+
+  const overridesFile = await findDecisionOverridesFile(driveClient, args.runFolderId);
+  const overrides = overridesFile ? parseDecisionOverridesYaml(overridesFile.content).overrides : null;
+
+  const oppFolderId = await findOppFolder(driveClient, args.runFolderId);
+  const priorFile = oppFolderId ? await readNamedText(driveClient, oppFolderId, OPEN_ASKS_FILENAME) : null;
+  let carried: OpenAsksResult['carried'] = null;
+  if (priorFile) {
+    const prior = parseOpenAsksYaml(priorFile.content);
+    if (prior.run_id !== args.run_id) {
+      const check = checkOpenAsksCarried({ prior, log, throughOrdinal: args.throughPhase, overrides });
+      carried = {
+        priorRunId: check.priorRunId,
+        carried: check.carried,
+        notYetDue: check.notYetDue,
+        missing: check.missing.map((r) => r.id),
+        residuals: missingAskResiduals(check),
+      };
+    }
+  }
+
+  const file = buildOpenAsksFile({
+    opp: args.opportunity,
+    runId: args.run_id,
+    log,
+    generatedAt: args.now ?? new Date().toISOString(),
+    overrides,
+  });
+  const gate = requiredBeforeBlockers(log, {
+    overrides,
+    neededBy: args.neededBy,
+    answeredSolicitationQuestions: args.solicitationAnswered,
+  });
+
+  let written: OpenAsksResult['written'] = null;
+  if (args.mode === 'emit') {
+    if (!oppFolderId) throw new Error(`could not resolve the opp folder above run folder ${args.runFolderId}`);
+    const body = serializeOpenAsks(file);
+    if (priorFile) {
+      await driveClient.files.update({
+        fileId: priorFile.fileId,
+        media: { mimeType: 'application/x-yaml', body },
+        supportsAllDrives: true,
+      } as any);
+      written = { fileId: priorFile.fileId, created: false };
+    } else {
+      const resp = await driveClient.files.create({
+        requestBody: { name: OPEN_ASKS_FILENAME, parents: [oppFolderId], mimeType: 'application/x-yaml' },
+        media: { mimeType: 'application/x-yaml', body },
+        fields: 'id',
+        supportsAllDrives: true,
+      } as any);
+      written = { fileId: (resp.data as any).id, created: true };
+    }
+  }
+
+  return {
+    asks: file.asks.map((r) => ({
+      id: r.id,
+      skill: r.skill,
+      phase: r.phase,
+      status: r.status,
+      question: r.plain_question ?? r.plain ?? r.question,
+      ...(r.review_ask ? { review_ask: r.review_ask } : {}),
+      ...(r.needed_by ? { needed_by: r.needed_by } : {}),
+      ...(r.owner ? { owner: r.owner } : {}),
+      ...(r.answer_channel ? { answer_channel: r.answer_channel } : {}),
+      ...(r.revisit_when ? { revisit_when: r.revisit_when } : {}),
+    })),
+    requiredBefore: gate.blocking,
+    closedBySolicitation: gate.closedBySolicitation,
+    carried,
+    written,
+  };
+}
+
 // ─ MCP server registration ────────────────────────────────────────────────
 
 const server = new McpServer({
@@ -475,7 +644,7 @@ function error(msg: string) {
 
 server.tool(
   'decisions_append_rows',
-  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v6 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nA saved ruling ALSO binds by `feedback_ref` when the id does not match (v5). Run-minted ids are not stable — measured across 22 runs of two opps, one reviewer\'s 9 comments were raised under 22 different ids — so id-only binding silently dropped every reviewer decision. A feedback_ref match stamps `status: human-decided` with `decided_by`/`decided_at` and carries the rationale, but deliberately does NOT overwrite `ai-default`: the saved string belongs to the old row\'s wording, and the new row phrases the same answer its own way. Reported in `rulingsApplied`. A match with no attribution is refused and reported in `rulingsSkippedUnattributed` rather than stamped anonymously.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` — ALWAYS, on every new row. A caller-asserted `status: human-decided` is REJECTED at this boundary (ace#2307): it is an attribution claim that `lib/decisions-ingest.ts` carries forward as BINDING into every later run of the opp, a subagent structurally cannot reach a human to originate one, and this atom cannot tell an L0 orchestrator from a subagent (these args carry no caller identity). Both legitimate routes are stamped HERE, from a saved record rather than from your prose: a `feedback_ref` match against an attributed ruling in `inputs/decision-overrides.yaml`, or an id match, which flips the row to `overridden`. To record a real human ruling, write it into that file with `decided_by` + `decided_at` (ace-web Phases tab -> Decisions panel) and send the row as `ai-default`.\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n- `plain` (REQUIRED v6 on partner-facing rows): one line in plain language for a programme partner — what was chosen. No field ids, no section refs, no ACE jargon (PDD, CCZ, skill names, issue numbers); quote a design rule in double quotes to keep its words.\n- `audience` (v6): `internal` for ACE test-harness rows (stamped here when the row is recognisably harness); absent = partner.\n- `check_at` + `correct_looks_like` (v6): where a reviewer spot-checks it and what right looks like. `check_at` is filled from a `Spot-check: <where>.` sentence in `reasoning` when omitted.\n- `review_ask: recommended-confirmation` + `confirm_reason` (v6): the run is built on this value but someone with authority should confirm it before launch (a [PROPOSED] parameter, a translation sign-off, an enforcement gap, an open design question). `decisions_enrich` derives the standard ones; set it yourself for any other.\n- `scope` + `enforcement` (v6, rule rows only): stamped here from the rule text when omitted.\nFull contract: docs/decisions-contract.md.\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`, plus `headerRepairs[]` when an inherited header needed repair — a SEEDED run copies the parent run\'s header verbatim, so its `generated_at` can arrive in a non-ISO spelling and its `run_id` can name the seed run. Both are repaired in place (the run folder is the authority on run_id) instead of rejecting the write: before ace#1029 either one rejected EVERY append for the whole run, and since this atom is the only sanctioned writer, the run silently lost its entire decisions trail. An `opportunity` mismatch is still a hard error — that one is data loss.',
+  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v6 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nA saved ruling ALSO binds by `feedback_ref` when the id does not match (v5). Run-minted ids are not stable — measured across 22 runs of two opps, one reviewer\'s 9 comments were raised under 22 different ids — so id-only binding silently dropped every reviewer decision. A feedback_ref match stamps `status: human-decided` with `decided_by`/`decided_at` and carries the rationale, but deliberately does NOT overwrite `ai-default`: the saved string belongs to the old row\'s wording, and the new row phrases the same answer its own way. Reported in `rulingsApplied`. A match with no attribution is refused and reported in `rulingsSkippedUnattributed` rather than stamped anonymously.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` — ALWAYS, on every new row. A caller-asserted `status: human-decided` is REJECTED at this boundary (ace#2307): it is an attribution claim that `lib/decisions-ingest.ts` carries forward as BINDING into every later run of the opp, a subagent structurally cannot reach a human to originate one, and this atom cannot tell an L0 orchestrator from a subagent (these args carry no caller identity). Both legitimate routes are stamped HERE, from a saved record rather than from your prose: a `feedback_ref` match against an attributed ruling in `inputs/decision-overrides.yaml`, or an id match, which flips the row to `overridden`. To record a real human ruling, write it into that file with `decided_by` + `decided_at` (ace-web Phases tab -> Decisions panel) and send the row as `ai-default`.\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n- `plain` (REQUIRED v6 on partner-facing rows): one line in plain language for a programme partner — what was chosen. No field ids, no section refs, no ACE jargon (PDD, CCZ, skill names, issue numbers); quote a design rule in double quotes to keep its words.\n- `audience` (v6): `internal` for ACE test-harness rows (stamped here when the row is recognisably harness); absent = partner.\n- `check_at` + `correct_looks_like` (v6): where a reviewer spot-checks it and what right looks like. `check_at` is filled from a `Spot-check: <where>.` sentence in `reasoning` when omitted.\n- `review_ask: recommended-confirmation` + `confirm_reason` (v6): the run is built on this value but someone with authority should confirm it before launch (a [PROPOSED] parameter, a translation sign-off, an enforcement gap, an open design question). `decisions_enrich` derives the standard ones; set it yourself for any other.\n- The producer rule (replaces the retired open-questions ledger): a default you build on is a decision row. Where the sources do not settle it, add `owner` (partner | implementing-org | dimagi | free text — who answers), `needed_by` (award | go-live | closeout | extension), `answer_channel` (review | call | solicitation:<question-id>). `review_ask: required-before` REQUIRES `needed_by` and is the only gating ask (release readiness; solicitation-review refuses award while a `needed_by: award` one is unanswered). `status: deferred` + `revisit_when` (one plain sentence) for a question this pilot does not need answered — no `review_ask` on it.\n- `scope` + `enforcement` (v6, rule rows only): stamped here from the rule text when omitted.\nFull contract: docs/decisions-contract.md.\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`, plus `headerRepairs[]` when an inherited header needed repair — a SEEDED run copies the parent run\'s header verbatim, so its `generated_at` can arrive in a non-ISO spelling and its `run_id` can name the seed run. Both are repaired in place (the run folder is the authority on run_id) instead of rejecting the write: before ace#1029 either one rejected EVERY append for the whole run, and since this atom is the only sanctioned writer, the run silently lost its entire decisions trail. An `opportunity` mismatch is still a hard error — that one is data loss.',
   {
     runFolderId: z
       .string()
@@ -520,6 +689,31 @@ server.tool(
     try {
       return result(await handleEnrich(args));
     } catch (e: any) {
+      return error(e?.message ?? String(e));
+    }
+  },
+);
+
+server.tool(
+  'decisions_open_asks',
+  'What a run still asks a person, and the one gate an ask can carry (docs/decisions-contract.md § Open asks). The open-questions ledger is retired: an open question is a decision row with an unanswered `review_ask` or `status: deferred`. Reads the run\'s decisions.yaml, the opp\'s `inputs/decision-overrides.yaml` (a saved ruling answers an ask even if the row predates it) and the previous run\'s `ACE/<opp>/open-asks.yaml`. Returns: `asks` (every open ask); `requiredBefore` (unanswered `review_ask: required-before` rows, filtered by `neededBy` when given — solicitation-review passes `neededBy: award` and MUST NOT call award_response while this is non-empty; release readiness blocks on them too); `closedBySolicitation` (required-before asks whose `answer_channel: solicitation:<id>` was answered by the chosen response, per `solicitationAnswered`); `carried` (null when there is no previous open-asks.yaml, or it is this run\'s own — otherwise which previous asks this run re-derived, and `missing` + ready-made `residuals` for each one it dropped: write those into `phases.<phase>.residuals`; values are never inherited). `mode: emit` (orchestrator, run end, once) also writes `open-asks.yaml` at the opp root as generated, read-only YAML: {schema_version: 1, opp, run_id, generated_at, asks: [<live decision rows with an unanswered review_ask or status deferred>]}. `mode: check` writes nothing (Phase 1 passes `throughPhase: 1` so only asks Phase 1 owns are compared).',
+  {
+    runFolderId: z.string().min(1).describe('Drive file ID of the run folder holding decisions.yaml.'),
+    opportunity: z.string().min(1).describe('Opportunity slug; must match the log.'),
+    run_id: z.string().min(1).describe('This run\'s id.'),
+    mode: z.enum(['check', 'emit']).describe('`check` reads only; `emit` also writes ACE/<opp>/open-asks.yaml (run end).'),
+    neededBy: z.enum(NEEDED_BY).optional().describe('Only report required-before asks needed before this gate (solicitation-review: `award`).'),
+    throughPhase: z.number().int().min(1).optional().describe('Compare against previous-run asks raised by phases up to this ordinal (Phase 1: 1). Omit at run end.'),
+    solicitationAnswered: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('Solicitation question ids the chosen response answered (non-empty). Closes a required-before ask whose answer_channel is `solicitation:<id>`.'),
+  },
+  async (args) => {
+    try {
+      return result(await handleOpenAsks(args));
+    } catch (e: any) {
+      if (e instanceof DecisionsWriteError || e instanceof DecisionOverridesError) return error(`${e.code}: ${e.message}`);
       return error(e?.message ?? String(e));
     }
   },

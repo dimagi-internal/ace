@@ -70,6 +70,19 @@ import { isInternalDecision, plainLanguageFindings } from "./decision-review.js"
  * number or "Phase N" — quoted or not. Per row at the write boundary below;
  * over the whole log by `auditDecisionsPlainLanguage` (lib/decisions-enrich.ts),
  * which gates the phase-end render and release readiness.
+ *
+ * v6 additions (2026-10-04, additive — the version number does not move, so
+ * every v6 reader keeps parsing): the open-questions ledger is folded into the
+ * decisions log (`docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`,
+ * owner-approved 2026-10-04). An open question is a decision whose default
+ * someone outside ACE should confirm, so the ask lives on the row:
+ * `owner` (who must answer), `needed_by` (`award` | `go-live` | `closeout` |
+ * `extension`), `answer_channel` (`review` | `solicitation:<question-id>` |
+ * `call`); `status: deferred` + `revisit_when` for a question this pilot does
+ * not need answered; and `review_ask: required-before`, which REQUIRES
+ * `needed_by` and is the only ask that gates anything (release readiness, and
+ * `solicitation-review` refuses to award while a `needed_by: award` one is
+ * unanswered). `revisit_when` is held to the plain-language gate.
  */
 export const DECISIONS_SCHEMA_VERSION = 6 as const;
 
@@ -93,7 +106,28 @@ export const REVIEW_FIELDS = [
   "also_raised_by",
   "plain_question",
   "plain_value",
+  "owner",
+  "needed_by",
+  "answer_channel",
+  "revisit_when",
 ] as const;
+
+/** `review_ask` values. `required-before` is the only one that gates anything. */
+export const REVIEW_ASKS = ["recommended-confirmation", "required-before"] as const;
+export type ReviewAskKind = (typeof REVIEW_ASKS)[number];
+
+/** `needed_by` — when an ask's answer is needed, as a lifecycle gate a reader understands. */
+export const NEEDED_BY = ["award", "go-live", "closeout", "extension"] as const;
+export type NeededBy = (typeof NEEDED_BY)[number];
+
+/** `answer_channel`: `review` | `call` | `solicitation:<question-id>`. */
+export const ANSWER_CHANNEL_RE = /^(review|call|solicitation:[A-Za-z0-9][A-Za-z0-9_.-]*)$/;
+
+/** The solicitation question id an `answer_channel` names, or null. */
+export function solicitationQuestionId(channel: string | undefined): string | null {
+  const m = /^solicitation:(.+)$/.exec(channel ?? "");
+  return m ? m[1] : null;
+}
 
 /**
  * One row in a per-run decisions log. Represents a load-bearing default
@@ -192,9 +226,9 @@ export const DecisionRowSchema = z
           "Declared here so it survives every re-serialization of the log by `decisions_append_rows`.",
       ),
     status: z
-      .enum(["ai-default", "human-decided", "overridden"])
+      .enum(["ai-default", "human-decided", "overridden", "deferred"])
       .describe(
-        "WHO settled this row. ALWAYS send `ai-default` on a new row — the other two values are " +
+        "WHO settled this row. Send `ai-default` on a new row (or `deferred`, below) — `human-decided` and `overridden` are " +
           "stamped by the write boundary from a saved reviewer record, and a caller-asserted " +
           "`human-decided` is REJECTED (ace#2307: a subagent cannot reach a human, so asserting one " +
           "ruled fabricates a binding ruling). " +
@@ -205,6 +239,9 @@ export const DecisionRowSchema = z
           "where a real human ruling belongs; never written by an emitting skill. " +
           "`overridden`: ACE proposed `ai-default` and a human replaced it via the override path, " +
           "which keeps both values. " +
+          "`deferred`: a question this pilot does not need answered (a future phase, an expansion) — " +
+          "`ai-default` holds the working assumption and `revisit_when` says when to raise it again. Rendered " +
+          "collapsed, never as an ask; carries no `review_ask`. " +
           "Note this axis is about AUTHORSHIP only — it never gates or blocks a run. " +
           "Whether a value is ACE's to set at all is `value_set_by`, a separate question.",
       ),
@@ -284,13 +321,18 @@ export const DecisionRowSchema = z
       ),
     // ── v6 review fields (docs/decisions-contract.md) ─────────────────────
     review_ask: z
-      .enum(["recommended-confirmation"])
+      .enum(REVIEW_ASKS)
       .optional()
       .describe(
         "`recommended-confirmation`: the run is BUILT on this value, but someone with authority should " +
           "confirm it before launch — a placeholder for a [PROPOSED] design parameter, a value outside ACE's " +
           "authority, a machine translation awaiting native-speaker sign-off, an enforcement gap, or an open " +
-          "design question. Absent = no ask. Requires `confirm_reason`. Never blocks a run.",
+          "design question. Never blocks a run. " +
+          "`required-before`: the same, but the answer is needed before the lifecycle gate in `needed_by` — " +
+          "REQUIRES `needed_by`. Still never blocks a phase; `validate-release-readiness` reports an unanswered " +
+          "one as a blocker, and `solicitation-review` refuses `award_response` while a `needed_by: award` one is " +
+          "unanswered. Use it only where no working default is safe to build on (an answer that changes who can " +
+          "be awarded, or what the award commits to). Absent = no ask. Requires `confirm_reason`.",
       ),
     confirm_reason: z
       .string()
@@ -366,6 +408,43 @@ export const DecisionRowSchema = z
           "instead of `ai-default`, which stays the exact option string the override UI keys on. Required (by the " +
           "plain-language gate, `auditDecisionsPlainLanguage`) whenever the AI default itself is jargon " +
           "(e.g. 'payable_slot in key plus Phase 4 rule'). Same plain-language rules as `plain`.",
+      ),
+    owner: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Who must answer this row's ask: `partner` | `implementing-org` | `dimagi`, or free text naming them " +
+          "(e.g. 'Spark M&E'). Distinct from `value_set_by`, which is who sets the value. Set on a row that carries " +
+          "`review_ask` or `status: deferred` when the sources do not settle who answers.",
+      ),
+    needed_by: z
+      .enum(NEEDED_BY)
+      .optional()
+      .describe(
+        "When the answer is needed, as a lifecycle gate a reader understands: `award` (before an implementing " +
+          "organisation is awarded), `go-live`, `closeout`, `extension`. REQUIRED with `review_ask: required-before`; " +
+          "optional (informational) with `recommended-confirmation`. Replaces the retired ledger's 'Before Phase N'.",
+      ),
+    answer_channel: z
+      .string()
+      .regex(ANSWER_CHANNEL_RE, {
+        message: "answer_channel must be `review`, `call`, or `solicitation:<question-id>`",
+      })
+      .optional()
+      .describe(
+        "Where the answer arrives: `review` (the decisions review in ace-web, saved to " +
+          "`inputs/decision-overrides.yaml`), `call` (a call with Dimagi), or `solicitation:<question-id>` (a " +
+          "question in the published solicitation — the awarded response's answer closes the ask).",
+      ),
+    revisit_when: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "One plain sentence saying when a deferred question should be raised again (e.g. 'When the programme " +
+          "expands to Rwanda.'). Only valid with `status: deferred`, and required on a new deferred row. Same " +
+          "plain-language rules as `plain`.",
       ),
     also_raised_by: z
       .array(z.string().min(1))
@@ -443,6 +522,38 @@ export const DecisionRowSchema = z
         message: "`confirm_reason` is only valid with `review_ask`",
         path: ["confirm_reason"],
       });
+    }
+    if (row.review_ask === "required-before" && row.needed_by === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`review_ask: required-before` requires `needed_by` (award | go-live | closeout | extension) — the gate the answer is needed before",
+        path: ["needed_by"],
+      });
+    }
+    if (row.revisit_when !== undefined && row.status !== "deferred") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "`revisit_when` is only valid on status=deferred",
+        path: ["revisit_when"],
+      });
+    }
+    if (row.status === "deferred") {
+      if (row.review_ask !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "status=deferred must not carry `review_ask` — a deferred question is not needed for this pilot and renders collapsed, never as an ask",
+          path: ["review_ask"],
+        });
+      }
+      if (row.override !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "status=deferred must not have `override`",
+          path: ["override"],
+        });
+      }
     }
     if ((row.scope === undefined) !== (row.enforcement === undefined)) {
       ctx.addIssue({
@@ -584,7 +695,7 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
       // Every field ace-web renders on a partner row is held to the same lint
       // (the whole-log gate is `auditDecisionsPlainLanguage` in
       // lib/decisions-enrich.ts; this is its per-row half at the write boundary).
-      for (const field of ["plain", "confirm_reason", "plain_question", "plain_value", "check_at", "correct_looks_like"] as const) {
+      for (const field of ["plain", "confirm_reason", "plain_question", "plain_value", "check_at", "correct_looks_like", "revisit_when"] as const) {
         const text = row[field];
         if (text === undefined) continue;
         const findings = plainLanguageFindings(text);
@@ -598,6 +709,15 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
           });
         }
       }
+    }
+    // v6 (2026-10-04): a deferred row says when to raise it again.
+    if (row.status === "deferred" && row.revisit_when === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "a new `status: deferred` row requires `revisit_when` — one plain sentence saying when to raise the question again",
+        path: ["revisit_when"],
+      });
     }
     // v5: every new row must declare whether the value is ACE's to set or
     // arrives later from outside. This does NOT gate the run — ACE fills its

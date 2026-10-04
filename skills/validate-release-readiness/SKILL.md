@@ -40,7 +40,8 @@ each run replaces the previous verdict and report.
 | Source | What |
 |---|---|
 | Arguments | the run; **reviewers (required — without them it is never READY)**; the release flags, which become plan options |
-| The run folder (Drive) | every file's path + modifiedTime; the text of each QA result, eval verdict, chatbot transcript and `decisions.yaml` (`$RC inventory`) — `decisions.yaml` feeds the plain-language gate (`assessDecisionsPlainLanguage`, one `public-summary` blocker per producing skill; `docs/decisions-contract.md § Plain-language gate`) |
+| The run folder (Drive) | every file's path + modifiedTime; the text of each QA result, eval verdict, chatbot transcript and `decisions.yaml` (`$RC inventory`) — `decisions.yaml` feeds the plain-language gate (`assessDecisionsPlainLanguage`, one `public-summary` blocker per producing skill; `docs/decisions-contract.md § Plain-language gate`) and the required-before gate (`assessRequiredBeforeAsks`: every unanswered `review_ask: required-before` row is a blocker naming its question; an unanswered `recommended-confirmation` is not a finding — `docs/decisions-contract.md § Open asks`) |
+| `ACE/<opp>/inputs/decision-overrides.yaml` (when it exists) | saved rulings — download it and pass `--decision-overrides`, so an ask answered in the decisions review after its row was written counts as answered |
 | `run_state.yaml` | steps that ran, products, Phase 4's decisions, the `clone:` block (what was rebuilt into the run's own area, and the source run) |
 | The opp's tenancy (ace-web `GET /api/w/<ws>/opps/<opp>/tenancy`) | `hq_domain`, `connect_holding_org`, `connect_pm_org` — the grant targets |
 | ace-web | the run's outputs, the preview gap list, the public summary |
@@ -219,7 +220,8 @@ were given — the SAME `$FLAGS` on every command below and later on
       --run-state run_state.yaml $FLAGS --drive-access drive-access.json \
       --gaps gaps.json --postcondition postcondition.json --links links.json \
       --surface surface.json [--claims claims.json] [--looks looks.json] \
-      --hq-plan hq-plan.json [--overlay overlay.json] [--read-only] --out-dir <scratch>/out
+      --hq-plan hq-plan.json [--decision-overrides decision-overrides.yaml] \
+      [--overlay overlay.json] [--read-only] --out-dir <scratch>/out
     ```
     The tenancy is read from ace-web (or pass `--tenancy <json>` from
     `bin/ace-bind --show`). Missing evidence is its own blocker ("not checked"),

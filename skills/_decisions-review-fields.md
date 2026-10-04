@@ -54,7 +54,55 @@ platform is "Connect" in all reviewer-facing text (`skills/_terminology.md`).
   `decisions_enrich` derives asks for every `PROPOSED` program parameter the
   build configured, every machine-translated language, every enforcement gap,
   every `OPEN` row and every open residual a person must decide. It never
-  blocks a run.
+  blocks a run. Every such row also follows § The producer rule below.
+
+## The producer rule — a default you build on is a decision row
+
+**This replaces "raise an open question" in every skill.** There is no
+open-questions ledger to write to any more (`ACE/<opp>/open-questions.md` is
+retired; owner decision 2026-10-04). When you build on a working answer — a
+value no source states, a placeholder, an assumption you will hold until told
+otherwise — write a decision row for it. When the sources do not settle it,
+the row also carries who answers, by when, and where:
+
+- **`review_ask`** + **`confirm_reason`** — `recommended-confirmation` by
+  default. Use **`required-before`** (which REQUIRES `needed_by`) only when no
+  working default is safe past a lifecycle gate: an answer that changes who may
+  be awarded or what the award commits to (`needed_by: award`), or what may go
+  live. It is the only ask that gates anything — release readiness blocks on
+  it, and `solicitation-review` will not award while a `needed_by: award`
+  one is unanswered. It never blocks a phase.
+- **`owner`** — who must answer: `partner`, `implementing-org`, `dimagi`, or
+  their name as the reader knows it (`Spark M&E`).
+- **`needed_by`** — `award` | `go-live` | `closeout` | `extension` (optional
+  with `recommended-confirmation`). Never "Before Phase N".
+- **`answer_channel`** — `review` (the decisions review), `call`, or
+  `solicitation:<question-id>` when a question in the published solicitation
+  asks it.
+
+A question this pilot does not need answered (a future phase, an expansion,
+instrumenting the partner's own app) is a row with **`status: deferred`** and
+**`revisit_when`** (one plain sentence: *"When the programme expands to
+Rwanda."*) — no `review_ask`. `revisit_when` is held to the plain-language
+gate like `plain`.
+
+Not a decision row: a chore (sweep, distribute, follow up) → the task board or
+`phases.<phase>.residuals`; an upstream request → an issue in the owning
+system's tracker, cited from the row it affects; a factual partner input → a
+solicitation question, named in `answer_channel`.
+
+```
+{ id: "rct-sample-overlap", phase: "1-design", skill: "idea-to-pdd",
+  question: "May the pilot work in communities that are in the impact study's sample?",
+  "ai-default": "Exclude study communities", options: ["Exclude study communities", "Allow study communities"],
+  source: "PDD § Evaluation design", status: "ai-default", evidence_basis: "inferred", value_set_by: "external",
+  plain: "The pilot assumes it will not work in communities that are part of the impact study.",
+  plain_question: "May the pilot work in communities that are part of the impact study?",
+  review_ask: "required-before", needed_by: "award", owner: "partner", answer_channel: "review",
+  confirm_reason: "The award could pick study communities, and nothing in the sources says whether that is allowed." }
+```
+
+Full contract: `docs/decisions-contract.md § The producer rule` and § Open asks.
 
 ## Rule rows (`Where is the PDD verification rule '<rule>' enforced?`)
 

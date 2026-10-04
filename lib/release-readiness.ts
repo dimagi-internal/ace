@@ -29,6 +29,8 @@ import { collapseSharedCauses, plainFinding } from './release-readiness-plain.js
 import { driveFileId } from './preview-capture.js';
 import { auditDecisionsPlainLanguage, describePlainLanguageGate } from './decisions-enrich.js';
 import { parseDecisionsYaml } from './decisions-schema.js';
+import type { DecisionOverrideRow } from './decision-overrides.js';
+import { requiredBeforeBlockers } from './open-asks.js';
 import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
 export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
@@ -511,6 +513,42 @@ export function assessDecisionsPlainLanguage(files: readonly RunFile[]): Release
       action: 'Ask the build team to rewrite those decisions in plain words, then run the readiness check again.',
     };
   });
+}
+
+/**
+ * An unanswered `review_ask: required-before` decision row is a release
+ * blocker naming the question (owner decision 2026-10-04,
+ * docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md):
+ * the design said its answer is needed before a lifecycle gate, and no working
+ * default is safe to show outside reviewers as settled. An unanswered
+ * `recommended-confirmation` is NOT a finding — the run is built on it and the
+ * decisions review is where it gets confirmed. Saved rulings in
+ * `inputs/decision-overrides.yaml` (passed as `overrides`) answer an ask even
+ * when the row was written before the ruling was saved. Unreadable or
+ * unparseable logs are already blockers in `assessDecisionsPlainLanguage`.
+ */
+export function assessRequiredBeforeAsks(
+  files: readonly RunFile[],
+  overrides: readonly DecisionOverrideRow[] | null = null,
+): ReleaseFinding[] {
+  const file = files.find((f) => DECISIONS_FILE.test(f.path));
+  if (!file?.text) return [];
+  let log;
+  try {
+    log = parseDecisionsYaml(file.text);
+  } catch {
+    return [];
+  }
+  return requiredBeforeBlockers(log, { overrides }).blocking.map((a) => ({
+    id: `required-before:${a.id}`,
+    area: 'public-summary' as const,
+    severity: 'blocker' as const,
+    owner: a.skill,
+    detail: `decision ${a.id} must be answered before ${a.needed_by} and is unanswered: ${a.question}`,
+    fix: `get the answer from ${a.owner ?? 'its owner'}${a.answer_channel ? ` (${a.answer_channel})` : ''} and save it in the decisions review (inputs/decision-overrides.yaml)`,
+    summary: `A question must be answered before ${a.needed_by} and has no answer yet: ${a.question}`,
+    action: `Ask ${a.owner ?? 'the person who owns it'} to answer it in the decisions review, then run the readiness check again.`,
+  }));
 }
 
 /** `commcare_get_subscription`'s output, as validate-release-readiness reads it. */

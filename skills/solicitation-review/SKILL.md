@@ -91,6 +91,33 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    sets the top candidate apart from #2/#3) and any flagged-as-unscoreable
    responses.
 
+5b. **Required-before gate — a HARD STOP (owner decision 2026-10-04).** Before
+   asking anyone to approve an award, call:
+
+   ```
+   mcp__ace-decisions__decisions_open_asks(
+     runFolderId: <run folder id>, opportunity: <opp>, run_id: <run-id>,
+     mode: 'check', neededBy: 'award',
+     solicitationAnswered: [<question ids the top-ranked response answered, non-empty>]
+   )
+   ```
+
+   If `requiredBefore` is non-empty, **do not present the award prompt and do
+   not call `award_response`** — not even if the human asks for it in this
+   session. Each entry is a decision row with `review_ask: required-before`
+   and `needed_by: award`: the design says its answer changes who may be
+   awarded or what the award commits to, and nobody has answered it. Add a
+   `> Award blocked` callout to `recommendation.md` listing each entry's
+   question, owner and `answer_channel`, write `award-record.md` with
+   `status: blocked` and the same list, and stop. The way to clear it is to
+   ANSWER the ask: the owner rules in the ace-web decisions review (saved to
+   `inputs/decision-overrides.yaml` with `decided_by`), or — for an ask whose
+   `answer_channel` is `solicitation:<question-id>` — the chosen response
+   answers that question (those land in `closedBySolicitation`; name them in
+   `recommendation.md` with the response's answer quoted). Then re-run this
+   skill. A `recommended-confirmation` ask never blocks the award. Contract:
+   `docs/decisions-contract.md § Open asks`.
+
 6. **HITL gate.** Present `recommendation.md` to the human and ask:
 
    > "Confirm awarding response_id=<top> ($<amount>) to <org_name>? Reply
@@ -99,7 +126,8 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 
    Wait for an explicit reply. **Do not call `award_response` without
    one.** If the human picks a different response_id or amount, use
-   those.
+   those — and if they pick a different response, re-run step 5b with
+   THAT response's answered question ids first.
 
 7. **Call `award_response`.** On confirm:
 
@@ -180,6 +208,9 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 
 ## Error handling
 
+- **Required-before ask unanswered (step 5b)**: do not call
+  `award_response`; record `status: blocked` with the open asks. This is
+  not an error to retry around — the ask must be answered first.
 - **HITL gate timeout / no reply**: do not call `award_response`. Do not
   mutate `run_state.yaml` or `opp.yaml`. Exit cleanly so the human can
   re-run the skill.
@@ -211,3 +242,5 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
   to `awarded` — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_update_file`,
   `drive_read_file`, `drive_list_folder`
+- `ace-decisions`: `decisions_open_asks` (step 5b — the required-before
+  award gate)

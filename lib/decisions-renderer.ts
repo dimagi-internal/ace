@@ -269,7 +269,10 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   if (row.plain !== undefined) builder.appendBoldPrefix("In plain words:", row.plain);
   if (row.plain_value !== undefined) builder.appendBoldPrefix("Value:", row.plain_value);
   if (row.review_ask !== undefined) {
-    builder.appendBoldPrefix("PLEASE CONFIRM:", row.confirm_reason ?? "someone with authority should confirm this before launch");
+    builder.appendBoldPrefix(
+      row.review_ask === "required-before" ? `ANSWER BEFORE ${(row.needed_by ?? "launch").toUpperCase()}:` : "PLEASE CONFIRM:",
+      row.confirm_reason ?? "someone with authority should confirm this before launch",
+    );
   }
   if (row.audience === "internal") {
     builder.appendBoldPrefix("Internal:", "ACE's own test-harness choice, not a programme decision.");
@@ -301,6 +304,14 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
 
   // Status: <value>
   builder.appendBoldPrefix("Status:", row.status);
+
+  // Who answers the ask, by when, and where (v6 additions, 2026-10-04).
+  if (row.owner !== undefined) builder.appendBoldPrefix("Answered by:", row.owner);
+  if (row.needed_by !== undefined) builder.appendBoldPrefix("Needed by:", row.needed_by);
+  if (row.answer_channel !== undefined) builder.appendBoldPrefix("Answer channel:", row.answer_channel);
+  if (row.status === "deferred" && row.revisit_when !== undefined) {
+    builder.appendBoldPrefix("Deferred — revisit when:", row.revisit_when);
+  }
 
   // Provenance of a human ruling (v5). A reviewer opening this doc must be able
   // to see that a decision is already SETTLED BY A PERSON and will bind on the
