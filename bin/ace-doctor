@@ -2478,7 +2478,12 @@ fi
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
 GMAIL_CLIENT_DECLARED="$(agent_json_field gog_client)"
 GMAIL_CLIENT_VAL="$(bash "$ROOT/bin/ace-gog-client" --root "$ROOT" 2>/dev/null)"
-GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-canopy} --services $GOG_SERVICES --force-consent"
+# The printed remedy always offers the canopy-web button first and, for the
+# terminal path, hard-codes `--client canopy` — never $GMAIL_CLIENT_VAL. That
+# variable can legitimately resolve to `canopy-web` (this machine's mailbox
+# was connected via the button), and `gog login --client canopy-web` cannot
+# work from a terminal: canopy-web only mints a token via its own button.
+GOG_LOGIN_HINT="connect via the canopy-web 'Connect Google mailbox' button (preferred, self-service), or at a terminal: brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client canopy --services $GOG_SERVICES --force-consent"
 if ! command -v gog >/dev/null 2>&1; then
   warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then

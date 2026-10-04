@@ -35,11 +35,16 @@ The identity has ONE source of truth — `config/agent.json` (`email` = `ace@dim
 var silently ran as `-a ` and failed. Write the literals. *Enforced:* `test/lib/env-tpl-identity.test.ts`
 scans every skill/command/agent doc for the retired form.
 
-The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and authenticated for the
-configured account: `gog login ace@dimagi-ai.com --client canopy --services gmail`.
+The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and the configured account must
+be authenticated. **Preferred:** connect via the canopy-web "Connect Google mailbox" button —
+self-service, no terminal. **Terminal alternative:** `gog login ace@dimagi-ai.com --client canopy
+--services gmail,calendar,drive,docs,slides,sheets,forms` — pass the FULL scope list every time; a
+narrower `--services` list (e.g. just `gmail`) **replaces** the grant and drops the other scopes
+(calendar/drive/docs/slides/sheets/forms), it does not add to them.
 
 **The gog client is SHARED across the fleet; the mailbox is what's per-agent.** Every agent
-(ace/eva/hal/ada) authorizes its own address under the one `canopy` OAuth client — identity bleed
+(ace/eva/hal/ada) authorizes its own address under one of the two interchangeable fleet OAuth
+clients (`canopy`, `canopy-web`) — identity bleed
 means acting as another agent's *mailbox*, and that is governed by `--account`, never by the
 client. `config/agent.json`'s `gog_client` is the declared preference the email engine
 (`canopy email`, `bin/ace-email`) reconciles. The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under. A raw gog call passes

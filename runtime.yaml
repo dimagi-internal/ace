@@ -55,20 +55,32 @@ tools:
 env:
   ACE_GMAIL_ACCOUNT: ace@dimagi-ai.com
 
-  # The gog OAuth client. `canopy` — the SHARED fleet client, same as ada/eva/hal.
+  # The gog OAuth client — a DECLARED PREFERENCE, not the only valid one. The
+  # fleet has TWO interchangeable clients, `canopy` (a laptop `gog login`) and
+  # `canopy-web` (canopy-web's "Connect Google mailbox" button); same GCP
+  # project, same consent screen, so a token under either reads and sends the
+  # same (canopy-web #1112, canopy #745/#748/#753). Nothing reads this literal
+  # at call time — `lib/gog-identity.ts` / `bin/ace-gog-client` ask `canopy
+  # email client` for whichever client THIS machine actually holds a token
+  # under, and fall back to this declared value only when canopy itself can't
+  # answer. Do not hard-code this to mean "the only client that works."
   #
   # READ THIS BEFORE CHANGING IT. On 2026-09-05 a cloud rebuild provisioned ACE
   # under a client named `ace`; ACE's own config/agent.json warns against exactly
   # that ("no credentials-ace.json is provisioned, so canopy email / bin/ace-email
   # fail outright" — jjackson/ace#1147). The box had a credentials-ace.json anyway
   # and a token minted 2026-05-01 under that client, which no longer authenticates
-  # at all. So ACE's mailbox is dead until op://Agent-Ace/gog-token is RE-MINTED
-  # under the `canopy` client.
+  # at all. So ACE's mailbox was dead until the mailbox was reconnected — via the
+  # canopy-web "Connect Google mailbox" button (preferred), or the terminal
+  # alternative `gog login ace@dimagi-ai.com --client canopy --services
+  # gmail,calendar,drive,docs,slides,sheets,forms --force-consent` (a narrower
+  # `--services` list REPLACES the grant and drops the other scopes, so always
+  # pass the full set).
   #
   # The general rule, learned the same day by breaking echo's mailbox with it: a
   # token is minted FOR a client and works only with that client. This field is
-  # ACE's intent; the token in 1Password is the fact. They converge only when the
-  # item is minted to match. Do not "fix" a mismatch by editing this line.
+  # ACE's declared intent; which client actually has a live token is a per-machine
+  # fact resolved at call time, not something to hand-derive from this line.
   ACE_GMAIL_CLIENT: canopy
 
 # The Claude/AI credential is deliberately NOT here. It is a RUNNER-level login
