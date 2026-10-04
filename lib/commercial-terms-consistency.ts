@@ -79,6 +79,14 @@ const ALL_IN = /\ball-in\b(?!-)|\ball[- ]inclusive\b/i;
 const INSIDE_RATE =
   /\b(devices?|connectivity|transport|supervision)\b[^.]{0,60}\b(inside|within|included in|covered by|part of) the (?:per[- ]\w+ )?rate\b/i;
 
+const DEVICE_ITEM = /\b(devices?|device provision|smartphones?|handsets?|phones?|connectivity|airtime|data bundles?)\b/i;
+const OTHER_ITEM = /\b(transport|supervision|all-in|all[- ]inclusive)\b/i;
+
+/** Text about device / connectivity cost and nothing else on the rate. */
+export function isDeviceOnly(text: string): boolean {
+  return DEVICE_ITEM.test(text) && !OTHER_ITEM.test(text);
+}
+
 /** Classify one piece of decision text. Null when it says nothing about rate framing or devices. */
 export function classifyStanceText(text: string): CommercialStance | null {
   if (!text) return null;
@@ -116,8 +124,10 @@ export function solicitationStances(decisionsYaml: string): SolicitationStanceRo
     if (r.superseded_by !== undefined && r.superseded_by !== null) continue;
     const value = String(r.override ?? r['ai-default'] ?? '');
     const plain = typeof r.plain === 'string' ? r.plain : '';
-    const stance = classifyStanceText(value) ?? classifyStanceText(plain);
-    if (stance) out.push({ id: r.id, stance, text: value || plain });
+    const fromValue = classifyStanceText(value);
+    const stance = fromValue ?? classifyStanceText(plain);
+    // `text` is what the stance was READ from — the device split below keys on it.
+    if (stance) out.push({ id: r.id, stance, text: fromValue ? value : plain });
   }
   return out;
 }
@@ -152,8 +162,21 @@ export function compareCommercialTerms(
   }
   // The latest live row wins if the solicitation itself is inconsistent; the
   // log is append-only, so array order is write order.
+  //
+  // Devices are judged on their own when the solicitation recorded a device
+  // stance that differs from its overall one: an operator ruling for the opp
+  // can move devices outside an otherwise all-in rate
+  // (lib/operator-rulings.ts — spark-facilitator, owner ruling 2026-10-04:
+  // devices are costed separately and asked about). Without such a split,
+  // both governing stances are the latest row's, exactly as before.
   const governing = solicitation[solicitation.length - 1].stance;
-  const conflicts = workOrder.filter((h) => h.stance !== governing);
+  const deviceRows = solicitation.filter((r) => isDeviceOnly(r.text));
+  const otherRows = solicitation.filter((r) => !isDeviceOnly(r.text));
+  const deviceGoverning = deviceRows.length ? deviceRows[deviceRows.length - 1].stance : governing;
+  const otherGoverning = otherRows.length ? otherRows[otherRows.length - 1].stance : governing;
+  const conflicts = workOrder.filter((h) =>
+    isDeviceOnly(h.sentence) ? h.stance !== deviceGoverning : h.stance !== otherGoverning,
+  );
   return {
     status: conflicts.length ? 'disagree' : 'agree',
     solicitation,

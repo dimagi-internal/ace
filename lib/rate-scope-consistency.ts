@@ -168,7 +168,33 @@ const COMPOSITION_ASK_PATTERNS: readonly RegExp[] = [
   /\bworker\b[^.?!]{0,120}\b(?:portion|share|split)\b/i,
 ];
 
-function findSeparateFunding(field: string, text: string | undefined): RateScopeIssue[] {
+/**
+ * Device and connectivity costs — what an operator ruling overriding the
+ * `devices-assumed` standing assumption moves outside the all-in rate
+ * (`lib/operator-rulings.ts`; spark-facilitator, owner ruling 2026-10-04:
+ * devices are costed separately and asked about).
+ */
+const DEVICE_COST = /\b(?:device|phone|smartphone|handset|tablet|data\s+(?:bundle|plan|cost)|connectivity|airtime|sim\b)\w*/i;
+
+/** The sentence around a match. */
+function sentenceAround(text: string, index: number): string {
+  const start = Math.max(text.lastIndexOf('.', index), text.lastIndexOf('?', index), text.lastIndexOf('!', index)) + 1;
+  const ends = ['.', '?', '!'].map((c) => text.indexOf(c, index)).filter((n) => n >= 0);
+  return text.slice(start, ends.length ? Math.min(...ends) + 1 : text.length);
+}
+
+export interface RateScopeOptions {
+  /**
+   * An operator ruling for this opp overrides the `devices-assumed` standing
+   * assumption for the solicitation (`overriddenAssumptions(file,
+   * 'solicitation').has('devices-assumed')`): a separate-funding phrase whose
+   * sentence is about devices or connectivity is then the ruling, not the
+   * #2265 defect. Every other cost item stays inside the all-in rate.
+   */
+  devicesCostedSeparately?: boolean;
+}
+
+function findSeparateFunding(field: string, text: string | undefined, opts: RateScopeOptions = {}): RateScopeIssue[] {
   if (typeof text !== 'string' || !text) return [];
   const issues: RateScopeIssue[] = [];
   for (const { re, label, attributable } of SEPARATE_FUNDING_PATTERNS) {
@@ -178,6 +204,7 @@ function findSeparateFunding(field: string, text: string | undefined): RateScope
       // A principal-funded disclosure is the opposite of the defect — let it
       // through rather than forcing the author to drop it (ace#2434).
       if (attributable && isPrincipalFundedDisclosure(text, m.index + m[0].length)) continue;
+      if (opts.devicesCostedSeparately && DEVICE_COST.test(sentenceAround(text, m.index))) continue;
       issues.push({
         kind: 'separately-funded-invitation',
         field,
@@ -224,11 +251,11 @@ export function hasCompositionAsk(payload: RateScopeProse): boolean {
  *
  * Pure. The caller decides whether an issue is a `[BLOCKER]` or a residual.
  */
-export function scanRateScope(payload: RateScopeProse): RateScopeResult {
+export function scanRateScope(payload: RateScopeProse, opts: RateScopeOptions = {}): RateScopeResult {
   const issues: RateScopeIssue[] = [];
 
   for (const { field, text } of proseFields(payload)) {
-    issues.push(...findSeparateFunding(field, text));
+    issues.push(...findSeparateFunding(field, text, opts));
   }
 
   if (!hasCompositionAsk(payload)) {

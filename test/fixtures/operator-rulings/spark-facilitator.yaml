@@ -1,0 +1,13 @@
+# Fixture: the owner's 2026-10-04 ruling for spark-facilitator (relayed in the
+# open-questions-into-decisions implementation brief). It overrides the
+# standing `devices-assumed` design assumption for this opp only.
+schema_version: 1
+kind: operator-rulings
+opp: spark-facilitator
+rulings:
+  - id: devices-costed-separately
+    ruling: Devices and data are not assumed for this programme. They are costed separately, and the implementing organisation is asked who provides them and what they cost.
+    overrides: devices-assumed
+    decided_by: jjackson@dimagi.com
+    decided_at: 2026-10-04
+    applies_to: [pdd, solicitation, work-order]
