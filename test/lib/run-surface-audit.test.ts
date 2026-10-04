@@ -42,6 +42,7 @@ import {
   auditLinks,
   auditRender,
   classifyCommitAffordance,
+  SAVE_CONTROL_NAME,
   auditReviewerMembership,
   auditUnresolvedMemberGates,
   applyRenderedGates,
@@ -683,6 +684,21 @@ describe('defects 9 and 10 — what the reader actually sees', () => {
 
     it('nothing recognisable → null (undetermined, never a pass)', () => {
       expect(classifyCommitAffordance(none)).toBeNull();
+    });
+
+    it('SAVE_CONTROL_NAME matches a Save button, never a decision row that mentions savings', () => {
+      for (const name of ['Save', 'save', 'Save this answer', 'Saving…', 'Saving...', ' Save ']) {
+        expect(SAVE_CONTROL_NAME.test(name), name).toBe(true);
+      }
+      // Real row toggle names from spark-facilitator/20261001-2208's decisions tab:
+      // the unanchored `saving` alternative matched these and reported a Save.
+      for (const name of [
+        'Savings questions are asked only from Step 5 onward, when communities have started saving.',
+        'The unpaid Other Meeting Record asks no savings questions; savings are reported only on held community meetings from Step 5.',
+        'Save the date',
+      ]) {
+        expect(SAVE_CONTROL_NAME.test(name), name).toBe(false);
+      }
     });
   });
 

@@ -46,7 +46,7 @@
  * capability exists to eliminate.
  */
 
-import { classifyCommitAffordance, type CommitAffordance, type RenderReport } from '../lib/run-surface-audit.js';
+import { classifyCommitAffordance, SAVE_CONTROL_NAME, type CommitAffordance, type RenderReport } from '../lib/run-surface-audit.js';
 
 /** Copy the page draws for a section it believes was never produced. */
 const NOT_CREATED_TEXT = 'Not created';
@@ -305,7 +305,7 @@ async function probeCommitAffordance(
     const verdict = classifyCommitAffordance({
       signInLinks: await page.locator('a[href*="/auth/login/"]').filter({ hasText: /sign in to/i }).count(),
       confirmControls: await page.locator('button[aria-label^="Confirm:"]').count(),
-      saveControls: await page.getByRole('button', { name: /save this answer|^save$|saving/i }).count(),
+      saveControls: await page.getByRole('button', { name: SAVE_CONTROL_NAME }).count(),
       optionPills: await page.locator('li button[aria-pressed]').count(),
     });
     if (verdict === null) {

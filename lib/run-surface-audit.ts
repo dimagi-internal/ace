@@ -2353,6 +2353,17 @@ export interface RenderReport {
  */
 export type CommitAffordance = boolean | null | 'sign-in-required';
 
+/**
+ * The accessible name of a staged-edit Save button: "Save", "Save this answer",
+ * "Saving…". ANCHORED at both ends. The probe's first form was the unanchored
+ * `/save this answer|^save$|saving/i`, whose `saving` alternative matched any
+ * decision row whose plain sentence mentions savings — on
+ * spark-facilitator/20261001-2208 "Savings questions are asked only from
+ * Step 5 onward…" is a row's toggle button — so a members-only page with no
+ * Save anywhere reported RENDER-EDIT-NEEDS-EXTRA-COMMIT.
+ */
+export const SAVE_CONTROL_NAME = /^\s*(save|save this answer|saving(\.\.\.|…)?)\s*$/i;
+
 /** What the browser saw on an expanded decision row — counts only, no judgement. */
 export interface CommitAffordanceObservation {
   /** Links into ace-web's login (`/auth/login/`) whose text reads "Sign in to …". */
