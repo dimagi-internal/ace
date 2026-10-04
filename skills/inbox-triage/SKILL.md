@@ -230,7 +230,11 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
 
      **Run `checkOpenQuestionsWriteShape` (`lib/open-questions-inline.ts`) on the markdown FIRST
      and do not write on `ok: false`** — it runs the very parser Phase 1 reads with, so this write
-     path cannot publish a shape the read then refuses (ace#2367). **And never round-trip a
+     path cannot publish a shape the read then refuses (ace#2367). **Then run
+     `checkOpenQuestionsPlainLanguage` (`lib/open-questions-plain-language.ts`) and do not write on
+     `ok: false`:** an answer you record is read by the row's owner on the public run-summary page,
+     so `question:` / `answered_where:` follow
+     `skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner` and the technical detail goes in `latest:`. **And never round-trip a
      `text/plain` read back into this doc:** that export has no `##` markers and its rows have run
      together, so editing it and writing it back is exactly how the headings were laundered away
      here. (Origin: 2026-09-10,

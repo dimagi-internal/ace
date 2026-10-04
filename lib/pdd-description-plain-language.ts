@@ -46,7 +46,16 @@ export type PlainLanguageIssueKind =
   | 'expression_operator'
   | 'boolean_operator'
   | 'run_id'
-  | 'code_markup';
+  | 'code_markup'
+  // ── outsider-text extras (profile 'outsider'; see below) ──
+  | 'section_reference'
+  | 'issue_reference'
+  | 'internal_file'
+  | 'form_id'
+  | 'app_version'
+  | 'xml_markup'
+  | 'ace_jargon'
+  | 'skill_or_tool_name';
 
 export interface PlainLanguageIssue {
   kind: PlainLanguageIssueKind;
@@ -54,7 +63,10 @@ export interface PlainLanguageIssue {
   token: string;
 }
 
-const RULES: Array<{ kind: PlainLanguageIssueKind; re: RegExp }> = [
+type Rule = { kind: PlainLanguageIssueKind; re: RegExp };
+
+/** The shapes a one-paragraph PDD description must not carry. */
+const BASE_RULES: Rule[] = [
   { kind: 'snake_case_identifier', re: /\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b/g },
   { kind: 'expression_operator', re: /[!<>=]?={1,2}/g },
   { kind: 'boolean_operator', re: /\b(?:AND|OR|NOT)\b/g },
@@ -62,16 +74,83 @@ const RULES: Array<{ kind: PlainLanguageIssueKind; re: RegExp }> = [
   { kind: 'code_markup', re: /`[^`]*`|\{\{[^}]*\}\}/g },
 ];
 
+// ── The 'outsider' profile ─────────────────────────────────────────────────
+//
+// Generalised for every OTHER string ACE writes for a named outside reader —
+// first the opp-level open-questions ledger (`lib/open-questions-plain-language.ts`),
+// whose `question:` / `answered_where:` ace-web renders on the PUBLIC
+// run-summary page as the item a partner is asked to answer. On
+// spark-facilitator (ledger revision 6, 2026-10-03) those fields carried
+// `hh_count_tt`, "the v1392 app", form ids `m0f0, m0f3, m0f5, m0f8`, twelve
+// lookup-table names, "decisions.yaml ruling or PDD revision", "Nova
+// update_translations review", "ace#2590" and "work order §6" — and the page's
+// outsider review (run-surface-audit-eval) capped jargon at 4/10.
+//
+// The extra shapes, each with no innocent reading in a question put to a
+// programme partner:
+//
+//   - `§` section references (`PDD §4`, `work order §6`);
+//   - issue references (`ace#2590`, `owner/repo#12`, `PR #12`);
+//   - internal file names (`decisions.yaml`, `forms-0.xml`, `.ccz`);
+//   - CommCare form ids (`m0f3`) and app version tags (`v1392`);
+//   - XML tags (`<bind …/>`, `<update>`);
+//   - ACE's own nouns (`PDD`, `CCZ`, `run_state`) and its tool/skill names
+//     (`Nova`, `idea-to-pdd`, `*-qa` / `*-eval`).
+//
+// Hyphenated words, acronyms like CHW / LLO, and lower-case "and" stay legal
+// here exactly as in the base profile.
+const OUTSIDER_EXTRA_RULES: Rule[] = [
+  { kind: 'section_reference', re: /(?:\bPDD\s*)?§\s*[\w.]*/g },
+  { kind: 'issue_reference', re: /\b(?:ace|ace-web|[\w-]+\/[\w-]+)#\d+\b|\bPR #\d+\b/g },
+  {
+    kind: 'internal_file',
+    re: /(?:\b[\w-]+(?:\/[\w.-]+)*)?\.(?:ya?ml|xml|ccz|json|md|ts|csv|xlsx|apk)\b/g,
+  },
+  { kind: 'form_id', re: /\bm\d+f\d+\b/g },
+  { kind: 'app_version', re: /\bv\d{3,}\b/g },
+  { kind: 'xml_markup', re: /<\/?[A-Za-z][\w:.-]*(?:\s[^<>]*)?\/?>/g },
+  { kind: 'ace_jargon', re: /\bPDD\b(?!\s*§)|\bCCZ\b|\brun_state\b/g },
+  {
+    kind: 'skill_or_tool_name',
+    re: /\bNova\b|\b(?:pdd-to-[a-z-]+|connect-(?:opp|program)-setup|idea-to-pdd|app-test-cases|ocs-agent-setup|solicitation-create|[a-z]+(?:-[a-z]+)+-(?:eval|qa))\b/g,
+  },
+];
+
+/**
+ * `description` — the original PDD-description rules, unchanged.
+ * `outsider`   — those plus the extra shapes above, for any field a named
+ *                outside owner reads (the open-questions ledger first).
+ */
+export type PlainLanguageProfile = 'description' | 'outsider';
+
+const PROFILE_RULES: Record<PlainLanguageProfile, Rule[]> = {
+  description: BASE_RULES,
+  outsider: [...BASE_RULES, ...OUTSIDER_EXTRA_RULES],
+};
+
+/**
+ * Every engineer-facing token in `text`, in rule order, under `profile`.
+ * An empty array means the text reads as plain language by those rules.
+ * The shared outsider-text checker: `auditPddDescription` is its
+ * `'description'` profile.
+ */
+export function auditOutsiderText(
+  text: string,
+  profile: PlainLanguageProfile = 'outsider',
+): PlainLanguageIssue[] {
+  const out: PlainLanguageIssue[] = [];
+  for (const { kind, re } of PROFILE_RULES[profile]) {
+    for (const m of text.matchAll(re)) out.push({ kind, token: m[0] });
+  }
+  return out;
+}
+
 /**
  * Every engineer-facing token in a PDD description, in rule order. An empty
  * array means the description reads as plain language by these rules.
  */
 export function auditPddDescription(description: string): PlainLanguageIssue[] {
-  const out: PlainLanguageIssue[] = [];
-  for (const { kind, re } of RULES) {
-    for (const m of description.matchAll(re)) out.push({ kind, token: m[0] });
-  }
-  return out;
+  return auditOutsiderText(description, 'description');
 }
 
 const KIND_LABEL: Record<PlainLanguageIssueKind, string> = {
@@ -80,7 +159,19 @@ const KIND_LABEL: Record<PlainLanguageIssueKind, string> = {
   boolean_operator: 'boolean operator',
   run_id: 'run id',
   code_markup: 'code markup',
+  section_reference: 'section reference',
+  issue_reference: 'issue reference',
+  internal_file: 'internal file name',
+  form_id: 'form id',
+  app_version: 'app version tag',
+  xml_markup: 'XML markup',
+  ace_jargon: 'ACE jargon',
+  skill_or_tool_name: 'skill or tool name',
 };
+
+export function plainLanguageKindLabel(kind: PlainLanguageIssueKind): string {
+  return KIND_LABEL[kind];
+}
 
 /** One-line human summary of the issues, for a QA failure detail. */
 export function describePlainLanguageIssues(issues: PlainLanguageIssue[]): string {
