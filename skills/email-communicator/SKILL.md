@@ -41,15 +41,16 @@ configured account: `gog login ace@dimagi-ai.com --client canopy --services gmai
 **The gog client is SHARED across the fleet; the mailbox is what's per-agent.** Every agent
 (ace/eva/hal/ada) authorizes its own address under the one `canopy` OAuth client — identity bleed
 means acting as another agent's *mailbox*, and that is governed by `--account`, never by the
-client. `config/agent.json`'s `gog_client` is authoritative for the email engine
-(`canopy email`, `bin/ace-email`). Do **not** set it to `ace`: no `credentials-ace.json` is
+client. `config/agent.json`'s `gog_client` is the declared preference the email engine
+(`canopy email`, `bin/ace-email`) reconciles. The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under. A raw gog call passes
+`--client "$(canopy email client --repo .)"`. Do **not** set it to `ace`: no `credentials-ace.json` is
 provisioned, so every read/send fails and the printed remedy (`gog login --client ace`) is an
 interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
 
 ## Process
 
-1. **Resolve configuration.** The mailbox and gog client come from `config/agent.json`
-   (`email` / `gog_client`) — never from the environment. Abort with a clear error if gog itself is
+1. **Resolve configuration.** The mailbox comes from `config/agent.json` (`email`); the gog
+   client from `canopy email client --repo .` — never from the environment. Abort with a clear error if gog itself is
    missing.
 
 2. **Determine the operation.** The calling skill specifies one of: **send**, **reply**, **search**,
@@ -81,7 +82,8 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
    - Replies maintain the Gmail thread via the message id.
 
 5. **For search operations:**
-   - Use: `gog gmail search "<query>" -a ace@dimagi-ai.com --client canopy --json`
+   - Use: `gog gmail search "<query>" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
+     (The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under.)
    - Common queries: `from:<address>`, `to:<address>`, `subject:<text>`, `in:inbox`, `is:unread`,
      `newer_than:1d` — combined with spaces.
    - Returns thread list with IDs, dates, senders, subjects.

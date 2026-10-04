@@ -60,9 +60,12 @@ describe('gog identity has one source of truth (ace#1147)', () => {
 
   it('lib/gog-identity.ts reads agent.json with no env fallback', () => {
     const src = read('lib/gog-identity.ts');
-    // The assignments must not consult the env at all.
+    // The account comes from agent.json; the client from `canopy email client`
+    // (falling back to the declared gog_client). Neither may consult the env.
     expect(src).toMatch(/const account = agentConfig\.email;/);
-    expect(src).toMatch(/const client = agentConfig\.gog_client;/);
+    expect(src).toMatch(/'email', 'client', '--repo', repoRoot, '--json'/);
+    expect(src).toMatch(/const declared = agentConfig\.gog_client \|\| 'canopy';/);
+    expect(src).not.toMatch(/\benv\.ACE_GMAIL/);
     expect(src).not.toMatch(/agentConfig\.email\s*\|\|\s*env\./);
     expect(src).not.toMatch(/agentConfig\.gog_client\s*\|\|\s*env\./);
   });

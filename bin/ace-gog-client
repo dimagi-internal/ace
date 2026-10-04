@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# ace-gog-client — print the gog OAuth client to pass as `--client` for ACE's
+# mailbox. The ONE place shell code chooses a client; never type a client name.
+#
+# The fleet has two interchangeable Google OAuth clients — `canopy` (Desktop; a
+# laptop's `gog login`) and `canopy-web` (Web; canopy-web's "Connect Google
+# mailbox" button can only mint under it). Same GCP project, same consent
+# screen, so a token under either reads and sends the same. Which one THIS
+# machine holds a token under is a per-machine fact, so the rule lives in the
+# canopy plugin (`agent_email.reconcile_client`, CLI `canopy email client`,
+# canopy ≥ 0.2.572, dimagi-internal/canopy#748): the declared `gog_client` if a
+# token exists under it, else the fleet client that does, else the single other
+# client holding the mailbox.
+#
+# Resolution here:
+#   1. `canopy email client --repo <ROOT>` — `canopy` on PATH, else canopy's
+#      installed-plugin runtime via uv (the same fallback bin/ace-email uses).
+#   2. If canopy cannot answer (absent, or older than the `client` command):
+#      config/agent.json's declared `gog_client`, else `canopy` — and say so on
+#      stderr, so a caller can see it is running on the declared value.
+#
+# Usage: ace-gog-client [--root <repo>]      (default: this script's repo)
+# Stdout: the client name, one line. Exit 0 whenever a client was printed.
+set -u
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ "${1:-}" = "--root" ] && [ -n "${2:-}" ]; then ROOT="$2"; fi
+
+_to() { # run with a timeout when one is available
+  local bin; bin="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+  if [ -n "$bin" ]; then "$bin" 30 "$@"; else "$@"; fi
+}
+
+_canopy_client() {
+  local out
+  if command -v canopy >/dev/null 2>&1; then
+    out="$(_to canopy email client --repo "$ROOT" 2>/dev/null)" && [ -n "$out" ] && { printf '%s\n' "$out" | tail -1; return 0; }
+  fi
+  command -v uv >/dev/null 2>&1 || return 1
+  local reg="$HOME/.claude/plugins/installed_plugins.json" install resolver runtime
+  install="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["plugins"]["canopy@canopy"][0]["installPath"])' "$reg" 2>/dev/null)" || return 1
+  resolver="$install/scripts/canopy-runtime.sh"
+  [ -f "$resolver" ] || return 1
+  runtime="$(_to bash "$resolver" 2>/dev/null)" || return 1
+  [ -n "$runtime" ] || return 1
+  out="$(_to uv run --project "$runtime" canopy email client --repo "$ROOT" 2>/dev/null)" && [ -n "$out" ] && { printf '%s\n' "$out" | tail -1; return 0; }
+  return 1
+}
+
+if CLIENT="$(_canopy_client)" && [ -n "$CLIENT" ]; then
+  printf '%s\n' "$CLIENT"
+  exit 0
+fi
+
+DECLARED="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gog_client",""))' "$ROOT/config/agent.json" 2>/dev/null)"
+echo "ace-gog-client: \`canopy email client\` unavailable (canopy missing or < 0.2.572) — using the declared gog_client '${DECLARED:-canopy}'" >&2
+printf '%s\n' "${DECLARED:-canopy}"
