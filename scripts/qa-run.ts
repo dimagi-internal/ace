@@ -62,6 +62,13 @@ interface Args {
    * identical as text (ace#1061).
    */
   artifact_mime_type?: string;
+  /**
+   * Optional: `run_state.yaml` `phases.idea-to-design.products.pdd.description`,
+   * passed through as ctx.pddDescription. Read by idea-to-pdd-qa's
+   * `pdd_description_plain_language` — the one-liner lives in run_state, not in
+   * the PDD body, so it cannot be read from the artifact.
+   */
+  pdd_description?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -83,6 +90,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--artifact-mime-type':
         args.artifact_mime_type = argv[++i];
+        break;
+      case '--pdd-description':
+        args.pdd_description = argv[++i];
         break;
       case '--include-passed':
         args.include_passed = true;
@@ -118,7 +128,7 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage(): void {
   process.stderr.write(
-    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>] [--pdd <path>]\n',
+    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>] [--pdd <path>] [--artifact-mime-type <mime>] [--pdd-description <text>]\n',
   );
 }
 
@@ -173,6 +183,9 @@ async function main(): Promise<void> {
   }
   if (args.artifact_mime_type !== undefined) {
     context.artifactMimeType = args.artifact_mime_type;
+  }
+  if (args.pdd_description !== undefined) {
+    context.pddDescription = args.pdd_description;
   }
   const hasContext = Object.keys(context).length > 0;
 

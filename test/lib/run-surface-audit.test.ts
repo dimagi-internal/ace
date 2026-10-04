@@ -41,6 +41,7 @@ import {
   auditGuideScreenshots,
   auditLinks,
   auditRender,
+  classifyCommitAffordance,
   auditReviewerMembership,
   auditUnresolvedMemberGates,
   applyRenderedGates,
@@ -648,6 +649,41 @@ describe('defects 9 and 10 — what the reader actually sees', () => {
   it('defect 9 — flags an edit that needs a separate commit click on every row', () => {
     const findings = auditRender(healthyPayload(), { ...base, decisionEditCommitsOnPick: false }, PAGE);
     expect(codes(findings)).toContain('RENDER-EDIT-NEEDS-EXTRA-COMMIT');
+  });
+
+  it('members-only edits — an anonymous "Sign in to edit" view is not applicable, not a defect', () => {
+    // spark-facilitator/20261001-2208: ace-web serves decision edits to signed-in
+    // members only (2026-10-03), so the anonymous probe meets SignInToEdit and
+    // no write controls. That reported RENDER-EDIT-NEEDS-EXTRA-COMMIT and the
+    // outsider eval counted it against the page.
+    const findings = auditRender(healthyPayload(), { ...base, decisionEditCommitsOnPick: 'sign-in-required' }, PAGE);
+    expect(codes(findings)).not.toContain('RENDER-EDIT-NEEDS-EXTRA-COMMIT');
+    expect(findings.filter((f) => f.where === 'decisions (edit affordance)')).toEqual([]);
+  });
+
+  describe('classifyCommitAffordance — the probe verdict, without a browser', () => {
+    const none = { signInLinks: 0, confirmControls: 0, saveControls: 0, optionPills: 0 };
+
+    it('anonymous viewer: sign-in prompt and no write controls → sign-in-required', () => {
+      expect(classifyCommitAffordance({ ...none, signInLinks: 2 })).toBe('sign-in-required');
+      // Read-only pills may still render for a non-member; they are not write controls.
+      expect(classifyCommitAffordance({ ...none, signInLinks: 1, optionPills: 3 })).toBe('sign-in-required');
+    });
+
+    it('a staged Save while write controls are present is still the defect-9 shape', () => {
+      expect(classifyCommitAffordance({ ...none, optionPills: 3, saveControls: 1 })).toBe(false);
+      // A sign-in link elsewhere on the page does not launder a real Save.
+      expect(classifyCommitAffordance({ ...none, signInLinks: 1, optionPills: 3, saveControls: 1 })).toBe(false);
+    });
+
+    it('member view: pills (or Confirm) and no Save → commits on pick', () => {
+      expect(classifyCommitAffordance({ ...none, optionPills: 3, confirmControls: 1 })).toBe(true);
+      expect(classifyCommitAffordance({ ...none, optionPills: 3 })).toBe(true);
+    });
+
+    it('nothing recognisable → null (undetermined, never a pass)', () => {
+      expect(classifyCommitAffordance(none)).toBeNull();
+    });
   });
 
   it('defect 10 — flags provenance visible only after expanding a disclosure', () => {

@@ -1,0 +1,5 @@
+{
+  "_source": "Captured 2026-10-03 from Drive ACE/spark-facilitator/runs/20261001-2208/run_state.yaml (revision 186), phases.idea-to-design.products.pdd — verbatim. Its description opened the public run-summary page, which failed run-surface-audit-eval (5.6 vs band 7).",
+  "title": "Spark Facilitator — Connect Pilot for FCAP Community Meeting Facilitation",
+  "description": "A Connect verify-and-pay layer under Spark MicroGrants' Community Based Facilitators: each CBF records FCAP community meetings on a form built from Spark's Village Monitoring Form, and Connect pays per meeting verified as meeting_conducted = yes AND meeting_type = community_meeting, capped at 3 paid meetings per community per FCAP step. The pilot covers Goal Setting (steps 1-7, ~3 months) for ~12 communities in one Malawi district, with facilitator registration, per-meeting monitoring and savings in scope."
+}

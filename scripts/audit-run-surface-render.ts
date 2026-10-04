@@ -46,7 +46,7 @@
  * capability exists to eliminate.
  */
 
-import type { RenderReport } from '../lib/run-surface-audit.js';
+import { classifyCommitAffordance, type CommitAffordance, type RenderReport } from '../lib/run-surface-audit.js';
 
 /** Copy the page draws for a section it believes was never produced. */
 const NOT_CREATED_TEXT = 'Not created';
@@ -231,8 +231,23 @@ async function probeGates(
  *
  * Returns `true` when picking an option commits as it happens (option pills
  * present, no per-row commit control gating them), `false` when a Save button
- * stands between the pick and the change, and `null` when the row could not be
- * reached — reported as undetermined, never as a pass.
+ * stands between the pick and the change WHILE write controls are offered,
+ * `'sign-in-required'` when this anonymous viewer is offered "Sign in to edit"
+ * and no write controls at all, and `null` when the row could not be reached —
+ * reported as undetermined, never as a pass. The verdict itself is the pure
+ * `classifyCommitAffordance` in `lib/run-surface-audit.ts`; this function only
+ * counts what is on screen.
+ *
+ * **Members-only edits (ace-web, 2026-10-03).** Decision edits are served to
+ * signed-in workspace members only. An anonymous viewer — which this probe
+ * always is — gets `SignInToEdit` (an `<a href=".../auth/login/?next=...">`
+ * reading "Sign in to edit", plus "Sign in to confirm, change or comment" at
+ * the top of the tab) in place of the Confirm button and option editor
+ * (`DecisionItem.tsx`, `canWrite`). For a member a pick commits immediately.
+ * Read from ace-web `frontend/src/components/opps/summary/{SignInToEdit,
+ * DecisionItem,DecisionsReview}.tsx`, not guessed. Before this branch existed
+ * the probe reported RENDER-EDIT-NEEDS-EXTRA-COMMIT against controls an
+ * anonymous reader cannot reach (spark-facilitator/20261001-2208).
  *
  * Deliberately does NOT click a pill: in `immediate` commit mode that click IS
  * a durable write into the run's real Drive folder. The affordance is judged
@@ -248,13 +263,13 @@ async function probeCommitAffordance(
   page: import('playwright').Page,
   decisionsUrl: string,
   undetermined: string[],
-): Promise<boolean | null> {
+): Promise<CommitAffordance> {
   try {
-    // Client-only: teach the page who we are, so it is in the state a reviewer
-    // is in after their first comment. No server call. This matters because the
-    // surface legitimately stages the FIRST edit behind a Save (nobody knows
-    // who is editing yet); the defect was making that a per-surface CONSTANT,
-    // so all 42 rows kept the Save button after the name was known.
+    // Client-only: teach the page who we are. Kept for a pre-2026-10-03
+    // deployment, which staged the FIRST edit behind a Save until a reviewer
+    // name was known; the defect was making that a per-surface CONSTANT, so
+    // all 42 rows kept the Save button after the name was known. Harmless on
+    // the members-only page, which ignores it. No server call.
     await page.evaluate(
       ({ keys, id }) => {
         window.localStorage.setItem(keys.name, id.name);
@@ -287,17 +302,20 @@ async function probeCommitAffordance(
     if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
     await page.waitForTimeout(400);
 
-    const pills = page.locator('button[aria-pressed]');
-    if (!(await pills.count())) {
+    const verdict = classifyCommitAffordance({
+      signInLinks: await page.locator('a[href*="/auth/login/"]').filter({ hasText: /sign in to/i }).count(),
+      confirmControls: await page.locator('button[aria-label^="Confirm:"]').count(),
+      saveControls: await page.getByRole('button', { name: /save this answer|^save$|saving/i }).count(),
+      optionPills: await page.locator('li button[aria-pressed]').count(),
+    });
+    if (verdict === null) {
       undetermined.push(
-        'an expanded decision row offered no option pills (button[aria-pressed]) — the pick ' +
-          'affordance was not judged. Check the selectors in ' +
-          'scripts/audit-run-surface-render.ts against the current markup',
+        'an expanded decision row offered no option pills (button[aria-pressed]), no Confirm ' +
+          'control and no "Sign in to edit" prompt — the pick affordance was not judged. Check ' +
+          'the selectors in scripts/audit-run-surface-render.ts against the current markup',
       );
-      return null;
     }
-    const save = page.getByRole('button', { name: /save this answer|^save$|saving/i });
-    return (await save.count()) === 0;
+    return verdict;
   } catch (e) {
     undetermined.push(`the pick-affordance probe errored: ${String(e instanceof Error ? e.message : e)}`);
     return null;

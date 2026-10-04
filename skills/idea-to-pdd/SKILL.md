@@ -1053,9 +1053,24 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      line (e.g. "Turmeric Market Survey"). Strip trailing punctuation
      and any Google Docs comment markers (`[a][b]`).
    - `description`: a one-paragraph plain-prose overview, ~1–3
-     sentences, lifted from the PDD's `## Overview` (or `## Summary` /
+     sentences, drawn from the PDD's `## Overview` (or `## Summary` /
      `## Abstract`) section. Strip markdown bold/italic wrappers; keep
      content as a single line.
+
+     **This is the first thing an outside partner reads.** ace-web renders
+     it as the opening paragraph of the PUBLIC run-summary page (ace-web
+     `apps/opps/summary.py` `_read_opp`). Write it for a partner who has
+     never seen the PDD: what the programme does, for whom, and what
+     Connect pays for — in words. **No form field names, code values,
+     `=` / `AND` / `OR` expressions, snake_case identifiers, run ids or
+     backticks.** Translate rather than lift: *"Connect pays for each
+     community meeting the facilitator confirms took place, up to three"*,
+     never *"verified as meeting_conducted = yes AND meeting_type =
+     community_meeting"* (verbatim from spark-facilitator/20261001-2208,
+     whose summary page failed its outsider review on it). The PDD body
+     keeps its identifiers; only this one-liner is for outsiders.
+     *Enforced:* `idea-to-pdd-qa` check `pdd_description_plain_language`
+     (`lib/pdd-description-plain-language.ts`).
    - `file_id`: the Drive `fileId` returned by Step 6's
      `drive_create_doc_from_markdown`.
    - `program_parameters`: the typed handoff block — **every PDD decision

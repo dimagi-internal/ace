@@ -2314,8 +2314,15 @@ export interface RenderReport {
   renderedHrefs: string[];
   /** Visible "Not created" placeholder labels found on the page. */
   notCreatedLabels: string[];
-  /** true when a decision row's edit commits on pick (no separate Save click). */
-  decisionEditCommitsOnPick: boolean | null;
+  /**
+   * true when a decision row's edit commits on pick (no separate Save click);
+   * false when a Save stands between the pick and the change WHILE write
+   * controls are offered; `'sign-in-required'` when the anonymous viewer is
+   * offered "Sign in to edit" and no write controls at all — the edit
+   * affordance is not applicable to this reader, so it is neither a pass nor
+   * a defect (see `classifyCommitAffordance`); null when not judged.
+   */
+  decisionEditCommitsOnPick: CommitAffordance;
   /** true when a decision's phase/provenance is visible with NO user interaction. */
   provenanceVisibleByDefault: boolean | null;
   /** Anonymous reachability of the two public write endpoints. */
@@ -2329,6 +2336,52 @@ export interface RenderReport {
   gateProbes?: Array<{ url: string; status: number | null; finalUrl: string; text: string }>;
   /** Anything the probe could not determine, with why. */
   undetermined: string[];
+}
+
+/**
+ * The edit affordance an anonymous reader meets on a decision row.
+ *
+ * `'sign-in-required'` exists because ace-web stopped serving decision edits
+ * anonymously on 2026-10-03 (ace-web `components/opps/summary/SignInToEdit.tsx`,
+ * `DecisionItem.tsx` `canWrite`): a non-member reads the row and gets a
+ * "Sign in to edit" link in place of the Confirm button and option editor,
+ * and for a signed-in member a pick commits as it happens. Before this state
+ * existed the probe kept looking for a staged Save on a surface whose write
+ * controls an anonymous reader cannot reach, and reported
+ * RENDER-EDIT-NEEDS-EXTRA-COMMIT against it — which the outsider-readability
+ * eval then counted against the page (spark-facilitator/20261001-2208).
+ */
+export type CommitAffordance = boolean | null | 'sign-in-required';
+
+/** What the browser saw on an expanded decision row — counts only, no judgement. */
+export interface CommitAffordanceObservation {
+  /** Links into ace-web's login (`/auth/login/`) whose text reads "Sign in to …". */
+  signInLinks: number;
+  /** Write controls: a `Confirm` button (aria-label `Confirm: …`) or the like. */
+  confirmControls: number;
+  /** Buttons whose name reads Save / Save this answer / Saving. */
+  saveControls: number;
+  /** Option pills (`button[aria-pressed]`) inside the expanded row. */
+  optionPills: number;
+}
+
+/**
+ * Pure verdict for the commit-affordance probe, so the decision is testable
+ * without a browser. Order matters:
+ *
+ * 1. A sign-in prompt with NO write control (no Confirm, no Save) is the
+ *    anonymous view of a members-only surface → `'sign-in-required'`.
+ * 2. A Save control while writes are offered → `false` (the defect-9 shape).
+ * 3. No pills and no write controls, and no sign-in prompt → `null`: the probe
+ *    found nothing it recognises, which is undetermined, never a pass.
+ * 4. Otherwise → `true` (pills, no staged Save).
+ */
+export function classifyCommitAffordance(o: CommitAffordanceObservation): CommitAffordance {
+  const writeControls = o.confirmControls + o.saveControls;
+  if (o.signInLinks > 0 && writeControls === 0) return 'sign-in-required';
+  if (o.saveControls > 0) return false;
+  if (o.optionPills === 0 && o.confirmControls === 0) return null;
+  return true;
 }
 
 export function auditRender(payload: unknown, report: RenderReport, pageUrl: string): Finding[] {
@@ -2393,6 +2446,10 @@ export function auditRender(payload: unknown, report: RenderReport, pageUrl: str
       defect: '9 (pick → name → Save on every row; caught only by a human comparing by eye)',
     });
   }
+  // 'sign-in-required' deliberately emits nothing: an anonymous reader is
+  // offered a way in, not a control that would fail, and the members' commit
+  // affordance is not something this anonymous probe can see. Reporting it as
+  // a defect is what put a stale finding in front of the eval.
   if (report.decisionEditCommitsOnPick === null) {
     out.push({
       code: 'RENDER-UNDETERMINED',
