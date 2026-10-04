@@ -131,3 +131,41 @@ describe('open-questions.md lives at the opp root (ace#1753)', () => {
     expect(generateRunReadme('20260827-0323')).not.toContain('open-questions.md');
   });
 });
+
+/**
+ * The ledger is retired (owner decision 2026-10-04,
+ * docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md):
+ * every question is a decision row, and no skill writes `open-questions.md`.
+ * The writers' gates were deleted with it, so an instruction that still names
+ * one would send an agent to a function that no longer exists.
+ */
+describe('no instructional doc writes the retired ledger', () => {
+  const RETIRED: readonly RegExp[] = [
+    /checkOpenQuestionsWriteShape/,
+    /checkOpenQuestionsPlainLanguage/,
+    /§ The durable open-questions doc/,
+    /§ Row contract — written for the named owner/,
+    /drive_create_doc_from_markdown[^\n]*open-questions\.md/,
+  ];
+
+  it('no agent, skill or command names a retired ledger writer or its gates', () => {
+    const offenders: string[] = [];
+    for (const abs of instructionalFiles()) {
+      const rel = relative(REPO, abs).split(sep).join('/');
+      readFileSync(abs, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          for (const re of RETIRED) if (re.test(line)) offenders.push(`${rel}:${i + 1}  ${line.trim()}`);
+        });
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('idea-to-pdd states the producer rule where the ledger section used to be', () => {
+    const skill = readFileSync(join(REPO, 'skills/idea-to-pdd/SKILL.md'), 'utf8');
+    expect(skill).not.toContain('## The durable open-questions doc');
+    expect(skill).toContain('## Asks are decision rows (the open-questions ledger is retired)');
+    expect(skill).toMatch(/a default you build on is a decision row/i);
+  });
+});
+

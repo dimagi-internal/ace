@@ -299,7 +299,7 @@ function diffBlocks(a: readonly string[], b: readonly string[]): DiffBlock[] {
 export type DispositionKind =
   | 'skill-fix' // a generalizable defect -> GitHub issue + PR
   | 'decision' // ACE chose; a human wants different -> decisions.yaml
-  | 'open-question' // needs a human answer -> open-questions.md
+  | 'open-question' // LEGACY: a row of the retired open-questions ledger (new asks are `decision` rows with `review_ask`)
   // A partner's EDIT kept as they wrote it (ace#1335). Needed because the
   // other four kinds all describe ACE doing something in response, and the
   // correct response to a good edit is to do NOTHING and say so. Without this,

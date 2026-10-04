@@ -44,7 +44,9 @@ const LEDGER = read('lib/feedback-ledger.ts');
 
 /** The input-document block, from its heading to the `## Open` reader rule. */
 const INPUT_BLOCK_START = '**Read the comment threads on the INPUT documents too';
-const INPUT_BLOCK_END = '**Read `## Open` ONLY.**';
+// The step that follows the input-document block (it used to be the retired
+// ledger's `**Read `## Open` ONLY.**`).
+const INPUT_BLOCK_END = '**Contradictions stay loud.**';
 
 function inputBlock(skill: string): string {
   const start = skill.indexOf(INPUT_BLOCK_START);

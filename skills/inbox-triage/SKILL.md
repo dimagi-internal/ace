@@ -215,35 +215,38 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
   g. **Write back** to the routed run's comms-log: thread summary, sender + tier, what ACE did, any
      commitment made. Skills stay stateless — the comms-log and `run_state.yaml` are the memory.
 
-     **An ANSWER to a counterpart's question about their programme also lands in that opp's
-     `open-questions.md`** — `## Open` if it is still live, `## Archive` (with `resolved_at` /
-     `resolved_by` / `resolution_note`) if the turn settled it — and a later answer that corrects
-     an earlier one says in its `resolution_note` which statement it supersedes. The comms-log is
-     not that record (it holds a one-line gist, never the body), and **`docs/learnings/` is never
-     it**: that directory is ACE's engineering notebook for platform mechanics, read by people
-     working on ACE, not by the programme's runs or its author. Writing a platform finding there
-     is fine; writing it ONLY there leaves the programme with no record of its own answer. Write
-     the doc in the shape `skills/idea-to-pdd` § The durable open-questions doc specifies, via
-     `drive_create_doc_from_markdown` (find-or-create keeps the file id), and read it back with
-     `exportAs: 'text/markdown'` through `extractOpenSection` — a plain-text write drops the `##`
-     headings and the next run's Phase 1 then refuses the whole doc.
+     **An ANSWER about their programme lands in the routed run's decisions log — never only in
+     the comms-log, and never in `docs/learnings/`.** The open-questions ledger is retired (owner
+     decision 2026-10-04; `docs/decisions-contract.md § Open asks`), so there is no
+     `open-questions.md` to write. Two cases:
 
-     **Run `checkOpenQuestionsWriteShape` (`lib/open-questions-inline.ts`) on the markdown FIRST
-     and do not write on `ok: false`** — it runs the very parser Phase 1 reads with, so this write
-     path cannot publish a shape the read then refuses (ace#2367). **Then run
-     `checkOpenQuestionsPlainLanguage` (`lib/open-questions-plain-language.ts`) and do not write on
-     `ok: false`:** an answer you record is read by the row's owner on the public run-summary page,
-     so `question:` / `answered_where:` follow
-     `skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner` and the technical detail goes in `latest:`. **And never round-trip a
-     `text/plain` read back into this doc:** that export has no `##` markers and its rows have run
-     together, so editing it and writing it back is exactly how the headings were laundered away
-     here. (Origin: 2026-09-10,
-     `poverty-graduation`, thread `19f86579142e6ba5` — two platform answers given to the design
-     author on 2026-09-05 were recorded only as `docs/learnings/2026-09-02-*` and `2026-09-04-*`;
-     asked "which record holds the answer", a turn pointed her at the repo, and Jon: *"that's
-     definitely not where learnings go for runs."* The same turn found the opp's
-     `open-questions.md` flattened by an earlier plain-text write, so Phase 1 could read none of
-     its 15 open rows.)
+     - **The counterpart ANSWERED an ask** — a decision row with an unanswered `review_ask` whose
+       `owner` they are. Record their answer as an attributed ruling in the opp's
+       `inputs/decision-overrides.yaml`: `id` = the row's id, `override` = their answer as one of
+       the row's options (add it if missing), `override_reasoning` = the gist plus the thread id,
+       `decided_by` = their address, `decided_at` = the message date (read the file first and keep
+       every other row — ace-web writes it too; create it with `schema_version: 1`,
+       `kind: decision-overrides`, `opp` when absent — `lib/decision-overrides.ts`). That file is the sanctioned
+       channel for a human ruling — it binds at the decisions write boundary on every later run
+       and answers the ask for the release gate and the award gate (`lib/open-asks.ts`). Only an
+       **act**-tier sender's ruling is written directly, after step e's approval; a
+       **correspond**-tier answer (an outside implementing organisation) is proposed to the run's
+       operator in the close-out, never written by the turn.
+     - **ACE answered THEIR question** (a platform fact, a design choice ACE made) and the
+       answer is a default the run builds on: append it to the routed run's `decisions.yaml` with
+       `decisions_append_rows` under the producer rule (`skills/_decisions-review-fields.md`), with
+       `feedback_ref` when it came from a logged review; a later answer that corrects an earlier
+       one uses `supersedes`. A pure platform fact with nothing to build on goes in the reply and
+       the comms-log gist — and the reply is itself the record the counterpart keeps.
+
+     The comms-log holds a one-line gist, never the body, and **`docs/learnings/` is never the
+     programme's record**: it is ACE's engineering notebook for platform mechanics, read by people
+     working on ACE, not by the programme's runs or its author. Writing a platform finding there
+     is fine; writing it ONLY there leaves the programme with no record of its own answer.
+     (Origin: 2026-09-10, `poverty-graduation`, thread `19f86579142e6ba5` — two platform answers
+     given to the design author on 2026-09-05 were recorded only as `docs/learnings/2026-09-02-*`
+     and `2026-09-04-*`; asked "which record holds the answer", a turn pointed her at the repo, and
+     Jon: *"that's definitely not where learnings go for runs."*)
 
 ### 2b. Author CLAIMS for anything the counterpart DECIDED
 

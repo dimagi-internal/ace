@@ -338,13 +338,15 @@ form, audio-upload instructions. These live under
 `runs/<run-id>/6-qa-and-training/` but paths differ per archetype — if
 an FGD-specific training bundle isn't present, link the atomic-visit
 materials with a note that the
-team should adapt the framing for discussion sessions (flag as an
-open-question for the admin group).
+team should adapt the framing for discussion sessions (record it as a
+decision row with a `review_ask`, `owner: implementing-org` — the producer
+rule, `skills/_decisions-review-fields.md`).
 
 **Timeline language:** "N sessions over T weeks. Expect ~4–6 hours of
 prep + facilitation + write-up per session (not continuous fieldwork)."
 Pull N and T from the PDD; if absent, say "per the session plan in
-your kick-off materials" and open-question it.
+your kick-off materials" and record the gap as a decision row with a
+`review_ask`.
 
 **Smaller-N reality:** FGD opps typically invite 1–2 LLOs
 (per `llo-invite` § Archetypes). If the recipient list exceeds 2,

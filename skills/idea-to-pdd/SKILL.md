@@ -18,7 +18,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
-| Prior runs | `ACE/<opp-name>/open-questions.md` § `## Open` (opp ROOT, durable across runs; passed inline at handoff when the orchestrator's bounds allow — ace#1487) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201). `## Archive` is never read back |
+| Prior runs (legacy only) | the `## Open` rows of a not-yet-migrated `ACE/<opp-name>/open-questions.md`, passed inline at handoff ONLY when the opp has no `open-asks.yaml` | questions a prior run raised before the ledger was retired — re-derive each still-open one as a decision row (§ Asks are decision rows); never write to the ledger. Opps on the new model need nothing passed: answers bind from `inputs/decision-overrides.yaml` at the write boundary, and the orchestrator checks the previous run's asks against yours after this phase |
 | Reviewer | comment threads on the PRIOR run's PDD, via `drive_list_comments` | what a domain expert asked for IN PLACE, anchored to the section they were reading |
 | Reviewer / author | comment threads on every Google Doc / Sheet / Slides entry in the frozen `inputs-manifest.yaml` — a shortcut is read at its `resolved_target_id` — via `drive_list_comments` | what the people maintaining the SOURCE documents asked for in place. On a componentized programme those documents ARE the design, so their threads are the review (ace#2372). Replied to, never resolved — § Process step 1 |
 
@@ -68,7 +68,7 @@ about that)"*):
 1. **Every FLW has a smartphone that runs Connect, with a data connection,
    and can complete PersonalID sign-up.** Do not raise device or
    connectivity availability in `## Open Questions`, the launch-readiness
-   check, § Risks, or the durable open-questions ledger — even when the
+   check, § Risks, or as a decision row's review ask — even when the
    inputs describe offline-first tooling for the same workforce. A partner
    input that says otherwise is recorded as context, never escalated.
 2. **The Connect app is the SYSTEM OF RECORD for the work it records.**
@@ -172,34 +172,15 @@ this assumption — design for it as scope.
    failure ladder so it isn't re-derived — and drops the file in
    `inputs/`. See dimagi-internal/ace#890.
 
-   **Read the opp's durable `open-questions.md` too** (opp ROOT, not under
-   `inputs/`, so it is NOT in the manifest — the orchestrator passes its
-   `file_id` inline at handoff; if it wasn't passed, resolve it via
-   `resolve_opp_path` and read it when present). It carries questions prior
-   runs already raised — and, in some rows, ANSWERS a prior run verified.
-   Before adding a question of your own, check whether it is already there.
-
-   **Read it with `exportAs: 'text/markdown'`** — it is a converted gdoc (see
-   § The durable open-questions doc), and `drive_read_file`'s default
-   `text/plain` export strips the `##` markers and flattens its tables to one
-   cell per line, so `## Open` stops resolving and the question rows run
-   together. Take the section from `extractOpenSection`
-   (`lib/open-questions-inline.ts`), **passing the export you used as its
-   second argument** — `extractOpenSection(text, 'text/markdown')`. It excludes
-   `## Archive` structurally and refuses a heading-stripped read instead of
-   guessing at it.
-
-   **Two look-alike failures, opposite remedies (ace#2367).** A `text/plain`
-   read of a healthy doc and a `text/markdown` read of a FLATTENED doc both
-   arrive as "no headings, a bare `Open` line". The second argument is what
-   tells them apart, because you are the one who chose the export:
-   `needs-markdown-export` → **re-read** as markdown; `flattened-headings` →
-   the DOC is broken (its headings were written as ordinary paragraphs), so a
-   re-read returns the same bytes. On `flattened-headings` the live rows ARE
-   recovered — delimited at the bare `Archive` label, so archived rows still
-   never ride along — but it is a **degraded** read: inline it, say so at the
-   Phase 1→2 pause, and **repair the doc** by rewriting it in the two-section
-   shape below (`checkOpenQuestionsWriteShape` before you write).
+   **Legacy ledger rows, when the orchestrator passes them.** The
+   open-questions ledger is retired (owner decision 2026-10-04): no skill
+   writes `open-questions.md`. On an opp not yet migrated the orchestrator
+   passes its `## Open` rows read-only. Treat each as a question a prior run
+   raised: re-derive it under § Asks are decision rows (a decision row with a
+   `review_ask`, a `deferred` row, or — for a chore or an upstream request —
+   nothing in decisions), and if this run's evidence contradicts an answer
+   the row records, say so loudly at the Phase 1→2 pause. Do not fetch the
+   ledger yourself and never write to it.
 
    **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
    on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
@@ -231,11 +212,12 @@ this assumption — design for it as scope.
       **UNROUTED** instead of vanishing. A comment that never reaches this file is not
       UNROUTED — it is absent, and the ledger cannot accuse what it was never told about.
    2. **Route the substance to its durable home**: a requirement → this run's PDD body
-      (and it must survive into every later PDD); a question → `open-questions.md` §
-      `## Open` (opp root); a choice → a `decisions.yaml` row, or
+      (and it must survive into every later PDD); a question → a decision row carrying
+      `review_ask`, `owner`, `needed_by` and `answer_channel` (§ Asks are decision rows),
+      stamped `feedback_ref: <slug>/<item-id>`; a choice → a `decisions.yaml` row, or
       `inputs/decision-overrides.yaml` when the reviewer's answer must bind future runs.
    3. **Reply and resolve** — `drive_reply_to_comment` with `action: 'resolve'`, naming
-      WHERE it landed (the record slug + item id, the question row, the decision id).
+      WHERE it landed (the record slug + item id, the decision id).
       The thread then becomes an audit trail pointing at the durable record rather than
       being the record. Never resolve a thread whose substance is not yet carried
       forward: that destroys the only remaining copy. **This resolve is for ACE's OWN
@@ -301,15 +283,15 @@ this assumption — design for it as scope.
    5. **Not yet in the body: route it, and ask the author to fold it in.** A requirement
       goes to this run's PDD body (synthesized mode) or to the programme overview under
       the component it binds (componentized mode; the overview composes, and ACE writes
-      nothing into the author's document). Add an `open-questions.md` § `## Open` row
-      asking the author to fold it into her document, because downstream reads a
+      nothing into the author's document). Write a decision row with
+      `review_ask: recommended-confirmation`, `owner` = the author and
+      `answer_channel: review`, asking her to fold it into her document, because downstream reads a
       component from `components[].pdd_file_id` and a rule that lives only in the
       overview is one a component-level reader can miss. A question or a choice routes
       exactly as in step 2 above.
    6. **Reply, but NEVER resolve. On an input document the thread belongs to the
       author.** Use `drive_reply_to_comment` WITHOUT `action`, naming where the substance
-      landed (record slug + item id, the section it is already in, the question row, or
-      the decision id). Never pass `action: 'resolve'` on an input document, whoever
+      landed (record slug + item id, the section it is already in, or the decision id). Never pass `action: 'resolve'` on an input document, whoever
       opened the thread. The two cases differ for three reasons:
       - **Ownership.** ACE's generated PDD is ACE's artifact and a new document every
         run, so resolving turns a thread into an audit trail. The input document is
@@ -327,7 +309,7 @@ this assumption — design for it as scope.
    7. **A thread the author already RESOLVED** is her closure, so ACE posts no reply to
       it. If its substance is in the body, nothing more is needed: the body is the
       durable home, and the author both wrote it and closed the thread. If it is NOT in
-      the body, capture and route it per 3 and 5, and raise the gap in the open-questions
+      the body, capture and route it per 3 and 5, and raise the gap on that decision
       row. A thread closed without its substance reaching the document is exactly what a
       later reader cannot see.
    8. **A failed reply does not halt the phase.** If `drive_reply_to_comment` is
@@ -335,28 +317,13 @@ this assumption — design for it as scope.
       durable record from 3 is already written. List the unreplied threads in the phase
       summary with the document name and continue.
 
-   **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
-   open-questions doc below). `## Archive` is closed history — never read it
-   back, never reason from it, never carry its rows into the PDD.
-
-   **The orchestrator may pass less than the whole section, or nothing at
-   all** (dimagi-internal/ace#1487): on a `/ace:iterate` fixture opp the
-   ledger is not passed at all, and above the inline cap only the most recent
-   `## Open` rows arrive with the `file_id`. That is deliberate — do NOT go
-   fetch the rest to "be thorough". Reconcile against what you were given, and
-   if the handoff said the inline was truncated or skipped, say so in the PDD's
-   open-questions section rather than implying full coverage.
-
-   For every pre-existing question **in `## Open` that you were passed**, this
-   run must state one of:
-   **resolves** (this run answers it — record the answer + evidence),
-   **carries forward** (still open), or **contradicts** (this run's finding
-   disagrees with a recorded, verified answer). A contradiction is LOUD:
-   surface it in the PDD's open-questions section AND at the Phase 1→2 pause
-   summary — never silently overwrite the prior answer. On
-   `hh-poverty-targeting/20260812-1613` two items were contradicted with no
-   signal at all, because the file was written every run and read by none
-   (ace#1201).
+   **Contradictions stay loud.** When this run's finding disagrees with a
+   recorded, verified answer — a `human-decided` row the run-init ingest
+   carried as binding, a ruling in `inputs/decision-overrides.yaml`, or an
+   answer on a legacy ledger row — surface it in the PDD's open-questions
+   section AND at the Phase 1→2 pause summary; never silently overwrite the
+   prior answer. On `hh-poverty-targeting/20260812-1613` two verified answers
+   were contradicted with no signal at all (ace#1201).
 
    **Resolving a question MOVES it, it does not annotate it.** A row you
    resolve is removed from `## Open` and appended to `## Archive` with
@@ -652,8 +619,9 @@ this assumption — design for it as scope.
       shape `gps-accuracy-capture` models ("each fix's accuracy is captured
       and submitted; readings worse than 50 m are flagged and down-weighted
       in dedup" — observability, stated honestly, not enforcement); or
-    - raise it as an **open question** for a human, rather than asserting a
-      control ACE will not deliver this cycle.
+    - record it as a decision row with a **`review_ask`** for a human
+      (§ Asks are decision rows), rather than asserting a control ACE will
+      not deliver this cycle.
 
     This is a hard check, not a style note, because the PDD's sentence flows
     **verbatim into the Work Order** and into the Phase-6 training
@@ -695,8 +663,8 @@ this assumption — design for it as scope.
       underlying **requirement** separately — so a later phase implementing
       the now-available approach is a normal build choice, **not a
       deviation**;
-    - raise the stale premise as an **open question** naming exactly what
-      needs re-minting.
+    - record the stale premise as a decision row with a **`review_ask`**
+      naming exactly what needs re-minting.
 
     Why this has to be said here: repo-side citations of a closed upstream
     issue are already caught by `scripts/probe-upstream-asks.ts`, but it
@@ -727,7 +695,8 @@ this assumption — design for it as scope.
       same sentence flows verbatim into the Work Order, so a PDD that
       overstates the control puts a promise ACE cannot keep into a
       contractual document. If the design genuinely needs a hard gate,
-      raise it as an **open question** rather than asserting it.
+      record that as a decision row with a **`review_ask`** rather than
+      asserting it.
 
       If an answer is enumerable, spec it as a **select with the option
       list** (+ "Other, specify"), not free text. Prefer bucketed ranges
@@ -786,7 +755,7 @@ this assumption — design for it as scope.
       If retake-resistance genuinely matters — and note that unlimited
       re-attempts against a fixed bank means a worker can pass by memorising
       the answers, which softens the Deliver-unlock gate on every retry —
-      raise it as an **open question**, consider whether unlimited
+      record it as a decision row with a **`review_ask`**, consider whether unlimited
       re-attempts is the right policy, and where the program really needs
       rotation, file it as a **Nova capability request**.
 
@@ -826,8 +795,8 @@ this assumption — design for it as scope.
       do not promise an in-app language-*selector question*; language
       choice is CommCare's own runtime affordance. English remains the
       runtime default for now, so if the design depends on an FLW seeing
-      the working language first, raise that as an **open question**
-      rather than asserting it.
+      the working language first, record that as a decision row with a
+      **`review_ask`** rather than asserting it.
 
     These become `decisions.yaml` rows where they meet the bar (§
     Decisions Log Convention). This is the upstream half of the
@@ -1007,9 +976,6 @@ raise the conflict.
    ```
    drive_set_anyone_with_link(fileId: <pddDocId>, role: 'commenter')
    ```
-
-   Do the same for `open-questions.md` the moment you write it (§ The durable
-   open-questions doc) — same call, same role.
 
    **`commenter`, not `reader`.** A Drive reader physically CANNOT leave a
    comment, and the PDD is the one artifact in this pipeline whose purpose is
@@ -1266,7 +1232,8 @@ Background and worked examples live in `docs/examples/pdd-stress-test-observatio
    computes its effect; grade `fail` when effective earnings fall below a
    plausible local floor and the PDD does not acknowledge it. Where no
    geography is named there is no market floor to compare against — say so
-   rather than assuming the rate is fine, and carry it as an open question.
+   rather than assuming the rate is fine, and record it as a decision row
+   with a `review_ask` (§ Asks are decision rows).
 
    Worked failure (`bednet-check-2-visit/20260813-2313`): R2 makes
    registration unpaid while registration is the heavier visit, so roughly
@@ -1357,146 +1324,56 @@ QA verdict + eval verdict directly (per `agents/ace-orchestrator.md §
 Pause Points`). The producer no longer authors a separate gate-brief
 artifact. -->
 
-## The durable open-questions doc
+## Asks are decision rows (the open-questions ledger is retired)
 
-`ACE/<opp-name>/open-questions.md` lives at the opp ROOT and is durable
-across runs (ace#1201). It is **not** append-only: it has a **bounded
-shape**, and it is this skill's job to keep it in that shape every run.
+`ACE/<opp-name>/open-questions.md` is no longer written — by this skill or
+any other (owner decision 2026-10-04,
+`docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`).
+Its job is done by the decisions log. Measured on spark-facilitator, 31 of the
+ledger's 32 open rows were already decisions, defaults the build took without
+a row, future-phase questions, or not decisions at all. Keeping two stores
+asked reviewers twice and let the ledger drift from the run it was shown
+with.
 
-**Exactly two sections, in this order, and no others:**
+**The producer rule: a default you build on is a decision row.** Whenever
+this skill would once have "raised an open question", it writes a decision
+row instead (`skills/_decisions-review-fields.md § The producer rule`;
+`docs/decisions-contract.md § The producer rule`):
 
-```markdown
-# Open Questions — <opp-name>
+- the working answer the PDD builds on goes in `ai-default`, with the
+  alternatives in `options`;
+- where the sources do not settle it, add `review_ask`
+  (`recommended-confirmation`, or `required-before` + `needed_by` when no
+  default is safe past a gate — e.g. an answer that changes who may be
+  awarded), `confirm_reason`, `owner`, `needed_by` and `answer_channel`;
+- a question this pilot does not need answered is `status: deferred` with
+  `revisit_when`;
+- a chore goes to `phases.idea-to-design.residuals`, an upstream request to
+  an issue in the owning system's tracker (cited from the row it affects),
+  and a factual partner input to a solicitation question
+  (`answer_channel: solicitation:<question-id>`).
 
-## Open
+The PDD's own `## Open Questions` section may still list the asks for the
+reader of the PDD, but every item in it must also be a decision row: the
+decisions review in ace-web is where a reviewer answers it, and an item that
+lives only in the PDD reaches nobody.
 
-- **id:** rate-band-source
-  **question:** What is the authoritative source for the per-visit rate band?
-  **raised_by:** 20260812-1613
-  **owner:** operator
-  **answered_where:** solicitation responses
+**What a reviewer sees is held to the plain-language gate** —
+`plain`, `plain_question`, `confirm_reason` and `revisit_when` are written for
+the named `owner`, with no field ids, file names, run ids, issue numbers, tool
+names or `§` references (`docs/decisions-contract.md § Plain-language gate`).
+The verbatim spark rows that taught this, and their plain rewrite:
+`test/fixtures/open-questions/spark-facilitator-outsider-{jargon,plain}.text-markdown.md`.
 
-## Archive
+**Durability across runs.** Answers persist through
+`inputs/decision-overrides.yaml` and bind at the write boundary. Unanswered
+asks are re-derived by every run from the design and inputs. As a safety
+net the orchestrator writes `ACE/<opp>/open-asks.yaml` at run end and checks
+it against this run's rows after Phase 1; an ask you did not re-derive comes
+back as a run residual. Never read a value out of that file.
 
-- **id:** deliver-app-photo-capture
-  **question:** Should photo capture be camera-only?
-  **raised_by:** 20260714-0902
-  **owner:** ACE
-  **resolved_at:** 2026-08-17T14:02:00Z
-  **resolved_by:** idea-to-pdd (run 20260817-1531)
-  **resolution_note:** app-hq-settings applies appearance="acquire"; settled.
-```
-
-Rules:
-
-- **`## Open` is the live work list.** Only genuinely-unanswered questions
-  live here. It is the ONLY section any reader — this skill, the
-  orchestrator, a human — reads back.
-- **`## Archive` is closed history.** It is **never read back and never
-  inlined** at phase handoff. It exists so the audit trail survives without
-  weighing on every future run.
-- **Resolution MOVES a row; it never annotates one in place.** Remove the row
-  from `## Open`, append it verbatim to `## Archive`, and add exactly three
-  fields: `resolved_at`, `resolved_by`, `resolution_note`. Nothing else
-  changes, so the archived row still reads as the question it was.
-- **Never delete a row.** Archiving is the only removal from `## Open`.
-- **Contradictions stay in `## Open`.** A run that contradicts a recorded
-  answer does not archive it — it records the contradiction on the live row
-  and surfaces it loudly (§ Process step 1).
-- **It is published CONVERTED, and therefore read back as markdown.** Write it
-  with `drive_create_doc_from_markdown` so Drive renders real headings and real
-  tables — a `run-surface-audit` flags a doc that shows the reader raw `##` and
-  pipe characters as `DOC-LITERAL-MARKDOWN`. The matching read is
-  `drive_read_file(..., exportAs: 'text/markdown')` plus `extractOpenSection`:
-  the default `text/plain` export of a converted doc has no `##` markers and no
-  table rows, so it cannot be parsed for `## Open` at all.
-- **CHECK THE CONTENT BEFORE YOU WRITE IT — `checkOpenQuestionsWriteShape`
-  (`lib/open-questions-inline.ts`).** Pass the markdown you are about to hand
-  `drive_create_doc_from_markdown`; on `ok: false` do NOT write, fix the shape
-  and re-check. It runs the very parser Phase 1 reads with, so a write can
-  never pass a shape the read then refuses. **The trap it closes is real and
-  cost a run:** a turn read this doc back as `text/plain` (bare `Open` /
-  `Archive` labels, rows run together), edited THAT text and wrote it out
-  again — laundering the headings away. The doc looked fine to a human and the
-  next run's Phase 1 could inline none of its 15 open rows, including a hold on
-  the work order (`poverty-graduation`, revision 52, 2026-09-10; ace#2367).
-  Never round-trip a `text/plain` read back into this doc.
-  **It also refuses a SPLICED preamble** (ace#2499): a garbled H2 (a sentence
-  fragment such as ``## Open` before raising…``), a second `## Open` /
-  `## Archive`, or more than one `Last updated by run` line above `## Open`.
-  That shape came from editing the preamble in place and cutting at the
-  `## Open` inside a code span instead of at the real heading.
-- **CHECK THE ROWS ARE WRITTEN FOR THEIR OWNER — `checkOpenQuestionsPlainLanguage`
-  (`lib/open-questions-plain-language.ts`).** Run it on the same markdown,
-  after the shape check; on `ok: false` do NOT write. It names each offending
-  row id, field and token. The rules it enforces are § Row contract below.
-- **Rewrite the preamble (everything above `## Open`) as ONE whole block**,
-  never by splicing into the old one, and keep exactly one
-  `Last updated by run` line. Refer to the sections in prose ("the Open
-  section below") rather than opening a paragraph with a `` `## …` `` code
-  span.
-- **It is shared anyone-with-link `commenter` at creation** —
-  `drive_set_anyone_with_link(fileId: <docId>, role: 'commenter')`, per
-  § Process step 6c. This ledger is where a human ANSWERS a deferred question,
-  so the reviewer has to be able to write on the row that asks it; a reader
-  cannot. It 401'd anonymously on all three ace#1843 runs.
-
-This mirrors the `archive:` convention `run_state.yaml`'s `open_questions:`
-list already follows — see `agents/orchestrator-reference.md § Cruft
-management — `archive:` block convention`, whose three `resolved_*` fields
-are the same three used here.
-
-**Why the shape is a contract and not a style note (ace#1487).** Annotating
-resolved rows in place made this doc grow monotonically —
-`bednet-check-2-visit` reached 26,577 chars across three runs — while
-§ Process step 1 mandates a read-back statement for every pre-existing
-question, so Phase 1's cost grew linearly with the ledger forever. On the
-`/ace:iterate` fixture opp the inherited history then leaked into the PDD:
-a 43,003-char PDD from a 15,449-char brief, carrying rates, cohort sizes and
-programme ceilings the brief never states. The orchestrator now bounds the
-READ (`lib/open-questions-inline.ts` — fixture opps skip the inline entirely;
-everyone else gets `## Open` capped at `OPEN_QUESTIONS_INLINE_CAP_CHARS`);
-this section bounds the WRITE, so the live list stays small enough that the
-cap is rarely the thing doing the work.
-
-### Row contract — written for the named owner
-
-**This is the ONE canonical statement of what a ledger row's fields may say.
-Every other writer (`agents/ace-orchestrator.md` run-end update,
-`skills/inbox-triage` step 2g, `skills/feedback-ledger`) links here rather
-than restating it.**
-
-The ledger is not only ACE's work list. ace-web renders its `## Open` rows on
-the PUBLIC run-summary page: `question:` is the item an outside partner is
-asked, rows are grouped by `owner:`, `blocking:` becomes a plain stage name,
-and `latest:` / `raised_by:` sit behind "Working notes". So:
-
-- **`question:` must be answerable by its named `owner` without knowing
-  anything about ACE.** No form or field ids (`hh_count_tt`, `m0f3`), no
-  XML, no file names (`decisions.yaml`, `.ccz`), no run ids, no issue
-  numbers (`ace#2590`), no skill, atom or tool names (`Nova`,
-  `update_translations`), no `PDD §` references, no app version tags
-  (`v1392`). Name the thing as the owner knows it — "the household count the
-  app saves on the community record", not `hh_count_tt`; "Spark's own app",
-  not "the v1392 app".
-- **`answered_where:` names a place or process the owner recognises** —
-  "your reply to this review", "the implementing organisation's
-  application", "a call with Dimagi", "the work order". Never
-  `decisions.yaml`, an `ace#` issue, a skill, a Nova tool, or a `§`.
-- **The technical evidence belongs in `latest:`**, which outsiders see only
-  behind "Working notes". Moving it there loses nothing: the field ids, XML
-  and issue numbers that justify the question stay on the row.
-- **Rows whose owner is internal only** (ACE / Operator / Connect team /
-  Dimagi, alone or combined) are exempt — nobody outside is asked them. A row
-  with an outside owner anywhere in `owner:` (`Spark / ACE`) is NOT exempt.
-
-Reproducer: spark-facilitator's ledger (revision 6, 2026-10-03) asked Spark
-about `hh_count_tt`, "the v1392 app" and twelve lookup-table names, forms
-`m0f0, m0f3, m0f5, m0f8` and `currently_saving`, and pointed `answered_where:`
-at "decisions.yaml ruling or PDD revision", "Nova update_translations review",
-"ace#2590" and "work order §6". `run-surface-audit-eval` capped the page's
-jargon at 4/10, which held the release gate at `warn`. Verbatim rows and
-their plain rewrite: `test/fixtures/open-questions/spark-facilitator-outsider-{jargon,plain}.text-markdown.md`.
+**Legacy ledgers** are migrated once with `scripts/migrate-open-questions.ts`
+and archived as `open-questions.archived.md`.
 
 ## Decisions Log (rendered)
 
@@ -2037,7 +1914,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD and `open-questions.md`, `role: 'commenter'` — § Process step 6c; ace#1843), `drive_list_comments` (the prior run's PDD AND every Google Doc / Sheet / Slides input, called on a shortcut's `resolved_target_id` — § Process step 1; ace#2372), `drive_reply_to_comment` (`action: 'resolve'` on ACE's own PDD only; on an input document, reply with no `action`), `drive_list_folder` (a shortcut entry whose manifest row lacks `resolved_target_id`)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD — human-facing prose; the retired open-questions ledger is never written — § Asks are decision rows), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD, `role: 'commenter'` — § Process step 6c; ace#1843), `drive_list_comments` (the prior run's PDD AND every Google Doc / Sheet / Slides input, called on a shortcut's `resolved_target_id` — § Process step 1; ace#2372), `drive_reply_to_comment` (`action: 'resolve'` on ACE's own PDD only; on an input document, reply with no `action`), `drive_list_folder` (a shortcut entry whose manifest row lacks `resolved_target_id`)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 

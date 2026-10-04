@@ -29,6 +29,7 @@ const OPP_LEVEL_EXEMPT = new Set([
   'inputs/',
   'opp.yaml',
   'open-questions.md',
+  'open-asks.yaml',
   'eval-calibration/known-issues.md',
   // Partnership-video pipeline (prospect-level, live across runs)
   'prospect.yaml',
@@ -426,6 +427,10 @@ const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
   // rather than emit `mode: componentized` with no components, which is the
   // failure this lint is really guarding against.
   '1-design/component-set.yaml',
+  // Generated at the END of a run for the NEXT run's Phase 1 check — absent on
+  // an opp's first run under the open-asks model, and never a value source
+  // (docs/decisions-contract.md § Open asks).
+  'open-asks.yaml',
   'opp.yaml',
   'decisions.yaml',
   'decisions.gdoc',

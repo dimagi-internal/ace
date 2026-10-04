@@ -27,7 +27,6 @@ import path from 'node:path';
 
 import {
   OPEN_QUESTIONS_INLINE_CAP_CHARS,
-  checkOpenQuestionsWriteShape,
   classifyOpenQuestionsInline,
   extractOpenSection,
   parseOpenRows,
@@ -181,21 +180,6 @@ describe('the executing prose states both bounds (#1487)', () => {
     expect(phase1, 'Phase 1 must keep the #1201 rationale').toContain('ace#1201');
   });
 
-  it('idea-to-pdd declares the two-section shape', () => {
-    const skill = read('skills/idea-to-pdd/SKILL.md');
-    expect(skill, 'the skill must declare ## Archive').toContain('## Archive');
-    expect(skill, 'the skill must declare ## Open').toContain('## Open');
-  });
-
-  it('the artifact manifest no longer describes the file as append-only', () => {
-    const manifest = read('lib/artifact-manifest.ts');
-    const entry = manifest.slice(
-      manifest.indexOf("path: 'open-questions.md'"),
-      manifest.indexOf("path: 'eval-calibration/known-issues.md'"),
-    );
-    expect(entry, 'manifest entry').toContain('## Archive');
-    expect(entry, 'manifest entry').toContain('never inlined');
-  });
 });
 
 /**
@@ -662,127 +646,6 @@ describe('a ledger with NO headings at all — the flattened doc (#2367)', () =>
   });
 });
 
-/**
- * The WRITE half of ace#2367. The parser fix above recovers a flattened
- * ledger; it does not stop one being written. The flattening came from a turn
- * that read the doc back as `text/plain` (bare labels, run-on rows) and wrote
- * THAT text out again — laundering the headings away, with nothing at the
- * boundary to notice.
- *
- * `checkOpenQuestionsWriteShape` is that boundary: the content a writer is
- * about to hand `drive_create_doc_from_markdown` must read back `ok` through
- * the very parser Phase 1 uses. It is the same function on both sides, so the
- * write cannot pass a shape the read then refuses.
- */
-describe('a writer cannot publish a shape the reader would refuse (#2367)', () => {
-  const fixture = (name: string) =>
-    fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
-
-  it('POSITIVE control, captured: a real well-formed ledger read back from Drive passes', () => {
-    // Real bytes, not a literal typed beside the assertion: the 2026-08-26
-    // capture of a healthy CONVERTED ledger. Round-tripping THAT into the doc
-    // is legal and must stay legal — the guard exists to stop the flattened
-    // round-trip, not every round-trip.
-    const result = checkOpenQuestionsWriteShape(fixture('converted-gdoc.text-markdown.md'));
-    expect(result.ok, result.reason).toBe(true);
-
-    const spark = checkOpenQuestionsWriteShape(fixture('spark-facilitator.text-markdown.md'));
-    expect(spark.ok, spark.reason).toBe(true);
-  });
-
-  it('NEGATIVE control, captured: the flattened export that caused the incident is REFUSED', () => {
-    // The exact artifact of the defect — Drive's own markdown export of a
-    // heading-less doc. This is what a turn had in hand and wrote back.
-    const result = checkOpenQuestionsWriteShape(fixture('flattened-gdoc.text-markdown.md'));
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/## Open/);
-    expect(result.reason, 'the refusal names the verdict the reader would give').toContain(
-      'flattened-headings',
-    );
-  });
-
-  it('NEGATIVE control, captured: the text/plain export is REFUSED too', () => {
-    const result = checkOpenQuestionsWriteShape(fixture('flattened-gdoc.text-plain.txt'));
-    expect(result.ok).toBe(false);
-  });
-
-  it('a doc with real headings but no ## Open section is REFUSED', () => {
-    const result = checkOpenQuestionsWriteShape('# Open Questions\n\n## Archive\n\n- **id:** gone\n');
-    expect(result.ok).toBe(false);
-  });
-});
-
-/**
- * dimagi-internal/ace#2499 — a preamble rewrite spliced at the `## Open` inside
- * a CODE SPAN, not at the real heading. The rest of the old preamble survived
- * as an H2 whose text is a sentence fragment, followed by a second, stale
- * `Last updated by run` line. `extractOpenSection` still read it `ok` (the
- * real `## Open` is further down), so the write gate — which only asked that
- * question — accepted it and a partner saw the mess.
- *
- * `spark-facilitator-spliced.text-markdown.md` reconstructs the revision-43
- * preamble from the issue's verbatim `text/markdown` quote and the captured
- * `text/plain` export of the same revision
- * (`spark-facilitator-spliced.export.txt`); its rows are the repaired doc's.
- * `spark-facilitator-repaired.text-markdown.md` is the live doc's
- * `export?format=md` read after the operator's repair (2026-09-26).
- */
-describe('a spliced preamble is refused at the write boundary (#2499)', () => {
-  const fixture = (name: string) =>
-    fs.readFileSync(path.join(process.cwd(), 'test/fixtures/open-questions', name), 'utf8');
-
-  it('the spliced fixture is the incident: it still reads back ok, which is why the old gate passed it', () => {
-    expect(extractOpenSection(fixture('spark-facilitator-spliced.text-markdown.md')).status).toBe('ok');
-  });
-
-  it('REFUSES the spliced preamble, naming the garbled heading and the duplicate Last-updated line', () => {
-    const result = checkOpenQuestionsWriteShape(fixture('spark-facilitator-spliced.text-markdown.md'));
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/garbled heading/i);
-    expect(result.reason).toContain('Open` before raising');
-    expect(result.reason).toMatch(/2 `Last updated by run` lines/);
-  });
-
-  it('each defect refuses on its own', () => {
-    const ok = '# Open Questions — x\n\nLast updated by run 1.\n\n## Open\n\n- **id:** a\n\n## Archive\n';
-    expect(checkOpenQuestionsWriteShape(ok).ok).toBe(true);
-
-    const garbled = ok.replace('## Open\n', '## Open` before raising questions\n\n## Open\n');
-    const g = checkOpenQuestionsWriteShape(garbled);
-    expect(g.ok).toBe(false);
-    expect(g.reason).toMatch(/garbled heading/i);
-
-    const twoStamps = ok.replace('Last updated by run 1.', 'Last updated by run 2.\n\nLast updated by run 1.');
-    const t = checkOpenQuestionsWriteShape(twoStamps);
-    expect(t.ok).toBe(false);
-    expect(t.reason).toMatch(/2 `Last updated by run` lines/);
-
-    const twoOpen = ok.replace('## Archive', '## Open\n\n- **id:** b\n\n## Archive');
-    const o = checkOpenQuestionsWriteShape(twoOpen);
-    expect(o.ok).toBe(false);
-    expect(o.reason).toMatch(/2 `## Open` headings/);
-  });
-
-  it('POSITIVE controls, captured: the repaired doc and the earlier healthy ledgers still pass', () => {
-    for (const name of [
-      'spark-facilitator-repaired.text-markdown.md',
-      'spark-facilitator.text-markdown.md',
-      // carries a third H2 (`## Settled — do not re-open`) — legal, not a splice
-      'converted-gdoc.text-markdown.md',
-    ]) {
-      const result = checkOpenQuestionsWriteShape(fixture(name));
-      expect(result.ok, `${name}: ${result.reason}`).toBe(true);
-    }
-  });
-
-  it('a `Last updated by run` mention inside a ROW is not a preamble stamp', () => {
-    const md =
-      '# Open Questions — x\n\nLast updated by run 2.\n\n## Open\n\n' +
-      '- **id:** a **latest:** Last updated by run 1, which asked Spark.\n\n## Archive\n';
-    expect(checkOpenQuestionsWriteShape(md).ok).toBe(true);
-  });
-});
-
 describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
@@ -798,12 +661,6 @@ describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)'
     expect(phase1, 'Phase 1 must name the extractor').toContain('extractOpenSection');
   });
 
-  it('idea-to-pdd names the markdown export where it reads the ledger back', () => {
-    const skill = read('skills/idea-to-pdd/SKILL.md');
-    expect(skill, 'the skill must name the export format').toContain("exportAs: 'text/markdown'");
-    expect(skill, 'the skill must name the extractor').toContain('extractOpenSection');
-  });
-
   /**
    * ace#2367: a `flattened-headings` read that the executing prose never
    * mentions is a status nobody acts on — the run inlines a degraded section
@@ -817,23 +674,8 @@ describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)'
       doc.indexOf('### Phase 2:', doc.indexOf('### Phase 1: Idea to Design')),
     );
     expect(phase1, 'Phase 1 must name the flattened-doc verdict').toContain('flattened-headings');
-
-    const skill = read('skills/idea-to-pdd/SKILL.md');
-    expect(skill, 'idea-to-pdd must name it too').toContain('flattened-headings');
   });
 
-  /**
-   * The write half. `skills/inbox-triage` step 2g is where the flattening
-   * write came from, so it — and the shape contract in `idea-to-pdd` — must
-   * name the guard a writer runs before publishing.
-   */
-  it('the writing prose names the pre-write shape check', () => {
-    for (const rel of ['skills/inbox-triage/SKILL.md', 'skills/idea-to-pdd/SKILL.md']) {
-      expect(read(rel), `${rel} must name the write-shape guard`).toContain(
-        'checkOpenQuestionsWriteShape',
-      );
-    }
-  });
 });
 
 /**
