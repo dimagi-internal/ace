@@ -32,6 +32,7 @@ import {
   applyDecisionOverrides,
   type DecisionOverrideRow,
 } from "./decision-overrides.js";
+import { applyOperatorRulings, type OperatorRuling } from "./operator-rulings.js";
 
 /** Canonical filename — single source of truth for the storage shim. */
 export const DECISIONS_FILENAME = "decisions.yaml" as const;
@@ -66,6 +67,10 @@ export interface ComposeResult {
    * the attribution claim was refused. Surfaced rather than swallowed — a
    * silently-dropped reviewer ruling is the exact failure this closes. */
   rulingsSkippedUnattributed: string[];
+  /** Appended rows stamped `human-decided` from `inputs/operator-rulings.yaml`. */
+  operatorRulingsApplied: string[];
+  /** `operator-rulings/<id>` refs naming no ruling in the file (left `ai-default`). */
+  operatorRulingsUnmatched: string[];
 }
 
 export type DecisionsWriteCode =
@@ -110,6 +115,11 @@ export interface ComposeArgs {
    * never raises are ignored. Omit / null when no overrides file exists.
    */
   overrides?: DecisionOverrideRow[] | null;
+  /**
+   * The opp's `inputs/operator-rulings.yaml` rulings (lib/operator-rulings.ts).
+   * Applied after the overrides; omit when the file does not exist.
+   */
+  operatorRulings?: OperatorRuling[] | null;
   /**
    * Override for `generated_at` when seeding a new log. Tests pin this so
    * fixtures are stable; production callers leave it unset.
@@ -171,6 +181,11 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   // the strictly-validated batch. Post-transform rows keep the strict
   // invariant by construction (the override value is appended to `options`).
   const overridden = applyDecisionOverrides(parsedRows, args.overrides ?? []);
+  // Then the opp's operator rulings (inputs/operator-rulings.yaml): a row
+  // whose `feedback_ref` is `operator-rulings/<id>` is stamped `human-decided`
+  // with the ruling's attribution — never the caller's (ace#2307).
+  const ruled = applyOperatorRulings(overridden.rows, args.operatorRulings ?? []);
+  const batch = ruled.rows;
 
   const warnings: string[] = [];
   const log: DecisionsLog = loadOrSeedLog(
@@ -183,7 +198,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   // `scope`/`enforcement` on rule rows, `check_at` from a `Spot-check:`
   // sentence — so they never depend on the producer remembering to.
   let carriesV6 = false;
-  for (const row of overridden.rows) {
+  for (const row of batch) {
     stampRow(row);
     if (REVIEW_FIELDS.some((f) => (row as Record<string, unknown>)[f] !== undefined)) carriesV6 = true;
   }
@@ -196,7 +211,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   const appliedIds = new Set(overridden.applied);
   const rulingIds = new Set(overridden.appliedByFeedbackRef);
   let added = 0;
-  for (const row of overridden.rows) {
+  for (const row of batch) {
     if (existingIds.has(row.id)) {
       skipped.push(row.id);
       continue;
@@ -216,7 +231,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   // write, because the consumer contract is "look up the canonical id and use
   // it as-is".
   const byId = new Map(log.decisions.map((d) => [d.id, d]));
-  for (const row of overridden.rows) {
+  for (const row of batch) {
     const target = row.supersedes;
     if (target === undefined) continue;
     // Only act for rows we actually appended; a skipped (already-present) row
@@ -256,7 +271,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   // delivery window ends earlier. Judged only for rows THIS batch appended, so
   // a historical row never blocks an unrelated write.
   const appendedIds = new Set(
-    overridden.rows.filter((r) => !skipped.includes(r.id)).map((r) => r.id),
+    batch.filter((r) => !skipped.includes(r.id)).map((r) => r.id),
   );
   const bufferViolations = checkBufferClaims(
     log.decisions as unknown as BufferClaimRow[],
@@ -300,6 +315,8 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     overridesApplied,
     rulingsApplied,
     rulingsSkippedUnattributed: overridden.skippedUnattributed,
+    operatorRulingsApplied: ruled.applied.filter((id) => appendedIds.has(id)),
+    operatorRulingsUnmatched: ruled.unmatched,
   };
 }
 

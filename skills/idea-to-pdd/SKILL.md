@@ -56,7 +56,7 @@ the components is not enough, because a build needs enough to execute:
 > programme overview doc needs to explain how to use the components."*
 > — Jon, 2026-09-05
 
-## Standing design assumptions (operator directive — do not re-open per run)
+## Standing design assumptions (operator directive — do not re-open per run, except by an operator ruling)
 
 Two things are ASSUMED true for every ACE design. They are not open
 questions, not go/no-go gates, not risks, and not solicitation asks
@@ -82,6 +82,60 @@ Reality may differ; that is for the humans running the programme, not for
 the design. If a run's inputs are genuinely about device procurement (the
 programme IS a device rollout), that is the programme's subject matter, not
 this assumption — design for it as scope.
+
+### Per-opp operator rulings override a standing assumption
+
+The assumptions above hold for every opp **unless an operator has ruled
+otherwise for this opp** in `ACE/<opp-name>/inputs/operator-rulings.yaml`.
+That file is the ONLY sanctioned override. A partner input that contradicts an
+assumption is still recorded as context and never escalated. A reviewer
+comment cannot override one either: route it as a ruling request to the
+operator.
+
+```yaml
+schema_version: 1
+kind: operator-rulings
+opp: spark-facilitator
+rulings:
+  - id: devices-costed-separately
+    ruling: Devices and data are not assumed for this programme. They are costed separately and the implementing organisation is asked about them.
+    overrides: devices-assumed        # or system-of-record; omit for a ruling that overrides nothing
+    decided_by: jjackson@dimagi.com
+    decided_at: 2026-10-04
+    applies_to: [pdd, solicitation, work-order]
+```
+
+Schema and helpers: `lib/operator-rulings.ts`. The file is opp-level and
+operator-written. ACE never writes it, and a malformed file fails the
+decisions write rather than being ignored.
+
+Read it in step 1 alongside the inputs (`resolve_opp_path` → `inputs/` →
+`operator-rulings.yaml`; it is absent on most opps). For every ruling whose
+`applies_to` includes `pdd`:
+
+1. **Honour it over the standing assumption.** For `overrides:
+   devices-assumed`, the PDD states who provides and pays for devices and
+   data. It may raise device or connectivity availability in `## Open
+   Questions` and § Risks, and as a decision row's review ask. For `overrides:
+   system-of-record`, the design may sit alongside the partner's existing
+   record as the ruling says.
+2. **Record one decision row per ruling**, built with
+   `rulingDecisionRow(ruling, { phase: '1-design', skill: 'idea-to-pdd' })`.
+   That gives id `pdd-ruling-<id>`, `plain` = the ruling, and
+   `feedback_ref: operator-rulings/<id>`. Send it as `status: ai-default`, like
+   every row. `decisions_append_rows` stamps `status: human-decided` with the
+   ruling's `decided_by` / `decided_at` from the file. This is the same
+   attribution path as a reviewer's saved ruling in
+   `inputs/decision-overrides.yaml`, because a caller may never assert
+   `human-decided` itself (ace#2307). The result reports it in
+   `operatorRulingsApplied`. A ref in `operatorRulingsUnmatched` means the
+   ruling id is wrong: fix the row, do not drop the ruling.
+
+`solicitation-create` and `pdd-to-work-order` read the same file for their own
+`applies_to` values (`solicitation`, `work-order`). Live case: on
+spark-facilitator the owner ruled on 2026-10-04 that devices are costed
+separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
+(fixture `test/fixtures/operator-rulings/spark-facilitator.yaml`).
 
 ## Process
 

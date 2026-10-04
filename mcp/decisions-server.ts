@@ -59,6 +59,12 @@ import {
   type RequiredBeforeAsk,
 } from '../lib/open-asks.js';
 import { NEEDED_BY, type NeededBy } from '../lib/decisions-schema.js';
+import {
+  OPERATOR_RULINGS_FILENAME,
+  OperatorRulingsError,
+  parseOperatorRulingsYaml,
+  type OperatorRuling,
+} from '../lib/operator-rulings.js';
 
 logPluginDataDirDiag('ace-decisions', import.meta.url);
 
@@ -191,6 +197,12 @@ export async function findDecisionOverridesFile(
   driveClient: typeof drive,
   runFolderId: string,
 ): Promise<OverridesFileFound | null> {
+  const inputsFolderId = await findOppInputsFolder(driveClient, runFolderId);
+  return inputsFolderId ? readInputsFile(driveClient, inputsFolderId, DECISION_OVERRIDES_FILENAME) : null;
+}
+
+/** The `inputs/` folder of the opp that owns a run folder (run → runs/ → opp → inputs), or null. */
+export async function findOppInputsFolder(driveClient: typeof drive, runFolderId: string): Promise<string | null> {
   const parentOf = async (fileId: string): Promise<string | null> => {
     const resp = await driveClient.files.get({
       fileId,
@@ -211,10 +223,20 @@ export async function findDecisionOverridesFile(
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
   });
-  const inputsFolderId = inputsList.data.files?.[0]?.id;
-  if (!inputsFolderId) return null;
+  return inputsList.data.files?.[0]?.id ?? null;
+}
 
-  const escapedName = DECISION_OVERRIDES_FILENAME.replace(/'/g, "\\'");
+/**
+ * A named file directly under an opp's `inputs/` folder, or null. Accepts
+ * application/x-yaml, a Google Doc or any text/* (a human may recreate it by
+ * hand).
+ */
+export async function readInputsFile(
+  driveClient: typeof drive,
+  inputsFolderId: string,
+  filename: string,
+): Promise<OverridesFileFound | null> {
+  const escapedName = filename.replace(/'/g, "\\'");
   const fileList = await driveClient.files.list({
     q: `'${inputsFolderId}' in parents and name='${escapedName}' and trashed=false`,
     fields: 'files(id, mimeType)',
@@ -244,7 +266,7 @@ export async function findDecisionOverridesFile(
     content = resp.data as string;
   } else {
     throw new Error(
-      `${DECISION_OVERRIDES_FILENAME} under ${inputsFolderId} has unexpected mimeType ${mimeType}; ` +
+      `${filename} under ${inputsFolderId} has unexpected mimeType ${mimeType}; ` +
       `expected application/x-yaml, a Google Doc, or text/*.`,
     );
   }
@@ -332,6 +354,10 @@ export interface AppendRowsResult {
   overridesApplied: string[];
   rulingsApplied: string[];
   rulingsSkippedUnattributed: string[];
+  /** Appended rows stamped `human-decided` from the opp's `inputs/operator-rulings.yaml`. */
+  operatorRulingsApplied: string[];
+  /** `operator-rulings/<id>` refs naming no ruling in that file — left `ai-default`. */
+  operatorRulingsUnmatched: string[];
   /**
    * Non-fatal repairs made to an inherited decisions.yaml header (ace#1029) —
    * a non-ISO `generated_at` normalized, or a seeded run's stale `run_id`
@@ -352,7 +378,10 @@ export async function handleAppendRows(
   // expert's review applies to whatever runs next with zero per-skill
   // changes. A malformed file fails LOUD — silently dropping a reviewer's
   // saved intent is the failure mode this feature exists to close.
-  const overridesFile = await findDecisionOverridesFile(driveClient, args.runFolderId);
+  const inputsFolderId = await findOppInputsFolder(driveClient, args.runFolderId);
+  const overridesFile = inputsFolderId
+    ? await readInputsFile(driveClient, inputsFolderId, DECISION_OVERRIDES_FILENAME)
+    : null;
   let overrides: DecisionOverrideRow[] = [];
   if (overridesFile) {
     const parsed = parseDecisionOverridesYaml(overridesFile.content);
@@ -366,12 +395,32 @@ export async function handleAppendRows(
     overrides = parsed.overrides;
   }
 
+  // Operator rulings (inputs/operator-rulings.yaml) bind the same way: a row
+  // whose feedback_ref is `operator-rulings/<id>` is stamped human-decided
+  // with the file's attribution. A malformed file fails loud.
+  const rulingsFile = inputsFolderId
+    ? await readInputsFile(driveClient, inputsFolderId, OPERATOR_RULINGS_FILENAME)
+    : null;
+  let operatorRulings: OperatorRuling[] = [];
+  if (rulingsFile) {
+    const parsed = parseOperatorRulingsYaml(rulingsFile.content);
+    if (parsed.opp !== args.opportunity) {
+      throw new DecisionsWriteError(
+        'IDENTITY_MISMATCH',
+        `inputs/${OPERATOR_RULINGS_FILENAME} declares opp ${JSON.stringify(parsed.opp)} ` +
+        `but this append is for ${JSON.stringify(args.opportunity)} — the file is in the wrong opp's inputs/.`,
+      );
+    }
+    operatorRulings = parsed.rulings;
+  }
+
   const composed = composeAppendedLog({
     existingYamlText: existing?.content ?? null,
     opportunity: args.opportunity,
     run_id: args.run_id,
     rows: args.rows,
     overrides,
+    operatorRulings,
     now: opts.now,
   });
 
@@ -386,6 +435,8 @@ export async function handleAppendRows(
       overridesApplied: [],
       rulingsApplied: [],
       rulingsSkippedUnattributed: [],
+      operatorRulingsApplied: [],
+      operatorRulingsUnmatched: composed.operatorRulingsUnmatched,
       ...(composed.warnings.length ? { headerRepairs: composed.warnings } : {}),
     };
   }
@@ -407,6 +458,8 @@ export async function handleAppendRows(
     overridesApplied: composed.overridesApplied,
     rulingsApplied: composed.rulingsApplied,
     rulingsSkippedUnattributed: composed.rulingsSkippedUnattributed,
+    operatorRulingsApplied: composed.operatorRulingsApplied,
+    operatorRulingsUnmatched: composed.operatorRulingsUnmatched,
     ...(composed.warnings.length ? { headerRepairs: composed.warnings } : {}),
   };
 }
@@ -644,7 +697,7 @@ function error(msg: string) {
 
 server.tool(
   'decisions_append_rows',
-  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v6 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nA saved ruling ALSO binds by `feedback_ref` when the id does not match (v5). Run-minted ids are not stable — measured across 22 runs of two opps, one reviewer\'s 9 comments were raised under 22 different ids — so id-only binding silently dropped every reviewer decision. A feedback_ref match stamps `status: human-decided` with `decided_by`/`decided_at` and carries the rationale, but deliberately does NOT overwrite `ai-default`: the saved string belongs to the old row\'s wording, and the new row phrases the same answer its own way. Reported in `rulingsApplied`. A match with no attribution is refused and reported in `rulingsSkippedUnattributed` rather than stamped anonymously.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` — ALWAYS, on every new row. A caller-asserted `status: human-decided` is REJECTED at this boundary (ace#2307): it is an attribution claim that `lib/decisions-ingest.ts` carries forward as BINDING into every later run of the opp, a subagent structurally cannot reach a human to originate one, and this atom cannot tell an L0 orchestrator from a subagent (these args carry no caller identity). Both legitimate routes are stamped HERE, from a saved record rather than from your prose: a `feedback_ref` match against an attributed ruling in `inputs/decision-overrides.yaml`, or an id match, which flips the row to `overridden`. To record a real human ruling, write it into that file with `decided_by` + `decided_at` (ace-web Phases tab -> Decisions panel) and send the row as `ai-default`.\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n- `plain` (REQUIRED v6 on partner-facing rows): one line in plain language for a programme partner — what was chosen. No field ids, no section refs, no ACE jargon (PDD, CCZ, skill names, issue numbers); quote a design rule in double quotes to keep its words.\n- `audience` (v6): `internal` for ACE test-harness rows (stamped here when the row is recognisably harness); absent = partner.\n- `check_at` + `correct_looks_like` (v6): where a reviewer spot-checks it and what right looks like. `check_at` is filled from a `Spot-check: <where>.` sentence in `reasoning` when omitted.\n- `review_ask: recommended-confirmation` + `confirm_reason` (v6): the run is built on this value but someone with authority should confirm it before launch (a [PROPOSED] parameter, a translation sign-off, an enforcement gap, an open design question). `decisions_enrich` derives the standard ones; set it yourself for any other.\n- The producer rule (replaces the retired open-questions ledger): a default you build on is a decision row. Where the sources do not settle it, add `owner` (partner | implementing-org | dimagi | free text — who answers), `needed_by` (award | go-live | closeout | extension), `answer_channel` (review | call | solicitation:<question-id>). `review_ask: required-before` REQUIRES `needed_by` and is the only gating ask (release readiness; solicitation-review refuses award while a `needed_by: award` one is unanswered). `status: deferred` + `revisit_when` (one plain sentence) for a question this pilot does not need answered — no `review_ask` on it.\n- `scope` + `enforcement` (v6, rule rows only): stamped here from the rule text when omitted.\nFull contract: docs/decisions-contract.md.\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`, plus `headerRepairs[]` when an inherited header needed repair — a SEEDED run copies the parent run\'s header verbatim, so its `generated_at` can arrive in a non-ISO spelling and its `run_id` can name the seed run. Both are repaired in place (the run folder is the authority on run_id) instead of rejecting the write: before ace#1029 either one rejected EVERY append for the whole run, and since this atom is the only sanctioned writer, the run silently lost its entire decisions trail. An `opportunity` mismatch is still a hard error — that one is data loss.',
+  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v6 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nA saved ruling ALSO binds by `feedback_ref` when the id does not match (v5). Run-minted ids are not stable — measured across 22 runs of two opps, one reviewer\'s 9 comments were raised under 22 different ids — so id-only binding silently dropped every reviewer decision. A feedback_ref match stamps `status: human-decided` with `decided_by`/`decided_at` and carries the rationale, but deliberately does NOT overwrite `ai-default`: the saved string belongs to the old row\'s wording, and the new row phrases the same answer its own way. Reported in `rulingsApplied`. A match with no attribution is refused and reported in `rulingsSkippedUnattributed` rather than stamped anonymously.\n\nOperator rulings bind the same way (lib/operator-rulings.ts): when the opp has `inputs/operator-rulings.yaml`, a row whose `feedback_ref` is `operator-rulings/<ruling id>` is stamped `status: human-decided` with that ruling\'s `decided_by`/`decided_at` (send it as `ai-default`; build it with `rulingDecisionRow`). Reported in `operatorRulingsApplied`; a ref naming no ruling is reported in `operatorRulingsUnmatched` and left `ai-default`.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` — ALWAYS, on every new row. A caller-asserted `status: human-decided` is REJECTED at this boundary (ace#2307): it is an attribution claim that `lib/decisions-ingest.ts` carries forward as BINDING into every later run of the opp, a subagent structurally cannot reach a human to originate one, and this atom cannot tell an L0 orchestrator from a subagent (these args carry no caller identity). Both legitimate routes are stamped HERE, from a saved record rather than from your prose: a `feedback_ref` match against an attributed ruling in `inputs/decision-overrides.yaml`, or an id match, which flips the row to `overridden`. To record a real human ruling, write it into that file with `decided_by` + `decided_at` (ace-web Phases tab -> Decisions panel) and send the row as `ai-default`.\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n- `plain` (REQUIRED v6 on partner-facing rows): one line in plain language for a programme partner — what was chosen. No field ids, no section refs, no ACE jargon (PDD, CCZ, skill names, issue numbers); quote a design rule in double quotes to keep its words.\n- `audience` (v6): `internal` for ACE test-harness rows (stamped here when the row is recognisably harness); absent = partner.\n- `check_at` + `correct_looks_like` (v6): where a reviewer spot-checks it and what right looks like. `check_at` is filled from a `Spot-check: <where>.` sentence in `reasoning` when omitted.\n- `review_ask: recommended-confirmation` + `confirm_reason` (v6): the run is built on this value but someone with authority should confirm it before launch (a [PROPOSED] parameter, a translation sign-off, an enforcement gap, an open design question). `decisions_enrich` derives the standard ones; set it yourself for any other.\n- The producer rule (replaces the retired open-questions ledger): a default you build on is a decision row. Where the sources do not settle it, add `owner` (partner | implementing-org | dimagi | free text — who answers), `needed_by` (award | go-live | closeout | extension), `answer_channel` (review | call | solicitation:<question-id>). `review_ask: required-before` REQUIRES `needed_by` and is the only gating ask (release readiness; solicitation-review refuses award while a `needed_by: award` one is unanswered). `status: deferred` + `revisit_when` (one plain sentence) for a question this pilot does not need answered — no `review_ask` on it.\n- `scope` + `enforcement` (v6, rule rows only): stamped here from the rule text when omitted.\nFull contract: docs/decisions-contract.md.\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`, plus `headerRepairs[]` when an inherited header needed repair — a SEEDED run copies the parent run\'s header verbatim, so its `generated_at` can arrive in a non-ISO spelling and its `run_id` can name the seed run. Both are repaired in place (the run folder is the authority on run_id) instead of rejecting the write: before ace#1029 either one rejected EVERY append for the whole run, and since this atom is the only sanctioned writer, the run silently lost its entire decisions trail. An `opportunity` mismatch is still a hard error — that one is data loss.',
   {
     runFolderId: z
       .string()
@@ -670,7 +723,7 @@ server.tool(
       const r = await handleAppendRows(args);
       return result(r);
     } catch (e: any) {
-      if (e instanceof DecisionsWriteError || e instanceof DecisionOverridesError) {
+      if (e instanceof DecisionsWriteError || e instanceof DecisionOverridesError || e instanceof OperatorRulingsError) {
         return error(`${e.code}: ${e.message}`);
       }
       return error(e?.message ?? String(e));

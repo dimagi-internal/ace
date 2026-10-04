@@ -75,6 +75,11 @@ contract.
   comprehensive explanation, less prescriptive (rates become ranges,
   exact weeks become windows), with the LLO-evaluation framing layered
   on top.
+- `ACE/<opp-name>/inputs/operator-rulings.yaml` (optional) — per-opp
+  operator rulings that override a standing design assumption for this opp
+  (`lib/operator-rulings.ts`); honour every ruling whose `applies_to`
+  includes `solicitation` (see the devices block under the design
+  principles).
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — run-level decisions
   log. Phase 1's `pdd-to-work-order` writes initial `wo-*` rows; later
   phases may add or amend decisions (e.g. operator overrides at gate
@@ -160,6 +165,23 @@ contract.
 > evaluation criterion on it, and do not ask whether workers file the
 > Connect record instead of or in addition to an existing tool — Connect is
 > the system of record by design.
+>
+> **Unless an operator ruling overrides it for this opp.** Read
+> `ACE/<opp-name>/inputs/operator-rulings.yaml` (schema:
+> `lib/operator-rulings.ts`; usually absent) and take the rulings whose
+> `applies_to` includes `solicitation`. For `overrides: devices-assumed`
+> (spark-facilitator, owner ruling 2026-10-04: *devices are costed separately
+> and asked about*), ask the respondent who provides devices and data and what
+> they cost. Price devices OUTSIDE the all-in rate, as their own line. Every
+> other cost item stays inside the rate. Pass
+> `{ devicesCostedSeparately: true }` to `scanRateScope` (below) so the device
+> line is not blocked. For `overrides: system-of-record`, the question about
+> instead-of or in-addition-to may be asked. Record one decision row per
+> ruling with `rulingDecisionRow(ruling, { phase: '8-solicitation-management',
+> skill: 'solicitation-create' })` (id `sol-ruling-<id>`). Send it as
+> `ai-default`; the write boundary stamps `human-decided` + `decided_by` from
+> the file. Being a `sol-*` row, it is also what the work order's
+> commercial-terms check reads.
 
 > **The rate is ALL-IN, and its composition is a required ask** (standing
 > operator directive, Jonathan 2026-09-08): *"the LLO should propose an
@@ -341,7 +363,9 @@ contract.
    the reader's language. Do not suppress it and do not publish.
 
    **Rate-scope scan — same breath, same gate.** Run `scanRateScope` from
-   `lib/rate-scope-consistency.ts` over the composed payload. It enforces
+   `lib/rate-scope-consistency.ts` over the composed payload (with
+   `{ devicesCostedSeparately: true }` only when an operator ruling overrides
+   `devices-assumed` for the solicitation — see the devices block above). It enforces
    the two obligations in the ALL-IN design principle above: no field may
    invite a separately-funded line, and some field must ask how the rate
    splits between worker and commodity. On any issue, halt with the

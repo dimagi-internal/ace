@@ -253,7 +253,9 @@ import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
   then `extractFeedbackRefs(body)`. Map `state: CLOSED` + a merged PR → `shipped`;
   open → `pending`.
 - **decisions.yaml:** rows carrying `feedback_ref` → `kind: 'decision'`, `link` the row
-  id, `landedInRun` the run.
+  id, `landedInRun` the run. Skip refs under `operator-rulings/` — they point at the opp's
+  `inputs/operator-rulings.yaml` (an operator's ruling, `lib/operator-rulings.ts`), not at a
+  reviewer's feedback record, and belong to no ledger.
 - **legacy open-questions.md / open-questions.archived.md** (read-only, only where it still
   exists): entries with the marker → `kind: 'open-question'`,
   `status: 'awaiting-human'` until answered.

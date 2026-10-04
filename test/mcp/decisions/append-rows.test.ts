@@ -217,6 +217,8 @@ describe('handleAppendRows', () => {
       overridesApplied: [],
       rulingsApplied: [],
       rulingsSkippedUnattributed: [],
+      operatorRulingsApplied: [],
+      operatorRulingsUnmatched: [],
     });
     expect(fake.files.create).toHaveBeenCalledTimes(1);
     expect(fake.files.update).not.toHaveBeenCalled();
@@ -312,6 +314,8 @@ describe('handleAppendRows', () => {
       overridesApplied: [],
       rulingsApplied: [],
       rulingsSkippedUnattributed: [],
+      operatorRulingsApplied: [],
+      operatorRulingsUnmatched: [],
     });
     expect(fake.files.update).not.toHaveBeenCalled();
     expect(fake.files.create).not.toHaveBeenCalled();
@@ -376,6 +380,7 @@ describe('handleAppendRows — reviewer decision-overrides (ace#933)', () => {
     const fake = makeFakeDrive();
     fake.queueList(() => ({ data: { files: [] } }));
     queueOverridesFound(fake, OVERRIDES_YAML);
+    fake.queueList(() => ({ data: { files: [] } })); // no inputs/operator-rulings.yaml
     fake.queueCreate((args: any) => {
       const parsed = yaml.parse(args.media.body as string);
       expect(parsed.decisions).toHaveLength(1);
