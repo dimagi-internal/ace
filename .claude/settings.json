@@ -1,17 +1,5 @@
 {
   "env": {
     "CANOPY_AGENT": "ace"
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/decide_guard.py\""
-          }
-        ]
-      }
-    ]
   }
 }
