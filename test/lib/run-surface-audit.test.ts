@@ -42,6 +42,7 @@ import {
   auditLinks,
   auditRender,
   classifyCommitAffordance,
+  visiblePhaseLabels,
   SAVE_CONTROL_NAME,
   auditReviewerMembership,
   auditUnresolvedMemberGates,
@@ -2112,5 +2113,31 @@ describe('auditAssistantAccess: the embedded widget answers the invitation', () 
     });
     expect(f[0].fix).toMatch(/embed_key/);
     expect(f[0].fix).toMatch(/in place/);
+  });
+});
+
+describe('visiblePhaseLabels — what the provenance probe looks for', () => {
+  it('prefers the plain stage_label the outsider view draws', () => {
+    // Row shapes from spark-facilitator/20261001-2208 after ace-web#861.
+    const payload = {
+      decisions: {
+        rows: [
+          { phase: 'idea-to-design', phase_label: 'Idea to Design', stage_label: 'Design' },
+          { phase: 'commcare-setup', phase_label: 'CommCare Setup', stage_label: 'App build' },
+          { phase: 'commcare-setup', phase_label: 'CommCare Setup', stage_label: 'App build' },
+        ],
+      },
+    };
+    expect(visiblePhaseLabels(payload)).toEqual(['Design', 'App build']);
+  });
+
+  it('falls back to phase_label on a payload without stage_label', () => {
+    expect(visiblePhaseLabels({ decisions: { rows: [{ phase_label: 'OCS Setup' }, { stage_label: '' , phase_label: 'X' }] } }))
+      .toEqual(['OCS Setup', 'X']);
+  });
+
+  it('no decisions → no labels', () => {
+    expect(visiblePhaseLabels({})).toEqual([]);
+    expect(visiblePhaseLabels(null)).toEqual([]);
   });
 });
