@@ -1,0 +1,70 @@
+# Excerpt of the REAL decisions.yaml from spark-facilitator/20261001-2208
+# (Drive 1mJDoXuJolHqApYrr5m-gObwqDl6sVFzJvWJKklxP9uM), rows copied verbatim.
+# Fixture for lib/buffer-claim.ts: delivery ends 2027-02-26 and the live close-date row
+# claims a two-week buffer on that same day.
+schema_version: 6
+opportunity: spark-facilitator
+run_id: 20261001-2208
+decisions:
+- id: opportunity-dates
+  phase: 1-design
+  skill: idea-to-pdd
+  question: Opportunity start and end dates?
+  ai-default: 2026-11-02 to 2027-02-26 [PROPOSED]
+  options:
+  - 2026-11-02 to 2027-02-26 [PROPOSED]
+  - Set at award
+  reasoning: Fits inside the existing program window; the real start is when the named communities enter Goal Setting.
+  source: 'Timeline: 14-day solicitation + ~2 weeks onboarding; 1 week enrolment + 13 weeks Goal Setting + 2 weeks buffer; program end 2027-03-31'
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+  plain: The design proposes delivery from 2 November 2026 to 26 February 2027.
+  plain_value: 2 November 2026 to 26 February 2027
+- id: opportunity-end-date
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: When does the opportunity close?
+  ai-default: '2027-02-26'
+  options:
+  - '2027-02-26'
+  - '2027-03-31'
+  reasoning: 'PDD proposed end date incl. 2-week buffer; moves with the awarded response. Spot-check: Connect › opportunity › end date.'
+  source: PDD §13, §14 opportunity_end_date [PROPOSED]
+  superseded_by: opportunity-end-date-2208
+  status: ai-default
+  value_set_by: external
+  evidence_basis: stated
+- id: opportunity-end-date-2208
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: When does the opportunity close?
+  ai-default: '2027-02-26'
+  options:
+  - '2027-02-26'
+  - '2027-03-31'
+  reasoning: 'PDD proposed end date, including the 2-week buffer; moves with the awarded response. Spot-check: Connect › opportunity › end date.'
+  source: PDD §13, §14 opportunity_end_date [PROPOSED]
+  supersedes: opportunity-end-date
+  superseded_by: opportunity-end-date-spark
+  status: ai-default
+  value_set_by: external
+  evidence_basis: stated
+- id: opportunity-end-date-spark
+  phase: 4-connect
+  skill: connect-opp-setup
+  question: When does the opportunity close?
+  ai-default: '2027-02-26'
+  options:
+  - '2027-02-26'
+  - '2027-03-31'
+  reasoning: 'PDD proposed end date incl. the 2-week buffer; moves with the awarded response. Spot-check: Connect › opportunity ad6c2d40 › end date.'
+  source: PDD §13, §14 opportunity_end_date [PROPOSED]
+  supersedes: opportunity-end-date-2208
+  status: ai-default
+  value_set_by: external
+  evidence_basis: stated
+  check_at: Connect › opportunity overview
+  correct_looks_like: Those dates and that budget.
+  plain: The Connect opportunity closes on 26 February 2027, including a two-week buffer.
+  plain_value: 26 February 2027

@@ -11,7 +11,7 @@ disable-model-invocation: false
 
 # PDD-to-Work-Order QA
 
-Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 15 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 16 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, auto-fix protocol, static-vs-LLM rules).
 
@@ -42,6 +42,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 8 | `no_renderer_instructions` | static | No renderer instructions survived into the delivered contract — "per archetype", an unrendered payment-unit alternation, or a TODO/TBD/FIXME marker (dimagi-internal/ace#1004). | resolve the instruction into the one sentence that actually applies |
 | 9 | `no_scaffolding_markers` | static | No leaked `<<...>>` AI scaffolding markers in the work-order body. | resolve each marker with concrete content or `[Placeholder]` bracket |
 | 10 | `payment_unit_matches_entity_grain` | static | The rate unit quoted in § 6 Payment Terms is not finer than the `entity_id` grain that actually resolves payable units. The grain comes from `ctx.entityIdGrain`, else the PDD's `\| entity_id_grain \|` row via `--pdd`, else the work order's own payable-unit declaration; skips silently when none is available. Shares `lib/payment-grain.ts` with the PDD-side counterpart `idea-to-pdd-qa § payment_unit_matches_entity_grain` (ace#1420), so the two documents cannot disagree about what a payable unit is (ace#1946). | re-derive § 6 against the grain — quote the rate per the payable unit the opportunity actually resolves, and restate the caps and the not-to-exceed total in those units |
+| 15 | `commercial_terms_match_solicitation` | static | The work order's rate framing and device terms agree with the LIVE (not superseded) `sol-*` / `solicitation-*` decision rows. Fails, quoting the work-order sentence and naming the row, when e.g. the work order costs devices separately / "in addition to the not-to-exceed" while the solicitation recorded an all-in rate with devices inside it (`spark-facilitator/20261001-2208`). Not applicable (pass) when no solicitation row fixes rate framing or devices yet — the normal Phase 1 order — so it bites on any later re-run (re-render, clone, release readiness). Logic: `lib/commercial-terms-consistency.ts`. | re-render the work order so § 2 and § 6 follow the solicitation row (`pdd-to-work-order § Commercial terms follow the solicitation`); never defer the reconciliation to contract execution |
 
 The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
 

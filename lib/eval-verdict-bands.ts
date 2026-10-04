@@ -123,6 +123,39 @@ export const DELIVER_APP_BANDS: BandRule[] = standardOrderedCascade();
  */
 export const LEARN_APP_BANDS: BandRule[] = standardOrderedCascade();
 
+/**
+ * `skills/run-surface-audit-eval/SKILL.md § Verdict mapping` — the same ordered
+ * shape with ONE deliberate divergence: an overall below the 7.0 band is
+ * `fail`, not `warn`, because that verdict is a release gate
+ * (`lib/release-readiness.ts` requires `pass`) and the rubric has no
+ * build-and-iterate loop for a mid-tier verdict to feed. `blocker` is the
+ * rubric's teeth (`ask_actionability <= 3`).
+ *
+ * Graders had been writing `warn` at 7.2–7.4 with no stated mapping; this makes
+ * the meaning of that `warn` explicit: the score band was cleared, a dimension
+ * was not.
+ */
+export const RUN_SURFACE_AUDIT_BAND = 7.0;
+export const RUN_SURFACE_AUDIT_BANDS: BandRule[] = [
+  {
+    verdict: 'fail',
+    label: 'overall < 7.0, or ask_actionability <= 3 (teeth), or any scored dimension <= 3',
+    test: ({ scores, overall, blocker }) =>
+      blocker || overall < RUN_SURFACE_AUDIT_BAND || scores.some((s) => s <= 3),
+  },
+  {
+    verdict: 'warn',
+    // `< 7`, not "4-6.9": fractional scores in 3 < s < 4 must land somewhere.
+    label: 'overall >= 7.0 but any scored dimension < 7',
+    test: ({ scores }) => scores.some((s) => s < 7),
+  },
+  {
+    verdict: 'pass',
+    label: 'overall >= 7.0 and every scored dimension >= 7',
+    test: ({ scores, overall }) => overall >= RUN_SURFACE_AUDIT_BAND && scores.every((s) => s >= 7),
+  },
+];
+
 /** The band set as it read BEFORE ace#1568 — three independent tests, no
  *  catch-all. Kept so the enumerator has a known-defective input to prove it
  *  can still detect the class it was written for. */

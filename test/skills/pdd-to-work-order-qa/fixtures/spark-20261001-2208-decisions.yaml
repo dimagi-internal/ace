@@ -1,0 +1,72 @@
+# Excerpt of the REAL decisions.yaml from spark-facilitator/20261001-2208
+# (Drive 1mJDoXuJolHqApYrr5m-gObwqDl6sVFzJvWJKklxP9uM), rows copied verbatim.
+# Fixture for pdd-to-work-order-qa § commercial_terms_match_solicitation.
+schema_version: 6
+opportunity: spark-facilitator
+run_id: 20261001-2208
+decisions:
+- id: wo-number
+  phase: 1-design
+  skill: pdd-to-work-order
+  question: Sequence number for this Work Order under the MSA?
+  ai-default: '[WO Number]'
+  options:
+  - '[WO Number]'
+  reasoning: Assigned at contract execution once a partner is selected.
+  source: No MSA or partner in inputs
+  status: ai-default
+  value_set_by: external
+  evidence_basis: inferred
+  plain: The Work Order number is assigned when the contract is signed.
+- id: solicitation-all-in-rate-and-devices
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: How is the rate framed on the listing, and where do device costs sit?
+  ai-default: All-in, devices inside the rate
+  options:
+  - All-in, devices inside the rate
+  - Devices costed separately (work order §2)
+  reasoning: Standing operator directive (2026-09-08) requires an all-in per-verified-unit rate with no separately-funded line and an explicit worker-vs-organisation split (ace#2265). The PDD band (MWK 5,000-10,000 to the CBF + MWK 3,000 organisation floor, both PROPOSED; Phase 4 payment unit 7,500 + 3,000) is shown as an indicative all-in MWK 8,000-13,000. This deviates from work order §2 / PDD §12, which let the partner cost device provision separately; the listing instead asks how any device gap is carried inside the rate. The work order text should be reconciled at contract execution.
+  source: PDD §10.1, §12, §14; work order §2, §6.2; run_state connect-setup payment_units
+  superseded_by: sol-devices-and-system-of-record-2208
+  status: ai-default
+  value_set_by: external
+  evidence_basis: conflicting
+  conflict_signals:
+  - 'Work order §2 / PDD §12: device provision costed separately, funded only if Dimagi agrees'
+  - 'Operator directive 2026-09-08 (solicitation-create design principle): rate is all-in, never invite a separately-funded line'
+- id: sol-response-deadline-2208
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: Response deadline and engagement window on the listing?
+  ai-default: 14 days (2026-10-15); 2026-10-26 to 2027-03-12
+  options:
+  - 14 days (2026-10-15); 2026-10-26 to 2027-03-12
+  - 21 days
+  - Phase 4 opp dates
+  reasoning: 'Deadline = publish 2026-10-01 + 14 d (PDD §12). Start = deadline + 11 d contracting allowance (>= 7 d), aligned to the work order Period of Performance start and before the Connect opp opens 2026-11-02. End addend: PDD §13 total 22 wk minus the 14-day solicitation-open row (rule 1); the award/onboarding/Learn row is KEPT because it carries partner delivery work (rule 2) -> 20 wk; end set to 2027-03-12 (work order Period of Performance end, span 137 d) under the 140 d ceiling (154 d - 14 d). Round-trip on 23665 green.'
+  source: PDD §12, §13; work order §5; solicitation-create Step 2 / 7a
+  supersedes: sol-response-deadline
+  status: ai-default
+  value_set_by: ace
+  evidence_basis: inferred
+  plain: Responses are due by 15 October 2026, for work from 26 October 2026 to 12 March 2027.
+  plain_value: 14 days (15 October 2026); 26 October 2026 to 12 March 2027
+- id: sol-devices-and-system-of-record-2208
+  phase: 8-solicitation-management
+  skill: solicitation-create
+  question: Does the listing ask about CBF smartphones/connectivity or whether CBFs file the record instead of or in addition to Spark's form, and how is the rate framed?
+  ai-default: Not asked; rate all-in with CBF vs organisation split
+  options:
+  - Not asked; rate all-in with CBF vs organisation split
+  - 'Ask PDD §12 #1 and #5; devices costed separately'
+  reasoning: 'Standing operator directives: devices, data and system of record are ASSUMED, never asked (2026-09-26), and the rate is ALL-IN with an explicit worker vs commodity split and no separately-funded line (2026-09-08, ace#2265). The PDD §12 / work order §2 device go/no-go and separately-costed device plan, and the instead-of/in-addition-to filing ask, are therefore omitted from the listing. Indicative all-in band shown as MWK 8,000-13,000 (CBF 5,000-10,000 + organisation 3,000, both PROPOSED). Work order §2/§6.1 text should be reconciled at contract execution.'
+  source: PDD §10, §10.1, §12; work order §2, §6.1; solicitation-create design principles
+  supersedes: solicitation-all-in-rate-and-devices
+  status: ai-default
+  value_set_by: external
+  evidence_basis: conflicting
+  conflict_signals:
+  - 'PDD §12 asks #1 and #5 and work order §2: confirm smartphones/connectivity or cost devices separately; ask whether CBFs file instead of or in addition to Spark''s form'
+  - Operator directives 2026-09-26 (devices/system of record assumed, never asked) and 2026-09-08 (all-in rate, no separately-funded line)
+  plain: The call does not ask about phones or data; the rate is all-in, split between the worker and the organisation.

@@ -6,6 +6,7 @@ import {
   DELIVER_APP_BANDS_PRE_1568,
   LEARN_APP_BANDS,
   LEARN_APP_BANDS_PRE_1578,
+  RUN_SURFACE_AUDIT_BANDS,
   auditBands,
   classifyTerminalVerdict,
   exhaustiveVectors,
@@ -404,5 +405,49 @@ describe('eval verdict bands — the leaky shape must not spread', () => {
       // The ace#1568 rubric names it only to forbid that reading.
       .filter((l) => !/do not|pre-ace#1568|its pre-/i.test(l));
     expect(offenders, `${skill}: ${offenders.join(' | ')}`).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// run-surface-audit-eval: its verdict gates release, and graders wrote `warn`
+// at 7.2–7.4 with no stated mapping. The cascade is now data; audit it.
+// ---------------------------------------------------------------------------
+const SURFACE_RUBRIC = join(SKILLS_DIR, 'run-surface-audit-eval/SKILL.md');
+const SURFACE_WEIGHTS = [0.2, 0.15, 0.25, 0.1, 0.3];
+
+describe('eval verdict bands — run-surface-audit-eval', () => {
+  it('the weights audited here are the ones the rubric declares', () => {
+    const rubric = readFileSync(SURFACE_RUBRIC, 'utf8');
+    const declared = [...rubric.matchAll(/^### `\w+` — weight ([\d.]+)/gm)].map((m) => Number(m[1]));
+    expect(declared).toEqual(SURFACE_WEIGHTS);
+  });
+
+  it('covers an exhaustive sweep with no gap and no misordering', () => {
+    const levels = Array.from({ length: 21 }, (_, i) => i * 0.5);
+    const audit = auditBands(RUN_SURFACE_AUDIT_BANDS, partitionVectors(SURFACE_WEIGHTS));
+    expect(audit.uncovered).toEqual([]);
+    expect(audit.misordered).toEqual([]);
+    const small = auditBands(RUN_SURFACE_AUDIT_BANDS, exhaustiveVectors(4, levels, [0.3, 0.3, 0.2, 0.2]));
+    expect(small.uncovered).toEqual([]);
+  });
+
+  it('7.4 overall with dimensions at 4 and 6.5 is `warn` (cleared the band, a dimension did not)', () => {
+    const scores = [9, 4, 8.5, 6.5, 8.5];
+    const overall = weightedOverall(scores, SURFACE_WEIGHTS);
+    expect(overall).toBeGreaterThanOrEqual(7);
+    expect(classifyTerminalVerdict(RUN_SURFACE_AUDIT_BANDS, { scores, overall, blocker: false })!.verdict).toBe('warn');
+  });
+
+  it('below the 7.0 band is `fail`; teeth fail regardless; all >= 7 passes', () => {
+    expect(classifyTerminalVerdict(RUN_SURFACE_AUDIT_BANDS, { scores: [7, 7, 7, 7, 6], overall: 6.9, blocker: false })!.verdict).toBe('fail');
+    expect(classifyTerminalVerdict(RUN_SURFACE_AUDIT_BANDS, { scores: [10, 10, 10, 10, 10], overall: 10, blocker: true })!.verdict).toBe('fail');
+    expect(classifyTerminalVerdict(RUN_SURFACE_AUDIT_BANDS, { scores: [7, 7, 7, 7, 7], overall: 7, blocker: false })!.verdict).toBe('pass');
+  });
+
+  it('the SKILL.md states the same mapping', () => {
+    const rubric = readFileSync(SURFACE_RUBRIC, 'utf8');
+    expect(rubric).toMatch(/### Verdict mapping/);
+    expect(rubric).toMatch(/RUN_SURFACE_AUDIT_BANDS/);
+    expect(rubric).toMatch(/\*\*`warn`\*\* — `overall_score` ≥ 7\.0 but \*\*any dimension < 7\*\*/);
   });
 });

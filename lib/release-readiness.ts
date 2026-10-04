@@ -162,6 +162,20 @@ export function stepsThatRan(runState: unknown): Array<{ phase: string; skill: s
   return out;
 }
 
+/** The wording for a `warn` that cleared its score band; release-readiness-plain keys on it. */
+export const CLEARED_BAND_PHRASE = 'cleared the score band but a dimension is still below 7';
+
+/** Dimensions scoring below `floor`, from a verdict's `dimensions` map (`{name: {score}}` or `{name: score}`). */
+export function dimensionsBelow(dimensions: unknown, floor: number): Array<{ name: string; score: number }> {
+  if (!dimensions || typeof dimensions !== 'object') return [];
+  const out: Array<{ name: string; score: number }> = [];
+  for (const [name, v] of Object.entries(dimensions as Record<string, unknown>)) {
+    const score = typeof v === 'number' ? v : typeof (v as { score?: unknown } | null)?.score === 'number' ? (v as { score: number }).score : null;
+    if (score !== null && score < floor) out.push({ name, score });
+  }
+  return out;
+}
+
 export function assessGates(files: readonly RunFile[], runState: unknown, catalog: GateCatalog): ReleaseFinding[] {
   const findings: ReleaseFinding[] = [];
   const qaFiles = files.filter((f) => QA_RESULT.test(f.path));
@@ -218,14 +232,25 @@ export function assessGates(files: readonly RunFile[], runState: unknown, catalo
     const verdict = String(data.verdict ?? '');
     const score = typeof data.overall_score === 'number' ? data.overall_score : null;
     const threshold = typeof (data.gate as { threshold?: unknown } | undefined)?.threshold === 'number' ? (data.gate as { threshold: number }).threshold : null;
+    // The gate is deliberately strict: anything other than `pass` blocks a
+    // release, including a `warn` whose score cleared the band (a dimension
+    // < 7 — skills/run-surface-audit-eval § Verdict mapping). That case gets
+    // its own wording: "scored below its pass mark" is false at 7.4 vs 7.0.
     const belowBand = verdict !== 'pass' || (score !== null && threshold !== null && score < threshold);
     if (belowBand) {
       const surfaced = Array.isArray(data.auto_surfaced) ? (data.auto_surfaced as Array<{ severity?: string; message?: string }>) : [];
       const top = surfaced.filter((s) => s.severity === 'BLOCKER').map((s) => s.message).slice(0, 3);
+      const clearedBand = verdict === 'warn' && score !== null && threshold !== null && score >= threshold;
+      const weak = clearedBand ? dimensionsBelow(data.dimensions, 7) : [];
+      const head = `${skill} ${verdict}${score !== null ? ` ${score}` : ''}${threshold !== null ? ` (pass band ≥ ${threshold})` : ''}`;
       findings.push({
         id: `eval-below-band:${skill}${m[3] ? `-${m[3]}` : ''}`, area: 'eval', severity: 'blocker', owner: producer,
-        detail: `${skill} ${verdict}${score !== null ? ` ${score}` : ''}${threshold !== null ? ` (pass band ≥ ${threshold})` : ''}${top.length ? ` — ${top.join('; ')}` : ''}`,
-        fix: `fix ${producer}'s output per the verdict, then re-run ${skill}`,
+        detail: clearedBand
+          ? `${head} — ${CLEARED_BAND_PHRASE}: ${weak.length ? weak.map((d) => `${d.name} ${d.score}`).join(', ') : '(no dimension scores recorded)'}; release requires verdict pass`
+          : `${head}${top.length ? ` — ${top.join('; ')}` : ''}`,
+        fix: clearedBand
+          ? `raise ${weak.length ? weak.map((d) => d.name).join(', ') : "the verdict's sub-7 dimensions"} to 7 in ${producer}'s output, then re-run ${skill}`
+          : `fix ${producer}'s output per the verdict, then re-run ${skill}`,
       });
     }
     const artifact = capturedArtifact(files, data.capture_path) ?? producerLatest(files, producer);

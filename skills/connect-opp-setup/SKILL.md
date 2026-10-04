@@ -1649,6 +1649,8 @@ rows meet it; the catalog is a teaching device that improves over time.
 | `payment-unit-shape` | Per-visit fixed amount, tiered, milestone-gated, etc.? | Connect payment-unit creation; PDD `Payment Rate` |
 | `opportunity-end-date` | When does the opportunity close? | PDD `Timeline` numeric; gates Phase 9 monitoring cadence |
 
+**A close date claims a buffer only when there is one.** Write "including a two-week buffer" (in `plain`, `reasoning` or the value) only when the close date is LATER than the delivery end the run states (Phase 1's `opportunity-dates` row). When delivery ends on the close date, state the date plainly — any slack in the PDD's timeline arithmetic sits inside the delivery window, not after it. On `spark-facilitator/20261001-2208` the row read "closes on 26 February 2027, including a two-week buffer" next to "delivery from 2 November 2026 to 26 February 2027", copying "2 weeks buffer" from the PDD's timeline line. *Enforced:* `decisions_append_rows` refuses such a row with `UNSUPPORTED_BUFFER_CLAIM` (`lib/buffer-claim.ts`, `test/lib/buffer-claim.test.ts`). The same holds for the opportunity `description` text: never describe a buffer the dates do not leave.
+
 The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 § Phase Write-Back Contract § Decisions log clause) enforces the
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc

@@ -26,6 +26,7 @@ import {
   checkDeclaredCapReachesContract,
   checkAcceptanceDefined,
   checkRenderedFromTemplate,
+  checkCommercialTermsMatchSolicitation,
   normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
@@ -483,8 +484,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports fifteen checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(15);
+  test('exports sixteen checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(16);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: "this is not a template render" explains every
@@ -504,6 +505,7 @@ describe('CHECKS array', () => {
       'declared_cap_reaches_contract',
       'acceptance_defined',
       'payment_unit_matches_entity_grain',
+      'commercial_terms_match_solicitation',
     ]);
   });
 });
@@ -1380,5 +1382,73 @@ describe('checkRenderedFromTemplate', () => {
     // template render" explains every other check's result, so it should not
     // be buried at position 14.
     expect(CHECKS[0].id).toBe('rendered_from_template');
+  });
+});
+
+// ─── commercial_terms_match_solicitation ────────────────────────────
+// Real texts from spark-facilitator/20261001-2208: the work order gdoc
+// (1BqfZJUc1_Y90Q-5WfMC5whZPeZkt4XN3tQn-jDWXF_s, plain export) and the
+// solicitation rows of its decisions.yaml, copied verbatim.
+const SPARK_WO = readFileSync(join(FIXTURES, 'spark-20261001-2208-work-order.txt'), 'utf8');
+const SPARK_DECISIONS = readFileSync(join(FIXTURES, 'spark-20261001-2208-decisions.yaml'), 'utf8');
+const SPARK_DEVICE_CLAUSE =
+  'Where a CBF does not, the partner will cost device provision separately in its solicitation response; ' +
+  'devices are funded under this Work Order only if Dimagi agrees that cost at contract execution, in addition ' +
+  'to the not-to-exceed in section 6.1.';
+
+describe('checkCommercialTermsMatchSolicitation', () => {
+  test('FAILS on the real spark work order vs its all-in solicitation row, naming both', () => {
+    expect(SPARK_WO).toContain(SPARK_DEVICE_CLAUSE);
+    const r = checkCommercialTermsMatchSolicitation(SPARK_WO, { decisionsYaml: SPARK_DECISIONS });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('cost device provision separately');
+    expect(r.detail).toContain('sol-devices-and-system-of-record-2208');
+    expect(r.detail).toContain('rate all-in');
+    // the superseded row is history; the live row governs
+    expect(r.detail).not.toContain('`solicitation-all-in-rate-and-devices`');
+    expect(r.auto_fix_hint).toMatch(/all-in/);
+  });
+
+  test('passes once the work order follows the solicitation (device clause made all-in)', () => {
+    const fixed = SPARK_WO.replace(
+      SPARK_DEVICE_CLAUSE,
+      'Any device or connectivity cost sits inside the all-in per-meeting rate the partner proposes; there is no separately-funded line.',
+    );
+    const r = checkCommercialTermsMatchSolicitation(fixed, { decisionsYaml: SPARK_DECISIONS });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toContain('sol-devices-and-system-of-record-2208');
+  });
+
+  test('not applicable (pass) when no solicitation row fixes rate framing or devices yet', () => {
+    const r = checkCommercialTermsMatchSolicitation(SPARK_WO, { decisionsYaml: GOOD_DECISIONS });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not applicable/);
+  });
+
+  test('inverse: solicitation says devices costed separately, work order says all-in -> fails', () => {
+    const decisions = [
+      'schema_version: 6',
+      'decisions:',
+      '  - id: sol-devices',
+      '    ai-default: "Devices costed separately (work order \u00a72)"',
+    ].join('\n');
+    const wo = 'Payment Terms\nThe rate is all-in: devices and connectivity are included in the per-visit rate.';
+    const r = checkCommercialTermsMatchSolicitation(wo, { decisionsYaml: decisions });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('sol-devices');
+  });
+
+  test('"all in-country permissions" is not read as an all-in rate statement', () => {
+    const decisions = 'decisions:\n  - id: sol-devices\n    ai-default: "Devices costed separately"\n';
+    const r = checkCommercialTermsMatchSolicitation(
+      'The partner is responsible for securing all in-country permissions required.',
+      { decisionsYaml: decisions },
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('is wired into CHECKS and fails the real spark pair through the runner shape', async () => {
+    const c = CHECKS.find((x) => x.id === 'commercial_terms_match_solicitation')!;
+    expect((await c.run(SPARK_WO, { decisionsYaml: SPARK_DECISIONS })).pass).toBe(false);
   });
 });

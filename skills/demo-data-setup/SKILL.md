@@ -1401,9 +1401,25 @@ programme whose PDD fixes one entity per worker (Spark: one community per CBF),
 a worker is a row in the partner table and a case is that worker's entity. The
 real partner org of the run (`connect_orgs.nm_org`, e.g. `ace-nm-org`) is **never**
 touched — partners exist only as `llo_map` labels over labs-only synthetic
-opportunities. Label them neutrally (`Partner A/B/C`) unless the PDD names
+opportunities. Label them neutrally unless the PDD names
 candidate LLOs, and even then prefer neutral labels: a synthetic figure next to a
 real organisation's name is a claim about that organisation.
+
+**Invented partners say they are illustrative, in the dashboard's own labels.**
+The multi-partner programme view is a deliberate demo device — a partner
+comparison and an anonymous benchmark need peers — not a claim about how many
+organisations deliver the pilot. Read the number of implementing organisations
+from the PDD (default **1**: a single-LLO pilot) and record it as the plan's
+`implementing_orgs`. When the partners are invented (`partner_source` unset or
+`invented`), every label carries the marker: `Example partner A`, `Example
+partner B`, `Example partner C` — never bare `Partner A/B/C`, which on
+`spark-facilitator/20261001-2208` read to an outsider as three implementers for
+a one-implementer pilot. Name the synthetic programme the same way
+(`program_name: "<opp title> (illustrative: three example partners)"`). With
+`partner_source: programme` the partners mirror the PDD's real implementers, so
+their count must equal `implementing_orgs`. *Enforced:* `checkCascadeStoryPlan`
+(`lib/cascade-story.ts` `ILLUSTRATIVE_LABEL`), at the C3 gate and in
+`demo-data-setup-qa` check 21.
 
 **C1. Create the synthetic programme.** One labs-only opportunity per partner:
 the first `synthetic_create_labs_only({label, gdrive_folder_id: 'pending-generate',
@@ -1425,7 +1441,7 @@ the four signals — `lagging_partner`, `standout_worker`, `data_quality`, `tren
 each naming a registry indicator, the PDD clause it derives from (`pdd_ref`, same
 rule as step 1c: an uncited signal is an invented one) and what a viewer sees.
 Gate it with `checkCascadeStoryPlan(plan, registryIndicatorIds)` BEFORE generating.
-When the partners mirror a real programme's own (not invented `Partner A/B/C`), set
+Set `implementing_orgs` from the PDD (§ C0). When the partners mirror a real programme's own (not invented example partners), set
 `partner_source: programme`, which makes 2 partners legal. With no PDD, set `anchor: app`
 and cite the Deliver app's form and rule in each `pdd_ref` (`semantic-registry-author`
 § 2, "No PDD").
@@ -1511,10 +1527,10 @@ re-described to match what came out. `demo-data-setup-qa` re-runs this check.
   "primary_par_url": "<programme report run URL>",
   "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/<prog>/run/?run_id=<latest>&program_id=<program>",
   "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>&flw=<opp>%3A%3A<username>&source_run=<latest>",
-  "lagging_partner_label": "Partner C",
+  "lagging_partner_label": "Example partner C",
   "standout_worker": "cbf_b03",
   "data_quality_worker": "cbf_a07",
-  "partner_c_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/<opp report>/run/?run_id=<handed-down run>&opportunity_id=<opp>"
+  "example_partner_c_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/<opp report>/run/?run_id=<handed-down run>&opportunity_id=<opp>"
 }
 ```
 

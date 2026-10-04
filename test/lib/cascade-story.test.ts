@@ -11,11 +11,19 @@ import {
 // Fixtures from the live proof (ace#2510, spark-facilitator/20260926-1800): the
 // story plan ACE authored, and the 13 saved weekly runs labs graded for
 // programme report 6371 (worker rows kept for the latest run only).
-const PLAN: CascadeStoryPlan = JSON.parse(
+// The plan AS AUTHORED labelled its invented partners "Partner A/B/C" for a
+// single-implementer pilot — the defect the illustrative-label rule exists for
+// (outsider eval, spark-facilitator/20261001-2208). Every other test runs on the
+// same plan relabelled the way C0 now requires ("Example partner A").
+const AUTHORED_PLAN: CascadeStoryPlan = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/cascade/spark-facilitator-story.json'), 'utf8'),
 );
+const relabel = (text: string) => text.replace(/\bPartner ([ABC])\b/g, 'Example partner $1');
+const PLAN: CascadeStoryPlan = JSON.parse(
+  relabel(readFileSync(join(__dirname, '../fixtures/cascade/spark-facilitator-story.json'), 'utf8')),
+);
 const PERIODS: GradedPeriod[] = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/cascade/spark-facilitator-graded-periods.json'), 'utf8'),
+  relabel(readFileSync(join(__dirname, '../fixtures/cascade/spark-facilitator-graded-periods.json'), 'utf8')),
 ).periods;
 const IDS = ['SF_P1', 'SF_P3', 'SF_S1', 'SF_S2', 'SF_S3', 'SF_S4', 'SF_S5', 'SF_S6', 'SF_D1', 'SF_D2'];
 
@@ -26,6 +34,23 @@ describe('checkCascadeStoryPlan', () => {
     const r = checkCascadeStoryPlan(PLAN, IDS);
     expect(r.verdict).toBe('pass');
     expect(r.findings).toEqual([]);
+  });
+
+  it('refuses invented partners labelled as if they were real implementers (the authored Spark plan)', () => {
+    const r = checkCascadeStoryPlan(AUTHORED_PLAN, IDS);
+    expect(r.verdict).toBe('fail');
+    const msg = r.findings.map((f) => f.detail).join(' ');
+    expect(msg).toMatch(/"Partner A", "Partner B", "Partner C" do not say they are illustrative/);
+    expect(msg).toMatch(/names 1 implementing organisation/);
+  });
+
+  it('accepts a programme mirror only when its partner count matches the PDD', () => {
+    const ok = { ...clone(), partner_source: 'programme' as const, implementing_orgs: 3 };
+    expect(checkCascadeStoryPlan(ok, IDS).verdict).toBe('pass');
+    const bad = { ...clone(), partner_source: 'programme' as const, implementing_orgs: 1 };
+    const r = checkCascadeStoryPlan(bad, IDS);
+    expect(r.verdict).toBe('fail');
+    expect(r.findings.map((f) => f.detail).join()).toMatch(/PDD names 1 implementing/);
   });
 
   it('requires all four signal kinds', () => {

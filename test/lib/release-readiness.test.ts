@@ -65,6 +65,49 @@ describe('assessGates on the real Spark run', () => {
     expect(byId['eval-below-band:build-memo-eval'].severity).toBe('blocker');
   });
 
+  it('a `warn` that cleared the band is still a blocker, worded accurately with the sub-7 dimensions', () => {
+    const now = new Date().toISOString();
+    const verdictYaml = [
+      'skill: run-surface-audit-eval',
+      'target: spark-facilitator/20261001-2208',
+      'mode: deep',
+      'overall_score: 7.4',
+      'verdict: warn',
+      'dimensions:',
+      '  outsider_orientation: { score: 8.5, weight: 0.2 }',
+      '  jargon_and_insider_language: { score: 4, weight: 0.15 }',
+      '  claim_accuracy: { score: 8, weight: 0.25 }',
+      '  internal_consistency: { score: 6.5, weight: 0.1 }',
+      '  ask_actionability: { score: 8, weight: 0.3 }',
+      'gate:',
+      '  threshold: 7.0',
+    ].join('\n');
+    const files: RunFile[] = [{ path: '8-solicitation-management/run-surface-audit-eval_verdict.yaml', modifiedTime: now, text: verdictYaml }];
+    const f = assessGates(files, {}, { qaSkills: new Set(), evalSkills: new Set() });
+    const b = f.find((x) => x.id === 'eval-below-band:run-surface-audit-eval')!;
+    expect(b.severity).toBe('blocker');
+    expect(b.detail).toContain('cleared the score band but a dimension is still below 7: jargon_and_insider_language 4, internal_consistency 6.5');
+    expect(b.detail).not.toMatch(/below its pass mark/);
+    expect(b.fix).toMatch(/raise jargon_and_insider_language, internal_consistency to 7/);
+
+    const v = buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20261001-2208', checkedAt: now, files: [], findings: f });
+    const plain = v.blockers.find((x) => x.id === 'eval-below-band:run-surface-audit-eval')!;
+    expect(plain.summary).toMatch(/cleared the score band but a dimension is still below 7: jargon and insider language and internal consistency\./);
+    expect(plain.summary).not.toMatch(/pass mark/);
+  });
+
+  it('a `warn` BELOW the band keeps the below-pass-mark wording', () => {
+    const now = new Date().toISOString();
+    const files: RunFile[] = [{
+      path: '8-solicitation-management/run-surface-audit-eval_verdict.yaml', modifiedTime: now,
+      text: 'verdict: warn\noverall_score: 6.4\ndimensions:\n  claim_accuracy: { score: 5, weight: 1 }\ngate:\n  threshold: 7.0\n',
+    }];
+    const b = assessGates(files, {}, { qaSkills: new Set(), evalSkills: new Set() })[0];
+    expect(b.detail).not.toMatch(/cleared the score band/);
+    const v = buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: 'x', checkedAt: now, files: [], findings: [b] });
+    expect(v.blockers[0].summary).toMatch(/scored below its pass mark/);
+  });
+
   it('marks a result stale when its artifact was regenerated well after grading', () => {
     const files = json<RunFile[]>('inventory.json').map((f) =>
       f.path === '6-qa-and-training/training-faq.md' ? { ...f, modifiedTime: '2026-09-27T00:00:00Z' } : f,

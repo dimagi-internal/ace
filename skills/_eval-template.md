@@ -194,7 +194,11 @@ pause summary — using shared semantics:
   - Overall score is below the gate threshold (default 7.0)
   - Hard-deduction rule triggered (rubric-specific; e.g. inflation cap)
 
-- **`WARN`** — surfaced for human review but does not block:
+- **`WARN`** — surfaced for human review but does not block the *phase*
+  (a release gate may still require `verdict: pass` — `lib/release-readiness.ts`
+  does, and reports a `warn` that cleared the score band as "a dimension is
+  still below 7"; a rubric whose verdict gates release states its own
+  pass/warn/fail mapping, e.g. `run-surface-audit-eval § Verdict mapping`):
   - Any dimension scoring 4.0–6.9
   - Inflation-guard cap binds (overall capped because self-eval was 5/5)
   - Cross-section inconsistency detected

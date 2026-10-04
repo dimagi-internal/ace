@@ -16,6 +16,7 @@
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { classifyGrainRelation, readProgramParameter } from '../../lib/payment-grain';
+import { compareCommercialTerms } from '../../lib/commercial-terms-consistency';
 
 /**
  * The 11 required headings in a complete work order. Matched against
@@ -1077,6 +1078,57 @@ export function checkRenderedFromTemplate(raw: string): QACheckResult {
   return { pass: true, detail: 'rendered from the branded template (boilerplate intact, no degradation note)' };
 }
 
+/**
+ * Check 16: the Work Order's commercial terms on rate framing and devices agree
+ * with the solicitation's recorded decision rows (`sol-*` / `solicitation-*`).
+ *
+ * On spark-facilitator/20261001-2208 the Work Order § 2 invited device costs
+ * "separately ... in addition to the not-to-exceed" while the live solicitation
+ * row `sol-devices-and-system-of-record-2208` recorded an all-in rate with
+ * devices inside it. Both documents reach the same partner. Logic lives in
+ * `lib/commercial-terms-consistency.ts`.
+ *
+ * No solicitation row on rate framing or devices yet (the normal Phase 1 order,
+ * where the work order is drafted before Phase 8) is a PASS: there is nothing
+ * to disagree with. The check bites on any later re-run of this QA — a
+ * re-render, a clone, a release-readiness pass.
+ */
+export function checkCommercialTermsMatchSolicitation(
+  raw: string,
+  ctx?: QACheckContext,
+): QACheckResult {
+  const decisions = (ctx?.decisionsYaml as string) ?? '';
+  const finding = compareCommercialTerms(normalizeDriveExport(raw), decisions);
+  if (finding.status === 'n/a') {
+    return {
+      pass: true,
+      detail: 'not applicable: no live sol-*/solicitation-* decision row fixes rate framing or devices yet',
+    };
+  }
+  const governing = finding.solicitation[finding.solicitation.length - 1];
+  if (finding.status === 'agree') {
+    return {
+      pass: true,
+      detail: `work order agrees with \`${governing.id}\` (${governing.stance})`,
+    };
+  }
+  const quoted = finding.conflicts.map((c) => `"${c.sentence}"`).join(' / ');
+  const want =
+    governing.stance === 'all-in'
+      ? 'an all-in per-unit rate with devices, connectivity and supervision inside it (no separately-funded line)'
+      : 'device provision costed separately from the per-unit rate';
+  return {
+    pass: false,
+    detail:
+      `Work Order and solicitation disagree on commercial terms. Work Order says: ${quoted}. ` +
+      `Solicitation decision row \`${governing.id}\` records: "${governing.text}" (${governing.stance}).`,
+    auto_fix_hint:
+      `re-render the work order so its rate framing and device terms follow \`${governing.id}\`: ${want}. ` +
+      'The solicitation row governs (pdd-to-work-order § Commercial terms follow the solicitation); do not ' +
+      'defer the reconciliation to contract execution.',
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'rendered_from_template',
@@ -1181,5 +1233,13 @@ export const CHECKS: QACheck[] = [
       'The rate unit quoted in \u00a7 6 Payment Terms is not finer than the entity_id grain that ' +
       'actually resolves payable units (dimagi-internal/ace#1946; PDD-side counterpart ace#1420)',
     run: (wo: string, ctx?: QACheckContext) => checkPaymentUnitMatchesEntityGrain(wo, ctx),
+  },
+  {
+    id: 'commercial_terms_match_solicitation',
+    type: 'static',
+    description:
+      'Rate framing and device terms in the work order agree with the live sol-*/solicitation-* ' +
+      'decision rows (spark-facilitator/20261001-2208)',
+    run: (wo: string, ctx?: QACheckContext) => checkCommercialTermsMatchSolicitation(wo, ctx),
   },
 ];
