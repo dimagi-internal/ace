@@ -126,8 +126,9 @@ describe('the row contract has ONE canonical home and every writer links to it',
     expect(read('skills/idea-to-pdd/SKILL.md')).toContain(`### ${CONTRACT}`);
   });
 
+  // agents/ace-orchestrator.md no longer writes the ledger: its run-end step
+  // emits open-asks.yaml instead (docs/decisions-contract.md § Open asks).
   it.each([
-    'agents/ace-orchestrator.md',
     'agents/orchestrator-reference.md',
     'skills/inbox-triage/SKILL.md',
     'skills/feedback-ledger/SKILL.md',
@@ -137,7 +138,7 @@ describe('the row contract has ONE canonical home and every writer links to it',
     expect(doc).not.toContain(`### ${CONTRACT}`);
   });
 
-  it.each(['agents/ace-orchestrator.md', 'skills/inbox-triage/SKILL.md', 'skills/idea-to-pdd/SKILL.md'])(
+  it.each(['skills/inbox-triage/SKILL.md', 'skills/idea-to-pdd/SKILL.md'])(
     '%s names the pre-write check',
     (rel) => {
       expect(read(rel)).toContain('checkOpenQuestionsPlainLanguage');

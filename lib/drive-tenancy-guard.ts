@@ -56,6 +56,7 @@ export const DRIVE_WRITE_TARGETS: Record<string, readonly string[]> = {
   slides_batch_update: ['presentationId'],
   decisions_append_rows: ['runFolderId'],
   decisions_enrich: ['runFolderId'],
+  decisions_open_asks: ['runFolderId'],
 };
 
 /**

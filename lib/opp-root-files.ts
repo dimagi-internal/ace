@@ -138,15 +138,26 @@ export const ACE_OWNED_OPP_ROOT: OppRootEntry[] = [
     match: exact('feedback'),
   },
   {
+    label: 'open-asks.yaml',
+    kind: 'file',
+    owner: 'orchestrator run end (decisions_open_asks, mode emit)',
+    why:
+      'the generated list of the last run\'s unanswered asks. Phase 1 reads it at the opp root to ' +
+      'check nothing was dropped (docs/decisions-contract.md § Open asks); migrated, that check ' +
+      'silently finds nothing and ace-web loses the review list it renders',
+    ref: 'docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md',
+    match: exact('open-asks.yaml'),
+  },
+  {
     label: 'open-questions.md',
     kind: 'file',
-    owner: 'idea-to-pdd / Phase 1',
+    owner: 'legacy — the retired open-questions ledger (no skill writes it since 2026-10-04)',
     why:
-      'durable across runs — Phase 1 reads it at the opp root to declare resolves / carries ' +
-      'forward / contradicts. Migrated, the read half finds nothing and contradiction detection ' +
-      'silently stops firing, while the write half keeps producing a fresh one',
+      'ACE\'s own former ledger. Until scripts/migrate-open-questions.ts folds it into decision ' +
+      'rows, Phase 1 still reads its open rows at the opp root; migrated into inputs/, ACE would ' +
+      'read its own prior reasoning back as curated source evidence',
     ref: 'dimagi-internal/ace#1201, #1325',
-    match: exact('open-questions.md'),
+    match: (name) => name === 'open-questions.md' || name === 'open-questions.archived.md',
   },
   {
     label: 'iterate-state.yaml',

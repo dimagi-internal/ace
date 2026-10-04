@@ -95,7 +95,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   decisions: {
     file: 'mcp/decisions-server.ts',
-    expectedCount: 2,
+    expectedCount: 3, // +1: decisions_open_asks (the folded open-questions ledger)
     allowedPrefixes: ['decisions_'],
   },
   'google-drive': {

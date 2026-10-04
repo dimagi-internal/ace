@@ -31,6 +31,31 @@ internal`).
 | `enforcement` | `enforced` \| `by-design` \| `gap` | **Rule rows only.** `enforced`: a Connect rule, a Connect payment limit or an app check holds it at its scope. `by-design`: the design places it off the platform on purpose. `gap`: the design needs it and nothing in the build holds it. Set together with `scope`. |
 | `also_raised_by` | list of skills | Other skills that raised the same question with the same answer; their rows are folded into this one (`superseded_by` it). |
 
+### Added 2026-10-04 — asks live on the row (the open-questions ledger is retired)
+
+Still schema v6 (additive; the version number does not move). Spec:
+`docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`,
+approved by the owner 2026-10-04.
+
+| Field | Values | Meaning |
+|---|---|---|
+| `owner` | `partner` \| `implementing-org` \| `dimagi` \| free text | Who must answer the ask (e.g. `Spark M&E`). Distinct from `value_set_by`, which is who sets the value. |
+| `needed_by` | `award` \| `go-live` \| `closeout` \| `extension` | When the answer is needed, as a lifecycle gate a reader understands. Replaces the ledger's "Before Phase N". **Required with `review_ask: required-before`.** |
+| `answer_channel` | `review` \| `solicitation:<question-id>` \| `call` | Where the answer arrives: the decisions review (saved to `inputs/decision-overrides.yaml`), a question in the published solicitation (the awarded response's answer closes the ask), or a call with Dimagi. |
+| `revisit_when` | one plain sentence | **Only with `status: deferred`** (and required on a new deferred row): when to raise the question again, e.g. *"When the programme expands to Rwanda."* Held to the plain-language gate. |
+
+`status` gains **`deferred`** (alongside `ai-default`, `overridden`,
+`human-decided`): a question this pilot does not need answered — a future
+phase, an expansion. `ai-default` holds the working assumption. A deferred row
+carries no `review_ask` and no `override`, and renders **collapsed, never as an
+ask**.
+
+`review_ask` gains **`required-before`** — the same meaning as
+`recommended-confirmation` (the run is built on this value; confirm it) plus a
+gate: the answer is needed before `needed_by`. Use it only where no working
+default is safe to build past that gate — an answer that changes who may be
+awarded, or what the award commits to. It never blocks a phase. See § Open asks.
+
 **What a partner view shows, in order of preference:** headline =
 `plain_question` → `plain` → `question`; value = `plain_value` → `override` →
 `ai-default`; then `plain` (when the headline was the question),
@@ -39,7 +64,8 @@ internal`).
 
 Existing fields that matter to a reviewer: `superseded_by` (the row is history —
 show the row it points to), `inherited_from_run` (the row was carried in from
-another run), `status` (`ai-default` / `overridden` / `human-decided`),
+another run), `status` (`ai-default` / `overridden` / `human-decided` /
+`deferred` — collapse deferred rows),
 `value_set_by: external` (the value is a projection someone else will fix).
 
 **Live rows** are those without `superseded_by`. Every consumer reads live rows
@@ -56,7 +82,7 @@ internal) — must:
 2. carry `plain_value` whenever the un-overridden `ai-default` is itself jargon
    (an overridden row shows the human's answer instead);
 3. carry, in none of `plain`, `plain_question`, `plain_value`,
-   `confirm_reason`, `check_at`, `correct_looks_like`: a field id or other
+   `confirm_reason`, `check_at`, `correct_looks_like`, `revisit_when`: a field id or other
    snake_case identifier, an `=` / `==` / `!=` / `>=` / `<=` expression,
    upper-case `AND`/`OR`/`NOT`, a run id (`20261001-2208`), a platform record
    id (`ad6c2d40`, a UUID), an issue number (`#2512`, `ace#2419`), "Phase N", a
@@ -104,14 +130,90 @@ records, so it does not depend on a producer remembering:
    phase lists it as resolved — synthesized as an `open-question-*` row.
 
 A row a person already ruled on (`overridden`, `human-decided`) never carries an
-ask. A producer may set `review_ask` itself for anything else outside ACE's
-authority.
+ask, and neither does a `deferred` row. A producer may set `review_ask` itself
+for anything else outside ACE's authority — and must, per § The producer rule.
+
+## The producer rule — a default you build on is a decision row
+
+**This replaces "raise an open question" everywhere.** When a skill builds on
+a working answer — a value the source material does not state, a placeholder,
+a "we'll assume X until told otherwise" — it writes a decision row for it.
+Where the sources do not settle the answer, the row also carries:
+
+- `review_ask` (`recommended-confirmation`, or `required-before` + `needed_by`
+  when no default is safe past a gate) and `confirm_reason`;
+- `owner` — who must answer;
+- `needed_by` — when the answer is needed (optional with
+  `recommended-confirmation`);
+- `answer_channel` — where the answer arrives.
+
+A question the pilot does not need answered is a `status: deferred` row with
+`revisit_when`. Measured on spark-facilitator/20261001-2208: 5 of the
+ledger's 32 open rows were defaults the build took with no decision row at all
+(`lookup-table-provisioning`, `airtime-payout-channel`, `pilot-data-handover`,
+`attendance-list-practice`, `s1-s6-indicators-not-computable`) — this rule is
+what closes that class.
+
+**What is NOT a decision row.** A chore (sweep a stale opportunity, distribute
+the solicitation, follow up) goes to the canopy-web task board, or to
+`phases.<phase>.residuals` when run-scoped. An upstream request (Connect, Nova,
+OCS) is an issue in the owning system's tracker, cited from the decision row it
+affects. A factual partner input is a solicitation question, referenced from
+the row by `answer_channel: solicitation:<question-id>`.
+
+## Open asks
+
+An **open ask** is a live row with an unanswered `review_ask`, or a
+`status: deferred` row. "Answered" means a person ruled: the row is
+`overridden` / `human-decided`, or a saved ruling in
+`inputs/decision-overrides.yaml` binds to it (`lib/open-asks.ts` applies the
+saved rulings before counting, so a ruling saved after the row was written
+counts). The atom is `decisions_open_asks` (ace-decisions).
+
+- **Durability across runs.** Answers persist opp-level in
+  `inputs/decision-overrides.yaml`. Unanswered asks are re-derived by each
+  run's producers from the design and inputs — run independence holds, and the
+  ask describes *this* run's design. As a safety net, the orchestrator's
+  run-end write-back calls `decisions_open_asks(mode: 'emit')`, which writes
+  **`ACE/<opp>/open-asks.yaml`** at the opp root (generated, read-only,
+  `application/x-yaml`):
+
+  ```yaml
+  schema_version: 1
+  opp: spark-facilitator
+  run_id: 20261001-2208
+  generated_at: 2026-10-02T11:04:00Z
+  asks: [<live decision rows with an unanswered review_ask or status deferred>]
+  ```
+
+  Phase 1 reads it with `decisions_open_asks(mode: 'check', throughPhase: 1)`
+  only to check that nothing was dropped: a previous ask this run has no row
+  for (same id, same `feedback_ref`, or a re-worded question) becomes a run
+  residual. Values are never inherited from it.
+- **The only gate.** An unanswered `review_ask: required-before` row is a
+  `validate-release-readiness` blocker naming the question
+  (`assessRequiredBeforeAsks`, `lib/release-readiness.ts`), and
+  `solicitation-review` refuses `award_response` while one with
+  `needed_by: award` is unanswered (step 5b; owner decision 2026-10-04 — a
+  hard stop, not a warning). An unanswered `recommended-confirmation` is
+  neither. No phase ever blocks on an ask.
+- **The review surface.** ace-web's decisions tab is the only place a reviewer
+  is asked anything: "Confirm before launch" (`recommended-confirmation`) and
+  "Answer before award" (`required-before`, by `needed_by`) groups, filtered
+  and grouped by `owner`, with `deferred` rows collapsed. Until no live run
+  depends on it, ace-web reads `open-asks.yaml` when present and falls back to
+  the legacy `open-questions.md` ledger.
+- **Legacy ledgers.** `ACE/<opp>/open-questions.md` is no longer written by
+  any skill. `scripts/migrate-open-questions.ts` folds an opp's ledger into
+  decision rows once (dry-run by default) and archives it as
+  `open-questions.archived.md`.
 
 ## Where each part is filled
 
 | Who | Fills |
 |---|---|
-| Producer skill (on every `decisions_append_rows`) | `plain`; `check_at` + `correct_looks_like` where there is a place to look; `review_ask` + `confirm_reason` for anything else outside ACE's authority; `audience: internal` for harness rows. |
+| Producer skill (on every `decisions_append_rows`) | `plain`; `check_at` + `correct_looks_like` where there is a place to look; `review_ask` + `confirm_reason` + `owner` + `needed_by` + `answer_channel` for every default it builds on that the sources do not settle (§ The producer rule); `status: deferred` + `revisit_when` for a question the pilot does not need answered; `audience: internal` for harness rows. |
+| Orchestrator (run end, once) | `decisions_open_asks(mode: 'emit')` → `ACE/<opp>/open-asks.yaml`. |
 | Write boundary (`decisions_append_rows`, `stampRow`) | `audience: internal` on recognisably-harness rows; `scope` + `enforcement` + a `plain` line on rule rows; `check_at` from a `Spot-check: <where>.` sentence in `reasoning`. Never overwrites a producer's value. |
 | `decisions_enrich` atom (every phase end, before `render_decisions_log`) | cross-skill dedupe; every derived `review_ask` above. Idempotent. |
 | `scripts/backfill-decisions-contract.ts` | one-time upgrade of a run that finished under the build memo (harvests the memo's choices table, retires stale inherited rows, applies the above). |
