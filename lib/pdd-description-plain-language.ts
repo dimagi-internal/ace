@@ -55,7 +55,10 @@ export type PlainLanguageIssueKind =
   | 'app_version'
   | 'xml_markup'
   | 'ace_jargon'
-  | 'skill_or_tool_name';
+  | 'skill_or_tool_name'
+  // ── decision-row extras (profile 'decision'; see below) ──
+  | 'opaque_id'
+  | 'phase_reference';
 
 export interface PlainLanguageIssue {
   kind: PlainLanguageIssueKind;
@@ -116,16 +119,41 @@ const OUTSIDER_EXTRA_RULES: Rule[] = [
   },
 ];
 
+// ── The 'decision' profile ─────────────────────────────────────────────────
+//
+// The reviewer-visible text of decisions.yaml rows (`plain`, `plain_value`,
+// `check_at`, …), which the same public page renders. On
+// spark-facilitator/20261001-2208 those rows carried "Connect › opportunity
+// ad6c2d40" and "training LLO guide (Phase 6)" besides the base shapes.
+// `lib/decision-review.ts` `plainLanguageFindings` runs this profile over the
+// whole text (quotes included) and keeps its own ACE-vocabulary layer outside
+// quotes, so a quoted design rule keeps its words but not its field ids.
+// "Phase N" is deliberately NOT in the description profile: a programme may
+// name its own "Phase 1 pilot" in an overview.
+const DECISION_EXTRA_RULES: Rule[] = [
+  // A UUID, or an 8+ char hex token carrying both a digit and a letter
+  // (`ad6c2d40`, `308a6932`) — a platform record id. Pure digits (`7500000`)
+  // and letter-only words never match.
+  {
+    kind: 'opaque_id',
+    re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\b/gi,
+  },
+  { kind: 'phase_reference', re: /\bPhase\s+\d+\b/gi },
+];
+
 /**
  * `description` — the original PDD-description rules, unchanged.
  * `outsider`   — those plus the extra shapes above, for any field a named
  *                outside owner reads (the open-questions ledger first).
+ * `decision`   — the base rules plus record ids and "Phase N", for
+ *                reviewer-visible decision-row text (`plainLanguageFindings`).
  */
-export type PlainLanguageProfile = 'description' | 'outsider';
+export type PlainLanguageProfile = 'description' | 'outsider' | 'decision';
 
 const PROFILE_RULES: Record<PlainLanguageProfile, Rule[]> = {
   description: BASE_RULES,
   outsider: [...BASE_RULES, ...OUTSIDER_EXTRA_RULES],
+  decision: [...BASE_RULES, ...DECISION_EXTRA_RULES],
 };
 
 /**
@@ -167,6 +195,8 @@ const KIND_LABEL: Record<PlainLanguageIssueKind, string> = {
   xml_markup: 'XML markup',
   ace_jargon: 'ACE jargon',
   skill_or_tool_name: 'skill or tool name',
+  opaque_id: 'platform record id',
+  phase_reference: 'pipeline stage number',
 };
 
 export function plainLanguageKindLabel(kind: PlainLanguageIssueKind): string {

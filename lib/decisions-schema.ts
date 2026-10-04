@@ -61,6 +61,15 @@ import { isInternalDecision, plainLanguageFindings } from "./decision-review.js"
  * `scope` + `enforcement`. Field contract: `docs/decisions-contract.md` — ace-web
  * renders against it, so the field NAMES are fixed. All are optional on read;
  * `plain` is REQUIRED on new strict writes of partner-facing rows.
+ *
+ * The plain-language contract (every reviewer-visible row): `plain` present,
+ * `plain_value` present whenever the AI default is itself jargon, and no
+ * reviewer-visible field (`plain`, `plain_question`, `plain_value`,
+ * `confirm_reason`, `check_at`, `correct_looks_like`) carrying a field id,
+ * `=` expression, snake_case identifier, run id, platform record id, issue
+ * number or "Phase N" — quoted or not. Per row at the write boundary below;
+ * over the whole log by `auditDecisionsPlainLanguage` (lib/decisions-enrich.ts),
+ * which gates the phase-end render and release readiness.
  */
 export const DECISIONS_SCHEMA_VERSION = 6 as const;
 
@@ -297,8 +306,9 @@ export const DecisionRowSchema = z
       .optional()
       .describe(
         "One line, in plain language, for a programme partner who has never seen ACE: what was chosen. " +
-          "No field ids, no section-references, no ACE jargon (PDD, CCZ, skill names, issue numbers); a quoted " +
-          "design rule may keep its own words. Required on new partner-facing rows.",
+          "No field ids, snake_case identifiers, `=` expressions, run ids, platform record ids, issue numbers, " +
+          "'Phase N', section-references or ACE jargon (PDD, CCZ, skill names) — quoting does not exempt them; a " +
+          "quoted design rule keeps its own WORDS only. Required on new partner-facing rows.",
       ),
     check_at: z
       .string()
@@ -353,7 +363,9 @@ export const DecisionRowSchema = z
       .optional()
       .describe(
         "The effective value formatted for a reader (e.g. '7,500 MWK' for an `ai-default` of '7500'). Partner views show it " +
-          "instead of `ai-default`, which stays the exact option string the override UI keys on.",
+          "instead of `ai-default`, which stays the exact option string the override UI keys on. Required (by the " +
+          "plain-language gate, `auditDecisionsPlainLanguage`) whenever the AI default itself is jargon " +
+          "(e.g. 'payable_slot in key plus Phase 4 rule'). Same plain-language rules as `plain`.",
       ),
     also_raised_by: z
       .array(z.string().min(1))
@@ -569,7 +581,10 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
           path: ["plain"],
         });
       }
-      for (const field of ["plain", "confirm_reason", "plain_question"] as const) {
+      // Every field ace-web renders on a partner row is held to the same lint
+      // (the whole-log gate is `auditDecisionsPlainLanguage` in
+      // lib/decisions-enrich.ts; this is its per-row half at the write boundary).
+      for (const field of ["plain", "confirm_reason", "plain_question", "plain_value", "check_at", "correct_looks_like"] as const) {
         const text = row[field];
         if (text === undefined) continue;
         const findings = plainLanguageFindings(text);

@@ -21,9 +21,9 @@ internal`).
 |---|---|---|
 | `review_ask` | `recommended-confirmation` | The run is built on this value, but someone with authority should confirm it before launch. Absent = no ask. Never blocks a run. |
 | `confirm_reason` | one plain sentence | Why it needs confirming, e.g. *"The design marks the rate as proposed; the build uses 7,500 MWK as a placeholder."* Required with `review_ask`, invalid without it. |
-| `plain` | one line | What was chosen, for a programme partner who has never seen ACE. No field ids, no §-references, no ACE jargon (PDD, CCZ, skill names, issue numbers). A rule quoted in double quotes may keep the design's own words. |
+| `plain` | one line | What was chosen, for a programme partner who has never seen ACE. No field ids, no §-references, no ACE jargon (PDD, CCZ, skill names, issue numbers). A rule quoted in double quotes may keep the design's own words — not its field ids or expressions (§ Plain-language gate). |
 | `plain_question` | one question | The question as a programme partner would ask it, e.g. *"What should a facilitator be paid per verified community meeting?"*. `question` stays as the build wrote it. Same plain-language rules as `plain`. Derived for every review ask; optional elsewhere. |
-| `plain_value` | display text | The effective value formatted for a reader: *"7,500 MWK"* for an `ai-default` of `7500`, *"3,276,000 MWK"*, *"2 November 2026 to 26 February 2027"*. `ai-default` / `override` stay the exact option strings the override UI keys on. Stamped at the write boundary when formatting changes something. |
+| `plain_value` | display text | The effective value formatted for a reader: *"7,500 MWK"* for an `ai-default` of `7500`, *"3,276,000 MWK"*, *"2 November 2026 to 26 February 2027"*. `ai-default` / `override` stay the exact option strings the override UI keys on. Stamped at the write boundary when formatting changes something. **Required whenever `ai-default` is itself jargon** (§ Plain-language gate). |
 | `check_at` | a path | Where to spot-check it, e.g. *"Deliver app › Community Meeting Record › meeting photo"*. |
 | `correct_looks_like` | one line | What you see at `check_at` when it is right. |
 | `audience` | `partner` \| `internal` | `internal` = ACE's own test harness or build infrastructure (scenario counts, smoke recipes, scroll methods). Absent = `partner`. Partner views hide `internal` rows. |
@@ -44,6 +44,46 @@ another run), `status` (`ai-default` / `overridden` / `human-decided`),
 
 **Live rows** are those without `superseded_by`. Every consumer reads live rows
 only.
+
+## Plain-language gate
+
+Every **reviewer-visible** row — live (no `superseded_by`) and not `audience:
+internal` (ace-web hides internal rows behind a toggle, `DecisionsReview.tsx`
+`isInternal`; an unmarked row `isInternalDecision` recognises counts as
+internal) — must:
+
+1. carry `plain` (without it the page's headline is the raw build `question`);
+2. carry `plain_value` whenever the un-overridden `ai-default` is itself jargon
+   (an overridden row shows the human's answer instead);
+3. carry, in none of `plain`, `plain_question`, `plain_value`,
+   `confirm_reason`, `check_at`, `correct_looks_like`: a field id or other
+   snake_case identifier, an `=` / `==` / `!=` / `>=` / `<=` expression,
+   upper-case `AND`/`OR`/`NOT`, a run id (`20261001-2208`), a platform record
+   id (`ad6c2d40`, a UUID), an issue number (`#2512`, `ace#2419`), "Phase N", a
+   code span, or ACE jargon (PDD, CCZ, `§`, skill names, repo paths).
+   **Quoting does not exempt identifier shapes** — `"meeting_conducted = yes"`
+   is what reached the spark-facilitator/20261001-2208 public page.
+
+The checker is `plainLanguageFindings(text): string[]` (`lib/decision-review.ts`),
+whose identifier shapes are the shared table in
+`lib/pdd-description-plain-language.ts` (`auditOutsiderText(text,
+'decision')`; the PDD-description and open-questions gates are other profiles
+of the same table). The whole-log
+gate is `auditDecisionsPlainLanguage(log): PlainLanguageGateReport`
+(`lib/decisions-enrich.ts`) — `{verdict, findings: [{id, skill, field,
+finding}]}`. Where it fires:
+
+- **write boundary** (`decisions_append_rows`, `DecisionRowStrictSchema`):
+  per row — `plain` required, and every reviewer-visible field linted;
+- **phase end** (`decisions_enrich` → `report.plainLanguageGate`):
+  `skills/decisions-render` step 1.5 records a `fail` as the step's FAIL,
+  naming each row id + field + token;
+- **release** (`assessDecisionsPlainLanguage`, `lib/release-readiness.ts`):
+  one `public-summary` blocker per producing skill — the run is NOT READY for
+  outside reviewers until the rows are rewritten.
+
+*Enforced:* `test/lib/decisions-plain-language-gate.test.ts` over verbatim
+rows in `test/fixtures/decisions-plain/`.
 
 ## What earns a `review_ask`
 
@@ -113,4 +153,5 @@ supersedes inherited rows onto the row that replaced them.
   scope: worker
   enforcement: enforced
   plain: '"at most 1 payable meeting per CBF per day" applies to each worker, and is enforced by Connect''s payment limit (at most 1 paid per worker per day).'
+  plain_value: Connect's payment limit
 ```

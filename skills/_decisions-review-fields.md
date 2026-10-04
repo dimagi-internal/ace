@@ -14,10 +14,27 @@ platform is "Connect" in all reviewer-facing text (`skills/_terminology.md`).
   §-references, no ACE jargon (PDD, CCZ, skill names, issue numbers, `[ACE]` /
   `[FIXED]` tags). Say "the design" for the PDD and "the implementing
   organisation" for the LLO. A rule may be quoted in double quotes to keep the
-  design's own words. The atom rejects a partner row without it, and rejects
-  jargon in it.
+  design's own WORDS — but quoting does not exempt a field id, an `=`
+  expression, a run id, a platform record id (`opportunity ad6c2d40`), an
+  issue number or "Phase N": write `"the meeting happened"`, never
+  `"meeting_conducted = yes"`. The atom rejects a partner row without it, and
+  rejects jargon in it.
   - good: `plain: "Each worker is paid 7,500 MWK per verified community meeting, the middle of the design's proposed range."`
   - bad: `plain: "PU amount 7500 per PDD §14 payment_rate_band [PROPOSED]"`
+  - bad (spark-facilitator/20261001-2208, shown on the public page): `plain: '"meeting_conducted = yes" applies to each record'`
+- **`plain_value` — REQUIRED whenever your `ai-default` is itself jargon**
+  (a field id, an expression, PDD, CCZ, "Phase 4"): the value in words, e.g.
+  `ai-default: "payable_slot in key plus Phase 4 rule"` →
+  `plain_value: "A paid-slot marker in the record, plus a Connect rule that pays only marked records"`.
+  Not needed when the option already reads plainly (`7500` is formatted for
+  you).
+- **Every reviewer-visible field is held to the same lint** — `plain`,
+  `plain_question`, `plain_value`, `confirm_reason`, `check_at`,
+  `correct_looks_like`. `check_at` is a path a partner follows: `Connect ›
+  opportunity › verification rules`, not `Connect › opportunity ad6c2d40 ›
+  verification rules`; `training guide`, not `training LLO guide (Phase 6)`.
+  The plain-language gate (`docs/decisions-contract.md § Plain-language gate`)
+  fails the phase-end render and blocks release on any of these.
 - **`check_at` + `correct_looks_like`** whenever the choice is visible
   somewhere a reviewer can open: `check_at: "Deliver app › Community Meeting
   Record › meeting photo"`, `correct_looks_like: "The form cannot be saved

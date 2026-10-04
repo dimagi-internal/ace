@@ -80,6 +80,7 @@ import {
   assessApps,
   assessHqPlan,
   assessChatbot,
+  assessDecisionsPlainLanguage,
   assessGates,
   assessLinks,
   assessPostcondition,
@@ -142,7 +143,7 @@ function keyFile(): string {
   throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
 }
 
-const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$/;
+const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$/;
 
 function options(): ReleaseOptions {
   const shared = arg('allow-shared');
@@ -341,6 +342,7 @@ async function assess(): Promise<void> {
   const transcripts = files.filter((f) => /ocs-chatbot-qa_transcript[^/]*\.md$/.test(f.path)).sort((a, b) => Date.parse(b.modifiedTime) - Date.parse(a.modifiedTime));
   findings.push(...assessChatbot(transcripts[0] ?? null, now));
   findings.push(...assessApps(files, runState));
+  findings.push(...assessDecisionsPlainLanguage(files));
   findings.push(...assessHqPlan(hqDomainFromRunState(runState), readJson(arg('hq-plan'))));
   const verdict = buildReleaseVerdict({
     workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only'),

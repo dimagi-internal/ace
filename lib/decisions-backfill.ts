@@ -24,7 +24,7 @@
 
 import { PHASE_DEFS } from './artifact-manifest.js';
 import { rec, str } from './decision-review.js';
-import { enrichDecisionsLog, type EnrichReport } from './decisions-enrich.js';
+import { auditDecisionsPlainLanguage, enrichDecisionsLog, type EnrichReport } from './decisions-enrich.js';
 import { retireStaleInherited, type RetireStaleReport } from './decisions-rerun.js';
 import type { DecisionRow, DecisionsLog } from './decisions-schema.js';
 
@@ -258,7 +258,9 @@ export function backfillDecisionsLog(input: BackfillInput): { log: DecisionsLog;
   report.unknownIds.push(...after);
   report.fromOverlay = [...new Set(report.fromOverlay)];
   if (deferred.length) {
-    // the overlay may have filled `plain` on a synthesized row
+    // the overlay may have filled `plain` on a synthesized row — re-run the
+    // plain-language gate over the final log so the report describes it.
+    enriched.report.plainLanguageGate = auditDecisionsPlainLanguage(enriched.log);
     enriched.report.missingPlain = enriched.report.missingPlain.filter(
       (id) => enriched.log.decisions.find((d) => d.id === id)?.plain === undefined,
     );

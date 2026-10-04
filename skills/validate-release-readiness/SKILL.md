@@ -40,7 +40,7 @@ each run replaces the previous verdict and report.
 | Source | What |
 |---|---|
 | Arguments | the run; **reviewers (required — without them it is never READY)**; the release flags, which become plan options |
-| The run folder (Drive) | every file's path + modifiedTime; the text of each QA result, eval verdict and chatbot transcript (`$RC inventory`) |
+| The run folder (Drive) | every file's path + modifiedTime; the text of each QA result, eval verdict, chatbot transcript and `decisions.yaml` (`$RC inventory`) — `decisions.yaml` feeds the plain-language gate (`assessDecisionsPlainLanguage`, one `public-summary` blocker per producing skill; `docs/decisions-contract.md § Plain-language gate`) |
 | `run_state.yaml` | steps that ran, products, Phase 4's decisions, the `clone:` block (what was rebuilt into the run's own area, and the source run) |
 | The opp's tenancy (ace-web `GET /api/w/<ws>/opps/<opp>/tenancy`) | `hq_domain`, `connect_holding_org`, `connect_pm_org` — the grant targets |
 | ace-web | the run's outputs, the preview gap list, the public summary |
