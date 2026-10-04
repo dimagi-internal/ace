@@ -80,7 +80,7 @@ const BASE_RULES: Rule[] = [
 // ── The 'outsider' profile ─────────────────────────────────────────────────
 //
 // Generalised for every OTHER string ACE writes for a named outside reader —
-// first the opp-level open-questions ledger (`lib/open-questions-plain-language.ts`),
+// first the opp-level open-questions ledger (now retired; its markdown gate went with it),
 // whose `question:` / `answered_where:` ace-web renders on the PUBLIC
 // run-summary page as the item a partner is asked to answer. On
 // spark-facilitator (ledger revision 6, 2026-10-03) those fields carried

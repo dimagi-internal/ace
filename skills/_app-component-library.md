@@ -201,7 +201,8 @@ listed mechanism **must not be asserted as enforced or delivered**. Where
 the design intent is still wanted, the PDD states the **buildable
 approximation and names the residual** — the shape `gps-accuracy-capture`
 already models ("observability, stated honestly — not enforcement") — or
-raises an open question. `idea-to-pdd-eval` treats a listed mechanism
+records it as a decision row with a `review_ask` (the producer rule,
+`skills/_decisions-review-fields.md`). `idea-to-pdd-eval` treats a listed mechanism
 asserted as enforced/delivered as a finding. The two tables produce the same
 PDD behaviour and different escalation paths.
 

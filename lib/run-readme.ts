@@ -167,6 +167,7 @@ const OPP_LEVEL_PATHS = new Set<string>([
   'inputs/',
   'opp.yaml',
   'open-questions.md',
+  'open-asks.yaml',
   'eval-calibration/known-issues.md',
 ]);
 

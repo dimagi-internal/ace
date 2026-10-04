@@ -188,8 +188,9 @@ Build the map by reading each `.source.md` and keying it on the published
 doc's url. Two documents deliberately have no source and take the explicit
 `null` sentinel rather than a guess:
 
-- **`open-questions.md`** — an opp-level LIVING doc reviewers hand-edit in
-  place, so published-vs-source divergence is legitimate.
+- **`open-questions.md`** (legacy — the retired ledger, still rendered by
+  ace-web until an opp is migrated) — an opp-level LIVING doc reviewers
+  hand-edited in place, so published-vs-source divergence is legitimate.
 - **`1-design/pdd-to-work-order.gdoc`** — built by `docs_copy_template`
   (`drive.files.copy` + `replaceAllText`), Doc to Doc with **no markdown
   importer on the path**, so the content-dropping class this check guards

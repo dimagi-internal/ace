@@ -51,11 +51,12 @@ describe('Step 4a checks retired premises, not only live ones', () => {
   it('pins all three obligations when the premise is retired', () => {
     // Any one alone is insufficient: recording the conflict without demoting
     // the pin still makes a later phase's correct build read as a deviation,
-    // and demoting without an open question loses the re-mint.
+    // and demoting without an ask loses the re-mint. (The open-questions
+    // ledger is retired: the ask is a decision row's `review_ask`.)
     const block = bidirectionalBlock();
     expect(block, 'conflicting decisions row').toMatch(/`conflicting`|conflict_signals/);
     expect(block, 'demote to advisory mechanism').toMatch(/advisory mechanism/i);
-    expect(block, 'open question naming the re-mint').toMatch(/open question/i);
+    expect(block, 'an ask naming the re-mint').toMatch(/`review_ask`/);
   });
 
   it('states why the repo-side probe cannot cover it', () => {

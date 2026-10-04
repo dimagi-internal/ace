@@ -11,7 +11,7 @@ description: >
 # Feedback ledger
 
 **The ledger is a DERIVED VIEW, not a store.** It joins what ACE already keeps — GitHub
-issues/PRs, a run's `decisions.yaml`, an opp's `open-questions.md` — against one small
+issues/PRs and a run's `decisions.yaml` — against one small
 new fact store: the verbatim inbound review. Implementation:
 [`lib/feedback-ledger.ts`](../../lib/feedback-ledger.ts).
 
@@ -181,7 +181,7 @@ a future private-edit surface would change.
 | Opp | `ACE/<opp>/feedback/<slug>.yaml` | the fact store (this skill creates it) |
 | GitHub | issues + PRs carrying a `Feedback-Ref:` trailer | `skill-fix` dispositions |
 | Run | `runs/<run-id>/decisions.yaml` rows with `feedback_ref` | `decision` dispositions |
-| Opp | `ACE/<opp>/open-questions.md` | `open-question` dispositions |
+| Opp | `ACE/<opp>/open-questions.archived.md` / a not-yet-migrated `open-questions.md` (legacy, read-only) | historical `open-question` dispositions only |
 | Opp | `ACE/<opp>/inputs/decision-overrides.yaml` | the reviewer's **edits** (derived, never written here) |
 
 ## Products
@@ -227,13 +227,13 @@ items:
 
 ### 2. Stamp every change you make in response
 
-One field, three places. This is the ONLY write-side obligation:
+One field, two places. This is the ONLY write-side obligation:
 
 | Disposition | Where the change lives | How to stamp |
 |---|---|---|
 | `skill-fix` | GitHub issue + PR | `Feedback-Ref: <slug>/<item-id>` trailer line in the issue body |
 | `decision` | the run's `decisions.yaml` | `feedback_ref: <slug>/<item-id>` on the row |
-| `open-question` | `ACE/<opp>/open-questions.md` | `<!-- feedback-ref: <slug>/<item-id> -->` on the entry; the row itself follows `skills/idea-to-pdd/SKILL.md § Row contract — written for the named owner` (checked by `checkOpenQuestionsPlainLanguage`) |
+| a question that needs a human answer | the run's `decisions.yaml` — a decision row with `review_ask`, `owner`, `needed_by`, `answer_channel` (the producer rule, `skills/_decisions-review-fields.md`; the open-questions ledger is retired) | `feedback_ref: <slug>/<item-id>` on the row — it renders as a `decision` disposition, and the ask is answered in the decisions review |
 | `declined` | the ledger call itself | pass a `declined` disposition with a reason |
 | downstream of an **edit** | wherever the work lands | `Feedback-Ref: decision-edits/<decision-id>` — the edit itself needs no stamp; what follows from it does |
 
@@ -242,7 +242,7 @@ issues-as-you-go convention, and for the same reason: batching loses the mapping
 
 ### 3. Render the ledger (end of the responding run)
 
-Collect dispositions from the three stores, then build + render:
+Collect dispositions from the two stores (plus any legacy ledger), then build + render:
 
 ```ts
 import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
@@ -254,7 +254,8 @@ import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
   open → `pending`.
 - **decisions.yaml:** rows carrying `feedback_ref` → `kind: 'decision'`, `link` the row
   id, `landedInRun` the run.
-- **open-questions.md:** entries with the marker → `kind: 'open-question'`,
+- **legacy open-questions.md / open-questions.archived.md** (read-only, only where it still
+  exists): entries with the marker → `kind: 'open-question'`,
   `status: 'awaiting-human'` until answered.
 
 - **decision-overrides.yaml:** `parseDecisionOverridesYaml()` → `deriveEditEntries(file,

@@ -319,7 +319,7 @@ export function extractOpenSection(
         (hasHeadings ? '' : ', and no bare "Open" label to recover one from') +
         '. Nothing is inlined at Phase 1; ' +
         'the ledger needs the two-section `## Open` / `## Archive` shape ' +
-        '(skills/idea-to-pdd/SKILL.md § The durable open-questions doc).',
+        '(docs/decisions-contract.md § Open asks — the ledger is retired; migrate it with scripts/migrate-open-questions.ts).',
     };
   }
 
@@ -402,136 +402,21 @@ function recoverFlattenedOpenSection(
       'the export. Re-reading it will return the same bytes, so do not: the live rows below ' +
       'were recovered from the bare "Open" label and delimited at the bare "Archive" label, ' +
       'so archived rows are still excluded. Inline them, and say at the Phase 1→2 pause that ' +
-      'this ledger was read in degraded form. REPAIR IT: rewrite the doc in the two-section ' +
-      '`## Open` / `## Archive` shape via `drive_create_doc_from_markdown` (find-or-create ' +
-      'keeps the file id), checking the content with `checkOpenQuestionsWriteShape` first ' +
-      '(skills/idea-to-pdd/SKILL.md § The durable open-questions doc; ' +
-      'dimagi-internal/ace#2367).',
+      'this ledger was read in degraded form. Do not repair it — the ledger is retired: fold ' +
+      'it into decision rows with scripts/migrate-open-questions.ts, which reads this ' +
+      'recovered section (docs/decisions-contract.md § Open asks; dimagi-internal/ace#2367).',
   };
 }
 
 /* ------------------------------------------------------------------------- *
- * The WRITE-SHAPE half: a writer cannot publish what the reader would refuse.
+ * The WRITE-SHAPE half (`checkOpenQuestionsWriteShape`, `findSplicedPreamble`)
+ * is RETIRED with the ledger itself (owner decision 2026-10-04,
+ * docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md):
+ * no skill writes `open-questions.md` any more, so there is no write to gate.
+ * What remains here is the READ half, kept for the two consumers that still
+ * read a legacy ledger — Phase 1's read-only fallback on an opp not yet
+ * migrated, and `scripts/migrate-open-questions.ts`.
  * ------------------------------------------------------------------------- */
-
-export interface OpenQuestionsWriteCheck {
-  /** True iff this content reads back `ok` through `extractOpenSection`. */
-  ok: boolean;
-  /** One sentence naming what is wrong, pasteable into a halt. */
-  reason: string;
-}
-
-/**
- * Check content BEFORE it is written to the durable `open-questions.md`.
- *
- * ace#2367's parser half recovers a flattened ledger; nothing stopped one
- * being written. The flattening came from a turn that read the doc back as
- * `text/plain` — bare labels, run-on rows — and wrote THAT text out again,
- * laundering the headings away with no boundary to notice. Every writer
- * (`skills/idea-to-pdd`, `skills/inbox-triage` step 2g) runs this on the
- * markdown it is about to hand `drive_create_doc_from_markdown`, and does not
- * write on `ok: false`.
- *
- * It is deliberately the SAME function the reader uses, so the write cannot
- * pass a shape the read then refuses — a class-level preventer rather than a
- * second parser that drifts (`CLAUDE.md § Class-level preventers`).
- *
- * The content is pre-write markdown, so it is unescaped by construction and is
- * checked as `'text/markdown'`: a flattened draft therefore surfaces here as a
- * REFUSAL, not as the `flattened-headings` recovery, which exists only to
- * salvage a doc that is already broken in Drive.
- */
-export function checkOpenQuestionsWriteShape(markdown: string): OpenQuestionsWriteCheck {
-  const outcome = extractOpenSection(markdown, 'text/markdown');
-  if (outcome.status === 'ok') {
-    const spliced = findSplicedPreamble(markdown);
-    if (spliced.length) {
-      return {
-        ok: false,
-        reason:
-          'REFUSED — do not write this. It reads back `ok`, but its structure shows a spliced ' +
-          `rewrite a partner would see: ${spliced.join('; ')}. Rewrite the preamble (everything ` +
-          'above `## Open`) as ONE whole block rather than editing it in place, with a single ' +
-          '`Last updated by run` line (skills/idea-to-pdd/SKILL.md § The durable open-questions ' +
-          'doc; dimagi-internal/ace#2499).',
-      };
-    }
-    return {
-      ok: true,
-      reason:
-        'The content reads back `ok` through `extractOpenSection`: it carries a real `## Open` ' +
-        'heading and the next run can inline it.',
-    };
-  }
-  return {
-    ok: false,
-    reason:
-      'REFUSED — do not write this. `extractOpenSection` reads it back as ' +
-      `\`${outcome.status}\`, so the next run's Phase 1 could not inline it: ${outcome.reason} ` +
-      'Write the doc with real `## Open` / `## Archive` ATX headings ' +
-      '(skills/idea-to-pdd/SKILL.md § The durable open-questions doc; ' +
-      'dimagi-internal/ace#2367).',
-  };
-}
-
-/** An H2 — the level a spliced sentence fragment lands at. */
-const H2_LINE = /^ {0,3}##[ \t]+(\S.*?)[ \t]*$/;
-const ARCHIVE_HEADING = /^ {0,3}##[ \t]+Archive[ \t]*$/i;
-const LAST_UPDATED_STAMP = /last updated by run/i;
-
-/**
- * Structural signs that a preamble rewrite was SPLICED rather than rewritten
- * (dimagi-internal/ace#2499). `extractOpenSection` cannot see any of these —
- * it only needs one real `## Open` — so the write gate asks separately.
- *
- * Measured on spark-facilitator revision 43: an edit cut at the `## Open`
- * inside the old preamble's `` `## Open` `` CODE SPAN, so the rest of that
- * sentence became an H2 (`## Open\` before raising questions of its own, …`)
- * and the old `Last updated by run 20260906-2233` line survived beneath the new
- * `…20260925-1536` one. Deliberately NOT "any H2 other than Open/Archive": a
- * third section (`## Settled — do not re-open`, the converted-gdoc fixture) is
- * a legal ledger, and refusing it would refuse a healthy doc to catch a
- * different defect. What a splice leaves is narrower:
- *
- *   - a GARBLED heading — an H2 that starts as `Open`/`Archive` but carries
- *     more text, or carries an unbalanced backtick (half of a code span);
- *   - the canonical heading TWICE;
- *   - more than one `Last updated by run` stamp in the preamble (a mention
- *     inside a row is a row's business, not a stamp).
- *
- * Returns one human-readable problem per defect; empty when the shape is clean.
- */
-export function findSplicedPreamble(markdown: string): string[] {
-  const lines = unescapeDriveMarkdown(markdown.replace(/\r\n?/g, '\n')).split('\n');
-  const problems: string[] = [];
-
-  for (const line of lines) {
-    const m = H2_LINE.exec(line);
-    if (!m || OPEN_HEADING.test(line) || ARCHIVE_HEADING.test(line)) continue;
-    const text = m[1];
-    const nearMiss = /^(open|archive)\b/i.test(text);
-    const halfCodeSpan = (text.match(/`/g) ?? []).length % 2 === 1;
-    if (nearMiss || halfCodeSpan) {
-      const shown = text.length > 60 ? `${text.slice(0, 60)}…` : text;
-      problems.push(`garbled heading \`## ${shown}\` (a sentence fragment rendered as a section heading)`);
-    }
-  }
-
-  const openCount = lines.filter((l) => OPEN_HEADING.test(l)).length;
-  if (openCount > 1) problems.push(`${openCount} \`## Open\` headings (exactly one is allowed)`);
-  const archiveCount = lines.filter((l) => ARCHIVE_HEADING.test(l)).length;
-  if (archiveCount > 1) problems.push(`${archiveCount} \`## Archive\` headings (at most one is allowed)`);
-
-  const firstOpen = lines.findIndex((l) => OPEN_HEADING.test(l));
-  const preamble = firstOpen === -1 ? lines : lines.slice(0, firstOpen);
-  const stamps = preamble.filter((l) => LAST_UPDATED_STAMP.test(l)).length;
-  if (stamps > 1) {
-    problems.push(
-      `${stamps} \`Last updated by run\` lines in the preamble, which disagree about which run last touched the ledger`,
-    );
-  }
-  return problems;
-}
 
 /* ------------------------------------------------------------------------- *
  * The SELECTION half: which rows survive the cap, and which are named as
