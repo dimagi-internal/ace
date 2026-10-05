@@ -46,6 +46,7 @@ import {
   extractAttributionSection,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
+  PRODUCT_SPECIFICS_OBLIGATION,
   auditAnswerObligations,
   splitPromptBlocks,
 } from '../../lib/standing-fabrication-domains.js';
@@ -189,6 +190,10 @@ const AMBIGUITY_PARAGRAPH =
   'Either ask one short clarifying question, or answer each plausible reading in a sentence, labelled. ' +
   'Never open with a yes or no that the rest of the answer contradicts.';
 
+/** The product/process grounding paragraph, verbatim from 13923 v7 (ace#2689). */
+const PRODUCT_PARAGRAPH =
+  '**Product and process specifics — a hard rule.** Name a feature, screen, label, notification, report, document, website, documentation space or other resource — of Connect, CommCare, Spark or anyone else — and describe how a process or programme is structured, only when it appears in what you retrieved for this answer. Do not fill a gap with how such systems usually work, and do not point people to documentation or resources the knowledge base does not name. If it is not covered, say so plainly and route the person to their supervisor and the ACE admin group.';
+
 /** The `## Spark's rules vs the pilot's design` section, verbatim from 13923 v7 (ace#2687). */
 const ATTRIBUTION_SECTION_BODY =
   "Credit Spark only with what the knowledge base says is Spark's own: the verification predicate (`meeting_conducted = yes` AND `meeting_type = community_meeting` — so committee meetings are not paid), Spark's form fields, labels and constraints, and the FCAP steps. " +
@@ -208,7 +213,7 @@ const SAFEGUARDING_SECTION_BODY =
   'What you must not do is invent a named reporting chain, a designated safeguarding officer, a form, or any phone number. ' +
   'The programme has not published a safeguarding reporting procedure; say so, after giving the guidance above.';
 
-const ANSWER_SECTION = `\n\n## Spark's rules vs the pilot's design — attribute correctly\n\n${ATTRIBUTION_SECTION_BODY}\n\n## Safeguarding disclosures — always give this guidance\n\n${SAFEGUARDING_SECTION_BODY}\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
+const ANSWER_SECTION = `\n\n## Spark's rules vs the pilot's design — attribute correctly\n\n${ATTRIBUTION_SECTION_BODY}\n\n## Safeguarding disclosures — always give this guidance\n\n${SAFEGUARDING_SECTION_BODY}\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}\n\n## Grounding\n\n${PRODUCT_PARAGRAPH}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -726,9 +731,12 @@ describe('auditAnswerObligations — the phone-number ban (opp-53, chatbot 13923
     expect(audit.ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — the published v4 prompt passes the answer obligations', () => {
-    const audit = auditAnswerObligations(v4);
+  it('POSITIVE CONTROL — the published v4 prompt passes the answer obligations of its day', () => {
+    // PRODUCT_SPECIFICS_OBLIGATION (ace#2689) came later; v4 correctly lacks it.
+    const ofItsDay = ANSWER_OBLIGATIONS.filter((o) => o !== PRODUCT_SPECIFICS_OBLIGATION);
+    const audit = auditAnswerObligations(v4, ofItsDay);
     expect(audit.ok).toBe(true);
+    expect(auditAnswerObligations(v4, [PRODUCT_SPECIFICS_OBLIGATION]).ok).toBe(false);
     // The WHOLE gate now also needs the ace#2682 safeguarding section, which
     // v4 lacks and v5 carries — see that describe block.
     expect(auditComposedPrompt(v4).safeguarding.ok).toBe(false);
@@ -1173,5 +1181,69 @@ describe("auditAttribution — never credit the partner with the pilot's design 
       .split('<PARTNER>')
       .join('Spark');
     expect(auditAttribution(wrap(mandated)).missing.map((c) => c.id)).toEqual([]);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2689 — chatbot 13923 v6 invented a "payment-received
+ * notification in Connect" (opp-40), pointed to "the Connect Confluence space"
+ * (cg-4) and mis-stated FCAP's phases (opp-29). The v5 fixture (published as
+ * v6) carries only "Ground answers in what you retrieve" and fails; v7 passes.
+ */
+describe('PRODUCT_SPECIFICS_OBLIGATION — product/process specifics only when retrieved (ace#2689)', () => {
+  const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
+  const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+  const one = (p: string) => auditAnswerObligations(p, [PRODUCT_SPECIFICS_OBLIGATION]).ok;
+
+  it('is a registered answer obligation', () => {
+    expect(ANSWER_OBLIGATIONS).toContain(PRODUCT_SPECIFICS_OBLIGATION);
+  });
+
+  it('NEGATIVE CONTROL — v5 (only the descriptive grounding line) fails, on the whole gate too', () => {
+    expect(v5).toContain('Ground answers in what you retrieve.');
+    expect(one(v5)).toBe(false);
+    expect(auditComposedPrompt(v5, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v7 carries the paragraph verbatim and passes the WHOLE gate', () => {
+    expect(v7).toContain(PRODUCT_PARAGRAPH);
+    expect(one(v7)).toBe(true);
+    expect(auditComposedPrompt(v7, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
+  });
+
+  it('every part is load-bearing — weakening any ONE fails the obligation', () => {
+    const ablations: [string, string, string][] = [
+      ['features', 'Name a feature, screen, label, notification,', 'Name a screen, label, notification,'],
+      ['notifications', 'label, notification, report', 'label, report'],
+      ['documentation', 'documentation space or other resource', 'space or other resource'],
+      ['structure', 'and describe how a process or programme is structured, ', ''],
+      ['only when retrieved', 'only when it appears in what you retrieved for this answer', 'when you are fairly sure'],
+      ['usually work', 'Do not fill a gap with how such systems usually work, and do', 'Do'],
+      ['no external resources', 'and do not point people to documentation or resources the knowledge base does not name', 'and be helpful'],
+      ['routing', 'route the person to their supervisor and the ACE admin group', 'move on'],
+    ];
+    for (const [name, from, to] of ablations) {
+      const weakened = PRODUCT_PARAGRAPH.replace(from, to);
+      expect(weakened, `ablation ${name} must change the paragraph`).not.toBe(PRODUCT_PARAGRAPH);
+      expect(one(weakened), `weakening ${name} must fail`).toBe(false);
+    }
+    expect(one(PRODUCT_PARAGRAPH)).toBe(true);
+  });
+
+  it('one-block rule — the parts split across two paragraphs do not count', () => {
+    const half = PRODUCT_PARAGRAPH.indexOf('Do not fill a gap');
+    const split = `${PRODUCT_PARAGRAPH.slice(0, half)}\n\n${PRODUCT_PARAGRAPH.slice(half)}`;
+    expect(one(split)).toBe(false);
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('(`PRODUCT_SPECIFICS_OBLIGATION`, dimagi-internal/ace#2689).** The');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup
+      .slice(agentSetup.indexOf('*"**Product and process', start), agentSetup.indexOf('**Why.** "Ground answers', start))
+      .split('<PARTNER>')
+      .join('Spark')
+      .replace(/\n\s+/g, ' ');
+    expect(one(mandated)).toBe(true);
   });
 });

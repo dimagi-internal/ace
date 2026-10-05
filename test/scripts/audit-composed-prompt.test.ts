@@ -148,7 +148,9 @@ const ANSWER_SECTION =
   '\n\n## Short or ambiguous questions\n\nIf a question is short or ambiguous, either ask one short clarifying question or answer each plausible reading, labelled. Never open with a yes or no that the rest of the answer contradicts.' +
   "\n\n## Spark's rules vs the pilot's design\n\nCredit Spark only with what the knowledge base says is Spark's own. " +
   "Everything else is the pilot's design, not Spark's existing practice: the caps, limits and rates. " +
-  'The caps are enforced by a Connect rule configured for this pilot. Never say a pilot rule "comes from Spark".';
+  'The caps are enforced by a Connect rule configured for this pilot. Never say a pilot rule "comes from Spark".' +
+  '\n\n## Grounding\n\n' +
+  '**Product and process specifics — a hard rule.** Name a feature, screen, label, notification, report, document, website, documentation space or other resource — of Connect, CommCare, Spark or anyone else — and describe how a process or programme is structured, only when it appears in what you retrieved for this answer. Do not fill a gap with how such systems usually work, and do not point people to documentation or resources the knowledge base does not name. If it is not covered, say so plainly and route the person to their supervisor and the ACE admin group.';
 
 /** Publishable: everything above plus every answer obligation. */
 const PROMPT_FIXED = PROMPT_CONTACTS_COMPLETE + ANSWER_SECTION;

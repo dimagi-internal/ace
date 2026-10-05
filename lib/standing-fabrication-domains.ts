@@ -668,12 +668,43 @@ export const CLARIFY_AMBIGUOUS_OBLIGATION: AnswerObligation = {
     'with one confident, less natural reading.',
 };
 
+/**
+ * Product and process specifics are retrieved, never filled in
+ * (dimagi-internal/ace#2689).
+ *
+ * The composed prompt's only grounding instruction was the description
+ * "Ground answers in what you retrieve", and the four standing domains do not
+ * reach product mechanics, resources or programme structure. On chatbot 13923
+ * v6 (spark-facilitator/20261004-1706) the bot filled exactly those gaps from
+ * how such systems usually work: a "payment-received notification in Connect"
+ * (opp-40), "the Connect Confluence space" as a resource (cg-4), and FCAP as
+ * "Phase 1 Proposal Development, then Implementation, then Transition"
+ * (opp-29; the KB's structure document has Planning with two subphases,
+ * Implementation, Second Round, Transition). None is a URL, address or
+ * number, so no clamp fired — each hands a reader a feature, resource or
+ * structure that does not exist as stated.
+ */
+export const PRODUCT_SPECIFICS_OBLIGATION: AnswerObligation = {
+  id: 'product-specifics-retrieved-only',
+  label:
+    'Name a feature, notification, document, documentation space or resource, or describe how a process or programme is structured, only when it was retrieved for this answer; never fill the gap from how such systems usually work or point to resources the KB does not name; route to supervisor + ACE admin group',
+  pattern:
+    /(?=.*\bfeatures?\b)(?=.*\bnotifications?\b)(?=.*\bdocumentation spaces?\b)(?=.*\bstructured\b)(?=.*\bonly when\b[^.]{0,60}\bretriev\w*)(?=.*\busually work\b)(?=.*\bnot point\b[^.]{0,60}\b(?:documentation|resources?)\b)(?=.*\bsupervisor\b[^.]{0,40}\bace admin group\b)/i,
+  why:
+    'Chatbot 13923 v6 invented a "payment-received notification in Connect" ' +
+    '(opp-40), pointed a reader to "the Connect Confluence space" (cg-4) and ' +
+    'mis-stated FCAP\'s phase structure (opp-29) — none in the knowledge base, ' +
+    'none a URL or number, so no deterministic pass caught it. "Ground answers ' +
+    'in what you retrieve" was a description, not an obligation.',
+};
+
 /** Every answer obligation, in report order. */
 export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [
   PHONE_NUMBER_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
+  PRODUCT_SPECIFICS_OBLIGATION,
 ];
 
 export interface AnswerObligationAudit {
