@@ -32,7 +32,7 @@ import { parseDecisionsYaml } from './decisions-schema.js';
 import type { DecisionOverrideRow } from './decision-overrides.js';
 import { requiredBeforeBlockers } from './open-asks.js';
 import { APP_RELEASE_SUMMARY, parseAppReleaseSummary, releaseRecordFor, runStateRelease, type ReleaseRecord } from './app-release-record.js';
-import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
+import { ccKey, planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
 export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
 export const RELEASE_VERDICT_KIND = 'release-readiness' as const;
@@ -664,6 +664,8 @@ export interface ReleaseVerdict {
   warnings: ReleaseFinding[];
   /** Who the run is being released to (required for READY). */
   reviewers: Reviewer[];
+  /** Dimagi staff copied on every release email — granted nothing (ace#2706). */
+  cc: string[];
   /** `runStateHash` of run_state.yaml as validated — the release refuses a different one. */
   run_state_hash: string;
   /** `planHash(release_plan)`, or null when there is no plan. */
@@ -697,6 +699,7 @@ export function buildReleaseVerdict(input: {
   findings: readonly ReleaseFinding[];
   readOnly?: boolean;
   reviewers?: readonly Reviewer[];
+  cc?: readonly string[];
   runStateHash?: string;
   plan?: ReleasePlan | null;
 }): ReleaseVerdict {
@@ -732,6 +735,7 @@ export function buildReleaseVerdict(input: {
     blockers,
     warnings,
     reviewers,
+    cc: [...(input.cc ?? [])],
     run_state_hash: input.runStateHash ?? '',
     plan_hash: plan ? planHash(plan) : null,
     release_plan: plan,
@@ -747,6 +751,8 @@ export interface ReleaseRequest {
   /** `runStateHash` of run_state.yaml as it is now. */
   runStateHash: string;
   reviewers: readonly Reviewer[];
+  /** Dimagi staff to copy on the emails (`--cc`) — compared exactly, like reviewers (ace#2706). */
+  cc?: readonly string[];
   options: ReleaseOptions;
 }
 
@@ -755,7 +761,7 @@ export interface ReleaseRequest {
  * release-readiness verdict, was not a read-only dry run, belongs to THIS
  * workspace/opp/run, is newer than every write in the run folder, was taken
  * over the same run_state, carries an untampered plan, and that plan is for
- * exactly the reviewers and options requested now. Every mismatch refuses
+ * exactly the reviewers, cc and options requested now. Every mismatch refuses
  * with its reason; none is adapted to.
  */
 export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: ReleaseRequest): { ok: boolean; reason: string } {
@@ -792,6 +798,11 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
   if (want !== have) {
     return { ok: false, reason: `the reviewers requested (${want || 'none'}) are not the reviewers validated (${have || 'none'}) — ${again}` };
   }
+  const wantCc = ccKey(current.cc);
+  const haveCc = ccKey(plan.cc);
+  if (wantCc !== haveCc) {
+    return { ok: false, reason: `the cc requested (${wantCc || 'none'}) is not the cc validated (${haveCc || 'none'}) — ${again}` };
+  }
   for (const k of ['forward_source', 'allow_cross_workspace_forward', 'allow_shared_connect'] as const) {
     if (!!current.options[k] !== !!plan.options?.[k]) {
       return { ok: false, reason: `${k.replace(/_/g, '-')} is ${current.options[k] ? 'on' : 'off'} now but was ${plan.options?.[k] ? 'on' : 'off'} when validated — ${again}` };
@@ -815,6 +826,7 @@ export function renderReleaseReport(v: ReleaseVerdict, planText?: string): strin
   lines.push(`**${v.verdict === 'READY' ? 'READY to release' : 'NOT READY to release'}** — ${v.counts.blockers} blocker(s), ${v.counts.warnings} warning(s). Validated ${v.checked_at} in workspace \`${v.workspace}\`${v.read_only ? ' (read-only dry run — not releasable as recorded)' : ''}.`);
   lines.push('');
   lines.push(`Reviewers: ${v.reviewers?.length ? v.reviewers.map((r) => `${r.email} (${r.role})`).join(', ') : 'none named — a run cannot be READY without them'}.`);
+  if (v.cc?.length) lines.push(`Copied on every email (Dimagi staff, no access granted): ${v.cc.join(', ')}.`);
   lines.push('');
   lines.push('| Area | Blockers | Warnings |');
   lines.push('|---|---|---|');

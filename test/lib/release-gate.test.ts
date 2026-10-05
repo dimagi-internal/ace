@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { assessGates, buildReleaseVerdict, releaseGate, renderReleaseReport, type RunFile } from '../../lib/release-readiness';
-import { buildReleasePlan, runStateHash } from '../../lib/release-plan';
+import { buildReleasePlan, planHash, runStateHash } from '../../lib/release-plan';
 
 const FIX = join(__dirname, '../fixtures/release-readiness/spark-20260926-1800');
 const json = <T>(n: string): T => JSON.parse(readFileSync(join(FIX, n), 'utf8')) as T;
@@ -87,6 +87,35 @@ describe('the release gate refuses every mismatch', () => {
     expect(releaseGate(ready, { ...here, reviewers: [...reviewers, { email: 'x@spark.org', role: 'viewer' }] }).reason).toMatch(/not the reviewers validated/);
     expect(releaseGate(ready, { ...here, reviewers: [] }).ok).toBe(false);
     expect(releaseGate(ready, { ...here, reviewers: [{ email: 'amina@spark.org', role: 'editor' }] }).ok).toBe(false);
+  });
+  it('cc must match exactly — the cc validated is part of the plan (ace#2706)', () => {
+    const cc = ['jj@dimagi.com', 'neal@dimagi.com'];
+    const { plan } = buildReleasePlan({
+      workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', reviewers, cc,
+      runState: parseYaml(rsText), tenancy: { hq_domain: 'connect-ace-spark', connect_holding_org: 'spark-nm' },
+      driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace',
+    });
+    const withCc = buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', checkedAt: '2026-10-01T21:00:00Z', files, findings: [], reviewers, cc, runStateHash: runStateHash(rsText), plan });
+    expect(withCc.verdict).toBe('READY');
+    expect(withCc.cc).toEqual(cc);
+    expect(releaseGate(withCc, { ...here, cc }).ok).toBe(true);
+    expect(releaseGate(withCc, { ...here, cc: [...cc].reverse() }).ok).toBe(true); // order is not a difference
+    expect(releaseGate(withCc, { ...here, cc: ['jj@dimagi.com'] }).reason).toMatch(/cc requested .* is not the cc validated/);
+    expect(releaseGate(withCc, { ...here, cc: [...cc, 'x@dimagi.com'] }).ok).toBe(false);
+    expect(releaseGate(withCc, here).ok).toBe(false); // cc dropped at release
+    expect(releaseGate(ready, { ...here, cc }).ok).toBe(false); // cc added at release
+    // a pre-cc plan (no `cc` key at all) reads as "nobody copied"
+    const legacy = JSON.parse(JSON.stringify(ready));
+    delete legacy.release_plan.cc;
+    for (const e of legacy.release_plan.emails) delete e.cc;
+    for (const a of legacy.release_plan.actions) delete a.cc;
+    legacy.plan_hash = planHash(legacy.release_plan);
+    expect(releaseGate(legacy, here).ok).toBe(true);
+    expect(releaseGate(legacy, { ...here, cc }).ok).toBe(false);
+    // the cc cannot be edited into a validated plan
+    const tampered = JSON.parse(JSON.stringify(ready));
+    tampered.release_plan.cc = ['jj@dimagi.com'];
+    expect(releaseGate(tampered, { ...here, cc: ['jj@dimagi.com'] }).reason).toMatch(/does not match its recorded hash/);
   });
   it('flags must match', () => {
     expect(releaseGate(ready, { ...here, options: { ...opts, forward_source: true } }).reason).toMatch(/forward-source/);

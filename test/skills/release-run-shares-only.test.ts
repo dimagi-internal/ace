@@ -68,7 +68,7 @@ describe('release-run executes the plan and nothing else', () => {
   it('calls only the read / gate / plan subcommands of the release script', () => {
     const subs = [...SKILL.matchAll(/\$RC ([a-z-]+)/g)].map((m) => m[1]);
     expect(subs.length).toBeGreaterThan(0);
-    expect([...new Set(subs)].filter((s) => !['inventory', 'gate', 'plan-show', 'plan-actions', 'email-body'].includes(s))).toEqual([]);
+    expect([...new Set(subs)].filter((s) => !['inventory', 'gate', 'plan-show', 'plan-actions', 'email-body', 'thread-recipients'].includes(s))).toEqual([]);
   });
 
   it('POSTs only the release record and the workspace invite', () => {

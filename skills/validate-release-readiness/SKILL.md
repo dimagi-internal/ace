@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # validate-release-readiness
 
-`/ace:validate-release-readiness <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
+`/ace:validate-release-readiness <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
 
 Owner decision (Jonathan, 2026-10-03): *"we should have one
 validate-release-readiness (which should take over whatever the release check
@@ -48,12 +48,29 @@ each run replaces the previous verdict and report.
 | Live systems | Connect, labs, HQ, OCS public chat, Drive sharing — each read with its own session; nothing is shared |
 
 **Reviewers.** `--reviewers` is comma-separated emails, each optionally
-`:viewer` / `:editor` (default viewer). `--from-thread <id>`: read the ace@
-thread that asked for the review (`canopy email read <id>`) and take every
-participant whose domain is in the tenancy's `labs_allowed_domains` — the
-partner's own people, never Dimagi staff on the cc line — then use that list as
-`--reviewers` for every step below. `/ace:release` must later be given the SAME
-reviewers (the gate compares them exactly).
+`:viewer` / `:editor` (default viewer).
+
+**Cc (ace#2706).** `--cc` is comma-separated **Dimagi staff** (`@dimagi.com`)
+copied on EVERY release email and granted nothing — they are told, not let in.
+Operator decision (Jonathan, 2026-10-05, the spark-facilitator release): *"All 8
+get the email"* — the partner reviewers get their grants and their email as
+before, and the Dimagi staff on the requesting thread are cc'd on each email.
+Any other address is refused (`parseCc`: a partner is a reviewer or nobody;
+ACE's own mailbox is the sender), and so is an address that is also a reviewer
+(blocker `reviewers-cc-is-reviewer:<email>`). The cc list is part of the plan —
+on the plan and on every `email` action — so it is in the plan hash, and the
+release gate compares it exactly, like the reviewers.
+
+**`--from-thread <id>`.** Read the ace@ thread that asked for the review
+(`canopy email read <id>`), collect every From / To / Cc address, and split
+them with `$RC thread-recipients --participants "<addr>,…" --workspace <ws>
+--opp <opp>`: a participant whose domain is in the tenancy's
+`labs_allowed_domains` is a **reviewer** (the partner's own people); Dimagi
+staff are **cc** (whatever the labs domains say); ACE's own mailbox and anyone
+else are **excluded**, each with its reason. Show the operator all three lists,
+then use its `flags.reviewers` as `--reviewers` and `flags.cc` as `--cc` for
+every step below. `/ace:release` must later be given the SAME reviewers and cc
+(the gate compares both exactly).
 
 ## Products
 
@@ -79,6 +96,7 @@ areas: {qa, eval, connect, previews, links, public-summary, chatbot, apps, hq, r
 blockers: [{id, area, severity: blocker, owner, detail, fix, summary, action, merged?}]
 warnings: [...]
 reviewers: [{email, role}]
+cc: [staff@dimagi.com]     # copied on every email, granted nothing (ace#2706)
 run_state_hash: sha256:…   # run_state.yaml as validated (content, not bytes)
 plan_hash: sha256:… | null
 release_plan:              # null unless READY
@@ -86,15 +104,16 @@ release_plan:              # null unless READY
   workspace, opp, run_id
   options: {forward_source, allow_cross_workspace_forward, allow_shared_connect}
   reviewers: [{email, role}]
+  cc: [staff@dimagi.com]   # in the plan hash; the gate compares it exactly
   actions:                 # executed in exactly this order, nothing else
     - {step: 1, id: "hq:a@x.org", system: hq, kind: hq_invite, email, target: <hq_domain>, role: "App Editor"}
     - {step: 2, id: "connect:a@x.org:<org>", system: connect, kind: connect_org_member, email, target: <org>, role: viewer, shared: false}
     - {step: 3, id: "drive:<file id>", system: drive, kind: drive_share, target: <file id>, title, url, role: commenter, scope: anyone_with_link}
     - {step: 4, id: forward-source, system: ace-web, kind: forward_source, target: <src ws>/<opp>/<run>, cross_workspace: true}
     - {step: 5, id: "ace-web:a@x.org", system: ace-web, kind: ace_web_invite, email, target: <workspace>, role: viewer}
-    - {step: 6, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…"}
+    - {step: 6, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…", cc: [staff@dimagi.com]}
   not_granted: [{email, system, reason}]   # shared tenants; OCS is always "public chat link, no account"
-  emails: [{to, subject, body}]            # body has the literal {{ACCEPT_LINK}} — the only part a release fills in
+  emails: [{to, cc, subject, body}]        # body has the literal {{ACCEPT_LINK}} — the only part a release fills in
 ```
 
 ### Why each kind of action is planned the way it is
@@ -129,7 +148,9 @@ release_plan:              # null unless READY
   the only value a release fills in), the run's review page, the chatbot's
   public link, what they can and cannot open, and — when Connect is granted —
   "sign in with *Log in with CommCare HQ* BEFORE accepting the Connect
-  invite". Platform name is "Connect" (`skills/_terminology.md`).
+  invite". Platform name is "Connect" (`skills/_terminology.md`). Every email
+  carries the plan's `cc` (Dimagi staff only); the cc changes the header, never
+  the body, and no grant is planned for a cc'd address.
 
 ## Process
 
@@ -138,7 +159,7 @@ Resolve the run folder (`resolve_opp_path` → `runs/<run-id>`), download
 (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <workspace>/<opp>`), and pick a scratch
 dir. `$RC` below is
 `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`,
-and `$FLAGS` is `--reviewers "<list>"` plus whichever of
+and `$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus whichever of
 `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared connect`
 were given — the SAME `$FLAGS` on every command below and later on
 `/ace:release`.
@@ -254,7 +275,7 @@ $RC gate --workspace <ws> --opp <opp> --run <run-id> --verdict <local release-re
 Exit 0 only when the verdict is a READY v2 `release-readiness` verdict, for this
 workspace/opp/run, not a dry run, nothing in the run folder was written after
 it, `run_state.yaml` hashes the same, the plan matches its hash, and the
-reviewers and flags are exactly the ones validated (`releaseGate`). Otherwise it
+reviewers, cc and flags are exactly the ones validated (`releaseGate`). Otherwise it
 prints why and the release stops — it never adapts.
 
 ## MCP Tools Used
@@ -287,4 +308,5 @@ prints why and the release stops — it never adapts.
 | Date | Change | Author |
 |---|---|---|
 | 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
+| 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |
