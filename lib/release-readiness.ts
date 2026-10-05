@@ -31,6 +31,7 @@ import { auditDecisionsPlainLanguage, describePlainLanguageGate } from './decisi
 import { parseDecisionsYaml } from './decisions-schema.js';
 import type { DecisionOverrideRow } from './decision-overrides.js';
 import { requiredBeforeBlockers } from './open-asks.js';
+import { APP_RELEASE_SUMMARY, parseAppReleaseSummary, releaseRecordFor, runStateRelease, type ReleaseRecord } from './app-release-record.js';
 import { planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
 export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
@@ -458,22 +459,12 @@ export function assessChatbot(transcript: RunFile | null, now: string, maxAgeDay
  */
 export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$/;
 
-/** app-release's summary — the SOLE owner of released build state (skills/app-release/SKILL.md § Products, ace#1439). */
-export const APP_RELEASE_SUMMARY = /(^|\/)app-release_summary\.md$/;
-
-type ReleaseRecord = { hq_app_id?: unknown; build_id?: unknown; is_released?: unknown };
+/** app-release's summary — the SOLE owner of released build state. Re-exported from lib/app-release-record.ts. */
+export { APP_RELEASE_SUMMARY };
 
 /** `apps.<kind>_app` from app-release_summary.md frontmatter, or null when the file/frontmatter is unreadable. */
 function releaseRecords(files: readonly RunFile[]): Record<string, ReleaseRecord> | null {
-  const text = files.find((f) => APP_RELEASE_SUMMARY.test(f.path))?.text;
-  const fm = text ? /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.replace(/^﻿/, '')) : null;
-  if (!fm) return null;
-  try {
-    const apps = (parseYaml(fm[1]) as { apps?: Record<string, ReleaseRecord> } | null)?.apps;
-    return apps && typeof apps === 'object' ? apps : null;
-  } catch {
-    return null;
-  }
+  return parseAppReleaseSummary(files.find((f) => APP_RELEASE_SUMMARY.test(f.path))?.text);
 }
 
 /**
@@ -494,7 +485,7 @@ export function assessApps(files: readonly RunFile[], runState: unknown): Releas
   for (const kind of ['learn', 'deliver']) {
     const a = apps[kind] ?? apps[`${kind}_app`];
     if (records) {
-      const r = records[`${kind}_app`] ?? records[kind];
+      const r = releaseRecordFor(records, kind);
       if (!r?.build_id || r.is_released !== true) {
         out.push(unreleased(kind, `app-release_summary.md records no released build for the ${kind} app (needs apps.${kind}_app.build_id and is_released: true)`));
         continue;
@@ -510,8 +501,7 @@ export function assessApps(files: readonly RunFile[], runState: unknown): Releas
       }
       continue;
     }
-    const released = Boolean(a?.released_build_id) || Boolean(a?.hq_build_id && a?.released_at);
-    if (!released) out.push(unreleased(kind, `no released build recorded for the ${kind} app (app-release_summary.md unreadable, and run_state records none)`));
+    if (!runStateRelease(a)) out.push(unreleased(kind, `no released build recorded for the ${kind} app (app-release_summary.md unreadable, and run_state records none)`));
   }
   if (!files.some((f) => /app-release-qa_result\.ya?ml$/.test(f.path))) {
     out.push({ id: 'app-release-qa-missing', area: 'apps', severity: 'blocker', owner: 'app-release-qa', detail: 'no app-release-qa result — the released builds were never shown to install', fix: 'run app-release-qa' });

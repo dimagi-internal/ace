@@ -341,16 +341,28 @@ reviewer to a workspace they cannot open.
 2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
    <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
    downstream_domain: <hq_domain>, name: <source app name>, linked: false,
-   build_id: <the source's released build id, when products.apps.<k> records
-   one>)`. Copy the RELEASED build the source run was reviewed on, not "latest
-   saved", which may carry later edits.
+   build_id: <the source's released build id>)`. Read that id from the
+   source's `3-commcare/app-release_summary.md` frontmatter
+   `apps.<k>_app.build_id` — app-release's contracted record — and from run_state
+   `products.apps.<k>` only when the summary has none (ace#2702). Copy the
+   RELEASED build the source run was reviewed on, not "latest saved", which may
+   carry later edits.
    Unlinked: no Pro Edition needed; the copy keeps camera-only and grid-menu
    settings. The atom reads the new id from HQ's redirect, so it works on a
    `not-in-plan` space. **A timeout does not mean it failed** — before any
    retry, look: `commcare_list_apps` on an `enabled` space, else the HQ project
    dashboard (`/a/<hq_domain>/dashboard/project/`, session auth) lists every
    app id. A blind retry makes a duplicate.
-3. `commcare_make_build` then `commcare_release_build` for each new app.
+3. `commcare_make_build` then `commcare_release_build` for each new app. Then
+   **re-record the clone's release in `3-commcare/app-release_summary.md`** —
+   the copied file still describes the SOURCE's builds, and it is the one
+   record of release state that `validate-release-readiness` and § 4e read
+   (ace#2698, ace#2702). Rewrite its frontmatter `apps.learn_app` /
+   `apps.deliver_app` from THIS step's reads: `{hq_app_id: <new app id>,
+   build_id: <make_build's id>, version: <its version>, is_released: true,
+   released_at: <release time>}`. Never copy a value from the source's file;
+   the source builds stay recorded in run_state's `clone:` block, which § 4e
+   leaves alone.
 3b. **Mint the opportunity's HQ key, restricted to this space** — skip it, and
    record `clone.hq.key: {status: skipped, reason}`, only with `--keep-shared
    connect` (no opportunity will use it). Otherwise (the default):
@@ -522,7 +534,9 @@ npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-asset-rewrite.ts" \
   --source <source-run-folder-id> --target <target-run-folder-id> --out <scratch-dir>
 ```
 
-It reads both run_states, pairs every asset that moved, and writes rewritten
+It reads both run_states and both `3-commcare/app-release_summary.md` files
+(released build ids/versions come from the summary — run_state is only the
+fallback, ace#2702), pairs every asset that moved, and writes rewritten
 files plus `plan.json` — it writes nothing to Drive. What it does per file
 (`lib/clone-asset-refs.ts`):
 

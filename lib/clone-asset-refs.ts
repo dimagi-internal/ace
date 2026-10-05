@@ -27,6 +27,8 @@
  * Pure: the caller walks Drive (`scripts/clone-asset-rewrite.ts`).
  */
 
+import { parseAppReleaseSummary, releasedBuild } from './app-release-record.js';
+
 export interface AppAssets {
   hq_app_id?: string;
   released_build_id?: string;
@@ -74,19 +76,32 @@ function s(v: unknown): string | undefined {
   return v === undefined || v === null || v === '' ? undefined : String(v);
 }
 
-/** Read the asset facts a run_state records (Phase 3 + Phase 4 products). */
-export function runAssetsFromRunState(rs: any): RunAssets {
+/**
+ * Read the asset facts a run records (Phase 3 + Phase 4 products).
+ *
+ * The released build id and version come from their contracted owner,
+ * `3-commcare/app-release_summary.md` frontmatter `apps.<kind>_app` — pass that
+ * file's text as `releaseSummary` (lib/app-release-record.ts, the same reader
+ * release-readiness uses). run_state is only the fallback: no skill is
+ * contracted to write a release key into `products.apps`, and the clone of
+ * spark-facilitator/20261004-1706 wrote `hq_build_id` / `build_version` /
+ * `released_at`, so reading `released_build_id` alone formed no `build` pair
+ * and the copied prose kept the source's build ids (ace#2702).
+ */
+export function runAssetsFromRunState(rs: any, releaseSummary?: string | null): RunAssets {
   const apps = rs?.phases?.['commcare-setup']?.products?.apps ?? {};
+  const summary = parseAppReleaseSummary(releaseSummary);
   const out: RunAssets = { hq_domain: s(apps.domain), apps: {} };
   for (const k of ['learn', 'deliver']) {
     const a = apps[k];
     if (!a) continue;
     // Older runs record the space only in hq_url (`/a/<domain>/apps/…`).
     out.hq_domain = out.hq_domain ?? s(a.domain) ?? /\/a\/([^/]+)\/apps\//.exec(String(a.hq_url ?? ''))?.[1];
+    const rel = releasedBuild(summary, k, a);
     out.apps[k] = {
       hq_app_id: s(a.hq_app_id),
-      released_build_id: s(a.released_build_id),
-      released_version: s(a.released_version),
+      released_build_id: rel?.build_id,
+      released_version: rel?.version,
     };
   }
   const c = rs?.phases?.['connect-setup']?.products?.connect;
