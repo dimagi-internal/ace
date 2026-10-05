@@ -68,10 +68,11 @@
  *
  *   thread-recipients --participants "<addr>,<addr>,…" (--workspace W --opp O | --tenancy <json>)
  *       `--from-thread`: split the requesting thread's participants (every
- *       From/To/Cc address) into reviewers (domain in the tenancy's
- *       labs_allowed_domains), cc (Dimagi staff) and excluded (ACE itself,
- *       anyone else — shown, never copied). Prints JSON with the ready-to-pass
- *       `--reviewers` and `--cc` values. Read-only.
+ *       From/To/Cc address) into reviewers (Dimagi staff, and any domain in
+ *       the tenancy's labs_allowed_domains — ace#2720) and excluded (ACE
+ *       itself, anyone else — shown, never invited or copied). Prints JSON with
+ *       the ready-to-pass `--reviewers` value. Never derives `--cc` (an
+ *       explicit operator opt-in only). Read-only.
  *
  *   hq-flip-steps (--domain D | --run-state <yaml>)
  *       Print the HQ superuser step (set the space to "Test or Demo Project")
@@ -479,7 +480,7 @@ async function threadRecipients(): Promise<void> {
   if (!tenancy) throw new Error("thread-recipients: the opp's tenancy could not be read (labs_allowed_domains) — pass --tenancy <json> from bin/ace-bind --show");
   const parts = need('participants').split(',').map((s) => s.trim()).filter(Boolean);
   const p = partitionThreadParticipants(parts, tenancy.labs_allowed_domains);
-  process.stdout.write(JSON.stringify({ ...p, labs_allowed_domains: tenancy.labs_allowed_domains ?? [], flags: { reviewers: p.reviewers.join(','), cc: p.cc.join(',') } }, null, 1) + '\n');
+  process.stdout.write(JSON.stringify({ ...p, labs_allowed_domains: tenancy.labs_allowed_domains ?? [], flags: { reviewers: p.reviewers.join(',') } }, null, 1) + '\n');
 }
 
 async function main(): Promise<void> {

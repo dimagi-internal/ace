@@ -16,8 +16,8 @@ no content changes. Every share is shown for approval before any is made.
 - **`<workspace>/<opp>/<run-id>`** (required).
 - **`--reviewers`** / **`--from-thread <id>`** — exactly the reviewers the
   validation was run for; any difference is a refusal.
-- **`--cc`** — exactly the Dimagi staff the validation copied (ace#2706); any
-  difference is a refusal.
+- **`--cc`** — exactly the Dimagi staff the validation copied (ace#2706) —
+  an explicit opt-in, never derived from a thread; any difference is a refusal.
 - **`--waive <blocker-id>=<reason>`** — exactly the waivers the validation
   applied (ace#2707), id and reason verbatim; any difference is a refusal.
 - **`--forward-source`**, **`--allow-cross-workspace-forward`**,
