@@ -1714,6 +1714,7 @@ only rendering — nothing else lists these calls. The catalogue alone left
 | `ai-default` | rule: the enforcement-point category as one of the `options` below; latitude / ambiguity: the chosen value or resolution as a short label |
 | `options` | rule: `Connect form_field_rules`, `Connect deliver_unit_checks`, `Connect submission window`, `Connect payment unit limit`, `CCZ constraint`, `Not configurable on Connect — applied elsewhere`, `Not configurable on Connect — not applied`; latitude / ambiguity: the chosen label plus each alternative weighed. A per-worker rule (a daily or total cap per worker) is `Connect payment unit limit`, never `CCZ constraint` — see Step 8a's scope paragraph |
 | `scope`, `enforcement` | rule rows only: `record` \| `entity` \| `worker` \| `programme` and `enforced` \| `by-design` \| `gap` — set, or omit both for the write boundary's `classifyRule`. A rule Connect refused and nothing else holds is `gap`, never `by-design` |
+| `plain_value` | the `ai-default` in words — REQUIRED whenever the `ai-default` is itself jargon (`skills/_decisions-review-fields.md`), which three rule labels are: `Connect form_field_rules` → `A Connect payment rule on the submitted form`, `Connect deliver_unit_checks` → `A Connect check on each delivery`, `CCZ constraint` → `A check in the app's form`. Name the record when you can (`A Connect payment rule on the meeting record`). If you omit it on those three labels the write boundary stamps the default wording (`RULE_ENFORCEMENT_PLAIN_VALUE`, `lib/decision-review.ts`; ace#2654); the other labels read plainly and need none |
 | `plain`, `check_at`, `correct_looks_like` | `plain` REQUIRED (one line for a partner, the rule may be quoted); `check_at` the Connect setting or app form › field a reviewer opens; `correct_looks_like` what they see there when it is right |
 | `source` | the entry's PDD §, naming the document |
 | `evidence_basis` | `[ACE]` latitude → `inferred`; `[FIXED]` ambiguity → `conflicting`; rule → `stated` when the PDD itself names where it is enforced, `inferred` when ACE chose, `conflicting` for `Not configurable on Connect — not applied` (the PDD requires it and Connect cannot hold it) |
@@ -1730,9 +1731,11 @@ omits the field. **The boundary checks it:**
 `connect-opp-setup.md` but zero rows in `4-connect` under
 `skill: connect-opp-setup`, and warns on live partner rows with no `plain`.
 
-Worked example — two rules Connect cannot hold (`connect_set_verification_flags`
-refuses `duplicate` / `gps` / `gps_radius_meters`, ace#1013): one the app
-holds instead, and one nothing holds (a known limitation, `enforcement: gap`):
+Worked example — one rule held on Connect's form-field rules (its jargon
+`ai-default` carries `plain_value`), and two rules Connect cannot hold
+(`connect_set_verification_flags` refuses `duplicate` / `gps` /
+`gps_radius_meters`, ace#1013): one the app holds instead, and one nothing
+holds (a known limitation, `enforcement: gap`):
 
 ```
 decisions_append_rows({
@@ -1740,6 +1743,30 @@ decisions_append_rows({
   opportunity: <opp-slug>,
   run_id: <run-id>,
   rows: [
+    {
+      id: "connect-rule-survey-completed",
+      phase: "4-connect",
+      skill: "connect-opp-setup",
+      question: "Where is the PDD verification rule 'only a completed survey is payable' enforced?",
+      "ai-default": "Connect form_field_rules",
+      plain_value: "A Connect payment rule on the survey record",
+      options: [
+        "Connect form_field_rules",
+        "CCZ constraint",
+        "Not configurable on Connect — applied elsewhere",
+        "Not configurable on Connect — not applied"
+      ],
+      source: "Targeting PDD §9 [FIXED]",
+      status: "ai-default",
+      evidence_basis: "stated",
+      scope: "record",
+      enforcement: "enforced",
+      plain: "\"only a completed survey is payable\" applies to each survey; Connect pays a survey only when the worker recorded it as completed.",
+      check_at: "Connect › opportunity › verification rules",
+      correct_looks_like: "A rule is listed that pays only surveys marked completed.",
+      value_set_by: "ace",
+      reasoning: "Connect form_field_rules: survey completed — form_field_rules_saved: 1. Spot-check: Connect › opportunity › verification rules."
+    },
     {
       id: "connect-rule-one-survey-per-household",
       phase: "4-connect",
@@ -1804,6 +1831,7 @@ decisions_append_rows({
 |------|--------|--------|
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 8 no longer ends `connect-opp-setup.md` with a memo section; new Step 8a records one rule row per PDD verification rule (`Where is the PDD verification rule '<rule>' enforced?`, with `plain`, `check_at`, and `scope` / `enforcement` set or computed by `classifyRule`), plus latitude and ambiguity rows, and a rule Connect refused is a rule row with `enforcement: gap` that `decisions_enrich` turns into a review ask; `products.connect.build_memo` is no longer written, and the Phase 4 boundary fails a written summary with zero rows under `skill: connect-opp-setup`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **Step 8 names a per-worker rule's PER-WORKER enforcement point first (build-memo-eval, spark-facilitator/20260926-1800).** Both per-worker caps — "at most 1 payable meeting per CBF per day" and "total cap 21 per CBF" — were written `CCZ: … ; also Connect payment unit …` and recorded as `CCZ constraint` decisions, so the build memo told the reviewer the app enforced them. The app checks are keyed on the COMMUNITY case (the date check, the 7 × 3 per-step clamp) and cannot bound a worker across communities; only the payment unit's `max_daily` / `max_total` do. `Where applied` gains `Connect payment unit max_daily / max_total (per worker)`, the decision `options` gain `Connect payment unit limit`, and a scope paragraph says which goes first. *Enforced:* `lib/build-memo-compose.ts` `checkEnforcementScope` via `scripts/build-memo-compose.ts --check` (`test/lib/build-memo-compose.test.ts`, on that run's table and decision rows). | ACE team |
+| 2026-10-04 | **Rule rows carry `plain_value` when their `ai-default` is jargon (ace#2654, spark-facilitator/20261004-1706).** The row contract mandated the closed `options` labels `Connect form_field_rules`, `Connect deliver_unit_checks` and `CCZ constraint` as `ai-default` but never mentioned `plain_value`, which the plain-language gate requires whenever `ai-default` is jargon — so 9 of that run's 12 compliant rule rows failed `decisions_enrich` and had to be re-emitted with `supersedes`. The table gains a `plain_value` row and the worked example a `Connect form_field_rules` row carrying it; the write boundary now stamps a default for those three labels (`RULE_ENFORCEMENT_PLAIN_VALUE`, `lib/decision-review.ts`). *Enforced:* `test/skills/connect-opp-setup-plain-value.test.ts` runs the real gate over every rule label and every worked-example row. | ACE team |
 | 2026-10-01 | **Step 11: post-condition read-back (inline QA).** The atoms validate each call at the boundary, which catches a bad call but not a valid-but-wrong end state. Step 11 reads the live opportunity back (`connect_get_opportunity`, `connect_list_payment_units`, `connect_list_flw_invites`) and checks it against what the skill decided with `checkOppPostcondition` (`lib/connect-opp-postcondition.ts`): readable, `is_test`, activation PROVEN by an invite row (not the create-side `active` flag, ace#617), payment units by name, verification rules persisted, test user invited. Writes `products.connect.postcondition`; a non-empty `phase6_blockers` makes Phase 6 refuse the walk with the reason. Live on spark-facilitator/20260926-1800: 5 of 6 pass; `verification_rules_persisted` fails (2 decided, 0 saved — the self-managed refusal, ace#2419); no Phase 6 blocker. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |

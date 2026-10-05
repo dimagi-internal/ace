@@ -203,6 +203,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/claims-authoring.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file; states a write-side convention and names no incident' },
   'test/skills/component-brief-case-list-scoping.test.ts': { issues: ['ace#1652', 'ace#1195', 'ace#977', 'ace#1281'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/connect-app-release-label-claims.test.ts': { issues: ['ace#2185'] },
+  'test/skills/connect-opp-setup-plain-value.test.ts': { issues: ['ace#2654'], observed: 'spark-facilitator/20261004-1706' },
   'test/skills/connect-terminology.test.ts': { issues: [], unknown: 'no issue or run id in the file; CLAUDE.md cites this rail as the enforcement of the terminology rule but names no incident either' },
   'test/skills/credential-hygiene-vs-widget-url.test.ts': { issues: ['ace#1680', 'ace#1021'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/date-field-two-sided-bounds.test.ts': { issues: ['ace#1788'], observed: 'bednet-check-2-visit/20260828-0629' },
