@@ -1,0 +1,119 @@
+<!-- Primary instance of modules-1/forms-0.xml, extracted VERBATIM from the released Deliver CCZ:
+     connect-ace-prod app 69f68365817c443ba6f9a846808c9717, build 2c493f08cba14fd5a1f5749f043d26f2 (v23),
+     spark-facilitator/20261004-1706 (ace#2691). Only the primary <data> instance is kept;
+     itext, binds, secondary instances and body are dropped to keep the fixture small. -->
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum"><h:head><model><instance>
+<data xmlns="http://openrosa.org/formdesigner/1583a130e985f316" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="23" name="community_meeting_record">
+          <current_step/>
+          <stored_index/>
+          <step_meeting_index/>
+          <payable_slot/>
+          <step_label/>
+          <enrolled_households/>
+          <prev_meeting_date/>
+          <enrolment_date_ref/>
+          <prev_male/>
+          <prev_female/>
+          <village_name/>
+          <enrolment_gps_ref/>
+          <meeting>
+            <date_of_meeting/>
+            <meeting_conducted/>
+            <meeting_type/>
+            <redirect_note/>
+          </meeting>
+          <location>
+            <meeting_gps/>
+            <lat/>
+            <lon/>
+            <gps_accuracy_m/>
+            <gps_missing_flag/>
+            <distance_from_enrolment_m/>
+            <far_from_enrolment_flag/>
+            <gps_good_note/>
+            <gps_marginal_note/>
+            <gps_poor_note/>
+            <gps_missing_note/>
+          </location>
+          <step_progress>
+            <step_display/>
+            <not_paid_note/>
+          </step_progress>
+          <meeting_photo>
+            <photo_statement/>
+            <photo_statement_read/>
+            <attach_a_photo_for_the_meeting/>
+          </meeting_photo>
+          <attendance_and_participation>
+            <hh_represented_at_the_meeting/>
+            <male_attendance/>
+            <female_attendance/>
+            <members_with_disability/>
+            <male_participants/>
+            <female_participants/>
+          </attendance_and_participation>
+          <meeting_details>
+            <male_leader_attendence/>
+            <female_leader_attendence/>
+            <sparktrainer_attendance/>
+            <sedo_attendance/>
+            <meeting_on_time/>
+            <why_did_the_meeting_start_late/>
+          </meeting_details>
+          <savings>
+            <currently_saving/>
+            <savings_use/>
+            <currently_not_saving/>
+            <currently_not_saving_other/>
+            <hh_saving/>
+            <males_saving/>
+            <females_saving/>
+            <amt_savings/>
+          </savings>
+          <step_completed/>
+          <meeting_notes/>
+          <total_attendance/>
+          <total_participation/>
+          <repeat_counts_flag/>
+          <next_step/>
+          <next_index/>
+          <pilot_complete_value/>
+          <last_community_meeting_date/>
+          <last_male_attendance/>
+          <last_female_attendance/>
+          <record_label/>
+          <entity_key/>
+          <entity_label/>
+          <saved_note/>
+          <community_meeting>
+            <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="community_meeting">
+              <name>Verified community meeting</name>
+              <entity_id/>
+              <entity_name/>
+            </deliver>
+          </community_meeting>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <update>
+              <Total_Attendance/>
+              <Total_Participation/>
+              <last_community_meeting_date/>
+              <last_female_attendance/>
+              <last_male_attendance/>
+              <pilot_complete/>
+              <pilot_fcap_step/>
+              <step_meeting_index/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+</instance></model></h:head></h:html>

@@ -1309,6 +1309,62 @@ tap coordinate, no recipe step order. Both inputs are text Phase 3
 already holds. Per CLAUDE.md § *"The trigger is the CLAIM, not the
 directory"*, unit tests are complete evidence for this check.
 
+### Step 4.7: Re-release invariants against an existing opportunity (dimagi-internal/ace#2691)
+
+**Runs only on a Deliver RE-release** — when this run's `run_state.yaml`
+already has `phases.connect-setup.products.connect.opportunity.id` (Phase 4
+configured an opportunity against an earlier Deliver build) and the build
+being QA'd is a newer release of the same HQ app. On the first Phase 3 pass
+there is no opportunity yet: record `rerelease_invariants: not-applicable
+(no opportunity)` and skip.
+
+Connect matches a forwarded submission by **HQ domain + HQ app id**, picks the
+DeliverUnit — and so the payment unit — by the **`<deliver id>` `@id`**, and
+evaluates the opportunity's **`form_field_rules`** as JSONPath over the form
+JSON by **question path** (commcare-connect `form_receiver/processor.py:78`,
+`:605-613`, `:428`, `:395-406`; `opportunity/models.py:1275-1282`). An `@id`
+Connect has not seen creates a DeliverUnit with no payment unit, and the
+visit errors `Payment unit is not configured` (`processor.py:429-433`). The
+form **xmlns is never read** by Connect. A Nova re-upload re-mints every
+form's xmlns but keeps the HQ app id, so the invariants a re-release must hold
+are the `@id`s and the rule paths — not the xmlns.
+
+1. **Baseline build.** Use the Deliver build Phase 4 configured the
+   opportunity against — the Deliver `build_id` in the `app-release_summary.md`
+   that preceded Phase 4 (Drive revision history, or the run's
+   `phases.commcare-setup` record). If that cannot be determined, use the
+   **previously released** build of the same HQ app. Record which one you used.
+2. Download the baseline with `commcare_download_ccz({domain, app_id,
+   build_id: <baseline>, write_to_path})` and unzip it next to the candidate
+   (Step 2/3 already hold the candidate's forms).
+3. Read `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`
+   (empty list if none were configured — the `@id` check still runs).
+4. Classify:
+
+```ts
+import { checkDeliverRerelease, formatDeliverRerelease }
+  from '../../lib/deliver-rerelease-invariants';
+const res = checkDeliverRerelease({
+  baseline:  { buildId: baselineBuildId,  forms: baselineForms },   // [{ path, xml }] every modules-*/forms-*.xml
+  candidate: { buildId: candidateBuildId, forms: candidateForms },
+  rules: formFieldRules,
+});
+```
+
+| Outcome | Do |
+|---|---|
+| `status: 'unable'` | `[WARN]` `rerelease-invariants-unable`, emitting `formatDeliverRerelease(res)`. Record as UNEVALUATED — never as a pass |
+| `checked`, `blocking: true` | **Halt** `[BLOCKER]` — one entry per blocker finding (`deliver-id-disappeared`, `deliver-id-added`, `rule-path-missing`), message verbatim. Do not let Connect read this build |
+| `checked`, `form-xmlns-changed` finding | `[WARN]` `form-xmlns-changed`, message verbatim, do NOT halt. It names the consumers it splits: HQ exports/reports/UCR keyed on xmlns, and connect-labs CCHQ-form pipelines (`cchq_fetcher.py:160-192` fetches only the CURRENT app's xmlns, so pre-release submissions drop out). Connect payment is unaffected, and ACE cannot preserve xmlns across a Nova upload, so a halt would have no in-run remedy |
+| `checked`, `ok: true` | Record and continue |
+
+Record under `per_app.deliver.rerelease_invariants`. *Enforced:*
+`test/lib/deliver-rerelease-invariants.test.ts` — positive control is the real
+v9 → v23 Deliver meeting form of `spark-facilitator/20261004-1706` (same
+`@id community_meeting`, same three rule paths, new xmlns → pass + one WARN);
+negative controls are a renamed `@id` and a removed rule question (both BLOCK).
+Static parsing of two released CCZs — unit tests are complete evidence.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-qa_result.yaml`. Shape:
@@ -1429,6 +1485,16 @@ per_app:
       severity: ok | info | warn | blocker
       satisfying_selector_map: <str|null>
       findings: [...]
+    rerelease_invariants:                 # ace#2691 — checkDeliverRerelease(); re-release only
+      status: checked | unable | not-applicable   # `unable` is NOT a pass
+      reason: <str>                       # unable / not-applicable only
+      baseline_build_id: <id>
+      baseline_source: phase4-configured | previous-release
+      blocking: true | false
+      deliver_ids: { baseline: [...], candidate: [...] }
+      rule_paths_checked: [...]
+      xmlns_changes: [{ form, from, to }] # WARN only
+      findings: [{ kind, severity, message }]
 # Per-app blocks additionally carry (both apps; see Step 4):
 #   time_estimates:        pass | { modules_checked, violations: [...] }   # Learn app only
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
@@ -1554,6 +1620,17 @@ defects.
   operator can do, and a gate like that gets switched off). On the WARN branch
   the run continues, but every Phase 6 device result from it is **unobtained**,
   not a pass.
+- `deliver-id-disappeared` / `deliver-id-added` / `rule-path-missing` —
+  `[BLOCKER]` (Step 4.7, re-release only). The new Deliver build no longer
+  carries a `<deliver id>` the existing opportunity was configured on, carries
+  one Connect has never seen (its visits error `Payment unit is not
+  configured`), or dropped/moved a question a configured `form_field_rules`
+  row reads. Operator action: restore the `@id` / question path in Nova and
+  re-release, or reconfigure the opportunity in Connect before releasing
+  (dimagi-internal/ace#2691).
+- `form-xmlns-changed` — `[WARN]` (Step 4.7). Nova re-minted form xmlns on
+  re-upload. Harmless for Connect; splits HQ exports/UCR and connect-labs
+  CCHQ-form pipelines keyed on xmlns. Not a halt — ACE has no remedy.
 - `ccz-profile-unreadable` / `apk-version-unreadable` — `[WARN]`. The
   version-gate comparison could not be made: `profile.ccpr` was absent or
   malformed, or `ACE_CONNECT_APK_VERSION` is not a `MAJOR.MINOR.PATCH` triple.
