@@ -478,3 +478,113 @@ describe('ace#2480 — the `+ 1` in the clamp, the casedb read one hop down', ()
     expect(classifyCounterTiming('/data/next + 1', binds)).toBeNull();
   });
 });
+
+/**
+ * ace#2649 — the cap rides in `payable_slot`, not the key.
+ *
+ * Since ace#2512 the Connect-side stop is a computed `payable_slot` plus a
+ * Phase 4 `form_field_rules` row; the clamped key is optional belt-and-braces
+ * grouping. `spark-facilitator/20261004-1706` (Deliver build
+ * `e0c351a417814f85a192513089227460`, `modules-1/forms-0.xml`) shipped exactly
+ * the grain its PDD §14 pinned — an UNCLAMPED key, cap held by the slot — and
+ * the old `unable` reason ("the cap is not enforced at all") told the reader
+ * to BLOCKER a correct build. The slot / index / key binds below are the ones
+ * quoted from that form; `stored_index` stands in for its casedb read.
+ */
+describe('ace#2649 — an unclamped key whose cap is held by payable_slot', () => {
+  const slotForm = (slotCalc: string, indexCalc = '/data/stored_index + 1') =>
+    form([
+      ['/data/stored_index', casedb('step_meeting_count')],
+      ['/data/step_meeting_index', indexCalc],
+      ['/data/payable_slot', slotCalc],
+      [
+        '/data/entity_key',
+        "concat(instance('commcaresession')/session/data/case_id, '-', /data/current_step, '-', /data/step_meeting_index, '-', /data/payable_slot)",
+      ],
+      ['/data/deliver/entity_id', '/data/entity_key'],
+    ]);
+
+  const RUN_20261004 = slotForm("if(/data/step_meeting_index &lt;= 3, 'yes', 'no')");
+
+  it('the 20261004-1706 build is CHECKED and clean: meetings 1-3 get yes, the 4th gets no', () => {
+    const report = checkPayableCapArithmetic(RUN_20261004, { declaredCap: 3 });
+    assertChecked(report);
+    expect(report.ok).toBe(true);
+    expect(report.mechanism).toBe('payable-slot');
+    expect(report.payableSlot?.node).toBe('/data/payable_slot');
+    expect(report.payableSlot?.timing).toBe('includes-current');
+    expect(report.payableSlot?.trace.slice(0, 5)).toEqual([true, true, true, false, false]);
+    expect(report.capacity).toBe(3);
+    expect(formatPayableCapReport(report)).toContain('clean');
+  });
+
+  it('the same slot over a PRE-increment counter is the ace#2148 off-by-one, as a finding', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm("if(/data/step_meeting_index &lt;= 3, 'yes', 'no')", '/data/stored_index'),
+      { declaredCap: 3 },
+    );
+    assertChecked(report);
+    expect(report.ok).toBe(false);
+    expect(report.findings[0].kind).toBe('payable-slot-off-by-one');
+    expect(report.findings[0].capacity).toBe(4);
+    expect(report.findings[0].firstOvercapped).toBe(4);
+  });
+
+  it('a slot compound with a payability conjunct still grades on its counter', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm("if(/data/is_payable = 1 and /data/step_meeting_index &lt; 4, 'yes', 'no')"),
+      { declaredCap: 3 },
+    );
+    assertChecked(report);
+    expect(report.ok).toBe(true);
+  });
+
+  it('a slot whose yes-set is not a prefix (yes AFTER the cap) is a mismatch, not clean', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm("if(/data/step_meeting_index &gt; 3, 'yes', 'no')"),
+      { declaredCap: 3 },
+    );
+    assertChecked(report);
+    expect(report.ok).toBe(false);
+    expect(report.findings[0].kind).toBe('payable-slot-mismatch');
+  });
+
+  it('a slot over an undecidable counter is unable — never the "not enforced" blocker', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm("if(/data/step_meeting_index &lt;= 3, 'yes', 'no')", 'count(/data/repeat/item)'),
+      { declaredCap: 3 },
+    );
+    assertUnable(report);
+    expect(report.reason).toContain('payable_slot');
+    expect(report.reason).not.toContain('not enforced at all');
+  });
+
+  it('NEGATIVE control: neither a clamp nor a payable_slot still says the cap is not enforced', () => {
+    const report = checkPayableCapArithmetic(
+      form([
+        ['/data/stored_index', casedb('step_meeting_count')],
+        ['/data/step_meeting_index', '/data/stored_index + 1'],
+        ['/data/deliver/entity_id', "concat('e', '-', /data/step_meeting_index)"],
+      ]),
+      { declaredCap: 3 },
+    );
+    assertUnable(report);
+    expect(report.reason).toContain('no clamped counter');
+    expect(report.reason).toContain('no `payable_slot`');
+    expect(report.reason).toContain('the cap is not enforced at all');
+  });
+
+  it('a CLAMPED key whose payable_slot disagrees with the cap is a finding even though the clamp is right', () => {
+    const xml = form([
+      ['/data/n', casedb('paid_count')],
+      ['/data/idx', 'if(/data/n &gt;= 3, 2, /data/n)'],
+      ['/data/payable_slot', "if(/data/n &lt;= 3, 'yes', 'no')"],
+      ['/data/deliver/entity_id', "concat('e', '-', /data/idx)"],
+    ]);
+    const report = checkPayableCapArithmetic(xml, { declaredCap: 3 });
+    assertChecked(report);
+    expect(report.mechanism).toBe('clamped-key');
+    expect(report.ok).toBe(false);
+    expect(report.findings.map((f) => f.kind)).toEqual(['payable-slot-off-by-one']);
+  });
+});
