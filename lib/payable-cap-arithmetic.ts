@@ -537,6 +537,8 @@ export function capFromPayabilityGuard(
   xml: string,
   counter: string,
   timing: CounterTiming,
+  /** Nodes NOT to read as the guard — the `payable_slot` being graded, so it cannot grade itself. */
+  exclude: ReadonlySet<string> = new Set(),
 ): number | null {
   const binds = calculateBinds(xml);
   const wanted = norm(counter);
@@ -546,7 +548,7 @@ export function capFromPayabilityGuard(
     (a, b) => Number(/is_payable$/.test(b[0])) - Number(/is_payable$/.test(a[0])),
   );
   for (const [nodeset, calc] of candidates) {
-    if (!/payable/i.test(nodeset)) continue;
+    if (!/payable/i.test(nodeset) || exclude.has(nodeset)) continue;
     for (const m of calc.matchAll(/([^\s(),]+)\s*(<=|<)\s*(\d+)/g)) {
       const [, lhs, op, nRaw] = m;
       if (norm(lhs) !== wanted) continue;
@@ -558,21 +560,225 @@ export function capFromPayabilityGuard(
   return null;
 }
 
+// ── The payable_slot mechanism (ace#2649) ───────────────────────────────────
+
+/** Split at top-level occurrences of an XPath keyword operator (` and `, ` or `). */
+function splitTopLevelKeyword(expr: string, word: 'and' | 'or'): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  const pat = new RegExp(`^\\s${word}\\s`);
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && pat.test(expr.slice(i))) {
+      out.push(expr.slice(start, i).trim());
+      start = i + word.length + 2;
+      i = start - 1;
+    }
+  }
+  out.push(expr.slice(start).trim());
+  return out;
+}
+
+type CmpOp = '<' | '<=' | '>' | '>=';
+
+/** `counter <op> N`, oriented so the counter is on the left, or `null`. */
+function orientComparison(cond: string): { counter: string; op: CmpOp; n: number } | null {
+  const m = unwrap(cond).match(/^(.*?)(>=|<=|>|<)(.*)$/s);
+  if (!m) return null;
+  const left = m[1].trim();
+  const right = m[3].trim();
+  const op = m[2] as CmpOp;
+  const ln = intLiteral(left);
+  const rn = intLiteral(right);
+  if (rn !== null && ln === null && left) return { counter: left, op, n: rn };
+  if (ln !== null && rn === null && right) {
+    const flip: Record<CmpOp, CmpOp> = { '>=': '<=', '<=': '>=', '>': '<', '<': '>' };
+    return { counter: right, op: flip[op], n: ln };
+  }
+  return null;
+}
+
+function compare(v: number, op: CmpOp, n: number): boolean {
+  if (op === '<') return v < n;
+  if (op === '<=') return v <= n;
+  if (op === '>') return v > n;
+  return v >= n;
+}
+
+const YES_LITERAL = /^(?:'(?:yes|true|1)'|"(?:yes|true|1)"|1)$/i;
+const LITERAL = /^(?:'[^']*'|"[^"]*"|-?\d+)$/;
+/** A node named like the Connect-gated slot (`payable_slot`, `is_payable_slot`, …). */
+const SLOT_NODE = /(?:^|\/)[\w-]*payable_slot[\w-]*$/i;
+
+export type PayableSlotRead =
+  | { found: false }
+  | { found: true; slot: PayableSlot }
+  | { found: true; slot: null; node: string; raw: string; reason: string };
+
+/**
+ * Find and grade the form's `payable_slot`-style calculate (ace#2649).
+ *
+ * The slot is an `if(<cond>, <yes>, <no>)` over literals somewhere in the
+ * node's calculate, whose condition carries exactly one comparison of a
+ * counter (reducible to a casedb read plus 0 or 1) against an integer. Other
+ * `and` conjuncts are payability conditions and only narrow the `yes` set; a
+ * top-level `or` is not graded. The slot is SIMULATED over the first payable
+ * submissions, as the clamp is — never read off its constant, because the
+ * counter's timing decides what `<= 3` means (ace#2148).
+ */
+export function readPayableSlot(binds: Map<string, string>): PayableSlotRead {
+  const candidates = [...binds].filter(
+    ([nodeset, calc]) => SLOT_NODE.test(nodeset) && !SINGLE_DATA_PATH.test(calc.trim()),
+  );
+  if (candidates.length === 0) return { found: false };
+  const [node, raw] = candidates[0];
+
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== 'i' || !/^if\s*\(/.test(raw.slice(i))) continue;
+    if (i > 0 && /[\w-]/.test(raw[i - 1])) continue;
+    const open = raw.indexOf('(', i);
+    const close = matchingParen(raw, open);
+    if (close === -1) continue;
+    const args = splitArgs(raw.slice(open + 1, close));
+    if (args.length !== 3) continue;
+    const [cond, thenArg, elseArg] = args.map((a) => unwrap(a));
+    if (!LITERAL.test(thenArg) || !LITERAL.test(elseArg) || norm(thenArg) === norm(elseArg)) continue;
+    const yesOnTrue = YES_LITERAL.test(thenArg) ? true : YES_LITERAL.test(elseArg) ? false : null;
+    if (yesOnTrue === null) continue;
+    if (splitTopLevelKeyword(cond, 'or').length > 1) continue;
+
+    const decidable: Array<{ counter: string; op: CmpOp; n: number; timing: CounterTiming }> = [];
+    for (const conjunct of splitTopLevelKeyword(cond, 'and')) {
+      const cmp = orientComparison(conjunct);
+      if (!cmp) continue;
+      const timing = classifyCounterTiming(cmp.counter, binds);
+      if (timing) decidable.push({ ...cmp, timing });
+    }
+    if (decidable.length !== 1) continue;
+
+    const { counter, op, n, timing } = decidable[0];
+    const trace: boolean[] = [];
+    for (let k = 1; k <= Math.max(n + 3, 4); k++) {
+      const v = timing === 'pre-increment' ? k - 1 : k;
+      trace.push(compare(v, op, n) === yesOnTrue);
+    }
+    const firstNo = trace.indexOf(false);
+    const isPrefix = firstNo !== -1 && trace.slice(firstNo).every((y) => !y);
+    return {
+      found: true,
+      slot: { node, raw, counter, timing, trace, capacity: isPrefix ? firstNo : null },
+    };
+  }
+  return {
+    found: true,
+    slot: null,
+    node,
+    raw,
+    reason:
+      `\`${node}\` = ${raw} has no \`if(<counter> <op> N, <yes>, <no>)\` whose counter reduces to a ` +
+      'casedb read plus 0 or 1, so which encounters it marks payable cannot be decided from the form',
+  };
+}
+
+/** Grade a found slot against the cap; `[]` when it admits exactly `cap`. */
+function slotFindings(slot: PayableSlot, cap: number, capSource: CapSource): PayableCapFinding[] {
+  if (slot.capacity === cap) return [];
+  const traced = slot.trace.map((y, i) => `#${i + 1}->${y ? 'yes' : 'no'}`).join(' ');
+  let seen = 0;
+  let firstOvercapped: number | null = null;
+  slot.trace.forEach((y, i) => {
+    if (y && ++seen > cap && firstOvercapped === null) firstOvercapped = i + 1;
+  });
+  const capacity = slot.capacity ?? slot.trace.filter(Boolean).length;
+  const bound = slot.timing === 'pre-increment' ? `< ${cap}` : `<= ${cap}`;
+  return [
+    {
+      kind:
+        slot.capacity !== null && Math.abs(slot.capacity - cap) === 1
+          ? 'payable-slot-off-by-one'
+          : 'payable-slot-mismatch',
+      mechanism: 'payable-slot',
+      node: slot.node,
+      timing: slot.timing,
+      threshold: null,
+      clampedValue: null,
+      capacity,
+      cap,
+      capSource,
+      firstOvercapped,
+      remedy: `if(${slot.counter} ${bound}, 'yes', 'no')`,
+      detail:
+        `\`${slot.node}\` = ${slot.raw} over a ${slot.timing} counter says yes to ` +
+        (slot.capacity === null
+          ? 'a set of encounters that is NOT the first N'
+          : `${slot.capacity} encounter(s)`) +
+        ` per entity against a cap of ${cap} (${capSource}). Trace: ${traced}. Phase 4's ` +
+        '`form_field_rules` row approves exactly what this field marks `yes`.',
+    },
+  ];
+}
+
 export type PayableCapFindingKind =
   /** The key admits exactly one more (or one fewer) payable event than the cap. */
   | 'payable-cap-off-by-one'
   /** The key and the cap disagree by more than one. */
   | 'payable-cap-mismatch'
   /** No clamp can express this cap — a cap below 1 is not a dedup problem. */
-  | 'payable-cap-not-expressible';
+  | 'payable-cap-not-expressible'
+  /** `payable_slot` says `yes` to exactly one more (or one fewer) encounter than the cap. */
+  | 'payable-slot-off-by-one'
+  /** `payable_slot` and the cap disagree by more than one, or its `yes` set is not the first N encounters. */
+  | 'payable-slot-mismatch';
+
+/**
+ * Which mechanism carries the per-entity cap on this form (ace#2649).
+ *
+ * Since ace#2512 the Connect-side stop is `payable_slot` + a Phase 4
+ * `form_field_rules` row; a clamped index in `entity_id` is belt-and-braces
+ * GROUPING. Either is a cap mechanism this module grades — a form is "cap not
+ * enforced" only when it has neither.
+ */
+export type CapMechanism = 'clamped-key' | 'payable-slot';
+
+/**
+ * A `payable_slot`-style calculate, graded: `yes` for an in-cap payable
+ * encounter, `no` past the cap — the field Phase 4's `form_field_rules` row
+ * gates on (`connect-opp-setup` Step 5).
+ */
+export interface PayableSlot {
+  /** The node, e.g. `/data/payable_slot`. */
+  node: string;
+  /** Its calculate, verbatim. */
+  raw: string;
+  /** The counter its comparison reads. */
+  counter: string;
+  timing: CounterTiming;
+  /** Per payable submission 1..n: does the slot say `yes`? */
+  trace: boolean[];
+  /** How many encounters get `yes` when the `yes` set is a prefix; `null` when it is not. */
+  capacity: number | null;
+}
 
 export interface PayableCapFinding {
   kind: PayableCapFindingKind;
-  /** The node whose `calculate` carries the clamp. */
+  /** Which mechanism the finding is about. */
+  mechanism: CapMechanism;
+  /** The node whose `calculate` carries the clamp (or the `payable_slot`). */
   node: string;
   timing: CounterTiming;
-  threshold: number;
-  clampedValue: number;
+  /** Clamp threshold — `null` on a `payable-slot` finding. */
+  threshold: number | null;
+  /** Clamp value — `null` on a `payable-slot` finding. */
+  clampedValue: number | null;
   /** Distinct payable keys the clamp admits. */
   capacity: number;
   /** The cap it should admit. */
@@ -588,6 +794,10 @@ export interface PayableCapFinding {
 export type CapSource = 'declared' | 'is_payable';
 
 export interface PayableCapExtra {
+  /** Which mechanism the check graded the cap through. */
+  mechanism: CapMechanism;
+  /** The `payable_slot`-style field, when the form has one (graded or not). */
+  payableSlot: PayableSlot | null;
   node: string | null;
   clamp: Clamp | null;
   timing: CounterTiming | null;
@@ -636,15 +846,57 @@ export function checkPayableCapArithmetic(
       break;
     }
   }
+  const slotRead = readPayableSlot(binds);
+
   if (!clamp || !node) {
-    return unable(
-      `no clamped counter in \`entity_id\` (components: ${entity.components.join(', ')}) — ` +
-        'this form does not cap payable events per entity through the key, so there is no ' +
-        'cap arithmetic to check. If the PDD DOES declare a per-entity cap, that is the ' +
-        'finding: the cap is not enforced at all.',
-    );
+    // ace#2649: since ace#2512 the cap is enforced Connect-side by
+    // `payable_slot` + a Phase 4 `form_field_rules` row, and an UNCLAMPED key
+    // is a legitimate grain. Grade the slot; only a form with neither
+    // mechanism is "cap not enforced".
+    if (!slotRead.found) {
+      return unable(
+        `no clamped counter in \`entity_id\` (components: ${entity.components.join(', ')}) and ` +
+          'no `payable_slot`-style calculate — this form caps payable events per entity by ' +
+          'neither mechanism, so there is no cap arithmetic to check. If the PDD DOES declare ' +
+          'a per-entity cap, that is the finding: the cap is not enforced at all.',
+      );
+    }
+    if (slotRead.slot === null) {
+      return unable(
+        `no clamped counter in \`entity_id\`; the cap rides in payable_slot, but ${slotRead.reason}. ` +
+          'Trace the slot by hand over the first cap + 1 payable encounters — do not assume a timing.',
+      );
+    }
+    const slot = slotRead.slot;
+    const derived =
+      opts.declaredCap === undefined
+        ? capFromPayabilityGuard(formXml, slot.counter, slot.timing, new Set([slot.node]))
+        : null;
+    const slotCap = opts.declaredCap ?? derived;
+    const slotCapSource: CapSource | null =
+      opts.declaredCap !== undefined ? 'declared' : derived !== null ? 'is_payable' : null;
+    if (slotCap === null || slotCapSource === null) {
+      return unable(
+        `\`${slot.node}\` (payable_slot) gates \`${slot.counter}\`, but no per-entity cap is ` +
+          'available to check it against — pass the PDD\'s cap as `declaredCap`.',
+      );
+    }
+    const findings = slotFindings(slot, slotCap, slotCapSource);
+    return {
+      ...checked<PayableCapFinding>(findings.length === 0, findings),
+      mechanism: 'payable-slot',
+      payableSlot: slot,
+      node: slot.node,
+      clamp: null,
+      timing: slot.timing,
+      capacity: slot.capacity,
+      cap: slotCap,
+      capSource: slotCapSource,
+      indices: slot.trace.map((_, i) => (slot.timing === 'pre-increment' ? i : i + 1)),
+    };
   }
 
+  const slot = slotRead.found ? slotRead.slot : null;
   const timing = classifyCounterTiming(clamp.counter, binds);
   if (!timing) {
     return unable(
@@ -669,6 +921,8 @@ export function checkPayableCapArithmetic(
   const capacity = payableCapacity(clamp, timing);
   const indices = payableKeyIndices(clamp, timing, horizon(clamp));
   const extra: PayableCapExtra = {
+    mechanism: 'clamped-key',
+    payableSlot: slot,
     node,
     clamp,
     timing,
@@ -683,6 +937,7 @@ export function checkPayableCapArithmetic(
       ...checked<PayableCapFinding>(false, [
         {
           kind: 'payable-cap-not-expressible',
+          mechanism: 'clamped-key',
           node,
           timing,
           threshold: clamp.threshold,
@@ -702,7 +957,10 @@ export function checkPayableCapArithmetic(
     };
   }
 
-  if (capacity === cap) return { ...checked<PayableCapFinding>(true, []), ...extra };
+  // The key groups; the slot is what Connect's rule approves on (ace#2512).
+  // A clamped key over a mis-capped slot still pays the wrong number.
+  const slotIssues = slot ? slotFindings(slot, cap, capSource) : [];
+  if (capacity === cap) return { ...checked<PayableCapFinding>(slotIssues.length === 0, slotIssues), ...extra };
 
   const firstOvercapped = firstOvercappedSubmission(clamp, timing, cap);
   const traced = indices.map((v, i) => `#${i + 1}->${v}`).join(' ');
@@ -710,6 +968,7 @@ export function checkPayableCapArithmetic(
     ...checked<PayableCapFinding>(false, [
       {
         kind: Math.abs(capacity - cap) === 1 ? 'payable-cap-off-by-one' : 'payable-cap-mismatch',
+        mechanism: 'clamped-key',
         node,
         timing,
         threshold: clamp.threshold,
@@ -727,6 +986,7 @@ export function checkPayableCapArithmetic(
             : ` Submission #${firstOvercapped} mints a key that has never existed, so Connect ` +
               'creates a CompletedWork for it and pays it.'),
       },
+      ...slotIssues,
     ]),
     ...extra,
   };
@@ -738,11 +998,17 @@ export function formatPayableCapReport(report: PayableCapReport): string {
   if (report.ok) {
     return (
       `payable-cap-arithmetic: clean — ${report.node} admits ${report.capacity} payable ` +
-      `key(s) per entity against a cap of ${report.cap} (${report.capSource}, ${report.timing})`
+      (report.mechanism === 'payable-slot' ? 'encounter(s) via payable_slot' : 'key(s)') +
+      ` per entity against a cap of ${report.cap} (${report.capSource}, ${report.timing})` +
+      (report.mechanism === 'clamped-key' && report.payableSlot
+        ? `; payable_slot ${report.payableSlot.node} agrees`
+        : report.mechanism === 'clamped-key'
+          ? '; no graded payable_slot — the key alone does not stop a repeat payment (ace#2512)'
+          : '')
     );
   }
   return [
-    'payable-cap-arithmetic: the key does NOT enforce the declared cap.',
+    'payable-cap-arithmetic: the form does NOT enforce the declared cap.',
     ...report.findings.map((f) => `  [${f.kind}] ${f.detail}`),
     ...report.findings.map((f) => `  remedy: ${f.node} = ${f.remedy}`),
   ].join('\n');

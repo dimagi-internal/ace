@@ -751,7 +751,8 @@ on that branch by construction (`lib/check-outcome.ts`); if you expected the
 form to set `entity_id`, the extractor is the bug.
 
 **Payable-cap arithmetic — always, every released Deliver form whose
-`entity_id` carries a clamped counter (dimagi-internal/ace#2148).** The
+`entity_id` carries a clamped counter OR that computes a `payable_slot`-style
+field (dimagi-internal/ace#2148, ace#2649).** The
 clamped index GROUPS encounters onto CompletedWork rows; it is not what stops
 an over-cap payment. With the `duplicate` flag off — always, on ACE
 opportunities — Connect resets a repeat key to `pending` and auto-approves it,
@@ -761,9 +762,17 @@ so a repeat is paid again (ace#2512; `playbook/integrations/connect-api.md
 (`_app-component-library § payability-scoped-key`). The index arithmetic still
 matters — an off-by-one there puts an in-cap and an over-cap encounter on
 separate keys and makes the grouping, and every per-entity report built on it,
-wrong — so the check below stays; record in the verdict whether the form also
-computes a `payable_slot`-style field Phase 4 can gate on, since the key alone
-does not bind the cap.
+wrong — so the check below stays. The helper grades BOTH mechanisms and
+reports which one carries the cap as `report.mechanism` (`clamped-key` or
+`payable-slot`) with the slot itself in `report.payableSlot`; copy both into
+the verdict, since the key alone does not bind the cap. **An UNCLAMPED key is
+a correct grain** when the slot holds the cap — e.g. `concat(case_id, '-',
+step, '-', step_meeting_index, '-', payable_slot)` with `payable_slot =
+if(step_meeting_index <= 3, 'yes', 'no')` (`spark-facilitator/20261004-1706`,
+whose PDD §14 pinned exactly that). The slot is simulated like the clamp,
+because the counter's timing decides what `<= 3` means: over a
+`<casedb read> + 1` counter it says `yes` to meetings 1-3; over a bare
+`casedb` read it says `yes` to FOUR, the ace#2148 off-by-one in slot form.
 
 The clamp constant and the cap are not the same number, and which way they
 differ depends on **when the counter is read**. A `casedb` read is the state
@@ -800,17 +809,26 @@ Any finding is a `[BLOCKER]` `payable-cap-arithmetic` — name `node`,
 `capacity` vs `cap`, the `capSource`, `firstOvercapped`, and the `remedy`
 expression, and route the fix to `pdd-to-deliver-app` Step 4j.6. `kind` is
 `payable-cap-off-by-one` (the ace#2148 class), `payable-cap-mismatch` (the two
-disagree by more than one), or `payable-cap-not-expressible` (a cap below 1 is
-a payability question, not a dedup one).
+disagree by more than one), `payable-cap-not-expressible` (a cap below 1 is
+a payability question, not a dedup one), or `payable-slot-off-by-one` /
+`payable-slot-mismatch` (the `payable_slot` field Phase 4's `form_field_rules`
+row approves on says `yes` to the wrong number of encounters, or to a set that
+is not the first N — a finding even when a clamped key is also present and
+correct, because the rule pays what the slot marks).
 
 `report.status === 'unable'` means the check **did not run** — NOT a pass.
 Record it in `checks[]` with its `reason` and treat the cap as UNVERIFIED. The
-two reasons that are not benign: *no clamped counter in `entity_id`* on a form
-whose PDD DOES declare a per-entity cap means the cap is not enforced at all
-(raise it as a `[BLOCKER]` yourself, naming the declared cap), and *the counter
-never resolves to a casedb read* means the timing is undecidable — read the
-counter by hand and call `payableCapacity` with the timing rather than
-assuming one, because a guessed timing is an off-by-one in the other direction.
+reasons that are not benign: *no clamped counter in `entity_id` and no
+`payable_slot`-style calculate* on a form whose PDD DOES declare a per-entity
+cap means the cap is not enforced by EITHER mechanism (raise it as a
+`[BLOCKER]` yourself, naming the declared cap). An unclamped key alone is NOT
+that reason — with a `payable_slot` present the helper grades the slot
+instead, and only its findings block (ace#2649: the old rule told the reader to
+block a correct unclamped-key build). *The counter never resolves to a casedb
+read* — for the clamp, or for the slot ("the cap rides in payable_slot, but …")
+— means the timing is undecidable: trace it by hand over the first `cap + 1`
+payable encounters rather than assuming one, because a guessed timing is an
+off-by-one in the other direction.
 
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
