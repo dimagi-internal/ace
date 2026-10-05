@@ -1,0 +1,60 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/523468743882d670" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="lesson_3_recording_a_meeting">
+          <l3_intro/>
+          <two_records/>
+          <other_record/>
+          <paid_record/>
+          <cmr_title/>
+          <cmr_s1/>
+          <cmr_s2/>
+          <cmr_s2_stop/>
+          <cmr_s2_date/>
+          <cmr_s3/>
+          <cmr_s4/>
+          <cmr_s5/>
+          <cmr_s6/>
+          <cmr_s7/>
+          <cmr_s8/>
+          <cmr_s8_time/>
+          <cmr_s9/>
+          <cmr_s10/>
+          <cmr_s11/>
+          <photo_statement/>
+          <photo_how/>
+          <photo_live/>
+          <omr_start/>
+          <omr_yes/>
+          <omr_no/>
+          <omr_dates/>
+          <omr_never/>
+          <fresh_entry/>
+          <check_q/>
+          <check_right/>
+          <check_wrong/>
+          <l3_end/>
+          <m3_record>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m3_record">
+              <name>Recording a meeting</name>
+              <description>When to use the Community Meeting Record or the Other Meeting Record, what each screen asks, and how to take the meeting photo.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m3_record>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>

@@ -1,0 +1,47 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/9c1355f8008264e2" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="lesson_5_steps_and_savings">
+          <l5_intro/>
+          <steps_list/>
+          <step_on_record/>
+          <step_moves/>
+          <step_by_one/>
+          <step_7_done/>
+          <step_earlier/>
+          <step_honest/>
+          <step_mistake/>
+          <savings_start/>
+          <savings_when/>
+          <savings_ask/>
+          <savings_yes/>
+          <savings_no/>
+          <pace/>
+          <check_q/>
+          <check_right/>
+          <check_wrong/>
+          <l5_end/>
+          <m5_steps>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m5_steps">
+              <name>Steps and savings</name>
+              <description>The seven FCAP Goal Setting steps, how a community moves from step to step, and when the savings questions appear.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m5_steps>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>

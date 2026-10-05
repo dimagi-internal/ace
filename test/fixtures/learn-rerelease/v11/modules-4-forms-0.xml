@@ -1,0 +1,44 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/165270633f0d6e27" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="lesson_4_counting_attendance_and_participation">
+          <l4_intro/>
+          <hh_meaning/>
+          <hh_limit/>
+          <attending/>
+          <spoke/>
+          <spoke_limit/>
+          <disability/>
+          <example_numbers/>
+          <example_attendance/>
+          <example_participation/>
+          <same_as_last/>
+          <not_penalty/>
+          <check_q/>
+          <check_right/>
+          <check_wrong/>
+          <l4_end/>
+          <m4_counting>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m4_counting">
+              <name>Counting attendance and participation</name>
+              <description>How to count households represented, people attending, people who spoke and members with a disability.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m4_counting>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>
