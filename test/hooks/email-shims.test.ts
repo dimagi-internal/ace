@@ -43,6 +43,24 @@ describe('email shims over the canopy engine', () => {
     );
   });
 
+  it('ace-email forward execs `canopy email forward --repo <this repo>` with the thread id', () => {
+    const { dir, log } = withFakeCanopy();
+    const r = runShim('ace-email', ['forward', 't1', '--to', 'x@y.z', '--dry-run'], dir);
+    expect(r.status).toBe(0);
+    expect(fs.readFileSync(log, 'utf8').trim()).toBe(
+      `email forward --repo ${REPO_ROOT} t1 --to x@y.z --dry-run`,
+    );
+  });
+
+  it('ace-email forward runs the run-page check on --note-file', () => {
+    const { dir, log } = withFakeCanopy();
+    const note = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-email-note-')), 'note.txt');
+    fs.writeFileSync(note, 'See https://docs.google.com/document/d/1AbCdEf/edit\n');
+    const r = runShim('ace-email', ['forward', 't1', '--to', 'x@y.z', '--note-file', note], dir);
+    expect(r.status).toBe(3);
+    expect(fs.existsSync(log)).toBe(false);
+  });
+
   it('ace-mark-read execs `canopy email mark-read --repo <this repo>` with thread ids', () => {
     const { dir, log } = withFakeCanopy();
     const r = runShim('ace-mark-read', ['t1', 't2'], dir);

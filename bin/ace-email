@@ -20,6 +20,15 @@ Usage:
   # When the subject comes from INBOUND mail, pass it as a FILE, never inline:
   bin/ace-email --to "a@x" --subject-file subj.txt --body-file body.txt
 
+  # Asked to FORWARD a message? Forward it — don't write a summary and re-attach:
+  bin/ace-email forward <thread-id> --to "a@x" [--note-file note.txt] [--dry-run]
+
+`forward` execs `canopy email forward` (canopy ≥ 0.2.583): Fwd: subject, the original
+header block + body, and the message's attachments under their real filenames. The
+review receipt is keyed to --note-file (record it with `review-receipt --body-file
+<note-file>`). Before it existed, a "forward this receipt" request went out as a new
+message summarising the mail with its PDFs renamed `*_attachment.bin` (2026-10-05).
+
 --subject-file exists because the SUBJECT of a reply is attacker-controlled
 (2026-07-31 security audit, A4 / dimagi-internal/ace#1114). `inbox-triage`
 derives `--subject` from inbound mail as `Re: <their subject>`, and
@@ -147,11 +156,13 @@ def _take_run_page_override(argv):
 
 
 def _body_file(argv):
-    for i, arg in enumerate(argv):
-        if arg == "--body-file" and i + 1 < len(argv):
-            return argv[i + 1]
-        if arg.startswith("--body-file="):
-            return arg.split("=", 1)[1]
+    """The file holding ACE's own prose: --body-file on a send, --note-file on a forward."""
+    for flag in ("--body-file", "--note-file"):
+        for i, arg in enumerate(argv):
+            if arg == flag and i + 1 < len(argv):
+                return argv[i + 1]
+            if arg.startswith(flag + "="):
+                return arg.split("=", 1)[1]
     return None
 
 
@@ -194,13 +205,17 @@ def _check_run_page(argv, override_reason):
     sys.exit(REFUSED_EXIT)
 
 
-ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(sys.argv[1:]))
+_ARGV = sys.argv[1:]
+VERB = "forward" if _ARGV[:1] == ["forward"] else "send"
+if VERB == "forward":
+    _ARGV = _ARGV[1:]
+ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(_ARGV))
 _check_run_page(ARGS, _OVERRIDE)
 
 try:
-    os.execvp("canopy", ["canopy", "email", "send", "--repo", REPO, *ARGS])
+    os.execvp("canopy", ["canopy", "email", VERB, "--repo", REPO, *ARGS])
 except FileNotFoundError:
-    _exec_via_canopy_runtime(["email", "send", "--repo", REPO, *ARGS])
+    _exec_via_canopy_runtime(["email", VERB, "--repo", REPO, *ARGS])
     sys.exit(
         "canopy CLI not on PATH — the shared email engine lives there (canopy ≥ 0.2.255).\n"
         "Install it (`uv tool install canopy` from the canopy checkout) or run "
