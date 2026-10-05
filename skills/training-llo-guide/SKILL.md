@@ -65,7 +65,12 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 ## Payment mechanics
 - FLWs are paid <amount> per <unit>, up to <max> per day, capped at
-  <total> total. (from `connect.payment_units`)
+  <total> total. (from `connect.payment_units`; when the PDD marks the rate,
+  organisation fee, budget or dates `[PROPOSED]`, print them as proposed, per
+  `skills/_training-template.md § Payment figures and payment channel`)
+- How workers are paid: Connect's standard worker payment (Connect accrues
+  the earned total; your organisation sends the payment and records it in
+  Connect), in the template's canonical wording.
 - Verification rules (from `connect.verification_flags`):
   <human-readable list — GPS fence radius, photo-required, duplicate
   detection window, etc.>
@@ -165,8 +170,12 @@ what the holding org can do`.
    payment recompute. Before the next payment run, **check that the worker's
    earned total on the opportunity's Worker Payments tile went down**. If it
    did not, do not pay the record; escalate to the program manager.
-3. **Connect does not claw back money already paid.** The LLO pays workers
-   off-platform and records those payments in Connect. Deleting a recorded
+3. **Connect does not claw back money already paid.** Workers are paid
+   through Connect's standard worker payment: Connect accrues the earned
+   total, and the LLO sends the money and records each payment in Connect.
+   Write it in those words, not "off-platform" — see
+   `skills/_training-template.md § Payment figures and payment channel`
+   (ace#2684). Deleting a recorded
    payment (`payment_delete`) removes only the RECORD, and Connect pushes
    "There has been an adjustment to your earnings" to the worker. Use it only
    when a payment was recorded but never actually made. Recovering money a
@@ -388,6 +397,17 @@ benefit from different prompts and self-eval criteria.
 
 This is the **third of the per-artifact training skills**, after
 `training-deck-generate` (0.10.79) and `training-flw-guide` (0.10.83).
+
+## Payment figures and payment channel (shared contract)
+
+Follow `skills/_training-template.md § Payment figures and payment channel — one
+contract, all six skills` (dimagi-internal/ace#2683, #2684). A rate, fee, budget
+or date the PDD marks `[PROPOSED]` is printed as proposed, with who sets the
+final figure — the payment unit's configured amount is named only as what the
+app shows for now. The payment channel is described in the template's
+canonical wording (Connect accrues the earned total; the organisation sends the
+payment and records it in Connect), never as "Connect pays automatically" and
+never as "off-platform".
 
 ## Screenshot citations (shared contract)
 

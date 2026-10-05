@@ -282,7 +282,9 @@ an ACE opportunity.
   tells the LLO to check the Worker Payments tile before paying.
 - **Recorded payments are records, not money.** `payment_delete` deletes a
   `Payment` row and pushes "There has been an adjustment to your earnings"
-  (`key: payment_rollback`). The LLO pays workers off-platform, so Connect
+  (`key: payment_rollback`). The LLO sends workers the money itself and records each payment in
+  Connect (Connect's standard worker payment — LLO-facing prose says it that
+  way, not "off-platform"; ace#2684), so Connect
   cannot claw anything back.
 - **Suspension is the PM's action.** `suspend_user` / `revoke_user_suspension`
   are `opportunity_pm_required`. A suspended worker's subsequent visits are

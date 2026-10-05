@@ -161,6 +161,17 @@ grading directive.
    - `Expected escalation` — whether the response should mention
      `ace@dimagi-ai.com` / the admin group
 
+   **A payment-channel expected answer uses Connect's real mechanism
+   (ace#2684).** Connect approves records and accrues the worker's earned
+   total automatically; the implementing organisation sends the money and
+   records the payment in Connect. A prompt about an unpaid-but-approved
+   unit therefore expects "compare the earned total with the payments
+   recorded in Connect; an earned amount with no recorded payment is the
+   organisation's to pay" before escalation — never "paid by Connect without
+   manual intervention", which contradicts the training corpus and is false.
+   Same wording as `skills/_training-template.md § Payment figures and
+   payment channel`.
+
 5. **Self-evaluate coverage.** Before finishing, check:
    - At least one prompt per category in the PDD's archetype branch
    - At least one prompt in EACH of the 7 adversarial categories

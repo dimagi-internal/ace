@@ -127,6 +127,51 @@ Any finding is a rewrite-before-write, not a warning. It is string logic over
 your own output, so it costs nothing and catches the class the evals otherwise
 catch one artifact at a time, after the fact.
 
+## Payment figures and payment channel — one contract, all six skills (dimagi-internal/ace#2683, #2684)
+
+Every training artifact that states what a worker or the organisation is paid
+follows two rules. Both were broken in all five documents of
+`spark-facilitator/20261004-1706`, and deep OCS QA traced the bot's wrong
+answers back to them.
+
+**1. A `[PROPOSED]` figure is printed as proposed — never as THE rate.** The
+Connect payment unit carries ONE number, because Connect needs one to configure.
+When the PDD marks the rate, organisation fee, budget or dates `[PROPOSED]` (or
+the matching `decisions.yaml` row has `review_ask` set / `plain_value` says
+"proposed"), that configured number is a placeholder. Write the design's
+proposed value or band, say who sets the final figure (usually the chosen
+implementing organisation, from its justified response), and, where a reader
+will see the configured number in the app, name it as the value the app shows
+for now. For example: *"The rate is proposed, not final: 5,000–10,000 MWK per
+meeting, set by your implementing organisation (the app shows 7,500 MWK for
+now)."* Read `connect.payment_units` for the configured amount and the PDD
+§ Program Parameters for whether it is proposed, never the payment unit alone.
+A figure the PDD does NOT mark proposed is stated plainly, as before.
+
+**2. The payment channel is described the one way that is true in Connect.**
+Connect's standard worker payment works like this: Connect approves each
+record against the opportunity's rules and accrues the worker's earned total
+automatically, and then the holding (implementing) organisation sends the
+money and records the payment in Connect, where the worker confirms it.
+`dimagi/commcare-connect` `opportunity/models.py` `Payment` rows carry
+`date_paid`, `payment_method` and `payment_operator`, and only the org's
+payment import (`opportunity/visit_import.py`) writes them. There is no Connect
+payout integration. So:
+
+- Do NOT write "Connect pays the worker automatically" or "paid by Connect
+  without manual intervention" in an LLO-facing artifact. The organisation
+  that believes it must send no money pays no one.
+- Do NOT write "you pay off-platform". The mechanism is right, but the phrase
+  reads as contradicting a design that says workers are paid "through
+  Connect's standard payment". It was flagged as
+  `[ANSWER-KEY-CONTRADICTS-CORPUS]` on the run above.
+- Say: *"Workers are paid through Connect's standard worker payment: Connect
+  works out each worker's earned total from approved records, and your
+  organisation sends the payment and records it in Connect."* A worker-facing
+  artifact may simply say the worker is paid for each verified unit.
+- If the run has an open decision on an alternative channel (airtime, mobile
+  money through a third party), say it is still open, and name who decides.
+
 ## Screenshot citations — canonical frames only (dimagi-internal/ace#1304)
 
 Any skill that cites captures from `app-screenshot-capture_manifest.yaml`
