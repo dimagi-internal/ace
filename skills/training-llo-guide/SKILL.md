@@ -82,8 +82,9 @@ For LLO operators overseeing FLW deployment of this opportunity.
 ## When a paid record turns out to be false
 <REQUIRED. What to do when review shows a record was fabricated AFTER
 Connect approved it and accrued payment for it. Use only the mechanism in
-§ "A paid record found false" below. Cover: stopping further accrual,
-correcting the record, what to do about money already paid, and the
+§ "A paid record found false" below. Cover: holding the record's
+payment, sending it to the escalation contact to be rejected (Connect has
+no screen for this), what to do about money already paid, and the
 consequence for the worker. Cite the verification-panel frame from
 `4-connect/previews`.>
 
@@ -162,14 +163,28 @@ what the holding org can do`.
    manual-review opportunity, reject and the import both skip a visit that
    was already auto-approved (`review_status = agree`). Do NOT tell the LLO to
    "reject the visit in Connect".
-2. **Stop the accrual on the completed work.** Use the Payment Verification
-   import: export the completed-work status sheet from the opportunity, set
-   that row's status to `rejected` with a reason, and re-import it. The
-   holding org can do this (`opp_standard_access`), and automatic
-   verification does not gate it. Rejected completed work drops out of the
-   payment recompute. Before the next payment run, **check that the worker's
-   earned total on the opportunity's Worker Payments tile went down**. If it
-   did not, do not pay the record; escalate to the program manager.
+2. **Hold the payment and route the rejection through the escalation
+   contact.** Connect has NO screen the LLO can use to reject a completed
+   work. The completed-work status import exists only as a bare POST route
+   (`completed_work_import`) that no Connect page links to (re-checked on
+   `commcare-connect` main @ `046c7fd7`, 2026-10-05; ace#2613). So the guide
+   tells the LLO to: (a) **hold** that record's payment; (b) send the record
+   ID (worker, visit date, entity), the evidence and the reason to the
+   program's escalation contact (§ "Escalation contacts" — the ACE program
+   team unless the inputs name someone else), who gets the rejection applied
+   in Connect; and (c) before the next payment run, **check that the worker's
+   earned total on the opportunity's Worker Payments tile went down**. Until
+   it does, do not pay the record. Once the record is rejected it drops out
+   of the payment recompute.
+
+   **Never describe a self-service path.** Do NOT tell the LLO to "export the
+   completed-work status sheet", "set the row to rejected and re-import it",
+   or use a "Payment Verification import". There is no such screen, and no
+   frame can be cited for it. The Payments tab's **Import Payment Records**
+   upload ("Username", "Amount", "Payment Date") is real, but it RECORDS
+   payments the LLO has made. It does not reject anything. The Deliver tab's
+   visit import is hidden on an ACE opportunity
+   (`{% if not opportunity.automatic_visit_verification %}`).
 3. **Connect does not claw back money already paid.** Workers are paid
    through Connect's standard worker payment: Connect accrues the earned
    total, and the LLO sends the money and records each payment in Connect.
@@ -187,7 +202,8 @@ what the holding org can do`.
    rejects their later visits on arrival. The LLO requests the suspension
    and supplies the evidence.
 5. **The organisation fee follows the record.** A record rejected in step 2
-   stops accruing the per-visit organisation amount. Do not invoice it.
+   stops accruing the per-visit organisation amount. Do not invoice a record
+   that is held or rejected.
 
 If the PDD names a consequence ladder for the worker, quote it. If it does
 not, say the consequence is the LLO's decision under its own terms with the
@@ -434,3 +450,4 @@ The self-eval criterion must assert duplicate handling explicitly.
   - A named contact must trace to the inputs; otherwise the guide uses a marked placeholder.
 
   *Enforced:* `test/lib/opportunity-window.test.ts`, `test/skills/training-llo-guide-contract.test.ts`.
+- 2026-10-05: **No self-service completed-work rejection (ace#2613).** Step 2 of § "A paid record found false" told the LLO to export the completed-work status sheet, set the row to `rejected` and re-import it, a path the LLO cannot reach. On `commcare-connect` main @ `046c7fd7` the `completed_work_export` / `completed_work_import` routes exist but no template links to them. The guide now says: hold the payment, send the record and evidence to the escalation contact to get it rejected, and do not pay until the Worker Payments total drops. *Enforced:* `test/skills/no-completed-work-import-ui.test.ts`.

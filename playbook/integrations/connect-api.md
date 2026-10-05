@@ -272,14 +272,31 @@ an ACE opportunity.
   `review_status = agree`, and `bulk_update_visit_status` puts those visits
   in `locked_visits`. Auto-approval sets exactly `approved` / `agree`
   (`form_receiver/processor.py`).
-- **The lever that works is the Payment Verification import.**
-  `update_completed_work_status_import` is `opp_standard_access_required` and
+- **The lever that works is the completed-work status import, and it has
+  NO UI.** `update_completed_work_status_import` is `opp_standard_access_required` and
   NOT wrapped by the manual-verification guard. `_bulk_update_completed_work_status`
   (`visit_import.py`) sets a `CompletedWork` to `rejected` with a reason.
   `tasks.bulk_update_payment_accrued` then recomputes with
   `exclude(status=rejected)`. Unverified residual: whether the worker's
   displayed earned total drops at once has not been observed live, so content
   tells the LLO to check the Worker Payments tile before paying.
+  **But no Connect page links to it** (re-read on main @ `046c7fd7`,
+  2026-10-05; ace#2613). `opportunity/urls.py:122-124` registers
+  `completed_work_export` and `completed_work_import`. `export_completed_work`
+  (`opportunity/views.py:1577`) takes a POSTed `PaymentExportForm` and
+  `update_completed_work_status_import` (`:1589-1603`, `@require_POST`) reads
+  `request.FILES["visits"]`. A grep of the whole repo for either route name
+  or either view name hits only `urls.py` and `views.py`: no template and no
+  JS. What the holding org does see is different. The Payments tab
+  (`templates/opportunity/payments.html:17-20`) offers **Import Payment
+  Records** (`payment_import`: "Username", "Amount", "Payment Date"), which
+  RECORDS payments, and **Export Workers for Payments**. The Deliver tab's
+  visit import is wrapped in `{% if not opportunity.automatic_visit_verification %}`
+  (`templates/opportunity/deliver.html:8,23`), so an ACE opportunity shows
+  only Export. So LLO-facing content must not describe a self-service
+  rejection. The LLO **holds** the record's payment and sends the record,
+  evidence and reason to the program's escalation contact, who gets the
+  rejection applied. ACE has no atom that POSTs this import yet.
 - **Recorded payments are records, not money.** `payment_delete` deletes a
   `Payment` row and pushes "There has been an adjustment to your earnings"
   (`key: payment_rollback`). The LLO sends workers the money itself and records each payment in
@@ -291,9 +308,11 @@ an ACE opportunity.
   set to `rejected` on arrival (`processor.py`: `if access.suspended`).
 
 What would falsify this: a holding-org admin rejecting an auto-approved visit
-from the Deliver view on an ACE opportunity, or a Payment Verification import
+from the Deliver view on an ACE opportunity, a completed-work status import
 row set to `rejected` that leaves `saved_payment_accrued` counted in the
-worker's earned total.
+worker's earned total, or a Connect page that links `completed_work_import`
+(then the LLO has a self-service path and
+`test/skills/no-completed-work-import-ui.test.ts` should be relaxed).
 
 ### Every Connect list VIEW is paginated at 20, and the payload never says so
 
