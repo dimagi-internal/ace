@@ -29,6 +29,11 @@
 # controlled repeats). Evidence: rewalk-2517-activity-juncture.xml in Drive
 # 6-qa-and-training/screenshots/rewalk-ace2517.
 # TOTAL 92 rows: 54 verified, 38 unverified.
+# UPDATED 2026-10-05 (dimagi-internal/ace#2668): the five case-list rows and
+# form-date-picker / form-date-picker-container were re-observed on 2.64.0 in
+# spark-facilitator/20261004-1706 /ace:qa-deep Stage B (ui dumps captured by
+# mobile_run_recipe, cited per row). Annotation only; no type/value changed.
+# TOTAL 92 rows: 61 verified, 31 unverified.
 #
 # WHAT ACTUALLY CHANGED IN 2.64.0
 # -----------------------------------------------------------------------------
@@ -480,14 +485,12 @@ selectors:
   form-date-picker:
     type: class
     value: "android.widget.DatePicker"
-    unverified: true
-    purpose: "Native inline date widget on a `kind: date` question, no resource-id. Live-verified on 2.63.2 (ace#1081/#1300); NOT re-observed on 2.64.0 — no date question was reached. The scroll-consumption hazard (a swipe originating inside its bounds spins the date instead of scrolling the page) is carried forward unretested; keep using lib/fieldlist-gestures.ts safeScrollOriginX."
+    purpose: "Native inline date widget on a `kind: date` question, no resource-id. Live-verified on 2.63.2 (ace#1081/#1300). RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-case-select-form-opened.xml (dispatch 1791190362328-lqwucr), date question at the top of a field-list screen, android.widget.DatePicker at [214,691][865,1248]. The scroll-consumption hazard (a swipe originating inside its bounds spins the date instead of scrolling the page) is carried forward unretested; keep using lib/fieldlist-gestures.ts safeScrollOriginX."
 
   form-date-picker-container:
     type: id
     value: "android:id/pickers"
-    unverified: true
-    purpose: "LinearLayout holding the three date NumberPicker columns. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+    purpose: "LinearLayout holding the three date NumberPicker columns. Live-verified on 2.63.2 (ace#1081). RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-case-select-form-opened.xml (dispatch 1791190362328-lqwucr), android:id/pickers LinearLayout at [214,691][865,1248], the same bounds as its DatePicker."
 
   form-date-picker-column:
     type: class
@@ -577,43 +580,39 @@ selectors:
     purpose: "Project description on the home project card. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml."
 
   # ── Case list (EntitySelectActivity) ───────────────────────────
-  # NONE of the five rows below were re-observed on 2.64.0. The form this
-  # walk entered was a REGISTRATION form, not a followup, so CommCare
-  # never interposed a case list. All five were live-captured together on
-  # 2026-08-01 against 2.63.2 from one real followup case list; the ids
-  # are all still present in 2.64.0's resource table. The trap they
+  # The 2026-09-06 calibration walk entered a REGISTRATION form, so it never
+  # saw a case list and these five rows stayed unverified. All five were
+  # live-captured together on 2026-08-01 against 2.63.2 from one real
+  # followup case list, then RE-OBSERVED on 2.64.0 on 2026-10-05
+  # (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, ace#2668), from
+  # the followup-preload-readback dumps cited on each row. The trap they
   # encode is unchanged and still applies: the header strip and the data
   # rows share the cell id `entity_view_text`, so always scope a row
   # match to case-list-container.
   case-list-container:
     type: id
     value: "org.commcare.dalvik:id/screen_entity_select_list"
-    unverified: true
-    purpose: "The case-list ListView on EntitySelectActivity. Live-captured on 2.63.2 (2026-08-01, ace#1138 Gap 2); NOT re-observed on 2.64.0 — no followup form was walked. The ONLY sound scope for a row tap. Its trailing SEARCH action_card is INSIDE the container, so scoping alone does not make a positional tap safe: match the row by case name."
+    purpose: "The case-list ListView on EntitySelectActivity. Live-captured on 2.63.2 (2026-08-01, ace#1138 Gap 2). RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-followup-preload-readback-k-case-listed.xml (dispatch 1791193789309-pa2ieo), android.widget.ListView at [0,540][1080,2337]; the deliver-case-select palette that taps it passed in 5 dispatches that day. The ONLY sound scope for a row tap. Its trailing SEARCH action_card is INSIDE the container, so scoping alone does not make a positional tap safe: match the row by case name."
 
   case-list-header:
     type: id
     value: "org.commcare.dalvik:id/entity_select_header"
-    unverified: true
-    purpose: "Column-header strip above the case rows — a SIBLING of case-list-container, not a child, which is what makes `childOf: case-list-container` a sound exclusion. Named so it is addressable as an ANTI-TARGET. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+    purpose: "Column-header strip above the case rows — a SIBLING of case-list-container, not a child, which is what makes `childOf: case-list-container` a sound exclusion. Named so it is addressable as an ANTI-TARGET. Live-captured on 2.63.2. RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-followup-preload-readback-k-case-listed.xml, LinearLayout at [0,283][1080,540], directly above and disjoint from the ListView at [0,540]."
 
   case-list-detail-container:
     type: id
     value: "org.commcare.dalvik:id/entity_detail"
-    unverified: true
-    purpose: "The per-case DETAIL confirmation screen interposed between the row tap and the form when the module declares a case-list `details` block — which every ACE-built Deliver module does. Live-captured on 2.63.2; NOT re-observed on 2.64.0. Discovering this is why ace#1138 Gap 2 forbade transcribing a case-list recipe from a sibling APK."
+    purpose: "The per-case DETAIL confirmation screen interposed between the row tap and the form when the module declares a case-list `details` block — which every ACE-built Deliver module does. Live-captured on 2.63.2. RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-followup-preload-readback-mphatso-step2.xml (dispatch 1791193789309-pa2ieo), RelativeLayout at [0,283][1080,2337]. Discovering this is why ace#1138 Gap 2 forbade transcribing a case-list recipe from a sibling APK."
 
   case-list-detail-continue:
     type: id
     value: "org.commcare.dalvik:id/entity_select_button"
-    unverified: true
-    purpose: "CONTINUE on the case DETAIL confirmation — the step that actually enters the followup form. Live-captured on 2.63.2 at [0,283][1080,409], pinned directly UNDER THE TOOLBAR rather than at the bottom of the screen. NOT re-observed on 2.64.0."
+    purpose: "CONTINUE on the case DETAIL confirmation — the step that actually enters the followup form. Live-captured on 2.63.2 at [0,283][1080,409], pinned directly UNDER THE TOOLBAR rather than at the bottom of the screen. RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-followup-preload-readback-mphatso-step2.xml, clickable Button text='CONTINUE' at the SAME [0,283][1080,409]."
 
   case-list-row-cell:
     type: id
     value: "org.commcare.dalvik:id/entity_view_text"
-    unverified: true
-    purpose: "Per-column cell TextView inside a case-list row. Present in BOTH the header strip and every data row — never match it unscoped. The cell is not clickable; the clickable node is the row LinearLayout two levels up. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+    purpose: "Per-column cell TextView inside a case-list row. Present in BOTH the header strip and every data row — never match it unscoped. The cell is not clickable; the clickable node is the row LinearLayout two levels up. Live-captured on 2.63.2. RE-OBSERVED live on 2.64.0 (spark-facilitator/20261004-1706 /ace:qa-deep Stage B, 2026-10-05, emulator-5554, ace-mobile 0.13.1676, ace#2668): journey-deliver-followup-preload-readback-k-case-listed.xml, 28 non-clickable entity_view_text cells: 4 inside the header strip's bounds and 24 (6 rows x 4 columns) inside the ListView, so the shared-id hazard still holds on 2.64.0."
 
   # ── Not reached on any APK version to date ─────────────────────
   # These four were already unverified on 2.63.2 and remain so. They are
