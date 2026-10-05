@@ -115,6 +115,12 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
 8. **Mark-read** (turn housekeeping, not part of normal skill sends): `bin/ace-mark-read <threadId> …`
    removes the UNREAD label after a turn fully handles a thread.
 
+9. **Forward** — when asked to *forward* a message (a receipt, an invoice, someone's mail),
+   forward it: `bin/ace-email forward <thread-id> --to <addr> [--note-file note.txt] [--dry-run]`.
+   It sends the original headers, body and attachments (real filenames) under `Fwd:`; the review
+   receipt is keyed to the note file. Do not compose a new message summarising the mail and
+   re-attach with `--attach-from-thread` — that is not a forward (2026-10-05).
+
 ## MCP Tools Used
 
 None — this skill uses the GOG CLI and the guarded `bin/ace-email` wrapper via shell commands, not
