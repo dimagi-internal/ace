@@ -78,8 +78,11 @@ improvements ship once (a canopy PR) instead of N backports.
   so — so never tier or noise-classify a sender off this output.** Take the sender from the
   structured read (`canopy email read <threadId>` → `messages[-1].from`) and use the row only for
   the thread id, subject and date; `skills/inbox-triage` § 1 carries the full rule and the two
-  failure shapes (ace#2399). Dead gog auth:
-  `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is a SHARED
+  failure shapes (ace#2399). Dead gog auth: **preferred fix is the canopy-web "Connect Google
+  mailbox" button** (self-service, no terminal); terminal alternative: `gog login
+  ace@dimagi-ai.com --client canopy --services gmail,calendar,drive,docs,slides,sheets,forms` —
+  always the FULL scope list, since a narrower `--services` (e.g. just `gmail`) **replaces** the
+  grant and drops the other scopes rather than adding to them. **The gog client is a SHARED
   fleet client (`canopy` or `canopy-web`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
   (`--account`). `config/agent.json`'s `gog_client` is the declared preference that `canopy email client` reconciles; setting
   it to `ace` kills every read/send, because no `credentials-ace.json` exists and the remedy it

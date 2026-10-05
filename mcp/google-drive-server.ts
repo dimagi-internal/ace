@@ -796,7 +796,13 @@ server.tool(
       // was actually written.
       const stderr = (proc.stderr || '').trim();
       if (proc.status !== 0 || !fs.existsSync(tmpFile) || fs.statSync(tmpFile).size === 0) {
-        const reauth = `gog login ${account} --client ${client} --services gmail,drive`;
+        // Always point the terminal alternative at `--client canopy`, never
+        // the resolved `client` — that can be `canopy-web` (this machine's
+        // mailbox connected via the button), and `gog login --client
+        // canopy-web` cannot work from a terminal: canopy-web only mints a
+        // token via its own button. The full service list matters too — a
+        // narrower --services REPLACES the grant and drops other scopes.
+        const reauth = `connect via the canopy-web "Connect Google mailbox" button (preferred), or at a terminal: gog login ${account} --client canopy --services gmail,calendar,drive,docs,slides,sheets,forms`;
         return error(
           `gog drive download failed: ${stderr || 'no output written'}. ` +
           `If the error mentions scope/permission/insufficient, re-auth gog with Drive scope: ${reauth}`,
