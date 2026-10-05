@@ -98,6 +98,18 @@ Activate the opportunity and notify LLOs that they are live.
    `learn app re-released since verdict written (verdict build abc...,
    current build xyz...)`).
 
+   **Name every NOT REACHED criterion, even on a pass (dimagi-internal/ace#2670).**
+   Read `not_reached` from `app-ux-eval_verdict-deep.yaml` (top-level, plus
+   each `per_item[].not_reached`) and print one line per criterion with
+   `notReachedGateLines` from `lib/criterion-reachability.ts`, e.g.
+   `[WARN] journey-deliver-over-cap: fourth_meeting_labelled_not_paid NOT REACHED (reachability: multi-day — …)`.
+   These do not block activation by themselves: the verdict's own
+   `verdict:` and `journey_completion` cap already account for them. But
+   they go in the activation summary and the go-live record, so an
+   activation never implies a criterion was observed when it was not.
+   A `reachability: multi-day` criterion is reached only by re-running
+   `/ace:qa-deep` on successive device-days against the same cases.
+
 5. **Override (operator-only, audited).** If this skill was invoked
    with `--override-deep-qa-gate=<reason>`, skip the gate above and
    proceed to activation. Constraints:
@@ -385,3 +397,4 @@ binding on this skill's output.
 | 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 4 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 4 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-6-placeholder-screenshots chicken-and-egg. | ACE team |
+| 2026-10-05 | **Name NOT REACHED criteria at the gate (dimagi-internal/ace#2670).** Step 4 now prints every `not_reached` criterion from the deep app-UX verdict via `notReachedGateLines` (`lib/criterion-reachability.ts`) into the activation summary. Non-blocking: `app-ux-eval` already caps `journey_completion` at 2 for them. Earned by `spark-facilitator/20261004-1706`, where two `reachability: multi-day` criteria could not be reached in one session and nothing downstream said so. | ACE team |

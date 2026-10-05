@@ -61,6 +61,14 @@ describe('multi-day criteria: declared → recorded NOT REACHED → listed by th
     expect(ux).not.toContain('gate.not_reached');
   });
 
+  it('llo-launch names NOT REACHED criteria at the gate, and the docs point at the lib', () => {
+    const launch = read('skills/llo-launch/SKILL.md');
+    expect(launch).toContain('notReachedGateLines');
+    expect(launch).toMatch(/Name every NOT REACHED criterion, even on a pass/);
+    expect(read('skills/app-test-cases/SKILL.md')).toContain('detectMultiDayDateConstraint');
+    expect(read('skills/app-ux-eval/SKILL.md')).toContain('capJourneyCompletion');
+  });
+
   it('a verdict carrying not_reached survives schema validation with the lists intact', () => {
     const verdict = {
       skill: 'app-ux-eval',

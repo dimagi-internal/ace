@@ -2021,7 +2021,11 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   (`get_form` / `get_field`). If reaching the criterion needs N > 1 records
   on one case under such a constraint, write it in the mapping form
   `{ name, reachability: multi-day, reason }`. The reason must name the
-  field, the constraint and N. Spacing advice in a catalog note is not a
+  field, the constraint and N. Classify each `validate` with
+  `detectMultiDayDateConstraint` from `lib/criterion-reachability.ts`
+  (`multiDay: true` = strictly after a prior record AND capped at
+  `today()`); `normalizeCriterion` refuses a multi-day entry without a
+  reason. Spacing advice in a catalog note is not a
   declaration, because no downstream step reads notes. Canonical case:
   `spark-facilitator/20261004-1706`, where `date_of_meeting` validates
   `. <= today() and ... (#form/prev_meeting_date = '' or . > date(#form/prev_meeting_date))`.
