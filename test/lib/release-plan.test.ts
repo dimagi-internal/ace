@@ -233,15 +233,47 @@ describe('cc — Dimagi staff copied on every release email (ace#2706)', () => {
     expect(renderPlan(buildReleasePlan(base).plan)).toContain('Copied on the emails: nobody.');
   });
 
-  it('--from-thread: partner domains are reviewers, Dimagi staff are cc, ACE and anyone else are excluded', () => {
-    const p = partitionThreadParticipants(
-      ['Jonathan Jackson <jjackson@dimagi.com>', 'amina@spark.org', 'Bo <BO@spark.org>', 'ace@dimagi-ai.com', 'consultant@gmail.com', 'neal@dimagi.com'],
-      ['spark.org', 'dimagi.com'],
-    );
-    expect(p.reviewers).toEqual(['amina@spark.org', 'bo@spark.org']);
-    expect(p.cc).toEqual(['jjackson@dimagi.com', 'neal@dimagi.com']); // staff even though dimagi.com is a labs domain
-    expect(p.excluded.map((e) => e.email)).toEqual(['ace@dimagi-ai.com', 'consultant@gmail.com']);
-    // whatever it derives as cc, parseCc accepts
-    expect(parseCc(p.cc.join(','))).toEqual(p.cc);
+  it('cc is never derived from a thread — it is an explicit --cc opt-in only (ace#2720)', () => {
+    const p = partitionThreadParticipants(['jjackson@dimagi.com', 'amina@spark.org'], ['spark.org']);
+    expect(p).not.toHaveProperty('cc');
+  });
+});
+
+describe('--from-thread: Dimagi staff on the thread are REVIEWERS (ace#2720)', () => {
+  // Operator correction (Jonathan Jackson, 2026-10-05), superseding the
+  // staff→cc split of ace#2706 / PR #2708: "we want dimagi people to be invited
+  // into the workspace if they are on the project".
+  const p = partitionThreadParticipants(
+    ['Jonathan Jackson <jjackson@dimagi.com>', 'amina@spark.org', 'Bo <BO@spark.org>', 'ace@dimagi-ai.com', 'consultant@gmail.com', 'neal@dimagi.com', 'eva@dimagi-ai.com'],
+    ['spark.org'],
+  );
+
+  it('partner domains AND Dimagi staff are reviewers; ACE and anyone else are excluded with a reason', () => {
+    expect(p.reviewers).toEqual(['amina@spark.org', 'bo@spark.org', 'jjackson@dimagi.com', 'neal@dimagi.com']);
+    expect(p.excluded.map((e) => e.email)).toEqual(['ace@dimagi-ai.com', 'consultant@gmail.com', 'eva@dimagi-ai.com']);
+    expect(p.excluded.find((e) => e.email === 'ace@dimagi-ai.com')?.reason).toMatch(/ACE's own mailbox/);
+    expect(p.excluded.find((e) => e.email === 'consultant@gmail.com')?.reason).toMatch(/neither a partner domain/);
+  });
+
+  it('staff are reviewers whether or not dimagi.com is a labs domain', () => {
+    const withDomain = partitionThreadParticipants(['neal@dimagi.com', 'amina@spark.org'], ['spark.org', 'dimagi.com']);
+    const without = partitionThreadParticipants(['neal@dimagi.com', 'amina@spark.org'], []);
+    expect(withDomain.reviewers).toEqual(['amina@spark.org', 'neal@dimagi.com']);
+    expect(without.reviewers).toEqual(['neal@dimagi.com']);
+  });
+
+  it('each staff reviewer gets an ace-web workspace invite, the partner grants and their own email', () => {
+    const reviewers = parseReviewers(p.reviewers.join(','));
+    expect(reviewers.every((r) => r.role === 'viewer')).toBe(true);
+    const { plan, problems } = buildReleasePlan({ ...base, reviewers });
+    expect(problems.filter((x) => x.severity === 'blocker')).toEqual([]);
+    expect(plan.cc).toEqual([]);
+    for (const staff of ['jjackson@dimagi.com', 'neal@dimagi.com']) {
+      expect(plan.actions.find((a) => a.kind === 'ace_web_invite' && a.email === staff)).toMatchObject({ target: base.workspace, role: 'viewer' });
+      expect(plan.actions.some((a) => a.kind === 'hq_invite' && a.email === staff)).toBe(true);
+      expect(plan.actions.some((a) => a.kind === 'connect_org_member' && a.email === staff)).toBe(true);
+      expect(plan.actions.some((a) => a.kind === 'email' && a.target === staff)).toBe(true);
+      expect(plan.emails.some((e) => e.to === staff)).toBe(true);
+    }
   });
 });

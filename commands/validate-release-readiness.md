@@ -15,9 +15,12 @@ parsed arguments.
 - **`--reviewers`** — comma-separated emails, each optionally `:viewer` /
   `:editor` (default viewer). Or **`--from-thread <id>`**: the participants of
   the ace@ thread that asked for the review whose domain is in the opp's
-  `labs_allowed_domains` become reviewers, and its Dimagi staff become the cc.
+  `labs_allowed_domains` become reviewers, and so do its Dimagi staff
+  (`@dimagi.com` — workspace invite, the same grants, their own email; ace#2720).
+  ACE's own mailbox and anyone else are excluded and shown.
   **Required for READY** — without reviewers the run can only come back NOT READY.
-- **`--cc`** — comma-separated Dimagi staff (`@dimagi.com` only — any other
+- **`--cc`** — explicit opt-in only (never derived from a thread):
+  comma-separated Dimagi staff (`@dimagi.com` only — any other
   address is refused) copied on every release email and granted nothing. Part
   of the plan; `/ace:release` must be given the same list.
 - **`--waive <blocker-id>=<reason>`** (repeatable) — release past one named

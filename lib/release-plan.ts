@@ -66,9 +66,10 @@ export const ACE_MAILBOX = 'ace@dimagi-ai.com';
 /**
  * `--cc a@dimagi.com,b@dimagi.com` → the Dimagi staff copied on EVERY release
  * email, lower-cased, de-duplicated, sorted. They get no grant: a cc is told,
- * not let in. Operator decision (Jonathan, 2026-10-05, the spark-facilitator
- * release, ace#2706): "All 8 get the email" — the partner reviewers get their
- * grants and email, the Dimagi staff on the requesting thread are cc'd.
+ * not let in (ace#2706). An explicit operator OPT-IN only — nothing derives it
+ * from a thread: Dimagi staff on the requesting thread are reviewers, not cc
+ * (operator correction, Jonathan, 2026-10-05, ace#2720: "we want dimagi people
+ * to be invited into the workspace if they are on the project").
  *
  * Only Dimagi staff (`@dimagi.com`) may be copied. Anyone else on a release
  * email reads a partner's access instructions without being a reviewer of the
@@ -94,21 +95,27 @@ export function ccKey(cc: readonly string[] | undefined | null): string {
 
 /**
  * `--from-thread`: split the requesting thread's participants (every From /
- * To / Cc address) into reviewers and cc.
+ * To / Cc address) into reviewers and excluded.
  *
- * - Dimagi staff (`@dimagi.com`) → `cc` (copied, never granted) — whatever the
- *   tenancy's labs domains say.
+ * Operator correction (Jonathan, 2026-10-05, ace#2720): "we want dimagi people
+ * to be invited into the workspace if they are on the project". So:
+ *
+ * - Dimagi staff (`@dimagi.com`) → `reviewers` (viewer): an ace-web workspace
+ *   invite, the same grants a partner gets (`grantsFor` already treats staff
+ *   as grantable on every system), and their own release email.
  * - an address whose domain is in `labs_allowed_domains` → `reviewers` (viewer).
  * - ACE's own mailbox, and anyone else → `excluded`, with the reason — shown to
- *   the operator, never silently copied (a non-Dimagi address is never a cc).
+ *   the operator, never silently invited or copied.
+ *
+ * Nothing here derives `--cc`: copying staff without a grant (ace#2706) is an
+ * explicit operator opt-in only.
  */
 export function partitionThreadParticipants(
   participants: readonly string[],
   labsAllowedDomains: readonly string[] | null | undefined,
-): { reviewers: string[]; cc: string[]; excluded: Array<{ email: string; reason: string }> } {
+): { reviewers: string[]; excluded: Array<{ email: string; reason: string }> } {
   const domains = new Set((labsAllowedDomains ?? []).map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean));
   const reviewers = new Set<string>();
-  const cc = new Set<string>();
   const excluded = new Map<string, string>();
   for (const raw of participants) {
     // `Name <a@x.org>` and bare `a@x.org` both
@@ -116,13 +123,11 @@ export function partitionThreadParticipants(
     if (!email) continue;
     if (!EMAIL.test(email)) excluded.set(email, 'not an email address');
     else if (email === ACE_MAILBOX) excluded.set(email, "ACE's own mailbox — the sender");
-    else if (isDimagiStaff(email)) cc.add(email);
-    else if (domains.has(email.split('@')[1])) reviewers.add(email);
+    else if (isDimagiStaff(email) || domains.has(email.split('@')[1])) reviewers.add(email);
     else excluded.set(email, "neither a partner domain in the opp's labs_allowed_domains nor Dimagi staff — not a reviewer, and never copied");
   }
   return {
     reviewers: [...reviewers].sort(),
-    cc: [...cc].sort(),
     excluded: [...excluded].map(([email, reason]) => ({ email, reason })).sort((a, b) => a.email.localeCompare(b.email)),
   };
 }

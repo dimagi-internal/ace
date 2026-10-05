@@ -37,9 +37,11 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 - `--reviewers` / `--from-thread` — **the same reviewers given to the
   validation** (from a thread: the same derivation, `$RC thread-recipients
   --participants "<addr>,…" --workspace <ws> --opp <opp>` — partner-domain
-  participants are reviewers, Dimagi staff are cc). The gate compares them
-  exactly — one extra, one missing or one different role is a refusal.
-- `--cc` — **the same Dimagi staff the validation copied** (ace#2706). They
+  participants AND the thread's Dimagi staff are reviewers, ace#2720). The gate
+  compares them exactly — one extra, one missing or one different role is a
+  refusal.
+- `--cc` — **the same Dimagi staff the validation copied** (ace#2706), only if
+  the operator passed one explicitly — a thread never derives it. They
   get every email and no grant. The gate compares the list exactly; a cc added,
   dropped or changed at release is a refusal, never adapted to.
 - `--waive <blocker-id>=<reason>` — **the same waivers the validation
@@ -157,4 +159,5 @@ evidence; the Drive shares; whether the source link now forwards; each email's
 |---|---|---|
 | 2026-10-03 | Share-only release: executes the validated plan's share actions and nothing else (owner decision, ace#2620). | ACE team |
 | 2026-10-05 | `--waive` (ace#2707): the plan's waived eval blockers are shown in the approval prompt; the gate refuses waivers that differ from the validated ones. | ACE team |
+| 2026-10-05 | `--from-thread` derives Dimagi staff on the thread as **reviewers** (workspace invite + grants + own email), never cc; `--cc` is an explicit opt-in only (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). | ACE team |
 | 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |
