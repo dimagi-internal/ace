@@ -88,6 +88,33 @@ const remoteSha = (ref: string) =>
   git(['--git-dir', path.join(root, 'remote.git'), 'rev-parse', ref], root);
 
 /**
+ * Turn off git's background auto-maintenance in a fixture repo (ace#2715).
+ *
+ * Every push into a bare remote makes `receive-pack` spawn
+ * `git maintenance run --auto --quiet --detach` (observed with GIT_TRACE).
+ * `--detach` means the push — and so `land-pr.sh`, and so `spawnSync` —
+ * returns while that process is still alive and taking its lock at
+ * `<git-dir>/objects/maintenance.lock`. A teardown that deletes the tree at
+ * that moment hits `ENOTEMPTY: rmdir '.../remote.git/objects'`, which is how
+ * merge-group run 37369167474 failed a case whose assertions all passed.
+ * Config is per-repo, so it reaches every git the script under test runs here.
+ */
+function quietMaintenance(repo: string) {
+  git(['-C', repo, 'config', 'receive.autogc', 'false'], root);
+  git(['-C', repo, 'config', 'maintenance.auto', 'false'], root);
+  git(['-C', repo, 'config', 'gc.auto', '0'], root);
+}
+
+/**
+ * Remove a fixture tree. The retries cover a straggling writer this file did
+ * not start (Node retries ENOTEMPTY/EBUSY/EPERM with backoff); disabling
+ * maintenance above removes the one writer it did start.
+ */
+function rmTree(dir: string) {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+/**
  * Build: a bare remote with `main` + the PR branch, and a work checkout sitting
  * on a DIFFERENTLY-NAMED local branch that carries the PR's commits plus one
  * more. The remote-tracking ref for the PR branch is deleted, reproducing a
@@ -98,7 +125,9 @@ function setup() {
   const bare = path.join(root, 'remote.git');
   const work = path.join(root, 'work');
   git(['init', '--bare', '-q', bare], root);
+  quietMaintenance(bare);
   git(['clone', '-q', bare, work], root);
+  quietMaintenance(work);
   git(['config', 'user.email', 't@example.com'], work);
   git(['config', 'user.name', 'Test'], work);
   git(['config', 'commit.gpgsign', 'false'], work);
@@ -232,7 +261,7 @@ function runLandPr(
 }
 
 beforeEach(() => { setup(); });
-afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { rmTree(root); });
 
 describe('land-pr.sh push target', () => {
   it('pushes to the PR head branch, not the local branch name', () => {
@@ -271,6 +300,7 @@ describe('land-pr.sh push target', () => {
     // Someone pushes to the PR branch after the script read headRefOid.
     const other = path.join(root, 'other');
     git(['clone', '-q', path.join(root, 'remote.git'), other], root);
+    quietMaintenance(other);
     git(['config', 'user.email', 'o@example.com'], other);
     git(['config', 'user.name', 'Other'], other);
     git(['checkout', '-q', PR_BRANCH], other);

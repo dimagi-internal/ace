@@ -22,6 +22,33 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
+/**
+ * Turn off git's background auto-maintenance in a fixture repo (ace#2715).
+ * A push into a bare remote (and a commit in a work repo) spawns
+ * `git maintenance run --auto --quiet --detach`, which outlives the command
+ * and takes `<git-dir>/objects/maintenance.lock` — racing the teardown's
+ * `rmSync` into `ENOTEMPTY` on `objects/`. Config is per-repo, so it reaches
+ * every git the script under test runs against these repos.
+ */
+function quietMaintenance(repo: string) {
+  for (const kv of ['receive.autogc false', 'maintenance.auto false', 'gc.auto 0']) {
+    execSync(`git config ${kv}`, { cwd: repo });
+  }
+}
+
+/** Remove a fixture tree, retrying over a straggling writer (ENOTEMPTY/EBUSY). */
+function rmTree(dir: string) {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+/** A bare remote with background maintenance off. */
+function makeBareRemote(): string {
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
+  execSync('git init -q --bare', { cwd: remote });
+  quietMaintenance(remote);
+  return remote;
+}
+
 function makeFixtureRepo(version: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-bump-'));
 
@@ -66,6 +93,7 @@ function makeFixtureRepo(version: string): string {
   // Make it a git repo so `git rev-parse --show-toplevel` works.
   // No remote → origin fetch will silently fail and we fall back to local.
   execSync('git init -q', { cwd: dir });
+  quietMaintenance(dir);
   execSync('git config user.email test@example.com', { cwd: dir });
   execSync('git config user.name test', { cwd: dir });
   execSync('git add -A', { cwd: dir });
@@ -100,7 +128,7 @@ describe('scripts/version-bump.sh', () => {
 
   afterEach(() => {
     if (fixtureDir && fs.existsSync(fixtureDir)) {
-      fs.rmSync(fixtureDir, { recursive: true, force: true });
+      rmTree(fixtureDir);
     }
     fixtureDir = '';
   });
@@ -184,7 +212,7 @@ describe('scripts/version-bump.sh', () => {
       expect(out.trim().split('\n').pop(), `claim ${JSON.stringify(bad)} was honoured`).toBe(
         '0.10.15',
       );
-      fs.rmSync(fixtureDir, { recursive: true, force: true });
+      rmTree(fixtureDir);
       fixtureDir = '';
     }
   });
@@ -428,8 +456,7 @@ describe('scripts/version-bump.sh', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
 
     // Give the fixture a real `origin` with a `main` to rebase onto.
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
-    execSync('git init -q --bare', { cwd: remote });
+    const remote = makeBareRemote();
     execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
     execSync('git branch -M main', { cwd: fixtureDir });
     execSync('git push -q origin main', { cwd: fixtureDir });
@@ -465,7 +492,7 @@ describe('scripts/version-bump.sh', () => {
     ).trim();
     expect(dirty, `version files still dirty after --rebase-first:\n${dirty}`).toBe('');
 
-    fs.rmSync(remote, { recursive: true, force: true });
+    rmTree(remote);
   });
 
   it('--rebase-first auto-resolves a package-lock.json conflict instead of aborting (ace#1778)', () => {
@@ -527,8 +554,7 @@ describe('scripts/version-bump.sh', () => {
     setAll('0.10.14');
     execSync('git add -A && git commit -q -m lockfile', { cwd: fixtureDir });
 
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
-    execSync('git init -q --bare', { cwd: remote });
+    const remote = makeBareRemote();
     execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
     execSync('git branch -M main', { cwd: fixtureDir });
     execSync('git push -q origin main', { cwd: fixtureDir });
@@ -594,7 +620,7 @@ describe('scripts/version-bump.sh', () => {
       `expected a version above main's 0.10.99, got ${headVersion}`
     ).toBe(true);
 
-    fs.rmSync(remote, { recursive: true, force: true });
+    rmTree(remote);
   });
 
   it('--rebase-first never REWRITES origin/main\'s own tip when the branch has no unmerged commits (ace#1852)', () => {
@@ -612,8 +638,7 @@ describe('scripts/version-bump.sh', () => {
     // must still be reachable from HEAD afterwards.
     fixtureDir = makeFixtureRepo('0.10.14');
 
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
-    execSync('git init -q --bare', { cwd: remote });
+    const remote = makeBareRemote();
     execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
     execSync('git branch -M main', { cwd: fixtureDir });
     execSync('git push -q origin main', { cwd: fixtureDir });
@@ -684,6 +709,6 @@ describe('scripts/version-bump.sh', () => {
     ).trim();
     expect(dirty, `version files still dirty:\n${dirty}`).toBe('');
 
-    fs.rmSync(remote, { recursive: true, force: true });
+    rmTree(remote);
   });
 });
