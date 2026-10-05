@@ -963,6 +963,75 @@ what you want my opinion on. I can't follow. This is a lot of text."* and
 *"I'm lost. Be clear on exactly what questions you have, what the options
 are, and what you recommend."* Every one landed on a mid-run status update.
 
+### Ad-hoc stop-after-phase instructions
+
+A one-off operator ask like *"once the idea-to-design is done, stop and
+let me know"* is not a mode change, and relaunching the run under
+`review` to honor it is the wrong tool — `review` pauses at **every**
+phase checkpoint (§ Pause Points in reference), which is a bigger
+behavior change than the operator asked for. This is the gap a
+`canopy agent-review ace` pass flagged as a `strong_correction`
+(turn e0505ad2-80f4-49d1-a8ad-aa5d29bf9c61, 2026-10): Jonathan told a
+run exactly this and it kept going past Phase 1 because nothing short
+of switching modes could honor a one-off ask.
+
+**Recognize it.** Treat any mid-run operator message that names a
+specific phase (by ordinal, key, or a recognizable alias — "the PDD
+phase", "idea-to-design", "phase 3") and asks ACE to stop, pause, halt,
+or report once that phase finishes as a **one-shot run directive**,
+distinct from `mode`. Examples: "stop after phase 1", "once the Nova
+apps are built, pause there", "let me know when Connect setup is done
+and hold there."
+
+**Record it immediately — don't wait for the next boundary.** The
+moment you recognize the instruction, patch `run_state.yaml` with a new
+top-level block via `update_yaml_file` (`merge: 'deep'`):
+
+```yaml
+operator_stop_after_phase:
+  phase: <phase-key>        # the phases.<phase> key (e.g. idea-to-design), not the ordinal
+  requested_at: <ISO timestamp>
+  requested_by: <email, from git config user.email>
+  status: pending
+```
+
+Writing it now, not at the next fence, is what makes it survive a
+compaction or a harness restart between now and the boundary that fires
+it — same reasoning as "write an external identifier in the step that
+mints it" (orchestrator-reference.md § State Schema). Acknowledge
+receipt in one line ("Got it — stopping after Phase N (`<phase>`) and
+will report there.") and continue the current phase; do not re-derive
+the stop point from conversation history later.
+
+**If the named phase already completed** before the instruction
+arrived, there is no future fence call to catch it — honor it right
+now: stop before dispatching the next phase, report per the shape
+below, and write the directive `status: fired` in the same patch.
+
+**Wire it into the Phase boundary fence.** Once the existing
+classify/verify/products/validate branch resolves to "proceed" (§ Phase
+boundary fence), check `operator_stop_after_phase` from the already-read
+`run_state.yaml` before the step that dispatches `Agent(<next-phase>)`
+runs. If `status: pending` AND `phase` equals the phase that just
+completed: do **not** dispatch the next phase this turn; patch
+`operator_stop_after_phase.status` to `fired`; report per § Talking to
+the operator mid-run — lead with the fact that you stopped because he
+asked you to, name the phase and its verdict, and say what resumes it
+(`/ace:run <opp>/<run-id>` continues at the next `pending` phase per
+§ Resuming after a halt). See the exact insertion point in the fence's
+branch logic below.
+
+This runs in **every mode**. In `review` it is a no-op (the operator is
+already being asked at every boundary). In `auto` it is NOT the
+"ending a turn with a question" anti-pattern the mode otherwise bans —
+honoring an instruction already given is the same disposition as a
+`[BLOCKER]` halt, not a fresh question with nobody to answer it.
+
+**Absence is the default.** A run with no `operator_stop_after_phase`
+block takes the existing Turn N+2→N+3 path completely unchanged — this
+is additive only and must not alter behavior for any run that was never
+given this instruction.
+
 ### Why default mode looks like this
 
 See orchestrator-reference.md § Why default mode looks like this.
@@ -1882,7 +1951,14 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
              - classify='ok' AND verify.ok=true AND products.ok=true
                AND run_state.valid=true AND verify.decisions.ok is not
                false (the block is absent outside commcare/connect)
-                 → proceed to Turn N+3
+                 → check operator_stop_after_phase (§ Ad-hoc
+                   stop-after-phase instructions): if `status: pending`
+                   AND `phase` equals the phase that just completed,
+                   patch it to `status: fired`, do NOT dispatch
+                   Agent(<next-phase>), and report the stop instead —
+                   this is the one case Turn N+3 does not fire.
+                   Otherwise (absent, or naming a different phase)
+                   → proceed to Turn N+3 unchanged
              - verify.decisions.ok=false (build phase: a producer's build
                memo lists latitudes / ambiguities / rules and its skill
                wrote ZERO decision rows; failures[] names producer + path)

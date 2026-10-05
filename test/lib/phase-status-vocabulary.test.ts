@@ -202,6 +202,7 @@ describe('every `status: <value>` prescribed in agents/*.md is a legal enum valu
     'overridden', // decisions.yaml row status
     'ai-default', // decisions.yaml row status
     'human-decided', // decisions.yaml row status (write-boundary-stamped only, ace#2307)
+    'fired', // operator_stop_after_phase.status (run-level one-shot directive, not a phase/step status)
   ]);
 
   it('has no unlisted status word', () => {
