@@ -24,8 +24,22 @@ on:
   push:
     branches: [main]
 
+# Three jobs, run in PARALLEL, joined by `clean-install` at the bottom.
+#
+# Until 2026-10-04 this was one serial job: ~2m per run, 96s of it the unit
+# suite (~197s of test work across 661 files, squeezed onto one small runner).
+# Under the merge queue it runs TWICE per PR — once on the PR, once on the
+# merge group — so every merge cost ~5 minutes of wall clock for a suite that
+# runs in ~19s on a laptop. Sharding the suite four ways and running the
+# static checks beside it takes each run to roughly the slowest shard.
+#
+# `clean-install` is still the ONLY required check on main (classic branch
+# protection, context name `clean-install`), so the job of that name is now the
+# join. It runs with `if: always()` and fails unless every upstream job
+# SUCCEEDED: a required check that reports `skipped` would otherwise read as
+# passing, which is the silent-green shape this file exists to prevent.
 jobs:
-  clean-install:
+  static-checks:
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 (full history, all branches) is required by the
@@ -73,16 +87,6 @@ jobs:
       # package.json. tsc reports as "Cannot find module".
       - name: Type-check
         run: npx tsc --noEmit
-
-      # The unit suite. Added 2026-07-25 after this gap bit twice in one week:
-      # #917 (app-hq-settings registry rows) and the journey-learn.yaml
-      # manifest entry from #892 both landed RED on main, because the only
-      # gates were `npm ci` + `npm ls` + `tsc` — none of which run vitest.
-      # The suite is pure unit tests (no network, no device, no live OCS /
-      # Connect / labs; those are gated behind *_INTEGRATION env vars and
-      # stay excluded here), and completes in well under a minute.
-      - name: Unit tests
-        run: npx vitest run
 
       # Mechanical fence for 34 live-device-verified selector rows
       # (mcp/mobile/selectors/*.yaml). Previously only enforced by
@@ -153,3 +157,46 @@ jobs:
       - name: main actually advanced VERSION
         if: github.event_name == 'push'
         run: npx tsx scripts/check-version-unique.ts --post-merge
+
+  # The unit suite. Added 2026-07-25 after this gap bit twice in one week:
+  # #917 (app-hq-settings registry rows) and the journey-learn.yaml
+  # manifest entry from #892 both landed RED on main, because the only
+  # gates were `npm ci` + `npm ls` + `tsc` — none of which run vitest.
+  # The suite is pure unit tests (no network, no device, no live OCS /
+  # Connect / labs; those are gated behind *_INTEGRATION env vars and
+  # stay excluded here).
+  #
+  # Sharded four ways (vitest --shard splits by FILE). Four, not more: each
+  # shard pays ~10s of checkout + npm ci, and the slowest single file is ~24s,
+  # so past four the floor is that file, not the split.
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Unit tests (shard ${{ matrix.shard }}/4)
+        run: npx vitest run --shard=${{ matrix.shard }}/4
+
+  # The REQUIRED check. See the note above `jobs:`.
+  clean-install:
+    if: always()
+    needs: [static-checks, unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every upstream job succeeded
+        env:
+          STATIC: ${{ needs.static-checks.result }}
+          UNIT: ${{ needs.unit-tests.result }}
+        run: |
+          echo "static-checks=$STATIC unit-tests=$UNIT"
+          [ "$STATIC" = success ] && [ "$UNIT" = success ]
