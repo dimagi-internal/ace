@@ -49,6 +49,8 @@ import {
   STANDING_FABRICATION_DOMAINS,
   CONTACT_EXACTNESS_OBLIGATIONS,
   ANSWER_OBLIGATIONS,
+  SAFEGUARDING_DISCLOSURE_HEADING,
+  SAFEGUARDING_DISCLOSURE_CLAUSES,
 } from '../lib/standing-fabrication-domains.js';
 
 const USAGE = `Usage:
@@ -67,7 +69,11 @@ Audits a composed OCS system prompt for four things:
     number that was not retrieved verbatim for THIS answer, and
   - the escalation address (dimagi-internal/ace#2675): the ACE admin group
     address from config/agent.json \`email\` (or --escalation-address) must be
-    stated verbatim, as the one address the bot may give without retrieving it.
+    stated verbatim, as the one address the bot may give without retrieving it, and
+  - the "## Safeguarding disclosures" section (dimagi-internal/ace#2682): generic
+    safe-referral guidance the bot must always give (do not record it in the app,
+    tell the supervisor immediately, police / child-protection in immediate
+    danger, escalate) while still never inventing a reporting chain or number.
 
 Exit 0 = all four present (safe to publish).
 Exit 1 = a standing domain, a contact obligation, the retrieval-fallback
@@ -199,6 +205,12 @@ function main(argv: string[]): number {
               why: o.why,
             })),
           },
+          safeguarding_disclosures: {
+            ok: audit.safeguarding.ok,
+            section_present: audit.safeguarding.sectionPresent,
+            covered: audit.safeguarding.covered,
+            missing: audit.safeguarding.missing.map((c) => ({ id: c.id, label: c.label })),
+          },
           escalation_address: {
             address: escalationAddress,
             ok: audit.escalationAddress?.ok ?? false,
@@ -231,7 +243,9 @@ function main(argv: string[]): number {
           `present in "## ${ANTI_FABRICATION_HEADING}", all ` +
           `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present, ` +
           'the retrieval-fallback obligation is present, all ' +
-          `${ANSWER_OBLIGATIONS.length} answer obligation(s) are present, and the ` +
+          `${ANSWER_OBLIGATIONS.length} answer obligation(s) are present, the ` +
+          `"## ${SAFEGUARDING_DISCLOSURE_HEADING}" section carries all ` +
+          `${SAFEGUARDING_DISCLOSURE_CLAUSES.length} clauses, and the ` +
           `escalation address ${escalationAddress} is stated verbatim.\n`,
       );
     }
@@ -243,7 +257,7 @@ function main(argv: string[]): number {
     '\nDO NOT publish this prompt. Add the missing domain(s) to the ' +
       `"## ${ANTI_FABRICATION_HEADING}" section, the missing contact ` +
       'obligation(s), the retrieval-fallback obligation to the ' +
-      'escalation/contacts passage, the verbatim escalation address, and/or the missing answer obligation(s), per `skills/ocs-agent-setup/SKILL.md` ' +
+      'escalation/contacts passage, the verbatim escalation address, the safeguarding-disclosure section, and/or the missing answer obligation(s), per `skills/ocs-agent-setup/SKILL.md` ' +
       '§ Step 7, then re-run this audit.\n',
   );
   return 1;

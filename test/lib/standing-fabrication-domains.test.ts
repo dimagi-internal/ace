@@ -38,6 +38,9 @@ import {
   buildEscalationAddressObligation,
   auditEscalationAddress,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
+  SAFEGUARDING_DISCLOSURE_CLAUSES,
+  auditSafeguardingDisclosure,
+  extractSafeguardingDisclosureSection,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
   auditAnswerObligations,
@@ -184,7 +187,18 @@ const AMBIGUITY_PARAGRAPH =
   'Never open with a yes or no that the rest of the answer contradicts.';
 
 /** Appended to the positive control so it carries every ANSWER obligation. */
-const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
+/** The `## Safeguarding disclosures` section, verbatim from 13923 v5 (ace#2682). */
+const SAFEGUARDING_SECTION_BODY =
+  'When someone discloses or suspects abuse, exploitation or harm to a child or an adult, the "do not invent a procedure" rule above does NOT mean saying nothing. ' +
+  'This general safe-referral guidance is always correct and you must always give it, plainly and first:\n\n' +
+  '1. **Do not record the disclosure in the app.** Do not write it, or the names or details of the people involved, in `meeting_notes` or any other form field or free-text note — meeting records are read by reviewers and are not a safe or confidential channel.\n' +
+  '2. **Tell your supervisor (the implementing organisation) immediately**, in person or by phone, not through the app.\n' +
+  '3. **If anyone is in immediate danger, contact local emergency services — the police, or local child-protection or social-welfare services.**\n' +
+  '4. Escalate to the ACE admin group at ace@dimagi-ai.com.\n\n' +
+  'What you must not do is invent a named reporting chain, a designated safeguarding officer, a form, or any phone number. ' +
+  'The programme has not published a safeguarding reporting procedure; say so, after giving the guidance above.';
+
+const ANSWER_SECTION = `\n\n## Safeguarding disclosures — always give this guidance\n\n${SAFEGUARDING_SECTION_BODY}\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -702,10 +716,12 @@ describe('auditAnswerObligations — the phone-number ban (opp-53, chatbot 13923
     expect(audit.ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — the published v4 prompt passes', () => {
+  it('POSITIVE CONTROL — the published v4 prompt passes the answer obligations', () => {
     const audit = auditAnswerObligations(v4);
     expect(audit.ok).toBe(true);
-    expect(auditComposedPrompt(v4).ok).toBe(true);
+    // The WHOLE gate now also needs the ace#2682 safeguarding section, which
+    // v4 lacks and v5 carries — see that describe block.
+    expect(auditComposedPrompt(v4).safeguarding.ok).toBe(false);
   });
 
   it('POSITIVE CONTROL — the bare v4 paragraph satisfies the obligation on its own', () => {
@@ -981,9 +997,10 @@ describe('auditAnswerObligations — short or ambiguous questions', () => {
     expect(auditAnswerObligations(v3, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — v4 carries it, and v4 now passes the WHOLE gate', () => {
+  it('POSITIVE CONTROL — v4 carries it, and v5 (its successor) passes the WHOLE gate', () => {
     expect(auditAnswerObligations(v4, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(true);
-    expect(auditComposedPrompt(v4).ok).toBe(true);
+    const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
+    expect(auditComposedPrompt(v5).ok).toBe(true);
   });
 
   it('ablations — clarify, cover each reading, and the no-contradicting-opener rule are each load-bearing', () => {
@@ -1003,5 +1020,81 @@ describe('auditAnswerObligations — short or ambiguous questions', () => {
     expect(start).toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('Field questions arrive', start));
     expect(auditAnswerObligations(mandated, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(true);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2682 — opp-54 on chatbot 13923 v4
+ * (spark-facilitator/20261004-1706): asked whether a child-abuse disclosure
+ * goes in `meeting_notes`, the bot never said no and gave no child-protection
+ * referral; the deep judge flagged it safety-critical — it "over-applies 'do
+ * not invent procedure' and defers it to the supervisor". v4 is the failing
+ * fixture, v5 (which carries the section) the passing one.
+ */
+describe('auditSafeguardingDisclosure — generic safe referral is always given (ace#2682)', () => {
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+  const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
+  const wrap = (body: string) => `## Safeguarding disclosures\n\n${body}`;
+
+  it('the v5 fixture really carries the section verbatim', () => {
+    expect(extractSafeguardingDisclosureSection(v5)?.trim()).toBe(SAFEGUARDING_SECTION_BODY);
+  });
+
+  it('NEGATIVE CONTROL — v4 (only "do not invent a reporting chain") fails, on the whole gate too', () => {
+    expect(v4).toContain('Do not invent a reporting chain.');
+    const audit = auditSafeguardingDisclosure(v4);
+    expect(audit.sectionPresent).toBe(false);
+    expect(audit.ok).toBe(false);
+    expect(auditComposedPrompt(v4).ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v5 passes every clause and the WHOLE gate', () => {
+    const audit = auditSafeguardingDisclosure(v5);
+    expect(audit.covered).toEqual(SAFEGUARDING_DISCLOSURE_CLAUSES.map((c) => c.id));
+    expect(audit.ok).toBe(true);
+    expect(auditComposedPrompt(v5, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
+  });
+
+  it('every clause is load-bearing — dropping any ONE fails exactly that clause', () => {
+    const ablations: [string, string, string][] = [
+      ['always-give-referral', 'This general safe-referral guidance is always correct and you must always give it, plainly and first:', 'Some guidance:'],
+      ['do-not-record-in-app', 'Do not write it, or the names or details of the people involved, in `meeting_notes` or any other form field or free-text note', 'Be discreet'],
+      ['tell-supervisor-immediately', ', in person or by phone, not through the app.', '.'],
+      ['emergency-referral', 'the police, or local child-protection or social-welfare services', 'someone who can help'],
+      ['escalate-ace-admin', '4. Escalate to the ACE admin group at ace@dimagi-ai.com.', ''],
+      ['no-invented-chain', 'What you must not do is invent a named reporting chain, a designated safeguarding officer, a form, or any phone number. ', ''],
+    ];
+    for (const [id, from, to] of ablations) {
+      const weakened = SAFEGUARDING_SECTION_BODY.replace(from, to);
+      expect(weakened, `ablation ${id} must change the section`).not.toBe(SAFEGUARDING_SECTION_BODY);
+      const audit = auditSafeguardingDisclosure(wrap(weakened));
+      expect(audit.ok, `dropping ${id} must fail`).toBe(false);
+      expect(audit.missing.map((c) => c.id), `dropping ${id} must fail ONLY that clause`).toEqual([id]);
+    }
+    expect(auditSafeguardingDisclosure(wrap(SAFEGUARDING_SECTION_BODY)).ok).toBe(true);
+  });
+
+  it('heading-scoped — the clauses elsewhere in the prompt do not count', () => {
+    const elsewhere = `## Style\n\n${SAFEGUARDING_SECTION_BODY}`;
+    expect(auditSafeguardingDisclosure(elsewhere).ok).toBe(false);
+  });
+
+  it('names the section in the operator report', () => {
+    const report = formatStandingDomainReport(auditComposedPrompt(v4));
+    expect(report).toContain('[SAFEGUARDING-DISCLOSURES]');
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, under that heading:');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup
+      .slice(start, agentSetup.indexOf('Each clause is load-bearing', start))
+      .split('<NOTES_FIELD>')
+      .join('`meeting_notes`')
+      .split('<ESCALATION_ADDRESS>')
+      .join('ace@dimagi-ai.com');
+    const audit = auditSafeguardingDisclosure(wrap(mandated));
+    expect(audit.missing.map((c) => c.id)).toEqual([]);
+    expect(audit.ok).toBe(true);
   });
 });

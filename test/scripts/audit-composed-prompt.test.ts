@@ -130,6 +130,12 @@ const PROMPT_CONTACTS_COMPLETE = PROMPT_STANDING_ONLY.replace(
  * the ambulance line is 998".
  */
 const ANSWER_SECTION =
+  '\n\n## Safeguarding disclosures\n\nThis general safe-referral guidance is always correct and you must always give it:\n\n' +
+  '1. Do not record the disclosure in the app. Do not write it in the notes or any other form field.\n' +
+  '2. Tell your supervisor immediately, in person or by phone, not through the app.\n' +
+  '3. If anyone is in immediate danger, contact the police or local child-protection services.\n' +
+  '4. Escalate to the ACE admin group.\n\n' +
+  'What you must not do is invent a named reporting chain or any phone number.' +
   '\n\n## Emergencies\n\n**Phone numbers — a hard rule.** Never write any phone number, ' +
   'emergency number, ambulance, police or fire line, hotline or short code unless that ' +
   'exact number appears verbatim in what you retrieved for this answer. This holds even ' +
@@ -465,5 +471,44 @@ describe('scripts/audit-composed-prompt.ts — the escalation address (ace#2675)
   it('a malformed --escalation-address is a harness error (exit 2), never a verdict', () => {
     expect(run([V5, '--escalation-address']).code).toBe(2);
     expect(run([V5, '--escalation-address', 'not-an-address']).code).toBe(2);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2682 — opp-54 on chatbot 13923 v4: a child-abuse
+ * disclosure question got no "do not record it in meeting_notes" and no
+ * child-protection referral. The real published v4/v5 prompts are the controls.
+ */
+describe('scripts/audit-composed-prompt.ts — the safeguarding-disclosure section (ace#2682)', () => {
+  const V4 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v4.md');
+  const V5 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v5.md');
+
+  it('NEGATIVE CONTROL: v4 exits 1 naming the missing section', () => {
+    const { code, stderr } = run([V4]);
+    expect(code).toBe(1);
+    expect(stderr).toContain('[SAFEGUARDING-DISCLOSURES]');
+  });
+
+  it('POSITIVE CONTROL: v5 exits 0', () => {
+    expect(run([V5]).code).toBe(0);
+  });
+
+  it('NON-INERTNESS: v5 with the section removed exits 1', () => {
+    const v5 = readFileSync(V5, 'utf8');
+    const start = v5.indexOf('## Safeguarding disclosures');
+    const end = v5.indexOf('## Tagging');
+    expect(start).toBeGreaterThan(-1);
+    const stripped = v5.slice(0, start) + v5.slice(end);
+    expect(runOn(stripped).code).toBe(1);
+  });
+
+  it('--json carries a distinct safeguarding_disclosures verdict', () => {
+    const { stdout } = run([V4, '--json']);
+    const parsed = JSON.parse(stdout) as {
+      safeguarding_disclosures: { ok: boolean; section_present: boolean; missing: { id: string }[] };
+    };
+    expect(parsed.safeguarding_disclosures.ok).toBe(false);
+    expect(parsed.safeguarding_disclosures.section_present).toBe(false);
+    expect(parsed.safeguarding_disclosures.missing.length).toBeGreaterThan(0);
   });
 });
