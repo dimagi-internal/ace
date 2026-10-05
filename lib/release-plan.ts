@@ -185,6 +185,22 @@ export interface PlannedEmail {
   body: string;
 }
 
+/**
+ * A readiness blocker the operator released past (`--waive <id>=<reason>`,
+ * ace#2707). Recorded on the plan — so in its hash — with the failing finding's
+ * `detail`, so the grade stays visible wherever the plan is shown.
+ */
+export interface PlanWaiver {
+  id: string;
+  reason: string;
+  /** The operator's git email. */
+  by: string;
+  /** When the validation that applied it ran. */
+  at: string;
+  /** The waived finding's detail — the failing grade, kept visible. */
+  detail: string;
+}
+
 export interface ReleasePlan {
   schema_version: typeof RELEASE_PLAN_SCHEMA_VERSION;
   workspace: string;
@@ -197,6 +213,8 @@ export interface ReleasePlan {
   actions: ReleaseAction[];
   not_granted: NotGranted[];
   emails: PlannedEmail[];
+  /** Readiness blockers waived by the operator (eval quality only). Absent on a pre-waiver plan = none. */
+  waivers?: PlanWaiver[];
 }
 
 /** A plan-building problem — becomes a release-readiness finding. */
@@ -574,6 +592,13 @@ export function renderPlan(plan: ReleasePlan): string {
   const fwd = plan.actions.find((x) => x.kind === 'forward_source');
   out.push('');
   out.push(fwd ? `Forward: ${fwd.target}'s public summary will redirect here${fwd.cross_workspace ? ' — ANOTHER WORKSPACE\'S PAGE (override given)' : ''}.` : 'Forward: no.');
+  out.push('');
+  if (plan.waivers?.length) {
+    out.push('WAIVED readiness blockers — still failing, released anyway on the operator\'s say-so:');
+    for (const w of plan.waivers) out.push(`- ${w.id}: ${w.detail}\n  waived by ${w.by} at ${w.at} — "${w.reason}"`);
+  } else {
+    out.push('Waived readiness blockers: none.');
+  }
   out.push('');
   out.push('Steps, in order:');
   for (const s of plan.actions) out.push(`${s.step}. ${s.kind} ${s.email ? `${s.email} → ` : ''}${s.target}${s.role ? ` (${s.role})` : ''}${s.cc?.length ? ` cc ${s.cc.join(', ')}` : ''}`);

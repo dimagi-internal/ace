@@ -32,7 +32,7 @@ import { parseDecisionsYaml } from './decisions-schema.js';
 import type { DecisionOverrideRow } from './decision-overrides.js';
 import { requiredBeforeBlockers } from './open-asks.js';
 import { APP_RELEASE_SUMMARY, parseAppReleaseSummary, releaseRecordFor, runStateRelease, type ReleaseRecord } from './app-release-record.js';
-import { ccKey, planHash, reviewersKey, type PlanProblem, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
+import { ccKey, planHash, reviewersKey, type PlanProblem, type PlanWaiver, type ReleaseOptions, type ReleasePlan, type Reviewer } from './release-plan.js';
 
 export const RELEASE_READINESS_SCHEMA_VERSION = 2 as const;
 export const RELEASE_VERDICT_KIND = 'release-readiness' as const;
@@ -75,6 +75,55 @@ export interface ReleaseFinding {
   action?: string;
   /** ids of findings folded into this one because they share its root cause. */
   merged?: string[];
+  /**
+   * The operator released past this blocker (`--waive <id>=<reason>`, ace#2707).
+   * It stays in `blockers` — the failing grade stays visible — but does not
+   * count against READY.
+   */
+  waived?: { by: string; at: string; reason: string };
+}
+
+// ---------------------------------------------------------------------------
+// Waivers (ace#2707)
+// ---------------------------------------------------------------------------
+//
+// Operator decision (Jonathan, 2026-10-05, the spark-facilitator release):
+// release the work order as a DRAFT although pdd-to-work-order-eval fails —
+// three independent judges 7.15–7.65, not converging — with the reason
+// recorded and the failing grade still visible.
+//
+// Only an eval-QUALITY blocker is a judgement call an operator can own. Every
+// other area is a fact about what a reviewer will meet (sharing,
+// confidentiality, links, HQ, reviewers, required-before asks, plain language,
+// Connect, apps …) and is never waivable.
+
+/** The only areas whose blockers an operator may waive. */
+export const WAIVABLE_AREAS: ReadonlySet<ReleaseArea> = new Set<ReleaseArea>(['eval']);
+
+export interface WaiverRequest {
+  id: string;
+  reason: string;
+}
+
+/** `--waive <blocker-id>=<reason>` (repeatable) → requests, sorted by id. Throws on a malformed one. */
+export function parseWaivers(specs: readonly string[]): WaiverRequest[] {
+  const byId = new Map<string, string>();
+  for (const raw of specs) {
+    const i = raw.indexOf('=');
+    if (i < 0) throw new Error(`--waive takes <blocker-id>=<reason>, not "${raw}"`);
+    const id = raw.slice(0, i).trim();
+    const reason = raw.slice(i + 1).trim();
+    if (!id) throw new Error(`--waive "${raw}" names no blocker id`);
+    if (!reason) throw new Error(`--waive ${id} gives no reason — a waiver must say why`);
+    if (byId.has(id)) throw new Error(`--waive ${id} is given twice`);
+    byId.set(id, reason);
+  }
+  return [...byId].map(([id, reason]) => ({ id, reason })).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** The comparison form: id + reason, order-free. `by` / `at` are records, not part of the request. */
+export function waiversKey(ws: ReadonlyArray<{ id: string; reason: string }> | undefined | null): string {
+  return [...(ws ?? [])].map((w) => `${w.id.trim()}=${w.reason.trim()}`).sort().join('\n');
 }
 
 /** One file in the run folder, as the inventory reads it. */
@@ -657,7 +706,8 @@ export interface ReleaseVerdict {
   verdict: 'READY' | 'NOT_READY';
   /** True when the check ran read-only (no gate re-runs, no writes) — informational, never releasable. */
   read_only: boolean;
-  counts: { blockers: number; warnings: number };
+  /** `blockers` counts only un-waived blockers; `waived` the blockers released past (ace#2707). */
+  counts: { blockers: number; warnings: number; waived?: number };
   /** Areas the check covered, each with its blocker / warning counts. */
   areas: Record<ReleaseArea, { blockers: number; warnings: number }>;
   blockers: ReleaseFinding[];
@@ -666,6 +716,8 @@ export interface ReleaseVerdict {
   reviewers: Reviewer[];
   /** Dimagi staff copied on every release email — granted nothing (ace#2706). */
   cc: string[];
+  /** The waivers applied (each also marks its blocker `waived`). */
+  waivers?: PlanWaiver[];
   /** `runStateHash` of run_state.yaml as validated — the release refuses a different one. */
   run_state_hash: string;
   /** `planHash(release_plan)`, or null when there is no plan. */
@@ -702,6 +754,10 @@ export function buildReleaseVerdict(input: {
   cc?: readonly string[];
   runStateHash?: string;
   plan?: ReleasePlan | null;
+  /** `--waive` requests (`parseWaivers`). */
+  waivers?: readonly WaiverRequest[];
+  /** The operator's git email — who waived. Required when there are waivers. */
+  waivedBy?: string;
 }): ReleaseVerdict {
   const seen = new Set<string>();
   const deduped = input.findings.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
@@ -711,15 +767,44 @@ export function buildReleaseVerdict(input: {
     ...f,
     ...(f.summary && f.action ? {} : plainFinding(f, { workspace: input.workspace })),
   }));
+  // Waivers: mark the named eval blocker; refuse anything else, loudly.
+  const applied: PlanWaiver[] = [];
+  const by = (input.waivedBy ?? '').trim().toLowerCase();
+  for (const w of input.waivers ?? []) {
+    const f = unique.find((x) => x.id === w.id && x.severity === 'blocker');
+    const refuse = (id: string, detail: string, summary: string, action: string) =>
+      unique.push({ id, area: 'release-plan', severity: 'blocker', owner: 'validate-release-readiness', detail, fix: `drop --waive ${w.id}`, summary, action });
+    if (!f) {
+      refuse(`waiver-unmatched:${w.id}`,
+        `--waive ${w.id} names no blocker in this validation (blocker ids are in the verdict's \`blockers[].id\`)`,
+        `A waiver was given for "${w.id}", which is not a blocker of this run.`,
+        'Check the blocker id against the report, or drop the waiver.');
+    } else if (!WAIVABLE_AREAS.has(f.area)) {
+      refuse(`waiver-refused:${w.id}`,
+        `--waive ${w.id} refused: it is an area ${f.area} blocker, and only eval-quality blockers (area ${[...WAIVABLE_AREAS].join(', ')}) can be waived`,
+        `"${w.id}" cannot be waived: it is about what a reviewer will actually meet, not a quality grade.`,
+        'Fix it, then validate again.');
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(by)) {
+      refuse(`waiver-unattributed:${w.id}`,
+        `--waive ${w.id} has no operator email to record as \`waived.by\` (the git user.email)`,
+        'A waiver must record who gave it.',
+        'Set your git user.email, then validate again.');
+    } else {
+      f.waived = { by, at: input.checkedAt, reason: w.reason };
+      applied.push({ id: w.id, reason: w.reason, by, at: input.checkedAt, detail: f.detail });
+    }
+  }
+  applied.sort((a, b) => a.id.localeCompare(b.id));
   const blockers = unique.filter((f) => f.severity === 'blocker');
+  const open = blockers.filter((f) => !f.waived);
   const warnings = unique.filter((f) => f.severity === 'warning');
   const areas = Object.fromEntries(
-    AREAS.map((a) => [a, { blockers: blockers.filter((f) => f.area === a).length, warnings: warnings.filter((f) => f.area === a).length }]),
+    AREAS.map((a) => [a, { blockers: open.filter((f) => f.area === a).length, warnings: warnings.filter((f) => f.area === a).length }]),
   ) as ReleaseVerdict['areas'];
   const reviewers = [...(input.reviewers ?? [])];
-  // No reviewers → no plan → never READY, whatever else passed.
-  const ready = blockers.length === 0 && reviewers.length > 0 && !!input.plan;
-  const plan = ready ? input.plan! : null;
+  // No reviewers → no plan → never READY, whatever else passed. A waived blocker does not count.
+  const ready = open.length === 0 && reviewers.length > 0 && !!input.plan;
+  const plan = ready ? (applied.length ? { ...input.plan!, waivers: applied } : input.plan!) : null;
   return {
     schema_version: RELEASE_READINESS_SCHEMA_VERSION,
     kind: RELEASE_VERDICT_KIND,
@@ -730,12 +815,14 @@ export function buildReleaseVerdict(input: {
     run_last_write: runLastWrite(input.files),
     verdict: ready ? 'READY' : 'NOT_READY',
     read_only: !!input.readOnly,
-    counts: { blockers: blockers.length, warnings: warnings.length },
+    // `waived` / `waivers` only when there are any: a run with no waiver keeps the pre-#2707 shape.
+    counts: { blockers: open.length, warnings: warnings.length, ...(applied.length ? { waived: applied.length } : {}) },
     areas,
     blockers,
     warnings,
     reviewers,
     cc: [...(input.cc ?? [])],
+    ...(applied.length ? { waivers: applied } : {}),
     run_state_hash: input.runStateHash ?? '',
     plan_hash: plan ? planHash(plan) : null,
     release_plan: plan,
@@ -753,6 +840,8 @@ export interface ReleaseRequest {
   reviewers: readonly Reviewer[];
   /** Dimagi staff to copy on the emails (`--cc`) — compared exactly, like reviewers (ace#2706). */
   cc?: readonly string[];
+  /** `--waive` requests — compared exactly (id + reason) with the plan's waivers (ace#2707). */
+  waivers?: readonly WaiverRequest[];
   options: ReleaseOptions;
 }
 
@@ -777,6 +866,7 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
   if (verdict.read_only) return { ok: false, reason: `the latest validation was a read-only dry run — ${again}` };
   if (verdict.verdict !== 'READY') {
     const list = (verdict.blockers ?? [])
+      .filter((b) => !b.waived)
       .map((b) =>
         b.summary
           ? `- ${b.summary} → ${b.action ?? b.fix}\n    (${b.owner}: ${b.detail} → ${String(b.fix).replace(/\n/g, '\n    ')})`
@@ -803,6 +893,12 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
   if (wantCc !== haveCc) {
     return { ok: false, reason: `the cc requested (${wantCc || 'none'}) is not the cc validated (${haveCc || 'none'}) — ${again}` };
   }
+  const wantW = waiversKey(current.waivers);
+  const haveW = waiversKey(plan.waivers);
+  if (wantW !== haveW) {
+    const show = (k: string) => (k ? k.replace(/\n/g, '; ') : 'none');
+    return { ok: false, reason: `the waivers requested (${show(wantW)}) are not the waivers validated (${show(haveW)}) — ${again}` };
+  }
   for (const k of ['forward_source', 'allow_cross_workspace_forward', 'allow_shared_connect'] as const) {
     if (!!current.options[k] !== !!plan.options?.[k]) {
       return { ok: false, reason: `${k.replace(/_/g, '-')} is ${current.options[k] ? 'on' : 'off'} now but was ${plan.options?.[k] ? 'on' : 'off'} when validated — ${again}` };
@@ -823,7 +919,7 @@ export function renderReleaseReport(v: ReleaseVerdict, planText?: string): strin
   const lines: string[] = [];
   lines.push(`# Release readiness — ${v.opp} / ${v.run_id}`);
   lines.push('');
-  lines.push(`**${v.verdict === 'READY' ? 'READY to release' : 'NOT READY to release'}** — ${v.counts.blockers} blocker(s), ${v.counts.warnings} warning(s). Validated ${v.checked_at} in workspace \`${v.workspace}\`${v.read_only ? ' (read-only dry run — not releasable as recorded)' : ''}.`);
+  lines.push(`**${v.verdict === 'READY' ? 'READY to release' : 'NOT READY to release'}** — ${v.counts.blockers} blocker(s)${v.counts.waived ? `, ${v.counts.waived} waived` : ''}, ${v.counts.warnings} warning(s). Validated ${v.checked_at} in workspace \`${v.workspace}\`${v.read_only ? ' (read-only dry run — not releasable as recorded)' : ''}.`);
   lines.push('');
   lines.push(`Reviewers: ${v.reviewers?.length ? v.reviewers.map((r) => `${r.email} (${r.role})`).join(', ') : 'none named — a run cannot be READY without them'}.`);
   if (v.cc?.length) lines.push(`Copied on every email (Dimagi staff, no access granted): ${v.cc.join(', ')}.`);
@@ -831,7 +927,17 @@ export function renderReleaseReport(v: ReleaseVerdict, planText?: string): strin
   lines.push('| Area | Blockers | Warnings |');
   lines.push('|---|---|---|');
   for (const [a, c] of Object.entries(v.areas)) lines.push(`| ${a} | ${c.blockers} | ${c.warnings} |`);
-  for (const [title, list] of [['Blockers — must fix before release', v.blockers], ['Warnings — should fix', v.warnings]] as const) {
+  const waived = v.blockers.filter((f) => f.waived);
+  if (waived.length) {
+    lines.push('');
+    lines.push('## Waived by the operator — still failing, released anyway');
+    lines.push('');
+    for (const f of waived) {
+      lines.push(`- **${f.id}** — ${f.detail}`);
+      lines.push(`  - *Waived by* ${f.waived!.by} *at* ${f.waived!.at}: "${f.waived!.reason}"`);
+    }
+  }
+  for (const [title, list] of [['Blockers — must fix before release', v.blockers.filter((f) => !f.waived)], ['Warnings — should fix', v.warnings]] as const) {
     lines.push('');
     lines.push(`## ${title}`);
     lines.push('');
