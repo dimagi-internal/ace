@@ -552,7 +552,7 @@ Apply `plan.json`, then re-run the command — `changes: 0` is the read-back:
   `reembed_screenshots: true` must have its screenshots re-embedded next:
   `scripts/embed-doc-screenshots.ts <fileId> --screenshots <id>` once per
   `plan.frames.preview_folders` entry, plus the folders
-  `app-screenshot-capture_manifest.yaml` names under `drive_folders`.
+  `app-screenshot-capture_manifest.yaml` names (`drive_folders.screenshots`).
 - `run_state` → `update_yaml_file(fileId, localFilePath, merge: "deep")`;
   each changed phase key is sent whole, arrays included.
 
