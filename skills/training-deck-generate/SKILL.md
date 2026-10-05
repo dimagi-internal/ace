@@ -293,7 +293,10 @@ screenshot-blocked run cannot lose it.
    - **`evaluation`** module: checklist slide from PDD acceptance
      criteria, timeline-to-go-live slide, "what happens next" framing
    - **`resources`** module: include `_common/resources.yaml`, replace
-     `{{LLO_CONTACT}}` with "your LLO manager", add OCS widget URL
+     `{{LLO_CONTACT}}` with the coordinator's name when `run_state.yaml`
+     already carries one, otherwise with "named by your implementing organisation at onboarding" (no LLO
+     contact exists before Phase 9 — a value like "your LLO manager" renders
+     as "Your coordinator: your LLO manager", ace#2658), add OCS widget URL
      from `ocs-setup_widget-handoff.md` if available
 
 8. **Resolve `ref:` module references** via `resolveModuleRefs()` from
