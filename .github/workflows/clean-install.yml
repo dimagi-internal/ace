@@ -38,6 +38,22 @@ on:
 # join. It runs with `if: always()` and fails unless every upstream job
 # SUCCEEDED: a required check that reports `skipped` would otherwise read as
 # passing, which is the silent-green shape this file exists to prevent.
+#
+# ## ONE full run per PR, not two (2026-10-04, operator decision)
+#
+# Under the merge queue the PR run gates nothing the queue run does not
+# re-check against main as it stands NOW, so on `pull_request` the heavy work
+# (`tsc` and the unit shards) is SKIPPED and only the fast static steps run.
+# The full suite runs once, on `merge_group`, and again on `push` to main as
+# the post-merge backstop. Cost: a broken PR goes red ~1 minute later, in the
+# queue, instead of on the PR.
+#
+# The PR run is not dropped entirely, because of one assertion only it can
+# make: the open-PR VERSION claim (PR_NUMBER is empty on merge_group). The
+# queue builds up to 5 groups speculatively (`max_entries_to_build: 5`), so two
+# PRs that both bump 1099 -> 1100 can each build against a main still at 1099
+# and both pass the queue's origin/main assertion. The claim check is what
+# rejects the second one.
 jobs:
   static-checks:
     runs-on: ubuntu-latest
@@ -86,6 +102,7 @@ jobs:
       # bug class, where code references a package that never made it into
       # package.json. tsc reports as "Cannot find module".
       - name: Type-check
+        if: github.event_name != 'pull_request'
         run: npx tsc --noEmit
 
       # Mechanical fence for 34 live-device-verified selector rows
@@ -170,6 +187,8 @@ jobs:
   # shard pays ~10s of checkout + npm ci, and the slowest single file is ~24s,
   # so past four the floor is that file, not the split.
   unit-tests:
+    # Skipped on the PR run; see "ONE full run per PR" above.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -197,6 +216,13 @@ jobs:
         env:
           STATIC: ${{ needs.static-checks.result }}
           UNIT: ${{ needs.unit-tests.result }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "static-checks=$STATIC unit-tests=$UNIT"
-          [ "$STATIC" = success ] && [ "$UNIT" = success ]
+          echo "event=$EVENT static-checks=$STATIC unit-tests=$UNIT"
+          [ "$STATIC" = success ] || exit 1
+          # unit-tests is skipped BY DESIGN on pull_request, and only there.
+          if [ "$EVENT" = pull_request ]; then
+            [ "$UNIT" = skipped ] || [ "$UNIT" = success ]
+          else
+            [ "$UNIT" = success ]
+          fi
