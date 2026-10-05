@@ -81,7 +81,9 @@ reason. Re-derive the list as well: walk each journey's
 `structural_pass_criteria` and check that each one is either graded from a
 screenshot or on the NOT REACHED list. An ungraded criterion missing from
 that list is a `[WARN]` of its own, owner `HARNESS`. For each journey with
-one or more NOT REACHED criteria:
+one or more NOT REACHED criteria (`reconcileNotReached` and
+`capJourneyCompletion` in `lib/criterion-reachability.ts` are the
+executable form of these rules; `unaccounted` is the HARNESS WARN list):
 - List them under that journey's `per_item[].not_reached` as
   `{criterion, reason}`, quoting the reason verbatim.
 - Score `journey_completion` **at most 2 (warn)**. The journey's walked
