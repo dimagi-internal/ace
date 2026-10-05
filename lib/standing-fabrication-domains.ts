@@ -580,11 +580,32 @@ export const NO_RETRIEVAL_NARRATION_OBLIGATION: AnswerObligation = {
     'returned...", opp-27). Retrieval is plumbing; the reader sees only the answer.',
 };
 
+/**
+ * Never quote internal identifiers (spark-facilitator/20261004-1706, chatbot
+ * 13923 v3). The ace#1891 rule names files, documents, collections and config
+ * keys; it did not reach the ids ACE's design artifacts carry, and the bot
+ * quoted decision ids to field readers on opp-2, opp-11
+ * (`trial-sample-exclusion`, `rct-sample-overlap`) and opp-38
+ * (`connect-markers-in-sparks-own-app`).
+ */
+export const NO_INTERNAL_IDS_OBLIGATION: AnswerObligation = {
+  id: 'no-internal-identifiers',
+  label:
+    'Never quote internal identifiers (decision ids, residual ids, slug-style labels) to the reader; say the decision in plain words',
+  pattern:
+    /(?=.*\b(?:never|do not)\b[^.]{0,40}\binternal (?:identifiers|ids)\b)(?=.*\bdecision ids?\b)(?=.*\bplain (?:words|language)\b)/i,
+  why:
+    'Chatbot 13923 v3 quoted decision ids (`trial-sample-exclusion`, ' +
+    '`rct-sample-overlap`, `connect-markers-in-sparks-own-app`) to field readers ' +
+    'on opp-2, opp-11 and opp-38; the ace#1891 file/config rule did not cover them.',
+};
+
 /** Every answer obligation, in report order. */
 export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [
   PHONE_NUMBER_OBLIGATION,
   ESCALATE_WITH_ADDRESS_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
+  NO_INTERNAL_IDS_OBLIGATION,
 ];
 
 export interface AnswerObligationAudit {

@@ -132,7 +132,8 @@ const ANSWER_SECTION =
   'a caveat such as "or whatever works locally". Say instead: "call your local emergency ' +
   'services or get the person to the nearest health facility, and tell your supervisor."' +
   "\n\n## Escalating\n\nWhenever an answer escalates or names a contact, search the knowledge base for the ACE admin group's contact before you write the answer — when escalation is warranted, the reader should leave with the actual address." +
-  '\n\nNever describe your own searching, retrieving or checking to the reader. The reader sees only the answer.';
+  '\n\nNever describe your own searching, retrieving or checking to the reader. The reader sees only the answer.' +
+  '\n\nNever quote internal identifiers to the reader: decision ids, residual ids or slug-style labels. Say what the decision is in plain words instead.';
 
 /** Publishable: everything above plus every answer obligation. */
 const PROMPT_FIXED = PROMPT_CONTACTS_COMPLETE + ANSWER_SECTION;
