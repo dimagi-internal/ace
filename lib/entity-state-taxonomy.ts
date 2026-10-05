@@ -213,6 +213,29 @@ export interface TaxonomyDiff {
   repartitioned: { value: string; declared: number[]; built: number[] }[];
 }
 
+/**
+ * A `Step <n>: ` / `Step <n> - ` / `Step <n>. ` display prefix (ace#2646).
+ * PDDs prescribe it as the on-screen format for per-step states, so the label
+ * a worker sees can carry it while the PDD's taxonomy names the bare step.
+ */
+const STEP_PREFIX = /^step\s+(\d+)\s*[:.\-–—)]\s*(?=\S)/i;
+
+/**
+ * Strip a `Step <n>` prefix only when <n> is THIS state's own ordinal — its
+ * value, or its single declared step. The prefix then restates what the value
+ * already says and cannot be a relabel; a prefix naming a DIFFERENT step is a
+ * real defect and is left in place so the comparison still fails.
+ */
+function stripOwnOrdinal(label: string, decl: DeclaredState): string {
+  const m = normaliseLabel(label).match(STEP_PREFIX);
+  if (!m) return normaliseLabel(label);
+  const n = Number(m[1]);
+  const own =
+    (/^\d+$/.test(decl.value.trim()) && Number(decl.value) === n) ||
+    (decl.steps.length === 1 && decl.steps[0] === n);
+  return own ? normaliseLabel(label).slice(m[0].length) : normaliseLabel(label);
+}
+
 function sameSteps(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
   const x = [...a].sort((p, q) => p - q);
@@ -243,7 +266,7 @@ export function diffStateTaxonomy(input: {
   for (const [value, decl] of declaredBy) {
     const built = builtBy.get(value);
     if (!built) continue;
-    if (normaliseLabel(decl.label) !== normaliseLabel(built.label)) {
+    if (stripOwnOrdinal(decl.label, decl) !== stripOwnOrdinal(built.label, decl)) {
       relabelled.push({ value, declared: decl.label, built: built.label });
     }
     const builtSteps = built.steps ?? [];
