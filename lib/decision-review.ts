@@ -414,6 +414,24 @@ export function humanDate(iso: string): string {
 }
 
 /**
+ * Words for the closed rule-row `options` labels whose text is itself jargon
+ * (`skills/connect-opp-setup/SKILL.md` § Every verification rule … is a
+ * decision row). The skill MANDATES these labels as `ai-default`, and the
+ * plain-language gate requires `plain_value` whenever `ai-default` is jargon —
+ * so without this a compliant producer failed the gate on every rule placed on
+ * Connect form-field rules or in the app (ace#2654, observed on
+ * spark-facilitator/20261004-1706: 9 of 12 rule rows). The write boundary
+ * (`stampRow`) stamps these; a producer's own `plain_value` still wins.
+ * The other labels (`Connect submission window`, `Connect payment unit limit`,
+ * `Not configurable on Connect — …`) already read plainly.
+ */
+export const RULE_ENFORCEMENT_PLAIN_VALUE: Readonly<Record<string, string>> = {
+  'Connect form_field_rules': 'A Connect payment rule on the submitted form',
+  'Connect deliver_unit_checks': 'A Connect check on each delivery',
+  'CCZ constraint': "A check in the app's form",
+};
+
+/**
  * `ai-default` as a reader sees it: `7500` → `7,500 MWK` (currency from the
  * row's own question/source when it names one), `3276000 MWK` → `3,276,000
  * MWK`, `2026-11-02 to 2027-02-26` → `2 November 2026 to 26 February 2027`.
@@ -421,6 +439,8 @@ export function humanDate(iso: string): string {
  */
 export function plainValueFor(value: string, context = ''): string | null {
   const v = value.trim();
+  const ruleLabel = RULE_ENFORCEMENT_PLAIN_VALUE[v];
+  if (ruleLabel) return ruleLabel;
   let out = v;
   const bare = /^(\d{4,})$/.exec(v);
   const withCur = /^(\d{4,})\s+([A-Z]{3})$/.exec(v);
