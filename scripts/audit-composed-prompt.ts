@@ -41,7 +41,7 @@
  * governs.
  */
 import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   auditComposedPrompt,
   formatStandingDomainReport,
@@ -52,8 +52,8 @@ import {
 } from '../lib/standing-fabrication-domains.js';
 
 const USAGE = `Usage:
-  npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json]
-  npx tsx scripts/audit-composed-prompt.ts --stdin [--json]
+  npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json] [--escalation-address <email>]
+  npx tsx scripts/audit-composed-prompt.ts --stdin [--json] [--escalation-address <email>]
 
 Audits a composed OCS system prompt for four things:
   - the STANDING half of its "## ${ANTI_FABRICATION_HEADING}"
@@ -64,7 +64,10 @@ Audits a composed OCS system prompt for four things:
     address at all when nothing was retrieved for THIS answer, and
   - the answer obligations (${ANSWER_OBLIGATIONS.length}): whole-prompt rules
     about what an answer may contain, e.g. never write a phone or emergency
-    number that was not retrieved verbatim for THIS answer.
+    number that was not retrieved verbatim for THIS answer, and
+  - the escalation address (dimagi-internal/ace#2675): the ACE admin group
+    address from config/agent.json \`email\` (or --escalation-address) must be
+    stated verbatim, as the one address the bot may give without retrieving it.
 
 Exit 0 = all four present (safe to publish).
 Exit 1 = a standing domain, a contact obligation, the retrieval-fallback
@@ -75,6 +78,25 @@ export interface AuditCliArgs {
   /** Path to read the prompt from, or null when reading stdin. */
   file: string | null;
   json: boolean;
+  /** Override for the canonical escalation address; default config/agent.json. */
+  escalationAddress: string | null;
+}
+
+/**
+ * The canonical ACE admin group escalation address: `config/agent.json` ->
+ * `email`, resolved relative to THIS script so it works from a checkout and
+ * from the installed plugin alike. The same source `00-program-contacts.md`
+ * is generated from (ocs-agent-setup § Step 5). Throws on anything else —
+ * the caller maps that to exit 2, never to a verdict.
+ */
+export function readCanonicalEscalationAddress(
+  configPath = fileURLToPath(new URL('../config/agent.json', import.meta.url)),
+): string {
+  const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { email?: unknown };
+  if (typeof parsed.email !== 'string' || !parsed.email.includes('@')) {
+    throw new Error(`${configPath} has no usable \`email\``);
+  }
+  return parsed.email.trim();
 }
 
 /**
@@ -85,10 +107,17 @@ export function parseArgs(argv: string[]): AuditCliArgs | { error: string } {
   let file: string | null = null;
   let stdin = false;
   let json = false;
+  let escalationAddress: string | null = null;
 
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === '--stdin') stdin = true;
     else if (arg === '--json') json = true;
+    else if (arg === '--escalation-address') {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('-')) return { error: '--escalation-address needs a value' };
+      escalationAddress = v;
+    }
     else if (arg === '-h' || arg === '--help') return { error: USAGE };
     else if (arg.startsWith('-')) return { error: `unknown flag: ${arg}\n\n${USAGE}` };
     else if (file !== null) return { error: `more than one prompt file given: ${file}, ${arg}` };
@@ -97,7 +126,7 @@ export function parseArgs(argv: string[]): AuditCliArgs | { error: string } {
 
   if (stdin && file !== null) return { error: '--stdin takes no file argument' };
   if (!stdin && file === null) return { error: `no prompt given\n\n${USAGE}` };
-  return { file: stdin ? null : file, json };
+  return { file: stdin ? null : file, json, escalationAddress };
 }
 
 function main(argv: string[]): number {
@@ -126,7 +155,21 @@ function main(argv: string[]): number {
     return 2;
   }
 
-  const audit = auditComposedPrompt(prompt);
+  let escalationAddress: string;
+  try {
+    escalationAddress = parsed.escalationAddress ?? readCanonicalEscalationAddress();
+  } catch (err) {
+    process.stderr.write(`cannot resolve the escalation address: ${(err as Error).message}\n`);
+    return 2;
+  }
+
+  let audit;
+  try {
+    audit = auditComposedPrompt(prompt, { escalationAddress });
+  } catch (err) {
+    process.stderr.write(`${(err as Error).message}\n`);
+    return 2;
+  }
 
   if (parsed.json) {
     process.stdout.write(
@@ -156,6 +199,15 @@ function main(argv: string[]): number {
               why: o.why,
             })),
           },
+          escalation_address: {
+            address: escalationAddress,
+            ok: audit.escalationAddress?.ok ?? false,
+            missing: (audit.escalationAddress?.missing ?? []).map((o) => ({
+              id: o.id,
+              label: o.label,
+              why: o.why,
+            })),
+          },
           answer_obligations: {
             ok: audit.answerObligations.ok,
             covered: audit.answerObligations.covered,
@@ -178,8 +230,9 @@ function main(argv: string[]): number {
         `[STANDING-DOMAINS] OK — all ${STANDING_FABRICATION_DOMAINS.length} standing domains ` +
           `present in "## ${ANTI_FABRICATION_HEADING}", all ` +
           `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present, ` +
-          'the retrieval-fallback obligation is present, and all ' +
-          `${ANSWER_OBLIGATIONS.length} answer obligation(s) are present.\n`,
+          'the retrieval-fallback obligation is present, all ' +
+          `${ANSWER_OBLIGATIONS.length} answer obligation(s) are present, and the ` +
+          `escalation address ${escalationAddress} is stated verbatim.\n`,
       );
     }
     return 0;
@@ -190,7 +243,7 @@ function main(argv: string[]): number {
     '\nDO NOT publish this prompt. Add the missing domain(s) to the ' +
       `"## ${ANTI_FABRICATION_HEADING}" section, the missing contact ` +
       'obligation(s), the retrieval-fallback obligation to the ' +
-      'escalation/contacts passage, and/or the missing answer obligation(s), per `skills/ocs-agent-setup/SKILL.md` ' +
+      'escalation/contacts passage, the verbatim escalation address, and/or the missing answer obligation(s), per `skills/ocs-agent-setup/SKILL.md` ' +
       '§ Step 7, then re-run this audit.\n',
   );
   return 1;

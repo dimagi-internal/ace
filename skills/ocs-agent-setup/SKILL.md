@@ -310,9 +310,11 @@ round-trip gate in Step 11.5 below.
      group, role→contact map. Compose it locally, write it to an absolute
      tmp path, and upload it with the rest. Shape + sourcing rules in the
      § "The generated contacts file" block below. This file is what makes
-     the escalation address *retrievable* — without it the address exists
-     only in the system prompt and the bot reproduces it from recall,
-     which drifts (ace#1665).
+     every contact *retrievable* (ace#1665). Since ace#2675 the composed
+     prompt ALSO states the ACE admin group address verbatim (Step 7) —
+     retrieval did not reliably fetch this small page — so for that one
+     address the file is corroboration; for every other row (LLO, Network
+     Manager, named programme contacts) it is still the only anchor.
    - `runs/<run-id>/1-design/idea-to-pdd.md` — synthesized PDD
    - `inputs/*` — every file in the opp's `inputs/` folder (SOPs,
      questionnaire templates, evidence packs). **Skip the spreadsheets
@@ -354,6 +356,13 @@ round-trip gate in Step 11.5 below.
    in `scripts/bootstrap-ocs-golden-template.ts` is working and must not
    be edited — a prompt guard cannot anchor a value with no retrievable
    source.)
+
+   **Since ace#2675 the composed prompt ALSO states the ACE admin group
+   address verbatim** (Step 7), under exactness wording: two measured rounds
+   on chatbot 13923 showed retrieval does not reliably fetch this ~850-byte
+   page (5, then 12, escalation entries with no address). The page keeps its
+   job as corroboration for that address and as the only anchor for every
+   other row.
 
    Exact expected shape — a title, the one-line quoting rule, one table,
    nothing else:
@@ -424,98 +433,105 @@ round-trip gate in Step 11.5 below.
    - Name the Network Manager / LLO(s) and key dates
    - Summarize the intervention (from PDD)
    - **Tell the bot to escalate to the ACE admin group on specific
-     triggers, and to take the address FROM `00-program-contacts.md` in
-     the opp collection — never from memory (ace#1665) — and NEVER to
-     name that file, or any internal artifact, to a user
-     (dimagi-internal/ace#1891).** Do NOT restate the address inline in
-     this composed prompt. Retrieval is the anchor: an address the prompt
-     carries and the corpus does not is reproduced from recall, which
-     drifted three times on one 73-prompt deep run (see § Step 5, "The
-     generated contacts file").
+     triggers, and STATE THE ESCALATION ADDRESS VERBATIM in this composed
+     prompt — the value of `config/agent.json` → `email`, the same source
+     `00-program-contacts.md` is generated from (dimagi-internal/ace#2675).**
+     It is the ONE address the bot may give without retrieving it. Every
+     OTHER contact must still be quoted verbatim from the knowledge base,
+     and the bot must NEVER name the contacts file, or any internal
+     artifact, to a user (dimagi-internal/ace#1891).
+
+     **Why the address is now inline, and what that supersedes
+     (dimagi-internal/ace#2675).** Until 2026-10-05 this step said *"Do NOT
+     restate the address inline — retrieval is the anchor"* (ace#1665), and
+     relied on the bot retrieving `00-program-contacts.md` on every answer
+     that escalates. Two measured rounds on `spark-facilitator/20261004-1706`
+     (chatbot 13923) show retrieval does not reliably fetch that page: the
+     ~850-byte contacts page loses retrieval-slot competition to a
+     content-heavy answer's own citations. With the ace#2422 per-answer
+     check alone (v3), **5** escalation entries withheld the address; adding
+     *"search the knowledge base for the ACE admin group's contact before you
+     write the answer"* (v4, ace#2677) made it **12** (cg-2, opp-18, opp-25,
+     opp-27, opp-28, opp-36, opp-42, opp-43, opp-48, opp-51, opp-59,
+     edge-3b) — under OCS + Anthropic, "search first" is not an action the
+     model can take. Zero domain drift either time: the exactness wording
+     held, the address simply never arrived. A supervisor told to escalate
+     with no address has nothing to act on.
+
+     The escalation address is not a fact the bot has to discover — it is a
+     fixed, run-known value. So the prompt states it, under exactness
+     wording, which is the shape the golden template guard (ace#1142) has
+     always had and which ace#2216 showed binds. **This supersedes the
+     ace#1665 "do not restate the address inline" rule for this ONE address
+     only.** The ace#1665 drift (`hh-poverty-targeting/20260824-1404`:
+     `ace@dimagi.com` twice, an invented `pm@dimagi-ai.com` once) came from a
+     prompt that carried the address with NO exactness obligation; the
+     composed prompt now carries all three ace#2216 obligations next to it,
+     and `ocs-chatbot-eval`'s deterministic contact-domain-drift pass catches
+     any drift that survives. `00-program-contacts.md` STAYS: it is the
+     retrievable corroboration for the admin address and the only anchor for
+     every other row (LLO, Network Manager, named programme contacts).
 
      **Retrieval source and user-facing answer are two different
-     things, and the first version of this instruction conflated them.**
-     Telling the bot to quote *from a named file* invites it to name the
-     file: across the 68-prompt deep run on
+     things** (ace#1891). Telling the bot to quote *from a named file*
+     invites it to name the file: across the 68-prompt deep run on
      `spark-facilitator/20260828-0703` the bot routed escalation to
      **the filename** in 7 entries (opp-20, opp-29, opp-42, opp-46,
      opp-52, opp-57, cg-2) — telling a field supervisor to consult
-     `00-program-contacts.md`, which they cannot open — and in 2 of
-     those it emitted the wrong domain from recall while doing it ("the
-     contact is in `00-program-contacts.md`; if you do not have that
-     file to hand, use `ace@dimagi.com`"). The deep verdict's own words:
-     *"A supervisor cannot open a KB filename."*
+     `00-program-contacts.md`, which they cannot open. The deep verdict's
+     own words: *"A supervisor cannot open a KB filename."* The file stays;
+     the naming stops.
 
-     **The file stays. The naming stops.** The fix is NOT to inline the
-     address in the prompt — that is precisely the recall path ace#1665
-     closed, and the same run still drifted to `ace@dimagi.com` on
-     opp-29 and opp-38 from prompt recall alone. Retrieval remains the
-     authority; the prompt gains a presentation obligation.
+     The composed prompt MUST say, as these obligations, with
+     `<ESCALATION_ADDRESS>` replaced by the value of `config/agent.json` →
+     `email` (read it at compose time; never type it from memory or copy it
+     from this document): *"**The ACE admin group's escalation address is
+     <ESCALATION_ADDRESS>.** Whenever you escalate to the ACE admin group,
+     give this address exactly as written here — never vary its spelling,
+     never shorten or change its domain. It is the one contact you may give
+     without retrieving it, and when escalation is warranted the reader
+     should always leave with it."* and *"Every OTHER contact for this
+     opportunity (named people, the implementing organisation, a Network
+     Manager) must be quoted verbatim from the opportunity knowledge base.
+     If a contact you need is not published, say the programme has not
+     published one and give the ACE admin group address above; never supply
+     an address from general knowledge or vary the spelling of one."* and
+     *"Give the reader the contact itself — the actual address. NEVER name a
+     file, document, collection, config key or other internal artifact in an
+     answer, and never tell the reader to look one up: internal file names
+     are retrieval plumbing and the reader has no way to open them."* and
+     *"Before you write any contact address OTHER than the ACE admin group
+     address above, check that the address itself was retrieved for this
+     specific answer. If it was not retrieved in this answer, write no
+     address at all for that contact — say the programme has not published
+     one, give the ACE admin group address, and do not guess at a domain."*
+     — and, governing all of them, *"Never describe your own searching,
+     retrieving or checking to the reader. Do not write things like 'let me
+     retrieve the address', 'the search returned' or 'I was not able to
+     retrieve a confirmed contact'. The reader sees only the answer."*
 
-     The composed prompt MUST say, as three obligations: *"Contacts for
-     this opportunity — the ACE admin group's escalation address and
-     every named contact — are in the opportunity knowledge base. Quote
-     them verbatim from there. If a contact you need is not published,
-     say the programme has not published one and offer the ACE admin
-     group; never supply an address from general knowledge or vary the
-     spelling of one."* and *"Give the reader the contact itself — the
-     actual address. NEVER name a file, document, collection, config key
-     or other internal artifact in an answer, and never tell the reader
-     to look one up: internal file names are retrieval plumbing and the
-     reader has no way to open them. If you cannot retrieve a contact,
-     say so plainly — do not substitute a file name for an answer."*
-     and *"Whenever an answer escalates or names a contact, search the
-     knowledge base for the ACE admin group's contact before you write
-     the answer — when escalation is warranted, the reader should leave
-     with the actual address. Before you write any contact address,
-     check that the address itself was retrieved for this specific
-     answer. If it was not retrieved in this answer, write no address at
-     all — say only 'your supervisor, and the ACE admin group,' and do
-     not guess at a domain."* — and, governing all three, *"Never
-     describe your own searching, retrieving or checking to the reader.
-     Do not write things like 'let me retrieve the address', 'the search
-     returned' or 'I was not able to retrieve a confirmed contact'. The
-     reader sees only the answer: either the address, or 'your
-     supervisor, and the ACE admin group'."*
+     Step 7.5 asserts the verbatim address (`buildEscalationAddressObligation`,
+     with the address `scripts/audit-composed-prompt.ts` reads from
+     `config/agent.json`), the three ace#2216 exactness obligations, the
+     ace#2422 retrieval fallback (now scoped to "other than the ACE admin
+     group address") and the no-narration rule
+     (`NO_RETRIEVAL_NARRATION_OBLIGATION`). The search-first obligation
+     shipped in ace#2677 (`ESCALATE_WITH_ADDRESS_OBLIGATION`) is RETIRED: the
+     v4 run is the live evidence it made the withholding worse.
 
-     **Why the third obligation now opens with a search, and why the
-     no-narration rule exists (the ace#2422 rule over-triggered).** On
-     `spark-facilitator/20261004-1706` (chatbot 13923 v3) the ace#2422
-     wording — *"If nothing was retrieved in this answer, write no
-     address at all"* — held the domain exact (zero drift across 73
-     prompts) but on five escalation entries the bot withheld the
-     address AND narrated the check to the reader: opp-23 *"Let me know
-     if you need that contact - I'll retrieve it for you"*, opp-27 *"I
-     need to retrieve the contact address before quoting it... The
-     search returned..."*, opp-28 *"I retrieved it in this answer -
-     please contact your supervisor"*, opp-55 *"I was not able to
-     retrieve a confirmed contact address in this answer"*, and opp-59.
-     A supervisor told to escalate with no address, by a bot describing
-     its own plumbing, has nothing to act on. The fix keeps the
-     per-answer check (the address must be retrieved THIS answer) but
-     makes the bot perform the retrieval when it escalates, and forbids
-     narrating it. Step 7.5 asserts both (`ESCALATE_WITH_ADDRESS_OBLIGATION`,
-     `NO_RETRIEVAL_NARRATION_OBLIGATION`).
+     **Why the per-answer retrieval check still exists, narrowed
+     (dimagi-internal/ace#2422).** `poverty-graduation/20260915-1518`
+     published a composed prompt carrying all three ace#2216 exactness
+     obligations and the bot still answered a content-heavy prompt with
+     `ace@dimagi.com`: with nothing about contacts retrieved on that turn,
+     the model produced a plausible, resolving address from recall. That
+     prompt did not state the address. Now that the prompt states the admin
+     address, the per-answer check guards the contacts the prompt does NOT
+     carry — confirm the address was retrieved THIS answer, else write no
+     address for that contact.
 
-     **The third obligation exists because the first two are not
-     sufficient on their own (dimagi-internal/ace#2422).**
-     `poverty-graduation/20260915-1518` published a composed prompt
-     carrying all three ace#2216 contact-exactness obligations, passed
-     Step 7.5, and the bot still answered a content-heavy prompt with
-     `ace@dimagi.com`. Root cause: retrieval-slot competition — the
-     contacts page is ~853 bytes, a content-heavy answer's own citations
-     fill `max_results: 20` slots first, and on that turn nothing about
-     contacts was actually retrieved. "Never supply an address from
-     general knowledge" does not stop this: the model does not
-     experience its own recall as "general knowledge," it produces a
-     plausible, resolving address and moves on. The fix is a per-answer
-     CHECK, not a restatement of the standing rule — confirm something
-     was retrieved THIS answer, else write no address at all.
-
-     **All three obligations are mandatory, and Step 7.5 asserts the
-     exactness half of the first plus the third in full — because the
-     golden template's guard does NOT survive into this bot
-     (dimagi-internal/ace#2216).** Step 8's
+     **All of these are mandatory because the golden template's guard does
+     NOT survive into this bot (dimagi-internal/ace#2216).** Step 8's
      `ocs_set_chatbot_pipeline` sets `patch.prompt = args.prompt`
      (`mcp/ocs/backends/playwright.ts`) — a wholesale **REPLACEMENT** of
      the `LLMResponseWithPrompt` node's prompt, not an extension of it.
@@ -528,22 +544,18 @@ round-trip gate in Step 11.5 below.
 
      An earlier version of this step said that guard *"stays as written
      — it is the cold-start fallback"* and used that as the reason not to
-     carry the protection here. It was false for every per-opp bot, and
-     it cost a gate: on `spark-facilitator/20260907-1120` the composed
-     prompt carried all four standing domains, **zero `@` characters**,
-     and passed Step 7.5; the bot then answered prompt 1 of the 3-prompt
-     quick gate with *"For escalation beyond that, reach out to
+     carry the protection here. It was false for every per-opp bot (ace#2216
+     superseded it), and it cost a gate: on `spark-facilitator/20260907-1120`
+     the composed prompt carried all four standing domains, **zero `@`
+     characters**, and passed Step 7.5; the bot then answered prompt 1 of the
+     3-prompt quick gate with *"For escalation beyond that, reach out to
      ace@dimagi.com."* — with `00-program-contacts.md` present, indexed
      and carrying the right address. **That domain resolves**, so a
      supervisor writing to it gets silence, not a bounce. 2.33/3 FAIL;
      3.0/3 after the prompt was patched.
 
      Do not edit the golden guard — it is still the template's own
-     protection, and `00-program-contacts.md` is the retrievable
-     corroboration for it. Carry the protection **here** as well. And
-     note what this does NOT change: restating the exactness RULE is not
-     restating the VALUE. The address itself still comes from retrieval,
-     never from this prompt (ace#1665).
+     protection. Carry the protection **here** as well, now with the value.
    - **Never quote internal identifiers to the reader
      (`NO_INTERNAL_IDS_OBLIGATION`).** The composed prompt MUST say:
      *"Never quote internal identifiers to the reader: decision ids,
@@ -803,11 +815,19 @@ round-trip gate in Step 11.5 below.
    domain* — the same class has already produced a second spelling (an
    invented `pm@dimagi-ai.com`, `hh-poverty-targeting/20260824-1404`), so a
    one-string ban passes the next variant. The audit therefore asserts the
-   three obligations and never an address literal, which also keeps it
-   compatible with ace#1665: none of the three requires this prompt to be the
-   authority for the value. The control is the golden guard itself — read off
-   disk, it satisfies all three, so the composed prompt is only being asked
-   to carry what the template carried.
+   three obligations and never a hard-coded address literal. The control is
+   the golden guard itself — read off disk, it satisfies all three, so the
+   composed prompt is only being asked to carry what the template carried.
+
+   **The escalation-address assertion (dimagi-internal/ace#2675) is the
+   positive half of the same idea, and it is still not a literal in the
+   gate.** `scripts/audit-composed-prompt.ts` reads the canonical address
+   from `config/agent.json` → `email` (or `--escalation-address`) and asserts
+   ONE block of the prompt carries that exact address, an escalation clause,
+   exactness wording and the "without retrieving it" scope
+   (`buildEscalationAddressObligation`). A prompt with no address (v4) or a
+   near-miss domain (`ace@dimagi.com`) exits 1; an unreadable config is
+   exit 2, never a verdict.
 
    **Why here and not after the publish.** Step 8 is the only write that
    puts a prompt on the bot, and BOTH entry paths reach it through Step 7 —
@@ -1119,6 +1139,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-05 | **Step 7 states the ACE admin group escalation address VERBATIM; the search-first obligation is retired (closes dimagi-internal/ace#2675).** Two measured rounds on `spark-facilitator/20261004-1706` (chatbot 13923) showed retrieval does not reliably fetch the ~850-byte `00-program-contacts.md`: with the ace#2422 per-answer check alone (v3) 5 escalation entries withheld the address; with ace#2677's "search the knowledge base for the ACE admin group's contact before you write the answer" added (v4) it was 12 (cg-2, opp-18, opp-25, opp-27, opp-28, opp-36, opp-42, opp-43, opp-48, opp-51, opp-59, edge-3b) — zero domain drift either time. The address is a fixed, run-known value (`config/agent.json` → `email`, the source the contacts page is generated from), so the composed prompt now states it as the one address the bot may give without retrieving it, under exactness wording. This supersedes ace#1665's "do not restate the address inline" for that ONE address: the ace#1665 drift came from a prompt carrying the address with no exactness obligation, while ace#2216's exactness wording is now mandatory beside it and `ocs-chatbot-eval`'s contact-domain-drift pass still catches any drift. Every other contact must still be retrieved verbatim (ace#2422's check, narrowed to "other than the ACE admin group address"); the contacts page stays. `lib/standing-fabrication-domains.ts` replaces `ESCALATE_WITH_ADDRESS_OBLIGATION` with `buildEscalationAddressObligation(address)` (the address is a parameter, never a literal), folded into `auditComposedPrompt(prompt, { escalationAddress })`; `scripts/audit-composed-prompt.ts` reads the address from `config/agent.json` (override `--escalation-address`; unreadable config = exit 2) and reports `[ESCALATION-ADDRESS]` / `escalation_address` in `--json`. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v4 fixture fails, v5 fixture `test/fixtures/composed-prompts/spark-facilitator-13923-v5.md` passes, wrong-domain and substring negative controls, per-part ablations, doc-vs-gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2678) Short or ambiguous questions: mandated and audited.** Chatbot 13923 v3 (`spark-facilitator/20261004-1706`) answered two terse field questions with one confident reading. opp-56 *"can we do it twice in one week?"* got "No - the daily limit is one per day" and then said two in a week is fine. opp-58 *"does it still count if the trainer ran it?"* got "No" under the less natural reading. Both were Warn, 6.6 and 6.8. New `CLARIFY_AMBIGUOUS_OBLIGATION` in `ANSWER_OBLIGATIONS`: ask one clarifying question or answer each reading, labelled, and never open with a yes/no that the rest of the answer contradicts. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2676) Never quote internal identifiers — mandated and audited.** Chatbot 13923 v3 (`spark-facilitator/20261004-1706`) quoted decision ids to field readers on opp-2, opp-11 (`trial-sample-exclusion`, `rct-sample-overlap`) and opp-38 (`connect-markers-in-sparks-own-app`); the ace#1891 artifact rule names files/collections/config keys and did not reach them, and `applyInternalArtifactLeakCap` did not catch them either. New `NO_INTERNAL_IDS_OBLIGATION` in `ANSWER_OBLIGATIONS`. Prompt-side only: the eval-side leak cap is not extended to kebab-case tokens, since without `decisions.yaml` it cannot distinguish an id from a hyphenated phrase. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2675) The ace#2422 retrieval fallback over-triggered — Step 7's third contact obligation now opens with a search, and a no-narration rule is mandated and audited.** On `spark-facilitator/20261004-1706` (chatbot 13923 v3) the bot withheld `ace@dimagi-ai.com` on five escalation entries while narrating its own retrieval check to the reader (opp-23, 27, 28, 55, 59 — e.g. *"I need to retrieve the contact address before quoting it... The search returned..."*). Two new `ANSWER_OBLIGATIONS`: `ESCALATE_WITH_ADDRESS_OBLIGATION` (search the KB for the admin contact before writing an escalating answer so the reader gets the address) and `NO_RETRIEVAL_NARRATION_OBLIGATION` (never describe searching/retrieving/checking to the reader). The ace#2422 per-answer check and its pattern are unchanged; the new mandated sentence still satisfies it. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v3 negative, v4 positive, ablations, doc-vs-gate) + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |

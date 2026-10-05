@@ -272,12 +272,12 @@ export interface StandingDomainAudit {
   retrievalFallback: ContactExactnessAudit;
   /** Whole-prompt answer obligations (phone-number ban, …). */
   answerObligations: AnswerObligationAudit;
+  /** ace#2675 verbatim address; null = no address passed (the gate script always passes one). */
+  escalationAddress: AnswerObligationAudit | null;
   /**
-   * True iff the anti-fabrication section exists with every standing domain
-   * covered AND the contact-exactness protection is present AND the
-   * retrieval-fallback protection is present. One verdict, one exit code —
-   * the gate has a single runtime caller and adding a second script is how a
-   * preventer stops being called (ace#2015).
+   * True iff every half above holds. One verdict, one exit code — the gate
+   * has a single runtime caller; a second script is how a preventer stops
+   * being called (ace#2015).
    */
   ok: boolean;
 }
@@ -540,27 +540,71 @@ export const PHONE_NUMBER_OBLIGATION: AnswerObligation = {
 };
 
 /**
- * Escalate WITH the address (spark-facilitator/20261004-1706, chatbot 13923 v3).
+ * Carry the ACE admin group escalation address VERBATIM (dimagi-internal/ace#2675).
  *
- * The ace#2422 per-answer check — "if nothing was retrieved in this answer,
- * write no address at all" — held the domain exact, and over-triggered: on
- * five escalation entries (opp-23, 27, 28, 55, 59) the bot escalated with no
- * address at all, because nothing about contacts happened to be retrieved on
- * that turn. The check stays; what is added is the step that makes it
- * satisfiable — when an answer escalates, search for the contact first.
+ * Two rounds on chatbot 13923 (spark-facilitator/20261004-1706) measured the
+ * retrieval-only route to the escalation address, and it does not hold:
+ *
+ *   v3  the ace#2422 per-answer check alone ("if nothing was retrieved in
+ *       this answer, write no address at all") — 5 escalation entries
+ *       withheld ace@dimagi-ai.com (opp-23, 27, 28, 55, 59).
+ *   v4  v3 + "search the knowledge base for the ACE admin group's contact
+ *       before you write the answer" — 12 entries withheld it (cg-2, opp-18,
+ *       25, 27, 28, 36, 42, 43, 48, 51, 59, edge-3b). Zero drift either time.
+ *
+ * The 849-byte contacts page loses retrieval-slot competition on most
+ * content-heavy answers, and under OCS + Anthropic "search first" is not an
+ * action the model can take. But the escalation address is not a fact the bot
+ * has to discover: it is a fixed, run-known value (`config/agent.json` →
+ * `email`, the same source `00-program-contacts.md` is generated from). So the
+ * composed prompt states it, as the ONE address the bot may give without
+ * retrieving it, under exactness wording — the shape the golden template
+ * guard (ace#1142) has always had, and which ace#2216 showed binds.
+ *
+ * This supersedes ace#1665's "do not restate the address inline" for this one
+ * address only. The ace#1665 drift (hh-poverty-targeting/20260824-1404) was a
+ * prompt that carried the address with NO exactness obligation; every other
+ * contact still has to be retrieved verbatim (ace#2422, narrowed to "other
+ * than the ACE admin group address").
+ *
+ * The address is a PARAMETER, never a literal here: the gate's runtime caller
+ * (`scripts/audit-composed-prompt.ts`) reads it from `config/agent.json`, so a
+ * changed mailbox cannot leave the gate asserting a stale value.
  */
-export const ESCALATE_WITH_ADDRESS_OBLIGATION: AnswerObligation = {
-  id: 'escalate-with-retrieved-address',
-  label:
-    'When an answer escalates, search the knowledge base for the admin contact before writing it, so the reader gets the actual address',
-  pattern:
-    /(?=.*\bescalat\w*)(?=.*\bsearch\w*\b)(?=.*\bbefore you write\b)(?=.*\b(?:actual address|the address)\b)/i,
-  why:
-    'The ace#2422 fallback ("write no address at all if nothing was retrieved") ' +
-    'over-triggered on chatbot 13923 v3: five escalation entries (opp-23, 27, 28, ' +
-    '55, 59) withheld ace@dimagi-ai.com, leaving a supervisor told to escalate ' +
-    'with nowhere to send it.',
-};
+export const ESCALATION_ADDRESS_OBLIGATION_ID = 'escalation-address-verbatim';
+
+export function buildEscalationAddressObligation(address: string): AnswerObligation {
+  const a = address.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)) {
+    throw new Error(`escalation address is not an email address: ${JSON.stringify(address)}`);
+  }
+  const esc = a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return {
+    id: ESCALATION_ADDRESS_OBLIGATION_ID,
+    label:
+      `State the ACE admin group escalation address (${a}) verbatim, as the one address the bot may give without retrieving it, with exactness wording`,
+    // One block must carry: the exact address (not as a substring of a longer
+    // one), escalation, an exactness clause, and the without-retrieving scope.
+    pattern: new RegExp(
+      `(?=.*(?<![\\w.+-])${esc}(?![\\w-]))` +
+        '(?=.*\\bescalat\\w*)' +
+        '(?=.*\\b(?:exactly as written|vary (?:its|the) spelling|change its domain|exact spelling)\\b)' +
+        '(?=.*\\bwithout retriev\\w*)',
+      'i',
+    ),
+    why:
+      'Retrieval did not reliably fetch the 849-byte contacts page: chatbot 13923 ' +
+      'withheld the escalation address on 5 entries (v3, ace#2422 check alone) and ' +
+      '12 entries (v4, plus "search first"), zero drift either time. The address is ' +
+      'a run-known value (config/agent.json email), so the prompt must carry it ' +
+      'verbatim under exactness wording (dimagi-internal/ace#2675).',
+  };
+}
+
+/** Audit one composed prompt for the escalation-address obligation. Pure. */
+export function auditEscalationAddress(prompt: string, address: string): AnswerObligationAudit {
+  return auditAnswerObligations(prompt, [buildEscalationAddressObligation(address)]);
+}
 
 /**
  * Never narrate retrieval (same run). The withheld answers also leaked the
@@ -623,7 +667,6 @@ export const CLARIFY_AMBIGUOUS_OBLIGATION: AnswerObligation = {
 /** Every answer obligation, in report order. */
 export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [
   PHONE_NUMBER_OBLIGATION,
-  ESCALATE_WITH_ADDRESS_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
@@ -703,7 +746,22 @@ function normalize(text: string): string {
  * anywhere else in the prompt does not count: the whole failure mode is a
  * prompt that discusses a topic without forbidding invention in it.
  */
-export function auditComposedPrompt(prompt: string): StandingDomainAudit {
+export interface ComposedPromptAuditOptions {
+  /**
+   * The canonical ACE admin group escalation address (`config/agent.json` ->
+   * `email`). When given, the prompt must carry it verbatim (ace#2675).
+   */
+  escalationAddress?: string;
+}
+
+export function auditComposedPrompt(
+  prompt: string,
+  options: ComposedPromptAuditOptions = {},
+): StandingDomainAudit {
+  const escalationAddress =
+    options.escalationAddress === undefined
+      ? null
+      : auditEscalationAddress(prompt, options.escalationAddress);
   const contactExactness = auditContactExactness(prompt);
   const retrievalFallback = auditRetrievalFallback(prompt);
   const answerObligations = auditAnswerObligations(prompt);
@@ -717,6 +775,7 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
       contactExactness,
       retrievalFallback,
       answerObligations,
+      escalationAddress,
       ok: false,
     };
   }
@@ -739,11 +798,13 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
     contactExactness,
     retrievalFallback,
     answerObligations,
+    escalationAddress,
     ok:
       missing.length === 0 &&
       contactExactness.ok &&
       retrievalFallback.ok &&
-      answerObligations.ok,
+      answerObligations.ok &&
+      (escalationAddress === null || escalationAddress.ok),
   };
 }
 
@@ -800,6 +861,16 @@ export function formatStandingDomainReport(audit: StandingDomainAudit): string {
 
   const answer = formatAnswerObligationReport(audit.answerObligations);
   if (answer !== '') parts.push(answer);
+
+  if (audit.escalationAddress !== null && !audit.escalationAddress.ok) {
+    parts.push(
+      [
+        '[ESCALATION-ADDRESS] the composed prompt does not state the ACE admin ' +
+          'group escalation address verbatim:',
+        ...audit.escalationAddress.missing.map((o) => `  - ${o.label} (${o.id}) — ${o.why}`),
+      ].join('\n'),
+    );
+  }
 
   return parts.join('\n\n');
 }
