@@ -60,6 +60,20 @@ Do not rewrite `docs/learnings/**` or a dated file under
 true and said at a point in time; editing them to match today's naming
 falsifies the record. They are deliberately left carrying the old name.
 
+## US spelling, always — "program", never "programme"
+
+Dimagi writes US English. **program, enrollment, enroll, organization**, never
+programme, enrolment, enrol, organisation. "Programme" is always an accident,
+including in a report or workflow NAME (Jon, 2026-10-05: *"programme is always
+an accident I let it through"*). This binds every reader-visible string ACE
+writes: emails, docs, decks, labs report text, workflow names and descriptions,
+and semantic-registry labels and descriptions.
+
+What it does NOT touch: code identifiers, config keys, and SQL/registry
+property names (e.g. `days_to_enrolment`, template key `kmc_programme_metrics`).
+Renaming those breaks whatever references them, so a rename is a coordinated
+code change, not a prose fix.
+
 ## Naming drift in the source material
 
 The public help site (see
