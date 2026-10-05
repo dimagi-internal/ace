@@ -131,6 +131,9 @@ describe('classifyAvdPool — edges', () => {
     expect(r.eligibleCount).toBe(0);
     expect(r.reason).toMatch(/NO AVD on this host/);
     expect(r.reason).toMatch(/AvdPoolExhaustedError/);
+    // The requested AVD needs no marker, so a lone dispatch still runs (ace#2642).
+    expect(r.reason).toMatch(/single Phase 6 still runs on the requested AVD/);
+    expect(r.reason).not.toMatch(/every Phase 6 dispatch fails/);
   });
 
   it('an empty host warns rather than passing vacuously', () => {

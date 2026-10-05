@@ -100,7 +100,7 @@ const configPath = (avdHome: string, name: string): string =>
  * the affected host 2026-09-06, one `ACE_CONNECT_APK_VERSION` for both:
  *
  *     $ doctor-avd-pool
- *     WARN avd_pool: NO AVD on this host is both provisioned and proven …
+ *     WARN avd_pool: NO AVD on this host is both provisioned and proven, so there is no fallback …
  *       0 eligible, 2 needed
  *       - ACE_Pixel_API_34: … the marker was recorded under a DIFFERENT
  *         selector map — not eligible as a fallback
