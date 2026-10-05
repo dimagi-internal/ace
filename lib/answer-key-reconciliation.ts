@@ -118,6 +118,20 @@ const DIRECTIVE_TERMS = /\b(advisory|not\s+scored|rather\s+than\s+scored|do\s+no
 /** `test prompts 11, 22, 40` / `prompt 40` / `prompts 11 and 22`. */
 const PROMPT_LIST = /\b(?:test\s+)?prompts?\s+((?:\d{1,3})(?:\s*(?:,|and|&)\s*\d{1,3})*)/gi;
 
+/**
+ * Normalise CRLF and lone-CR line endings to LF.
+ *
+ * `drive_read_file` exports a Doc-backed `run_state.yaml` with CRLF endings
+ * (1040 `\r` on spark-facilitator/20261004-1706). The line-anchored item
+ * regex below cannot match a line ending in `\r` (`.` does not match it and
+ * `$` is end-of-string), while the section regex still does (`\s*` swallows
+ * it) — so every caveat silently disappeared with no error (ace#2661).
+ * Normalise once, at every entry point that takes raw text.
+ */
+export function normaliseLineEndings(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 /** Collapse a YAML block scalar / wrapped string to one line. */
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -157,7 +171,7 @@ export function extractAnswerKeyCaveats(runStateText: string): AnswerKeyCaveat[]
   const caveats: AnswerKeyCaveat[] = [];
 
   // Each list item in the YAML, including wrapped continuation lines.
-  const lines = runStateText.split('\n');
+  const lines = normaliseLineEndings(runStateText).split('\n');
   let current: string | null = null;
   let indent = 0;
   let section = 'unknown';
@@ -208,7 +222,7 @@ export function extractAnswerKeyCaveats(runStateText: string): AnswerKeyCaveat[]
  */
 export function parseAnswerKeyQuestions(answerKeyText: string): Map<number, string> {
   const out = new Map<number, string>();
-  const blocks = answerKeyText.split(/^##\s+Prompt\s+(\d+)\s*$/m);
+  const blocks = normaliseLineEndings(answerKeyText).split(/^##\s+Prompt\s+(\d+)\s*$/m);
   // blocks = [preamble, "1", body1, "2", body2, ...]
   for (let i = 1; i < blocks.length; i += 2) {
     const n = Number.parseInt(blocks[i], 10);

@@ -170,6 +170,38 @@ phases:
   });
 });
 
+describe('extractAnswerKeyCaveats — CRLF line endings (ace#2661)', () => {
+  // `drive_read_file` exports a Doc-backed run_state.yaml with CRLF endings
+  // (1040 `\r` on spark-facilitator/20261004-1706). The item regex could not
+  // match a line ending in `\r`, so every caveat silently vanished while the
+  // section regex (whose `\s*` swallows `\r`) kept matching — no error, zero
+  // caveats. This control FAILED on the pre-fix code (CRLF -> 0 caveats).
+  const CRLF = RUN_STATE.replace(/\n/g, '\r\n');
+
+  it('finds the same caveats on CRLF text as on LF text', () => {
+    expect(extractAnswerKeyCaveats(CRLF)).toEqual(extractAnswerKeyCaveats(RUN_STATE));
+    expect(extractAnswerKeyCaveats(CRLF)).toHaveLength(2);
+  });
+
+  it('leaves no stray carriage return in the surfaced reason', () => {
+    for (const c of extractAnswerKeyCaveats(CRLF)) expect(c.reason).not.toMatch(/\r/);
+  });
+
+  it('handles lone-CR (classic Mac) endings too', () => {
+    expect(extractAnswerKeyCaveats(RUN_STATE.replace(/\n/g, '\r'))).toHaveLength(2);
+  });
+
+  it('parses a CRLF answer key identically', () => {
+    expect(parseAnswerKeyQuestions(ANSWER_KEY.replace(/\n/g, '\r\n'))).toEqual(parseAnswerKeyQuestions(ANSWER_KEY));
+  });
+
+  it('reconciles end to end on CRLF inputs', () => {
+    const result = reconcileAnswerKey(ENTRIES, CRLF, ANSWER_KEY.replace(/\n/g, '\r\n'));
+    expect(result.advisoryRefs).toEqual(['opp-11', 'opp-22', 'opp-40']);
+    expect(result.unresolved).toEqual([]);
+  });
+});
+
 describe('resolveCaveats — by question text, never by position', () => {
   it('maps the key prompt numbers onto the transcript refs', () => {
     const { caveats, unresolved } = resolveCaveats(extractAnswerKeyCaveats(RUN_STATE), ANSWER_KEY, ENTRIES);
