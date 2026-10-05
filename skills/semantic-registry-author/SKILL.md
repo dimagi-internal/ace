@@ -72,6 +72,13 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
   when the opportunity has no form schema (every labs-only opp), and the cast
   reads real `"1"` and synthetic `"1.0"` alike (observed ace#2510, the
   `currently_saving` column).
+- **Read form dates as dates** — `MIN(CAST(enrolment_date AS DATE))`, not
+  `MIN(enrolment_date)`. A pipeline field with no `transform` arrives as TEXT;
+  only `visit_date` is a real date. `semantic_registry_validate` does not
+  type-check, so `COALESCE(<text aggregate>, first_visit)` validates and then
+  fails on the first live read with *"COALESCE types text and date cannot be
+  matched"* (ace#2656, spark-facilitator/20261004-1706). `demo-data-setup` § C4
+  step 3's preview is where it surfaces — run it before writing history.
 - **aggregates / properties**: sums and counts per entity, filtered to the PDD's
   verification predicate where the metric is "over verified visits".
 
