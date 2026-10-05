@@ -547,16 +547,43 @@ Apply `plan.json`, then re-run the command — `changes: 0` is the read-back:
   `text/plain`.
 - `action: render` → `drive_create_doc_from_markdown(name, parentFolderId,
   localFilePath)` (find-or-update in place). A styled Doc (headings, bullets,
-  tables) must never be written back as plain text — that flattens it. An
-  `illustrated: true` guide then needs its screenshots re-embedded
-  (`scripts/embed-doc-screenshots.ts`, the producing skill's step).
+  tables) must never be written back as plain text — that flattens it. A
+  render drops the Doc's inline images, so every entry with
+  `reembed_screenshots: true` must have its screenshots re-embedded next:
+  `scripts/embed-doc-screenshots.ts <fileId> --screenshots <id>` once per
+  `plan.frames.preview_folders` entry, plus the folders
+  `app-screenshot-capture_manifest.yaml` names under `drive_folders`.
 - `run_state` → `update_yaml_file(fileId, localFilePath, merge: "deep")`;
   each changed phase key is sent whole, arrays included.
+
+**Frames are re-pointed too (ace#2697).** 4b re-runs Phase 4, and Phase 4
+re-captures `4-connect/previews/<slug>/` in the partner's holding org. A
+re-capture replaces the frames, so they get new ids. The guides still link and
+embed the earlier frames, which show the SOURCE org's header. On
+spark/spark-facilitator/20261004-1706 the LLO guide named the clone's
+opportunity, but both of its Connect frames read `ace-nm-org`. The script reads
+every Drive id a rewrite-class file cites, including a Doc's link targets and
+the images it embeds. Each id that is no longer a live file in the target run
+is paired with the live file at the same run path (`plan.frames.repointed`,
+`lib/clone-frame-repoint.ts`). The links are rewritten in the plan's files.
+Any Doc that embeds a stale frame becomes a `render` entry, so the re-embed
+step puts the target's frames in. This only works after 4b's capture, so run
+4e after 4b, as above.
+
+- `plan.frames.foreign` lists cited images with no live counterpart in the
+  target run. Cross-opp baselines under `ACE/_common/` are exempt. The script
+  exits **3** and the clone is NOT DONE until each one is re-captured in the
+  target, or its citation is removed by the producing skill.
+- **The read-back.** Re-run the script after applying the plan. It must show
+  `changes: 0` and an empty `frames.embedded_outside_run`. A Doc that still
+  embeds an image outside the target run with nothing left to apply also
+  exits 3.
 
 Never hand-edit a Doc's `text/plain` export and write it back: the export
 turns n newlines into 2n−1 CRLFs, so every round trip doubles the blank
 lines. The script reads Docs through `docTextFromExport`, which inverts it.
-Record `clone.asset_refs: {status: done, files, left_on_source}`.
+Record `clone.asset_refs: {status: done, files, left_on_source,
+frames_repointed}`.
 
 ## Step 5 — Validate the clone's release readiness (report, do not block)
 
