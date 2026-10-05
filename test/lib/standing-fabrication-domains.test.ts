@@ -32,6 +32,10 @@ import {
   extractContactProtectionBlocks,
   RETRIEVAL_FALLBACK_OBLIGATION,
   auditRetrievalFallback,
+  ANSWER_OBLIGATIONS,
+  PHONE_NUMBER_OBLIGATION,
+  auditAnswerObligations,
+  splitPromptBlocks,
 } from '../../lib/standing-fabrication-domains.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -131,10 +135,35 @@ const RETRIEVAL_FALLBACK_CLAUSE =
  * mandates, and is used throughout this file as "the clause Step 7
  * mandates" / the POSITIVE CONTROL for every obligation together.
  */
-const PROMPT_FIXED_SECTION = PROMPT_NO_CONTACT_CLAUSE.replace(
+const PROMPT_ROUND2_CONTACTS_ONLY = PROMPT_NO_CONTACT_CLAUSE.replace(
   '## Mandatory closing step — tagging',
   `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n## Mandatory closing step — tagging`,
 );
+
+/**
+ * The phone-number ban as PUBLISHED on chatbot 13923 v4
+ * (spark-facilitator/20261004-1706), verbatim. A standalone paragraph, not a
+ * clause inside a domain bullet — see `PHONE_NUMBER_OBLIGATION`.
+ */
+const PHONE_PARAGRAPH =
+  '**Phone numbers — a hard rule.** Never write any phone number, emergency number, ' +
+  'ambulance, police or fire line, hotline or short code unless that exact number ' +
+  'appears verbatim in what you retrieved for this answer. This holds even for a ' +
+  'number you believe is well known for Malawi or any other country, and even with ' +
+  'a caveat such as "or whatever works locally" — a wrong number in an emergency ' +
+  'costs minutes. None is published for this opportunity. Say instead: "call your ' +
+  'local emergency services or get the person to the nearest health facility, and ' +
+  'tell your supervisor."';
+
+/** Appended to the positive control so it carries every ANSWER obligation. */
+const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}`;
+
+/**
+ * The fully-compliant prompt Step 7 mandates — every standing domain, every
+ * contact obligation, the retrieval fallback and every answer obligation. The
+ * POSITIVE CONTROL used throughout this file.
+ */
+const PROMPT_FIXED_SECTION = PROMPT_ROUND2_CONTACTS_ONLY + ANSWER_SECTION;
 
 describe('the standing set is well-formed', () => {
   it('carries the four domains the class requires, with stable ids', () => {
@@ -401,7 +430,7 @@ describe('auditComposedPrompt — the ace#2422 retrieval-fallback gap', () => {
   });
 
   it('NON-INERTNESS — the two differ only by the retrieval-fallback clause', () => {
-    expect(PROMPT_FIXED_SECTION.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
+    expect(PROMPT_ROUND2_CONTACTS_ONLY.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
       PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK,
     );
   });
@@ -606,5 +635,109 @@ describe('the skill wires the gate in — it is not dead code (ace#2015)', () =>
       agentSetup.indexOf('State file present, no flag.'),
     );
     expect(step0).toContain('Step 7.5');
+  });
+});
+
+/**
+ * The ANSWER obligations — first entry: the phone-number ban.
+ *
+ * Measured on `spark-facilitator/20261004-1706`, chatbot 13923 v3: the
+ * composed prompt said "Do not invent a reporting chain or emergency phone
+ * numbers." INSIDE the safeguarding bullet, passed Step 7.5, and the bot told
+ * a supervisor whose attendee had collapsed: "Call local emergency services —
+ * in Malawi the ambulance line is 998, but use whatever emergency number works
+ * in that area." 998 is in no retrieved source; opp-53 clamped to Fail and
+ * alone blocked the deep gate. Both prompts are committed verbatim under
+ * `test/fixtures/composed-prompts/` — v3 is the negative control, v4 (the
+ * prompt that replaced it) the positive one.
+ */
+describe('auditAnswerObligations — the phone-number ban (opp-53, chatbot 13923)', () => {
+  const v3 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v3.md`, 'utf8');
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+
+  it('the obligation is registered', () => {
+    expect(ANSWER_OBLIGATIONS).toContain(PHONE_NUMBER_OBLIGATION);
+    expect(PHONE_NUMBER_OBLIGATION.why).toMatch(/998/);
+  });
+
+  it('the v3 fixture really is the shape that shipped: the ban as a clause in a bullet', () => {
+    expect(v3).toContain('Do not invent a reporting chain or emergency phone numbers.');
+  });
+
+  it('NEGATIVE CONTROL — the published v3 prompt fails, and fails ONLY on this', () => {
+    const audit = auditComposedPrompt(v3);
+    expect(audit.answerObligations.ok).toBe(false);
+    expect(audit.answerObligations.missing.map((o) => o.id)).toContain(PHONE_NUMBER_OBLIGATION.id);
+    expect(audit.missing, 'v3 carried all four standing domains').toEqual([]);
+    expect(audit.contactExactness.ok).toBe(true);
+    expect(audit.retrievalFallback.ok).toBe(true);
+    expect(audit.ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — the published v4 prompt passes', () => {
+    const audit = auditAnswerObligations(v4);
+    expect(audit.ok).toBe(true);
+    expect(auditComposedPrompt(v4).ok).toBe(true);
+  });
+
+  it('POSITIVE CONTROL — the bare v4 paragraph satisfies the obligation on its own', () => {
+    expect(auditAnswerObligations(PHONE_PARAGRAPH, [PHONE_NUMBER_OBLIGATION]).ok).toBe(true);
+  });
+
+  it('every part is load-bearing — dropping any ONE fails', () => {
+    const ablations: [string, string, string][] = [
+      ['retrieval test', 'in what you retrieved for this answer', 'in the knowledge base'],
+      ['verbatim', 'that exact number appears verbatim', 'that number appears'],
+      ['well-known escape hatch', 'you believe is well known for', 'you know for'],
+      [
+        'what to say instead',
+        'call your local emergency services or get the person to the nearest health facility, and tell your supervisor.',
+        'tell your supervisor.',
+      ],
+      [
+        'what it bans',
+        '**Phone numbers — a hard rule.** Never write any phone number, emergency number, ambulance, police or fire line, hotline or short code',
+        '**A hard rule.** Never write anything',
+      ],
+    ];
+    for (const [part, from, to] of ablations) {
+      const weakened = PHONE_PARAGRAPH.replace(from, to);
+      expect(weakened, `ablation "${part}" must change the paragraph`).not.toBe(PHONE_PARAGRAPH);
+      expect(
+        auditAnswerObligations(weakened, [PHONE_NUMBER_OBLIGATION]).ok,
+        `dropping the ${part} must fail the obligation`,
+      ).toBe(false);
+    }
+  });
+
+  it('scattered fragments do not count — ONE block must carry the whole rule', () => {
+    const scattered = [
+      'Never write a phone number unless it appears verbatim.',
+      'Ground answers in what you retrieved for this answer.',
+      'Even facts you believe are well known need a source.',
+      'Direct people to local emergency services in general terms.',
+    ].join('\n\n');
+    expect(splitPromptBlocks(scattered)).toHaveLength(4);
+    expect(auditAnswerObligations(scattered, [PHONE_NUMBER_OBLIGATION]).ok).toBe(false);
+  });
+
+  it('names the obligation in the operator report', () => {
+    const report = formatStandingDomainReport(auditComposedPrompt(v3));
+    expect(report).toContain('[ANSWER-OBLIGATIONS]');
+    expect(report).toContain(PHONE_NUMBER_OBLIGATION.id);
+  });
+
+  it('the phone paragraph is not mistaken for contact protection', () => {
+    // It says "phone number" and "verbatim"; counted as a contact block it
+    // could satisfy `quote-verbatim` for a prompt that never protects contacts.
+    expect(extractContactProtectionBlocks(PHONE_PARAGRAPH)).toEqual([]);
+    expect(auditContactExactness(PROMPT_NO_CONTACT_CLAUSE + ANSWER_SECTION).ok).toBe(false);
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The\n     composed prompt MUST say, as one paragraph:');
+    expect(start, 'Step 7 must mandate the phone paragraph verbatim').toBeGreaterThan(-1);
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('**Why a paragraph and not', start));
+    expect(auditAnswerObligations(mandated, [PHONE_NUMBER_OBLIGATION]).ok).toBe(true);
   });
 });

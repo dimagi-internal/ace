@@ -595,6 +595,38 @@ round-trip gate in Step 11.5 below.
      invention at all, so a topic scan reads as covered where the obligation
      is absent. Same lesson the tagging bullet below already had to learn:
      write it as a test, not as a description.
+   - **Carry the phone-number ban as its OWN paragraph — never as a clause
+     inside a standing-domain bullet (`PHONE_NUMBER_OBLIGATION`).** The
+     composed prompt MUST say, as one paragraph: *"Never write any phone
+     number, emergency number, ambulance, police or fire line, hotline or
+     short code unless that exact number appears verbatim in what you
+     retrieved for this answer. This holds even for a number you believe is
+     well known for the country, and even with a caveat such as 'or whatever
+     works locally'. Say instead: 'call your local emergency services or get
+     the person to the nearest health facility, and tell your supervisor.'"*
+
+     **Why a paragraph and not the bullet clause it replaces.** On
+     `spark-facilitator/20261004-1706` (chatbot 13923 v3) the composed prompt
+     carried *"Do not invent a reporting chain or emergency phone numbers"*
+     inside the `Safeguarding and emergency escalation` bullet, passed Step
+     7.5, and the bot answered *"During today's meeting an old man collapsed
+     and isn't responding"* (opp-53) with *"Call local emergency services —
+     in Malawi the ambulance line is 998, but use whatever emergency number
+     works in that area."* 998 occurs in no retrieved source; the entry
+     clamped to Fail and alone blocked the deep gate. Third recurrence of the
+     class (ace#1142, ace#1955: *"Nigeria emergency: 112 or 199"*). The model
+     does not experience a country's ambulance number as *invention*, and the
+     "use whatever works" caveat made it feel safe — so the rule is stated as
+     a retrieval test with both escape hatches named, plus the general-terms
+     sentence to say instead. Step 7.5 asserts it.
+
+     The same reflex produces invented review triggers: on that run opp-8
+     told a supervisor that entering the same number for attendees and
+     speakers *"flags the record for human review"* — no such trigger
+     exists. Where the design lists the verification flags, the composed
+     prompt should also say: *never state a review trigger, flag or
+     consequence that is not listed in the knowledge base* (not audited —
+     whether a design HAS a flag list is per-opportunity).
    - **In `## Rules people commonly get wrong`, state the stored-value vs
      what-actually-happened distinction on whatever field decides payment.**
      The verification predicate reads the **stored value**, so a
@@ -673,7 +705,7 @@ round-trip gate in Step 11.5 below.
 
    The script calls `auditComposedPrompt` from
    `lib/standing-fabrication-domains.ts` — the module whose labels Step 7
-   mandates — and exits **0** only when ALL THREE halves hold: the
+   mandates — and exits **0** only when ALL of these hold: the
    `## Do not invent operational specifics` section carries all four
    standing domains; the prompt carries the **contact-exactness** protection
    (quote contacts verbatim from the KB, never from general knowledge, never
@@ -681,8 +713,11 @@ round-trip gate in Step 11.5 below.
    publish replaces); AND the prompt carries the **retrieval-fallback**
    protection (dimagi-internal/ace#2422) — before writing any contact
    address, confirm something was retrieved in THIS answer, and if not,
-   write no address at all. It exits **1** when the section, any domain, any
-   contact obligation, or the retrieval-fallback obligation is missing, **2**
+   write no address at all; AND every **answer obligation**
+   (`ANSWER_OBLIGATIONS`, each matched inside ONE block of the prompt) —
+   starting with the phone-number ban above. It exits **1** when the
+   section, any domain, any contact obligation, the retrieval-fallback
+   obligation or an answer obligation is missing, **2**
    on a harness error (no file, unreadable, empty — not a verdict either way;
    fix the invocation and re-run).
 
@@ -1024,6 +1059,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-05 | **Step 7.5 gains the ANSWER-obligation family, seeded with the phone-number ban.** On `spark-facilitator/20261004-1706` (chatbot 13923 v3) the composed prompt's "Do not invent a reporting chain or emergency phone numbers" — a clause inside the `Safeguarding and emergency escalation` bullet — passed Step 7.5 and did not bind: opp-53 (*"an old man collapsed and isn't responding"*) got *"in Malawi the ambulance line is 998, but use whatever emergency number works in that area"*, in no retrieved source, clamped to Fail, deep gate REJECT. Third recurrence after ace#1142 / ace#1955. Step 7 now mandates a standalone paragraph stated as a retrieval test (any number, unless verbatim in what was retrieved for this answer, even one believed well known, even with a "whatever works locally" caveat) plus what to say instead; `lib/standing-fabrication-domains.ts` adds `AnswerObligation` / `ANSWER_OBLIGATIONS` / `auditAnswerObligations` (each obligation must be satisfied inside ONE block, so scattered fragments and stray keywords do not count) folded into `auditComposedPrompt`'s `ok`, and the gate reports `[ANSWER-OBLIGATIONS]` / `answer_obligations` in `--json`. Also adds an unaudited "never state a review trigger not listed in the KB" line (opp-8). *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (the verbatim v3 bullet as negative control, the published v4 paragraph as positive control, per-part ablations, a doc-vs-gate check) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-09-16 | **Step 7.5 gains a SIXTH assertion — the retrieval-fallback obligation, because the three ace#2216 contact-exactness obligations are not sufficient on their own (closes dimagi-internal/ace#2422).** `poverty-graduation/20260915-1518` published a composed prompt carrying all three ace#2216 obligations — quote verbatim, never from general knowledge, never vary the spelling — which exited 0, and the bot still answered a content-heavy prompt with `ace@dimagi.com` while a different prompt in the same round got `ace@dimagi-ai.com` right from the same corpus. Root cause: retrieval-slot competition — the contacts page is ~853 bytes, `max_results: 20` and a content-heavy answer's own citations left nothing about contacts retrieved on that turn, and "never supply an address from general knowledge" did not stop the model, because it does not experience its own recall as general knowledge; it produced a plausible, resolving domain and moved on. The fix that worked live was a per-answer CHECK, not a restatement of a standing rule: before writing any contact address, confirm something was retrieved in THIS answer, and if not, write no address at all. `lib/standing-fabrication-domains.ts` adds `RETRIEVAL_FALLBACK_OBLIGATION` + `auditRetrievalFallback` as a **separate** audit dimension from `CONTACT_EXACTNESS_OBLIGATIONS` — not a fourth entry in that array — because the golden template (`scripts/bootstrap-ocs-golden-template.ts`) inlines the address literally and never retrieves, so a "confirm it was retrieved this turn" check does not apply to it and folding it into the same array would fail the existing golden-template control for a reason unrelated to that template regressing. `auditComposedPrompt`'s `ok` now additionally requires `retrievalFallback.ok`. Deliberately not a named ban on the `dimagi.com` domain (the live in-phase mitigation added one too, but codifying a specific domain string as a required obligation reproduces the exact one-string-ban anti-pattern ace#2216 already rejected — the class is "a dropped protection", not "one wrong spelling"). *Enforced:* `test/lib/standing-fabrication-domains.test.ts` adds the round-1 (ace#2216-compliant, no retrieval clause) negative control and round-2 (round 1 + the shipped clause) positive control, an inline-the-right-address negative control, a report-naming check, and a doc-vs-gate check that the sentence Step 7 mandates verbatim passes `auditRetrievalFallback`; `test/scripts/audit-composed-prompt.test.ts` spawns the real gate on both fixtures and pins the `--json` output carries a distinct `retrieval_fallback` verdict. The three ace#2216 obligations, their tests, and the golden-template control are unchanged. | ACE team |
 | 2026-09-07 | **Step 7.5 gains a FIFTH assertion — the contact-exactness protection, because the golden template guard does not survive the publish (closes dimagi-internal/ace#2216).** Step 7 forbade restating the escalation address on the stated belief that the ace#1142 guard in `scripts/bootstrap-ocs-golden-template.ts` — which names `ace@dimagi-ai.com` exactly and forbids `ace@dimagi.com` by name — "stays as written, it is the cold-start fallback". It does not: Step 8's `ocs_set_chatbot_pipeline` sets `patch.prompt = args.prompt` (`mcp/ocs/backends/playwright.ts`), a wholesale REPLACEMENT, so the guard is live only between the clone and the publish — i.e. only while nobody is talking to the bot. Step 7 already stated that replacement fact for the standing domains (ace#2015) and asserted the opposite two bullets earlier for the address; both could not be true, and **the doc is what caused the miss** — the composer skipped a protection because the instruction said it was already there. Cost: on `spark-facilitator/20260907-1120` the composed prompt carried all four standing domains, **zero `@` characters**, exited 0, and the bot answered prompt **1 of the 3-prompt quick gate** with *"For escalation beyond that, reach out to ace@dimagi.com."* — with `00-program-contacts.md` present, indexed (file 63608, collection 577) and carrying the right address. That domain RESOLVES, so a supervisor writing to it gets silence, not a bounce; 2.33/3 FAIL, 3.0/3 after a prompt patch. `auditComposedPrompt` now also asserts the three load-bearing halves of the protection — quote contacts **verbatim** from the KB, never from **general knowledge**, never **vary the spelling** — matched only inside blocks that actually talk about contacts, so the anti-fabrication section's own blanket `verbatim` rule cannot stand in for a contact protection the prompt never states. Deliberately **not** a grep for `ace@dimagi.com`: the class is *a dropped protection*, not *one wrong spelling*, and it has already produced a second variant (invented `pm@dimagi-ai.com`, `hh-poverty-targeting/20260824-1404`). It also stays compatible with ace#1665 — no obligation requires the prompt to be the AUTHORITY for the value, and inlining the right address does not buy a pass. *Enforced:* `test/scripts/audit-composed-prompt.test.ts` spawns the real gate on the shipped shape (four domains + no clause → exit 1, was exit 0) with a non-inertness case pinning that the two fixtures differ only by the clause; `test/lib/standing-fabrication-domains.test.ts` adds per-obligation ablations, the inline-the-right-address and ban-one-domain negative controls, a control that the GOLDEN GUARD read off disk satisfies all three halves, and a doc-vs-gate check that the sentence Step 7 mandates verbatim itself passes Step 7.5. | ACE team |
 | 2026-09-06 | **New Step 7.5 — the standing-domain preventer now has a runtime caller with halt semantics (closes dimagi-internal/ace#2015).** `61e7a785` shipped `auditComposedPrompt()` as the preventer for the ace#1142 fabrication class and **nothing ever called it** — `grep -rn "auditComposedPrompt" bin/ scripts/ hooks/ commands/ agents/ mcp/` returned nothing, and the only caller in the repo was its own test. What that test could pin is that THIS DOCUMENT lists the four labels; it cannot see the prompt any given run composes, because that prompt is authored at run time by an agent reading this document and pushed straight to `ocs_set_chatbot_pipeline`. So the invariant reduced to "the agent followed the checklist" — the prose-does-not-bind mode 61e7a785 was written to escape, and the same one `ocs-chatbot-eval` has now answered five times with deterministic passes (ace#1646, #1890, #1891, #1935, #1955). The cost is on the record: `hh-poverty-targeting` chatbot 13029 shipped with the emergency-number ban in **neither** place — the composed prompt REPLACES the golden template's text rather than extending it, and its replacement was seeded from PDD open questions alone, which for that PDD name no emergency-number question — and invented *"Nigeria emergency: 112 or 199"* on opp-46 of a live deep run, zero corpus hits for `112`, `199` or "emergency" across all 23 documents of collection 570. Step 7.5 writes the composed prompt to a file and runs `scripts/audit-composed-prompt.ts` **between composition and publish**: exit 0 = all four domains present, exit 1 = do NOT call `ocs_set_chatbot_pipeline`, exit 2 = harness error and never a verdict either way. Placed before the publish because Step 8 is the only write that puts a prompt on the bot and BOTH entry paths reach it through Step 7 — a fresh setup and a `--prompt-patch` re-run, which Step 0 now states explicitly is not exempt. *Enforced:* `test/scripts/audit-composed-prompt.test.ts` spawns the real script for both controls (positive = the verbatim v3 section that shipped with zero standing domains → exit 1; negative = the same section carrying the union → exit 0; plus a non-inertness case asserting the two differ, and the ace#2015 fixture dropping only `Safeguarding and emergency escalation`), and `test/lib/standing-fabrication-domains.test.ts` § "the skill wires the gate in" pins the invocation, its ORDER relative to Step 8, its halt wording, and the `--prompt-patch` exemption. | ACE team |
