@@ -82,7 +82,26 @@ pristine golden template, and `llo-launch` reads the result as clearance
    ```
 
    Hand `advisory.caveats` to `ocs-chatbot-eval` so its Process step 4
-   marks the covered entries. A non-empty `advisory.unresolved` is a
+   marks the covered entries.
+
+   **Conditional caveats are NOT applied until the grader confirms the
+   condition (ace#2663).** A caveat whose text carries a conditional clause
+   (`if <X>, … advisory`, `… advisory unless <Y>`) comes back with
+   `conditional: true` and its `condition`, marks no entry, and is listed in
+   `advisory.conditional` (and as `[ANSWER-KEY-CONDITIONAL]` in the report).
+   Its entries stay scored and inside the zero-Fail gate. The grader
+   (`ocs-chatbot-eval` Process step 4) checks each condition against this
+   run's `run_state.yaml`, and only when it holds re-applies the caveat via
+   `confirmCondition(caveat, '<run_state path: value it read>')`. The
+   confirmation, or the finding that the condition does not hold, goes in the
+   verdict. Measured on `spark-facilitator/20261004-1706`: all three residual
+   caveats were conditional (`if … camera-only NOT applied`, `if Phase 3/4
+   implement the 3-per-step cap differently`, `if a reassignment path ships`).
+   None held (`camera_only: applied`; cap held by `payable_slot`; no handover
+   path), yet all six entries were excluded from the gate. Unconditional
+   caveats are applied exactly as before.
+
+   A non-empty `advisory.unresolved` is a
    `[BLOCKER]` — a recorded key defect that routes to no graded entry is
    going ungraded; stop and name the prompt.
 
