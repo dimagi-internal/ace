@@ -36,6 +36,7 @@ import {
   PHONE_NUMBER_OBLIGATION,
   ESCALATE_WITH_ADDRESS_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
+  NO_INTERNAL_IDS_OBLIGATION,
   auditAnswerObligations,
   splitPromptBlocks,
 } from '../../lib/standing-fabrication-domains.js';
@@ -166,8 +167,14 @@ const ESCALATION_PARAGRAPHS =
   'Never describe your own searching, retrieving or checking to the reader. Do not write things like "let me retrieve the address", "the search returned", "I was not able to retrieve a confirmed contact" or "I\'ll retrieve it for you". ' +
   'The reader sees only the answer: either the address, or "your supervisor, and the ACE admin group".';
 
+/** The internal-identifier rule, verbatim from 13923 v4. */
+const INTERNAL_IDS_PARAGRAPH =
+  'Never quote internal identifiers to the reader: decision ids, residual or open-item ids, skill or step names, ' +
+  'or slug-style labels such as `trial-sample-exclusion`. Say what the decision is in plain words instead. ' +
+  '(Form field names a CBF actually sees on the form are fine.)';
+
 /** Appended to the positive control so it carries every ANSWER obligation. */
-const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}`;
+const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -803,5 +810,43 @@ describe('auditAnswerObligations — escalate with the address, never narrate re
     const mandated = agentSetup.slice(start, agentSetup.indexOf('**Why the third obligation now opens', start));
     expect(auditAnswerObligations(mandated, both).ok).toBe(true);
     expect(auditRetrievalFallback(mandated).ok).toBe(true);
+  });
+});
+
+/**
+ * Chatbot 13923 v3 quoted decision ids to field readers: opp-2 / opp-11
+ * (`trial-sample-exclusion`, `rct-sample-overlap`), opp-38
+ * (`connect-markers-in-sparks-own-app`).
+ */
+describe('auditAnswerObligations — never quote internal identifiers', () => {
+  const v3 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v3.md`, 'utf8');
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+
+  it('NEGATIVE CONTROL — v3 (the ace#1891 file/config rule only) does not carry it', () => {
+    expect(v3).toContain('other internal artifact');
+    expect(auditAnswerObligations(v3, [NO_INTERNAL_IDS_OBLIGATION]).ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v4 carries it', () => {
+    expect(auditAnswerObligations(v4, [NO_INTERNAL_IDS_OBLIGATION]).ok).toBe(true);
+  });
+
+  it('ablations — the ban, the id class and the plain-words replacement are each load-bearing', () => {
+    for (const [from, to] of [
+      ['Never quote internal identifiers', 'Avoid jargon'],
+      ['decision ids, ', ''],
+      ['in plain words instead', 'instead'],
+    ]) {
+      const weakened = INTERNAL_IDS_PARAGRAPH.replace(from, to);
+      expect(weakened).not.toBe(INTERNAL_IDS_PARAGRAPH);
+      expect(auditAnswerObligations(weakened, [NO_INTERNAL_IDS_OBLIGATION]).ok, from).toBe(false);
+    }
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('(`NO_INTERNAL_IDS_OBLIGATION`).** The composed prompt MUST say:');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('The ace#1891 rule', start));
+    expect(auditAnswerObligations(mandated, [NO_INTERNAL_IDS_OBLIGATION]).ok).toBe(true);
   });
 });
