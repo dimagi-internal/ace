@@ -111,4 +111,13 @@ journeys:
       - app_boots
       - no_crash
       - submission_confirmed
+      # A criterion that needs MORE THAN ONE DATED RECORD ON THE SAME CASE
+      # under a strictly-increasing, <= today() date constraint (and no
+      # back-datable anchor) cannot be reached in one /ace:qa-deep session —
+      # declare it in the mapping form with `reachability: multi-day` and the
+      # reason (ace#2670). qa-deep records it NOT REACHED; app-ux-eval lists
+      # it under `not_reached` as a WARN, never a pass and never a fail:
+      #   - name: fourth_meeting_labelled_not_paid
+      #     reachability: multi-day
+      #     reason: "needs 4 community meetings on one case; date_of_meeting must be > the previous meeting and <= today(), so one per case per device-day"
     pdd_time_budget_seconds: {{from PDD if specified, else null}}
