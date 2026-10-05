@@ -210,8 +210,13 @@ were given — the SAME `$FLAGS` on every command below and later on
 
 9. **Chatbot and apps.** If the newest `ocs-chatbot-qa_transcript*.md` is older
    than 7 days or records a failed exchange, run `ocs-chatbot-qa --quick` (and
-   re-inventory). Apps need a released build per app in run_state and a passing
-   `app-release-qa` result — both read from the inventory.
+   re-inventory). Apps need a released build per app and a passing
+   `app-release-qa` result — both read from the inventory. The release is read
+   from its contracted owner, `3-commcare/app-release_summary.md` frontmatter
+   `apps.<kind>_app.{hq_app_id, build_id, is_released}` (`assessApps`; a
+   summary naming a different `hq_app_id` than run_state blocks as
+   `app-release-other-app`). run_state `products.apps` is only a fallback when
+   that file is unreadable — no release key there is contracted (ace#2698).
 
 10. **Verdict and plan.** Re-download `run_state.yaml` (anything above may have
     written it) and re-inventory, then:
