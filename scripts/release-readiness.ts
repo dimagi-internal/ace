@@ -6,6 +6,8 @@
  *
  * Reviewer/flag arguments shared by `memberships`, `assess` and `gate`:
  *   --reviewers "a@x.org[:viewer|editor],…"   (required for READY)
+ *   [--cc "staff@dimagi.com,…"]   Dimagi staff copied on every release email,
+ *                                  granted nothing (ace#2706); any other domain is refused
  *   [--forward-source] [--allow-cross-workspace-forward] [--allow-shared connect]
  *
  *   inventory --run-folder <drive id> --out <inventory.json>
@@ -62,6 +64,13 @@
  *       every write in the run folder, over the same run_state, with an
  *       untampered plan for exactly these reviewers and flags.
  *
+ *   thread-recipients --participants "<addr>,<addr>,…" (--workspace W --opp O | --tenancy <json>)
+ *       `--from-thread`: split the requesting thread's participants (every
+ *       From/To/Cc address) into reviewers (domain in the tenancy's
+ *       labs_allowed_domains), cc (Dimagi staff) and excluded (ACE itself,
+ *       anyone else — shown, never copied). Prints JSON with the ready-to-pass
+ *       `--reviewers` and `--cc` values. Read-only.
+ *
  *   hq-flip-steps (--domain D | --run-state <yaml>)
  *       Print the HQ superuser step (set the space to "Test or Demo Project")
  *       for the run's HQ space — the exact URL and clicks the operator does in
@@ -103,7 +112,9 @@ import {
 import {
   buildReleasePlan,
   emailBody,
+  parseCc,
   parseReviewers,
+  partitionThreadParticipants,
   projectedMemberships,
   renderPlan,
   runStateHash,
@@ -333,6 +344,7 @@ async function assess(): Promise<void> {
     opp: need('opp'),
     runId: need('run'),
     reviewers,
+    cc: parseCc(arg('cc')),
     runState,
     tenancy,
     driveDocs: readJson<DriveDocAccess[]>(arg('drive-access')),
@@ -354,7 +366,7 @@ async function assess(): Promise<void> {
   findings.push(...assessHqPlan(hqDomainFromRunState(runState), readJson(arg('hq-plan'))));
   const verdict = buildReleaseVerdict({
     workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only'),
-    reviewers, runStateHash: runStateHash(fs.readFileSync(need('run-state'), 'utf8')), plan,
+    reviewers, cc: plan.cc, runStateHash: runStateHash(fs.readFileSync(need('run-state'), 'utf8')), plan,
   });
   const dir = need('out-dir');
   fs.mkdirSync(dir, { recursive: true });
@@ -437,10 +449,20 @@ function gate(): void {
     workspace: need('workspace'), opp: need('opp'), runId: need('run'), files,
     runStateHash: runStateHash(fs.readFileSync(need('run-state'), 'utf8')),
     reviewers: parseReviewers(arg('reviewers')),
+    cc: parseCc(arg('cc')),
     options: options(),
   });
   process.stdout.write(JSON.stringify(r) + '\n');
   if (!r.ok) process.exit(1);
+}
+
+async function threadRecipients(): Promise<void> {
+  const local = readJson<Tenancy & { tenancy?: Tenancy }>(arg('tenancy'));
+  const tenancy = local ? (local.tenancy ?? local) : await tenancyFor(need('workspace'), need('opp'));
+  if (!tenancy) throw new Error("thread-recipients: the opp's tenancy could not be read (labs_allowed_domains) — pass --tenancy <json> from bin/ace-bind --show");
+  const parts = need('participants').split(',').map((s) => s.trim()).filter(Boolean);
+  const p = partitionThreadParticipants(parts, tenancy.labs_allowed_domains);
+  process.stdout.write(JSON.stringify({ ...p, labs_allowed_domains: tenancy.labs_allowed_domains ?? [], flags: { reviewers: p.reviewers.join(','), cc: p.cc.join(',') } }, null, 1) + '\n');
 }
 
 async function main(): Promise<void> {
@@ -451,6 +473,7 @@ async function main(): Promise<void> {
   if (cmd === 'gate') return gate();
   if (cmd === 'memberships') return memberships();
   if (cmd === 'drive-access') return driveAccess();
+  if (cmd === 'thread-recipients') return threadRecipients();
   if (cmd === 'plan-show') {
     process.stdout.write(renderPlan(readyPlan()));
     return;
@@ -460,10 +483,10 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === 'email-body') {
-    const { subject, body } = emailBody(readyPlan(), need('to'), need('accept-link'));
+    const { subject, body, cc } = emailBody(readyPlan(), need('to'), need('accept-link'));
     fs.writeFileSync(need('out'), body);
     fs.writeFileSync(need('subject-out'), subject + '\n');
-    process.stdout.write(JSON.stringify({ to: need('to'), subject }) + '\n');
+    process.stdout.write(JSON.stringify({ to: need('to'), cc: cc.join(','), subject }) + '\n');
     return;
   }
   if (cmd === 'hq-flip-steps') {
@@ -472,7 +495,7 @@ async function main(): Promise<void> {
     process.stdout.write(hqEnterpriseFlipSteps(domain) + '\n');
     return;
   }
-  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
+  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|thread-recipients|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
   process.exit(2);
 }
 

@@ -60,6 +60,73 @@ export function isDimagiStaff(email: string): boolean {
   return /@dimagi\.com$/i.test(email);
 }
 
+/** ACE's own mailbox — the sender of every release email, so never a recipient of one. */
+export const ACE_MAILBOX = 'ace@dimagi-ai.com';
+
+/**
+ * `--cc a@dimagi.com,b@dimagi.com` → the Dimagi staff copied on EVERY release
+ * email, lower-cased, de-duplicated, sorted. They get no grant: a cc is told,
+ * not let in. Operator decision (Jonathan, 2026-10-05, the spark-facilitator
+ * release, ace#2706): "All 8 get the email" — the partner reviewers get their
+ * grants and email, the Dimagi staff on the requesting thread are cc'd.
+ *
+ * Only Dimagi staff (`@dimagi.com`) may be copied. Anyone else on a release
+ * email reads a partner's access instructions without being a reviewer of the
+ * run — refused here, with the address named. ACE's own mailbox is the sender.
+ */
+export function parseCc(spec: string | undefined | null): string[] {
+  if (!spec || !spec.trim()) return [];
+  const out = new Set<string>();
+  for (const raw of spec.split(',')) {
+    const email = raw.trim().toLowerCase();
+    if (!email) continue;
+    if (!EMAIL.test(email)) throw new Error(`--cc: not an email address: "${raw.trim()}"`);
+    if (email === ACE_MAILBOX) throw new Error(`--cc: ${email} is ACE's own mailbox — it sends the release emails, it is not copied on them`);
+    if (!isDimagiStaff(email)) throw new Error(`--cc: ${email} is not Dimagi staff (@dimagi.com) — only Dimagi staff may be copied on a release email; a partner reads it as a reviewer (--reviewers) or not at all`);
+    out.add(email);
+  }
+  return [...out].sort();
+}
+
+export function ccKey(cc: readonly string[] | undefined | null): string {
+  return [...new Set((cc ?? []).map((e) => e.toLowerCase()))].sort().join(',');
+}
+
+/**
+ * `--from-thread`: split the requesting thread's participants (every From /
+ * To / Cc address) into reviewers and cc.
+ *
+ * - Dimagi staff (`@dimagi.com`) → `cc` (copied, never granted) — whatever the
+ *   tenancy's labs domains say.
+ * - an address whose domain is in `labs_allowed_domains` → `reviewers` (viewer).
+ * - ACE's own mailbox, and anyone else → `excluded`, with the reason — shown to
+ *   the operator, never silently copied (a non-Dimagi address is never a cc).
+ */
+export function partitionThreadParticipants(
+  participants: readonly string[],
+  labsAllowedDomains: readonly string[] | null | undefined,
+): { reviewers: string[]; cc: string[]; excluded: Array<{ email: string; reason: string }> } {
+  const domains = new Set((labsAllowedDomains ?? []).map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean));
+  const reviewers = new Set<string>();
+  const cc = new Set<string>();
+  const excluded = new Map<string, string>();
+  for (const raw of participants) {
+    // `Name <a@x.org>` and bare `a@x.org` both
+    const email = (/<([^>]+)>/.exec(raw)?.[1] ?? raw).trim().toLowerCase();
+    if (!email) continue;
+    if (!EMAIL.test(email)) excluded.set(email, 'not an email address');
+    else if (email === ACE_MAILBOX) excluded.set(email, "ACE's own mailbox — the sender");
+    else if (isDimagiStaff(email)) cc.add(email);
+    else if (domains.has(email.split('@')[1])) reviewers.add(email);
+    else excluded.set(email, "neither a partner domain in the opp's labs_allowed_domains nor Dimagi staff — not a reviewer, and never copied");
+  }
+  return {
+    reviewers: [...reviewers].sort(),
+    cc: [...cc].sort(),
+    excluded: [...excluded].map(([email, reason]) => ({ email, reason })).sort((a, b) => a.email.localeCompare(b.email)),
+  };
+}
+
 export interface Tenancy {
   hq_domain?: string | null;
   connect_pm_org?: string | null;
@@ -100,6 +167,8 @@ export interface ReleaseAction {
   scope?: 'anyone_with_link';
   cross_workspace?: boolean;
   subject?: string;
+  /** `email` actions: the Dimagi staff copied on it (ace#2706). */
+  cc?: string[];
 }
 
 export interface NotGranted {
@@ -110,6 +179,8 @@ export interface NotGranted {
 
 export interface PlannedEmail {
   to: string;
+  /** Dimagi staff copied on this email — the plan's `cc`, the same on every email. */
+  cc: string[];
   subject: string;
   body: string;
 }
@@ -121,6 +192,8 @@ export interface ReleasePlan {
   run_id: string;
   options: ReleaseOptions;
   reviewers: Reviewer[];
+  /** Dimagi staff copied on every release email; granted nothing (ace#2706). Absent on a pre-cc plan = none. */
+  cc: string[];
   actions: ReleaseAction[];
   not_granted: NotGranted[];
   emails: PlannedEmail[];
@@ -240,6 +313,8 @@ export interface PlanInput {
   opp: string;
   runId: string;
   reviewers: readonly Reviewer[];
+  /** Dimagi staff to copy on every release email (`parseCc`). */
+  cc?: readonly string[];
   runState: unknown;
   tenancy: Tenancy | null;
   driveDocs: readonly DriveDocAccess[] | null;
@@ -283,6 +358,25 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
       'Nobody has been named to review this run.',
       'Name the reviewers, then validate release readiness again.'));
   }
+  // Copied staff: Dimagi only, never ACE itself, never someone already a reviewer.
+  // parseCc refuses these at the CLI; this holds for any other caller.
+  const cc = [...new Set((input.cc ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean))].sort();
+  for (const e of cc) {
+    if (e === ACE_MAILBOX || !isDimagiStaff(e)) {
+      problems.push(problem(`reviewers-cc-not-dimagi:${e}`, 'blocker',
+        `--cc ${e} is not Dimagi staff (@dimagi.com) — only Dimagi staff may be copied on a release email`,
+        `drop ${e} from --cc (a partner is named in --reviewers, or not at all)`,
+        `${e} would be copied on the reviewers' access emails without being a reviewer.`,
+        `Remove ${e} from the copy list, or name them as a reviewer.`));
+    } else if (reviewers.some((r) => r.email === e)) {
+      problems.push(problem(`reviewers-cc-is-reviewer:${e}`, 'blocker',
+        `${e} is in both --reviewers and --cc`,
+        `name ${e} in one of them`,
+        `${e} is listed both as a reviewer and as a copy.`,
+        `Keep ${e} in one list only.`));
+    }
+  }
+
   if (!input.tenancy) {
     problems.push(problem('plan-tenancy-unread', 'blocker',
       "the opp's tenancy (HQ space, Connect orgs) was not read, so no grant can be planned",
@@ -367,9 +461,9 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
   const emails: PlannedEmail[] = [];
   for (const r of reviewers) {
     const mine = actions.filter((a) => a.email === r.email);
-    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, summary, chat, actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
+    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, cc, summary, chat, actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
     emails.push(e);
-    actions.push({ id: `email:${r.email}`, system: 'email', kind: 'email', email: r.email, target: r.email, subject: e.subject });
+    actions.push({ id: `email:${r.email}`, system: 'email', kind: 'email', email: r.email, target: r.email, subject: e.subject, cc: [...cc] });
   }
 
   // The order IS the contract: HQ, Connect, Drive, forward, ace-web, emails.
@@ -387,6 +481,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
       run_id: runId,
       options: { ...options },
       reviewers: [...reviewers],
+      cc,
       actions: ordered,
       not_granted: notGranted,
       emails,
@@ -400,6 +495,7 @@ function reviewerEmail(x: {
   runId: string;
   workspace: string;
   reviewer: Reviewer;
+  cc: readonly string[];
   summary: string;
   chat: string | null;
   actions: ReadonlyArray<Omit<ReleaseAction, 'step'>>;
@@ -434,7 +530,7 @@ function reviewerEmail(x: {
   lines.push('');
   lines.push('Thank you,');
   lines.push('ACE, for Dimagi');
-  return { to: x.reviewer.email, subject: `Review access: ${x.opp} (run ${x.runId})`, body: lines.join('\n') + '\n' };
+  return { to: x.reviewer.email, cc: [...x.cc], subject: `Review access: ${x.opp} (run ${x.runId})`, body: lines.join('\n') + '\n' };
 }
 
 /**
@@ -442,18 +538,20 @@ function reviewerEmail(x: {
  * filled in, and nothing else changed. Refuses a link that is not an ace-web
  * invite link, and a body with no placeholder to fill (a tampered plan).
  */
-export function emailBody(plan: ReleasePlan, to: string, acceptLink: string): { subject: string; body: string } {
+export function emailBody(plan: ReleasePlan, to: string, acceptLink: string): { subject: string; body: string; cc: string[] } {
   const e = plan.emails.find((m) => m.to.toLowerCase() === to.toLowerCase());
   if (!e) throw new Error(`the release plan has no email to ${to}`);
   if (!/^https?:\/\/\S+\/invite\/[A-Za-z0-9_-]+\/?$/.test(acceptLink)) throw new Error(`not an ace-web invite link: ${acceptLink}`);
   if (!e.body.includes(ACCEPT_LINK_TOKEN)) throw new Error(`the planned email to ${to} has no ${ACCEPT_LINK_TOKEN} to fill`);
-  return { subject: e.subject, body: e.body.split(ACCEPT_LINK_TOKEN).join(acceptLink) };
+  return { subject: e.subject, body: e.body.split(ACCEPT_LINK_TOKEN).join(acceptLink), cc: [...(e.cc ?? [])] };
 }
 
 /** The grant table + email drafts the operator approves, as plain text. */
 export function renderPlan(plan: ReleasePlan): string {
   const out: string[] = [];
   out.push(`Release plan — ${plan.workspace}/${plan.opp}/${plan.run_id}`);
+  out.push('');
+  out.push(plan.cc?.length ? `Copied on every email (Dimagi staff, no access granted): ${plan.cc.join(', ')}` : 'Copied on the emails: nobody.');
   out.push('');
   out.push('| Reviewer | HQ | Connect | Labs | OCS | ace-web |');
   out.push('|---|---|---|---|---|---|');
@@ -478,10 +576,10 @@ export function renderPlan(plan: ReleasePlan): string {
   out.push(fwd ? `Forward: ${fwd.target}'s public summary will redirect here${fwd.cross_workspace ? ' — ANOTHER WORKSPACE\'S PAGE (override given)' : ''}.` : 'Forward: no.');
   out.push('');
   out.push('Steps, in order:');
-  for (const s of plan.actions) out.push(`${s.step}. ${s.kind} ${s.email ? `${s.email} → ` : ''}${s.target}${s.role ? ` (${s.role})` : ''}`);
+  for (const s of plan.actions) out.push(`${s.step}. ${s.kind} ${s.email ? `${s.email} → ` : ''}${s.target}${s.role ? ` (${s.role})` : ''}${s.cc?.length ? ` cc ${s.cc.join(', ')}` : ''}`);
   for (const e of plan.emails) {
     out.push('');
-    out.push(`--- Email to ${e.to} — Subject: ${e.subject}`);
+    out.push(`--- Email to ${e.to}${e.cc?.length ? ` — Cc: ${e.cc.join(', ')}` : ''} — Subject: ${e.subject}`);
     out.push(e.body.trimEnd());
   }
   out.push('');

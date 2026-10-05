@@ -9,7 +9,9 @@ import {
   buildReleasePlan,
   emailBody,
   grantsFor,
+  parseCc,
   parseReviewers,
+  partitionThreadParticipants,
   planHash,
   projectedMemberships,
   renderPlan,
@@ -173,5 +175,73 @@ describe('the audit sees what the plan will do', () => {
     ]);
     expect(out.map((f) => f.id)).toEqual(['reviewers-missing']);
     expect(out[0].merged).toEqual(['surface:REVIEWERS-UNDECLARED:apps[0].hq_url']);
+  });
+});
+
+describe('cc — Dimagi staff copied on every release email (ace#2706)', () => {
+  // Operator decision (Jonathan, 2026-10-05, spark-facilitator): "All 8 get the
+  // email" — the partner reviewers get grants + their email, the Dimagi staff on
+  // the requesting thread are copied on each email and granted nothing.
+  const cc = parseCc('neal@dimagi.com, JJ@dimagi.com,jj@dimagi.com');
+
+  it('parseCc normalises and sorts; refuses any non-Dimagi address and ACE itself', () => {
+    expect(cc).toEqual(['jj@dimagi.com', 'neal@dimagi.com']);
+    expect(parseCc('')).toEqual([]);
+    expect(() => parseCc('amina@spark.org')).toThrow(/not Dimagi staff/);
+    expect(() => parseCc('jj@dimagi.com,someone@gmail.com')).toThrow(/someone@gmail\.com/);
+    expect(() => parseCc('ace@dimagi-ai.com')).toThrow(/ACE's own mailbox/);
+    expect(() => parseCc('eva@dimagi-ai.com')).toThrow(/not Dimagi staff/);
+    expect(() => parseCc('nope')).toThrow(/not an email/);
+  });
+
+  it('the plan carries cc, on the plan and on every email action and email — and grants the cc nothing', () => {
+    const { plan, problems } = buildReleasePlan({ ...base, cc });
+    expect(problems.filter((p) => p.severity === 'blocker')).toEqual([]);
+    expect(plan.cc).toEqual(cc);
+    const emails = plan.actions.filter((a) => a.kind === 'email');
+    expect(emails).toHaveLength(2);
+    for (const a of emails) expect(a.cc).toEqual(cc);
+    for (const e of plan.emails) expect(e.cc).toEqual(cc);
+    // no grant of any kind names a cc'd address
+    expect(plan.actions.filter((a) => a.kind !== 'email' && cc.includes(a.email ?? ''))).toEqual([]);
+    expect(plan.actions.filter((a) => cc.includes(a.target))).toEqual([]);
+    // the email body is unchanged by cc — only the header differs
+    expect(plan.emails[0].body).toBe(buildReleasePlan(base).plan.emails[0].body);
+    expect(emailBody(plan, 'amina@spark.org', 'https://labs.connect.dimagi.com/ace/invite/abc123').cc).toEqual(cc);
+  });
+
+  it('cc is in the plan hash', () => {
+    const none = buildReleasePlan(base).plan;
+    const some = buildReleasePlan({ ...base, cc }).plan;
+    const other = buildReleasePlan({ ...base, cc: ['jj@dimagi.com'] }).plan;
+    expect(none.cc).toEqual([]);
+    expect(planHash(some)).not.toBe(planHash(none));
+    expect(planHash(some)).not.toBe(planHash(other));
+    expect(planHash(some)).toBe(planHash(buildReleasePlan({ ...base, cc: [...cc].reverse() }).plan));
+  });
+
+  it('a non-Dimagi cc, or a cc who is also a reviewer, is a blocker even past parseCc', () => {
+    const bad = buildReleasePlan({ ...base, cc: ['outsider@gmail.com', 'ace@dimagi-ai.com'] }).problems.map((p) => p.id);
+    expect(bad).toContain('reviewers-cc-not-dimagi:outsider@gmail.com');
+    expect(bad).toContain('reviewers-cc-not-dimagi:ace@dimagi-ai.com');
+    const both = buildReleasePlan({ ...base, reviewers: parseReviewers('amina@spark.org,jj@dimagi.com'), cc: ['jj@dimagi.com'] }).problems;
+    expect(both.find((p) => p.id === 'reviewers-cc-is-reviewer:jj@dimagi.com')?.severity).toBe('blocker');
+  });
+
+  it('the approval text shows who is copied', () => {
+    expect(renderPlan(buildReleasePlan({ ...base, cc }).plan)).toContain('--- Email to amina@spark.org — Cc: jj@dimagi.com, neal@dimagi.com');
+    expect(renderPlan(buildReleasePlan(base).plan)).toContain('Copied on the emails: nobody.');
+  });
+
+  it('--from-thread: partner domains are reviewers, Dimagi staff are cc, ACE and anyone else are excluded', () => {
+    const p = partitionThreadParticipants(
+      ['Jonathan Jackson <jjackson@dimagi.com>', 'amina@spark.org', 'Bo <BO@spark.org>', 'ace@dimagi-ai.com', 'consultant@gmail.com', 'neal@dimagi.com'],
+      ['spark.org', 'dimagi.com'],
+    );
+    expect(p.reviewers).toEqual(['amina@spark.org', 'bo@spark.org']);
+    expect(p.cc).toEqual(['jjackson@dimagi.com', 'neal@dimagi.com']); // staff even though dimagi.com is a labs domain
+    expect(p.excluded.map((e) => e.email)).toEqual(['ace@dimagi-ai.com', 'consultant@gmail.com']);
+    // whatever it derives as cc, parseCc accepts
+    expect(parseCc(p.cc.join(','))).toEqual(p.cc);
   });
 });

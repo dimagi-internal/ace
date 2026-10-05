@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 # release-run
 
-`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
+`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
 `/ace:release <workspace>/<opp>/<run-id> --revoke-shared`
 
 **Releasing is sharing, and only sharing.** Owner decision (Jonathan,
@@ -35,9 +35,13 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 
 - `<workspace>/<opp>/<run-id>` — the run to release, normally a clone.
 - `--reviewers` / `--from-thread` — **the same reviewers given to the
-  validation** (from a thread: the same derivation, its non-Dimagi participants
-  whose domain is in the tenancy's `labs_allowed_domains`). The gate compares
-  them exactly — one extra, one missing or one different role is a refusal.
+  validation** (from a thread: the same derivation, `$RC thread-recipients
+  --participants "<addr>,…" --workspace <ws> --opp <opp>` — partner-domain
+  participants are reviewers, Dimagi staff are cc). The gate compares them
+  exactly — one extra, one missing or one different role is a refusal.
+- `--cc` — **the same Dimagi staff the validation copied** (ace#2706). They
+  get every email and no grant. The gate compares the list exactly; a cc added,
+  dropped or changed at release is a refusal, never adapted to.
 - `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared
   connect` — must be exactly the flags the validation was run with (they are
   plan options). They do not change what is executed; the plan does.
@@ -45,7 +49,7 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`. `$RC` is
 `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`;
-`$FLAGS` is `--reviewers "<list>"` plus the flags given.
+`$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus the flags given.
 
 ## Revoke mode (`--revoke-shared`)
 
@@ -74,7 +78,7 @@ wholesale by every merge mode). Report per row. Nothing else runs in this mode.
    Exit 0 only when the verdict is a READY release-readiness verdict for THIS
    workspace/opp/run, not a dry run, nothing in the run was written after it,
    `run_state.yaml` hashes the same as when validated, the plan matches its
-   hash, and the reviewers and flags are exactly the validated ones.
+   hash, and the reviewers, cc and flags are exactly the validated ones.
    Otherwise **STOP**: print the gate's reason and tell the operator to run
    `/ace:validate-release-readiness <workspace>/<opp>/<run-id> $FLAGS`. Do not
    adapt to a mismatch — not by dropping a reviewer, not by skipping an action,
@@ -103,10 +107,12 @@ and `role` come from the plan, never re-derived:
 | `drive_share` | `drive_set_anyone_with_link(fileId: target, role)` | an anonymous `curl -sI` of `url` no longer lands on a sign-in page |
 | `forward_source` | `POST ${ACE_WEB_BASE_URL}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release` `{"forward_source": true}` | an anonymous `curl -sI` of the source summary API is `307` with a `Location` naming this run |
 | `ace_web_invite` | `POST ${ACE_WEB_BASE_URL}/api/workspaces/<target>/members/invite` `{"email", "role"}` → `token` | the workspace's pending invites list the email; the accept link is `${ACE_WEB_BASE_URL}/invite/<token>` |
-| `email` | `$RC email-body --verdict … --to <email> --accept-link <that link> --out body.txt --subject-out subject.txt`, then `bin/ace-email --to <email> --subject-file subject.txt --body-file body.txt` | the send's JSON (`message_id`, `thread_id`) |
+| `email` | `$RC email-body --verdict … --to <email> --accept-link <that link> --out body.txt --subject-out subject.txt`, then `bin/ace-email --to <email> --cc "<the action's cc, comma-joined>" --subject-file subject.txt --body-file body.txt` (omit `--cc` when the action's `cc` is empty) | the send's JSON (`message_id`, `thread_id`) |
 
 `email-body` fills in the accept link and changes nothing else; it refuses a
-link that is not an ace-web invite link. The email for a reviewer is sent only
+link that is not an ace-web invite link. The cc is the plan's — read from the
+action (`plan-actions`) or `email-body`'s JSON, never typed from memory or the
+thread. The email for a reviewer is sent only
 after that reviewer's grants above it succeeded. A failed step is `NOT DONE`
 with its evidence: stop there, record what was done (Step 4), and report — do
 not retry with different arguments, and do not continue past a failed grant to
@@ -138,3 +144,10 @@ later` (listed again at the end as the revocation checklist), `NOT GRANTED —
 <reason from the plan>`, `public link (no account)` for OCS, or `NOT DONE` +
 evidence; the Drive shares; whether the source link now forwards; each email's
 `thread_id`; and the plan hash executed.
+
+## Change Log
+
+| Date | Change | Author |
+|---|---|---|
+| 2026-10-03 | Share-only release: executes the validated plan's share actions and nothing else (owner decision, ace#2620). | ACE team |
+| 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |
