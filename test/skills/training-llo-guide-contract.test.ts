@@ -36,7 +36,10 @@ describe('training-llo-guide — a paid record found false (ace#2610)', () => {
   it('builds it on the source-verified mechanism, not "reject the visit"', () => {
     const sec = (skill.split('## A paid record found false')[1]?.split(/^## /m)[0] ?? '').replace(/\s+/g, ' ');
     expect(sec).toContain('automatic_visit_verification');
-    expect(sec).toContain('Payment Verification import');
+    // ace#2613: the completed-work import has no UI, so the rejection is
+    // routed through the escalation contact rather than self-served.
+    expect(sec).toContain('completed_work_import');
+    expect(sec).toContain("program's escalation contact");
     expect(sec).toContain('payment_delete');
     expect(sec).toContain('suspend_user');
     expect(sec).toContain('Do NOT tell the LLO to "reject the visit in Connect"');
