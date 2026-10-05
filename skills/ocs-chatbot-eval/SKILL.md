@@ -299,6 +299,31 @@ If no mode is passed, default to `--quick`.
    EXPECTATION is unsound, never that the answer was good, so this must not
    drift into a cap or a boost.
 
+   **Conditional caveats: confirm before applying (ace#2663).** A caveat
+   whose text carries a conditional clause (`if <X>`, `unless <Y>`, …)
+   arrives with `conditional: true` and a `condition`, and
+   `applyAnswerKeyAdvisory` does NOT apply it. It marks nothing and is
+   returned in `advisory.conditional`. Before writing the verdict, check each
+   one against the run's `run_state.yaml` (read-only) and the artifact the
+   condition names:
+
+   ```ts
+   import { confirmCondition } from '../../lib/answer-key-reconciliation';
+   // only for a caveat whose condition you have VERIFIED holds:
+   const confirmed = caveats.map((c) =>
+     c === held ? confirmCondition(c, '<run_state path>: <the value you read>') : c);
+   const advisory = applyAnswerKeyAdvisory(entries, confirmed);
+   ```
+
+   `confirmCondition` refuses an empty evidence string. Record every
+   conditional caveat in the verdict YAML under `conditional_caveats`, with
+   `condition`, `holds: true|false` and the evidence you read. A caveat whose
+   condition does not hold, or cannot be checked, stays unapplied, and its
+   entries are graded and gated normally. Measured on
+   `spark-facilitator/20261004-1706`: three conditional caveats, none of the
+   conditions held, and the pre-fix code still excluded all six entries from
+   the gate.
+
    A caveat naming a prompt that routes to no graded entry comes back in
    `unresolved` and is a `[BLOCKER]`, same contract as `unmatchedMarkers`:
    a known key defect going ungraded is the failure this pass exists to
@@ -981,3 +1006,4 @@ When `--dry-run` is active:
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |
 | 2026-08-29 | **Stop declaring gate-brief artifacts the skill does not write (dimagi-internal/ace#1805).** 0.13.116 removed the gate-brief write step and `lib/artifact-manifest.ts` registers none, but the frontmatter description, the `## Products` list and BOTH `## Modes` rows still named `ocs-chatbot-eval_gate-brief-<mode>.md` as an output — and contradicted each other, Products saying `--deep` only while the Modes table had `--quick` emitting one too. Sibling producers (`idea-to-pdd`, `llo-launch`, `app-deploy`) had their tables cleaned in the same 0.13.116 pass; this file got the explanatory comment and not the cleanup, so an agent reading the Modes table wrote an orphan file into `5-ocs/` that nothing reads. Removed the declarations and retitled the retained `## Gate Brief` section to state plainly that it specifies the summary the orchestrator synthesizes from the verdict YAMLs rather than a file to emit. Found during Phase 5 of `hh-poverty-targeting/20260828-0702`. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-10-05 | **Conditional answer-key caveats are confirmed before they apply (dimagi-internal/ace#2663).** `applyAnswerKeyAdvisory` used to apply every recorded caveat unconditionally. On `spark-facilitator/20261004-1706`, all three residual caveats were conditional (`if … camera-only NOT applied`, `if … cap … differently`, `if a reassignment path ships`), none of the conditions held, and six entries were still excluded from the zero-Fail gate. A caveat with a conditional clause now comes back `conditional: true`, marks nothing, and is listed in `advisory.conditional`. Process step 4 checks the condition against run_state, re-applies via `confirmCondition(caveat, evidence)` only when it holds, and records `conditional_caveats` in the verdict. *Enforced:* `test/lib/answer-key-reconciliation.test.ts` (verbatim tp-r1..r3 fixtures). | ACE team |

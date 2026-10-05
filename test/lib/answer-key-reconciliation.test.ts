@@ -28,6 +28,9 @@ import {
   reconcileAnswerKey,
   formatAnswerKeyAdvisoryReport,
   ANSWER_KEY_ADVISORY_MARKER,
+  ANSWER_KEY_CONDITIONAL_MARKER,
+  confirmCondition,
+  detectCondition,
   type AdvisoryEntry,
 } from '../../lib/answer-key-reconciliation.js';
 
@@ -328,5 +331,90 @@ describe('formatAnswerKeyAdvisoryReport', () => {
     const out = formatAnswerKeyAdvisoryReport(reconcileAnswerKey(partial, RUN_STATE, ANSWER_KEY));
     expect(out).toContain('[BLOCKER]');
     expect(out).toContain('40');
+  });
+});
+
+describe('conditional caveats (ace#2663) — spark-facilitator/20261004-1706', () => {
+  /** Verbatim from that run's run_state.yaml (revisionVersion 210, lines 190-202). */
+  const CONDITIONAL_RUN_STATE = `
+phases:
+  scenarios-and-acceptance:
+    residuals:
+      - "tp-r1: [build-dependent] test prompts 6, 51 assume live-camera-only
+        photo capture; if 3-commcare/app-hq-settings_summary.md records
+        camera-only NOT applied, Phase 5 should treat the gallery-refusal parts
+        of prompts 6 and 51 as advisory rather than scored."
+      - "tp-r2: [build-dependent] test prompts 30, 50 name payable_slot as the
+        cap mechanism (PDD marks it advisory); if Phase 3/4 implement the
+        3-per-step cap differently, the mechanism wording in prompts 30 and 50
+        is advisory rather than scored (the 3-per-step requirement stays
+        scored)."
+      - "tp-r3: [product-feedback] test prompts 27, 28 are tagged
+        product-feedback because the PDD defines no case-handover process; if a
+        reassignment path ships, those tags are advisory rather than scored."
+`;
+  const KEY = [6, 51, 30, 50, 27, 28]
+    .map((n) => `## Prompt ${n}\n**Question:** Question number ${n}?\n`)
+    .join('\n');
+  const SPARK: AdvisoryEntry[] = [6, 51, 30, 50, 27, 28, 99].map((n) => ({
+    ref: `opp-${n}`,
+    prompt: `Question number ${n}?`,
+    score: n === 51 ? 3 : 9,
+    verdict: n === 51 ? 'fail' : 'pass',
+  }));
+
+  it('flags all three verbatim residuals as conditional and names the clause', () => {
+    const caveats = extractAnswerKeyCaveats(CONDITIONAL_RUN_STATE);
+    expect(caveats).toHaveLength(3);
+    expect(caveats.every((c) => c.conditional === true)).toBe(true);
+    expect(caveats.find((c) => c.reason.startsWith('tp-r3'))?.condition).toBe('if a reassignment path ships');
+    expect(caveats.find((c) => c.reason.startsWith('tp-r1'))?.condition).toContain('camera-only NOT applied');
+  });
+
+  it('does NOT auto-mark conditional entries advisory — a real Fail stays in the gate', () => {
+    const result = reconcileAnswerKey(SPARK, CONDITIONAL_RUN_STATE, KEY);
+    expect(result.advisoryRefs).toEqual([]);
+    expect(result.entries.some((e) => e.advisory)).toBe(false);
+    expect(result.entries.find((e) => e.ref === 'opp-51')?.verdict).toBe('fail');
+    expect(result.conditional).toHaveLength(3);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('applies a conditional caveat once the grader confirms its condition, with evidence', () => {
+    const pending = reconcileAnswerKey(SPARK, CONDITIONAL_RUN_STATE, KEY);
+    const confirmed = pending.caveats.map((c) =>
+      c.reason.startsWith('tp-r3') ? confirmCondition(c, 'phases.commcare-setup.products.reassignment: shipped') : c,
+    );
+    const result = applyAnswerKeyAdvisory(SPARK, confirmed);
+    expect(result.advisoryRefs).toEqual(['opp-27', 'opp-28']);
+    expect(result.conditional).toHaveLength(2);
+    expect(formatAnswerKeyAdvisoryReport(result)).toContain('CONFIRMED: phases.commcare-setup.products.reassignment');
+  });
+
+  it('refuses a confirmation with no evidence', () => {
+    const [c] = extractAnswerKeyCaveats(CONDITIONAL_RUN_STATE);
+    expect(() => confirmCondition(c, '  ')).toThrow(/evidence is required/);
+  });
+
+  it('reports pending conditional caveats as needing grader confirmation', () => {
+    const out = formatAnswerKeyAdvisoryReport(reconcileAnswerKey(SPARK, CONDITIONAL_RUN_STATE, KEY));
+    expect(out).toContain('0 entries marked advisory');
+    expect(out).toContain(ANSWER_KEY_CONDITIONAL_MARKER);
+    expect(out).toContain('grader must confirm the condition holds');
+    expect(out).toContain('if a reassignment path ships');
+  });
+
+  it('detects a trailing condition too, and leaves unconditional text alone', () => {
+    expect(detectCondition('prompt 4 is advisory rather than scored unless the cap ships')).toBe('unless the cap ships');
+    expect(detectCondition('Phase 5 should treat those three tags as advisory rather than scored.')).toBeUndefined();
+  });
+
+  it('keeps unconditional caveats backward compatible', () => {
+    const caveats = extractAnswerKeyCaveats(RUN_STATE);
+    expect(caveats.every((c) => c.conditional === undefined)).toBe(true);
+    const result = reconcileAnswerKey(ENTRIES, RUN_STATE, ANSWER_KEY);
+    expect(result.advisoryRefs).toEqual(['opp-11', 'opp-22', 'opp-40']);
+    expect(result.conditional).toEqual([]);
+    expect(formatAnswerKeyAdvisoryReport(result)).not.toContain(ANSWER_KEY_CONDITIONAL_MARKER);
   });
 });

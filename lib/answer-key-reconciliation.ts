@@ -61,6 +61,9 @@ import type { JudgedEntry } from './fabrication-clamp.js';
 /** Marker attached to an entry covered by a recorded answer-key caveat. */
 export const ANSWER_KEY_ADVISORY_MARKER = '[ANSWER-KEY-ADVISORY]';
 
+/** Marker for conditional caveats awaiting grader confirmation (ace#2663). */
+export const ANSWER_KEY_CONDITIONAL_MARKER = '[ANSWER-KEY-CONDITIONAL]';
+
 /** Marker for a caveat naming a prompt that resolves to no graded entry. */
 export const ANSWER_KEY_UNRESOLVED_MARKER = '[BLOCKER] answer-key caveat unresolved';
 
@@ -78,6 +81,22 @@ export interface AnswerKeyCaveat {
   reason: string;
   /** Where it was found, e.g. `residuals` or `notes`. */
   source: string;
+  /**
+   * True when the caveat only applies IF some build condition holds
+   * (`if camera-only NOT applied, ... advisory`). A conditional caveat is
+   * NOT applied automatically — see `applyAnswerKeyAdvisory` (ace#2663).
+   */
+  conditional?: boolean;
+  /** The conditional clause, for display (`if a reassignment path ships`). */
+  condition?: string;
+  /**
+   * Set by the GRADER, never by this module: the condition was checked
+   * against the run's own state and holds. Only then does a conditional
+   * caveat mark entries advisory.
+   */
+  conditionConfirmed?: boolean;
+  /** What the grader checked to confirm the condition (recorded in the verdict). */
+  conditionEvidence?: string;
 }
 
 /** A caveat whose prompt numbers have been resolved to transcript refs. */
@@ -98,8 +117,15 @@ export interface AnswerKeyAdvisoryResult {
   entries: AdvisoryEntry[];
   /** Refs marked advisory, deduplicated and sorted. */
   advisoryRefs: string[];
-  /** The resolved caveats that produced them. */
+  /** Every resolved caveat, applied or not. */
   caveats: ResolvedCaveat[];
+  /**
+   * Conditional caveats NOT applied because the grader has not confirmed
+   * their condition. Their entries are scored normally (they stay in the
+   * means and the zero-Fail gate) until the grader confirms the condition
+   * against run_state and re-applies with `conditionConfirmed: true`.
+   */
+  conditional: ResolvedCaveat[];
   /**
    * Prompt numbers named by a caveat that matched no graded entry. Non-empty
    * is a `[BLOCKER]`, exactly like `unmatchedMarkers` on the fabrication
@@ -114,6 +140,41 @@ export interface AnswerKeyAdvisoryResult {
  * is not a caveat and must not silence an entry.
  */
 const DIRECTIVE_TERMS = /\b(advisory|not\s+scored|rather\s+than\s+scored|do\s+not\s+score|unscored|excluded\s+from\s+scoring)\b/i;
+
+/**
+ * A conditional clause anywhere in the caveat (ace#2663). Measured on
+ * spark-facilitator/20261004-1706: all three residuals read "...; if <build
+ * condition>, ... advisory rather than scored", none of the conditions held,
+ * and all six covered entries were still excluded from the gate.
+ *
+ * Deliberately broad and position-free ("advisory if X" and "if X, advisory"
+ * both count). The asymmetry decides it: a false positive costs the grader
+ * one confirmation; a false negative silently excludes a possible real Fail.
+ */
+const CONDITIONAL_CLAUSE = /\b(?:if|unless|provided\s+that|assuming|in\s+case|only\s+when)\b[^,;]*/i;
+
+/** Return the conditional clause in a caveat, or undefined if unconditional. */
+export function detectCondition(text: string): string | undefined {
+  return oneLine(text).match(CONDITIONAL_CLAUSE)?.[0].trim();
+}
+
+/** Is this caveat in force? Unconditional, or conditional with a confirmed condition. */
+export function isCaveatActive(c: AnswerKeyCaveat): boolean {
+  return !c.conditional || c.conditionConfirmed === true;
+}
+
+/**
+ * The grader's confirmation step: return a copy of `caveat` with its
+ * condition marked as holding. `evidence` is REQUIRED and non-empty — it is
+ * what the verdict records (the run_state path/value that was checked), so a
+ * confirmation can never be asserted without saying what was read.
+ */
+export function confirmCondition<T extends AnswerKeyCaveat>(caveat: T, evidence: string): T {
+  if (evidence.trim() === '') {
+    throw new Error('confirmCondition: evidence is required — name the run_state value that shows the condition holds');
+  }
+  return { ...caveat, conditionConfirmed: true, conditionEvidence: evidence.trim() };
+}
 
 /** `test prompts 11, 22, 40` / `prompt 40` / `prompts 11 and 22`. */
 const PROMPT_LIST = /\b(?:test\s+)?prompts?\s+((?:\d{1,3})(?:\s*(?:,|and|&)\s*\d{1,3})*)/gi;
@@ -181,7 +242,13 @@ export function extractAnswerKeyCaveats(runStateText: string): AnswerKeyCaveat[]
     const text = oneLine(current);
     const promptNumbers = extractPromptNumbers(text);
     if (promptNumbers.length > 0 && DIRECTIVE_TERMS.test(text)) {
-      caveats.push({ promptNumbers, reason: text.replace(/^["']|["']$/g, ''), source: section });
+      const reason = text.replace(/^["']|["']$/g, '');
+      const condition = detectCondition(reason);
+      caveats.push(
+        condition === undefined
+          ? { promptNumbers, reason, source: section }
+          : { promptNumbers, reason, source: section, conditional: true, condition },
+      );
     }
     current = null;
   };
@@ -308,6 +375,12 @@ export function resolveCaveats(
  *   * The caveat text is surfaced verbatim, so a reader sees WHY and can
  *     overrule it.
  *
+ * CONDITIONAL caveats (ace#2663) are not applied until the grader confirms
+ * the condition: a caveat with `conditional: true` and no
+ * `conditionConfirmed: true` marks nothing, and comes back in `conditional`
+ * so the grader can check it against run_state and re-apply. Unconditional
+ * caveats behave exactly as before.
+ *
  * Run it in Process step 4 alongside the three clamps. Order does not matter
  * against them — advisory marking never changes a score, so it neither hides
  * a clamp nor is hidden by one.
@@ -318,6 +391,7 @@ export function applyAnswerKeyAdvisory(
 ): AnswerKeyAdvisoryResult {
   const reasonByRef = new Map<string, string[]>();
   for (const c of caveats) {
+    if (!isCaveatActive(c)) continue;
     for (const ref of c.refs) {
       const list = reasonByRef.get(ref) ?? [];
       list.push(c.reason);
@@ -346,7 +420,9 @@ export function applyAnswerKeyAdvisory(
     for (const n of c.unresolvedPromptNumbers) if (!unresolved.includes(n)) unresolved.push(n);
   }
 
-  return { entries: out, advisoryRefs, caveats: [...caveats], unresolved };
+  const conditional = caveats.filter((c) => !isCaveatActive(c));
+
+  return { entries: out, advisoryRefs, caveats: [...caveats], conditional, unresolved };
 }
 
 /**
@@ -377,8 +453,24 @@ export function formatAnswerKeyAdvisoryReport(result: AnswerKeyAdvisoryResult): 
       `from ${result.caveats.length} recorded caveat${result.caveats.length === 1 ? '' : 's'}`,
   ];
   for (const c of result.caveats) {
-    lines.push(`  (${c.source}) prompts ${c.promptNumbers.join(', ')} -> ${c.refs.join(', ') || '(none)'}`);
+    const status = !c.conditional
+      ? ''
+      : c.conditionConfirmed === true
+        ? ` [conditional — CONFIRMED: ${c.conditionEvidence ?? '(no evidence recorded)'}]`
+        : ' [conditional — NOT APPLIED]';
+    lines.push(`  (${c.source}) prompts ${c.promptNumbers.join(', ')} -> ${c.refs.join(', ') || '(none)'}${status}`);
     lines.push(`    ${c.reason}`);
+  }
+  if (result.conditional.length > 0) {
+    lines.push(
+      `  ${ANSWER_KEY_CONDITIONAL_MARKER}: ${result.conditional.length} conditional caveat` +
+        `${result.conditional.length === 1 ? '' : 's'} NOT applied — conditional — grader must ` +
+        'confirm the condition holds (against run_state) before treating as advisory; those ' +
+        'entries stay scored and in the gate until then:',
+    );
+    for (const c of result.conditional) {
+      lines.push(`    prompts ${c.promptNumbers.join(', ')} -> ${c.refs.join(', ') || '(none)'}: ${c.condition ?? '(condition)'}`);
+    }
   }
   if (result.unresolved.length > 0) {
     lines.push(
