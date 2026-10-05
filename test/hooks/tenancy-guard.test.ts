@@ -137,7 +137,26 @@ describe('bound session', () => {
 
   it('checks every Labs allowed domain against the opp domains', () => {
     expect(guard(LABS, { allowed_domains: ['sparkmicrogrants.org'] }).code).toBe(0);
-    expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@dimagi.com'] }).code).toBe(2);
+    expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@otherpartner.org'] }).code).toBe(2);
+  });
+
+  // ace#2713: synthetic_set_allowed_domains REPLACES the list, so the clone
+  // must resend ACE's own domain (config/agent.json email) and the Dimagi
+  // operators it found there. Neither widens a partner's view, so the guard
+  // admits them on every bound opp — and still refuses another partner.
+  it("admits the operator domains (Dimagi staff + ACE's own mailbox) on a labs allowlist", () => {
+    const SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
+    const union = { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@dimagi.com', '@sparkmicrogrants.org'] };
+    expect(guard(SET, union).code).toBe(0);
+    expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@dimagi.com'] }).code).toBe(0);
+    const r = guard(SET, { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@evil.org'] });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('@evil.org');
+  });
+
+  it('operator domains do not stand in for a missing tenancy', () => {
+    bind({ hq_domain: 'connect-ace-spark' });
+    expect(guard(LABS, { allowed_domains: ['@dimagi-ai.com'] }).code).toBe(2);
   });
 
   it('checks synthetic_set_allowed_domains against the opp domains', () => {

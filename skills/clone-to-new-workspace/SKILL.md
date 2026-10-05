@@ -491,16 +491,45 @@ them, and both runs keep pointing at the same labs assets.
    `cascade.partners[].opportunity_id` and `labs_opp_id` (skip ids < 10000 —
    those are real-backed opps, gated by Connect membership; report them as
    `NOT DONE — real-backed, needs the Connect step`).
-2. For each id: `synthetic_set_allowed_domains(opportunity_id, allowed_domains:
-   <tenancy.labs_allowed_domains>)`. Dimagi staff keep access regardless (labs
-   treats Dimagi-internal users as operators), so the list is just the
-   partner's domain(s). The tenancy guard checks every domain is in the bound
-   tenancy. A `PERMISSION_DENIED` means ace@ is neither the creator nor
-   Dimagi-internal on that opp — report it, do not work around it.
-3. Leave `products.synthetic` unchanged in the target run (same assets).
+2. **Widen the list. Never replace it.** `synthetic_set_allowed_domains` REPLACES
+   the allowlist. ACE (`ace@dimagi-ai.com`) is NOT `@dimagi.com` staff. It reads
+   these opps only because Phase 7 created them with `['@dimagi.com',
+   '@dimagi-ai.com']` (`demo-data-setup` § C1). On 2026-10-05 this step sent
+   `['@sparkmicrogrants.org']` alone. That dropped ACE's own domain, and ACE
+   lost its own synthetic org: `benchmarks_publish` returned "is not accessible
+   to your account", and `labs_context` stopped listing programme 10097
+   (ace#2713). Compute the list once:
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-labs-allowlist.ts" compute \
+     --target <tenancy.labs_allowed_domains, comma-joined> \
+     --current @dimagi.com,@dimagi-ai.com[,<any list the source run recorded>]
+   ```
+   The result is current ∪ target ∪ ACE's own mailbox domain, which is read
+   from `config/agent.json` `email` (`lib/labs-allowlist.ts`). There is no
+   labs atom that reads the current list, so the write's reply is the read.
+   For each id:
+   - Call `synthetic_set_allowed_domains(opportunity_id, allowed_domains:
+     <that list>)`.
+   - Pass its `previous_allowed_domains` to `clone-labs-allowlist.ts reconcile
+     --sent <list> --previous <reply's list>`.
+   - A non-null `resend` means the write dropped a domain the opp already had.
+     Call the atom again with `resend`. Do not move on with a narrowed opp.
+
+   The tenancy guard checks every domain against the bound tenancy. It also
+   admits the operator domains (`@dimagi.com` and ACE's own mailbox domain;
+   `config/tenancy-targets.json` `operator_values`). A `PERMISSION_DENIED`
+   means ace@ is neither the creator nor Dimagi-internal on that opp. Report
+   it; do not work around it.
+3. **Read back that ACE still sees the opps.** Call `labs_context(search:
+   <the synthetic org slug or programme name>)` and save the reply as JSON.
+   Then run `clone-labs-allowlist.ts seen --context-file <file> --ids
+   <every id>`. Exit 1 lists the `missing` ids, which ACE has locked itself
+   out of. That outcome is `NOT DONE — ACE lost access to <ids>`, never
+   `done`. A successful set call does not prove access.
+4. Leave `products.synthetic` unchanged in the target run (same assets).
    Record `clone.labs: {status: done, opportunity_ids: [...], allowed_domains:
-   [...]}`.
-4. **Report the sign-in caveat:** a partner opens labs by logging in through
+   [...]}` with the list that was actually set.
+5. **Report the sign-in caveat:** a partner opens labs by logging in through
    Connect (HQ sign-in). Labs matches the email Connect returns, so the
    partner's Connect account must carry their `@<domain>` email — check with
    one reviewer before telling everyone it works.
