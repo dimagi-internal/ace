@@ -145,7 +145,10 @@ const ANSWER_SECTION =
   `\n\n## Escalating\n\n**The ACE admin group's escalation address is ${ADMIN_EMAIL}.** Whenever you escalate to the ACE admin group, give this address exactly as written here — never vary its spelling, never shorten or change its domain. It is the one contact you may give without retrieving it.` +
   '\n\nNever describe your own searching, retrieving or checking to the reader. The reader sees only the answer.' +
   '\n\nNever quote internal identifiers to the reader: decision ids, residual ids or slug-style labels. Say what the decision is in plain words instead.' +
-  '\n\n## Short or ambiguous questions\n\nIf a question is short or ambiguous, either ask one short clarifying question or answer each plausible reading, labelled. Never open with a yes or no that the rest of the answer contradicts.';
+  '\n\n## Short or ambiguous questions\n\nIf a question is short or ambiguous, either ask one short clarifying question or answer each plausible reading, labelled. Never open with a yes or no that the rest of the answer contradicts.' +
+  "\n\n## Spark's rules vs the pilot's design\n\nCredit Spark only with what the knowledge base says is Spark's own. " +
+  "Everything else is the pilot's design, not Spark's existing practice: the caps, limits and rates. " +
+  'The caps are enforced by a Connect rule configured for this pilot. Never say a pilot rule "comes from Spark".';
 
 /** Publishable: everything above plus every answer obligation. */
 const PROMPT_FIXED = PROMPT_CONTACTS_COMPLETE + ANSWER_SECTION;
@@ -434,6 +437,8 @@ describe('scripts/audit-composed-prompt.ts — the other input paths', () => {
 describe('scripts/audit-composed-prompt.ts — the escalation address (ace#2675)', () => {
   const V4 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v4.md');
   const V5 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v5.md');
+  // v7 = v5 + the later-mandated sections; the whole-gate positive control.
+  const V7 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v7.md');
 
   it('NEGATIVE CONTROL: the published v4 prompt (no address) exits 1 naming it', () => {
     const { code, stderr } = run([V4]);
@@ -442,18 +447,18 @@ describe('scripts/audit-composed-prompt.ts — the escalation address (ace#2675)
     expect(stderr).toContain(ADMIN_EMAIL);
   });
 
-  it('POSITIVE CONTROL: the published v5 prompt exits 0', () => {
-    const { code, stdout } = run([V5]);
+  it('POSITIVE CONTROL: v7 (the published v5 prompt + later-mandated sections) exits 0', () => {
+    const { code, stdout } = run([V7]);
     expect(code).toBe(0);
     expect(stdout).toContain(ADMIN_EMAIL);
   });
 
-  it('NON-INERTNESS: a different configured mailbox makes v5 exit 1 — the address is read, not assumed', () => {
-    expect(run([V5, '--escalation-address', 'someone-else@example.org']).code).toBe(1);
+  it('NON-INERTNESS: a different configured mailbox makes v7 exit 1 — the address is read, not assumed', () => {
+    expect(run([V7, '--escalation-address', 'someone-else@example.org']).code).toBe(1);
   });
 
-  it('NEGATIVE CONTROL: v5 with the near-miss domain ace@dimagi.com exits 1', () => {
-    const wrong = readFileSync(V5, 'utf8').split(ADMIN_EMAIL).join('ace@dimagi.com');
+  it('NEGATIVE CONTROL: v7 with the near-miss domain ace@dimagi.com exits 1', () => {
+    const wrong = readFileSync(V7, 'utf8').split(ADMIN_EMAIL).join('ace@dimagi.com');
     expect(runOn(wrong).code).toBe(1);
   });
 
@@ -481,7 +486,8 @@ describe('scripts/audit-composed-prompt.ts — the escalation address (ace#2675)
  */
 describe('scripts/audit-composed-prompt.ts — the safeguarding-disclosure section (ace#2682)', () => {
   const V4 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v4.md');
-  const V5 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v5.md');
+  // v7 = v5 + the later-mandated sections; the whole-gate positive control.
+  const V7 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v7.md');
 
   it('NEGATIVE CONTROL: v4 exits 1 naming the missing section', () => {
     const { code, stderr } = run([V4]);
@@ -489,16 +495,16 @@ describe('scripts/audit-composed-prompt.ts — the safeguarding-disclosure secti
     expect(stderr).toContain('[SAFEGUARDING-DISCLOSURES]');
   });
 
-  it('POSITIVE CONTROL: v5 exits 0', () => {
-    expect(run([V5]).code).toBe(0);
+  it('POSITIVE CONTROL: v7 exits 0', () => {
+    expect(run([V7]).code).toBe(0);
   });
 
-  it('NON-INERTNESS: v5 with the section removed exits 1', () => {
-    const v5 = readFileSync(V5, 'utf8');
-    const start = v5.indexOf('## Safeguarding disclosures');
-    const end = v5.indexOf('## Tagging');
+  it('NON-INERTNESS: v7 with the section removed exits 1', () => {
+    const v7 = readFileSync(V7, 'utf8');
+    const start = v7.indexOf('## Safeguarding disclosures');
+    const end = v7.indexOf('## Tagging');
     expect(start).toBeGreaterThan(-1);
-    const stripped = v5.slice(0, start) + v5.slice(end);
+    const stripped = v7.slice(0, start) + v7.slice(end);
     expect(runOn(stripped).code).toBe(1);
   });
 

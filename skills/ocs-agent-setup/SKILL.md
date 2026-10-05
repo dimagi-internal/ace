@@ -706,6 +706,43 @@ round-trip gate in Step 11.5 below.
      invention at all, so a topic scan reads as covered where the obligation
      is absent. Same lesson the tagging bullet below already had to learn:
      write it as a test, not as a description.
+   - **Carry a `## <PARTNER>'s rules vs the pilot's design` section
+     (`ATTRIBUTION_CLAUSES`, dimagi-internal/ace#2687).** Every ACE
+     opportunity puts a Connect pilot (payment units, caps, limits, rates,
+     extra records, review layers, Connect configuration) on top of a
+     partner's existing programme, and the composed prompt cites the
+     partner's own rules right beside the pilot's. Without this section the
+     bot merges them and credits the partner with ACE's design. Replace
+     `<PARTNER>` with the partner organisation's name. Fill the two lists
+     from the PDD, which marks what is partner-stated and what is the
+     pilot's own. The composed prompt MUST say, under that heading:
+     *"Credit <PARTNER> only with what the knowledge base says is
+     <PARTNER>'s own: <the partner's own rules — e.g. its verification
+     predicate, its forms and labels, its programme steps>. Everything else
+     in how this pilot pays is **the pilot's design**, set up for this pilot
+     and not <PARTNER>'s existing practice: <the pilot's caps, limits,
+     rates, extra records and review layers>. The pilot's caps and limits
+     are enforced by Connect rules configured for this pilot; changing one
+     is a programme design decision, not something a supervisor can
+     override. Never say a pilot rule "comes from <PARTNER>" or is
+     "<PARTNER>'s own design"."*
+
+     **Why.** On `spark-facilitator/20261004-1706` (chatbot 13923), two
+     versions of the bot made this error, each graded by a different
+     independent deep judge:
+     - v4, opp-43: *"Spark's payment rule pays community meetings only, and
+       at most 3 per step"*.
+     - v4, opp-32: *"the reason Spark designed it this way"*. Together with
+       opp-43 this tripped the inflation guard and capped the overall at
+       8.5.
+     - v6, opp-43: *"This rule comes from Spark's own programme design … No
+       supervisor, implementing organisation, or Connect configuration
+       change can mark a 4th meeting payable"*.
+
+     The 3-per-step cap is the pilot's design (PDD §3.2), enforced by a
+     Connect form-field rule. A supervisor told "it is the partner's rule,
+     nobody can change it" stops asking the people who can. Step 7.5
+     checks all five clauses inside the section.
    - **Carry the phone-number ban as its OWN paragraph — never as a clause
      inside a standing-domain bullet (`PHONE_NUMBER_OBLIGATION`).** The
      composed prompt MUST say, as one paragraph: *"Never write any phone
@@ -1178,6 +1215,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-05 | **Step 7 requires a `## <PARTNER>'s rules vs the pilot's design` section, and Step 7.5 checks its five clauses (closes dimagi-internal/ace#2687).** On chatbot 13923 (`spark-facilitator/20261004-1706`) the bot credited the partner with the pilot's design. In v4 it called the 3-per-step cap "Spark's payment rule" (opp-43) and per-meeting payment "the reason Spark designed it this way" (opp-32); the inflation guard fired and capped the score at 8.5. In v6 it said the cap "comes from Spark's own programme design" and that no Connect configuration change could alter it (opp-43). The cap is the pilot's design (PDD §3.2), enforced by a Connect form-field rule. `lib/standing-fabrication-domains.ts` adds `ATTRIBUTION_CLAUSES` + `auditAttribution`, scoped to that heading only. The clauses: credit the partner only with what the KB says is its own; name the pilot's design, including caps, limits and rates; that design is not the partner's existing practice; it is enforced by Connect rules configured for this pilot; never say a pilot rule comes from the partner. The result is folded into `auditComposedPrompt`'s `ok`, and the gate reports `[PARTNER-ATTRIBUTION]` / `partner_attribution`. *Enforced:* the v5 fixture (published as v6) fails, the v7 fixture passes, plus per-clause removal tests and a doc-vs-gate test. | ACE team |
 | 2026-10-05 | **Step 7 mandates a `## Safeguarding disclosures` section; Step 7.5 asserts its six clauses (closes dimagi-internal/ace#2682).** On `spark-facilitator/20261004-1706` (chatbot 13923 v4) the bot was asked whether a child-abuse disclosure made at a meeting goes in `meeting_notes` and never said no and gave no child-protection referral — the deep judge (verdict Drive `1ejgaS7kscFVHE_e04zuxhv_cx6w4gbTYXlqRlpHjfNs` rev 19) scored opp-54 Warn 6.5, flagged safety-critical: it *"over-applies 'do not invent procedure' and defers it to the supervisor."* The standing domain `Safeguarding and emergency escalation` forbids an invented chain; nothing said generic safe referral is always allowed. `lib/standing-fabrication-domains.ts` adds `SAFEGUARDING_DISCLOSURE_CLAUSES` + `auditSafeguardingDisclosure` (heading-scoped: always give the referral; do not record it in the app's notes or form fields; tell the supervisor immediately, outside the app; police or child-protection / social-welfare services in immediate danger; escalate to the ACE admin group; still never invent a chain, officer, form or phone number), folded into `auditComposedPrompt`'s `ok`; the gate reports `[SAFEGUARDING-DISCLOSURES]` / `safeguarding_disclosures` in `--json`. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v4 fixture fails, v5 fixture passes, per-clause ablations, doc-vs-gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **Step 7 states the ACE admin group escalation address VERBATIM; the search-first obligation is retired (closes dimagi-internal/ace#2675).** Two measured rounds on `spark-facilitator/20261004-1706` (chatbot 13923) showed retrieval does not reliably fetch the ~850-byte `00-program-contacts.md`: with the ace#2422 per-answer check alone (v3) 5 escalation entries withheld the address; with ace#2677's "search the knowledge base for the ACE admin group's contact before you write the answer" added (v4) it was 12 (cg-2, opp-18, opp-25, opp-27, opp-28, opp-36, opp-42, opp-43, opp-48, opp-51, opp-59, edge-3b) — zero domain drift either time. The address is a fixed, run-known value (`config/agent.json` → `email`, the source the contacts page is generated from), so the composed prompt now states it as the one address the bot may give without retrieving it, under exactness wording. This supersedes ace#1665's "do not restate the address inline" for that ONE address: the ace#1665 drift came from a prompt carrying the address with no exactness obligation, while ace#2216's exactness wording is now mandatory beside it and `ocs-chatbot-eval`'s contact-domain-drift pass still catches any drift. Every other contact must still be retrieved verbatim (ace#2422's check, narrowed to "other than the ACE admin group address"); the contacts page stays. `lib/standing-fabrication-domains.ts` replaces `ESCALATE_WITH_ADDRESS_OBLIGATION` with `buildEscalationAddressObligation(address)` (the address is a parameter, never a literal), folded into `auditComposedPrompt(prompt, { escalationAddress })`; `scripts/audit-composed-prompt.ts` reads the address from `config/agent.json` (override `--escalation-address`; unreadable config = exit 2) and reports `[ESCALATION-ADDRESS]` / `escalation_address` in `--json`. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v4 fixture fails, v5 fixture `test/fixtures/composed-prompts/spark-facilitator-13923-v5.md` passes, wrong-domain and substring negative controls, per-part ablations, doc-vs-gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2678) Short or ambiguous questions: mandated and audited.** Chatbot 13923 v3 (`spark-facilitator/20261004-1706`) answered two terse field questions with one confident reading. opp-56 *"can we do it twice in one week?"* got "No - the daily limit is one per day" and then said two in a week is fine. opp-58 *"does it still count if the trainer ran it?"* got "No" under the less natural reading. Both were Warn, 6.6 and 6.8. New `CLARIFY_AMBIGUOUS_OBLIGATION` in `ANSWER_OBLIGATIONS`: ask one clarifying question or answer each reading, labelled, and never open with a yes/no that the rest of the answer contradicts. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
