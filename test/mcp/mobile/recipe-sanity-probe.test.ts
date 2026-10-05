@@ -2057,6 +2057,118 @@ describe('probeRecipeSanity — failure class: unguarded-option-tap-below-long-l
     expect(verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label'))
       .toBeUndefined();
   });
+
+  // ace#2648 — spark-facilitator/20261004-1706 Phase 3. Group A (short
+  // label, `partnership`) asks the trial-sample question with a bare "No";
+  // group B (`contact_and_calls`, a 1001-char label) has the option
+  // "No, the contact does not agree". The old two-way PREFIX test made the
+  // bare "No" a match for B's option, so a correctly-scoped tap on A's
+  // screen was blamed on B — and a correct recipe could not pass Phase 6
+  // pre-flight without a scroll the screen did not need.
+  const LONG_CALLS_SCRIPT = 'Read this calls notice to the contact aloud. '.repeat(23); // ~1000 chars
+  const TWO_SCREEN_APP = {
+    app_id: 'deliver-app',
+    modules: [
+      {
+        name: 'Facilitator',
+        forms: [
+          {
+            name: 'Community Enrolment',
+            fields: [
+              {
+                id: 'partnership',
+                kind: 'group',
+                label: 'Partnership',
+                children: [
+                  {
+                    id: 'trial_sample',
+                    kind: 'single_select',
+                    label: "Is this community part of Spark's FCAP trial sample?",
+                    options: [{ label: 'Yes' }, { label: 'No' }],
+                  },
+                ],
+              },
+              {
+                id: 'contact_and_calls',
+                kind: 'group',
+                label: 'Contact and calls',
+                children: [
+                  { id: 'calls_script', kind: 'label', label: LONG_CALLS_SCRIPT },
+                  {
+                    id: 'calls_consent',
+                    kind: 'single_select',
+                    label: 'Does this contact agree to receive an occasional short phone call?',
+                    options: [
+                      { label: 'Yes, the contact agrees' },
+                      { label: 'No, the contact does not agree' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const TRIAL_ANCHOR = String.raw`"[\\s\\S]*Is this community part of Spark's FCAP trial sample[\\s\\S]*"`;
+  const CALLS_ANCHOR = String.raw`"[\\s\\S]*Does this contact agree to receive an occasional short phone call[\\s\\S]*"`;
+  const unguardedOf = (body: string) =>
+    probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [TWO_SCREEN_APP as never],
+      connectOpp: LIVE_OPP,
+    }).failures.find((x) => x.class === 'unguarded-option-tap-below-long-label');
+
+  it('does NOT blame a bare "No" scoped below ANOTHER screen\'s question on the long-label group (ace#2648)', () => {
+    const body = ['- tapOn:', '    text: "No"', '    below:', `      text: ${TRIAL_ANCHOR}`].join('\n');
+    expect(unguardedOf(body), 'the tap is on the partnership screen, not contact_and_calls').toBeUndefined();
+  });
+
+  it('does NOT treat an unanchored bare "No" as a prefix of "No, the contact does not agree" (ace#2648)', () => {
+    // Maestro `text:` is a whole-string match: "No" never selects the
+    // radio labelled "No, the contact does not agree".
+    expect(unguardedOf(['- tapOn:', '    text: "No"'].join('\n'))).toBeUndefined();
+  });
+
+  it('positive control: STILL flags an unguarded tap on the long-label group\'s own option, anchored on its question', () => {
+    const body = ['- tapOn:', '    text: "Yes, the contact agrees"', '    below:', `      text: ${CALLS_ANCHOR}`].join('\n');
+    const f = unguardedOf(body);
+    expect(f, 'a genuinely unguarded tap below the 1000-char label must still fail').toBeDefined();
+    expect(f!.value).toBe('Yes, the contact agrees');
+    expect(f!.detail).toMatch(/contact_and_calls/);
+  });
+
+  it('positive control: STILL flags the long-label option tapped bare, and clears once guarded', () => {
+    expect(unguardedOf(['- tapOn:', '    text: "No, the contact does not agree"'].join('\n'))).toBeDefined();
+    const guarded = [
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      '        text: "No, the contact does not agree"',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            text: "No, the contact does not agree"',
+      '          direction: DOWN',
+      '- tapOn:',
+      '    text: "No, the contact does not agree"',
+    ].join('\n');
+    expect(unguardedOf(guarded)).toBeUndefined();
+  });
+
+  it('declines to attribute an option text that is ambiguous across groups (ace#1548 rule)', () => {
+    // Both groups now offer a bare "No"; with no anchor there is no evidence
+    // which screen the tap is on, so the check must not guess.
+    const app = JSON.parse(JSON.stringify(TWO_SCREEN_APP));
+    app.modules[0].forms[0].fields[1].children[1].options.push({ label: 'No' });
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', ['- tapOn:', '    text: "No"'].join('\n'))],
+      novaApps: [app as never],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label')).toBeUndefined();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

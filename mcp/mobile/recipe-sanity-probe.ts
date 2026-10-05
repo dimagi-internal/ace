@@ -1548,6 +1548,17 @@ function collectGroupScreens(apps: NovaAppSlice[]): GroupScreen[] {
  * select, and only when NO scroll targeting that option appears earlier.
  * A guarded scroll that is unnecessary is a no-op at runtime, so the
  * remediation is always safe to apply.
+ *
+ * Attribution follows the ace#1548 evidence rules (ace#2648). A tap counts
+ * against a risky group only when (a) its OWN `text:` matches one of that
+ * group's options under the recipe's own wildcards — Maestro matches the
+ * whole string, so a bare `"No"` is NOT the option `"No, the contact does
+ * not agree"`; the old two-way prefix test blamed every bare Yes/No tap in a
+ * recipe on whichever long-label group owned a `No, …` option — and (b) the
+ * evidence places the tap on that group's screen: its relative anchor
+ * (`below:` …) names a label in that group and no other, or, with no anchor,
+ * its option text belongs to that group alone. Ambiguous evidence
+ * attributes to nothing.
  */
 function findUnguardedOptionTapBelowLongLabel(
   recipeText: string,
@@ -1576,14 +1587,44 @@ function findUnguardedOptionTapBelowLongLabel(
     guards.push({ line: i, matchers: stepTextMatchers(blockAt(i)) });
   }
 
+  // The groups (across ALL group screens, not only risky ones) whose labels
+  // satisfy one recipe matcher under the recipe's own wildcards.
+  const groupsHit = (spec: StepTextMatcherSpec, labelsOf: (g: GroupScreen) => string[]): Set<string> => {
+    const hits = new Set<string>();
+    for (const g of groupScreens) {
+      if (labelsOf(g).some((c) => candidateMatchesSpec(c, spec))) hits.add(g.groupId);
+    }
+    return hits;
+  };
+  const uniqueGroup = (
+    specs: StepTextMatcherSpec[],
+    labelsOf: (g: GroupScreen) => string[],
+  ): string | null => {
+    for (const spec of [...specs].sort((a, b) => b.text.length - a.text.length)) {
+      const hits = groupsHit(spec, labelsOf);
+      if (hits.size === 1) return [...hits][0];
+    }
+    return null;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*-\s+tapOn:/.test(lines[i])) continue;
-    const taps = stepTextMatchers(blockAt(i));
-    if (taps.length === 0) continue;
+    const { own, anchors } = splitAnchorSpecs(blockAt(i));
+    if (own.length === 0) continue;
+
+    // Which screen does the EVIDENCE put this tap on (ace#2648, ace#1548)?
+    // An anchor names the screen, so it decides when present; otherwise the
+    // option text must be unambiguous across every group. Ambiguous → none.
+    const attributed =
+      anchors.length > 0
+        ? uniqueGroup(anchors, (g) => g.matchers)
+        : uniqueGroup(own, (g) => g.requiredOptionMatchers);
+    if (!attributed) continue;
 
     for (const g of risky) {
+      if (g.groupId !== attributed) continue;
       for (const opt of g.requiredOptionMatchers) {
-        if (!taps.some((t) => matches(opt, t))) continue;
+        if (!own.some((spec) => candidateMatchesSpec(opt, spec))) continue;
         const guarded = guards.some(
           (guard) => guard.line < i && guard.matchers.some((t) => matches(opt, t)),
         );
@@ -1594,6 +1635,39 @@ function findUnguardedOptionTapBelowLongLabel(
     }
   }
   return null;
+}
+
+/** Maestro's relative-position keys: a `text:` nested under one of these
+ * names an ANCHOR element, not the element the step acts on. */
+const RELATIVE_ANCHOR_KEY_RE =
+  /^(\s*)(?:below|above|leftOf|rightOf|childOf|containsChild|containsDescendants):\s*$/;
+
+/** Split a step block's `text:` matchers into the step's OWN target and the
+ * ANCHORS nested under a relative-position key (`below:` etc.). Indentation
+ * decides nesting: a line belongs to an anchor while it is indented deeper
+ * than the key that opened it (ace#2648). */
+function splitAnchorSpecs(stepText: string): {
+  own: StepTextMatcherSpec[];
+  anchors: StepTextMatcherSpec[];
+} {
+  const own: string[] = [];
+  const anchors: string[] = [];
+  let anchorIndent = -1;
+  for (const line of stepText.split('\n')) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.trimStart().length;
+    if (anchorIndent >= 0 && indent <= anchorIndent) anchorIndent = -1;
+    const key = RELATIVE_ANCHOR_KEY_RE.exec(line);
+    if (key && anchorIndent < 0) {
+      anchorIndent = key[1].length;
+      continue;
+    }
+    (anchorIndent >= 0 ? anchors : own).push(line);
+  }
+  return {
+    own: stepTextMatcherSpecs(own.join('\n')),
+    anchors: stepTextMatcherSpecs(anchors.join('\n')),
+  };
 }
 
 /** Extract the `text:` matchers a step selects on, normalised for
