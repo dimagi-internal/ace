@@ -248,8 +248,12 @@ export function classifyAvdPool(
 
   const shortfall =
     eligibleCount === 0
-      ? 'NO AVD on this host is both provisioned and proven, so every Phase 6 dispatch fails at ' +
-        'AvdPoolExhaustedError'
+      ? // NOT "every dispatch fails": selectAvd returns the REQUESTED AVD whenever it is
+        // free without checking `proven` (mcp/mobile/avd-allocator.ts), and a successful
+        // register_test_user rewrites the marker under the current map (ace#2642).
+        'NO AVD on this host is both provisioned and proven, so there is no fallback: a single ' +
+        'Phase 6 still runs on the requested AVD, but a second concurrent session fails at ' +
+        'AvdPoolExhaustedError. Markers refresh on the next successful register_test_user'
       : `only ${eligibleCount} AVD (${eligible[0].name}) is both provisioned and proven, so ` +
         "selectAvd's fallback branch can never execute — per-session AVD allocation is present " +
         'but inert, and concurrent Phase 6 sessions cold-boot the same device with -wipe-data ' +
