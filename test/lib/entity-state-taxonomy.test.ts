@@ -156,6 +156,41 @@ describe('diffStateTaxonomy', () => {
     expect(reworded.ok).toBe(false);
   });
 
+  // ace#2646: the PDD itself prescribed the display format `Step N: <name>`
+  // (spark-facilitator/20261004-1706, §5.4 screen 4), and the eval fed the
+  // displayed labels in — 7 false `relabelled` BLOCKERs on a correct build.
+  // The ordinal prefix restates the state's own step; it is not a relabel.
+  it('does not read a "Step N: " display prefix matching the state ordinal as a relabel', () => {
+    const diff = diffStateTaxonomy({
+      declared: [
+        { value: '1', label: 'Community entry', steps: [1] },
+        { value: '2', label: 'Form the facilitation team', steps: [2] },
+        { value: '3', label: 'Map community assets', steps: [] },
+      ],
+      built: [
+        { value: '1', label: 'Step 1: Community entry', steps: [1] },
+        { value: '2', label: 'step 2 - Form the facilitation team', steps: [2] },
+        { value: '3', label: 'Step 3. Map community assets' },
+      ],
+    });
+    expect(diff.relabelled).toEqual([]);
+    expect(diff.ok).toBe(true);
+  });
+
+  it("still flags a 'Step N: ' prefix with the wrong ordinal, or over a changed name", () => {
+    const diff = diffStateTaxonomy({
+      declared: [
+        { value: '1', label: 'Community entry', steps: [1] },
+        { value: '2', label: 'Form the facilitation team', steps: [2] },
+      ],
+      built: [
+        { value: '1', label: 'Step 5: Community entry', steps: [1] },
+        { value: '2', label: 'Step 2: Build the team', steps: [2] },
+      ],
+    });
+    expect(diff.relabelled.map((r) => r.value)).toEqual(['1', '2']);
+  });
+
   it('does not manufacture a re-partition when one side numbers no steps', () => {
     const diff = diffStateTaxonomy({
       declared: [{ value: '1', label: 'Planning', steps: [1, 2, 3] }],
