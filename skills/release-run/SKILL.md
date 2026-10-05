@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 # release-run
 
-`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
+`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
 `/ace:release <workspace>/<opp>/<run-id> --revoke-shared`
 
 **Releasing is sharing, and only sharing.** Owner decision (Jonathan,
@@ -42,6 +42,10 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 - `--cc` — **the same Dimagi staff the validation copied** (ace#2706). They
   get every email and no grant. The gate compares the list exactly; a cc added,
   dropped or changed at release is a refusal, never adapted to.
+- `--waive <blocker-id>=<reason>` — **the same waivers the validation
+  applied** (ace#2707), id and reason verbatim. A waiver releases past an
+  eval-quality blocker; it is not decided here. The gate compares them exactly;
+  a waiver added, dropped or reworded at release is a refusal.
 - `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared
   connect` — must be exactly the flags the validation was run with (they are
   plan options). They do not change what is executed; the plan does.
@@ -49,7 +53,7 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 Auth: `ACE_WEB_BASE_URL` + `ACE_WEB_PAT_TOKEN`; the PAT's owner must be an
 owner of `<workspace>`. `$RC` is
 `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`;
-`$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus the flags given.
+`$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus each `--waive "<id>=<reason>"` given, plus the flags given.
 
 ## Revoke mode (`--revoke-shared`)
 
@@ -78,7 +82,7 @@ wholesale by every merge mode). Report per row. Nothing else runs in this mode.
    Exit 0 only when the verdict is a READY release-readiness verdict for THIS
    workspace/opp/run, not a dry run, nothing in the run was written after it,
    `run_state.yaml` hashes the same as when validated, the plan matches its
-   hash, and the reviewers, cc and flags are exactly the validated ones.
+   hash, and the reviewers, cc, waivers and flags are exactly the validated ones.
    Otherwise **STOP**: print the gate's reason and tell the operator to run
    `/ace:validate-release-readiness <workspace>/<opp>/<run-id> $FLAGS`. Do not
    adapt to a mismatch — not by dropping a reviewer, not by skipping an action,
@@ -89,7 +93,9 @@ wholesale by every merge mode). Report per row. Nothing else runs in this mode.
 `$RC plan-show --verdict release-readiness_verdict.yaml` prints the grant table
 (Reviewer × HQ / Connect / Labs / OCS / ace-web), the Drive shares, whether the
 source link is forwarded (and, if so, whether it is another workspace's page),
-the ordered steps, and the full text of every email. Show it verbatim and
+every WAIVED readiness blocker (its failing grade, the reason, who waived it
+and when — the operator approves releasing past it here), the ordered steps,
+and the full text of every email. Show it verbatim and
 `AskUserQuestion`: **Release — execute exactly this** / **Stop**. Nothing is
 shared before *Release*. Then re-run the Step 1 gate (fresh inventory, fresh
 run_state) — the approval may have taken a while — and stop on a non-zero exit.
@@ -150,4 +156,5 @@ evidence; the Drive shares; whether the source link now forwards; each email's
 | Date | Change | Author |
 |---|---|---|
 | 2026-10-03 | Share-only release: executes the validated plan's share actions and nothing else (owner decision, ace#2620). | ACE team |
+| 2026-10-05 | `--waive` (ace#2707): the plan's waived eval blockers are shown in the approval prompt; the gate refuses waivers that differ from the validated ones. | ACE team |
 | 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |

@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # validate-release-readiness
 
-`/ace:validate-release-readiness <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
+`/ace:validate-release-readiness <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
 
 Owner decision (Jonathan, 2026-10-03): *"we should have one
 validate-release-readiness (which should take over whatever the release check
@@ -61,6 +61,33 @@ ACE's own mailbox is the sender), and so is an address that is also a reviewer
 on the plan and on every `email` action — so it is in the plan hash, and the
 release gate compares it exactly, like the reviewers.
 
+**Waivers (ace#2707).** `--waive <blocker-id>=<reason>` (repeatable) releases
+past ONE named readiness blocker on the operator's say-so. Operator decision
+(Jonathan, 2026-10-05, the spark-facilitator release): release the work order
+as a **DRAFT** although `pdd-to-work-order-eval` fails — three independent
+judges 7.15–7.65, not converging — *with the reason recorded and the failing
+grade still visible*. So a waived blocker:
+
+- **stays in the verdict's `blockers`**, its `detail` (the grade) untouched,
+  marked `waived: {by, at, reason}` — `by` is the operator's git
+  `user.email`, `at` the validation time;
+- is **excluded from READY** (`counts.blockers` counts only un-waived ones;
+  `counts.waived` the rest) and listed under its own heading in the report;
+- is recorded on the release plan (`release_plan.waivers`, in the plan hash)
+  and shown in `/ace:release`'s approval prompt (`plan-show`), and the release
+  gate compares the waivers (id + reason) **exactly** — `/ace:release` must be
+  given the same `--waive` flags.
+
+**Only eval-quality blockers (area `eval`: `eval-below-band:*`,
+`eval-missing:*`, `eval-stale:*`, `eval-unreadable:*`) are waivable.** A waiver
+of any other area — sharing / Drive, confidentiality and the rest of the review
+page, links, HQ, reviewers, required-before asks, plain language, Connect, apps,
+QA, the release plan — is refused (blocker `waiver-refused:<id>`): those are
+facts about what a reviewer will meet, not a grade. A waiver naming no blocker
+of this validation (`waiver-unmatched:<id>`) or with no git email to record
+(`waiver-unattributed:<id>`) is refused too. Take the id verbatim from the
+report (`blockers[].id`).
+
 **`--from-thread <id>`.** Read the ace@ thread that asked for the review
 (`canopy email read <id>`), collect every From / To / Cc address, and split
 them with `$RC thread-recipients --participants "<addr>,…" --workspace <ws>
@@ -91,9 +118,10 @@ checked_at: <ISO>
 run_last_write: <ISO>      # newest write in the run folder (the verdict's own files excluded)
 verdict: READY | NOT_READY
 read_only: <bool>          # a dry run — never releasable
-counts: {blockers: N, warnings: N}
+counts: {blockers: N, warnings: N, waived: N}   # blockers = un-waived only
 areas: {qa, eval, connect, previews, links, public-summary, chatbot, apps, hq, reviewers, drive, release-plan, run-state}
-blockers: [{id, area, severity: blocker, owner, detail, fix, summary, action, merged?}]
+blockers: [{id, area, severity: blocker, owner, detail, fix, summary, action, merged?, waived?: {by, at, reason}}]
+waivers: [{id, reason, by, at, detail}]   # applied --waive (eval area only)
 warnings: [...]
 reviewers: [{email, role}]
 cc: [staff@dimagi.com]     # copied on every email, granted nothing (ace#2706)
@@ -114,6 +142,7 @@ release_plan:              # null unless READY
     - {step: 6, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…", cc: [staff@dimagi.com]}
   not_granted: [{email, system, reason}]   # shared tenants; OCS is always "public chat link, no account"
   emails: [{to, cc, subject, body}]        # body has the literal {{ACCEPT_LINK}} — the only part a release fills in
+  waivers: [{id, reason, by, at, detail}]  # in the hash; shown for approval; compared exactly by the gate
 ```
 
 ### Why each kind of action is planned the way it is
@@ -159,7 +188,7 @@ Resolve the run folder (`resolve_opp_path` → `runs/<run-id>`), download
 (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <workspace>/<opp>`), and pick a scratch
 dir. `$RC` below is
 `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/release-readiness.ts"`,
-and `$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus whichever of
+and `$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus each `--waive "<id>=<reason>"` given, plus whichever of
 `--forward-source`, `--allow-cross-workspace-forward`, `--allow-shared connect`
 were given — the SAME `$FLAGS` on every command below and later on
 `/ace:release`.
@@ -259,7 +288,8 @@ were given — the SAME `$FLAGS` on every command below and later on
     after the verdict: any later write makes it stale.
 
 11. **Report** the verdict line; every blocker as its `summary` and `action`
-    (owner and technical fix beneath); the warnings; and on READY the plan
+    (owner and technical fix beneath); every WAIVED blocker with its failing
+    grade, reason, who and when; the warnings; and on READY the plan
     (`$RC plan-show --verdict <scratch>/out/release-readiness_verdict.yaml`) —
     the grant table and every email. End with the exact release command:
     `/ace:release <workspace>/<opp>/<run-id> $FLAGS`. A NOT READY run is not a
@@ -275,7 +305,7 @@ $RC gate --workspace <ws> --opp <opp> --run <run-id> --verdict <local release-re
 Exit 0 only when the verdict is a READY v2 `release-readiness` verdict, for this
 workspace/opp/run, not a dry run, nothing in the run folder was written after
 it, `run_state.yaml` hashes the same, the plan matches its hash, and the
-reviewers, cc and flags are exactly the ones validated (`releaseGate`). Otherwise it
+reviewers, cc, waivers and flags are exactly the ones validated (`releaseGate`). Otherwise it
 prints why and the release stops — it never adapts.
 
 ## MCP Tools Used
@@ -309,4 +339,5 @@ prints why and the release stops — it never adapts.
 |---|---|---|
 | 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
 | 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
+| 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |

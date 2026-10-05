@@ -8,6 +8,8 @@
  *   --reviewers "a@x.org[:viewer|editor],…"   (required for READY)
  *   [--cc "staff@dimagi.com,…"]   Dimagi staff copied on every release email,
  *                                  granted nothing (ace#2706); any other domain is refused
+ *   [--waive "<blocker-id>=<reason>"]…  (assess + gate; repeatable) release past an
+ *                                  eval-quality blocker; recorded with the git user.email (ace#2707)
  *   [--forward-source] [--allow-cross-workspace-forward] [--allow-shared connect]
  *
  *   inventory --run-folder <drive id> --out <inventory.json>
@@ -104,6 +106,7 @@ import {
   RELEASE_REPORT_NAME,
   RELEASE_VERDICT_NAME,
   assessPlan,
+  parseWaivers,
   type LinkProbe,
   type ReleaseFinding,
   type ReleaseVerdict,
@@ -127,6 +130,7 @@ import { parseDecisionOverridesYaml } from '../lib/decision-overrides.js';
 import { DELIVERABLE_HOSTS } from '../lib/run-surface-audit.js';
 import { hqDomainFromRunState, hqEnterpriseFlipSteps } from '../lib/hq-enterprise-flip.js';
 import { Sessions } from './browser-sessions.js';
+import { execFileSync } from 'node:child_process';
 
 // Before any credential read (ACE_WEB_*, ACE_HQ_*, GOOGLE_APPLICATION_CREDENTIALS) — ace#1957.
 loadPluginEnv(import.meta.url);
@@ -138,6 +142,8 @@ const arg = (n: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const flag = (n: string) => args.includes(`--${n}`);
+/** Every value of a repeatable `--<n> <v>`. */
+const argAll = (n: string) => args.flatMap((a, i) => (a === `--${n}` && i + 1 < args.length ? [args[i + 1]] : []));
 function need(n: string): string {
   const v = arg(n);
   if (!v) {
@@ -318,6 +324,15 @@ function catalog(): { qaSkills: Set<string>; evalSkills: Set<string> } {
   };
 }
 
+/** The operator's git email — recorded as `waived.by`. */
+function operatorEmail(): string {
+  try {
+    return execFileSync('git', ['config', 'user.email'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
 async function assess(): Promise<void> {
   const inv = readJson<RunFile[]>(need('inventory')) ?? [];
   const runState = parseYaml(fs.readFileSync(need('run-state'), 'utf8'));
@@ -367,12 +382,13 @@ async function assess(): Promise<void> {
   const verdict = buildReleaseVerdict({
     workspace: need('workspace'), opp: need('opp'), runId: need('run'), checkedAt: now, files, findings, readOnly: flag('read-only'),
     reviewers, cc: plan.cc, runStateHash: runStateHash(fs.readFileSync(need('run-state'), 'utf8')), plan,
+    waivers: parseWaivers(argAll('waive')), waivedBy: operatorEmail(),
   });
   const dir = need('out-dir');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, RELEASE_VERDICT_NAME), stringifyYaml(verdict, { lineWidth: 0 }));
   fs.writeFileSync(path.join(dir, RELEASE_REPORT_NAME), renderReleaseReport(verdict, verdict.release_plan ? renderPlan(verdict.release_plan) : undefined));
-  process.stdout.write(JSON.stringify({ verdict: verdict.verdict, counts: verdict.counts, dir }) + '\n');
+  process.stdout.write(JSON.stringify({ verdict: verdict.verdict, counts: verdict.counts, waivers: verdict.waivers?.map((w) => w.id) ?? [], dir }) + '\n');
 }
 
 /** Turn the three Connect read-backs (saved JSON) + run_state into the post-condition input. */
@@ -450,6 +466,7 @@ function gate(): void {
     runStateHash: runStateHash(fs.readFileSync(need('run-state'), 'utf8')),
     reviewers: parseReviewers(arg('reviewers')),
     cc: parseCc(arg('cc')),
+    waivers: parseWaivers(argAll('waive')),
     options: options(),
   });
   process.stdout.write(JSON.stringify(r) + '\n');
