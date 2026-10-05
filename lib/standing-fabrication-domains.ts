@@ -600,12 +600,33 @@ export const NO_INTERNAL_IDS_OBLIGATION: AnswerObligation = {
     'on opp-2, opp-11 and opp-38; the ace#1891 file/config rule did not cover them.',
 };
 
+/**
+ * Clarify ambiguous questions (spark-facilitator/20261004-1706, chatbot 13923
+ * v3). Field questions arrive terse; opp-56 "can we do it twice in one week?"
+ * opened "No - the daily limit is one paid meeting per CBF per day" and then
+ * said two in a week is fine; opp-58 "does it still count if the trainer ran
+ * it?" answered one reading confidently, the less natural one.
+ */
+export const CLARIFY_AMBIGUOUS_OBLIGATION: AnswerObligation = {
+  id: 'clarify-ambiguous-questions',
+  label:
+    'On a short or ambiguous question, ask one clarifying question or answer each reading, labelled; never open with a yes/no the rest contradicts',
+  pattern:
+    /(?=.*\bambiguous\b)(?=.*\bclarifying question\b)(?=.*\b(?:each|both|every)\b[^.]{0,20}\breadings?\b)(?=.*\byes(?: or |\/)no\b[^.]{0,60}\bcontradict\w*)/i,
+  why:
+    'Chatbot 13923 v3 answered opp-56 ("can we do it twice in one week?") with ' +
+    '"No - the daily limit is one paid meeting per CBF per day" and then said two ' +
+    'in a week is fine, and opp-58 ("does it still count if the trainer ran it?") ' +
+    'with one confident, less natural reading.',
+};
+
 /** Every answer obligation, in report order. */
 export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [
   PHONE_NUMBER_OBLIGATION,
   ESCALATE_WITH_ADDRESS_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   NO_INTERNAL_IDS_OBLIGATION,
+  CLARIFY_AMBIGUOUS_OBLIGATION,
 ];
 
 export interface AnswerObligationAudit {

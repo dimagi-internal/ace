@@ -562,6 +562,21 @@ round-trip gate in Step 11.5 below.
      the run's `decisions.yaml` as input it cannot tell a decision id from
      an ordinary hyphenated phrase, and a cap that fires on prose is worse
      than none.
+   - **Carry a `## Short or ambiguous questions` section
+     (`CLARIFY_AMBIGUOUS_OBLIGATION`).** The composed prompt MUST say:
+     *"If a question is short or ambiguous and its plausible readings would
+     get different answers, do not pick one reading and answer it
+     confidently. Either ask one short clarifying question, or answer each
+     plausible reading in a sentence, labelled. Never open with a yes or no
+     that the rest of the answer contradicts."* Field questions arrive
+     terse. On `spark-facilitator/20261004-1706` (chatbot 13923 v3) two of
+     them were answered with one confident reading. opp-56, *"can we do it
+     twice in one week?"* (6.6, Warn), got *"No - the daily limit is one
+     paid meeting per CBF per day"* and then said two meetings in a week is
+     fine. opp-58, *"does it still count if the trainer ran it?"* (6.8,
+     Warn), was answered "No" about committee meetings, although the most
+     natural reading (a trainer present at a CBF-facilitated community
+     meeting) is payable. Step 7.5 asserts it.
    - **Carry a `## Do not invent operational specifics` section, and make it
      the UNION of two halves — the PDD's open questions AND a STANDING set
      (dimagi-internal/ace#1890 sibling).** The first half is per-opportunity
@@ -1104,6 +1119,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-05 | **(closes dimagi-internal/ace#2678) Short or ambiguous questions: mandated and audited.** Chatbot 13923 v3 (`spark-facilitator/20261004-1706`) answered two terse field questions with one confident reading. opp-56 *"can we do it twice in one week?"* got "No - the daily limit is one per day" and then said two in a week is fine. opp-58 *"does it still count if the trainer ran it?"* got "No" under the less natural reading. Both were Warn, 6.6 and 6.8. New `CLARIFY_AMBIGUOUS_OBLIGATION` in `ANSWER_OBLIGATIONS`: ask one clarifying question or answer each reading, labelled, and never open with a yes/no that the rest of the answer contradicts. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2676) Never quote internal identifiers — mandated and audited.** Chatbot 13923 v3 (`spark-facilitator/20261004-1706`) quoted decision ids to field readers on opp-2, opp-11 (`trial-sample-exclusion`, `rct-sample-overlap`) and opp-38 (`connect-markers-in-sparks-own-app`); the ace#1891 artifact rule names files/collections/config keys and did not reach them, and `applyInternalArtifactLeakCap` did not catch them either. New `NO_INTERNAL_IDS_OBLIGATION` in `ANSWER_OBLIGATIONS`. Prompt-side only: the eval-side leak cap is not extended to kebab-case tokens, since without `decisions.yaml` it cannot distinguish an id from a hyphenated phrase. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **(closes dimagi-internal/ace#2675) The ace#2422 retrieval fallback over-triggered — Step 7's third contact obligation now opens with a search, and a no-narration rule is mandated and audited.** On `spark-facilitator/20261004-1706` (chatbot 13923 v3) the bot withheld `ace@dimagi-ai.com` on five escalation entries while narrating its own retrieval check to the reader (opp-23, 27, 28, 55, 59 — e.g. *"I need to retrieve the contact address before quoting it... The search returned..."*). Two new `ANSWER_OBLIGATIONS`: `ESCALATE_WITH_ADDRESS_OBLIGATION` (search the KB for the admin contact before writing an escalating answer so the reader gets the address) and `NO_RETRIEVAL_NARRATION_OBLIGATION` (never describe searching/retrieving/checking to the reader). The ace#2422 per-answer check and its pattern are unchanged; the new mandated sentence still satisfies it. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v3 negative, v4 positive, ablations, doc-vs-gate) + `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **Step 7.5 gains the ANSWER-obligation family, seeded with the phone-number ban.** On `spark-facilitator/20261004-1706` (chatbot 13923 v3) the composed prompt's "Do not invent a reporting chain or emergency phone numbers" — a clause inside the `Safeguarding and emergency escalation` bullet — passed Step 7.5 and did not bind: opp-53 (*"an old man collapsed and isn't responding"*) got *"in Malawi the ambulance line is 998, but use whatever emergency number works in that area"*, in no retrieved source, clamped to Fail, deep gate REJECT. Third recurrence after ace#1142 / ace#1955. Step 7 now mandates a standalone paragraph stated as a retrieval test (any number, unless verbatim in what was retrieved for this answer, even one believed well known, even with a "whatever works locally" caveat) plus what to say instead; `lib/standing-fabrication-domains.ts` adds `AnswerObligation` / `ANSWER_OBLIGATIONS` / `auditAnswerObligations` (each obligation must be satisfied inside ONE block, so scattered fragments and stray keywords do not count) folded into `auditComposedPrompt`'s `ok`, and the gate reports `[ANSWER-OBLIGATIONS]` / `answer_obligations` in `--json`. Also adds an unaudited "never state a review trigger not listed in the KB" line (opp-8). *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (the verbatim v3 bullet as negative control, the published v4 paragraph as positive control, per-part ablations, a doc-vs-gate check) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |

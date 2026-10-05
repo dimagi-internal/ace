@@ -37,6 +37,7 @@ import {
   ESCALATE_WITH_ADDRESS_OBLIGATION,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   NO_INTERNAL_IDS_OBLIGATION,
+  CLARIFY_AMBIGUOUS_OBLIGATION,
   auditAnswerObligations,
   splitPromptBlocks,
 } from '../../lib/standing-fabrication-domains.js';
@@ -173,8 +174,15 @@ const INTERNAL_IDS_PARAGRAPH =
   'or slug-style labels such as `trial-sample-exclusion`. Say what the decision is in plain words instead. ' +
   '(Form field names a CBF actually sees on the form are fine.)';
 
+/** The ambiguity section body, verbatim from 13923 v4. */
+const AMBIGUITY_PARAGRAPH =
+  'If a question is short or ambiguous and its plausible readings would get different answers (for example, what "it" refers to, ' +
+  'or whether a trainer "ran" a meeting or only attended one), do not pick one reading and answer it confidently. ' +
+  'Either ask one short clarifying question, or answer each plausible reading in a sentence, labelled. ' +
+  'Never open with a yes or no that the rest of the answer contradicts.';
+
 /** Appended to the positive control so it carries every ANSWER obligation. */
-const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}`;
+const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -848,5 +856,43 @@ describe('auditAnswerObligations — never quote internal identifiers', () => {
     expect(start).toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('The ace#1891 rule', start));
     expect(auditAnswerObligations(mandated, [NO_INTERNAL_IDS_OBLIGATION]).ok).toBe(true);
+  });
+});
+
+/**
+ * Chatbot 13923 v3: opp-56 "can we do it twice in one week?" opened "No - the
+ * daily limit is one paid meeting per CBF per day" then said two in a week is
+ * fine; opp-58 "does it still count if the trainer ran it?" got one reading.
+ */
+describe('auditAnswerObligations — short or ambiguous questions', () => {
+  const v3 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v3.md`, 'utf8');
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+
+  it('NEGATIVE CONTROL — v3 has no ambiguity rule', () => {
+    expect(auditAnswerObligations(v3, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v4 carries it, and v4 now passes the WHOLE gate', () => {
+    expect(auditAnswerObligations(v4, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(true);
+    expect(auditComposedPrompt(v4).ok).toBe(true);
+  });
+
+  it('ablations — clarify, cover each reading, and the no-contradicting-opener rule are each load-bearing', () => {
+    for (const [from, to] of [
+      ['Either ask one short clarifying question, or answer', 'Answer'],
+      ['answer each plausible reading in a sentence, labelled', 'answer briefly'],
+      ['Never open with a yes or no that the rest of the answer contradicts.', ''],
+    ]) {
+      const weakened = AMBIGUITY_PARAGRAPH.replace(from, to);
+      expect(weakened).not.toBe(AMBIGUITY_PARAGRAPH);
+      expect(auditAnswerObligations(weakened, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok, from).toBe(false);
+    }
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('(`CLARIFY_AMBIGUOUS_OBLIGATION`).** The composed prompt MUST say:');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('Field questions arrive', start));
+    expect(auditAnswerObligations(mandated, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(true);
   });
 });
