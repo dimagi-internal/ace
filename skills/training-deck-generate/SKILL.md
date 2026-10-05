@@ -410,6 +410,43 @@ screenshot-blocked run cannot lose it.
     `--reject <step>` — the slide then merges rather than shipping a wrong
     picture.
 
+    **Then materialise the crops — no ACE scaffolding on a trainee's screen
+    (ace#2660).** Phase 4's opportunity is named `"<run_id> · <name>"` by
+    contract (`connect-opp-setup`; `mcp/connect/opportunity-name.ts`), so every
+    Connect frame that renders its title shows trainees a run id the partner's
+    opportunity will not have. The binder (`lib/opp-title-frames.ts`) handles
+    each slide whose frame shows it, in this order:
+
+    1. a clean **sibling of the same screen** — a variant capture of the same
+       recipe step (`claim-opp-detail` / `claim-opp-detail-scrolled`) that
+       matches the slide at least as well — replaces it (`opp-title-sibling`);
+    2. otherwise the slide cites **`@<alias>--below-title`**, a crop of the
+       same frame starting at the gap under the title block, found from the
+       frame's pixels (`belowTitleCropTop`). Cropping is the ONLY pixel
+       change: kept rows are copied byte-for-byte, nothing is painted or
+       re-lettered, no frame is invented. The script writes each PNG to
+       `--crops-dir` (default `<dir of --out>/crops/`) and lists it in
+       `report.crops[]` (`alias`, `from_alias`, `top`, `slides`, `local_file`);
+    3. a frame where the title appears more than once — an opportunity LIST
+       (`claim-opp-list*`, `claim-opp-new-tile`, `connect-resume-opp-tile`) or
+       the landed card + certificate (`connect-resume-opp-landed`) — has no
+       honest crop. It stays, and the slide is named in
+       `report.opp_title_visible`: rebind it by hand to a frame without the
+       title (re-run with `--reject <step>`), or rewrite the slide.
+
+    For each `report.crops[]` entry: upload `local_file` with
+    `drive_upload_binary` (`mimeType: "image/png"`, `shareAnyoneWithLink: true`,
+    parent = the frame's run `6-qa-and-training/screenshots/`), set
+    `manifest.opp[<alias>]` in the bound spec to
+    `https://drive.google.com/uc?export=view&id=<new id>`, and append a capture
+    manifest row (`step: <alias>`, `file_id`, `cropped_from: <from_alias>`,
+    `crop_top_px: <top>`) whose `shows:` you write after opening the crop — the
+    alias is already in `needs_shows`. Until it is uploaded the alias resolves
+    nowhere, and the renderer halts on it rather than shipping the raw frame.
+    *Enforced:* `test/lib/opp-title-frames.test.ts` (sibling preferred, crop
+    otherwise, lists never cropped, crop is byte-identical below the cut, on
+    the committed real frame).
+
     *Why it is a script and not an instruction* (spark-facilitator/
     20260926-1800, render eval 4.66 / fail): ten slides that walk the trainee
     through a screen shipped with none. Five had a frame in the manifest
@@ -610,6 +647,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-10-05: **No dogfood run id on a trainee's screen (ace#2660, step 9b).** spark-facilitator/20261004-1706's deck showed "20261004-1706 · Spark Facilitator — …" on slides 8 and 9 because Phase 6 captures against the Phase 4 opportunity, whose name carries the run id by contract. The binder now prefers a title-free sibling of the same screen, else binds a below-the-title crop computed from the frame's pixels (crop only), else reports the slide in `opp_title_visible`. Run live read-only against 20261004-1706: both slides got crops, `opp_title_visible` empty, gate PASS; the `claim-opp` crop matches the hand-made workaround. *Enforced:* `test/lib/opp-title-frames.test.ts`.
 - 2026-10-01: **Every screen slide is bound to a real frame, or merged — never shipped empty (step 9b).** The render eval failed spark-facilitator/20260926-1800 at 4.66: ten walkthrough / app-screen slides carried no screenshot (five had a frame in the manifest; five had none of their screen and shipped empty anyway), slides 10/17/22/28 showed a loading screen or a one-tile form list, slides 6/32 a keyboard, and slide 53's raw URLs overflowed onto its title. Step 9b runs `scripts/bind-deck-frames.ts` (lib/training-deck-frames.ts + lib/frame-pixels.ts): pools frames from the capture manifest, the Phase 3 previews indexes and the fork source along `forked_from`; measures each frame's pixels; binds by the slide's own words within its part of the app; merges frameless Learn modules into one slide over the Learn home grid and folds other frameless screen slides into a neighbour's notes; expands `mobile_flow`. `checkDeckScreenBacking` is the gate. URLs in bodies are written `[label](url)` (resources template updated) and render as link text; `parseTrainingSpec` refuses a body taller than its frame. On the real spec the gate goes from 11 findings to 0. *Enforced:* `test/lib/training-deck-frames.test.ts`, `test/lib/frame-pixels.test.ts`, `test/lib/training-deck-body-fit.test.ts`.
 - 2026-09-08: **`verify_caption_backing` counts the slides' citations, not `manifest.opp`'s inventory (dimagi-internal/ace#2238).** Step 5 builds the resolution map from the whole capture pool and step 5 then makes the caption gate a BLOCKER — and the gate extracted every Drive fileId in the published artifact, which for a deck spec includes the map. On `spark-facilitator/20260907-1120` that read 91 citations over a deck that places 10 images and reported 66 `no-shows` + 12 `duplicate-cited`, every one naming a frame no slide cites. The two instructions were mutually unsatisfiable for any deck that does not place every captured frame, i.e. for every deck. The fix is in `lib/caption-backing.ts`, not here: for a document that parses as a deck spec, the citations are the slides' image refs resolved through `manifest.*`, and everything else in the spec is still read the way a rendered document is read. Trimming the map is no longer needed (and would break nothing but honesty about what was available). *Enforced:* `test/lib/caption-backing.test.ts § a deck spec cites what its SLIDES place`, with negative controls proving an undescribed, aliased or unknown frame a slide really does place still fails.
 - 2026-09-06: **Step 10 composes the spec to a LOCAL FILE and writes it with `localFilePath` (dimagi-internal/ace#1918).** A fully-expanded spec was measured at 55,719 chars in the 2026-09-02 Drive corpus; emitting it inline costs ~1 output token per 4 characters, and having it on disk is also what makes a `TrainingDeckSpecSchema` rejection cheap to fix (edit one leaf, re-push the file) instead of a full re-emission. Follows the `idea-to-pdd` steps 6/6b template (ace#1780). *Enforced:* `test/skills/large-artifact-localfilepath.test.ts`.

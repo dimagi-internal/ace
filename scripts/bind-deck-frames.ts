@@ -8,7 +8,7 @@
  *     --run-folder <Drive folder id of ACE/<opp>/runs/<run-id>> \
  *     --out <bound-spec.yaml> --report <report.json> \
  *     [--stats-out <frame-stats.json>] [--stats-cache <frame-stats.json>] \
- *     [--reject <step>[,<step>…]] [--key <sa-key.json>]
+ *     [--reject <step>[,<step>…]] [--crops-dir <dir>] [--key <sa-key.json>]
  *
  * What it reads, all through the Drive service account:
  *   1. `run_state.yaml` of the run, then of each run up its `forked_from`
@@ -18,7 +18,15 @@
  *   3. the PNG of every frame in a product surface, measured with
  *      `lib/frame-pixels.ts` (pass `--stats-cache` to skip re-downloading).
  *
+ *   4. the PNG of every frame that shows the Phase 4 opportunity's run-id
+ *      title at the top (`oppTitleExposure`, lib/opp-title-frames.ts), to find
+ *      the row below that title (`belowTitleCropTop`) — ace#2660.
+ *
  * Then `bindDeckFrames` + `checkDeckScreenBacking` (lib/training-deck-frames.ts).
+ * Each crop the binder chose (`report.crops`) is written as a PNG under
+ * `--crops-dir` (default: `<dir of --out>/crops/`): the source frame's rows
+ * from the cut down, copied unchanged — nothing else about the pixels changes.
+ * training-deck-generate step 9b uploads them and sets `manifest.opp`.
  * Exit 0 = bound spec written and the gate passes; 1 = the gate still fails
  * (the report names each slide); 2 = usage / read error.
  *
@@ -33,7 +41,8 @@ import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { parseTrainingSpec, type TrainingDeckSpec } from '../lib/training-deck-spec.js';
-import { decodePng, measureFrame, type FrameStats } from '../lib/frame-pixels.js';
+import { decodePng, measureFrame, type FrameStats, type Raster } from '../lib/frame-pixels.js';
+import { belowTitleCropTop, cropRasterTop, encodePng, oppTitleExposure } from '../lib/opp-title-frames.js';
 import {
   bindDeckFrames,
   buildFramePool,
@@ -173,11 +182,37 @@ async function main(): Promise<number> {
       process.stderr.write(`  could not measure ${f.alias} (${f.file_id}): ${(e as Error).message}\n`);
     }
   }
+  // ace#2660: where to cut a frame that shows the run-id-prefixed title.
+  const rasters = new Map<string, Raster>();
+  const cropTops = new Map<string, number | null>();
+  for (const f of pool) {
+    if (oppTitleExposure(f) !== 'top' || f.duplicate_of) continue;
+    try {
+      const res: any = await drive.files.get({ fileId: f.file_id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+      const r = decodePng(new Uint8Array(res.data));
+      rasters.set(f.file_id, r);
+      cropTops.set(f.file_id, belowTitleCropTop(r));
+    } catch (e) {
+      process.stderr.write(`  could not read ${f.alias} for a crop (${f.file_id}): ${(e as Error).message}\n`);
+    }
+  }
+
   const statsOut = arg('stats-out');
   if (statsOut) fs.writeFileSync(statsOut, JSON.stringify(Object.fromEntries(stats), null, 1));
 
   const reject = new Set((arg('reject') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
-  const { spec: bound, report } = bindDeckFrames(spec, { pool, stats, reject });
+  const { spec: bound, report } = bindDeckFrames(spec, { pool, stats, reject, cropTops });
+
+  const cropsDir = arg('crops-dir') ?? path.join(path.dirname(path.resolve(out)), 'crops');
+  const cropFiles: Record<string, string> = {};
+  for (const c of report.crops) {
+    const r = rasters.get(c.from_file_id);
+    if (!r) continue;
+    fs.mkdirSync(cropsDir, { recursive: true });
+    const file = path.join(cropsDir, `${c.alias}.png`);
+    fs.writeFileSync(file, encodePng(cropRasterTop(r, c.top)));
+    cropFiles[c.alias] = file;
+  }
   const gate = checkDeckScreenBacking(bound, { pool, stats });
 
   fs.writeFileSync(out, yaml.dump(bound, { lineWidth: -1, noRefs: true }));
@@ -185,12 +220,22 @@ async function main(): Promise<number> {
   parseTrainingSpec(fs.readFileSync(out, 'utf8'));
   fs.writeFileSync(
     reportPath,
-    JSON.stringify({ run: runId, lineage, pool_frames: pool.length, measured: stats.size, ...report, gate }, null, 2),
+    JSON.stringify(
+      {
+        run: runId, lineage, pool_frames: pool.length, measured: stats.size, ...report,
+        crops: report.crops.map((c) => ({ ...c, local_file: cropFiles[c.alias] })),
+        gate,
+      },
+      null,
+      2,
+    ),
   );
 
   process.stdout.write(
     `lineage: ${lineage.join(' <- ')}\npool: ${pool.length} frames (${stats.size} measured)\n` +
       `actions: ${report.actions.length}; needs_shows: ${report.needs_shows.join(', ') || 'none'}\n` +
+      `crops to upload: ${report.crops.map((c) => cropFiles[c.alias] ?? c.alias).join(', ') || 'none'}\n` +
+      `run-id title still visible on: ${report.opp_title_visible.join(', ') || 'none'}\n` +
       `gate: ${gate.pass ? 'PASS' : 'FAIL — ' + gate.detail}\n`,
   );
   return gate.pass ? 0 : 1;

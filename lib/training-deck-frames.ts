@@ -56,6 +56,7 @@ import {
   type TrainingDeckSpec,
 } from './training-deck-spec.js';
 import { NEAR_EMPTY_INK, KEYBOARD_COVERS, type FrameStats } from './frame-pixels.js';
+import { belowTitleAlias, oppTitleExposure } from './opp-title-frames.js';
 
 // ---------------------------------------------------------------------------
 // Fork lineage
@@ -410,6 +411,25 @@ export interface BindOptions {
   learnModuleLabels?: readonly string[];
   /** Steps a human opened and rejected for the slide that cited them (re-run input). */
   reject?: ReadonlySet<string>;
+  /**
+   * Below-the-title crop row by Drive file id (`belowTitleCropTop`, ace#2660),
+   * for frames that show the dogfood opportunity's run-id-prefixed title at
+   * the top. `null` = measured, no clean cut. Absent = not measured.
+   */
+  cropTops?: ReadonlyMap<string, number | null>;
+}
+
+/** A below-the-title crop the binder chose; `scripts/bind-deck-frames.ts` writes its PNG. */
+export interface DeckCrop {
+  /** The alias the slide now cites (`<from>--below-title`). */
+  alias: string;
+  /** The frame it is cut from. */
+  from_alias: string;
+  from_file_id: string;
+  origin_run?: string;
+  /** First row kept, in the source frame's pixels. */
+  top: number;
+  slides: string[];
 }
 
 export type BindAction =
@@ -418,7 +438,13 @@ export type BindAction =
   | { kind: 'replaced'; slide: string; from: string; to: string; because: FrameDefect[] | ['rejected'] }
   | { kind: 'merged-into-notes'; slide: string; into: string }
   | { kind: 'merged-learn-sections'; slides: string[]; into: string; image?: string }
-  | { kind: 'expanded-mobile-flow'; slide: string; into: string[] };
+  | { kind: 'expanded-mobile-flow'; slide: string; into: string[] }
+  /** ace#2660: the frame showed the dogfood opp's run-id title; a clean sibling of that screen replaced it. */
+  | { kind: 'opp-title-sibling'; slide: string; from: string; to: string }
+  /** ace#2660: no clean sibling; the slide cites a crop that starts below the title. */
+  | { kind: 'opp-title-cropped'; slide: string; from: string; alias: string; top: number }
+  /** ace#2660: no clean sibling and no honest crop — the frame still shows the run id. Decide by hand. */
+  | { kind: 'opp-title-visible'; slide: string; alias: string; why: string };
 
 export interface BindReport {
   actions: BindAction[];
@@ -429,6 +455,14 @@ export interface BindReport {
    * show what its slide says, re-run with that step in `reject`.
    */
   needs_shows: string[];
+  /**
+   * Crops to materialise before the spec is written (ace#2660): each `alias`
+   * is cited by a slide but resolves nowhere until its PNG is uploaded and
+   * `manifest.opp[alias]` set — training-deck-generate step 9b.
+   */
+  crops: DeckCrop[];
+  /** Slides still showing a run-id-prefixed opportunity title (ace#2660). */
+  opp_title_visible: string[];
 }
 
 function poolIndex(pool: readonly PoolFrame[]) {
@@ -637,6 +671,72 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
     });
   }
 
+  // ---- 3b. no ACE scaffolding on a trainee's screen (ace#2660) -----------
+  // The Phase 4 opportunity's name is `"<run_id> · <name>"` by contract, so
+  // every frame that renders it shows trainees a name the partner's
+  // opportunity will not have. Prefer a clean sibling of the same screen;
+  // else cite a crop that starts below the title; else say so.
+  const crops = new Map<string, DeckCrop>();
+  const titleVisible: string[] = [];
+  for (const mod of spec.modules) {
+    mod.slides = mod.slides.map((slide) => {
+      if (slide.layout !== 'walkthrough' && slide.layout !== 'mobile_zoom' && slide.layout !== 'web_screen') return slide;
+      const current = frameForRef(slide.image, spec, idx);
+      if (!current) return slide;
+      const exposure = oppTitleExposure(current);
+      if (exposure === 'none') return slide;
+      const kind = kinds.get(slide) ?? 'step';
+      const want = promiseTokens(slide, kind);
+      const floor = stepHits(want, current);
+      // "The same screen" is strict: a capture of the SAME recipe step family
+      // (one step name is a hyphen-prefix of the other — `claim-opp` /
+      // `claim-opp-scrolled`), that also matches the slide at least as well.
+      // Word overlap alone is not enough: on spark-facilitator/20260926-1800
+      // it would have swapped the opportunity detail for the PersonalID
+      // "first start" screen on the strength of the word "start".
+      const sibling = opts.pool
+        .filter((f) => f.file_id !== current.file_id && !cited.has(f.file_id))
+        .filter((f) => sameScreenFamily(f.step, current.step))
+        .filter((f) => f.surface === current.surface && oppTitleExposure(f) === 'none' && usable(f, kind))
+        .filter((f) => stepHits(want, f) >= floor)
+        .map((f) => ({ f, hits: stepHits(want, f), score: topicScore(want, f) }))
+        .sort((a, b) => b.hits - a.hits || b.score - a.score || rank(defectsOf, current.surface)(a.f, b.f))[0];
+      if (sibling) {
+        cited.delete(current.file_id);
+        const ref = bindTo(sibling.f);
+        actions.push({ kind: 'opp-title-sibling', slide: slide.id, from: current.alias, to: sibling.f.alias });
+        const next = { ...slide, image: ref } as SlideSpec_v2;
+        kinds.set(next, kinds.get(slide) ?? null);
+        return next;
+      }
+      const top = opts.cropTops?.get(current.file_id);
+      if (exposure === 'top' && typeof top === 'number') {
+        const alias = belowTitleAlias(current.alias);
+        const crop = crops.get(alias) ?? {
+          alias, from_alias: current.alias, from_file_id: current.file_id,
+          ...(current.origin_run ? { origin_run: current.origin_run } : {}), top, slides: [],
+        };
+        crop.slides.push(slide.id);
+        crops.set(alias, crop);
+        // The crop is a NEW frame: nobody has described it yet.
+        needsShows.add(alias);
+        actions.push({ kind: 'opp-title-cropped', slide: slide.id, from: current.alias, alias, top });
+        const next = { ...slide, image: `@${alias}` } as SlideSpec_v2;
+        kinds.set(next, kinds.get(slide) ?? null);
+        return next;
+      }
+      const why =
+        exposure === 'repeated'
+          ? 'the title appears more than once (a list of opportunity cards, or a certificate) — no crop removes it'
+          : top === null
+            ? 'the frame has no clean gap below the title to cut at'
+            : 'the frame was not measured for a crop';
+      titleVisible.push(slide.id);
+      actions.push({ kind: 'opp-title-visible', slide: slide.id, alias: current.alias, why });
+      return slide;
+    });
+  }
+
   // ---- 4. drop or merge what is left -------------------------------------
   // 4a. Frameless Learn modules -> ONE slide over the Learn home grid.
   for (const mod of spec.modules) {
@@ -686,7 +786,15 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
     }
   }
 
-  return { spec, report: { actions, needs_shows: [...needsShows] } };
+  return {
+    spec,
+    report: { actions, needs_shows: [...needsShows], crops: [...crops.values()], opp_title_visible: titleVisible },
+  };
+}
+
+/** One step name is the other plus `-<qualifier>` — a variant capture of the same screen. */
+export function sameScreenFamily(a: string, b: string): boolean {
+  return a !== b && (a.startsWith(`${b}-`) || b.startsWith(`${a}-`));
 }
 
 /** Capture order, preferring described frames, then frames free of a keyboard, then platform-pool art in the platform section. */
