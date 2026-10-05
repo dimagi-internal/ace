@@ -142,7 +142,36 @@ orchestrator from per-skill QA + eval verdicts. -->
    key that reaches it. Other error types (`hq_not_configured`,
    `hq_upload_failed`) are also `[BLOCKER]`s — surface Nova's `message`.
 
-4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` handling.
+   **Handle `project_space_incompatible`.** The upload runs Nova's
+   compatibility probe itself and refuses before any remote write when a
+   required capability is `missing` **or `unverified`** — "Couldn't confirm
+   … Nothing has been sent" is a refusal, not a warning (Nova's own
+   `content/docs/project-space-compatibility.mdx`). Branch on the blocker's
+   `state`:
+   - `missing` → the Step 4.5 `missing` remedies (operator/support, or a
+     BUILD DEFECT).
+   - `unverified` → **Nova could not complete its live HQ check; it is not
+     evidence the space lacks the capability** (ace#2704). Nova probes with
+     the HQ API key stored in its own Settings — `GET
+     /api/user_domains/v1/` unfiltered, then `?feature_flag=<slug>` — and any
+     non-200, malformed body, or 5 s timeout settles to `unverified`
+     (`lib/commcare/client.ts` `probeHqProjectSpaceCompatibility`).
+     `get_hq_connection` answering `configured: true` proves nothing here: it
+     returns STORED settings, makes no HQ call. Discriminate with ACE's own
+     key: `npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/probe-hq-connect-flag.ts" <ACE_HQ_DOMAIN>`. If
+     ACE's key sees the space in both lists, the space is fine and Nova's
+     stored-key path is what fails → `[BLOCKER] nova-hq-probe-unverified`;
+     operator re-saves the HQ API key in Nova Settings
+     (https://commcare.app → Settings → CommCare HQ), then retry. If ACE's
+     key also fails, it is an HQ outage/auth problem — surface that instead.
+     Do not upload to another space, and do not strip Connect blocks.
+     **Interim for a text-only change to an already-deployed app:** patch
+     the changed XForm on HQ directly (`commcare_get_form_source` → edit →
+     `commcare_patch_xform` with its sha1 token) and build/release, as long as
+     the same change is already saved in Nova (so the next successful Nova
+     upload is a content no-op). Anything structural waits for the upload.
+
+4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` and `project_space_incompatible` handling.
 
 4.5. **Verify the target space can run each app** (ace#1048). Some
    CommCare capabilities only work when the project space supports them (a
@@ -168,7 +197,8 @@ orchestrator from per-skill QA + eval verdicts. -->
    |---|---|
    | `not_needed`, or `ready` with no `unverified` advisories | `[PASS]` — record and move on |
    | `blocked` with a `missing` blocker | **`[BLOCKER]`** — the app needs a capability the target space does not have |
-   | `blocked` with an `unverified` blocker, or any `unverified` advisory | **`[WARN]`** — record as explicitly UNVERIFIED |
+   | `blocked` with an `unverified` blocker | unreachable after a successful upload — the upload itself refuses on it (Step 3 § `project_space_incompatible`). If this re-read alone returns it (the probe flaked between calls), **`[WARN]`** — record as explicitly UNVERIFIED |
+   | any `unverified` advisory | **`[WARN]`** — record as explicitly UNVERIFIED |
 
    Advisories never block (e.g. slower large Search results); record them.
 

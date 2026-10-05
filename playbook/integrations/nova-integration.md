@@ -408,6 +408,40 @@ place, then re-paste into Nova settings.
 There's no ACE-side service account on Nova — the API key is bound
 to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
 
+### The upload's compatibility probe: `unverified` is a refusal, and it is Nova's own HQ call
+
+`upload_app_to_hq` re-runs `check_project_space_compatibility` immediately
+before any remote write and refuses with `project_space_incompatible` when a
+required capability is `missing` **or `unverified`** (Nova
+`content/docs/project-space-compatibility.mdx`: "Couldn't confirm … Nothing is
+sent"). For a Connect app the one required capability is `commcare-connect`
+(HQ toggle `commcare_connect`). The probe
+(`voidcraft-labs/commcare-nova` `lib/commcare/client.ts`
+`probeHqProjectSpaceCompatibility` / `probePrivateFeatureFlag`) makes two
+calls with the HQ key stored in **Nova's Settings**: `GET
+/api/user_domains/v1/?limit=100` (target must be listed) and the same with
+`&feature_flag=commcare_connect`. Any non-200, malformed body or 5 s timeout
+(`HQ_PROJECT_SPACE_COMPATIBILITY_PROBE_TIMEOUT_MS`) settles to `unverified`.
+
+Two things that are not guessable:
+
+- **`get_hq_connection` makes no HQ call.** It returns stored settings
+  (`getCommCareSettings` → `approved_domains`), so `configured: true` and a
+  domain list say nothing about whether the stored key still works — and the
+  list is a snapshot (on 2026-10-05 it lacked `connect-ace-spark`, which the
+  same HQ user could already see).
+- **`unverified` on every space at once = Nova's stored-key path, not the
+  space.** Observed 2026-10-05 ~18:40–20:40Z (ace#2704): `unverified` on
+  `connect-ace-prod` AND `auto-connect-master` for both spark-facilitator
+  apps, while the identical two calls with ACE's own key
+  (`npx tsx scripts/probe-hq-connect-flag.ts <domain>`) returned 200 in
+  ~300 ms with `connect-ace-prod` in both lists. Nova's code had not changed
+  since 2026-10-04 02:46Z (#704–#707) and the same Deliver app uploaded at
+  12:59Z, so the window points at the runtime path (stored key / Nova→HQ
+  transport), not a Nova release. Remedy: operator re-saves the HQ API key
+  in Nova Settings and retries. Text-only interim: `commcare_patch_xform`
+  on HQ (app-deploy Step 3 § `project_space_incompatible`).
+
 ## Plugin freshness — treat every Nova release as a compatibility update
 
 Braxton's standing ask (2026-08-02, ace#1165): **do not judge a Nova plugin
