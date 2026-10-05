@@ -1,0 +1,44 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/dc7162fc7160102c" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="starting_quiz">
+          <intro/>
+          <p1/>
+          <p1_score/>
+          <p2/>
+          <p2_score/>
+          <p3/>
+          <p3_score/>
+          <p4/>
+          <p4_score/>
+          <p5/>
+          <p5_score/>
+          <p6/>
+          <p6_score/>
+          <user_score/>
+          <result_high/>
+          <result_low/>
+          <m0_pretest>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m0_pretest">
+              <name>Before you start</name>
+              <description>A short starting quiz to show what you already know. It does not count.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m0_pretest>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>

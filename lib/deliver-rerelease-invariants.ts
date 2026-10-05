@@ -103,6 +103,10 @@ export interface FormShape {
   formName: string | null;
   xmlns: string | null;
   deliverIds: string[];
+  /** Connect `<module id>` (learn namespace) — the LearnModule slug (ace#2705). */
+  learnModuleIds: string[];
+  /** Connect `<assessment id>` (learn namespace). */
+  assessmentIds: string[];
   /** Every element path in the primary instance, `/data/...`. */
   nodePaths: Set<string>;
 }
@@ -113,7 +117,7 @@ export interface DeliverRereleaseReport {
   baselineDeliverIds: string[];
   candidateDeliverIds: string[];
   rulePathsChecked: string[];
-  xmlnsChanges: Array<{ form: string; from: string; to: string }>;
+  xmlnsChanges: XmlnsChange[];
 }
 
 export type DeliverRereleaseOutcome = CheckOutcome<RereleaseFinding, DeliverRereleaseReport>;
@@ -152,12 +156,16 @@ export function readFormShape(form: ReleasedForm): FormShape | null {
   const ns = root.namespaceURI ?? root.getAttribute('xmlns');
   const nodePaths = new Set<string>();
   const deliverIds: string[] = [];
+  const learnModuleIds: string[] = [];
+  const assessmentIds: string[] = [];
   const walk = (el: Element, prefix: string) => {
     const p = `${prefix}/${el.localName}`;
     nodePaths.add(p);
-    if (el.localName === 'deliver' && el.namespaceURI === CONNECT_NS) {
+    if (el.namespaceURI === CONNECT_NS) {
       const id = el.getAttribute('id');
-      if (id) deliverIds.push(id);
+      if (id && el.localName === 'deliver') deliverIds.push(id);
+      if (id && el.localName === 'module') learnModuleIds.push(id);
+      if (id && el.localName === 'assessment') assessmentIds.push(id);
     }
     for (const c of elementChildren(el)) walk(c, p);
   };
@@ -167,6 +175,8 @@ export function readFormShape(form: ReleasedForm): FormShape | null {
     formName: root.getAttribute('name') || null,
     xmlns: ns && ns.startsWith(FORMDESIGNER_NS) ? ns : null,
     deliverIds,
+    learnModuleIds,
+    assessmentIds,
     nodePaths,
   };
 }
@@ -186,7 +196,7 @@ export function ruleToNodePath(questionPath: string, rootName = 'data'): string 
   return `/${rootName}/${segs.slice(1).join('/')}`;
 }
 
-function shapes(build: ReleasedBuild): { ok: FormShape[]; unreadable: string[] } {
+export function shapes(build: ReleasedBuild): { ok: FormShape[]; unreadable: string[] } {
   const ok: FormShape[] = [];
   const unreadable: string[] = [];
   for (const f of build.forms) {
@@ -197,7 +207,24 @@ function shapes(build: ReleasedBuild): { ok: FormShape[]; unreadable: string[] }
   return { ok, unreadable };
 }
 
-const uniq = (xs: string[]) => [...new Set(xs)].sort();
+export const uniq = (xs: string[]) => [...new Set(xs)].sort();
+
+export interface XmlnsChange {
+  form: string;
+  from: string;
+  to: string;
+}
+
+/** Forms (matched by instance `name`, else by CCZ path) whose xmlns differs between two builds. */
+export function formXmlnsChanges(base: FormShape[], cand: FormShape[]): XmlnsChange[] {
+  const out: XmlnsChange[] = [];
+  for (const b of base) {
+    const c = (b.formName && cand.find((s) => s.formName === b.formName)) || cand.find((s) => s.path === b.path);
+    if (!c || !b.xmlns || !c.xmlns || b.xmlns === c.xmlns) continue;
+    out.push({ form: b.formName ?? b.path, from: b.xmlns, to: c.xmlns });
+  }
+  return out;
+}
 
 export function checkDeliverRerelease(input: DeliverRereleaseInput): DeliverRereleaseOutcome {
   const base = shapes(input.baseline);
@@ -271,14 +298,7 @@ export function checkDeliverRerelease(input: DeliverRereleaseInput): DeliverRere
     }
   }
 
-  const xmlnsChanges: Array<{ form: string; from: string; to: string }> = [];
-  for (const b of base.ok) {
-    const c =
-      (b.formName && cand.ok.find((s) => s.formName === b.formName)) ||
-      cand.ok.find((s) => s.path === b.path);
-    if (!c || !b.xmlns || !c.xmlns || b.xmlns === c.xmlns) continue;
-    xmlnsChanges.push({ form: b.formName ?? b.path, from: b.xmlns, to: c.xmlns });
-  }
+  const xmlnsChanges = formXmlnsChanges(base.ok, cand.ok);
   if (xmlnsChanges.length > 0) {
     findings.push({
       kind: 'form-xmlns-changed',

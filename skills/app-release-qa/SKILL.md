@@ -1309,7 +1309,12 @@ tap coordinate, no recipe step order. Both inputs are text Phase 3
 already holds. Per CLAUDE.md § *"The trigger is the CLAIM, not the
 directory"*, unit tests are complete evidence for this check.
 
-### Step 4.7: Re-release invariants against an existing opportunity (dimagi-internal/ace#2691)
+### Step 4.7: Re-release invariants against an existing opportunity (dimagi-internal/ace#2691, #2705)
+
+Two checks, one per app — **4.7a Deliver** and **4.7b Learn** — each run only
+when that app is being re-released. Both share the same gate below.
+
+#### 4.7a Deliver
 
 **Runs only on a Deliver RE-release** — when this run's `run_state.yaml`
 already has `phases.connect-setup.products.connect.opportunity.id` (Phase 4
@@ -1364,6 +1369,56 @@ v9 → v23 Deliver meeting form of `spark-facilitator/20261004-1706` (same
 `@id community_meeting`, same three rule paths, new xmlns → pass + one WARN);
 negative controls are a renamed `@id` and a removed rule question (both BLOCK).
 Static parsing of two released CCZs — unit tests are complete evidence.
+
+#### 4.7b Learn (dimagi-internal/ace#2705)
+
+**Runs only on a Learn RE-release** against an existing opportunity — same
+gate as 4.7a (`phases.connect-setup.products.connect.opportunity.id` is set
+and the Learn build being QA'd is a newer release of the same HQ app).
+Otherwise record `rerelease_invariants: not-applicable (no opportunity)`
+under `per_app.learn` and skip.
+
+Connect creates one `LearnModule` row per Learn `<module id>` at opportunity
+creation and never deletes one (commcare-connect `opportunity/tasks.py:86-95`);
+a submission's module block is matched by **`@id`**, and an unseen `@id`
+creates a new row lazily (`form_receiver/processor.py:107-116`). Learn
+progress divides by the row count (`opportunity/models.py:385-392`) and Learn
+completes only at 100%. So a module `@id` that disappears caps every new-build
+worker below 100%, and one that appears drops every worker who already
+finished. The assessment is different: `process_assessments`
+(`processor.py:208-241`) reads only `user_score` and never the assessment
+`@id` — what matters is that an `<assessment>` block still exists.
+
+1. **Baseline build** — the Learn `build_id` Phase 4 configured the
+   opportunity against (same sourcing rule as 4.7a step 1), else the
+   previously released Learn build. Record which.
+2. Download it with `commcare_download_ccz({domain, app_id, build_id:
+   <baseline>, write_to_path})` and unzip it next to the candidate.
+3. Classify:
+
+```ts
+import { checkLearnRerelease, formatLearnRerelease }
+  from '../../lib/learn-rerelease-invariants';
+const res = checkLearnRerelease({
+  baseline:  { buildId: baselineBuildId,  forms: baselineForms },   // [{ path, xml }] every modules-*/forms-*.xml
+  candidate: { buildId: candidateBuildId, forms: candidateForms },
+});
+```
+
+| Outcome | Do |
+|---|---|
+| `status: 'unable'` | `[WARN]` `rerelease-invariants-unable`, emitting `formatLearnRerelease(res)`. Record as UNEVALUATED — never as a pass |
+| `checked`, `blocking: true` | **Halt** `[BLOCKER]` — one entry per blocker finding (`learn-module-id-disappeared`, `learn-module-id-added`, `assessment-disappeared`), message verbatim. Do not let Connect read this build |
+| `checked`, `assessment-id-changed` / `form-xmlns-changed` | `[WARN]`, message verbatim, do NOT halt — Connect reads neither |
+| `checked`, `ok: true` | Record and continue |
+
+Record under `per_app.learn.rerelease_invariants`. *Enforced:*
+`test/lib/learn-rerelease-invariants.test.ts` — positive control is the real
+v11 → v12 Learn re-release of `spark-facilitator/20261004-1706`
+(connect-ace-prod app `dcd4889a…`, builds `4cafbd1b…` → `6dbbbb2f…`: modules
+`m0_pretest`…`m6_payment` and assessment `final_quiz` unchanged → clean pass);
+negative controls are a renamed module `@id` and a removed assessment block
+(both BLOCK), plus a renamed assessment `@id` and a re-minted xmlns (WARN only).
 
 ### Step 5: Write verdict
 
@@ -1438,6 +1493,16 @@ per_app:
         - kind: ccz-min-version-gate
           message: <str>                  # verbatim — names both versions
           remedy: <str>                   # verbatim
+    rerelease_invariants:                 # ace#2705 — checkLearnRerelease(); re-release only
+      status: checked | unable | not-applicable   # `unable` is NOT a pass
+      reason: <str>                       # unable / not-applicable only
+      baseline_build_id: <id>
+      baseline_source: phase4-configured | previous-release
+      blocking: true | false
+      module_ids: { baseline: [...], candidate: [...] }
+      assessment_ids: { baseline: [...], candidate: [...] }
+      xmlns_changes: [{ form, from, to }] # WARN only
+      findings: [{ kind, severity, message }]
   deliver:
     hq_app_id: <id>
     build_id: <id>
@@ -1628,7 +1693,15 @@ defects.
   row reads. Operator action: restore the `@id` / question path in Nova and
   re-release, or reconfigure the opportunity in Connect before releasing
   (dimagi-internal/ace#2691).
-- `form-xmlns-changed` — `[WARN]` (Step 4.7). Nova re-minted form xmlns on
+- `learn-module-id-disappeared` / `learn-module-id-added` /
+  `assessment-disappeared` — `[BLOCKER]` (Step 4.7b, Learn re-release only).
+  The new Learn build dropped or added a `<module id>` the existing
+  opportunity's learn progress is counted against, or no longer carries an
+  `<assessment>` block. Operator action: restore the `@id` / assessment block
+  in Nova and re-release (dimagi-internal/ace#2705).
+- `assessment-id-changed` — `[WARN]` (Step 4.7b). Connect never reads the
+  assessment `@id`; only non-Connect consumers keyed on it are affected.
+- `form-xmlns-changed` — `[WARN]` (Step 4.7a/4.7b). Nova re-minted form xmlns on
   re-upload. Harmless for Connect; splits HQ exports/UCR and connect-labs
   CCHQ-form pipelines keyed on xmlns. Not a halt — ACE has no remedy.
 - `ccz-profile-unreadable` / `apk-version-unreadable` — `[WARN]`. The

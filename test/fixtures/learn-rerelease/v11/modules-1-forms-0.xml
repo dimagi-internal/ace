@@ -1,0 +1,43 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/95e34c18262a7720" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="lesson_1_your_role_in_this_pilot">
+          <l1_intro/>
+          <l1_fcap/>
+          <l1_adds/>
+          <l1_paid/>
+          <l1_deliver/>
+          <l1_passmark/>
+          <l1_supervisor/>
+          <l1_trainer/>
+          <l1_calls/>
+          <l1_honest/>
+          <l1_checks/>
+          <check_q/>
+          <check_right/>
+          <check_wrong/>
+          <l1_end/>
+          <m1_role>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m1_role">
+              <name>Your role in this pilot</name>
+              <description>What the pilot adds to FCAP, who checks your records, and when the Deliver app opens.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m1_role>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>

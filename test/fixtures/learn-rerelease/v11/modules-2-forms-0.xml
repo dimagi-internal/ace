@@ -1,0 +1,52 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/ccfad15af560c7a9" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="11" name="lesson_2_registering_yourself_and_your_community">
+          <l2_intro/>
+          <reg_when/>
+          <reg_about_you/>
+          <reg_education/>
+          <reg_phone/>
+          <reg_place/>
+          <reg_smartphone/>
+          <reg_duplicate/>
+          <enr_when/>
+          <enr_place/>
+          <enr_selected/>
+          <enr_trial/>
+          <enr_households/>
+          <enr_hh_matters/>
+          <enr_contact/>
+          <enr_gps/>
+          <consent_read/>
+          <consent_ask/>
+          <consent_no/>
+          <enr_new_step/>
+          <check_q/>
+          <check_right/>
+          <check_wrong/>
+          <l2_end/>
+          <m2_register>
+            <module xmlns="http://commcareconnect.com/data/v1/learn" id="m2_register">
+              <name>Registering yourself and your community</name>
+              <description>How to fill in Facilitator Registration and Community Enrolment, and how to ask the community contact for consent to calls.</description>
+              <time_estimate>1</time_estimate>
+            </module>
+          </m2_register>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+    </model>
+  </h:head>
+</h:html>
