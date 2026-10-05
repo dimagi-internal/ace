@@ -94,6 +94,16 @@ export interface BuiltField {
   calculate?: unknown;
   /** Children of a `group` / `repeat` / `section`. */
   children?: BuiltField[];
+  /**
+   * Inline options, as either `options` or Nova's
+   * `optionsSource: {kind:'inline', options:[{value,label}]}`. Read only on the
+   * CONSENT field, to tell a consent (has a decline answer) from an
+   * attestation (cannot be answered "no") — ace#2647.
+   */
+  options?: unknown;
+  optionsSource?: unknown;
+  /** `validate` as a string or Nova's `{expr, msg}`. Read only on the consent field. */
+  validate?: unknown;
 }
 
 /**
@@ -122,7 +132,14 @@ export type ConsentBranchKind =
   /** Correctly gated on consent but the memo is silent. */
   | 'undisclosed-consent-gate'
   /** Required field carries an added relevance unrelated to consent. */
-  | 'undisclosed-narrowing';
+  | 'undisclosed-narrowing'
+  /**
+   * The consent field is an ATTESTATION — it cannot be answered "no" — so a
+   * gate on it is a no-op, and a decision row owns who-can-decline. ace#2647.
+   */
+  | 'attestation-decline-path-deferred'
+  /** Attestation-only consent and NO decision row owns the decline path. */
+  | 'attestation-decline-path-unrouted';
 
 export interface ConsentBranchFinding {
   field: string;
@@ -156,6 +173,13 @@ export interface ConsentBranchOptions {
    * that FCAP meetings are open assemblies with no per-beneficiary consent.
    */
   governs?: string[];
+  /**
+   * The decision-row id that owns the decline path when the consent field is
+   * an ATTESTATION (ace#2647) — e.g. `photo-declined-path`. Read only when the
+   * consent field cannot be answered "no"; on a genuine consent it is ignored,
+   * so it cannot be used to excuse a reachable required field.
+   */
+  declinePathDecision?: string;
 }
 
 /** `relevant` / `calculate` may be a string or Nova's structured `{parts:[…]}` shape. */
@@ -273,13 +297,87 @@ function referencesConsent(
   return false;
 }
 
+/**
+ * A value that means the person did NOT agree. Token-based so `no`,
+ * `not_given`, `declined`, `refused`, `withdrew`, `opt_out` all match while
+ * `yes`, `read`, `agreed`, `notified` do not.
+ */
+const DECLINE_TOKEN =
+  /^(no|not|none|false|0|n|declined?|declines|refused?|refuses|refusal|withdr[a-z]*|opt|out|deny|denied|disagreed?|disagrees|reject(ed)?|object(ed|s)?)$/i;
+
+function isDeclineValue(v: string): boolean {
+  return v
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .some((t) => DECLINE_TOKEN.test(t));
+}
+
+function optionValues(f: BuiltField): string[] | undefined {
+  const fromSource = (f.optionsSource as { options?: unknown } | undefined)?.options;
+  const raw = Array.isArray(f.options) ? f.options : Array.isArray(fromSource) ? fromSource : undefined;
+  if (!raw) return undefined;
+  const vals = raw
+    .map((o) => (typeof o === 'string' ? o : (o as { value?: unknown } | null)?.value))
+    .filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+  return vals.length ? vals : undefined;
+}
+
+/**
+ * A `validate` that pins the answer to ONE value: `. = 'yes'`, `. = "yes"`,
+ * `selected(., 'yes')`. Anything else returns undefined.
+ */
+function pinnedValue(validate: unknown): string | undefined {
+  const raw =
+    validate && typeof validate === 'object' && 'expr' in validate
+      ? (validate as { expr?: unknown }).expr
+      : validate;
+  const expr = exprText(raw);
+  if (!expr) return undefined;
+  const m =
+    expr.match(/^\s*\.\s*=\s*(['"])([^'"]+)\1\s*$/) ??
+    expr.match(/^\s*selected\(\s*\.\s*,\s*(['"])([^'"]+)\1\s*\)\s*$/);
+  return m?.[2];
+}
+
+/**
+ * Is this consent field an ATTESTATION — a field none of whose SUBMITTABLE
+ * answers declines? Two shapes:
+ *  - an option set with no decline value at all;
+ *  - an option set that HAS a `no`, made unsubmittable by `validate: . = 'yes'`
+ *    — the live spark-facilitator/20261004-1706 shape (ace#2647), which an
+ *    options-only detector misses.
+ * An unreadable answer set returns false: the field is treated as a real
+ * consent and the hard-gate stands. Nothing here can disable the check on a
+ * consent whose "no" is reachable.
+ */
+export function isAttestationOnlyConsent(f: BuiltField | undefined): boolean {
+  if (!f) return false;
+  const pin = pinnedValue(f.validate);
+  const allowed = pin !== undefined ? [pin] : optionValues(f);
+  if (!allowed) return false;
+  return !allowed.some(isDeclineValue);
+}
+
+function findField(fields: BuiltField[] | undefined, id: string): BuiltField | undefined {
+  for (const f of fields ?? []) {
+    if (f.id === id) return f;
+    const hit = findField(f.children, id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 export function checkConsentBranchCompleteness(
   built: BuiltField[],
   pdd: PddFieldSpec[],
   opts: ConsentBranchOptions = {},
 ): ConsentBranchReport {
-  const { consentField, disclosedInMemo = [], governs = [] } = opts;
+  const { consentField, disclosedInMemo = [], governs = [], declinePathDecision } = opts;
   if (!consentField) return { pass: true, findings: [] };
+  // ace#2647: a consent field that cannot be answered "no" is an attestation.
+  // Gating on it is a no-op, so prescribing that gate is a false remedy.
+  const attestation = isAttestationOnlyConsent(findField(built, consentField));
   const governed = new Set(governs);
 
   // Resolve the gate's LOCATION before asking whether it is there. In a Nova
@@ -306,6 +404,30 @@ export function checkConsentBranchCompleteness(
     if (!isRequired(declared?.required)) continue;
     // A relevance the PDD itself specified is not a deviation at all.
     if (declared?.relevant) continue;
+
+    if (!field.relevant && attestation) {
+      findings.push(
+        declinePathDecision
+          ? {
+              field: field.id,
+              kind: 'attestation-decline-path-deferred',
+              detail:
+                `${consentField} is an attestation — no submittable answer declines — so gating this ` +
+                `field on it would gate nothing. Who may decline, and what the form does then, is owned ` +
+                `by decision row \`${declinePathDecision}\`; surface it as a WARN until that row resolves`,
+            }
+          : {
+              field: field.id,
+              kind: 'attestation-decline-path-unrouted',
+              detail:
+                `${consentField} is an attestation — no submittable answer declines — so a gate on it is ` +
+                `a no-op and is NOT the remedy. The open question is the decline path (who can refuse, ` +
+                `and what the form records then), and no decision row owns it. Record it as a decision ` +
+                `row and pass that row's id as declinePathDecision`,
+            },
+      );
+      continue;
+    }
 
     if (!field.relevant) {
       findings.push({
@@ -347,6 +469,8 @@ export function checkConsentBranchCompleteness(
     });
   }
 
-  const pass = findings.every((f) => f.kind === 'disclosed-consent-gate');
+  const pass = findings.every(
+    (f) => f.kind === 'disclosed-consent-gate' || f.kind === 'attestation-decline-path-deferred',
+  );
   return { pass, findings };
 }
