@@ -49,6 +49,19 @@ triggered_by:
   requester: <email>
   requested_at: <ISO timestamp>
 
+# ONE-SHOT ad-hoc operator directive (optional — absent on almost every
+# run). Set mid-run when the operator asks ACE to stop after a NAMED
+# phase, as a lighter-weight alternative to switching the whole run to
+# `review` mode. See `ace-orchestrator.md § Ad-hoc stop-after-phase
+# instructions` for recognition + the Phase boundary fence wiring.
+# `status: fired` means it already did its job; absent entirely is the
+# default and changes nothing about the fence.
+operator_stop_after_phase:
+  phase: <phase-key>              # e.g. idea-to-design — a phases.<phase> key
+  requested_at: <ISO timestamp>
+  requested_by: <email>
+  status: pending|fired
+
 phases:
   idea-to-design:       # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
@@ -1245,6 +1258,8 @@ operator experience than auto-stub + warning.
 ## Pause Points
 
 `/ace:run` may pause at named points where the next action affects external parties or where a phase boundary needs operator-level review. There is **no separate "gate-brief" artifact** — at each pause, the orchestrator reads the per-skill QA verdict (`<phase>/<producer>-qa_result.yaml`) + eval verdict (`<phase>/<producer>-eval_verdict.yaml`) directly and synthesizes a pause-time summary on the fly. The verdict files are the source of truth; the orchestrator is just the renderer.
+
+**This table is the standing, per-mode matrix — not the only way to pause.** An operator can also ask, mid-run, for a one-off stop after a specific named phase without switching the whole run to `review`. That is `run_state.yaml`'s `operator_stop_after_phase` (§ State Schema above), recognized and fired per `ace-orchestrator.md § Ad-hoc stop-after-phase instructions`. It is orthogonal to the table below: it fires once, in whichever mode the run is already in, and clears (`status: fired`) so it never fires twice.
 
 **Pause points and per-mode behavior:**
 
