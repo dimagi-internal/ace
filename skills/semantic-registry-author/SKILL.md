@@ -186,9 +186,38 @@ definitions they were graded with. After changing definitions, re-run
 `workflow_rebuild_history` on the programme report (`demo-data-setup` § C5) so
 the trend is restated under one definition.
 
+**Then re-publish the benchmark — REQUIRED, or every Benchmarks tab stays on the
+old registry (ace#2717).** A rebuild publishes nothing, and an opp report's
+Benchmarks tab shows the most recently PUBLISHED as-of, not the latest period
+(`demo-data-setup` § C5). Measured on spark-facilitator/20261004-1706 (registry
+7185 v3): partner C's Benchmarks tab read "as of 9 Aug" with the 3–9 Aug figures
+while the Report tab beside it was as of 4 Oct. So, after the rebuild is `done`:
+
+1. Read the programme report's `workflow_history_runs({definition_id, program_id,
+   generated_only: false})` before AND after the rebuild, as
+   `[{run_id, period_end}]`.
+2. Plan the publishes with `lib/benchmark-republish.ts` `planBenchmarkRepublish`
+   (CLI: `scripts/plan-benchmark-republish.ts --cohort <id> --workflow <prog
+   report> --program <id> --before before.json --after after.json`). It orders
+   every rebuilt run OLDEST FIRST and **refuses** — exit 1, nothing to publish —
+   if a period from before has no run after, two runs share a period, or a week
+   is missing from the series. A refusal means finish the rebuild (re-call with
+   `start=<next_start>`), never publish a partial series.
+3. Make each planned call in order: `benchmarks_publish({cohort_id, workflow_id,
+   run_id, program_id})`. Order matters — the last publish is what the tab shows.
+4. Verify: open an opp report's Benchmarks tab; its "as of" must equal the plan's
+   `expectedAsOf` (the latest week). A tab still on an earlier date means a
+   publish is missing or ran out of order — do not report the step done.
+
+**`benchmarks_publish` is a shared write the operator's permission classifier may
+refuse.** If it is refused, stop and surface it to the operator (the cohort, the
+ordered run ids, and that the Benchmarks tab is stale until they land) — never work
+around the refusal by another route, and never record the step as done.
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-10-05 | § After a registry edit: re-publish the benchmark per rebuilt run, oldest first, planned by `lib/benchmark-republish.ts`; verify the Benchmarks tab's as-of is the latest week; a classifier refusal is surfaced, never worked around (ace#2717). | ACE team |
 | 2026-09-28 | The Nova `get_form` read accepts either tool namespace: since nova plugin v2 (voidcraft-labs/commcare-nova#693, voidcraft-labs/nova-plugin#64) ACE's PAT connection is the user-scope entry (`mcp__nova__*`), the plugin's own namespace is OAuth. | ACE team |
 | 2026-09-26 | Created (ace#2510). Proved on `spark-facilitator/20260926-1800`: registry 6369, 10 indicators from PDD §8.1/§8.2 and the §5.4/§5.6/§7.2 review flags; P2 and P4 recorded as not computable. |
