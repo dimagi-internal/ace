@@ -18,6 +18,10 @@
  * for run_state), so the Drive tenancy guard sees every write. Re-run after
  * applying: `changes: 0` is the read-back.
  *
+ * Released build ids/versions are read from each run's
+ * `3-commcare/app-release_summary.md` frontmatter (app-release's contracted
+ * record), falling back to run_state (ace#2702).
+ *
  * It also re-points FRAMES (ace#2697). Phase 4's re-capture in 4b gives
  * `4-connect/previews/<slug>/*.png` new ids, so a guide that links or embeds
  * the earlier frames shows the SOURCE org. Every cited or embedded Drive id
@@ -48,6 +52,7 @@ import {
   rewriteRunState,
   runAssetsFromRunState,
 } from '../lib/clone-asset-refs.js';
+import { APP_RELEASE_SUMMARY } from '../lib/app-release-record.js';
 import { docTextAndLinks, rewriteDriveIds } from '../lib/clone-readback.js';
 import {
   citedDriveIds,
@@ -161,7 +166,16 @@ async function main(): Promise<number> {
   const srcRs = YAML.parse(await readText(drive, srcRsFile));
   const dstRs = YAML.parse(await readText(drive, dstRsFile));
 
-  const map = buildAssetMap(runAssetsFromRunState(srcRs), runAssetsFromRunState(dstRs));
+  // Released build ids/versions come from app-release's summary, their
+  // contracted owner; run_state is the fallback (ace#2702).
+  const summaryText = async (files: Entry[]): Promise<string | null> => {
+    const f = files.find((x) => APP_RELEASE_SUMMARY.test(x.path));
+    return f ? readText(drive, f) : null;
+  };
+  const map = buildAssetMap(
+    runAssetsFromRunState(srcRs, await summaryText(sourceFiles)),
+    runAssetsFromRunState(dstRs, await summaryText(targetFiles)),
+  );
   const from = dstRs?.clone?.from
     ? `${dstRs.clone.from.workspace}/${dstRs.clone.from.opp}/${dstRs.clone.from.run}`
     : `${srcRs.opportunity}/${srcRs.run_id}`;

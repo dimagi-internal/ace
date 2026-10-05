@@ -277,3 +277,106 @@ describe('rewriteRunState', () => {
     expect(r.skippedWithRefs).toEqual(['phases.solicitation-management']);
   });
 });
+
+/**
+ * ace#2702: the build-id pairs were read only from run_state
+ * `released_build_id` / `released_version`, keys no skill is contracted to
+ * write. app-release's summary frontmatter `apps.<kind>_app` is the sole owner
+ * of release state (skills/app-release/SKILL.md § Products, ace#1439). Shapes
+ * from spark/spark-facilitator/20261004-1706: the clone's run_state recorded
+ * `hq_build_id` / `build_version` / `released_at`, so no `build` pair formed
+ * and the copied prose kept the source's build ids.
+ */
+describe('build pairs come from app-release_summary.md (ace#2702)', () => {
+  const SRC_LEARN = 'dcd4889acfd8449896c603a03767f9af';
+  const SRC_LEARN_BUILD = '4cafbd1b54884648b3459f3331b427d1';
+  const SRC_DELIVER = '69f68365817c443ba6f9a846808c9717';
+  const SRC_DELIVER_BUILD = '2c493f08cba14fd5a1f5749f043d26f2';
+  const DST_LEARN = 'ae96db88029c476fb1ca497b599a5ac5';
+  const DST_LEARN_BUILD = 'b035410773d84f40a0fa81f6f504ef5e';
+  const DST_DELIVER = '81d37f6cf3b14f7b98306f3ced267e5b';
+  const DST_DELIVER_BUILD = 'c737c5a5ae814dafb3953aff1ad3c421';
+
+  const summary = (l: [string, string, number], d: [string, string, number]) =>
+    [
+      '---',
+      'apps:',
+      `  learn_app:   { hq_app_id: ${l[0]}, build_id: ${l[1]}, version: ${l[2]}, is_released: true, released_at: '2026-10-04T18:00:00Z' }`,
+      `  deliver_app: { hq_app_id: ${d[0]}, build_id: ${d[1]}, version: ${d[2]}, is_released: true, released_at: '2026-10-04T18:00:00Z' }`,
+      '---',
+      '',
+      '# App release summary',
+    ].join('\n');
+
+  // The source run records no release key in run_state at all.
+  const srcRs = {
+    phases: {
+      'commcare-setup': {
+        products: {
+          apps: { domain: 'connect-ace-prod', learn: { hq_app_id: SRC_LEARN }, deliver: { hq_app_id: SRC_DELIVER } },
+        },
+      },
+    },
+  };
+  // The clone's run_state, as 20261004-1706 wrote it.
+  const dstRs = {
+    phases: {
+      'commcare-setup': {
+        products: {
+          apps: {
+            domain: 'connect-ace-spark',
+            learn: { hq_app_id: DST_LEARN, hq_build_id: DST_LEARN_BUILD, build_version: 1, released_at: '2026-10-05T13:34:30Z' },
+            deliver: { hq_app_id: DST_DELIVER, hq_build_id: DST_DELIVER_BUILD, build_version: 1, released_at: '2026-10-05T13:34:30Z' },
+          },
+        },
+      },
+    },
+  };
+  const srcSummary = summary([SRC_LEARN, SRC_LEARN_BUILD, 7], [SRC_DELIVER, SRC_DELIVER_BUILD, 4]);
+  const dstSummary = summary([DST_LEARN, DST_LEARN_BUILD, 1], [DST_DELIVER, DST_DELIVER_BUILD, 1]);
+  const buildPairs = (m: ReturnType<typeof buildAssetMap>) =>
+    m.pairs.filter((p) => p.kind === 'build').map(({ from, to, app }) => ({ app, from, to }));
+  const expected = [
+    { app: 'learn', from: SRC_LEARN_BUILD, to: DST_LEARN_BUILD },
+    { app: 'deliver', from: SRC_DELIVER_BUILD, to: DST_DELIVER_BUILD },
+  ];
+
+  it('pairs each build and version from the two summaries', () => {
+    const m = buildAssetMap(runAssetsFromRunState(srcRs, srcSummary), runAssetsFromRunState(dstRs, dstSummary));
+    expect(buildPairs(m)).toEqual(expected);
+    expect(m.versions).toEqual({ learn: { from: '7', to: '1' }, deliver: { from: '4', to: '1' } });
+  });
+
+  it('rewrites the source build ids out of copied prose', () => {
+    const m = buildAssetMap(runAssetsFromRunState(srcRs, srcSummary), runAssetsFromRunState(dstRs, dstSummary));
+    const prose = `Learn build ${SRC_LEARN_BUILD} (v7) and Deliver build ${SRC_DELIVER_BUILD.slice(0, 8)} are released.`;
+    const out = rewriteAssetRefs(prose, m).text;
+    expect(findSourceRefs(out, m)).toEqual([]);
+    expect(out).toContain(DST_LEARN_BUILD);
+    expect(out).toContain(DST_DELIVER_BUILD.slice(0, 8));
+    expect(out).toContain('(v1)');
+  });
+
+  it("falls back to run_state hq_build_id + released_at when the clone's summary is still the source's copy", () => {
+    // 4a.3 not yet re-recorded: the clone's summary names the SOURCE apps, so it
+    // does not describe this run and must not be read as the target's release.
+    const m = buildAssetMap(runAssetsFromRunState(srcRs, srcSummary), runAssetsFromRunState(dstRs, srcSummary));
+    expect(buildPairs(m)).toEqual(expected);
+    expect(m.versions).toEqual({ learn: { from: '7', to: '1' }, deliver: { from: '4', to: '1' } });
+  });
+
+  it('a run_state build with no released_at is not a release and forms no pair', () => {
+    const unreleased = structuredClone(dstRs) as any;
+    delete unreleased.phases['commcare-setup'].products.apps.learn.released_at;
+    const m = buildAssetMap(runAssetsFromRunState(srcRs, srcSummary), runAssetsFromRunState(unreleased));
+    expect(buildPairs(m)).toEqual([expected[1]]);
+  });
+
+  it('run_state released_build_id still counts with no summary (older runs)', () => {
+    expect(runAssetsFromRunState(SOURCE_RS).apps.learn).toEqual({
+      hq_app_id: '81eab9f6804b4c2ea5e67cbecdd6601c',
+      released_build_id: '7876e5bca74f4e21adda296c6478af25',
+      released_version: '22',
+    });
+  });
+});
