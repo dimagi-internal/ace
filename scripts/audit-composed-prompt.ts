@@ -12,7 +12,8 @@
  *   0 — the `## Do not invent operational specifics` section exists and
  *       carries every standing domain, AND the prompt carries the
  *       contact-exactness protection (ace#2216), AND the prompt carries the
- *       retrieval-fallback protection (ace#2422). Safe to publish.
+ *       retrieval-fallback protection (ace#2422), AND every answer obligation
+ *       (`ANSWER_OBLIGATIONS` - e.g. the phone-number ban). Safe to publish.
  *   1 — the section is missing, one or more standing domains are absent, the
  *       contact-exactness protection is absent, or the retrieval-fallback
  *       protection is absent. The composed prompt MUST NOT be published.
@@ -47,23 +48,27 @@ import {
   ANTI_FABRICATION_HEADING,
   STANDING_FABRICATION_DOMAINS,
   CONTACT_EXACTNESS_OBLIGATIONS,
+  ANSWER_OBLIGATIONS,
 } from '../lib/standing-fabrication-domains.js';
 
 const USAGE = `Usage:
   npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json]
   npx tsx scripts/audit-composed-prompt.ts --stdin [--json]
 
-Audits a composed OCS system prompt for three things:
+Audits a composed OCS system prompt for four things:
   - the STANDING half of its "## ${ANTI_FABRICATION_HEADING}"
     section (${STANDING_FABRICATION_DOMAINS.length} domains),
   - the contact-exactness protection the publish replaces
     (${CONTACT_EXACTNESS_OBLIGATIONS.length} obligations, dimagi-internal/ace#2216), and
   - the retrieval-fallback protection (dimagi-internal/ace#2422): write no
-    address at all when nothing was retrieved for THIS answer.
+    address at all when nothing was retrieved for THIS answer, and
+  - the answer obligations (${ANSWER_OBLIGATIONS.length}): whole-prompt rules
+    about what an answer may contain, e.g. never write a phone or emergency
+    number that was not retrieved verbatim for THIS answer.
 
-Exit 0 = all three present (safe to publish).
-Exit 1 = a standing domain, a contact obligation, or the retrieval-fallback
-  obligation is missing (DO NOT publish).
+Exit 0 = all four present (safe to publish).
+Exit 1 = a standing domain, a contact obligation, the retrieval-fallback
+  obligation or an answer obligation is missing (DO NOT publish).
 Exit 2 = harness error.`;
 
 export interface AuditCliArgs {
@@ -151,6 +156,15 @@ function main(argv: string[]): number {
               why: o.why,
             })),
           },
+          answer_obligations: {
+            ok: audit.answerObligations.ok,
+            covered: audit.answerObligations.covered,
+            missing: audit.answerObligations.missing.map((o) => ({
+              id: o.id,
+              label: o.label,
+              why: o.why,
+            })),
+          },
         },
         null,
         2,
@@ -164,7 +178,8 @@ function main(argv: string[]): number {
         `[STANDING-DOMAINS] OK — all ${STANDING_FABRICATION_DOMAINS.length} standing domains ` +
           `present in "## ${ANTI_FABRICATION_HEADING}", all ` +
           `${CONTACT_EXACTNESS_OBLIGATIONS.length} contact-exactness obligations present, ` +
-          'and the retrieval-fallback obligation is present.\n',
+          'the retrieval-fallback obligation is present, and all ' +
+          `${ANSWER_OBLIGATIONS.length} answer obligation(s) are present.\n`,
       );
     }
     return 0;
@@ -174,8 +189,8 @@ function main(argv: string[]): number {
   process.stderr.write(
     '\nDO NOT publish this prompt. Add the missing domain(s) to the ' +
       `"## ${ANTI_FABRICATION_HEADING}" section, the missing contact ` +
-      'obligation(s), and/or the retrieval-fallback obligation to the ' +
-      'escalation/contacts passage, per `skills/ocs-agent-setup/SKILL.md` ' +
+      'obligation(s), the retrieval-fallback obligation to the ' +
+      'escalation/contacts passage, and/or the missing answer obligation(s), per `skills/ocs-agent-setup/SKILL.md` ' +
       '§ Step 7, then re-run this audit.\n',
   );
   return 1;

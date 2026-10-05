@@ -112,11 +112,28 @@ const RETRIEVAL_FALLBACK_CLAUSE =
   'answer, write no address at all — say only "your supervisor, and the ACE ' +
   'admin group," and do not guess at a domain.';
 
-/** Publishable: the standing half, the contact-exactness clause AND the retrieval-fallback clause. */
-const PROMPT_FIXED = PROMPT_STANDING_ONLY.replace(
+/** The standing half, the contact-exactness clause AND the retrieval-fallback clause. */
+const PROMPT_CONTACTS_COMPLETE = PROMPT_STANDING_ONLY.replace(
   '## Mandatory closing step — tagging',
   `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n## Mandatory closing step — tagging`,
 );
+
+/**
+ * Every ANSWER obligation, as published on chatbot 13923 v4
+ * (spark-facilitator/20261004-1706). v3 carried the phone ban only as a
+ * clause inside the safeguarding bullet and answered opp-53 with "in Malawi
+ * the ambulance line is 998".
+ */
+const ANSWER_SECTION =
+  '\n\n## Emergencies\n\n**Phone numbers — a hard rule.** Never write any phone number, ' +
+  'emergency number, ambulance, police or fire line, hotline or short code unless that ' +
+  'exact number appears verbatim in what you retrieved for this answer. This holds even ' +
+  'for a number you believe is well known for Malawi or any other country, and even with ' +
+  'a caveat such as "or whatever works locally". Say instead: "call your local emergency ' +
+  'services or get the person to the nearest health facility, and tell your supervisor."';
+
+/** Publishable: everything above plus every answer obligation. */
+const PROMPT_FIXED = PROMPT_CONTACTS_COMPLETE + ANSWER_SECTION;
 
 let tmp: string;
 
@@ -189,7 +206,7 @@ describe('scripts/audit-composed-prompt.ts — the ace#2216 fixture', () => {
 
   it('NON-INERTNESS: the two differ only by that clause and differ in exit code', () => {
     expect(
-      PROMPT_FIXED.replace(
+      PROMPT_CONTACTS_COMPLETE.replace(
         `## Escalation and contacts\n\n${CONTACT_CLAUSE} ${RETRIEVAL_FALLBACK_CLAUSE}\n\n`,
         '',
       ),
@@ -246,7 +263,7 @@ describe('scripts/audit-composed-prompt.ts — the ace#2422 fixture (retrieval-f
   });
 
   it('NON-INERTNESS: the two differ only by the retrieval-fallback clause and differ in exit code', () => {
-    expect(PROMPT_FIXED.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
+    expect(PROMPT_CONTACTS_COMPLETE.replace(` ${RETRIEVAL_FALLBACK_CLAUSE}`, '')).toBe(
       PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK,
     );
     expect(runOn(PROMPT_ROUND1_NO_RETRIEVAL_FALLBACK).code).not.toBe(runOn(PROMPT_FIXED).code);
@@ -269,6 +286,33 @@ describe('scripts/audit-composed-prompt.ts — the ace#2422 fixture (retrieval-f
     expect(parsed.retrieval_fallback.missing.map((m: { id: string }) => m.id)).toEqual([
       'no-address-if-not-retrieved',
     ]);
+  });
+});
+
+describe('scripts/audit-composed-prompt.ts — the phone-number ban (opp-53, chatbot 13923)', () => {
+  it('NEGATIVE CONTROL: contacts complete but no standalone phone ban exits 1 naming it', () => {
+    const { code, stderr } = runOn(PROMPT_CONTACTS_COMPLETE);
+    expect(code).toBe(1);
+    expect(stderr).toContain('[ANSWER-OBLIGATIONS]');
+    expect(stderr).toContain('no-unretrieved-phone-numbers');
+    expect(stderr).not.toContain('[CONTACT-EXACTNESS]');
+  });
+
+  it('POSITIVE CONTROL: adding the paragraph — and nothing else — flips it to 0', () => {
+    const { code, stdout } = runOn(PROMPT_FIXED);
+    expect(code).toBe(0);
+    expect(stdout).toContain('answer obligation(s) are present');
+    expect(PROMPT_FIXED.replace(ANSWER_SECTION, '')).toBe(PROMPT_CONTACTS_COMPLETE);
+  });
+
+  it('--json carries an answer_obligations verdict', () => {
+    const { code, stdout } = runOn(PROMPT_CONTACTS_COMPLETE, ['--json']);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.answer_obligations.ok).toBe(false);
+    expect(parsed.answer_obligations.missing.map((m: { id: string }) => m.id)).toContain(
+      'no-unretrieved-phone-numbers',
+    );
   });
 });
 

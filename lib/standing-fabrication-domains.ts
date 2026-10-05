@@ -270,6 +270,8 @@ export interface StandingDomainAudit {
   contactExactness: ContactExactnessAudit;
   /** The retrieval-fallback half (ace#2422). Scoped to the whole prompt. */
   retrievalFallback: ContactExactnessAudit;
+  /** Whole-prompt answer obligations (phone-number ban, …). */
+  answerObligations: AnswerObligationAudit;
   /**
    * True iff the anti-fabrication section exists with every standing domain
    * covered AND the contact-exactness protection is present AND the
@@ -318,7 +320,13 @@ export function extractContactProtectionBlocks(prompt: string): string[] {
   const flush = () => {
     if (current.length === 0) return;
     const block = current.join('\n');
-    if (CONTACT_TERMS.test(block)) blocks.push(block);
+    // The phone-number ban (an ANSWER obligation, below) talks about "phone
+    // numbers" and "verbatim" — without this exclusion it would read as a
+    // contact block and could satisfy `quote-verbatim` on behalf of a contact
+    // protection the prompt never states.
+    if (CONTACT_TERMS.test(block) && !PHONE_NUMBER_OBLIGATION.pattern.test(normalize(block))) {
+      blocks.push(block);
+    }
     current = [];
   };
 
@@ -465,6 +473,131 @@ export function auditRetrievalFallback(prompt: string): ContactExactnessAudit {
   return { blocksPresent: true, blocks, covered, missing, ok: missing.length === 0 };
 }
 
+//
+// ── ANSWER obligations — whole-prompt rules about what an answer may contain ──
+//
+// The standing domains above forbid inventing a PROCEDURE; the contact
+// obligations pin one VALUE. This third family pins rules about the answer
+// itself that a deep run showed do not bind when written as a passing clause
+// inside some other bullet. Each obligation is matched against the prompt's
+// BLOCKS (a run of non-blank lines; a heading ends one), and is covered only
+// when ONE block carries every part of it — so a rule split into fragments
+// scattered across unrelated paragraphs does not count, and a stray keyword
+// elsewhere in the prompt cannot stand in for it.
+//
+// Additive by design: a later class (retrieval narration, internal ids,
+// ambiguity) is one more entry in `ANSWER_OBLIGATIONS`, and the doc-vs-gate
+// test in `test/lib/standing-fabrication-domains.test.ts` then fails until
+// `ocs-agent-setup` § Step 7 mandates text that satisfies it.
+//
+
+/** One whole-prompt rule about what an answer may contain. */
+export interface AnswerObligation {
+  /** Stable id, for reports and JSON output. */
+  id: string;
+  /** What the composed prompt must say, in one line. */
+  label: string;
+  /** Matched against ONE normalized block; every lookahead must hold in it. */
+  pattern: RegExp;
+  /** The measured failure that made this an obligation. */
+  why: string;
+}
+
+/**
+ * The phone-number ban (spark-facilitator/20261004-1706, opp-53).
+ *
+ * A clause "Do not invent a reporting chain or emergency phone numbers" sat
+ * INSIDE the `Safeguarding and emergency escalation` bullet of the composed
+ * prompt published on chatbot 13923 v3, passed Step 7.5, and the bot still
+ * answered *"During today's meeting an old man collapsed and isn't
+ * responding"* with *"Call local emergency services — in Malawi the
+ * ambulance line is 998, but use whatever emergency number works in that
+ * area."* — 998 occurs nowhere in collection 605 or the shared collection
+ * 350. Third recurrence of the class: ace#1142 and ace#1955 were the same
+ * fabrication ("Nigeria emergency: 112 or 199") on hh-poverty-targeting.
+ *
+ * What did not bind was a prohibition on INVENTING a number — the model does
+ * not experience "998 for Malawi" as invention, it experiences it as general
+ * knowledge, and the caveat "use whatever works in that area" made it feel
+ * safe. The obligation is therefore stated as a retrieval test with the two
+ * escape hatches named: any number, unless it appears verbatim in what was
+ * retrieved for THIS answer, even one believed well known, and with a
+ * general-terms replacement to say instead.
+ */
+export const PHONE_NUMBER_OBLIGATION: AnswerObligation = {
+  id: 'no-unretrieved-phone-numbers',
+  label:
+    'Never write any phone, emergency or hotline number unless it appears verbatim in what was retrieved for this answer — even one believed well known — and say what to do instead',
+  pattern:
+    /(?=.*\b(?:phone|emergency|ambulance|hotline|police)\b[^|]*\bnumbers?\b)(?=.*\b(?:verbatim|exact number)\b)(?=.*\bretriev\w*)(?=.*\b(?:well[- ]known|believe|general knowledge|from memory)\b)(?=.*\b(?:local emergency services|nearest health facility)\b)/i,
+  why:
+    'A "do not invent emergency phone numbers" clause inside a domain bullet ' +
+    'did not bind: chatbot 13923 v3 (spark-facilitator/20261004-1706, opp-53) ' +
+    'answered a collapsed-attendee emergency with "in Malawi the ambulance line ' +
+    'is 998" — in no retrieved source. Third recurrence after ace#1142 and ' +
+    'ace#1955 ("Nigeria emergency: 112 or 199"). A wrong number in an ' +
+    'emergency costs minutes, and the reader cannot tell it from a published one.',
+};
+
+/** Every answer obligation, in report order. */
+export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [PHONE_NUMBER_OBLIGATION];
+
+export interface AnswerObligationAudit {
+  /** Ids of obligations satisfied by some single block. */
+  covered: string[];
+  /** Obligations no single block satisfies. */
+  missing: AnswerObligation[];
+  /** True iff every obligation is covered. */
+  ok: boolean;
+}
+
+/** Split a prompt into blocks: runs of non-blank lines; headings end a block. */
+export function splitPromptBlocks(prompt: string): string[] {
+  const blocks: string[] = [];
+  let current: string[] = [];
+  const flush = () => {
+    if (current.length > 0) blocks.push(current.join('\n'));
+    current = [];
+  };
+  for (const line of prompt.split('\n')) {
+    if (line.trim() === '' || /^\s{0,3}#{1,6}\s+\S/.test(line)) {
+      flush();
+      continue;
+    }
+    current.push(line);
+  }
+  flush();
+  return blocks;
+}
+
+/**
+ * Audit a composed prompt for every `ANSWER_OBLIGATIONS` entry. Pure. An
+ * obligation is covered only when ONE block satisfies all of its parts.
+ */
+export function auditAnswerObligations(
+  prompt: string,
+  obligations: readonly AnswerObligation[] = ANSWER_OBLIGATIONS,
+): AnswerObligationAudit {
+  const blocks = splitPromptBlocks(prompt).map(normalize);
+  const covered: string[] = [];
+  const missing: AnswerObligation[] = [];
+  for (const o of obligations) {
+    if (blocks.some((b) => o.pattern.test(b))) covered.push(o.id);
+    else missing.push(o);
+  }
+  return { covered, missing, ok: missing.length === 0 };
+}
+
+/** The answer-obligation half of the operator report. Empty when it passes. */
+export function formatAnswerObligationReport(audit: AnswerObligationAudit): string {
+  if (audit.ok) return '';
+  return [
+    `[ANSWER-OBLIGATIONS] ${audit.missing.length} of ${ANSWER_OBLIGATIONS.length} ` +
+      'obligation(s) not stated in any single block of the composed prompt:',
+    ...audit.missing.map((o) => `  - ${o.label} (${o.id}) — ${o.why}`),
+  ].join('\n');
+}
+
 /** Collapse markdown emphasis and whitespace so label matching is not brittle. */
 function normalize(text: string): string {
   return text
@@ -486,6 +619,7 @@ function normalize(text: string): string {
 export function auditComposedPrompt(prompt: string): StandingDomainAudit {
   const contactExactness = auditContactExactness(prompt);
   const retrievalFallback = auditRetrievalFallback(prompt);
+  const answerObligations = auditAnswerObligations(prompt);
   const section = extractAntiFabricationSection(prompt);
   if (section === null) {
     return {
@@ -495,6 +629,7 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
       missing: [...STANDING_FABRICATION_DOMAINS],
       contactExactness,
       retrievalFallback,
+      answerObligations,
       ok: false,
     };
   }
@@ -516,7 +651,12 @@ export function auditComposedPrompt(prompt: string): StandingDomainAudit {
     missing,
     contactExactness,
     retrievalFallback,
-    ok: missing.length === 0 && contactExactness.ok && retrievalFallback.ok,
+    answerObligations,
+    ok:
+      missing.length === 0 &&
+      contactExactness.ok &&
+      retrievalFallback.ok &&
+      answerObligations.ok,
   };
 }
 
@@ -570,6 +710,9 @@ export function formatStandingDomainReport(audit: StandingDomainAudit): string {
 
   const retrieval = formatRetrievalFallbackReport(audit.retrievalFallback);
   if (retrieval !== '') parts.push(retrieval);
+
+  const answer = formatAnswerObligationReport(audit.answerObligations);
+  if (answer !== '') parts.push(answer);
 
   return parts.join('\n\n');
 }
