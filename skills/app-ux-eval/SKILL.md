@@ -71,6 +71,30 @@ the rest of the journey looks.
 | `journey_completion` | Recipe accomplishes the journey's stated goal end-to-end. Final screenshot shows confirmation / submission success / explicit completion state. | Recipe ends without confirmation / stuck screen / mid-form (the journey didn't finish) |
 | `capture_robustness` | **Fitness dimension (added 2026-05-29).** Does the instrument *refuse bad data*? Graded on the **negative-path** journeys (blank required field, out-of-range value, low-accuracy GPS, "Other" selection) — does the form reject the bad input with a clear, recoverable error, or silently accept garbage? This is the screenshot-side complement to `pdd-to-deliver-app-eval § data_quality_validation`. **Coverage cap (mirrors `ocs-chatbot-eval`'s adversarial-coverage cap):** if `app-test-cases.yaml` contains ZERO negative-path journeys, this dimension is *unmeasured* — score it ≤2 (NOT pass) and surface `[WARN] capture_robustness: no negative-path journey in the test suite — the instrument's data-quality enforcement is untested`. An app whose test suite never feeds it a bad input has unproven robustness; that absence must not read as success. (Forcing function: `app-test-cases` should emit ≥1 negative-path recipe per credit-bearing form.) | Form accepts a known-bad input (blank required / out-of-range / low-GPS) with no error, OR zero negative-path journeys exist to test it |
 
+**NOT REACHED criteria cap `journey_completion` at 2 (warn). They do
+not fail the journey, and they never count as a pass (dimagi-internal/ace#2670).**
+`/ace:qa-deep` Stage B step 4 hands over a NOT REACHED list. It holds every
+`reachability: multi-day` criterion (N dated records on one case under a
+strictly-increasing, `<= today()` date constraint, which one session cannot
+produce), plus any criterion the walk did not get to for another stated
+reason. Re-derive the list as well: walk each journey's
+`structural_pass_criteria` and check that each one is either graded from a
+screenshot or on the NOT REACHED list. An ungraded criterion missing from
+that list is a `[WARN]` of its own, owner `HARNESS`. For each journey with
+one or more NOT REACHED criteria:
+- List them under that journey's `per_item[].not_reached` as
+  `{criterion, reason}`, quoting the reason verbatim.
+- Score `journey_completion` **at most 2 (warn)**. The journey's walked
+  part may well be complete, but its stated goal was not shown end to end.
+  A NOT REACHED criterion is therefore **not** the "journey didn't finish"
+  hard deduction. A calendar constraint is not a dead end, and failing
+  the journey would report a product defect that was never observed.
+  Scoring it 3 would report a pass on something nobody saw.
+- Surface one `[WARN]` per criterion in `auto_surfaced`, owner
+  `INSTRUMENT`, naming the journey, the criterion and the reason. For a
+  `multi-day` criterion, add the remedy: re-run `/ace:qa-deep` on
+  successive days against the same cases.
+
 For each dimension, write a one-sentence reason citing the specific
 screenshot(s) that drove the score (e.g.
 `"journey-deliver-step-04 shows field labelled q3_v2_optional"`).
@@ -103,6 +127,9 @@ score to 0.
     which dimensions, including the smoke journey vs. non-smoke
     distinction (smoke failure = blocker; non-smoke failure may
     iterate)
+  - Either way, the summary **names every NOT REACHED criterion**
+    (journey, criterion, reason). A `pass` with unreached criteria is a
+    pass on what was observed, and it must say what was not observed.
 
 ### Step 4: Write verdict
 
@@ -147,12 +174,26 @@ per_item:                # per-journey verdicts; key is the journey id (a meanin
     score: 5.0
     verdict: fail
     note: "Hard-deduction on error_recovery: dead-end error in journey-deliver-step-07 with no recovery path (FLW must restart form). error_recovery dimension clamped to 0."
+  - ref: "journey-deliver-over-cap"
+    journey: "journey-deliver-over-cap"
+    is_smoke: false
+    score: 8.0
+    verdict: pass
+    not_reached:           # ace#2670 — caps journey_completion at 2 (warn); never a fail, never a pass
+      - criterion: fourth_meeting_labelled_not_paid
+        reason: "reachability: multi-day — needs 4 community meetings on one case; date_of_meeting must be > the previous meeting and <= today()"
+    note: "Meetings 1-3 walked and labelled correctly; meeting 4 NOT REACHED (multi-day). journey_completion capped at 2."
   # ... one entry per journey in app-test-cases.yaml
 
 auto_surfaced:
   - severity: BLOCKER | WARN | INFO
     owner: HARNESS | INSTRUMENT | PRODUCT | PROMPT
     message: <one-line concern>
+
+not_reached:               # every per_item not_reached entry, flattened; [] when none.
+  - { journey: journey-deliver-over-cap, criterion: fourth_meeting_labelled_not_paid }
+                           # TOP-LEVEL on purpose: the top-level verdict schema is
+                           # passthrough, GateSchema is not (zod strips unknown gate keys)
 
 gate:
   threshold: 7.0
@@ -174,6 +215,10 @@ Required top-level fields:
   `journey-`-prefixed slug id from `app-test-cases.yaml` (e.g.
   `journey-learn-pass`, `journey-deliver-submit`), each entry includes a `journey` domain-specific subkey
 - `overall_score`, `verdict` (`pass | fail`)
+- `per_item[].not_reached` on each journey that has NOT REACHED criteria,
+  and top-level `not_reached` (the flattened list, `[]` when none). An unreached
+  criterion that appears in neither is invisible to the gate, which is
+  the ace#2670 failure.
 
 Also append a row to
 `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` (opp-level, not
@@ -188,6 +233,9 @@ calibration metrics keep growing per
   primary submission flow; if that fails, the app is not launchable)
 - Any non-smoke failure with overall ≥ 7.0 = `iterate` (the operator
   can decide whether to fix and re-run vs. proceed)
+- NOT REACHED criteria do not change the disposition by themselves. Their
+  effect is the `journey_completion` cap. The gate summary must still list
+  each one, so an `approve` never hides what it did not observe.
 
 The Phase 9 gate (`llo-launch`) reads this verdict and adds its own
 freshness check (verdict's `artifact_refs` must match the latest
@@ -237,3 +285,4 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 | 2026-05-31 | **`journey-` prefix.** `per_item[].ref`/`journey` example values now carry the `journey-` prefix (`journey-deliver-submit`, `journey-deliver-alt-answer`) to match the amended id convention. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
 | 2026-05-29 | **Fitness dim + time_budget fix (ITN post-mortem).** Added `capture_robustness` (0.30) — grades negative-path journeys (blank-required / out-of-range / low-GPS / "Other") for whether the form *refuses bad data*, with an adversarial-coverage cap (zero negative-path journeys → ≤2, not pass). Fixed `time_budget`: being far UNDER budget is now a thinness WARN (≤2), not a 9.5 — the old rule only penalized "too slow," which rewarded the ITN-style skeletal build. Reweighted to 6 dims (capture_robustness heaviest at 0.30). Per `_eval-template.md § out-of-chain fitness requirement` + `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. Note: in-`/ace:run` build-fitness gating is handled cheaply (no AVD) by the revised `pdd-to-*-app-eval` blueprint checks; this deep screenshot check is complementary. | ACE team |
 | 2026-09-29 | **Frames resolved by `file_id`, not by folder (output previews contract v1).** Smoke frames moved to `3-commcare/previews/<app-output-slug>/`; deep frames stay in `6-qa-and-training/screenshots/<recipe-base>/`. The capture manifest is the only reference. | ACE team |
+| 2026-10-05 | **NOT REACHED criteria (dimagi-internal/ace#2670).** Per-journey `not_reached: [{criterion, reason}]` plus a flattened top-level `not_reached`. Each NOT REACHED criterion is a `[WARN]` (owner INSTRUMENT) and caps that journey's `journey_completion` at 2. It is never the didn't-finish hard deduction and never a pass. The gate summary names every one. Earned by `spark-facilitator/20261004-1706`, where two `reachability: multi-day` criteria (N dated meetings on one case under a strictly-increasing `<= today()` validate) could not be reached in one session, and the rubric had no tier for them. | ACE team |

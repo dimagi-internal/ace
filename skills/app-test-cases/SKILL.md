@@ -2002,6 +2002,33 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   actually checks (`case_row_present_after_submit`) and record the lost
   coverage. Never leave a transition-named criterion standing on a
   presence assertion; that is the ace#1885 silent green.
+- **Multi-day criteria are declared, not discovered (dimagi-internal/ace#2670).**
+  Some criteria on a `longitudinal-visits` app need **more than one dated
+  record on the SAME case**, for example "the 4th meeting is labelled not
+  paid" or "savings shown only from step 5". If the date field's `validate`
+  is strictly increasing (`. > date(#form/prev_...)`) AND capped at
+  `<= today()`, a case takes at most one such record per device-day. When
+  the anchor is also stamped `today()` at registration (an `enrolment_date`
+  hidden `calculate: today()`), a case registered today takes exactly one.
+  Back-dating cannot rescue it: the 2.64.0 picker has only a calibrated
+  **+1-day forward** drive (`lib/date-picker-drive.ts`, ace#2518), and a
+  backward drive is uncalibrated. Those criteria are therefore unreachable
+  inside one `/ace:qa-deep` session.
+
+  For each deep journey criterion, check this when cataloguing it, and
+  again when `/ace:qa-deep` composes the deferred recipe. Read the
+  `validate` of every date field the criterion's records pass through
+  (`get_form` / `get_field`). If reaching the criterion needs N > 1 records
+  on one case under such a constraint, write it in the mapping form
+  `{ name, reachability: multi-day, reason }`. The reason must name the
+  field, the constraint and N. Spacing advice in a catalog note is not a
+  declaration, because no downstream step reads notes. Canonical case:
+  `spark-facilitator/20261004-1706`, where `date_of_meeting` validates
+  `. <= today() and ... (#form/prev_meeting_date = '' or . > date(#form/prev_meeting_date))`.
+  `fourth_meeting_labelled_not_paid` and `savings_shown_only_from_step_5`
+  were reached by nothing and declared by nothing. Do not split the journey
+  to dodge the declaration. The criterion is the coverage, and losing it
+  silently is the failure.
 - Every authored (smoke) recipe passes `mobile_validate_recipe`
 - Every authored (smoke) recipe's `mobile_resolve_selectors` pass returned
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
@@ -2117,3 +2144,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-08-20 | **Sanction the hint-anchored focus tap ace#1299 actually validated (closes ace#1547).** PR #1397 closed ace#1299 COMPLETED but left § Step 3 item 3 declaring both replacement idioms un-emittable until proven on a live device, 14 hours after that issue's own follow-up comment proved the hint-anchored one on-device (isolated probe, `spark-facilitator/20260813-2126`: `cbf_name` and `phone_number` landed in their OWN fields). Read literally, that made any Deliver field-list with more than one text input unauthorable — Step 2.6 halts `[BLOCKER]` and Phase 6 gets zero Deliver screenshots (observed on `hh-poverty-targeting/20260819-1435`). Item 3 now carries the validated rule (**the focus anchor is the element immediately above the `EditText` — the field's `hint` when it has one, the question label when it does not**), the validated idiom, and the guarded-vs-unconditional discriminator: guarded when the anchor IS the tap target (ace#1070 stands for option taps), unconditional when the anchor is a DIFFERENT element from the tap target, because there `when: notVisible: <anchor>` is structurally blind to the real failure ("anchor visible, its EditText still below the fold"). `speed: 30` replaces `speed: 80` in the option snippet — at 80 the centring scroll overshot a ~300px radio band and halted the leg (ace#1299). Index-based anchoring stays uncalibrated. Same reconciliation applied to `docs/mobile-atlas/connect-2.63.2.md` § 1, `mcp/mobile/selectors/connect-2.63.2.yaml` (`form-question-input*` prose), and the `group-field-list-per-question-walk` remediation string in `mcp/mobile/recipe-sanity-probe.ts`, which still taught the inert bare `below:` tap. Pinned by `test/mcp/mobile/static-recipe-invariants.test.ts § app-test-cases field-list input focus contract`. | ACE team |
 | 2026-08-23 | **Both halves of the § group-field-list item-3 input rule are now STATICALLY ENFORCED (closes ace#1554).** ace#1299 § 4 specified two checks and called them explicitly unit-testable; neither had landed, because `NovaFieldSlice` carried no `hint` — `grep -n "hint" mcp/mobile/recipe-sanity-probe.ts` returned exactly one hit, prose inside a remediation string. So the probe returned a clean `ok: true` with `field_data_supplied: true` on the very recipe that produced `cbf_name = "Thandiwe Banda0991234567"` with a required `phone_number` empty. `recipe-sanity-probe` gains `input-anchor-skips-hint` (a focus tap anchored on the QUESTION LABEL of a hint-carrying field — the anchor resolves to the hint TextView and the tap moves no focus) and `input-focus-scroll-is-guarded` (a `when: notVisible: <anchor>` wrapper around the centring scroll, structurally blind to "anchor visible, its EditText still below the fold" — ace#1299's "more important half"), plus `hint?: string` on `NovaFieldSlice` and `observed.hint_data_supplied`. Filed un-bundled from ace#1547/PR #1553 precisely because a false positive here halts Phase 3 in an `incomplete` re-author loop, so both checks default to SILENCE under uncertainty: the hint check reads only fields that positively carry a `hint` (missing hints ⇒ no-op, never an assumed "no hint"), an ambiguous anchor attributes to nothing (the ace#1548 rule), a hint-less field anchored on its label is CORRECT and never flagged, and the guard check fires only on the `tapOn: below:` + `inputText` shape, never on an option tap where ace#1070 keeps the guard right. Step 2.6's caller must now pass `hint` alongside `label` (omit the key when there is none). Pinned by 22 cases in `test/mcp/mobile/recipe-sanity-probe.test.ts`, half of them "does NOT flag". | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-10-05 | **Multi-day criteria are declared (dimagi-internal/ace#2670).** Step 5 now requires `{name, reachability: multi-day, reason}` on any deep-journey criterion that needs N > 1 dated records on one case under a strictly-increasing, `<= today()` date `validate`. One `/ace:qa-deep` session cannot reach such a criterion, and the 2.64.0 picker has no calibrated backward drive. `/ace:qa-deep` records it NOT REACHED and `app-ux-eval` lists it under `not_reached`. Earned by `spark-facilitator/20261004-1706` (`fourth_meeting_labelled_not_paid`, `savings_shown_only_from_step_5`). | ACE team |

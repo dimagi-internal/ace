@@ -161,7 +161,33 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
    write `3-commcare/previews/` — the app previews folder has exactly one
    writer, `app-screenshot-capture` (output previews contract v1, its
    § Step 4.9), so a deep run never replaces or mixes into the apps' previews.
-4. Dispatch `app-ux-eval` to grade the captured set.
+4. **Record every unreached criterion. Never fake one (dimagi-internal/ace#2670).**
+   A criterion carrying `reachability: multi-day` (see
+   `skills/app-test-cases/SKILL.md` § Step 5, "Multi-day criteria") needs
+   more than one dated record on the same case under a strictly-increasing,
+   `<= today()` date constraint. One session cannot produce that. Record it
+   **NOT REACHED** with its catalog `reason`. Walk the rest of the journey
+   anyway, because every other criterion on it is still gradeable.
+   - The only honest way to reach it is to run `/ace:qa-deep` on
+     **successive device-days against the SAME cases**. Each day adds one
+     record per case. Only grade the criterion on the day the Nth record
+     lands.
+   - **Never mutate the device clock** (`adb shell date`, emulator time
+     settings, an auto-time toggle) to manufacture the days. Synced
+     `timeEnd`/`timeStart` would then disagree with the server's receipt
+     times, Connect would see impossible visit timing, and the grade would
+     describe a timeline no worker can produce.
+   - Do not back-date either. The 2.64.0 picker has only a calibrated
+     +1-day forward drive (`lib/date-picker-drive.ts`). An uncalibrated
+     backward fling spins the date silently (ace#1300).
+   - The same NOT REACHED rule applies to any criterion the walk did not
+     get to for another stated reason, such as a blocked leg or a surface
+     outside the palette. Name the reason. A criterion that was neither
+     graded nor recorded is the failure this step exists to prevent.
+
+   Pass the NOT REACHED list (`journey`, `criterion`, `reason`) to
+   `app-ux-eval`.
+5. Dispatch `app-ux-eval` to grade the captured set.
 
 Writes:
 - 3-commcare/recipes/journey-<app>-<slug>.yaml (lazily generated for each `recipe: deferred` deep journey on first qa-deep run)
