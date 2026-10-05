@@ -285,6 +285,16 @@ Skills — No Fake Background Tasks`). Concrete budget:
    `lib/ocs-deep-suite.ts` is the predicate). Ask the `edge-4` question in that
    language; expectation as `edge-4`. Otherwise append nothing.
 
+   **Several languages named → use the FIRST-named non-English one, still
+   exactly one prompt (ace#2664).** When the PDD names more than one working
+   language (e.g. `spark-facilitator` names Chichewa and Tumbuka), ask
+   `edge-5` in the first non-English language in the order the PDD lists them.
+   Do not add one prompt per language: the declared suite size stays
+   `13 + N_opp + 1`. Record verbatim in the transcript the language chosen,
+   where the PDD named it, and the exact translated question text sent. Two
+   `--deep` runs of the same opp must ask the same question in the same
+   language, or their edge-5 results are not comparable.
+
    **Declared suite size — compute it, record it, and check it.**
 
    ```

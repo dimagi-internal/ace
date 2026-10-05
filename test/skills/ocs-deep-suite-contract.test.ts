@@ -116,6 +116,13 @@ describe('the non-English entry is resolvable', () => {
     // The unresolvable condition must not survive anywhere in the skill.
     expect(SKILL).not.toContain('Non-English input (if the opp targets non-English-speaking LLOs)');
   });
+
+  it('edge-5 names which language to use when the PDD lists several (ace#2664)', () => {
+    // spark-facilitator's PDD names Chichewa AND Tumbuka; without a rule two
+    // runs of one opp could ask edge-5 in different languages.
+    expect(SKILL).toMatch(/FIRST-named non-English/);
+    expect(SKILL).toMatch(/exact translated question text/);
+  });
 });
 
 describe('fixesNonEnglishLanguage — the one conditional entry, made checkable', () => {
