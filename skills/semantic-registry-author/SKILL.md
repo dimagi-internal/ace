@@ -188,7 +188,34 @@ definitions they were graded with. After changing definitions, re-run
 `workflow_rebuild_history` on the programme report (`demo-data-setup` § C5) so
 the trend is restated under one definition.
 
-**Then re-publish the benchmark — REQUIRED, or every Benchmarks tab stays on the
+**A rebuild mints NEW run ids — relink, or the run's links die (ace#2700).**
+Labs builds each period's replacement run before deleting the old one, so every
+period of the programme report AND every opp report's hand-down gets a fresh
+id; the old id then renders "not found". Before the rebuild, record
+`workflow_history_runs({…, generated_only: false})` for the programme report and
+each opp report as `[{workflowId, runs: [{run_id, period_end}]}]`; after it,
+record the same again. Then build the old→new map from those two listings —
+never from id arithmetic — with `scripts/relink-rebuilt-history.ts` (`lib/history-relink.ts`):
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/relink-rebuilt-history.ts" \
+  --before before.json --after after.json --map-out map.json [--in FILE --out FILE [--bare]]
+```
+
+and rewrite every place the run names an old id: `realized.json`,
+`run_state.yaml` `products.synthetic.cascade` (`programme_report`,
+`opp_reports[]` — arrays are replaced whole — `history.run_ids`) and
+`products.synthetic.workflows.*.run_url` (`update_yaml_file`, `merge: deep`),
+the Phase 7 summaries, `why_brief.yaml` and the narrative spec (Docs:
+`replaceAllText`), in every workspace the run was cloned into. `--in` exits 1
+while any old id is left. Then re-publish the benchmark (next paragraph — it reuses
+the same before/after listings, and must name the NEW run ids) and re-capture the
+dashboard previews (`output-preview-capture`): the frames on file show the old
+definitions. Worked example:
+spark-facilitator/20261004-1706, 2026-10-05 (7198..7254 → 7261..7317,
+hand-downs 7256/7257/7258 → 7319/7320/7321).
+
+**After the relink, re-publish the benchmark — REQUIRED, or every Benchmarks tab stays on the
 old registry (ace#2717).** A rebuild publishes nothing, and an opp report's
 Benchmarks tab shows the most recently PUBLISHED as-of, not the latest period
 (`demo-data-setup` § C5). Measured on spark-facilitator/20261004-1706 (registry
@@ -197,7 +224,7 @@ while the Report tab beside it was as of 4 Oct. So, after the rebuild is `done`:
 
 1. Read the programme report's `workflow_history_runs({definition_id, program_id,
    generated_only: false})` before AND after the rebuild, as
-   `[{run_id, period_end}]`.
+   `[{run_id, period_end}]` (the relink step above already recorded both).
 2. Plan the publishes with `lib/benchmark-republish.ts` `planBenchmarkRepublish`
    (CLI: `scripts/plan-benchmark-republish.ts --cohort <id> --workflow <prog
    report> --program <id> --before before.json --after after.json`). It orders
@@ -221,5 +248,6 @@ around the refusal by another route, and never record the step as done.
 | Date | Change |
 |---|---|
 | 2026-10-05 | § After a registry edit: re-publish the benchmark per rebuilt run, oldest first, planned by `lib/benchmark-republish.ts`; verify the Benchmarks tab's as-of is the latest week; a classifier refusal is surfaced, never worked around (ace#2717). | ACE team |
+| 2026-10-05 | § After a registry edit: a rebuild mints new run ids; relink every artifact from before/after `workflow_history_runs` listings via `scripts/relink-rebuilt-history.ts` (ace#2700). Proved on spark-facilitator/20261004-1706 (registry 7185 v3). | ACE team |
 | 2026-09-28 | The Nova `get_form` read accepts either tool namespace: since nova plugin v2 (voidcraft-labs/commcare-nova#693, voidcraft-labs/nova-plugin#64) ACE's PAT connection is the user-scope entry (`mcp__nova__*`), the plugin's own namespace is OAuth. | ACE team |
 | 2026-09-26 | Created (ace#2510). Proved on `spark-facilitator/20260926-1800`: registry 6369, 10 indicators from PDD §8.1/§8.2 and the §5.4/§5.6/§7.2 review flags; P2 and P4 recorded as not computable. |
