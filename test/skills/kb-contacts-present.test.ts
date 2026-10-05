@@ -14,8 +14,11 @@
  * The invariant: the documented KB recipe must generate and index a contacts
  * file, that file's spec must source the address from `config/agent.json`
  * rather than from prose, unsourced rows must be omitted rather than invented
- * (CLAUDE.md § No inferred backstory), and the composed prompt must POINT at
- * the file instead of restating the address inline.
+ * (CLAUDE.md § No inferred backstory). The composed prompt originally POINTED
+ * at the file instead of restating the address; dimagi-internal/ace#2675
+ * superseded that for the ACE admin address only (retrieval did not reliably
+ * fetch the page), so the prompt now states that address — read from
+ * `config/agent.json`, never typed into the doc — and the file anchors the rest.
  *
  * Sibling of `kb-instrument-contamination.test.ts` (ace#1018), which pins the
  * opposite direction of the same recipe — what must NOT be indexed.
@@ -115,18 +118,23 @@ describe('ocs-agent-setup KB recipe carries the programme contacts (ace#1665)', 
     expect(spec).toMatch(/selected_llo\.contact_email/);
   });
 
-  it('the composed prompt points at the contacts file instead of restating the address', () => {
+  it('the composed prompt states the admin address from config — and the doc never types it (ace#2675)', () => {
+    // ace#1665 pointed the prompt at the contacts file INSTEAD of the address.
+    // ace#2675 measured that retrieval does not reliably fetch the page (5,
+    // then 12, escalation entries with no address on chatbot 13923), so the
+    // composed prompt now states the admin address verbatim. What must still
+    // hold: the VALUE comes from `config/agent.json` at compose time, never
+    // from a literal typed into this document, and the contacts file stays
+    // part of the design (it anchors every other row).
     const step7 = composedPromptChecklist(agentSetup);
-    expect(
-      step7.includes(CONTACTS_FILE),
-      `Step 7 must tell the bot to take the escalation address from ` +
-        `${CONTACTS_FILE} so retrieval is the anchor.`,
-    ).toBe(true);
+    expect(step7.includes(CONTACTS_FILE), `Step 7 must still explain ${CONTACTS_FILE}'s role`).toBe(true);
+    expect(step7).toContain('<ESCALATION_ADDRESS>');
+    expect(step7).toMatch(/`config\/agent\.json` → `email`/);
     expect(
       step7.includes(agentConfig.email),
-      `Step 7 restates ${agentConfig.email} inline in the composed prompt. That is ` +
-        `the ace#1665 defect: a prompt-only value is reproduced from recall. Point ` +
-        `at ${CONTACTS_FILE} instead.`,
+      `Step 7 types ${agentConfig.email} as a literal. Use the <ESCALATION_ADDRESS> ` +
+        'placeholder and read the value from config/agent.json at compose time, so a ' +
+        'changed mailbox cannot leave the doc mandating a stale address.',
     ).toBe(false);
   });
 

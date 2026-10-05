@@ -21,7 +21,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,11 @@ import {
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = join(REPO_ROOT, 'scripts/audit-composed-prompt.ts');
+
+/** The canonical escalation address the gate reads (ace#2675). */
+const ADMIN_EMAIL = (
+  JSON.parse(readFileSync(join(REPO_ROOT, 'config/agent.json'), 'utf8')) as { email: string }
+).email;
 
 /** Verbatim v3, experiment 13033 — the prompt that shipped with none. */
 const PROMPT_V3 = `You are the support assistant for this opportunity.
@@ -131,7 +136,7 @@ const ANSWER_SECTION =
   'for a number you believe is well known for Malawi or any other country, and even with ' +
   'a caveat such as "or whatever works locally". Say instead: "call your local emergency ' +
   'services or get the person to the nearest health facility, and tell your supervisor."' +
-  "\n\n## Escalating\n\nWhenever an answer escalates or names a contact, search the knowledge base for the ACE admin group's contact before you write the answer — when escalation is warranted, the reader should leave with the actual address." +
+  `\n\n## Escalating\n\n**The ACE admin group's escalation address is ${ADMIN_EMAIL}.** Whenever you escalate to the ACE admin group, give this address exactly as written here — never vary its spelling, never shorten or change its domain. It is the one contact you may give without retrieving it.` +
   '\n\nNever describe your own searching, retrieving or checking to the reader. The reader sees only the answer.' +
   '\n\nNever quote internal identifiers to the reader: decision ids, residual ids or slug-style labels. Say what the decision is in plain words instead.' +
   '\n\n## Short or ambiguous questions\n\nIf a question is short or ambiguous, either ask one short clarifying question or answer each plausible reading, labelled. Never open with a yes or no that the rest of the answer contradicts.';
@@ -411,5 +416,54 @@ describe('scripts/audit-composed-prompt.ts — the other input paths', () => {
       STANDING_FABRICATION_DOMAINS.map((d) => d.id).sort(),
     );
     expect(parsed.contact_exactness.ok).toBe(false);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2675: chatbot 13923 v4 withheld the escalation address on
+ * 12 entries (retrieval did not fetch the contacts page). The gate now reads
+ * the canonical address from config/agent.json and requires the prompt to
+ * state it verbatim. The real published v4 and v5 prompts are the controls.
+ */
+describe('scripts/audit-composed-prompt.ts — the escalation address (ace#2675)', () => {
+  const V4 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v4.md');
+  const V5 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v5.md');
+
+  it('NEGATIVE CONTROL: the published v4 prompt (no address) exits 1 naming it', () => {
+    const { code, stderr } = run([V4]);
+    expect(code).toBe(1);
+    expect(stderr).toContain('[ESCALATION-ADDRESS]');
+    expect(stderr).toContain(ADMIN_EMAIL);
+  });
+
+  it('POSITIVE CONTROL: the published v5 prompt exits 0', () => {
+    const { code, stdout } = run([V5]);
+    expect(code).toBe(0);
+    expect(stdout).toContain(ADMIN_EMAIL);
+  });
+
+  it('NON-INERTNESS: a different configured mailbox makes v5 exit 1 — the address is read, not assumed', () => {
+    expect(run([V5, '--escalation-address', 'someone-else@example.org']).code).toBe(1);
+  });
+
+  it('NEGATIVE CONTROL: v5 with the near-miss domain ace@dimagi.com exits 1', () => {
+    const wrong = readFileSync(V5, 'utf8').split(ADMIN_EMAIL).join('ace@dimagi.com');
+    expect(runOn(wrong).code).toBe(1);
+  });
+
+  it('--json carries a distinct escalation_address verdict', () => {
+    const { code, stdout } = run([V4, '--json']);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(stdout) as {
+      escalation_address: { address: string; ok: boolean; missing: { id: string }[] };
+    };
+    expect(parsed.escalation_address.address).toBe(ADMIN_EMAIL);
+    expect(parsed.escalation_address.ok).toBe(false);
+    expect(parsed.escalation_address.missing.map((m) => m.id)).toEqual(['escalation-address-verbatim']);
+  });
+
+  it('a malformed --escalation-address is a harness error (exit 2), never a verdict', () => {
+    expect(run([V5, '--escalation-address']).code).toBe(2);
+    expect(run([V5, '--escalation-address', 'not-an-address']).code).toBe(2);
   });
 });

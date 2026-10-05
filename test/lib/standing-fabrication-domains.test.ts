@@ -34,7 +34,9 @@ import {
   auditRetrievalFallback,
   ANSWER_OBLIGATIONS,
   PHONE_NUMBER_OBLIGATION,
-  ESCALATE_WITH_ADDRESS_OBLIGATION,
+  ESCALATION_ADDRESS_OBLIGATION_ID,
+  buildEscalationAddressObligation,
+  auditEscalationAddress,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
@@ -554,7 +556,7 @@ describe('ocs-agent-setup § Step 7 states the replacement fact (ace#2216)', () 
   });
 
   it('mandates a clause that itself passes the audit — doc and gate cannot drift', () => {
-    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
+    const start = agentSetup.indexOf('The composed prompt MUST say, as these obligations, with');
     expect(start, 'Step 7 must still mandate the obligations verbatim').toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('- **Carry a `## Do not invent'));
     const audit = auditContactExactness(mandated);
@@ -565,7 +567,7 @@ describe('ocs-agent-setup § Step 7 states the replacement fact (ace#2216)', () 
   });
 
   it('mandates a retrieval-fallback clause that itself passes ace#2422 — doc and gate cannot drift', () => {
-    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
+    const start = agentSetup.indexOf('The composed prompt MUST say, as these obligations, with');
     expect(start, 'Step 7 must still mandate the obligations verbatim').toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('- **Carry a `## Do not invent'));
     // The text Step 7 tells the composer to write must satisfy the
@@ -769,42 +771,30 @@ describe('auditAnswerObligations — the phone-number ban (opp-53, chatbot 13923
 });
 
 /**
- * The ace#2422 fallback over-triggered on chatbot 13923 v3
- * (spark-facilitator/20261004-1706): five escalation entries withheld the
- * address while narrating the check to the reader — opp-27: "I need to
- * retrieve the contact address before quoting it... The search returned...".
+ * Never narrate retrieval (chatbot 13923 v3, spark-facilitator/20261004-1706):
+ * five escalation entries narrated the contact check to the reader — opp-27:
+ * "I need to retrieve the contact address before quoting it... The search
+ * returned...".
  */
-describe('auditAnswerObligations — escalate with the address, never narrate retrieval', () => {
+describe('auditAnswerObligations — never narrate retrieval', () => {
   const v3 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v3.md`, 'utf8');
   const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
-  const both = [ESCALATE_WITH_ADDRESS_OBLIGATION, NO_RETRIEVAL_NARRATION_OBLIGATION];
+  const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
 
-  it('NEGATIVE CONTROL — v3 (the ace#2422 wording alone) misses both', () => {
-    const audit = auditAnswerObligations(v3, both);
-    expect(audit.ok).toBe(false);
-    expect(audit.missing.map((o) => o.id)).toEqual(both.map((o) => o.id));
+  it('NEGATIVE CONTROL — v3 (the ace#2422 wording alone) misses it', () => {
+    expect(auditAnswerObligations(v3, [NO_RETRIEVAL_NARRATION_OBLIGATION]).ok).toBe(false);
     // ...while still satisfying the ace#2422 check it over-triggered on.
     expect(auditRetrievalFallback(v3).ok).toBe(true);
   });
 
-  it('POSITIVE CONTROL — v4 carries both, and still satisfies ace#2422', () => {
-    expect(auditAnswerObligations(v4, both).ok).toBe(true);
-    expect(auditRetrievalFallback(v4).ok).toBe(true);
+  it('POSITIVE CONTROL — v4 and v5 carry it, and still satisfy ace#2422', () => {
+    for (const p of [v4, v5]) {
+      expect(auditAnswerObligations(p, [NO_RETRIEVAL_NARRATION_OBLIGATION]).ok).toBe(true);
+      expect(auditRetrievalFallback(p).ok).toBe(true);
+    }
   });
 
-  it('the new escalation sentence alone still satisfies the ace#2422 retrieval check', () => {
-    const p = `## Contacts\n\n${CONTACT_CLAUSE}\n\n${ESCALATION_PARAGRAPHS}`;
-    expect(auditRetrievalFallback(p).ok).toBe(true);
-    expect(auditAnswerObligations(p, both).ok).toBe(true);
-  });
-
-  it('ablations — dropping the search step or the no-narration rule fails', () => {
-    const noSearch = ESCALATION_PARAGRAPHS.replace(
-      "search the knowledge base for the ACE admin group's contact before you write the answer — ",
-      '',
-    );
-    expect(noSearch).not.toBe(ESCALATION_PARAGRAPHS);
-    expect(auditAnswerObligations(noSearch, [ESCALATE_WITH_ADDRESS_OBLIGATION]).ok).toBe(false);
+  it('ablation — dropping the no-narration rule fails', () => {
     const noNarrationRule = ESCALATION_PARAGRAPHS.replace(
       'Never describe your own searching, retrieving or checking to the reader.',
       '',
@@ -813,11 +803,130 @@ describe('auditAnswerObligations — escalate with the address, never narrate re
     expect(auditAnswerObligations(noNarrationRule, [NO_RETRIEVAL_NARRATION_OBLIGATION]).ok).toBe(false);
   });
 
+  it('the ace#2677 search-first obligation is RETIRED — v4 is the live evidence it made withholding worse (ace#2675)', () => {
+    expect(ANSWER_OBLIGATIONS.map((o) => o.id)).not.toContain('escalate-with-retrieved-address');
+  });
+});
+
+/**
+ * dimagi-internal/ace#2675. Retrieval did not reliably fetch the ~850-byte
+ * contacts page on chatbot 13923: 5 escalation entries without the address on
+ * v3 (ace#2422 check alone), 12 on v4 (plus "search the KB first"), zero drift
+ * either time. The address is a run-known value (config/agent.json email), so
+ * the composed prompt must carry it verbatim. v4 is the failing fixture, v5
+ * (published after this rule) the passing one.
+ */
+describe('auditEscalationAddress — the ACE admin group address is stated verbatim (ace#2675)', () => {
+  const agentConfig = JSON.parse(readFileSync(`${ROOT}config/agent.json`, 'utf8')) as { email: string };
+  const ADDRESS = agentConfig.email;
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+  const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
+
+  /** The v5 paragraph, verbatim. */
+  const ADDRESS_PARAGRAPH =
+    `**The ACE admin group's escalation address is ${ADDRESS}.** Whenever you escalate to the ACE admin group, ` +
+    'give this address exactly as written here — never vary its spelling, never shorten or change its domain. ' +
+    'It is the one contact you may give without retrieving it, and when escalation is warranted the reader ' +
+    'should always leave with it.';
+
+  it('the v5 fixture really carries the paragraph, and the v4 fixture really has no address', () => {
+    expect(v5).toContain(ADDRESS_PARAGRAPH);
+    expect(v4).not.toContain('@');
+  });
+
+  it('NEGATIVE CONTROL — v4 (search-first, no address) fails, on the whole gate too', () => {
+    expect(auditEscalationAddress(v4, ADDRESS).ok).toBe(false);
+    const audit = auditComposedPrompt(v4, { escalationAddress: ADDRESS });
+    expect(audit.escalationAddress?.missing.map((o) => o.id)).toEqual([ESCALATION_ADDRESS_OBLIGATION_ID]);
+    expect(audit.ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v5 passes the escalation obligation and the WHOLE gate', () => {
+    expect(auditEscalationAddress(v5, ADDRESS).ok).toBe(true);
+    const audit = auditComposedPrompt(v5, { escalationAddress: ADDRESS });
+    expect(audit.escalationAddress?.ok).toBe(true);
+    expect(audit.ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — a near-miss domain that RESOLVES (ace@dimagi.com) fails', () => {
+    const wrong = v5.split(ADDRESS).join('ace@dimagi.com');
+    expect(wrong).not.toContain(ADDRESS);
+    expect(auditEscalationAddress(wrong, ADDRESS).ok).toBe(false);
+    expect(auditComposedPrompt(wrong, { escalationAddress: ADDRESS }).ok).toBe(false);
+  });
+
+  it('NEGATIVE CONTROL — the address only as a substring of a longer one does not count', () => {
+    const longer = ADDRESS_PARAGRAPH.replace(ADDRESS, `x${ADDRESS}.org`);
+    expect(auditEscalationAddress(longer, ADDRESS).ok).toBe(false);
+  });
+
+  it('every part is load-bearing — dropping any ONE fails', () => {
+    const ablations: [string, string, string][] = [
+      ['the address', ADDRESS, 'the published address'],
+      ['exactness', 'exactly as written here — never vary its spelling, never shorten or change its domain', 'when asked'],
+      ['without-retrieving scope', 'It is the one contact you may give without retrieving it, and when', 'When'],
+    ];
+    for (const [part, from, to] of ablations) {
+      const weakened = ADDRESS_PARAGRAPH.replace(from, to);
+      expect(weakened, `ablation "${part}" must change the paragraph`).not.toBe(ADDRESS_PARAGRAPH);
+      expect(auditEscalationAddress(weakened, ADDRESS).ok, `dropping ${part} must fail`).toBe(false);
+    }
+    // Escalation appears three times in the paragraph, so dropping it means
+    // dropping every occurrence.
+    const noEscalation = ADDRESS_PARAGRAPH.replace("'s escalation address", "'s address")
+      .replace('Whenever you escalate to the ACE admin group, give', 'Give')
+      .replace('when escalation is warranted', 'when needed');
+    expect(noEscalation).not.toMatch(/escalat/i);
+    expect(auditEscalationAddress(noEscalation, ADDRESS).ok).toBe(false);
+    expect(auditEscalationAddress(ADDRESS_PARAGRAPH, ADDRESS).ok).toBe(true);
+  });
+
+  it('scattered fragments do not count — ONE block must carry the whole rule', () => {
+    const scattered = [
+      `The ACE admin group is at ${ADDRESS}.`,
+      'Whenever you escalate, be clear.',
+      'Give every address exactly as written here.',
+      'Some contacts you may give without retrieving them.',
+    ].join('\n\n');
+    expect(auditEscalationAddress(scattered, ADDRESS).ok).toBe(false);
+  });
+
+  it('the address is a PARAMETER — a different configured mailbox makes v5 fail', () => {
+    expect(auditEscalationAddress(v5, 'someone-else@example.org').ok).toBe(false);
+    expect(buildEscalationAddressObligation(ADDRESS).label).toContain(ADDRESS);
+    expect(() => buildEscalationAddressObligation('not-an-address')).toThrow();
+  });
+
+  it('without an address the half is reported as not run (null), not as passing', () => {
+    expect(auditComposedPrompt(v5).escalationAddress).toBeNull();
+  });
+
+  it('names the obligation in the operator report', () => {
+    const report = formatStandingDomainReport(auditComposedPrompt(v4, { escalationAddress: ADDRESS }));
+    expect(report).toContain('[ESCALATION-ADDRESS]');
+    expect(report).toContain(ESCALATION_ADDRESS_OBLIGATION_ID);
+  });
+
   it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
-    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
-    const mandated = agentSetup.slice(start, agentSetup.indexOf('**Why the third obligation now opens', start));
-    expect(auditAnswerObligations(mandated, both).ok).toBe(true);
+    const start = agentSetup.indexOf('The composed prompt MUST say, as these obligations, with');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup
+      .slice(start, agentSetup.indexOf('Step 7.5 asserts the verbatim address', start))
+      .split('<ESCALATION_ADDRESS>')
+      .join(ADDRESS);
+    expect(auditEscalationAddress(mandated, ADDRESS).ok).toBe(true);
+    expect(auditAnswerObligations(mandated, [NO_RETRIEVAL_NARRATION_OBLIGATION]).ok).toBe(true);
     expect(auditRetrievalFallback(mandated).ok).toBe(true);
+    expect(auditContactExactness(mandated).ok).toBe(true);
+  });
+
+  it('the doc never hard-codes the configured address — it says where to read it', () => {
+    const step7 = agentSetup.slice(
+      agentSetup.indexOf('7. **Compose the system prompt'),
+      agentSetup.indexOf('7.5.'),
+    );
+    expect(step7).toContain('<ESCALATION_ADDRESS>');
+    expect(step7).toMatch(/`config\/agent\.json` → `email`/);
   });
 });
 
