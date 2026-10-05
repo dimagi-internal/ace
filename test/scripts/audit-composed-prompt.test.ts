@@ -130,7 +130,9 @@ const ANSWER_SECTION =
   'exact number appears verbatim in what you retrieved for this answer. This holds even ' +
   'for a number you believe is well known for Malawi or any other country, and even with ' +
   'a caveat such as "or whatever works locally". Say instead: "call your local emergency ' +
-  'services or get the person to the nearest health facility, and tell your supervisor."';
+  'services or get the person to the nearest health facility, and tell your supervisor."' +
+  "\n\n## Escalating\n\nWhenever an answer escalates or names a contact, search the knowledge base for the ACE admin group's contact before you write the answer — when escalation is warranted, the reader should leave with the actual address." +
+  '\n\nNever describe your own searching, retrieving or checking to the reader. The reader sees only the answer.';
 
 /** Publishable: everything above plus every answer obligation. */
 const PROMPT_FIXED = PROMPT_CONTACTS_COMPLETE + ANSWER_SECTION;

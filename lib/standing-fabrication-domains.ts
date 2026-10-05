@@ -539,8 +539,53 @@ export const PHONE_NUMBER_OBLIGATION: AnswerObligation = {
     'emergency costs minutes, and the reader cannot tell it from a published one.',
 };
 
+/**
+ * Escalate WITH the address (spark-facilitator/20261004-1706, chatbot 13923 v3).
+ *
+ * The ace#2422 per-answer check — "if nothing was retrieved in this answer,
+ * write no address at all" — held the domain exact, and over-triggered: on
+ * five escalation entries (opp-23, 27, 28, 55, 59) the bot escalated with no
+ * address at all, because nothing about contacts happened to be retrieved on
+ * that turn. The check stays; what is added is the step that makes it
+ * satisfiable — when an answer escalates, search for the contact first.
+ */
+export const ESCALATE_WITH_ADDRESS_OBLIGATION: AnswerObligation = {
+  id: 'escalate-with-retrieved-address',
+  label:
+    'When an answer escalates, search the knowledge base for the admin contact before writing it, so the reader gets the actual address',
+  pattern:
+    /(?=.*\bescalat\w*)(?=.*\bsearch\w*\b)(?=.*\bbefore you write\b)(?=.*\b(?:actual address|the address)\b)/i,
+  why:
+    'The ace#2422 fallback ("write no address at all if nothing was retrieved") ' +
+    'over-triggered on chatbot 13923 v3: five escalation entries (opp-23, 27, 28, ' +
+    '55, 59) withheld ace@dimagi-ai.com, leaving a supervisor told to escalate ' +
+    'with nowhere to send it.',
+};
+
+/**
+ * Never narrate retrieval (same run). The withheld answers also leaked the
+ * check's mechanics to the reader: "I need to retrieve the contact address
+ * before quoting it... The search returned...", "I was not able to retrieve a
+ * confirmed contact address in this answer", "I retrieved it in this answer -
+ * please contact your supervisor". The reader cannot act on any of it.
+ */
+export const NO_RETRIEVAL_NARRATION_OBLIGATION: AnswerObligation = {
+  id: 'no-retrieval-narration',
+  label: 'Never describe searching, retrieving or checking to the reader',
+  pattern:
+    /(?=.*\bnever (?:describe|narrate|mention)\b[^.]{0,60}\b(?:search|retriev|look)\w*)(?=.*\b(?:reader|user)\b)/i,
+  why:
+    'Chatbot 13923 v3 narrated its own contact-retrieval check on five entries ' +
+    '("I need to retrieve the contact address before quoting it... The search ' +
+    'returned...", opp-27). Retrieval is plumbing; the reader sees only the answer.',
+};
+
 /** Every answer obligation, in report order. */
-export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [PHONE_NUMBER_OBLIGATION];
+export const ANSWER_OBLIGATIONS: readonly AnswerObligation[] = [
+  PHONE_NUMBER_OBLIGATION,
+  ESCALATE_WITH_ADDRESS_OBLIGATION,
+  NO_RETRIEVAL_NARRATION_OBLIGATION,
+];
 
 export interface AnswerObligationAudit {
   /** Ids of obligations satisfied by some single block. */

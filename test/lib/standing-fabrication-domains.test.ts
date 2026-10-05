@@ -34,6 +34,8 @@ import {
   auditRetrievalFallback,
   ANSWER_OBLIGATIONS,
   PHONE_NUMBER_OBLIGATION,
+  ESCALATE_WITH_ADDRESS_OBLIGATION,
+  NO_RETRIEVAL_NARRATION_OBLIGATION,
   auditAnswerObligations,
   splitPromptBlocks,
 } from '../../lib/standing-fabrication-domains.js';
@@ -155,8 +157,17 @@ const PHONE_PARAGRAPH =
   'local emergency services or get the person to the nearest health facility, and ' +
   'tell your supervisor."';
 
+/** The escalate-with-address + no-narration paragraphs, verbatim from 13923 v4. */
+const ESCALATION_PARAGRAPHS =
+  "Whenever an answer escalates or names a contact, search the knowledge base for the ACE admin group's contact before you write the answer — when escalation is warranted, the reader should leave with the actual address. " +
+  'Before you write any contact address, check that the address itself was retrieved for this specific answer. ' +
+  "If it was not retrieved in this answer, write no address at all — say only 'your supervisor, and the ACE admin group,' and do not guess at a domain." +
+  '\n\n' +
+  'Never describe your own searching, retrieving or checking to the reader. Do not write things like "let me retrieve the address", "the search returned", "I was not able to retrieve a confirmed contact" or "I\'ll retrieve it for you". ' +
+  'The reader sees only the answer: either the address, or "your supervisor, and the ACE admin group".';
+
 /** Appended to the positive control so it carries every ANSWER obligation. */
-const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}`;
+const ANSWER_SECTION = `\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -739,5 +750,58 @@ describe('auditAnswerObligations — the phone-number ban (opp-53, chatbot 13923
     expect(start, 'Step 7 must mandate the phone paragraph verbatim').toBeGreaterThan(-1);
     const mandated = agentSetup.slice(start, agentSetup.indexOf('**Why a paragraph and not', start));
     expect(auditAnswerObligations(mandated, [PHONE_NUMBER_OBLIGATION]).ok).toBe(true);
+  });
+});
+
+/**
+ * The ace#2422 fallback over-triggered on chatbot 13923 v3
+ * (spark-facilitator/20261004-1706): five escalation entries withheld the
+ * address while narrating the check to the reader — opp-27: "I need to
+ * retrieve the contact address before quoting it... The search returned...".
+ */
+describe('auditAnswerObligations — escalate with the address, never narrate retrieval', () => {
+  const v3 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v3.md`, 'utf8');
+  const v4 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v4.md`, 'utf8');
+  const both = [ESCALATE_WITH_ADDRESS_OBLIGATION, NO_RETRIEVAL_NARRATION_OBLIGATION];
+
+  it('NEGATIVE CONTROL — v3 (the ace#2422 wording alone) misses both', () => {
+    const audit = auditAnswerObligations(v3, both);
+    expect(audit.ok).toBe(false);
+    expect(audit.missing.map((o) => o.id)).toEqual(both.map((o) => o.id));
+    // ...while still satisfying the ace#2422 check it over-triggered on.
+    expect(auditRetrievalFallback(v3).ok).toBe(true);
+  });
+
+  it('POSITIVE CONTROL — v4 carries both, and still satisfies ace#2422', () => {
+    expect(auditAnswerObligations(v4, both).ok).toBe(true);
+    expect(auditRetrievalFallback(v4).ok).toBe(true);
+  });
+
+  it('the new escalation sentence alone still satisfies the ace#2422 retrieval check', () => {
+    const p = `## Contacts\n\n${CONTACT_CLAUSE}\n\n${ESCALATION_PARAGRAPHS}`;
+    expect(auditRetrievalFallback(p).ok).toBe(true);
+    expect(auditAnswerObligations(p, both).ok).toBe(true);
+  });
+
+  it('ablations — dropping the search step or the no-narration rule fails', () => {
+    const noSearch = ESCALATION_PARAGRAPHS.replace(
+      "search the knowledge base for the ACE admin group's contact before you write the answer — ",
+      '',
+    );
+    expect(noSearch).not.toBe(ESCALATION_PARAGRAPHS);
+    expect(auditAnswerObligations(noSearch, [ESCALATE_WITH_ADDRESS_OBLIGATION]).ok).toBe(false);
+    const noNarrationRule = ESCALATION_PARAGRAPHS.replace(
+      'Never describe your own searching, retrieving or checking to the reader.',
+      '',
+    );
+    expect(noNarrationRule).not.toBe(ESCALATION_PARAGRAPHS);
+    expect(auditAnswerObligations(noNarrationRule, [NO_RETRIEVAL_NARRATION_OBLIGATION]).ok).toBe(false);
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, as three obligations:');
+    const mandated = agentSetup.slice(start, agentSetup.indexOf('**Why the third obligation now opens', start));
+    expect(auditAnswerObligations(mandated, both).ok).toBe(true);
+    expect(auditRetrievalFallback(mandated).ok).toBe(true);
   });
 });
