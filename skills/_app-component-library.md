@@ -1691,6 +1691,13 @@ answering." Nova's validator does not refuse the misuse (upstream ask:
   `poverty-graduation/20260915-1518`: 14 false findings on a correct build, each
   hard-gating `conditional_logic_match` to ≤ 3.
 
+  **An attestation is not a consent gate (ace#2647).** A read-aloud
+  confirmation whose only submittable answer is affirmative (no decline option,
+  or `validate: . = 'yes'`) cannot withdraw anything, so gating fields on it is
+  a no-op — do NOT add that gate. The decline path (who may refuse, what the
+  form records then) belongs in a decision row; pass its id to the helper as
+  `declinePathDecision`. A consent whose "no" is submittable is unaffected.
+
   Live: `bednet-check-2-visit/20260814-0856`, whose primary metric is "share
   of followed-up households with `slept_under_net = yes` AND `net_hanging =
   yes`" over closed `household` cases with **no** exclusion for withdrawn

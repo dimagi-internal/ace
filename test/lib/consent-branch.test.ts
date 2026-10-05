@@ -516,3 +516,142 @@ describe('flattenEffectiveRelevance (ace#2415)', () => {
     expect(leaves.map((f) => f.id)).toEqual(['a', 'b']);
   });
 });
+
+/**
+ * dimagi-internal/ace#2647 — an ATTESTATION is not a consent gate.
+ *
+ * On `spark-facilitator/20261004-1706` the Deliver Community Meeting Record's
+ * consent-adjacent field is a read-aloud attestation: the facilitator confirms
+ * they read the photo statement to the meeting. Its option set has a `no`
+ * ("Not yet"), but `validate: . = 'yes'` makes that answer unsubmittable — so
+ * the only value the form can carry is `yes`. The helper still reported the
+ * required meeting photo as `ungated-required-after-consent` and prescribed
+ * "gate it on photo_statement_read", which is a no-op: a gate on a field that
+ * can only be `yes` gates nothing. That finding hard-gates
+ * `conditional_logic_match` to <= 3; the run's judge had to override the rule
+ * by hand to keep a correct build from failing.
+ *
+ * The decline question on that form is an OPEN Phase-1 decision
+ * (`photo-declined-path`), and the honest output is to route it there, not to
+ * prescribe an edit that cannot change behaviour.
+ *
+ * The attestation below is the live `get_field` read of Nova app
+ * e3ca26af-caa9-4ec0-a990-8cf59b4d3141 (form ee901674-…, field 3d4b97c4-…),
+ * verbatim, captured 2026-10-04 — note the `no` option, which is why an
+ * options-only detector (the issue's first suggested remedy) would NOT have
+ * caught this shape: the pin is in `validate`.
+ */
+describe('checkConsentBranchCompleteness — attestation-only consent (ace#2647)', () => {
+  const attestation: BuiltField & Record<string, unknown> = {
+    uuid: '3d4b97c4-b3a9-4f06-861b-9260ce9426b1',
+    id: 'photo_statement_read',
+    label: 'Confirm the statement',
+    required: 'true()',
+    kind: 'single_select',
+    optionsSource: {
+      kind: 'inline',
+      options: [
+        { optionUuid: '50fdc921-cf73-431e-9ef5-1a76f6b0ec17', value: 'yes', label: 'I have read the statement aloud' },
+        { optionUuid: '4c9a3a9b-b433-4485-ac0a-7479ce01a867', value: 'no', label: 'Not yet' },
+      ],
+    },
+    validate: { expr: ". = 'yes'", msg: 'Read the statement aloud to the meeting, then choose this answer.' },
+    initialValue: { source: 'blank' },
+  };
+  const photo: BuiltField = { id: 'attach_a_photo_for_the_meeting', kind: 'image', required: 'true()' };
+  const pddSpec = [
+    { id: 'photo_statement_read', required: true },
+    { id: 'attach_a_photo_for_the_meeting', required: true },
+  ];
+  const opts = { consentField: 'photo_statement_read', governs: ['attach_a_photo_for_the_meeting'] };
+
+  it('does NOT hard-gate a required photo behind a consent that can only be answered yes', () => {
+    const r = checkConsentBranchCompleteness([attestation, photo], pddSpec, opts);
+    expect(r.findings.map((f) => f.kind)).not.toContain('ungated-required-after-consent');
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].kind).toBe('attestation-decline-path-unrouted');
+    // Must not prescribe the no-op remedy.
+    expect(r.findings[0].detail).not.toMatch(/Gate it on/);
+    expect(r.findings[0].detail).toMatch(/decision row/i);
+  });
+
+  it('passes with a WARN-shaped finding when a decision row owns the decline path', () => {
+    const r = checkConsentBranchCompleteness([attestation, photo], pddSpec, {
+      ...opts,
+      declinePathDecision: 'photo-declined-path',
+    });
+    expect(r.pass).toBe(true);
+    expect(r.findings[0]).toMatchObject({
+      field: 'attach_a_photo_for_the_meeting',
+      kind: 'attestation-decline-path-deferred',
+    });
+    expect(r.findings[0].detail).toContain('photo-declined-path');
+  });
+
+  it('fails (unrouted) when no decision row owns the decline path', () => {
+    const r = checkConsentBranchCompleteness([attestation, photo], pddSpec, opts);
+    expect(r.pass).toBe(false);
+  });
+
+  it('finds the attestation inside a group, as get_form returns it', () => {
+    const r = checkConsentBranchCompleteness(
+      [{ id: 'g_photo', kind: 'group', children: [attestation, photo] }],
+      pddSpec,
+      opts,
+    );
+    expect(r.findings[0].kind).toBe('attestation-decline-path-unrouted');
+  });
+
+  it('an option set with no decline value is an attestation too, even without a validate pin', () => {
+    const onlyYes: BuiltField = {
+      id: 'photo_statement_read',
+      required: true,
+      kind: 'single_select',
+      options: [{ value: 'read', label: 'I have read the statement aloud' }],
+    };
+    const r = checkConsentBranchCompleteness([onlyYes, photo], pddSpec, opts);
+    expect(r.findings[0].kind).toBe('attestation-decline-path-unrouted');
+  });
+
+  it('NEGATIVE CONTROL: a genuine yes/no consent whose "no" is submittable still hard-gates an ungated photo', () => {
+    const genuine = { ...attestation, validate: undefined };
+    const r = checkConsentBranchCompleteness([genuine, photo], pddSpec, {
+      ...opts,
+      declinePathDecision: 'photo-declined-path',
+    });
+    expect(r.pass).toBe(false);
+    expect(r.findings[0]).toMatchObject({
+      field: 'attach_a_photo_for_the_meeting',
+      kind: 'ungated-required-after-consent',
+    });
+  });
+
+  it('NEGATIVE CONTROL: a consent field with no readable answer set keeps the conservative behaviour', () => {
+    const r = checkConsentBranchCompleteness(
+      [{ id: 'photo_statement_read', required: true }, photo],
+      pddSpec,
+      { ...opts, declinePathDecision: 'photo-declined-path' },
+    );
+    expect(r.findings[0].kind).toBe('ungated-required-after-consent');
+  });
+
+  it('NEGATIVE CONTROL: a decline value spelled other than "no" is still a decline', () => {
+    const refusable: BuiltField = {
+      id: 'photo_statement_read',
+      required: true,
+      kind: 'single_select',
+      options: [
+        { value: 'agreed', label: 'Agreed' },
+        { value: 'declined', label: 'Declined' },
+      ],
+    };
+    const r = checkConsentBranchCompleteness([refusable, photo], pddSpec, opts);
+    expect(r.findings[0].kind).toBe('ungated-required-after-consent');
+  });
+
+  it('NEGATIVE CONTROL: a validate that does not pin a single value is not an attestation', () => {
+    const loose = { ...attestation, validate: { expr: ". != ''" } };
+    const r = checkConsentBranchCompleteness([loose, photo], pddSpec, opts);
+    expect(r.findings[0].kind).toBe('ungated-required-after-consent');
+  });
+});
