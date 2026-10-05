@@ -5,7 +5,7 @@ slides:
     layout: content
     title: "Where to Get Help"
     body: |
-      - Your LLO Manager: {{LLO_CONTACT}} — your first contact for any question about your work, and for urgent issues
+      - Your coordinator: {{LLO_CONTACT}} — your first contact for any question about your work, and for urgent issues
       - Quick Reference Card: Keep it with you in the field
       - FAQ Document: Answers to the most common questions
       - Connect Help Site: [step-by-step guides for the app]({{WIKI_WORKER_APP_JOURNEY_URL}})
@@ -48,7 +48,7 @@ slides:
 
       Remember:
       - Complete your Learn modules before going into the field
-      - Ask your LLO manager whenever you have questions
-      - Your LLO manager is here to support you
+      - Ask your coordinator whenever you have questions
+      - Your coordinator is here to support you
 
       Good luck!

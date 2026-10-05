@@ -125,13 +125,13 @@ Generate 2-3 slides:
 
 ### resources (include by reference)
 
-Include the `_common/resources.yaml` module verbatim. Fill `{{LLO_CONTACT}}` from `run_state.yaml` if available, otherwise leave the placeholder. In the spec, reference it as:
+Include the `_common/resources.yaml` module verbatim. Fill `{{LLO_CONTACT}}` with the coordinator's name from `run_state.yaml` if available, otherwise with "named by your implementing organisation at onboarding". Never leave the placeholder — it renders as a literal `{{LLO_CONTACT}}` on the slide (ace#2658). In the spec, reference it as:
 
 ```yaml
 - id: resources
   ref: _common/resources
   overrides:
-    LLO_CONTACT: "{{LLO_CONTACT}}"
+    LLO_CONTACT: "<coordinator name, or the fallback above>"
     # Copied VERBATIM from connect-wiki-map.yaml `sections.<key>.pages[0].url`.
     # These four are the only wiki links in the deck by default.
     WIKI_WORKER_ACCOUNT_SETUP_URL: "<sections.worker_account_setup.pages[0].url>"

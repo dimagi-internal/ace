@@ -60,3 +60,38 @@ describe('common training-deck modules make no false worker-facing claims (ace#2
     expect(platform).not.toMatch(/green check mark/i);
   });
 });
+
+/**
+ * dimagi-internal/ace#2658. No LLO contact exists at Phase 6 (Phase 9 is first
+ * LLO contact), so the generator's documented fallback IS the common path. The
+ * template labelled the line "Your LLO Manager:" and the fallback was "your LLO
+ * manager", so every pre-Phase-9 deck printed "Your LLO Manager: your LLO
+ * manager" (spark-facilitator/20261004-1706 deck slide 50), and the generate
+ * prompts said to leave a literal {{LLO_CONTACT}} instead.
+ */
+describe('the help contact renders as a real instruction on a pre-Phase-9 deck (ace#2658)', () => {
+  const skill = readFileSync(join(__dirname, '../../skills/training-deck-generate/SKILL.md'), 'utf8');
+  const prompts = ['connect-training-atomic', 'connect-training-fgd'].map((t) =>
+    readFileSync(join(__dirname, `../../templates/training-deck/${t}/generate.prompt.md`), 'utf8'),
+  );
+  const fallback = skill.match(/`\{\{LLO_CONTACT\}\}` with the coordinator's name[\s\S]*?otherwise with\s+"([^"]+)"/)?.[1];
+
+  it('documents one fallback value, shared by SKILL and both prompts', () => {
+    expect(fallback).toBeTruthy();
+    for (const p of prompts) expect(p).toContain(`otherwise with "${fallback}"`);
+  });
+
+  it('never tells the generator to leave the placeholder', () => {
+    for (const p of prompts) expect(p).not.toMatch(/leave the placeholder\./);
+  });
+
+  it('substituting the fallback yields no tautology, no LLO jargon and no leftover token', () => {
+    const rendered = resources.replaceAll('{{LLO_CONTACT}}', fallback!);
+    const line = rendered.split('\n').find((l) => l.includes(fallback!))!;
+    const [label, value] = line.replace(/^\s*-\s*/, '').split(/:\s*/, 2);
+    expect(value.toLowerCase()).not.toContain(label.toLowerCase().replace(/^your\s+/, ''));
+    const visible = rendered.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    expect(visible).not.toMatch(/\bLLO\b/);
+    expect(rendered).not.toContain('{{LLO_CONTACT}}');
+  });
+});
