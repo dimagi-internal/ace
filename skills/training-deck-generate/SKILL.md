@@ -632,6 +632,17 @@ The spec format separates concerns:
 This makes independent iteration on each concern possible without
 cross-contamination.
 
+## Payment figures and payment channel (shared contract)
+
+Follow `skills/_training-template.md § Payment figures and payment channel — one
+contract, all six skills` (dimagi-internal/ace#2683, #2684). A rate, fee, budget
+or date the PDD marks `[PROPOSED]` is printed as proposed, with who sets the
+final figure — the payment unit's configured amount is named only as what the
+app shows for now. The payment channel is described in the template's
+canonical wording (Connect accrues the earned total; the organisation sends the
+payment and records it in Connect), never as "Connect pays automatically" and
+never as "off-platform".
+
 ## Screenshot citations (shared contract)
 
 Follow `skills/_training-template.md § Screenshot citations — canonical frames

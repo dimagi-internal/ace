@@ -75,7 +75,9 @@ days">:
 
 ## What FLWs get paid
 
-<one-line summary from connect.payment_units — amount per visit + max-per-day>
+<one-line summary from connect.payment_units — amount per visit + max-per-day;
+a `[PROPOSED]` rate/fee is printed as proposed, per
+`skills/_training-template.md § Payment figures and payment channel`>
 
 ## Where to ask questions
 
@@ -300,6 +302,17 @@ ace@dimagi-ai.com
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email_verdict.yaml`
 - `run_state.yaml.phases.qa-and-training.products.training.docs.onboarding_email` — `{file_id, title: "Onboarding email", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
+
+## Payment figures and payment channel (shared contract)
+
+Follow `skills/_training-template.md § Payment figures and payment channel — one
+contract, all six skills` (dimagi-internal/ace#2683, #2684). A rate, fee, budget
+or date the PDD marks `[PROPOSED]` is printed as proposed, with who sets the
+final figure — the payment unit's configured amount is named only as what the
+app shows for now. The payment channel is described in the template's
+canonical wording (Connect accrues the earned total; the organisation sends the
+payment and records it in Connect), never as "Connect pays automatically" and
+never as "off-platform".
 
 ## Phase-ordering invariant
 

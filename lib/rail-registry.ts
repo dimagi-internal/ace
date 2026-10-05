@@ -290,6 +290,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/training-deck-module-numbering.test.ts': { issues: ['ace#1829'] },
   'test/skills/training-faq-consent-coverage.test.ts': { issues: ['ace#1687'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/training-llo-guide-contract.test.ts': { issues: ['ace#2610'], observed: 'spark-facilitator/20261001-2208' },
+  'test/skills/training-payment-figures-contract.test.ts': { issues: ['ace#2683', 'ace#2684'], observed: 'spark-facilitator/20261004-1706' },
   'test/skills/turn-self-check-is-a-checkpoint.test.ts': { issues: ['ace#2173', 'ace#2127', 'ace#2210'], note: 'multi-section file; provenance sits above the second describe' },
   'test/skills/upload-readback-contract.test.ts': { issues: ['ace#1831'], observed: 'hh-poverty-targeting/20260828-0702' },
   'test/skills/upstream-repo-slugs.test.ts': { issues: ['ace#1492'] },
