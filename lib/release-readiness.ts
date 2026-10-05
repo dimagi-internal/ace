@@ -451,12 +451,67 @@ export function assessChatbot(transcript: RunFile | null, now: string, maxAgeDay
   return out;
 }
 
+/**
+ * Run files whose TEXT the inventory reads (every other file is path + mtime
+ * only). Every gate that reads a file's text needs its file here — ace#2698's
+ * app-release_summary.md was missing, so the apps gate could never see it.
+ */
+export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$/;
+
+/** app-release's summary — the SOLE owner of released build state (skills/app-release/SKILL.md § Products, ace#1439). */
+export const APP_RELEASE_SUMMARY = /(^|\/)app-release_summary\.md$/;
+
+type ReleaseRecord = { hq_app_id?: unknown; build_id?: unknown; is_released?: unknown };
+
+/** `apps.<kind>_app` from app-release_summary.md frontmatter, or null when the file/frontmatter is unreadable. */
+function releaseRecords(files: readonly RunFile[]): Record<string, ReleaseRecord> | null {
+  const text = files.find((f) => APP_RELEASE_SUMMARY.test(f.path))?.text;
+  const fm = text ? /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.replace(/^﻿/, '')) : null;
+  if (!fm) return null;
+  try {
+    const apps = (parseYaml(fm[1]) as { apps?: Record<string, ReleaseRecord> } | null)?.apps;
+    return apps && typeof apps === 'object' ? apps : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Both apps released, plus a passing app-release-qa. The release is read from
+ * its contracted owner, `3-commcare/app-release_summary.md` frontmatter
+ * `apps.<kind>_app.{hq_app_id, build_id, is_released}`. Nothing contracts a
+ * release key in run_state `products.apps` (lib/phase-products-schema.ts
+ * `AppEntry`), and reading one there alone raised false "unreleased" blockers
+ * on spark-facilitator/20261004-1706, whose agent wrote `hq_build_id` +
+ * `released_at` (ace#2698). Only when the summary is unreadable does this fall
+ * back to the run_state shapes producers have actually written.
+ */
 export function assessApps(files: readonly RunFile[], runState: unknown): ReleaseFinding[] {
-  const apps = (runState as { phases?: Record<string, { products?: { apps?: Record<string, { released_build_id?: unknown }> } }> })?.phases?.['commcare-setup']?.products?.apps ?? {};
+  const apps = ((runState as { phases?: Record<string, { products?: { apps?: Record<string, Record<string, unknown>> } }> })?.phases?.['commcare-setup']?.products?.apps ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const records = releaseRecords(files);
   const out: ReleaseFinding[] = [];
+  const unreleased = (kind: string, detail: string): ReleaseFinding => ({ id: `app-unreleased:${kind}`, area: 'apps', severity: 'blocker', owner: 'app-release', detail, fix: 'run app-release' });
   for (const kind of ['learn', 'deliver']) {
-    const a = apps[kind] ?? (apps as Record<string, { released_build_id?: unknown }>)[`${kind}_app`];
-    if (!a?.released_build_id) out.push({ id: `app-unreleased:${kind}`, area: 'apps', severity: 'blocker', owner: 'app-release', detail: `no released build recorded for the ${kind} app`, fix: 'run app-release' });
+    const a = apps[kind] ?? apps[`${kind}_app`];
+    if (records) {
+      const r = records[`${kind}_app`] ?? records[kind];
+      if (!r?.build_id || r.is_released !== true) {
+        out.push(unreleased(kind, `app-release_summary.md records no released build for the ${kind} app (needs apps.${kind}_app.build_id and is_released: true)`));
+        continue;
+      }
+      // The summary must describe THIS run's app. A clone that copied the apps
+      // but never re-recorded the release keeps the source's record.
+      if (r.hq_app_id && a?.hq_app_id && String(r.hq_app_id) !== String(a.hq_app_id)) {
+        out.push({
+          id: `app-release-other-app:${kind}`, area: 'apps', severity: 'blocker', owner: 'app-release',
+          detail: `app-release_summary.md records a release of ${kind} app ${String(r.hq_app_id)}, but this run's ${kind} app is ${String(a.hq_app_id)}`,
+          fix: "release this run's app and rewrite app-release_summary.md (on a clone: clone-to-new-workspace § 4a.3, then § 4e)",
+        });
+      }
+      continue;
+    }
+    const released = Boolean(a?.released_build_id) || Boolean(a?.hq_build_id && a?.released_at);
+    if (!released) out.push(unreleased(kind, `no released build recorded for the ${kind} app (app-release_summary.md unreadable, and run_state records none)`));
   }
   if (!files.some((f) => /app-release-qa_result\.ya?ml$/.test(f.path))) {
     out.push({ id: 'app-release-qa-missing', area: 'apps', severity: 'blocker', owner: 'app-release-qa', detail: 'no app-release-qa result — the released builds were never shown to install', fix: 'run app-release-qa' });

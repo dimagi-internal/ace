@@ -16,6 +16,7 @@ import {
   assessSurfaceAudit,
   buildReleaseVerdict,
   decidedFromRunState,
+  INVENTORY_TEXT_WANTED,
   releaseGate,
   renderReleaseReport,
   type RunFile,
@@ -158,6 +159,64 @@ describe('the other evidence on the real Spark run', () => {
     expect(assessChatbot(null, '2026-10-01T00:00:00Z')[0].severity).toBe('blocker');
     expect(assessApps(files, parseYaml(text('run_state.yaml')))).toEqual([]);
     expect(assessApps([], {}).map((f) => f.id)).toEqual(['app-unreleased:learn', 'app-unreleased:deliver', 'app-release-qa-missing']);
+  });
+});
+
+/**
+ * ace#2698: `assessApps` read only run_state `released_build_id`, a key no skill
+ * is contracted to write. app-release's summary frontmatter is the sole owner of
+ * released build state (skills/app-release/SKILL.md § Products, ace#1439).
+ * The run_state below is spark/spark-facilitator/20261004-1706's products.apps
+ * shape, whose apps HQ confirmed released (is_released=true, version 1) on 2026-10-05.
+ */
+describe('assessApps reads the contracted release record (ace#2698)', () => {
+  const runState = {
+    phases: {
+      'commcare-setup': {
+        products: {
+          apps: {
+            domain: 'connect-ace-spark',
+            learn: { hq_app_id: 'ae96db88learn', hq_build_id: 'b035410773d84f40a0fa81f6f504ef5e', build_version: 1, released_at: '2026-10-05T13:34:30Z' },
+            deliver: { hq_app_id: '81d37f6cdeliver', hq_build_id: 'c737c5a5ae814dafb3953aff1ad3c421', build_version: 1, released_at: '2026-10-05T13:34:30Z' },
+          },
+        },
+      },
+    },
+  };
+  const qa: RunFile = { path: '3-commcare/app-release-qa_result.yaml', modifiedTime: '2026-10-05T14:00:00Z', text: 'verdict: pass' };
+  const summary = (learnApp: string, released = true): RunFile => ({
+    path: '3-commcare/app-release_summary.md',
+    modifiedTime: '2026-10-05T13:35:00Z',
+    text: [
+      '---',
+      'apps:',
+      `  learn_app:   { hq_app_id: ${learnApp}, build_id: b035410773d84f40a0fa81f6f504ef5e, version: 1, is_released: ${released}, released_at: '2026-10-05T13:34:30Z' }`,
+      "  deliver_app: { hq_app_id: 81d37f6cdeliver, build_id: c737c5a5ae814dafb3953aff1ad3c421, version: 1, is_released: true, released_at: '2026-10-05T13:34:30Z' }",
+      '---',
+      '',
+      '# App release summary',
+    ].join('\n'),
+  });
+
+  it('a released pair recorded in app-release_summary.md is not a blocker', () => {
+    expect(assessApps([qa, summary('ae96db88learn')], runState)).toEqual([]);
+  });
+
+  it('without a readable summary, the run_state shapes producers actually wrote still count', () => {
+    expect(assessApps([qa], runState)).toEqual([]);
+  });
+
+  it('the summary is authoritative: is_released false blocks even when run_state looks released', () => {
+    expect(assessApps([qa, summary('ae96db88learn', false)], runState).map((f) => f.id)).toEqual(['app-unreleased:learn']);
+  });
+
+  it('the inventory reads the summary text the gate depends on', () => {
+    expect(INVENTORY_TEXT_WANTED.test('3-commcare/app-release_summary.md')).toBe(true);
+    expect(INVENTORY_TEXT_WANTED.test('3-commcare/app-deploy_summary.md')).toBe(false);
+  });
+
+  it('a summary naming a DIFFERENT app than run_state (a clone that never re-recorded its release) blocks', () => {
+    expect(assessApps([qa, summary('source-learn-app')], runState).map((f) => f.id)).toEqual(['app-release-other-app:learn']);
   });
 });
 

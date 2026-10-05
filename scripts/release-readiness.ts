@@ -78,6 +78,7 @@ import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { authForUrl, screenPage, withLabsProgramContext, type PreviewAuth } from '../lib/preview-capture.js';
 import {
   assessApps,
+  INVENTORY_TEXT_WANTED,
   assessHqPlan,
   assessChatbot,
   assessDecisionsPlainLanguage,
@@ -145,7 +146,7 @@ function keyFile(): string {
   throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
 }
 
-const TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$/;
+const TEXT_WANTED = INVENTORY_TEXT_WANTED;
 
 function options(): ReleaseOptions {
   const shared = arg('allow-shared');
