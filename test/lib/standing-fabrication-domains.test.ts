@@ -41,6 +41,9 @@ import {
   SAFEGUARDING_DISCLOSURE_CLAUSES,
   auditSafeguardingDisclosure,
   extractSafeguardingDisclosureSection,
+  ATTRIBUTION_CLAUSES,
+  auditAttribution,
+  extractAttributionSection,
   NO_INTERNAL_IDS_OBLIGATION,
   CLARIFY_AMBIGUOUS_OBLIGATION,
   auditAnswerObligations,
@@ -186,6 +189,13 @@ const AMBIGUITY_PARAGRAPH =
   'Either ask one short clarifying question, or answer each plausible reading in a sentence, labelled. ' +
   'Never open with a yes or no that the rest of the answer contradicts.';
 
+/** The `## Spark's rules vs the pilot's design` section, verbatim from 13923 v7 (ace#2687). */
+const ATTRIBUTION_SECTION_BODY =
+  "Credit Spark only with what the knowledge base says is Spark's own: the verification predicate (`meeting_conducted = yes` AND `meeting_type = community_meeting` — so committee meetings are not paid), Spark's form fields, labels and constraints, and the FCAP steps. " +
+  "Everything else in how this pilot pays is **the pilot's design**, set up for this pilot and not Spark's existing practice: the 3-paid-meetings-per-step cap and `payable_slot`, the 1-per-day and 21-total limits, the proposed rates and organisation fee, the Other Meeting Record, and the review and confirmation-call layers. " +
+  'The 3-per-step cap is enforced by a Connect payment rule configured for this pilot; changing it would be a programme design decision, not something a supervisor can override. ' +
+  'Never say a pilot rule "comes from Spark" or is "Spark\'s own design".';
+
 /** Appended to the positive control so it carries every ANSWER obligation. */
 /** The `## Safeguarding disclosures` section, verbatim from 13923 v5 (ace#2682). */
 const SAFEGUARDING_SECTION_BODY =
@@ -198,7 +208,7 @@ const SAFEGUARDING_SECTION_BODY =
   'What you must not do is invent a named reporting chain, a designated safeguarding officer, a form, or any phone number. ' +
   'The programme has not published a safeguarding reporting procedure; say so, after giving the guidance above.';
 
-const ANSWER_SECTION = `\n\n## Safeguarding disclosures — always give this guidance\n\n${SAFEGUARDING_SECTION_BODY}\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
+const ANSWER_SECTION = `\n\n## Spark's rules vs the pilot's design — attribute correctly\n\n${ATTRIBUTION_SECTION_BODY}\n\n## Safeguarding disclosures — always give this guidance\n\n${SAFEGUARDING_SECTION_BODY}\n\n## Emergencies\n\n${PHONE_PARAGRAPH}\n\n## Escalating\n\n${ESCALATION_PARAGRAPHS}\n\n${INTERNAL_IDS_PARAGRAPH}\n\n## Short or ambiguous questions\n\n${AMBIGUITY_PARAGRAPH}`;
 
 /**
  * The fully-compliant prompt Step 7 mandates — every standing domain, every
@@ -857,9 +867,9 @@ describe('auditEscalationAddress — the ACE admin group address is stated verba
     expect(audit.ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — v5 passes the escalation obligation and the WHOLE gate', () => {
+  it('POSITIVE CONTROL — v5 passes the escalation obligation; its successor v7 passes the WHOLE gate', () => {
     expect(auditEscalationAddress(v5, ADDRESS).ok).toBe(true);
-    const audit = auditComposedPrompt(v5, { escalationAddress: ADDRESS });
+    const audit = auditComposedPrompt(readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8'), { escalationAddress: ADDRESS });
     expect(audit.escalationAddress?.ok).toBe(true);
     expect(audit.ok).toBe(true);
   });
@@ -997,10 +1007,10 @@ describe('auditAnswerObligations — short or ambiguous questions', () => {
     expect(auditAnswerObligations(v3, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — v4 carries it, and v5 (its successor) passes the WHOLE gate', () => {
+  it('POSITIVE CONTROL — v4 carries it, and v7 (a successor) passes the WHOLE gate', () => {
     expect(auditAnswerObligations(v4, [CLARIFY_AMBIGUOUS_OBLIGATION]).ok).toBe(true);
-    const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
-    expect(auditComposedPrompt(v5).ok).toBe(true);
+    const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+    expect(auditComposedPrompt(v7).ok).toBe(true);
   });
 
   it('ablations — clarify, cover each reading, and the no-contradicting-opener rule are each load-bearing', () => {
@@ -1048,11 +1058,11 @@ describe('auditSafeguardingDisclosure — generic safe referral is always given 
     expect(auditComposedPrompt(v4).ok).toBe(false);
   });
 
-  it('POSITIVE CONTROL — v5 passes every clause and the WHOLE gate', () => {
+  it('POSITIVE CONTROL — v5 passes every clause; its successor v7 passes the WHOLE gate', () => {
     const audit = auditSafeguardingDisclosure(v5);
     expect(audit.covered).toEqual(SAFEGUARDING_DISCLOSURE_CLAUSES.map((c) => c.id));
     expect(audit.ok).toBe(true);
-    expect(auditComposedPrompt(v5, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
+    expect(auditComposedPrompt(readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8'), { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
   });
 
   it('every clause is load-bearing — dropping any ONE fails exactly that clause', () => {
@@ -1096,5 +1106,72 @@ describe('auditSafeguardingDisclosure — generic safe referral is always given 
     const audit = auditSafeguardingDisclosure(wrap(mandated));
     expect(audit.missing.map((c) => c.id)).toEqual([]);
     expect(audit.ok).toBe(true);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2687 — chatbot 13923 credited the partner with the
+ * pilot's design: v4 opp-43 "Spark's payment rule pays community meetings
+ * only, and at most 3 per step", opp-32 "the reason Spark designed it this
+ * way"; v6 opp-43 "This rule comes from Spark's own programme design ... No
+ * ... Connect configuration change can mark a 4th meeting payable". The v5
+ * fixture (published as v6) is the failing control, v7 the passing one.
+ */
+describe("auditAttribution — never credit the partner with the pilot's design (ace#2687)", () => {
+  const v5 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v5.md`, 'utf8');
+  const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+  const wrap = (body: string) => `## Spark's rules vs the pilot's design\n\n${body}`;
+
+  it('the v7 fixture really carries the section verbatim', () => {
+    expect(extractAttributionSection(v7)?.trim()).toBe(ATTRIBUTION_SECTION_BODY);
+  });
+
+  it('NEGATIVE CONTROL — v5 (published as v6) has no such section and fails the whole gate', () => {
+    expect(v5).toContain("Spark's own rule pays community meetings only");
+    const audit = auditAttribution(v5);
+    expect(audit.sectionPresent).toBe(false);
+    expect(audit.ok).toBe(false);
+    expect(auditComposedPrompt(v5, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(false);
+  });
+
+  it('POSITIVE CONTROL — v7 passes every clause and the WHOLE gate', () => {
+    const audit = auditAttribution(v7);
+    expect(audit.covered).toEqual(ATTRIBUTION_CLAUSES.map((c) => c.id));
+    expect(auditComposedPrompt(v7, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
+  });
+
+  it('every clause is load-bearing — dropping any ONE fails exactly that clause', () => {
+    const ablations: [string, string, string][] = [
+      ['credit-partner-only-with-own', "Credit Spark only with what the knowledge base says is Spark's own:", 'Spark has rules:'],
+      ['name-pilot-design', "Everything else in how this pilot pays is **the pilot's design**, set up for this pilot and", 'Some rules are'],
+      ['not-partner-practice', "not Spark's existing practice:", 'as follows:'],
+      ['enforced-by-connect-config', 'is enforced by a Connect payment rule configured for this pilot;', 'applies;'],
+      ['never-attribute-pilot-rule', 'Never say a pilot rule "comes from Spark" or is "Spark\'s own design".', ''],
+    ];
+    for (const [id, from, to] of ablations) {
+      const weakened = ATTRIBUTION_SECTION_BODY.replace(from, to);
+      expect(weakened, `ablation ${id} must change the section`).not.toBe(ATTRIBUTION_SECTION_BODY);
+      const audit = auditAttribution(wrap(weakened));
+      expect(audit.missing.map((c) => c.id), `dropping ${id} must fail ONLY that clause`).toEqual([id]);
+    }
+    expect(auditAttribution(wrap(ATTRIBUTION_SECTION_BODY)).ok).toBe(true);
+  });
+
+  it('heading-scoped — the clauses elsewhere in the prompt do not count', () => {
+    expect(auditAttribution(`## Style\n\n${ATTRIBUTION_SECTION_BODY}`).ok).toBe(false);
+  });
+
+  it('names the section in the operator report', () => {
+    expect(formatStandingDomainReport(auditComposedPrompt(v5))).toContain('[PARTNER-ATTRIBUTION]');
+  });
+
+  it('ocs-agent-setup § Step 7 mandates text that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, under that heading:\n     *"Credit <PARTNER>');
+    expect(start).toBeGreaterThan(-1);
+    const mandated = agentSetup
+      .slice(start, agentSetup.indexOf('**Why.** On `spark-facilitator/20261004-1706` (chatbot 13923), two', start))
+      .split('<PARTNER>')
+      .join('Spark');
+    expect(auditAttribution(wrap(mandated)).missing.map((c) => c.id)).toEqual([]);
   });
 });

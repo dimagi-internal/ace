@@ -276,6 +276,8 @@ export interface StandingDomainAudit {
   escalationAddress: AnswerObligationAudit | null;
   /** ace#2682. */
   safeguarding: SafeguardingDisclosureAudit;
+  /** ace#2687. */
+  attribution: SafeguardingDisclosureAudit;
   /**
    * True iff every half above holds. One verdict, one exit code — the gate
    * has a single runtime caller; a second script is how a preventer stops
@@ -845,6 +847,104 @@ export function formatSafeguardingDisclosureReport(audit: SafeguardingDisclosure
   return [head, ...audit.missing.map((c) => `  - ${c.label} (${c.id})`)].join('\n');
 }
 
+//
+// ── The PARTNER-vs-PILOT attribution section (dimagi-internal/ace#2687) ──────
+//
+// Every ACE opportunity layers a Connect pilot (payment units, caps, limits,
+// rates, extra records, review layers, Connect configuration) over a partner's
+// existing programme, and the composed prompt naturally cites the partner's
+// own rules right next to the pilot's. Nothing told the bot which was which,
+// so it credited the partner with the pilot's design — on chatbot 13923
+// (spark-facilitator/20261004-1706):
+//
+//   v4  opp-43 "Spark's payment rule pays community meetings only, and at
+//       most 3 per step"; opp-32 "the reason Spark designed it this way" —
+//       the deep judge's inflation guard fired on it (overall capped 8.5).
+//   v6  opp-43 "This rule comes from Spark's own programme design, not from
+//       an administrative decision. No supervisor, implementing organisation,
+//       or Connect configuration change can mark a 4th meeting payable" —
+//       the cap is the pilot's design (PDD §3.2), enforced by a Connect rule.
+//
+// A supervisor told "it is Spark's rule, nobody can change it" stops asking
+// the people who can. The section is heading-scoped (the partner's name
+// varies, so the heading is matched on its "rules vs the pilot's design"
+// tail) and each clause is asserted inside it.
+//
+
+/** Matches `## <Partner>'s rules vs the pilot's design…` — the partner name varies. */
+const ATTRIBUTION_HEADING_RE = /^\s{0,3}#{1,6}\s+.*\brules vs(?:\.)? the pilot'?s design\b/i;
+
+/** The heading tail the composed prompt must carry. */
+export const ATTRIBUTION_HEADING = "<PARTNER>'s rules vs the pilot's design";
+
+export const ATTRIBUTION_CLAUSES: readonly SafeguardingClause[] = [
+  {
+    id: 'credit-partner-only-with-own',
+    label: "Credit the partner only with what the knowledge base says is the partner's own",
+    pattern: /\bcredit\b[^.]{0,60}\bonly\b[^.]{0,80}\bknowledge base\b[^.]{0,40}\bown\b/,
+  },
+  {
+    id: 'name-pilot-design',
+    label: "Name what is the pilot's design — its caps, limits and rates among them",
+    pattern: /(?=.*\bpilot'?s design\b)(?=.*\bcaps?\b)(?=.*\blimits?\b)(?=.*\brates?\b)/,
+  },
+  {
+    id: 'not-partner-practice',
+    label: "The pilot's design is not the partner's existing practice",
+    pattern: /\bnot\b[^.]{0,40}\bexisting practice\b/,
+  },
+  {
+    id: 'enforced-by-connect-config',
+    label: 'Pilot rules are enforced by Connect configuration set up for this pilot',
+    pattern: /\bconnect\b[^.]{0,30}\brules?\b[^.]{0,40}\bconfigured\b/,
+  },
+  {
+    id: 'never-attribute-pilot-rule',
+    label: 'Never say a pilot rule comes from the partner',
+    pattern: /\bnever\b[^.]{0,30}\bsay\b[^.]{0,30}\bpilot rule\b[^.]{0,40}\b(?:comes from|is)\b/,
+  },
+];
+
+/** Body of the `## <Partner>'s rules vs the pilot's design…` section, or null. */
+export function extractAttributionSection(prompt: string): string | null {
+  const lines = prompt.split('\n');
+  const start = lines.findIndex((l) => ATTRIBUTION_HEADING_RE.test(l));
+  if (start === -1) return null;
+  const body: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s{0,3}#{1,6}\s+\S/.test(lines[i])) break;
+    body.push(lines[i]);
+  }
+  return body.join('\n');
+}
+
+/** Audit a composed prompt for the partner-vs-pilot attribution section (ace#2687). Pure. */
+export function auditAttribution(prompt: string): SafeguardingDisclosureAudit {
+  const section = extractAttributionSection(prompt);
+  if (section === null) {
+    return { sectionPresent: false, covered: [], missing: [...ATTRIBUTION_CLAUSES], ok: false };
+  }
+  const haystack = normalize(section);
+  const covered: string[] = [];
+  const missing: SafeguardingClause[] = [];
+  for (const c of ATTRIBUTION_CLAUSES) {
+    if (c.pattern.test(haystack)) covered.push(c.id);
+    else missing.push(c);
+  }
+  return { sectionPresent: true, covered, missing, ok: missing.length === 0 };
+}
+
+/** The attribution half of the operator report. Empty when it passes. */
+export function formatAttributionReport(audit: SafeguardingDisclosureAudit): string {
+  if (audit.ok) return '';
+  const head = audit.sectionPresent
+    ? `[PARTNER-ATTRIBUTION] ${audit.missing.length} of ${ATTRIBUTION_CLAUSES.length} ` +
+      `clause(s) missing from "## ${ATTRIBUTION_HEADING}":`
+    : `[PARTNER-ATTRIBUTION] the composed prompt has no "## ${ATTRIBUTION_HEADING}" section — ` +
+      "the bot then credits the partner with the pilot's design (opp-43, chatbot 13923 v4/v6, ace#2687).";
+  return [head, ...audit.missing.map((c) => `  - ${c.label} (${c.id})`)].join('\n');
+}
+
 /** Collapse markdown emphasis and whitespace so label matching is not brittle. */
 function normalize(text: string): string {
   return text
@@ -881,6 +981,7 @@ export function auditComposedPrompt(
       : auditEscalationAddress(prompt, options.escalationAddress);
   const contactExactness = auditContactExactness(prompt);
   const safeguarding = auditSafeguardingDisclosure(prompt);
+  const attribution = auditAttribution(prompt);
   const retrievalFallback = auditRetrievalFallback(prompt);
   const answerObligations = auditAnswerObligations(prompt);
   const section = extractAntiFabricationSection(prompt);
@@ -895,6 +996,7 @@ export function auditComposedPrompt(
       answerObligations,
       escalationAddress,
       safeguarding,
+      attribution,
       ok: false,
     };
   }
@@ -919,13 +1021,15 @@ export function auditComposedPrompt(
     answerObligations,
     escalationAddress,
     safeguarding,
+    attribution,
     ok:
       missing.length === 0 &&
       contactExactness.ok &&
       retrievalFallback.ok &&
       answerObligations.ok &&
       (escalationAddress === null || escalationAddress.ok) &&
-      safeguarding.ok,
+      safeguarding.ok &&
+      attribution.ok,
   };
 }
 
@@ -985,6 +1089,9 @@ export function formatStandingDomainReport(audit: StandingDomainAudit): string {
 
   const safeguarding = formatSafeguardingDisclosureReport(audit.safeguarding);
   if (safeguarding !== '') parts.push(safeguarding);
+
+  const attribution = formatAttributionReport(audit.attribution);
+  if (attribution !== '') parts.push(attribution);
 
   if (audit.escalationAddress !== null && !audit.escalationAddress.ok) {
     parts.push(
