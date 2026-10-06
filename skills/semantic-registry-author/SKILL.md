@@ -147,6 +147,29 @@ facilitator / partner). `case_fields` name columns the case index carries
 field); `reading` names a numeric per-visit column worth charting per case.
 Title ends `(synthetic)` for Phase 7.
 
+**Reader-facing text is plain language for a programme manager.** The cascade
+prints `display.title`, `targets_note`, the entity / worker / organisation nouns,
+`categories`, `reading.label`, the `case_fields` and `visit_fields` labels, the
+`visit_flags` labels **and descriptions**, and every indicator's `meta.label` and
+`meta.plain` on screen, to someone who has never seen the PDD. So in those fields:
+no design-document references (`PDD`, `§`, section numbers like `8.1`), no
+internal indicator codes (`P1`, `S-1`, `SF_P1`), no comparison symbols standing in
+for words (write "at least", not `≥`), and no column names (`enrolled_households`).
+Say where a target comes from in words — "the pilot design". The citation still
+belongs in the registry: `scope_note`, `means` and a measure's `description` are
+author-facing and SHOULD cite the PDD (`pdd-anchor` reads `scope_note`).
+
+| | `display.targets_note` (spark-facilitator/20261004-1706, registry 7748) |
+|---|---|
+| before | Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%). … |
+| after | Targets come from the pilot design: a meeting in at least 80% of each community's weeks, and at least 75% of communities finishing Step 7 within 15 weeks. The design sets no target for participation or for the review flags, so none is shown. |
+
+The "before" alone capped that run's DDD demo at clarity 2 after every build fix
+(ace#2748). The same registry's `visit_flags[].description` read `(PDD §5.4)` and
+`(PDD §7.2 S-1)` — the worker review prints those, so they fail too. *Enforced:*
+`lib/registry-display-text.ts`, run by `semantic-registry-author-qa`
+(`display-text`) and `demo-data-setup-qa` (check 28).
+
 Two more keys turn ids into things a reader can use (connect-labs #2243, #2251):
 - `entity.label_field: entity_name` — the case table and the worker review head a
   case by its name instead of its id. Set it whenever the data carries case
@@ -256,6 +279,7 @@ around the refusal by another route, and never record the step as done.
 
 | Date | Change |
 |---|---|
+| 2026-10-06 | § 3: reader-facing registry text is plain language for a programme manager (no PDD/§/section numbers, indicator codes, `≥`/`≤`, or column names); the Spark `targets_note` before/after. Enforced by `lib/registry-display-text.ts` in both QA gates (ace#2748). The worked example's `targets_note` is rewritten to match. | ACE team |
 | 2026-10-05 | § After a registry edit: re-publish the benchmark per rebuilt run, oldest first, planned by `lib/benchmark-republish.ts`; verify the Benchmarks tab's as-of is the latest week; a classifier refusal is surfaced, never worked around (ace#2717). | ACE team |
 | 2026-10-05 | § After a registry edit: a rebuild mints new run ids; relink every artifact from before/after `workflow_history_runs` listings via `scripts/relink-rebuilt-history.ts` (ace#2700). Proved on spark-facilitator/20261004-1706 (registry 7185 v3). | ACE team |
 | 2026-09-28 | The Nova `get_form` read accepts either tool namespace: since nova plugin v2 (voidcraft-labs/commcare-nova#693, voidcraft-labs/nova-plugin#64) ACE's PAT connection is the user-scope entry (`mcp__nova__*`), the plugin's own namespace is OAuth. | ACE team |

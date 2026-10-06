@@ -43,6 +43,7 @@ Two gates, both must pass. Shared QA contract: [`skills/_qa-template.md`](../_qa
 | `bands` | % bands written as fractions (`0.8`) — every cell grades green | write `80` |
 | `headline` | duplicate position, or beyond `display.headline_count` | renumber |
 | `display` | missing title / entity / worker / organisation nouns, an unlisted category, a bad `case_fields` format | fill from the PDD vocabulary |
+| `display-text` | a string the cascade RENDERS (`display.title`, `targets_note`, nouns, categories, `reading` / `case_fields` / `visit_fields` labels, `visit_flags` labels + descriptions, indicator `label` / `plain`) carries a design-document reference (`PDD`, `§`, a section number like `8.1`), an internal indicator code (`P1`, `S-1`, `SF_P1`), a comparison symbol for words (`≥`, `≤`) or a snake_case column name — `lib/registry-display-text.ts`, ace#2748 | rewrite it for a programme manager (`semantic-registry-author` § 3): "a meeting in at least 80% of each community's weeks", "the pilot design"; keep the citation in `scope_note` |
 | `llo-map` | a partner opportunity missing from `deployment.llo_map`, or fewer organisations than the floor: 3 for invented partners, 2 with `--partner-source programme` (below 3 there is a `warn`, since the benchmark then exposes a peer's figures) | map every opportunity |
 
 `warn` findings (bands without a target, an over-long `plain`, no `case_fields`)
@@ -64,7 +65,7 @@ Run both gates and write the result in one step:
      --target <opp>/<run-id> --out <local semantic-registry-author-qa_result.yaml>
    ```
    It runs `checkRegistryAuthoring`, turns the report into ONE outcome per check
-   (`registryQAOutcomes`: `labs-validate` plus the ten rows above), fails a check
+   (`registryQAOutcomes`: `labs-validate` plus the eleven rows above), fails a check
    whose input was not supplied rather than skipping it, and writes the canonical
    `lib/qa-types.ts` shape through `aggregateQAResult`.
 4. Upload it as `7-synthetic/semantic-registry-author-qa_result.yaml`. ace-gdrive
@@ -78,5 +79,6 @@ as "Passed (0/0 checks)". The same result through the writer reads 11/11.
 
 | Date | Change |
 |---|---|
+| 2026-10-06 | New `display-text` check (`lib/registry-display-text.ts`, ace#2748): the registry text the cascade renders must read plainly — no PDD/§/section numbers, indicator codes, `≥`/`≤` or column names. spark-facilitator/20261004-1706's `targets_note` "Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%)" capped its DDD demo at clarity 2; this check fails it at build time. Twelve outcomes per result now. |
 | 2026-10-01 | Result goes through the shared writer (`scripts/semantic-registry-author-qa.ts` → `aggregateQAResult`): one outcome per check, so the file counts what it checked. spark-facilitator/20260926-1800's `{verdict, findings}` result displayed as "Passed (0/0 checks)" on ace-web; re-run against its real registry and PDD it reads 11/11 pass. The PDD is read as `text/markdown` and normalised — the plain export left `pddSectionIds` with no headings, which silently disabled `pdd-anchor`; a missing input now FAILS its check. |
 | 2026-09-26 | Created (ace#2510). Positive control: the live-accepted Spark registry (`test/fixtures/cascade/spark-facilitator-registry.json`); one negative control per check in `test/lib/semantic-registry-authoring.test.ts`. |

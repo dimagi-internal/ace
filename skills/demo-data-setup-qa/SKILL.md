@@ -23,6 +23,7 @@ auto-fix protocol, static-vs-LLM rules).
 | Source | Artifact | Used for |
 |---|---|---|
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the handoff under check |
+| `semantic-registry-author` | `<demo-run>/7-synthetic/semantic-registry-author_registry.json` (or `semantic_registry_get`) | check 28: the registry text the cascade renders (ace-run only) |
 | `demo-data-setup` | `run_state.yaml…products.synthetic.source` | provider + labs opp id + deliver units |
 | `demo-data-setup` | `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` | timeline pin + flagged-worker check; `timeline.end_date` feeds check 11's `opts.timelineEndDate` |
 | live labs | `pipeline_get` + `pipeline_preview` per authored pipeline | check 12: the DECLARED field list, and a fresh extraction to judge it against |
@@ -76,6 +77,7 @@ auto-fix protocol, static-vs-LLM rules).
 | 25 | `cascade_worker_rates_not_binary` | static | **ace-run only (ace#2735).** `checkWorkerRateDenominators` over the latest saved run: no worker-table rate (`display.indicators[id].scorecard`) has a graded denominator (`cell.n`) ≤ 1 for more than half the workers. Spark: Step 7 on time, n = 1 for 60 of 60 facilitators — a rate that can only read 0% or 100%, judged "false precision". Plan-time twin: `checkPlannedWorkerRates` at `demo-data-setup` § C3. | Raise entities per worker, or set the indicator's `flw_applicable: false` / `scorecard: false` so it shows at partner level only |
 | 26 | `cascade_displayed_columns_vary` | static | **ace-run only (ace#2735).** `checkConstantDisplayedColumns`: no worker-table column (each scorecard indicator, plus the entity-count column), case field (`display.case_fields`) or visit field/flag (with `--visits`) is the same on every row of the saved run. A column constant only inside one partner's worker table is REPORTED in the detail (the narrative should not film that table for it). Spark: "Communities" = 1 on all 60 rows; Repeat counts 0.0% across whole partners (reported). | Vary it in the pool / roster, or stop showing it (registry display, run-owned template render code) |
 | 27 | `cascade_drill_levels_branch` | static | **ace-run only (ace#2735).** `checkDrillLevels`: no drill level (`partner>opportunity`, `opportunity>worker`, `worker>entity`) has exactly one child under every parent, unless the plan's `single_child_levels` cites why (a blank reason exempts nothing; an exemption is reported). Spark: one opportunity per partner on all 5 — the judges' "redundant single-row Opportunities level". | Branch the level in the data, or record the PDD-cited exemption and keep scenes from pausing on that level |
+| 28 | `cascade_registry_text_is_plain` | static | **ace-run only (ace#2748).** `checkRegistryTextIsPlain` (`checks.ts`, over `lib/registry-display-text.ts`) on the registry (`--registry`: `7-synthetic/semantic-registry-author_registry.json`, or the `semantic_registry_get` response after a registry edit): every string the cascade RENDERS — `display.title`, `targets_note`, the entity/worker/organisation nouns, categories, `reading.label`, `case_fields` / `visit_fields` labels, `visit_flags` labels AND descriptions, each indicator's `meta.label` / `meta.plain` — reads as plain language for a programme manager. **Fails** on a design-document reference (`PDD`, `§`, a section number like `8.1`), an internal indicator code (`P1`, `S-1`, `SF_P1`), a comparison symbol standing in for words (`≥`, `≤`), or a raw snake_case field name. `scope_note` / `means` / `description` are author-facing and not read. Measured on `spark-facilitator/20261004-1706` (registry 7748): `targets_note` "Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%)" capped the DDD demo at clarity 2 after the build fixes, and its `visit_flags[].description` cite `(PDD §5.4)` / `(PDD §7.2 S-1)`. | Rewrite each named string per `semantic-registry-author` § 3 ("Targets come from the pilot design: a meeting in at least 80% of each community's weeks …"), `semantic_registry_update`, rebuild history (`demo-data-setup` § C5). Keep the PDD citation in `scope_note` |
 
 ### Which checks apply to which provider
 
@@ -84,7 +86,7 @@ check it neither computed nor was handed an outcome for:
 
 | Provider | Checks |
 |---|---|
-| `ace-run` (the Phase 7 cascade, ace#2510) | 1, 2 (over the cascade's programme + opp reports), 22, 23, 21, 24–27 |
+| `ace-run` (the Phase 7 cascade, ace#2510) | 1, 2 (over the cascade's programme + opp reports), 22, 23, 21, 24–28 |
 | `denovo` | 1, 2, 2b, 3–13 |
 | `clone` | 1, 2, 2b, 3, 6, 7 |
 
@@ -124,14 +126,16 @@ and has no result at all.
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/demo-data-setup-qa.ts" \
      --run-state <run_state.yaml> --realized <realized.json> \
      [--story <cascade-story.yaml>] [--history <history.json>] [--visits <visits.json>] [--outcomes <outcomes.json>] \
-     [--real-people <names.txt>] \
+     [--real-people <names.txt>] [--registry <semantic-registry-author_registry.json>] \
      --target <opp>/<run-id> --out <local demo-data-setup-qa_result.yaml>
    ```
    `--real-people` is one name per line — every real person the opp's `inputs/`
    name (PDD contacts, LLO contacts, reviewers); check 21 fails an invented worker
    carrying one (ace#2727). `--visits` is every partner's `pipeline_preview` response for the cascade
    visits pipeline (an array; `sample_size` ≥ `row_count_before_sample`) — check 24 fails without it.
-   It computes 1, 2, 22, 23, 21 and 24–27 itself, merges your outcomes, **fails every
+   `--registry` is the registry as it stands — `7-synthetic/semantic-registry-author_registry.json`, or
+   the `semantic_registry_get` response once it has been edited — check 28 fails without it.
+   It computes 1, 2, 22, 23, 21 and 24–28 itself, merges your outcomes, **fails every
    applicable check that was not evaluated**, and writes the `lib/qa-types.ts` shape
    through `aggregateQAResult` — which also fails a result that evaluated nothing.
 4. Upload the file as `demo-data-setup-qa_result.yaml` in `7-synthetic/` (find-or-update).
@@ -366,6 +370,7 @@ mistake.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **New ace-run check 28 `cascade_registry_text_is_plain` (ace#2748).** The registry's reader-facing text (targets note, labels, plain sentences, visit-flag descriptions) is linted by `lib/registry-display-text.ts` before the DDD judge reads it. spark-facilitator/20261004-1706's `targets_note` ("Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%)") alone capped DDD run `spark-facilitator-programme-cascade-2026-10-06-004` at clarity 2.0; the check fails it, and the same registry's `(PDD §5.4)` / `(PDD §7.2 S-1)` flag descriptions. New `--registry` input. | ACE team |
 | 2026-10-06 | **New ace-run checks 24–27 — the cascade's BUILD output, judged before the DDD hand-off (ace#2735).** Of 89 findings on DDD run `spark-facilitator-programme-cascade-2026-10-06-002`, several were properties of the generated data and saved runs that a render was paying to discover: flagged records contradicting the PDD's review path, a worker rate over one entity, constant columns, a one-child drill level. `lib/cascade-build-qa.ts` + `cascadeBuildOutcomes`; each check fails on that run's real output in `test/lib/cascade-build-qa.test.ts` and passes a control repaired as its hint says. | ACE team |
 | 2026-10-06 | Check 21 follows the ace#2727 plan rules: realistic `(example)` partner names (`Example partner A` now FAILS alongside bare `Partner A`), ≥ 5 invented partners, a display roster for workers and entities (`--real-people` names the inputs' real people none may carry), and headline indicators that spread ≥ 5 pts across partners in the plan AND in the graded runs. | ACE team |
 | 2026-10-01 | Check 22's fix (and `checkWorkerReviewUrlScope`'s `auto_fix_hint`) now name the builder, `scripts/worker-review-url.ts --fix`, instead of a URL template to hand-assemble — hand assembly from the "Review →" links is how spark-facilitator/20260926-1800 shipped three `owning_program_id` links. | ACE team |

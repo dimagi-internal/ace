@@ -15,6 +15,8 @@
  * deployment}` triple ACE sends to `semantic_registry_create`.
  */
 
+import { checkRegistryDisplayText, DISPLAY_TEXT_FIX } from './registry-display-text.js';
+
 export interface RegistryDocs {
   properties_doc: Record<string, unknown>;
   indicators_doc: Record<string, unknown>;
@@ -250,6 +252,14 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
     add('display', '`display.case_fields` is missing — the case table falls back to first/last visit and visit count', undefined, 'warn');
   }
 
+  // ── Reader-facing text reads plainly (ace#2748) ────────────────────────
+  // The registry text the cascade RENDERS is for a programme manager: no PDD
+  // section numbers, no metric codes, no ≥, no column names. scope_note stays
+  // the place for the citation.
+  for (const f of checkRegistryDisplayText(doc).findings) {
+    add('display-text', `${f.path}: "${f.match}" in "${f.text}" — ${DISPLAY_TEXT_FIX[f.rule]}`);
+  }
+
   // ── Organisation level: every partner opportunity mapped ────────────────
   const lloMap = asObj(asObj(reg.deployment).llo_map);
   const mapped = new Map(Object.entries(lloMap).map(([k, v]) => [Number(k), String(v)]));
@@ -286,6 +296,7 @@ export const REGISTRY_AUTHORING_CHECKS = [
   'bands',
   'headline',
   'display',
+  'display-text',
   'llo-map',
 ] as const;
 

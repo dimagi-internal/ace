@@ -7,6 +7,7 @@
  *     [--story <local cascade-story.yaml>] [--history <workflow_history_runs JSON>] \
  *     [--visits <JSON: pipeline_preview response(s) of the cascade visits pipeline, one per partner opp>] \
  *     [--real-people <text file: one real person's name per line, from the opp's inputs>] \
+ *     [--registry <7-synthetic/semantic-registry-author_registry.json, or a semantic_registry_get response>] \
  *     [--outcomes <JSON: [{check, result:{pass,detail,auto_fix_hint}} | {check, not_judged}]>] \
  *     --target <opp>/<run> --out <local demo-data-setup-qa_result.yaml>
  *
@@ -41,6 +42,7 @@ import {
   checkCascadeStory,
   checkParUrlScope,
   checkRealizedFlat,
+  checkRegistryTextIsPlain,
   checksForProvider,
   checkWorkerReviewUrlScope,
   periodsFromHistoryRuns,
@@ -110,6 +112,9 @@ if (provider === 'ace-run') {
   );
   if (realized) computed.set('worker_review_url_scoped', checkWorkerReviewUrlScope(realized));
   computed.set('cascade_handoff_complete', checkCascadeHandoff(synthetic));
+  // ace#2748: the registry text a report renders reads plainly. No --registry → the check FAILS as not evaluated.
+  const registryText = readText(arg('registry'));
+  if (registryText) computed.set('cascade_registry_text_is_plain', checkRegistryTextIsPlain(JSON.parse(registryText)));
   const storyText = readText(arg('story'));
   const historyText = readText(arg('history'));
   if (storyText && historyText) {
