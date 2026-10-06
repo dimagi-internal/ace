@@ -66,6 +66,12 @@ export interface RelinkOptions {
    * "runs 7198..7254"). Off by default: in a URL or a `run_id` field the
    * number can only be a run id, in prose it might be anything. Turn it on
    * for an artifact you have checked names these ids only as runs.
+   *
+   * A bare id must stand alone: not touching a letter, digit, `_` or `-` on
+   * either side, so the leading hex run of a UUID (`7499fdb3-…`) or a
+   * hyphen-joined UUID segment (`…-7499-…`) is never an id (ace#2731). The
+   * cost: a hyphen range like "7198-7254" is neither rewritten nor reported;
+   * write ranges as "7198..7254".
    */
   bare?: boolean;
 }
@@ -73,9 +79,17 @@ export interface RelinkOptions {
 export interface RelinkResult {
   text: string;
   replaced: number;
-  /** Old ids still present anywhere in the output (digit-bounded). Should be empty. */
+  /** Old ids still standing alone anywhere in the output (see RelinkOptions.bare). Should be empty. */
   leftovers: number[];
 }
+
+/**
+ * Lookarounds for a standalone id: no identifier character or hyphen on
+ * either side. Shared by the bare rewrite and the leftovers scan so a UUID
+ * that merely starts with an old id is neither corrupted nor reported.
+ */
+const STANDALONE_BEFORE = '(?<![\\w-])';
+const STANDALONE_AFTER = '(?![\\w-])';
 
 function idPattern(map: RunIdMap): string {
   return [...map.keys()].sort((x, y) => y - x).map(String).join('|');
@@ -84,7 +98,7 @@ function idPattern(map: RunIdMap): string {
 /**
  * Rewrite run ids in text. Always rewritten: URL params `run_id=` and
  * `source_run=`, and `run_id` fields in YAML (`run_id: N`) or JSON
- * (`"run_id": N`). With `bare`, every digit-bounded occurrence.
+ * (`"run_id": N`). With `bare`, every standalone occurrence.
  */
 export function relinkText(text: string, map: RunIdMap, opts: RelinkOptions = {}): RelinkResult {
   if (map.size === 0) return { text, replaced: 0, leftovers: [] };
@@ -99,10 +113,16 @@ export function relinkText(text: string, map: RunIdMap, opts: RelinkOptions = {}
     (_m, pre: string, id: string) => pre + swap(id),
   );
   if (opts.bare) {
-    // Not preceded by a digit or by "<digit>." (a decimal), not followed by a digit or ".<digit>".
-    out = out.replace(new RegExp(`(?<!\\d)(?<!\\d\\.)(${ids})(?!\\d)(?!\\.\\d)`, 'g'), (_m, id: string) => swap(id));
+    // Standalone (see RelinkOptions.bare), and not part of a decimal: not preceded by
+    // "<digit>." nor followed by ".<digit>".
+    out = out.replace(
+      new RegExp(`${STANDALONE_BEFORE}(?<!\\d\\.)(${ids})${STANDALONE_AFTER}(?!\\.\\d)`, 'g'),
+      (_m, id: string) => swap(id),
+    );
   }
-  const leftovers = [...new Set((out.match(new RegExp(`(?<!\\d)(${ids})(?!\\d)`, 'g')) ?? []).map(Number))];
+  const leftovers = [
+    ...new Set((out.match(new RegExp(`${STANDALONE_BEFORE}(${ids})${STANDALONE_AFTER}`, 'g')) ?? []).map(Number)),
+  ];
   return { text: out, replaced, leftovers };
 }
 

@@ -80,6 +80,29 @@ describe('relinkText', () => {
     expect(r.text).toBe('ids 172540 and 7254.5 and 37254');
     expect(r.replaced).toBe(0);
   });
+
+  // ace#2731: spark-facilitator/20261004-1706 cascade-story.yaml had its
+  // community case id 7499fdb3-... rewritten to 7638fdb3-... by --bare.
+  it('leaves a UUID whose leading hex run or a segment equals an old id untouched, and does not report it', () => {
+    const text = [
+      'entities:',
+      '  - id: 7254fdb3-7dd5-0fda-ac03-c3ecca8f6cf4',
+      '  - id: c3ecca8f-7254-0fda-ac03-7dd50fdac3ec',
+      '  - id: c3ecca8f-0fda-ac03-7dd5-7254',
+      '  - hash: 7254_cbf',
+      '',
+    ].join('\n');
+    const r = relinkText(text, map, { bare: true });
+    expect(r.text).toBe(text);
+    expect(r.replaced).toBe(0);
+    expect(r.leftovers).toEqual([]);
+  });
+
+  it('still rewrites prose ids next to punctuation in a bare pass', () => {
+    const r = relinkText('run 7254, (7254) and 7249..7254 then 7254 → 7258.\n"7254"', map, { bare: true });
+    expect(r.text).toBe('run 7317, (7317) and 7312..7317 then 7317 → 7321.\n"7317"');
+    expect(r.leftovers).toEqual([]);
+  });
 });
 
 describe('relinkValue', () => {
