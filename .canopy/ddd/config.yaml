@@ -1,0 +1,18 @@
+# Per-repo DDD loop configuration (canopy scripts/ddd/loop_config.py).
+#
+# ACE's Phase 7 demo loop (agents/synthetic-data-and-workflows.md Step 3) may edit
+# report PAGES (template workflows) and recipe mechanics, never the build: the
+# semantic registry, the synthetic data, or the design. When the gating floor is
+# made only of findings whose fix lives there, the loop stops at once
+# (stop_out_of_scope, canopy#780) and Phase 7 fixes the build instead — measured
+# on spark-facilitator/20261004-1706, where a registry footnote held the floor and
+# the loop ran on to its stall rule (canopy#780; ace#2748).
+loop:
+  fixed_surfaces:
+    - '\bsemantic registry\b'
+    - '\bregistry (text|label|labels|wording|footnote|definition|definitions|display|note)\b'
+    - '\btargets_note\b'
+    - '\bsynthetic (data|generator|pool|records?|roster|programme|program)\b'
+    - '\btransplant pool\b'
+    - '\bseed(ed)? data\b'
+    - '\b(PDD|design document)\b.{0,40}\b(change|edit|rewrite|amend)'
