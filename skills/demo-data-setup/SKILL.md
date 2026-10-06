@@ -1496,6 +1496,28 @@ The data-quality signal is step 1c's obligation carried over: pick it from the
 PDD's own review flags / verification controls, never a fraud pattern the design
 does not describe.
 
+**Author what the build must look like, not only what it must show** (ace#2735).
+Three more plan fields, each because the DDD judges found its absence after a
+render on `spark-facilitator/20261004-1706` (89 findings, several of them build
+output):
+- `review_routing: [{flag, pdd_ref, expect | report_only}]` — for every flag the
+  registry declares (`display.visit_flags[].column`), what the PDD does with a
+  flagged record: `expect` the fields a flagged record carries (a desk-review
+  flag → `{flagged: [true]}`), or `report_only` with the PDD's own words. Then
+  WRITE those fields onto the flagged visits in the pool — the generator's
+  default is `approved` with nothing sent to review, which is how 11 of 12
+  repeat-count-flagged records were filmed contradicting PDD §7.2 S-1. Required
+  with a `data_quality` signal (`checkCascadeStoryPlan`).
+- **Worker rates need a denominator.** `checkPlannedWorkerRates(plan,
+  entityCountRateIndicators(registry))` (`lib/cascade-build-qa.ts`) fails when
+  most workers own ≤ 1 entity while a worker-level rate counts entities — the
+  rate can then only read 0% or 100% (Spark's Step 7 on time, judged "false
+  precision"). Fix the roster, or set the indicator's `flw_applicable: false` so
+  it shows at partner level only.
+- `single_child_levels: [{level, reason}]` — a drill level the PDD fixes at one
+  child (Spark: one community per facilitator), cited. Any other level with one
+  child everywhere fails at § C6.
+
 Then generate one manifest per partner with `synthetic_generate_from_manifest`,
 using **mirror mode with an AUTHORED transplant pool**
 (`beneficiary_cohorts[0].longitudinal: {mode: mirror, jitter_frac: 0,
@@ -1603,6 +1625,25 @@ include_snapshot: true})` → map each run's `data.snapshot.state.snapshot`
 `verifyCascadeStoryLanded(plan, periods)`. Every signal must land; a signal that
 did not is fixed in the pool and regenerated (the ids stay; re-run C5), never
 re-described to match what came out. `demo-data-setup-qa` re-runs this check.
+
+Then judge the BUILD OUTPUT the judges would otherwise judge after a render
+(ace#2735): `cascadeBuildOutcomes(plan, latestSnapshotFromHistoryRuns(<same
+response>), <every partner's visit rows>)` — the visit rows from
+`pipeline_preview` of the cascade visits pipeline per partner opp, `sample_size`
+≥ `row_count_before_sample`. Four checks, each failing the build:
+1. **review routing** — every record raising a declared flag carries its
+   `review_routing` route (`checkReviewRouting`); a raised flag with no route fails;
+2. **worker rates not binary** — no worker-table rate (`display.indicators[].scorecard`)
+   has a graded denominator (`cell.n`) ≤ 1 for most workers (`checkWorkerRateDenominators`);
+3. **displayed columns vary** — no worker-table column (the entity-count column
+   included), case field or visit field/flag is the same on every row
+   (`checkConstantDisplayedColumns`; a column constant only inside one partner's
+   table is reported — keep the narrative off it);
+4. **drill levels branch** — no level has exactly one child under every parent
+   unless `single_child_levels` cites why (`checkDrillLevels`).
+A failure is fixed in the pool, roster, registry display or run-owned template
+and re-verified here — never handed to the DDD loop, which can only re-find it
+(ace#2337: it has no write path to fix a labs defect).
 
 **C7. Handoff.** `realized.json` (flat) carries:
 
@@ -2042,6 +2083,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **Build QA before the hand-off, so the demo judges stop finding build output (ace#2735).** Operator: *"is the demo catching bad output from the program build? ... how can we be better at the program build level in terms of QA or other so DDD isn't the one catching it?"* § C3 adds `review_routing` (what the PDD does with each flagged record — and the pool writes it), `checkPlannedWorkerRates` (a worker-level rate over ≤ 1 entity is binary) and `single_child_levels`; § C6 adds `cascadeBuildOutcomes` — review routing, binary worker rates, constant displayed columns, one-child drill levels — judged against the saved run and the visit rows. Each was a DDD finding on `spark-facilitator/20261004-1706`; each now fails there, in `test/lib/cascade-build-qa.test.ts`, on that run's real output. | ACE team |
 | 2026-10-06 | **Invented names a viewer can read, five partners, a headline that differs (ace#2727).** § C0: invented partners are realistic organisation names with a trailing `(example)` marker (`Tiyende Community Trust (example)`), not `Example partner A` — be59309d's honesty fix satisfied ACE's rail with a placeholder canopy's DDD judge scores at clarity 2, and `spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes on it. The story plan now carries a display roster (`workers[{username, display_name, partner}]`, `entities[{id, name, worker}]`; no codes, no placeholders, no real person's name from the inputs), `headline_indicators` + `headline_spread` (a headline flat across all partners fails), and five partners by default and floor. § C3 carries a TODO where the labs half (snapshot display names, registry `display.entity.label_field`) will be wired; § C7 adds `*_worker_name`. *Enforced:* `checkCascadeStoryPlan` / `verifyCascadeStoryLanded`, `test/lib/cascade-story.test.ts`. | ACE team |
 | 2026-10-05 | **§ C5 plans the benchmark publishes with `planBenchmarkRepublish` (ace#2717).** Oldest first, refusing a missing week; the Benchmarks tab's as-of must equal the last period; the same re-publish is required after a registry edit + rebuild. A classifier refusal of `benchmarks_publish` is surfaced to the operator. | ACE team |
 | 2026-10-01 | **§ C7 builds every `*worker_review_url` with one builder (ace#2521 recurrence).** spark-facilitator/20260926-1800 wrote all three worker-review links with `owning_program_id` and no `program_id`, after § C7's prose already forbade it — the URL was hand-assembled from the programme report's "Review →" links. `lib/worker-review-url.ts` (`buildWorkerReviewUrl`, `workerReviewUrls`, `rescopeWorkerReviewUrl`) is now the only constructor; § C7 calls `scripts/worker-review-url.ts` to build them from the run_state cascade or repair a written realized.json in place. `checkWorkerReviewUrlScope` stays the gate. *Enforced:* `test/lib/worker-review-url.test.ts` (fixtures: that run's realized.json + run_state). | ACE team |

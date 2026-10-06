@@ -130,6 +130,42 @@ export interface CascadeStoryPlan {
    * invented partners it is what the illustrative label is honest about.
    */
   implementing_orgs?: number;
+  /**
+   * What the PDD says happens to a record carrying each review flag (ace#2735).
+   * Required alongside a `data_quality` signal: the signal makes one worker's
+   * records carry the flag, and the generated records must then follow the
+   * design's own review path — not sit `approved` with nothing sent to review,
+   * which is what spark-facilitator/20261004-1706 filmed (11 of 12 flagged
+   * records approved, against PDD §7.2 S-1's desk review). Checked against the
+   * generated visit rows by `checkReviewRouting` (`lib/cascade-build-qa.ts`).
+   */
+  review_routing?: ReviewRoute[];
+  /**
+   * Drill levels the PDD fixes at exactly one child (Spark: one community per
+   * facilitator), each with the reason. Without an entry, a level that has one
+   * child everywhere fails `checkDrillLevels` — a click into it shows the same
+   * thing again (ace#2735). A blank reason exempts nothing.
+   */
+  single_child_levels?: Array<{ level: DrillLevel; reason: string }>;
+}
+
+/** The cascade's drill levels, parent>child, as the programme report renders them. */
+export type DrillLevel = 'partner>opportunity' | 'opportunity>worker' | 'worker>entity';
+export const DRILL_LEVELS: readonly DrillLevel[] = ['partner>opportunity', 'opportunity>worker', 'worker>entity'];
+
+/**
+ * One review flag's route (ace#2735). `flag` is a visit column the registry
+ * declares as a flag (`indicators_doc.display.visit_flags[].column`). Exactly one of:
+ *  - `expect`: field → allowed values every FLAGGED record must carry, read from
+ *    what the PDD says happens (desk review: `{flagged: [true]}`; held for review:
+ *    `{status: ['pending']}`);
+ *  - `report_only`: the PDD's own words saying the flag is reported, not routed.
+ */
+export interface ReviewRoute {
+  flag: string;
+  pdd_ref: string;
+  expect?: Record<string, Array<string | number | boolean>>;
+  report_only?: string;
 }
 
 /**
@@ -288,9 +324,49 @@ export function checkCascadeStoryPlan(
   }
 
   const warn = (detail: string) => findings.push({ severity: 'warn', detail });
+  checkReviewRoutingPlan(plan, programme, fail, warn);
   checkDisplayRoster(plan, programme, fail, warn, options);
   checkHeadlineSpread(plan, ids, labels, programme, fail, warn);
   return { verdict: findings.some((f) => f.severity === 'fail') ? 'fail' : 'pass', findings };
+}
+
+/**
+ * A data-quality signal declares the PDD's review route for its flag (ace#2735).
+ * The route is a fact about the DESIGN, so it is authored with the story and
+ * cited; the generated records are judged against it after generation.
+ * Required for invented partners; a programme mirror that omits it is warned.
+ */
+function checkReviewRoutingPlan(
+  plan: CascadeStoryPlan,
+  programme: boolean,
+  fail: (detail: string, signal?: SignalKind) => void,
+  warn: (detail: string) => void,
+): void {
+  const routes = plan.review_routing ?? [];
+  const hasDq = plan.signals.some((s) => s.kind === 'data_quality');
+  if (hasDq && routes.length === 0) {
+    (programme ? warn : fail)(
+      'a `data_quality` signal with no `review_routing` — say what the PDD does with a flagged record ' +
+        '(`expect` the fields a flagged record carries, or `report_only` with the PDD\'s words), so the ' +
+        'generated records can be checked against it (ace#2735: 11 of 12 flagged Spark records filmed ' +
+        '`approved` with nothing sent to review, against PDD §7.2 S-1)',
+    );
+  }
+  for (const r of routes) {
+    const where = `review_routing ${r.flag || '(no flag)'}`;
+    if (!r.flag?.trim()) fail(`${where}: names no flag column`);
+    const cited = plan.anchor === 'app' ? /deliver app/i.test(r.pdd_ref ?? '') : /§\s*\d/.test(r.pdd_ref ?? '');
+    if (!cited) fail(`${where}: \`pdd_ref\` "${r.pdd_ref ?? ''}" cites no ${plan.anchor === 'app' ? 'Deliver app form' : 'PDD section'}`);
+    const hasExpect = !!r.expect && Object.keys(r.expect).length > 0 && Object.values(r.expect).every((v) => Array.isArray(v) && v.length > 0);
+    const hasReport = !!r.report_only?.trim();
+    if (hasExpect === hasReport) {
+      fail(`${where}: declare exactly one of \`expect\` (fields → allowed values a flagged record carries) or \`report_only\` (the PDD's words)`);
+    }
+  }
+  for (const s of plan.single_child_levels ?? []) {
+    if (!DRILL_LEVELS.includes(s.level)) fail(`single_child_levels: "${s.level}" is not a drill level (${DRILL_LEVELS.join(', ')})`);
+    if (!s.reason?.trim()) fail(`single_child_levels ${s.level}: no reason — an unevidenced exemption exempts nothing`);
+  }
 }
 
 /**

@@ -72,6 +72,10 @@ auto-fix protocol, static-vs-LLM rules).
 
 | 22 | `worker_review_url_scoped` | static | **ace-run only.** Every `*worker_review_url` in `realized.json` is a run deep-link carrying `&program_id=` (`checkWorkerReviewUrlScope`). `owning_program_id` is a data hint, not a page-scope param: opened cold, labs scopes the page to the session's last opportunity and renders "Workflow definition <id> not found" (ace#2521). | Rebuild each URL with `scripts/worker-review-url.ts --fix <realized.json>` (`lib/worker-review-url.ts`; `demo-data-setup` § C7) — never by hand |
 | 23 | `cascade_handoff_complete` | static | **ace-run only.** `checkCascadeHandoff` over `products.synthetic.cascade`: a registry with indicators; ≥ 3 partners, each on a labs-only opp (≥ 10000) with its own opp report; the programme report's run is the LATEST history run; every report mirrored in `products.synthetic.workflows` (ace-web renders that map, so an unmirrored report is invisible to a reviewer). | Complete the handoff (`demo-data-setup` § C4–C7) — record each id as it is minted |
+| 24 | `cascade_review_routing_follows_pdd` | static | **ace-run only (ace#2735).** `checkReviewRouting` (`lib/cascade-build-qa.ts`) over every partner's visit rows (`--visits`): each record raising a flag the registry declares (`display.visit_flags[].column`) carries the plan's `review_routing` route for it (`expect` fields → allowed values, read from the PDD), or the route is `report_only` with the PDD's words. **Fails** on a raised flag with no declared route and on any flagged record off its route. Measured on `spark-facilitator/20261004-1706` (Tiyende, 153 rows): 11 of 12 `repeat_counts_flag` records `approved` with `flagged=false`, against PDD §7.2 S-1's desk review — the DDD judges found it after render. | Write the route's fields onto the flagged visits in the pool, regenerate that partner, rebuild history; if the PDD only reports the flag, declare `report_only`. Never relabel the flag |
+| 25 | `cascade_worker_rates_not_binary` | static | **ace-run only (ace#2735).** `checkWorkerRateDenominators` over the latest saved run: no worker-table rate (`display.indicators[id].scorecard`) has a graded denominator (`cell.n`) ≤ 1 for more than half the workers. Spark: Step 7 on time, n = 1 for 60 of 60 facilitators — a rate that can only read 0% or 100%, judged "false precision". Plan-time twin: `checkPlannedWorkerRates` at `demo-data-setup` § C3. | Raise entities per worker, or set the indicator's `flw_applicable: false` / `scorecard: false` so it shows at partner level only |
+| 26 | `cascade_displayed_columns_vary` | static | **ace-run only (ace#2735).** `checkConstantDisplayedColumns`: no worker-table column (each scorecard indicator, plus the entity-count column), case field (`display.case_fields`) or visit field/flag (with `--visits`) is the same on every row of the saved run. A column constant only inside one partner's worker table is REPORTED in the detail (the narrative should not film that table for it). Spark: "Communities" = 1 on all 60 rows; Repeat counts 0.0% across whole partners (reported). | Vary it in the pool / roster, or stop showing it (registry display, run-owned template render code) |
+| 27 | `cascade_drill_levels_branch` | static | **ace-run only (ace#2735).** `checkDrillLevels`: no drill level (`partner>opportunity`, `opportunity>worker`, `worker>entity`) has exactly one child under every parent, unless the plan's `single_child_levels` cites why (a blank reason exempts nothing; an exemption is reported). Spark: one opportunity per partner on all 5 — the judges' "redundant single-row Opportunities level". | Branch the level in the data, or record the PDD-cited exemption and keep scenes from pausing on that level |
 
 ### Which checks apply to which provider
 
@@ -80,7 +84,7 @@ check it neither computed nor was handed an outcome for:
 
 | Provider | Checks |
 |---|---|
-| `ace-run` (the Phase 7 cascade, ace#2510) | 1, 2 (over the cascade's programme + opp reports), 22, 23, 21 |
+| `ace-run` (the Phase 7 cascade, ace#2510) | 1, 2 (over the cascade's programme + opp reports), 22, 23, 21, 24–27 |
 | `denovo` | 1, 2, 2b, 3–13 |
 | `clone` | 1, 2, 2b, 3, 6, 7 |
 
@@ -119,13 +123,15 @@ and has no result at all.
    ```bash
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/demo-data-setup-qa.ts" \
      --run-state <run_state.yaml> --realized <realized.json> \
-     [--story <cascade-story.yaml>] [--history <history.json>] [--outcomes <outcomes.json>] \
+     [--story <cascade-story.yaml>] [--history <history.json>] [--visits <visits.json>] [--outcomes <outcomes.json>] \
      [--real-people <names.txt>] \
      --target <opp>/<run-id> --out <local demo-data-setup-qa_result.yaml>
    ```
    `--real-people` is one name per line — every real person the opp's `inputs/`
    name (PDD contacts, LLO contacts, reviewers); check 21 fails an invented worker
-   carrying one (ace#2727). It computes 1, 2, 22, 23 and 21 itself, merges your outcomes, **fails every
+   carrying one (ace#2727). `--visits` is every partner's `pipeline_preview` response for the cascade
+   visits pipeline (an array; `sample_size` ≥ `row_count_before_sample`) — check 24 fails without it.
+   It computes 1, 2, 22, 23, 21 and 24–27 itself, merges your outcomes, **fails every
    applicable check that was not evaluated**, and writes the `lib/qa-types.ts` shape
    through `aggregateQAResult` — which also fails a result that evaluated nothing.
 4. Upload the file as `demo-data-setup-qa_result.yaml` in `7-synthetic/` (find-or-update).
@@ -360,6 +366,7 @@ mistake.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **New ace-run checks 24–27 — the cascade's BUILD output, judged before the DDD hand-off (ace#2735).** Of 89 findings on DDD run `spark-facilitator-programme-cascade-2026-10-06-002`, several were properties of the generated data and saved runs that a render was paying to discover: flagged records contradicting the PDD's review path, a worker rate over one entity, constant columns, a one-child drill level. `lib/cascade-build-qa.ts` + `cascadeBuildOutcomes`; each check fails on that run's real output in `test/lib/cascade-build-qa.test.ts` and passes a control repaired as its hint says. | ACE team |
 | 2026-10-06 | Check 21 follows the ace#2727 plan rules: realistic `(example)` partner names (`Example partner A` now FAILS alongside bare `Partner A`), ≥ 5 invented partners, a display roster for workers and entities (`--real-people` names the inputs' real people none may carry), and headline indicators that spread ≥ 5 pts across partners in the plan AND in the graded runs. | ACE team |
 | 2026-10-01 | Check 22's fix (and `checkWorkerReviewUrlScope`'s `auto_fix_hint`) now name the builder, `scripts/worker-review-url.ts --fix`, instead of a URL template to hand-assemble — hand assembly from the "Review →" links is how spark-facilitator/20260926-1800 shipped three `owning_program_id` links. | ACE team |
 | 2026-10-01 | **The gate always runs, always writes a result, and 0 checks is a FAIL.** `bednet-check-2-visit/20260908-1544` ran 19 checks and hand-wrote them as `checks_total` / `checks[]`, so ace-web read the result as "Passed (0/0 checks)"; `spark-facilitator/20260926-1800` (ace-run provider) never ran the gate. New `scripts/demo-data-setup-qa.ts` computes the checks it can from local files, merges the live-labs outcomes, fails every check that applies to the provider (`checksForProvider`) but was not evaluated, and writes the canonical shape via `aggregateQAResult` (`lib/qa-types.ts`), which fails a result that evaluated nothing. New ace-run checks 22 (`worker_review_url_scoped`) and 23 (`cascade_handoff_complete`); check 21 now has `periodsFromHistoryRuns`. Run against Spark's real artifacts: 4/5 pass, and check 22 FAILS — all three worker-review URLs carry `owning_program_id` but no `program_id` (ace#2521). | ACE team |

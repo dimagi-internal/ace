@@ -749,5 +749,22 @@
       "Umodzi Development Group (example)": 0.4,
       "Mphamvu Health Alliance (example)": 0.47
     }
-  }
+  },
+  "review_routing": [
+    {
+      "flag": "repeat_counts_flag",
+      "pdd_ref": "PDD §7.2 S-1 (the flagged stratum goes to desk review)",
+      "expect": {
+        "flagged": [
+          true
+        ]
+      }
+    }
+  ],
+  "single_child_levels": [
+    {
+      "level": "worker>entity",
+      "reason": "PDD §6: each community-based facilitator follows exactly one community"
+    }
+  ]
 }
