@@ -172,9 +172,11 @@ Once Step 1 has authored the registry and the programme report, build this run's
 Coach: invoke `ocs-coach-setup` (`skills/ocs-coach-setup/SKILL.md`). It clones the
 Phase 5 Q&A bot, installs the coaching script with indicator cards from THIS run's
 registry (the Coach's topic keys are the registry's indicator ids), QAs it with a
-simulated worker over the OCS API, and adds a linked coaching copy of the
-programme report with the `start_ocs_outreach` action and the canopy panel on. It
-never sends to a worker; a person starts coaching from that page.
+simulated worker over the OCS API, and puts coaching on the reports Step 1 built:
+the programme report and each partner's opportunity report get the
+`start_ocs_outreach` action (bot = this Coach) and the canopy panel. Those are the
+pages Step 3 films, so coaching appears in the demo as part of the report. It never
+sends to a worker; a person starts coaching from those pages.
 
 It is best effort, like Step 3.95: a failure (most often the OCS team lacking the
 `flag_commcare_connect` feature flag, which only blocks real sends) is a named

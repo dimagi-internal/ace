@@ -41,6 +41,10 @@ def main(input: str, **kwargs) -> str:
     escalations, reply = take("[[COACH_ESCALATE:", reply)
     all_finished = "[[COACH_DONE]]" in reply
     reply = reply.replace("[[COACH_DONE]]", "")
+    # A marker the model wrapped in backticks leaves an empty code span behind
+    # (ace#2744); remove those, and any line left holding only backticks.
+    reply = reply.replace("``", "")
+    reply = "\n".join(line for line in reply.split("\n") if line.strip() not in ("`", "```"))
     # Tidy blank lines a removed marker leaves behind.
     while "\n\n\n" in reply:
         reply = reply.replace("\n\n\n", "\n\n")

@@ -81,15 +81,30 @@ failure is a residual, not a phase halt.
    `experiment_id, public_id, team_slug, pipeline_id, admin_url, name,
    published_version_number, collection_id, registry_id, topic_keys[],
    connect_channel, qa`.
-9. **Coaching page.** Clone the programme report as a LINKED copy
-   (`workflow_clone({source_workflow_id: <programme report>, linked: true, target_program_id})`,
-   named `<Programme> coaching report (Coach QA, ...)`) and on the COPY set
-   `config.actions: [{key: "initiate_ai_coach", type: "start_ocs_outreach", label: "Start coaching", defaults: {bot: "<public_id>", prompt: <briefing template>}}]`
-   and `config.agent: {share: true}` (`workflow_update_definition`). Never edit the
-   programme report itself: the DDD render films it, and the panel would appear in
-   every frame. Create a run, warm it (`workflow_ensure_visit_cache`), and confirm
-   `workflow_run_indicators(band: "red")` returns workers. Record the copy under
-   `ocs_coach.coaching_workflow: {workflow_id, run_id, url}`.
+9. **Put coaching on the standard reports.** Coaching lives on the reports Phase 7
+   already builds — the programme report (`products.synthetic.cascade.programme_report`)
+   and every partner's opportunity report (`cascade.opp_reports[]`) — not on a copy.
+   On each, `workflow_update_definition` with:
+
+   ```json
+   {"config": {
+     "agent": {"share": true},
+     "actions": [{"key": "initiate_ai_coach", "type": "start_ocs_outreach",
+                  "label": "Start coaching",
+                  "defaults": {"bot": "<ocs_coach.public_id>", "prompt": "<briefing template>"}}]
+   }}
+   ```
+
+   `config` shallow-merges, so this keeps the report's other keys. The report's own
+   render shows the declared action as a button on worker rows, and `share` puts the
+   canopy panel on the page, so "start coaching for every red facilitator" works there.
+   Because Step 1.9 runs before the DDD render, the panel and the button are part of
+   the page the demo films — coaching is a feature of the report, not an add-on.
+   Confirm with `workflow_run_context` (the action is listed with this bot) and
+   `workflow_run_indicators(band: "red")` (workers come back), and record
+   `ocs_coach.coaching_on: [{workflow_id, run_id, url}]`.
+
+   Rebuilding the Coach (a new `public_id`) means patching these reports again.
 
 ## The briefing a person (or the page agent) sends
 
