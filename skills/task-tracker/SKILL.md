@@ -29,7 +29,7 @@ description: >
   question is deliberately open). If `canopy agent --help` fails or no workbench token exists,
   note "board: not configured" in the close-out and move on.
 - **Distinguish "not configured" from "down" — they are different close-out lines.** The board is
-  backed by the **`canopy-web`** MCP (an HTTP server at `labs.connect.dimagi.com/canopy/api/mcp/`).
+  backed by the **`canopy-web`** MCP (an HTTP server at `canopy.dimagi.com/api/mcp/`).
   When a canopy MCP is *unreachable* rather than *unconfigured*, say
   `board: unavailable (<server> <error>)` — reporting a live outage as `not configured` misfiles a
   transient failure as a settled state, and nobody goes looking for it again. Either way: skip the

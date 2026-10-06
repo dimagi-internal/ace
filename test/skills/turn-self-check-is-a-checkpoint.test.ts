@@ -156,7 +156,7 @@ describe('ace#2173 — the self-check survives an absent TodoWrite', () => {
  * "when canopy-gws is unavailable". Two corrections, both verified:
  *
  *   1. The board is backed by the `canopy-web` MCP
- *      (`labs.connect.dimagi.com/canopy/api/mcp/`). `canopy-gws` is canopy's
+ *      (`canopy.dimagi.com/api/mcp/`). `canopy-gws` is canopy's
  *      Google-Workspace server and the board never touches it — so a dead
  *      canopy-gws takes nothing in this skill down with it.
  *   2. task-tracker ALREADY had a degraded path. What it lacked was the

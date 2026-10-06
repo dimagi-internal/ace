@@ -133,6 +133,9 @@ export function authForUrl(url: string | null | undefined): PreviewAuth {
   } catch {
     return 'public';
   }
+  // canopy moved to its own host, canopy.dimagi.com (2026-10-05); the old labs mount
+  // still 302s there, so both forms are canopy pages behind canopy's own login.
+  if (host === 'canopy.dimagi.com' || host.startsWith('canopy.') || host.startsWith('canopy-')) return 'canopy';
   if (host === 'labs.connect.dimagi.com' && path.startsWith('/canopy/')) return 'canopy';
   if (host === 'connect.dimagi.com') return 'connect';
   if (host === 'labs.connect.dimagi.com') return 'labs';

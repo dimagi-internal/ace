@@ -79,6 +79,14 @@ describe('auth', () => {
     expect(authForUrl('not a url')).toBe('public');
   });
 
+  it('routes canopy pages on canopy.dimagi.com (its own host since 2026-10-05) to canopy', () => {
+    // A canopy page opened with no session lands on Google sign-in; classing the new
+    // host as public would photograph that sign-in page as the run's preview.
+    expect(authForUrl('https://canopy.dimagi.com/ddd/n/r')).toBe('canopy');
+    expect(authForUrl('https://canopy.dimagi.com/walkthrough/abc?t=x')).toBe('canopy');
+    expect(effectiveAuth(gap({ kind: 'walkthrough', url: 'https://canopy.dimagi.com/ddd/n/r', auth: 'public' }))).toBe('canopy');
+  });
+
   it('routes canopy pages on the labs host to canopy, whatever the gap says', () => {
     const g = gap({ kind: 'walkthrough', url: 'https://labs.connect.dimagi.com/canopy/ddd/n/r', auth: 'labs' });
     expect(effectiveAuth(g)).toBe('canopy');
