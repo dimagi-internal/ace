@@ -28,7 +28,7 @@ path — that is the DRY violation this skill exists to avoid.
 1. **Pull the verbatim current narration from canopy** (the source of truth — NOT the
    `docs/walkthroughs/<slug>.yaml` scene-spec, which drifts; NOT reconstructed audio):
    ```
-   GET https://labs.connect.dimagi.com/canopy/api/ddd/narratives/<slug>/
+   GET https://canopy.dimagi.com/api/ddd/narratives/<slug>/
    Authorization: Bearer <canopy PAT>      # ~/.claude/canopy/workbench-token
    ```
    → `current_version.version` (N) and `current_version.story`, plus `versions[]` (the lineage).
