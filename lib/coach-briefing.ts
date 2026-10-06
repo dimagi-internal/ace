@@ -100,6 +100,14 @@ export function renderIndicatorCards(cards: IndicatorCard[]): string {
           `- ${target}Green ${ok} ${green}${c.unit}; amber between ${amber}${c.unit} and ${green}${c.unit}; ` +
             `red ${worse} ${amber}${c.unit}.`,
         );
+        // The words to use, so a red figure is never softened to "a bit under" (the
+        // live Spark Coach did exactly that twice on 2026-10-06).
+        const goal = c.target ?? green;
+        const [redWords, amberWords] =
+          c.direction === 'higher'
+            ? [`well below the goal of ${goal}${c.unit}`, `a little below the goal of ${goal}${c.unit}`]
+            : [`well above the level the programme aims for (${goal}${c.unit})`, `a little above the level the programme aims for`];
+        lines.push(`- Say a red figure as "${redWords}"; an amber one as "${amberWords}".`);
       } else if (!c.reviewFlag) {
         lines.push('- No target is set for this one: explore it with the worker, do not call it good or bad.');
       }

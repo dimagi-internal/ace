@@ -64,6 +64,7 @@ describe('renderIndicatorCards', () => {
     expect(md).not.toMatch(/PDD|§/);
     expect(md).toContain('How it is counted: Counted in 7-day weeks.');
     expect(md).toContain('Green at or above 80%; amber between 60% and 80%; red below 60%.');
+    expect(md).toContain('Say a red figure as "well below the goal of 80%"; an amber one as "a little below the goal of 80%".');
     expect(md).toMatch(/Repeat counts[\s\S]*REVIEW FLAG with no target/);
     expect(md).toMatch(/Women attending[\s\S]*No target is set/);
   });
