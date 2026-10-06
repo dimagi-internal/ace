@@ -158,7 +158,10 @@ uniform verdict shape).
 
 ### 3c. Phase 7 — wire the coaching workflow
 
-On the generated coaching/flags workflow (`demo-data-setup` ace-run provider):
+On the reports Phase 7 already builds — the programme report and each partner's
+opportunity report (`demo-data-setup` ace-run provider), never a separate copy
+(Jon, 2026-10-06: coaching belongs in the core set the demo uses). Their render
+already shows a declared action as a worker-row button:
 
 ```json
 "config": {
@@ -262,6 +265,17 @@ registry, so it can generate, per opp:
 `ocs-coach-qa` adds a quantifier-fidelity check: every assistant statement about
 the worker's data is compared against the briefing; any absolute ("none",
 "never", "every", "at all") on a non-absolute finding fails the run.
+
+## 5d. Who the Coach is talking to
+
+The Coach is NOT the Phase 5 Q&A bot. It is cloned from it only to inherit the model
+and the knowledge collection; its prompt is replaced wholesale. The Q&A bot answers
+supervisors, partner staff and reviewers; the Coach talks to one community worker on
+a basic phone, often in a second language. The template therefore carries an explicit
+"Who you are talking to" section — at most three short sentences (~40 words) per
+message, everyday words, no programme vocabulary (indicator, band, verified, flag…),
+numbers as "12 of your 20 weeks" — and tells the Coach the knowledge base is written
+for supervisors, so it may use its facts but never its wording.
 
 ## 6. Improvements over the KMC Coach (v1 = items 1–5)
 
