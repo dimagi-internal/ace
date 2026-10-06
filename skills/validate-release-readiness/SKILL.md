@@ -157,8 +157,11 @@ release_plan:              # null unless READY
   it is listed in `not_granted`. Dimagi staff (`@dimagi.com`) are not outside
   reviewers. The one escape hatch is `--allow-shared connect` (a clone made
   with `--keep-shared connect`): both shared orgs, every grant marked
-  `shared: true` for later revocation. Labs needs no call (the clone already
-  allowed the partner's domain). **OCS is always the public chat link**, never
+  `shared: true` for later revocation. Labs needs no call. The clone already
+  WIDENED each synthetic opp's allowlist to the partner's domain, keeping ACE's
+  own domain on it (`clone-to-new-workspace` § 4c). The clone records
+  `clone.labs.status: done` only after its `labs_context` read-back showed ACE
+  still sees every opp (ace#2713). **OCS is always the public chat link**, never
   an account.
 - **Connect is BOTH orgs, the holding org and the PM org** (when they differ):
   the holding org holds the opportunity, the PM org holds the program and the

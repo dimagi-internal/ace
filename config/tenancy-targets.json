@@ -34,7 +34,9 @@
     {
       "name": "labs-synthetic-allowlist",
       "tool_pattern": "(?:^|__)synthetic_(?:create\\w*|clone\\w*|set_allowed_domains)$",
-      "args": {"allowed_domains[]": ["labs_allowed_domains[]"]}
+      "args": {"allowed_domains[]": ["labs_allowed_domains[]"]},
+      "operator_values": {"allowed_domains[]": ["@dimagi.com", "{agent_email_domain}"]},
+      "_operator_values_doc": "Domains always admitted on a labs allowlist besides the opp's own: Dimagi staff and ACE's own mailbox domain ({agent_email_domain} = config/agent.json email). Neither widens a partner's view, and ACE must stay on every list or it locks itself out of its own synthetic opps — synthetic_set_allowed_domains REPLACES the list (ace#2713)."
     },
     {
       "name": "ocs-team-writes",

@@ -137,6 +137,28 @@ def _allowed(tenancy: dict, fields: list[str]) -> tuple[set[str], list[str]]:
     return allowed, missing
 
 
+def agent_email_domain() -> str | None:
+    """ACE's own mailbox domain, from config/agent.json `email` (the single source)."""
+    try:
+        with open(os.path.join(PLUGIN_ROOT, "config", "agent.json"), encoding="utf-8") as f:
+            email = (json.load(f) or {}).get("email") or ""
+    except (OSError, ValueError):
+        return None
+    return email[email.rfind("@"):].lower() if "@" in email else None
+
+
+def _operator_values(rule: dict, arg: str, field: str) -> set[str]:
+    """Values a rule admits for `arg` whatever the tenancy says (ace#2713):
+    labs operator domains, which never widen a partner's view."""
+    out: set[str] = set()
+    for v in (rule.get("operator_values") or {}).get(arg, []):
+        if v == "{agent_email_domain}":
+            v = agent_email_domain()
+        if v:
+            out.add(_norm(v, field))
+    return out
+
+
 def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
     problems: list[str] = []
     for arg, fields in (rule.get("args") or {}).items():
@@ -144,6 +166,7 @@ def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
         if not values:
             continue
         allowed, missing = _allowed(tenancy, fields)
+        operators = _operator_values(rule, arg, fields[0])
         if not allowed:
             problems.append(
                 f"`{arg}` is checked against tenancy {' / '.join(missing)}, which is not set "
@@ -151,7 +174,8 @@ def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
             )
             continue
         for v in values:
-            if _norm(v, fields[0]) not in allowed:
+            n = _norm(v, fields[0])
+            if n not in allowed and n not in operators:
                 problems.append(
                     f"`{arg}` = {v!r}, but this opp's tenancy allows {sorted(allowed)}."
                 )
