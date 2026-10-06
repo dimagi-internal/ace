@@ -220,7 +220,7 @@ export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Recor
         blocking: false,
         dimension: 'arc_shape',
         detail:
-          `the finale repeats a fact the opening (scenes 1–${openingN}) already gave: ${restated.map((r) => r.replace('|', ' ')).join(', ')}. ` +
+          `the finale repeats a fact the opening (scenes 1–${openingN}) already gave: ${restated.map((r) => r.split('|').join(' ')).join(', ')}. ` +
           `Reported, not failed — a payoff may revisit a baseline — but it is exactly what the arc judge read as "the finale ` +
           `restates scene 1/2's headline fact" on spark-facilitator 2026-10-06. The judge pass decides whether the finale ` +
           `adds something only its surface shows`,
