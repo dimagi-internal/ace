@@ -47,6 +47,11 @@ import {
   checkWorkerRateDenominators,
   type CascadeSnapshot,
 } from '../../lib/cascade-build-qa';
+import {
+  checkRegistryDisplayText,
+  describeDisplayTextFindings,
+  indicatorsDocOf,
+} from '../../lib/registry-display-text';
 
 /**
  * Check 21 — the cascade story was planned AND landed (ace#2510).
@@ -1265,6 +1270,39 @@ export function cascadeBuildOutcomes(
 }
 
 /**
+ * Check 28 — the registry text the cascade RENDERS reads plainly (ace#2748).
+ *
+ * `display.targets_note`, the nouns, case/visit field labels, visit-flag labels
+ * and descriptions, and each indicator's `label` / `plain` are what a programme
+ * manager reads on screen. spark-facilitator/20261004-1706 (registry 7748)
+ * shipped "Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%)" and the DDD
+ * user-artifact judge capped the demo at clarity 2 on that one line. This gate
+ * reads the same text before any render. `registry` is the authored registry
+ * (`7-synthetic/semantic-registry-author_registry.json`) or a
+ * `semantic_registry_get` response — after a registry edit, the live one.
+ */
+export function checkRegistryTextIsPlain(registry: unknown): QACheckResult {
+  const doc = indicatorsDocOf(registry);
+  if (!doc) {
+    return {
+      pass: false,
+      detail: 'no registry indicators_doc supplied, so the rendered registry text was not read',
+      auto_fix_hint: 'pass --registry <7-synthetic/semantic-registry-author_registry.json, or the semantic_registry_get response>',
+    };
+  }
+  const r = checkRegistryDisplayText(doc);
+  if (r.pass) return { pass: true, detail: `${r.checked} reader-facing registry strings read plainly` };
+  return {
+    pass: false,
+    detail: `${r.findings.length} problem(s) in reader-facing registry text: ${describeDisplayTextFindings(r.findings)}`,
+    auto_fix_hint:
+      'rewrite the text for a programme manager (skills/semantic-registry-author § 3), e.g. "Targets come from the pilot design: ' +
+      'a meeting in at least 80% of each community\'s weeks …"; apply it with semantic_registry_update, then rebuild history ' +
+      '(demo-data-setup § C5). PDD citations stay in scope_note',
+  };
+}
+
+/**
  * Which check ids apply to which provider. The gate runs EVERY applicable
  * check; a check that applies but cannot be evaluated is a FAILURE of that
  * check, never a skip — and the result writer fails a run that evaluated none.
@@ -1281,6 +1319,8 @@ export const CHECKS_BY_PROVIDER: Record<'ace-run' | 'denovo' | 'clone', readonly
     'cascade_worker_rates_not_binary',
     'cascade_displayed_columns_vary',
     'cascade_drill_levels_branch',
+    // ace#2748 — reader-facing registry text, before the DDD judge reads it.
+    'cascade_registry_text_is_plain',
   ],
   denovo: [
     'realized_json_parses',

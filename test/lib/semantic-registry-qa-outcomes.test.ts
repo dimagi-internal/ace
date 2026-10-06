@@ -15,7 +15,7 @@ describe('registryQAOutcomes', () => {
     const outcomes = registryQAOutcomes(report, { valid: true, errors: [] }, { pddSections: SECTIONS, opportunityIds: [10082, 10083, 10084] });
     expect(outcomes.map((o) => o.check)).toEqual(['labs-validate', ...REGISTRY_AUTHORING_CHECKS]);
     const result = aggregateQAResult({ skill: 'semantic-registry-author-qa', target: 't', capture_path: 'p', outcomes });
-    expect(result.stats.checks_run).toBe(11);
+    expect(result.stats.checks_run).toBe(12);
   });
 
   it('fails a check whose input was not supplied, and a missing labs validation', () => {

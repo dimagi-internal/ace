@@ -264,7 +264,7 @@
     "label": "Women who spoke",
     "unit": "people"
    },
-   "targets_note": "Targets are the PDD's own (§8.1 P1 ≥ 80%, P3 ≥ 75%). Spark's participation indicators carry no target in the PDD, so they are shown without one. Synthetic data."
+   "targets_note": "Targets come from the pilot design: a meeting in at least 80% of each community's weeks, and at least 75% of communities finishing Step 7 within 15 weeks. The design sets no target for participation or for the review flags, so none is shown. Synthetic data."
   },
   "measures": [
    {
