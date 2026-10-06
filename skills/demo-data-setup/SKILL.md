@@ -1513,18 +1513,30 @@ written, not profiled. Mechanics that bite (all observed, ace#2510):
   `"1.0"` — the registry reads it with a cast (`semantic-registry-author` step 1);
 - `kpi_config` needs one entry even though the cascade does not read it.
 
-> **TODO(ace#2727) — wire the display roster into labs here.** The plan's
-> `workers[].display_name` and `entities[].name` are ACE's interface (worker
-> `{username, display_name}`, entity `{id, name}`). The labs half is in flight
-> in connect-labs: worker display names in the indicator snapshot (from the
-> synthetic source) and a registry `display.entity.label_field`. Until it lands,
-> generate with the usernames / ids as today and do NOT guess a labs field
-> name; when it lands, pass the roster through `synthetic_generate_from_manifest`
-> (worker names) and set the registry's `display.entity.label_field`
-> (`semantic-registry-author` § 3) to the entity-name field, then delete this
-> TODO. Until then the roster still drives the NARRATION: scenes name the
-> carrier by `display_name` only where the screen shows it (`demo-narrative`
-> step 3b's on-screen rule), never a name the page does not render.
+**Put the display roster on screen** (connect-labs #2251, deployed 2026-10-06).
+The reports show a worker's display name and a case's name only when the
+synthetic data carries them — otherwise they show the username and case id,
+which is how `cbf_a07` and hashed community ids reached the screen (ace#2727).
+- **Workers:** in each partner's manifest, one `flw_personas[]` entry per
+  roster worker: `{id: <workers[].username>, display_name: <workers[].display_name>}`.
+  The persona `id` stays the username (it is the identity the reports key on);
+  `display_name` is what the worker tables show (`byFLW[].name`).
+- **Entities:** `beneficiary_cohorts[0].entity_names: [<entities[].name>, ...]`,
+  in the SAME order as the cohort's entity series (`transplant_pool`); the Nth
+  entity gets the Nth name and lands in each visit's `entity_name`. The cohort
+  must be `longitudinal` (it is, above) — otherwise every visit is a new case and
+  a name does not follow its case.
+- **Registry:** set `display.entity.label_field: entity_name` in the indicators
+  document (`semantic-registry-author` § 3) so the case table and the worker
+  review's case heading show the name, not the id.
+- **Verify, don't assume:** after generating, read one partner's visit rows
+  (`pipeline_preview`) and confirm every entity id carries the name the plan
+  gave it and every worker's rows sit under that worker's display name; a
+  mismatch is a generation defect to fix before § C4, not a narration to write
+  around. Saved runs keep the names they were BUILT with — build them after
+  this step, never before.
+Narration names a worker or community by its plan name only where the page
+shows it (`demo-narrative` step 3b's on-screen rule).
 
 **C4. Instantiate the trio.**
 1. `workflow_create_from_template({template_key: 'indicator_programme_report',

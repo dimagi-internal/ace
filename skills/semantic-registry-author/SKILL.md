@@ -147,6 +147,15 @@ facilitator / partner). `case_fields` name columns the case index carries
 field); `reading` names a numeric per-visit column worth charting per case.
 Title ends `(synthetic)` for Phase 7.
 
+Two more keys turn ids into things a reader can use (connect-labs #2243, #2251):
+- `entity.label_field: entity_name` — the case table and the worker review head a
+  case by its name instead of its id. Set it whenever the data carries case
+  names (Phase 7 always does: `demo-data-setup` § C3 supplies `entity_names`).
+- `visit_flags: [{column, label, value?}]` / `visit_fields: [{field, label, format}]`
+  — when an indicator counts flagged visits (a repeat-count rate, a location
+  review rate), declare the per-visit flag column so the worker review marks
+  WHICH visits, and the columns the flag compares so the reader sees why.
+
 ### 4. Validate, then create — in that order
 
 1. `semantic_registry_validate({properties_doc, indicators_doc, deployment})` —

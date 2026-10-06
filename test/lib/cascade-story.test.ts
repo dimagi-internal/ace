@@ -291,10 +291,16 @@ describe('the rules are wired into demo-data-setup (ace#2727)', () => {
     expect(c0).toMatch(/headline_spread/);
   });
 
-  it('§ C3 carries the labs-wiring TODO at the generation call, and guesses no labs field', () => {
+  it('§ C3 puts the roster on screen through the shipped labs interface (connect-labs #2251), and verifies it', () => {
     const c3 = skill.slice(skill.indexOf('**C3. Author the story, then the data.**'), skill.indexOf('**C4. Instantiate the trio.**'));
-    expect(c3).toMatch(/TODO\(ace#2727\)/);
-    expect(c3).toMatch(/do NOT guess a labs field/);
+    expect(c3).not.toMatch(/TODO\(ace#2727\)/);
+    // the three fields connect-labs #2251 shipped — worker names, case names, the registry key
+    expect(c3).toMatch(/flw_personas\[\]/);
+    expect(c3).toMatch(/display_name/);
+    expect(c3).toMatch(/entity_names/);
+    expect(c3).toMatch(/label_field: entity_name/);
+    // saved runs keep the names they were built with, so the read-back precedes § C4
+    expect(c3).toMatch(/Verify, don't assume/);
   });
 });
 
