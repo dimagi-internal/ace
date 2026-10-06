@@ -421,8 +421,10 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
     } else notGranted.push({ email: r.email, system: 'hq', reason: "shared tenant — the HQ space holds other runs' apps" });
     if (g.connect) {
       if (holding) actions.push({ id: `connect:${r.email}:${holding}`, system: 'connect', kind: 'connect_org_member', email: r.email, target: holding, role: 'viewer', shared: g.connect === 'shared' });
-      if (g.connect === 'shared' && pm && pm !== holding) {
-        actions.push({ id: `connect:${r.email}:${pm}`, system: 'connect', kind: 'connect_org_member', email: r.email, target: pm, role: 'viewer', shared: true });
+      // The PM org too: it holds the PROGRAM (and the verification rules page), which
+      // the run links to; a viewer of the holding org alone cannot open it (ace#2723).
+      if (pm && pm !== holding) {
+        actions.push({ id: `connect:${r.email}:${pm}`, system: 'connect', kind: 'connect_org_member', email: r.email, target: pm, role: 'viewer', shared: g.connect === 'shared' });
       }
     } else notGranted.push({ email: r.email, system: 'connect', reason: 'shared tenant — the Connect orgs hold every ACE opportunity' });
     if (!g.labs) notGranted.push({ email: r.email, system: 'labs', reason: 'shared tenant — the labs scope was not rebuilt for this run' });
