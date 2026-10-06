@@ -160,6 +160,12 @@ release_plan:              # null unless READY
   `shared: true` for later revocation. Labs needs no call (the clone already
   allowed the partner's domain). **OCS is always the public chat link**, never
   an account.
+- **Connect is BOTH orgs, the holding org and the PM org** (when they differ):
+  the holding org holds the opportunity, the PM org holds the program and the
+  verification-rules page, and the run links to both. A viewer of the holding
+  org alone cannot open the program (operator, 2026-10-06: "they should be
+  invited to the spark pm org too right?"). A self-managed opp, where the PM
+  org holds its own opportunity, is one org and one grant.
 - **Drive: verify, else plan an anyone-with-link share.** Every Drive document
   the review page links to is read with the service account
   (`$RC drive-access`). Already open to anyone with the link → verified,

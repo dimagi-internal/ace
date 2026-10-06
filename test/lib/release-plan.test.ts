@@ -61,9 +61,9 @@ describe('buildReleasePlan', () => {
     const { plan, problems } = buildReleasePlan(base);
     expect(problems.filter((p) => p.severity === 'blocker')).toEqual([]);
     expect(plan.actions.map((a) => a.kind)).toEqual([
-      'hq_invite', 'hq_invite', 'connect_org_member', 'connect_org_member', 'drive_share', 'ace_web_invite', 'ace_web_invite', 'email', 'email',
+      'hq_invite', 'hq_invite', 'connect_org_member', 'connect_org_member', 'connect_org_member', 'connect_org_member', 'drive_share', 'ace_web_invite', 'ace_web_invite', 'email', 'email',
     ]);
-    expect(plan.actions.map((a) => a.step)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(plan.actions.map((a) => a.step)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     // only the private doc is shared; the open one is verified, not touched
     expect(plan.actions.filter((a) => a.kind === 'drive_share').map((a) => a.target)).toEqual(['PRIVATEPRIV22']);
     expect(plan.actions.find((a) => a.id === 'ace-web:bo@spark.org')?.role).toBe('editor');
@@ -83,6 +83,20 @@ describe('buildReleasePlan', () => {
     const { plan } = buildReleasePlan({ ...base, runState: shared, reviewers: parseReviewers('amina@spark.org'), options: { ...base.options, allow_shared_connect: true } });
     const c = plan.actions.filter((a) => a.kind === 'connect_org_member');
     expect(c.map((a) => [a.target, a.shared])).toEqual([['spark-nm', true], ['spark-pm', true]]);
+  });
+
+  it('a dedicated clone grants BOTH its Connect orgs: the holding org (opportunity) and the PM org (program)', () => {
+    // The run links the program at /a/<pm_org>/program/<id>/ and the verification rules
+    // live on the PM org's page; a holding-org viewer alone cannot open either (Jonathan
+    // Jackson, 2026-10-06: "they should be invited to the spark pm org too right?").
+    const { plan } = buildReleasePlan({ ...base, reviewers: parseReviewers('amina@spark.org') });
+    const c = plan.actions.filter((a) => a.kind === 'connect_org_member');
+    expect(c.map((a) => [a.target, a.shared, a.role])).toEqual([['spark-nm', false, 'viewer'], ['spark-pm', false, 'viewer']]);
+  });
+
+  it('a self-managed opp (PM org holds its own opportunity) is granted that one org once', () => {
+    const { plan } = buildReleasePlan({ ...base, reviewers: parseReviewers('amina@spark.org'), tenancy: { ...base.tenancy!, connect_pm_org: 'spark-nm' } });
+    expect(plan.actions.filter((a) => a.kind === 'connect_org_member').map((a) => a.target)).toEqual(['spark-nm']);
   });
 
   it('no reviewers is a blocker', () => {
