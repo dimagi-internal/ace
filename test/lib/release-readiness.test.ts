@@ -10,6 +10,7 @@ import {
   assessApps,
   assessChatbot,
   assessGates,
+  isArchived,
   assessLinks,
   assessPostcondition,
   assessPreviews,
@@ -95,6 +96,31 @@ describe('assessGates on the real Spark run', () => {
     const plain = v.blockers.find((x) => x.id === 'eval-below-band:run-surface-audit-eval')!;
     expect(plain.summary).toMatch(/cleared the score band but a dimension is still below 7: jargon and insider language and internal consistency\./);
     expect(plain.summary).not.toMatch(/pass mark/);
+  });
+
+  it('an archived attempt under superseded-*/ is not graded, nor stale against current files (ace#2753)', () => {
+    // spark/spark-facilitator/20261004-1706 after the clone re-sync: the old Phase 7
+    // gates were moved to 7-synthetic/superseded-2026-10-06-pre-resync/, the current
+    // ones are fresh. Grading the archive against the newer current artifacts raised
+    // qa-stale/eval-stale blockers that no re-run could clear.
+    const old = '2026-10-06T14:00:00Z';
+    const cur = '2026-10-06T23:02:00Z';
+    const qa = 'verdict: pass\nchecks_run: 1\nchecks_passed: 1\nfailures: []\n';
+    const ev = 'verdict: pass\noverall_score: 8.2\ngate:\n  threshold: 7.0\n';
+    const arch = '7-synthetic/superseded-2026-10-06-pre-resync';
+    const files: RunFile[] = [
+      { path: `${arch}/demo-data-setup-qa_result.yaml`, modifiedTime: old, text: qa },
+      { path: `${arch}/semantic-registry-author-eval_verdict.yaml`, modifiedTime: old, text: ev },
+      { path: `${arch}/demo-data-setup.md`, modifiedTime: old },
+      { path: '7-synthetic/demo-data-setup.md', modifiedTime: cur },
+      { path: '7-synthetic/semantic-registry-author_registry.json', modifiedTime: cur },
+    ];
+    const ids = assessGates(files, {}, { qaSkills: new Set(), evalSkills: new Set() }).map((f) => f.id);
+    expect(ids.filter((i) => /stale/.test(i))).toEqual([]);
+    expect(isArchived(`${arch}/x.yaml`)).toBe(true);
+    expect(isArchived('7-synthetic/superseded-2026-10-06-attempt-1/x.yaml')).toBe(true);
+    expect(isArchived('7-synthetic/demo-data-setup.md')).toBe(false);
+    expect(isArchived('7-synthetic/superseded.md')).toBe(false);
   });
 
   it('a `warn` BELOW the band keeps the below-pass-mark wording', () => {
