@@ -19,11 +19,11 @@ a yes. QA conversations to Dimagi staff use the action's `deliver_to` argument.
 
 ## When it runs
 
-After `ocs-agent-setup` (it clones that bot, so it inherits the model and the opp
-collection), and after Phase 7 has authored the semantic registry — the Coach's
-topic keys ARE the registry's indicator ids. In a run where Phase 7 has not
-happened yet, run it at the Phase 7 boundary; re-run it whenever the registry
-version changes.
+Phase 7 Step 1.9 (`agents/synthetic-data-and-workflows.md`), after the semantic
+registry and programme report exist — the Coach's topic keys ARE the registry's
+indicator ids — and after Phase 5's Q&A bot, which it clones for the model and the
+opp collection. Re-run it whenever the registry version changes. Best effort: a
+failure is a residual, not a phase halt.
 
 ## Inputs
 
@@ -81,11 +81,15 @@ version changes.
    `experiment_id, public_id, team_slug, pipeline_id, admin_url, name,
    published_version_number, collection_id, registry_id, topic_keys[],
    connect_channel, qa`.
-9. **Wire the Labs workflow** (Phase 7's worker-review workflow for the opp/program):
-   `workflow_update_definition` adding
-   `config.actions: [{key: "initiate_ai_coach", type: "start_ocs_outreach", label: "Start coaching", defaults: {bot: "<public_id>"}}]`
-   and `config.agent: {share: true}`. Do this when no DDD render of that workflow
-   is in flight — the canopy panel appears on the page once `share` is on.
+9. **Coaching page.** Clone the programme report as a LINKED copy
+   (`workflow_clone({source_workflow_id: <programme report>, linked: true, target_program_id})`,
+   named `<Programme> coaching report (Coach QA, ...)`) and on the COPY set
+   `config.actions: [{key: "initiate_ai_coach", type: "start_ocs_outreach", label: "Start coaching", defaults: {bot: "<public_id>", prompt: <briefing template>}}]`
+   and `config.agent: {share: true}` (`workflow_update_definition`). Never edit the
+   programme report itself: the DDD render films it, and the panel would appear in
+   every frame. Create a run, warm it (`workflow_ensure_visit_cache`), and confirm
+   `workflow_run_indicators(band: "red")` returns workers. Record the copy under
+   `ocs_coach.coaching_workflow: {workflow_id, run_id, url}`.
 
 ## The briefing a person (or the page agent) sends
 

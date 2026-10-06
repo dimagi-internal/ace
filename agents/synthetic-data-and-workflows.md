@@ -17,6 +17,7 @@ skills:
   - { name: semantic-registry-author, has_judge: true, qa_skill: semantic-registry-author-qa, eval_skill: semantic-registry-author-eval }
   - { name: demo-data-setup,   has_judge: false, qa_skill: demo-data-setup-qa }
   - { name: demo-narrative,     has_judge: false } # canopy scripts.ddd.validate is the gate
+  - { name: ocs-coach-setup,    has_judge: false } # simulated-worker QA inside the skill (Step 1.9)
 ---
 
 # Synthetic Data and Workflows (Phase 7)
@@ -156,6 +157,22 @@ hours — the DDD render (Step 3) is still the long pole.
 **Legacy path.** The single-opportunity template dashboards (`demo-data-setup`
 § Legacy single-opportunity path) remain for an operator who asks for them
 (`--legacy-dashboards`); they are no longer the default.
+
+### Step 1.9: The OCS Coach — `ocs-coach-setup` (best effort)
+
+Once Step 1 has authored the registry and the programme report, build this run's
+Coach: invoke `ocs-coach-setup` (`skills/ocs-coach-setup/SKILL.md`). It clones the
+Phase 5 Q&A bot, installs the coaching script with indicator cards from THIS run's
+registry (the Coach's topic keys are the registry's indicator ids), QAs it with a
+simulated worker over the OCS API, and adds a linked coaching copy of the
+programme report with the `start_ocs_outreach` action and the canopy panel on. It
+never sends to a worker; a person starts coaching from that page.
+
+It is best effort, like Step 3.95: a failure (most often the OCS team lacking the
+`flag_commcare_connect` feature flag, which only blocks real sends) is a named
+residual in this phase's summary, never a phase halt. It writes
+`phases.ocs-setup.products.ocs_coach` and records
+`steps.ocs-coach-setup: {status: done|partial}` here.
 
 ### Step 2: Narrative — `demo-narrative`
 
@@ -538,6 +555,7 @@ phases:
       semantic-registry-author-qa: { status: done }
       demo-data-setup: { status: done }
       demo-narrative:   { status: done }
+      ocs-coach-setup:  { status: done }   # or partial, with the residual named
       ddd-run:          { status: done }
 ```
 
