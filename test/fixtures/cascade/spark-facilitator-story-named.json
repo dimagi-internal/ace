@@ -1,0 +1,753 @@
+{
+  "partners": [
+    {
+      "label": "Tiyende Community Trust (example)",
+      "opportunity_id": 10082,
+      "workers": 12
+    },
+    {
+      "label": "Kuunika Outreach Network (example)",
+      "opportunity_id": 10083,
+      "workers": 12
+    },
+    {
+      "label": "Tsogolo Women's Forum (example)",
+      "opportunity_id": 10084,
+      "workers": 12
+    },
+    {
+      "label": "Umodzi Development Group (example)",
+      "opportunity_id": 10085,
+      "workers": 12
+    },
+    {
+      "label": "Mphamvu Health Alliance (example)",
+      "opportunity_id": 10086,
+      "workers": 12
+    }
+  ],
+  "weeks": 13,
+  "worker_roster": [
+    "cbf_a01",
+    "cbf_a02",
+    "cbf_a03",
+    "cbf_a04",
+    "cbf_a05",
+    "cbf_a06",
+    "cbf_a07",
+    "cbf_a08",
+    "cbf_a09",
+    "cbf_a10",
+    "cbf_a11",
+    "cbf_a12",
+    "cbf_b01",
+    "cbf_b02",
+    "cbf_b03",
+    "cbf_b04",
+    "cbf_b05",
+    "cbf_b06",
+    "cbf_b07",
+    "cbf_b08",
+    "cbf_b09",
+    "cbf_b10",
+    "cbf_b11",
+    "cbf_b12",
+    "cbf_c01",
+    "cbf_c02",
+    "cbf_c03",
+    "cbf_c04",
+    "cbf_c05",
+    "cbf_c06",
+    "cbf_c07",
+    "cbf_c08",
+    "cbf_c09",
+    "cbf_c10",
+    "cbf_c11",
+    "cbf_c12",
+    "cbf_d01",
+    "cbf_d02",
+    "cbf_d03",
+    "cbf_d04",
+    "cbf_d05",
+    "cbf_d06",
+    "cbf_d07",
+    "cbf_d08",
+    "cbf_d09",
+    "cbf_d10",
+    "cbf_d11",
+    "cbf_d12",
+    "cbf_e01",
+    "cbf_e02",
+    "cbf_e03",
+    "cbf_e04",
+    "cbf_e05",
+    "cbf_e06",
+    "cbf_e07",
+    "cbf_e08",
+    "cbf_e09",
+    "cbf_e10",
+    "cbf_e11",
+    "cbf_e12"
+  ],
+  "signals": [
+    {
+      "kind": "lagging_partner",
+      "carrier": "Tsogolo Women's Forum (example)",
+      "indicator": "SF_P1",
+      "higher_is_better": true,
+      "pdd_ref": "PDD §8.1 P1 (target ≥ 80%); not-held reason codes §5.4 screen 3a",
+      "visible_as": "Tsogolo Women's Forum (example)'s meeting regularity row is the only one below the 80% target, because from week 6 its planned meetings are recorded as not held (poor mobilization, transport difficulty)."
+    },
+    {
+      "kind": "standout_worker",
+      "carrier": "cbf_b03",
+      "indicator": "SF_S4",
+      "higher_is_better": true,
+      "pdd_ref": "PDD §8.2 S4 female participation",
+      "visible_as": "In Kuunika Outreach Network (example)'s facilitator table one CBF's women-who-spoke figure is about double every peer's, and their community reaches Step 7 first."
+    },
+    {
+      "kind": "data_quality",
+      "carrier": "cbf_a07",
+      "indicator": "SF_D1",
+      "higher_is_better": false,
+      "pdd_ref": "PDD §5.4 repeat_counts_flag; §7.2 S-1 flagged stratum",
+      "visible_as": "One Tiyende Community Trust (example) facilitator files identical men/women attendance at nearly every meeting, so their repeat-count rate stands alone while every other CBF sits near zero."
+    },
+    {
+      "kind": "trend",
+      "carrier": "Kuunika Outreach Network (example)",
+      "indicator": "SF_S2",
+      "higher_is_better": true,
+      "trend_direction": "up",
+      "pdd_ref": "PDD §8.2 S2 female attendance",
+      "visible_as": "Across the 13 saved weekly reports, Kuunika Outreach Network (example)'s share of women attending climbs from about a third to level with the other partners."
+    }
+  ],
+  "workers": [
+    {
+      "username": "cbf_a01",
+      "display_name": "Chikondi Banda",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a02",
+      "display_name": "Limbani Mwale",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a03",
+      "display_name": "Yamikani Gondwe",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a04",
+      "display_name": "Thoko Kumwenda",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a05",
+      "display_name": "Kondwani Chisale",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a06",
+      "display_name": "Tiyamike Msiska",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a07",
+      "display_name": "Wezi Phiri",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a08",
+      "display_name": "Chisomo Gondwe",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a09",
+      "display_name": "Pemphero Kumwenda",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a10",
+      "display_name": "Atupele Tembo",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a11",
+      "display_name": "Mphatso Msiska",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_a12",
+      "display_name": "Madalitso Phiri",
+      "partner": "Tiyende Community Trust (example)"
+    },
+    {
+      "username": "cbf_b01",
+      "display_name": "Chimwemwe Chirwa",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b02",
+      "display_name": "Tadala Kumwenda",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b03",
+      "display_name": "Takondwa Tembo",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b04",
+      "display_name": "Dalitso Kachingwe",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b05",
+      "display_name": "Chikondi Phiri",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b06",
+      "display_name": "Limbani Chirwa",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b07",
+      "display_name": "Yamikani Nyirenda",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b08",
+      "display_name": "Thoko Mbewe",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b09",
+      "display_name": "Kondwani Kachingwe",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b10",
+      "display_name": "Tiyamike Banda",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b11",
+      "display_name": "Wezi Mwale",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_b12",
+      "display_name": "Chisomo Nyirenda",
+      "partner": "Kuunika Outreach Network (example)"
+    },
+    {
+      "username": "cbf_c01",
+      "display_name": "Pemphero Mbewe",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c02",
+      "display_name": "Atupele Chisale",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c03",
+      "display_name": "Mphatso Banda",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c04",
+      "display_name": "Madalitso Mwale",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c05",
+      "display_name": "Chimwemwe Gondwe",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c06",
+      "display_name": "Tadala Mbewe",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c07",
+      "display_name": "Takondwa Chisale",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c08",
+      "display_name": "Dalitso Msiska",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c09",
+      "display_name": "Chikondi Mwale",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c10",
+      "display_name": "Limbani Gondwe",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c11",
+      "display_name": "Yamikani Kumwenda",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_c12",
+      "display_name": "Thoko Tembo",
+      "partner": "Tsogolo Women's Forum (example)"
+    },
+    {
+      "username": "cbf_d01",
+      "display_name": "Kondwani Msiska",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d02",
+      "display_name": "Tiyamike Phiri",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d03",
+      "display_name": "Wezi Chirwa",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d04",
+      "display_name": "Chisomo Kumwenda",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d05",
+      "display_name": "Pemphero Tembo",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d06",
+      "display_name": "Atupele Kachingwe",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d07",
+      "display_name": "Mphatso Phiri",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d08",
+      "display_name": "Madalitso Chirwa",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d09",
+      "display_name": "Chimwemwe Nyirenda",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d10",
+      "display_name": "Tadala Tembo",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d11",
+      "display_name": "Takondwa Kachingwe",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_d12",
+      "display_name": "Dalitso Banda",
+      "partner": "Umodzi Development Group (example)"
+    },
+    {
+      "username": "cbf_e01",
+      "display_name": "Chikondi Chirwa",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e02",
+      "display_name": "Limbani Nyirenda",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e03",
+      "display_name": "Yamikani Mbewe",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e04",
+      "display_name": "Thoko Chisale",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e05",
+      "display_name": "Kondwani Banda",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e06",
+      "display_name": "Tiyamike Mwale",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e07",
+      "display_name": "Wezi Gondwe",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e08",
+      "display_name": "Chisomo Mbewe",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e09",
+      "display_name": "Pemphero Chisale",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e10",
+      "display_name": "Atupele Msiska",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e11",
+      "display_name": "Mphatso Mwale",
+      "partner": "Mphamvu Health Alliance (example)"
+    },
+    {
+      "username": "cbf_e12",
+      "display_name": "Madalitso Gondwe",
+      "partner": "Mphamvu Health Alliance (example)"
+    }
+  ],
+  "entities": [
+    {
+      "id": "cb284858874156b802588b7a",
+      "name": "Kalemba",
+      "worker": "cbf_a01"
+    },
+    {
+      "id": "3a2ad0b3df20d1dae8ea1dd6",
+      "name": "Kandima",
+      "worker": "cbf_a02"
+    },
+    {
+      "id": "f726f1d8d3ccb70d24bfd556",
+      "name": "Kasongo",
+      "worker": "cbf_a03"
+    },
+    {
+      "id": "27a931f419552ac39a53b1b4",
+      "name": "Kambala",
+      "worker": "cbf_a04"
+    },
+    {
+      "id": "b16700584a9bdc5fb649b72e",
+      "name": "Katete",
+      "worker": "cbf_a05"
+    },
+    {
+      "id": "558e4913213d2eb36666f53e",
+      "name": "Kawanje",
+      "worker": "cbf_a06"
+    },
+    {
+      "id": "f452a9226e2c0605a1cefacc",
+      "name": "Kakanda",
+      "worker": "cbf_a07"
+    },
+    {
+      "id": "59cd8df954cadb5b38b465e3",
+      "name": "Kaphala",
+      "worker": "cbf_a08"
+    },
+    {
+      "id": "39c3df18b2e70e257f736a30",
+      "name": "Chilemba",
+      "worker": "cbf_a09"
+    },
+    {
+      "id": "4274fa1252e631a9b627a32e",
+      "name": "Chindima",
+      "worker": "cbf_a10"
+    },
+    {
+      "id": "71445f49741c1000477391c2",
+      "name": "Chisongo",
+      "worker": "cbf_a11"
+    },
+    {
+      "id": "1426d07ba7fe40a19d5ee0fa",
+      "name": "Chimbala",
+      "worker": "cbf_a12"
+    },
+    {
+      "id": "354de4bfe24e0349206024d8",
+      "name": "Chitete",
+      "worker": "cbf_b01"
+    },
+    {
+      "id": "9e2193f09c6dbeabc16364f7",
+      "name": "Chiwanje",
+      "worker": "cbf_b02"
+    },
+    {
+      "id": "844b7f5be1f39b92474d64de",
+      "name": "Chikanda",
+      "worker": "cbf_b03"
+    },
+    {
+      "id": "7119255bfb8d9086dbe2c399",
+      "name": "Chiphala",
+      "worker": "cbf_b04"
+    },
+    {
+      "id": "c3b64370e1583c154cad446e",
+      "name": "Mpalemba",
+      "worker": "cbf_b05"
+    },
+    {
+      "id": "cbed9c1bc6825689b55b1744",
+      "name": "Mpandima",
+      "worker": "cbf_b06"
+    },
+    {
+      "id": "a69a165faca50b6ad9c63299",
+      "name": "Mpasongo",
+      "worker": "cbf_b07"
+    },
+    {
+      "id": "6f06d6a621c1ddd7a7b8a308",
+      "name": "Mpambala",
+      "worker": "cbf_b08"
+    },
+    {
+      "id": "c13cac6b2d23edd85548a9d8",
+      "name": "Mpatete",
+      "worker": "cbf_b09"
+    },
+    {
+      "id": "c62fc4ff20197397749ccb4f",
+      "name": "Mpawanje",
+      "worker": "cbf_b10"
+    },
+    {
+      "id": "a49500a5b50034427acec52f",
+      "name": "Mpakanda",
+      "worker": "cbf_b11"
+    },
+    {
+      "id": "80e1b37e554acd989299b769",
+      "name": "Mpaphala",
+      "worker": "cbf_b12"
+    },
+    {
+      "id": "d02ff06030b5c03e9d44d648",
+      "name": "Nyalemba",
+      "worker": "cbf_c01"
+    },
+    {
+      "id": "36a6e7887838a800008ada86",
+      "name": "Nyandima",
+      "worker": "cbf_c02"
+    },
+    {
+      "id": "8c0f04388a4642030379ca08",
+      "name": "Nyasongo",
+      "worker": "cbf_c03"
+    },
+    {
+      "id": "b1e1ad64a69542085c62c8c4",
+      "name": "Nyambala",
+      "worker": "cbf_c04"
+    },
+    {
+      "id": "906e1e3fe7802f8de5d90aed",
+      "name": "Nyatete",
+      "worker": "cbf_c05"
+    },
+    {
+      "id": "b89f009a6400d2490dc81c84",
+      "name": "Nyawanje",
+      "worker": "cbf_c06"
+    },
+    {
+      "id": "fe11eba80c5cba4782d9c195",
+      "name": "Nyakanda",
+      "worker": "cbf_c07"
+    },
+    {
+      "id": "7601c109737a203282cdcf4c",
+      "name": "Nyaphala",
+      "worker": "cbf_c08"
+    },
+    {
+      "id": "9371a19c2b2102d74f392344",
+      "name": "Lulemba",
+      "worker": "cbf_c09"
+    },
+    {
+      "id": "d804475745e66d43e19a02f4",
+      "name": "Lundima",
+      "worker": "cbf_c10"
+    },
+    {
+      "id": "2fd22ae3e93a42c7d0fdabb9",
+      "name": "Lusongo",
+      "worker": "cbf_c11"
+    },
+    {
+      "id": "74263891653a73b5882c0ddd",
+      "name": "Lumbala",
+      "worker": "cbf_c12"
+    },
+    {
+      "id": "88d06fb3a752531aa181704e",
+      "name": "Lutete",
+      "worker": "cbf_d01"
+    },
+    {
+      "id": "59c8577bb16d08ba75c372ad",
+      "name": "Luwanje",
+      "worker": "cbf_d02"
+    },
+    {
+      "id": "84bcb527e954a2cd92bf0144",
+      "name": "Lukanda",
+      "worker": "cbf_d03"
+    },
+    {
+      "id": "1765a840152f79ded4e2db3b",
+      "name": "Luphala",
+      "worker": "cbf_d04"
+    },
+    {
+      "id": "0a26f678a83027704767a605",
+      "name": "Thalemba",
+      "worker": "cbf_d05"
+    },
+    {
+      "id": "f978fa3dea5f81146d4bc288",
+      "name": "Thandima",
+      "worker": "cbf_d06"
+    },
+    {
+      "id": "489ccd32b188b0bfc7a82fdc",
+      "name": "Thasongo",
+      "worker": "cbf_d07"
+    },
+    {
+      "id": "db3d26cdac55b24e6ba6b60c",
+      "name": "Thambala",
+      "worker": "cbf_d08"
+    },
+    {
+      "id": "7289a063081f27aeff0d1f79",
+      "name": "Thatete",
+      "worker": "cbf_d09"
+    },
+    {
+      "id": "a4cd8f7b8658011751dea82a",
+      "name": "Thawanje",
+      "worker": "cbf_d10"
+    },
+    {
+      "id": "406dd0fcd042dfe32e03561c",
+      "name": "Thakanda",
+      "worker": "cbf_d11"
+    },
+    {
+      "id": "1af2fbc07ee310565e9a1d4f",
+      "name": "Thaphala",
+      "worker": "cbf_d12"
+    },
+    {
+      "id": "b0f1e7488aae8cc70f1837bf",
+      "name": "Zolemba",
+      "worker": "cbf_e01"
+    },
+    {
+      "id": "c950e32e10524b2d936a1b45",
+      "name": "Zondima",
+      "worker": "cbf_e02"
+    },
+    {
+      "id": "a906e90e1885b22accfa0f85",
+      "name": "Zosongo",
+      "worker": "cbf_e03"
+    },
+    {
+      "id": "12c3813ed463e554145a5352",
+      "name": "Zombala",
+      "worker": "cbf_e04"
+    },
+    {
+      "id": "64e160a8c1c9d7235815934f",
+      "name": "Zotete",
+      "worker": "cbf_e05"
+    },
+    {
+      "id": "c78d421f2712da56bddb96df",
+      "name": "Zowanje",
+      "worker": "cbf_e06"
+    },
+    {
+      "id": "a0db723ed3cf5bfbfab6fa14",
+      "name": "Zokanda",
+      "worker": "cbf_e07"
+    },
+    {
+      "id": "e07cd68ce5129c5952fdee60",
+      "name": "Zophala",
+      "worker": "cbf_e08"
+    },
+    {
+      "id": "1072c33c26e3f68834e5b6f0",
+      "name": "Mkelemba",
+      "worker": "cbf_e09"
+    },
+    {
+      "id": "49bdc434ce735848d8b68343",
+      "name": "Mkendima",
+      "worker": "cbf_e10"
+    },
+    {
+      "id": "a9972f265edefa9d369dce14",
+      "name": "Mkesongo",
+      "worker": "cbf_e11"
+    },
+    {
+      "id": "256d9d4a2b6c8eb90f2b3070",
+      "name": "Mkembala",
+      "worker": "cbf_e12"
+    }
+  ],
+  "programme_name": "Spark facilitator pilot (illustrative: five example partners)",
+  "implementing_orgs": 1,
+  "headline_indicators": [
+    "SF_P1",
+    "SF_S2"
+  ],
+  "headline_spread": {
+    "SF_P1": {
+      "Tiyende Community Trust (example)": 0.95,
+      "Kuunika Outreach Network (example)": 0.96,
+      "Tsogolo Women's Forum (example)": 0.62,
+      "Umodzi Development Group (example)": 0.9,
+      "Mphamvu Health Alliance (example)": 0.85
+    },
+    "SF_S2": {
+      "Tiyende Community Trust (example)": 0.44,
+      "Kuunika Outreach Network (example)": 0.45,
+      "Tsogolo Women's Forum (example)": 0.34,
+      "Umodzi Development Group (example)": 0.4,
+      "Mphamvu Health Alliance (example)": 0.47
+    }
+  }
+}

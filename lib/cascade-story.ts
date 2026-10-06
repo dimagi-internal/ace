@@ -21,6 +21,18 @@
  * truth`: the manifest is what we asked for, the snapshot is what labs says.
  *
  * Pure: no I/O. Snapshot values are labs' raw fractions (0.62 for 62%).
+ *
+ * WHAT A VIEWER READS (ace#2727). The plan also owns every NAME the dashboard
+ * renders for an invented thing — partner, worker, followed entity — because
+ * two rails read those names and must agree. ACE's honesty rail (be59309d) says
+ * an invented partner must not pass for a real implementer; canopy's DDD
+ * user-artifact judge reads the screens as the programme manager and scores a
+ * placeholder ("Example partner A", `cbf_a07`, a hashed community id) at
+ * clarity 2. Satisfying the first with a placeholder fails the second, and that
+ * was the floor of spark-facilitator/20261004-1706 (2.0 across 15 judged passes
+ * in three DDD runs). So an invented name is REALISTIC and plainly marked:
+ * "Tiyende Community Trust (example)" — a viewer reads an organisation, and is
+ * still told it is invented.
  */
 
 export type SignalKind = 'lagging_partner' | 'standout_worker' | 'data_quality' | 'trend';
@@ -48,12 +60,56 @@ export interface StoryPartner {
   workers: number;
 }
 
+/**
+ * One worker as the dashboard should NAME them (ace#2727). `username` is the
+ * synthetic identity the generator writes (and the key the snapshot rows carry);
+ * `display_name` is an invented, culturally plausible human name for the PDD's
+ * geography — never a real person's name from the opp's inputs.
+ */
+export interface StoryWorker {
+  username: string;
+  display_name: string;
+  /** The partner label this worker belongs to. */
+  partner?: string;
+}
+
+/** One followed entity (Spark: a community) as the dashboard should name it. */
+export interface StoryEntity {
+  /** The entity / case id the generator writes (may be a hash). */
+  id: string;
+  /** An invented, human-readable name ("Kalemba", not `e3b0c442`). */
+  name: string;
+  /** The worker username who owns it. */
+  worker?: string;
+}
+
 export interface CascadeStoryPlan {
   partners: StoryPartner[];
   weeks: number;
   signals: StorySignal[];
   /** Worker usernames the plan names as carriers must exist; the roster lets the check say so. */
   worker_roster?: string[];
+  /**
+   * The display roster (ace#2727): every worker with the human name a viewer
+   * reads. Required for invented partners — a code-shaped row label is what the
+   * judge scores at clarity 2. One entry per worker (sum of `partners[].workers`).
+   */
+  workers?: StoryWorker[];
+  /** The followed entities with human names (required for invented partners). */
+  entities?: StoryEntity[];
+  /**
+   * The indicators the programme report's headline (scene 1, and the partner
+   * table it is sorted by) shows. Required for invented partners (ace#2727).
+   */
+  headline_indicators?: string[];
+  /**
+   * The per-partner value (raw fraction) the pool is AUTHORED to produce for each
+   * headline indicator: `{SF_P1: {"<partner label>": 0.95, ...}}`. A headline that
+   * is the same for every partner gives the viewer nothing to sort by.
+   */
+  headline_spread?: Record<string, Record<string, number>>;
+  /** The synthetic programme's name as labs renders it; must say it is illustrative. */
+  programme_name?: string;
   /**
    * `invented` (default): ACE made the partners up, so it can always make three.
    * `programme`: they mirror the programme's real partners -- two is a real
@@ -77,11 +133,64 @@ export interface CascadeStoryPlan {
 }
 
 /**
- * The words that tell a dashboard viewer a partner is a demo device, not an
- * organisation in the programme. Checked on each partner label, because the
+ * The marker that tells a dashboard viewer a partner is a demo device, not an
+ * organisation in the programme: a trailing `(example)` (or `(illustrative)`)
+ * on an otherwise realistic name. Checked on each partner label, because the
  * label IS what the programme report renders (it is the `llo_map` org name).
+ *
+ * ace#2727 narrowed this from "the word example/illustrative anywhere": that
+ * accepted "Example partner A", a placeholder canopy's judge scores at clarity 2.
  */
-export const ILLUSTRATIVE_LABEL = /\b(illustrative|example)\b/i;
+export const ILLUSTRATIVE_LABEL = /\((?:example|illustrative)\)\s*$/i;
+
+/**
+ * Placeholder-shaped organisation names: a role word plus a letter/number
+ * ("Partner A", "Org 2"), a demo word up front ("Example partner C"), or a bare
+ * code. Applied to a partner label with its marker stripped.
+ */
+const PLACEHOLDER_ORG =
+  /^(?:(?:example|illustrative|sample|demo|test|synthetic|fake|dummy)\b|(?:partner|org|organi[sz]ation|llo|ngo|implementer|site|team|group)\s*[A-Z0-9]{1,3}$|[A-Z0-9]{1,3}$)/i;
+
+/** A human-readable name: starts with a capital letter; letters, spaces and '’.- only (no digits, no `_`). */
+const HUMAN_NAME = /^\p{Lu}[\p{L}'’.\-]*(?:\s+[\p{L}'’.\-]+)*$/u;
+
+/** Role words that make a "name" a placeholder ("Worker A", "Community 3", "Facilitator B"). */
+const PLACEHOLDER_PERSON =
+  /^(?:worker|facilitator|flw|cbf|chw|community|village|household|case|user|participant|entity|beneficiary|example|sample|test)\b/i;
+
+/**
+ * Why `label` is not an acceptable invented-partner name, or null. Exported so
+ * the skill's authoring step and the QA backstop apply the same rule.
+ */
+export function exampleOrgLabelProblem(label: string): string | null {
+  if (!ILLUSTRATIVE_LABEL.test(label)) return 'carries no trailing "(example)" marker';
+  const core = label.replace(ILLUSTRATIVE_LABEL, '').trim();
+  if (!core) return 'is only the marker';
+  if (PLACEHOLDER_ORG.test(core) || /[\d_]/.test(core)) return 'is a placeholder, not an organisation name';
+  return null;
+}
+
+/** Why `name` is not a human-readable display name for `id`, or null. */
+export function displayNameProblem(name: string | undefined, id: string): string | null {
+  const n = (name ?? '').trim();
+  if (!n) return 'has no display name';
+  if (n.toLowerCase() === id.toLowerCase()) return 'its display name is its code';
+  if (!HUMAN_NAME.test(n)) return `"${n}" is code-shaped (digits, \`_\`, or not capitalised)`;
+  if (PLACEHOLDER_PERSON.test(n) || /\s[A-Z]$/.test(n)) return `"${n}" is a placeholder`;
+  return null;
+}
+
+/** Best-minus-worst spread a headline indicator needs across partners (raw units: 0.05 = 5 pts). */
+export const MIN_HEADLINE_SPREAD = 0.05;
+
+export interface PlanCheckOptions {
+  /**
+   * Names of real people found in the opp's inputs (PDD contacts, LLO contacts,
+   * reviewers). A worker display name containing one fails — an invented roster
+   * must never put a real person's name next to a synthetic figure.
+   */
+  realPeople?: readonly string[];
+}
 
 export interface StoryFinding {
   signal?: SignalKind;
@@ -95,13 +204,21 @@ export interface PlanFloors {
   minWeeks: number;
 }
 
-/** Default story shape: 3 partners × ~12 workers × ~13 weeks. */
-export const DEFAULT_FLOORS: PlanFloors = { minPartners: 3, minWorkersPerPartner: 8, minWeeks: 8 };
+/**
+ * Default story shape: 5 partners × ~12 workers × ~13 weeks (ace#2727). Three
+ * invented partners, all at 100% on the programme's Step 7, were too few for
+ * the concept judge to see why sorting partners by need matters. The floor IS
+ * the default, not below it: a floor under the default is a prose default with
+ * no rail. A `partner_source: programme` plan still floors at 2 (a real
+ * programme's shape).
+ */
+export const DEFAULT_FLOORS: PlanFloors = { minPartners: 5, minWorkersPerPartner: 8, minWeeks: 8 };
 
 export function checkCascadeStoryPlan(
   plan: CascadeStoryPlan,
   registryIndicatorIds: readonly string[],
   floors: PlanFloors = DEFAULT_FLOORS,
+  options: PlanCheckOptions = {},
 ): { verdict: 'pass' | 'fail'; findings: StoryFinding[] } {
   const findings: StoryFinding[] = [];
   const fail = (detail: string, signal?: SignalKind) => findings.push({ severity: 'fail', detail, ...(signal ? { signal } : {}) });
@@ -117,20 +234,28 @@ export function checkCascadeStoryPlan(
   // anonymous benchmark need peers), but a single-implementer pilot shown as
   // "Partner A/B/C" reads as a claim that three organisations deliver it — the
   // outsider eval flagged exactly that on spark-facilitator/20261001-2208. So
-  // the dashboard's own labels must say so ("Example partner A").
+  // each label says it is invented. And it says so on a REALISTIC name: the
+  // be59309d form "Example partner A" is a placeholder canopy's judge scores at
+  // clarity 2, which floored spark-facilitator/20261004-1706 (ace#2727).
   const implementers = plan.implementing_orgs ?? 1;
   if (programme) {
     if (plan.implementing_orgs !== undefined && plan.partners.length !== plan.implementing_orgs) {
       fail(`\`partner_source: programme\` mirrors the programme, but the plan has ${plan.partners.length} partners and the PDD names ${plan.implementing_orgs} implementing organisation(s)`);
     }
   } else {
-    const unlabelled = plan.partners.filter((p) => !ILLUSTRATIVE_LABEL.test(p.label)).map((p) => p.label);
-    if (unlabelled.length) {
+    const bad = plan.partners
+      .map((p) => ({ label: p.label, why: exampleOrgLabelProblem(p.label) }))
+      .filter((x): x is { label: string; why: string } => x.why !== null);
+    if (bad.length) {
       fail(
-        `partner label(s) ${unlabelled.map((l) => `"${l}"`).join(', ')} do not say they are illustrative — the PDD names ` +
+        `partner label(s) ${bad.map((b) => `"${b.label}" (${b.why})`).join(', ')} — the PDD names ` +
           `${implementers} implementing organisation(s) and the dashboard shows ${plan.partners.length} invented partners; ` +
-          `label them e.g. "Example partner A" so a viewer is not told the pilot has ${plan.partners.length} implementers`,
+          `give each a realistic invented organisation name with a trailing "(example)" marker, ` +
+          `e.g. "Tiyende Community Trust (example)" — never a placeholder like "Partner A" or "Example partner A"`,
       );
+    }
+    if (plan.programme_name !== undefined && !/\b(illustrative|example)\b/i.test(plan.programme_name)) {
+      fail(`programme name "${plan.programme_name}" does not say it is illustrative — it is the page title above ${plan.partners.length} invented partners`);
     }
   }
   const labels = new Set(plan.partners.map((p) => p.label));
@@ -161,7 +286,112 @@ export function checkCascadeStoryPlan(
     }
     if (s.kind === 'trend' && !s.trend_direction) fail('a trend signal must declare `trend_direction: up|down`', s.kind);
   }
+
+  const warn = (detail: string) => findings.push({ severity: 'warn', detail });
+  checkDisplayRoster(plan, programme, fail, warn, options);
+  checkHeadlineSpread(plan, ids, labels, programme, fail, warn);
   return { verdict: findings.some((f) => f.severity === 'fail') ? 'fail' : 'pass', findings };
+}
+
+/**
+ * The display roster (ace#2727): workers and followed entities carry the names
+ * a viewer reads. Required for invented partners; a programme mirror that
+ * omits it is warned, not failed (its names may come from the real programme).
+ */
+function checkDisplayRoster(
+  plan: CascadeStoryPlan,
+  programme: boolean,
+  fail: (detail: string, signal?: SignalKind) => void,
+  warn: (detail: string) => void,
+  options: PlanCheckOptions,
+): void {
+  const missing = (what: string) =>
+    `no \`${what}\` display roster — rows render as codes (\`cbf_a07\`, a hashed id), which the DDD judge scores at clarity 2 (ace#2727)`;
+  if (!plan.workers?.length) (programme ? warn : fail)(missing('workers'));
+  if (!plan.entities?.length) (programme ? warn : fail)(missing('entities'));
+
+  const labels = new Set(plan.partners.map((p) => p.label));
+  const realPeople = (options.realPeople ?? []).map((n) => n.trim().toLowerCase()).filter((n) => n.length > 0);
+  if (plan.workers?.length) {
+    const expected = plan.partners.reduce((n, p) => n + p.workers, 0);
+    if (plan.workers.length !== expected) {
+      fail(`the display roster names ${plan.workers.length} workers; the partners declare ${expected}`);
+    }
+    const usernames = new Set<string>();
+    const names = new Set<string>();
+    for (const w of plan.workers) {
+      if (usernames.has(w.username)) fail(`worker ${w.username} appears twice in the display roster`);
+      usernames.add(w.username);
+      const why = displayNameProblem(w.display_name, w.username);
+      if (why) fail(`worker ${w.username}: ${why}`);
+      const key = (w.display_name ?? '').trim().toLowerCase();
+      if (key && names.has(key)) fail(`two workers share the display name "${w.display_name}" — a viewer cannot tell their rows apart`);
+      names.add(key);
+      if (w.partner !== undefined && !labels.has(w.partner)) fail(`worker ${w.username}: partner "${w.partner}" is not a partner in the plan`);
+      const real = realPeople.find((r) => key.includes(r));
+      if (real) fail(`worker ${w.username}: display name "${w.display_name}" is a real person's name from the inputs ("${real}") — invent one`);
+    }
+    for (const s of plan.signals) {
+      if ((s.kind === 'standout_worker' || s.kind === 'data_quality') && !usernames.has(s.carrier)) {
+        fail(`carrier "${s.carrier}" has no display name in the roster`, s.kind);
+      }
+    }
+  }
+  if (plan.entities?.length) {
+    const workerNames = new Set((plan.workers ?? []).map((w) => w.username));
+    const names = new Set<string>();
+    for (const e of plan.entities) {
+      const why = displayNameProblem(e.name, e.id);
+      if (why) fail(`entity ${e.id}: ${why}`);
+      const key = (e.name ?? '').trim().toLowerCase();
+      if (key && names.has(key)) fail(`two entities share the name "${e.name}"`);
+      names.add(key);
+      if (e.worker !== undefined && workerNames.size && !workerNames.has(e.worker)) {
+        fail(`entity ${e.id}: worker "${e.worker}" is not in the display roster`);
+      }
+    }
+  }
+}
+
+/**
+ * No headline indicator may be flat across ALL partners (ace#2727). A headline
+ * every partner shares — three partners all at 100% on Step 7 — gives the
+ * programme manager nothing to sort partners by, and the concept judge said
+ * exactly that. FAIL, not warn: it is decidable before generation from numbers
+ * the author writes, it costs one pool edit, and in an unattended run a warning
+ * is carried past exactly as the placeholders were. A genuinely saturated
+ * indicator is not wrong — it just is not a headline; demote it.
+ */
+function checkHeadlineSpread(
+  plan: CascadeStoryPlan,
+  ids: ReadonlySet<string>,
+  labels: ReadonlySet<string>,
+  programme: boolean,
+  fail: (detail: string) => void,
+  warn: (detail: string) => void,
+): void {
+  const headlines = plan.headline_indicators ?? [];
+  if (!headlines.length) {
+    (programme ? warn : fail)('no `headline_indicators` — the plan cannot show its headline differs across partners (ace#2727)');
+    return;
+  }
+  for (const ind of headlines) {
+    if (!ids.has(ind)) fail(`headline indicator ${ind} is not in the registry`);
+    const spread = plan.headline_spread?.[ind];
+    if (!spread) {
+      fail(`headline indicator ${ind} has no \`headline_spread\` — author the per-partner value the pool is written to produce`);
+      continue;
+    }
+    const missing = [...labels].filter((l) => typeof spread[l] !== 'number');
+    if (missing.length) fail(`headline indicator ${ind}: no authored value for ${missing.map((m) => `"${m}"`).join(', ')}`);
+    const values = [...labels].map((l) => spread[l]).filter((v): v is number => typeof v === 'number');
+    if (values.length >= 2 && Math.max(...values) - Math.min(...values) < MIN_HEADLINE_SPREAD) {
+      fail(
+        `headline indicator ${ind} is flat across all partners (${values.map((v) => `${(v * 100).toFixed(0)}%`).join(', ')}) — ` +
+          `nothing to sort partners by; spread them ≥ ${MIN_HEADLINE_SPREAD * 100} pts or demote it from the headline`,
+      );
+    }
+  }
 }
 
 // ── After generation: did the signal land in what labs graded? ───────────
@@ -172,6 +402,13 @@ export interface GradedPeriod {
   byLLO: Array<{ llo: string; ind: Record<string, { value: number | null } | undefined> }>;
   byFLW: Array<{ flw?: string; key?: string; ind: Record<string, { value: number | null } | undefined> }>;
   programInd?: Record<string, { value: number | null } | undefined>;
+}
+
+export interface HeadlineResult {
+  indicator: string;
+  /** Best-minus-worst across the partner rows at the latest period is ≥ MIN_HEADLINE_SPREAD. */
+  spread_ok: boolean;
+  observed: string;
 }
 
 export interface SignalResult {
@@ -230,7 +467,7 @@ export function verifyCascadeStoryLanded(
   plan: CascadeStoryPlan,
   periods: GradedPeriod[],
   thresholds: LandedThresholds = DEFAULT_LANDED,
-): { verdict: 'pass' | 'fail'; results: SignalResult[] } {
+): { verdict: 'pass' | 'fail'; results: SignalResult[]; headlines: HeadlineResult[] } {
   const ordered = [...periods].sort((a, b) => a.period_end.localeCompare(b.period_end));
   const latest = ordered[ordered.length - 1];
   const results: SignalResult[] = [];
@@ -263,5 +500,19 @@ export function verifyCascadeStoryLanded(
     }
     results.push({ kind: s.kind, carrier: s.carrier, indicator: s.indicator, ...out });
   }
-  return { verdict: results.length > 0 && results.every((r) => r.landed) ? 'pass' : 'fail', results };
+  // The headline must differ across partners in what labs GRADED, not only in
+  // the plan (ace#2727): a pool can be written to spread and still saturate.
+  const headlines: HeadlineResult[] = (plan.headline_indicators ?? []).map((ind) => {
+    const vals = (latest?.byLLO ?? []).map((r) => ({ llo: r.llo, v: val(r.ind[ind]) })).filter((x): x is { llo: string; v: number } => x.v !== null);
+    if (vals.length < 2) return { indicator: ind, spread_ok: false, observed: `${vals.length} graded partner value(s) — a spread needs at least 2` };
+    const hi = Math.max(...vals.map((x) => x.v));
+    const lo = Math.min(...vals.map((x) => x.v));
+    return {
+      indicator: ind,
+      spread_ok: hi - lo >= MIN_HEADLINE_SPREAD,
+      observed: `${ind} across ${vals.length} partners ${pct(lo)}–${pct(hi)} (spread ${((hi - lo) * 100).toFixed(1)} pts)`,
+    };
+  });
+  const ok = results.length > 0 && results.every((r) => r.landed) && headlines.every((h) => h.spread_ok);
+  return { verdict: ok ? 'pass' : 'fail', results, headlines };
 }
