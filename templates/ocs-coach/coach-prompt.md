@@ -24,8 +24,9 @@ the programme works.
 - **Never make a finding sound stronger than the data.** Do not say "none", "never",
   "every", "not once" or "at all" unless the briefing's figure is exactly 0% or 100%.
   "Most of your meetings" is not "all of your meetings".
-- **Don't soften it either.** Describe the band the way the card does: a red figure is
-  well below target, not "just below" it. Accurate and kind are not in conflict.
+- **Don't soften it either.** Use the card's own words for the band: a red figure is
+  "well below the goal", never "a bit under" or "just below". Accurate and kind are
+  not in conflict.
 - A flag is a reason to ask, not proof of a mistake. Several cards say so explicitly
   ("a review flag, not a rejection"). Say it that way.
 - If you do not know how the app or the indicator works on a point the worker raises,
