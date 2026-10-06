@@ -102,7 +102,13 @@ paraphrase the schema here — read the model / schema and validate.
    DRILL, told from two seats. Read `7-synthetic/cascade-story.yaml` — its four
    signals are what the scenes find, and its `visible_as` sentences are the
    narration's raw material (never claim a figure the saved run does not show;
-   `demo-data-setup-qa` check 21 printed the observed values).
+   `demo-data-setup-qa` check 21 printed the observed values). **The saved run is
+   necessary, not sufficient: the figure must also be on the scene's END FRAME,
+   not only in a hover tooltip** — step 3b's on-screen rule (ace#2727). Name
+   workers and communities by the story plan's display roster
+   (`workers[].display_name`, `entities[].name`; `realized.json`
+   `*_worker_name`), never by username or hashed id — and only where the page
+   renders that name.
 
    | # | persona | url / action | what the viewer sees |
    |---|---|---|---|
@@ -462,6 +468,29 @@ paraphrase the schema here — read the model / schema and validate.
    give it an action that changes what the page shows — a filter, a selection, a
    drill-in. `demo-data-setup-qa` check 17 is the backstop that runs this again.
 
+   **Every narrated figure must be on the scene's END FRAME — never hover-only
+   (ace#2727).** Run `checkNarratedFiguresOnScreen` from
+   `lib/narration-on-screen.ts` over `scenes[]` (or
+   `scripts/narration-claims.ts --spec <spec> --check`). A figure — a
+   percentage, an "N of M", a money amount, a date — that the scene's
+   narration says must be ANCHORED: written into a `features[].verify` that
+   names where on the end frame it is ("the SF_P1 column reads 62%"), or the
+   target of a `wait_for` that proves the page rendered it. An anchor that is a
+   hover/tooltip, a `hover` action's target, or narration that itself says
+   "hover" is **`hover-only-figure`**; no anchor at all is
+   **`unanchored-figure`**. Both flag rather than reject (the check reads the
+   spec, not the rendered page) and, as with cardinality, **every flag is
+   resolved**: say a figure the frame prints, make the page print it, or cut
+   it.
+
+   *Why the existing rule did not catch it.* Step 2c's only figure rule —
+   "never claim a figure the saved run does not show" — checks the DATA. On
+   `spark-facilitator/20261004-1706` the narration said *"100% as of 12 Jul"*, a
+   value labs shows only in a tooltip: it IS in the saved run, so 2c passed it,
+   while the judged still and the video's end frame have no cursor over the
+   cell. Nothing checked the FRAME. Measured before this rule: zero occurrences
+   of `hover`, `tooltip` or `end frame` in this skill or the Phase 7 agent.
+
    These are the halves decidable from the SPEC. The runtime halves —
    resolving an ambiguous target to the interactive node, comparing a gate
    against the captured before-frame, replaying restores — belong in
@@ -531,6 +560,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **Narrated figures must be on the end frame, never hover-only (ace#2727).** Step 3b runs `checkNarratedFiguresOnScreen` (`lib/narration-on-screen.ts`; CLI `scripts/narration-claims.ts --check`): every narrated percentage / "N of M" / money / date is anchored by a `features[].verify` or a `wait_for`, and a hover/tooltip anchor flags `hover-only-figure`. Step 2c's "never claim a figure the saved run does not show" checked the data, not the frame, so `spark-facilitator/20261004-1706` narrated *"100% as of 12 Jul"* from a tooltip. Step 2c also names workers/communities by the story plan's display roster, not codes. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.narrative` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to its writer and ace-web's skill fork trims by it, so a fork AT this skill drops the stale `narrative` (and the Phase 7 agent's `ddd_*`) while keeping `demo-data-setup`'s `source` / `workflows` / `labs_opp_id`. Nothing changes in what this skill writes. | ACE team |
 | 2026-09-10 | **Step 3 refuses to copy a PINNED `render_reset.command` into `setup.command` (ace#2351).** The verbatim copy is the right contract — the handoff is the record — but it also means a command written as `/Users/<name>/.claude/plugins/cache/ace/ace/<version>/scripts/…` reaches canopy's per-render `subprocess.run(shell=True)` as a snapshot of one machine: the cache keeps old versions, so the path resolves to STALE code after every `/ace:update`, and another account cannot use it at all. On `spark-facilitator/20260909-2242` the copied string pinned 0.13.1413 (pre-ace#2325) and only a hand rewrite kept every render from failing `run-not-found`. Now: halt on `/plugins/cache/ace/ace/` or `/Users|/home/<name>/` and send the author back to `demo-data-setup` step 4b's self-resolving form; `demo-data-setup-qa` check 18 fails the same pin as `render_reset_command_pinned`. | ACE team |
 | 2026-09-08 | **The spec's `setup` block is `rerun: per_render` and must RESET the interactive run, not just re-emit `realized.json` (ace#2297).** Step 3 said `rerun: once`, which skips the setup command whenever the outputs file exists — i.e. from the second render on. But recording MUTATES the world: the coaching task the payoff scene creates persists on the labs run, so the next take finds the button gone and its `must_succeed` click aborts. On `spark-facilitator/20260908-2215` iterations 0-2 passed only because a human had reset labs run 5508 by hand. The command now prefixes `source.render_reset.command` (`demo-data-setup` step 4b); both halves are enforced by `demo-data-setup-qa` check 18. | ACE team |

@@ -53,6 +53,8 @@ export function checkCascadeStory(
   plan: CascadeStoryPlan | null | undefined,
   registryIndicatorIds: readonly string[],
   periods: GradedPeriod[],
+  /** Real people named in the opp's inputs; no invented worker may carry one's name (ace#2727). */
+  realPeople: readonly string[] = [],
 ): QACheckResult {
   if (!plan) {
     return {
@@ -61,16 +63,25 @@ export function checkCascadeStory(
       auto_fix_hint: 'write the CascadeStoryPlan per skills/demo-data-setup § Process (ace-run) C3, then regenerate',
     };
   }
-  const planned = checkCascadeStoryPlan(plan, registryIndicatorIds);
+  const planned = checkCascadeStoryPlan(plan, registryIndicatorIds, undefined, { realPeople });
   if (planned.verdict === 'fail') {
     return {
       pass: false,
-      detail: planned.findings.map((f) => `${f.signal ?? 'plan'}: ${f.detail}`).join('; '),
-      auto_fix_hint: 'fix the story plan (all four signals, each on a registry indicator with a PDD citation) before generating',
+      detail: planned.findings
+        .filter((f) => f.severity === 'fail')
+        .map((f) => `${f.signal ?? 'plan'}: ${f.detail}`)
+        .join('; '),
+      auto_fix_hint:
+        'fix the story plan before generating: all four signals on registry indicators with PDD citations; ' +
+        'realistic invented partner names marked "(example)"; a display roster naming every worker and entity; ' +
+        'headline indicators that differ across partners (demo-data-setup § C0, C3)',
     };
   }
   const landed = verifyCascadeStoryLanded(plan, periods);
-  const lines = landed.results.map((r) => `${r.kind} ${r.landed ? 'landed' : 'DID NOT LAND'} — ${r.observed}`);
+  const lines = [
+    ...landed.results.map((r) => `${r.kind} ${r.landed ? 'landed' : 'DID NOT LAND'} — ${r.observed}`),
+    ...landed.headlines.map((h) => `headline ${h.spread_ok ? 'spread' : 'FLAT'} — ${h.observed}`),
+  ];
   if (landed.verdict === 'pass') return { pass: true, detail: lines.join('; ') };
   return {
     pass: false,

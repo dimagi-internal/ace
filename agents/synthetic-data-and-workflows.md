@@ -104,8 +104,10 @@ head around the system."*
 Invoke `demo-data-setup` with `{provider: ace-run, name: <opp>, runId: <run-id>}`.
 Its § Process (ace-run) C0–C7 runs, in order:
 
-1. **C1** — one labs-only synthetic opportunity per partner (default 3) under one
-   labs-only program. The run's real network-manager org is never touched.
+1. **C1** — one labs-only synthetic opportunity per partner (default and floor
+   5, ace#2727) under one labs-only program, each partner a realistic invented
+   organisation name with a trailing `(example)` marker. The run's real
+   network-manager org is never touched.
 2. **C2 — `semantic-registry-author`** (gated by `semantic-registry-author-qa`;
    then graded by `semantic-registry-author-eval` — run it, do not defer it: a
    deferred eval is a gate validate-release-readiness reports as never run, as it did on
@@ -114,8 +116,10 @@ Its § Process (ace-run) C0–C7 runs, in order:
    payment rule / review signal with its PDD section, targets only where the PDD
    states them, the PDD's own nouns, `llo_map` over the partners.
 3. **C3** — `7-synthetic/cascade-story.yaml` (four authored signals: lagging
-   partner, standout worker, data-quality problem, trend), then one mirror-mode
-   manifest per partner keyed on the released Deliver app's form paths.
+   partner, standout worker, data-quality problem, trend; a display roster
+   naming every worker and community; headline indicators that differ across
+   partners), then one mirror-mode manifest per partner keyed on the released
+   Deliver app's form paths.
 4. **C4** — `indicator_programme_report` bound to the registry (its companion
    `indicator_worker_review` comes with it), its `visits` pipeline set to the
    registry's Layer-1 fields.
@@ -312,6 +316,34 @@ deliberate single-pass smoke check, never as the phase's convergence step.
   so a capping cell is re-judged (k=3, median) before it blocks, and the verdict
   carries the distribution, not just the floor.
 
+**A page edit under a LOCKED narration must keep every claim that page carries
+true (ace#2727).** The loop may fix report pages (labs template workflows) while
+the narration is locked, and canopy's fix direction is "when narration and
+product disagree, the narration moves" — but a locked narration cannot move
+silently. On `spark-facilitator/20261004-1706` a page fix merged two identical
+peer-median columns (a fair product change) under narration that said *"both
+peer medians"*, and the claim went false with nobody re-reading it. So build the
+per-page ledger of locked claims and hand it to the loop **in the dispatch
+prompt**, with the rule stated there:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/narration-claims.ts" \
+  --spec <demo-run>/7-synthetic/<slug>.yaml --ledger
+```
+
+Paste its output into the `Agent(canopy:ddd)` prompt under this instruction,
+verbatim: *"Before ANY edit to a report page, re-read the locked narration
+claims listed under that page below. If the edit would make any of them false —
+a figure, a count, a column or panel the narration names ('both peer medians'),
+an order — do NOT make the edit; route the finding as NARRATION (propose the
+narration change; mechanical → edit + `ddd-spec-qa`, story-changing →
+`concept_change`). After every page edit you do make, re-check the claims of
+every scene that page appears in against the new capture."* `narrationClaimsBySurface`
+(`lib/narration-on-screen.ts`) groups scenes by page — a follow-on scene with no
+`url` is on the previous scene's page — so the fixer sees every scene a page
+edit can falsify, not just the one whose finding it is fixing. On a resume,
+rebuild the ledger from the current spec; it is not cached.
+
 The verified render mechanics (labs-session refresh precondition,
 `record_video --storage-state`, the `workflow_create_run` run_id URL model) live
 in `agents/demo.md § Render` — follow them. Screenshots are the fallback if
@@ -483,10 +515,10 @@ phases:
         cascade:                           # ace#2510 — every id written as it is minted
           registry: { registry_id: <int>, program_id: <int>, version: <int>, indicators: [<id>, ...] }
           program_id: <int>
-          partners: [{ label: Partner A, opportunity_id: <int> }, ...]
+          partners: [{ label: "Tiyende Community Trust (example)", opportunity_id: <int> }, ...]
           programme_report: { workflow_id: <int>, run_id: <latest saved run>, url: <programme_par_url> }
           worker_review: { workflow_id: <int>, run_id: <int> }
-          opp_reports: [{ partner: Partner A, opportunity_id: <int>, workflow_id: <int>, run_id: <int>, url: <url> }, ...]
+          opp_reports: [{ partner: "Tiyende Community Trust (example)", opportunity_id: <int>, workflow_id: <int>, run_id: <int>, url: <url> }, ...]
           cohort_id: <int>
           history: { first_period_end: <date>, last_period_end: <date>, run_ids: [<int>, ...] }
           story_verified: true             # demo-data-setup-qa check 21

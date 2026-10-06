@@ -1396,7 +1396,10 @@ Worked, live example (all ids real, `spark-facilitator/20260926-1800`):
 programme report 6371, worker review 6373, opp reports 6376/6378/6380, program
 10082, registry 6369, cohort 5.
 
-**C0. Size the story.** Default 3 partners × ~12 workers × ~13 weeks. For a
+**C0. Size the story.** Default **5 partners** × ~12 workers × ~13 weeks — and 5
+is also the floor for invented partners (`DEFAULT_FLOORS`, ace#2727): three
+partners, all at 100% on Spark's Step 7, gave the concept judge nothing to show
+why sorting partners by need matters. For a
 programme whose PDD fixes one entity per worker (Spark: one community per CBF),
 a worker is a row in the partner table and a case is that worker's entity. The
 real partner org of the run (`connect_orgs.nm_org`, e.g. `ace-nm-org`) is **never**
@@ -1405,21 +1408,62 @@ opportunities. Label them neutrally unless the PDD names
 candidate LLOs, and even then prefer neutral labels: a synthetic figure next to a
 real organisation's name is a claim about that organisation.
 
-**Invented partners say they are illustrative, in the dashboard's own labels.**
-The multi-partner programme view is a deliberate demo device — a partner
-comparison and an anonymous benchmark need peers — not a claim about how many
-organisations deliver the pilot. Read the number of implementing organisations
-from the PDD (default **1**: a single-LLO pilot) and record it as the plan's
+**Invented partners say they are illustrative — on a REALISTIC name.** The
+multi-partner programme view is a deliberate demo device — a partner comparison
+and an anonymous benchmark need peers — not a claim about how many organisations
+deliver the pilot. Read the number of implementing organisations from the PDD
+(default **1**: a single-LLO pilot) and record it as the plan's
 `implementing_orgs`. When the partners are invented (`partner_source` unset or
-`invented`), every label carries the marker: `Example partner A`, `Example
-partner B`, `Example partner C` — never bare `Partner A/B/C`, which on
-`spark-facilitator/20261001-2208` read to an outsider as three implementers for
-a one-implementer pilot. Name the synthetic programme the same way
-(`program_name: "<opp title> (illustrative: three example partners)"`). With
-`partner_source: programme` the partners mirror the PDD's real implementers, so
-their count must equal `implementing_orgs`. *Enforced:* `checkCascadeStoryPlan`
-(`lib/cascade-story.ts` `ILLUSTRATIVE_LABEL`), at the C3 gate and in
+`invented`), each label is an **invented, culturally plausible organisation name
+for the PDD's geography with a trailing `(example)` marker**, e.g. for a Malawi
+pilot `Tiyende Community Trust (example)`, `Kuunika Outreach Network (example)`,
+`Tsogolo Women's Forum (example)`, `Umodzi Development Group (example)`,
+`Mphamvu Health Alliance (example)`. Name the synthetic programme so it says the
+same (`program_name: "<opp title> (illustrative: five example partners)"`, the
+plan's `programme_name`). Never a real organisation's name, never a name from
+the opp's inputs.
+
+*Why both halves, and why not `Example partner A`* (ace#2727). Bare `Partner
+A/B/C` read to an outsider as three implementers of a one-implementer pilot
+(`spark-facilitator/20261001-2208`, be59309d). The be59309d fix required
+`Example partner A/B/C` — and canopy's DDD user-artifact judge, which reads the
+screens AS the programme manager, scored those placeholder labels at clarity 2:
+`spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes in
+three DDD runs on exactly that. Two rails read the same label and neither knew
+the other; a realistic name with an `(example)` marker satisfies both — a viewer
+reads an organisation and is still told it is invented. With `partner_source:
+programme` the partners mirror the PDD's real implementers, so their count must
+equal `implementing_orgs`. *Enforced:* `checkCascadeStoryPlan`
+(`lib/cascade-story.ts` `ILLUSTRATIVE_LABEL` + `exampleOrgLabelProblem`, which
+refuses both `Partner A` and `Example partner A`), at the C3 gate and in
 `demo-data-setup-qa` check 21.
+
+**Name the people and places too — a display roster** (ace#2727). The same judge
+scored worker codes (`cbf_a07`) and hashed community ids at clarity 2. So the
+plan carries a roster a viewer can read:
+
+- `workers: [{username, display_name, partner}]` — one per worker (the sum of
+  `partners[].workers`); `username` stays the generator's identity, the key the
+  snapshot rows carry; `display_name` is an invented, culturally plausible human
+  name for the PDD's geography (`Chikondi Banda`, `Tadala Phiri`), distinct across
+  the roster.
+- `entities: [{id, name, worker}]` — one per followed entity (Spark: a
+  community); `name` is an invented human place/group name (`Kalemba`), never the
+  hashed id.
+
+Never a real person's name from the inputs — the PDD's contacts, the LLO's
+contacts, reviewers. List those names one per line and pass them as
+`checkCascadeStoryPlan(..., { realPeople })` / the QA script's `--real-people`; a
+display name containing one fails. Codes, digits, `_`, and role-word placeholders
+(`Worker A`, `Community 3`) fail too (`displayNameProblem`).
+
+**Headline indicators must differ across partners** (ace#2727). Declare
+`headline_indicators` (what scene 1's tiles and the partner table show) and, for
+each, `headline_spread: {<indicator>: {<partner label>: <value the pool is
+written to produce>}}`. A headline flat across ALL partners (best-to-worst
+< 5 pts) **fails** the plan: it shows the programme manager nothing to sort
+partners by. A saturated indicator is not wrong, it is just not a headline —
+demote it. C6 re-checks the spread against what labs graded.
 
 **C1. Create the synthetic programme.** One labs-only opportunity per partner:
 the first `synthetic_create_labs_only({label, gdrive_folder_id: 'pending-generate',
@@ -1436,11 +1480,14 @@ record. Do not generate data against a registry that has not passed QA — the
 story signals are authored against its indicator ids.
 
 **C3. Author the story, then the data.** Write `7-synthetic/cascade-story.yaml`
-(`lib/cascade-story.ts` `CascadeStoryPlan`): partners, weeks, worker roster, and
-the four signals — `lagging_partner`, `standout_worker`, `data_quality`, `trend` —
+(`lib/cascade-story.ts` `CascadeStoryPlan`): partners (realistic `(example)`
+names, § C0), `programme_name`, weeks, the display roster (`workers[]`,
+`entities[]`, § C0), `headline_indicators` + `headline_spread`, and the four
+signals — `lagging_partner`, `standout_worker`, `data_quality`, `trend` —
 each naming a registry indicator, the PDD clause it derives from (`pdd_ref`, same
 rule as step 1c: an uncited signal is an invented one) and what a viewer sees.
-Gate it with `checkCascadeStoryPlan(plan, registryIndicatorIds)` BEFORE generating.
+Gate it with `checkCascadeStoryPlan(plan, registryIndicatorIds, undefined, { realPeople })`
+BEFORE generating.
 Set `implementing_orgs` from the PDD (§ C0). When the partners mirror a real programme's own (not invented example partners), set
 `partner_source: programme`, which makes 2 partners legal. With no PDD, set `anchor: app`
 and cite the Deliver app's form and rule in each `pdd_ref` (`semantic-registry-author`
@@ -1465,6 +1512,19 @@ written, not profiled. Mechanics that bite (all observed, ace#2510):
 - a labs-only opp has no form schema, so a numeric-looking code comes back
   `"1.0"` — the registry reads it with a cast (`semantic-registry-author` step 1);
 - `kpi_config` needs one entry even though the cascade does not read it.
+
+> **TODO(ace#2727) — wire the display roster into labs here.** The plan's
+> `workers[].display_name` and `entities[].name` are ACE's interface (worker
+> `{username, display_name}`, entity `{id, name}`). The labs half is in flight
+> in connect-labs: worker display names in the indicator snapshot (from the
+> synthetic source) and a registry `display.entity.label_field`. Until it lands,
+> generate with the usernames / ids as today and do NOT guess a labs field
+> name; when it lands, pass the roster through `synthetic_generate_from_manifest`
+> (worker names) and set the registry's `display.entity.label_field`
+> (`semantic-registry-author` § 3) to the entity-name field, then delete this
+> TODO. Until then the roster still drives the NARRATION: scenes name the
+> carrier by `display_name` only where the screen shows it (`demo-narrative`
+> step 3b's on-screen rule), never a name the page does not render.
 
 **C4. Instantiate the trio.**
 1. `workflow_create_from_template({template_key: 'indicator_programme_report',
@@ -1513,7 +1573,8 @@ re-publish is REQUIRED after any registry edit + rebuild
 (`semantic-registry-author` § After a registry edit, ace#2717). If the
 operator's permission classifier refuses `benchmarks_publish`, surface it to the
 operator — never work around it. `min_peers: 2` is the floor
-for three partners (a partner's peers are the other two); record it in the summary.
+(with five partners a partner has four peers, so it never binds); record it in
+the summary.
 The latest saved run is the programme report's `run_id`; each opp report's latest
 handed-down run (`workflow_history_runs(..., generated_only: false)`) is its
 `run_id`.
@@ -1533,12 +1594,18 @@ re-described to match what came out. `demo-data-setup-qa` re-runs this check.
   "primary_par_url": "<programme report run URL>",
   "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/<prog>/run/?run_id=<latest>&program_id=<program>",
   "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/<review>/run/?run_id=<review run>&program_id=<program>&flw=<opp>%3A%3A<username>&source_run=<latest>",
-  "lagging_partner_label": "Example partner C",
+  "lagging_partner_label": "Tsogolo Women's Forum (example)",
   "standout_worker": "cbf_b03",
+  "standout_worker_name": "Tadala Phiri",
   "data_quality_worker": "cbf_a07",
-  "example_partner_c_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/<opp report>/run/?run_id=<handed-down run>&opportunity_id=<opp>"
+  "data_quality_worker_name": "Chikondi Banda",
+  "tsogolo_womens_forum_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/<opp report>/run/?run_id=<handed-down run>&opportunity_id=<opp>"
 }
 ```
+
+`*_worker` stays the username (URLs and `flw=` keys use it); `*_worker_name` is
+the roster's `display_name` — the name narration uses, and only where the screen
+renders it (§ C3 TODO).
 
 one `<partner>_opp_report_par_url` per partner, and a `worker_review_url` for each
 worker carrier. **Every `*worker_review_url` carries `&program_id=`, never
@@ -1586,7 +1653,9 @@ only way to find these objects again. Name every labs object with
 **Known residuals (labs, 2026-09-26).** An opportunity renders as
 "Opportunity <id>" where a label map would help; the drilled partner header
 reads the programme's case count; the case table shows the entity id (a
-followup form carries no clean entity name). None blocks the drill.
+followup form carries no clean entity name) and worker rows show the username.
+The last two are what the display roster (§ C0) closes once the labs half lands
+(§ C3 TODO, ace#2727). None blocks the drill.
 
 ### Legacy single-opportunity path (1b–2a, then the Step 0 spine)
 
@@ -1956,6 +2025,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **Invented names a viewer can read, five partners, a headline that differs (ace#2727).** § C0: invented partners are realistic organisation names with a trailing `(example)` marker (`Tiyende Community Trust (example)`), not `Example partner A` — be59309d's honesty fix satisfied ACE's rail with a placeholder canopy's DDD judge scores at clarity 2, and `spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes on it. The story plan now carries a display roster (`workers[{username, display_name, partner}]`, `entities[{id, name, worker}]`; no codes, no placeholders, no real person's name from the inputs), `headline_indicators` + `headline_spread` (a headline flat across all partners fails), and five partners by default and floor. § C3 carries a TODO where the labs half (snapshot display names, registry `display.entity.label_field`) will be wired; § C7 adds `*_worker_name`. *Enforced:* `checkCascadeStoryPlan` / `verifyCascadeStoryLanded`, `test/lib/cascade-story.test.ts`. | ACE team |
 | 2026-10-05 | **§ C5 plans the benchmark publishes with `planBenchmarkRepublish` (ace#2717).** Oldest first, refusing a missing week; the Benchmarks tab's as-of must equal the last period; the same re-publish is required after a registry edit + rebuild. A classifier refusal of `benchmarks_publish` is surfaced to the operator. | ACE team |
 | 2026-10-01 | **§ C7 builds every `*worker_review_url` with one builder (ace#2521 recurrence).** spark-facilitator/20260926-1800 wrote all three worker-review links with `owning_program_id` and no `program_id`, after § C7's prose already forbade it — the URL was hand-assembled from the programme report's "Review →" links. `lib/worker-review-url.ts` (`buildWorkerReviewUrl`, `workerReviewUrls`, `rescopeWorkerReviewUrl`) is now the only constructor; § C7 calls `scripts/worker-review-url.ts` to build them from the run_state cascade or repair a written realized.json in place. `checkWorkerReviewUrlScope` stays the gate. *Enforced:* `test/lib/worker-review-url.test.ts` (fixtures: that run's realized.json + run_state). | ACE team |
 | 2026-09-17 | **New step 4c: the `in_progress` mandate is PROVEN before its `par_url` is recorded (ace#2430).** § The interactive run stays live required exactly one run to stay live and check 8 enforced it, but nothing ever loaded that page — step 3 proves the pipeline extracts and check 7 reads the data through `api/<def>/pipeline-data/`, a side-channel around the stream the page itself uses. The two run states are not symmetric: a completed run's page returns early on its snapshot (`workflow-runner.tsx`: `if (snapshotCarriesPipelines) return;`), while an `in_progress` run has no snapshot and re-runs the pipeline SSE stream on every load, every take. On `poverty-graduation/20260915-1518` that stream died after its first event and the interactive dashboard could not load at all — and check 8, being one-sided, *enforced* the dead state: a `completed` interactive run failed, so the only QA-passing configuration was the one that could not render. Now: probe `api/<def>/pipeline-data/stream/` with `refresh=1`, classify it with `classifyLiveLoadStream` (`lib/interactive-live-load.ts`), record `source.interactive_live_load`, and — when the live load fails against a completed control run of the SAME definition that DOES render — ship the run completed under an evidenced escape carrying `control_run_id` + `upstream_ref`. Probed live 2026-09-17 on definitions 5714 and 5695 / labs opp 10065: both streamed to completion (4s / 7s, 137 + 9 rows), i.e. the labs-side failure did NOT reproduce — which is the argument for checking at record time rather than reasoning once. *Enforced:* `test/lib/interactive-live-load.test.ts` (fixtures trimmed from those real captures). | ACE team |

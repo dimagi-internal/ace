@@ -128,13 +128,15 @@ In that case:
   only a warning: the benchmark cohort then needs `min_peers` below 3, which shows
   each partner its peer's exact figures.
 
-  Invented partners (`Partner A/B/C`) keep the floor of 3, because ACE can always
-  make three.
+  Invented partners keep this check's floor of 3; the story plan that follows
+  floors them at 5 (`demo-data-setup` § C0, ace#2727), because ACE can always
+  make five and three was too few to show why sorting partners matters.
 
 **No inferred backstory.** A metric, threshold, target or noun with no PDD anchor
 does not go in. If a partner-org name is needed it comes from the caller's
-`partners[]` (synthetic labels such as "Partner A") — never an invented real
-organisation.
+`partners[]` — an invented, realistic organisation name with a trailing
+`(example)` marker (`Tiyende Community Trust (example)`, `demo-data-setup` § C0),
+never a placeholder like "Partner A" and never a real organisation's name.
 
 ### 3. The display contract
 

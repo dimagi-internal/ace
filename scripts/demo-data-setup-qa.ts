@@ -5,6 +5,7 @@
  *   npx tsx scripts/demo-data-setup-qa.ts \
  *     --run-state <local run_state.yaml> --realized <local realized.json> \
  *     [--story <local cascade-story.yaml>] [--history <workflow_history_runs JSON>] \
+ *     [--real-people <text file: one real person's name per line, from the opp's inputs>] \
  *     [--outcomes <JSON: [{check, result:{pass,detail,auto_fix_hint}} | {check, not_judged}]>] \
  *     --target <opp>/<run> --out <local demo-data-setup-qa_result.yaml>
  *
@@ -100,7 +101,9 @@ if (provider === 'ace-run') {
   if (storyText && historyText) {
     const plan = parseYaml(storyText) as CascadeStoryPlan;
     const periods = periodsFromHistoryRuns(JSON.parse(historyText));
-    computed.set('cascade_story_landed', checkCascadeStory(plan, synthetic?.cascade?.registry?.indicators ?? [], periods));
+    // Real people named in the opp's inputs (ace#2727): no invented worker may carry one's name.
+    const realPeople = (readText(arg('real-people')) ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+    computed.set('cascade_story_landed', checkCascadeStory(plan, synthetic?.cascade?.registry?.indicators ?? [], periods, realPeople));
   }
 }
 
