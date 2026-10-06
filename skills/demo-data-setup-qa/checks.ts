@@ -40,6 +40,13 @@ import {
   type CascadeStoryPlan,
   type GradedPeriod,
 } from '../../lib/cascade-story';
+import {
+  checkConstantDisplayedColumns,
+  checkDrillLevels,
+  checkReviewRouting,
+  checkWorkerRateDenominators,
+  type CascadeSnapshot,
+} from '../../lib/cascade-build-qa';
 
 /**
  * Check 21 — the cascade story was planned AND landed (ace#2510).
@@ -1233,6 +1240,31 @@ export function periodsFromHistoryRuns(response: unknown): GradedPeriod[] {
 }
 
 /**
+ * Checks 24–27 (ace#2735): the cascade's BUILD output, judged before the DDD
+ * hand-off instead of by the demo judges after a render. One entry point so the
+ * script and the skill compute them identically. `visitRows` are every partner's
+ * visit rows (`pipeline_preview` of the visits pipeline); without them check 24
+ * fails as not-judged.
+ */
+export function cascadeBuildOutcomes(
+  plan: CascadeStoryPlan | null | undefined,
+  snapshot: CascadeSnapshot | null | undefined,
+  visitRows: Array<Record<string, unknown>>,
+): Record<
+  'cascade_review_routing_follows_pdd' | 'cascade_worker_rates_not_binary' | 'cascade_displayed_columns_vary' | 'cascade_drill_levels_branch',
+  QACheckResult
+> {
+  const visitFlags = (snapshot?.display?.visit_flags ?? []).map((f) => f.column);
+  const columns = checkConstantDisplayedColumns(snapshot, visitRows);
+  return {
+    cascade_review_routing_follows_pdd: checkReviewRouting(visitRows, visitFlags, plan?.review_routing ?? []),
+    cascade_worker_rates_not_binary: checkWorkerRateDenominators(snapshot),
+    cascade_displayed_columns_vary: { pass: columns.pass, detail: columns.detail, ...(columns.auto_fix_hint ? { auto_fix_hint: columns.auto_fix_hint } : {}) },
+    cascade_drill_levels_branch: checkDrillLevels(snapshot, plan?.single_child_levels ?? []),
+  };
+}
+
+/**
  * Which check ids apply to which provider. The gate runs EVERY applicable
  * check; a check that applies but cannot be evaluated is a FAILURE of that
  * check, never a skip — and the result writer fails a run that evaluated none.
@@ -1244,6 +1276,11 @@ export const CHECKS_BY_PROVIDER: Record<'ace-run' | 'denovo' | 'clone', readonly
     'worker_review_url_scoped',
     'cascade_handoff_complete',
     'cascade_story_landed',
+    // ace#2735 — build defects the DDD judges were finding after render.
+    'cascade_review_routing_follows_pdd',
+    'cascade_worker_rates_not_binary',
+    'cascade_displayed_columns_vary',
+    'cascade_drill_levels_branch',
   ],
   denovo: [
     'realized_json_parses',

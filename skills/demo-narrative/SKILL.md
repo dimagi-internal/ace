@@ -496,6 +496,44 @@ paraphrase the schema here — read the model / schema and validate.
    against the captured before-frame, replaying restores — belong in
    canopy's walkthrough runner and are tracked upstream.
 
+3c. **Pre-render arc check — the sequence, from the TEXT, before anything renders
+   (ace#2735).** `checkSceneVariety` and `checkArcLadder` each answer one
+   question; canopy's `ddd-arc-eval` judges five, and only after a render. On
+   `spark-facilitator/20261004-1706` (DDD run 2026-10-06-002) both of ours passed
+   while the arc judge found three things the spec already said: *"Scenes 4 and 5
+   both end on the same community visit-list component"*, *"The finale (scene 6)
+   restates scene 1/2's headline fact (Kuunika 66.0% ...)"*, and *"Scene 5 ... is a
+   side-branch ... its slot is not load-bearing"*. Run:
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/demo-arc-precheck.ts" \
+     --spec <demo-run>/7-synthetic/<demo-slug>.yaml --realized <demo-run>/7-synthetic/realized.json \
+     --prompt-out <scratch>/arc-precheck-prompt.md
+   ```
+   - **Deterministic half** (`lib/demo-arc-precheck.ts` `checkArcPrecheck`). BLOCKS
+     on `same-surface-component` — consecutive scenes on the same resolved surface
+     (the `${var}` substituted from `realized.json`, query dropped, so two
+     worker-review URLs are one template) settling on the same component (their
+     last heading/tab/landmark `wait_for`) — and on a finale whose
+     `concept_claim` states only facts scene 1's claim already stated. REPORTS a
+     finale narration restating an opening fact anchored to the same name, and a
+     middle scene on a new surface that names nothing its neighbours name while
+     the next scene resumes the earlier thread (a side-branch).
+   - **One cheap text-only judge pass** for what needs judgment: dispatch a fresh
+     `Agent(general-purpose)` (independent of the author, as `ddd-arc-eval`
+     requires; a small model is enough) with the prompt file and nothing else,
+     save its YAML answer, and gate it:
+     `scripts/demo-arc-precheck.ts --spec … --realized … --verdict <answer.yaml>`
+     (`gateArcPrecheckVerdict`: any dimension ≤ 2 blocks; a 3 is carried into the
+     hand-off as a reported risk; a missing dimension fails — never write the
+     answer yourself). The rubric (`ARC_PRECHECK_RUBRIC`) mirrors `ddd-arc-eval`'s
+     five dimensions, weights and deduction rules from the installed canopy
+     `skills/ddd-arc-eval/rubric.yaml`, restricted to what text can show.
+   - **It never replaces canopy's `ddd-arc-eval`.** That judge sees frames, page
+     text and composition; this pass sees only the spec. A clean pre-check is a
+     prediction that the cheap-to-fix sequence defects are gone, not a verdict.
+     Fix a blocker by reframing, merging or reordering what the deck already has,
+     re-run 3c, then validate (step 4).
+
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as
    absolute paths — the subshell's cwd is the runtime, not yours):
@@ -560,6 +598,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **Step 3c — a pre-render arc check over the spec's text (ace#2735).** `scripts/demo-arc-precheck.ts` / `lib/demo-arc-precheck.ts`: blocks consecutive scenes on the same surface + component and a finale claim that only restates scene 1's; reports a restated opening fact and a side-branch scene; then ONE text-only judge pass with a rubric mirroring `ddd-arc-eval`, gated by `gateArcPrecheckVerdict`. Never replaces the post-render arc judge. On `spark-facilitator/20261004-1706` it finds all three things that run's arc judge found after render, while `checkSceneVariety` and `checkArcLadder` both pass it (`test/lib/demo-arc-precheck.test.ts`). | ACE team |
 | 2026-10-06 | **Narrated figures must be on the end frame, never hover-only (ace#2727).** Step 3b runs `checkNarratedFiguresOnScreen` (`lib/narration-on-screen.ts`; CLI `scripts/narration-claims.ts --check`): every narrated percentage / "N of M" / money / date is anchored by a `features[].verify` or a `wait_for`, and a hover/tooltip anchor flags `hover-only-figure`. Step 2c's "never claim a figure the saved run does not show" checked the data, not the frame, so `spark-facilitator/20261004-1706` narrated *"100% as of 12 Jul"* from a tooltip. Step 2c also names workers/communities by the story plan's display roster, not codes. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.narrative` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to its writer and ace-web's skill fork trims by it, so a fork AT this skill drops the stale `narrative` (and the Phase 7 agent's `ddd_*`) while keeping `demo-data-setup`'s `source` / `workflows` / `labs_opp_id`. Nothing changes in what this skill writes. | ACE team |
 | 2026-09-10 | **Step 3 refuses to copy a PINNED `render_reset.command` into `setup.command` (ace#2351).** The verbatim copy is the right contract — the handoff is the record — but it also means a command written as `/Users/<name>/.claude/plugins/cache/ace/ace/<version>/scripts/…` reaches canopy's per-render `subprocess.run(shell=True)` as a snapshot of one machine: the cache keeps old versions, so the path resolves to STALE code after every `/ace:update`, and another account cannot use it at all. On `spark-facilitator/20260909-2242` the copied string pinned 0.13.1413 (pre-ace#2325) and only a hand rewrite kept every render from failing `run-not-found`. Now: halt on `/plugins/cache/ace/ace/` or `/Users|/home/<name>/` and send the author back to `demo-data-setup` step 4b's self-resolving form; `demo-data-setup-qa` check 18 fails the same pin as `render_reset_command_pinned`. | ACE team |

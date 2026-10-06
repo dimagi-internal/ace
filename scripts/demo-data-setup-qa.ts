@@ -5,6 +5,7 @@
  *   npx tsx scripts/demo-data-setup-qa.ts \
  *     --run-state <local run_state.yaml> --realized <local realized.json> \
  *     [--story <local cascade-story.yaml>] [--history <workflow_history_runs JSON>] \
+ *     [--visits <JSON: pipeline_preview response(s) of the cascade visits pipeline, one per partner opp>] \
  *     [--real-people <text file: one real person's name per line, from the opp's inputs>] \
  *     [--outcomes <JSON: [{check, result:{pass,detail,auto_fix_hint}} | {check, not_judged}]>] \
  *     --target <opp>/<run> --out <local demo-data-setup-qa_result.yaml>
@@ -36,6 +37,7 @@ import { aggregateQAResult, type QACheckOutcome, type QACheckResult } from '../l
 import {
   cascadeDashboards,
   checkCascadeHandoff,
+  cascadeBuildOutcomes,
   checkCascadeStory,
   checkParUrlScope,
   checkRealizedFlat,
@@ -45,6 +47,18 @@ import {
   type SyntheticProducts,
 } from '../skills/demo-data-setup-qa/checks.js';
 import type { CascadeStoryPlan } from '../lib/cascade-story.js';
+import { latestSnapshotFromHistoryRuns } from '../lib/cascade-build-qa.js';
+
+/** `--visits`: one pipeline_preview response, an array of them, or bare rows (ace#2735). */
+function visitRowsFrom(text: string | null): Array<Record<string, unknown>> {
+  if (!text) return [];
+  const parsed = JSON.parse(text) as unknown;
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+  return items.flatMap((x) => {
+    const rows = (x as { rows?: unknown[] } | null)?.rows;
+    return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [x as Record<string, unknown>];
+  });
+}
 
 const args = process.argv.slice(2);
 function arg(name: string): string | undefined {
@@ -104,6 +118,10 @@ if (provider === 'ace-run') {
     // Real people named in the opp's inputs (ace#2727): no invented worker may carry one's name.
     const realPeople = (readText(arg('real-people')) ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
     computed.set('cascade_story_landed', checkCascadeStory(plan, synthetic?.cascade?.registry?.indicators ?? [], periods, realPeople));
+    // ace#2735: the build output itself — review routing, binary worker rates,
+    // constant columns, one-child drill levels — before any render.
+    const build = cascadeBuildOutcomes(plan, latestSnapshotFromHistoryRuns(JSON.parse(historyText)), visitRowsFrom(readText(arg('visits'))));
+    for (const [id, r] of Object.entries(build)) computed.set(id, r);
   }
 }
 

@@ -119,8 +119,10 @@ Its § Process (ace-run) C0–C7 runs, in order:
 3. **C3** — `7-synthetic/cascade-story.yaml` (four authored signals: lagging
    partner, standout worker, data-quality problem, trend; a display roster
    naming every worker and community; headline indicators that differ across
-   partners), then one mirror-mode manifest per partner keyed on the released
-   Deliver app's form paths.
+   partners; `review_routing` — what the PDD does with each flagged record;
+   `single_child_levels` the PDD fixes, cited), gated by `checkCascadeStoryPlan`
+   and `checkPlannedWorkerRates`, then one mirror-mode manifest per partner keyed
+   on the released Deliver app's form paths.
 4. **C4** — `indicator_programme_report` bound to the registry (its companion
    `indicator_worker_review` comes with it), its `visits` pipeline set to the
    registry's Layer-1 fields.
@@ -128,7 +130,13 @@ Its § Process (ace-run) C0–C7 runs, in order:
    (`benchmarks_create_opp_reports`, sharing the programme's pipelines and
    registry) → `workflow_rebuild_history` weekly (handed down to every opp report)
    → `benchmarks_publish` per saved run, oldest first.
-6. **C6** — `verifyCascadeStoryLanded` against the saved runs.
+6. **C6** — `verifyCascadeStoryLanded` against the saved runs, then
+   `cascadeBuildOutcomes` (`lib/cascade-build-qa.ts`, ace#2735): flagged records
+   follow the PDD's review route, no worker-table rate is binary, no displayed
+   column is constant, no drill level has one child everywhere. These were DDD
+   findings on `spark-facilitator/20261004-1706`; they are build defects, fixed
+   here — the DDD loop cannot write to labs (ace#2337), so handing them over only
+   pays for a render to re-find them. `demo-data-setup-qa` checks 24–27 re-run them.
 7. **C7** — `realized.json` + `products.synthetic.cascade` + `workflows{}`.
 
 Worked live example: `spark-facilitator/20260926-1800` (program 10082, registry
@@ -180,6 +188,14 @@ Invoke `demo-narrative` with `{brief: <PDD-derived>, realizedRef: 7-synthetic/re
 It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest gaps)
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
+
+**Before the DDD dispatch, the pre-render arc check must pass** (`demo-narrative`
+step 3c, ace#2735): `scripts/demo-arc-precheck.ts` over the spec + `realized.json`
+(blocks same surface + component in consecutive scenes and a finale claim that
+only restates scene 1's), then its single text-only judge pass gated by
+`gateArcPrecheckVerdict`. It mirrors canopy's `ddd-arc-eval` on text and never
+replaces it — the post-render arc judge still runs inside `canopy:ddd`. Record
+the result as `steps.demo-narrative.arc_precheck: {pass, blocking, reported}`.
 
 On the cascade (every ace-run since ace#2510) the scenes follow `demo-narrative`
 step 2c's **cascade scene ladder**: programme headline → the lagging partner →

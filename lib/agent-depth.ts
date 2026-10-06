@@ -101,7 +101,8 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     name: 'synthetic-data-and-workflows',
     form: 'subagent',
     owner: 'ace',
-    dispatches: ['canopy:ddd'],
+    // general-purpose: demo-narrative step 3c's one text-only arc judge pass (ace#2735).
+    dispatches: ['canopy:ddd', 'general-purpose'],
     why:
       'Step 3 dispatches the DDD render+converge loop — render, dual-judge, ' +
       'specialist fixers, converge, video, upload. A subagent so the heaviest ' +
@@ -121,7 +122,7 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     name: 'demo',
     form: 'inline',
     owner: 'ace',
-    dispatches: ['canopy:ddd'],
+    dispatches: ['canopy:ddd', 'general-purpose'],
     why: 'Hands the demo narrative to the DDD loop; same chain as Phase 7.',
   },
   {
@@ -224,6 +225,15 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
       'all at the same level as visual-judge.',
   },
   { name: 'canopy:visual-judge', form: 'subagent', owner: 'external', dispatches: [] },
+  {
+    name: 'general-purpose',
+    form: 'subagent',
+    owner: 'external',
+    dispatches: [],
+    why:
+      "demo-narrative step 3c's single text-only pre-render arc judge (ace#2735) — a fresh " +
+      'subagent so the judge is independent of the author, as ddd-arc-eval requires. A leaf.',
+  },
   {
     name: 'gstack:design-fixer',
     form: 'subagent',

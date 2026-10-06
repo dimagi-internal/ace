@@ -1,0 +1,262 @@
+{
+ "source": "Authored DDD spec of spark-facilitator/20261004-1706 Phase 7 (canopy run spark-facilitator-programme-cascade-2026-10-06-002, spark-facilitator-programme-cascade.yaml) and its realized.json, read 2026-10-06; trimmed to name, personas, scenes",
+ "spec": {
+  "name": "spark-facilitator-programme-cascade",
+  "personas": {
+   "network_manager": {
+    "name": "Daniel"
+   },
+   "programme_manager": {
+    "name": "Grace"
+   }
+  },
+  "scenes": [
+   {
+    "id": "programme-headline",
+    "title": "The programme against its own targets",
+    "url": "${programme_par_url}",
+    "persona": "programme_manager",
+    "concept_claim": "The headline tiles grade meeting regularity and Step 7 progress against the design's own 80% and 75% targets.",
+    "narrative": "Grace oversees the partners delivering Spark's pilot, which pays community facilitators for each verified community meeting, and every week she needs to know whether meetings happen at the rate the design asks for, and who is behind. The report grades the programme against the design's own targets. Meeting regularity is 86.5%, over the 80.0% target. Step 7 on time is 65.0%, under its 75.0% target: Step 7 closes the goal-setting stage, and the design sets a deadline for reaching it. Every figure here is synthetic: the five partners are invented examples, each marked as one. The partner table shows who is furthest behind: Kuunika Outreach Network is lowest on both, at 66.0% meeting regularity and 41.7% Step 7 on time.",
+    "actions": [
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:tr:has-text(\"Kuunika Outreach Network (example)\")"
+     },
+     {
+      "kind": "hover",
+      "target": "css:th:has-text(\"Partner\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 9
+     }
+    ]
+   },
+   {
+    "id": "lagging-partner",
+    "title": "Kuunika is the partner behind, and who in it",
+    "persona": "programme_manager",
+    "concept_claim": "Clicking a partner row narrows the report to that partner and ranks its twelve facilitators on the same indicators.",
+    "narrative": "One click narrows the report to Kuunika: meeting regularity 66.0%, on Watch, and Step 7 on time 41.7%, Off target. Its facilitators, sorted by meeting regularity, start with Ulemu Chirwa and Chimwemwe Kamanga at 40.0%, a community meeting in fewer than half of their weeks, and both read 0.0% on Step 7 on time.",
+    "actions": [
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:tr:has-text(\"Kuunika Outreach Network (example)\")"
+     },
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:tr:has-text(\"Ulemu Chirwa\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 3
+     },
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
+     },
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
+     },
+     {
+      "kind": "scroll_to",
+      "target": "css:tr:has-text(\"Ulemu Chirwa\")"
+     },
+     {
+      "kind": "hover",
+      "target": "css:tr:has-text(\"Chimwemwe Kamanga\") td:first-child"
+     },
+     {
+      "kind": "hold",
+      "seconds": 7
+     }
+    ]
+   },
+   {
+    "id": "facilitator-against-peers",
+    "title": "Ulemu Chirwa against their peers",
+    "url": "${worker_review_url}",
+    "persona": "programme_manager",
+    "concept_claim": "The facilitator review compares Ulemu Chirwa with the 33 facilitators who started the same month, not with a target alone.",
+    "narrative": "Ulemu Chirwa's own review sets them against the 33 facilitators who started the same month. Their meeting regularity is 40.0% where the same-month median is 92.9%, so their peers are not falling short the same way. Step 7 on time is 0.0% against a median of 100.0%: their community has not reached Step 7 in time. Their one community is where to look next.",
+    "actions": [
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:h1:has-text(\"Ulemu Chirwa\")"
+     },
+     {
+      "kind": "hover",
+      "target": "css:tr:has-text(\"Chisoti\") td:first-child"
+     },
+     {
+      "kind": "hold",
+      "seconds": 8
+     }
+    ]
+   },
+   {
+    "id": "community-history",
+    "title": "Chisoti's meeting history shows the missed weeks",
+    "persona": "programme_manager",
+    "concept_claim": "The community's visit list shows eight dated meetings from 21 May to 3 Sep, so the missed weeks are visible directly.",
+    "narrative": "Their community, Chisoti, still on FCAP step 5, shows why. Eight meetings since 21 May: every week or two at first, then nothing from 17 Jun to 14 Jul, nothing again until 10 Aug, and the latest is 3 Sep. A meeting that did not happen leaves no record in this list, so those weeks show only as gaps.",
+    "actions": [
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:tr:has-text(\"Chisoti\")"
+     },
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:h2:has-text(\"Community Chisoti\")"
+     },
+     {
+      "kind": "scroll_to",
+      "target": "css:tr:has-text(\"14 Jul\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 9
+     }
+    ]
+   },
+   {
+    "id": "review-flag-concentrated",
+    "title": "The repeat-count flag points to records worth checking",
+    "url": "${data_quality_worker_review_url}",
+    "persona": "programme_manager",
+    "concept_claim": "The design's repeat-count review flag is 92.3% for Gomezgani Zgambo, and the visit list marks which records carry it.",
+    "narrative": "Grace's other weekly job is the design's own review flag. Gomezgani Zgambo, a Tiyende facilitator, meets regularly, but their repeat counts read 92.3%, where both peer medians are zero. Opening their community, Lumbadzi, shows why: 13 visits, every one recording exactly 107 men and 83 women, and the 12 after the first carry the flag. The flag is a reason to check these records, not a verdict.",
+    "actions": [
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:h1:has-text(\"Gomezgani Zgambo\")"
+     },
+     {
+      "kind": "scroll_to",
+      "target": "css:tr:has-text(\"Repeat counts\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 4
+     },
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:tr:has-text(\"Lumbadzi\")"
+     },
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:h2:has-text(\"Community Lumbadzi\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 1.5
+     },
+     {
+      "kind": "scroll_to",
+      "target": "css:tr:has-text(\"27 Aug\"):has-text(\"rejected\")"
+     },
+     {
+      "kind": "hover",
+      "target": "css:tr:has-text(\"27 May\"):has-text(\"approved\") td:first-child"
+     },
+     {
+      "kind": "hold",
+      "seconds": 9
+     }
+    ]
+   },
+   {
+    "id": "partner-benchmarks",
+    "title": "Kuunika sees its own report and how far behind it is",
+    "url": "${kuunika_outreach_network_opp_report_par_url}",
+    "persona": "network_manager",
+    "concept_claim": "Kuunika's own report ranks it 5th of 5 on meeting regularity against four partners whose names are withheld.",
+    "narrative": "The programme hands each partner its own report. Daniel, Kuunika's network manager, opens his, marked From the programme report, carrying the programme's figures. On Benchmarks, against partners he cannot name, Kuunika is 5th of 5 on meeting regularity. Opening that row shows how far: the other four are at 87.8% to 95.6% meeting regularity; Kuunika sits at 66.0%, the only partner under the 80.0% target.",
+    "actions": [
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:*:has-text(\"From the programme report\")"
+     },
+     {
+      "kind": "hover",
+      "target": "text:From the programme report"
+     },
+     {
+      "kind": "hold",
+      "seconds": 3
+     },
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "role:tab:Benchmarks"
+     },
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:button.w-full.text-left:has-text(\"Meeting regularity\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 2
+     },
+     {
+      "kind": "click",
+      "must_succeed": true,
+      "target": "css:button.w-full.text-left:has-text(\"Meeting regularity\")"
+     },
+     {
+      "kind": "wait_for",
+      "must_succeed": true,
+      "target": "css:*:has-text(\"Another organization\")"
+     },
+     {
+      "kind": "hold",
+      "seconds": 9
+     }
+    ]
+   }
+  ]
+ },
+ "realized": {
+  "primary_par_url": "https://labs.connect.dimagi.com/labs/workflow/7410/run/?run_id=7705&program_id=10100",
+  "programme_par_url": "https://labs.connect.dimagi.com/labs/workflow/7410/run/?run_id=7705&program_id=10100",
+  "worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/7412/run/?run_id=7414&program_id=10100&flw=10101%3A%3Acbf_ku06&source_run=7705",
+  "lagging_worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/7412/run/?run_id=7414&program_id=10100&flw=10101%3A%3Acbf_ku06&source_run=7705",
+  "standout_worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/7412/run/?run_id=7414&program_id=10100&flw=10103%3A%3Acbf_um03&source_run=7705",
+  "data_quality_worker_review_url": "https://labs.connect.dimagi.com/labs/workflow/7412/run/?run_id=7414&program_id=10100&flw=10100%3A%3Acbf_ti07&source_run=7705",
+  "programme_name": "Spark facilitator pilot (illustrative: five example partners)",
+  "lagging_partner_label": "Kuunika Outreach Network (example)",
+  "lagging_worker": "cbf_ku06",
+  "lagging_worker_name": "Ulemu Chirwa",
+  "lagging_worker_community": "Chisoti",
+  "standout_worker": "cbf_um03",
+  "standout_worker_name": "Rhoda Ngwira",
+  "standout_worker_community": "Chimutu",
+  "standout_partner_label": "Umodzi Development Group (example)",
+  "data_quality_worker": "cbf_ti07",
+  "data_quality_worker_name": "Gomezgani Zgambo",
+  "data_quality_worker_community": "Lumbadzi",
+  "data_quality_partner_label": "Tiyende Community Trust (example)",
+  "trend_partner_label": "Mphamvu Rural Alliance (example)",
+  "tiyende_community_trust_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7424/run/?run_id=7707&opportunity_id=10100",
+  "kuunika_outreach_network_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7426/run/?run_id=7708&opportunity_id=10101",
+  "tsogolo_womens_forum_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7428/run/?run_id=7709&opportunity_id=10102",
+  "umodzi_development_group_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7430/run/?run_id=7710&opportunity_id=10103",
+  "mphamvu_rural_alliance_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7432/run/?run_id=7711&opportunity_id=10104",
+  "lagging_partner_opp_report_par_url": "https://labs.connect.dimagi.com/labs/workflow/7426/run/?run_id=7708&opportunity_id=10101"
+ }
+}
