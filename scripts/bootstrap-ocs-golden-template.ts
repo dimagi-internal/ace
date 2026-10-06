@@ -41,10 +41,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { PlaywrightBackend } from '../mcp/ocs/backends/playwright.js';
-import type { RequestFn, RequestResult } from '../mcp/ocs/backends/pipeline-patch.js';
 import { extractPublicId } from '../mcp/ocs/backends/playwright.js';
 
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
+import { makeProductionRequest } from '../lib/ocs-script-request.js';
 
 // ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
 // secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
@@ -106,55 +106,6 @@ This is the ACE golden template. Per-opportunity customizations — the interven
 `;
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function makeProductionRequest(context: BrowserContext, csrfToken: string): RequestFn {
-  return async (method, url, body, options): Promise<RequestResult> => {
-    const maxRedirects = options?.followRedirects === false ? 0 : undefined;
-    const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
-
-    if (method === 'GET') {
-      const res = await context.request.get(url, { maxRedirects });
-      return {
-        ok: res.ok(), status: res.status(), headers: res.headers(),
-        text: () => res.text(), json: () => res.json(),
-      };
-    }
-    if (options?.multipart) {
-      const form = new FormData();
-      for (const [key, value] of Object.entries(options.multipart)) {
-        if (typeof value === 'string') {
-          form.append(key.startsWith('files_') ? 'files' : key, value);
-        } else if (value && typeof value === 'object' && 'buffer' in value) {
-          const f = value as { name: string; mimeType: string; buffer: Buffer };
-          form.append(
-            key.startsWith('files_') ? 'files' : key,
-            new Blob([new Uint8Array(f.buffer)], { type: f.mimeType }),
-            f.name,
-          );
-        }
-      }
-      const res = await context.request.post(url, { headers, multipart: form, maxRedirects });
-      return {
-        ok: res.ok(), status: res.status(), headers: res.headers(),
-        text: () => res.text(), json: () => res.json(),
-      };
-    }
-    if (options?.formEncoded) {
-      const res = await context.request.post(url, {
-        headers, form: body as Record<string, string>, maxRedirects,
-      });
-      return {
-        ok: res.ok(), status: res.status(), headers: res.headers(),
-        text: () => res.text(), json: () => res.json(),
-      };
-    }
-    const res = await context.request.post(url, { headers, data: body, maxRedirects });
-    return {
-      ok: res.ok(), status: res.status(), headers: res.headers(),
-      text: () => res.text(), json: () => res.json(),
-    };
-  };
-}
 
 interface ChatbotListing {
   id: number;
@@ -308,7 +259,7 @@ async function archiveChatbot(
 
     // Step 3: clone + scrape ids + create widget channel (all in one atom)
     console.log('\n[3/5] Cloning source and creating widget channel...');
-    const request = makeProductionRequest(context, csrfToken);
+    const request = makeProductionRequest(context, csrfToken, baseUrl);
     const backend = new PlaywrightBackend({ teamSlug, baseUrl, csrfToken, request });
     const cloned = await backend.cloneChatbot({ template_id: sourceId, new_name: templateName });
     console.log(`      Cloned to experiment ${cloned.experiment_id}`);
