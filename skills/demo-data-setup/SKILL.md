@@ -1506,7 +1506,12 @@ output):
   flag → `{flagged: [true]}`), or `report_only` with the PDD's own words. Then
   WRITE those fields onto the flagged visits in the pool — the generator's
   default is `approved` with nothing sent to review, which is how 11 of 12
-  repeat-count-flagged records were filmed contradicting PDD §7.2 S-1. Required
+  repeat-count-flagged records were filmed contradicting PDD §7.2 S-1. The
+  mechanism: on each flagged pool visit set `review: {flagged: true, status,
+  review_status, flag_reason}` (connect-labs #2264 — the transplant pool's
+  authored review outcome; before it, status/flagged were always drawn from the
+  persona's `flag_rate`), and set every persona's `flag_rate: 0` so nothing that
+  raised no PDD flag is sent to review (ace#2740). Required
   with a `data_quality` signal (`checkCascadeStoryPlan`).
 - **Worker rates need a denominator.** `checkPlannedWorkerRates(plan,
   entityCountRateIndicators(registry))` (`lib/cascade-build-qa.ts`) fails when
@@ -2083,6 +2088,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-06 | **§ C3 `review_routing` names the write path (ace#2740).** Each flagged pool visit carries `review: {flagged: true, status, review_status, flag_reason}` (connect-labs #2264 — before it, a mirror pool had no way to file a record as sent to review; status/flagged were always drawn from the persona's `flag_rate`), and every persona sets `flag_rate: 0` so nothing un-flagged is sent to review. Found on `spark-facilitator/20261004-1706` Phase 7 attempt 3. | ACE team |
 | 2026-10-06 | **Build QA before the hand-off, so the demo judges stop finding build output (ace#2735).** Operator: *"is the demo catching bad output from the program build? ... how can we be better at the program build level in terms of QA or other so DDD isn't the one catching it?"* § C3 adds `review_routing` (what the PDD does with each flagged record — and the pool writes it), `checkPlannedWorkerRates` (a worker-level rate over ≤ 1 entity is binary) and `single_child_levels`; § C6 adds `cascadeBuildOutcomes` — review routing, binary worker rates, constant displayed columns, one-child drill levels — judged against the saved run and the visit rows. Each was a DDD finding on `spark-facilitator/20261004-1706`; each now fails there, in `test/lib/cascade-build-qa.test.ts`, on that run's real output. | ACE team |
 | 2026-10-06 | **Invented names a viewer can read, five partners, a headline that differs (ace#2727).** § C0: invented partners are realistic organisation names with a trailing `(example)` marker (`Tiyende Community Trust (example)`), not `Example partner A` — be59309d's honesty fix satisfied ACE's rail with a placeholder canopy's DDD judge scores at clarity 2, and `spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes on it. The story plan now carries a display roster (`workers[{username, display_name, partner}]`, `entities[{id, name, worker}]`; no codes, no placeholders, no real person's name from the inputs), `headline_indicators` + `headline_spread` (a headline flat across all partners fails), and five partners by default and floor. § C3 carries a TODO where the labs half (snapshot display names, registry `display.entity.label_field`) will be wired; § C7 adds `*_worker_name`. *Enforced:* `checkCascadeStoryPlan` / `verifyCascadeStoryLanded`, `test/lib/cascade-story.test.ts`. | ACE team |
 | 2026-10-05 | **§ C5 plans the benchmark publishes with `planBenchmarkRepublish` (ace#2717).** Oldest first, refusing a missing week; the Benchmarks tab's as-of must equal the last period; the same re-publish is required after a registry edit + rebuild. A classifier refusal of `benchmarks_publish` is surfaced to the operator. | ACE team |
