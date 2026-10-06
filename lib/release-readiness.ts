@@ -173,10 +173,21 @@ function isStale(artifact: RunFile, gate: RunFile): boolean {
   return t(artifact.modifiedTime) - t(gate.modifiedTime) > STALE_TOLERANCE_MS;
 }
 
+/**
+ * A file under a `superseded-*` folder is an archive of an earlier attempt that a
+ * re-run moved aside (Phase 7's `7-synthetic/superseded-<date>-…/`, the clone
+ * re-sync's `superseded-<date>-pre-resync/`). It describes nothing current, so it
+ * is neither a gate to grade nor an artifact a gate is stale against (ace#2753).
+ */
+export function isArchived(path: string): boolean {
+  return /(^|\/)superseded[-_][^/]*\//.test(path);
+}
+
 /** Newest write among a producer's own files (verdicts and results excluded). */
 function producerLatest(files: readonly RunFile[], producer: string): RunFile | null {
   let best: RunFile | null = null;
   for (const f of files) {
+    if (isArchived(f.path)) continue;
     const base = f.path.split('/').pop() ?? '';
     // `<producer>.md`, `<producer>_<role>.yaml`, `<producer>.source.md` — not another skill sharing the prefix.
     if (!(base.startsWith(`${producer}.`) || base.startsWith(`${producer}_`))) continue;
@@ -232,8 +243,8 @@ export function dimensionsBelow(dimensions: unknown, floor: number): Array<{ nam
 
 export function assessGates(files: readonly RunFile[], runState: unknown, catalog: GateCatalog): ReleaseFinding[] {
   const findings: ReleaseFinding[] = [];
-  const qaFiles = files.filter((f) => QA_RESULT.test(f.path));
-  const evalFiles = files.filter((f) => EVAL_VERDICT.test(f.path));
+  const qaFiles = files.filter((f) => QA_RESULT.test(f.path) && !isArchived(f.path));
+  const evalFiles = files.filter((f) => EVAL_VERDICT.test(f.path) && !isArchived(f.path));
 
   // Every QA result present: canonical, non-zero, passing, fresh.
   for (const f of qaFiles) {
