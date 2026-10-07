@@ -1,6 +1,6 @@
 ---
 name: explain-ace
-description: Explain how to work with ACE and what keeps it safe — the interaction and security model — answered from the live system, never from a stored doc. Use when someone is new to ACE, or asks how to reach it, who reviews its replies, who sees what, what data it can reach, whether it can do several things at once, or how it differs from using Claude Code directly.
+description: How to use ACE and what keeps it safe, read live. For newcomers and how-ACE-works asks.
 ---
 
 # Explain ACE — answered from the live system
