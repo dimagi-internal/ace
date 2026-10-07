@@ -91,7 +91,7 @@ failure is a residual, not a phase halt.
      "agent": {"share": true},
      "actions": [{"key": "initiate_ai_coach", "type": "start_ocs_outreach",
                   "label": "Start coaching",
-                  "defaults": {"bot": "<ocs_coach.public_id>", "prompt": "<briefing template>"}}]
+                  "defaults": {"bot": "<ocs_coach.public_id>"}}]
    }}
    ```
 
@@ -106,12 +106,19 @@ failure is a residual, not a phase halt.
 
    Rebuilding the Coach (a new `public_id`) means patching these reports again.
 
-## The briefing a person (or the page agent) sends
+## The briefing
 
-`prompt_text` for each worker is `renderBriefing(...)`: the worker's name and, per
-red indicator in priority order, `label [KEY] — numerator of denominator (pct), band`,
-plus up to three dated examples. Pass the same keys as the action item's
-`indicators` so Labs can compare `chatbot_topics_done` against them.
+Labs composes it (connect-labs #2280, `connect_labs/workflow/run_grading.py`): for
+each worker without a `prompt` of their own, the action builds the `renderBriefing`
+shape from that worker's graded cells — red topics first, then yellow, coachable
+(`flw_applicable`) indicators only — records the topic ids as the task's
+`coaching_indicators`, and shows the composed briefing in the preview. Workers with
+nothing red or yellow are skipped with a reason. So **do not put a briefing in
+`defaults.prompt`**: anything there is appended to every worker's briefing under
+"Programme team's note:". Leave it unset, or use it for a genuine standing note.
+
+The report shows "Start coaching" only on workers who are off target or on watch;
+Dimagi staff coaching one worker get a "Send to me instead (QA)" box (`deliver_to`).
 
 ## Terminology
 

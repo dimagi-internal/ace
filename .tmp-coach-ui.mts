@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+import os from 'node:os';
+const S = '/private/tmp/claude-501/-Users-jjackson-emdash-worktrees-ace-1476c35d-emdash-ace-coach-4uc37/cf3b1ca5-4bf2-4a15-bd37-5bac88ce5a52/scratchpad/ui';
+const b = await chromium.launch();
+const ctx = await b.newContext({ storageState: os.homedir() + '/.ace/labs-session.json', viewport: { width: 1440, height: 900 } });
+const p = await ctx.newPage();
+p.on('console', m => { if (m.type() === 'error') console.log('console error:', m.text().slice(0, 200)); });
+await p.goto('https://labs.connect.dimagi.com/labs/workflow/7913/run/?run_id=7914&program_id=10105', { waitUntil: 'domcontentloaded', timeout: 120000 });
+await p.waitForTimeout(25000);
+console.log('url', p.url(), 'title', await p.title());
+await p.screenshot({ path: S + '/01-page.png', fullPage: false });
+await p.screenshot({ path: S + '/02-full.png', fullPage: true });
+const btns = await p.locator('button, a').allInnerTexts();
+console.log('buttons with coach:', btns.filter(t => /coach/i.test(t)).slice(0, 10));
+console.log('launcher present:', await p.locator('[class*=canopy], #canopy-launcher, canopy-launcher').count());
+await b.close();
