@@ -61,6 +61,16 @@ describe('canopy-web decides who may steer ACE', () => {
   });
 });
 
+describe('an unproven member is fixed at the domain, not hard-coded around', () => {
+  // Jonathan, 2026-10-07: the unaligned-DKIM domain was fixed at its DNS; the docs
+  // keep the general rule and must not grow per-domain workarounds.
+  it('routing docs name no specific domain or signing host', () => {
+    for (const f of ['CLAUDE.md', 'skills/inbox-triage/SKILL.md', 'skills/answer-caller/SKILL.md']) {
+      expect(read(f), f).not.toMatch(/dimagi-associate\.com|gappssmtp/);
+    }
+  });
+});
+
 describe('answer-caller commits nobody to future work', () => {
   const body = () => read('skills/answer-caller/SKILL.md');
 

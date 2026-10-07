@@ -44,7 +44,6 @@ rest: no one has agreed to, and there is no team queue behind this session.
    `dmarc` or `dkim_aligned`. A `dkim` or `spf` grade on a staff-looking address (a Dimagi
    domain) usually means their domain's mail authentication is the gap, not their access:
    tell the owner exactly that, with the grade, rather than treating them as an outsider.
-   Known case: `dimagi-associate.com` (Google's default `*.gappssmtp.com` signature, no DMARC).
    If they ask how ACE or Canopy works, include Canopy's public explainer,
    https://canopy.dimagi.com/about.
 4. **Draft** the subject (their subject, as `Re: …`) and body to files under
