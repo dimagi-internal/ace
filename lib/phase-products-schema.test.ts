@@ -97,6 +97,42 @@ describe('validatePhaseProductsFragment — strict root catches the real drift',
 });
 
 describe('validatePhaseProductsComplete — boundary completeness', () => {
+  it('Phase 7 without the OCS Coach is INCOMPLETE at boundary — the Coach is required', () => {
+    const r = validatePhaseProductsComplete('synthetic-data-and-workflows', {
+      synthetic: { labs_opp_id: 10105 },
+    });
+    expect(r.valid).toBe(false);
+    expect(r.issues.map((i) => i.path)).toEqual([
+      'products.ocs_coach.experiment_id',
+      'products.ocs_coach.coaching_on',
+    ]);
+  });
+
+  it('Phase 7 with a Coach that is on the reports is complete', () => {
+    const r = validatePhaseProductsComplete('synthetic-data-and-workflows', {
+      synthetic: { labs_opp_id: 10105 },
+      ocs_coach: {
+        experiment_id: 13972,
+        public_id: 'coach-pub',
+        coaching_on: [{ workflow_id: 7913, run_id: 7914, url: 'https://labs.connect.dimagi.com/labs/workflow/7913/run/?run_id=7914' }],
+      },
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it('Phase 7 that finished before the Coach existed is not held to it (old runs stay resumable)', () => {
+    const products = { synthetic: { labs_opp_id: 10105 } };
+    expect(validatePhaseProductsComplete('synthetic-data-and-workflows', products, undefined, '2026-10-05T12:00:00Z').valid).toBe(true);
+    expect(validatePhaseProductsComplete('synthetic-data-and-workflows', products, undefined, '2026-10-08T09:00:00Z').valid).toBe(false);
+  });
+
+  it('Phase 7 with a Coach on NO report is invalid (coaching_on must list at least one)', () => {
+    const r = validatePhaseProductsComplete('synthetic-data-and-workflows', {
+      ocs_coach: { experiment_id: 13972, coaching_on: [] },
+    });
+    expect(r.valid).toBe(false);
+  });
+
   it('connect-setup missing connect.opportunity.url is INCOMPLETE at boundary', () => {
     const r = validatePhaseProductsComplete('connect-setup', {
       connect: { domain: 'connect-ace-prod' },

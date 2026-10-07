@@ -22,8 +22,13 @@ a yes. QA conversations to Dimagi staff use the action's `deliver_to` argument.
 Phase 7 Step 1.9 (`agents/synthetic-data-and-workflows.md`), after the semantic
 registry and programme report exist — the Coach's topic keys ARE the registry's
 indicator ids — and after Phase 5's Q&A bot, which it clones for the model and the
-opp collection. Re-run it whenever the registry version changes. Best effort: a
-failure is a residual, not a phase halt.
+opp collection. Re-run it whenever the registry version changes.
+
+**Required, not best effort.** The Coach is a Phase 7 product: Phase 7 cannot be
+`done` without `products.ocs_coach.experiment_id` and `products.ocs_coach.coaching_on`
+(`lib/phase-products-schema.ts` `REQUIRED_PRODUCT_KEYS`, checked at the phase
+boundary). A failure in any step below is a defect to fix and re-run, not a
+residual to record — we know the Coach builds (Spark Coach 13972).
 
 ## Inputs
 
@@ -65,8 +70,8 @@ failure is a residual, not a phase halt.
    Splices `templates/ocs-coach/status_node.py` between the LLM and End nodes,
    sets prompt + collection, and creates the `commcare_connect` channel. If the
    channel step fails with *flag_commcare_connect*, the OCS team lacks that feature
-   flag: record it as a residual naming the team and continue — the API-channel QA
-   below does not need it.
+   flag: that team cannot deliver coaching to a worker's Connect app, so stop and
+   report it (name the team) — the flag must be switched on, then re-run this step.
 6. **Publish** with `ocs_publish_chatbot_version`.
 7. **QA with a simulated worker** over the OCS chat-completions API
    (`POST /api/openai/<public_id>/chat/completions`, team API key), never the
@@ -77,7 +82,10 @@ failure is a residual, not a phase halt.
    read the session's `participant_data` (`GET /api/sessions/<id>/`) and check
    `chatbot_topics`, `chatbot_review_needed`, `chatbot_task_status`. Run every
    assistant message through `findOverstatements` — any hit fails the QA.
-8. **Write back** `phases.ocs-setup.products.ocs_coach` (deep merge):
+8. **Write back** `phases.synthetic-data-and-workflows.products.ocs_coach`
+   (`merge: 'deep'`, `validateAs: {kind: 'phase-products', phase: 'synthetic-data-and-workflows'}`).
+   Phase 7 builds the Coach, so it lives in Phase 7's block; runs before
+   2026-10-07 (Spark `20261004-1706`) recorded it under `phases.ocs-setup.products`:
    `experiment_id, public_id, team_slug, pipeline_id, admin_url, name,
    published_version_number, collection_id, registry_id, topic_keys[],
    connect_channel, qa`.

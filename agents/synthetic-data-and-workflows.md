@@ -166,7 +166,7 @@ hours — the DDD render (Step 3) is still the long pole.
 § Legacy single-opportunity path) remain for an operator who asks for them
 (`--legacy-dashboards`); they are no longer the default.
 
-### Step 1.9: The OCS Coach — `ocs-coach-setup` (best effort)
+### Step 1.9: The OCS Coach — `ocs-coach-setup` (required)
 
 Once Step 1 has authored the registry and the programme report, build this run's
 Coach: invoke `ocs-coach-setup` (`skills/ocs-coach-setup/SKILL.md`). It clones the
@@ -178,11 +178,13 @@ the programme report and each partner's opportunity report get the
 pages Step 3 films, so coaching appears in the demo as part of the report. It never
 sends to a worker; a person starts coaching from those pages.
 
-It is best effort, like Step 3.95: a failure (most often the OCS team lacking the
-`flag_commcare_connect` feature flag, which only blocks real sends) is a named
-residual in this phase's summary, never a phase halt. It writes
-`phases.ocs-setup.products.ocs_coach` and records
-`steps.ocs-coach-setup: {status: done|partial}` here.
+It is **required**: Phase 7 cannot be `done` without the Coach. The phase boundary
+checks `products.ocs_coach.experiment_id` and `products.ocs_coach.coaching_on`
+(`REQUIRED_PRODUCT_KEYS` in `lib/phase-products-schema.ts`). A failure here —
+including the OCS team lacking the `flag_commcare_connect` feature flag, which
+means coaching could never reach a worker — is a defect to fix and re-run, not a
+residual. It writes `phases.synthetic-data-and-workflows.products.ocs_coach` and
+records `steps.ocs-coach-setup: {status: done}` here.
 
 ### Step 2: Narrative — `demo-narrative`
 
@@ -573,7 +575,7 @@ phases:
       semantic-registry-author-qa: { status: done }
       demo-data-setup: { status: done }
       demo-narrative:   { status: done }
-      ocs-coach-setup:  { status: done }   # or partial, with the residual named
+      ocs-coach-setup:  { status: done }   # required — no partial (Step 1.9)
       ddd-run:          { status: done }
 ```
 

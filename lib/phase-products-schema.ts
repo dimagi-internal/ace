@@ -484,6 +484,34 @@ const SyntheticProducts = z
       })
       .passthrough()
       .optional(),
+    /**
+     * The per-run OCS Coach (`skills/ocs-coach-setup`, Phase 7 Step 1.9) and the
+     * reports it was put on. REQUIRED for a `done` Phase 7 — see
+     * REQUIRED_PRODUCT_KEYS. Runs before 2026-10-07 wrote it under
+     * `phases.ocs-setup.products` instead.
+     */
+    ocs_coach: z
+      .object({
+        experiment_id: z.union([z.string(), z.number()]).optional(),
+        public_id: z.string().optional(),
+        team_slug: z.string().optional(),
+        admin_url: z.string().url().optional(),
+        registry_id: z.union([z.string(), z.number()]).optional(),
+        coaching_on: z
+          .array(
+            z
+              .object({
+                workflow_id: z.union([z.string(), z.number()]).optional(),
+                run_id: z.union([z.string(), z.number()]).optional(),
+                url: z.string().url().optional(),
+              })
+              .passthrough(),
+          )
+          .min(1)
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .strict();
 
@@ -747,6 +775,7 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     'synthetic.walkthroughs': 'synthetic-data-and-workflows',
     'synthetic.promoted_template': 'synthetic-data-and-workflows',
     'synthetic.ddd_*': 'synthetic-data-and-workflows',
+    ocs_coach: 'ocs-coach-setup',
   },
   'solicitation-management': {
     // "sole writer of `products.solicitation` within the run"
@@ -888,8 +917,30 @@ export const REQUIRED_PRODUCT_KEYS: Partial<Record<PhaseName, string[]>> = {
     'connect.ace_test_user.invite_row_present',
   ],
   'qa-and-training': ['training.deck', 'training.docs.onboarding_email'],
+  // The Coach is a Phase 7 product, not an add-on: a phase that could not build
+  // it, or did not put it on the reports, is not done (owner, 2026-10-07).
+  'synthetic-data-and-workflows': ['ocs_coach.experiment_id', 'ocs_coach.coaching_on'],
   'solicitation-management': ['solicitation.url'],
 };
+
+/**
+ * Required keys added AFTER runs already existed, keyed `<phase>:<key>` → the
+ * first `completed_at` they bind. A phase that finished before that instant was
+ * built by a skill that never wrote the key, so holding it to the key would only
+ * make an old run un-resumable (`classifyUpstreamProductsGaps` halts a resume on
+ * any gap). A phase with no `completed_at` is judged as new.
+ */
+export const REQUIRED_KEY_SINCE: Record<string, string> = {
+  'synthetic-data-and-workflows:ocs_coach.experiment_id': '2026-10-08T00:00:00Z',
+  'synthetic-data-and-workflows:ocs_coach.coaching_on': '2026-10-08T00:00:00Z',
+};
+
+function boundAt(phase: string, key: string, completedAt?: string): boolean {
+  const since = REQUIRED_KEY_SINCE[`${phase}:${key}`];
+  if (!since || !completedAt) return true;
+  const done = Date.parse(completedAt);
+  return Number.isNaN(done) || done >= Date.parse(since);
+}
 
 /**
  * Per-mode overrides of {@link REQUIRED_PRODUCT_KEYS} (ace#1069).
@@ -1033,10 +1084,11 @@ export function validatePhaseProductsComplete(
   phase: string,
   products: unknown,
   mode?: string,
+  completedAt?: string,
 ): ProductsValidationResult {
   const shape = validatePhaseProductsFragment(phase, products);
   if (!shape.valid || shape.skipped) return shape;
-  const required = requiredProductKeys(phase, mode, products);
+  const required = requiredProductKeys(phase, mode, products).filter((k) => boundAt(phase, k, completedAt));
   const issues: ProductsValidationIssue[] = [];
   for (const dotted of required) {
     if (resolveDotPath(products, dotted) === undefined) {
@@ -1115,8 +1167,10 @@ export function classifyPhaseProducts(
   // (ace#992: they didn't, and one run got ok:true from two fences and
   // `malformed` from the third on the same literal string).
   const isTerminal = status === 'done' || status === 'complete' || status === 'partial';
+  const completedAt: string | undefined =
+    typeof phaseBlock.completed_at === 'string' ? phaseBlock.completed_at : undefined;
   const r = isTerminal
-    ? validatePhaseProductsComplete(phase, products, mode)
+    ? validatePhaseProductsComplete(phase, products, mode, completedAt)
     : validatePhaseProductsFragment(phase, products);
   return {
     phase,
