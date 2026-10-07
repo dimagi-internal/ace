@@ -1061,6 +1061,60 @@
                   }
                 },
                 "additionalProperties": true
+              },
+              "ocs_coach": {
+                "type": "object",
+                "properties": {
+                  "experiment_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "public_id": {
+                    "type": "string"
+                  },
+                  "team_slug": {
+                    "type": "string"
+                  },
+                  "admin_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "registry_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "coaching_on": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workflow_id": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "run_id": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": true
               }
             },
             "additionalProperties": false
@@ -1068,7 +1122,10 @@
         },
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "requiredProductKeys": [],
+      "requiredProductKeys": [
+        "ocs_coach.experiment_id",
+        "ocs_coach.coaching_on"
+      ],
       "productProducers": {
         "synthetic.provider": "demo-data-setup",
         "synthetic.labs_opp_id": "demo-data-setup",
@@ -1080,7 +1137,8 @@
         "synthetic.narrative": "demo-narrative",
         "synthetic.walkthroughs": "synthetic-data-and-workflows",
         "synthetic.promoted_template": "synthetic-data-and-workflows",
-        "synthetic.ddd_*": "synthetic-data-and-workflows"
+        "synthetic.ddd_*": "synthetic-data-and-workflows",
+        "ocs_coach": "ocs-coach-setup"
       },
       "unattributedProductKeys": []
     },

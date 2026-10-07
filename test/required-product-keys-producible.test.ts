@@ -43,6 +43,7 @@ const PRODUCER_SKILLS: Record<string, string[]> = {
   'connect-setup': ['connect-opp-setup'],
   'qa-and-training': ['training-deck-render', 'training-deck-generate', 'training-onboarding-email'],
   'solicitation-management': ['solicitation-create'],
+  'synthetic-data-and-workflows': ['ocs-coach-setup'],
 };
 
 function skillText(slug: string): string {

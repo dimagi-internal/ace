@@ -89,7 +89,13 @@ const REAL_RUN = {
       status: 'done',
       products: { training: { deck: DOC, docs: { onboarding_email: DOC } } },
     },
-    'synthetic-data-and-workflows': { status: 'done', products: { synthetic: { env: 'e1' } } },
+    // completed_at: a pre-2026-10-08 stand-in (the run is from 2026-08-28) — its
+    // Phase 7 predates the required OCS Coach, so REQUIRED_KEY_SINCE exempts it.
+    'synthetic-data-and-workflows': {
+      status: 'done',
+      completed_at: '2026-08-29T00:00:00Z',
+      products: { synthetic: { env: 'e1' } },
+    },
     'solicitation-management': {
       status: 'done',
       products: { solicitation: { url: 'https://labs.connect.dimagi.com/solicitations/1/' } },
