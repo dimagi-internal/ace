@@ -1,59 +1,43 @@
 /**
- * dimagi-internal/ace#1753 — the durable open-questions ledger has ONE home,
- * and it is the opp root.
+ * The open-questions ledger is retired, and NOTHING reads it — except the
+ * one-time migration tool. Open asks are a filter over decision rows, never a
+ * file.
  *
- * ## The defect this pins
+ * ## History this pins
  *
- * `agents/ace-orchestrator.md § Phase boundary fence` used to instruct the
- * orchestrator to write `<run-folder>/open-questions.md`, justified by the
- * claim that "the summary page reads `open-questions.md` from the run-folder
- * root by name". That claim was false, and had been for a month:
- *
- *   - ace-web `apps/opps/summary.py § _read_open_questions` iterates
- *     `(opp_folder_id, run_folder_id)` — the OPP folder first, the run folder
- *     only as a fallback "so any older run that did write a run-local copy
- *     keeps rendering". On any real opp the opp-root ledger exists, so the
- *     run-local copy is never the one served.
- *   - `lib/run-readme.ts` lists `open-questions.md` in `OPP_LEVEL_PATHS` and
- *     filters it out of the run README.
- *   - `lib/artifact-manifest.ts` declares its path as `open-questions.md`,
- *     described verbatim as "Opp-level (NOT under runs/<run-id>/)".
- *
- * Every consumer agreed; the fence was the lone dissenter. A run that
- * followed it (`hh-poverty-targeting/20260827-0323`) wrote a document that
- * appeared on none of the 17 links the summary page emits — and, worse,
- * invited the wrong repair, because a `DOC-LITERAL-MARKDOWN` finding raised
- * against the opp-root ledger looks like it belongs to the run-local file
- * sitting next to the audit.
+ *  - ace#1753: the ledger had one home (the opp root), and the fence once
+ *    told the orchestrator to write a run-folder copy no surface displayed.
+ *  - 2026-10-04 (docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md):
+ *    every question became a decision row, but the fold kept two legacy
+ *    models alive — a generated `ACE/<opp>/open-asks.yaml` (a second store
+ *    for what is only a filter), and a "legacy read" of an un-migrated
+ *    `open-questions.md` at Phase 1. No opp was ever migrated, so ledger
+ *    content kept being carried forward into every new run.
+ *  - 2026-10-07, operator decision (ace#2757): *"why isn't that just a
+ *    filter of decisions … when we created the new system we should not have
+ *    carried forward any legacy models so fix that."* `open-asks.yaml` is
+ *    gone, `lib/open-questions-inline.ts` is gone, and
+ *    `scripts/migrate-open-questions.ts` (+ `lib/open-questions-migrate.ts`)
+ *    is the only code that opens a ledger.
  *
  * ## Evidence class
  *
- * STATIC TEXT + the in-repo manifest. Nothing here is sent to, or matched
- * against, an external system: the claim is about which path ACE's own docs
- * instruct and which path its own manifest declares (CLAUDE.md § the trigger
- * is the CLAIM, not the directory). The cross-repo half — that ace-web
- * prefers the opp folder — is asserted by ace-web's own
- * `test_open_questions_read_from_opp_folder_not_run_folder`, and is quoted
- * here rather than re-tested, because this repo cannot import it.
+ * STATIC TEXT over ACE's own code and instructional docs. Nothing here is sent
+ * to or matched against an external system. Docs that RECORD the history
+ * (CHANGELOG, specs under `docs/`, this test) are not scanned.
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ARTIFACT_MANIFEST } from '../../lib/artifact-manifest.js';
 import { generateRunReadme } from '../../lib/run-readme.js';
+import { classifyOppRootEntry } from '../../lib/opp-root-files.js';
 
 const REPO = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 
-/**
- * Instructional surfaces. Docs that RECORD the defect (CHANGELOG, this test,
- * design specs under `docs/`) are not scanned — a ratchet that cannot
- * describe what it forbids is unmaintainable.
- */
-const INSTRUCTIONAL_DIRS = ['agents', 'skills', 'commands'];
-
-function walk(dir: string, acc: string[] = []): string[] {
+function walk(dir: string, keep: (name: string) => boolean, acc: string[] = []): string[] {
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -61,111 +45,138 @@ function walk(dir: string, acc: string[] = []): string[] {
     return acc;
   }
   for (const e of entries) {
+    if (e === 'node_modules') continue;
     const abs = join(dir, e);
-    if (statSync(abs).isDirectory()) walk(abs, acc);
-    else if (e.endsWith('.md')) acc.push(abs);
+    if (statSync(abs).isDirectory()) walk(abs, keep, acc);
+    else if (keep(e)) acc.push(abs);
   }
   return acc;
 }
 
+const rel = (abs: string) => relative(REPO, abs).split(sep).join('/');
+
+/** Instructional surfaces an agent executes. */
 function instructionalFiles(): string[] {
-  return INSTRUCTIONAL_DIRS.flatMap((d) => walk(join(REPO, d)));
+  return ['agents', 'skills', 'commands'].flatMap((d) => walk(join(REPO, d), (n) => n.endsWith('.md')));
 }
 
-/**
- * A run-folder open-questions path, in the shapes ACE's docs actually write.
- * Narrow on purpose: `runs/<run-id>/` and `<run-folder>/` are the two forms
- * the manifest and the orchestrator use for the run root, and the third is
- * the prose claim that produced the defect.
- */
-const RUN_FOLDER_OPEN_QUESTIONS: readonly RegExp[] = [
-  /<run-folder>\/open-questions\.md/i,
-  /runs\/<run-id>\/open-questions\.md/i,
-  /open-questions\.md`? from the run-folder root/i,
-];
+/** Executable code. Tests are not scanned (fixtures name the files on purpose). */
+function codeFiles(): string[] {
+  return ['lib', 'mcp', 'scripts', 'bin', 'hooks'].flatMap((d) =>
+    walk(join(REPO, d), (n) => /\.(ts|mjs|js|py|sh)$/.test(n) && !/\.test\.ts$/.test(n)),
+  );
+}
 
-describe('open-questions.md lives at the opp root (ace#1753)', () => {
-  it('no instructional doc directs a write into the run folder', () => {
-    const offenders: string[] = [];
-    for (const abs of instructionalFiles()) {
-      const rel = relative(REPO, abs).split(sep).join('/');
-      readFileSync(abs, 'utf8')
-        .split('\n')
-        .forEach((line, i) => {
-          for (const re of RUN_FOLDER_OPEN_QUESTIONS) {
-            if (re.test(line)) offenders.push(`${rel}:${i + 1}  ${line.trim()}`);
-          }
-        });
-    }
+function offendingLines(files: string[], patterns: readonly RegExp[]): string[] {
+  const out: string[] = [];
+  for (const abs of files) {
+    readFileSync(abs, 'utf8')
+      .split('\n')
+      .forEach((line, i) => {
+        for (const re of patterns) if (re.test(line)) out.push(`${rel(abs)}:${i + 1}  ${line.trim()}`);
+      });
+  }
+  return out;
+}
+
+/** The only code allowed to name or open a ledger file. */
+const LEDGER_CODE_ALLOWLIST: Record<string, string> = {
+  'scripts/migrate-open-questions.ts': 'the one-time migration tool — the only ledger reader',
+  'lib/open-questions-migrate.ts': 'the migration tool\'s library (holds the ledger parser)',
+  'lib/opp-root-files.ts': 'QUARANTINE entry only — keeps Step 5b from moving the retired files into inputs/; reads nothing',
+};
+
+describe('no skill, agent or lib reads open-questions.md except the migration tool (ace#2757)', () => {
+  it('the Phase 1 legacy reader is deleted', () => {
+    expect(existsSync(join(REPO, 'lib/open-questions-inline.ts'))).toBe(false);
+  });
+
+  it('only the migration script imports the ledger parser', () => {
+    const importers = codeFiles().filter((abs) => /open-questions-migrate(\.js)?['"]/.test(readFileSync(abs, 'utf8')));
+    expect(importers.map(rel)).toEqual(['scripts/migrate-open-questions.ts']);
+  });
+
+  it('no code outside the allowlist names a ledger or open-asks.yaml as a string', () => {
+    // String literals only — a backticked name in a comment that records
+    // history is not a reader.
+    const LITERAL = /['"]open-questions(\.archived)?\.md['"]|['"]open-asks\.yaml['"]|OPEN_ASKS_FILENAME/;
+    const offenders = codeFiles()
+      .filter((abs) => !(rel(abs) in LEDGER_CODE_ALLOWLIST))
+      .filter((abs) => LITERAL.test(readFileSync(abs, 'utf8')))
+      .map(rel);
+    expect(offenders, `ledger literal outside the allowlist: ${offenders.join(', ')}`).toEqual([]);
+  });
+
+  it('no agent, skill or command instructs reading a ledger, or calls a retired reader', () => {
+    const READS: readonly RegExp[] = [
+      /drive_read_file[^\n]*open-questions(\.archived)?\.md/,
+      /open-questions(\.archived)?\.md[^\n]*drive_read_file/,
+      /extractOpenSection|selectOpenRows|classifyOpenQuestionsInline|OPEN_QUESTIONS_INLINE_CAP_CHARS|open-questions-inline/,
+      /`## Open` (rows|section)/,
+      /decisions_open_asks\([^)]*mode:/,
+      /mode: 'emit'/,
+      /checkOpenQuestionsWriteShape|checkOpenQuestionsPlainLanguage/,
+      /§ The durable open-questions doc/,
+      /drive_create_doc_from_markdown[^\n]*open-questions\.md/,
+    ];
+    // A row of a case-history table (`| ace#NNNN | … |`) cites a defect; it
+    // instructs nothing.
+    const offenders = offendingLines(instructionalFiles(), READS).filter((l) => !/^\S+:\d+ {2}\| ace#\d+ \|/.test(l));
     expect(offenders, offenders.join('\n')).toEqual([]);
   });
 
-  it('the boundary fence emits open-asks.yaml at the opp root, and writes no ledger', () => {
-    // The ledger is retired (owner decision 2026-10-04,
-    // docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md).
-    // Its run-end paragraph is replaced by the generated open-asks.yaml; the
-    // location lesson of ace#1753 carries over unchanged — one opp-root home,
-    // never a run-folder copy.
-    const text = readFileSync(join(REPO, 'agents/ace-orchestrator.md'), 'utf8');
-    expect(text).not.toContain('**Open-questions doc (run-end, once).**');
-    const idx = text.indexOf('**Open asks (run-end, once).**');
-    expect(idx, 'the boundary-fence open-asks paragraph is gone').toBeGreaterThan(-1);
-    const para = text.slice(idx, idx + 2000);
-    expect(para).toContain('decisions_open_asks');
-    expect(para).toContain("mode: 'emit'");
-    expect(para).toContain('open-asks.yaml');
-    expect(para).toMatch(/never write a\s+run-folder copy/i);
-    expect(para).toMatch(/never read a value back/i);
-  });
-
-  it('the manifest declares an opp-root path, not a run-folder one', () => {
-    const entry = ARTIFACT_MANIFEST.find((a) => a.path === 'open-questions.md');
-    expect(entry, 'open-questions.md is missing from ARTIFACT_MANIFEST').toBeDefined();
-    expect(entry!.path).not.toContain('/');
-    expect(
-      ARTIFACT_MANIFEST.filter((a) => a.path.endsWith('open-questions.md')).map((a) => a.path),
-    ).toEqual(['open-questions.md']);
-  });
-
-  it('the run README does not advertise a run-folder copy', () => {
-    expect(generateRunReadme('20260827-0323')).not.toContain('open-questions.md');
+  it('the retired files are a quarantine entry in the opp-root registry, not live state', () => {
+    for (const name of ['open-questions.md', 'open-questions.archived.md', 'open-asks.yaml']) {
+      const entry = classifyOppRootEntry(name);
+      expect(entry?.label, name).toBe('retired open-questions files');
+      expect(entry?.why).toMatch(/QUARANTINE/);
+      expect(entry?.why).toMatch(/No run reads them/);
+    }
   });
 });
 
-/**
- * The ledger is retired (owner decision 2026-10-04,
- * docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md):
- * every question is a decision row, and no skill writes `open-questions.md`.
- * The writers' gates were deleted with it, so an instruction that still names
- * one would send an agent to a function that no longer exists.
- */
-describe('no instructional doc writes the retired ledger', () => {
-  const RETIRED: readonly RegExp[] = [
-    /checkOpenQuestionsWriteShape/,
-    /checkOpenQuestionsPlainLanguage/,
-    /§ The durable open-questions doc/,
-    /§ Row contract — written for the named owner/,
-    /drive_create_doc_from_markdown[^\n]*open-questions\.md/,
-  ];
-
-  it('no agent, skill or command names a retired ledger writer or its gates', () => {
-    const offenders: string[] = [];
-    for (const abs of instructionalFiles()) {
-      const rel = relative(REPO, abs).split(sep).join('/');
-      readFileSync(abs, 'utf8')
-        .split('\n')
-        .forEach((line, i) => {
-          for (const re of RETIRED) if (re.test(line)) offenders.push(`${rel}:${i + 1}  ${line.trim()}`);
-        });
-    }
-    expect(offenders, offenders.join('\n')).toEqual([]);
+describe('open asks are a filter over decisions, never a file (ace#2757)', () => {
+  it('the manifest declares neither open-asks.yaml nor the ledger', () => {
+    const paths = ARTIFACT_MANIFEST.map((a) => a.path);
+    expect(paths.filter((p) => /open-asks|open-questions/.test(p))).toEqual([]);
   });
 
-  it('idea-to-pdd states the producer rule where the ledger section used to be', () => {
+  it('the run README advertises neither', () => {
+    const md = generateRunReadme('20260827-0323');
+    expect(md).not.toContain('open-questions.md');
+    expect(md).not.toContain('open-asks.yaml');
+  });
+
+  it('the run-end fence and Phase 1 call decisions_open_asks read-only, and write no file', () => {
+    const text = readFileSync(join(REPO, 'agents/ace-orchestrator.md'), 'utf8');
+    const runEnd = text.indexOf('**Open asks (run-end, once).**');
+    expect(runEnd, 'the boundary-fence open-asks paragraph is gone').toBeGreaterThan(-1);
+    const para = text.slice(runEnd, runEnd + 1500);
+    expect(para).toContain('decisions_open_asks(runFolderId, opportunity, run_id, checkCarried: true)');
+    expect(para).toMatch(/Nothing is written for open asks/);
+    expect(para).toMatch(/never read a value back out of it/i);
+
+    const p1 = text.indexOf('**Open asks from the previous run — a check, never an input.**');
+    expect(p1).toBeGreaterThan(-1);
+    const p1para = text.slice(p1, p1 + 2500);
+    expect(p1para).toContain('decisions_open_asks(runFolderId, opportunity, run_id, throughPhase: 1)');
+    expect(p1para).toMatch(/nothing reads it/);
+    expect(text).not.toContain('**Legacy ledger (opps not yet migrated).**');
+  });
+
+  it('decisions_open_asks takes no mode and declares no write', () => {
+    const src = readFileSync(join(REPO, 'mcp/decisions-server.ts'), 'utf8');
+    const reg = src.slice(src.indexOf("'decisions_open_asks',"));
+    const schema = reg.slice(0, reg.indexOf('async (args)'));
+    expect(schema).not.toMatch(/\bmode:/);
+    expect(schema).toContain('writes nothing');
+  });
+
+  it('idea-to-pdd states the producer rule and takes no prior-run ledger input', () => {
     const skill = readFileSync(join(REPO, 'skills/idea-to-pdd/SKILL.md'), 'utf8');
-    expect(skill).not.toContain('## The durable open-questions doc');
     expect(skill).toContain('## Asks are decision rows (the open-questions ledger is retired)');
     expect(skill).toMatch(/a default you build on is a decision row/i);
+    expect(skill).not.toContain('Prior runs (legacy only)');
+    expect(skill).not.toContain('Legacy ledger rows, when the orchestrator passes them');
   });
 });
-

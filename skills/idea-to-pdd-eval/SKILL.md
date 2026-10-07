@@ -153,8 +153,8 @@ filename rule.
    gate (dimagi-internal/ace#2128).**
 
    Call `classifyViabilityGrading({ oppRootNames })` from
-   `lib/viability-grading.ts` — the same shape as ace#1487's
-   `classifyOpenQuestionsInline`, and the source of truth if this prose ever
+   `lib/viability-grading.ts` — the same shape as ace#1487's fixture branch
+   (since retired with the ledger it bounded), and the source of truth if this prose ever
    disagrees with it. When the opp root carries `iterate-state.yaml` it
    returns `mode: 'fixture-adjusted'` and `excludedFromGate:
    ['demand_reality']`.

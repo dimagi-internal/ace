@@ -13,7 +13,7 @@
  *    as cruft in `/ace:doctor`.
  *
  * Both then swept ACE's own state into the Phase 1 evidence pack.
- * `open-questions.md` is written to the opp root BY ACE'S OWN MANDATE, so the
+ * `open-questions.md` (now retired, ace#2757) was written to the opp root BY ACE'S OWN MANDATE, so the
  * orchestrator created a file in one step and migrated it in another — which
  * both fed ACE's prior conclusions back in as curated source evidence (the
  * `no-inferred-backstory` class through a self-referential back door) and
@@ -138,26 +138,19 @@ export const ACE_OWNED_OPP_ROOT: OppRootEntry[] = [
     match: exact('feedback'),
   },
   {
-    label: 'open-asks.yaml',
+    label: 'retired open-questions files',
     kind: 'file',
-    owner: 'orchestrator run end (decisions_open_asks, mode emit)',
+    owner: 'nobody — retired (ace#2757). Nothing in ACE reads these',
     why:
-      'the generated list of the last run\'s unanswered asks. Phase 1 reads it at the opp root to ' +
-      'check nothing was dropped (docs/decisions-contract.md § Open asks); migrated, that check ' +
-      'silently finds nothing and ace-web loses the review list it renders',
-    ref: 'docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md',
-    match: exact('open-asks.yaml'),
-  },
-  {
-    label: 'open-questions.md',
-    kind: 'file',
-    owner: 'legacy — the retired open-questions ledger (no skill writes it since 2026-10-04)',
-    why:
-      'ACE\'s own former ledger. Until scripts/migrate-open-questions.ts folds it into decision ' +
-      'rows, Phase 1 still reads its open rows at the opp root; migrated into inputs/, ACE would ' +
-      'read its own prior reasoning back as curated source evidence',
-    ref: 'dimagi-internal/ace#1201, #1325',
-    match: (name) => name === 'open-questions.md' || name === 'open-questions.archived.md',
+      'QUARANTINE, not state. The retired open-questions ledger (`open-questions.md`, ' +
+      '`open-questions.archived.md`) and the retired generated `open-asks.yaml` are ACE\'s own ' +
+      'former prose about an opp; open asks are now a filter over each run\'s decisions.yaml. ' +
+      'No run reads them. They are listed only so Step 5b never moves them into inputs/, where ' +
+      'ACE would read its own prior reasoning back as curated Phase 1 source evidence (#1325). ' +
+      'scripts/migrate-open-questions.ts is the only code that opens a ledger',
+    ref: 'dimagi-internal/ace#2757, #1325',
+    match: (name) =>
+      name === 'open-questions.md' || name === 'open-questions.archived.md' || name === 'open-asks.yaml',
   },
   {
     label: 'iterate-state.yaml',
@@ -176,7 +169,7 @@ export const ACE_OWNED_OPP_ROOT: OppRootEntry[] = [
     why:
       'an outbound email ACE ITSELF drafted and parked awaiting sign-off. Migrated, ACE reads ' +
       'its own unsent prose back as curated Phase 1 source evidence — the no-inferred-backstory ' +
-      'class through the same self-referential back door as open-questions.md. Note the ' +
+      'class through the same self-referential back door as the retired ledger. Note the ' +
       'CONVENTION is to park a draft in the thread comms-log (skills/inbox-triage § 4b step 2), ' +
       'which is already claimed below; this entry covers the standalone doc that gets written ' +
       'anyway, and a false positive is now visible because Step 5b logs what it declines',
@@ -212,12 +205,10 @@ export function isAceOwnedOppRootEntry(name: string): boolean {
  * True when the opp root carries `/ace:iterate` campaign state — i.e. this opp
  * is a REGRESSION FIXTURE, not a real programme.
  *
- * Extracted here (rather than re-derived per consumer) because two independent
- * call sites now need the same signal, and re-enumerating ACE-owned opp-root
- * names per incident IS the defect #1282/#1325 closed. Consumers:
+ * Extracted here (rather than re-derived per consumer) because re-enumerating
+ * ACE-owned opp-root names per incident IS the defect #1282/#1325 closed.
+ * Consumers:
  *
- *   - `lib/open-questions-inline.ts` — whether Phase 1 may inline the durable
- *     ledger at all (dimagi-internal/ace#1487).
  *   - `lib/viability-grading.ts` — whether `idea-to-pdd-eval` may score
  *     `demand_reality` into the gating mean (dimagi-internal/ace#2128).
  */

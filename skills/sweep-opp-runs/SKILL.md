@@ -55,7 +55,7 @@ Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedId
 ## Implementation notes for agents
 
 - Use the Drive `createdTime` field — do not parse run-id slugs for timestamps. Run-id slug format has drifted historically; the metadata is authoritative.
-- This skill does **not** touch `opp.yaml`, `inputs/`, `eval-calibration/`, `open-questions.md`, or any other per-opp file. Only `runs/<run-id>/` direct children get trashed.
+- This skill does **not** touch `opp.yaml`, `inputs/`, `eval-calibration/`, or any other per-opp file. Only `runs/<run-id>/` direct children get trashed.
 - Run folders are deeply nested (per-phase verdicts, transcripts, screenshots). `drive_trash_file` on the run folder cascades naturally — no need to recurse.
 - Drive trash is reversible for 30 days. If the human asks "what if I want it back," point them at https://drive.google.com/drive/trash and the run-id slug.
 

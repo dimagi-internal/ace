@@ -181,7 +181,6 @@ a future private-edit surface would change.
 | Opp | `ACE/<opp>/feedback/<slug>.yaml` | the fact store (this skill creates it) |
 | GitHub | issues + PRs carrying a `Feedback-Ref:` trailer | `skill-fix` dispositions |
 | Run | `runs/<run-id>/decisions.yaml` rows with `feedback_ref` | `decision` dispositions |
-| Opp | `ACE/<opp>/open-questions.archived.md` / a not-yet-migrated `open-questions.md` (legacy, read-only) | historical `open-question` dispositions only |
 | Opp | `ACE/<opp>/inputs/decision-overrides.yaml` | the reviewer's **edits** (derived, never written here) |
 
 ## Products
@@ -256,9 +255,9 @@ import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
   id, `landedInRun` the run. Skip refs under `operator-rulings/` — they point at the opp's
   `inputs/operator-rulings.yaml` (an operator's ruling, `lib/operator-rulings.ts`), not at a
   reviewer's feedback record, and belong to no ledger.
-- **legacy open-questions.md / open-questions.archived.md** (read-only, only where it still
-  exists): entries with the marker → `kind: 'open-question'`,
-  `status: 'awaiting-human'` until answered.
+- A question still waiting on a human is a decision row with an unanswered `review_ask`
+  (or `status: deferred`) carrying the `feedback_ref` → `kind: 'decision'`,
+  `status: 'awaiting-human'`. The retired open-questions ledger is never read (ace#2757).
 
 - **decision-overrides.yaml:** `parseDecisionOverridesYaml()` → `deriveEditEntries(file,
   { boundValues, dispositions, completedRuns })`, where `boundValues` maps decision id →

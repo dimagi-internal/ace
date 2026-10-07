@@ -166,3 +166,34 @@ row it writes.
    only?
 3. Whether `open-asks.yaml` should exist at all, or producers' re-derivation is
    trusted alone.
+
+## Addendum 2026-10-07 — open asks are a filter, and no legacy reader survives
+
+Operator decision (Jonathan Jackson, 2026-10-07), verbatim:
+
+> "why do we even have open-asks.yml? why isn't that just a filter of decisions
+> is my question. and how did something end up in open-questions.md getting
+> carried forward anyways, when we created the new system we should not have
+> carried forward any legacy models so fix that."
+
+This answers decision #3 above: **`open-asks.yaml` does not exist.** Open asks
+are a filter over a run's decision rows — an unanswered `review_ask`, or
+`status: deferred` — computed by one function (`openAsks`, `lib/open-asks.ts`)
+wherever they are needed: the `decisions_open_asks` atom (now read-only — it
+writes nothing), Phase 1's carried check, release readiness and
+`solicitation-review`. ace-web computes the run page's asks the same way. The
+carried check (§ 3) keeps its job but reads the PREVIOUS run's `decisions.yaml`
+through the same filter instead of a stored list; it still never inherits a
+value.
+
+It also supersedes the "legacy read" in § 5 and Rollout steps 3 and 5: rollout
+kept Phase 1's read of an un-migrated `open-questions.md` (and ace-web's
+fallback to it), and since no opp was ever migrated, every run kept carrying
+ledger content forward. That read, `lib/open-questions-inline.ts`, the
+manifest's ledger entries and `feedback-ledger`'s `open-question` kind are
+removed. `scripts/migrate-open-questions.ts` is the only code that opens a
+ledger, and it no longer emits `open-asks.yaml`. The retired files remain at
+the opp root only as a quarantine entry (`lib/opp-root-files.ts`) so the
+orchestrator's opp-root auto-migrate never moves them into `inputs/`.
+Tracked as dimagi-internal/ace#2757; guarded by
+`test/agents/open-questions-location.test.ts`.

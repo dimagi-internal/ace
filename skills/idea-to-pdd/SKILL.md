@@ -18,7 +18,6 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
-| Prior runs (legacy only) | the `## Open` rows of a not-yet-migrated `ACE/<opp-name>/open-questions.md`, passed inline at handoff ONLY when the opp has no `open-asks.yaml` | questions a prior run raised before the ledger was retired — re-derive each still-open one as a decision row (§ Asks are decision rows); never write to the ledger. Opps on the new model need nothing passed: answers bind from `inputs/decision-overrides.yaml` at the write boundary, and the orchestrator checks the previous run's asks against yours after this phase |
 | Reviewer | comment threads on the PRIOR run's PDD, via `drive_list_comments` | what a domain expert asked for IN PLACE, anchored to the section they were reading |
 | Reviewer / author | comment threads on every Google Doc / Sheet / Slides entry in the frozen `inputs-manifest.yaml` — a shortcut is read at its `resolved_target_id` — via `drive_list_comments` | what the people maintaining the SOURCE documents asked for in place. On a componentized programme those documents ARE the design, so their threads are the review (ace#2372). Replied to, never resolved — § Process step 1 |
 
@@ -226,15 +225,11 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
    failure ladder so it isn't re-derived — and drops the file in
    `inputs/`. See dimagi-internal/ace#890.
 
-   **Legacy ledger rows, when the orchestrator passes them.** The
-   open-questions ledger is retired (owner decision 2026-10-04): no skill
-   writes `open-questions.md`. On an opp not yet migrated the orchestrator
-   passes its `## Open` rows read-only. Treat each as a question a prior run
-   raised: re-derive it under § Asks are decision rows (a decision row with a
-   `review_ask`, a `deferred` row, or — for a chore or an upstream request —
-   nothing in decisions), and if this run's evidence contradicts an answer
-   the row records, say so loudly at the Phase 1→2 pause. Do not fetch the
-   ledger yourself and never write to it.
+   **No prior-run questions are passed to you, and you fetch none.** The
+   open-questions ledger is retired and nothing reads it (ace#2757). Answers
+   a person gave bind from `inputs/decision-overrides.yaml` at the decisions
+   write boundary; the orchestrator checks after this phase that no ask the
+   previous run left open was dropped (§ Asks are decision rows).
 
    **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
    on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
@@ -373,8 +368,8 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
 
    **Contradictions stay loud.** When this run's finding disagrees with a
    recorded, verified answer — a `human-decided` row the run-init ingest
-   carried as binding, a ruling in `inputs/decision-overrides.yaml`, or an
-   answer on a legacy ledger row — surface it in the PDD's open-questions
+   carried as binding, or a ruling in `inputs/decision-overrides.yaml` —
+   surface it in the PDD's open-questions
    section AND at the Phase 1→2 pause summary; never silently overwrite the
    prior answer. On `hh-poverty-targeting/20260812-1613` two verified answers
    were contradicted with no signal at all (ace#1201).
@@ -1421,13 +1416,15 @@ The verbatim spark rows that taught this, and their plain rewrite:
 
 **Durability across runs.** Answers persist through
 `inputs/decision-overrides.yaml` and bind at the write boundary. Unanswered
-asks are re-derived by every run from the design and inputs. As a safety
-net the orchestrator writes `ACE/<opp>/open-asks.yaml` at run end and checks
-it against this run's rows after Phase 1; an ask you did not re-derive comes
-back as a run residual. Never read a value out of that file.
+asks are re-derived by every run from the design and inputs. Open asks are a
+filter over decision rows, never a file (operator decision 2026-10-07,
+ace#2757): as a safety net, after Phase 1 the orchestrator filters the
+PREVIOUS run's decisions log the same way and checks its asks against this
+run's rows; an ask you did not re-derive comes back as a run residual. No
+value is ever read out of the previous run.
 
-**Legacy ledgers** are migrated once with `scripts/migrate-open-questions.ts`
-and archived as `open-questions.archived.md`.
+**Legacy ledgers** are never read by a run. `scripts/migrate-open-questions.ts`
+is the only code that opens one, to fold it into decision rows once.
 
 ## Decisions Log (rendered)
 

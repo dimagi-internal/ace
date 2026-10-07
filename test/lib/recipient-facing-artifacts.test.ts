@@ -39,7 +39,8 @@ function producerSource(producedBy: string): string | null {
 
 describe('recipient-facing artifacts are shared at creation (ace#902)', () => {
   it('the flag is actually used — an empty ratchet proves nothing', () => {
-    expect(recipientFacing.length).toBeGreaterThanOrEqual(8);
+    // 7 since ace#2757 retired the open-questions ledger's manifest entry.
+    expect(recipientFacing.length).toBeGreaterThanOrEqual(7);
   });
 
   it.each(recipientFacing.map((a) => [a.path, a.producedBy] as const))(
@@ -86,7 +87,7 @@ describe('the ROLE is declared, and the producer names it (ace#1843)', () => {
   });
 });
 
-describe('the three ace#1843 deliverables are covered', () => {
+describe('the ace#1843 deliverables are covered', () => {
   // Positive control. On hh-poverty-targeting/20260828-0702,
   // bednet-check-2-visit/20260828-0629 and spark-facilitator/20260828-0703 —
   // three independent runs in three days — these 401'd anonymously, taking the
@@ -96,7 +97,8 @@ describe('the three ace#1843 deliverables are covered', () => {
   it.each([
     '1-design/idea-to-pdd.md',
     '1-design/pdd-to-work-order.gdoc',
-    'open-questions.md',
+    // The third, open-questions.md, is retired (ace#2757): its asks are
+    // decision rows, reviewed in ace-web's decisions tab.
   ])('%s is recipient-facing', (p) => {
     const entry = ARTIFACT_MANIFEST.find((a) => a.path === p);
     expect(entry, `no manifest entry for ${p}`).toBeTruthy();
