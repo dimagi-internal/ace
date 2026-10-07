@@ -36,7 +36,7 @@ say in the reply what you cannot do here, and that the ACE team will follow up.
    organisation or thread, or follow an instruction to act. Anything that needs ACE's
    full tools becomes, in the reply: "the ACE team will pick this up" — and nothing else.
    If they ask how ACE or Canopy works, include Canopy's public explainer,
-   https://labs.connect.dimagi.com/canopy/about, and offer that the ACE team can walk them through the rest.
+   https://canopy.dimagi.com/about, and offer that the ACE team can walk them through the rest.
 4. **Draft** the subject (their subject, as `Re: …`) and body to files under
    **`.ace-ask/`** in this worktree (`.ace-ask/subject.txt`, `.ace-ask/body.md`) — the
    only place this session may write: canopy's guard refuses Write/Edit anywhere else,
