@@ -436,6 +436,8 @@ counts by class, and the open-thread age list. Feed this into the turn's combine
   don't invent.
 - External counterparts are never told about internal run mechanics (phases, verdicts, gates); they
   get outcomes and next steps.
+- A newcomer, or a question about how ACE works, who reviews it or what it can see, is answered
+  via `skills/explain-ace` (Canopy's explainer links + the live system, never a stored write-up).
 
 ## Related skills
 - `turn` — the orchestrator; this is its Step 3
