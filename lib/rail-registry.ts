@@ -301,6 +301,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/verdict-overall-score-scale.test.ts': { issues: ['ace#2563'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/widget-handoff-no-phantom-paste-target.test.ts': { issues: ['ace#1811', 'ace#1680', 'ace#1026'], observed: 'hh-poverty-targeting/20260828-0702' },
   'test/skills/work-order-hedging-pronoun-consistency.test.ts': { issues: ['ace#2164'], observed: 'bednet-check-2-visit/20260907-1126' },
+  'test/skills/release-comms-log-routing.test.ts': { issues: ['ace#2780'], observed: 'spark-facilitator/20261004-1706' },
   'test/skills/release-run-shares-only.test.ts': { issues: ['ace#2620'] },
   'test/skills/solicitation-review-award-gate.test.ts': { issues: ['ace#2631'], observed: 'spark-facilitator/20261001-2208' },
   'test/skills/work-order-period-of-performance-producer.test.ts': { issues: ['ace#1781', 'ace#1092'], observed: 'hh-poverty-targeting/20260828-0702' },

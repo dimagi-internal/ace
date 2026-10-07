@@ -108,7 +108,8 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
 
 7. **Log the operation — the routing contract.** For every send/reply, the calling skill MUST record
    `thread_id` + `message_id` + recipients + date in the run's comms-log
-   (`ACE/<opp>/runs/<run-id>/<N>-<phase>/<skill>_comms-log.md`). This is not optional bookkeeping:
+   (`ACE/<opp>/runs/<run-id>/<N>-<phase>/<skill>_comms-log.md`; a send that belongs to no phase logs
+   at the run root instead — `release-run_comms-log.md`, ace#2780). This is not optional bookkeeping:
    `inbox-triage` routes inbound replies to their opp/run by matching `thread_id` against comms-logs.
    A send without a logged `thread_id` produces an unroutable reply.
 

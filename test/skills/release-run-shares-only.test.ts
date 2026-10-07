@@ -14,9 +14,10 @@
  * atom outside the share / read-back / record allowlist, may dispatch no skill,
  * may call no script subcommand that assesses or writes, may POST to no
  * ace-web endpoint other than the release record and the workspace invite, and
- * may write run_state only under `released`. Adding a write to the release
- * means changing this list — which is the conversation to have, not a quiet
- * edit.
+ * may write run_state only under `released`, and may write one Drive file:
+ * `release-run_comms-log.md`, the send record every ACE email owes
+ * (email-communicator step 7; ace#2780). Adding a write to the release means
+ * changing this list — which is the conversation to have, not a quiet edit.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -42,6 +43,8 @@ const RELEASE_ATOMS = new Set([
   'connect_remove_org_member', // --revoke-shared only
   'drive_set_anyone_with_link', // share: Drive
   'update_yaml_file', // the `released:` record ONLY (asserted below)
+  'drive_create_file', // release-run_comms-log.md ONLY (asserted below; ace#2780)
+  'drive_update_file', // release-run_comms-log.md append ONLY (asserted below; ace#2780)
 ]);
 
 describe('release-run executes the plan and nothing else', () => {
@@ -84,6 +87,17 @@ describe('release-run executes the plan and nothing else', () => {
     const paras = SKILL.split(/\n\s*\n/).filter((p) => /update_yaml_file/.test(p));
     for (const p of paras) expect(p, p).toMatch(/`?released[:.]/);
     expect(SKILL).toMatch(/No other key is written/);
+  });
+
+  it('writes a Drive file only to release-run_comms-log.md (the send record, ace#2780)', () => {
+    const paras = SKILL.split(/\n\s*\n/).filter((p) => /drive_(create|update)_file/.test(p));
+    expect(paras.length).toBeGreaterThan(0);
+    for (const p of paras) {
+      for (const m of p.matchAll(/drive_create_file\(name: "([^"]+)"/g)) expect(m[1]).toBe('release-run_comms-log.md');
+      expect(p, p).toMatch(/release-run_comms-log\.md|<the refused file's id>|fileId, localFilePath/);
+    }
+    expect(SKILL).toMatch(/drive_create_file\(name: "release-run_comms-log\.md"/);
+    expect(SKILL).toMatch(/never the body/);
   });
 
   it('every action kind a plan can contain has a row in the execution table', () => {
