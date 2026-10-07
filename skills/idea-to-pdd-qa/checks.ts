@@ -982,10 +982,15 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
   // currency and still pair India with USD — which is the live defect, not a
   // hypothetical one. The pair is unfixable after `connect_create_program`, so
   // catching it here is the only cheap opportunity.
+  // A marker may carry a note — `USA [PROPOSED — placeholder; …]` — and is
+  // still a marker: strip the whole bracket, not just the bare token, or the
+  // note is read as part of the value (ace#2775). `\b` keeps a non-marker
+  // bracket such as `[see appendix]` or `[PROPOSEDX]` in place.
+  const MARKER = /\[(?:PROPOSED|TBD)\b[^\]]*\]/gi;
   const readParam = (keys: string[]): string | null => {
     for (const k of keys) {
       const v = (params.get(k) ?? '').trim();
-      if (v.length > 0) return v.replace(/\[(PROPOSED|TBD)\]/gi, '').trim();
+      if (v.length > 0) return v.replace(MARKER, '').trim();
     }
     return null;
   };
@@ -1012,7 +1017,7 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
 
   const proposed = required
     .map((r) => r.keys.find((k) => (params.get(k) ?? '').trim().length > 0)!)
-    .filter((k) => /\[(PROPOSED|TBD)\]/i.test(params.get(k) ?? ''));
+    .filter((k) => /\[(?:PROPOSED|TBD)\b[^\]]*\]/i.test(params.get(k) ?? ''));
 
   return {
     pass: true,
