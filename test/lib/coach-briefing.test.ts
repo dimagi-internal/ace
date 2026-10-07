@@ -122,7 +122,12 @@ describe('the coach prompt template', () => {
     expect(() => renderCoachPrompt(template + ' {{NEW_THING}}', vars)).toThrow(/NEW_THING/);
   });
 
-  it('contains no single-brace tokens OCS would treat as prompt variables', () => {
-    expect(template.replace(/\{\{[A-Z_]+\}\}/g, '')).not.toMatch(/[{}]/);
+  it('uses exactly one OCS prompt variable: the session briefing', () => {
+    // The one OCS variable it may use: the per-conversation briefing Labs sends as
+    // session data (OCS writes a triggered opening with a generic EventBot, so the
+    // briefing must reach the pipeline another way).
+    const rest = template.replace(/\{\{[A-Z_]+\}\}/g, '').replace('{session_state.coach_briefing}', '');
+    expect(template).toContain('{session_state.coach_briefing}');
+    expect(rest).not.toMatch(/[{}]/);
   });
 });

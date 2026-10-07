@@ -100,6 +100,21 @@ What it does well: warm, patient, good at walking a worker through one concrete
 visit, and it surfaced a real app-design defect in under an hour that a dashboard
 alone never would.
 
+### 1c. Why the opening went wrong — OCS's triggered message is not the bot
+
+Found live 2026-10-07 (OCS session f931d8ea): OCS `trigger_bot` with `prompt_text`
+does NOT run the chatbot's pipeline. `trigger_bot_message_task` →
+`ExperimentSession.ad_hoc_bot_message` → `EventBot.get_user_message`
+(apps/chat/bots.py) — a generic "write a reminder" LLM call with its own system
+prompt. The Coach's script, knowledge base and status node never see the opening;
+the briefing reached the worker nearly verbatim ("🔴 Step 7 on time — 0 out of 3 …
+red band"). The KMC openings (§1b item 4) have the same cause. Only replies go
+through the pipeline.
+
+The fix: Labs sends a fixed greeting as `message_text` (verbatim, no LLM) and the
+briefing as `session_data.coach_briefing`; the Coach prompt reads
+`{session_state.coach_briefing}` and knows the greeting has been sent.
+
 ## 2. The trigger path (no new trigger machinery)
 
 Everything below already exists in Labs (`connect_labs/workflow/actions.py`,
