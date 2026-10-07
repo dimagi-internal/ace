@@ -185,7 +185,7 @@ export function citationsIn(source: string): { issues: string[]; runs: string[] 
  */
 export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/docs/ace-web-primary-surface.test.ts': { issues: ['ace#2378'] },
-  'test/docs/allowlist-named-authorization.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file; the header argues the invariant from first principles' },
+  'test/docs/canopy-routes-callers.test.ts': { issues: ['ace#2389', 'dimagi-internal/canopy-web#1265'] },
   'test/docs/orchestrator-inline-handoff-fallback.test.ts': { issues: ['ace#2221', 'ace#1103'], observed: 'spark-facilitator/20260907-1120' },
   'test/docs/tracker-link-not-a-counterpart-deliverable.test.ts': { issues: ['ace#2386', 'ace#2378'] },
   'test/docs/upstream-absence-claims.test.ts': { issues: ['ace#1833', 'dimagi-internal/connect-labs#1331', 'voidcraft-labs/commcare-nova#545', 'ace#1886', 'ace#1621'] },
@@ -313,7 +313,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
  * entry leaves by someone attaching it to a real incident, or by the rail
  * being deleted. It may not grow.
  */
-export const UNKNOWN_PROVENANCE_BASELINE = 5;
+export const UNKNOWN_PROVENANCE_BASELINE = 4;
 
 /**
  * Rails whose provenance is a measured population rather than an incident,

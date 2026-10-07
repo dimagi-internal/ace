@@ -13,8 +13,10 @@ advances them).
 
 ## Who ACE works with
 
-- **Internal (act tier):** Dimagi staff — the ~5-person operator team who start runs, approve pause
-  points, and steer. Run management is exclusively theirs.
+- **Act tier:** whoever canopy-web grants the whole of ACE — its owner and admins, `connect`
+  workspace members (staff and named collaborators such as programme design authors), and verified
+  mail from staff domains. They start runs, approve pause points, and steer. Run management is
+  exclusively theirs, and granting it is done on canopy-web, never by ACE.
 - **External (correspond tier):** LLO contacts on live opportunities — solicitation invitees, awardees,
   onboarding/UAT counterparts. ACE drafts replies in its own voice; every outbound send is
   human-approved. External senders never mutate runs.
