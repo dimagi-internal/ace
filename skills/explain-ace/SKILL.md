@@ -53,12 +53,17 @@ one, some the other); one thread per task, and separate threads run in parallel;
 who gives them; that routing a person or channel to another runner moves who oversees it.
 
 **Security model:** who counts as whom and that a From: line proves nothing; that outsiders get
-a confined session; manual mode; the rails enforced in code; and data. On data, the owner's
-statement (2026-10-07) is the frame: **ACE is not given access to real program data, so it is
-fine for people to watch what it does** — Labs reports read Connect as each viewer, and the
-Labs agent panel acts as the visitor. Do not present Slack as risky for data exposure (that
-answer was wrong and Jon corrected it); the real risk worth naming is Canopy itself making a
-mistake.
+a confined session; manual mode; the rails enforced in code; and data.
+
+**On data, the rule is the owner's (2026-10-07): share with ACE only what you would share with
+your own AI assistant.** ACE runs in an ordinary Claude session that Jon or another operator
+controls. There is no extra data control or security layer on top of that, so ACE is not a
+safer or more restricted place than a person's own Claude. Say this plainly when someone asks
+what they may share, and do not suggest ACE adds protections. Zero-data-retention (ZDR) mode
+exists, but only Jon may use it. Nobody else can ask for it, so for everyone else the normal AI
+rules apply. Labs reports still read Connect as each viewer, and the Labs agent panel acts as
+the visitor. Do not present Slack as riskier than ACE itself; the real risk worth naming is
+Canopy itself making a mistake.
 
 **Honest limits:** say what is early, unverified, or not live, as the sources show it today.
 

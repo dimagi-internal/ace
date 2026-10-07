@@ -80,11 +80,14 @@ rewrites what someone else wrote.
 
 ## Guardrails
 
-- **Data.** ACE is not given access to real program data (owner, 2026-10-07). It works on
-  synthetic copies in Labs, and its Labs account sees only what it has been granted. A real
-  production opportunity returns "not found". Giving ACE real data, for example by adding
-  `ace@dimagi-ai.com` to a program's Connect org, is the owner's decision. Record it in the
-  context doc's Data access section. Never request it on a team member's say-so.
+- **Data.** People may share with ACE only what they would share with their own AI assistant
+  (owner, 2026-10-07). ACE runs in an ordinary Claude session with no extra data controls, and
+  ZDR mode is reserved for Jon. Point people to that rule. Don't make up a stricter or looser
+  one. What ACE's own accounts can reach is a separate question, so check it live, not from
+  memory: on 2026-10-07 its Labs account could list the real KC programs through the Dimagi
+  org, after an August write-up said it saw only synthetic copies. Granting ACE an account
+  membership, for example adding `ace@dimagi-ai.com` to a program's Connect org, is the
+  owner's decision. Record it in the context doc's Data access section.
 - **Who steers.** Program-team members can direct the project's work. Outbound and shared acts
   need the owner's approval in a manual-mode turn: publishing or cloning in Labs, sharing a
   doc, emailing a partner, granting access. This follows `skills/explain-ace` § 2 and
