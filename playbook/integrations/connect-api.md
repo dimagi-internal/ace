@@ -395,26 +395,30 @@ To grant admin role:
 ### Org setup for a partner clone
 
 A clone (`/ace:clone-to-new-workspace`) rebuilds Connect in the partner's OWN
-two orgs, and the operator creates them (operator decision, Jon 2026-10-02):
-there is no org-create API, and "Enable Program Manager" is a staff-only
-field. **The single source of the URLs and clicks is
-`npx tsx scripts/clone-setup-checklist.ts print --workspace <ws> [--pm-org …] [--nm-org …]`**
-(`lib/clone-setup-checklist.ts`) — use it, don't copy URLs from here. In
-short: create each org at `https://connect.dimagi.com/register/organization/`
-(the creator becomes its Admin and lands on `/a/<slug>/opportunity/`, which is
-where the slug comes from); on the program org's
-`/a/<org>/organization/` tick **Enable Program Manager**
-(`OrganizationChangeForm.program_manager`, rendered only for
-`ORG_MANAGEMENT_SETTINGS_ACCESS` holders); on both, Members → Add Member →
-`ace@dimagi-ai.com`, role Admin. That add is a PENDING invite until accepted;
-`clone-setup-checklist.ts accept-invites` finds it in ace@'s mailbox and
-accepts it (an authenticated GET of `/a/<org>/organization/invite/<token>/`).
-Read-backs, live 2026-10-02: `/a/<org>/organization/` is 200 only for an org
-Admin (`org_admin_access_required`), and `/a/<org>/program/init/` is 200 only
-when the org has Program Manager on AND the user is its Admin
-(`OrgPMRequiredMixin`) — ace@ has no all-org access, so a 404 there really
-means "off" (the configured PM org 200, the NM org 404). `connect_list_programs`
-alone cannot tell: `program_home` renders for any org member.
+two orgs. **Since 2026-10-07 ACE creates them itself**: ace@ holds
+`all_org_profile_edit_access` (dimagi/commcare-connect#1580, CI-995), and
+`npx tsx scripts/clone-setup-checklist.ts create-orgs --workspace <ws>` makes
+`<ws>-pm-test` and `<ws>-nm-test` at `/register/organization/` (only `name` is
+required; the slug is `slugify_uniquely(name)`; ace@ becomes Admin; a reused
+name re-renders the form with "An organization with this name already
+exists."). Connect has no org delete yet, so never create probe orgs.
+
+What ace@ still CANNOT do, live 2026-10-07: tick **Program manager** (the
+`program_manager` field is dropped from `OrganizationChangeForm` without
+`ORG_MANAGEMENT_SETTINGS_ACCESS` — absent from ace-pm-org's home for ace@) or
+set **Is test** (only `AdminOrganizationForm` has it). Both sit on the Django
+admin page `https://connect.dimagi.com/admin/organization/organization/?q=<org>`
+(staff login), which the operator checklist links —
+`scripts/clone-setup-checklist.ts print` is the single source of those URLs.
+
+**Read-backs changed with #1580.** `/a/<org>/organization/` now answers 200 for
+EVERY org ace@ can profile-edit — i.e. all of them (live: `dimagi`, not a
+member, 200) — so it proves only that the org exists. Admin is proven by the
+admin-gated `/a/<org>/organization/member_table` (200 for ace-pm-org, 404 for
+`dimagi`). `/a/<org>/program/init/` is still 200 only when the org has Program
+manager on AND the user is its Admin (`OrgPMRequiredMixin`).
+`connect_list_programs` alone cannot tell: `program_home` renders for any org
+member.
 
 Without admin role, ace@dimagi-ai.com's view defaults to the
 network-member-side ("Apply to Program" buttons) and authoring atoms will

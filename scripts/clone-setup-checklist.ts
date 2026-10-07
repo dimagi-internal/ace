@@ -8,6 +8,13 @@
  *       [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
  *     Print the checklist to send the operator, verbatim (markdown).
  *
+ *   npx tsx scripts/clone-setup-checklist.ts create-orgs --workspace <ws> [--pm-org <slug>] [--nm-org <slug>]
+ *     ACE creates the two Connect orgs itself (ace@ holds all_org_profile_edit_access
+ *     since dimagi/commcare-connect#1580): `<ws>-pm-test` and `<ws>-nm-test` unless
+ *     flags say otherwise. Idempotent: an org ace@ already administers is skipped;
+ *     a slug owned by someone else, or a create Connect suffixed, fails loudly.
+ *     Prints JSON `{ok, orgs[]}`; exit 1 on any failure.
+ *
  *   npx tsx scripts/clone-setup-checklist.ts verify --workspace <ws> [slugs…] [--live]
  *     Without --live: list every read-only check ACE runs (session GETs + MCP calls).
  *     With --live: run the session checks (HQ my_role, Connect org home + program
@@ -39,14 +46,19 @@ import {
   CONNECT_BASE_URL,
   classifyConnectProbe,
   classifyHqMyRole,
+  classifyOrgCreate,
+  classifyOrgPreflight,
   connectOrgHomeUrl,
+  connectOrgMembersUrl,
   connectProgramInitUrl,
   extractConnectInviteUrl,
   extractHqInviteUrl,
   hqMyRoleUrl,
   renderCloneSetupChecklist,
   renderVerifyChecks,
+  withDefaultOrgs,
   type CloneSetupSlugs,
+  type OrgCreateResult,
   type ProbeResult,
 } from '../lib/clone-setup-checklist.js';
 import { HQ_BASE_URL } from '../lib/hq-enterprise-flip.js';
@@ -61,13 +73,13 @@ function arg(name: string): string | undefined {
 const flag = (name: string) => process.argv.includes(`--${name}`);
 
 function slugs(): CloneSetupSlugs {
-  return {
+  return withDefaultOrgs({
     workspace: arg('workspace') ?? '',
     hqDomain: arg('hq-domain'),
     pmOrg: arg('pm-org'),
     nmOrg: arg('nm-org'),
     skipConnect: flag('skip-connect'),
-  };
+  });
 }
 
 function session(): PlaywrightSession {
@@ -92,15 +104,31 @@ async function liveChecks(request: APIRequestContext, s: CloneSetupSlugs): Promi
     const r = await request.get(url, { maxRedirects: 0 });
     out.push(classifyConnectProbe(id, r.status()));
   };
-  if (s.pmOrg) {
-    await probe('pm-admin', connectOrgHomeUrl(s.pmOrg));
-    await probe('pm-program-manager', connectProgramInitUrl(s.pmOrg));
-  } else {
-    out.push({ id: 'pm-admin', ok: false, detail: 'no --pm-org: the operator has not sent the slug yet' });
-  }
-  if (s.nmOrg) await probe('nm-admin', connectOrgHomeUrl(s.nmOrg));
-  else out.push({ id: 'nm-admin', ok: false, detail: 'no --nm-org: the operator has not sent the slug yet' });
+  // The member table, not the org home: since #1580 the home answers 200 for any
+  // org ace@ can profile-edit (all of them), so it no longer proves Admin.
+  await probe('pm-admin', connectOrgMembersUrl(s.pmOrg as string));
+  await probe('pm-program-manager', connectProgramInitUrl(s.pmOrg as string));
+  await probe('nm-admin', connectOrgMembersUrl(s.nmOrg as string));
   return out;
+}
+
+async function createOrg(request: APIRequestContext, role: 'pm' | 'nm', name: string): Promise<OrgCreateResult> {
+  const members = await request.get(connectOrgMembersUrl(name), { maxRedirects: 0 });
+  const home = members.status() === 200 ? members : await request.get(connectOrgHomeUrl(name), { maxRedirects: 0 });
+  const pre = classifyOrgPreflight(role, name, members.status(), home.status());
+  if (pre) return pre;
+  const url = `${CONNECT_BASE_URL}/register/organization/`;
+  const g = await request.get(url, { maxRedirects: 0 });
+  if (g.status() !== 200) return { role, name, status: 'error', ok: false, detail: `GET ${url} → ${g.status()} ${g.headers()['location'] ?? ''}`.trim() };
+  const csrf = csrfFromHtml(await g.text()) ?? '';
+  // `name` is the only required field; skip_membership is left unticked so ace@
+  // becomes the org's Admin (it must invite, create programs and opportunities).
+  const p = await request.post(url, {
+    form: { csrfmiddlewaretoken: csrf, name },
+    headers: { Referer: url, 'X-CSRFToken': csrf },
+    maxRedirects: 0,
+  });
+  return classifyOrgCreate(role, name, p.status(), p.headers()['location'] ?? '', p.status() === 200 ? await p.text() : '');
 }
 
 function gog(args: string[]): string {
@@ -176,6 +204,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === 'create-orgs') {
+    if (!s.workspace || s.skipConnect) throw new Error('create-orgs: --workspace is required, and --skip-connect has no orgs to create');
+    const sess = session();
+    try {
+      const request = (await sess.getContext()).request;
+      const orgs = [await createOrg(request, 'pm', s.pmOrg as string), await createOrg(request, 'nm', s.nmOrg as string)];
+      const ok = orgs.every((o) => o.ok);
+      process.stdout.write(JSON.stringify({ ok, orgs }, null, 2) + '\n');
+      if (!ok) process.exitCode = 1;
+    } finally {
+      await sess.close();
+    }
+    return;
+  }
+
   if (cmd === 'verify' && !flag('live')) {
     process.stdout.write(renderVerifyChecks(s) + '\n');
     return;
@@ -189,8 +232,12 @@ async function main(): Promise<void> {
       if (cmd === 'accept-invites') {
         const days = Number(arg('days') ?? 30);
         if (s.hqDomain) accepted.push(await acceptHq(request, s.hqDomain, days));
-        if (!s.skipConnect && s.pmOrg) accepted.push(await acceptConnect(request, s.pmOrg, days, '2c'));
-        if (!s.skipConnect && s.nmOrg) accepted.push(await acceptConnect(request, s.nmOrg, days, '3b'));
+        // Connect orgs are ACE's own since #1580 (create-orgs): there is no invitation
+        // to accept for them. One the operator created by hand and invited ace@ to
+        // (an explicit --pm-org/--nm-org) is still accepted here.
+        const hasInvite = async (org: string) => (await request.get(connectOrgMembersUrl(org), { maxRedirects: 0 })).status() !== 200;
+        if (!s.skipConnect && (await hasInvite(s.pmOrg as string))) accepted.push(await acceptConnect(request, s.pmOrg as string, days, 'create-orgs'));
+        if (!s.skipConnect && (await hasInvite(s.nmOrg as string))) accepted.push(await acceptConnect(request, s.nmOrg as string, days, 'create-orgs'));
       }
       const results = await liveChecks(request, s);
       const ok = results.every((r) => r.ok);
@@ -202,7 +249,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  process.stderr.write('usage: clone-setup-checklist.ts [print|verify [--live]|accept-invites] --workspace <ws> [--hq-domain d] [--pm-org o] [--nm-org o] [--skip-connect]\n');
+  process.stderr.write('usage: clone-setup-checklist.ts [print|create-orgs|verify [--live]|accept-invites] --workspace <ws> [--hq-domain d] [--pm-org o] [--nm-org o] [--skip-connect]\n');
   process.exit(2);
 }
 

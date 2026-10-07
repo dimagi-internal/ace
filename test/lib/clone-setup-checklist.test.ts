@@ -2,6 +2,9 @@
  * The operator setup checklist that opens every clone (Jon, 2026-10-02):
  * "have me create the HQ space and turn on demo mode, and then have me manually
  * create a PM and NM org for you to use, and give me clear URLs to click".
+ * Amended 2026-10-07 (dimagi/commcare-connect#1580): ACE creates both Connect
+ * orgs itself, named <workspace>-pm-test / <workspace>-nm-test; the operator only
+ * ticks the two staff-only settings (Program manager, Is test) in Django admin.
  * The text goes to a human verbatim, so the tests pin every URL, the slug
  * substitution, and the absence of ACE-internal vocabulary.
  */
@@ -9,7 +12,10 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyConnectProbe,
   classifyHqMyRole,
+  classifyOrgCreate,
+  classifyOrgPreflight,
   cloneSetupVerifyChecks,
+  connectOrgNames,
   extractConnectInviteUrl,
   extractHqInviteUrl,
   renderCloneSetupChecklist,
@@ -18,7 +24,22 @@ import {
 } from '../../lib/clone-setup-checklist';
 import { hqEnterpriseFlipUrl } from '../../lib/hq-enterprise-flip';
 
-const ALL = { workspace: 'spark', hqDomain: 'connect-ace-spark', pmOrg: 'spark-program', nmOrg: 'spark' };
+const ALL = { workspace: 'spark', hqDomain: 'connect-ace-spark', pmOrg: 'spark-pm-test', nmOrg: 'spark-nm-test' };
+
+describe('connectOrgNames — the clone naming convention (Jon, 2026-10-07)', () => {
+  it('names the program org <ws>-pm-test and the holding org <ws>-nm-test', () => {
+    expect(connectOrgNames('spark')).toEqual({ pm: 'spark-pm-test', nm: 'spark-nm-test' });
+  });
+  it('is what the checklist and the checks use when no org flags are passed', () => {
+    const t = renderCloneSetupChecklist({ workspace: 'spark', hqDomain: 'connect-ace-spark' });
+    expect(t).toContain('`spark-pm-test`');
+    expect(t).toContain('`spark-nm-test`');
+    expect(renderVerifyChecks({ workspace: 'spark', hqDomain: 'h' })).toContain('/a/spark-pm-test/program/init/');
+  });
+  it('lets explicit flags win', () => {
+    expect(renderCloneSetupChecklist({ ...ALL, pmOrg: 'other-pm' })).toContain('`other-pm`');
+  });
+});
 
 describe('renderCloneSetupChecklist', () => {
   it('carries every URL with all slugs substituted', () => {
@@ -28,14 +49,17 @@ describe('renderCloneSetupChecklist', () => {
       hqEnterpriseFlipUrl('connect-ace-spark'),
       'https://www.commcarehq.org/a/connect-ace-spark/settings/project/internal_subscription_management/',
       'https://www.commcarehq.org/a/connect-ace-spark/settings/users/web/invite/',
-      'https://connect.dimagi.com/register/organization/',
-      'https://connect.dimagi.com/a/spark-program/organization/',
-      'https://connect.dimagi.com/a/spark/organization/',
+      'https://connect.dimagi.com/admin/organization/organization/?q=spark-pm-test',
+      'https://connect.dimagi.com/admin/organization/organization/?q=spark-nm-test',
     ]) expect(t).toContain(url);
+    // ACE creates the orgs: the operator is never sent to create one or to add ace@.
+    expect(t).not.toContain('/register/organization/');
+    expect(t).not.toMatch(/Add Member/);
     expect(t).not.toMatch(/<[a-z-]+>/); // no placeholder left
     expect(t).toContain('ace@dimagi-ai.com');
     expect(t).toContain('**Test or Demo Project**');
-    expect(t).toContain('**Enable Program Manager**');
+    expect(t).toContain('**Program manager**');
+    expect(t.match(/\*\*Is test\*\*/g)).toHaveLength(2);
     expect(t).toContain('**Then reply "done".**');
   });
 
@@ -43,18 +67,15 @@ describe('renderCloneSetupChecklist', () => {
     const t = renderCloneSetupChecklist(ALL);
     const at = (s: string) => t.indexOf(s);
     expect(at('/register/domain/')).toBeLessThan(at('internal_subscription_management'));
-    expect(at('internal_subscription_management')).toBeLessThan(at('/register/organization/'));
-    expect(at('/a/spark-program/organization/')).toBeLessThan(at('/a/spark/organization/'));
+    expect(at('internal_subscription_management')).toBeLessThan(at('?q=spark-pm-test'));
+    expect(at('?q=spark-pm-test')).toBeLessThan(at('?q=spark-nm-test'));
   });
 
-  it('uses placeholders and asks for the slugs it does not know', () => {
+  it('never asks for a Connect slug — ACE names the orgs', () => {
     const t = renderCloneSetupChecklist({ workspace: 'spark', hqDomain: 'connect-ace-spark' });
-    expect(t).toContain('https://connect.dimagi.com/a/<program-manager-org>/organization/');
-    expect(t).toContain('https://connect.dimagi.com/a/<partner-org>/organization/');
-    expect(t).not.toContain('%3C'); // a placeholder is never URL-encoded
-    expect(t.match(/\*\*Send me its slug\*\*/g)).toHaveLength(2);
-    expect(t).toMatch(/Then reply with\*\* the slug of the organization that runs the program, the slug of the organization that holds the opportunity/);
-    expect(t).not.toMatch(/HQ project space slug/);
+    expect(t).not.toMatch(/Send me its slug/);
+    expect(t).not.toContain('%3C');
+    expect(t).toContain('**Then reply "done".**');
   });
 
   it('suggests connect-ace-<workspace> for an unknown HQ space and asks for its slug', () => {
@@ -89,10 +110,19 @@ describe('cloneSetupVerifyChecks', () => {
     const text = renderVerifyChecks(ALL);
     expect(text).toContain('commcare_get_subscription(domain: connect-ace-spark)');
     expect(text).toContain('commcare_list_apps(domain: connect-ace-spark)');
-    expect(text).toContain('connect_list_programs(organization_slug: spark-program)');
-    expect(text).toContain('connect_list_opportunities(organization_slug: spark)');
+    expect(text).toContain('connect_list_programs(organization_slug: spark-pm-test)');
+    expect(text).toContain('connect_list_opportunities(organization_slug: spark-nm-test)');
     expect(text).toContain('https://www.commcarehq.org/a/connect-ace-spark/settings/users/my_role/');
-    expect(text).toContain('https://connect.dimagi.com/a/spark-program/program/init/');
+    expect(text).toContain('https://connect.dimagi.com/a/spark-pm-test/program/init/');
+  });
+  it('proves Admin with the admin-only member table, never the org home', () => {
+    // Since #1580 the org home is 200 for ANY org ace@ can profile-edit (live
+    // 2026-10-07: `dimagi`, not a member: home 200, member_table 404).
+    const admin = cloneSetupVerifyChecks(ALL).filter((c) => c.id.endsWith('-admin') && c.system === 'connect');
+    expect(admin.map((c) => c.how)).toEqual([
+      'GET https://connect.dimagi.com/a/spark-pm-test/organization/member_table',
+      'GET https://connect.dimagi.com/a/spark-nm-test/organization/member_table',
+    ]);
   });
   it('has HQ checks only with skipConnect', () => {
     expect(cloneSetupVerifyChecks({ ...ALL, skipConnect: true }).every((c) => c.system === 'hq')).toBe(true);
@@ -127,8 +157,27 @@ describe('live read-back classification', () => {
   });
   it('Connect org home / program init', () => {
     expect(classifyConnectProbe('pm-program-manager', 200).ok).toBe(true);
-    expect(classifyConnectProbe('pm-program-manager', 404).detail).toMatch(/Enable Program Manager is off/);
+    expect(classifyConnectProbe('pm-program-manager', 404).detail).toMatch(/Program manager is off/);
     expect(classifyConnectProbe('nm-admin', 404).detail).toMatch(/not an Admin/);
     expect(classifyConnectProbe('pm-admin', 302).detail).toMatch(/connect-login/);
+  });
+});
+
+describe('creating the orgs', () => {
+  it('preflight: skips an org ace@ already administers, refuses one it does not, creates a missing one', () => {
+    expect(classifyOrgPreflight('pm', 'spark-pm-test', 200, 200)).toMatchObject({ status: 'exists', ok: true });
+    expect(classifyOrgPreflight('pm', 'spark-pm-test', 404, 200)).toMatchObject({ status: 'taken', ok: false });
+    expect(classifyOrgPreflight('nm', 'spark-nm-test', 404, 404)).toBeNull();
+    expect(classifyOrgPreflight('nm', 'spark-nm-test', 302, 302)).toMatchObject({ ok: false, detail: expect.stringMatching(/connect-login/) });
+  });
+  it('create: the redirect slug must equal the name', () => {
+    expect(classifyOrgCreate('pm', 'spark-pm-test', 302, '/a/spark-pm-test/opportunity/', '')).toMatchObject({ status: 'created', ok: true });
+    expect(classifyOrgCreate('pm', 'spark-pm-test', 302, '/a/spark-pm-test-1/opportunity/', '')).toMatchObject({ status: 'suffixed', ok: false });
+    expect(classifyOrgCreate('pm', 'spark-pm-test', 302, '/accounts/login/?next=/register/organization/', '')).toMatchObject({ ok: false, detail: expect.stringMatching(/connect-login/) });
+  });
+  it('create: a re-rendered form with the duplicate-name error is "taken"', () => {
+    const body = '<p id="error_1_id_name" class="invalid-feedback"><strong>An organization with this name already exists.</strong></p>';
+    expect(classifyOrgCreate('nm', 'spark-nm-test', 200, '', body)).toMatchObject({ status: 'taken', ok: false, detail: expect.stringMatching(/already exists/) });
+    expect(classifyOrgCreate('nm', 'spark-nm-test', 500, '', '')).toMatchObject({ status: 'error', ok: false });
   });
 });

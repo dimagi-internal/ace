@@ -4,6 +4,17 @@
 // a PM and NM org for you to use, and give me clear URLs to click to do all of
 // this efficiently."
 //
+// Amended 2026-10-07: ace@ now holds Connect's `all_org_profile_edit_access`
+// (dimagi/commcare-connect#1580, CI-995), so ACE CREATES both Connect orgs
+// itself (`scripts/clone-setup-checklist.ts create-orgs`), named
+// `<workspace>-pm-test` / `<workspace>-nm-test` (Jon, 2026-10-07: "make sure
+// your naming convention is consistent, end in xxx-pm-test and xxx-nm-test").
+// What stays the operator's: that permission cannot set `program_manager`
+// (OrganizationChangeForm drops it without ORG_MANAGEMENT_SETTINGS_ACCESS —
+// live 2026-10-07: the field is absent on ace-pm-org's home for ace@) and
+// nothing outside Django admin sets `is_test` (AdminOrganizationForm is its
+// only form). Both live on one Django admin page per org.
+//
 // So ACE no longer creates the partner's HQ space, and per-partner Connect orgs
 // are the normal path (not `--keep-shared connect`). This module is the SINGLE
 // source of every URL the operator clicks and of the checks ACE then runs; the
@@ -22,12 +33,22 @@
 //   HQ  read-back      /a/<d>/settings/users/my_role/         corehq/apps/users/views/my_role.py →
 //                      {role, is_domain_admin, …}; 404 for a space that does not exist
 //                      (live, 2026-10-02: connect-ace-prod 200 Admin, made-up slug 404).
-//   Connect create org /register/organization/                config/urls.py `organization_create`; the
-//                      creator becomes Admin and lands on /a/<slug>/opportunity/.
-//   Connect org home   /a/<org>/organization/                 `organization_home`, @org_admin_access_required
-//                      → 200 only for an org ADMIN. "Enable Program Manager" is the
-//                      `program_manager` field of OrganizationChangeForm, rendered only for
-//                      ORG_MANAGEMENT_SETTINGS_ACCESS holders (Connect staff).
+//   Connect create org /register/organization/                config/urls.py `organization_create`
+//                      (OrganizationCreateForm; only `name` is required). The creator becomes
+//                      Admin and is redirected to /a/<slug>/opportunity/ — unless it ticks
+//                      `skip_membership`, which ACE never does. The slug is
+//                      `slugify_uniquely(name)`; `clean_name` refuses a name already used
+//                      (case-insensitive) and re-renders the form (200).
+//   Connect org home   /a/<org>/organization/                 `organization_home`, @org_profile_edit_access_required
+//                      → since #1580 (2026-10-07) 200 for ANY org ace@ can profile-edit,
+//                      i.e. every org — so it no longer proves membership (live: `dimagi`,
+//                      where ace@ is not a member, 200). It does prove the org EXISTS (404 if not).
+//   Connect members    /a/<org>/organization/member_table     `org_member_table`, @org_admin_access_required
+//                      → 200 only for an org ADMIN, else 404 (live 2026-10-07: ace-pm-org 200,
+//                      `dimagi` 404). THIS is the admin read-back.
+//   Connect admin      /admin/organization/organization/?q=<name>   OrganizationAdmin (search_fields
+//                      ["name"]), AdminOrganizationForm carries `program_manager` AND `is_test`
+//                      — the only form that sets either for ace@'s orgs (Connect staff).
 //   Connect accept     /a/<org>/organization/invite/<token>/  `accept_invite`: an authenticated GET by
 //                      the invited email accepts it (no form).
 //   Connect PM probe   /a/<org>/program/init/                 ProgramCreate(OrgPMRequiredMixin): 200 iff the
@@ -55,7 +76,7 @@ export interface CloneSetupSlugs {
   skipConnect?: boolean;
 }
 
-const PH = { hq: '<hq-space>', pm: '<program-manager-org>', nm: '<partner-org>' } as const;
+const PH = { hq: '<hq-space>' } as const;
 
 /** Fill a URL whose path segment may be a placeholder (never URL-encode a placeholder). */
 function withSlug(build: (slug: string) => string, slug: string | undefined, placeholder: string): string {
@@ -67,6 +88,9 @@ function withSlug(build: (slug: string) => string, slug: string | undefined, pla
 export const hqInviteUrl = (d: string) => `${HQ_BASE_URL}/a/${encodeURIComponent(d)}/settings/users/web/invite/`;
 export const hqMyRoleUrl = (d: string) => `${HQ_BASE_URL}/a/${encodeURIComponent(d)}/settings/users/my_role/`;
 export const connectOrgHomeUrl = (o: string) => `${CONNECT_BASE_URL}/a/${encodeURIComponent(o)}/organization/`;
+export const connectOrgMembersUrl = (o: string) => `${CONNECT_BASE_URL}/a/${encodeURIComponent(o)}/organization/member_table`;
+export const connectAdminOrgSearchUrl = (name: string) =>
+  `${CONNECT_BASE_URL}/admin/organization/organization/?q=${encodeURIComponent(name)}`;
 export const connectProgramInitUrl = (o: string) => `${CONNECT_BASE_URL}/a/${encodeURIComponent(o)}/program/init/`;
 
 /** The default HQ project name to suggest: `connect-ace-<workspace>`, cut to HQ's 25-char cap. */
@@ -74,8 +98,22 @@ export function suggestedHqDomain(workspace: string): string {
   return `connect-ace-${workspace}`.slice(0, HQ_NAME_MAX).replace(/-+$/, '');
 }
 
-function titleCase(ws: string): string {
-  return ws.split(/[-_]/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+/**
+ * The Connect org names (and therefore slugs) ACE creates for a clone:
+ * `<workspace>-pm-test` runs the program, `<workspace>-nm-test` holds the
+ * opportunity. Connect derives the slug from the name, and a workspace slug is
+ * already slug-shaped, so name === slug unless Connect had to make it unique —
+ * which `create-orgs` refuses rather than accepting a suffixed slug.
+ */
+export function connectOrgNames(workspace: string): { pm: string; nm: string } {
+  return { pm: `${workspace}-pm-test`, nm: `${workspace}-nm-test` };
+}
+
+/** Flags first; otherwise the naming convention. Never derives a value for `--keep-shared connect`. */
+export function withDefaultOrgs(s: CloneSetupSlugs): CloneSetupSlugs {
+  if (s.skipConnect || !s.workspace) return s;
+  const d = connectOrgNames(s.workspace);
+  return { ...s, pmOrg: s.pmOrg ?? d.pm, nmOrg: s.nmOrg ?? d.nm };
 }
 
 /**
@@ -84,18 +122,18 @@ function titleCase(ws: string): string {
  * slug" where not. Written for the operator, not for ACE: no internal
  * vocabulary (see the jargon test in test/lib/clone-setup-checklist.test.ts).
  */
-export function renderCloneSetupChecklist(s: CloneSetupSlugs): string {
+export function renderCloneSetupChecklist(input: CloneSetupSlugs): string {
+  const s = withDefaultOrgs(input);
   const ws = s.workspace;
-  const name = titleCase(ws);
   const hq = s.hqDomain;
   const hqShown = hq ?? suggestedHqDomain(ws);
   const flipUrl = withSlug(hqEnterpriseFlipUrl, hq, PH.hq);
   const inviteUrl = withSlug(hqInviteUrl, hq, PH.hq);
   const lines: string[] = [];
 
-  const items = s.skipConnect ? 'the HQ project space' : 'one HQ project space and two Connect organizations';
+  const items = s.skipConnect ? 'the HQ project space' : 'one HQ project space and two settings on the Connect organizations ACE creates';
   lines.push(
-    `**Setup for the \`${ws}\` workspace: ${items}** (about ${s.skipConnect ? 5 : 10} minutes in your browser).`,
+    `**Setup for the \`${ws}\` workspace: ${items}** (about ${s.skipConnect ? 5 : 8} minutes in your browser).`,
     `Do the items in order. Afterwards ACE checks every item, and accepts its own invitations from ${ACE_EMAIL}'s inbox.`,
     '',
     `**1. CommCare HQ project space \`${hq ?? PH.hq}\`**`,
@@ -107,36 +145,18 @@ export function renderCloneSetupChecklist(s: CloneSetupSlugs): string {
   );
 
   if (!s.skipConnect) {
-    const pmHome = withSlug(connectOrgHomeUrl, s.pmOrg, PH.pm);
-    const nmHome = withSlug(connectOrgHomeUrl, s.nmOrg, PH.nm);
-    const createOrg = (slug: string | undefined, suggested: string) =>
-      slug
-        ? `   a. Create it (skip if it already exists): ${CONNECT_REGISTER_ORG_URL}`
-        : `   a. Create it: ${CONNECT_REGISTER_ORG_URL} (suggested name: "${suggested}"). **Send me its slug**: the part after \`/a/\` in the address Connect takes you to.`;
-    const addAce = `open **Members**, choose **Add Member**, and add \`${ACE_EMAIL}\` with role **Admin**.`;
+    const pm = s.pmOrg as string;
+    const nm = s.nmOrg as string;
     lines.push(
       '',
-      `**2. Connect organization that runs the program \`${s.pmOrg ?? PH.pm}\`**`,
-      createOrg(s.pmOrg, `${name} Program`),
-      `   b. Turn on program management (needs Connect staff access): open ${pmHome}, tick **Enable Program Manager**, and save.`,
-      `   c. Invite ACE: on the same page, ${addAce}`,
-      '',
-      `**3. Connect organization that holds the opportunity \`${s.nmOrg ?? PH.nm}\`**`,
-      createOrg(s.nmOrg, name),
-      `   b. Invite ACE: on ${nmHome}, ${addAce}`,
+      `**2. Connect organizations \`${pm}\` and \`${nm}\`**`,
+      `   ACE creates both itself and is their Admin. Two settings only Connect staff can change (needs your Connect staff login), each on the organization's admin page:`,
+      `   a. \`${pm}\` runs the program: open ${connectAdminOrgSearchUrl(pm)}, open the organization, tick **Program manager** and **Is test**, and press **Save**.`,
+      `   b. \`${nm}\` holds the opportunity: open ${connectAdminOrgSearchUrl(nm)}, open the organization, tick **Is test** (leave Program manager off), and press **Save**.`,
     );
   }
 
-  const missing: string[] = [];
-  if (!hq) missing.push('the HQ project space slug');
-  if (!s.skipConnect && !s.pmOrg) missing.push('the slug of the organization that runs the program');
-  if (!s.skipConnect && !s.nmOrg) missing.push('the slug of the organization that holds the opportunity');
-  lines.push(
-    '',
-    missing.length
-      ? `**Then reply with** ${missing.join(', ')}, and "done".`
-      : '**Then reply "done".**',
-  );
+  lines.push('', hq ? '**Then reply "done".**' : '**Then reply with** the HQ project space slug, and "done".');
   return lines.join('\n');
 }
 
@@ -154,7 +174,8 @@ export interface VerifyCheck {
 }
 
 /** The read-only checks ACE runs after the operator replies — the skill runs exactly these. */
-export function cloneSetupVerifyChecks(s: CloneSetupSlugs): VerifyCheck[] {
+export function cloneSetupVerifyChecks(input: CloneSetupSlugs): VerifyCheck[] {
+  const s = withDefaultOrgs(input);
   const hq = s.hqDomain ?? PH.hq;
   const checks: VerifyCheck[] = [
     { id: 'hq-admin', system: 'hq', by: 'session', fixItem: '1a/1c', how: `GET ${withSlug(hqMyRoleUrl, s.hqDomain, PH.hq)}`, pass: '200 with is_domain_admin: true (the space exists and ace@ is an Admin; 404 = no such space)' },
@@ -162,14 +183,14 @@ export function cloneSetupVerifyChecks(s: CloneSetupSlugs): VerifyCheck[] {
     { id: 'hq-api', system: 'hq', by: 'tool', fixItem: '1b', how: `commcare_list_apps(domain: ${hq})`, pass: '200 (the REST API is open; HQ_API_NOT_IN_PLAN = still on Free)' },
   ];
   if (s.skipConnect) return checks;
-  const pm = s.pmOrg ?? PH.pm;
-  const nm = s.nmOrg ?? PH.nm;
+  const pm = s.pmOrg as string;
+  const nm = s.nmOrg as string;
   checks.push(
-    { id: 'pm-admin', system: 'connect', by: 'session', fixItem: '2a/2c', how: `GET ${withSlug(connectOrgHomeUrl, s.pmOrg, PH.pm)}`, pass: '200 (ace@ is an Admin of the org; 404 = no such org, or ace@ not an Admin)' },
-    { id: 'pm-program-manager', system: 'connect', by: 'session', fixItem: '2b', how: `GET ${withSlug(connectProgramInitUrl, s.pmOrg, PH.pm)}`, pass: '200 (Enable Program Manager is on; 404 = off)' },
-    { id: 'pm-programs', system: 'connect', by: 'tool', fixItem: '2b', how: `connect_list_programs(organization_slug: ${pm})`, pass: 'succeeds' },
-    { id: 'nm-admin', system: 'connect', by: 'session', fixItem: '3a/3b', how: `GET ${withSlug(connectOrgHomeUrl, s.nmOrg, PH.nm)}`, pass: '200 (ace@ is an Admin of the org)' },
-    { id: 'nm-opportunities', system: 'connect', by: 'tool', fixItem: '3a/3b', how: `connect_list_opportunities(organization_slug: ${nm})`, pass: 'succeeds' },
+    { id: 'pm-admin', system: 'connect', by: 'session', fixItem: 'create-orgs', how: `GET ${connectOrgMembersUrl(pm)}`, pass: '200 (ace@ is an Admin of the org; 404 = no such org, or ace@ not an Admin — rerun create-orgs)' },
+    { id: 'pm-program-manager', system: 'connect', by: 'session', fixItem: '2a', how: `GET ${connectProgramInitUrl(pm)}`, pass: '200 (Program manager is on; 404 = off)' },
+    { id: 'pm-programs', system: 'connect', by: 'tool', fixItem: '2a', how: `connect_list_programs(organization_slug: ${pm})`, pass: 'succeeds' },
+    { id: 'nm-admin', system: 'connect', by: 'session', fixItem: 'create-orgs', how: `GET ${connectOrgMembersUrl(nm)}`, pass: '200 (ace@ is an Admin of the org)' },
+    { id: 'nm-opportunities', system: 'connect', by: 'tool', fixItem: '2b', how: `connect_list_opportunities(organization_slug: ${nm})`, pass: 'succeeds' },
   );
   return checks;
 }
@@ -219,12 +240,47 @@ export function classifyHqMyRole(status: number, body: string): ProbeResult {
   return { id: 'hq-admin', ok: false, detail: `ace@ is a member but with role ${j.role ?? '(none)'}, not Admin` };
 }
 
-/** A Connect org-home or program-init GET (redirects not followed). */
+/** A Connect member-table (admin) or program-init GET (redirects not followed). */
 export function classifyConnectProbe(id: 'pm-admin' | 'pm-program-manager' | 'nm-admin', status: number): ProbeResult {
   if (status === 200) {
     return { id, ok: true, detail: id === 'pm-program-manager' ? 'Program Manager is on and ace@ is an Admin' : 'ace@ is an Admin' };
   }
   if (status === 302) return { id, ok: false, detail: 'Connect redirected to login — the ACE Connect session is stale (run /ace:connect-login)' };
-  if (id === 'pm-program-manager') return { id, ok: false, detail: `Connect answered ${status}: Enable Program Manager is off (or ace@ is not an Admin)` };
+  if (id === 'pm-program-manager') return { id, ok: false, detail: `Connect answered ${status}: Program manager is off (or ace@ is not an Admin)` };
   return { id, ok: false, detail: `Connect answered ${status}: the org does not exist, or ace@ is not an Admin of it` };
+}
+
+// ── Creating the two orgs (ACE's own step since #1580) ──────────────────────
+
+export interface OrgCreateResult {
+  role: 'pm' | 'nm';
+  name: string;
+  status: 'created' | 'exists' | 'taken' | 'suffixed' | 'error';
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * What to do before creating: probe the admin-gated member table, then the org
+ * home. 200 on members → ace@ already administers it (rerun: skip). 200 on home
+ * only → the name is someone else's org — never adopt it. 404 on both → create.
+ */
+export function classifyOrgPreflight(role: 'pm' | 'nm', name: string, membersStatus: number, homeStatus: number): OrgCreateResult | null {
+  if (membersStatus === 200) return { role, name, status: 'exists', ok: true, detail: 'already exists with ace@ as Admin' };
+  if (membersStatus === 302 || homeStatus === 302) return { role, name, status: 'error', ok: false, detail: 'Connect redirected to login — the ACE Connect session is stale (run /ace:connect-login)' };
+  if (homeStatus === 200) return { role, name, status: 'taken', ok: false, detail: `an org with slug ${name} exists and ace@ is not its Admin — pick another workspace name or pass --${role}-org` };
+  return null;
+}
+
+/** The POST to /register/organization/ (redirects not followed). */
+export function classifyOrgCreate(role: 'pm' | 'nm', name: string, status: number, location: string, body: string): OrgCreateResult {
+  const m = /\/a\/([^/]+)\/(opportunity|organization)\//.exec(location);
+  if (status === 302 && m) {
+    if (m[1] === name) return { role, name, status: 'created', ok: true, detail: `created ${CONNECT_BASE_URL}/a/${name}/` };
+    return { role, name, status: 'suffixed', ok: false, detail: `Connect created it under slug ${m[1]}, not ${name} — use --${role}-org ${m[1]} or retire it` };
+  }
+  if (status === 302 && /login/.test(location)) return { role, name, status: 'error', ok: false, detail: 'Connect redirected to login — the ACE Connect session is stale (run /ace:connect-login)' };
+  const errs = [...body.matchAll(/class="[^"]*(?:invalid-feedback|errorlist|text-red)[^"]*"[^>]*>\s*(?:<[^>]+>\s*)*([^<]+)/g)].map((e) => e[1].trim()).filter(Boolean);
+  if (status === 200 && errs.some((e) => /already exists/i.test(e))) return { role, name, status: 'taken', ok: false, detail: `Connect: ${errs.join('; ')}` };
+  return { role, name, status: 'error', ok: false, detail: `POST /register/organization/ → ${status}${errs.length ? `: ${errs.join('; ')}` : ''}` };
 }

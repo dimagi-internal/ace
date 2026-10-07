@@ -32,16 +32,23 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - **Redirect the source's links.** That is an explicit, opt-in item of the
   release plan (`--forward-source`), and validation refuses it for a source in
   another workspace (every clone's case) unless the operator overrides it.
-- **Create the HQ project space, turn on its demo mode, or create the Connect
-  orgs.** The operator does those, from one checklist ACE prints at the start
-  (Step 0.6) — operator decision, Jon 2026-10-02: *"When we are doing a clone,
-  have me create the HQ space and turn on demo mode, and then have me manually
-  create a PM and NM org for you to use, and give me clear URLs to click to do
-  all of this efficiently."* Demo mode ("Test or Demo Project") is
-  superuser-only and Connect has no org-create API, so a human was always on
-  the path; doing it up front, in one sitting, replaces a clone that stalled
-  midway on each item in turn. ACE no longer calls `commcare_create_domain`
-  here.
+- **Create the HQ project space, turn on its demo mode, or flip the two
+  staff-only Connect org settings.** The operator does those, from one checklist
+  ACE prints at the start (Step 0.6) — operator decision, Jon 2026-10-02: *"When
+  we are doing a clone, have me create the HQ space and turn on demo mode, and
+  then have me manually create a PM and NM org for you to use, and give me clear
+  URLs to click to do all of this efficiently."* Demo mode ("Test or Demo
+  Project") is superuser-only, so a human is always on the path; doing it up
+  front, in one sitting, replaces a clone that stalled midway on each item in
+  turn. ACE no longer calls `commcare_create_domain` here.
+  **The Connect orgs themselves are ACE's since 2026-10-07** (Step 0.6b):
+  ace@ holds `all_org_profile_edit_access` (dimagi/commcare-connect#1580), so
+  ACE creates `<to>-pm-test` and `<to>-nm-test` and is their Admin. That
+  permission cannot set **Program manager** (`OrganizationChangeForm` drops the
+  field without staff `ORG_MANAGEMENT_SETTINGS_ACCESS` — absent on ace-pm-org's
+  home for ace@, live 2026-10-07) and nothing outside Django admin sets **Is
+  test** (`AdminOrganizationForm`), so those two ticks stay on the checklist,
+  one Django admin page per org.
 - **Create an OCS team.** The bot is reviewed by its public link (4d).
 
 What stays ACE's job: the target workspace, its Drive root and its default
@@ -58,10 +65,10 @@ every checklist item (Step 0.7), and every rebuild (Step 4).
 - `--hq-domain <slug>` — the HQ project space the operator created (checklist
   item 1). Unknown on a first call: the checklist then suggests
   `connect-ace-<to>` (HQ caps names at 25 chars) and asks for the slug.
-- `--pm-org <slug>` / `--nm-org <slug>` — the two Connect orgs the operator
-  created (checklist items 2 and 3): the one that runs the program, and the one
-  that holds the opportunity. Unknown on a first call: the checklist asks for
-  them.
+- `--pm-org <slug>` / `--nm-org <slug>` — the two Connect orgs: the one that
+  runs the program, and the one that holds the opportunity. **Default:
+  `<to>-pm-test` / `<to>-nm-test`** (naming convention, Jon 2026-10-07), which
+  ACE creates itself (0.6b). Pass them only to reuse orgs that already exist.
 - `--keep-shared connect` — **escape hatch only, not the default.** Keeps the
   source's Connect program + opportunity in the shared orgs instead of
   rebuilding them (4b skipped), drops the Connect items from the checklist, and
@@ -83,9 +90,10 @@ owner must be an **owner of both** workspaces.
 
 ## Step 0 — Target workspace, operator setup, verified tenancy
 
-The workspace is ACE's to create (0.1–0.4). The HQ space and the Connect orgs
-are the operator's (0.6); ACE accepts its invitations, verifies every item
-(0.7), and only then writes them into the workspace's default tenancy (0.8).
+The workspace is ACE's to create (0.1–0.4), and so are the two Connect orgs
+(0.6b). The HQ space and the two staff-only org settings are the operator's
+(0.6); ACE accepts its HQ invitation, verifies every item (0.7), and only then
+writes them into the workspace's default tenancy (0.8).
 Skip any part that already holds.
 
 1. `GET ${ACE_WEB_BASE_URL}/api/workspaces` (ace@'s PAT). If `<to>` is listed,
@@ -131,14 +139,33 @@ Skip any part that already holds.
    (`--skip-connect` only with `--keep-shared connect`.) It is one message, in
    the operator's order: (1) create the HQ space at
    `https://www.commcarehq.org/register/domain/`, turn on demo mode (Test or
-   Demo Project, superuser), invite `ace@dimagi-ai.com` as Admin; (2) create
-   the org that runs the program at
-   `https://connect.dimagi.com/register/organization/`, tick **Enable Program
-   Manager**, add ace@ as Admin; (3) the same for the org that holds the
-   opportunity — each with its exact URL, slugs filled where known and a
-   "send me the slug" where not. Send it to the operator (in a turn: the reply
-   on the thread that asked for the clone) and **stop**: no ace-web copy, no
-   rebuild. The operator replies with the slugs; rerun with them as flags.
+   Demo Project, superuser), invite `ace@dimagi-ai.com` as Admin; (2) on each
+   org's Connect Django admin page
+   (`/admin/organization/organization/?q=<org>`), tick **Program manager** on
+   `<to>-pm-test` and **Is test** on both — each with its exact URL. **Run 0.6b
+   first** so the orgs exist when the operator opens those pages. Send it to
+   the operator (in a turn: the reply on the thread that asked for the clone)
+   and **stop**: no ace-web copy, no rebuild. The operator replies with the HQ
+   slug (when it was unknown) and "done"; rerun with it as a flag.
+
+   **6b. Create the two Connect orgs (ACE, no human).** Skip with `--keep-shared
+   connect`.
+
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-setup-checklist.ts" create-orgs --workspace <to> \
+     [--pm-org <slug>] [--nm-org <slug>]
+   ```
+
+   Creates `<to>-pm-test` and `<to>-nm-test` at
+   `https://connect.dimagi.com/register/organization/` with ace@ as Admin
+   (never ticking "Create without becoming a member" — ace@ must invite and
+   create programs and opportunities there). Connect builds the slug from the
+   name, so slug = name. Idempotent: an org ace@ already administers is
+   `exists` (fine on a rerun). **Stop** on `taken` (that slug is someone else's
+   org — never adopt it) or `suffixed` (Connect created it under another slug:
+   report it; do not proceed under the suffixed slug). Connect has no org
+   delete yet (#1580 defers it), so every create is permanent — never create
+   probe or throwaway orgs.
 7. **Accept ACE's invitations, then verify.**
 
    ```bash
@@ -154,12 +181,17 @@ Skip any part that already holds.
    `/a/<org>/organization/invite/<token>/`) and accepts it with ACE's own
    session (HQ: an authenticated POST by the invited user; Connect: an
    authenticated GET). `no-invitation` means the operator has not sent it yet
-   (item 1c / 2c / 3b); `already-used` is fine — the read-backs decide. It then
+   (item 1c); `already-used` is fine — the read-backs decide. The Connect orgs
+   ACE created itself need no invitation; the script only looks for one when
+   ace@ is not already their Admin (orgs passed by flag that someone else made). It then
    runs the session read-backs: HQ `/a/<hq>/settings/users/my_role/` →
    `is_domain_admin: true` (the space exists and ace@ is Admin; 404 = no such
-   space); Connect `/a/<org>/organization/` → 200 for each org (ace@ is Admin)
-   and `/a/<pm>/program/init/` → 200 (Program Manager on; ace@ has no all-org
-   access, so 404 really means off). Then the MCP read-backs:
+   space); Connect `/a/<org>/organization/member_table` → 200 for each org
+   (ace@ is Admin — admin-gated; NOT the org home, which since #1580 answers 200
+   for every org ace@ can profile-edit, i.e. all of them) and
+   `/a/<pm>/program/init/` → 200 (Program manager on; 404 really means off).
+   **Is test cannot be read back by ace@** (it is only on the Django admin
+   page); report it as the operator's tick, not as verified. Then the MCP read-backs:
    - `commcare_get_subscription(domain: <hq>)` → `is_paid_edition: true`
      (demo mode on — item 1b);
    - `commcare_list_apps(domain: <hq>)` → 200 (`HQ_API_NOT_IN_PLAN` = still on
@@ -416,9 +448,9 @@ that built the source — not a hand-rolled copy of them. Requires 4a (the
 opportunity must point at the rebuilt HQ apps).
 
 1. **Step 0.7 already proved** both orgs exist with ace@ as Admin, the
-   program org has Program Manager on, and the holding org answers
-   `connect_list_opportunities`. The operator created them from the checklist
-   (items 2–3) — a missing org sends them back to it, never a guess.
+   program org has Program manager on, and the holding org answers
+   `connect_list_opportunities`. ACE created them in 0.6b — a missing one means
+   rerun 0.6b, never a guess.
 2. **Clear the copied Connect state in the TARGET only.**
    - Target `opp.yaml`: `update_yaml_file(merge: "two-level", patch:
      {connect: null})`. It names the SOURCE program, and
