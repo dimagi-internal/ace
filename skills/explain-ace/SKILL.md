@@ -15,8 +15,15 @@ stored write-up, this file, or memory.** Read the current sources below, then an
 Canopy is the system ACE runs on, and it maintains its own explainer pages. Put both in the
 reply, first time and whenever the question is about how the system works:
 
-- **What Canopy is** (public, no login): https://labs.connect.dimagi.com/canopy/about
-- **Canopy guide** (what every page in Canopy is for): https://labs.connect.dimagi.com/canopy/guide
+- **What Canopy is** (public, no login): https://canopy.dimagi.com/about
+- **Canopy guide** (what every page in Canopy is for; Dimagi login): https://canopy.dimagi.com/guide
+
+Canopy's address is whatever canopy-web says it is today: `CANOPY_PUBLIC_BASE_URL` in
+`config/settings/connectlabs.py` (and the *Deployment* line of canopy-web's `CLAUDE.md`). It
+moved from `labs.connect.dimagi.com/canopy/` to `canopy.dimagi.com` on 2026-10-05; the old
+address still 302s browser pages, so a `curl -L` check "passes" on a stale link. Check a link
+with plain `curl -s -o /dev/null -w '%{http_code} %{redirect_url}'` — a 302 to another host means
+the link is stale. Never take a base URL from a memo, a note or an older doc.
 
 Do not write or link an ACE-specific explainer doc as the answer. A dated snapshot is fine as
 *reference* for one analysis (filed under an ACE project on canopy-web), never as the source.
