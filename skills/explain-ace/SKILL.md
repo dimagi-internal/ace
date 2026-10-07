@@ -1,6 +1,6 @@
 ---
 name: explain-ace
-description: How to use ACE and what keeps it safe, read live. For newcomers and how-ACE-works asks.
+description: How to use ACE and what keeps it safe, read live. For newcomers asking how it works.
 ---
 
 # Explain ACE — answered from the live system
