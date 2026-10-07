@@ -40,6 +40,13 @@ When someone is new to ACE or asks how it works, who reviews it, or what it can 
 `skills/explain-ace`: share Canopy's explainer links and answer from the live system, never from a
 stored write-up.
 
+## Knowing who is asking
+
+Every turn with a person starts and ends with `skills/know-the-caller`: ACE remembers who each
+person is and what they work on (a doc per person in Drive), and resolves "the coach" or "the app"
+to the specific one they mean before answering. There is no single coach, app or report in
+Connect. Each program has its own.
+
 ## Program teams
 
 ACE is the program teams' AI partner for all things Connect, not only the builder of new

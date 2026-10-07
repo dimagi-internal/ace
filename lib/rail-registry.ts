@@ -235,6 +235,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/instrument-source-resolution.test.ts': { issues: ['ace#1648'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/journey-count-consistency.test.ts': { issues: ['ace#2274', 'ace#1545'], observed: 'malaria-itn-app/20260517-1829' },
   'test/skills/journeys-gps-observability.test.ts': { issues: ['ace#1619', 'ace#1006', 'ace#1213'] },
+  'test/skills/know-the-caller.test.ts': { issues: ['ace#2766'] },
   'test/skills/kb-contacts-present.test.ts': { issues: ['ace#1665', 'ace#1018'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/kb-instrument-contamination.test.ts': { issues: ['ace#1018'] },
   'test/skills/large-artifact-localfilepath.test.ts': { issues: ['ace#1918', 'ace#1780', 'ace#1907', 'ace#2055'] },

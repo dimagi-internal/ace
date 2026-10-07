@@ -53,6 +53,7 @@ rewrites what someone else wrote.
 | Names | What the team calls the program and its parts, and any retired names | Plain text. Retired names are still searched for, never written in prose |
 | Scope | Connect org(s) and program, opportunities in and out of scope, with the reason | Connect org slug + opportunity IDs |
 | Apps | Learn/Deliver apps per opportunity, and which build counts | HQ domain + app ID, and "latest released" unless stated |
+| AI coaches and bots | Every OCS bot the program uses (coaches, Q&A bots), what each is for, and which Labs reports trigger it | OCS team + bot id/public id per bot. There is rarely just one, so a question about "the coach" is resolved here first |
 | Metrics | Indicator definitions, reports, cohorts | Labs registry, workflow and cohort IDs. A spreadsheet is the drafting space; the registry is the authority once adopted |
 | Living docs | Design docs, protocols, the team's working sheets | Drive links shared with ace@dimagi-ai.com (commenter) |
 | Decisions | What was decided, by whom, when | Dated lines. A decision made only in Slack or email reaches no future session unless it lands here |
@@ -65,17 +66,20 @@ rewrites what someone else wrote.
 1. **Find the project.** `canopy agent projects --slug ace --active`, then read its tasks and
    the context doc. If the request doesn't map to a project, ask which program it is. Don't
    guess from an acronym.
-2. **Re-read live only what the question needs.** Use the context doc's pointers:
+2. **Resolve which instance the question is about** (`skills/know-the-caller` § 2). "The coach",
+   "the app" or "the report" means one of the program's instances in the context doc. Name it before
+   answering, or ask. Never answer for ACE's generic template as if it were the program's.
+3. **Re-read live only what the question needs.** Use the context doc's pointers:
    - the HQ app via the `commcare_*` atoms
    - the opportunity via the `connect_*` atoms
    - metrics via the `connect-labs` registry and workflow atoms
    - docs via Drive
 
    Search under the program's retired names too.
-3. **Say what you read and when** in the answer. A dated snapshot from the folder is reference,
+4. **Say what you read and when** in the answer. A dated snapshot from the folder is reference,
    never the source. The 2026-08-12 KC field audit, for example, describes the apps as they
    were that day.
-4. **Write back.** Log the turn on the task (`canopy agent turn … --task T<N>`). Put
+5. **Write back.** Log the turn on the task (`canopy agent turn … --task T<N>`). Put
    deliverables on the project's links. Append any decision to the context doc.
 
 ## Guardrails

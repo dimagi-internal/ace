@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# ace-person — find, read and write a person's context doc: ACE's memory of who
+# someone is, which projects they work with ACE on, and how they work with it.
+# The procedure that decides WHAT goes in the doc is skills/know-the-caller.
+#
+# Storage: one Google Doc per person, authored as ace@ (config/agent.json), under
+# ACE's Drive root at `Process State/People/`, titled "<Name> <email>" — the fleet
+# filing standard (canopy agent-core/deliverables.md: durable operational memory
+# lives in Process State/). The email in the title is the lookup key.
+#
+# Usage:
+#   ace-person find  <email>                      → "<docId>\t<title>\t<url>", exit 1 if none
+#   ace-person read  <email>                      → the doc as text, exit 1 if none (first contact)
+#   ace-person write <email> --name "<Name>" --md <file.md>
+#                                                 → create, or replace IN PLACE (same link)
+#
+# Docs are never shared: `--share none`. A person doc is ACE's working memory, not a
+# deliverable; the owner can open it in ACE's Drive.
+set -u
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ACE_ENV_FILE:-$HOME/.claude/plugins/data/ace-ace/.env}"
+
+die() { echo "ace-person: $*" >&2; exit 2; }
+
+if [ -z "${GDRIVE_ROOT_FOLDER:-}" ] && [ -f "$ENV_FILE" ]; then
+  set -a; . "$ENV_FILE"; set +a
+fi
+[ -n "${GDRIVE_ROOT_FOLDER:-}" ] || die "no GDRIVE_ROOT_FOLDER (run /ace:setup --force-env)"
+
+ACCOUNT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["email"])' "$ROOT/config/agent.json")" \
+  || die "cannot read the agent email from config/agent.json"
+CLIENT="${ACE_GOG_CLIENT:-$("$ROOT/bin/ace-gog-client" --root "$ROOT" 2>/dev/null)}"
+[ -n "$CLIENT" ] || die "no gog client resolved (bin/ace-gog-client)"
+
+_canopy() {
+  if command -v canopy >/dev/null 2>&1; then canopy "$@"; return; fi
+  local install runtime
+  install="$(python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))["plugins"]["canopy@canopy"][0]["installPath"])' 2>/dev/null)" \
+    || die "canopy CLI not found (run /canopy:setup)"
+  runtime="$(bash "$install/scripts/canopy-runtime.sh")" || die "canopy runtime did not resolve"
+  uv run --project "$runtime" canopy "$@"
+}
+
+# First id from `gog drive ls` JSON (array, or an envelope holding `files`).
+_first_id() {
+  python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, dict):
+    data = data.get("files") or []
+for f in data:
+    print(f["id"] + "\t" + f.get("name", ""))
+    break
+'
+}
+
+_child() { # _child <parent> <drive query>
+  gog drive ls --parent "$1" --query "$2" -a "$ACCOUNT" --client "$CLIENT" -j --results-only 2>/dev/null | _first_id
+}
+
+FOLDER_MIME="mimeType='application/vnd.google-apps.folder' and trashed=false"
+DOC_MIME="mimeType='application/vnd.google-apps.document' and trashed=false"
+
+# Prints "<docId>\t<title>", or nothing.
+_find_doc() {
+  local email="$1" state people
+  state="$(_child "$GDRIVE_ROOT_FOLDER" "name='Process State' and $FOLDER_MIME" | cut -f1)"
+  [ -n "$state" ] || return 0
+  people="$(_child "$state" "name='People' and $FOLDER_MIME" | cut -f1)"
+  [ -n "$people" ] || return 0
+  _child "$people" "name contains '$email' and $DOC_MIME"
+}
+
+cmd="${1:-}"; email="${2:-}"
+[ -n "$cmd" ] && [ -n "$email" ] || die "usage: ace-person find|read|write <email> [--name <Name> --md <file>]"
+shift 2
+# The email goes into a Drive query: accept only a plain address, so it can never
+# carry a quote that rewrites the query.
+email="$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')"
+printf '%s' "$email" | grep -Eq '^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$' || die "not a plain email address: $email"
+
+case "$cmd" in
+  find)
+    hit="$(_find_doc "$email")"
+    [ -n "$hit" ] || { echo "ace-person: no person doc for $email" >&2; exit 1; }
+    id="${hit%%	*}"
+    printf '%s\thttps://docs.google.com/document/d/%s/edit\n' "$hit" "$id"
+    ;;
+  read)
+    hit="$(_find_doc "$email")"
+    [ -n "$hit" ] || { echo "ace-person: no person doc for $email (first contact: start one at the end of this turn)" >&2; exit 1; }
+    gog docs cat "${hit%%	*}" -a "$ACCOUNT" --client "$CLIENT"
+    ;;
+  write)
+    name=""; md=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --name) name="${2:-}"; shift 2 ;;
+        --md) md="${2:-}"; shift 2 ;;
+        *) die "unknown argument: $1" ;;
+      esac
+    done
+    [ -n "$md" ] && [ -f "$md" ] || die "--md <file> is required and must exist"
+    hit="$(_find_doc "$email")"
+    if [ -n "$hit" ]; then
+      _canopy gdoc publish --repo "$ROOT" --md "$md" --replace "${hit%%	*}" --share none
+    else
+      [ -n "$name" ] || die "--name is required for a first write"
+      _canopy gdoc publish --repo "$ROOT" --md "$md" --name "$name $email" \
+        --area "Process State" --project People --share none
+    fi
+    ;;
+  *) die "unknown command: $cmd (find|read|write)" ;;
+esac
