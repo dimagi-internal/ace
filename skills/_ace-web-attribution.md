@@ -26,7 +26,7 @@ Resolve `requested_by` from the source of the request, in this order:
    `who_is_asking` tool, or the `--caller` file's `who.contact.email` /
    `who.user.email`.
 2. **An `/ace:turn` acting on a routed thread:** the act-tier sender of that
-   thread (`config/allowlist.txt` membership is what lets them steer a run).
+   thread (canopy-web's grant — `canopy caller tier` → `act` — is what lets them steer a run).
 3. **An interactive session:** the operator at the keyboard —
    `git config user.email`.
 

@@ -94,7 +94,7 @@ improvements ship once (a canopy PR) instead of N backports.
   workspace refresh (`canopy agent skills`, `canopy agent turn …`) is best-effort under the same
   gate.
 - **Inbound processing (core Step 2) = `skills/inbox-triage` in full:** standing noise table first
-  (drain ALL search pages), then per thread — tier the sender (**act** = `config/allowlist.txt`;
+  (drain ALL search pages), then per thread — tier the sender (**act** = canopy-web granted the whole of ACE, via `canopy caller tier`;
   **correspond** = derived from the routed run's state; neither = read-only), route to opp/run via
   the comms-log `thread_id`, one action, approval-gated outbound. Per-sender isolation and tier
   resolution live there.
