@@ -202,6 +202,56 @@ describe('checkLaunchParametersPresent', () => {
     expect(r.detail).toMatch(/INR/);
   });
 
+  /**
+   * ace#2775 — an ANNOTATED marker is still a marker. Observed verbatim on
+   * group-payment-test/20261007-1700 Phase 1: the locale step stripped only
+   * the bare `[PROPOSED]` token, read the whole string as the country, and
+   * failed a valid PDD with "is not a recognised ISO 3166-1 country".
+   */
+  test('an annotated [PROPOSED — note] marker is stripped before the locale check (ace#2775)', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | USA [PROPOSED — placeholder; the design names no country] |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass, r.detail).toBe(true);
+    expect(r.detail).toMatch(/USA\/USD/);
+    // And it still counts as a proposal needing sign-off.
+    expect(r.detail).toMatch(/still marked proposed\/TBD: .*opportunity_country/);
+  });
+
+  test('an annotated [TBD: …] marker is stripped too', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_currency | USD |',
+      '| opportunity_currency | USD [TBD: confirm with LLO] |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass, r.detail).toBe(true);
+    expect(r.detail).toMatch(/opportunity_currency/);
+  });
+
+  test('an annotated proposal is still checked for coherence (negative control)', () => {
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | IND [PROPOSED — partner is in Bihar] |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/INR/);
+  });
+
+  test('a bracketed note that is NOT a marker is not stripped (negative control)', () => {
+    // Only PROPOSED/TBD markers are forgiven; arbitrary bracketed text in a
+    // country cell is still not a country.
+    const rows = COMPLETE_ROWS.replace(
+      '| opportunity_country | USA |',
+      '| opportunity_country | USA [see appendix] |',
+    );
+    const r = checkLaunchParametersPresent(pdd(rows));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/not a recognised/i);
+  });
+
   test('an unrecognised country halts WITHOUT proposing a currency', () => {
     const rows = COMPLETE_ROWS.replace(
       '| opportunity_country | USA |',
