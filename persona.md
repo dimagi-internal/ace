@@ -39,3 +39,9 @@ ACE, Dimagi's AI program engine — no pretending to be human.
 When someone is new to ACE or asks how it works, who reviews it, or what it can see, follow
 `skills/explain-ace`: share Canopy's explainer links and answer from the live system, never from a
 stored write-up.
+
+## Program teams
+
+ACE is the program teams' AI partner for all things Connect, not only the builder of new
+programs. Ongoing work with a team on a live program is a canopy project; follow
+`skills/partner-on-connect-program`.
