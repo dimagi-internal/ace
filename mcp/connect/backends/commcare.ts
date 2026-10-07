@@ -1057,6 +1057,37 @@ export class CommCareBackend {
   }
 
   /**
+   * Like `assertNotLoginRedirect`, but a 302 whose Location PATH is one of
+   * `successPaths` is accepted (returns true) instead of thrown. For HQ Django
+   * form views whose success response is a redirect — the caller must still
+   * prove the write with a read-back, because a 302 is not proof.
+   *
+   * Deliberately per-call, not a loosening of `assertNotLoginRedirect`: every
+   * other caller relies on a non-login 302 being an error. ace#2769 — the web
+   * user invite POST 302s to `/a/<domain>/settings/users/web/` on SUCCESS, and
+   * the generic check threw on it before the read-back could run.
+   */
+  private static assertRedirectIsSuccess(
+    res: APIResponse,
+    label: string,
+    baseUrl: string,
+    successPaths: string[],
+  ): boolean {
+    if (res.status() !== 302) return false;
+    const location = res.headers()['location'] || '';
+    if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+    const norm = (p: string) => (p.endsWith('/') ? p : `${p}/`);
+    let path = '';
+    try {
+      path = norm(new URL(location, baseUrl).pathname);
+    } catch {
+      path = '';
+    }
+    if (location && successPaths.some((p) => norm(p) === path)) return true;
+    throw new Error(`${label} returned 302 to ${location || '<no location header>'}`);
+  }
+
+  /**
    * Create a new CommCare HQ project space (domain).
    *
    * POST /register/domain/ via the DomainRegistrationForm CSRF-protected
@@ -1600,7 +1631,12 @@ export class CommCareBackend {
           },
           maxRedirects: 0,
         });
-        CommCareBackend.assertNotLoginRedirect(pr, 'commcare_invite_web_user');
+        // HQ may answer a saved edit with a redirect back to the edit page or
+        // the users list; either falls through to the read-back below (#2769).
+        CommCareBackend.assertRedirectIsSuccess(pr, 'commcare_invite_web_user', base, [
+          new URL(editUrl, base).pathname,
+          `${usersBase}/`,
+        ]);
 
         // A 302 is NOT proof. Re-read the edit page (Couch-backed, authoritative)
         // and treat any web/json/ disagreement as ES index lag, never a veto.
@@ -1651,7 +1687,11 @@ export class CommCareBackend {
         },
         maxRedirects: 0,
       });
-      CommCareBackend.assertNotLoginRedirect(res, 'commcare_invite_web_user');
+      // HQ's SUCCESS answer is a 302 to this domain's users list (ace#2769);
+      // accept exactly that and let the read-back below prove the write.
+      CommCareBackend.assertRedirectIsSuccess(res, 'commcare_invite_web_user', base, [
+        `${usersBase}/`,
+      ]);
 
       if (res.status() === 200) {
         // The form re-rendered. HQ's validator rejects an email that is already
