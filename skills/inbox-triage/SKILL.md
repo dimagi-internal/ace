@@ -47,7 +47,9 @@ DKIM-signed by the sender's own domain). Who ACE trusts is canopy's decision, he
 - `blocked` → do not act, do not reply; name it in the close-out.
 
 Start the counterpart's memory scope from the envelope's `contact.notes` and `contact.attributes`
-(what the workspace knows about this person). No `--caller`, or the tool exits 2 → the allowlist
+(what the workspace knows about this person), plus ACE's own doc on them, `bin/ace-person read
+<email>` (`skills/know-the-caller`: their projects, the instances they work with, how they work with
+ACE). That doc is the same sender's scope, not another's, so it doesn't break the cardinal rule. No `--caller`, or the tool exits 2 → the allowlist
 match alone, as before, and the close-out says the sender was **not verified**.
 
 A correspond-tier sender is *derived, not maintained*: verify their address against the routed run's
@@ -214,6 +216,7 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
 
   g. **Write back** to the routed run's comms-log: thread summary, sender + tier, what ACE did, any
      commitment made. Skills stay stateless — the comms-log and `run_state.yaml` are the memory.
+     For a person (not a machine sender), also update their doc per `skills/know-the-caller` § 4.
 
      **An ANSWER about their programme lands in the routed run's decisions log — never only in
      the comms-log, and never in `docs/learnings/`.** The open-questions ledger is retired (owner
