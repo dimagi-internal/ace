@@ -99,6 +99,23 @@ phases:
     expect(frag.identifiers.ocsCollectionIds).toContain('418');
   });
 
+  it('captures the per-run OCS Coach from `ocs_coach` (Phase 7 Step 1.9)', () => {
+    const run = `
+phases:
+  ocs-setup:
+    products:
+      ocs_chatbot:
+        experiment_id: 13923
+        collection_id: 605
+      ocs_coach:
+        experiment_id: 13972
+        public_id: coach-pub-uuid
+        collection_id: 605
+`;
+    const frag = extractOppFragment('spark-facilitator', '', [run]);
+    expect(frag.identifiers.ocsChatbotIds).toEqual(expect.arrayContaining(['13923', '13972', 'coach-pub-uuid']));
+  });
+
   it('captures all 3 OCS chatbot id aliases (id / experiment_id / chatbot_id)', () => {
     const run = `
 phases:

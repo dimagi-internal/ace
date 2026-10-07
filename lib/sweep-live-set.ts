@@ -129,8 +129,9 @@ function collectConnect(ids: LiveSet['identifiers'], scope: Record<string, unkno
 }
 
 function collectOcs(ids: LiveSet['identifiers'], scope: Record<string, unknown>): void {
-  // `ocs_chatbot` is the live key; `chatbot` is the legacy run_state key.
-  for (const block of [asRecord(scope.ocs_chatbot), asRecord(scope.chatbot)]) {
+  // `ocs_chatbot` is the live key; `chatbot` is the legacy run_state key;
+  // `ocs_coach` is the per-run Coach (ocs-coach-setup, Phase 7 Step 1.9).
+  for (const block of [asRecord(scope.ocs_chatbot), asRecord(scope.chatbot), asRecord(scope.ocs_coach)]) {
     pushId(ids.ocsChatbotIds, block.experiment_id);
     pushId(ids.ocsChatbotIds, block.id);
     pushId(ids.ocsChatbotIds, block.chatbot_id);
