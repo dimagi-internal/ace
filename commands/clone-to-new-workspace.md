@@ -18,9 +18,10 @@ that workspace's tenancy. The source run is untouched; nobody is invited.
   `$ACE_WEB_WORKSPACE`.
 - **`--hq-domain <slug>`** — the HQ project space the operator created from the
   setup checklist. Omit on the first call: the checklist asks for it.
-- **`--pm-org <slug>` / `--nm-org <slug>`** — the two Connect organizations the
-  operator created: the one that runs the program and the one that holds the
-  opportunity. Omit on the first call: the checklist asks for them.
+- **`--pm-org <slug>` / `--nm-org <slug>`** — the two Connect organizations: the
+  one that runs the program and the one that holds the opportunity. Default
+  `<to>-pm-test` / `<to>-nm-test`, which ACE creates itself; pass them only to
+  reuse existing orgs.
 - **`--labs-domain` / `--co-owner`** (optional) — used only when the target
   workspace or its default tenancy has to be created (Step 0).
 - **`--keep-shared connect`** (optional, escape hatch only) — keep the source's
