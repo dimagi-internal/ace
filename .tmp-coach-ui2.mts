@@ -1,0 +1,18 @@
+import { chromium } from 'playwright';
+import os from 'node:os';
+const S = '/private/tmp/claude-501/-Users-jjackson-emdash-worktrees-ace-1476c35d-emdash-ace-coach-4uc37/cf3b1ca5-4bf2-4a15-bd37-5bac88ce5a52/scratchpad/ui';
+const b = await chromium.launch();
+const ctx = await b.newContext({ storageState: os.homedir() + '/.ace/labs-session.json', viewport: { width: 1440, height: 900 } });
+const p = await ctx.newPage();
+await p.goto('https://labs.connect.dimagi.com/labs/workflow/7913/run/?run_id=7914&program_id=10105', { waitUntil: 'domcontentloaded', timeout: 120000 });
+await p.waitForTimeout(20000);
+await p.locator('tr', { hasText: 'Kuunika Outreach Network' }).first().click({ force: true, timeout: 20000 });
+await p.waitForTimeout(6000);
+await p.locator('tr', { hasText: 'Tiyamike Kalinde' }).getByText('Start coaching').click({ timeout: 20000 });
+await p.waitForTimeout(6000);
+await p.screenshot({ path: S + '/04-dialog.png', fullPage: false });
+const dlg = p.locator('[role=dialog], dialog, .modal').first();
+console.log('dialog text:', (await dlg.innerText().catch(() => p.locator('body').innerText())).slice(0, 3000));
+const texts = (await p.locator('button').allInnerTexts()).map(t => t.trim()).filter(Boolean);
+console.log('buttons:', [...new Set(texts)].slice(0, 40));
+await b.close();

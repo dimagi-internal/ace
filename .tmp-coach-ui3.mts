@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+import os from 'node:os';
+const S = '/private/tmp/claude-501/-Users-jjackson-emdash-worktrees-ace-1476c35d-emdash-ace-coach-4uc37/cf3b1ca5-4bf2-4a15-bd37-5bac88ce5a52/scratchpad/ui';
+const b = await chromium.launch();
+const ctx = await b.newContext({ storageState: os.homedir() + '/.ace/labs-session.json', viewport: { width: 1440, height: 900 } });
+const p = await ctx.newPage();
+await p.goto('https://labs.connect.dimagi.com/labs/workflow/7913/run/?run_id=7914&program_id=10105', { waitUntil: 'domcontentloaded', timeout: 120000 });
+await p.waitForTimeout(20000);
+await p.locator('tr', { hasText: 'Kuunika Outreach Network' }).first().click({ force: true, timeout: 20000 });
+await p.waitForTimeout(5000);
+await p.getByText('Ask an agent').click();
+await p.waitForTimeout(8000);
+await p.screenshot({ path: S + '/05-panel-open.png' });
+const frames = p.frames().map(f => f.url());
+console.log('frames', frames.filter(u => /canopy/.test(u)));
+const f = p.frames().find(f => /canopy/.test(f.url())) ?? p.mainFrame();
+const box = f.locator('textarea, [contenteditable=true], input[type=text]').last();
+await box.fill('Start a coaching conversation with Tiyamike Kalinde about her red indicators. Show me the preview first; do not confirm.');
+await box.press('Enter');
+for (let i = 0; i < 18; i++) { await p.waitForTimeout(10000); }
+await p.screenshot({ path: S + '/06-panel-reply.png' });
+console.log((await f.locator('body').innerText()).slice(-3500));
+await b.close();
