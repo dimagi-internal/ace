@@ -1,11 +1,8 @@
 ---
 name: task-tracker
 description: >
-  ACE's project/task state — one board task per iterative thread/project, backed by
-  canopy-web (kanban at /agents/ace). The canonical procedure is fleet-wide and lives
-  in the installed canopy plugin (agent-core/task-tracker.md); this stub binds it to
-  ACE. Use when taking on multi-turn work, when a new request arrives, and at every
-  turn's board-drain and close.
+  Track ACE's tasks and projects on the canopy-web board, per canopy's fleet procedure. Use for
+  multi-turn work, new requests, and every turn's board drain and close.
 ---
 
 # Task Tracker — ACE (stub over the fleet-canonical core)
@@ -44,3 +41,5 @@ description: >
   2026-09-02 on this workstation; raised as dimagi-internal/canopy#586.
 - Per-opportunity pipeline state stays in Drive (`ACE/<opp>/runs/<run-id>/run_state.yaml` +
   comms-logs) — the board tracks counterpart-facing iterative threads/projects, not run state.
+- **A live Connect program a team works on with ACE over time is a project** with a program
+  context doc on top of the fleet mechanics: `skills/partner-on-connect-program`.
