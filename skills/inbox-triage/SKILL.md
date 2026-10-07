@@ -129,7 +129,10 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
   b. **Route the thread to an opp/run — and cite the evidence.** Routing evidence comes from the
      thread itself, in this order:
      1. Match the Gmail `thread_id` against the run comms-logs (`<skill>_comms-log.md` under
-        `ACE/<opp>/runs/<run-id>/<N>-<phase>/`) — every send records it (see `email-communicator`).
+        `ACE/<opp>/runs/<run-id>/<N>-<phase>/`, **and** `*_comms-log.md` at the run root
+        `ACE/<opp>/runs/<run-id>/` — where sends that belong to no phase log, today
+        `release-run_comms-log.md`, the reviewer emails `/ace:release` sends, ace#2780) — every send
+        records it (see `email-communicator`).
      2. Else match opp-slug / opportunity-name conventions in the subject line.
      3. Else resolve identifiers quoted in the thread **body** (Connect opp/program URLs or UUIDs,
         run-ids, chatbot links) against opp `run_state.yaml` files.

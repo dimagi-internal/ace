@@ -25,8 +25,10 @@ re-reads that plan, refuses it on any mismatch, shows it for approval, executes
 its share actions in order, proves each by read-back, and records the release.
 
 It makes **NO content changes**: no audit, no polish, no gate re-runs, no doc
-edits, no decisions or run_state changes beyond the `released:` record. If
-something looks wrong, STOP and re-validate; never fix it here.
+edits, no decisions or run_state changes beyond the `released:` record. The
+only other write is the send record every ACE email owes — one
+`release-run_comms-log.md` row per email sent (ace#2780). If something looks
+wrong, STOP and re-validate; never fix it here.
 *Enforced:* `test/skills/release-run-shares-only.test.ts`.
 
 Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
@@ -129,7 +131,7 @@ that reviewer's email.
 Nothing outside this table is called. Labs needs no call (the clone already
 allowed the reviewer's domain); OCS is the public chat link in the email.
 
-## Step 4 — Record (the only run write)
+## Step 4 — Record (the only run writes: the release record and the send log)
 
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
@@ -145,13 +147,37 @@ every executed action with `shared: true` — the revocation checklist for
 `--revoke-shared`. No other key is written. (This write makes the verdict stale
 on purpose: a second release needs a fresh validation.)
 
+Then log the sends: `release-run_comms-log.md` at the **run root** — the run
+folder itself, not a `<N>-<phase>/` folder, because a release belongs to no
+phase (ace#2780). `email-communicator` step 7 requires every send to log its
+`thread_id`, and `inbox-triage` §b.1 routes a reviewer's reply by matching it
+here; without this row the reply is routable only by URLs in the quoted body.
+One markdown table row per `email` action that was SENT, from Step 3's send
+JSON — the gist only, never the body:
+
+```markdown
+| date (UTC) | thread_id | message_id | to | cc | gist |
+|---|---|---|---|---|---|
+| 2026-10-07T14:02Z | 19a… | 19a… | reviewer@partner.org | staff@dimagi.com | release invite: run page + ace-web accept link, plan <plan_hash> |
+```
+
+Write it to a local file and append, never overwrite: first
+`drive_create_file(name: "release-run_comms-log.md", parentFolderId: <run folder id>, localFilePath, expectAbsent: true)`
+with the header plus the new rows. A refusal means a log already exists (an
+earlier release or a hand-written one) — that is the append path, not an
+error: `drive_read_file(fileId: <the refused file's id>, writeToPath)`, add the
+new rows to the end of its table, and
+`drive_update_file(fileId, localFilePath, ifMatchRevisionId: <the read's revisionVersion>)`;
+on `revision_conflict`, re-read and append again. Write nothing else to it.
+
 ## Report
 
 Per reviewer × system: `granted` (with read-back), `granted — SHARED, revoke
 later` (listed again at the end as the revocation checklist), `NOT GRANTED —
 <reason from the plan>`, `public link (no account)` for OCS, or `NOT DONE` +
 evidence; the Drive shares; whether the source link now forwards; each email's
-`thread_id`; and the plan hash executed.
+`thread_id` (each also a row in `release-run_comms-log.md`); and the plan
+hash executed.
 
 ## Change Log
 
@@ -161,3 +187,4 @@ evidence; the Drive shares; whether the source link now forwards; each email's
 | 2026-10-05 | `--waive` (ace#2707): the plan's waived eval blockers are shown in the approval prompt; the gate refuses waivers that differ from the validated ones. | ACE team |
 | 2026-10-05 | `--from-thread` derives Dimagi staff on the thread as **reviewers** (workspace invite + grants + own email), never cc; `--cc` is an explicit opt-in only (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). | ACE team |
 | 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |
+| 2026-10-07 | Step 4 also logs every sent email to `release-run_comms-log.md` at the run root (date, thread_id, message_id, to, cc, gist — never the body), so `inbox-triage` §b.1 routes reviewer replies by `thread_id`. A release has no phase folder, so the run root is its home; the shares-only ratchet allows exactly this write (ace#2780). | ACE team |
