@@ -97,7 +97,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    ```
    mcp__ace-decisions__decisions_open_asks(
      runFolderId: <run folder id>, opportunity: <opp>, run_id: <run-id>,
-     mode: 'check', neededBy: 'award',
+     neededBy: 'award',
      solicitationAnswered: [<question ids the top-ranked response answered, non-empty>]
    )
    ```

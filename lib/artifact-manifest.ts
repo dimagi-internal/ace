@@ -3,7 +3,7 @@
  *
  * Every file that an ACE skill reads from or writes to Google Drive under
  * `ACE/<opp>/runs/<run-id>/` is listed here. A handful of opp-level files
- * (`opp.yaml`, the `inputs/` folder, plus `open-questions.md` and
+ * (`opp.yaml`, the `inputs/` folder, plus
  * `eval-calibration/known-issues.md`) sit at `ACE/<opp>/` itself, one
  * level above the run folder; they survive across runs and are flagged
  * with `phase: 'design'` for sort order.
@@ -210,7 +210,7 @@ export interface ArtifactEntry {
    * structurally impossible.
    *
    * `'commenter'` is therefore the default for anything a counterpart is asked
-   * to REVIEW (the PDD, the Work Order, the open-questions ledger, the five
+   * to REVIEW (the PDD, the Work Order, the five
    * training deliverables). `'reader'` is for material a recipient only
    * consumes.
    *
@@ -252,13 +252,9 @@ export interface ArtifactEntry {
    * Both writes take the SAME string: render it for humans, store it verbatim
    * for the auditor.
    *
-   * NOT for every rendered artifact. Two deliberate exclusions, for different
-   * reasons — read them before "fixing" either:
+   * NOT for every rendered artifact. One deliberate exclusion — read it before
+   * "fixing" it:
    *
-   *   - `open-questions.md` (the retired ledger, legacy) was an opp-level
-   *     LIVING document that reviewers hand-edited in place across runs.
-   *     Published-vs-source divergence there is expected and correct, so a
-   *     fidelity diff would report legitimate human edits as defects.
    *   - `1-design/pdd-to-work-order.gdoc` has **no composed markdown to
    *     persist, and no importer that could drop anything.** It is built by
    *     `docs_copy_template`, which is `drive.files.copy` of a Google Doc
@@ -436,27 +432,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: false,
     description: 'Machine-readable component handoff for a COMPONENTIZED programme — written only when the input set declares components (`Component: <n> of …` on a PDD\'s metadata line), never on the single-PDD path. Carries each component\'s id, declared title and OWN pdd file id, the program-level PDDs (Learn), the obligations the programme overview must answer, cross-component references this programme does not carry, and the framework\'s full component inventory when a document declares one (`frameworkComponentIds`, the single canonical name — it reaches Phase 3 as `products.framework_component_ids`; ace#2056). Shape and guards: lib/component-products.ts (`buildComponentProducts` refuses `mode: componentized` with zero components); classification: lib/component-set.ts; obligations: lib/programme-overview.ts; design: docs/superpowers/specs/2026-09-05-multi-component-programmes.md. `products.pdd` stays populated alongside it and points at the programme OVERVIEW — 17 places read it directly, so a componentized run does not null it.',
-  },
-  {
-    path: 'open-asks.yaml',
-    producedBy: 'ace-orchestrator',
-    consumedBy: ['ace-orchestrator', 'solicitation-review', 'validate-release-readiness'],
-    phase: 'design',
-    required: false,
-    description: 'Per-opp, GENERATED at run end by `decisions_open_asks(mode: \'emit\')` (ace-decisions): `{schema_version: 1, opp, run_id, generated_at, asks: [...]}`, where `asks` are the run\'s live decision rows with an unanswered `review_ask` or `status: deferred`. Read-only — never hand-edited, never a value source. It replaced the open-questions ledger (owner decision 2026-10-04, docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md): ace-web renders it as the review list, and the next run\'s Phase 1 checks it (`throughPhase: 1`) so a dropped ask becomes a run residual. Answers persist through `inputs/decision-overrides.yaml`. Opp-level (NOT under runs/<run-id>/). Contract: docs/decisions-contract.md § Open asks; shape: lib/open-asks.ts.',
-  },
-  {
-    path: 'open-questions.md',
-    producedBy: 'idea-to-pdd',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'design',
-    required: false,
-    rendered: true,
-    // ace-web still renders a legacy ledger as a fallback until an opp is
-    // migrated, so the share role stays — a reviewer can still comment on it.
-    recipientFacing: true,
-    shareRole: 'commenter',
-    description: 'LEGACY — the retired per-opp open-questions ledger. No skill writes it since 2026-10-04 (owner decision; docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md): every question a run raises is a decision row (`review_ask` or `status: deferred`), and `open-asks.yaml` is the generated cross-run list. On an opp not yet migrated, Phase 1 reads its `## Open` section read-only (lib/open-questions-inline.ts; `## Archive` is never read back and never inlined; fixture opps skip it) so its rows are re-derived as decision rows; `scripts/migrate-open-questions.ts` folds it into decision rows once and archives it as `open-questions.archived.md`. `producedBy` names its historical writer.',
   },
   {
     path: 'eval-calibration/known-issues.md',

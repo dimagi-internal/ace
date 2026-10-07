@@ -217,8 +217,8 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
 
      **An ANSWER about their programme lands in the routed run's decisions log — never only in
      the comms-log, and never in `docs/learnings/`.** The open-questions ledger is retired (owner
-     decision 2026-10-04; `docs/decisions-contract.md § Open asks`), so there is no
-     `open-questions.md` to write. Two cases:
+     decision 2026-10-04; `docs/decisions-contract.md § Open asks`): an open question is a
+     decision row, and open asks are a filter over those rows. Two cases:
 
      - **The counterpart ANSWERED an ask** — a decision row with an unanswered `review_ask` whose
        `owner` they are. Record their answer as an attributed ruling in the opp's

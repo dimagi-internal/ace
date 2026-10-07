@@ -1,8 +1,8 @@
 /**
  * The folded open-questions ledger (docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md,
- * owner-approved 2026-10-04): asks live on decision rows, `open-asks.yaml` is
- * the generated run-end safety net, and `review_ask: required-before` is the
- * only gate. Fixture: the real spark-facilitator/20261001-2208 decisions log,
+ * owner-approved 2026-10-04): asks live on decision rows, open asks are a
+ * FILTER over them — never a file (operator decision 2026-10-07, ace#2757) —
+ * and `review_ask: required-before` is the only gate. Fixture: the real spark-facilitator/20261001-2208 decisions log,
  * plus the one row the spec found genuinely open and blocking
  * (`rct-sample-overlap`, category E).
  */
@@ -18,14 +18,13 @@ import {
   type DecisionsLog,
 } from '../../lib/decisions-schema.js';
 import { auditDecisionsPlainLanguage, enrichDecisionsLog, openResiduals } from '../../lib/decisions-enrich.js';
+import * as openAsksModule from '../../lib/open-asks.js';
 import {
-  buildOpenAsksFile,
   checkOpenAsksCarried,
   missingAskResiduals,
   openAsks,
-  parseOpenAsksYaml,
+  previousRunCandidates,
   requiredBeforeBlockers,
-  serializeOpenAsks,
 } from '../../lib/open-asks.js';
 import { assessRequiredBeforeAsks } from '../../lib/release-readiness.js';
 
@@ -143,14 +142,29 @@ describe('open asks', () => {
     expect(asks.map((a) => a.id)).not.toContain('rct-sample-overlap');
   });
 
-  it('open-asks.yaml round-trips and carries only open asks', () => {
-    const file = buildOpenAsksFile({ opp: 'spark-facilitator', runId: '20261001-2208', log: withRows(RCT, RWANDA), generatedAt: '2026-10-04T00:00:00Z' });
-    const text = serializeOpenAsks(file);
-    expect(text.startsWith('# GENERATED')).toBe(true);
-    const back = parseOpenAsksYaml(text);
-    expect(back).toEqual(file);
-    expect(back.schema_version).toBe(1);
-    expect(back.asks.every((a) => a.review_ask !== undefined || a.status === 'deferred')).toBe(true);
+  it('an answered review_ask is not open — overridden or human-decided on the row itself', () => {
+    const overridden: DecisionRow = { ...RCT, status: 'overridden', override: 'Allow study communities', override_reasoning: 'Partner confirmed.' };
+    const decided: DecisionRow = { ...RCT, id: 'rct-decided', status: 'human-decided', decided_by: 'jjackson@dimagi.com', decided_at: '2026-10-07' } as DecisionRow;
+    const unanswered: DecisionRow = { ...RCT, id: 'rct-unanswered', review_ask: 'recommended-confirmation' };
+    const ids = openAsks({ decisions: [overridden, decided, unanswered] }).map((a) => a.id);
+    expect(ids).toEqual(['rct-unanswered']);
+  });
+
+  it('deferred is open even with no review_ask; a plain ai-default row is not', () => {
+    const plainRow: DecisionRow = { ...base, id: 'plain', question: 'q', 'ai-default': 'a', options: ['a'] };
+    const ids = openAsks({ decisions: [RWANDA, plainRow] }).map((a) => a.id);
+    expect(ids).toEqual(['rwanda-expansion-scope']);
+  });
+
+  it('a superseded row is never open, whatever it asked', () => {
+    expect(openAsks({ decisions: [{ ...RCT, superseded_by: 'rct-v2' }, { ...RWANDA, superseded_by: 'rw-v2' }] })).toEqual([]);
+  });
+
+  it('there is no file: the module exports no open-asks.yaml schema, filename or serializer (ace#2757)', () => {
+    const names = Object.keys(openAsksModule);
+    for (const gone of ['OPEN_ASKS_FILENAME', 'OpenAsksFileSchema', 'buildOpenAsksFile', 'serializeOpenAsks', 'parseOpenAsksYaml']) {
+      expect(names, gone).not.toContain(gone);
+    }
   });
 });
 
@@ -192,12 +206,13 @@ describe('the required-before gate', () => {
 });
 
 describe('nothing dropped between runs', () => {
-  const prior = buildOpenAsksFile({ opp: 'spark-facilitator', runId: '20261001-2208', log: withRows(RCT, RWANDA), generatedAt: '2026-10-02T00:00:00Z' });
+  // The previous run is just its decisions log — filtered through openAsks, never a stored list.
+  const prior = { runId: '20261001-2208', log: withRows(RCT, RWANDA) };
 
   it('every prior ask is carried when this run re-derives the same log', () => {
     const check = checkOpenAsksCarried({ prior, log: withRows(RCT, RWANDA) });
     expect(check.missing).toEqual([]);
-    expect(check.carried.length).toBe(prior.asks.length);
+    expect(check.carried.length).toBe(openAsks(prior.log).length);
   });
 
   it('a re-worded question still counts as carried; a dropped one is missing and becomes a residual', () => {
@@ -229,9 +244,35 @@ describe('nothing dropped between runs', () => {
 
   it('Phase 1 only checks asks raised by phases it has reached', () => {
     const later = { ...RCT, id: 'later-ask', phase: '6-qa', question: 'Something unrelated entirely', plain: 'Unrelated.', plain_question: 'Unrelated?' };
-    const p2 = buildOpenAsksFile({ opp: 'x', runId: 'r0', log: { decisions: [later] }, generatedAt: 't' });
+    const p2 = { runId: 'r0', log: { decisions: [later] } };
     const check = checkOpenAsksCarried({ prior: p2, log: { decisions: [] }, throughOrdinal: 1 });
     expect(check.notYetDue).toEqual(['later-ask']);
     expect(check.missing).toEqual([]);
+  });
+
+  it('the previous run\'s answered and plain rows are not asks to carry', () => {
+    const answered: DecisionRow = { ...RCT, status: 'overridden', override: 'Allow study communities' };
+    const check = checkOpenAsksCarried({ prior: { runId: 'r0', log: { decisions: [answered] } }, log: { decisions: [] } });
+    expect(check.missing).toEqual([]);
+    expect(check.carried).toEqual([]);
+  });
+
+  it('an ask answered AFTER the previous run still has to be re-derived by this one', () => {
+    // A ruling saved since the prior run does not shrink what that run left
+    // open; this run must still raise the row so the ruling has one to bind to.
+    const overrides = [{ id: 'rct-sample-overlap', override: 'Allow study communities' }];
+    const check = checkOpenAsksCarried({ prior: { runId: 'r0', log: withRows(RCT) }, log: { decisions: [] }, overrides });
+    expect(check.missing.map((m) => m.id)).toContain('rct-sample-overlap');
+  });
+});
+
+describe('which run is the previous run', () => {
+  it('the newest run folder older than this one, newest first; archived superseded-* attempts never count', () => {
+    const names = ['20260926-1413', 'superseded-20261001-0900', '20261001-2208', '20261003-1200', '20260915-0800', 'notes.md'];
+    expect(previousRunCandidates(names, '20261001-2208')).toEqual(['20260926-1413', '20260915-0800']);
+  });
+
+  it('the first run has no previous run', () => {
+    expect(previousRunCandidates(['20261001-2208'], '20261001-2208')).toEqual([]);
   });
 });

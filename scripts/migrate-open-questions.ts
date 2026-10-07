@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Fold an opp's legacy open-questions ledger into decision rows — once per
- * opp. `lib/open-questions-migrate.ts`; spec § 6
+ * opp. This tool (with lib/open-questions-migrate.ts) is the ONLY code in ACE
+ * that reads a ledger; no run does (ace#2757). `lib/open-questions-migrate.ts`; spec § 6
  * (docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md).
  *
  * DRY-RUN (default) — propose a category per open row, with evidence:
@@ -28,8 +29,9 @@
  * in a session bound to the opp (`bin/ace-bind <ws>/<opp>`):
  *   1. `decisions_append_rows(runFolderId, opportunity, run_id, rows: <rows.json>)`
  *      — the sanctioned writer; saved rulings bind there as usual;
- *   2. `decisions_enrich` + `render_decisions_log`, then
- *      `decisions_open_asks(mode: 'emit')` to write ACE/<opp>/open-asks.yaml;
+ *   2. `decisions_enrich` + `render_decisions_log`. Nothing else is written
+ *      for open asks: they are a filter over decisions.yaml, never a file
+ *      (operator decision 2026-10-07, ace#2757);
  *   3. replace the ledger's body with <open-questions.archived.md>
  *      (`drive_update_file`) and rename it `open-questions.archived.md`
  *      (`drive_rename_file`);
@@ -52,8 +54,8 @@ import {
   renderArchivedLedger,
   renderProposals,
   type Classification,
+  type OpenQuestionsReadExport,
 } from '../lib/open-questions-migrate.js';
-import type { OpenQuestionsReadExport } from '../lib/open-questions-inline.js';
 
 const args: Record<string, string> = {};
 const flags = new Set<string>();

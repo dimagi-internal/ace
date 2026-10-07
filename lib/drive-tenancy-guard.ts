@@ -56,7 +56,8 @@ export const DRIVE_WRITE_TARGETS: Record<string, readonly string[]> = {
   slides_batch_update: ['presentationId'],
   decisions_append_rows: ['runFolderId'],
   decisions_enrich: ['runFolderId'],
-  decisions_open_asks: ['runFolderId'],
+  // decisions_open_asks is read-only since ace#2757 (open asks are a filter
+  // over decisions.yaml, never a file), so it is not a write target.
 };
 
 /**

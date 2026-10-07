@@ -163,57 +163,56 @@ the row by `answer_channel: solicitation:<question-id>`.
 
 ## Open asks
 
-An **open ask** is a live row with an unanswered `review_ask`, or a
-`status: deferred` row. "Answered" means a person ruled: the row is
-`overridden` / `human-decided`, or a saved ruling in
-`inputs/decision-overrides.yaml` binds to it (`lib/open-asks.ts` applies the
-saved rulings before counting, so a ruling saved after the row was written
-counts). The atom is `decisions_open_asks` (ace-decisions).
+**Open asks are a filter over decision rows, never a file** (operator decision
+2026-10-07, ace#2757 — *"why isn't that just a filter of decisions"*). An
+**open ask** is a live row (no `superseded_by`) with an unanswered
+`review_ask`, or a `status: deferred` row. "Answered" means a person ruled: the
+row is `overridden` / `human-decided`, or a saved ruling in
+`inputs/decision-overrides.yaml` binds to it (saved rulings are applied before
+counting, so a ruling saved after the row was written counts). The predicate
+is ONE function, `openAsks` in `lib/open-asks.ts`; every reader goes through
+it — the `decisions_open_asks` atom (ace-decisions), Phase 1's carried check,
+release readiness and `solicitation-review` — and ace-web computes the run
+page's asks the same way from the run's `decisions.yaml`. Nothing writes a
+list of asks anywhere: the retired `ACE/<opp>/open-asks.yaml` and the retired
+`open-questions.md` ledger are read by no run.
 
 - **Durability across runs.** Answers persist opp-level in
   `inputs/decision-overrides.yaml`. Unanswered asks are re-derived by each
   run's producers from the design and inputs — run independence holds, and the
-  ask describes *this* run's design. As a safety net, the orchestrator's
-  run-end write-back calls `decisions_open_asks(mode: 'emit')`, which writes
-  **`ACE/<opp>/open-asks.yaml`** at the opp root (generated, read-only,
-  `application/x-yaml`):
-
-  ```yaml
-  schema_version: 1
-  opp: spark-facilitator
-  run_id: 20261001-2208
-  generated_at: 2026-10-02T11:04:00Z
-  asks: [<live decision rows with an unanswered review_ask or status deferred>]
-  ```
-
-  Phase 1 reads it with `decisions_open_asks(mode: 'check', throughPhase: 1)`
-  only to check that nothing was dropped: a previous ask this run has no row
-  for (same id, same `feedback_ref`, or a re-worded question) becomes a run
-  residual. Values are never inherited from it.
+  ask describes *this* run's design. As a safety net, Phase 1 calls
+  `decisions_open_asks(throughPhase: 1)` and the run-end write-back calls
+  `decisions_open_asks(checkCarried: true)`: the atom finds the PREVIOUS run
+  (the newest older sibling under `runs/` with a `decisions.yaml`; archived
+  `superseded-*` folders never count), filters ITS log through `openAsks`, and
+  reports any ask this run has no row for (same id, same `feedback_ref`, or a
+  re-worded question) as a ready-made run residual. The previous log is read
+  only for that check — values are never inherited from it.
 - **The only gate.** An unanswered `review_ask: required-before` row is a
   `validate-release-readiness` blocker naming the question
-  (`assessRequiredBeforeAsks`, `lib/release-readiness.ts`), and
-  `solicitation-review` refuses `award_response` while one with
-  `needed_by: award` is unanswered (step 5b; owner decision 2026-10-04 — a
-  hard stop, not a warning). An unanswered `recommended-confirmation` is
-  neither. No phase ever blocks on an ask.
+  (`assessRequiredBeforeAsks`, `lib/release-readiness.ts`, via
+  `requiredBeforeBlockers` over `openAsks`), and `solicitation-review` refuses
+  `award_response` while one with `needed_by: award` is unanswered (step 5b;
+  owner decision 2026-10-04 — a hard stop, not a warning). An unanswered
+  `recommended-confirmation` is neither. No phase ever blocks on an ask.
 - **The review surface.** ace-web's decisions tab is the only place a reviewer
   is asked anything: "Confirm before launch" (`recommended-confirmation`) and
   "Answer before award" (`required-before`, by `needed_by`) groups, filtered
-  and grouped by `owner`, with `deferred` rows collapsed. Until no live run
-  depends on it, ace-web reads `open-asks.yaml` when present and falls back to
-  the legacy `open-questions.md` ledger.
-- **Legacy ledgers.** `ACE/<opp>/open-questions.md` is no longer written by
-  any skill. `scripts/migrate-open-questions.ts` folds an opp's ledger into
-  decision rows once (dry-run by default) and archives it as
-  `open-questions.archived.md`.
+  and grouped by `owner`, with `deferred` rows collapsed.
+- **Legacy ledgers.** No run reads `ACE/<opp>/open-questions.md` — not a
+  migrated opp's, not an un-migrated one's. `scripts/migrate-open-questions.ts`
+  is the only code that opens a ledger: it folds one into decision rows once
+  (dry-run by default) and archives it as `open-questions.archived.md`. The
+  retired files stay at the opp root only as a quarantine entry in
+  `lib/opp-root-files.ts`, so Step 5b never moves ACE's own former prose into
+  `inputs/`. *Enforced:* `test/agents/open-questions-location.test.ts`.
 
 ## Where each part is filled
 
 | Who | Fills |
 |---|---|
 | Producer skill (on every `decisions_append_rows`) | `plain`; `check_at` + `correct_looks_like` where there is a place to look; `review_ask` + `confirm_reason` + `owner` + `needed_by` + `answer_channel` for every default it builds on that the sources do not settle (§ The producer rule); `status: deferred` + `revisit_when` for a question the pilot does not need answered; `audience: internal` for harness rows. |
-| Orchestrator (run end, once) | `decisions_open_asks(mode: 'emit')` → `ACE/<opp>/open-asks.yaml`. |
+| Orchestrator (after Phase 1, and run end) | `decisions_open_asks` carried check — read-only; dropped asks become run residuals. |
 | Write boundary (`decisions_append_rows`, `stampRow`) | `audience: internal` on recognisably-harness rows; `scope` + `enforcement` + a `plain` line on rule rows; `check_at` from a `Spot-check: <where>.` sentence in `reasoning`. Never overwrites a producer's value. |
 | `decisions_enrich` atom (every phase end, before `render_decisions_log`) | cross-skill dedupe; every derived `review_ask` above. Idempotent. |
 | `scripts/backfill-decisions-contract.ts` | one-time upgrade of a run that finished under the build memo (harvests the memo's choices table, retires stale inherited rows, applies the above). |

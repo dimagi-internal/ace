@@ -1,8 +1,9 @@
 /**
- * `decisions_open_asks` (mcp/decisions-server.ts): reads the run's
- * decisions.yaml, the opp's saved rulings and the previous run's
- * open-asks.yaml; `emit` writes ACE/<opp>/open-asks.yaml at the opp root AFTER
- * the carried check has read the previous one.
+ * `decisions_open_asks` (mcp/decisions-server.ts): open asks are a FILTER over
+ * the run's decisions.yaml, never a file (operator decision 2026-10-07,
+ * ace#2757). The atom reads the run's log, the opp's saved rulings and — for
+ * the carried check only — the PREVIOUS run's decisions.yaml (the newest older
+ * sibling run folder that has one). It writes nothing.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,7 +12,6 @@ import yaml from 'yaml';
 
 import { handleOpenAsks } from '../../../mcp/decisions-server.js';
 import { parseDecisionsYaml, serializeDecisionsLog, type DecisionRow } from '../../../lib/decisions-schema.js';
-import { buildOpenAsksFile, parseOpenAsksYaml, serializeOpenAsks } from '../../../lib/open-asks.js';
 
 const DIR = join(__dirname, '..', '..', 'fixtures', 'decisions-backfill', 'spark-facilitator-20261001-2208');
 const SPARK = parseDecisionsYaml(readFileSync(join(DIR, 'decisions.yaml'), 'utf8'));
@@ -37,70 +37,76 @@ const RCT: DecisionRow = {
 };
 
 interface FakeOpts {
+  /** This run's decisions.yaml text. */
   decisions: string;
-  priorOpenAsks?: string;
+  /** Sibling run folders under runs/ by name → their decisions.yaml text (null = folder without one). */
+  siblings?: Record<string, string | null>;
   overrides?: string;
 }
 
+const THIS_RUN = '20261001-2208';
+
 function fakeDrive(o: FakeOpts) {
-  const created: Array<{ name: string; parents: string[]; body: string }> = [];
-  const updated: Array<{ fileId: string; body: string }> = [];
+  const siblings: Record<string, string | null> = { [THIS_RUN]: o.decisions, ...(o.siblings ?? {}) };
+  const folderId = (name: string) => (name === THIS_RUN ? 'run' : `run:${name}`);
+  const decisionsById: Record<string, string> = {};
+  for (const [name, text] of Object.entries(siblings)) if (text !== null) decisionsById[`dec:${folderId(name)}`] = text;
   const parents: Record<string, string> = { run: 'runs', runs: 'opp' };
-  return {
-    created,
-    updated,
+  const fake = {
     files: {
       get: vi.fn(async (a: { fileId: string; alt?: string }) => {
         if (a.alt === 'media') {
-          if (a.fileId === 'oa') return { data: o.priorOpenAsks };
           if (a.fileId === 'ov') return { data: o.overrides };
           throw new Error(`unexpected media read ${a.fileId}`);
         }
         return { data: { id: a.fileId, parents: parents[a.fileId] ? [parents[a.fileId]] : [] } };
       }),
       list: vi.fn(async ({ q }: { q: string }) => {
-        if (q.includes("name='decisions.yaml'")) return { data: { files: [{ id: 'dec', mimeType: 'application/vnd.google-apps.document' }] } };
+        const parent = /'([^']+)' in parents/.exec(q)?.[1] ?? '';
+        if (q.includes("name='decisions.yaml'")) {
+          const id = `dec:${parent}`;
+          return { data: { files: decisionsById[id] !== undefined ? [{ id, mimeType: 'application/vnd.google-apps.document' }] : [] } };
+        }
         if (q.includes("name='inputs'")) return { data: { files: o.overrides ? [{ id: 'inputs' }] : [] } };
         if (q.includes("name='decision-overrides.yaml'")) return { data: { files: [{ id: 'ov', mimeType: 'application/x-yaml' }] } };
-        if (q.includes("name='open-asks.yaml'")) return { data: { files: o.priorOpenAsks ? [{ id: 'oa', mimeType: 'application/x-yaml' }] : [] } };
+        if (parent === 'runs' && q.includes("mimeType='application/vnd.google-apps.folder'")) {
+          return { data: { files: Object.keys(siblings).map((name) => ({ id: folderId(name), name })) } };
+        }
         throw new Error(`unexpected list ${q}`);
       }),
-      export: vi.fn(async () => ({ data: o.decisions })),
-      create: vi.fn(async (a: { requestBody: { name: string; parents: string[] }; media: { body: string } }) => {
-        created.push({ name: a.requestBody.name, parents: a.requestBody.parents, body: a.media.body });
-        return { data: { id: 'new-oa' } };
+      export: vi.fn(async ({ fileId }: { fileId: string }) => ({ data: decisionsById[fileId] })),
+      create: vi.fn(async () => {
+        throw new Error('decisions_open_asks must never create a file');
       }),
-      update: vi.fn(async (a: { fileId: string; media: { body: string } }) => {
-        updated.push({ fileId: a.fileId, body: a.media.body });
-        return { data: { id: a.fileId } };
+      update: vi.fn(async () => {
+        throw new Error('decisions_open_asks must never update a file');
       }),
     },
   };
+  return fake;
 }
 
-const args = { runFolderId: 'run', opportunity: 'spark-facilitator', run_id: '20261001-2208', now: '2026-10-04T00:00:00Z' };
+const args = { runFolderId: 'run', opportunity: 'spark-facilitator', run_id: THIS_RUN };
+const withRct = () => serializeDecisionsLog({ ...SPARK, decisions: [...SPARK.decisions, RCT] });
 
-describe('decisions_open_asks', () => {
-  it('emit writes open-asks.yaml at the OPP root with the open asks', async () => {
-    const fake = fakeDrive({ decisions: serializeDecisionsLog({ ...SPARK, decisions: [...SPARK.decisions, RCT] }) });
-    const r = await handleOpenAsks({ ...args, mode: 'emit' }, fake as never);
-    expect(fake.created).toHaveLength(1);
-    expect(fake.created[0]).toMatchObject({ name: 'open-asks.yaml', parents: ['opp'] });
-    const file = parseOpenAsksYaml(fake.created[0].body);
-    expect(file).toMatchObject({ schema_version: 1, opp: 'spark-facilitator', run_id: '20261001-2208' });
-    expect(file.asks.map((a) => a.id)).toContain('rct-sample-overlap');
+describe('decisions_open_asks — a filter over decisions.yaml', () => {
+  it('reports the open asks computed from the run\'s decisions and writes nothing', async () => {
+    const fake = fakeDrive({ decisions: withRct() });
+    const r = await handleOpenAsks({ ...args, checkCarried: true }, fake as never);
+    expect(r.asks.map((a) => a.id)).toContain('rct-sample-overlap');
+    for (const a of r.asks) expect(a.review_ask !== undefined || a.status === 'deferred').toBe(true);
     expect(r.requiredBefore.map((a) => a.id)).toEqual(['rct-sample-overlap']);
-    expect(r.carried).toBeNull();
-    expect(r.written).toEqual({ fileId: 'new-oa', created: true });
+    expect(fake.files.create).not.toHaveBeenCalled();
+    expect(fake.files.update).not.toHaveBeenCalled();
+    expect('written' in r).toBe(false);
   });
 
-  it('check writes nothing and reports the award blocker', async () => {
-    const fake = fakeDrive({ decisions: serializeDecisionsLog({ ...SPARK, decisions: [...SPARK.decisions, RCT] }) });
-    const r = await handleOpenAsks({ ...args, mode: 'check', neededBy: 'award' }, fake as never);
-    expect(fake.created).toEqual([]);
-    expect(fake.updated).toEqual([]);
-    expect(r.requiredBefore).toHaveLength(1);
-    expect(r.written).toBeNull();
+  it('never looks for open-asks.yaml or open-questions.md', async () => {
+    const fake = fakeDrive({ decisions: withRct(), siblings: { '20260926-1413': serializeDecisionsLog({ ...SPARK, decisions: [RCT] }) } });
+    await handleOpenAsks({ ...args, throughPhase: 1 }, fake as never);
+    const queries = fake.files.list.mock.calls.map((c) => (c[0] as { q: string }).q).join('\n');
+    expect(queries).not.toContain('open-asks.yaml');
+    expect(queries).not.toContain('open-questions');
   });
 
   it('a saved ruling clears the award blocker', async () => {
@@ -110,29 +116,42 @@ describe('decisions_open_asks', () => {
       opp: 'spark-facilitator',
       overrides: [{ id: 'rct-sample-overlap', override: 'Allow study communities', decided_by: 'jjackson@dimagi.com', decided_at: '2026-10-04' }],
     });
-    const fake = fakeDrive({ decisions: serializeDecisionsLog({ ...SPARK, decisions: [...SPARK.decisions, RCT] }), overrides });
-    const r = await handleOpenAsks({ ...args, mode: 'check', neededBy: 'award' }, fake as never);
+    const fake = fakeDrive({ decisions: withRct(), overrides });
+    const r = await handleOpenAsks({ ...args, neededBy: 'award' }, fake as never);
     expect(r.requiredBefore).toEqual([]);
   });
 
-  it('compares against the PREVIOUS run, reports what was dropped, then overwrites in place', async () => {
-    const prior = serializeOpenAsks(
-      buildOpenAsksFile({ opp: 'spark-facilitator', runId: '20260926-1413', log: { decisions: [RCT] }, generatedAt: '2026-09-27T00:00:00Z' }),
-    );
-    const fake = fakeDrive({ decisions: serializeDecisionsLog(SPARK), priorOpenAsks: prior });
-    const r = await handleOpenAsks({ ...args, mode: 'emit' }, fake as never);
+  it('compares with the PREVIOUS run\'s decisions log and reports what was dropped', async () => {
+    const fake = fakeDrive({
+      decisions: serializeDecisionsLog(SPARK),
+      siblings: {
+        '20260926-1413': serializeDecisionsLog({ ...SPARK, run_id: '20260926-1413', decisions: [RCT] }),
+        '20260915-0800': null,
+        '20261003-1200': serializeDecisionsLog({ ...SPARK, run_id: '20261003-1200', decisions: [] }), // a LATER run is never "previous"
+        'superseded-20261001-0900': serializeDecisionsLog({ ...SPARK, decisions: [] }),
+      },
+    });
+    const r = await handleOpenAsks({ ...args, checkCarried: true }, fake as never);
     expect(r.carried?.priorRunId).toBe('20260926-1413');
     expect(r.carried?.missing).toEqual(['rct-sample-overlap']);
     expect(r.carried?.residuals[0].what).toContain('impact study');
-    expect(fake.updated).toHaveLength(1);
-    expect(fake.updated[0].fileId).toBe('oa');
-    expect(parseOpenAsksYaml(fake.updated[0].body).run_id).toBe('20261001-2208');
   });
 
-  it('re-running emit in the same run does not compare the run with itself', async () => {
-    const own = serializeOpenAsks(buildOpenAsksFile({ opp: 'spark-facilitator', runId: '20261001-2208', log: SPARK, generatedAt: 't' }));
-    const fake = fakeDrive({ decisions: serializeDecisionsLog(SPARK), priorOpenAsks: own });
-    const r = await handleOpenAsks({ ...args, mode: 'emit' }, fake as never);
-    expect(r.carried).toBeNull();
+  it('skips a previous folder with no decisions.yaml and takes the next older one', async () => {
+    const fake = fakeDrive({
+      decisions: serializeDecisionsLog(SPARK),
+      siblings: {
+        '20260930-1000': null,
+        '20260926-1413': serializeDecisionsLog({ ...SPARK, run_id: '20260926-1413', decisions: [RCT] }),
+      },
+    });
+    const r = await handleOpenAsks({ ...args, throughPhase: 1 }, fake as never);
+    expect(r.carried?.priorRunId).toBe('20260926-1413');
+  });
+
+  it('no carried check unless asked; null when there is no previous run', async () => {
+    const prior = { '20260926-1413': serializeDecisionsLog({ ...SPARK, decisions: [RCT] }) };
+    expect((await handleOpenAsks(args, fakeDrive({ decisions: withRct(), siblings: prior }) as never)).carried).toBeNull();
+    expect((await handleOpenAsks({ ...args, checkCarried: true }, fakeDrive({ decisions: withRct() }) as never)).carried).toBeNull();
   });
 });

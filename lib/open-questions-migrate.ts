@@ -28,9 +28,382 @@
  */
 
 import { DecisionRowStrictSchema, NEEDED_BY, type DecisionRow, type DecisionsLog, type NeededBy } from './decisions-schema.js';
-import { extractOpenSection, parseOpenRows, unescapeDriveMarkdown, type OpenQuestionsReadExport } from './open-questions-inline.js';
 import { textOverlap } from './open-asks.js';
 import { auditOutsiderText } from './pdd-description-plain-language.js';
+
+// ── Reading a ledger (migration only) ──────────────────────────────────────
+//
+// The parser below is the ONLY code in ACE that reads an open-questions
+// ledger. It moved here from the deleted lib/open-questions-inline.ts when
+// Phase 1's legacy read was removed (operator decision 2026-10-07, ace#2757):
+// no run reads a ledger; this one-time migration tool does.
+// test/agents/open-questions-location.test.ts guards that boundary.
+
+/* ------------------------------------------------------------------------- *
+ * The READ-BACK half: which Drive export shape `## Open` actually survives.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * `open-questions.md` is a human-facing prose doc, so `skills/idea-to-pdd`
+ * writes it with `drive_create_doc_from_markdown` — Drive CONVERTS the
+ * markdown, and the reader sees real headings and real tables instead of raw
+ * `##` and pipe characters. That write contract is right (a `run-surface-audit`
+ * flagged the un-converted `hh-poverty-targeting` ledger as
+ * `DOC-LITERAL-MARKDOWN` — it read as a broken export), but it changes what the
+ * READ gets back, and the read is what Phase 1's inline consumes.
+ *
+ * Measured against a converted probe doc in Drive (2026-08-26; a structural
+ * mirror of that ledger, trashed after):
+ *
+ *   - `drive_read_file` DEFAULT export (`text/plain`) returns `Open` — the
+ *     `##` markers are GONE. Tables are flattened to one cell per line with a
+ *     leading tab, so row boundaries are destroyed; `---` becomes
+ *     `________________`; lines are CRLF-terminated.
+ *   - `exportAs: 'text/markdown'` returns `## Open` with the pipe table intact
+ *     (`| \# | PDD ref | ... |`, alignment row `| :---- | :---- |`), bold runs
+ *     preserved, and markdown-significant characters BACKSLASH-ESCAPED
+ *     (`resolved\_at`, `\#`).
+ *
+ * So on a converted doc the default export does not merely lose formatting —
+ * it silently yields a `## Open` that no longer resolves and a question table
+ * whose rows have run together. That is the invisible-failure shape: a caller
+ * that fell back to the bare `Open` line would hand Phase 1 a mangled ledger
+ * and nothing would say so.
+ *
+ * `extractOpenSection` is therefore the boundary check: it returns the section
+ * only from a markdown-shaped read, and NAMES the remedy when handed a
+ * heading-stripped plain-text export rather than guessing at it. The rule that
+ * `## Archive` is never inlined is enforced structurally here — the section
+ * ends at the next H1/H2 — instead of relying on the reader to stop.
+ *
+ * dimagi-internal/ace#2367 (parser half): a ledger whose `## Open` / `## Archive`
+ * headings were written as literal paragraph text (not real Google Docs heading
+ * style) round-trips through the SAME `text/markdown` export as `\#\# Open` /
+ * `\#\# Archive` — Drive's exporter escapes markdown-significant punctuation in
+ * plain paragraph text exactly as it does inside table cells, and a `#` that is
+ * not part of a real structural heading is no exception. The heading regexes
+ * below (`OPEN_HEADING`, `H1_OR_H2`, `ANY_ATX_HEADING`) therefore never matched,
+ * and a correctly-shaped, fully-intact ledger came back `status: 'absent'` —
+ * blaming the ledger's shape when the shape was fine and the escaping was the
+ * only problem. `unescapeDriveMarkdown` already existed and `#` was already in
+ * its `ESCAPED_PUNCTUATION` class; the bug was purely that it ran on the
+ * section body AFTER the heading match instead of before it. Unescaping the
+ * whole read up front — before any heading regex runs — fixes that ordering
+ * and is a no-op on every shape that was already working (a real heading is
+ * never escaped, and the `text/plain` export this module also has to detect
+ * carries no backslashes at all).
+ */
+
+/** CommonMark's escapable ASCII punctuation, as Drive's markdown exporter emits it. */
+const ESCAPED_PUNCTUATION = /\\([\\`*_{}[\]()#+\-.!|~<>&$"'])/g;
+
+/**
+ * Undo the backslash escaping Drive's markdown exporter applies to
+ * markdown-significant characters, so a round-tripped row reads as the row
+ * that was written (`resolved\_at` → `resolved_at`).
+ */
+export function unescapeDriveMarkdown(text: string): string {
+  return text.replace(ESCAPED_PUNCTUATION, '$1');
+}
+
+/**
+ * Which `drive_read_file` export the caller actually requested.
+ *
+ * ace#2367: two different defects produce the SAME bytes — no ATX headings
+ * and a bare `Open` line — and they have OPPOSITE remedies:
+ *
+ *   - a `text/plain` export of a healthy converted doc → **re-read** it as
+ *     `text/markdown`; the doc is fine, the read was wrong;
+ *   - a `text/markdown` export of a FLATTENED doc (its headings written as
+ *     ordinary paragraphs by a plain-text write) → **repair the doc**; no
+ *     re-read will ever return anything different.
+ *
+ * This module used to guess between them from the bytes, and guessed wrong on
+ * the poverty-graduation ledger: it printed the re-read remedy for a read that
+ * was already markdown, so Phase 1 went round a loop and inlined none of the
+ * opp's 15 open rows. The bytes cannot settle it — but the CALLER can, because
+ * the caller chose the `exportAs` and is authoritative about it. So it passes
+ * that in rather than having this file infer it (`CLAUDE.md § Close the loop to
+ * the source of truth`).
+ *
+ * `'unknown'` is the backward-compatible default for a caller that has not
+ * been updated: it keeps the pre-existing `needs-markdown-export` behaviour,
+ * and that branch's `reason` now names the terminating second step so even an
+ * un-updated caller cannot loop forever.
+ */
+export type OpenQuestionsReadExport = 'text/markdown' | 'text/plain' | 'unknown';
+
+export type OpenQuestionsSectionOutcome =
+  /** The `## Open` section, verbatim (minus Drive's escaping), `## Archive` excluded. */
+  | { status: 'ok'; section: string }
+  /**
+   * The doc itself has no headings — a ledger flattened by a plain-text write.
+   * The live rows were RECOVERED from the bare `Open` label, delimited so the
+   * archive still cannot ride along, but this is a DEGRADED read: say so at
+   * the pause and repair the doc.
+   */
+  | { status: 'flattened-headings'; section: string; reason: string }
+  /**
+   * The read is heading-stripped — a `text/plain` export of a CONVERTED doc.
+   * Re-read with `exportAs: 'text/markdown'`; do not parse this text.
+   */
+  | { status: 'needs-markdown-export'; reason: string }
+  /** Markdown-shaped, but carries no `## Open` section. */
+  | { status: 'absent'; reason: string };
+
+/** ATX heading at H1 or H2 — the only levels that close the `## Open` section. */
+const H1_OR_H2 = /^ {0,3}#{1,2}[ \t]+\S/;
+const OPEN_HEADING = /^ {0,3}##[ \t]+Open[ \t]*$/i;
+const ANY_ATX_HEADING = /^ {0,3}#{1,6}[ \t]+\S/;
+/** The heading text as a CONVERTED doc's plain-text export renders it: no markers. */
+const BARE_OPEN_LINE = /^Open$/i;
+/**
+ * The matching bare `Archive` label. `## Archive` is the ONE section this
+ * module excludes structurally, and it is the only other section the canonical
+ * write shape defines (`skills/idea-to-pdd/SKILL.md § The durable
+ * open-questions doc`), so it is the delimiter a degraded read can rely on.
+ */
+const BARE_ARCHIVE_LINE = /^Archive$/i;
+/** A ledger row: a list bullet. */
+const LIST_ITEM = /^\s*[-*]\s+\S/;
+/** A row's wrapped continuation line — indented, not a new bullet. */
+const CONTINUATION = /^\s+\S/;
+
+/**
+ * Pull the `## Open` section out of a read-back of the durable ledger.
+ *
+ * Pure — no I/O. The caller supplies whatever `drive_read_file` returned; this
+ * decides whether that text is parseable at all.
+ *
+ *   (a) markdown-shaped with a `## Open` heading → `ok`, the section only,
+ *       ending at the next H1/H2 so `## Archive` can never ride along;
+ *   (b) no ATX headings at all but a bare `Open` line → `needs-markdown-export`
+ *       (a `text/plain` export of a converted doc);
+ *   (c) otherwise → `absent`.
+ *
+ * The text is unescaped (`unescapeDriveMarkdown`) BEFORE any heading regex
+ * runs, not after — see the doc comment above (ace#2367). That makes an
+ * escaped-but-correctly-shaped heading (`\#\# Open`) match like any other, and
+ * is a no-op for text that was never escaped, so the returned section (and the
+ * `needs-markdown-export` / `absent` classification) never need a second pass.
+ */
+export function extractOpenSection(
+  text: string,
+  exportAs: OpenQuestionsReadExport = 'unknown',
+): OpenQuestionsSectionOutcome {
+  const lines = unescapeDriveMarkdown(text.replace(/\r\n?/g, '\n')).split('\n');
+  const start = lines.findIndex((line) => OPEN_HEADING.test(line));
+
+  if (start === -1) {
+    const hasHeadings = lines.some((line) => ANY_ATX_HEADING.test(line));
+    const bareOpen = lines.findIndex((line) => BARE_OPEN_LINE.test(line.trim()));
+    if (!hasHeadings && bareOpen !== -1) {
+      if (exportAs === 'text/markdown') {
+        return recoverFlattenedOpenSection(lines, bareOpen);
+      }
+      return {
+        status: 'needs-markdown-export',
+        reason:
+          'The read carries no ATX headings but does carry a bare "Open" line: this is a ' +
+          'text/plain export of a CONVERTED Google Doc, so the `##` markers are stripped and ' +
+          'any pipe table in it has been flattened to one cell per line. Re-read the file with ' +
+          "`drive_read_file(..., exportAs: 'text/markdown')` — do NOT parse this text. " +
+          'If you ALREADY read it as text/markdown, do NOT re-read it — the bytes will not ' +
+          "change. Pass 'text/markdown' as extractOpenSection's second argument instead: the " +
+          'doc itself is flattened, and that returns `flattened-headings` with the live rows ' +
+          'recovered plus the repair to make (dimagi-internal/ace#2367).',
+      };
+    }
+    return {
+      status: 'absent',
+      reason:
+        'No `## Open` heading in the durable open-questions doc' +
+        (hasHeadings ? '' : ', and no bare "Open" label to recover one from') +
+        '. Nothing is inlined at Phase 1; ' +
+        'the ledger needs the two-section `## Open` / `## Archive` shape ' +
+        '(docs/decisions-contract.md § Open asks — the ledger is retired; migrate it with scripts/migrate-open-questions.ts).',
+    };
+  }
+
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (H1_OR_H2.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+
+  return {
+    status: 'ok',
+    // Already unescaped up front (see the doc comment above) — no second pass needed.
+    section: lines.slice(start, end).join('\n').trimEnd(),
+  };
+}
+
+/**
+ * Recover the live rows from a FLATTENED ledger — one whose `## Open` /
+ * `## Archive` headings were written as ordinary paragraphs, so a
+ * `text/markdown` export carries no heading markers at all.
+ *
+ * **Why recover rather than refuse, and why NOT the whole body.** Three
+ * outcomes were available and two of them are silent failures of opposite
+ * sign. Refusing reads the doc as EMPTY: poverty-graduation's 15 open rows —
+ * including the design author's hold on the work order and the solicitation —
+ * simply do not reach Phase 1, and ace#1201 exists precisely to stop a
+ * pre-existing question going unreconciled. Falling back to the WHOLE body
+ * reads the doc as all-open: the flattened ledger's `Archive` label is an
+ * ordinary paragraph too, so resolved history would be inlined as live
+ * questions and Phase 1 would re-litigate settled decisions — the harm
+ * ace#1487 and the two-section shape were built to prevent, and the one
+ * invariant this module enforces structurally rather than by asking the
+ * reader to stop.
+ *
+ * So the recovery is DELIMITED, and it ends at whichever comes first:
+ *
+ *   (a) a bare `Archive` label — the only other section the canonical write
+ *       shape defines, and the one that must never ride along. Checked
+ *       unconditionally so an EMPTY `Open` section still terminates; and
+ *   (b) once the rows have started, the first line that is neither a list
+ *       item, a wrapped continuation, nor blank. In a flattened doc every row
+ *       is a bullet, so a bare paragraph after them is another section label
+ *       whatever it is called. Requiring a row first keeps a prose note
+ *       between `Open` and its rows from cutting the section short.
+ *
+ * This is a DEGRADED read and its status says so: `flattened-headings`, never
+ * `ok`. The repair is to rewrite the doc in the two-section shape — a re-read
+ * cannot help, which is the loop ace#2367 was filed against.
+ */
+function recoverFlattenedOpenSection(
+  lines: string[],
+  bareOpen: number,
+): OpenQuestionsSectionOutcome {
+  let end = lines.length;
+  let sawRow = false;
+  for (let i = bareOpen + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (BARE_ARCHIVE_LINE.test(line.trim())) {
+      end = i;
+      break;
+    }
+    if (LIST_ITEM.test(line)) {
+      sawRow = true;
+      continue;
+    }
+    if (sawRow && line.trim().length > 0 && !CONTINUATION.test(line)) {
+      end = i;
+      break;
+    }
+  }
+
+  return {
+    status: 'flattened-headings',
+    section: lines.slice(bareOpen, end).join('\n').trimEnd(),
+    reason:
+      'DEGRADED READ. The durable open-questions doc has NO headings at all — "Open" and ' +
+      '"Archive" are ordinary paragraphs — so it was flattened by a plain-text write, not by ' +
+      'the export. Re-reading it will return the same bytes, so do not: the live rows below ' +
+      'were recovered from the bare "Open" label and delimited at the bare "Archive" label, ' +
+      'so archived rows are still excluded. Inline them, and say at the Phase 1→2 pause that ' +
+      'this ledger was read in degraded form. Do not repair it — the ledger is retired: fold ' +
+      'it into decision rows with scripts/migrate-open-questions.ts, which reads this ' +
+      'recovered section (docs/decisions-contract.md § Open asks; dimagi-internal/ace#2367).',
+  };
+}
+
+/** Rank tiers, most urgent first. Lower ordinal wins. */
+export type OpenRowTier =
+  /** `blocking:` begins `Go/no-go` — the pilot may not be runnable at all. */
+  | 'go-no-go'
+  /** `blocking:` begins `Before Phase <N>` — ordered by ascending N. */
+  | 'before-phase'
+  /**
+   * Everything else: `Before closeout`, `Before expansion`, `Post-pilot`,
+   * `Non-blocking`, free prose, or no `blocking:` field at all.
+   */
+  | 'other';
+
+export interface OpenQuestionRow {
+  /** The row's `id:` field, or `null` when the row carries none. */
+  id: string | null;
+  /** The row verbatim, as it appeared in the `## Open` section. */
+  text: string;
+  /** The row's `blocking:` value, trimmed, or `null` when absent. */
+  blocking: string | null;
+  /** The row's `raised_by:` value, or `null` when absent. */
+  raisedBy: string | null;
+  tier: OpenRowTier;
+  /** Parsed `<N>` from `Before Phase <N>`; `null` for every other tier. */
+  phase: number | null;
+}
+
+/** A row starts at a `- **id:**` bullet and runs to the next one. */
+const ROW_START = /^\s*[-*]\s+\*\*id:\*\*/;
+/** Drive's markdown export escapes `_`, so tolerate `raised\_by` as well. */
+const FIELD_ID = /\*\*id:\*\*\s*([^\s*]+)/;
+const FIELD_RAISED_BY = /\*\*raised\\?_by:\*\*\s*([^\s*]+)/;
+/** `blocking:` runs to the next `**field:**` marker or the end of the row. */
+const FIELD_BLOCKING = /\*\*blocking:\*\*\s*([\s\S]*?)(?=\*\*[A-Za-z\\_]+:\*\*|$)/;
+const BEFORE_PHASE = /^before\s+phase\s+(\d+)/i;
+const GO_NO_GO = /^go\s*\/?\s*no[-\s]?go/i;
+
+const TIER_ORDINAL: Record<OpenRowTier, number> = {
+  'go-no-go': 0,
+  'before-phase': 1,
+  other: 2,
+};
+
+function classifyBlocking(blocking: string | null): { tier: OpenRowTier; phase: number | null } {
+  if (!blocking) return { tier: 'other', phase: null };
+  const value = blocking.trim();
+  if (GO_NO_GO.test(value)) return { tier: 'go-no-go', phase: null };
+  const phaseMatch = BEFORE_PHASE.exec(value);
+  if (phaseMatch) return { tier: 'before-phase', phase: Number(phaseMatch[1]) };
+  return { tier: 'other', phase: null };
+}
+
+/**
+ * Split the `## Open` section into its preamble and its rows.
+ *
+ * Pure. The preamble is everything before the first `- **id:**` bullet (the
+ * heading, and any note the ledger carries above its rows); it is ALWAYS
+ * inlined and always counts against the budget.
+ */
+export function parseOpenRows(section: string): { preamble: string; rows: OpenQuestionRow[] } {
+  const lines = section.replace(/\r\n?/g, '\n').split('\n');
+  const firstRow = lines.findIndex((line) => ROW_START.test(line));
+  if (firstRow === -1) {
+    return { preamble: section.trimEnd(), rows: [] };
+  }
+
+  const preamble = lines.slice(0, firstRow).join('\n').trimEnd();
+
+  const chunks: string[] = [];
+  let current: string[] = [];
+  for (const line of lines.slice(firstRow)) {
+    if (ROW_START.test(line) && current.length > 0) {
+      chunks.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length > 0) chunks.push(current.join('\n'));
+
+  const rows = chunks.map((chunk): OpenQuestionRow => {
+    const text = chunk.replace(/\s+$/, '');
+    const blocking = FIELD_BLOCKING.exec(text)?.[1]?.trim() ?? null;
+    const { tier, phase } = classifyBlocking(blocking);
+    return {
+      id: FIELD_ID.exec(text)?.[1] ?? null,
+      text,
+      blocking: blocking && blocking.length > 0 ? blocking : null,
+      raisedBy: FIELD_RAISED_BY.exec(text)?.[1] ?? null,
+      tier,
+      phase,
+    };
+  });
+
+  return { preamble, rows };
+}
 
 export type MigrationCategory = 'A' | 'B' | 'C' | 'D' | 'E';
 

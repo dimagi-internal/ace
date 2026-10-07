@@ -1391,8 +1391,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      | Entry | Owner | Moving it breaks |
      |---|---|---|
      | `opp.yaml` | connect-program-setup | the durable Connect program reference every run reuses |
-     | `open-asks.yaml` | orchestrator (run end) | the carried-asks check — Phase 1 reads it at the opp ROOT, so a moved file silently disables the "nothing dropped" check |
-     | `open-questions.md` / `open-questions.archived.md` | legacy (retired ledger) | the legacy read for an opp not yet migrated (`scripts/migrate-open-questions.ts`), and the archived history after migration (#1325) |
+     | `open-questions.md` / `open-questions.archived.md` / `open-asks.yaml` — the **retired open-questions files** | nobody (quarantine, ace#2757) | nothing — no run reads them. Listed ONLY so 5b never moves ACE's own former prose into `inputs/`, where Phase 1 would read it as curated source evidence (#1325). Never read them, never pass them to a phase |
      | `iterate-state.yaml` (and `iterate-state-legacy-*.yaml`) | `/ace:iterate` | the campaign: golden pointer, pass streak and kill switch all reset (#1282) |
      | `*parked outbound draft*` | inbox-triage / email-communicator | ACE reads its OWN unsent email back as curated Phase 1 source evidence (ace#2112). Matches a name containing `parked` … `draft`, or `outbound draft` |
      | `*_comms-log*` | email-communicator / inbox-triage | Gmail `thread_id` routing, as well as poisoning the evidence pack (ace#929) |
@@ -1641,49 +1640,34 @@ When invoked with an opportunity, execute these phases in order.
 
 **Inputs (inline at handoff):** the inputs manifest and `run_state.yaml`.
 
-**Open asks from the previous run — a check, never an input.** The
-open-questions ledger is retired (owner decision 2026-10-04,
-`docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`):
-every question a run raises is a decision row with `review_ask` or
-`status: deferred` (`docs/decisions-contract.md § The producer rule`), and
-Phase 1 re-derives its own asks from the inputs and the design. Answers a
-person gave persist through `inputs/decision-overrides.yaml` and bind at the
-decisions write boundary, so nothing about an ANSWER needs carrying. What is
-left is making sure no unanswered ask silently disappears. So after
-`Agent(idea-to-design)` returns, and before the Phase 1 boundary fence:
+**Open asks from the previous run — a check, never an input.** Open asks
+are a FILTER over decision rows, never a file (operator decision 2026-10-07,
+ace#2757): a live row with an unanswered `review_ask` or `status: deferred`
+(`lib/open-asks.ts` `openAsks`; `docs/decisions-contract.md § Open asks`).
+The open-questions ledger is retired and nothing reads it — not a migrated
+opp's, not an un-migrated one's. Phase 1 re-derives its own asks from the
+inputs and the design. Answers a person gave persist through
+`inputs/decision-overrides.yaml` and bind at the decisions write boundary, so
+nothing about an ANSWER needs carrying. What is left is making sure no
+unanswered ask silently disappears. So after `Agent(idea-to-design)` returns,
+and before the Phase 1 boundary fence:
 
 ```
-decisions_open_asks(runFolderId, opportunity, run_id, mode: 'check', throughPhase: 1)
+decisions_open_asks(runFolderId, opportunity, run_id, throughPhase: 1)
 ```
 
-It reads `ACE/<opp>/open-asks.yaml` (the previous run's generated list) and
-reports, in `carried`, which of the previous run's Phase 1 asks this run
+It finds the previous run (the newest older sibling under `runs/` that has a
+`decisions.yaml`), filters ITS decisions log through the same `openAsks`
+predicate, and reports, in `carried`, which of those Phase 1 asks this run
 re-derived (same id, same `feedback_ref`, or a re-worded question). For each
 id in `carried.missing`, append its ready-made entry from `carried.residuals`
 to `phases.idea-to-design.residuals` (`update_yaml_file`, `merge: 'deep'` —
-arrays replace wholesale, so send the whole list). That is all the file is
-for: **never copy a value, an option or a reasoning out of it** — values are
-re-derived; `decisions_enrich` turns each residual into an ask on this run
-with this run's "not decided" value. `carried: null` (first run under the new
-model, or no previous run) is normal. Name the missing asks at the Phase 1→2
-pause.
-
-**Legacy ledger (opps not yet migrated).** If the opp root still carries
-`open-questions.md` and no `open-asks.yaml`, pass the ledger's `## Open`
-section to Phase 1 read-only, so its unanswered rows are re-derived as
-decision rows under the producer rule — read it with
-`drive_read_file(..., exportAs: 'text/markdown')` through
-`extractOpenSection(text, 'text/markdown')` and, above
-`OPEN_QUESTIONS_INLINE_CAP_CHARS`, `selectOpenRows` (both
-`lib/open-questions-inline.ts`; it ranks rows by their own `blocking:` field,
-never by recency — ace#2115), naming any `omittedIds` at the pause. A
-`flattened-headings` verdict means the doc lost its headings to a plain-text
-write: pass the recovered rows and say at the pause that the read was
-degraded. This keeps the ace#1201 guarantee — a question a previous run
-raised is re-derived rather than forgotten — until the opp is migrated. Skip
-it on a fixture opp (`iterate-state.yaml` at the opp root —
-dimagi-internal/ace#1487). Never write to it, and add a run residual:
-"run `scripts/migrate-open-questions.ts` on this opp". Do NOT widen
+arrays replace wholesale, so send the whole list). That is all the previous
+log is read for: **never copy a value, an option or a reasoning out of it** —
+run independence holds; values are re-derived, and `decisions_enrich` turns
+each residual into an ask on this run with this run's "not decided" value.
+`carried: null` (first run, or no earlier run with a decisions log) is
+normal. Name the missing asks at the Phase 1→2 pause. Do NOT widen
 `generate_inputs_manifest` to opp-root files: the manifest's job is to freeze
 `inputs/`.
 
@@ -2253,28 +2237,24 @@ that comes back without a `Remedy:` line — `as-filed` / `re-derived` /
 `Remedy: refuted` closing the issue `not planned` counts as a completed
 dispatch. ace#1900.
 
-**Open asks (run-end, once).** The open-questions ledger is retired — no
-skill writes `<opp>/open-questions.md` any more, at the opp root or in a run
-folder (owner decision 2026-10-04; `docs/decisions-contract.md § Open asks`).
-A question this run raised is already a decision row. At the last boundary
+**Open asks (run-end, once).** Nothing is written for open asks — they are
+a filter over this run's `decisions.yaml` (operator decision 2026-10-07,
+ace#2757; `docs/decisions-contract.md § Open asks`), and ace-web computes the
+run page's list the same way. No skill writes `open-questions.md` or
+`open-asks.yaml`, at the opp root or in a run folder. At the last boundary
 fence of the run, after the final `decisions_enrich`, call:
 
 ```
-decisions_open_asks(runFolderId, opportunity, run_id, mode: 'emit')
+decisions_open_asks(runFolderId, opportunity, run_id, checkCarried: true)
 ```
 
-It first compares the previous run's `ACE/<opp>/open-asks.yaml` with this
-run's log — append each `carried.residuals` entry to the last phase's
-`residuals` and run `decisions_enrich` once more so the dropped ask is raised
-on this run — and then overwrites `open-asks.yaml` at the opp root with this
-run's live rows that carry an unanswered `review_ask` or `status: deferred`.
-The file is generated and read-only: never hand-edit it, never write a
-run-folder copy, and never read a value back out of it (ace-web renders it;
-the next run's Phase 1 only checks it). Report `requiredBefore` in the run
-summary: each is an ask that blocks release readiness (and, for
-`needed_by: award`, the award) until someone answers it. Idempotent —
-re-running the fence overwrites the file in place, and a same-run re-emit
-skips the carried check.
+It compares the previous run's open asks (filtered from that run's
+decisions log — never read a value back out of it) with this run's log:
+append each `carried.residuals` entry to the last phase's `residuals` and run
+`decisions_enrich` once more so the dropped ask is raised on this run. Report
+`requiredBefore` in the run summary: each is an ask that blocks release
+readiness (and, for `needed_by: award`, the award) until someone answers it.
+Read-only and idempotent — re-running the fence changes nothing.
 
 **Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
 — the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the

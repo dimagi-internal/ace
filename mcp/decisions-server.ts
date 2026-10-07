@@ -47,18 +47,16 @@ import {
   type DecisionOverrideRow,
 } from '../lib/decision-overrides.js';
 import {
-  OPEN_ASKS_FILENAME,
-  buildOpenAsksFile,
   checkOpenAsksCarried,
   missingAskResiduals,
-  parseOpenAsksYaml,
+  openAsks,
+  previousRunCandidates,
   requiredBeforeBlockers,
-  serializeOpenAsks,
   type CarriedCheck,
   type MissingAskResidual,
   type RequiredBeforeAsk,
 } from '../lib/open-asks.js';
-import { NEEDED_BY, type NeededBy } from '../lib/decisions-schema.js';
+import { NEEDED_BY, type DecisionsLog, type NeededBy } from '../lib/decisions-schema.js';
 import {
   OPERATOR_RULINGS_FILENAME,
   OperatorRulingsError,
@@ -521,54 +519,72 @@ export async function handleEnrich(args: EnrichArgs, driveClient: typeof drive =
   };
 }
 
-// ─ decisions_open_asks (the folded open-questions ledger) ──────────────────
+// ─ decisions_open_asks (a filter over decisions.yaml — no file of its own) ──
 
-/** The opp folder that owns a run folder (run → runs/ → opp), or null. */
-export async function findOppFolder(driveClient: typeof drive, runFolderId: string): Promise<string | null> {
-  const parentOf = async (fileId: string): Promise<string | null> => {
-    const resp = await driveClient.files.get({ fileId, fields: 'id, parents', supportsAllDrives: true });
-    return (resp.data as any).parents?.[0] ?? null;
-  };
-  const runsFolderId = await parentOf(runFolderId);
-  if (!runsFolderId) return null;
-  return parentOf(runsFolderId);
+/** The `runs/` folder that holds a run folder, or null. */
+async function findRunsFolder(driveClient: typeof drive, runFolderId: string): Promise<string | null> {
+  const resp = await driveClient.files.get({ fileId: runFolderId, fields: 'id, parents', supportsAllDrives: true });
+  return (resp.data as any).parents?.[0] ?? null;
 }
 
-/** A named text file directly under a folder (Google Doc exported as text, else raw bytes). */
-async function readNamedText(
+/** Names of the folders directly under `runs/`. */
+async function listRunFolders(driveClient: typeof drive, runsFolderId: string): Promise<Array<{ id: string; name: string }>> {
+  const out: Array<{ id: string; name: string }> = [];
+  let pageToken: string | undefined;
+  do {
+    const resp = await driveClient.files.list({
+      q: `'${runsFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'nextPageToken, files(id, name)',
+      pageSize: 1000,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    for (const f of resp.data.files ?? []) if (f.id && f.name) out.push({ id: f.id, name: f.name });
+    pageToken = (resp.data as any).nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
+
+/** How many older run folders to try before concluding there is no previous decisions log. */
+const PREVIOUS_RUN_LOOKBACK = 5;
+
+/**
+ * The previous run's decisions log: the newest sibling run folder older than
+ * `run_id` that has a decisions.yaml. Read only for the carried check — no
+ * value is ever taken from it (run independence).
+ */
+export async function findPreviousRunDecisions(
   driveClient: typeof drive,
-  folderId: string,
-  name: string,
-): Promise<{ fileId: string; content: string } | null> {
-  const list = await driveClient.files.list({
-    q: `'${folderId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`,
-    fields: 'files(id, mimeType)',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  });
-  const file = list.data.files?.[0];
-  if (!file?.id) return null;
-  const resp =
-    file.mimeType === 'application/vnd.google-apps.document'
-      ? await driveClient.files.export({ fileId: file.id, mimeType: 'text/plain' }, { responseType: 'text' })
-      : await driveClient.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
-  return { fileId: file.id, content: String(resp.data).replace(/^﻿/, '') };
+  runFolderId: string,
+  runId: string,
+): Promise<{ runId: string; log: Pick<DecisionsLog, 'decisions'> } | null> {
+  const runsFolderId = await findRunsFolder(driveClient, runFolderId);
+  if (!runsFolderId) return null;
+  const siblings = await listRunFolders(driveClient, runsFolderId);
+  const byName = new Map(siblings.map((s) => [s.name, s.id]));
+  for (const name of previousRunCandidates([...byName.keys()], runId).slice(0, PREVIOUS_RUN_LOOKBACK)) {
+    const found = await findDecisionsFile(driveClient, byName.get(name)!);
+    if (found) return { runId: name, log: parseDecisionsYaml(found.content.replace(/^﻿/, '')) };
+  }
+  return null;
 }
 
 export interface OpenAsksArgs {
   runFolderId: string;
   opportunity: string;
   run_id: string;
-  /** `check` reads only; `emit` also writes `ACE/<opp>/open-asks.yaml` (run end). */
-  mode: 'check' | 'emit';
   /** Only report required-before asks needed before this gate. */
   neededBy?: NeededBy;
-  /** Compare against the previous run's asks raised by phases up to this ordinal (Phase 1 passes 1). */
+  /**
+   * Compare with the previous run's asks raised by phases up to this ordinal
+   * (Phase 1 passes 1). Omit to skip the carried check entirely.
+   */
   throughPhase?: number;
+  /** Run the carried check over every phase (run end). Ignored when `throughPhase` is set. */
+  checkCarried?: boolean;
   /** Solicitation question ids the chosen response answered (solicitation-review). */
   solicitationAnswered?: string[];
-  /** Override the timestamp (tests). */
-  now?: string;
 }
 
 export interface OpenAsksResult {
@@ -581,16 +597,15 @@ export interface OpenAsksResult {
   }>;
   requiredBefore: RequiredBeforeAsk[];
   closedBySolicitation: RequiredBeforeAsk[];
-  /** null when there was no previous open-asks.yaml to compare against. */
+  /** null when the check was not asked for, or there is no previous run with a decisions log. */
   carried: (Omit<CarriedCheck, 'missing'> & { missing: string[]; residuals: MissingAskResidual[] }) | null;
-  written: { fileId: string; created: boolean } | null;
 }
 
 /**
- * Read a run's decisions log (+ the opp's saved rulings and the previous
- * run's `open-asks.yaml`) and report what is still asked. `emit` writes the
- * new `open-asks.yaml` at the opp root, AFTER the carried check has read the
- * previous one.
+ * Read a run's decisions log (+ the opp's saved rulings, and — for the carried
+ * check — the previous run's decisions log) and report what is still asked.
+ * Writes nothing: open asks are a filter over decisions.yaml (`openAsks`),
+ * never a file.
  */
 export async function handleOpenAsks(args: OpenAsksArgs, driveClient: typeof drive = drive): Promise<OpenAsksResult> {
   const existing = await findDecisionsFile(driveClient, args.runFolderId);
@@ -605,12 +620,10 @@ export async function handleOpenAsks(args: OpenAsksArgs, driveClient: typeof dri
   const overridesFile = await findDecisionOverridesFile(driveClient, args.runFolderId);
   const overrides = overridesFile ? parseDecisionOverridesYaml(overridesFile.content).overrides : null;
 
-  const oppFolderId = await findOppFolder(driveClient, args.runFolderId);
-  const priorFile = oppFolderId ? await readNamedText(driveClient, oppFolderId, OPEN_ASKS_FILENAME) : null;
   let carried: OpenAsksResult['carried'] = null;
-  if (priorFile) {
-    const prior = parseOpenAsksYaml(priorFile.content);
-    if (prior.run_id !== args.run_id) {
+  if (args.throughPhase !== undefined || args.checkCarried) {
+    const prior = await findPreviousRunDecisions(driveClient, args.runFolderId, args.run_id);
+    if (prior) {
       const check = checkOpenAsksCarried({ prior, log, throughOrdinal: args.throughPhase, overrides });
       carried = {
         priorRunId: check.priorRunId,
@@ -622,43 +635,14 @@ export async function handleOpenAsks(args: OpenAsksArgs, driveClient: typeof dri
     }
   }
 
-  const file = buildOpenAsksFile({
-    opp: args.opportunity,
-    runId: args.run_id,
-    log,
-    generatedAt: args.now ?? new Date().toISOString(),
-    overrides,
-  });
   const gate = requiredBeforeBlockers(log, {
     overrides,
     neededBy: args.neededBy,
     answeredSolicitationQuestions: args.solicitationAnswered,
   });
 
-  let written: OpenAsksResult['written'] = null;
-  if (args.mode === 'emit') {
-    if (!oppFolderId) throw new Error(`could not resolve the opp folder above run folder ${args.runFolderId}`);
-    const body = serializeOpenAsks(file);
-    if (priorFile) {
-      await driveClient.files.update({
-        fileId: priorFile.fileId,
-        media: { mimeType: 'application/x-yaml', body },
-        supportsAllDrives: true,
-      } as any);
-      written = { fileId: priorFile.fileId, created: false };
-    } else {
-      const resp = await driveClient.files.create({
-        requestBody: { name: OPEN_ASKS_FILENAME, parents: [oppFolderId], mimeType: 'application/x-yaml' },
-        media: { mimeType: 'application/x-yaml', body },
-        fields: 'id',
-        supportsAllDrives: true,
-      } as any);
-      written = { fileId: (resp.data as any).id, created: true };
-    }
-  }
-
   return {
-    asks: file.asks.map((r) => ({
+    asks: openAsks(log, { overrides }).map((r) => ({
       id: r.id,
       skill: r.skill,
       phase: r.phase,
@@ -673,7 +657,6 @@ export async function handleOpenAsks(args: OpenAsksArgs, driveClient: typeof dri
     requiredBefore: gate.blocking,
     closedBySolicitation: gate.closedBySolicitation,
     carried,
-    written,
   };
 }
 
@@ -749,14 +732,14 @@ server.tool(
 
 server.tool(
   'decisions_open_asks',
-  'What a run still asks a person, and the one gate an ask can carry (docs/decisions-contract.md § Open asks). The open-questions ledger is retired: an open question is a decision row with an unanswered `review_ask` or `status: deferred`. Reads the run\'s decisions.yaml, the opp\'s `inputs/decision-overrides.yaml` (a saved ruling answers an ask even if the row predates it) and the previous run\'s `ACE/<opp>/open-asks.yaml`. Returns: `asks` (every open ask); `requiredBefore` (unanswered `review_ask: required-before` rows, filtered by `neededBy` when given — solicitation-review passes `neededBy: award` and MUST NOT call award_response while this is non-empty; release readiness blocks on them too); `closedBySolicitation` (required-before asks whose `answer_channel: solicitation:<id>` was answered by the chosen response, per `solicitationAnswered`); `carried` (null when there is no previous open-asks.yaml, or it is this run\'s own — otherwise which previous asks this run re-derived, and `missing` + ready-made `residuals` for each one it dropped: write those into `phases.<phase>.residuals`; values are never inherited). `mode: emit` (orchestrator, run end, once) also writes `open-asks.yaml` at the opp root as generated, read-only YAML: {schema_version: 1, opp, run_id, generated_at, asks: [<live decision rows with an unanswered review_ask or status deferred>]}. `mode: check` writes nothing (Phase 1 passes `throughPhase: 1` so only asks Phase 1 owns are compared).',
+  'What a run still asks a person, and the one gate an ask can carry (docs/decisions-contract.md § Open asks). Open asks are a FILTER over decision rows, never a file (operator decision 2026-10-07, ace#2757): a live row with an unanswered `review_ask` or `status: deferred` (`lib/open-asks.ts` `openAsks`). Reads the run\'s decisions.yaml and the opp\'s `inputs/decision-overrides.yaml` (a saved ruling answers an ask even if the row predates it); writes nothing. Returns: `asks` (every open ask); `requiredBefore` (unanswered `review_ask: required-before` rows, filtered by `neededBy` when given — solicitation-review passes `neededBy: award` and MUST NOT call award_response while this is non-empty; release readiness blocks on them too); `closedBySolicitation` (required-before asks whose `answer_channel: solicitation:<id>` was answered by the chosen response, per `solicitationAnswered`); `carried` — only when `throughPhase` or `checkCarried` is given: the previous run\'s open asks (the newest older sibling run folder with a decisions.yaml, filtered the same way) compared with this run\'s log; null when no previous run has a decisions log. It names which previous asks this run re-derived, and `missing` + ready-made `residuals` for each one it dropped: write those into `phases.<phase>.residuals`. Values are never inherited from the previous run. Phase 1 passes `throughPhase: 1` so only asks Phase 1 owns are compared; the run-end write-back passes `checkCarried: true`.',
   {
     runFolderId: z.string().min(1).describe('Drive file ID of the run folder holding decisions.yaml.'),
     opportunity: z.string().min(1).describe('Opportunity slug; must match the log.'),
-    run_id: z.string().min(1).describe('This run\'s id.'),
-    mode: z.enum(['check', 'emit']).describe('`check` reads only; `emit` also writes ACE/<opp>/open-asks.yaml (run end).'),
+    run_id: z.string().min(1).describe('This run\'s id. The previous run is the newest sibling run folder older than this.'),
     neededBy: z.enum(NEEDED_BY).optional().describe('Only report required-before asks needed before this gate (solicitation-review: `award`).'),
-    throughPhase: z.number().int().min(1).optional().describe('Compare against previous-run asks raised by phases up to this ordinal (Phase 1: 1). Omit at run end.'),
+    throughPhase: z.number().int().min(1).optional().describe('Run the carried check against previous-run asks raised by phases up to this ordinal (Phase 1: 1).'),
+    checkCarried: z.boolean().optional().describe('Run the carried check over every phase (run end). Ignored when throughPhase is set.'),
     solicitationAnswered: z
       .array(z.string().min(1))
       .optional()

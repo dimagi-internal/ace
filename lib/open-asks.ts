@@ -1,28 +1,30 @@
 /**
- * Open asks — what is still unanswered in a run's decisions log, and the one
- * gate an ask can carry.
+ * Open asks — a FILTER over a run's decisions log, and the one gate an ask can
+ * carry. There is no separate store: "open asks" is never written anywhere, it
+ * is computed from `decisions.yaml` every time it is needed (operator decision
+ * 2026-10-07, ace#2757 — "why isn't that just a filter of decisions").
  *
- * The open-questions ledger (`ACE/<opp>/open-questions.md`) is folded into the
- * decisions log (`docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`,
- * owner-approved 2026-10-04). An open question is a decision row whose default
- * someone outside ACE should confirm (`review_ask`), or one this pilot does not
- * need answered (`status: deferred`). This module computes, purely:
+ * The open-questions ledger is retired (owner decision 2026-10-04,
+ * `docs/superpowers/specs/2026-10-04-open-questions-into-decisions-design.md`):
+ * an open question is a decision row whose default someone outside ACE should
+ * confirm (`review_ask`), or one this pilot does not need answered
+ * (`status: deferred`). This module computes, purely:
  *
- *   - `openAsks`              the live rows still asking something — an
- *                             unanswered `review_ask` or `status: deferred`;
- *   - `buildOpenAsksFile`     `ACE/<opp>/open-asks.yaml`, the generated,
- *                             read-only run-end safety net (owner kept it,
- *                             2026-10-04). Never an input to a value: answers
- *                             persist through `inputs/decision-overrides.yaml`;
+ *   - `openAsks`               THE predicate — the live rows with an unanswered
+ *                              `review_ask` or `status: deferred`. Every reader
+ *                              (decisions_open_asks, Phase 1's carried check,
+ *                              release readiness, solicitation-review) goes
+ *                              through it;
  *   - `requiredBeforeBlockers` unanswered `review_ask: required-before` rows —
- *                             the only ask that gates anything. Release
- *                             readiness reports each as a blocker, and
- *                             `solicitation-review` refuses `award_response`
- *                             while a `needed_by: award` one is open;
- *   - `checkOpenAsksCarried`  did this run re-derive every ask the previous
- *                             run left open? A dropped ask becomes a run
- *                             residual (`missingAskResiduals`) — it is never
- *                             re-inserted with the old value.
+ *                              the only ask that gates anything. Release
+ *                              readiness reports each as a blocker, and
+ *                              `solicitation-review` refuses `award_response`
+ *                              while a `needed_by: award` one is open;
+ *   - `checkOpenAsksCarried`   did this run re-derive every ask the PREVIOUS
+ *                              run's decisions log left open? A dropped ask
+ *                              becomes a run residual (`missingAskResiduals`)
+ *                              — it is never re-inserted with the old value.
+ *   - `previousRunId`          which sibling run folder is "the previous run".
  *
  * "Answered" means a person ruled: the row is `overridden` / `human-decided`,
  * or a saved ruling in `inputs/decision-overrides.yaml` binds to it (a ruling
@@ -30,31 +32,14 @@
  * overrides are applied here before anything is counted).
  */
 
-import yaml from 'yaml';
-import { z } from 'zod';
-
-import { applyDecisionOverrides, type DecisionOverrideRow } from './decision-overrides.js';
 import {
-  DecisionRowSchema,
   NEEDED_BY,
   solicitationQuestionId,
   type DecisionRow,
   type DecisionsLog,
   type NeededBy,
 } from './decisions-schema.js';
-
-/** Canonical filename at the opp ROOT (`ACE/<opp>/open-asks.yaml`). */
-export const OPEN_ASKS_FILENAME = 'open-asks.yaml' as const;
-export const OPEN_ASKS_SCHEMA_VERSION = 1 as const;
-
-export const OpenAsksFileSchema = z.object({
-  schema_version: z.literal(OPEN_ASKS_SCHEMA_VERSION),
-  opp: z.string().min(1),
-  run_id: z.string().min(1),
-  generated_at: z.string().min(1),
-  asks: z.array(DecisionRowSchema),
-});
-export type OpenAsksFile = z.infer<typeof OpenAsksFileSchema>;
+import { applyDecisionOverrides, type DecisionOverrideRow } from './decision-overrides.js';
 
 /** A person ruled on this row. */
 export function isAnswered(row: DecisionRow): boolean {
@@ -86,43 +71,6 @@ export interface OpenAsksOptions {
 /** Live rows still asking something, in log order. */
 export function openAsks(log: Pick<DecisionsLog, 'decisions'>, opts: OpenAsksOptions = {}): DecisionRow[] {
   return withRulings(log.decisions, opts.overrides ?? undefined).filter(isOpenAsk);
-}
-
-/** `ACE/<opp>/open-asks.yaml` for a finished run. */
-export function buildOpenAsksFile(args: {
-  opp: string;
-  runId: string;
-  log: Pick<DecisionsLog, 'decisions'>;
-  generatedAt: string;
-  overrides?: readonly DecisionOverrideRow[] | null;
-}): OpenAsksFile {
-  return {
-    schema_version: OPEN_ASKS_SCHEMA_VERSION,
-    opp: args.opp,
-    run_id: args.runId,
-    generated_at: args.generatedAt,
-    asks: openAsks(args.log, { overrides: args.overrides }),
-  };
-}
-
-const HEADER =
-  '# GENERATED at run end by decisions_open_asks — read-only. Do not edit: answer an ask in the\n' +
-  '# decisions review (it saves to inputs/decision-overrides.yaml). docs/decisions-contract.md § Open asks.\n';
-
-/** YAML-1.1-safe, like every other decisions writer (ace#2296). */
-export function serializeOpenAsks(file: OpenAsksFile): string {
-  OpenAsksFileSchema.parse(file);
-  return HEADER + yaml.stringify(file, null, { lineWidth: 0, aliasDuplicateObjects: false, version: '1.1' });
-}
-
-export function parseOpenAsksYaml(text: string): OpenAsksFile {
-  const raw = yaml.parse(text.replace(/^﻿/, ''));
-  const r = OpenAsksFileSchema.safeParse(raw);
-  if (!r.success) {
-    const where = r.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`).join('; ');
-    throw new Error(`open-asks.yaml does not match schema v${OPEN_ASKS_SCHEMA_VERSION}: ${where}`);
-  }
-  return r.data;
 }
 
 // ── The required-before gate ───────────────────────────────────────────────
@@ -246,25 +194,32 @@ function ordinal(phase: string): number {
 }
 
 /**
- * Compare the previous run's open asks with this run's log. A prior ask is
- * CARRIED when this run has a row for it — same id, same `feedback_ref`, or a
- * re-worded question (`textOverlap ≥ CARRIED_OVERLAP`) — whatever that row now
- * says (re-derived, answered, or deferred). Values are never inherited: a
- * missing ask is reported, not re-inserted.
+ * Compare the previous run's open asks with this run's log. The previous run's
+ * asks are computed from ITS decisions log through the same `openAsks` filter
+ * — there is no stored list. A prior ask is CARRIED when this run has a row
+ * for it — same id, same `feedback_ref`, or a re-worded question
+ * (`textOverlap ≥ CARRIED_OVERLAP`) — whatever that row now says (re-derived,
+ * answered, or deferred). Values are never inherited: a missing ask is
+ * reported, not re-inserted. Run independence holds — the previous log is read
+ * only to check that nothing was dropped.
  *
  * `throughOrdinal` limits the check to asks raised by phases this run has
  * completed (Phase 1 checks only `1-*` asks; run end checks all of them).
  */
 export function checkOpenAsksCarried(args: {
-  prior: OpenAsksFile;
+  prior: { runId: string; log: Pick<DecisionsLog, 'decisions'> };
   log: Pick<DecisionsLog, 'decisions'>;
   throughOrdinal?: number;
   overrides?: readonly DecisionOverrideRow[] | null;
 }): CarriedCheck {
   const rows = withRulings(args.log.decisions, args.overrides ?? undefined);
   const live = rows.filter((r) => r.superseded_by === undefined);
-  const out: CarriedCheck = { priorRunId: args.prior.run_id, carried: [], missing: [], notYetDue: [] };
-  for (const ask of args.prior.asks) {
+  // What the previous run LEFT open — its log as written, without rulings saved
+  // since: an ask answered after that run still has to be re-derived by this
+  // one, or the answer has no row to bind to.
+  const priorAsks = openAsks(args.prior.log);
+  const out: CarriedCheck = { priorRunId: args.prior.runId, carried: [], missing: [], notYetDue: [] };
+  for (const ask of priorAsks) {
     if (args.throughOrdinal !== undefined && ordinal(ask.phase) > args.throughOrdinal) {
       out.notYetDue.push(ask.id);
       continue;
@@ -319,4 +274,22 @@ export function missingAskResiduals(check: CarriedCheck): MissingAskResidual[] {
 /** True when `x` is a `needed_by` value. */
 export function isNeededBy(x: unknown): x is NeededBy {
   return typeof x === 'string' && (NEEDED_BY as readonly string[]).includes(x);
+}
+
+// ── Which run is "the previous run" ────────────────────────────────────────
+
+/** A run folder name: `YYYYMMDD-HHMM`, optionally suffixed. Archived `superseded-*` attempts never match. */
+const RUN_FOLDER = /^[0-9]{8}-[0-9]{4}/;
+
+/**
+ * The sibling run folders older than `current`, newest first — the candidates
+ * for "the previous run" (the caller takes the first one that has a
+ * decisions.yaml). Names that are not run ids (archived `superseded-*`
+ * attempts, stray files) are ignored.
+ */
+export function previousRunCandidates(siblingNames: readonly string[], current: string): string[] {
+  return siblingNames
+    .filter((n) => RUN_FOLDER.test(n) && n < current)
+    .sort()
+    .reverse();
 }

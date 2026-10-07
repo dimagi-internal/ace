@@ -68,9 +68,9 @@ const dispositions: Disposition[] = [
   },
   {
     feedbackRef: '20260727-sophie-feintuch/f',
-    kind: 'open-question',
+    kind: 'decision',
     summary: 'Dedup radius must clear the 50m accuracy floor — value is a PM call',
-    link: 'open-questions.md#dedup-radius',
+    link: 'decisions.yaml#dedup-radius',
     status: 'awaiting-human',
   },
 ];
@@ -206,7 +206,7 @@ describe('renderLedgerMarkdown', () => {
 
   it('renders NEEDS YOU for an item awaiting a human', () => {
     const out = renderLedgerMarkdown(buildLedger(record, dispositions));
-    expect(out).toMatch(/\*\*NEEDS YOU\*\* · open question/);
+    expect(out).toMatch(/\*\*NEEDS YOU\*\* · decision/);
   });
 
   it('renders an UNROUTED item loudly rather than omitting it', () => {

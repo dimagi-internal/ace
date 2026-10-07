@@ -1,9 +1,10 @@
 //
 // Feedback ledger — "for my N comments, where did each one go?"
 //
-// The ledger is a DERIVED VIEW, not a store. It joins three things ACE
-// already keeps (GitHub issues/PRs, a run's decisions.yaml, an opp's
-// open-questions.md) against one small new fact store: the verbatim
+// The ledger is a DERIVED VIEW, not a store. It joins what ACE already keeps
+// (GitHub issues/PRs and a run's decisions.yaml — where an open question for
+// a human is a decision row with `review_ask`; the old open-questions ledger
+// is retired, ace#2757) against one small new fact store: the verbatim
 // inbound review record.
 //
 // Why derived. Sophie Feintuch's 2026-07-27 review of hh-poverty-targeting
@@ -299,7 +300,6 @@ function diffBlocks(a: readonly string[], b: readonly string[]): DiffBlock[] {
 export type DispositionKind =
   | 'skill-fix' // a generalizable defect -> GitHub issue + PR
   | 'decision' // ACE chose; a human wants different -> decisions.yaml
-  | 'open-question' // LEGACY: a row of the retired open-questions ledger (new asks are `decision` rows with `review_ask`)
   // A partner's EDIT kept as they wrote it (ace#1335). Needed because the
   // other four kinds all describe ACE doing something in response, and the
   // correct response to a good edit is to do NOTHING and say so. Without this,
@@ -321,7 +321,7 @@ export interface Disposition {
   kind: DispositionKind;
   /** One line: what actually changed. */
   summary: string;
-  /** Issue/PR URL, decision row id, or open-question anchor. */
+  /** Issue/PR URL, or decision row id. */
   link?: string;
   status: DispositionStatus;
   /** The run in which the change first appears. */
@@ -465,7 +465,6 @@ const STATUS_LABEL: Record<DispositionStatus, string> = {
 const KIND_LABEL: Record<DispositionKind, string> = {
   'skill-fix': 'skill fix',
   decision: 'decision',
-  'open-question': 'open question',
   'accepted-edit': 'kept your edit',
   declined: 'declined',
 };

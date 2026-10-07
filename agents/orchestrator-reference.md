@@ -503,8 +503,7 @@ implicitly via path lacking a `runs/` prefix):
 | `ACE/<opp>/opp.yaml` | Identity (`display_name`, `slug`, `tags`, `created_at`, `created_by`) plus `connect.program.{id, url, connect_int_id}` — the durable Connect program reference reused across every run of the opp. Written by `connect-program-setup` on first create; subsequent runs read this to skip program-create. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run's `run_state.yaml.phases.<phase>.products.*`. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. |
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
-| `ACE/<opp>/open-asks.yaml` | Generated at run end by `decisions_open_asks(mode: 'emit')`: the run's live decision rows with an unanswered `review_ask` or `status: deferred`. Read-only — ace-web renders it, and the next run's Phase 1 only checks it (`docs/decisions-contract.md § Open asks`). |
-| `ACE/<opp>/open-questions.md` / `open-questions.archived.md` | LEGACY — the retired open-questions ledger. No skill writes it; Phase 1 reads an un-migrated one read-only, and `scripts/migrate-open-questions.ts` folds it into decision rows and archives it. |
+| `ACE/<opp>/open-questions.md` / `open-questions.archived.md` / `open-asks.yaml` | RETIRED — nothing reads them (ace#2757). Open asks are a filter over each run's `decisions.yaml` (`docs/decisions-contract.md § Open asks`), never a file. Left at the opp root only as quarantine so Step 5b never moves ACE's own former prose into `inputs/`; `scripts/migrate-open-questions.ts` is the only code that opens a ledger. |
 | `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 4/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
 
 **Durable vs refreshed fields WITHIN the reused Connect program**
@@ -545,7 +544,7 @@ no longer written.
 downstream) from a prior run's products:
 
 1. Reuse the existing per-opp files (`opp.yaml`, `inputs/`,
-   `eval-calibration/`, `open-asks.yaml`) — do not copy. The
+   `eval-calibration/`) — do not copy. The
    Connect program reference at `opp.yaml.connect.program` is the
    only cross-run identity that survives — the new run reads it and
    skips program-create. Everything else the new run produces fresh.

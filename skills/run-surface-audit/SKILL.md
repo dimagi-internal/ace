@@ -165,7 +165,7 @@ claim; silence never means it.
 ```json
 {
   "https://docs.google.com/document/d/<flw-guide>/edit": "# FLW guide\n...",
-  "https://docs.google.com/document/d/<open-questions>/edit": null
+  "https://docs.google.com/document/d/<work-order>/edit": null
 }
 ```
 
@@ -185,12 +185,9 @@ reasoning from a version:** its presence in the run folder is the fact, and
 | `6-qa-and-training/training-{faq,flw-guide,llo-guide,quick-reference,onboarding-email}.md` | the matching `…​.source.md` |
 
 Build the map by reading each `.source.md` and keying it on the published
-doc's url. Two documents deliberately have no source and take the explicit
+doc's url. One document deliberately has no source and takes the explicit
 `null` sentinel rather than a guess:
 
-- **`open-questions.md`** (legacy — the retired ledger, still rendered by
-  ace-web until an opp is migrated) — an opp-level LIVING doc reviewers
-  hand-edited in place, so published-vs-source divergence is legitimate.
 - **`1-design/pdd-to-work-order.gdoc`** — built by `docs_copy_template`
   (`drive.files.copy` + `replaceAllText`), Doc to Doc with **no markdown
   importer on the path**, so the content-dropping class this check guards
