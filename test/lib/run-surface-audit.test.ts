@@ -103,7 +103,7 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     cycle_grade: null,
     opp_eval: null,
     learnings: null,
-    open_questions: null,
+    open_asks: null,
     stage: { label: 'solicitation', pending_sections: [] },
     // Null when the run carried nothing needing a human (ace-web#744).
     carried_residuals: null,
@@ -150,28 +150,49 @@ describe('the auditor cannot silently find nothing', () => {
 
   it('BLOCKS when a section it reads has vanished from the payload', () => {
     const p = healthyPayload();
-    delete p.open_questions;
+    delete p.open_asks;
     const findings = auditContract(p);
     const missing = findings.filter((f) => f.code === 'CONTRACT-MISSING-SECTION');
-    expect(missing.map((f) => f.where)).toContain('open_questions');
+    expect(missing.map((f) => f.where)).toContain('open_asks');
     expect(missing.every(isBlocking)).toBe(true);
   });
 
   it('distinguishes "absent" from "null" — a run that has not reached a phase is not a defect', () => {
-    // `open_questions: null` is legitimate. Only a MISSING key is drift.
-    const findings = auditContract(healthyPayload({ open_questions: null }));
+    // `open_asks: null` (no decisions log yet) is legitimate. Only a MISSING key is drift.
+    const findings = auditContract(healthyPayload({ open_asks: null }));
     expect(codes(findings)).not.toContain('CONTRACT-MISSING-SECTION');
   });
 
-  it('reads open questions from `items`, and says so when the key moves', () => {
-    // THE cautionary tale: an agent "verified" open questions by counting a key
-    // named `questions`. The field is `items`. It reported 0 forever.
+  it('knows the open_asks tally ace-web #872 serves, and no longer expects the retired open_questions ledger (ace#2759)', () => {
+    // The live payload of spark/spark-facilitator/20261004-1706 on 2026-10-07:
+    // `open_asks` present, `open_questions` gone. Before ace#2759 that read as
+    // CONTRACT-MISSING-SECTION + CONTRACT-UNKNOWN-SECTION on every run.
     const findings = auditContract(
-      healthyPayload({ open_questions: { url: 'https://docs.google.com/document/d/OQOQOQOQOQOQ/edit', access: 'admin', questions: [] } }),
+      healthyPayload({
+        open_asks: {
+          confirm: { total: 25, outstanding: 25 },
+          answer: { total: 0, outstanding: 0, by_needed_by: {} },
+          deferred: 6,
+          total: 25,
+          outstanding: 25,
+          outstanding_ids: ['payment-rate'],
+        },
+      }),
     );
-    const drift = findings.filter((f) => f.code === 'CONTRACT-KEY-DRIFT' && f.where === 'open_questions');
+    expect(findings.filter((f) => f.code.startsWith('CONTRACT-'))).toEqual([]);
+    const legacy = auditContract(healthyPayload({ open_questions: { url: 'https://x.test/', access: 'admin', items: [] } }));
+    expect(legacy.filter((f) => f.code === 'CONTRACT-UNKNOWN-SECTION').map((f) => f.where)).toContain('open_questions');
+  });
+
+  it('says so when a key of the open_asks tally moves', () => {
+    // The cautionary tale, kept: an agent once counted a key that did not
+    // exist and reported 0 forever. A renamed tally key must block, not read 0.
+    const findings = auditContract(
+      healthyPayload({ open_asks: { confirm: {}, answer: {}, deferred: 0, total: 0, pending: 0, outstanding_ids: [] } }),
+    );
+    const drift = findings.filter((f) => f.code === 'CONTRACT-KEY-DRIFT' && f.where === 'open_asks');
     expect(drift).toHaveLength(1);
-    expect(drift[0].detail).toContain('items');
+    expect(drift[0].detail).toContain('outstanding');
     expect(isBlocking(drift[0])).toBe(true);
   });
 
