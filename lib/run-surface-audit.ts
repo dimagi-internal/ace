@@ -239,18 +239,16 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
   cycle_grade: { kind: 'object', keys: [] },
   opp_eval: { kind: 'object', keys: [] },
   learnings: { kind: 'object', keys: [], linkKeys: ['url'] },
-  open_questions: {
+  // What the run still asks a reviewer — a TALLY over the run's own decision
+  // rows (ace-web #872; ACE #2758 retired the open-questions ledger, so there
+  // is no document to link and no row list here — the rows render on the
+  // Decisions tab). `confirm` = `review_ask: recommended-confirmation`,
+  // `answer` = `review_ask: required-before` (split per `needed_by`),
+  // `deferred` = parked. `null` when the run has no decisions log. Frozen on
+  // both sides: ace-web `test_public_surface_contract.py` (ace#2759).
+  open_asks: {
     kind: 'object',
-    // `items`. NOT `questions`. This is the cautionary tale in the module
-    // header, encoded: an auditor that counted `questions` reported 0 forever.
-    keys: ['url', 'access', 'items'],
-    // The row shape, frozen too. `title` is here because it was EMPTY on
-    // 27 of 28 rows of spark-facilitator/20260828-0703 and every one
-    // rendered as a run-on `id: … question: …` blob; `blocking` because
-    // the ledger always carried when a question is needed by and the page
-    // discarded it (ace#1867). A key-name drift here renders as absence.
-    itemKeys: ['title', 'detail', 'owner', 'answered_in', 'blocking'],
-    linkKeys: ['url'],
+    keys: ['confirm', 'answer', 'deferred', 'total', 'outstanding', 'outstanding_ids'],
   },
   stage: { kind: 'scalar', keys: ['label', 'pending_sections'] },
   // What the run itself says is still unproven and needs a human — a list of
