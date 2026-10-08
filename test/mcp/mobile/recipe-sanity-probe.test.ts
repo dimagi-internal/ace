@@ -5,6 +5,7 @@ import {
   probeRecipeSanity,
   extractRecipeParameters,
   CONTENT_FORM_FINISH_SLOTS,
+  maestroTextMatches,
   type NovaAppSlice,
   type ConnectOpportunitySlice,
 } from '../../../mcp/mobile/recipe-sanity-probe.js';
@@ -284,6 +285,92 @@ describe('probeRecipeSanity — failure class: expected-form-not-in-module', () 
     const f = verdict.failures.find((x) => x.class === 'expected-form-not-in-module');
     expect(f).toBeDefined();
     expect(f!.value).toBe('Register Visit');
+  });
+});
+
+// --- ace#2792: names are Maestro `text:` selectors (full-match regex) ---
+//
+// Repro: group-payment-test/20261007-1700. Deliver forms "Group session (A)" /
+// "Group session (B)"; journey-deliver.yaml binds FORM_NAME "Group session .A."
+// because `(A)` in a regex is a capture group matching "A". The probe compared
+// with Set.has and halted Phase 6 on that correct recipe.
+describe('probeRecipeSanity — names compare as Maestro full-match regexes (ace#2792)', () => {
+  const groupApp = novaApp('app-deliver-group', {
+    'Variant A sessions': ['Group session (A)'],
+    'Variant B sessions': ['Group session (B)'],
+  });
+
+  it('does NOT fire expected-form-not-in-module for a regex FORM_NAME that full-matches the label', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [
+        recipe('journey-deliver.yaml', { MODULE_NAME: 'Variant A sessions', FORM_NAME: 'Group session .A.' }),
+      ],
+      novaApps: [groupApp],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-form-not-in-module')).toBeUndefined();
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('does NOT fire expected-module-not-in-app for a regex MODULE_NAME', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipe('journey-deliver.yaml', { MODULE_NAME: 'Variant . sessions' })],
+      novaApps: [groupApp],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-module-not-in-app')).toBeUndefined();
+  });
+
+  // Negative control: the pattern resolves, but to the WRONG module's form.
+  it('still fires when the regex FORM_NAME only matches a form in a DIFFERENT module', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [
+        recipe('journey-deliver.yaml', { MODULE_NAME: 'Variant A sessions', FORM_NAME: 'Group session .B.' }),
+      ],
+      novaApps: [groupApp],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'expected-form-not-in-module');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('Group session .B.');
+    expect(verdict.ok).toBe(false);
+  });
+
+  // Negative control: a regex MODULE_NAME used to make check 3 silently skip
+  // (exact-key Map lookup missed); it must now resolve and still catch drift.
+  it('still checks the form when MODULE_NAME is itself a regex', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipe('journey-deliver.yaml', { MODULE_NAME: 'Variant A.*', FORM_NAME: 'Renamed upstream' })],
+      novaApps: [groupApp],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-form-not-in-module')).toBeDefined();
+  });
+
+  it('still fires expected-module-not-in-app when the pattern matches no row', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipe('journey-deliver.yaml', { MODULE_NAME: 'Variant C.*' })],
+      novaApps: [groupApp],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-module-not-in-app')).toBeDefined();
+  });
+});
+
+describe('maestroTextMatches — mirrors maestro.Filters.textMatches', () => {
+  it('is a FULL match, not a substring search', () => {
+    expect(maestroTextMatches('Group session', 'Group session (A)')).toBe(false);
+    expect(maestroTextMatches('Group session .A.', 'Group session (A)')).toBe(true);
+  });
+  it('keeps the literal-equality arm (regex.pattern == text)', () => {
+    expect(maestroTextMatches('Group session (A)', 'Group session (A)')).toBe(true);
+  });
+  it('is case-insensitive and treats newlines in the label as spaces (Orchestra REGEX_OPTIONS)', () => {
+    expect(maestroTextMatches('group SESSION .a.', 'Group session (A)')).toBe(true);
+    expect(maestroTextMatches('Group session .A.', 'Group session\n(A)')).toBe(true);
+  });
+  it('returns false (not throw) for an invalid regex that is not literally equal', () => {
+    expect(maestroTextMatches('Group session (A', 'Group session (A)')).toBe(false);
   });
 });
 
