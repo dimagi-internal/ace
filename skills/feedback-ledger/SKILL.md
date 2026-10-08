@@ -1,11 +1,9 @@
 ---
 name: feedback-ledger
 description: >
-  Capture an external reviewer's feedback verbatim, stamp every change made in response,
-  and render the derived "where did my comment go?" view. Use when a domain expert or
-  stakeholder reviews an ACE artifact (gdoc comments, an email of findings, a review
-  meeting) and ACE is going to act on it — and again at the end of the next run, so the
-  reviewer gets a DIFF instead of re-reviewing everything from scratch.
+  Capture a reviewer's feedback verbatim, stamp each change made in response, and render
+  "where did my comment go?". Use when an expert reviews an ACE artifact (gdoc comments,
+  an email, a meeting) and ACE will act on it, and at the next run's end so they get a DIFF.
 ---
 
 # Feedback ledger
