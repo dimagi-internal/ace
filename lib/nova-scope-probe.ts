@@ -237,8 +237,10 @@ export function classifyNovaScopeProbe(args: {
         remediation:
           `Nova cannot upload to a project space it cannot see, so app-deploy will fail late. ` +
           `Nova STORES the key's reachable spaces when the key is saved (voidcraft-labs/commcare-nova ` +
-          `lib/db/settings.ts approved_domains), so a space joined since then is missing until refreshed: ` +
-          `sign in at https://commcare.app/settings as the ACE identity and press Refresh on the CommCare HQ card. ` +
+          `lib/db/settings.ts approved_domains), so a space joined since then is missing until refreshed. ` +
+          `ACE refreshes it itself, headless: node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" ` +
+          `"$ACE_ROOT/scripts/nova-refresh-hq-domains.ts" --domain ${expectedDomain} (exit 2 = stopped on a ` +
+          `Google challenge → press Refresh on the CommCare HQ card at https://commcare.app/settings as the ACE identity). ` +
           `If "${expectedDomain}" is still missing after that, add the HQ key's user to it on CommCare HQ, or correct ` +
           `ACE_HQ_DOMAIN (visible: ${domains.join(', ')}) in 1Password and re-run /ace:setup --force-env`,
       };
