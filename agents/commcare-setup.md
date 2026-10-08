@@ -172,13 +172,22 @@ result:
   so a multi-space key is fine — no need for the key to be scoped to a
   single space.
 - `{ configured: true }` but `<ACE_HQ_DOMAIN>` is NOT in
-  `available_domains` → halt; the saved HQ API key can't reach the
-  target space. Surface the reachable spaces (`available_domains`) and
-  tell the operator to press **Refresh** on the CommCare HQ card at
-  `https://commcare.app/settings` first — Nova stores the key's reachable
-  spaces when the key is saved, so a space joined since then is missing until
-  refreshed (no new key needed). If it is still missing, fix `ACE_HQ_DOMAIN` or
-  add the HQ key's user to `<ACE_HQ_DOMAIN>`, then re-run.
+  `available_domains` → **refresh Nova's stored list yourself, once, before
+  halting.** Nova stores the key's reachable spaces when the key is saved, so a
+  space joined since then is missing until Refresh is pressed on the CommCare
+  HQ card at `https://commcare.app/settings` — ACE does that headless with its
+  own Google login:
+  `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-refresh-hq-domains.ts" --domain <ACE_HQ_DOMAIN>`
+  (`ACE_ROOT` resolved as in the Nova contract probe block below). Then re-call `get_hq_connection`.
+  - exit 0 and the space is now listed → proceed to Step 1.
+  - exit 3 (`still-missing`) → halt; the HQ key's user cannot reach the space.
+    Surface `available_domains` and tell the operator to add that user to
+    `<ACE_HQ_DOMAIN>` (or fix `ACE_HQ_DOMAIN`), then re-run.
+  - exit 2 (`refresh-blocked`, the JSON names the Google challenge, e.g.
+    `google-2fa`) → halt; the operator presses **Refresh** on the CommCare HQ
+    card at `https://commcare.app/settings` as the ACE identity, then re-runs.
+  Run the script at most once per halt — a second refresh of unchanged
+  membership answers the same.
 - `{ configured: false }` → halt; Nova has no HQ key bound. The
   operator needs to paste an HQ API key (generated under the ACE Gmail
   identity at `<ACE_HQ_BASE_URL>/account/api_keys/`) into Nova's

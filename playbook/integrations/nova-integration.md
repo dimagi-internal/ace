@@ -105,6 +105,23 @@ action only; no MCP tool or API key can trigger it. Measured 2026-10-08:
 `connect-ace-spark` was visible to ace@'s own HQ key (`/api/user_domains/v1/`) but
 absent from Nova's list, which otherwise matched it exactly.
 
+**ACE presses that Refresh itself, headless** (owner directive 2026-10-08 — ACE has
+its own Google login and must never pop a window on the operator's machine):
+`scripts/nova-refresh-hq-domains.ts --domain <space>` reads `get_hq_connection`,
+and only if the space is missing signs in to `https://commcare.app` as ace@
+(Google username/password via `op read op://Agent-Ace/Ace - gmail/…` at runtime,
+persistent profile `~/.ace/nova-google-profile`), presses Refresh, and re-reads.
+Exit 0 = listed; 3 = still missing (the HQ key's user is not a member — a
+refresh cannot fix that); 2 = stopped on a named Google challenge (`google-2fa`,
+`google-verify-identity`, `google-browser-not-secure`, …) → only then does the
+operator press Refresh by hand. Headless Google sign-in quirks the script
+encodes: the email field is `#identifierId`, wait for it visible + ~2s, type with
+`pressSequentially`, click Next by role, password is `input[name="Passwd"]`.
+Decision logic: `lib/nova-hq-refresh.ts` (*enforced:* `test/lib/nova-hq-refresh.test.ts`,
+which also fails if the script ever gains a non-headless mode). Wired into the
+partner-workspace preflight (`agents/ace-orchestrator.md`), `commcare-setup`'s
+missing-domain branch, and doctor's `nova_scopes` remediation.
+
 The Nova MCP server is hosted by voidcraft at `mcp.commcare.app`;
 ACE doesn't run a Nova MCP itself.
 

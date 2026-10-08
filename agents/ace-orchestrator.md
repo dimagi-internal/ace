@@ -1149,10 +1149,18 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    `commcare_list_apps(domain)` must answer; Nova `get_hq_connection` must list
    the HQ space in `available_domains[].name` (else Phase 3 cannot upload. Nova
    stores the key's reachable spaces when the key is saved, so a space created
-   or joined since then is missing until the operator presses **Refresh** on the
-   CommCare HQ card at `https://commcare.app/settings` (signed in as the ACE
-   identity) — no new key needed; only if it is still missing does the HQ key's
-   user lack membership of the space);
+   or joined since then is missing until Refresh is pressed on the CommCare HQ
+   card at `https://commcare.app/settings`. **ACE presses it itself, headless:**
+   when the space is missing, run ONCE
+   `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-refresh-hq-domains.ts" --domain <hq_domain>`
+   (`ACE_ROOT` resolved as in the `check-products-gap` block below; it signs in
+   as ace@ with ACE's own Google login, presses Refresh, re-reads
+   `get_hq_connection`), then re-call `get_hq_connection` in-session. Exit 0 →
+   continue. Exit 3 (`still-missing`) → halt: the HQ key's user is not a member
+   of the space — the workspace owner adds it. Exit 2 (`refresh-blocked`, a
+   named Google challenge such as `google-2fa`) → halt: the operator presses
+   Refresh at `https://commcare.app/settings` as the ACE identity. Never loop
+   the script);
    `connect_list_programs` on the PM org and `connect_list_opportunities` on the
    holding org must answer (a 403/404/redirect means ace@ is not a member —
    the workspace owner adds it). Any failure halts with that remediation.
