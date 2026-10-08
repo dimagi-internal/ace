@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { MaestroBackend } from '../../../mcp/mobile/backends/maestro.js';
+import { MaestroBackend, probeDriverArgs } from '../../../mcp/mobile/backends/maestro.js';
+import { AvdBackend } from '../../../mcp/mobile/backends/avd.js';
 
 function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; code?: number }>) {
   return vi.fn(async (cmd: string, args: string[]) => {
@@ -543,7 +544,7 @@ describe('MaestroBackend.validateRecipe', () => {
 describe('MaestroBackend.probeDriver', () => {
   it('returns healthy when maestro hierarchy exits 0', async () => {
     const shell = fakeShell({
-      'maestro --host=localhost --port=5555 hierarchy': { stdout: '<hierarchy/>\n', code: 0 },
+      'maestro --host=localhost --port=5555 --device=emulator-5554 hierarchy': { stdout: '<hierarchy/>\n', code: 0 },
     });
     const backend = new MaestroBackend({ shell });
     const r = await backend.probeDriver(5555);
@@ -553,7 +554,7 @@ describe('MaestroBackend.probeDriver', () => {
 
   it('returns unhealthy with reason when maestro hierarchy fails', async () => {
     const shell = fakeShell({
-      'maestro --host=localhost --port=5555 hierarchy': {
+      'maestro --host=localhost --port=5555 --device=emulator-5554 hierarchy': {
         stdout: '', stderr: 'io.grpc.StatusRuntimeException: UNAVAILABLE: io exception\n', code: 1,
       },
     });
@@ -561,6 +562,39 @@ describe('MaestroBackend.probeDriver', () => {
     const r = await backend.probeDriver(5555);
     expect(r.healthy).toBe(false);
     expect(r.reason).toMatch(/UNAVAILABLE|exit 1/);
+  });
+
+  // dimagi-internal/ace#2798. Maestro 2.10.0/2.11.0 `PrintHierarchyCommand`
+  // calls `DeviceService.listConnectedDevices()` (-> `Dadb.list()`) unless
+  // `--device` is set, regardless of `--host`/`--port`. On a host where
+  // another macOS account runs an emulator, that enumeration hangs on the
+  // CNXN handshake, so a healthy driver probed as unhealthy.
+  it('pins --device alongside --host/--port so hierarchy skips Dadb.list enumeration (ace#2798)', () => {
+    const argv = probeDriverArgs(5559);
+    expect(argv).toEqual(['--host=localhost', '--port=5559', '--device=emulator-5558', 'hierarchy']);
+    // Every top-level flag must precede the subcommand, or picocli binds it
+    // to `hierarchy` (which has no --device) and rejects it.
+    const sub = argv.indexOf('hierarchy');
+    expect(sub).toBe(argv.length - 1);
+    expect(argv.slice(0, sub).some((a) => a.startsWith('--device'))).toBe(true);
+  });
+
+  it('derives the --device id as the exact inverse of AvdBackend.adbPortFromSerial', () => {
+    for (const serial of ['emulator-5554', 'emulator-5556', 'emulator-5558', 'emulator-5584']) {
+      const port = AvdBackend.adbPortFromSerial(serial)!;
+      expect(probeDriverArgs(port)).toContain(`--device=${serial}`);
+    }
+  });
+
+  it('probeDriver dispatches exactly probeDriverArgs (no bare --host/--port hierarchy)', async () => {
+    const calls: string[][] = [];
+    const shell = vi.fn(async (_cmd: string, args: string[]) => {
+      calls.push(args);
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new MaestroBackend({ shell: shell as any });
+    await backend.probeDriver(5559);
+    expect(calls).toEqual([probeDriverArgs(5559)]);
   });
 
   it('returns unhealthy when shell throws (timeout, missing binary, etc.)', async () => {
