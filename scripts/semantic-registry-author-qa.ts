@@ -45,7 +45,7 @@ const ps = arg('partner-source');
 const partnerSource = ps === 'programme' || ps === 'invented' ? ps : undefined;
 const labsText = read(arg('labs-validate'));
 const report = checkRegistryAuthoring(registry, { pddSections, opportunityIds, appForms, partnerSource });
-const outcomes = registryQAOutcomes(report, labsText ? JSON.parse(labsText) : null, { pddSections, opportunityIds, appForms });
+const outcomes = registryQAOutcomes(report, labsText ? JSON.parse(labsText) : null, { pddSections, opportunityIds, appForms, pddSupplied: !!pdd });
 const result = aggregateQAResult({
   skill: 'semantic-registry-author-qa',
   target: arg('target') as string,

@@ -103,6 +103,14 @@ describe('checkCascadeStoryPlan', () => {
     expect(details(p)).toMatch(/labs-only/);
   });
 
+  it('accepts a named-heading PDD citation, refuses a bare §  (ace#2803)', () => {
+    const p = clone();
+    p.signals[2].pdd_ref = 'PDD § Success Metrics';
+    expect(checkCascadeStoryPlan(p, IDS).findings.filter((f) => /cites no PDD section/.test(f.detail))).toEqual([]);
+    p.signals[2].pdd_ref = 'PDD § — see above';
+    expect(checkCascadeStoryPlan(p, IDS).verdict).toBe('fail');
+  });
+
   it('refuses a signal with no PDD citation', () => {
     const p = clone();
     p.signals[2].pdd_ref = 'looks suspicious';

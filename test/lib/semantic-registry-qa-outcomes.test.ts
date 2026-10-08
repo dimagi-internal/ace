@@ -25,6 +25,15 @@ describe('registryQAOutcomes', () => {
     expect(failed).toEqual(expect.arrayContaining(['labs-validate', 'pdd-anchor', 'llo-map']));
   });
 
+  it('says a supplied PDD parsed to no headings, rather than "not supplied" (ace#2803)', () => {
+    const reg = JSON.parse(readFileSync(REGISTRY, 'utf8')) as RegistryDocs;
+    const anchor = (pddSupplied: boolean) =>
+      registryQAOutcomes(checkRegistryAuthoring(reg), null, { pddSections: [], pddSupplied }).find((o) => o.check === 'pdd-anchor')!;
+    expect(anchor(true).result.pass).toBe(false);
+    expect(anchor(true).result.detail).toMatch(/PDD was supplied but no section headings parsed/);
+    expect(anchor(false).result.detail).toMatch(/neither the PDD nor the released app was supplied/);
+  });
+
   it('fails labs-validate when labs rejects the registry', () => {
     const reg = JSON.parse(readFileSync(REGISTRY, 'utf8')) as RegistryDocs;
     const [labs] = registryQAOutcomes(checkRegistryAuthoring(reg), { valid: false, errors: [{ path: 'measures.x', msg: 'unknown column' }] }, {});

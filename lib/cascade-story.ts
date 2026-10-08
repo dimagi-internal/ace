@@ -184,6 +184,12 @@ export const ILLUSTRATIVE_LABEL = /\((?:example|illustrative)\)\s*$/i;
  * ("Partner A", "Org 2"), a demo word up front ("Example partner C"), or a bare
  * code. Applied to a partner label with its marker stripped.
  */
+/**
+ * A PDD citation: numbered (`§5.4`) or named (`§ Success Metrics`) — ACE's PDD
+ * template has unnumbered headings, so a named citation is the only one it can
+ * carry (ace#2803). Format only: the registry's `pdd-anchor` check resolves names.
+ */
+const PDD_CITE = /§\s*[\p{L}\d]/u;
 const PLACEHOLDER_ORG =
   /^(?:(?:example|illustrative|sample|demo|test|synthetic|fake|dummy)\b|(?:partner|org|organi[sz]ation|llo|ngo|implementer|site|team|group)\s*[A-Z0-9]{1,3}$|[A-Z0-9]{1,3}$)/i;
 
@@ -313,7 +319,7 @@ export function checkCascadeStoryPlan(
     if (!ids.has(s.indicator)) fail(`indicator ${s.indicator} is not in the registry`, s.kind);
     if (plan.anchor === 'app') {
       if (!/deliver app/i.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" names no Deliver app form — with no PDD, an uncited signal is an invented one`, s.kind);
-    } else if (!/§\s*\d/.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" cites no PDD section — an uncited signal is an invented one`, s.kind);
+    } else if (!PDD_CITE.test(s.pdd_ref ?? '')) fail(`\`pdd_ref\` "${s.pdd_ref ?? ''}" cites no PDD section — an uncited signal is an invented one`, s.kind);
     if (!s.visible_as || s.visible_as.trim().length < 20) fail('`visible_as` must say, in a sentence, what a viewer sees', s.kind);
     const partnerCarrier = s.kind === 'lagging_partner' || (s.kind === 'trend' && s.carrier !== 'programme');
     if (partnerCarrier && !labels.has(s.carrier)) fail(`carrier "${s.carrier}" is not a partner in the plan`, s.kind);
@@ -355,7 +361,7 @@ function checkReviewRoutingPlan(
   for (const r of routes) {
     const where = `review_routing ${r.flag || '(no flag)'}`;
     if (!r.flag?.trim()) fail(`${where}: names no flag column`);
-    const cited = plan.anchor === 'app' ? /deliver app/i.test(r.pdd_ref ?? '') : /§\s*\d/.test(r.pdd_ref ?? '');
+    const cited = plan.anchor === 'app' ? /deliver app/i.test(r.pdd_ref ?? '') : PDD_CITE.test(r.pdd_ref ?? '');
     if (!cited) fail(`${where}: \`pdd_ref\` "${r.pdd_ref ?? ''}" cites no ${plan.anchor === 'app' ? 'Deliver app form' : 'PDD section'}`);
     const hasExpect = !!r.expect && Object.keys(r.expect).length > 0 && Object.values(r.expect).every((v) => Array.isArray(v) && v.length > 0);
     const hasReport = !!r.report_only?.trim();

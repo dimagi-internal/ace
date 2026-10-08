@@ -39,7 +39,10 @@ export interface AuthoringReport {
 }
 
 export interface AuthoringOptions {
-  /** Section ids that exist in the PDD (`pddSectionIds(pdd)`); enables the anchor check. */
+  /**
+   * Sections that exist in the PDD (`pddSectionIds(pdd)`): numbered ids AND heading
+   * texts, so `§8.1` and `§ Success Metrics` both resolve. Enables the anchor check.
+   */
   pddSections?: readonly string[];
   /** Every synthetic partner opportunity id; each must appear in `deployment.llo_map`. */
   opportunityIds?: readonly number[];
@@ -64,8 +67,14 @@ export interface AuthoringOptions {
 
 const CASE_FIELD_FORMATS = new Set(['date', 'count', 'number', 'text']);
 const DIRECTIONS = new Set(['higher', 'lower', 'mid2', 'none']);
-/** `PDD §8.1`, `§5.4`, `§ 7.2` — the citation form an indicator's `scope_note` carries. */
-const SECTION_CITE = /§\s*(\d+(?:\.\d+)*)/g;
+/**
+ * `PDD §8.1`, `§5.4`, `§ 7.2` — a numbered citation; `PDD § Success Metrics` — a
+ * named one. ACE's own PDD template has unnumbered headings (ace#2803), so both
+ * forms are citations; a named one resolves only against a real heading.
+ */
+const SECTION_CITE = /§\s*(?:(\d+(?:\.\d+)*)|(?=\p{L}))/gu;
+/** Where an unresolved named citation ends, for reporting it. */
+const NAMED_CITE_END = /[;,.()\n]|\s[—–-]\s/;
 
 type Measure = { name?: string; title?: string; sql?: string; meta?: Record<string, unknown> };
 
@@ -102,23 +111,52 @@ function isNum(v: unknown): v is number {
 }
 
 /**
- * Every numbered section a PDD declares, from its markdown headings:
- * `## 8. Success Metrics` → `8`; `### 8.1 Primary metrics` → `8.1`.
- * A cited `§8.1` resolves iff it is in this list.
+ * Every section a PDD declares, from its markdown headings — the number AND the
+ * heading text: `## 8. Success Metrics` → `8`, `Success Metrics`;
+ * `### 8.1 Primary metrics` → `8.1`, `Primary metrics`; ACE's template's unnumbered
+ * `## Success Metrics` → `Success Metrics` (ace#2803). A citation resolves iff it
+ * names one of these.
  */
 export function pddSectionIds(pddMarkdown: string): string[] {
   const out = new Set<string>();
   for (const line of pddMarkdown.split('\n')) {
-    const m = /^#{1,6}\s+(\d+(?:\.\d+)*)\.?\s/.exec(line);
+    const h = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+    if (!h) continue;
+    const m = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)(.*)$/.exec(h[1]);
     if (m) out.add(m[1]);
+    const name = (m ? m[2] : h[1]).trim();
+    if (name && /\p{L}/u.test(name)) out.add(name);
   }
   return [...out];
 }
 
-/** The PDD sections a piece of text cites, in order, de-duplicated. */
-export function citedSections(text: string): string[] {
+/**
+ * The PDD sections a piece of text cites, in order, de-duplicated. Numbered
+ * citations (`§8.1`) come back as the number. A named citation (`§ Success
+ * Metrics`) comes back as the longest of `headings` it starts with (matched
+ * case-insensitively, on a word boundary), in the PDD's own spelling — or, when
+ * no heading matches, as the citation text itself, so it reports as missing.
+ */
+export function citedSections(text: string, headings: readonly string[] = []): string[] {
   const out: string[] = [];
-  for (const m of text.matchAll(SECTION_CITE)) if (!out.includes(m[1])) out.push(m[1]);
+  const named = headings.filter((h) => /\p{L}/u.test(h)).sort((a, b) => b.length - a.length);
+  const norm = (s: string) => s.replace(/\s+/g, ' ').toLowerCase();
+  for (const m of text.matchAll(SECTION_CITE)) {
+    let id: string | undefined = m[1];
+    if (id === undefined) {
+      const rest = text.slice((m.index ?? 0) + m[0].length);
+      const restN = norm(rest);
+      id = named.find((h) => {
+        const hN = norm(h);
+        return restN.startsWith(hN) && !/[\p{L}\d]/u.test(restN.charAt(hN.length));
+      });
+      if (id === undefined) {
+        const end = rest.search(NAMED_CITE_END);
+        id = (end >= 0 ? rest.slice(0, end) : rest).trim();
+      }
+    }
+    if (id && !out.includes(id)) out.push(id);
+  }
   return out;
 }
 
@@ -180,17 +218,17 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
 
     // PDD anchor: every indicator cites the section it comes from (No inferred backstory).
     const note = String(meta.scope_note ?? '');
-    const cites = citedSections(note);
+    const cites = citedSections(note, pdd ? [...pdd] : []);
     if (!pdd && opts.appForms?.length) {
       // No PDD: the released app is the source of truth, so the anchor is a form it ships.
       if (!citesAppForm(note, opts.appForms)) {
         add('pdd-anchor', '`scope_note` names no form of the released Deliver app (`Deliver app — <form name>`) — with no PDD, an indicator not anchored in the app is an invented metric', id);
       }
     } else if (cites.length === 0) {
-      add('pdd-anchor', '`scope_note` cites no PDD section (`PDD §N.M`) — an indicator without a PDD anchor is an invented metric', id);
+      add('pdd-anchor', '`scope_note` cites no PDD section (`PDD §N.M` or `PDD § <Heading>`) — an indicator without a PDD anchor is an invented metric', id);
     } else if (pdd) {
       const missing = cites.filter((c) => !pdd.has(c));
-      if (missing.length === cites.length) add('pdd-anchor', `cites §${missing.join(', §')}, which the PDD does not have`, id);
+      if (missing.length === cites.length) add('pdd-anchor', `cites § ${missing.join(', § ')}, which the PDD does not have`, id);
     }
 
     // Targets: only where the PDD states one, and in the bands' own units.
@@ -318,7 +356,7 @@ export interface LabsValidateResult {
 export function registryQAOutcomes(
   report: AuthoringReport,
   labs: LabsValidateResult | null | undefined,
-  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[]; appForms?: readonly string[] },
+  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[]; appForms?: readonly string[]; pddSupplied?: boolean },
 ): Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> {
   const out: Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> = [];
   const labsErrors = Array.isArray(labs?.errors) ? (labs!.errors as unknown[]) : [];
@@ -333,6 +371,10 @@ export function registryQAOutcomes(
   });
   for (const check of REGISTRY_AUTHORING_CHECKS) {
     if (check === 'pdd-anchor' && !inputs.pddSections?.length && !inputs.appForms?.length) {
+      if (inputs.pddSupplied) {
+        out.push({ check, type: 'static', result: { pass: false, detail: 'the PDD was supplied but no section headings parsed from it, so no indicator anchor could be resolved', auto_fix_hint: 'read the PDD as text/markdown (the text/plain export drops the `#` heading markers) and normalise it before pddSectionIds' } });
+        continue;
+      }
       out.push({ check, type: 'static', result: { pass: false, detail: 'neither the PDD nor the released app was supplied, so no indicator anchor was checked', auto_fix_hint: 'pass the PDD markdown (pddSectionIds), or with no PDD the Deliver app structure (--app)' } });
       continue;
     }
