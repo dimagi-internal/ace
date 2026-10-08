@@ -66,14 +66,6 @@
  *       every write in the run folder, over the same run_state, with an
  *       untampered plan for exactly these reviewers and flags.
  *
- *   thread-recipients --participants "<addr>,<addr>,…" (--workspace W --opp O | --tenancy <json>)
- *       `--from-thread`: split the requesting thread's participants (every
- *       From/To/Cc address) into reviewers (Dimagi staff, and any domain in
- *       the tenancy's labs_allowed_domains — ace#2720) and excluded (ACE
- *       itself, anyone else — shown, never invited or copied). Prints JSON with
- *       the ready-to-pass `--reviewers` value. Never derives `--cc` (an
- *       explicit operator opt-in only). Read-only.
- *
  *   hq-flip-steps (--domain D | --run-state <yaml>)
  *       Print the HQ superuser step (set the space to "Test or Demo Project")
  *       for the run's HQ space — the exact URL and clicks the operator does in
@@ -118,7 +110,6 @@ import {
   emailBody,
   parseCc,
   parseReviewers,
-  partitionThreadParticipants,
   projectedMemberships,
   renderPlan,
   runStateHash,
@@ -474,15 +465,6 @@ function gate(): void {
   if (!r.ok) process.exit(1);
 }
 
-async function threadRecipients(): Promise<void> {
-  const local = readJson<Tenancy & { tenancy?: Tenancy }>(arg('tenancy'));
-  const tenancy = local ? (local.tenancy ?? local) : await tenancyFor(need('workspace'), need('opp'));
-  if (!tenancy) throw new Error("thread-recipients: the opp's tenancy could not be read (labs_allowed_domains) — pass --tenancy <json> from bin/ace-bind --show");
-  const parts = need('participants').split(',').map((s) => s.trim()).filter(Boolean);
-  const p = partitionThreadParticipants(parts, tenancy.labs_allowed_domains);
-  process.stdout.write(JSON.stringify({ ...p, labs_allowed_domains: tenancy.labs_allowed_domains ?? [], flags: { reviewers: p.reviewers.join(',') } }, null, 1) + '\n');
-}
-
 async function main(): Promise<void> {
   if (cmd === 'inventory') return inventory();
   if (cmd === 'links') return links();
@@ -491,7 +473,6 @@ async function main(): Promise<void> {
   if (cmd === 'gate') return gate();
   if (cmd === 'memberships') return memberships();
   if (cmd === 'drive-access') return driveAccess();
-  if (cmd === 'thread-recipients') return threadRecipients();
   if (cmd === 'plan-show') {
     process.stdout.write(renderPlan(readyPlan()));
     return;
@@ -513,7 +494,7 @@ async function main(): Promise<void> {
     process.stdout.write(hqEnterpriseFlipSteps(domain) + '\n');
     return;
   }
-  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|thread-recipients|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
+  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
   process.exit(2);
 }
 

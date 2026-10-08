@@ -32,13 +32,6 @@
       "args": {"downstream_domain": ["hq_domain"]}
     },
     {
-      "name": "labs-synthetic-allowlist",
-      "tool_pattern": "(?:^|__)synthetic_(?:create\\w*|clone\\w*|set_allowed_domains)$",
-      "args": {"allowed_domains[]": ["labs_allowed_domains[]"]},
-      "operator_values": {"allowed_domains[]": ["@dimagi.com", "{agent_email_domain}"]},
-      "_operator_values_doc": "Domains always admitted on a labs allowlist besides the opp's own: Dimagi staff and ACE's own mailbox domain ({agent_email_domain} = config/agent.json email). Neither widens a partner's view, and ACE must stay on every list or it locks itself out of its own synthetic opps — synthetic_set_allowed_domains REPLACES the list (ace#2713)."
-    },
-    {
       "name": "ocs-team-writes",
       "tool_pattern": "(?:^|__)ocs_(?:clone_chatbot|create_chatbot|link_action_to_node|add_custom_action|add_chatbot_event|add_pipeline_node|set_chatbot_system_prompt|set_chatbot_pipeline|create_collection|upload_collection_files|attach_knowledge|set_chatbot_tools|set_source_material|publish_chatbot_version|delete_chatbot|delete_pipeline|delete_collection|remove_collection_file|add_team_member|trigger_bot_message|update_participant_data)$",
       "server_env": {"OCS_TEAM_SLUG": ["ocs_team"]}

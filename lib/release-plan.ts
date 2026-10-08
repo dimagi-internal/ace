@@ -103,50 +103,10 @@ export function ccKey(cc: readonly string[] | undefined | null): string {
   return [...new Set((cc ?? []).map((e) => e.toLowerCase()))].sort().join(',');
 }
 
-/**
- * `--from-thread`: split the requesting thread's participants (every From /
- * To / Cc address) into reviewers and excluded.
- *
- * Operator correction (Jonathan, 2026-10-05, ace#2720): "we want dimagi people
- * to be invited into the workspace if they are on the project". So:
- *
- * - Dimagi staff (`@dimagi.com`) → `reviewers`: an ace-web workspace
- *   invite (as `editor`, RELEASE_ACE_WEB_ROLE), the same grants a partner gets (`grantsFor` already treats staff
- *   as grantable on every system), and their own release email.
- * - an address whose domain is in `labs_allowed_domains` → `reviewers`.
- * - ACE's own mailbox, and anyone else → `excluded`, with the reason — shown to
- *   the operator, never silently invited or copied.
- *
- * Nothing here derives `--cc`: copying staff without a grant (ace#2706) is an
- * explicit operator opt-in only.
- */
-export function partitionThreadParticipants(
-  participants: readonly string[],
-  labsAllowedDomains: readonly string[] | null | undefined,
-): { reviewers: string[]; excluded: Array<{ email: string; reason: string }> } {
-  const domains = new Set((labsAllowedDomains ?? []).map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean));
-  const reviewers = new Set<string>();
-  const excluded = new Map<string, string>();
-  for (const raw of participants) {
-    // `Name <a@x.org>` and bare `a@x.org` both
-    const email = (/<([^>]+)>/.exec(raw)?.[1] ?? raw).trim().toLowerCase();
-    if (!email) continue;
-    if (!EMAIL.test(email)) excluded.set(email, 'not an email address');
-    else if (email === ACE_MAILBOX) excluded.set(email, "ACE's own mailbox — the sender");
-    else if (isDimagiStaff(email) || domains.has(email.split('@')[1])) reviewers.add(email);
-    else excluded.set(email, "neither a partner domain in the opp's labs_allowed_domains nor Dimagi staff — not a reviewer, and never copied");
-  }
-  return {
-    reviewers: [...reviewers].sort(),
-    excluded: [...excluded].map(([email, reason]) => ({ email, reason })).sort((a, b) => a.email.localeCompare(b.email)),
-  };
-}
-
 export interface Tenancy {
   hq_domain?: string | null;
   connect_pm_org?: string | null;
   connect_holding_org?: string | null;
-  labs_allowed_domains?: string[] | null;
   ocs_team?: string | null;
 }
 
@@ -283,7 +243,6 @@ interface CloneBlock {
   from?: { workspace?: string; opp?: string; run?: string };
   hq?: { status?: string };
   connect?: { status?: string };
-  labs?: { status?: string };
 }
 
 function cloneBlock(runState: unknown): CloneBlock {
@@ -298,11 +257,14 @@ export interface Grants {
 }
 
 /**
- * HQ / Connect / labs are grantable to an outside reviewer only when the clone
+ * HQ / Connect are grantable to an outside reviewer only when the clone
  * rebuilt the run's asset there into the run's OWN area (`clone.<sys>.status
  * == done`); a grant on a shared tenant opens every ACE run. Connect has one
  * escape hatch, `--allow-shared connect`, recorded as shared. Dimagi staff are
  * not outside reviewers. OCS is never an account — always the public link.
+ * Labs is never granted to anyone a release invites: it opens to Dimagi accounts
+ * only (its own default), and a release does not widen that (ace-web removed
+ * `labs_allowed_domains` 2026-10-08).
  */
 export function grantsFor(email: string, runState: unknown, allowSharedConnect: boolean): Grants {
   const c = cloneBlock(runState);
@@ -311,7 +273,7 @@ export function grantsFor(email: string, runState: unknown, allowSharedConnect: 
   return {
     hq: staff || done(c.hq),
     connect: staff || done(c.connect) ? 'own' : allowSharedConnect ? 'shared' : false,
-    labs: staff || done(c.labs),
+    labs: staff,
   };
 }
 
@@ -387,7 +349,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
   if (!reviewers.length) {
     problems.push(problem('reviewers-missing', 'blocker',
       'no reviewers were named, so there is nobody to plan access for and nothing checked that the people the run is for can open it',
-      'pass --reviewers <email[:role]>,… or --from-thread <id>',
+      'pass --reviewers <email[:role]>,…',
       'Nobody has been named to review this run.',
       'Name the reviewers, then validate release readiness again.'));
   }
@@ -437,7 +399,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
         actions.push({ id: `connect:${r.email}:${pm}`, system: 'connect', kind: 'connect_org_member', email: r.email, target: pm, role: 'viewer', shared: g.connect === 'shared' });
       }
     } else notGranted.push({ email: r.email, system: 'connect', reason: 'shared tenant — the Connect orgs hold every ACE opportunity' });
-    if (!g.labs) notGranted.push({ email: r.email, system: 'labs', reason: 'shared tenant — the labs scope was not rebuilt for this run' });
+    if (!g.labs) notGranted.push({ email: r.email, system: 'labs', reason: 'Labs opens to Dimagi accounts only — a release does not widen it' });
     notGranted.push({ email: r.email, system: 'ocs', reason: 'no account — the support chatbot is reviewed through its public chat link' });
   }
   if (input.tenancy && reviewers.some((r) => granted.get(r.email)?.hq) && !hqDomain) {
@@ -560,7 +522,10 @@ function reviewerEmail(x: {
   if (cannot.length) {
     lines.push('');
     lines.push('What you cannot open, and why:');
-    for (const n of cannot) lines.push(`- ${n.system === 'hq' ? 'the CommCare HQ project space' : n.system === 'connect' ? 'the Connect workspace' : 'the labs dashboards'}: it is shared with other programmes, so it is not opened to outside reviewers`);
+    for (const n of cannot) {
+      if (n.system === 'labs') lines.push('- the Labs dashboards: Labs is open to Dimagi accounts only');
+      else lines.push(`- ${n.system === 'hq' ? 'the CommCare HQ project space' : 'the Connect workspace'}: it is shared with other programmes, so it is not opened to outside reviewers`);
+    }
   }
   lines.push('');
   lines.push('Thank you,');
@@ -599,7 +564,7 @@ export function renderPlan(plan: ReleasePlan): string {
     out.push(
       `| ${r.email} (${r.role}) | ${hq ? `invite ${hq.target} as ${hq.role}` : `NOT GRANTED — ${ng('hq')?.reason ?? 'no grant'}`} | ${
         cn.length ? cn.map((c) => `${c.target} as ${c.role}${c.shared ? ' (SHARED — revoke later)' : ''}`).join('; ') : `NOT GRANTED — ${ng('connect')?.reason ?? 'no grant'}`
-      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (domain already allowed)'} | public link (no account) | ${aw ? `invite to ${aw.target} as ${aw.role}` : '—'} |`,
+      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (Dimagi account)'} | public link (no account) | ${aw ? `invite to ${aw.target} as ${aw.role}` : '—'} |`,
     );
   }
   const drive = plan.actions.filter((x) => x.kind === 'drive_share');

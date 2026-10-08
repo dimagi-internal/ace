@@ -2,9 +2,9 @@
  * Tenancy guard + opp binding (hooks/tenancy_guard.py, bin/ace-bind).
  *
  * A session bound to an opp (bin/ace-bind) may only WRITE into that opp's
- * tenancy: its HQ project space, Connect orgs, OCS team and Labs domains. The
+ * tenancy: its HQ project space, Connect orgs, and OCS team. The
  * guard is a PreToolUse hook because it is the one choke point every ACE tool
- * call crosses — including the remote connect-labs server, which no in-process
+ * call crosses — including the remote Nova server, which no in-process
  * wrapper can see. It stops mistakes (a wrong default, another opp's id pasted
  * in), not a compromised session; see ace-web
  * docs/specs/2026-09-28-clone-and-release-design.md § D.
@@ -32,7 +32,6 @@ const SPARK = {
   connect_pm_org: 'spark-pm',
   connect_holding_org: 'spark',
   ocs_team: 'spark',
-  labs_allowed_domains: ['@sparkmicrogrants.org'],
 };
 
 let bindDir: string;
@@ -79,6 +78,7 @@ const OPPORTUNITY = 'mcp__plugin_ace_ace-connect__connect_create_opportunity';
 const COPY = 'mcp__plugin_ace_ace-connect__commcare_linked_app_copy';
 const OCS = 'mcp__plugin_ace_ace-ocs__ocs_create_chatbot';
 const LABS = 'mcp__plugin_ace_connect-labs__synthetic_create_labs_only';
+const LABS_SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
 
 describe('unbound session', () => {
   it('allows a write and logs what a bound session would have refused', () => {
@@ -135,34 +135,12 @@ describe('bound session', () => {
     expect(guard(COPY, { upstream_domain: 'connect-ace-spark', downstream_domain: 'connect-ace-prod' }).code).toBe(2);
   });
 
-  it('checks every Labs allowed domain against the opp domains', () => {
-    expect(guard(LABS, { allowed_domains: ['sparkmicrogrants.org'] }).code).toBe(0);
-    expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@otherpartner.org'] }).code).toBe(2);
-  });
-
-  // ace#2713: synthetic_set_allowed_domains REPLACES the list, so the clone
-  // must resend ACE's own domain (config/agent.json email) and the Dimagi
-  // operators it found there. Neither widens a partner's view, so the guard
-  // admits them on every bound opp — and still refuses another partner.
-  it("admits the operator domains (Dimagi staff + ACE's own mailbox) on a labs allowlist", () => {
-    const SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
-    const union = { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@dimagi.com', '@sparkmicrogrants.org'] };
-    expect(guard(SET, union).code).toBe(0);
-    expect(guard(LABS, { allowed_domains: ['@sparkmicrogrants.org', '@dimagi.com'] }).code).toBe(0);
-    const r = guard(SET, { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@evil.org'] });
-    expect(r.code).toBe(2);
-    expect(r.stderr).toContain('@evil.org');
-  });
-
-  it('operator domains do not stand in for a missing tenancy', () => {
-    bind({ hq_domain: 'connect-ace-spark' });
-    expect(guard(LABS, { allowed_domains: ['@dimagi-ai.com'] }).code).toBe(2);
-  });
-
-  it('checks synthetic_set_allowed_domains against the opp domains', () => {
-    const SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
-    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@sparkmicrogrants.org'] }).code).toBe(0);
-    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@evil.org'] }).code).toBe(2);
+  // Labs is no longer part of the tenancy (ace-web removed `labs_allowed_domains`
+  // 2026-10-08): Labs keeps its own Dimagi-only default, so the guard has no
+  // opinion on a Labs write and must not refuse one.
+  it('does not check Labs writes — Labs is not part of the tenancy', () => {
+    expect(guard(LABS, { allowed_domains: ['@anything.org'] }).code).toBe(0);
+    expect(guard(LABS_SET, { opportunity_id: 10097, allowed_domains: ['@evil.org'] }).code).toBe(0);
   });
 
   it('checks the OCS team the server was started with', () => {
@@ -251,10 +229,9 @@ describe('bin/ace-bind', () => {
 
 describe('hook matcher covers every spelling a rule targets', () => {
   // The rules suffix-match tool names, but the hook only RUNS for tool names
-  // hooks/hooks.json's PreToolUse matcher lets through. connect-labs and Nova
-  // are registered user-scope on some machines (mcp__connect_labs__X,
-  // mcp__nova__X), and a matcher written for the plugin spelling alone silently
-  // skipped every Labs write there — the guard's own tests called the hook
+  // hooks/hooks.json's PreToolUse matcher lets through. Nova is registered
+  // user-scope on some machines (mcp__nova__X), and a matcher written for the
+  // plugin spelling alone silently skipped every Nova write there — the guard's own tests called the hook
   // directly and never saw it.
   const hooks = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf8'));
   const entry = hooks.hooks.PreToolUse.find((h: { hooks: { command: string }[] }) =>
@@ -266,8 +243,6 @@ describe('hook matcher covers every spelling a rule targets', () => {
     'mcp__plugin_ace_ace-connect__commcare_make_build',
     'mcp__ace-connect__connect_remove_org_member',
     'mcp__plugin_ace_ace-ocs__ocs_create_chatbot',
-    'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains',
-    'mcp__connect_labs__synthetic_set_allowed_domains',
     'mcp__nova__upload_app_to_hq',
     'mcp__plugin_nova_nova__provision_workers',
   ])('%s reaches the guard', (tool) => {
@@ -277,12 +252,6 @@ describe('hook matcher covers every spelling a rule targets', () => {
 
 describe('writes added after v1', () => {
   beforeEach(() => bind(SPARK));
-
-  it('checks the user-scope connect_labs spelling', () => {
-    const SET = 'mcp__connect_labs__synthetic_set_allowed_domains';
-    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@sparkmicrogrants.org'] }).code).toBe(0);
-    expect(guard(SET, { opportunity_id: 10500, allowed_domains: ['@evil.org'] }).code).toBe(2);
-  });
 
   it('checks Nova uploads and worker provisioning against the HQ space', () => {
     expect(guard('mcp__nova__upload_app_to_hq', { app_id: 'a', domain: 'connect-ace-spark' }).code).toBe(0);

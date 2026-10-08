@@ -1,6 +1,6 @@
 ---
 description: Validate that a run is ready to release to named reviewers — do every check and every non-sharing fix, then READY or NOT READY with blockers, and on READY the exact release plan (every grant and every email) that /ace:release will execute and nothing else.
-argument-hint: "<workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <gmail-thread-id>) [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]"
+argument-hint: "<workspace>/<opp>/<run-id> --reviewers <email[:role]>,... [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]"
 allowed-tools: [Bash, Read, Skill, Agent, AskUserQuestion, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_list_folder, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-gdrive__drive_upload_binary, mcp__plugin_ace_ace-gdrive__drive_create_doc_from_markdown, mcp__plugin_ace_ace-gdrive__drive_update_file, mcp__plugin_ace_ace-gdrive__update_yaml_file, mcp__plugin_ace_ace-gdrive__verify_run_claims, mcp__plugin_ace_ace-connect__connect_get_opportunity, mcp__plugin_ace_ace-connect__connect_list_payment_units, mcp__plugin_ace_ace-connect__connect_list_flw_invites, mcp__plugin_ace_ace-connect__commcare_get_subscription]
 ---
 
@@ -13,11 +13,8 @@ parsed arguments.
 
 - **`<workspace>/<opp>/<run-id>`** (required) — the run, normally a clone.
 - **`--reviewers`** — comma-separated emails, each optionally `:viewer` /
-  `:editor` (default viewer). Or **`--from-thread <id>`**: the participants of
-  the ace@ thread that asked for the review whose domain is in the opp's
-  `labs_allowed_domains` become reviewers, and so do its Dimagi staff
-  (`@dimagi.com` — workspace invite, the same grants, their own email; ace#2720).
-  ACE's own mailbox and anyone else are excluded and shown.
+  `:editor` (default viewer) — exactly the people the operator names; ACE
+  derives no one from a thread or a domain. Dimagi staff are reviewers like anyone else.
   **Required for READY** — without reviewers the run can only come back NOT READY.
 - **`--cc`** — explicit opt-in only (never derived from a thread):
   comma-separated Dimagi staff (`@dimagi.com` only — any other

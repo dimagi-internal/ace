@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 # release-run
 
-`/ace:release <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
+`/ace:release <workspace>/<opp>/<run-id> --reviewers <email[:role]>,... [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect]`
 `/ace:release <workspace>/<opp>/<run-id> --revoke-shared`
 
 **Releasing is sharing, and only sharing.** Owner decision (Jonathan,
@@ -36,10 +36,8 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E2.
 ## Inputs
 
 - `<workspace>/<opp>/<run-id>` — the run to release, normally a clone.
-- `--reviewers` / `--from-thread` — **the same reviewers given to the
-  validation** (from a thread: the same derivation, `$RC thread-recipients
-  --participants "<addr>,…" --workspace <ws> --opp <opp>` — partner-domain
-  participants AND the thread's Dimagi staff are reviewers, ace#2720). The gate
+- `--reviewers` — **the same reviewers given to the
+  validation**, exactly as the operator named them. The gate
   compares them exactly — one extra, one missing or one different role is a
   refusal.
 - `--cc` — **the same Dimagi staff the validation copied** (ace#2706), only if
@@ -128,8 +126,8 @@ with its evidence: stop there, record what was done (Step 4), and report — do
 not retry with different arguments, and do not continue past a failed grant to
 that reviewer's email.
 
-Nothing outside this table is called. Labs needs no call (the clone already
-allowed the reviewer's domain); OCS is the public chat link in the email.
+Nothing outside this table is called. Labs is not called — a release does not widen it (it opens to Dimagi accounts
+only); OCS is the public chat link in the email.
 
 ## Step 4 — Record (the only run writes: the release record and the send log)
 
@@ -186,6 +184,7 @@ hash executed.
 | 2026-10-03 | Share-only release: executes the validated plan's share actions and nothing else (owner decision, ace#2620). | ACE team |
 | 2026-10-05 | `--waive` (ace#2707): the plan's waived eval blockers are shown in the approval prompt; the gate refuses waivers that differ from the validated ones. | ACE team |
 | 2026-10-05 | `--from-thread` derives Dimagi staff on the thread as **reviewers** (workspace invite + grants + own email), never cc; `--cc` is an explicit opt-in only (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). | ACE team |
-| 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |
+| 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with the retired `thread-recipients` subcommand. | ACE team |
 | 2026-10-07 | Step 4 also logs every sent email to `release-run_comms-log.md` at the run root (date, thread_id, message_id, to, cc, gist — never the body), so `inbox-triage` §b.1 routes reviewer replies by `thread_id`. A release has no phase folder, so the run root is its home; the shares-only ratchet allows exactly this write (ace#2780). | ACE team |
+| 2026-10-08 | `--from-thread` removed (it derived reviewers from the opp's `labs_allowed_domains`, which ace-web deleted): `--reviewers` is exactly what the operator names. Labs is never opened by a release. | ACE team |
 | 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |

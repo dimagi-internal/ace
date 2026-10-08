@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # validate-release-readiness
 
-`/ace:validate-release-readiness <workspace>/<opp>/<run-id> (--reviewers <email[:role]>,... | --from-thread <id>) [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
+`/ace:validate-release-readiness <workspace>/<opp>/<run-id> --reviewers <email[:role]>,... [--cc <staff@dimagi.com>,...] [--waive <blocker-id>=<reason>]... [--forward-source [--allow-cross-workspace-forward]] [--allow-shared connect] [--read-only]`
 
 Owner decision (Jonathan, 2026-10-03): *"we should have one
 validate-release-readiness (which should take over whatever the release check
@@ -45,9 +45,12 @@ each run replaces the previous verdict and report.
 | `run_state.yaml` | steps that ran, products, Phase 4's decisions, the `clone:` block (what was rebuilt into the run's own area, and the source run) |
 | The opp's tenancy (ace-web `GET /api/w/<ws>/opps/<opp>/tenancy`) | `hq_domain`, `connect_holding_org`, `connect_pm_org` — the grant targets |
 | ace-web | the run's outputs, the preview gap list, the public summary |
-| Live systems | Connect, labs, HQ, OCS public chat, Drive sharing — each read with its own session; nothing is shared |
+| Live systems | Connect, HQ, OCS public chat, Drive sharing — each read with its own session; nothing is shared |
 
-**Reviewers.** `--reviewers` is comma-separated emails, each optionally
+**Reviewers.** `--reviewers` is comma-separated emails — **exactly the people the
+operator names; ACE never derives or widens the list** (no thread parsing, no
+domain rule; the Labs-domain reviewer rule went with ace-web's
+`labs_allowed_domains`, 2026-10-08) — each optionally
 `:viewer` / `:editor` (default viewer). **Every reviewer is invited into the
 ace-web workspace as `editor`, whatever that suffix says** (`RELEASE_ACE_WEB_ROLE`
 in `lib/release-plan.ts`; owner directive, Jonathan, 2026-10-08: *"everyone ace
@@ -60,8 +63,7 @@ on the project"*.
 
 **Cc (ace#2706) — explicit opt-in only.** `--cc` is comma-separated **Dimagi
 staff** (`@dimagi.com`) copied on EVERY release email and granted nothing — they
-are told, not let in. It is never derived from a thread (`--from-thread` makes
-the thread's Dimagi staff reviewers, above); pass it only when the operator
+are told, not let in. It is never derived — pass it only when the operator
 names someone who should be copied without being let in. Any other address is refused (`parseCc`: a partner is a reviewer or nobody;
 ACE's own mailbox is the sender), and so is an address that is also a reviewer
 (blocker `reviewers-cc-is-reviewer:<email>`). The cc list is part of the plan —
@@ -95,15 +97,6 @@ of this validation (`waiver-unmatched:<id>`) or with no git email to record
 (`waiver-unattributed:<id>`) is refused too. Take the id verbatim from the
 report (`blockers[].id`).
 
-**`--from-thread <id>`.** Read the ace@ thread that asked for the review
-(`canopy email read <id>`), collect every From / To / Cc address, and split
-them with `$RC thread-recipients --participants "<addr>,…" --workspace <ws>
---opp <opp>`: a participant whose domain is in the tenancy's
-`labs_allowed_domains` is a **reviewer** (the partner's own people), and so
-is every Dimagi staff member (`@dimagi.com`) on the thread, whatever the labs
-domains say (ace#2720); ACE's own mailbox and anyone else are **excluded**,
-each with its reason. Show the operator both lists, then use its
-`flags.reviewers` as `--reviewers` for every step below. It derives no `--cc`.
 `/ace:release` must later be given the SAME reviewers (and the same `--cc`, if
 the operator added one) — the gate compares both exactly.
 
@@ -155,18 +148,17 @@ release_plan:              # null unless READY
 
 ### Why each kind of action is planned the way it is
 
-- **HQ / Connect / labs only where the clone rebuilt the asset into the run's
+- **HQ / Connect only where the clone rebuilt the asset into the run's
   own area** (`clone.<system>.status == done`). A shared tenant is never
   granted to an outside reviewer (every grant there opens every ACE run) —
   it is listed in `not_granted`. Dimagi staff (`@dimagi.com`) are not outside
   reviewers. The one escape hatch is `--allow-shared connect` (a clone made
   with `--keep-shared connect`): both shared orgs, every grant marked
-  `shared: true` for later revocation. Labs needs no call. The clone already
-  WIDENED each synthetic opp's allowlist to the partner's domain, keeping ACE's
-  own domain on it (`clone-to-new-workspace` § 4c). The clone records
-  `clone.labs.status: done` only after its `labs_context` read-back showed ACE
-  still sees every opp (ace#2713). **OCS is always the public chat link**, never
-  an account.
+  `shared: true` for later revocation. **Labs is never granted** — it opens to
+  Dimagi accounts only (its own default); neither clone nor release widens it
+  (2026-10-08), so an outside reviewer's plan row says so and their email lists
+  the Labs dashboards under "What you cannot open". **OCS is always the public
+  chat link**, never an account.
 - **Connect is BOTH orgs, the holding org and the PM org** (when they differ):
   the holding org holds the opportunity, the PM org holds the program and the
   verification-rules page, and the run links to both. A viewer of the holding
@@ -357,6 +349,7 @@ prints why and the release stops — it never adapts.
 | 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
 | 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
 | 2026-10-05 | `--from-thread` makes the thread's Dimagi staff **reviewers** (viewer: ace-web workspace invite, the partner grants, their own email), not cc (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). `--cc` stays, as an explicit opt-in only — `thread-recipients` no longer derives it. | ACE team |
+| 2026-10-08 | `--from-thread` and the `thread-recipients` subcommand removed, with the Labs-domain reviewer rule: reviewers are exactly the `--reviewers` the operator names. Labs is never opened to a reviewer (it keeps its Dimagi-only default) — the plan row and email say so. ace-web removed `labs_allowed_domains` (Jonathan: "just delete that setting, I don't think it clearly means anything"). Existing READY verdicts need re-validation (the plan changes). | ACE team |
 | 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |
 | 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |

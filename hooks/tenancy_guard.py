@@ -2,17 +2,16 @@
 """PreToolUse guard: a session bound to an opp may only write into that opp's tenancy.
 
 Tenancy is where an opp's assets live in each system ACE writes to: its HQ
-project space, Connect program-manager and holding orgs, OCS team and Labs
-allowed domains. It is recorded per opp in ace-web
+project space, Connect program-manager and holding orgs and OCS team. It is recorded per opp in ace-web
 (GET /api/w/{ws}/opps/{slug}/tenancy); `bin/ace-bind <ws>/<opp>` fetches it and
 writes a bind file for the current Claude session. This hook reads that file on
 every ACE tool call, finds the call's tenant arguments via
 config/tenancy-targets.json, and refuses (exit 2) a write that points anywhere
 else — so one opp's work cannot land in another opp's HQ space, Connect org,
-OCS team or Labs scope by mistake.
+or OCS team by mistake.
 
 Why a hook and not an MCP-side wrapper: it is the one choke point every ACE
-tool crosses, including the remote connect-labs server, and Claude Code hands
+tool crosses (including Nova, which runs as a remote server), and Claude Code hands
 it the session id the bind file is keyed by.
 
 What it is NOT: a boundary against a compromised session. ace@ is admin in
@@ -116,10 +115,7 @@ def _values_at(obj, path: str) -> list:
 
 
 def _norm(value: str, field: str) -> str:
-    v = str(value).strip().lower()
-    if field.startswith("labs_allowed_domains") and not v.startswith("@"):
-        v = "@" + v
-    return v
+    return str(value).strip().lower()
 
 
 def _allowed(tenancy: dict, fields: list[str]) -> tuple[set[str], list[str]]:
@@ -137,28 +133,6 @@ def _allowed(tenancy: dict, fields: list[str]) -> tuple[set[str], list[str]]:
     return allowed, missing
 
 
-def agent_email_domain() -> str | None:
-    """ACE's own mailbox domain, from config/agent.json `email` (the single source)."""
-    try:
-        with open(os.path.join(PLUGIN_ROOT, "config", "agent.json"), encoding="utf-8") as f:
-            email = (json.load(f) or {}).get("email") or ""
-    except (OSError, ValueError):
-        return None
-    return email[email.rfind("@"):].lower() if "@" in email else None
-
-
-def _operator_values(rule: dict, arg: str, field: str) -> set[str]:
-    """Values a rule admits for `arg` whatever the tenancy says (ace#2713):
-    labs operator domains, which never widen a partner's view."""
-    out: set[str] = set()
-    for v in (rule.get("operator_values") or {}).get(arg, []):
-        if v == "{agent_email_domain}":
-            v = agent_email_domain()
-        if v:
-            out.add(_norm(v, field))
-    return out
-
-
 def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
     problems: list[str] = []
     for arg, fields in (rule.get("args") or {}).items():
@@ -166,7 +140,6 @@ def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
         if not values:
             continue
         allowed, missing = _allowed(tenancy, fields)
-        operators = _operator_values(rule, arg, fields[0])
         if not allowed:
             problems.append(
                 f"`{arg}` is checked against tenancy {' / '.join(missing)}, which is not set "
@@ -175,7 +148,7 @@ def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
             continue
         for v in values:
             n = _norm(v, fields[0])
-            if n not in allowed and n not in operators:
+            if n not in allowed:
                 problems.append(
                     f"`{arg}` = {v!r}, but this opp's tenancy allows {sorted(allowed)}."
                 )
