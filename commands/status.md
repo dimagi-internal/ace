@@ -5,6 +5,16 @@ allowed-tools: [Read, Bash, mcp__plugin_ace_ace-gdrive__drive_list_folder, mcp__
 
 # /ace:status
 
+**Workspace addressing.** The opp argument may be prefixed with an ace-web
+workspace: `<ws>/<opp>` or `<ws>/<opp>/<run-id>` (e.g.
+`spark/spark-facilitator`). A bare `<opp>` / `<opp>/<run-id>` means the default
+workspace (`ACE_WEB_WORKSPACE`, `dimagi-team`) exactly as before — a run id
+(`YYYYMMDD-HHMM`) is never mistaken for an opp. Parse with `parseOppRef`
+(`lib/run-paths.ts`) and resolve with `npx tsx
+"$CLAUDE_PLUGIN_ROOT/scripts/resolve-run-workspace.ts" <arg>`; read the opp
+under that workspace's Drive root (`resolve_opp_path` with `aceRootFolderId:
+run_workspace.drive_root_folder_id`). Exit 2 = halt with its remediation.
+
 Show the current state of opps and their runs.
 
 ## Arguments

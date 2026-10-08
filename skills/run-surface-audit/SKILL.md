@@ -8,6 +8,8 @@ description: >
 
 # Run-surface audit — what an outsider actually gets
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, `${ACE_WEB_WORKSPACE}` → the run's `workspace:` from `run_state.yaml` (pass `--workspace`) — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 The **run-summary page is ACE's canonical shareable output** and, since
 2026-08-13, the first thing an external partner ever sees of a run. It is
 served by ace-web from `run_state.yaml` live in Drive, at:

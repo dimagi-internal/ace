@@ -63,7 +63,7 @@ Invoke the `connect-program-setup` skill.
   did not carry it, run `bash bin/ace-doctor --preflight --no-live` and read
   `connect_orgs:`; HALT when `connect_orgs` reports `fail`). A reused program
   keeps the org recorded in `opp.yaml.connect.program.url`. Pass
-  `connect_orgs` through to `connect-program-setup` and `connect-opp-setup`.
+  `connect_orgs` through to `connect-program-setup` and `connect-opp-setup`. For a run built in a partner workspace the orchestrator's `connect_orgs` comes from `run_workspace.connect_orgs` (`source: tenancy` — the partner's own PM and holding orgs); pass the whole `run_workspace:` block through too, because `connect-opp-setup` needs its `hq_domain` and space-restricted `hq_api_key` (`skills/_run-workspace.md`).
   **When `connect_orgs.nm_org` is configured, Phase 4 runs the real PM→NM
   flow:** the program is in the PM org, `connect-opp-setup` invites + accepts
   the NM org and creates the opportunity HELD by it, and verification rules

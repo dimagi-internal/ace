@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # App Release
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain` — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 Make a new build of each app on CCHQ and mark it as **Released**, so Connect
 can read its form schema and surface deliver units to the opportunity.
 

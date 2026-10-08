@@ -120,6 +120,21 @@ an org slug of its own. `nm_org` is carried but unconsumed until the follow-up
 PM→NM flow change; a program an opp already owns keeps the org recorded in
 `opp.yaml.connect.program.url`.
 
+**A run that targets an ace-web workspace carries THAT workspace's tenancy, not
+the instance's.** `§ Starting a New Opportunity` step 1 resolves a
+`run_workspace:` block (`scripts/resolve-run-workspace.ts`, logic in
+`lib/run-workspace.ts`). For the default workspace (a bare `<opp>`) it is the
+`.env` values above, unchanged. For any other workspace (`/ace:run <ws>/<opp>`)
+its nested `connect_orgs:` block (`source: tenancy`) REPLACES the preflight's in
+every Connect-acting dispatch, and the whole `run_workspace:` block goes into
+EVERY phase dispatch: Phase 3 deploys and releases into `run_workspace.hq_domain`
+(wherever a skill says `<ACE_HQ_DOMAIN>`), Phase 4 builds in the partner's PM +
+holding orgs and hands Connect the space-restricted `run_workspace.hq_api_key`
+(minted by `connect-opp-setup`, never `${ACE_HQ_API_KEY}`), and Drive writes land
+under `run_workspace.drive_root_folder_id`. Labs needs nothing: the per-opp Labs
+domain list was removed from ace-web on 2026-10-08, so Labs stays Dimagi-only for
+every workspace.
+
 **`nova_needs_auth_cache.recurrence: confirmed-by-handoff` means the restart
 has already been tried and failed — do not offer it again.** Preflight sets
 that field by correlating the block with the handoff printed below it; when it
@@ -446,7 +461,8 @@ a human label, not a value any atom accepts. So this is two messages,
 not one:
 
 1. **Resolve the opp's real folder IDs** in one call:
-   `resolve_opp_path({slug: <opp>})` → `{opp_root_id, inputs_id,
+   `resolve_opp_path({slug: <opp>, aceRootFolderId:
+   <run_workspace.drive_root_folder_id>})` → `{opp_root_id, inputs_id,
    runs_id}` (`runs_id` is null on a first-run opp). Use ONLY the IDs
    it returns from here on.
 2. **Read opp state in ONE parallel message**, keyed on those IDs:
@@ -1086,7 +1102,7 @@ exception rationale.)
 fires. The shape of the Drive folder hierarchy:
 
 ```
-ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
+ACE/                              (= run_workspace.drive_root_folder_id; ACE_DRIVE_ROOT_FOLDER_ID for the default workspace)
 ├── <opp>/                        (folder name = opp slug)
 │   ├── inputs/                   (human-curated evidence pack — read-only)
 │   │   └── *.{pdf,md,docx,xlsx,gdoc,...}   (any source material; no required filename)
@@ -1107,8 +1123,42 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
 ### Resolution
 
-1. **Read the positional argument** (if any). Use `parseOppRef(arg)` from
-   `lib/run-paths.ts` to split `<opp>` vs `<opp>/<run-id>`.
+1. **Read the positional argument** (if any) and resolve its workspace.
+   `parseOppRef(arg)` from `lib/run-paths.ts` splits `<opp>`,
+   `<opp>/<run-id>`, `<ws>/<opp>` and `<ws>/<opp>/<run-id>` (a run id is
+   `YYYYMMDD-HHMM[-N]`; a workspace slug never is, so `<opp>/<run-id>` keeps
+   its old meaning). Then, in ONE Bash call:
+
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/resolve-run-workspace.ts" <arg>
+   ```
+
+   It prints the run's `run_workspace:` block — workspace, Drive root, HQ
+   space, Connect orgs (nested `connect_orgs:`), OCS team, the HQ key Phase 4
+   uses, and `preflight_reads`. **Exit 2 (a failed resolution) halts the run before
+   anything is written**: surface its `code`, `fields` and `remediation`
+   verbatim. A partner workspace whose tenancy is incomplete, names one of
+   ACE's shared tenants, or names an OCS team other than this session's
+   (`OCS_TEAM_SLUG` is fixed at MCP start) is refused here — it NEVER falls
+   back to the `.env` tenants, because that would build a partner run in the
+   shared HQ space and Connect orgs. A bare `<opp>` (and zero-arg) resolves
+   the default workspace (`ACE_WEB_WORKSPACE`) from `.env` exactly as before.
+
+   **Partner workspace → run the `preflight_reads` in ONE parallel message
+   before step 2** (they are cheap reads; nothing is written): HQ
+   `commcare_list_apps(domain)` must answer; Nova `get_hq_connection` must list
+   the HQ space in `available_domains[].name` (else Phase 3 cannot upload — the
+   operator pastes an HQ key that reaches it at `https://commcare.app/settings`);
+   `connect_list_programs` on the PM org and `connect_list_opportunities` on the
+   holding org must answer (a 403/404/redirect means ace@ is not a member —
+   the workspace owner adds it). Any failure halts with that remediation.
+   Print the resolved block in the run-start log (step 9), and say in the run
+   summary which OCS team the bot is on when `ocs_source: configured`.
+
+   From here on **"the ACE root" means `run_workspace.drive_root_folder_id`**:
+   every `resolve_opp_path` call passes it as `aceRootFolderId`, and every
+   `ACE_DRIVE_ROOT_FOLDER_ID` below reads as that value (identical for the
+   default workspace).
 
 2. **Resolve the opp.**
 
@@ -1173,7 +1223,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
       § Fallback below. Do NOT silently fall through to the legacy
       `PDD/` picker.
 
-2b. **Bind this session to the opp.** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <opp> --warn` (a bare opp: ace-bind takes the workspace from the installed plugin `.env` `ACE_WEB_WORKSPACE` — a shell `${ACE_WEB_WORKSPACE}` is always empty, so never expand it here; pass `<workspace>/<opp>` explicitly when the run belongs to a different workspace)
+2b. **Bind this session to the opp.** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <run_workspace.workspace>/<opp> --warn` — always the workspace step 1 resolved, written out literally (a shell `${ACE_WEB_WORKSPACE}` is always empty, so never expand it here)
    locks this session to the opp's tenancy (its HQ space, Connect orgs, Labs
    domains — recorded per opp in ace-web). `--warn` is the rollout mode: the
    tenancy guard (`hooks/tenancy_guard.py`) records a write that would leave
@@ -1237,10 +1287,13 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      served from `run_state.yaml` products read live from Drive. It is
      **derivable from ACE's own config** — do not spelunk the ace-web DB for it:
      ```
-     ${ACE_WEB_BASE_URL}/opps/${ACE_WEB_WORKSPACE}/<opp>/runs/<run-id>/summary
+     ${ACE_WEB_BASE_URL}/opps/<run_workspace.workspace>/<opp>/runs/<run-id>/summary
      ```
-     (`.env` defaults: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`,
-     `ACE_WEB_WORKSPACE=dimagi-team`.) At the end of the run and at every pause
+     (`lib/run-workspace.ts` `runSummaryUrl`; members' workbench:
+     `runWorkbenchUrl` → `${ACE_WEB_BASE_URL}/w/<workspace>/opps/<opp>/runs/<run-id>`.
+     The workspace is the RUN's — `run_state.yaml` top-level `workspace:` —
+     never `.env`'s `ACE_WEB_WORKSPACE` for a run built elsewhere. `.env`
+     default: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`.) At the end of the run and at every pause
      point: (1) write it to `run_state.yaml` top-level as `ace_web_summary_url`;
      (2) **Audit it before presenting** — invoke `run-surface-audit` (runs
      `scripts/audit-run-surface.ts <opp> <run-id> --render --run-state <path>`),
@@ -1494,12 +1547,24 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - `opportunity: <opp>` (matches the State Schema field name) and
      `run_id: <runId>` — recorded so a transcript reader can identify
      the run from run_state.yaml alone.
+   - `workspace: <run_workspace.workspace>` — the ace-web workspace the run
+     is built in (written on EVERY run, default workspace included). Every
+     later reader — the summary URL, `run-surface-audit`,
+     `output-preview-capture`, `/ace:release` — takes the workspace from here.
 
 7. **Ingest the prior run, and close it out.** A new run does NOT start
    from nothing and does NOT start from everything. Both halves matter and
    neither happens by itself.
 
-   - **7a. Inherit.** Call `ingestPriorRun` from
+   - **7a. Inherit.** The prior run is the newest older sibling under THIS
+     opp folder's `runs/` — in the run's own workspace (`resolve_opp_path`
+     with `aceRootFolderId: run_workspace.drive_root_folder_id`). For a
+     partner workspace that is the partner's run (e.g. the clone its reviewers
+     already reviewed), and the reviewers' saved answers bind from that
+     workspace's own `<opp>/inputs/decision-overrides.yaml` — ace-web writes it
+     under the workspace's Drive root and `decisions_append_rows` walks up
+     from THIS run folder to find it, so nothing extra is needed as long as
+     the run folder is in the right workspace. Call `ingestPriorRun` from
      `lib/decisions-ingest.ts` with the **immediately-prior run's**
      `decisions.yaml` plus the accumulated `human-decided` set. What
      carries is weighted by WHERE a decision came from, never by how
@@ -1577,7 +1642,8 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    so transcript readers and ace-web's ingest can pick it up:
 
    ```
-   [orchestrator] starting opp=<opp> run_id=<runId> mode=<mode>
+   [orchestrator] starting workspace=<workspace> opp=<opp> run_id=<runId> mode=<mode>
+     tenancy: hq=<hq_domain> pm_org=<pm_org> holding_org=<holding_org> ocs=<ocs_team> (<ocs_source>)
      inputs_folder=<opp>/inputs (read-only, <N> files in manifest)
      run_folder=<opp>/runs/<runId>
      manifest=<opp>/runs/<runId>/inputs-manifest.yaml

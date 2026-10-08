@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # Connect Opportunity Setup
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, `${ACE_HQ_API_KEY}` → `run_workspace.hq_api_key` (minted here, per run, for a partner space), the preflight `connect_orgs` → `run_workspace.connect_orgs` — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 Create and fully configure a Connect managed opportunity on the program
 owned by the PM org — **the configured PM org (`connect_orgs.pm_org` from
 `/ace:doctor --preflight`, passed in by the connect-setup dispatch)** for a
@@ -368,6 +370,13 @@ alone makes the artifact land outside `4-connect` and fail
      - `api_key`: the **raw 40-char HQ API key** for the project space
        (read from `~/.claude/plugins/data/ace-ace/.env` → `ACE_HQ_API_KEY`).
        Server creates the `HQApiKey` record if it doesn't exist.
+       **Partner workspace** (`run_workspace.is_default: false`): instead
+       mint a key restricted to the partner's space first —
+       `commcare_create_api_key(domain: <run_workspace.hq_domain>, name:
+       ace-run-<hq_domain>-<run-id>)` — and pass the returned
+       `hq-key:<name>` reference here (and as `api_key` to
+       `connect_preflight_learn_app_user`). Never `ACE_HQ_API_KEY` on a
+       partner's opportunity (`skills/_run-workspace.md`).
      - `cc_domain`: HQ project space slug
      - `cc_app_id`: bare 32-char HQ app id
      - `description`: required (Connect form marks it `*`); pulled from PDD

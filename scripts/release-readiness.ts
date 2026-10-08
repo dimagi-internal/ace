@@ -85,6 +85,7 @@
  *       for the run's HQ space — the exact URL and clicks the operator does in
  *       /ace:release Step 0.4. Same text as the `hq-plan-free` blocker's fix.
  */
+import { fetchOppTenancy } from '../lib/run-workspace.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -187,13 +188,12 @@ function options(): ReleaseOptions {
 async function tenancyFor(ws: string, opp: string): Promise<Tenancy | null> {
   const local = readJson<Tenancy & { tenancy?: Tenancy }>(arg('tenancy'));
   if (local) return local.tenancy ?? local;
-  const base = process.env.ACE_WEB_BASE_URL;
-  const token = process.env.ACE_WEB_PAT_TOKEN;
-  if (!base || !token) return null;
-  const r = await fetch(`${base.replace(/\/+$/, '')}/api/w/${ws}/opps/${opp}/tenancy`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-  if (!r.ok) return null;
-  const body = (await r.json()) as { tenancy?: Tenancy };
-  return body.tenancy ?? null;
+  try {
+    const body = await fetchOppTenancy({ baseUrl: process.env.ACE_WEB_BASE_URL, token: process.env.ACE_WEB_PAT_TOKEN, workspace: ws, opp });
+    return (body.tenancy as Tenancy | null | undefined) ?? null;
+  } catch {
+    return null; // unread tenancy is reported by the plan as `plan-tenancy-unread`
+  }
 }
 
 /**

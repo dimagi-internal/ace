@@ -35,6 +35,7 @@ The state file at `ACE/<opp-name>/run_state.yaml` tracks:
 ```yaml
 opportunity: <opp-name>
 run_id: <YYYYMMDD-HHMM>     # multi-run layout (v0.11.0+); the run folder name
+workspace: <ws-slug>         # ace-web workspace the run is built in (lib/run-workspace.ts); summary URL + release read it. Absent on pre-2026-10-08 runs = the default workspace
 mode: default|review|auto
 created: <ISO timestamp>
 initiated_by: <email>        # set once on creation; never overwritten

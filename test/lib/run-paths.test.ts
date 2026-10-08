@@ -14,19 +14,48 @@ describe('generateRunId', () => {
 });
 
 describe('parseOppRef', () => {
-  it('parses bare opp slug', () => {
-    expect(parseOppRef('turmeric')).toEqual({ opp: 'turmeric', runId: null });
+  it('parses bare opp slug (default workspace)', () => {
+    expect(parseOppRef('turmeric')).toEqual({ workspace: null, opp: 'turmeric', runId: null });
   });
 
-  it('parses <opp>/<run-id>', () => {
+  it('parses <opp>/<run-id> exactly as before workspaces existed', () => {
     expect(parseOppRef('turmeric/20260502-1830')).toEqual({
+      workspace: null,
       opp: 'turmeric',
       runId: '20260502-1830',
     });
   });
 
-  it('rejects multi-slash', () => {
-    expect(() => parseOppRef('a/b/c')).toThrow(/expected/);
+  it('treats a collision-suffixed run id as a run id', () => {
+    expect(parseOppRef('turmeric/20260502-1830-2')).toEqual({
+      workspace: null,
+      opp: 'turmeric',
+      runId: '20260502-1830-2',
+    });
+  });
+
+  it('parses <workspace>/<opp> when the second segment is not a run id', () => {
+    expect(parseOppRef('spark/spark-facilitator')).toEqual({
+      workspace: 'spark',
+      opp: 'spark-facilitator',
+      runId: null,
+    });
+  });
+
+  it('parses <workspace>/<opp>/<run-id>', () => {
+    expect(parseOppRef('spark/spark-facilitator/20261004-1706')).toEqual({
+      workspace: 'spark',
+      opp: 'spark-facilitator',
+      runId: '20261004-1706',
+    });
+  });
+
+  it('rejects a three-segment path that does not end in a run id', () => {
+    expect(() => parseOppRef('a/b/c')).toThrow(/run-id must look like/);
+  });
+
+  it('rejects four segments', () => {
+    expect(() => parseOppRef('a/b/c/20260502-1830')).toThrow(/expected/);
   });
 
   it('rejects empty', () => {
@@ -39,6 +68,10 @@ describe('parseOppRef', () => {
 
   it('rejects trailing slash', () => {
     expect(() => parseOppRef('turmeric/')).toThrow(/empty run-id/);
+  });
+
+  it('rejects an empty opp in the three-segment form', () => {
+    expect(() => parseOppRef('spark//20261004-1706')).toThrow(/empty opp slug/);
   });
 });
 

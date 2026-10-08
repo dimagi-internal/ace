@@ -1,6 +1,6 @@
 ---
 description: Run the full ACE lifecycle for an opportunity
-argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
+argument-hint: [[<ws>/]<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -14,7 +14,29 @@ Run the full ACE lifecycle for a Connect opportunity.
   verdicts (run /ace:qa-deep before go-live).
 
 ## Arguments
-- `<opp>` or `<opp>/<run-id>` — **optional positional**.
+- `[<ws>/]<opp>[/<run-id>]` — **optional positional**.
+  - `<ws>/<opp>` (e.g., `spark/spark-facilitator`): build a fresh run
+    directly in ace-web workspace `<ws>` — in that workspace's own Drive
+    folder and tenancy (its HQ project space, Connect PM + holding orgs), so
+    the run picks up the answers and comments that workspace's reviewers
+    left (`<opp>/inputs/decision-overrides.yaml`, the prior run there)
+    instead of building in the default workspace and re-cloning.
+    `<ws>/<opp>/<run-id>` resumes a run there. The tenancy is read from
+    ace-web (`GET /api/w/<ws>/opps/<opp>/tenancy`) by
+    `scripts/resolve-run-workspace.ts` (`lib/run-workspace.ts`). A partner
+    workspace whose tenancy is incomplete (no Drive root, HQ space, PM or
+    holding org), names one of ACE's shared tenants, or names an OCS team
+    other than this session's `OCS_TEAM_SLUG` **halts before anything is
+    written** with a typed error naming the field and how to set it — it
+    never falls back to the `.env` tenants. Preflight also proves ACE can
+    reach the HQ space (HQ + Nova's HQ connection) and both Connect orgs
+    with one read each. With no `ocs_team` in the tenancy the bot is built on
+    the configured OCS team and reviewed by its public link, as a clone's is.
+  - Everything without a workspace prefix means the default workspace
+    (`ACE_WEB_WORKSPACE` from the plugin `.env`, `dimagi-team`) and behaves
+    exactly as before. A second segment shaped like a run id
+    (`YYYYMMDD-HHMM[-N]`) is always a run id, so `<opp>/<run-id>` is
+    unchanged.
   - Bare `<opp>` (e.g., `turmeric`): use that opp; create a fresh
     `runs/<run-id>/` folder.
   - `<opp>/<run-id>` (e.g., `turmeric/20260502-1830`): resume that
@@ -114,8 +136,8 @@ seed material for the PDD; there is no required filename.
 
 Resolution:
 
-1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. Stop with an actionable error
-   if unset.
+1. Read `ACE_DRIVE_ROOT_FOLDER_ID` (zero-arg always means the default
+   workspace). Stop with an actionable error if unset.
 2. List `ACE/`. Find subfolders containing an `inputs/` subfolder.
 3. Pick the candidate with the newest `inputs/` mtime; folder name = `<opp>`.
 4. If no candidate exists, stop with the new-layout setup message.
@@ -132,7 +154,8 @@ See `agents/ace-orchestrator.md` for full detail.
 ## Process
 
 1. Parse arguments. Default mode is `default`. The positional argument
-   may be `<opp>`, `<opp>/<run-id>`, or omitted; pass it through to the
+   may be `<opp>`, `<opp>/<run-id>`, `<ws>/<opp>`, `<ws>/<opp>/<run-id>`, or
+   omitted; pass it through to the
    orchestrator's discovery step (see `agents/ace-orchestrator.md
    § Starting a New Opportunity`). The orchestrator handles slug
    generation and resume-detection — `commands/run.md` does NOT

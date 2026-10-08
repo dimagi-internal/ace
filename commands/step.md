@@ -1,10 +1,20 @@
 ---
 description: Run a single step of the ACE process for an opportunity
-argument-hint: [<skill-name> <opp>[/<run-id>]]
+argument-hint: [<skill-name> [<ws>/]<opp>[/<run-id>]]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
 # /ace:step
+
+**Workspace addressing.** The opp argument may be prefixed with an ace-web
+workspace: `<ws>/<opp>` or `<ws>/<opp>/<run-id>` (e.g.
+`spark/spark-facilitator`). A bare `<opp>` / `<opp>/<run-id>` means the default
+workspace (`ACE_WEB_WORKSPACE`, `dimagi-team`) exactly as before — a run id
+(`YYYYMMDD-HHMM`) is never mistaken for an opp. Parse with `parseOppRef`
+(`lib/run-paths.ts`) and resolve with `npx tsx
+"$CLAUDE_PLUGIN_ROOT/scripts/resolve-run-workspace.ts" <arg>`; read the opp
+under that workspace's Drive root (`resolve_opp_path` with `aceRootFolderId:
+run_workspace.drive_root_folder_id`). Exit 2 = halt with its remediation.
 
 Run a single skill for an opportunity without running the full lifecycle.
 
@@ -36,7 +46,7 @@ Run a single skill for an opportunity without running the full lifecycle.
    pointer wherever it was before.
 
 2. Verify the opportunity folder exists in GDrive (`ACE/<opp>/`), then
-   **bind this session to the opp:** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <opp> --warn` (a bare opp: ace-bind takes the workspace from the installed plugin `.env` `ACE_WEB_WORKSPACE` — a shell `${ACE_WEB_WORKSPACE}` is always empty, so never expand it here; pass `<workspace>/<opp>` explicitly when the run belongs to a different workspace)
+   **bind this session to the opp:** `"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <run_workspace.workspace>/<opp> --warn` — the workspace the argument resolved to (see **Workspace addressing**), written out literally; a shell `${ACE_WEB_WORKSPACE}` is always empty, so never expand it here. Pass the `run_workspace:` block into the dispatched skill
    locks this session to the opp's tenancy (its HQ space, Connect orgs, Labs
    domains — recorded per opp in ace-web). `--warn` is the rollout mode: the
    tenancy guard (`hooks/tenancy_guard.py`) records a write that would leave
