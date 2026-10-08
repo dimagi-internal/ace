@@ -16,7 +16,7 @@ answering (`skills/coach-session-capture`, owner carve-out 2026-10-07). This ski
 starts each conversation from the Labs run page — the workflow's
 `start_ocs_outreach` action, from its button or by asking the page's canopy agent
 ("start coaching sessions for the red facilitators"), which previews and waits for
-a yes. QA conversations to Dimagi staff use the action's `deliver_to` argument.
+a yes (`skills/coach-from-labs-page`: picture first, then Send buttons). QA conversations to Dimagi staff use the action's `deliver_to` argument.
 
 ## When it runs
 

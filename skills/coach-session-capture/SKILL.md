@@ -31,7 +31,9 @@ answering on mobile. Nothing wider — never a real worker, never a staff member
 ConnectID. Mobile mode commits ONLY through `scripts/coach-capture-mobile-plan.ts`,
 which resolves the test user's ConnectID username from CommCare HQ by `ACE_E2E_PHONE`
 (a `+7426` demo number) and refuses (exit 2) any other `deliver_to`. Web mode sends
-nothing through Connect, so it needs no carve-out.
+nothing through Connect, so it needs no carve-out. (A person sending from the Labs
+panel by their own click is a different case, ACE carrying out THEIR action:
+`skills/coach-from-labs-page`.)
 
 ## Inputs
 
