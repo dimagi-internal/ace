@@ -748,8 +748,15 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       }
     }
 
+    // Names are compared the way Maestro will compare them on device — as a
+    // `text:` selector, i.e. a full-match regex — never by string equality
+    // (ace#2792). A label with regex metacharacters ("Group session (A)")
+    // FORCES the recipe to bind a regex ("Group session .A."), and equality
+    // then reported that correct recipe as drift.
     for (const moduleName of params.moduleNames) {
-      if (!allModuleNames.has(moduleName) && !allFormNames.has(moduleName)) {
+      const matchesAny = (names: Set<string>) =>
+        [...names].some((n) => maestroTextMatches(moduleName, n));
+      if (!matchesAny(allModuleNames) && !matchesAny(allFormNames)) {
         failures.push({
           class: 'expected-module-not-in-app',
           detail: `recipe ${recipe.name} references MODULE_NAME "${moduleName}" but no Nova app has a module OR a form with that name — MODULE_NAME is the visible label of the suite row to tap, which may be either (apps checked: ${inputs.novaApps.map(a => a.app_id).join(', ')})`,
@@ -776,9 +783,18 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
     // bound" is not "form missing".
     for (const { moduleName, formName } of params.modulePairs) {
       if (formName === null) continue;
-      const knownForms = moduleToForms.get(moduleName);
-      if (!knownForms) continue;
-      if (!knownForms.has(formName)) {
+      // MODULE_NAME is a Maestro pattern too, so it can select more than one
+      // module; the form may live in any of them (ace#2792). An exact-key
+      // lookup here silently SKIPPED the check for every regex MODULE_NAME.
+      const knownForms = new Set<string>();
+      let moduleResolved = false;
+      for (const [modName, forms] of moduleToForms) {
+        if (!maestroTextMatches(moduleName, modName)) continue;
+        moduleResolved = true;
+        for (const f of forms) knownForms.add(f);
+      }
+      if (!moduleResolved) continue;
+      if (![...knownForms].some((f) => maestroTextMatches(formName, f))) {
         failures.push({
           class: 'expected-form-not-in-module',
           detail: `recipe ${recipe.name} references FORM_NAME "${formName}" inside module "${moduleName}" but that form is not present in the module (forms in module: ${[...knownForms].join(', ')})`,
@@ -2335,4 +2351,28 @@ function findGuardedInputFocusScroll(
     }
   }
   return null;
+}
+
+/**
+ * Would a Maestro `text: "<pattern>"` selector match a row labelled `label`?
+ *
+ * Mirrors Maestro's own matcher rather than guessing at it (ace#2792).
+ * `maestro.Filters.textMatches` (maestro-client.jar) keeps a node when
+ * `regex.matches(text.replace('\n', ' ')) || regex.pattern == text`, and
+ * `maestro.orchestra.Orchestra.REGEX_OPTIONS` builds that regex with
+ * IGNORE_CASE + DOT_MATCHES_ALL + MULTILINE. `Regex.matches` is a FULL match,
+ * so MULTILINE cannot loosen it; JS gets the same semantics from an anchored
+ * non-capturing group with the `i` and `s` flags (no `m`, which in JS would
+ * let `^`/`$` match at line breaks). A pattern that is not a valid regex can
+ * still match by the literal-equality arm.
+ */
+export function maestroTextMatches(pattern: string, label: string): boolean {
+  if (pattern === label) return true;
+  let re: RegExp;
+  try {
+    re = new RegExp(`^(?:${pattern})$`, 'is');
+  } catch {
+    return false;
+  }
+  return re.test(label.replace(/\n/g, ' '));
 }
