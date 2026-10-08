@@ -1,0 +1,33 @@
+appId: org.commcare.dalvik
+---
+# connect-messaging-reply.yaml — send one worker message in an open PersonalID thread
+# (skills/coach-session-capture).
+#
+# Pre-state: connect-messaging-open.yaml has opened the thread (messaging-chat-list visible).
+# Post-state: the thread shows ${MESSAGE} as the newest bubble.
+#
+# The bot's answer is NOT awaited here: its text only exists after this send, so the
+# skill reads it from the OCS session and then runs connect-messaging-await.yaml.
+#
+# Required env vars:
+#   MESSAGE — the worker's reply, verbatim.
+#
+# The send icon (messaging-send) does not exist until the field holds text, so the tap
+# waits for it after inputText. Live-verified 2026-10-07 on CommCare 2.64.0.
+- tapOn:
+    id: "${SELECTOR:messaging-input}"
+- inputText: ${MESSAGE}
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:messaging-send}"
+    timeout: 5000
+- takeScreenshot: messaging-typed
+- tapOn:
+    id: "${SELECTOR:messaging-send}"
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:messaging-chat-message}"
+      text: ${MESSAGE}
+    timeout: 15000
+- takeScreenshot: messaging-sent

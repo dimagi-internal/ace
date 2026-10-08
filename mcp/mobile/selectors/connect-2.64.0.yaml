@@ -688,3 +688,54 @@ selectors:
     value: "org.commcare.dalvik:id/action_button"
     unverified: true
     purpose: "'UPDATE COMMCARE VIA THE PLAY STORE' — recorded as a NAMED ANTI-TARGET. An automated walk must never tap it: it leaves CommCare for the Play Store, which on an ACE AVD goes nowhere useful and strands the run off-app. Live-captured on 2.63.2 (ace#1998); not reachable on 2.64.0."
+
+  nav-drawer-toggle:
+    type: text
+    value: "Open navigation drawer"
+    purpose: "The nav-drawer toggle matched by its content-desc (Maestro `text:` matches accessibility text). Live-verified 2026-10-07 (2.64.0) on emulator-5556, where the toolbar sits at [0,63][147,210]: the coordinate row nav-drawer-burger-point (73,209) lands on the bottom edge pixel there and did NOT open the drawer (connect-messaging-open run 1791419724890-9whcvo), while this matcher did. Prefer it over the point row for new recipes."
+
+  # ── PersonalID messaging (coach-session-capture) ─────────────────
+  # Live-verified 2026-10-07 (2.64.0) on emulator-5556, test user 1277adbd0ceea89e367d,
+  # after Labs start_ocs_outreach (deliver_to = the test user) put an OCS Coach message
+  # on the commcare_connect channel. Path: nav drawer -> Messaging (unlock prompt may
+  # fire) -> "Channels" list -> channel row -> chat. Evidence under
+  # docs/mobile-atlas/evidence/connect-2.64.0/50-*.xml.
+  nav-drawer-messaging:
+    type: text
+    value: "Messaging"
+    purpose: "Nav-drawer 'Messaging' row (list_title inside nav_drawer_recycler). Live-verified 2026-10-07 (2.64.0): tapping it opened the messaging host (nav_host_fragment_connect_messaging, toolbar 'Channels'), via the 'Unlock PersonalID' prompt when PersonalID was locked."
+
+  messaging-channel-list:
+    type: id
+    value: "org.commcare.dalvik:id/rvChannel"
+    purpose: "Channels list RecyclerView. Live-verified 2026-10-07 (2.64.0), 50-messaging-channels.xml. Each row shows tvChannelName (the OCS commcare_connect channel's bot name, e.g. 'Chlorine Coach'), the date, a message preview and an unread count."
+
+  messaging-no-channels:
+    type: id
+    value: "org.commcare.dalvik:id/tv_no_channel_msg"
+    purpose: "Empty-state text: \"You're not subscribed to any messaging channels...\". Live-verified 2026-10-07 (2.64.0) BEFORE the first Coach send to this user — the channel row appears only once a bot has messaged the user."
+
+  messaging-channel-name:
+    type: id
+    value: "org.commcare.dalvik:id/tvChannelName"
+    purpose: "A channel row's name. Live-verified 2026-10-07 (2.64.0): text 'Chlorine Coach' = the OCS channel's commcare_connect_bot_name. Not clickable itself; tapping its centre opens the thread."
+
+  messaging-chat-list:
+    type: id
+    value: "org.commcare.dalvik:id/rvChat"
+    purpose: "The open thread's message RecyclerView. Live-verified 2026-10-07 (2.64.0), 51-messaging-thread.xml; toolbar title = the channel name."
+
+  messaging-chat-message:
+    type: id
+    value: "org.commcare.dalvik:id/tvChatMessage"
+    purpose: "One message bubble's text (with tvChatDate beneath). Live-verified 2026-10-07 (2.64.0): the Coach's verbatim opening rendered here."
+
+  messaging-input:
+    type: id
+    value: "org.commcare.dalvik:id/etMessage"
+    purpose: "Message EditText, hint 'Type message', inside cardMessage. Live-verified 2026-10-07 (2.64.0)."
+
+  messaging-send:
+    type: id
+    value: "org.commcare.dalvik:id/imgSendMessage"
+    purpose: "Send ImageView, content-desc 'Press here to send message'. Live-verified 2026-10-07 (2.64.0), 52-messaging-typing.xml: ABSENT until etMessage holds text — wait for it after inputText, never before."

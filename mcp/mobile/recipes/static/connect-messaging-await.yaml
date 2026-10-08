@@ -1,0 +1,24 @@
+appId: org.commcare.dalvik
+---
+# connect-messaging-await.yaml — wait until the bot's answer is on screen in an open
+# PersonalID thread (skills/coach-session-capture).
+#
+# Pre-state: the thread is open and connect-messaging-reply.yaml has just sent a message.
+# Post-state: a bubble whose text starts with ${REPLY_START} is visible.
+#
+# Required env vars:
+#   REPLY_START — the first words of the bot's answer, read from the OCS session
+#                 (GET /api/sessions/<id>/) after the send. Maestro `text:` is a
+#                 full-match regex, so the recipe matches "${REPLY_START}.*" and the
+#                 skill passes a regex-escaped prefix.
+#
+# Waiting on the exact text (not "any new bubble") is what proves the bubble on screen
+# is THIS turn's reply. Live-verified 2026-10-07 on CommCare 2.64.0.
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:messaging-chat-message}"
+      text: "${REPLY_START}.*"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: messaging-reply
