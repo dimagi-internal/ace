@@ -30,9 +30,8 @@
  *                ACE_HQ_PASSWORD, persists ~/.ace/connect-session.json.
  *   labs         bin/labs-walkthrough-login.ts, run once before the first labs gap
  *                (Phase 7 Step 3.0's restore) → ~/.ace/labs-session.json.
- *   canopy       canopy PAT as a Bearer header: CANOPY_WEB_PAT, else
- *                ~/.<CANOPY_AGENT|ace>/.env CANOPY_WEB_PAT, else
- *                ~/.claude/canopy/workbench-token — canopy's own resolution order.
+ *   canopy       ACE's own canopy PAT as a Bearer header — CANOPY_WEB_PAT from ACE's
+ *                .env only (browser-sessions.ts canopyToken; ace#2805).
  *   ocs          none — the chatbot's PUBLIC chat page is anonymous by design.
  *   google       the Drive service account (gws-sa-key.json), no browser session.
  *   public       none.
