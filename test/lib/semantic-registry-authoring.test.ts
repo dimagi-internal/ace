@@ -31,10 +31,55 @@ const checks = (reg: RegistryDocs) =>
 describe('pddSectionIds / citedSections', () => {
   it('reads numbered headings, with or without a trailing dot', () => {
     const pdd = '# Title\n## 8. Success Metrics\n### 8.1 Primary metrics\n### 8.2 Secondary\nprose §9';
-    expect(pddSectionIds(pdd)).toEqual(['8', '8.1', '8.2']);
+    expect(pddSectionIds(pdd)).toEqual(['Title', '8', 'Success Metrics', '8.1', 'Primary metrics', '8.2', 'Secondary']);
   });
   it('extracts § citations in order, de-duplicated', () => {
     expect(citedSections('PDD §8.1 P1; §5.4 and § 7.2, again §8.1')).toEqual(['8.1', '5.4', '7.2']);
+  });
+});
+
+// ace#2803: ACE's own PDD template has UNNUMBERED headings, so a PDD built from it
+// can only be cited by heading name. group-payment-test/20261007-1700 reported its
+// supplied PDD as "not supplied" because pddSectionIds keyed on numbers alone.
+describe('named-heading anchors (ace#2803)', () => {
+  const TEMPLATE_HEADINGS = readFileSync(join(__dirname, '../../templates/pdd-template.md'), 'utf8');
+  const PDD = '# Program Design Document (PDD)\n## Test Script\n## Success Metrics\n### Primary metrics\nbody';
+  const sections = pddSectionIds(PDD);
+  const anchorFails = (note: string, pddSections: readonly string[] = sections) => {
+    const reg = clone();
+    for (const m of registryIndicators(reg.indicators_doc)) m.meta!.scope_note = 'PDD §8.1';
+    indicator(reg, 'SF_S3').meta.scope_note = note;
+    return checkRegistryAuthoring(reg, { pddSections: [...pddSections, ...SPARK_SECTIONS], opportunityIds: SPARK_OPPS })
+      .findings.filter((f) => f.check === 'pdd-anchor' && f.indicator === 'SF_S3');
+  };
+
+  it('reads the unnumbered headings of ACE\'s own PDD template', () => {
+    const ids = pddSectionIds(TEMPLATE_HEADINGS);
+    expect(ids).toContain('Success Metrics');
+    expect(ids).toContain('Problem Statement');
+    expect(ids.length).toBeGreaterThan(10);
+  });
+
+  it('resolves a named citation to the PDD\'s own heading, case-insensitively', () => {
+    expect(citedSections('PDD § Test Script; pdd § success metrics — target 80', sections)).toEqual([
+      'Test Script',
+      'Success Metrics',
+    ]);
+  });
+
+  it('passes an indicator anchored by heading name (the group-payment-test shape)', () => {
+    expect(anchorFails('Share of groups paid. PDD § Success Metrics.')).toEqual([]);
+    expect(anchorFails('PDD §Test Script')).toEqual([]);
+  });
+
+  it('NEGATIVE CONTROL: fails a named anchor that names no real heading', () => {
+    const f = anchorFails('PDD § Impact Narrative; derived from donor goals');
+    expect(f).toHaveLength(1);
+    expect(f[0].detail).toContain('Impact Narrative');
+  });
+
+  it('NEGATIVE CONTROL: a heading prefix that runs on into another word does not match', () => {
+    expect(anchorFails('PDD § Success Metricsville')).toHaveLength(1);
   });
 });
 

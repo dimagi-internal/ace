@@ -38,7 +38,7 @@ Two gates, both must pass. Shared QA contract: [`skills/_qa-template.md`](../_qa
 | `model` | `entity.{name,plural,key}` or `pipelines.entity` missing | declare them — a registry with no model is read as KMC |
 | `indicators` / `indicator-meta` | no indicator, or one lacks `label` / `plain` / `category` / `direction` / `scope_note` | fill from the PDD row |
 | `measures` | an indicator's `_numerator` / `_denominator` measure is missing or unread by its value | add the measure / fix the value's `sql` |
-| `pdd-anchor` | `scope_note` cites no `PDD §N`, or only sections the PDD lacks; with no PDD (`--app`), names no form of the released Deliver app | cite the section (or the app form), or drop the indicator |
+| `pdd-anchor` | `scope_note` cites no PDD section — numbered (`PDD §8.1`) or by heading name (`PDD § Success Metrics`, the only form ACE's unnumbered PDD template allows, ace#2803) — or only sections the PDD lacks; with no PDD (`--app`), names no form of the released Deliver app | cite the section (or the app form), or drop the indicator |
 | `target` | a target the `scope_note` does not quote, a % target outside 0–100, a target without higher/lower | cite the PDD's number, or remove the target |
 | `bands` | % bands written as fractions (`0.8`) — every cell grades green | write `80` |
 | `headline` | duplicate position, or beyond `display.headline_count` | renumber |
