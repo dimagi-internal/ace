@@ -98,10 +98,12 @@ reads any mapping there with a `file_id` as an output.
    - **labs:** runs `bin/labs-walkthrough-login.ts` once, unconditionally, before
      the first labs gap — Phase 7 Step 3.0's restore — and uses
      `~/.ace/labs-session.json`. `/ace:labs-login` is the same script.
-   - **canopy:** a canopy PAT as a Bearer header, resolved as canopy resolves it:
-     `CANOPY_WEB_PAT`, then `~/.<CANOPY_AGENT or ace>/.env`, then
-     `~/.claude/canopy/workbench-token`. A labs session does NOT open canopy pages
-     (they bounce to Google sign-in).
+   - **canopy:** ACE's own canopy PAT as a Bearer header — `CANOPY_WEB_PAT` from
+     ACE's `.env` only, the same source as `bin/ace-canopy-web`
+     (`playbook/integrations/canopy-web.md`). It never falls back to an inherited
+     `CANOPY_WEB_PAT` or the machine owner's workbench token: ACE reads canopy-web as
+     itself (ace#2805). A missing PAT fails loudly — run `/ace:setup`. A labs session
+     does NOT open canopy pages (they bounce to Google sign-in).
    - **ocs:** none — the chatbot's public chat page is anonymous.
      `/ace:ocs-login` is not needed for previews.
    - **google:** the Drive service account key (`gws-sa-key.json`).

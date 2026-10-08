@@ -7,8 +7,10 @@
  *                re-logs-in via ACE_HQ_USERNAME / ACE_HQ_PASSWORD.
  *   labs         bin/labs-walkthrough-login.ts, run once, unconditionally
  *                (Phase 7 Step 3.0's restore) → ~/.ace/labs-session.json.
- *   canopy       canopy PAT as a Bearer header (CANOPY_WEB_PAT, else
- *                ~/.<CANOPY_AGENT|ace>/.env, else ~/.claude/canopy/workbench-token).
+ *   canopy       ACE's OWN canopy PAT as a Bearer header — CANOPY_WEB_PAT read from
+ *                ACE's .env only (the same source bin/ace-canopy-web uses). Never an
+ *                inherited CANOPY_WEB_PAT and never the machine owner's workbench
+ *                token: both can belong to a human (ace#2805).
  *   ocs, public  anonymous.
  *
  */
@@ -77,7 +79,7 @@ export class Sessions {
     }
     if (auth === 'canopy') {
       const token = canopyToken();
-      if (!token) throw new Error('no canopy PAT (CANOPY_WEB_PAT, ~/.ace/.env, or ~/.claude/canopy/workbench-token)');
+      if (!token) throw new Error(`no CANOPY_WEB_PAT in ACE's .env (${aceEnvFiles().join(', ')}) — run /ace:setup. ACE reads canopy-web as itself, never as the machine owner (ace#2805).`);
       return this.browser.newContext({ viewport: VIEWPORT, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
     }
     return this.browser.newContext({ viewport: auth === 'ocs' ? CHAT_VIEWPORT : VIEWPORT });
@@ -101,18 +103,30 @@ export function restoreLabsSession(): void {
   log('labs session restored');
 }
 
+/** ACE's .env files, in the order bin/ace-canopy-web reads them. */
+export function aceEnvFiles(): string[] {
+  if (process.env.ACE_ENV_FILE) return [process.env.ACE_ENV_FILE];
+  return [path.join(os.homedir(), '.claude', 'plugins', 'data', 'ace-ace', '.env'), path.join(os.homedir(), '.ace', '.env')];
+}
+
+/**
+ * ACE's own canopy-web PAT, from ACE's .env ONLY — the same source as bin/ace-canopy-web.
+ * Deliberately ignores an inherited CANOPY_WEB_PAT and never falls back to
+ * ~/.claude/canopy/workbench-token: either can be the machine owner's, and an agent reading
+ * as a human is the identity substitution behind ace#2805.
+ */
 export function canopyToken(): string | null {
-  if (process.env.CANOPY_WEB_PAT) return process.env.CANOPY_WEB_PAT.trim();
-  const slug = /^[a-z0-9][a-z0-9_-]*$/i.test(process.env.CANOPY_AGENT ?? '') ? (process.env.CANOPY_AGENT as string) : 'ace';
-  try {
-    for (const line of fs.readFileSync(path.join(os.homedir(), `.${slug}`, '.env'), 'utf8').split('\n')) {
-      if (line.trim().startsWith('CANOPY_WEB_PAT=')) return line.trim().slice('CANOPY_WEB_PAT='.length).replace(/^["']|["']$/g, '');
-    }
-  } catch { /* fall through */ }
-  try {
-    return fs.readFileSync(path.join(os.homedir(), '.claude', 'canopy', 'workbench-token'), 'utf8').trim() || null;
-  } catch {
-    return null;
+  for (const f of aceEnvFiles()) {
+    try {
+      for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
+        const t = line.trim();
+        if (t.startsWith('CANOPY_WEB_PAT=')) {
+          const v = t.slice('CANOPY_WEB_PAT='.length).trim().replace(/^["']|["']$/g, '');
+          if (v) return v;
+        }
+      }
+    } catch { /* next file */ }
   }
+  return null;
 }
 
