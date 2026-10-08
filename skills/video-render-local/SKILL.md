@@ -42,7 +42,10 @@ in canopy's own engine; ace-web's vendored copy predates it — its `spec.ts` ha
 so a recorded cut rendered here gets the music bed back (ace#2788). If the
 narrative's recipe sets `style: recorded` (each cut is an
 `explainer_spec.<cut>.yaml`), render with canopy's `video-engine/render_locally.py`
-per `/canopy:ddd-recorded-walkthrough` instead, and stop reading this mode.
+per `/canopy:ddd-recorded-walkthrough` instead, and stop reading this mode. Its
+uploads (`snippets upload-video`, `render_locally.py` publish) run through
+`bin/ace-canopy-web --workspace "$WS" -- <command>` and are read back with
+`verify walkthrough <id>` (`playbook/integrations/canopy-web.md`, ace#2805).
 
 The caller already has a connect-videos `spec.yaml` (e.g. canopy's emitted
 `explainer_spec.yaml`) and a master clip. Stage + render directly:

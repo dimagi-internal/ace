@@ -327,7 +327,13 @@ across. ace#2287.
 
 **Dispatch `Agent(canopy:ddd)`** — the full converge → video → upload loop. This is
 the default and the only path that terminates on its own. Pass the run id, the
-unified spec, and the why-brief. **On a resume, pass `--resume <run_id>` explicitly
+unified spec, and the why-brief. **Pin who writes and where** (ace#2805): set `WS` to
+the opp's `opp.yaml` `canopy_web.workspace`, else `config/canopy-web.json`
+`ddd_workspace`; run `"$ACE_ROOT/bin/ace-canopy-web" --workspace "$WS" check`; put the
+wrapper and `$WS` in the dispatch prompt and require every canopy-web write to run as
+`bin/ace-canopy-web --workspace "$WS" -- <command>`; after it returns,
+`verify narrative <slug>` before the phase summary names any canopy-web URL.
+Contract: `playbook/integrations/canopy-web.md`. **On a resume, pass `--resume <run_id>` explicitly
 and say so** — an unqualified dispatch is what starts a fresh run.
 
 Do NOT substitute a bare `canopy:ddd-run` invocation as the phase's render step.

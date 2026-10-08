@@ -28,8 +28,8 @@ path — that is the DRY violation this skill exists to avoid.
 1. **Pull the verbatim current narration from canopy** (the source of truth — NOT the
    `docs/walkthroughs/<slug>.yaml` scene-spec, which drifts; NOT reconstructed audio):
    ```
-   GET https://canopy.dimagi.com/api/ddd/narratives/<slug>/
-   Authorization: Bearer <canopy PAT>      # ~/.claude/canopy/workbench-token
+   GET https://canopy.dimagi.com/api/w/<ws>/ddd/narratives/<slug>/
+   Authorization: Bearer <ACE's PAT>       # via bin/ace-canopy-web — never the workbench token
    ```
    → `current_version.version` (N) and `current_version.story`, plus `versions[]` (the lineage).
 2. **Draft the proposed next version (N+1) — ACE-specific.** Rewrite the narration to fold in the
@@ -41,11 +41,13 @@ path — that is the DRY violation this skill exists to avoid.
 4. **Route into canopy's DDD review surface — delegate.** Open the narrative-agreement (`concept_change`)
    review carrying the proposed version, via the canopy `ddd-narrative-review` skill or directly:
    ```
-   POST /canopy/api/reviews/    (PAT)   body: { request_json: { run_id, gate: "concept_change",
+   POST /api/w/<ws>/reviews/    (ACE's PAT, via bin/ace-canopy-web --workspace <ws>)   body: { request_json: { run_id, gate: "concept_change",
                                                  narrative_slug, <current + proposed narration> },
                                                visibility: "private" | "link" }
    ```
-   canopy assigns vN+1 and returns `/review/<id>/`. It owns the review surface + the internal-reviewer
+   canopy assigns vN+1 and returns `/review/<id>/`. Confirm with
+   `bin/ace-canopy-web --workspace <ws> verify narrative <slug>` before citing it
+   (`playbook/integrations/canopy-web.md`, ace#2805). It owns the review surface + the internal-reviewer
    narration-edit round-trip.
 5. **Read submitted edits from canopy** — the review's `response_json` (via `GET /reviews/<id>/`),
    fold them into the proposed version, iterate. Do not parse a side-channel document.
@@ -65,6 +67,10 @@ build phase is the whole point — the "D" in DDD.
   pipeline.** That bespoke path is only the *render tail* and has **no build phase**, so it silently
   amputates the product iteration. `ddd-ace-render` alone is correct ONLY when the narration implies
   zero product change (pure re-record over already-built screens).
+- **Pin identity and workspace for the loop.** Whichever you fire, every canopy-web write it makes
+  runs as `bin/ace-canopy-web --workspace <ws> -- <command>` — put that and `<ws>` in the dispatch
+  prompt (a subagent does not inherit it), then `verify narrative <slug>` yourself before citing a
+  URL (`playbook/integrations/canopy-web.md`, ace#2805).
 - **Gates when the story is already signed off:** `concept_change` is pre-approved (resolve
   in-session; never block on a canopy-web UI poll — DDD HITL gates hang any non-interactive run);
   `external_release` stays OFF until an act-tier operator approves.

@@ -38,7 +38,9 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    <connect-opp-id>`), `--brief <text|drive-path>`,
    `--name <demo-name>`, optional `--pin-monday <YYYY-MM-DD>`, optional
    `--render` (run the full `canopy:ddd` converge+video loop; default is a single
-   render+judge via the `canopy:ddd-run` skill).
+   render+judge via the `canopy:ddd-run` skill), optional `--workspace <canopy-web
+   workspace>` (default `config/canopy-web.json` `ddd_workspace`; where every
+   canopy-web write lands — see step 6).
 
 2. **Scaffold the demo run + state.** Generate `runId = YYYYMMDD-HHMM`. Ensure
    the Drive demo folder (`ACE/<name>/` + `runs/<runId>/7-synthetic/`) via the
@@ -73,7 +75,10 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    `why_brief.yaml` + `<demo-slug>.yaml` and **validates them via canopy's
    `scripts.ddd.validate`** — do not proceed until both validate.
 
-6. **Render the walkthrough.** The `realized.json` the setup block points at must
+6. **Render the walkthrough.** **Every canopy-web write goes through
+   `bin/ace-canopy-web --workspace "$WS"`** (ACE's own PAT, explicit workspace, editor
+   check, scoped read-back) — `playbook/integrations/canopy-web.md`. Run
+   `"$ACE_ROOT/bin/ace-canopy-web" --workspace "$WS" check` before rendering. The `realized.json` the setup block points at must
    already carry a real `run_id` in every dashboard URL (step 3 + the URL model
    below), and the labs session must be fresh (preconditions). Then:
    - Default: invoke the `canopy:ddd-run` skill with `{run_id, unified_spec:
@@ -91,7 +96,10 @@ All three converge on the realized `${var}` map (`par_url`); everything from
      (Use absolute paths for `--spec`/`--output`/`--snapshots`/`--report` — the
      subshell runs from `$CANOPY_RT`, not your cwd.)
    - `--render`: dispatch `Agent(canopy:ddd)` for the full converge → video →
-     upload loop (pause gates `concept_change`, `external_release`).
+     upload loop (pause gates `concept_change`, `external_release`). Put the
+     `bin/ace-canopy-web --workspace "$WS" -- <command>` wrapper and `$WS` in the
+     dispatch prompt and require every canopy-web write (narrative post, review,
+     video upload, package) to run through it — a subagent does not inherit it.
 
    **Verified dashboard-URL model (2026-07-21) — EVERY dashboard renders at**
    `…/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>`. Traps that BOUNCE:
@@ -110,7 +118,9 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    `steps.{demo-data-setup,demo-narrative,ddd-run}.status: done` via
    `update_yaml_file` (`merge: 'deep'`). Emit a short summary naming the live
    `par_url` and — if `--render` — the canopy-web `/ddd/<slug>/<run_id>` package
-   URL.
+   URL. Before naming any canopy-web location, read it back scoped:
+   `"$ACE_ROOT/bin/ace-canopy-web" --workspace "$WS" verify narrative <slug>` (and
+   `verify walkthrough <id>` per uploaded video). Report the workspace only on exit 0.
 
 ## Preconditions (restore, don't adapt — verified live 2026-07-21)
 
