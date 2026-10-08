@@ -186,7 +186,7 @@ grants membership and tells the person the one sign-in they must do themselves.
      curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
        -H "Content-Type: application/json" \
        "${ACE_WEB_BASE_URL:-https://labs.connect.dimagi.com/ace}/api/workspaces/<workspace>/members/invite" \
-       -d '{"email":"<email>","role":"viewer"}'
+       -d '{"email":"<email>","role":"editor"}'
      ```
      Owner-gated: `ACE_WEB_PAT_TOKEN` must belong to a workspace **owner**. ACE is now a first-class
      ace-web principal — `ace@dimagi-ai.com` is an **owner** of `dimagi-team` and mints its OWN bot PAT

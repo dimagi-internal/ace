@@ -6,6 +6,7 @@ import { assessSurfaceAudit } from '../../lib/release-readiness';
 import { collapseSharedCauses } from '../../lib/release-readiness-plain';
 import {
   ACCEPT_LINK_TOKEN,
+  RELEASE_ACE_WEB_ROLE,
   buildReleasePlan,
   emailBody,
   grantsFor,
@@ -53,6 +54,30 @@ describe('parseReviewers', () => {
     expect(() => parseReviewers('not-an-email')).toThrow();
     expect(() => parseReviewers('a@x.org:owner')).toThrow();
     expect(() => parseReviewers('a@x.org:viewer,a@x.org:editor')).toThrow();
+  });
+});
+
+describe('ace-web release role (owner directive 2026-10-08: every release invite is editor)', () => {
+  it('every ace_web_invite is editor — including reviewers passed as :viewer — and Connect stays viewer', () => {
+    expect(RELEASE_ACE_WEB_ROLE).toBe('editor');
+    const reviewers = parseReviewers('amina@spark.org:viewer,bo@spark.org:editor,cy@spark.org,neal@dimagi.com:viewer');
+    const { plan } = buildReleasePlan({ ...base, reviewers });
+    const invites = plan.actions.filter((a) => a.kind === 'ace_web_invite');
+    expect(invites.map((a) => a.email).sort()).toEqual(reviewers.map((r) => r.email).sort());
+    for (const a of invites) expect(a).toMatchObject({ system: 'ace-web', target: base.workspace, role: 'editor' });
+    const connect = plan.actions.filter((a) => a.kind === 'connect_org_member');
+    expect(connect.length).toBeGreaterThan(0);
+    for (const a of connect) expect(a.role).toBe('viewer');
+    for (const a of plan.actions.filter((x) => x.kind === 'hq_invite')) expect(a.role).toBe('App Editor');
+    const txt = renderPlan(plan);
+    expect(txt).toContain(`invite to ${base.workspace} as editor`);
+    expect(txt).not.toContain(`invite to ${base.workspace} as viewer`);
+  });
+
+  it('the plan hash stays deterministic', () => {
+    const a = buildReleasePlan(base).plan;
+    const b = buildReleasePlan(base).plan;
+    expect(planHash(a)).toBe(planHash(b));
   });
 });
 
@@ -283,7 +308,7 @@ describe('--from-thread: Dimagi staff on the thread are REVIEWERS (ace#2720)', (
     expect(problems.filter((x) => x.severity === 'blocker')).toEqual([]);
     expect(plan.cc).toEqual([]);
     for (const staff of ['jjackson@dimagi.com', 'neal@dimagi.com']) {
-      expect(plan.actions.find((a) => a.kind === 'ace_web_invite' && a.email === staff)).toMatchObject({ target: base.workspace, role: 'viewer' });
+      expect(plan.actions.find((a) => a.kind === 'ace_web_invite' && a.email === staff)).toMatchObject({ target: base.workspace, role: 'editor' });
       expect(plan.actions.some((a) => a.kind === 'hq_invite' && a.email === staff)).toBe(true);
       expect(plan.actions.some((a) => a.kind === 'connect_org_member' && a.email === staff)).toBe(true);
       expect(plan.actions.some((a) => a.kind === 'email' && a.target === staff)).toBe(true);
