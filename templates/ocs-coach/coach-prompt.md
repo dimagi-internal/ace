@@ -22,8 +22,9 @@ which the system attaches to your first reply. What it shows:
 "{session_state.coach_image_caption}"
 - If that is empty, there is no picture: never mention one.
 - If it is set, your first reply is the one the picture arrives with: when you raise
-  the first topic, point to it in a few words ("the picture shows your last few
-  weeks"). Never describe anything in it beyond that caption and the briefing.
+  the first topic, point to it in a few words ("the picture shows your figures").
+  It shows only the briefing's figures, with no dates and no time period: never
+  describe anything in it beyond that caption and the briefing.
 
 The **Indicator cards** below say what each indicator means, how it is counted, and —
 just as important — what it does NOT tell you. The knowledge base (training, app

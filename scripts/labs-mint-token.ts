@@ -17,9 +17,13 @@
  * `${CLAUDE_PLUGIN_DATA}/.env` (or the legacy plugin-root fallback).
  *
  * Usage:
- *   npx tsx scripts/labs-mint-token.ts [name] [ttl_days]
+ *   npx tsx scripts/labs-mint-token.ts [name] [ttl_days] [scope]
  *     name      defaults to "ACE-plugin"
- *     ttl_days  defaults to 0 (no expiry)
+ *     ttl_days  defaults to 365 (Labs' maximum)
+ *     scope     the token's scope radio value; defaults to the page's default
+ *               ("full"). "coach-images" mints the token an OCS team's
+ *               `connect-labs` Auth Provider holds to fetch coaching pictures
+ *               (skills/ocs-coach-setup § The briefing picture).
  *
  * Stdout: just the raw token (pipeable). Diagnostics on stderr.
  *
@@ -52,6 +56,7 @@ const TOKEN_NAME = process.argv[2] || 'ACE-plugin';
 // 0 ("no expiry") used to be accepted and is now rejected client-side, which
 // manifests as a silent no-op POST — so 365 is the longest available default.
 const TTL_DAYS = process.argv[3] || '365';
+const SCOPE = process.argv[4] || '';
 const LABS_BASE = 'https://labs.connect.dimagi.com';
 const TOKENS_URL = `${LABS_BASE}/labs/mcp/tokens/`;
 const INITIATE_URL = `${LABS_BASE}/labs/initiate/?next=/labs/mcp/tokens/`;
@@ -108,6 +113,30 @@ async function main() {
     const allow = page.locator('input[name="allow"], button:has-text("Authorize"), button:has-text("Allow")').first();
     if (await allow.count() > 0) {
       console.error(`[3/5] OAuth consent hop ${hop + 1} on ${url.host}${url.pathname}`);
+      // CommCare HQ's consent screen now keeps "Authorize" disabled until at least one
+      // project space is selected (`:disabled="selectedDomains.length === 0"`). Select
+      // ACE's own space — never "all", never a guess — and fail loud if it is absent.
+      if (await allow.isDisabled()) {
+        const domain = env.ACE_HQ_DOMAIN;
+        // The spaces are <option>s of a <select multiple>.
+        const select = page.locator(`select:has(option[value="${domain || '__none__'}"])`).first();
+        if (!domain || (await select.count()) === 0) {
+          const form = await page.locator('form').first().innerHTML().catch(() => '<no form>');
+          throw new Error(
+            `consent screen needs a project space selected and ACE_HQ_DOMAIN (${domain || 'unset'}) ` +
+              `is not offered. Form markup:\n${form.slice(0, 3000)}`,
+          );
+        }
+        // select2 hides the <select> and the page's Alpine state only listens for its
+        // `select2change` event, so set the value AND announce it, or Authorize stays off.
+        await select.selectOption([domain], { force: true });
+        await select.evaluate((el, value) => {
+          el.dispatchEvent(new CustomEvent('select2change', { detail: value, bubbles: true }));
+        }, [domain]);
+        await allow.waitFor({ state: 'attached' });
+        if (await allow.isDisabled()) throw new Error(`selected ${domain} but Authorize is still disabled`);
+        console.error(`[3/5] selected project space ${domain}`);
+      }
       await Promise.all([
         page.waitForLoadState('load'),
         allow.click(),
@@ -157,6 +186,15 @@ async function main() {
     );
   }
   await ttlInput.fill(TTL_DAYS);
+  if (SCOPE) {
+    // A scope the page does not offer must fail here, not mint a full-access token.
+    const radio = page.locator(`input[type="radio"][name="scope"][value="${SCOPE}"]`);
+    if ((await radio.count()) !== 1) {
+      throw new Error(`scope "${SCOPE}" is not offered on ${TOKENS_URL} — refusing to mint a token of another scope`);
+    }
+    await radio.check();
+    console.error(`[4/5] scope=${SCOPE}`);
+  }
   // Submit the create form
   await Promise.all([
     page.waitForLoadState('load'),

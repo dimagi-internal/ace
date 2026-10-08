@@ -122,6 +122,20 @@ ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(o
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" "ACE-plugin-laptop" 30
 ```
 
+A scoped token, e.g. the `coach-images` token an OCS team's `connect-labs`
+Auth Provider holds (`skills/ocs-coach-setup § The briefing picture`). Pipe it
+straight into its destination: it is a secret and must not be printed or kept in
+a file. The script refuses rather than mint a different scope if the page does
+not offer the one asked for:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" "OCS <team> coach pictures" 365 coach-images | <into the OCS Auth Provider>
+```
+
+CommCare HQ's consent screen keeps "Authorize" disabled until a project space is
+selected. The script selects `ACE_HQ_DOMAIN`, never "all", and fails with the
+form's markup if that space is not offered (seen 2026-10-08).
+
 ## What it does
 
 1. **Reads creds.** `ACE_HQ_USERNAME` and `ACE_HQ_PASSWORD` from
