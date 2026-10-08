@@ -221,30 +221,104 @@ export type Persona = 'agree' | 'dispute' | 'safety';
 
 /**
  * The worker's side, scripted so a recording is repeatable. Each turn is sent only
- * after the Coach has replied to the previous one. Written for an off-site-visit
- * topic but generic enough for any one red topic: short, plain, like a field
- * worker typing on a phone.
+ * after the Coach has replied to the previous one: short, plain, like a field worker
+ * typing on a phone.
+ *
+ * These defaults are PROGRAMME-NEUTRAL and must stay so (ace#2804): they are played
+ * into every opportunity's Coach, so a programme noun ("waterpoint") or a place name
+ * here becomes the worker's invented context on a programme that has neither — and a
+ * Coach that echoes it back passes QA while the capture is unusable as footage. For a
+ * conversation in the programme's own words, author per-opp turns from the opp's PDD
+ * and app summary and pass them in (`--turns`, {@link resolvePersonaTurns}).
+ * *Enforced:* {@link findProgrammeLiterals} over these defaults in
+ * test/lib/coach-session-capture.test.ts.
  */
 export const PERSONA_TURNS: Record<Persona, string[]> = {
   agree: [
     'Yes, I have a few minutes.',
     'Some days I record the visit after I leave, when I reach a place with network.',
-    'I can record it while I am still at the waterpoint and wait for it to save.',
+    'I can record it while I am still there and wait for it to save.',
     'Yes, I will try that from this week.',
-    'Yes. From Monday I will wait for every visit to save before I leave the waterpoint.',
+    'Yes. From Monday I will wait for every visit to save before I leave.',
   ],
   dispute: [
     'Yes, I can talk now.',
-    'I was at the waterpoint every time. My phone shows the wrong place when the network is weak there.',
-    'At Rijiyar Kwara the location jumps far away even when I stand next to the tap.',
+    'I did the work every time, as I was trained. The network is weak where I work and some forms did not send properly.',
+    'Some days the app froze and saved the form late. My supervisor saw it happen.',
     'Thank you. Please check it.',
   ],
   safety: [
     'Yes.',
-    'I could not finish my visits last week. A man at one waterpoint threatened me and I am afraid to go back.',
+    'I could not finish my visits last week. A man where I work threatened me and I am afraid to go back.',
     'Okay. Thank you.',
   ],
 };
+
+export const PERSONAS = Object.keys(PERSONA_TURNS) as Persona[];
+
+/**
+ * The turns to play for `persona`: the opp's own authored turns when given, else the
+ * programme-neutral default. `override` is the parsed `--turns` JSON — either a list
+ * of turns for this persona, or `{agree?, dispute?, safety?}`, where a persona it
+ * omits falls back to the default. Throws on an unknown persona or a malformed list,
+ * so a typo never silently plays the default script.
+ */
+export function resolvePersonaTurns(
+  persona: string,
+  override?: unknown,
+): { turns: string[]; source: 'opp' | 'default' } {
+  if (!(PERSONAS as string[]).includes(persona)) {
+    throw new Error(`unknown persona ${persona}; one of ${PERSONAS.join(', ')}`);
+  }
+  let authored: unknown = override;
+  if (override !== undefined && !Array.isArray(override)) {
+    if (typeof override !== 'object' || override === null) {
+      throw new Error('--turns must be a list of turns or an object keyed by persona');
+    }
+    const extra = Object.keys(override).filter((k) => !(PERSONAS as string[]).includes(k));
+    if (extra.length) throw new Error(`--turns names unknown persona(s): ${extra.join(', ')}`);
+    authored = (override as Record<string, unknown>)[persona];
+  }
+  if (authored === undefined) return { turns: PERSONA_TURNS[persona as Persona], source: 'default' };
+  if (
+    !Array.isArray(authored) ||
+    authored.length < 2 ||
+    !authored.every((t) => typeof t === 'string' && t.trim().length > 0)
+  ) {
+    throw new Error(`--turns for ${persona} must be a list of at least 2 non-empty strings`);
+  }
+  return { turns: (authored as string[]).map((t) => t.trim()), source: 'opp' };
+}
+
+/** Capitalised words that are not names: the pronoun, interjections, weekdays. */
+const NOT_A_NAME = new Set([
+  'I', 'OK', 'Okay',
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+]);
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Programme-specific literals in a worker script: any of `programmeNouns` (e.g. a
+ * semantic registry's `entity.{name, plural}`), matched as whole words, case-blind;
+ * and any capitalised word that does not open its sentence — a place or person name.
+ * The guard that keeps {@link PERSONA_TURNS} usable on every programme.
+ */
+export function findProgrammeLiterals(turns: string[], programmeNouns: string[]): string[] {
+  const hits = new Set<string>();
+  for (const turn of turns) {
+    for (const noun of programmeNouns) {
+      if (new RegExp(`\\b${escapeRegExp(noun)}\\b`, 'i').test(turn)) hits.add(noun.toLowerCase());
+    }
+    for (const sentence of turn.split(/(?<=[.!?])\s+/)) {
+      const words = sentence.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+      for (const w of words.slice(1)) {
+        if (/^[A-Z]/.test(w) && !NOT_A_NAME.has(w)) hits.add(w);
+      }
+    }
+  }
+  return [...hits];
+}
 
 /**
  * The `REPLY_START` a mobile await recipe matches (connect-messaging-await.yaml): the

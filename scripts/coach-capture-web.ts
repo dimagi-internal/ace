@@ -3,7 +3,11 @@
  * own chat page, playing the worker from a scripted persona, and record it.
  *
  *   npx tsx scripts/coach-capture-web.ts --preview <preview.json> --experiment-pk 14002 \
- *     --version 3 --persona agree --out <dir> [--team connect-ace] [--ocs-login <email>]
+ *     --version 3 --persona agree --out <dir> [--turns <turns.json>] [--team connect-ace] [--ocs-login <email>]
+ *
+ * `--turns` is the opp's own worker script (a list for this persona, or an object
+ * keyed by persona), authored from its PDD and app summary; without it the
+ * programme-neutral `PERSONA_TURNS` default plays (ace#2804).
  *
  * `--preview` is Labs' own `start_ocs_outreach` preview (workflow_run_action without
  * `confirm`); the start is built from it by lib/coach-session-capture.ts `webStart` —
@@ -42,12 +46,11 @@ import { parseArgs } from 'node:util';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { findOverstatements } from '../lib/coach-briefing.js';
 import {
-  PERSONA_TURNS,
+  resolvePersonaTurns,
   topicsFromBriefing,
   webStart,
   type CoachStart,
   type OutreachPreview,
-  type Persona,
 } from '../lib/coach-session-capture.js';
 
 loadPluginEnv(import.meta.url);
@@ -59,6 +62,7 @@ const { values } = parseArgs({
     'experiment-pk': { type: 'string' },
     version: { type: 'string' },
     persona: { type: 'string', default: 'agree' },
+    turns: { type: 'string' },
     out: { type: 'string' },
     team: { type: 'string' },
     'reply-timeout-s': { type: 'string', default: '120' },
@@ -67,9 +71,11 @@ const { values } = parseArgs({
 if (!values.preview || !values['experiment-pk'] || !values.version || !values.out) {
   throw new Error('--preview, --experiment-pk, --version and --out are required');
 }
-const persona = values.persona as Persona;
-const turns = PERSONA_TURNS[persona];
-if (!turns) throw new Error(`unknown --persona ${persona}; one of ${Object.keys(PERSONA_TURNS).join(', ')}`);
+const persona = values.persona as string;
+const { turns, source: turnsSource } = resolvePersonaTurns(
+  persona,
+  values.turns ? JSON.parse(fs.readFileSync(values.turns, 'utf8')) : undefined,
+);
 const ocsLogin = values['ocs-login'] ?? process.env.OCS_USERNAME;
 if (!ocsLogin) throw new Error('no --ocs-login and OCS_USERNAME is unset');
 const start: CoachStart = webStart(JSON.parse(fs.readFileSync(values.preview, 'utf8')) as OutreachPreview, ocsLogin);
@@ -173,6 +179,7 @@ async function main() {
         {
           mode: 'web',
           persona,
+          turns_source: turnsSource,
           session_id: sessionId,
           chat_url: `${baseUrl}${chatPath}`,
           opening_not_in_history: true,
