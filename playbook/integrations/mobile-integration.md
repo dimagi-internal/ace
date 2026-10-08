@@ -332,6 +332,8 @@ dadb-1.2.10 (bundled with Maestro 2.3.0+) does NOT wrap per-device `createDadb()
 
 Workaround: ACE invokes `maestro --host=localhost --port=<adbd>` for every recipe run. With both flags set Maestro takes the direct-TCP `Dadb.create(host, port)` path, never touching `Dadb.list`. Plumbed in `MaestroBackend.runRecipe` + `MobileClient.runRecipe` / `registerTestUser` (serial resolved via `findRunningAvd`, `adbPort = consolePort + 1` via `AvdBackend.adbPortFromSerial`).
 
+**`maestro hierarchy` is the exception: `--host`/`--port` alone do NOT keep it off `Dadb.list`** (ace#2798). In Maestro 2.10.0/2.11.0, `PrintHierarchyCommand.run()` calls `DeviceService.listConnectedDevices()` before it opens the session unless `--device` is set, and that enumeration hangs on another account's emulator. So the driver probe (`probeDriverArgs` in `mcp/mobile/backends/maestro.ts`) also passes `--device=emulator-<adbPort-1>`. With `--host`/`--port` set, that id is only a session key; the connection is still `Dadb.create(host, port)`. Never add `--device` to `maestro test` on the direct-TCP path: `test` checks the id against the devices it can see and aborts (ace#1454).
+
 `bin/ace-doctor` flags any `unauthorized` `emulator-NNNN` entries in `adb devices` output as a WARN with a fix hint.
 
 ### Stuck-FallbackHome recovery

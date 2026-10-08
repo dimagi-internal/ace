@@ -187,6 +187,49 @@ export const ALLOWED_STEP_KEYS = new Set([
   'stopApp',
 ]);
 
+/**
+ * argv for the driver-liveness probe (`MaestroBackend.probeDriver`).
+ *
+ * WHY `--device` RIDES ALONG WITH `--host`/`--port` HERE, AND ONLY HERE
+ * (dimagi-internal/ace#2798). `maestro hierarchy` does not honour
+ * `--host`/`--port` the way `maestro test` does. In Maestro 2.10.0 and
+ * 2.11.0, `PrintHierarchyCommand.run()` picks the device FIRST:
+ *
+ *     val effectiveDeviceId = when {
+ *         parent?.deviceId != null -> parent.deviceId
+ *         deviceIndex != null -> null
+ *         else -> DeviceService.listConnectedDevices() ...   // -> Dadb.list()
+ *     }
+ *
+ * and only then calls `MaestroSessionManager.newSession(host, port, ...)`.
+ * With no `--device`, the `else` branch enumerates EVERY device through
+ * `Dadb.list()`. That blocks forever on the CNXN handshake with another
+ * macOS account's emulator, which never authorises this user's adbkey.
+ * On group-payment-test/20261007-1700, jstack showed the main thread parked
+ * in `dadb.AdbReader.readMessage` under `Dadb$Companion.list`. In the same
+ * minutes, three `maestro test --host --port` dispatches on the same device
+ * ran to `pass`. The driver was fine and only the probe could not see it.
+ *
+ * Passing `--device` takes the first branch, so there is no enumeration.
+ * After that, `selectDevice` sees `host != null` and `pickAndroidDevice`
+ * sees `port != null`, so the connection is still the direct-TCP
+ * `AndroidDeviceConnection.open(host, port)` -> `Dadb.create(host, port)`.
+ * The id is used only as the session-store key and the EMULATOR/REAL label
+ * (it starts with `emulator`). It is the same id the enumeration returned
+ * on a single-device host, so wherever the old probe worked, the session is
+ * the same one.
+ *
+ * Do NOT copy this to `buildMaestroArgs`. `maestro test` CHECKS the
+ * `--device` id against the devices it can see, and on the direct-TCP path
+ * it aborts with "Device emulator-NNNN was requested, but it is not
+ * connected" (ace#1454). `hierarchy` has no such check. The serial comes
+ * from the port by the inverse of `AvdBackend.adbPortFromSerial`
+ * (`emulator-N` <-> adbd port `N+1`).
+ */
+export function probeDriverArgs(adbPort: number): string[] {
+  return ['--host=localhost', `--port=${adbPort}`, `--device=emulator-${adbPort - 1}`, 'hierarchy'];
+}
+
 export interface MaestroBackendOpts {
   shell?: ShellFn;
 }
@@ -766,14 +809,15 @@ export class MaestroBackend {
    *
    * Returns `{ healthy: true }` on success and `{ healthy: false, reason }`
    * on any failure path — callers decide whether to recover.
+   *
+   * The argv is built by `probeDriverArgs` — read its comment before
+   * changing it: `hierarchy` needs `--device` as well as `--host`/`--port`
+   * or it enumerates every device first and hangs on a multi-account host
+   * (dimagi-internal/ace#2798).
    */
   async probeDriver(adbPort: number, timeoutMs: number = 8_000): Promise<{ healthy: boolean; reason?: string }> {
     try {
-      const r = await this.shell(
-        'maestro',
-        ['--host=localhost', `--port=${adbPort}`, 'hierarchy'],
-        { timeoutMs },
-      );
+      const r = await this.shell('maestro', probeDriverArgs(adbPort), { timeoutMs });
       if (r.exitCode === 0) return { healthy: true };
       return { healthy: false, reason: `maestro hierarchy exit ${r.exitCode}: ${r.stderr.slice(0, 160) || r.stdout.slice(0, 160)}` };
     } catch (e: any) {
