@@ -1332,9 +1332,11 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      a person, and the summary URL above only reaches the operator *in this
      session* — if the session ends, or the run is long, the counterpart who
      asked learns nothing. Call `pendingCloseoutNotice`
-     (`lib/triggering-thread.ts`), write the draft into the run's comms-log,
-     and surface it as an explicit **pending outbound** in the close-out
-     report. Three rules:
+     (`lib/triggering-thread.ts`), write the draft into
+     `run-closeout_comms-log.md` **at the run root** (`ACE/<opp>/runs/<run-id>/`,
+     never the `comms-log/` subfolder — `inbox-triage` §b.1 does not search
+     it, ace#2823), and surface it as an explicit **pending outbound** in the
+     close-out report. Three rules:
 
      - **Drafted, never sent.** Outbound stays approval-gated and
        `bin/ace-email` remains the only send path. This adds a visible parked

@@ -202,6 +202,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/archetype-enum-drift.test.ts': { issues: ['ace#1486', 'ace#2312'] },
   'test/skills/build-phase-decision-rows.test.ts': { issues: ['ace#2384', 'ace#399'], observed: 'poverty-graduation/20260905-1345' },
   'test/skills/claims-authoring.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file; states a write-side convention and names no incident' },
+  'test/skills/closeout-comms-log-routing.test.ts': { issues: ['ace#2823'], observed: 'group-payment-test/20261007-1700' },
   'test/skills/component-brief-case-list-scoping.test.ts': { issues: ['ace#1652', 'ace#1195', 'ace#977', 'ace#1281'], observed: 'hh-poverty-targeting/20260824-1404' },
   'test/skills/connect-app-release-label-claims.test.ts': { issues: ['ace#2185'] },
   'test/skills/connect-opp-setup-plain-value.test.ts': { issues: ['ace#2654'], observed: 'spark-facilitator/20261004-1706' },
