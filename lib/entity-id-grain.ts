@@ -74,6 +74,37 @@ function bindsOf(xml: string): Array<{ nodeset: string; calculate: string }> {
   return out;
 }
 
+/** A bare `uuid()` call — fresh per evaluation, so per submission on form open. */
+const UUID_CALL = /^uuid\s*\(\s*\)$/;
+
+/**
+ * The value an `xforms-ready` `<setvalue ref=node>` assigns, or `undefined`
+ * when there is none — or more than one, which is ambiguous and stays
+ * unresolved rather than guessed (ace#2783).
+ *
+ * Recorded verbatim from released Deliver build
+ * `6d52f4babdcf4bcba25a5d84e26e8e7b` (group-payment-test/20261007-1700,
+ * `modules-4/forms-0.xml`):
+ *
+ * ```xml
+ * <bind nodeset="/data/session_uid" type="xsd:string"/>
+ * <bind nodeset="/data/var_b_session/deliver/entity_id" calculate="/data/session_uid"/>
+ * <setvalue event="xforms-ready" ref="/data/session_uid" value="uuid()"/>
+ * ```
+ *
+ * Only `xforms-ready` counts: a setvalue on a value-changed event depends on
+ * what the worker does, and is not the node's definition.
+ */
+function setvalueOnReady(xml: string, nodeset: string): string | undefined {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document;
+  const hits = Array.from(doc.getElementsByTagName('setvalue')).filter(
+    (sv) => sv.getAttribute('ref') === nodeset && sv.getAttribute('event') === 'xforms-ready',
+  );
+  if (hits.length !== 1) return undefined;
+  const value = hits[0].getAttribute('value')?.trim();
+  return value ? value : undefined;
+}
+
 /**
  * Split a call's argument list at top level, ignoring nested parens.
  *
@@ -220,9 +251,27 @@ export function extractEntityIdComponents(xml: string): EntityIdComponents {
   let calc = entity.calculate.trim();
   // One level of indirection: entity_id -> another node holding the concat.
   if (/^\/data\/[\w/-]+$/.test(calc)) {
-    const target = binds.find((b) => b.nodeset === calc);
-    if (!target) return { resolved: false, components: [], raw: entity.calculate };
-    calc = target.calculate.trim();
+    const targetPath = calc;
+    const target = binds.find((b) => b.nodeset === targetPath);
+    if (target) {
+      calc = target.calculate.trim();
+    } else {
+      // ace#2783: the target may have NO calculate and be initialised by a
+      // form-open `<setvalue>` instead — how Nova compiles a hidden field with
+      // `default_value: uuid()`. See `setvalueOnReady`.
+      const init = setvalueOnReady(xml, targetPath);
+      if (init === undefined) return { resolved: false, components: [], raw: entity.calculate };
+      if (UUID_CALL.test(init)) {
+        // A fresh uuid per submission: the node itself IS the component — a
+        // per-submission identity, never worker-or-day scoped.
+        return {
+          resolved: true,
+          components: [targetPath],
+          raw: `${targetPath} <- setvalue ${init}`,
+        };
+      }
+      calc = init;
+    }
   }
 
   const branchExprs = conditionalBranches(calc);
