@@ -134,9 +134,15 @@
 #
 # FOLLOWUP FORMS (ace#1138 Gap 2 — CLOSED 2026-08-01). A form registered as a
 # `followup` on a case type renders CommCare's EntitySelectActivity case list
-# BETWEEN the form row and the first question. This recipe now hands that
-# screen to `deliver-case-select.yaml` (Level 3 below), so a followup walks
-# through to its first question like any other form.
+# before its first question. WHERE in the walk depends on the module:
+#   - followup-only module: module row -> case list -> form list -> form.
+#     Handed to `deliver-case-select.yaml` at Level 1.5 (before the form row).
+#   - MIXED module (registration + followup forms, ace#2797): module row ->
+#     form grid -> followup form row -> case list -> form. Handed off at
+#     Level 2.5 (after the form row). Bind FORM_NAME — it is what keeps the
+#     Level-1 positional fallback from tapping the registration form.
+# Both handoffs are guarded on the case list being on screen, so at most one
+# fires on any walk.
 #
 # Two things the caller still owns:
 #   ${CASE_NAME} — REQUIRED when the target form is a followup. It is read by
@@ -203,10 +209,25 @@ appId: org.commcare.dalvik
 # module name), holding the guard false by luck.
 #
 # Requiring the menu container to still be on screen is what makes the two
-# branches mutually exclusive in practice: a successful named tap leaves the
-# MenuActivity entirely (for a followup, to EntitySelectActivity), so this
-# cannot fire after it. Same lesson `connect-resume-opp.yaml` already encodes
-# — see its "guards POSITIVELY, not on btn_resume absence" invariant.
+# branches mutually exclusive for a module whose named tap LEAVES the
+# MenuActivity (a followup-only module goes to EntitySelectActivity). Same
+# lesson `connect-resume-opp.yaml` already encodes — see its "guards
+# POSITIVELY, not on btn_resume absence" invariant.
+#
+# MIXED MODULES (dimagi-internal/ace#2797). The menu guard alone is NOT enough
+# when one module holds a REGISTRATION form and a FOLLOWUP form (e.g.
+# `Groups` = `Register group` + `Add member`). Tapping that module opens a
+# SECOND MenuActivity — the module's own form grid — so the menu container is
+# still on screen, and `${MODULE_NAME}` now sits only in the action bar, not
+# below the menu. The old guard was therefore TRUE and this fallback tapped
+# the first `row_txt`: `Register group`, not the `Add member` the caller
+# bound (group-payment-test/20261007-1700, APK 2.64.0 — the next steps typed a
+# member name into Register group's Group name). Hence the nested guard: the
+# fallback also requires that `${FORM_NAME}` is NOT a row below the menu. When
+# the named tap opened the form grid, the target form row IS there, so this is
+# skipped and Level 2a taps it by name. When FORM_NAME is unbound it is the
+# literal `undefined` (ace#1668), matches no row, and the legacy positional
+# behavior is byte-for-byte unchanged.
 - runFlow:
     when:
       visible:
@@ -216,8 +237,15 @@ appId: org.commcare.dalvik
         below:
           id: "${SELECTOR:deliver-suite-menu}"
     commands:
-      - tapOn:
-          id: "org.commcare.dalvik:id/row_txt"
+      - runFlow:
+          when:
+            notVisible:
+              text: "${FORM_NAME}"
+              below:
+                id: "${SELECTOR:deliver-suite-menu}"
+          commands:
+            - tapOn:
+                id: "org.commcare.dalvik:id/row_txt"
 
 - waitForAnimationToEnd:
     timeout: 5000
@@ -333,6 +361,34 @@ appId: org.commcare.dalvik
                       id: "org.commcare.dalvik:id/row_txt"
                   - waitForAnimationToEnd:
                       timeout: 5000
+
+# ── LEVEL 2.5 (mixed modules only): the case list AFTER the form row ───────
+# dimagi-internal/ace#2797. In a module that holds BOTH a registration form
+# and a followup form, CommCare cannot collect the case before the form — the
+# registration form needs none. So the order is the reverse of Level 1.5's:
+#
+#   module row -> form grid -> FOLLOWUP form row -> case list -> form
+#
+# Level 1.5 has already run and skipped by the time Level 2a taps the followup
+# row (the form grid, not the case list, was on screen then), so without this
+# second handoff the walk stalls on the case list and the terminal
+# `form-nav-next` wait fails. Observed live on group-payment-test/20261007-1700
+# (APK 2.64.0): a recovery recipe doing tap `Groups` -> tap `Add member` (by
+# name, below the menu) -> deliver-case-select.yaml reached the Add member
+# form and submitted it for both groups.
+#
+# Same guard as Level 1.5, so every other shape is unaffected: a
+# followup-only module already crossed its case list at Level 1.5, and a
+# registration form never shows one — in both the guard is false here.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:case-list-container}"
+    commands:
+      - runFlow:
+          file: deliver-case-select.yaml
+      - waitForAnimationToEnd:
+          timeout: 5000
 
 # Form's first question is on screen once the form-nav bar renders.
 - extendedWaitUntil:

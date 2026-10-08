@@ -213,6 +213,15 @@ more than one module MUST bind `MODULE_NAME`, or the walk is silently
 wrong rather than loudly broken. Enforced structurally by
 `test/mcp/mobile/static-recipe-invariants.test.ts § positional row taps`.
 
+**A module that holds BOTH a registration form and a followup form** (e.g.
+`Groups` = `Register group` + `Add member`, group-payment-test/20261007-1700)
+is walked module row → the module's own form grid → form row → case list →
+form. `deliver-form-walk.yaml` handles that order (dimagi-internal/ace#2797),
+but only when you bind **`FORM_NAME`** (it keeps the Level-1 positional
+fallback from tapping the first form in the grid, usually the registration
+form) and **`CASE_NAME`** for the followup. Never leave `FORM_NAME` unbound
+on such a module.
+
 **The payable module is the one Connect pays for, not the first one.**
 Read the deliver units (`connect_list_deliver_units` /
 `connect_list_payment_units`) or the Nova blueprint to pick it — do not
