@@ -236,7 +236,10 @@ export function classifyNovaScopeProbe(args: {
           `HQ Read granted (${domainNote}) but ACE_HQ_DOMAIN "${expectedDomain}" is NOT among them`,
         remediation:
           `Nova cannot upload to a project space it cannot see, so app-deploy will fail late. ` +
-          `Either add the Nova identity to "${expectedDomain}" on CommCare HQ, or correct ` +
+          `Nova STORES the key's reachable spaces when the key is saved (voidcraft-labs/commcare-nova ` +
+          `lib/db/settings.ts approved_domains), so a space joined since then is missing until refreshed: ` +
+          `sign in at https://commcare.app/settings as the ACE identity and press Refresh on the CommCare HQ card. ` +
+          `If "${expectedDomain}" is still missing after that, add the HQ key's user to it on CommCare HQ, or correct ` +
           `ACE_HQ_DOMAIN (visible: ${domains.join(', ')}) in 1Password and re-run /ace:setup --force-env`,
       };
     }

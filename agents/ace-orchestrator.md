@@ -1147,8 +1147,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    **Partner workspace → run the `preflight_reads` in ONE parallel message
    before step 2** (they are cheap reads; nothing is written): HQ
    `commcare_list_apps(domain)` must answer; Nova `get_hq_connection` must list
-   the HQ space in `available_domains[].name` (else Phase 3 cannot upload — the
-   operator pastes an HQ key that reaches it at `https://commcare.app/settings`);
+   the HQ space in `available_domains[].name` (else Phase 3 cannot upload. Nova
+   stores the key's reachable spaces when the key is saved, so a space created
+   or joined since then is missing until the operator presses **Refresh** on the
+   CommCare HQ card at `https://commcare.app/settings` (signed in as the ACE
+   identity) — no new key needed; only if it is still missing does the HQ key's
+   user lack membership of the space);
    `connect_list_programs` on the PM org and `connect_list_opportunities` on the
    holding org must answer (a 403/404/redirect means ace@ is not a member —
    the workspace owner adds it). Any failure halts with that remediation.
