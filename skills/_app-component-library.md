@@ -135,6 +135,7 @@ authored from the PDD per run):
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`screen-grouping`](#screen-grouping) | Deliver (+ Learn) | Always, for any form that puts more than one question in a `group` | `pdd-to-deliver-app-eval § field_answerability`; `pdd-to-deliver-app § Step 4g` (mechanical, `lib/screen-shape.ts`) |
 | [`repeat-count-source`](#repeat-count-source) | Deliver (+ Learn) | Any repeat whose row count is known in advance (`count_bound`) | `app-release-qa § Step 4` dead-repeat-count check (mechanical, `lib/repeat-count-audit.ts`, ace#2517) |
+| [`case-choice-attendance`](#case-choice-attendance) | Deliver | A form opened on a group-like case records WHICH of its existing child cases took part (attendance, who received a distribution, who was screened) | `pdd-to-deliver-app-eval § Capture fitness` (e); recipe pinned in `lib/case-choice-attendance.ts`; live tripwire `scripts/probe-nova-case-choices.ts` (voidcraft-labs/commcare-nova#728) |
 | [`consent-script-floor`](#consent-script-floor) | Deliver | The PDD describes consent being sought from the people whose data/images are captured — **whether or not it declares a consent FIELD** (a read-aloud announcement counts) | `pdd-to-deliver-app-eval § consent_floor` (hard-gate — backstop only; this is a BUILD-TIME component) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
@@ -493,7 +494,10 @@ library is the only place ACE names them:
   choice source in the candidate (save to ship it). `source` is either
   `{kind: 'inline', options: [{value, label}, …]}` with `label` a string and
   `value` a lowercase slug (≥2 options) or
-  `{kind: 'lookup', tableId, valueColumnId, labelColumnId, filter?}`.
+  `{kind: 'lookup', tableId, valueColumnId, labelColumnId, filter?}` or —
+  since 2026-10-08 (`voidcraft-labs/commcare-nova#728`) —
+  `{kind: 'cases', caseType, labelProperty?, filter?}`, whose answers are case
+  ids (see [`case-choice-attendance`](#case-choice-attendance)).
   It is a REPLACE, not a patch — there is no retained inactive source, so send
   the complete set. (`edit_field`'s `updates.optionsSource` takes the same
   `LookupOptionsSource` shape if you are already editing the field.)
@@ -1595,6 +1599,72 @@ answering." Nova's validator does not refuse the misuse (upstream ask:
 > row is created, so it may read an answer given BEFORE that parent row; it may
 > never read a field of its own row.
 
+### case-choice-attendance
+
+- **App:** Deliver
+- **Trigger:** a form is opened on a group-like case (savings group, class,
+  household, clinic session) and records **which of that case's existing child
+  cases** took part, whether as attendance, a distribution received, or a
+  screening done. It does NOT trigger when each member needs real per-member
+  ANSWERS beyond present/absent. That is a roster with questions per row.
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` (e). The recipe
+  is code, `lib/case-choice-attendance.ts`, pinned by
+  `test/scripts/nova-case-choices-probe.test.ts`. The live tripwire is
+  `scripts/probe-nova-case-choices.ts` (exit 0 = build this, exit 2/3 = fall
+  back to yes/no per member).
+- **Origin:** `group-payment-test/20261007-1700` (Sophie Feintuch's group
+  payment test, a livelihoods savings-group shape). Nova's choice fields then
+  took options only from an inline list or a Project data table, so attendance
+  shipped as one "Was <member> at this session?" yes/no screen per member, ~30
+  screens for a real group. ACE filed `voidcraft-labs/commcare-nova#728`; Nova
+  PR #730 added a `kind: 'cases'` choice source and closed it on 2026-10-08.
+  Contract: `playbook/integrations/nova-integration.md § The case choices channel`.
+
+The obvious design is the trap: driving the per-member update repeat from the
+checklist answer (`count-selected` / `selected-at`). ACE's own #728 filing
+proposed it. A repeat KEEPS rows it already created when its count shrinks, so
+a member ticked, then unticked after going Back, is still updated on submit.
+The roster must be captured from the case database when the form opens and
+checked against the FINAL checklist.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Group attendance is ONE checklist of the group's own members, never
+> a yes/no screen per member. Build it exactly as follows (shapes from
+> `lib/case-choice-attendance.ts`):
+> (1) Declare the member type's parent first:
+> `set_case_type_parent({caseType: '<member>', parentType: '<group>'})`. The
+> filter below is refused without it.
+> (2) A `multi_select` (e.g. `present`, required) with
+> `optionsSource: {kind: 'cases', caseType: '<member>', labelProperty:
+> 'case_name', filter: "#row/status = 'open' and exists(ancestor('parent'),
+> #row/case_id = #case/case_id)"}`. `#row` is the candidate member and `#case`
+> is the group the form was opened on. Keep the status clause, because without
+> it closed members still on the device are offered. The answer is the ticked
+> members' case ids.
+> (3) An UNLABELLED repeat `roster` with `repeat: {mode: 'query_bound', ids_query:
+> "instance('casedb')/casedb/case[@case_type = '<member>'][@status =
+> 'open'][index/parent = #case/case_id]/@case_id"}`, holding two hidden fields:
+> `member_id` = `current()/../@id`, and `attended` =
+> `if(selected(#form/present, #form/roster/member_id), 'yes', 'no')`. NEVER
+> drive this repeat from the checklist answer (`count-selected` /
+> `selected-at`). A repeat keeps rows after its count shrinks, so a member
+> unticked after Back would still be updated.
+> (4) One `update` case operation on `<member>`: `target: {kind: 'expression',
+> expr: '#form/roster/member_id'}`, `forEach: {repeat: <roster uuid>}`,
+> `condition: "#form/roster/attended = 'yes'"`, with the per-member writes the
+> PDD asks for (e.g. `last_attended = #form/session_date`). Do not put
+> `selected()` in the condition; Nova refuses it in record expressions.
+> If the group record needs the attendee list, write `#form/present` straight to
+> a group or session property; it is already a space-separated id list. A
+> "how many attended" figure is `count-selected(#form/present)`. Any
+> at-least-one rule goes on the checklist's own `required` / `validate`.
+
+Things this does not change: choices are the cases already synced to that
+worker, since a filter narrows and never fetches. HQ's form designer needs the
+Lookup Tables privilege to edit the question. `app-release-qa`'s `commcare-cli
+play` skips such a form as `cli-case-index-unsupported`, which is expected.
+
 ### branch-scoped-groups
 
 - **App:** Deliver
@@ -2341,6 +2411,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-10-08 | **New component `case-choice-attendance` (voidcraft-labs/commcare-nova#728).** Nova PR #730 added a third choice source, `kind: 'cases'`, so a group's members can be ONE checklist. `group-payment-test/20261007-1700` had shipped one yes/no screen per member because only inline and table sources existed. The recipe was built and verified live on a throwaway app: choices scoped to the selected group's open members, and after tick-three-untick-one the roster keeps all three with the unticked member at `attended = 'no'`. The brief forbids the design ACE itself proposed in #728, a repeat driven by the checklist, because repeats keep rows after deselection. *Enforced:* `lib/case-choice-attendance.ts` + `test/scripts/nova-case-choices-probe.test.ts`; live tripwire `scripts/probe-nova-case-choices.ts`. | ACE team |
 | 2026-09-28 | **Tool shapes move to Nova private work (`voidcraft-labs/commcare-nova#693`).** New § Nova's authoring contract: mutations take `work_id` + `request_id` (never `app_id`) and land only on a `save_work` answering `saved: true`; wording and expressions are plain strings (`{{id}}` / `#form/<path>`), the `{parts}` shapes are retired; the plugin-v2 architect owns its own begin/save/app-test. Lookup-tool, language-layer recipe (identity objects, string values, save before the gate) and ace#1119 read-back (bare ids are now REFUSED; assert the `#form/` text) updated. `no-starter-module` re-framed as a regression guard — new apps are unseeded. | ACE team |
 | 2026-09-27 | **New component `repeat-count-source` (ace#2517).** Nova compiles a root `count_bound` repeat's count as a one-shot `xforms-ready` snapshot — documented Nova semantics, not a compiler slip — and its validator accepts a count read from a same-form question, which is therefore always blank at snapshot time. `spark-facilitator/20260926-1413` shipped 5 of 5 count-bound repeats that way; every one rendered zero rows and a Phase 6 device walk was the first thing to notice. The brief now forbids the shape and routes "worker states N, then fills N rows" to a `user_controlled` repeat whose count is derived, not asked. *Enforced:* `lib/repeat-count-audit.ts` + `test/lib/repeat-count-audit.test.ts` (the released Participant Feedback form as the positive fixture), halting in `app-release-qa` as `dead-repeat-count`. | ACE |
 | 2026-09-17 | **`payability-scoped-key` states the CAPPED-INDEX timing invariant, and a helper now checks it (ace#2148).** The component described the mechanism — the per-entity cap is enforced by deduplication, not by the app refusing a submission — and never stated the relationship between the clamp constant and WHEN the counter is read. A `casedb` read is the state BEFORE this submission (the case property is written on submit), so `min(<casedb count>, cap)` admits `cap + 1` distinct keys: the (cap+1)-th mints an index that has never existed and Connect pays it. On `spark-facilitator/20260906-2233` a cap of 3 shipped binding at 4 — 4 x 7 steps = 28 payable events against a declared `total_cap_per_flw` of 21 — with `validate_app`, `compile_app` and `make_build` all green and the app internally consistent with its own wrong key. The app's own `is_payable` was correctly 0 on the fourth meeting and made no difference, because Connect never reads it. **Not gateable by comparing the clamp to the cap:** both correct constructions are live in this same opportunity and share no constant — `min(<casedb count> + 1, 3)` on build `b08533bdf26a48a295a362ff204fb88d` (indices 1..3) and `if(pcts >= 3, 2, pcts)` on `0cb63a78fd9949b696876ee7a642b685` (indices 0..2). So `checkPayableCapArithmetic` SIMULATES the first submissions and counts distinct keys, and falls back to the app's own `is_payable` guard when no cap is plumbed through — which is what makes the ace#2148 build self-contradictory and therefore catchable. *Enforced:* `test/lib/payable-cap-arithmetic.test.ts`, whose controls are the two real released forms and whose negative control is the shipped defect reconstructed from the fixed artifact by the single character the fix changed. | ACE team |

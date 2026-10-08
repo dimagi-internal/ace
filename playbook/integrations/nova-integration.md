@@ -1002,6 +1002,117 @@ tool count, or when a build reports a register bind it could not verify.
 `test/docs/upstream-absence-claims.test.ts` keeps both retired claims — "no
 create atom" and "the bind is refused" — from coming back.
 
+## The case choices channel — shipped 2026-10-08, adopted 2026-10-08
+
+A single- or multi-select can now take its choices from **case records**: the
+cases already on the worker's device. Before this, `optionsSource` had two kinds,
+`inline` and `lookup`. So `group-payment-test/20261007-1700` built group
+attendance as one "Was <member> at this session?" yes/no screen per member,
+which is ~30 screens for a savings group, and ACE filed
+[`voidcraft-labs/commcare-nova#728`](https://github.com/voidcraft-labs/commcare-nova/issues/728).
+Nova PR #730 shipped a third kind the same day and closed it. Guidance landed in
+nova-plugin v2.1.1 (`voidcraft-labs/nova-plugin#67`), with a public page at
+<https://docs.commcare.app/case-choices>. CommCare itself always supported this
+(HQ's "Custom Single and Multiple Answer Questions" add-on). The gap was Nova's
+alone, so a sentence saying "CommCare can't do a member tick-list" was never true.
+
+### The tools
+
+No new tool. `add_fields.optionsSource`, `set_field_options_source.source` and
+`edit_field.updates.optionsSource` each gained a third shape:
+
+```
+{ kind: 'cases', caseType: 'member', labelProperty?: 'case_name', filter?: <expr> }
+```
+
+The answer is always the exact `case_id`, so a multi-select answer is a
+space-separated id list. There is no `valueProperty`.
+
+### Contract facts — observed live 2026-10-08, not inferred
+
+Each of these is from a throwaway app built on the live server, read back with
+`get_form`, run through `evaluate_form` with scenario records, and compiled to a
+CCZ:
+
+- **In a filter, `#row` is the CANDIDATE and `#case` is the form's selected
+  record.** Children of the selected group:
+  `#row/status = 'open' and exists(ancestor('parent'), #row/case_id = #case/case_id)`.
+  Nova stores it normalised as `all((…), exists(…))`.
+- **Omitting the filter offers every member on the device, CLOSED ones
+  included.** Always state the status clause.
+- **The ancestor walk is refused unless the case type declares a parent:**
+  *"Ancestor walk failed: case type 'member' has no parent_type."* Call
+  `set_case_type_parent({caseType:'member', parentType:'group'})` first. A
+  child-creating `caseWrite` alone does not declare it on a fresh build.
+- **Scoping is right.** With group g1 selected, Preview offered exactly g1's
+  three open members. It excluded g2's member and g1's closed member.
+- **The CCZ is standard HQ.** It compiles to a `jr://instance/casedb`
+  `<itemset>` with `<value ref="@case_id"/>` and `<label ref="case_name"/>`,
+  filtered on `index/parent`. HQ's form designer needs the **Lookup Tables**
+  privilege to EDIT such a question even though no table is involved. The
+  `commcare-cli play` gate cannot run it (`cli-case-index-unsupported`: the CLI
+  has no case index table), so that skip is expected, not a defect.
+- **Filters narrow; they never fetch.** The choices are the cases already synced
+  to that worker. Location-based sharing that delivers one clinic means an
+  "all clinics" question offers one clinic.
+- **Choosing does not update anyone.** Updating each ticked member needs an
+  explicit `update` case operation, and it must NOT iterate the checklist (see
+  below).
+- **`selected()` is refused in a case operation's `condition`:** *"selected() is
+  available in form expressions, but not record expressions."* Compute the
+  membership in a hidden form field and condition the operation on that.
+- **`evaluate_form` reports `caseOperations: "not-evaluated"`.** It proves
+  choices, roster rows and hidden answers, but not the submitted case effects.
+  Nova's own PR verified final-selected-only effects natively (30 members, Back,
+  deselection, submission). ACE has not re-observed a submission through
+  `start_app_test`. Treat that as the residual.
+
+### What this means for ACE, exactly
+
+**Attendance of a known group is ONE checklist, not a screen per member.** When
+a form is opened on a group-like case and records which of its existing child
+cases took part (attendance, who received a distribution, who was screened),
+build `_app-component-library § case-choice-attendance`. Its exact shape is
+`lib/case-choice-attendance.ts`:
+
+1. a `multi_select` with a `kind: 'cases'` source scoped to the selected case's
+   open children;
+2. an **unlabelled `query_bound` roster** over the same children. It is captured
+   ONCE when the form opens, and each row holds a hidden `member_id` and a hidden
+   `attended = if(selected(#form/present, …/member_id), 'yes', 'no')`;
+3. an `update` operation `forEach` roster row, conditioned on
+   `attended = 'yes'`.
+
+**Do not drive the update repeat from the checklist** (`count-selected` /
+`selected-at` over the answer). ACE's own #728 filing proposed exactly that, and
+it is wrong. A repeat keeps rows it already created when its count shrinks, so
+a worker who ticks a member, goes Back and unticks them still submits that
+member's update. Nova's guide says so in as many words. The live probe confirms
+that the stable roster keeps every row and flips the unticked member to `'no'`.
+
+The yes/no-per-member repeat is now a **fallback only**. Use it when the probe
+below regresses, or when the PDD genuinely needs a per-member answer beyond
+present/absent. That is a roster with real questions per row, not attendance.
+
+### The tripwire
+
+`scripts/probe-nova-case-choices.ts` builds the recipe on a throwaway app and
+checks it by read-back, Preview, and deselection. All its objects are
+app-scoped, so `delete_app` is its whole teardown. It was run twice on
+2026-10-08, and both runs returned exit 0.
+
+| Exit | Verdict | Do |
+|---|---|---|
+| `0` | `works` | Expected. Build the checklist |
+| `2` | `wrong-behaviour` | **Regression**: the choices are mis-scoped or the roster is not deselection-safe. Fall back to yes/no per member, then run `skills/upstream-regression-triage` |
+| `3` | `not-bound` | **Regression**: a `kind: 'cases'` source no longer binds. Same fallback and triage |
+
+*Enforced:* `test/scripts/nova-case-choices-probe.test.ts` pins the verdict and
+the recipe. In particular, the roster never reads the checklist, and the
+operation condition never calls `selected()`.
+`test/docs/upstream-absence-claims.test.ts` keeps the retired "choices come only
+from inline or a table" claim from coming back.
+
 ## The private-work authoring contract — shipped 2026-09-27, adopted 2026-09-28
 
 **Read this before writing ANY Nova mutation.** Nova PR
@@ -1333,7 +1444,9 @@ property.)
 column uuids for lookup-backed fields), `rename_case_properties`
 (whole-app simultaneous rename; chains/swaps/cycles allowed, merges
 rejected), `set_field_options_source` (atomically replace a choice
-field's complete option source — inline choices or a data table).
+field's complete option source — inline choices or a data table; a third
+source, `kind: 'cases'`, was added 2026-10-08 per `voidcraft-labs/commcare-nova#728`,
+see § The case choices channel).
 
 ### The preventer
 
