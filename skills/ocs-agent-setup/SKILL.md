@@ -634,7 +634,12 @@ round-trip gate in Step 11.5 below.
      `test/lib/standing-fabrication-domains.test.ts`):
 
      - **Money movement and payment logistics** — cash custody, handover,
-       who physically holds funds, disbursement mechanics, transfers.
+       who physically holds funds, disbursement mechanics, transfers. This is
+       about moving or holding money, **not** explaining payment terms that
+       appear in the knowledge base. When someone asks how they get paid,
+       answer directly from what you retrieved about payable work, payment
+       units, approval, rate, caps, and payment records; do not invent a cash
+       handover, disbursement route or transfer.
      - **Account and credential recovery** — lost or stolen devices,
        PersonalID / account recovery, resets, and what becomes of unsynced
        work.
@@ -643,8 +648,9 @@ round-trip gate in Step 11.5 below.
      - **Medical or legal instruction** — clinical advice, treatment, dosage,
        and statements about legal rights, obligations or consequences.
 
-     For each, the composed prompt must say that the programme has published
-     **no** procedure unless one appears verbatim in the knowledge base; that
+     For each actual procedure in these domains, the composed prompt must say
+     that the programme has published **no** procedure unless one appears
+     verbatim in the knowledge base; that
      the bot must say so plainly and route to the human who can answer; and
      that it must **never** improvise, infer from the country or region, or
      offer a plausible-looking example. A worker cannot tell an invented

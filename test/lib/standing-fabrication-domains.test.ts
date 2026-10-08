@@ -636,6 +636,30 @@ describe('ocs-agent-setup § Step 7 mandates the standing set', () => {
   it('points the composer at this module so the invariant is discoverable', () => {
     expect(agentSetup).toContain('lib/standing-fabrication-domains.ts');
   });
+
+  it('keeps retrieved payment-earning answers outside the money-movement prohibition', () => {
+    const stepStart = agentSetup.indexOf('7. **Compose the system prompt');
+    const stepEnd = agentSetup.indexOf('7.5.', stepStart);
+    expect(stepStart, 'Step 7 must be present').toBeGreaterThan(-1);
+    expect(stepEnd, 'Step 7 must end before its audit step').toBeGreaterThan(stepStart);
+    const step7 = agentSetup.slice(stepStart, stepEnd);
+    const start = step7.indexOf('**Money movement and payment logistics**');
+    const end = step7.indexOf('**Account and credential recovery**', start);
+    expect(start, 'Step 7 must define the money-movement boundary').toBeGreaterThan(-1);
+    expect(end, 'the money-movement instruction must end before the next domain').toBeGreaterThan(start);
+    const moneyInstruction = step7.slice(start, end).replace(/\s+/g, ' ');
+
+    expect(moneyInstruction).toMatch(/not.*explaining payment terms/i);
+    expect(moneyInstruction).toMatch(/how they get paid/i);
+    expect(moneyInstruction).toContain('answer directly from what you retrieved');
+    for (const term of ['payable work', 'payment units', 'approval', 'rate', 'caps', 'payment records']) {
+      expect(moneyInstruction).toContain(term);
+    }
+    expect(moneyInstruction).toMatch(
+      /do not invent a cash\s+handover, disbursement route or transfer/i,
+    );
+    expect(step7).toContain('For each actual procedure in these domains');
+  });
 });
 
 /**
