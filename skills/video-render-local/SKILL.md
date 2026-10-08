@@ -34,6 +34,16 @@ ACE_WEB="${ACE_WEB_ROOT:-$HOME/emdash-projects/ace-web}"
 ```
 
 ## Mode A — local spec + master clip (DDD / general, no Drive)
+
+**A `style: recorded` spec does NOT render here.** canopy's recorded-walkthrough
+mode (several standalone cuts, no music, no cards, footage near real time) lives
+in canopy's own engine; ace-web's vendored copy predates it — its `spec.ts` has no
+`style` field and `scripts/render.ts` muxes `defaults.music_bed` unconditionally,
+so a recorded cut rendered here gets the music bed back (ace#2788). If the
+narrative's recipe sets `style: recorded` (each cut is an
+`explainer_spec.<cut>.yaml`), render with canopy's `video-engine/render_locally.py`
+per `/canopy:ddd-recorded-walkthrough` instead, and stop reading this mode.
+
 The caller already has a connect-videos `spec.yaml` (e.g. canopy's emitted
 `explainer_spec.yaml`) and a master clip. Stage + render directly:
 ```bash
