@@ -393,7 +393,7 @@ export function renderRunWorkspaceYaml(r: RunWorkspace | RunWorkspaceError): str
     ? []
     : [
         `commcare_list_apps(domain: ${r.hq_domain})   # 200 = ace@ reaches the HQ space`,
-        `get_hq_connection()   # Nova: available_domains[].name must include ${r.hq_domain}, or Phase 3 cannot upload`,
+        `get_hq_connection()   # Nova: available_domains[].name must include ${r.hq_domain}, or Phase 3 cannot upload (missing → press Refresh on the CommCare HQ card at https://commcare.app/settings; Nova stores the reachable spaces when the key is saved)`,
         `connect_list_programs(organization_slug: ${r.connect_orgs.pm_org})   # ace@ reads the PM org`,
         `connect_list_opportunities(organization_slug: ${r.connect_orgs.nm_org})   # ace@ reads the holding org`,
       ];

@@ -95,6 +95,16 @@ Setup, once per machine:
   `bednet-check-2-visit/20260823-2210`: this exact call returned
   `configured: true` while the in-session connection was unusable.
 
+**Nova's list of reachable HQ spaces is stored, not live.** `get_hq_connection`'s
+`available_domains` is the `approved_domains` set Nova saved when the HQ key was
+entered (voidcraft-labs/commcare-nova `lib/db/settings.ts`), so a project space the
+key's user joins later — every clone's new HQ space — is missing until someone
+presses **Refresh** on the CommCare HQ card at `https://commcare.app/settings`
+(`refreshDomainsAction` → `refreshApprovedDomains`). It is a browser-session
+action only; no MCP tool or API key can trigger it. Measured 2026-10-08:
+`connect-ace-spark` was visible to ace@'s own HQ key (`/api/user_domains/v1/`) but
+absent from Nova's list, which otherwise matched it exactly.
+
 The Nova MCP server is hosted by voidcraft at `mcp.commcare.app`;
 ACE doesn't run a Nova MCP itself.
 

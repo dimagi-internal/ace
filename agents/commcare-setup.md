@@ -174,9 +174,11 @@ result:
 - `{ configured: true }` but `<ACE_HQ_DOMAIN>` is NOT in
   `available_domains` → halt; the saved HQ API key can't reach the
   target space. Surface the reachable spaces (`available_domains`) and
-  tell the operator to either fix `ACE_HQ_DOMAIN` or visit
-  `https://commcare.app/settings` and paste an HQ API key that reaches
-  `<ACE_HQ_DOMAIN>`, then re-run.
+  tell the operator to press **Refresh** on the CommCare HQ card at
+  `https://commcare.app/settings` first — Nova stores the key's reachable
+  spaces when the key is saved, so a space joined since then is missing until
+  refreshed (no new key needed). If it is still missing, fix `ACE_HQ_DOMAIN` or
+  add the HQ key's user to `<ACE_HQ_DOMAIN>`, then re-run.
 - `{ configured: false }` → halt; Nova has no HQ key bound. The
   operator needs to paste an HQ API key (generated under the ACE Gmail
   identity at `<ACE_HQ_BASE_URL>/account/api_keys/`) into Nova's
