@@ -146,10 +146,13 @@ release_plan:              # null unless READY
     - {step: 2, id: "connect:a@x.org:<org>", system: connect, kind: connect_org_member, email, target: <org>, role: viewer, shared: false}
     - {step: 3, id: "drive:<file id>", system: drive, kind: drive_share, target: <file id>, title, url, role: commenter, scope: anyone_with_link}
     - {step: 4, id: forward-source, system: ace-web, kind: forward_source, target: <src ws>/<opp>/<run>, cross_workspace: true}
-    - {step: 5, id: "ace-web:a@x.org", system: ace-web, kind: ace_web_invite, email, target: <workspace>, role: editor}   # always editor
-    - {step: 6, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…", cc: [staff@dimagi.com]}
+    - {step: 5, id: "ace-web-role:v@x.org", system: ace-web, kind: ace_web_role, email, target: <workspace>, user_id: 12, from_role: viewer, role: editor}   # an existing member below editor
+    - {step: 6, id: "ace-web:a@x.org", system: ace-web, kind: ace_web_invite, email, target: <workspace>, role: editor, reinvite?: true}   # always editor; never for an existing member
+    - {step: 7, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…", cc: [staff@dimagi.com]}
   not_granted: [{email, system, reason}]   # shared tenants; OCS is always "public chat link, no account"
-  emails: [{to, cc, subject, body}]        # body has the literal {{ACCEPT_LINK}} — the only part a release fills in
+  ace_web: [{email, status: invite | invite-pending | already-member | role-upgrade, role}]   # the ace-web grant per reviewer, from the membership read (ace#2770)
+  workbench_url: <ace-web base>/w/<ws>/opps/<opp>/runs/<run>   # where an existing member signs in
+  emails: [{to, cc, subject, body, variant: invite | existing-member}]   # invite: body has the literal {{ACCEPT_LINK}} — the only part a release fills in; existing-member: no link
   waivers: [{id, reason, by, at, detail}]  # in the hash; shown for approval; compared exactly by the gate
 ```
 
@@ -189,6 +192,29 @@ release_plan:              # null unless READY
   everyone who opens it, its own people included. Validation **refuses** it
   (`forward-source-cross-workspace`) and says so plainly, unless
   `--allow-cross-workspace-forward` is also passed.
+- **ace-web: read the workspace's membership first (ace#2770).** `assess`
+  reads `GET …/api/workspaces/<ws>/members` and `GET …/api/workspaces/<ws>/invites`
+  (pending, admin+, no tokens) — or takes `--ace-web-membership <json>`. ace-web
+  refuses to invite ANY existing member (repro ace#2770, 2026-10-07: 409 `"<email> is already a <role> of
+  this workspace"`, ace-web `apps/workspaces/api.py:472-477`), so per reviewer:
+  - **member at editor, admin or owner** → no ace-web action; recorded
+    `already-member` (role read back) in `ace_web`; the email is the
+    **existing-member** variant: no accept link, step 1 is "sign in at
+    `workbench_url`", everything else (review page, chatbot, what they can
+    open, the Connect sign-in order note) unchanged;
+  - **member below editor (viewer)** → an `ace_web_role` action raising them to
+    editor. An invite is NOT the upgrade path: the invite endpoint 409s before
+    the upgrade-only accept logic (`apps/workspaces/invites.py:21`) could run;
+    the role change is `PATCH …/members/<user_id>` (`api.py:750-790`, ACE acting
+    strictly above both roles, `permissions.py:185`). Email: existing-member;
+  - **pending invite** → re-invited. ace-web keeps no uniqueness on (workspace,
+    email) and mints a fresh token per POST (`api.py:479`,
+    `models.py:98-123`), so the normal invite email works; the earlier invite
+    stays valid (`reinvite: true`, shown in `plan-show`);
+  - **neither** → invite + accept link, unchanged.
+  A membership that was not read (or read with an error — e.g. ACE is not admin
+  of the workspace, so the invites list 403s) is the blocker
+  `plan-ace-web-membership-unread`, never "nobody is a member".
 - **Emails are written in full now.** One per reviewer: the ace-web accept
   link (`{{ACCEPT_LINK}}` — minted by ace-web when the invite is made, so it is
   the only value a release fills in), the run's review page, the chatbot's
@@ -296,7 +322,10 @@ were given — the SAME `$FLAGS` on every command below and later on
       [--overlay overlay.json] [--read-only] --out-dir <scratch>/out
     ```
     The tenancy is read from ace-web (or pass `--tenancy <json>` from
-    `bin/ace-bind --show`). Missing evidence is its own blocker ("not checked"),
+    `bin/ace-bind --show`), and so is the workspace's ace-web membership —
+    members + pending invites, read-only (or pass `--ace-web-membership <json>`
+    `{members: [{email, role, user_id}], pending_invites: [{email, role}]}`).
+    Missing evidence is its own blocker ("not checked"),
     never a pass; no reviewers is a blocker. Upload
     `release-readiness_verdict.yaml` (`drive_upload_binary`, `text/yaml`) and
     the report (`drive_create_doc_from_markdown`, name
@@ -358,5 +387,6 @@ prints why and the release stops — it never adapts.
 | 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
 | 2026-10-05 | `--from-thread` makes the thread's Dimagi staff **reviewers** (viewer: ace-web workspace invite, the partner grants, their own email), not cc (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). `--cc` stays, as an explicit opt-in only — `thread-recipients` no longer derives it. | ACE team |
 | 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |
+| 2026-10-08 | Existing ace-web members (ace#2770): `assess` reads the workspace's members + pending invites. A reviewer already a member at editor or above gets no invite (`ace_web` status `already-member`, role read back) and the existing-member email (no accept link; "sign in at" the run's workbench page); a viewer member gets an `ace_web_role` raise to editor (PATCH — an invite 409s); a pending invite is re-invited (fresh token). Unread membership is a blocker. Plan hash changes — re-validate before releasing. | ACE team |
 | 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |

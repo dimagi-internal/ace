@@ -15,6 +15,14 @@
 // `{{ACCEPT_LINK}}` for it, and that is the only substitution `emailBody`
 // performs.
 //
+// A reviewer who is ALREADY a member of the ace-web workspace gets no invite
+// and no accept link (ace#2770): ace-web refuses to invite an existing member
+// (409, `apps/workspaces/api.py:472-477` on ace-web main), so no token would
+// ever exist. Validation reads the membership (`AceWebMembership`) and plans
+// that reviewer's email in its existing-member variant — "sign in at the run's
+// members page" — and `memberEmailBody` is the release's no-link path, also
+// used when an invite answers 409 at release time.
+//
 // Pure.
 
 import { createHash } from 'node:crypto';
@@ -35,6 +43,41 @@ export type ReviewerRole = 'viewer' | 'editor';
  * `App Editor`.
  */
 export const RELEASE_ACE_WEB_ROLE = 'editor' as const;
+
+/** ace-web's four workspace roles, lowest first (`apps/workspaces/models.py:70` `ROLE_RANK` on ace-web main). */
+export const ACE_WEB_ROLES = ['viewer', 'editor', 'admin', 'owner'] as const;
+export type AceWebRole = (typeof ACE_WEB_ROLES)[number];
+
+/** -1 for anything that is not an ace-web role (never "enough"). */
+export function aceWebRoleRank(role: string | null | undefined): number {
+  return ACE_WEB_ROLES.indexOf((role ?? '') as AceWebRole);
+}
+
+/** Does `role` already give at least what a release grants (`RELEASE_ACE_WEB_ROLE`)? */
+export function meetsReleaseRole(role: string | null | undefined): boolean {
+  return aceWebRoleRank(role) >= aceWebRoleRank(RELEASE_ACE_WEB_ROLE);
+}
+
+/**
+ * The target workspace's membership as validation read it from ace-web:
+ * `GET /api/workspaces/<ws>/members` (any member; `[{id, user: {id, email,
+ * display_name}, role, joined_at}]`) and `GET /api/workspaces/<ws>/invites`
+ * (admin and above; `[{email, role, invited_by_email, created_at,
+ * expires_at}]`, pending only, never a token — ace-web #885). `error` is set
+ * when either read failed — never treated as "nobody is a member".
+ */
+export interface AceWebMembership {
+  members: Array<{ email: string; role: string; user_id: number }>;
+  pending_invites: Array<{ email: string; role: string }>;
+  error?: string;
+}
+
+/** ace-web's 409 for an invite to an existing member: `<email> is already a <role> of this workspace`. */
+export function parseAlreadyMember(title: string | null | undefined): AceWebRole | null {
+  const m = /\bis already an? (viewer|editor|admin|owner) of this workspace\b/i.exec(title ?? '');
+  return m ? (m[1].toLowerCase() as AceWebRole) : null;
+}
+
 export interface Reviewer {
   email: string;
   role: ReviewerRole;
@@ -170,8 +213,13 @@ export interface ReleaseAction {
   step: number;
   id: string;
   system: 'hq' | 'connect' | 'drive' | 'ace-web' | 'email';
-  kind: 'hq_invite' | 'connect_org_member' | 'drive_share' | 'forward_source' | 'ace_web_invite' | 'email';
+  kind: 'hq_invite' | 'connect_org_member' | 'drive_share' | 'forward_source' | 'ace_web_invite' | 'ace_web_role' | 'email';
   email?: string;
+  /** `ace_web_role`: the member's ace-web user id (the PATCH path) and the role validation read. */
+  user_id?: number;
+  from_role?: string;
+  /** `ace_web_invite`: the reviewer already had a pending invite — this one mints a fresh link; the earlier one stays valid. */
+  reinvite?: boolean;
   target: string;
   role?: string;
   shared?: boolean;
@@ -192,6 +240,14 @@ export interface NotGranted {
 
 export interface PlannedEmail {
   to: string;
+  /**
+   * `invite` — step 1 is the ace-web accept link (`{{ACCEPT_LINK}}`, filled by
+   * `emailBody`). `existing-member` — the reviewer is already a member at
+   * `RELEASE_ACE_WEB_ROLE` or above (or the plan upgrades them to it), so step 1
+   * is "sign in at the run's members page" and there is nothing to fill
+   * (`memberEmailBody`). Absent on a pre-#2770 plan = `invite`.
+   */
+  variant?: 'invite' | 'existing-member';
   /** Dimagi staff copied on this email — the plan's `cc`, the same on every email. */
   cc: string[];
   subject: string;
@@ -228,6 +284,19 @@ export interface ReleasePlan {
   emails: PlannedEmail[];
   /** Readiness blockers waived by the operator (eval quality only). Absent on a pre-waiver plan = none. */
   waivers?: PlanWaiver[];
+  /**
+   * The run's members-only workbench page (`…/w/<ws>/opps/<opp>/runs/<run>`) —
+   * where an existing member signs in (ace#2770). Absent on a pre-#2770 plan.
+   */
+  workbench_url?: string;
+  /**
+   * The ace-web grant per reviewer, as validation read it: `invite` (a fresh
+   * invite), `invite-pending` (re-invited — a fresh link; the earlier invite
+   * stays valid), `already-member` (no call; `role` is the read-back),
+   * `role-upgrade` (a member below editor, raised by an `ace_web_role` action).
+   * Absent on a pre-#2770 plan.
+   */
+  ace_web?: Array<{ email: string; status: 'invite' | 'invite-pending' | 'already-member' | 'role-upgrade'; role: string }>;
 }
 
 /** A plan-building problem — becomes a release-readiness finding. */
@@ -350,8 +419,14 @@ export interface PlanInput {
   tenancy: Tenancy | null;
   driveDocs: readonly DriveDocAccess[] | null;
   options: ReleaseOptions;
-  /** ACE_WEB_BASE_URL — for the summary URL when run_state has none. */
+  /** ACE_WEB_BASE_URL — for the summary URL when run_state has none, and the workbench URL. */
   aceWebBase: string;
+  /**
+   * The target workspace's ace-web members + pending invites, read by
+   * validation (ace#2770). `null` = not read: a blocker, never "nobody is a
+   * member" — inviting an existing member 409s and leaves their email unsendable.
+   */
+  aceWebMembership: AceWebMembership | null;
 }
 
 function problem(id: string, severity: 'blocker' | 'warning', detail: string, fix: string, summary: string, action: string): PlanProblem {
@@ -362,6 +437,11 @@ export function summaryUrl(input: Pick<PlanInput, 'workspace' | 'opp' | 'runId' 
   const own = (input.runState as { ace_web_summary_url?: unknown } | null)?.ace_web_summary_url;
   if (typeof own === 'string' && own.includes(`/opps/${input.workspace}/${input.opp}/runs/${input.runId}/`)) return own;
   return `${input.aceWebBase.replace(/\/+$/, '')}/opps/${input.workspace}/${input.opp}/runs/${input.runId}/summary`;
+}
+
+/** The run's members-only workbench page — where an existing ace-web member signs in. */
+export function workbenchUrl(input: Pick<PlanInput, 'workspace' | 'opp' | 'runId' | 'aceWebBase'>): string {
+  return `${input.aceWebBase.replace(/\/+$/, '')}/w/${input.workspace}/opps/${input.opp}/runs/${input.runId}`;
 }
 
 function chatUrl(runState: unknown): string | null {
@@ -480,13 +560,48 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
     problems.push(problem('forward-override-without-forward', 'blocker', '--allow-cross-workspace-forward was passed without --forward-source', 'pass both, or neither', 'An override was given for a forward that was not asked for.', 'Pass both flags, or neither.'));
   }
 
-  // 5. ace-web, last of the grants.
+  // 5. ace-web, last of the grants — per reviewer, from the membership read (ace#2770).
+  //    ace-web 409s an invite to ANY existing member (api.py:472-477) and a role
+  //    change is its own PATCH (api.py:750-790, admin+ acting strictly above both
+  //    roles — permissions.py:185), so:
+  //    - member at editor or above → no call; the email is the existing-member variant;
+  //    - member below editor (viewer) → `ace_web_role` (PATCH to editor), same email variant;
+  //    - pending invite → a fresh invite (ace-web keeps no uniqueness on (workspace,
+  //      email) and mints a new token per POST, api.py:479 / models.py:98-123);
+  //    - otherwise → invite + accept link, unchanged.
+  const membership = input.aceWebMembership;
+  if (!membership || membership.error) {
+    if (reviewers.length) {
+      problems.push(problem('plan-ace-web-membership-unread', 'blocker',
+        `the ace-web membership of workspace ${workspace} was not read${membership?.error ? `: ${membership.error}` : ''}, so nothing shows which reviewers are already members — inviting a member is refused (409) and leaves their email unsendable (ace#2770)`,
+        `let assess read it (ACE_WEB_PAT_TOKEN; ACE must be admin or owner of ${workspace} to list pending invites), or pass --ace-web-membership <json>`,
+        `Who is already in the ${workspace} review workspace could not be read.`,
+        'Re-run the validation once ace-web answers.'));
+    }
+  }
+  const memberOf = new Map((membership?.members ?? []).map((m) => [m.email.trim().toLowerCase(), m]));
+  const pendingFor = new Set((membership?.pending_invites ?? []).map((i) => i.email.trim().toLowerCase()));
+  const aceWeb: NonNullable<ReleasePlan['ace_web']> = [];
+  const existingMember = new Set<string>();
   for (const r of reviewers) {
-    actions.push({ id: `ace-web:${r.email}`, system: 'ace-web', kind: 'ace_web_invite', email: r.email, target: workspace, role: RELEASE_ACE_WEB_ROLE });
+    const m = memberOf.get(r.email);
+    if (m && meetsReleaseRole(m.role)) {
+      aceWeb.push({ email: r.email, status: 'already-member', role: m.role });
+      existingMember.add(r.email);
+    } else if (m) {
+      actions.push({ id: `ace-web-role:${r.email}`, system: 'ace-web', kind: 'ace_web_role', email: r.email, target: workspace, user_id: m.user_id, from_role: m.role, role: RELEASE_ACE_WEB_ROLE });
+      aceWeb.push({ email: r.email, status: 'role-upgrade', role: RELEASE_ACE_WEB_ROLE });
+      existingMember.add(r.email);
+    } else {
+      const reinvite = pendingFor.has(r.email);
+      actions.push({ id: `ace-web:${r.email}`, system: 'ace-web', kind: 'ace_web_invite', email: r.email, target: workspace, role: RELEASE_ACE_WEB_ROLE, ...(reinvite ? { reinvite: true } : {}) });
+      aceWeb.push({ email: r.email, status: reinvite ? 'invite-pending' : 'invite', role: RELEASE_ACE_WEB_ROLE });
+    }
   }
 
   // 6. One email per reviewer.
   const summary = summaryUrl(input);
+  const workbench = workbenchUrl(input);
   const chat = chatUrl(runState);
   if (!chat && reviewers.length) {
     problems.push(problem('plan-no-chat-link', 'warning', 'run_state records no ocs_chatbot.public_url, so the email cannot link the support chatbot', 'record products.ocs_chatbot.public_url (ocs-agent-setup)', 'The invitation email will not include the support chatbot.', 'Record the chatbot\'s public link if reviewers should try it.'));
@@ -494,13 +609,13 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
   const emails: PlannedEmail[] = [];
   for (const r of reviewers) {
     const mine = actions.filter((a) => a.email === r.email);
-    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, cc, summary, chat, actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
+    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, cc, summary, workbench, existingMember: existingMember.has(r.email), chat, actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
     emails.push(e);
     actions.push({ id: `email:${r.email}`, system: 'email', kind: 'email', email: r.email, target: r.email, subject: e.subject, cc: [...cc] });
   }
 
   // The order IS the contract: HQ, Connect, Drive, forward, ace-web, emails.
-  const ORDER: ReleaseAction['kind'][] = ['hq_invite', 'connect_org_member', 'drive_share', 'forward_source', 'ace_web_invite', 'email'];
+  const ORDER: ReleaseAction['kind'][] = ['hq_invite', 'connect_org_member', 'drive_share', 'forward_source', 'ace_web_role', 'ace_web_invite', 'email'];
   const ordered = actions
     .map((a, i) => ({ a, i }))
     .sort((x, y) => ORDER.indexOf(x.a.kind) - ORDER.indexOf(y.a.kind) || x.i - y.i)
@@ -518,6 +633,8 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
       actions: ordered,
       not_granted: notGranted,
       emails,
+      workbench_url: workbench,
+      ace_web: aceWeb,
     },
     problems,
   };
@@ -530,6 +647,8 @@ function reviewerEmail(x: {
   reviewer: Reviewer;
   cc: readonly string[];
   summary: string;
+  workbench: string;
+  existingMember: boolean;
   chat: string | null;
   actions: ReadonlyArray<Omit<ReleaseAction, 'step'>>;
   notGranted: readonly NotGranted[];
@@ -541,8 +660,7 @@ function reviewerEmail(x: {
   lines.push('');
   lines.push(`You have been given access to review ${x.opp} (run ${x.runId}).`);
   lines.push('');
-  lines.push(`1. Accept your invitation to the review workspace: ${ACCEPT_LINK_TOKEN}`);
-  lines.push('   Sign in with the address this email was sent to.');
+  lines.push(x.existingMember ? memberStep(x.workbench) : inviteStep());
   lines.push(`2. The run's review page: ${x.summary}`);
   if (x.chat) lines.push(`3. Try the support chatbot (no account needed): ${x.chat}`);
   lines.push('');
@@ -563,20 +681,68 @@ function reviewerEmail(x: {
   lines.push('');
   lines.push('Thank you,');
   lines.push('ACE, for Dimagi');
-  return { to: x.reviewer.email, cc: [...x.cc], subject: `Review access: ${x.opp} (run ${x.runId})`, body: lines.join('\n') + '\n' };
+  return {
+    to: x.reviewer.email,
+    variant: x.existingMember ? 'existing-member' : 'invite',
+    cc: [...x.cc],
+    subject: `Review access: ${x.opp} (run ${x.runId})`,
+    body: lines.join('\n') + '\n',
+  };
+}
+
+/** Step 1 of an `invite` email — the accept link, filled at release. */
+function inviteStep(): string {
+  return `1. Accept your invitation to the review workspace: ${ACCEPT_LINK_TOKEN}\n   Sign in with the address this email was sent to.`;
+}
+
+/** Step 1 of an `existing-member` email — no invitation, they already have access. */
+function memberStep(workbench: string): string {
+  return `1. You are already a member of the review workspace — sign in at ${workbench}\n   Sign in with the address this email was sent to.`;
+}
+
+function plannedEmail(plan: ReleasePlan, to: string): PlannedEmail {
+  const e = plan.emails.find((m) => m.to.toLowerCase() === to.toLowerCase());
+  if (!e) throw new Error(`the release plan has no email to ${to}`);
+  return e;
 }
 
 /**
- * The body `/ace:release` sends — the planned body with the accept link
- * filled in, and nothing else changed. Refuses a link that is not an ace-web
- * invite link, and a body with no placeholder to fill (a tampered plan).
+ * The body `/ace:release` sends to a reviewer it INVITED — the planned body
+ * with the accept link filled in, and nothing else changed. Refuses a link that
+ * is not an ace-web invite link, and a body with no placeholder to fill (an
+ * existing-member email, or a tampered plan).
  */
 export function emailBody(plan: ReleasePlan, to: string, acceptLink: string): { subject: string; body: string; cc: string[] } {
-  const e = plan.emails.find((m) => m.to.toLowerCase() === to.toLowerCase());
-  if (!e) throw new Error(`the release plan has no email to ${to}`);
+  const e = plannedEmail(plan, to);
   if (!/^https?:\/\/\S+\/invite\/[A-Za-z0-9_-]+\/?$/.test(acceptLink)) throw new Error(`not an ace-web invite link: ${acceptLink}`);
+  if (e.variant === 'existing-member') throw new Error(`the planned email to ${to} is the existing-member variant — it takes no accept link (email-body --already-member)`);
   if (!e.body.includes(ACCEPT_LINK_TOKEN)) throw new Error(`the planned email to ${to} has no ${ACCEPT_LINK_TOKEN} to fill`);
   return { subject: e.subject, body: e.body.split(ACCEPT_LINK_TOKEN).join(acceptLink), cc: [...(e.cc ?? [])] };
+}
+
+/**
+ * The body `/ace:release` sends to a reviewer who is ALREADY an ace-web member
+ * (ace#2770) — no accept link. `memberRole` is the role ace-web reported: the
+ * read-back for a planned `existing-member` email, or the role named in the
+ * invite's 409 (`parseAlreadyMember`) when a reviewer planned for an invite
+ * turned out to be a member at release. Refuses a role below editor (that
+ * member does not hold what the release grants — re-validate, which plans an
+ * `ace_web_role` upgrade). For an `invite` email it swaps the accept-link step
+ * for the sign-in step and changes nothing else; it never fills a link.
+ */
+export function memberEmailBody(plan: ReleasePlan, to: string, memberRole: string): { subject: string; body: string; cc: string[] } {
+  const e = plannedEmail(plan, to);
+  if (!meetsReleaseRole(memberRole)) {
+    throw new Error(`${to} is a ${memberRole || '(unknown role)'} of the workspace, below the release's ${RELEASE_ACE_WEB_ROLE} — not a satisfied grant; re-validate (the plan then upgrades the role)`);
+  }
+  if (e.variant === 'existing-member') {
+    if (e.body.includes(ACCEPT_LINK_TOKEN)) throw new Error(`the planned existing-member email to ${to} carries ${ACCEPT_LINK_TOKEN} (a tampered plan)`);
+    return { subject: e.subject, body: e.body, cc: [...(e.cc ?? [])] };
+  }
+  if (!plan.workbench_url) throw new Error(`the plan records no workbench_url — re-validate before sending ${to} the existing-member email`);
+  const step = inviteStep();
+  if (e.body.split(step).length !== 2) throw new Error(`the planned email to ${to} does not carry exactly one accept-link step (a tampered plan)`);
+  return { subject: e.subject, body: e.body.replace(step, memberStep(plan.workbench_url)), cc: [...(e.cc ?? [])] };
 }
 
 /** The grant table + email drafts the operator approves, as plain text. */
@@ -594,10 +760,19 @@ export function renderPlan(plan: ReleasePlan): string {
     const hq = a.find((x) => x.kind === 'hq_invite');
     const cn = a.filter((x) => x.kind === 'connect_org_member');
     const aw = a.find((x) => x.kind === 'ace_web_invite');
+    const up = a.find((x) => x.kind === 'ace_web_role');
+    const st = plan.ace_web?.find((x) => x.email === r.email);
+    const aceWebCell = st?.status === 'already-member'
+      ? `already a member (${st.role}) — no invite`
+      : up
+        ? `already a member (${up.from_role}) — raise to ${up.role}, no invite`
+        : aw
+          ? `invite to ${aw.target} as ${aw.role}${aw.reinvite ? ' (re-invite: an earlier invite is still pending; it stays valid)' : ''}`
+          : '—';
     out.push(
       `| ${r.email} (${r.role}) | ${hq ? `invite ${hq.target} as ${hq.role}` : `NOT GRANTED — ${ng('hq')?.reason ?? 'no grant'}`} | ${
         cn.length ? cn.map((c) => `${c.target} as ${c.role}${c.shared ? ' (SHARED — revoke later)' : ''}`).join('; ') : `NOT GRANTED — ${ng('connect')?.reason ?? 'no grant'}`
-      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (domain already allowed)'} | public link (no account) | ${aw ? `invite to ${aw.target} as ${aw.role}` : '—'} |`,
+      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (domain already allowed)'} | public link (no account) | ${aceWebCell} |`,
     );
   }
   const drive = plan.actions.filter((x) => x.kind === 'drive_share');
@@ -616,11 +791,15 @@ export function renderPlan(plan: ReleasePlan): string {
   }
   out.push('');
   out.push('Steps, in order:');
-  for (const s of plan.actions) out.push(`${s.step}. ${s.kind} ${s.email ? `${s.email} → ` : ''}${s.target}${s.role ? ` (${s.role})` : ''}${s.cc?.length ? ` cc ${s.cc.join(', ')}` : ''}`);
+  for (const s of plan.actions) out.push(`${s.step}. ${s.kind} ${s.email ? `${s.email} → ` : ''}${s.target}${s.from_role ? ` (${s.from_role} → ${s.role})` : s.role ? ` (${s.role})` : ''}${s.cc?.length ? ` cc ${s.cc.join(', ')}` : ''}`);
   for (const e of plan.emails) {
     out.push('');
-    out.push(`--- Email to ${e.to}${e.cc?.length ? ` — Cc: ${e.cc.join(', ')}` : ''} — Subject: ${e.subject}`);
+    out.push(`--- Email to ${e.to}${e.cc?.length ? ` — Cc: ${e.cc.join(', ')}` : ''} — Subject: ${e.subject}${e.variant === 'existing-member' ? ' — already a member: no accept link' : ''}`);
     out.push(e.body.trimEnd());
+  }
+  if (plan.workbench_url && plan.emails.some((e) => e.variant !== 'existing-member')) {
+    out.push('');
+    out.push(`If ace-web answers an invite with "already a <editor|admin|owner>", that reviewer's grant is satisfied and step 1 of their email becomes: "You are already a member of the review workspace — sign in at ${plan.workbench_url}". Nothing else in it changes.`);
   }
   out.push('');
   out.push('Releasing executes only these steps. Nothing else in the run changes.');

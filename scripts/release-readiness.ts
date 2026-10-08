@@ -42,18 +42,24 @@
  *          [--surface <audit json>] [--claims <json>] [--looks <json>]
  *          [--hq-plan <commcare_get_subscription json for the run's HQ space>]
  *          [--overlay <json {"<run path>": "<local file>"}>]
+ *          [--ace-web-membership <json {members, pending_invites}>]
  *          [--read-only] --out-dir <dir>
  *       Turn the evidence into findings (lib/release-readiness.ts), build the
  *       release plan (lib/release-plan.ts), and write
  *       `release-readiness_verdict.yaml` + `release-readiness_report.md` in
  *       <dir>. Missing evidence is a BLOCKER of its own ("not checked"), never
- *       a pass. The tenancy is read from ace-web when --tenancy is absent.
+ *       a pass. The tenancy is read from ace-web when --tenancy is absent, and
+ *       so is the workspace's membership (members + pending invites, ace#2770)
+ *       when --ace-web-membership is absent.
  *
  *   plan-show --verdict <yaml>        the grant table + every email, for approval
  *   plan-actions --verdict <yaml>     the plan's actions as JSON, in order
- *   email-body --verdict <yaml> --to <email> --accept-link <url> --out <body.txt> --subject-out <subj.txt>
+ *   email-body --verdict <yaml> --to <email> (--accept-link <url> | --already-member <role>) --out <body.txt> --subject-out <subj.txt>
  *       The planned email with the ace-web accept link filled in — the only
- *       substitution a release makes.
+ *       substitution a release makes. `--already-member <role>` (ace#2770): the
+ *       reviewer is already an ace-web member (the plan said so, or the invite
+ *       answered 409 "already a <role>") — the existing-member email, no link;
+ *       refused for a role below editor.
  *
  *   postcondition --run-state <yaml> --opportunity <json> --payment-units <json> --invites <json> --out <json>
  *       Package connect_get_opportunity / connect_list_payment_units /
@@ -116,12 +122,14 @@ import {
 import {
   buildReleasePlan,
   emailBody,
+  memberEmailBody,
   parseCc,
   parseReviewers,
   partitionThreadParticipants,
   projectedMemberships,
   renderPlan,
   runStateHash,
+  type AceWebMembership,
   type DriveDocAccess,
   type ReleaseOptions,
   type Tenancy,
@@ -186,6 +194,34 @@ async function tenancyFor(ws: string, opp: string): Promise<Tenancy | null> {
   if (!r.ok) return null;
   const body = (await r.json()) as { tenancy?: Tenancy };
   return body.tenancy ?? null;
+}
+
+/**
+ * The target workspace's ace-web membership (ace#2770): members (any member may
+ * list) + pending invites (admin and above; no tokens). Read-only. A failed
+ * read comes back with `error` — the plan turns that into a blocker.
+ */
+async function aceWebMembershipFor(ws: string): Promise<AceWebMembership | null> {
+  const local = readJson<AceWebMembership>(arg('ace-web-membership'));
+  if (local) return local;
+  const base = process.env.ACE_WEB_BASE_URL;
+  const token = process.env.ACE_WEB_PAT_TOKEN;
+  if (!base || !token) return null;
+  const get = async (p: string) => {
+    const r = await fetch(`${base.replace(/\/+$/, '')}/api/workspaces/${ws}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`GET /api/workspaces/${ws}/${p} → ${r.status} ${(await r.text()).slice(0, 200)}`);
+    return (await r.json()) as unknown[];
+  };
+  try {
+    const members = (await get('members')) as Array<{ user?: { id?: number; email?: string }; role?: string }>;
+    const invites = (await get('invites')) as Array<{ email?: string; role?: string }>;
+    return {
+      members: members.map((m) => ({ email: String(m.user?.email ?? '').toLowerCase(), role: String(m.role ?? ''), user_id: Number(m.user?.id) })),
+      pending_invites: invites.map((i) => ({ email: String(i.email ?? '').toLowerCase(), role: String(i.role ?? '') })),
+    };
+  } catch (e) {
+    return { members: [], pending_invites: [], error: (e as Error).message };
+  }
 }
 
 async function inventory(): Promise<void> {
@@ -366,6 +402,7 @@ async function assess(): Promise<void> {
     driveDocs: readJson<DriveDocAccess[]>(arg('drive-access')),
     options: options(),
     aceWebBase: process.env.ACE_WEB_BASE_URL ?? 'https://labs.connect.dimagi.com/ace',
+    aceWebMembership: await aceWebMembershipFor(need('workspace')),
   });
   findings.push(...assessPlan(problems));
   const plannedDriveIds = new Set(plan.actions.filter((a) => a.kind === 'drive_share').map((a) => a.target));
@@ -498,7 +535,10 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === 'email-body') {
-    const { subject, body, cc } = emailBody(readyPlan(), need('to'), need('accept-link'));
+    const link = arg('accept-link');
+    const member = arg('already-member');
+    if (!!link === !!member) throw new Error('email-body: pass exactly one of --accept-link <url> or --already-member <role>');
+    const { subject, body, cc } = member ? memberEmailBody(readyPlan(), need('to'), member) : emailBody(readyPlan(), need('to'), link!);
     fs.writeFileSync(need('out'), body);
     fs.writeFileSync(need('subject-out'), subject + '\n');
     process.stdout.write(JSON.stringify({ to: need('to'), cc: cc.join(','), subject }) + '\n');

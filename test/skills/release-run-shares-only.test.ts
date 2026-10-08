@@ -13,7 +13,8 @@
  * This is the ratchet: the release procedure (skill + command) may name no MCP
  * atom outside the share / read-back / record allowlist, may dispatch no skill,
  * may call no script subcommand that assesses or writes, may POST to no
- * ace-web endpoint other than the release record and the workspace invite, and
+ * ace-web endpoint other than the release record and the workspace invite (and
+ * PATCH only a member's role up to editor — ace#2770), and
  * may write run_state only under `released`, and may write one Drive file:
  * `release-run_comms-log.md`, the send record every ACE email owes
  * (email-communicator step 7; ace#2780). Adding a write to the release means
@@ -80,7 +81,14 @@ describe('release-run executes the plan and nothing else', () => {
     for (const p of [...posts, ...curlTargets]) expect(p, p).toMatch(/\/runs\/<run-id>\/release$|\/members\/invite$/);
   });
 
-  it('writes run_state only under `released`', () => {
+  it('PATCHes only a member\'s ace-web role (the ace_web_role raise, ace#2770)', () => {
+    const patches = [...SKILL.matchAll(/PATCH[^\n]*?(\/api\/[^\s"`]+)/g)].map((m) => m[1]);
+    expect(patches.length).toBeGreaterThan(0);
+    for (const p of patches) expect(p, p).toMatch(/^\/api\/workspaces\/<target>\/members\/<user_id>$/);
+    expect(SKILL).not.toMatch(/-X (PUT|DELETE)/);
+  });
+
+    it('writes run_state only under `released`', () => {
     const lines = SKILL.split('\n').filter((l) => /update_yaml_file/.test(l));
     expect(lines.length).toBeGreaterThan(0);
     // each mention sits in a paragraph about the `released` record
@@ -102,15 +110,17 @@ describe('release-run executes the plan and nothing else', () => {
 
   it('every action kind a plan can contain has a row in the execution table', () => {
     const { plan } = buildReleasePlan({
-      workspace: 'spark', opp: 'o', runId: 'r', reviewers: parseReviewers('a@spark.org'),
+      // a@ is new (invite); v@ is already a viewer member (role raise, ace#2770)
+      workspace: 'spark', opp: 'o', runId: 'r', reviewers: parseReviewers('a@spark.org,v@spark.org'),
       runState: { clone: { from: { workspace: 'dimagi-team', opp: 'o', run: 'r0' }, hq: { status: 'done' }, connect: { status: 'done' } } },
       tenancy: { hq_domain: 'd', connect_holding_org: 'org' },
       driveDocs: [{ file_id: 'FILEFILEFILE', url: 'https://docs.google.com/document/d/FILEFILEFILE/edit', anyone_role: null }],
       options: { forward_source: true, allow_cross_workspace_forward: true, allow_shared_connect: false },
       aceWebBase: 'https://labs.connect.dimagi.com/ace',
+      aceWebMembership: { members: [{ email: 'v@spark.org', role: 'viewer', user_id: 7 }], pending_invites: [] },
     });
     const kinds = new Set<ReleaseAction['kind']>(plan.actions.map((a) => a.kind));
-    expect([...kinds].sort()).toEqual(['ace_web_invite', 'connect_org_member', 'drive_share', 'email', 'forward_source', 'hq_invite']);
+    expect([...kinds].sort()).toEqual(['ace_web_invite', 'ace_web_role', 'connect_org_member', 'drive_share', 'email', 'forward_source', 'hq_invite']);
     for (const k of kinds) expect(SKILL, k).toContain(`| \`${k}\` |`);
   });
 
