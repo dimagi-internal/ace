@@ -272,7 +272,10 @@ grants membership and tells the person the one sign-in they must do themselves.
 - **Never provision accounts.** Grant membership only; the person does their own first sign-in.
 - **External domains are deliberate, not default.** An external add is an explicit choice surfaced
   in the approval step, never silent — Connect/ace-web both treat non-Dimagi domains specially.
-- **Least privilege.** Default role is `viewer`/`member`, never owner/admin, unless asked.
+- **Least privilege.** A reviewer gets exactly what reviewing needs: ace-web `editor` (confirming,
+  changing and commenting on decisions needs editor; `viewer` is read-only since ace-web adopted
+  canopy's owner/admin/editor/viewer ACL, 2026-10-08), Connect `viewer`, HQ `App Editor`. Never
+  owner/admin unless asked.
 
 ## Related skills
 - `feedback-ledger` — captures the reviewer's feedback and renders where each item went. It models
