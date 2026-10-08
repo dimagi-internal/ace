@@ -18,7 +18,7 @@ description: >
 
 ## Identity
 - Name: **ACE** · slug: `ace` · mailbox: `ace@dimagi-ai.com`
-- Board: `/agents/ace` · Drive folder id env: `ace_DRIVE_FOLDER_ID`
+- Board: `/agents/ace` · Drive root env: `GDRIVE_ROOT_FOLDER` (canopy resolves it from `~/.<slug>/.env`)
 
 ## ACE-local notes (the ONLY hand-edited section — fleet-process changes go to canopy)
 - **Board/task integration is config-gated and best-effort — it NEVER blocks a turn** (per
