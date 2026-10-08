@@ -2835,3 +2835,260 @@ describe('geopoint capture-button anchors cover BOTH widget states (ace#1879)', 
     },
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// dimagi-internal/ace#2797 — deliver-form-walk on a MIXED module
+//
+// A module that holds a REGISTRATION form and a FOLLOWUP form (`Groups` =
+// `Register group` + `Add member`, group-payment-test/20261007-1700, APK
+// 2.64.0) walks: module row -> the module's own form grid (a SECOND
+// MenuActivity) -> followup form row -> case list -> form. Two defects broke
+// it: the Level-1 positional fallback fired on the form grid (the menu was
+// still up and the module name was only in the action bar) and tapped
+// `Register group`; and the only case-list handoff sat BEFORE the form row.
+//
+// The screen order below is the one OBSERVED on device by the recovery
+// recipe on that run (tap Groups -> tap Add member by name below the menu ->
+// deliver-case-select -> form-nav-next visible), not inferred. What this
+// block proves is the deterministic part downstream of that: given those
+// screens, does the palette's guard logic tap the right things in the right
+// order? It does that by EXECUTING the parsed step tree against a screen
+// model, with Maestro's `when:` semantics (visible AND notVisible must both
+// hold; text is a full-match regex; an unbound ${VAR} is the literal
+// `undefined`, ace#1668).
+// ─────────────────────────────────────────────────────────────────────────
+
+type SimRow = { label: string; to: string };
+type SimScreen = {
+  menu?: boolean;
+  rows?: SimRow[];
+  buttons?: Record<string, string>;
+  /** Present when the case list is on screen: the screen a case select lands on. */
+  caseListTo?: string;
+  /** Present when a form question is on screen: the form's title. */
+  form?: string;
+};
+
+const SIM_MENU = '${SELECTOR:deliver-suite-menu}';
+const SIM_CASE_LIST = '${SELECTOR:case-list-container}';
+const SIM_FORM_NEXT = '${SELECTOR:form-nav-next}';
+
+type SimFlow = {
+  when?: Record<string, Record<string, unknown>>;
+  commands?: PaletteStep[];
+  file?: string;
+};
+
+function simulateDeliverWalk(
+  steps: PaletteStep[],
+  screens: Record<string, SimScreen>,
+  start: string,
+  env: Record<string, string>,
+): { screen: string; caseSelects: number } {
+  let cur = start;
+  let caseSelects = 0;
+  const sub = (s: string) =>
+    s.replace(/\$\{([A-Z_]+)\}/g, (_m, k: string) => env[k] ?? 'undefined');
+  const full = (pattern: string, label: string) => new RegExp(`^(?:${pattern})$`).test(label);
+  const scr = () => screens[cur];
+
+  const holds = (sel: Record<string, unknown>): boolean => {
+    const s = scr();
+    if (typeof sel.id === 'string') {
+      if (sel.id === SIM_MENU) return !!s.menu;
+      if (sel.id === SIM_CASE_LIST) return s.caseListTo !== undefined;
+      if (sel.id === SIM_FORM_NEXT) return s.form !== undefined;
+      throw new Error(`simulator: unmodelled id ${sel.id}`);
+    }
+    const text = sub(String(sel.text));
+    const below = (sel.below as { id?: string } | undefined)?.id;
+    if (below !== undefined) {
+      if (below !== SIM_MENU) throw new Error(`simulator: unmodelled below ${below}`);
+      return !!s.menu && (s.rows ?? []).some((r) => full(text, r.label));
+    }
+    return (
+      (s.rows ?? []).some((r) => full(text, r.label)) ||
+      Object.keys(s.buttons ?? {}).some((b) => full(text, b))
+    );
+  };
+
+  const tap = (sel: Record<string, unknown>): void => {
+    const s = scr();
+    if (typeof sel.id === 'string' && /row_txt/.test(sel.id) && sel.text === undefined) {
+      const first = (s.rows ?? [])[0];
+      if (!first) throw new Error(`simulator: Element not found: row_txt on ${cur}`);
+      cur = first.to;
+      return;
+    }
+    const text = sub(String(sel.text));
+    const row = (s.rows ?? []).find((r) => full(text, r.label));
+    if (row) {
+      cur = row.to;
+      return;
+    }
+    const btn = Object.entries(s.buttons ?? {}).find(([b]) => full(text, b));
+    if (!btn) throw new Error(`simulator: Element not found: "${text}" on ${cur}`);
+    cur = btn[1];
+  };
+
+  const run = (list: PaletteStep[] | undefined): void => {
+    for (const step of list ?? []) {
+      const [key, value] = Object.entries(step)[0];
+      if (key === 'takeScreenshot' || key === 'waitForAnimationToEnd') continue;
+      if (key === 'tapOn') {
+        tap(value as Record<string, unknown>);
+      } else if (key === 'extendedWaitUntil') {
+        const v = (value as { visible: Record<string, unknown> }).visible;
+        if (!holds(v)) {
+          throw new Error(`simulator: timed out waiting for ${JSON.stringify(v)} on ${cur}`);
+        }
+      } else if (key === 'runFlow') {
+        const rf = value as SimFlow;
+        if (rf.when) {
+          if (rf.when.visible && !holds(rf.when.visible)) continue;
+          if (rf.when.notVisible && holds(rf.when.notVisible)) continue;
+        }
+        if (rf.file === 'deliver-case-select.yaml') {
+          const to = scr().caseListTo;
+          if (to === undefined) throw new Error(`simulator: case select with no case list on ${cur}`);
+          if (!env.CASE_NAME) throw new Error('simulator: case select with CASE_NAME unbound');
+          caseSelects++;
+          cur = to;
+        } else if (rf.file) {
+          throw new Error(`simulator: unmodelled subflow ${rf.file}`);
+        } else {
+          run(rf.commands);
+        }
+      } else {
+        throw new Error(`simulator: unmodelled command ${key}`);
+      }
+    }
+  };
+
+  run(steps);
+  return { screen: cur, caseSelects };
+}
+
+/** The group-payment-test/20261007-1700 Deliver app, as observed on device. */
+const MIXED_APP: Record<string, SimScreen> = {
+  home: { buttons: { Start: 'modules' } },
+  modules: {
+    menu: true,
+    rows: [
+      { label: 'Groups', to: 'groupsGrid' },
+      { label: 'Variant A sessions', to: 'varACases' },
+    ],
+  },
+  // The SECOND MenuActivity: the module's own form grid. `Groups` is now only
+  // in the action bar, so it is not a row below the menu.
+  groupsGrid: {
+    menu: true,
+    rows: [
+      { label: 'Register group', to: 'formRegisterGroup' },
+      { label: 'Add member', to: 'addMemberCases' },
+    ],
+  },
+  addMemberCases: { caseListTo: 'formAddMember' },
+  varACases: { caseListTo: 'varAForms' },
+  varAForms: { menu: true, rows: [{ label: 'Group session (A)', to: 'formSessionA' }] },
+  formRegisterGroup: { form: 'Register group' },
+  formAddMember: { form: 'Add member' },
+  formSessionA: { form: 'Group session (A)' },
+};
+
+describe('deliver-form-walk reaches a followup form in a MIXED module (ace#2797)', () => {
+  const steps = parseSteps(readFileSync(`${STATIC_DIR}deliver-form-walk.yaml`, 'utf8'));
+  const walk = (
+    s: PaletteStep[],
+    screens: Record<string, SimScreen>,
+    env: Record<string, string>,
+  ) => simulateDeliverWalk(s, screens, 'home', { WALK_LABEL: '', ...env });
+  const mixedFollowup = {
+    MODULE_NAME: 'Groups',
+    FORM_NAME: 'Add member',
+    CASE_NAME: 'Test group A .*',
+  };
+
+  it('opens Add member (not Register group) and crosses the case list after the form row', () => {
+    const r = walk(steps, MIXED_APP, mixedFollowup);
+    expect(r.screen).toBe('formAddMember');
+    expect(r.caseSelects).toBe(1);
+  });
+
+  it('still opens the registration form of the same mixed module by name', () => {
+    const r = walk(steps, MIXED_APP, { MODULE_NAME: 'Groups', FORM_NAME: 'Register group' });
+    expect(r.screen).toBe('formRegisterGroup');
+    expect(r.caseSelects).toBe(0);
+  });
+
+  it('a followup-only module still crosses its case list exactly once, before the form row', () => {
+    const r = walk(steps, MIXED_APP, {
+      MODULE_NAME: 'Variant A sessions',
+      FORM_NAME: 'Group session .A.',
+      CASE_NAME: 'Test group A .*',
+    });
+    expect(r.screen).toBe('formSessionA');
+    expect(r.caseSelects).toBe(1);
+  });
+
+  it('legacy shapes are unchanged: unbound names, auto-skip, same-name form', () => {
+    const legacy: Record<string, SimScreen> = {
+      home: { buttons: { Start: 'modules' } },
+      modules: {
+        menu: true,
+        rows: [
+          { label: 'CBF Registration', to: 'formReg' },
+          { label: 'Community Meeting Record', to: 'cmrForms' },
+        ],
+      },
+      cmrForms: { menu: true, rows: [{ label: 'Community Meeting Record', to: 'formCmr' }] },
+      formReg: { form: 'CBF Registration' },
+      formCmr: { form: 'Community Meeting Record' },
+    };
+    expect(walk(steps, legacy, {}).screen, 'unbound -> first row, positionally').toBe('formReg');
+    expect(walk(steps, legacy, { MODULE_NAME: 'CBF Registration' }).screen, 'auto-skip').toBe(
+      'formReg',
+    );
+    expect(
+      walk(steps, legacy, { MODULE_NAME: 'Community Meeting Record' }).screen,
+      'same-name one-row form list',
+    ).toBe('formCmr');
+  });
+
+  // Non-vacuity: undo each half of the fix on the REAL step tree and show the
+  // simulator reproduces the device failure the issue was filed for.
+  const unwrapLevel1Guard = (s: PaletteStep[]): PaletteStep[] =>
+    s.map((step) => {
+      const rf = (step as { runFlow?: SimFlow }).runFlow;
+      const only = rf?.commands?.length === 1 ? rf.commands[0] : undefined;
+      const inner = (only as { runFlow?: SimFlow } | undefined)?.runFlow;
+      const innerText = JSON.stringify(inner?.commands ?? []);
+      if (
+        rf &&
+        inner?.when?.notVisible?.text === '${FORM_NAME}' &&
+        innerText.includes('row_txt') &&
+        !innerText.includes('runFlow')
+      ) {
+        return { runFlow: { ...rf, commands: inner.commands } } as PaletteStep;
+      }
+      return step;
+    });
+  const dropLevel25 = (s: PaletteStep[]): PaletteStep[] => {
+    const level2 = s.findIndex((st) => JSON.stringify(st).includes('deliver-form-walk-form-list'));
+    return s.filter(
+      (st, i) => !(i > level2 && JSON.stringify(st).includes('deliver-case-select.yaml')),
+    );
+  };
+
+  it('control: without the Level-1 FORM_NAME guard the walk opens Register group (the device failure)', () => {
+    const pre = unwrapLevel1Guard(steps);
+    expect(JSON.stringify(pre)).not.toEqual(JSON.stringify(steps));
+    expect(walk(pre, MIXED_APP, mixedFollowup).screen).toBe('formRegisterGroup');
+  });
+
+  it('control: without the Level-2.5 handoff the walk stalls on the case list', () => {
+    const pre = dropLevel25(steps);
+    expect(pre.length).toBe(steps.length - 1);
+    expect(() => walk(pre, MIXED_APP, mixedFollowup)).toThrow(/timed out waiting/);
+  });
+});
