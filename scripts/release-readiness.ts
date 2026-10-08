@@ -66,11 +66,11 @@
  *       every write in the run folder, over the same run_state, with an
  *       untampered plan for exactly these reviewers and flags.
  *
- *   thread-recipients --participants "<addr>,<addr>,…" (--workspace W --opp O | --tenancy <json>)
+ *   thread-recipients --participants "<addr>,<addr>,…"
  *       `--from-thread`: split the requesting thread's participants (every
- *       From/To/Cc address) into reviewers (Dimagi staff, and any domain in
- *       the tenancy's labs_allowed_domains — ace#2720) and excluded (ACE
- *       itself, anyone else — shown, never invited or copied). Prints JSON with
+ *       From/To/Cc address) into reviewers (Dimagi staff — ace#2720) and
+ *       excluded (ACE itself, anyone else — shown, never invited or copied;
+ *       a partner is named explicitly in --reviewers). Prints JSON with
  *       the ready-to-pass `--reviewers` value. Never derives `--cc` (an
  *       explicit operator opt-in only). Read-only.
  *
@@ -475,12 +475,9 @@ function gate(): void {
 }
 
 async function threadRecipients(): Promise<void> {
-  const local = readJson<Tenancy & { tenancy?: Tenancy }>(arg('tenancy'));
-  const tenancy = local ? (local.tenancy ?? local) : await tenancyFor(need('workspace'), need('opp'));
-  if (!tenancy) throw new Error("thread-recipients: the opp's tenancy could not be read (labs_allowed_domains) — pass --tenancy <json> from bin/ace-bind --show");
   const parts = need('participants').split(',').map((s) => s.trim()).filter(Boolean);
-  const p = partitionThreadParticipants(parts, tenancy.labs_allowed_domains);
-  process.stdout.write(JSON.stringify({ ...p, labs_allowed_domains: tenancy.labs_allowed_domains ?? [], flags: { reviewers: p.reviewers.join(',') } }, null, 1) + '\n');
+  const p = partitionThreadParticipants(parts);
+  process.stdout.write(JSON.stringify({ ...p, flags: { reviewers: p.reviewers.join(',') } }, null, 1) + '\n');
 }
 
 async function main(): Promise<void> {

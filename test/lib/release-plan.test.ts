@@ -273,7 +273,7 @@ describe('cc — Dimagi staff copied on every release email (ace#2706)', () => {
   });
 
   it('cc is never derived from a thread — it is an explicit --cc opt-in only (ace#2720)', () => {
-    const p = partitionThreadParticipants(['jjackson@dimagi.com', 'amina@spark.org'], ['spark.org']);
+    const p = partitionThreadParticipants(['jjackson@dimagi.com', 'amina@spark.org']);
     expect(p).not.toHaveProperty('cc');
   });
 });
@@ -284,21 +284,15 @@ describe('--from-thread: Dimagi staff on the thread are REVIEWERS (ace#2720)', (
   // into the workspace if they are on the project".
   const p = partitionThreadParticipants(
     ['Jonathan Jackson <jjackson@dimagi.com>', 'amina@spark.org', 'Bo <BO@spark.org>', 'ace@dimagi-ai.com', 'consultant@gmail.com', 'neal@dimagi.com', 'eva@dimagi-ai.com'],
-    ['spark.org'],
   );
 
-  it('partner domains AND Dimagi staff are reviewers; ACE and anyone else are excluded with a reason', () => {
-    expect(p.reviewers).toEqual(['amina@spark.org', 'bo@spark.org', 'jjackson@dimagi.com', 'neal@dimagi.com']);
-    expect(p.excluded.map((e) => e.email)).toEqual(['ace@dimagi-ai.com', 'consultant@gmail.com', 'eva@dimagi-ai.com']);
+  it('Dimagi staff are reviewers; partners, ACE and anyone else are excluded with a reason', () => {
+    // ace-web dropped the per-opp labs_allowed_domains (2026-10-08): a partner
+    // is invited only when the operator names them in --reviewers.
+    expect(p.reviewers).toEqual(['jjackson@dimagi.com', 'neal@dimagi.com']);
+    expect(p.excluded.map((e) => e.email)).toEqual(['ace@dimagi-ai.com', 'amina@spark.org', 'bo@spark.org', 'consultant@gmail.com', 'eva@dimagi-ai.com']);
     expect(p.excluded.find((e) => e.email === 'ace@dimagi-ai.com')?.reason).toMatch(/ACE's own mailbox/);
-    expect(p.excluded.find((e) => e.email === 'consultant@gmail.com')?.reason).toMatch(/neither a partner domain/);
-  });
-
-  it('staff are reviewers whether or not dimagi.com is a labs domain', () => {
-    const withDomain = partitionThreadParticipants(['neal@dimagi.com', 'amina@spark.org'], ['spark.org', 'dimagi.com']);
-    const without = partitionThreadParticipants(['neal@dimagi.com', 'amina@spark.org'], []);
-    expect(withDomain.reviewers).toEqual(['amina@spark.org', 'neal@dimagi.com']);
-    expect(without.reviewers).toEqual(['neal@dimagi.com']);
+    expect(p.excluded.find((e) => e.email === 'amina@spark.org')?.reason).toMatch(/name them in --reviewers/);
   });
 
   it('each staff reviewer gets an ace-web workspace invite, the partner grants and their own email', () => {

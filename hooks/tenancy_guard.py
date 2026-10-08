@@ -117,7 +117,7 @@ def _values_at(obj, path: str) -> list:
 
 def _norm(value: str, field: str) -> str:
     v = str(value).strip().lower()
-    if field.startswith("labs_allowed_domains") and not v.startswith("@"):
+    if field.endswith("allowed_domains[]") and not v.startswith("@"):
         v = "@" + v
     return v
 
@@ -165,8 +165,17 @@ def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
         values = _values_at(tool_input, arg)
         if not values:
             continue
+        operators = _operator_values(rule, arg, fields[0] if fields else arg)
+        if not fields:
+            # Operator-only rule: no tenancy field widens it (Labs stays
+            # Dimagi-only since ace-web dropped labs_allowed_domains, 2026-10-08).
+            for v in values:
+                if _norm(v, arg) not in operators:
+                    problems.append(
+                        f"`{arg}` = {v!r}, but only {sorted(operators)} may be set here."
+                    )
+            continue
         allowed, missing = _allowed(tenancy, fields)
-        operators = _operator_values(rule, arg, fields[0])
         if not allowed:
             problems.append(
                 f"`{arg}` is checked against tenancy {' / '.join(missing)}, which is not set "

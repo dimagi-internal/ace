@@ -113,18 +113,17 @@ export function ccKey(cc: readonly string[] | undefined | null): string {
  * - Dimagi staff (`@dimagi.com`) → `reviewers`: an ace-web workspace
  *   invite (as `editor`, RELEASE_ACE_WEB_ROLE), the same grants a partner gets (`grantsFor` already treats staff
  *   as grantable on every system), and their own release email.
- * - an address whose domain is in `labs_allowed_domains` → `reviewers`.
  * - ACE's own mailbox, and anyone else → `excluded`, with the reason — shown to
- *   the operator, never silently invited or copied.
+ *   the operator, never silently invited or copied. A partner is invited only
+ *   when the operator names them in `--reviewers` (ace-web dropped the per-opp
+ *   `labs_allowed_domains` that used to admit a partner domain, 2026-10-08).
  *
  * Nothing here derives `--cc`: copying staff without a grant (ace#2706) is an
  * explicit operator opt-in only.
  */
 export function partitionThreadParticipants(
   participants: readonly string[],
-  labsAllowedDomains: readonly string[] | null | undefined,
 ): { reviewers: string[]; excluded: Array<{ email: string; reason: string }> } {
-  const domains = new Set((labsAllowedDomains ?? []).map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean));
   const reviewers = new Set<string>();
   const excluded = new Map<string, string>();
   for (const raw of participants) {
@@ -133,8 +132,8 @@ export function partitionThreadParticipants(
     if (!email) continue;
     if (!EMAIL.test(email)) excluded.set(email, 'not an email address');
     else if (email === ACE_MAILBOX) excluded.set(email, "ACE's own mailbox — the sender");
-    else if (isDimagiStaff(email) || domains.has(email.split('@')[1])) reviewers.add(email);
-    else excluded.set(email, "neither a partner domain in the opp's labs_allowed_domains nor Dimagi staff — not a reviewer, and never copied");
+    else if (isDimagiStaff(email)) reviewers.add(email);
+    else excluded.set(email, 'not Dimagi staff — name them in --reviewers to invite them; never copied');
   }
   return {
     reviewers: [...reviewers].sort(),
@@ -146,7 +145,6 @@ export interface Tenancy {
   hq_domain?: string | null;
   connect_pm_org?: string | null;
   connect_holding_org?: string | null;
-  labs_allowed_domains?: string[] | null;
   ocs_team?: string | null;
 }
 

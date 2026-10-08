@@ -97,12 +97,12 @@ report (`blockers[].id`).
 
 **`--from-thread <id>`.** Read the ace@ thread that asked for the review
 (`canopy email read <id>`), collect every From / To / Cc address, and split
-them with `$RC thread-recipients --participants "<addr>,…" --workspace <ws>
---opp <opp>`: a participant whose domain is in the tenancy's
-`labs_allowed_domains` is a **reviewer** (the partner's own people), and so
-is every Dimagi staff member (`@dimagi.com`) on the thread, whatever the labs
-domains say (ace#2720); ACE's own mailbox and anyone else are **excluded**,
-each with its reason. Show the operator both lists, then use its
+them with `$RC thread-recipients --participants "<addr>,…"`: every Dimagi
+staff member (`@dimagi.com`) on the thread is a **reviewer** (ace#2720);
+partners, ACE's own mailbox and anyone else are **excluded**, each with its
+reason. ace-web no longer has a per-opp Labs domain list (2026-10-08), so a
+partner becomes a reviewer only when the operator names them in
+`--reviewers`. Show the operator both lists, then use its
 `flags.reviewers` as `--reviewers` for every step below. It derives no `--cc`.
 `/ace:release` must later be given the SAME reviewers (and the same `--cc`, if
 the operator added one) — the gate compares both exactly.

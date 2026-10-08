@@ -13,11 +13,11 @@ parsed arguments.
 
 - **`<workspace>/<opp>/<run-id>`** (required) — the run, normally a clone.
 - **`--reviewers`** — comma-separated emails, each optionally `:viewer` /
-  `:editor` (default viewer). Or **`--from-thread <id>`**: the participants of
-  the ace@ thread that asked for the review whose domain is in the opp's
-  `labs_allowed_domains` become reviewers, and so do its Dimagi staff
-  (`@dimagi.com` — workspace invite, the same grants, their own email; ace#2720).
-  ACE's own mailbox and anyone else are excluded and shown.
+  `:editor` (default viewer). Or **`--from-thread <id>`**: the Dimagi staff
+  (`@dimagi.com`) on the ace@ thread that asked for the review become reviewers
+  (workspace invite, the same grants, their own email; ace#2720). Partners,
+  ACE's own mailbox and anyone else are excluded and shown — name a partner in
+  `--reviewers` to invite them.
   **Required for READY** — without reviewers the run can only come back NOT READY.
 - **`--cc`** — explicit opt-in only (never derived from a thread):
   comma-separated Dimagi staff (`@dimagi.com` only — any other
