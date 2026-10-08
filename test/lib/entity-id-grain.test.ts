@@ -621,3 +621,60 @@ describe('conditional decomposition — the boundary (ace#2417)', () => {
     expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
   });
 });
+
+describe('entity_id -> a node initialised by a form-open setvalue (ace#2783)', () => {
+  /**
+   * Verbatim from released Deliver build 6d52f4babdcf4bcba25a5d84e26e8e7b
+   * (group-payment-test/20261007-1700, modules-4/forms-0.xml): Nova compiles a
+   * hidden field with `default_value: uuid()` to a bare bind + setvalue.
+   */
+  const form = (setvalues: string) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <bind nodeset="/data/session_uid" type="xsd:string"/>
+    <bind nodeset="/data/var_b_session/deliver/entity_id" calculate="/data/session_uid"/>
+    ${setvalues}
+    <bind nodeset="/data/subcase_0/case/update/session_uid" calculate="/data/session_uid" relevant="count(/data/session_uid) &gt; 0"/>
+  </model></h:head>
+</h:html>`;
+  const RELEASED = form('<setvalue event="xforms-ready" ref="/data/session_uid" value="uuid()"/>');
+
+  it('resolves a uuid() setvalue to the node itself — a per-submission component', () => {
+    const c = extractEntityIdComponents(RELEASED);
+    expect(c.resolved).toBe(true);
+    expect(c.components).toEqual(['/data/session_uid']);
+    expect(c.raw).toMatch(/uuid\(\)/);
+  });
+
+  it('checks the grain instead of reporting unable, and passes a per-submission key', () => {
+    const r = checkEntityIdGrain(RELEASED, []);
+    assertChecked(r);
+    expect(r.ok).toBe(true);
+    // A PDD that declares the uuid node as the key is satisfied by it.
+    expect(isPass(checkEntityIdGrain(RELEASED, ['session_uid']))).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — a non-uuid setvalue is read as a key and still judged', () => {
+    // Indirection through a setvalue must not launder a worker-and-day key.
+    const xml = form(
+      `<setvalue event="xforms-ready" ref="/data/session_uid" value="concat(username, '|', /data/visit_date)"/>`,
+    );
+    const r = checkEntityIdGrain(xml, []);
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
+  });
+
+  it('NEGATIVE CONTROL — stays UNRESOLVED with no, non-ready, competing or foreign setvalues', () => {
+    for (const sv of [
+      '',
+      '<setvalue event="xforms-value-changed" ref="/data/session_uid" value="uuid()"/>',
+      '<setvalue event="xforms-ready" ref="/data/session_uid" value="uuid()"/>' +
+        '<setvalue event="xforms-ready" ref="/data/session_uid" value="today()"/>',
+      '<setvalue event="xforms-ready" ref="/data/other_node" value="uuid()"/>',
+    ]) {
+      expect(extractEntityIdComponents(form(sv)).resolved).toBe(false);
+      expect(checkEntityIdGrain(form(sv), []).status).toBe('unable');
+    }
+  });
+});
