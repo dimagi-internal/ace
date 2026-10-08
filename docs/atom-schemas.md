@@ -1101,7 +1101,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `ccz_path` | `z.string` | optional | Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `mode` | `z.enum` | optional | `validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate. |
-| `entry_path` | `z.array` | optional | `play` mode only. Menu indices to navigate to a form (default `[0, 0]` = first module → first form). For multi-module apps, invoke once per module to cover every form-init. |
+| `entry_path` | `z.array` | optional | `play` mode only. Menu positions AS DISPLAYED to navigate to a form (default `[0, 0]` = first root item → first form) — not HQ module indices: child modules nest inside their parent menu, so the two diverge (ace#2784). For nested menus give the position inside each submenu (`[0, 2, 0]`). The resolved suite command comes back as `command_id`; a path that lands on no command returns `skipped`/`entry-path-unresolved` naming what the menu lists. Invoke once per form to cover every form-init. |
 | `timeout_ms` | `z.number` | optional | Spawn timeout. validate default 60000ms; play default 30000ms. |
 
 ### `commcare_patch_xform`

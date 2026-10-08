@@ -247,7 +247,11 @@ Setting logged in user to: demo
 Bednet Spot-Check — Learn | demo [1]
 ====================
 0) Connect Platform Quiz
-> Answer the question below to unlock the Deliver app.
+> Starting form entry with the following stack frame
+COMMAND: m0
+COMMAND: m0-f0
+Form Start: Press Return to proceed
+Answer the question below to unlock the Deliver app.
 Press Return to Proceed
 Quitting!
 > Unhandled Fatal Error executing CommCare app
@@ -313,7 +317,8 @@ Logic references instance(commcaresession)/session/data/case_id which is not a v
   it('does NOT flip to fail on stderr that only contains the EOF NPE (loopSession)', () => {
     const stderr =
       'java.lang.NullPointerException: Cannot invoke "String.startsWith(String)" because "input" is null\n  at org.commcare.util.cli.ApplicationHost.loopSession(ApplicationHost.java:267)';
-    const r = parsePlayOutput({ ...base, stderr });
+    const stdout = 'Starting form entry with the following stack frame\nForm Start: Press Return to proceed';
+    const r = parsePlayOutput({ ...base, stdout, stderr });
     expect(r.verdict).toBe('pass');
   });
 
