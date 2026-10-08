@@ -127,4 +127,31 @@ describe('bin/ace-canopy-web (behaviour)', () => {
     expect(miss.stderr).toMatch(/NOT readable in workspace 'dimagi'/);
     expect(seen.some((s) => s.startsWith('/api/w/dimagi/ddd/narratives/n1/'))).toBe(true);
   });
+
+  it('verify prints the workspace-addressed URL to cite (canopy-web#1337)', async () => {
+    const ok = await run(['--workspace', 'connect', 'verify', 'narrative', 'n1'], 'CANOPY_WEB_PAT=ace-pat\n');
+    expect(JSON.parse(ok.stdout).url).toBe('https://canopy.dimagi.com/w/connect/ddd/n1');
+  });
+
+  it('rewrites every flat canopy link the wrapped command prints, on stdout and stderr, and says so', async () => {
+    // The exact shape `scripts.ddd.narrative post` printed on 2026-10-08, plus the legacy and localhost forms.
+    const script = [
+      'echo "internal (owner, left rail): https://canopy.dimagi.com/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138/"',
+      'echo "external (share, no rail):   https://canopy.dimagi.com/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138/?t=L4Ep"',
+      'echo "share_url: https://localhost/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=x"',
+      'echo "legacy: https://canopy.dimagi.com/w/1be9271a-f83e-457d-8df5-1daf84295a2a?t=y" 1>&2',
+      'echo "already fine: https://canopy.dimagi.com/w/connect/ddd/n1"',
+      'exit 7',
+    ].join('; ');
+    const r = await run(['--workspace', 'connect', '--', 'sh', '-c', script], 'CANOPY_WEB_PAT=ace-pat\n');
+    expect(r.status, 'the wrapped exit code passes through').toBe(7);
+    expect(r.stdout).toContain('https://canopy.dimagi.com/w/connect/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138/');
+    expect(r.stdout).toContain('https://canopy.dimagi.com/w/connect/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138/?t=L4Ep');
+    expect(r.stdout).toContain('https://canopy.dimagi.com/w/connect/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=x');
+    expect(r.stderr).toContain('legacy: https://canopy.dimagi.com/w/connect/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=y');
+    expect(r.stdout).toContain('already fine: https://canopy.dimagi.com/w/connect/ddd/n1');
+    expect(r.stdout).not.toMatch(/canopy\.dimagi\.com\/review\//);
+    expect(r.stdout).not.toContain('localhost');
+    expect(r.stderr).toMatch(/rewrote flat link https:\/\/canopy\.dimagi\.com\/review\/4bca7921/);
+  });
 });

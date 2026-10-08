@@ -22,7 +22,12 @@ This wrapper makes both explicit and checks them before anything is written:
   bin/ace-canopy-web --workspace <ws> verify narrative <slug>
   bin/ace-canopy-web --workspace <ws> verify walkthrough <id>
       Read the write back SCOPED to <ws> (/api/w/<ws>/…). Exit 0 only on HTTP 200.
-      Never report where something lives without this.
+      Never report where something lives without this. Prints the workspace-addressed
+      `url` to cite (https://canopy.dimagi.com/w/<ws>/…).
+
+Output of a wrapped command is streamed with every flat canopy-web link rewritten to
+https://canopy.dimagi.com/w/<ws>/… and each rewrite noted on stderr (canopy-web#1337):
+only workspace-addressed links may be copied into anything a person reads.
 
   bin/ace-canopy-web --workspace <ws> check
       Identity + role preflight only.
@@ -34,7 +39,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -42,6 +49,7 @@ from pathlib import Path
 ACE_IDENTITY = "ace@dimagi-ai.com"
 WRITE_ROLES = {"editor", "admin", "owner"}
 DEFAULT_API = "https://canopy.dimagi.com"
+SITE = "https://canopy.dimagi.com"  # human-facing links; always /w/<workspace>/…
 
 
 def die(msg: str, code: int = 2) -> None:
@@ -117,7 +125,9 @@ def main(argv: list[str]) -> None:
         if status != 200:
             die(f"{kind} {ident!r} is NOT readable in workspace {ws!r} (HTTP {status}). "
                 "It may have landed in another workspace — do not report it as being here.", 1)
-        print(json.dumps({"ok": True, "workspace": ws, kind: ident}))
+        # The URL to cite is the workspace-addressed one, never a flat /walkthrough/… (canopy-web#1337).
+        url = f"{SITE}/w/{ws}/ddd/{ident}" if kind == "narrative" else f"{SITE}/w/{ws}/walkthrough/{ident}"
+        print(json.dumps({"ok": True, "workspace": ws, kind: ident, "url": url}))
         return
 
     role = preflight(ws, pat)
@@ -129,7 +139,38 @@ def main(argv: list[str]) -> None:
     if not rest:
         die("no command given after --")
     env = dict(os.environ, CANOPY_WEB_PAT=pat, CANOPY_WEB_WORKSPACE=ws, CANOPY_AGENT="ace")
-    os.execvpe(rest[0], rest, env)
+    sys.exit(run_scoped(rest, env, ws))
+
+
+def run_scoped(cmd: list[str], env: dict, ws: str) -> int:
+    """Run the wrapped command, streaming its output with every flat canopy-web link
+    rewritten to /w/<ws>/… (canopy-web#1337). canopy's own tools print flat links
+    (`narrative post` printed /review/<id>/ on 2026-10-08 and that link went out in an
+    email), so whatever ACE copies from this output is already the scoped form. Each
+    rewrite is reported on stderr so the change is never silent."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from canopy_url_scope import scope_urls  # noqa: E402
+
+    try:
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, bufsize=1)
+    except FileNotFoundError:
+        die(f"command not found: {cmd[0]}", 127)
+
+    def pump(src, dst):
+        for line in src:
+            new, changes = scope_urls(line, ws)
+            dst.write(new)
+            dst.flush()
+            for old, scoped in changes:
+                print(f"ace-canopy-web: rewrote flat link {old} -> {scoped}", file=sys.stderr, flush=True)
+
+    t = threading.Thread(target=pump, args=(proc.stderr, sys.stderr), daemon=True)
+    t.start()
+    pump(proc.stdout, sys.stdout)
+    rc = proc.wait()
+    t.join()
+    return rc
 
 
 if __name__ == "__main__":

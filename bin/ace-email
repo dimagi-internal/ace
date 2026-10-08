@@ -53,6 +53,12 @@ subject IS the Drive pack, such as the Phase 9 LLO onboarding email (ace#2380):
 The flag is consumed here and never reaches canopy; the reason is echoed to stderr
 so the transcript records why the check was skipped.
 
+CANOPY-WEB LINK CHECK (canopy-web#1337). Every canopy-web link in the body must be
+workspace-addressed (`https://canopy.dimagi.com/w/<workspace>/…`). A flat
+`/review/<id>`, `/walkthrough/<id>`, `/ddd/<slug>`, `/share/<token>` or legacy
+`/w/<uuid>` is refused (exit 3), dry-run included; there is no override, because the
+scoped form always exists. Rule lives in bin/canopy_url_scope.py.
+
 Auth check: `canopy email preflight --repo <this repo>` (exact `gog login` fix on failure).
 """
 import json
@@ -205,12 +211,51 @@ def _check_run_page(argv, override_reason):
     sys.exit(REFUSED_EXIT)
 
 
+def _check_canopy_urls(argv):
+    """Refuse a body carrying a canopy-web link that is not workspace-addressed.
+
+    canopy-web addresses every artifact as /w/<workspace>/…; flat /review/<id>,
+    /walkthrough/<id>, /ddd/<slug>, /share/<token> and the legacy /w/<uuid> only worked
+    through redirects canopy-web is removing (canopy-web#1337). No override: the scoped
+    form always exists, so the fix is to use it.
+    """
+    path = _body_file(argv)
+    if path is None or path == "-" or path.startswith("/dev/"):
+        return  # _check_run_page already refuses non-file bodies
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return
+    sys.path.insert(0, os.path.join(REPO, "bin"))
+    from canopy_url_scope import flat_urls  # noqa: E402
+
+    flat = flat_urls(body)
+    if not flat:
+        return
+    dry = " (dry-run — a real send gets this same refusal)" if "--dry-run" in argv else ""
+    shown = "\n".join(f"  {u}" for u in flat[:5])
+    print(
+        f"ace-email: REFUSED{dry}. The body has canopy-web links that are not workspace-addressed.\n"
+        "Every canopy-web link must be https://canopy.dimagi.com/w/<workspace>/… — e.g.\n"
+        "  https://canopy.dimagi.com/w/connect/review/<id>?t=<token>\n"
+        "  https://canopy.dimagi.com/w/connect/walkthrough/<id>?t=<token>\n"
+        "  https://canopy.dimagi.com/w/connect/ddd/<narrative>\n"
+        "Flat links depend on redirects canopy-web is removing (canopy-web#1337). "
+        "bin/ace-canopy-web prints the scoped form.\n"
+        f"Flat links found:\n{shown}",
+        file=sys.stderr,
+    )
+    sys.exit(REFUSED_EXIT)
+
+
 _ARGV = sys.argv[1:]
 VERB = "forward" if _ARGV[:1] == ["forward"] else "send"
 if VERB == "forward":
     _ARGV = _ARGV[1:]
 ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(_ARGV))
 _check_run_page(ARGS, _OVERRIDE)
+_check_canopy_urls(ARGS)
 
 try:
     os.execvp("canopy", ["canopy", "email", VERB, "--repo", REPO, *ARGS])

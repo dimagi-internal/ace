@@ -186,6 +186,7 @@ export function citationsIn(source: string): { issues: string[]; runs: string[] 
 export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/docs/ace-web-primary-surface.test.ts': { issues: ['ace#2378'] },
   'test/docs/canopy-routes-callers.test.ts': { issues: ['ace#2389', 'dimagi-internal/canopy-web#1265'] },
+  'test/docs/no-flat-canopy-urls.test.ts': { issues: ['ace#2824', 'dimagi-internal/canopy-web#1337'] },
   'test/docs/orchestrator-inline-handoff-fallback.test.ts': { issues: ['ace#2221', 'ace#1103'], observed: 'spark-facilitator/20260907-1120' },
   'test/docs/tracker-link-not-a-counterpart-deliverable.test.ts': { issues: ['ace#2386', 'ace#2378'] },
   'test/docs/upstream-absence-claims.test.ts': { issues: ['ace#1833', 'dimagi-internal/connect-labs#1331', 'voidcraft-labs/commcare-nova#545', 'ace#1886', 'ace#1621'] },
