@@ -222,6 +222,80 @@ describe('email shims over the canopy engine', () => {
     });
   });
 
+  describe('canopy-web link check (canopy-web#1337)', () => {
+    function bodyFile(text: string) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-email-canopy-'));
+      const p = path.join(dir, 'body.txt');
+      fs.writeFileSync(p, text);
+      return p;
+    }
+    const called = (log: string) => fs.existsSync(log) && fs.readFileSync(log, 'utf8').trim() !== '';
+    const send = (text: string, extra: string[] = []) => {
+      const { dir, log } = withFakeCanopy();
+      const r = runShim('ace-email', ['--to', 'x@y.z', '--subject', 's', '--body-file', bodyFile(text), ...extra], dir);
+      return { r, sent: called(log) };
+    };
+
+    // The exact link that went out on the chlorine thread, 2026-10-08.
+    const FLAT_REVIEW =
+      'https://canopy.dimagi.com/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138/?t=L4EpgZOqbn6cxkGej4c4shyE7CExSv5Y';
+
+    for (const [name, url] of [
+      ['flat review (the 2026-10-08 link)', FLAT_REVIEW],
+      ['flat walkthrough', 'https://canopy.dimagi.com/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=abc'],
+      ['flat narrative', 'https://canopy.dimagi.com/ddd/chlorine-dispenser-walkthroughs'],
+      ['flat share', 'https://canopy.dimagi.com/share/tok123'],
+      ['legacy /w/<uuid>', 'https://canopy.dimagi.com/w/1be9271a-f83e-457d-8df5-1daf84295a2a?t=abc'],
+      ['old canopy-web host', 'https://canopy-web.dimagi.com/review/abc/'],
+      ['share_url localhost bug', 'https://localhost/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=x'],
+    ] as const) {
+      it(`refuses a ${name} — canopy is never called`, () => {
+        const { r, sent } = send(`Watch here: ${url}\n`);
+        expect(r.status).toBe(3);
+        expect(r.stderr).toContain('not workspace-addressed');
+        expect(r.stderr).toContain('/w/connect/review/<id>');
+        expect(r.stderr).toContain(url);
+        expect(r.stderr).not.toContain('Traceback');
+        expect(sent).toBe(false);
+      });
+    }
+
+    it('a dry-run gets the same verdict', () => {
+      const { r, sent } = send(`${FLAT_REVIEW}\n`, ['--dry-run']);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('REFUSED (dry-run');
+      expect(sent).toBe(false);
+    });
+
+    it('the run-page override does not wave a flat canopy link through', () => {
+      const { r, sent } = send(`${FLAT_REVIEW}\n`, ['--no-run-page', 'standalone demo']);
+      expect(r.status).toBe(3);
+      expect(sent).toBe(false);
+    });
+
+    it('passes workspace-addressed canopy links', () => {
+      const { r, sent } = send(
+        'Review: https://canopy.dimagi.com/w/connect/review/4bca7921-9a57-49f5-ad9b-6cd518c9c138?t=L4Ep&tab=cuts\n\n' +
+          'Cut 4: https://canopy.dimagi.com/w/connect/walkthrough/1be9271a-f83e-457d-8df5-1daf84295a2a?t=7ym8\n\n' +
+          'Narrative: https://canopy.dimagi.com/w/connect/ddd/chlorine-dispenser-walkthroughs\n',
+      );
+      expect(r.stderr).not.toContain('not workspace-addressed');
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('leaves non-tenant canopy pages and other hosts alone', () => {
+      const { r, sent } = send(
+        'About: https://canopy.dimagi.com/about\n\nGuide: https://canopy.dimagi.com/guide\n\n' +
+          'Site: https://canopy.dimagi.com\n\nInvite: https://canopy.dimagi.com/invite/tok\n\n' +
+          'Labs: https://labs.connect.dimagi.com/labs/workflow/6585/run/?run_id=8476\n\n' +
+          'Elsewhere: https://example.org/review/abc\n',
+      );
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+  });
+
   it('both shims exit with a remediation (not a traceback) when canopy is missing', () => {
     // an empty dir shadows nothing; strip the rest of PATH down to essentials so the
     // real canopy (if installed) is not found

@@ -36,6 +36,31 @@ WS="${WS:-$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ddd
   that writes), put the wrapper invocation and `$WS` in the prompt verbatim and require every
   canopy-web write to run through it, then `verify` the result yourself after it returns.
 
+## Links: workspace-addressed only
+
+Every canopy-web link ACE writes anywhere a person reads it (email, Docs, run pages, reports)
+is `https://canopy.dimagi.com/w/<workspace>/…`:
+
+| Artifact | Link |
+|---|---|
+| Narrative | `https://canopy.dimagi.com/w/<ws>/ddd/<slug>` |
+| Review (guest) | `https://canopy.dimagi.com/w/<ws>/review/<id>?t=<token>` |
+| Walkthrough / cut video | `https://canopy.dimagi.com/w/<ws>/walkthrough/<id>?t=<token>` |
+
+Never a flat `/review/<id>`, `/walkthrough/<id>`, `/ddd/<slug>`, `/share/<token>` or the
+legacy `/w/<uuid>`; those depended on redirects canopy-web is removing (canopy-web#1337). On
+2026-10-08 a flat `/review/<id>/` link, copied from `scripts.ddd.narrative post` output, went
+out in an external email. Two rails now enforce this:
+
+- **The wrapper rewrites.** `bin/ace-canopy-web` streams the wrapped command's output with every
+  flat link rewritten to `/w/<ws>/…` (each rewrite noted on stderr), and `verify` prints the scoped
+  `url` to cite.
+- **The send path refuses.** `bin/ace-email` refuses a body carrying a flat canopy-web link (exit
+  3, dry-run included). There is no override, because the scoped form always exists.
+
+The rule lives in `bin/canopy_url_scope.py`. `test/docs/no-flat-canopy-urls.test.ts` keeps
+flat links out of ACE's own prose.
+
 Already misfiled? `move_narrative` (canopy-web MCP) re-homes a narrative with its reviews and
 walkthroughs: dry-run first, then run; it needs editor on both sides.
 

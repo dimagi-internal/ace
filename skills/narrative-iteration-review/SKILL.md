@@ -13,7 +13,7 @@ description: >
   version (`version` monotonic per slug); the lineage + every version's `story` live in canopy
   (`apps/reviews`, `apps/runs`).
 - **The review surface + narration-edit round-trip** — `POST /reviews/` opens a review; `POST
-  /reviews/<id>/submit/` ingests a human's **narration edits** + decisions; `/review/<id>` hosts it.
+  /reviews/<id>/submit/` ingests a human's **narration edits** + decisions; `/w/<workspace>/review/<id>` hosts it (workspace-addressed links only — canopy-web#1337).
 - **The narrative-agreement gate** — canopy's `ddd-narrative-review` posts a narrative version for
   approve / redraft.
 
@@ -45,7 +45,7 @@ path — that is the DRY violation this skill exists to avoid.
                                                  narrative_slug, <current + proposed narration> },
                                                visibility: "private" | "link" }
    ```
-   canopy assigns vN+1 and returns `/review/<id>/`. Confirm with
+   canopy assigns vN+1 and returns the review id; cite it as `https://canopy.dimagi.com/w/<ws>/review/<id>` (never the flat `/review/<id>/` canopy may print — `bin/ace-canopy-web` rewrites it). Confirm with
    `bin/ace-canopy-web --workspace <ws> verify narrative <slug>` before citing it
    (`playbook/integrations/canopy-web.md`, ace#2805). It owns the review surface + the internal-reviewer
    narration-edit round-trip.

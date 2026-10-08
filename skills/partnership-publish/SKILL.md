@@ -95,8 +95,8 @@ Assembles the final prospect-facing partnership package — hero video, pitch de
    - **`--narrative-url`:** `video.program_url` (the ace-web editable program; companion label: `"Edit the video"`).
 
    Capture the two URLs printed by the script:
-   - `View:` → `canopy_package_url` (the `/w/<uuid>` viewer page, private)
-   - `Share:` → `canopy_share_url` (the `/w/<uuid>?t=<token>` link, public)
+   - `View:` → `canopy_package_url` (the `/w/<workspace>/walkthrough/<id>` viewer page, private)
+   - `Share:` → `canopy_share_url` (the `/w/<workspace>/walkthrough/<id>?t=<token>` link, public — `bin/ace-canopy-web` rewrites any flat or `/w/<uuid>` form the script prints; canopy-web#1337)
 
    **Note on the canopy-web package shape (open question from design §11):** Phase 1 uses `walkthrough-share` with an MP4 upload because it is the available mechanism for publishing a shareable video+companion-link package to canopy-web. A future "partnership package type" (ddd-upload-style, with structured prospect metadata, deck, and research appendix as first-class fields) is the long-term target — that is the open question from design §11. When it ships, this step should be updated to use the new package type.
 
