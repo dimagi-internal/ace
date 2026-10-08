@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 # clone-to-new-workspace
 
-`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--labs-domain <@domain>] [--co-owner <email>] [--keep-shared connect]`
+`/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--co-owner <email>] [--keep-shared connect]`
 
 While ACE iterates, every run is built in shared tenants (one HQ project space,
 one Connect org pair, one OCS team, Dimagi-only Labs). Granting an outsider
@@ -77,10 +77,6 @@ every checklist item (Step 0.7), and every rebuild (Step 4).
   that cannot wait for org setup. `release` then needs `--allow-shared connect`
   to grant Connect at all, and every such grant opens every ACE opportunity in
   those orgs.
-- `--labs-domain <@domain>` — the partner's email domain(s), comma-separated,
-  when Step 0 has to set `labs_allowed_domains`. No default: derive it from the
-  reviewers' addresses on the thread that asked for the clone (e.g. the ace@
-  thread's `@sparkmicrogrants.org` recipients), and stop if you cannot.
 - `--co-owner <email>` — a human to invite as an owner of a workspace Step 0
   creates (default: the operator who asked, e.g. `jjackson@dimagi.com`), so
   the workspace is not visible to ace@ alone.
@@ -210,8 +206,6 @@ Skip any part that already holds.
    - `hq_domain`: `<hq>`;
    - `connect_pm_org`: `<pm>`, `connect_holding_org`: `<nm>` — with
      `--keep-shared connect`, the SOURCE opp's values instead;
-   - `labs_allowed_domains`: `--labs-domain` (with the leading `@`), when
-     empty;
    - `ocs_team`: leave empty (not used — 4d).
    Never overwrite an owner's different non-empty value: if `default_tenancy`
    already names a different HQ space or org, stop and report both. Read it
@@ -232,9 +226,8 @@ start Step 2 with a failed preflight.
    the ace-web step — say so.
 2. **Target tenancy.** `GET ${ACE_WEB_BASE_URL}/api/workspaces/<to>` →
    `default_tenancy`. Every field the source run has products for must be set:
-   `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect),
-   `labs_allowed_domains` (Labs — must name the partner's domain, not only
-   Dimagi's). `ocs_team` is not needed (see 4d). A missing field is a setup
+   `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect).
+   `ocs_team` is not needed (see 4d); Labs needs nothing (see 4c). A missing field is a setup
    item: "workspace owner: set default_tenancy.<field>".
 3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
    (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
@@ -512,63 +505,19 @@ opportunity must point at the rebuilt HQ apps).
    holding_org}`. A Phase 4 halt is `NOT DONE` with its reason — never fall
    back to the source opportunity.
 
-### 4c. Labs — widen the run's own labs-only opps
+### 4c. Labs — not widened (Dimagi-only)
 
-A run's Phase 7 labs assets (its synthetic opps, their program, registry and
-dashboards) were created for that run alone — nothing else lives in them. So
-the Labs step does NOT rebuild them: it lets the target tenancy's domain see
-them, and both runs keep pointing at the same labs assets.
+ace-web dropped the per-opp `labs_allowed_domains` setting (Jonathan,
+2026-10-08: "I don't think it clearly means anything"), so a clone no longer
+opens the run's labs-only opps to the partner. Do NOT call
+`synthetic_set_allowed_domains`: the tenancy guard refuses any domain except the
+operator ones (`config/tenancy-targets.json`), and that call REPLACES the list
+(ace#2713).
 
-1. From the source `products.synthetic`, collect every labs-only opp id:
-   `cascade.partners[].opportunity_id` and `labs_opp_id` (skip ids < 10000 —
-   those are real-backed opps, gated by Connect membership; report them as
-   `NOT DONE — real-backed, needs the Connect step`).
-2. **Widen the list. Never replace it.** `synthetic_set_allowed_domains` REPLACES
-   the allowlist. ACE (`ace@dimagi-ai.com`) is NOT `@dimagi.com` staff. It reads
-   these opps only because Phase 7 created them with `['@dimagi.com',
-   '@dimagi-ai.com']` (`demo-data-setup` § C1). On 2026-10-05 this step sent
-   `['@sparkmicrogrants.org']` alone. That dropped ACE's own domain, and ACE
-   lost its own synthetic org: `benchmarks_publish` returned "is not accessible
-   to your account", and `labs_context` stopped listing programme 10097
-   (ace#2713). Compute the list once:
-   ```bash
-   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-labs-allowlist.ts" compute \
-     --target <tenancy.labs_allowed_domains, comma-joined> \
-     --current @dimagi.com,@dimagi-ai.com[,<any list the source run recorded>]
-   ```
-   The result is current ∪ target ∪ ACE's own mailbox domain, which is read
-   from `config/agent.json` `email` (`lib/labs-allowlist.ts`). There is no
-   labs atom that reads the current list, so the write's reply is the read.
-   For each id:
-   - Call `synthetic_set_allowed_domains(opportunity_id, allowed_domains:
-     <that list>)`.
-   - Pass its `previous_allowed_domains` to `clone-labs-allowlist.ts reconcile
-     --sent <list> --previous <reply's list>`.
-   - A non-null `resend` means the write dropped a domain the opp already had.
-     Call the atom again with `resend`. Do not move on with a narrowed opp.
-
-   The tenancy guard checks every domain against the bound tenancy. It also
-   admits the operator domains (`@dimagi.com` and ACE's own mailbox domain;
-   `config/tenancy-targets.json` `operator_values`). A `PERMISSION_DENIED`
-   means ace@ is neither the creator nor Dimagi-internal on that opp. Report
-   it; do not work around it.
-3. **Read back that ACE still sees the opps.** Call `labs_context(search:
-   <the synthetic org slug or programme name>)` and save the reply as JSON.
-   Then run `clone-labs-allowlist.ts seen --context-file <file> --ids
-   <every id>`. Exit 1 lists the `missing` ids, which ACE has locked itself
-   out of. That outcome is `NOT DONE — ACE lost access to <ids>`, never
-   `done`. A successful set call does not prove access.
-4. Leave `products.synthetic` unchanged in the target run (same assets).
-   Record `clone.labs: {status: done, opportunity_ids: [...], allowed_domains:
-   [...]}` with the list that was actually set.
-5. **Report the sign-in caveat:** a partner opens labs by logging in through
-   Connect (HQ sign-in). Labs matches the email Connect returns, so the
-   partner's Connect account must carry their `@<domain>` email — check with
-   one reviewer before telling everyone it works.
-
-Requires connect-labs with `synthetic_set_allowed_domains`
-(dimagi-internal/connect-labs#2100). If the tool is missing, report
-`NOT DONE — labs tool not deployed`.
+1. Leave `products.synthetic` unchanged in the target run (same assets).
+2. Record `clone.labs: {status: skipped, reason: "Labs stays Dimagi-only"}`.
+3. Tell the operator: the run's Labs dashboards are visible to Dimagi only, and
+   the run summary marks them `admin only`.
 
 ### 4d. OCS — deliberately not rebuilt
 

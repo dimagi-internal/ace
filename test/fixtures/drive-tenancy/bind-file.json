@@ -9,10 +9,7 @@
     "tenancy": {
       "connect_holding_org": "spark",
       "connect_pm_org": "spark-pm",
-      "hq_domain": "connect-ace-spark",
-      "labs_allowed_domains": [
-        "@sparkmicrogrants.org"
-      ]
+      "hq_domain": "connect-ace-spark"
     },
     "workspace": "spark"
   }
