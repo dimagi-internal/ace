@@ -306,6 +306,32 @@ function shellEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * Wrap a `ShellFn` so every `adb` call carries `ANDROID_ADB_SERVER_PORT`
+ * pinned to this session's ALLOCATED adb server (`port-allocator.ts` walks
+ * upward from 5037 on a busy host). Non-`adb` commands pass through
+ * untouched. The port travels through `opts.env` (merged over the normal
+ * env by `defaultShell`), so nothing mutates `process.env`; an explicit
+ * per-call `ANDROID_ADB_SERVER_PORT` from the caller still wins.
+ *
+ * Exists for `MaestroBackend`, which `MobileClient` used to build on bare
+ * `defaultShell`: its driver-install gate (`waitForDeviceBooted`'s
+ * `adb -s <serial> get-state`) then polled 5037 — on a contended host
+ * another macOS account's server, which has never heard of this session's
+ * emulator — and failed every heal at 180s while the device sat `device`
+ * on the allocated port (dimagi-internal/ace#2793).
+ */
+export function pinAdbServerPort(inner: ShellFn, resolvePort: () => Promise<number>): ShellFn {
+  return async (cmd, args, opts) => {
+    if (cmd !== 'adb') return inner(cmd, args, opts);
+    const port = await resolvePort();
+    return inner(cmd, args, {
+      ...opts,
+      env: { ANDROID_ADB_SERVER_PORT: String(port), ...opts?.env },
+    });
+  };
+}
+
 export const defaultShell: ShellFn = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
     const env = opts.env ? { ...shellEnv(), ...opts.env } : shellEnv();

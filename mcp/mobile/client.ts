@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { AvdBackend } from './backends/avd.js';
+import { AvdBackend, defaultShell, pinAdbServerPort } from './backends/avd.js';
 import {
   CloudBackend,
   type CloudDiagnostics,
@@ -810,7 +810,16 @@ export class MobileClient {
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
-    this.maestro = opts.maestro ?? new MaestroBackend();
+    // The Maestro backend's bare `adb` calls (driver-install gate,
+    // package probes, `am instrument`) must hit THIS session's allocated
+    // adb server, not the default 5037 — on a contended host 5037 belongs
+    // to someone else and the heal funnel fails at 180s with the device up
+    // (ace#2793). Pin it the same way AvdBackend pins its own adb calls.
+    this.maestro =
+      opts.maestro ??
+      new MaestroBackend({
+        shell: pinAdbServerPort(defaultShell, async () => (await this.avd.getAllocatedPorts()).adbServerPort),
+      });
     this.staticRecipesDir = opts.staticRecipesDir ?? resolveStaticRecipesDir();
     this.regTmpRoot = opts.regTmpRoot ?? os.tmpdir();
     // `bootstrapConfig: null` (explicit) disables auto-bootstrap;
