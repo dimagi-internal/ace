@@ -10,6 +10,14 @@ def main(input: str, **kwargs) -> str:
     #   chatbot_review_needed true when any topic is disputed or the coach escalated
     #   chatbot_escalations   list of escalation categories
     # Every list is reset when a new session (a new task) starts.
+    #
+    # Optional briefing picture: when Labs starts the session with `coach_image_url`
+    # (a short-lived signed link to a chart of THIS worker's own figures) in the
+    # session data, the picture rides on the coach's first reply, once. Without it
+    # nothing changes. The fetch authenticates with the team's `connect-labs` Auth
+    # Provider (a Labs bearer token), so the link alone cannot fetch the image.
+    # A failed fetch never blocks the reply: it is recorded for staff in
+    # session state `coach_image_error` and the reply goes out as text.
 
     participant_data = get_participant_data() or {}
     status = participant_data.get("chatbot_task_status", "")
@@ -97,4 +105,22 @@ def main(input: str, **kwargs) -> str:
 
     set_session_state_key("chatbot_task_status", status)
     set_session_state_key("chatbot_review_needed", review_needed)
+
+    image_url = get_session_state_key("coach_image_url")
+    if image_url and user_input and not get_session_state_key("coach_image_sent"):
+        # Mark it sent before fetching: one attempt per session, so a slow or broken
+        # image endpoint costs the worker one delay at most, never one per turn.
+        set_session_state_key("coach_image_sent", True)
+        try:
+            response = http.get(image_url, auth="connect-labs", timeout=20)
+            content_type = (response["headers"].get("content-type") or "").split(";")[0].strip()
+            if response["status_code"] == 200 and response["content"] and content_type.startswith("image/"):
+                extension = content_type.split("/", 1)[1] or "png"
+                add_file_attachment("your-progress." + extension, response["content"], content_type)
+            else:
+                set_session_state_key(
+                    "coach_image_error", "HTTP %s, %s" % (response["status_code"], content_type or "no content type")
+                )
+        except Exception as error:
+            set_session_state_key("coach_image_error", str(error)[:300])
     return reply

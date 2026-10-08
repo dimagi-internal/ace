@@ -122,12 +122,18 @@ describe('the coach prompt template', () => {
     expect(() => renderCoachPrompt(template + ' {{NEW_THING}}', vars)).toThrow(/NEW_THING/);
   });
 
-  it('uses exactly one OCS prompt variable: the session briefing', () => {
-    // The one OCS variable it may use: the per-conversation briefing Labs sends as
+  it('uses exactly two OCS prompt variables, both from Labs session data', () => {
+    // The OCS variables it may use: the per-conversation briefing Labs sends as
     // session data (OCS writes a triggered opening with a generic EventBot, so the
-    // briefing must reach the pipeline another way).
-    const rest = template.replace(/\{\{[A-Z_]+\}\}/g, '').replace('{session_state.coach_briefing}', '');
-    expect(template).toContain('{session_state.coach_briefing}');
+    // briefing must reach the pipeline another way), and the caption of the optional
+    // briefing picture (empty when Labs sent none; OCS renders a missing
+    // session_state key as empty).
+    const allowed = ['{session_state.coach_briefing}', '{session_state.coach_image_caption}'];
+    let rest = template.replace(/\{\{[A-Z_]+\}\}/g, '');
+    for (const v of allowed) {
+      expect(template).toContain(v);
+      rest = rest.split(v).join('');
+    }
     expect(rest).not.toMatch(/[{}]/);
   });
 });
