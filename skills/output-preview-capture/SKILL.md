@@ -7,6 +7,8 @@ disable-model-invocation: false
 
 # Output Preview Capture
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, `ACE_WEB_WORKSPACE` → the run's `workspace:` from `run_state.yaml` (pass `--workspace`) — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 Every output ace-web lists must be either a file its in-page viewer draws, or
 have one or more GOOD screenshots (ace-web `docs/specs/2026-09-29-output-previews-design.md`,
 addendum "every output is a doc or has screenshots"). ace-web computes which

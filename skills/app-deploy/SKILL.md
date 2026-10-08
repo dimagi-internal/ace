@@ -41,6 +41,8 @@ orchestrator from per-skill QA + eval verdicts. -->
    Extract `nova_app_id` from each frontmatter. These are the inputs to
    `/nova:upload_to_hq`.
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, and Step 4.6's `commcare_delete_app` passes `allow_foreign_domain: <hq_domain>` for a partner space — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 2. **Pre-flight check.** Read `ACE_HQ_DOMAIN` (and `ACE_HQ_BASE_URL`,
    default `https://www.commcarehq.org`) from the loaded environment.
    That's the HQ project space ACE uploads each app to. If

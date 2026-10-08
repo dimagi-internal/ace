@@ -1,10 +1,20 @@
 ---
 description: Run deep QA (OCS + apps) against an existing opportunity. Manual gate, not part of /ace:run.
-argument-hint: <opp-name> [--ocs-only | --apps-only]
+argument-hint: [<ws>/]<opp-name> [--ocs-only | --apps-only]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__nova__get_form, mcp__plugin_nova_nova__get_app, mcp__nova__get_app]
 ---
 
 # /ace:qa-deep — Manual Deep QA
+
+**Workspace addressing.** The opp argument may be prefixed with an ace-web
+workspace: `<ws>/<opp>` or `<ws>/<opp>/<run-id>` (e.g.
+`spark/spark-facilitator`). A bare `<opp>` / `<opp>/<run-id>` means the default
+workspace (`ACE_WEB_WORKSPACE`, `dimagi-team`) exactly as before — a run id
+(`YYYYMMDD-HHMM`) is never mistaken for an opp. Parse with `parseOppRef`
+(`lib/run-paths.ts`) and resolve with `npx tsx
+"$CLAUDE_PLUGIN_ROOT/scripts/resolve-run-workspace.ts" <arg>`; read the opp
+under that workspace's Drive root (`resolve_opp_path` with `aceRootFolderId:
+run_workspace.drive_root_folder_id`). Exit 2 = halt with its remediation.
 
 Triggers a full LLM-as-Judge quality assessment of an opportunity that
 already has a successful /ace:run behind it.

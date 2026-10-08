@@ -29,6 +29,12 @@
  * 1Password never overrides it. See `playbook/integrations/connect-api.md
  * § Which Connect orgs ACE acts in`.
  *
+ * A run that targets an ace-web WORKSPACE other than the instance default
+ * (`/ace:run <ws>/<opp>`) does not use these keys at all: its orgs come from
+ * that opp's tenancy via `connectOrgsFromTenancy` below (resolved by
+ * `lib/run-workspace.ts`), and a tenancy with no PM org is an error, never a
+ * fallback to the instance's orgs.
+ *
  * What this does NOT govern: an existing opp's program. `opp.yaml.connect.program`
  * records the program's own org (its URL is `/a/<org>/program/...`), and that
  * recorded org stays authoritative for reuse — changing ACE_CONNECT_PM_ORG must
@@ -51,8 +57,8 @@ export interface ConnectOrgs {
   /** Slug of the network-manager org, or null when this instance has not configured one. */
   nm_org: string | null;
   source: {
-    pm_org: 'env' | 'legacy-default';
-    nm_org: 'env' | 'unset';
+    pm_org: 'env' | 'legacy-default' | 'tenancy';
+    nm_org: 'env' | 'unset' | 'tenancy';
   };
 }
 
@@ -107,6 +113,45 @@ export function resolveConnectOrgs(env: Record<string, string | undefined>): Con
       nm_org: nm ? 'env' : 'unset',
     },
   };
+}
+
+/**
+ * The Connect orgs a RUN acts in when it targets an ace-web workspace whose opp
+ * tenancy names them (`GET /api/w/<ws>/opps/<opp>/tenancy` → `tenancy`,
+ * resolved by `lib/run-workspace.ts`). The tenancy's `connect_pm_org` is the
+ * program org and `connect_holding_org` the org that holds the opportunity —
+ * exactly the `pm_org` / `nm_org` pair `phase4Orgs` takes, so a workspace run
+ * runs the same PM→NM flow in the partner's own orgs.
+ *
+ * This is the ONLY other way an org slug enters ACE besides `.env`, and it
+ * lives here so this file stays the sole resolver. Throws
+ * `ConnectOrgConfigError` when the tenancy names no PM org — a partner run
+ * must never fall back to the instance's (shared) orgs.
+ */
+export function connectOrgsFromTenancy(tenancy: {
+  connect_pm_org?: string | null;
+  connect_holding_org?: string | null;
+}): ConnectOrgs {
+  const env = {
+    [PM_ORG_ENV]: tenancy.connect_pm_org ?? undefined,
+    [NM_ORG_ENV]: tenancy.connect_holding_org ?? undefined,
+  };
+  let pm: string | null;
+  let nm: string | null;
+  try {
+    pm = read(env, PM_ORG_ENV);
+    nm = read(env, NM_ORG_ENV);
+  } catch (e) {
+    if (e instanceof ConnectOrgConfigError) {
+      const field = e.key === PM_ORG_ENV ? 'tenancy.connect_pm_org' : 'tenancy.connect_holding_org';
+      throw new ConnectOrgConfigError(field, e.value, e.message.replace(/^.*?: /, ''));
+    }
+    throw e;
+  }
+  if (!pm) {
+    throw new ConnectOrgConfigError('tenancy.connect_pm_org', '', 'the workspace tenancy names no Connect PM org');
+  }
+  return { pm_org: pm, nm_org: nm, source: { pm_org: 'tenancy', nm_org: nm ? 'tenancy' : 'unset' } };
 }
 
 /**
@@ -166,27 +211,33 @@ export function runConnectOrgs(connect: unknown): { pm_org_slug: string | null; 
   };
 }
 
+/** Render resolved orgs as the `connect_orgs:` block every Connect-acting phase dispatch carries. */
+export function renderConnectOrgsBlock(o: ConnectOrgs, indent = ''): string {
+  const p4 = phase4Orgs(o);
+  const note =
+    p4.mode === 'pm-nm'
+      ? 'nm_org configured — Phase 4 runs PM→NM: the opportunity is held by nm_org, verification rules are set at pm_org'
+      : 'nm_org unset — Phase 4 is self-managed (opportunity held by pm_org; verification rules cannot be set, ace#2419)';
+  return [
+    'connect_orgs:',
+    '  status: ok',
+    `  pm_org: "${o.pm_org}"`,
+    `  nm_org: ${o.nm_org === null ? 'null' : `"${o.nm_org}"`}`,
+    `  phase4_mode: ${p4.mode}`,
+    `  phase4_holding_org: "${p4.holding_org}"`,
+    '  source:',
+    `    pm_org: ${o.source.pm_org}`,
+    `    nm_org: ${o.source.nm_org}`,
+    `  note: "${note}"`,
+  ]
+    .map((l) => indent + l)
+    .join('\n');
+}
+
 /** Render the resolution as the `connect_orgs:` block `bin/ace-doctor --preflight` emits. */
 export function renderConnectOrgsYaml(env: Record<string, string | undefined>): string {
   try {
-    const o = resolveConnectOrgs(env);
-    const p4 = phase4Orgs(o);
-    const note =
-      p4.mode === 'pm-nm'
-        ? 'nm_org configured — Phase 4 runs PM→NM: the opportunity is held by nm_org, verification rules are set at pm_org'
-        : 'nm_org unset — Phase 4 is self-managed (opportunity held by pm_org; verification rules cannot be set, ace#2419)';
-    return [
-      'connect_orgs:',
-      '  status: ok',
-      `  pm_org: "${o.pm_org}"`,
-      `  nm_org: ${o.nm_org === null ? 'null' : `"${o.nm_org}"`}`,
-      `  phase4_mode: ${p4.mode}`,
-      `  phase4_holding_org: "${p4.holding_org}"`,
-      '  source:',
-      `    pm_org: ${o.source.pm_org}`,
-      `    nm_org: ${o.source.nm_org}`,
-      `  note: "${note}"`,
-    ].join('\n');
+    return renderConnectOrgsBlock(resolveConnectOrgs(env));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return [

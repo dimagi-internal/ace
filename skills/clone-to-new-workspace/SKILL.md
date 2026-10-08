@@ -633,3 +633,22 @@ blockers. End with: "Nothing was shared with anyone. Next:
 — it checks and fixes everything and, when READY, shows you exactly what will
 be shared and every email. Then `/ace:release <to>/<opp>/<run-id> --reviewers …`
 (the same reviewers) shares exactly that, and nothing else."
+
+
+## Running the next round in a partner's workspace
+
+A clone is how a run FIRST reaches a partner's workspace. The next round does
+not need another clone: build it there directly.
+
+1. **Feedback lands in the partner workspace.** Reviewers answer and comment on
+   the clone's ace-web pages; saved answers go to that workspace's
+   `<opp>/inputs/decision-overrides.yaml`, under its own Drive root.
+2. **`/ace:run <ws>/<opp>`** — e.g. `/ace:run spark/spark-facilitator`. The run
+   resolves the workspace's tenancy (`scripts/resolve-run-workspace.ts`),
+   refuses an incomplete or shared one before writing anything, proves it can
+   reach the HQ space and both Connect orgs, and builds in them. Its prior run
+   is the clone, so open asks carry and the reviewers' saved answers bind at
+   the decisions write boundary. Its Phase 4 opportunity holds a key minted for
+   the partner's HQ space alone.
+3. **`/ace:validate-release-readiness`**, then **`/ace:release`** — reviewers
+   who are already members of the workspace are told about the new run there.

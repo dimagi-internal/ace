@@ -100,3 +100,22 @@ describe('runConnectOrgs', () => {
     expect(runConnectOrgs(undefined)).toEqual({ pm_org_slug: null, holding_org_slug: null });
   });
 });
+
+describe('connectOrgsFromTenancy (workspace runs)', () => {
+  it('maps the tenancy PM / holding orgs onto pm_org / nm_org', async () => {
+    const { connectOrgsFromTenancy } = await import('../../lib/connect-orgs.js');
+    expect(connectOrgsFromTenancy({ connect_pm_org: 'spark-pm-org-test', connect_holding_org: 'spark-nm-org-test' })).toEqual({
+      pm_org: 'spark-pm-org-test',
+      nm_org: 'spark-nm-org-test',
+      source: { pm_org: 'tenancy', nm_org: 'tenancy' },
+    });
+  });
+  it('never falls back to the legacy default when the tenancy names no PM org', async () => {
+    const { connectOrgsFromTenancy, ConnectOrgConfigError } = await import('../../lib/connect-orgs.js');
+    expect(() => connectOrgsFromTenancy({ connect_holding_org: 'x' })).toThrow(ConnectOrgConfigError);
+  });
+  it('rejects a URL in place of a slug, naming the tenancy field', async () => {
+    const { connectOrgsFromTenancy } = await import('../../lib/connect-orgs.js');
+    expect(() => connectOrgsFromTenancy({ connect_pm_org: 'https://connect.dimagi.com/a/x/' })).toThrow(/tenancy\.connect_pm_org/);
+  });
+});

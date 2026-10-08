@@ -7,6 +7,8 @@ disable-model-invocation: false
 
 # App Release QA
 
+**Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain` — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
+
 Structural + install-time QA on the released CCZ artifacts at the end
 of Phase 3. Catches CCZ-marker drops, form-count drift vs. Nova
 blueprint, XForm parse errors, and install-time runtime binding

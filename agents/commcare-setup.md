@@ -153,6 +153,12 @@ either namespace** wherever this procedure loads or names a Nova tool
 
 #### Step 0b: Probe HQ binding
 
+`<ACE_HQ_DOMAIN>` throughout this procedure is the RUN's HQ space:
+`run_workspace.hq_domain` when the dispatch carries a `run_workspace:` block
+(a run built in a partner workspace, `/ace:run <ws>/<opp>`), else `.env`'s
+`ACE_HQ_DOMAIN`. Pass the block on to every skill this phase dispatches; a
+partner workspace never falls back to `.env` (`skills/_run-workspace.md`).
+
 Call Nova's `get_hq_connection` (no args). Since the
 voidcraft-labs/nova-plugin#12 release it returns
 `{ configured, available_domains: [{ name, displayName }, …] }` — the
