@@ -1,0 +1,4 @@
+{
+  "_doc": "Where ACE's canopy-web DDD artifacts live (narratives, reviews, cut videos). Read by every ACE path that writes to canopy-web DDD, which passes it to bin/ace-canopy-web --workspace. Explicit on purpose: with no workspace pinned, canopy's CLI falls through to the org default (dimagi) — ace#2805. A demo or run may override it (`/ace:demo --workspace`, opp.yaml canopy_web.workspace); it never defaults silently.",
+  "ddd_workspace": "connect"
+}

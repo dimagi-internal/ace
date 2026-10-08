@@ -23,7 +23,7 @@ Assembles the final prospect-facing partnership package — hero video, pitch de
 | Phase 1 profile | `ACE/partnerships/<slug>/prospect.yaml` | Prospect name and slug for package title and brand-safety header |
 | `partnership-research` | `ACE/partnerships/<slug>/research/deep-research.md` | Cited research for the appendix |
 | `partnership-research` | `ACE/partnerships/<slug>/research/connect-fit.md` | Connect-fit claims for the appendix |
-| Env | `CANOPY_WEB_PAT` or `~/.claude/canopy/workbench-token` | canopy-web auth (required by `canopy:walkthrough-share`) |
+| Env | ACE's own PAT + an explicit workspace via `bin/ace-canopy-web --workspace <ws>` — never `~/.claude/canopy/workbench-token` (`playbook/integrations/canopy-web.md`, ace#2805) | canopy-web auth for `canopy:walkthrough-share` |
 
 ## Products
 
@@ -84,7 +84,7 @@ Assembles the final prospect-facing partnership package — hero video, pitch de
 
 5. **Publish via `canopy:walkthrough-share`.**
 
-   The level-0 orchestrator dispatches `canopy:walkthrough-share` (a canopy skill invoked as an Agent/Skill call from the orchestrator — NOT an MCP atom). The upload arguments are:
+   Every canopy-web write runs as `bin/ace-canopy-web --workspace <ws> -- <command>`; read the upload back with `verify walkthrough <id>` before recording `canopy_web.share_url`. The level-0 orchestrator dispatches `canopy:walkthrough-share` (a canopy skill invoked as an Agent/Skill call from the orchestrator — NOT an MCP atom). The upload arguments are:
 
    - **Artifact path:** the render media file (`video.media_url` — the `.mp4` at the ace-web media endpoint). The MP4 is the primary upload artifact for `canopy:walkthrough-share`.
    - **`--title`:** `"<prospect name> — Connect Partnership Pitch"` (max 200 chars; truncate if needed).
