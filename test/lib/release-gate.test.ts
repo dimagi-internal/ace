@@ -25,7 +25,7 @@ function readyVerdict(files: RunFile[]) {
   const { plan } = buildReleasePlan({
     workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', reviewers,
     runState: parseYaml(rsText), tenancy: { hq_domain: 'connect-ace-spark', connect_holding_org: 'spark-nm' },
-    driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace',
+    driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace', aceWebMembership: { members: [], pending_invites: [] },
   });
   return buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', checkedAt: '2026-10-01T21:00:00Z', files, findings: [], reviewers, runStateHash: runStateHash(rsText), plan });
 }
@@ -93,7 +93,7 @@ describe('the release gate refuses every mismatch', () => {
     const { plan } = buildReleasePlan({
       workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', reviewers, cc,
       runState: parseYaml(rsText), tenancy: { hq_domain: 'connect-ace-spark', connect_holding_org: 'spark-nm' },
-      driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace',
+      driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace', aceWebMembership: { members: [], pending_invites: [] },
     });
     const withCc = buildReleaseVerdict({ workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', checkedAt: '2026-10-01T21:00:00Z', files, findings: [], reviewers, cc, runStateHash: runStateHash(rsText), plan });
     expect(withCc.verdict).toBe('READY');

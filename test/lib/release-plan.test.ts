@@ -10,6 +10,8 @@ import {
   buildReleasePlan,
   emailBody,
   grantsFor,
+  memberEmailBody,
+  parseAlreadyMember,
   parseCc,
   parseReviewers,
   partitionThreadParticipants,
@@ -42,6 +44,7 @@ const base: PlanInput = {
   ],
   options: { forward_source: false, allow_cross_workspace_forward: false, allow_shared_connect: false },
   aceWebBase: 'https://labs.connect.dimagi.com/ace',
+  aceWebMembership: { members: [{ email: 'ace@dimagi-ai.com', role: 'owner', user_id: 1 }], pending_invites: [] },
 };
 
 describe('parseReviewers', () => {
@@ -308,5 +311,139 @@ describe('--from-thread: Dimagi staff on the thread are REVIEWERS (ace#2720)', (
       expect(plan.actions.some((a) => a.kind === 'email' && a.target === staff)).toBe(true);
       expect(plan.emails.some((e) => e.to === staff)).toBe(true);
     }
+  });
+});
+
+// ace#2770 — a reviewer already in the ace-web workspace gets no invite and no
+// accept link. Live repro 2026-10-07 (/ace:release spark/spark-facilitator/
+// 20261004-1706, step 27): `409 {"title": "jjackson@dimagi.com is already a
+// owner of this workspace"}` → no token → step 35's email unbuildable.
+describe('existing ace-web members (ace#2770)', () => {
+  const ACE = { email: 'ace@dimagi-ai.com', role: 'owner', user_id: 1 };
+  const reviewers = parseReviewers('new@spark.org,ed@spark.org,jjackson@dimagi.com,pend@spark.org,view@spark.org');
+  const input: PlanInput = {
+    ...base,
+    reviewers,
+    aceWebMembership: {
+      members: [ACE, { email: 'ed@spark.org', role: 'editor', user_id: 11 }, { email: 'JJackson@dimagi.com', role: 'owner', user_id: 2 }, { email: 'view@spark.org', role: 'viewer', user_id: 12 }],
+      pending_invites: [{ email: 'pend@spark.org', role: 'editor' }],
+    },
+  };
+  const { plan, problems } = buildReleasePlan(input);
+  const aw = (email: string) => plan.actions.filter((a) => a.email === email && a.system === 'ace-web');
+  const mail = (to: string) => plan.emails.find((e) => e.to === to)!;
+  const WB = 'https://labs.connect.dimagi.com/ace/w/spark/opps/spark-facilitator/runs/r1';
+
+  it('(a) a new reviewer: invite + accept link, unchanged', () => {
+    expect(problems.filter((p) => p.severity === 'blocker')).toEqual([]);
+    expect(aw('new@spark.org')).toMatchObject([{ kind: 'ace_web_invite', role: 'editor' }]);
+    expect(aw('new@spark.org')[0].reinvite).toBeUndefined();
+    expect(mail('new@spark.org').variant).toBe('invite');
+    expect(mail('new@spark.org').body).toContain(ACCEPT_LINK_TOKEN);
+    expect(plan.ace_web).toContainEqual({ email: 'new@spark.org', status: 'invite', role: 'editor' });
+  });
+
+  it('(b) an existing editor: no ace-web action, already-member recorded, existing-member email', () => {
+    expect(aw('ed@spark.org')).toEqual([]);
+    expect(plan.ace_web).toContainEqual({ email: 'ed@spark.org', status: 'already-member', role: 'editor' });
+    const e = mail('ed@spark.org');
+    expect(e.variant).toBe('existing-member');
+    expect(e.body).not.toContain(ACCEPT_LINK_TOKEN);
+    expect(e.body).toContain(`sign in at ${WB}`);
+    // everything else is kept: review page, chatbot, what they can open, the Connect order note
+    expect(e.body).toContain(clone.ace_web_summary_url);
+    expect(e.body).toContain('openchatstudio.com');
+    expect(e.body).toContain('What you can open:');
+    expect(e.body).toContain('Log in with CommCare HQ');
+    // still gets the other grants and its email action
+    expect(plan.actions.some((a) => a.kind === 'hq_invite' && a.email === 'ed@spark.org')).toBe(true);
+    expect(plan.actions.some((a) => a.kind === 'email' && a.email === 'ed@spark.org')).toBe(true);
+  });
+
+  it('(c) an existing OWNER (the jjackson case) is already-member — never invited (that 409s)', () => {
+    expect(aw('jjackson@dimagi.com')).toEqual([]);
+    expect(plan.ace_web).toContainEqual({ email: 'jjackson@dimagi.com', status: 'already-member', role: 'owner' });
+    expect(mail('jjackson@dimagi.com').variant).toBe('existing-member');
+  });
+
+  it('(d) a pending invite: re-invited (ace-web mints a fresh token per POST), normal email', () => {
+    expect(aw('pend@spark.org')).toMatchObject([{ kind: 'ace_web_invite', role: 'editor', reinvite: true }]);
+    expect(plan.ace_web).toContainEqual({ email: 'pend@spark.org', status: 'invite-pending', role: 'editor' });
+    expect(mail('pend@spark.org').variant).toBe('invite');
+    expect(mail('pend@spark.org').body).toContain(ACCEPT_LINK_TOKEN);
+  });
+
+  it('(e) an existing viewer: an ace_web_role raise to editor (an invite would 409), existing-member email', () => {
+    expect(aw('view@spark.org')).toMatchObject([{ kind: 'ace_web_role', user_id: 12, from_role: 'viewer', role: 'editor', target: 'spark' }]);
+    expect(plan.ace_web).toContainEqual({ email: 'view@spark.org', status: 'role-upgrade', role: 'editor' });
+    expect(mail('view@spark.org').variant).toBe('existing-member');
+    // ordered before the invites, after forward; all before the emails
+    const kinds = plan.actions.map((a) => a.kind);
+    expect(kinds.lastIndexOf('ace_web_role')).toBeLessThan(kinds.indexOf('ace_web_invite'));
+    expect(kinds.lastIndexOf('ace_web_invite')).toBeLessThan(kinds.indexOf('email'));
+  });
+
+  it('membership not read, or read with an error, is a blocker — never "nobody is a member"', () => {
+    expect(buildReleasePlan({ ...input, aceWebMembership: null }).problems.map((p) => p.id)).toContain('plan-ace-web-membership-unread');
+    const err = buildReleasePlan({ ...input, aceWebMembership: { members: [], pending_invites: [], error: 'GET …/invites → 403' } }).problems;
+    expect(err.find((p) => p.id === 'plan-ace-web-membership-unread')).toMatchObject({ severity: 'blocker' });
+    expect(err.find((p) => p.id === 'plan-ace-web-membership-unread')!.detail).toContain('403');
+  });
+
+  it('the hash is deterministic and sees membership', () => {
+    expect(planHash(buildReleasePlan(input).plan)).toBe(planHash(plan));
+    const reordered = { ...input, aceWebMembership: { ...input.aceWebMembership!, members: [...input.aceWebMembership!.members].reverse() } };
+    expect(planHash(buildReleasePlan(reordered).plan)).toBe(planHash(plan));
+    expect(planHash(buildReleasePlan({ ...input, aceWebMembership: { members: [ACE], pending_invites: [] } }).plan)).not.toBe(planHash(plan));
+  });
+
+  it('plan-show says "already a member (role) — no invite"', () => {
+    const txt = renderPlan(plan);
+    expect(txt).toContain('| already a member (editor) — no invite |');
+    expect(txt).toContain('| already a member (owner) — no invite |');
+    expect(txt).toContain('already a member (viewer) — raise to editor, no invite');
+    expect(txt).toContain('re-invite: an earlier invite is still pending');
+    expect(txt).toContain('ace_web_role view@spark.org → spark (viewer → editor)');
+    expect(txt).toContain('--- Email to ed@spark.org — Subject: Review access: spark-facilitator (run r1) — already a member: no accept link');
+  });
+});
+
+describe('the two email variants (ace#2770)', () => {
+  const membership = {
+    members: [{ email: 'ace@dimagi-ai.com', role: 'owner', user_id: 1 }, { email: 'bo@spark.org', role: 'admin', user_id: 3 }],
+    pending_invites: [],
+  };
+  const { plan } = buildReleasePlan({ ...base, aceWebMembership: membership });
+  const LINK = 'https://labs.connect.dimagi.com/ace/invite/abc123';
+
+  it('emailBody still requires a real invite link for an invite email, and refuses an existing-member email', () => {
+    expect(emailBody(plan, 'amina@spark.org', LINK).body).toContain(LINK);
+    expect(() => emailBody(plan, 'amina@spark.org', 'https://labs.connect.dimagi.com/ace/w/spark')).toThrow(/not an ace-web invite link/);
+    expect(() => emailBody(plan, 'bo@spark.org', LINK)).toThrow(/existing-member variant/);
+  });
+
+  it('memberEmailBody sends a planned existing-member email unchanged', () => {
+    const e = plan.emails.find((m) => m.to === 'bo@spark.org')!;
+    expect(memberEmailBody(plan, 'bo@spark.org', 'admin')).toEqual({ subject: e.subject, body: e.body, cc: [] });
+  });
+
+  it('an invite that 409s at release: the accept step becomes the sign-in step, nothing else changes', () => {
+    const planned = plan.emails.find((m) => m.to === 'amina@spark.org')!.body;
+    const out = memberEmailBody(plan, 'amina@spark.org', parseAlreadyMember('amina@spark.org is already a editor of this workspace')!).body;
+    expect(out).not.toContain(ACCEPT_LINK_TOKEN);
+    expect(out).toContain(`sign in at ${plan.workbench_url}`);
+    const strip = (b: string) => b.split('\n').filter((l) => !l.startsWith('1. ')).join('\n');
+    expect(strip(out)).toBe(strip(planned));
+  });
+
+  it('refuses a member below editor — not a satisfied grant', () => {
+    expect(() => memberEmailBody(plan, 'amina@spark.org', 'viewer')).toThrow(/below the release's editor/);
+    expect(() => memberEmailBody(plan, 'nobody@x.org', 'owner')).toThrow(/no email to/);
+  });
+
+  it("parseAlreadyMember reads ace-web's 409 title (live wording, 2026-10-07)", () => {
+    expect(parseAlreadyMember('jjackson@dimagi.com is already a owner of this workspace')).toBe('owner');
+    expect(parseAlreadyMember('x@y.org is already an admin of this workspace')).toBe('admin');
+    expect(parseAlreadyMember('Admin or owner required')).toBeNull();
   });
 });

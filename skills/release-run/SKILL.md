@@ -116,11 +116,19 @@ and `role` come from the plan, never re-derived:
 | `connect_org_member` | `connect_add_org_member(organization_slug: target, email, role)` | the call IS its read-back (member + pending tables before/after): its `status` |
 | `drive_share` | `drive_set_anyone_with_link(fileId: target, role)` | an anonymous `curl -sI` of `url` no longer lands on a sign-in page |
 | `forward_source` | `POST ${ACE_WEB_BASE_URL}/api/w/<workspace>/opps/<opp>/runs/<run-id>/release` `{"forward_source": true}` | an anonymous `curl -sI` of the source summary API is `307` with a `Location` naming this run |
-| `ace_web_invite` | `POST ${ACE_WEB_BASE_URL}/api/workspaces/<target>/members/invite` `{"email", "role"}` → `token` | the workspace's pending invites list the email; the accept link is `${ACE_WEB_BASE_URL}/invite/<token>` |
-| `email` | `$RC email-body --verdict … --to <email> --accept-link <that link> --out body.txt --subject-out subject.txt`, then `bin/ace-email --to <email> --cc "<the action's cc, comma-joined>" --subject-file subject.txt --body-file body.txt` (omit `--cc` when the action's `cc` is empty) | the send's JSON (`message_id`, `thread_id`) |
+| `ace_web_role` | `PATCH ${ACE_WEB_BASE_URL}/api/workspaces/<target>/members/<user_id>` `{"role": "<role>"}` — a member below editor, raised (an invite would 409) | the response's `role` is `<role>` |
+| `ace_web_invite` | `POST ${ACE_WEB_BASE_URL}/api/workspaces/<target>/members/invite` `{"email", "role"}` → `token`. A **409 `"<email> is already a <role> of this workspace"`** with `<role>` editor/admin/owner is a SATISFIED grant, status `already-member` (the reviewer joined after validation — e.g. accepted an earlier invite) | the workspace's pending invites list the email, and the accept link is `${ACE_WEB_BASE_URL}/invite/<token>`; for `already-member`, the 409 body plus `GET …/api/workspaces/<target>/members` showing the email at that role |
+| `email` | `$RC email-body --verdict … --to <email> --accept-link <that link> --out body.txt --subject-out subject.txt` — or, when the plan's email is the existing-member variant (`plan-show` marks it *already a member: no accept link*) or the invite came back `already-member`, `--already-member <role>` in place of `--accept-link`; then `bin/ace-email --to <email> --cc "<the action's cc, comma-joined>" --subject-file subject.txt --body-file body.txt` (omit `--cc` when the action's `cc` is empty) | the send's JSON (`message_id`, `thread_id`) |
 
 `email-body` fills in the accept link and changes nothing else; it refuses a
-link that is not an ace-web invite link. The cc is the plan's — read from the
+link that is not an ace-web invite link, and refuses an accept link for an
+existing-member email. `--already-member <role>` (ace#2770) sends the
+existing-member email — step 1 is "sign in at the run's members page", no
+link — exactly as planned, or, for a reviewer planned for an invite who
+answered 409, the planned email with only step 1 swapped (the swap is printed
+in `plan-show`, so it was approved). It refuses a role below editor: a 409
+naming `viewer` is NOT a satisfied grant — that reviewer is `NOT DONE`, and
+re-validating plans the `ace_web_role` raise. The cc is the plan's — read from the
 action (`plan-actions`) or `email-body`'s JSON, never typed from memory or the
 thread. The email for a reviewer is sent only
 after that reviewer's grants above it succeeded. A failed step is `NOT DONE`
@@ -172,7 +180,8 @@ on `revision_conflict`, re-read and append again. Write nothing else to it.
 
 ## Report
 
-Per reviewer × system: `granted` (with read-back), `granted — SHARED, revoke
+Per reviewer × system: `granted` (with read-back), `already-member` (ace-web:
+no call was needed, or the invite answered 409 at editor or above), `granted — SHARED, revoke
 later` (listed again at the end as the revocation checklist), `NOT GRANTED —
 <reason from the plan>`, `public link (no account)` for OCS, or `NOT DONE` +
 evidence; the Drive shares; whether the source link now forwards; each email's
@@ -189,3 +198,4 @@ hash executed.
 | 2026-10-05 | `--cc` (ace#2706): each `email` action sends with the plan's `cc` (Dimagi staff, no grant) via `bin/ace-email --cc`; the gate refuses a cc that differs from the validated one; `--from-thread` derives reviewers + cc with `$RC thread-recipients`. | ACE team |
 | 2026-10-07 | Step 4 also logs every sent email to `release-run_comms-log.md` at the run root (date, thread_id, message_id, to, cc, gist — never the body), so `inbox-triage` §b.1 routes reviewer replies by `thread_id`. A release has no phase folder, so the run root is its home; the shares-only ratchet allows exactly this write (ace#2780). | ACE team |
 | 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |
+| 2026-10-08 | Existing ace-web members (ace#2770): a reviewer the plan records as already a member gets no invite and the existing-member email (`email-body --already-member <role>`, no accept link); a member below editor is raised by the new `ace_web_role` action (`PATCH …/members/<user_id>`); an `ace_web_invite` answering 409 "already a <editor/admin/owner>" is a satisfied `already-member` grant, and that reviewer is sent the existing-member email instead of being left NOT DONE (live repro: `/ace:release spark/spark-facilitator/20261004-1706`, step 27). | ACE team |

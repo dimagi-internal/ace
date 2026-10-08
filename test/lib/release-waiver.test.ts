@@ -49,7 +49,7 @@ function plan() {
   return buildReleasePlan({
     workspace: 'spark', opp: 'spark-facilitator', runId: '20260926-1800', reviewers,
     runState: parseYaml(rsText), tenancy: { hq_domain: 'connect-ace-spark', connect_holding_org: 'spark-nm' },
-    driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace',
+    driveDocs: [], options: opts, aceWebBase: 'https://labs.connect.dimagi.com/ace', aceWebMembership: { members: [], pending_invites: [] },
   }).plan;
 }
 
