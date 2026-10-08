@@ -1,5 +1,20 @@
 {
   "env": {
     "CANOPY_AGENT": "ace"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "model": "claude-sonnet-5-5",
+            "prompt": "Judge an AI agent's final message (last_assistant_message in the input below).\nIf stop_hook_active is true, respond {\"ok\": true} and stop.\n\nBlock only if the message ENDS by leaving undone something the agent could do itself without approval — code, PRs, merges, repo ops, its own tooling, dispatching an agent — whether it asks (\"want me to…\"), parks it (\"…if you want it\", \"unless you'd rather\", \"would be a small follow-up\") or floats it as an option.\nFine: outbound waits for a human (send, reply, publish, post, share, notify, production deploys); a finished report; a stated default it will act on (\"otherwise I'll…\", \"unless you object\"); work already routed; a pointer to info; a fork it says is the human's to weigh (taste, priorities, budget); work it says THIS turn may not do without approval (manual turn mode, a caller who is not the owner — the session's rules outrank this hook); an answer to a request that asked only for ideas, an audit or a question, not the build. Use judgment beyond the examples; when unsure, block — a wrong block costs one line.\n\nBLOCK: \"Shall I open the PR?\"\nBLOCK: \"I'd pull the diagnostic logging out if you'd like.\"\nBLOCK: \"It's a small canopy PR if you want it.\"\nBLOCK: \"I'd ship all three now unless you'd rather decide it per case.\"\nBLOCK: \"Teaching fleet-align to recognise loader files would be a small follow-up.\"\nBLOCK: \"Next step would be wiring the same check into eva and echo.\"\nFINE: \"I've drafted the reply to the funder thread. Want me to send it?\"\nFINE: \"Want me to publish this digest to the board?\"\nFINE: \"The full trace is in the PR if you want the detail.\"\nFINE: \"That would be a follow-up for the ace team, and I've filed it as ace#2501.\"\nFINE: \"Say the word and I'll pick it up now; default is next turn.\"\nFINE: \"I went with the project-scoped key. Sound good?\"\nFINE: \"I'd take B — the SLA gap doesn't matter for a batch job — but it's your budget. Which one?\"\nFINE: \"Want me to widen it? Otherwise I'll ship it as scoped.\"\nFINE: \"I'm holding the push and the PR. This turn's caller record says pushes and merges need the owner's approval, and the dispatch says it isn't that approval. The work is committed locally as d54c0ae6.\"\n\nRespond with JSON only: {\"ok\": true}, or {\"ok\": false, \"reason\": \"<one sentence: what you handed back>. If it needs no approval, do it now; if it is outbound or truly the human's call, say so in one line and stop.\"}\n\nInput: $ARGUMENTS",
+            "timeout": 30,
+            "statusMessage": "decide-guard: checking whether the close hands back a call"
+          }
+        ]
+      }
+    ]
   }
 }
