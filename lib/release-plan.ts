@@ -25,6 +25,16 @@ export const RELEASE_PLAN_SCHEMA_VERSION = 1 as const;
 export const ACCEPT_LINK_TOKEN = '{{ACCEPT_LINK}}';
 
 export type ReviewerRole = 'viewer' | 'editor';
+
+/**
+ * The ace-web workspace role every release invite carries — always `editor`,
+ * whatever `:role` the reviewer was passed with. Owner directive (Jonathan
+ * Jackson, 2026-10-08): "everyone ace invites in as part of a release should be
+ * editor". The reviewer's `:viewer` / `:editor` no longer reaches ace-web; Connect
+ * keeps its own fixed `viewer` org role (right for outside reviewers), and HQ its
+ * `App Editor`.
+ */
+export const RELEASE_ACE_WEB_ROLE = 'editor' as const;
 export interface Reviewer {
   email: string;
   role: ReviewerRole;
@@ -100,10 +110,10 @@ export function ccKey(cc: readonly string[] | undefined | null): string {
  * Operator correction (Jonathan, 2026-10-05, ace#2720): "we want dimagi people
  * to be invited into the workspace if they are on the project". So:
  *
- * - Dimagi staff (`@dimagi.com`) → `reviewers` (viewer): an ace-web workspace
- *   invite, the same grants a partner gets (`grantsFor` already treats staff
+ * - Dimagi staff (`@dimagi.com`) → `reviewers`: an ace-web workspace
+ *   invite (as `editor`, RELEASE_ACE_WEB_ROLE), the same grants a partner gets (`grantsFor` already treats staff
  *   as grantable on every system), and their own release email.
- * - an address whose domain is in `labs_allowed_domains` → `reviewers` (viewer).
+ * - an address whose domain is in `labs_allowed_domains` → `reviewers`.
  * - ACE's own mailbox, and anyone else → `excluded`, with the reason — shown to
  *   the operator, never silently invited or copied.
  *
@@ -474,7 +484,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
 
   // 5. ace-web, last of the grants.
   for (const r of reviewers) {
-    actions.push({ id: `ace-web:${r.email}`, system: 'ace-web', kind: 'ace_web_invite', email: r.email, target: workspace, role: r.role });
+    actions.push({ id: `ace-web:${r.email}`, system: 'ace-web', kind: 'ace_web_invite', email: r.email, target: workspace, role: RELEASE_ACE_WEB_ROLE });
   }
 
   // 6. One email per reviewer.

@@ -48,7 +48,11 @@ each run replaces the previous verdict and report.
 | Live systems | Connect, labs, HQ, OCS public chat, Drive sharing — each read with its own session; nothing is shared |
 
 **Reviewers.** `--reviewers` is comma-separated emails, each optionally
-`:viewer` / `:editor` (default viewer). Dimagi staff (`@dimagi.com`) are
+`:viewer` / `:editor` (default viewer). **Every reviewer is invited into the
+ace-web workspace as `editor`, whatever that suffix says** (`RELEASE_ACE_WEB_ROLE`
+in `lib/release-plan.ts`; owner directive, Jonathan, 2026-10-08: *"everyone ace
+invites in as part of a release should be editor"*); the Connect org role stays
+`viewer`. Dimagi staff (`@dimagi.com`) are
 reviewers like anyone else — an ace-web workspace invite, the grants a partner
 gets, and their own release email. Operator correction (Jonathan, 2026-10-05,
 ace#2720): *"we want dimagi people to be invited into the workspace if they are
@@ -142,7 +146,7 @@ release_plan:              # null unless READY
     - {step: 2, id: "connect:a@x.org:<org>", system: connect, kind: connect_org_member, email, target: <org>, role: viewer, shared: false}
     - {step: 3, id: "drive:<file id>", system: drive, kind: drive_share, target: <file id>, title, url, role: commenter, scope: anyone_with_link}
     - {step: 4, id: forward-source, system: ace-web, kind: forward_source, target: <src ws>/<opp>/<run>, cross_workspace: true}
-    - {step: 5, id: "ace-web:a@x.org", system: ace-web, kind: ace_web_invite, email, target: <workspace>, role: viewer}
+    - {step: 5, id: "ace-web:a@x.org", system: ace-web, kind: ace_web_invite, email, target: <workspace>, role: editor}   # always editor
     - {step: 6, id: "email:a@x.org", system: email, kind: email, email, target: a@x.org, subject: "…", cc: [staff@dimagi.com]}
   not_granted: [{email, system, reason}]   # shared tenants; OCS is always "public chat link, no account"
   emails: [{to, cc, subject, body}]        # body has the literal {{ACCEPT_LINK}} — the only part a release fills in
@@ -353,5 +357,6 @@ prints why and the release stops — it never adapts.
 | 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
 | 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
 | 2026-10-05 | `--from-thread` makes the thread's Dimagi staff **reviewers** (viewer: ace-web workspace invite, the partner grants, their own email), not cc (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). `--cc` stays, as an explicit opt-in only — `thread-recipients` no longer derives it. | ACE team |
+| 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |
 | 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |
