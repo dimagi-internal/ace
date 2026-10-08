@@ -112,6 +112,26 @@ const REGISTRY: readonly UpstreamPrimitive[] = [
     // different system and predates Nova's. They owe no Nova citation.
     namesakePaths: /^docs\/connect-interviews\//,
   },
+  {
+    // A choice field whose options are CASE records — the attendance
+    // tick-list. ACE filed commcare-nova#728 from group-payment-test/
+    // 20261007-1700 and Nova PR #730 shipped it the same day. The run's own
+    // close-out email said "the app builder can't fill a choice list from
+    // records", which was true of Nova for one day and never of CommCare.
+    // Present tense only, as above: the corrected docs recount the gap.
+    primitive: "optionsSource kind 'cases'",
+    declaredAt: 'Nova MCP tools/list (add_fields / set_field_options_source / edit_field), 127 tools',
+    upstreamRef: 'voidcraft-labs/commcare-nova#728',
+    shipped: '2026-10-08 (Nova PR #730; nova-plugin#67)',
+    absenceClaims: [
+      /\b(?:app\s+builder|Nova)\s+(?:can't|cannot|can\s+not)\s+fill\s+a\s+choice\s+list\s+from\s+(?:records|cases)/i,
+      /\bchoice\s+(?:questions?|fields?)\s+(?:take|takes|draw|draws)\s+their\s+options\s+from\s+only\s+two\b/i,
+      /\bthere\s+is\s+no\s+case[-\s]sourced\s+(?:kind|choice|option)/i,
+      /\bcannot\s+present\s+a\s+group'?s\s+members\s+as\s+a\s+tick[-\s]list/i,
+    ],
+    mustCite: /commcare-nova#728/i,
+    mentions: /kind:\s*'cases'/,
+  },
 ];
 
 /** Files ACE ships as prose or code that a reader or an agent may believe. */

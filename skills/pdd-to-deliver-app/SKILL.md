@@ -679,6 +679,17 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        "Worker states N, then fills N rows" → `user_controlled` repeat with
        the number derived as `count(<repeat>)`. Verified at Step 2.8 by
        `app-release-qa` (`dead-repeat-count`, `lib/repeat-count-audit.ts`).
+     - `case-choice-attendance` — a form opened on a group-like case that
+       records which of its existing members took part (attendance, a
+       distribution, a screening). ONE `multi_select` whose choices are the
+       group's own open member cases (`optionsSource: {kind: 'cases'}`), plus
+       an unlabelled `query_bound` roster that updates each member the FINAL
+       checklist ticks. Not one yes/no screen per member, which was the
+       pre-2026-10-08 fallback (`voidcraft-labs/commcare-nova#728`), and never
+       an update repeat driven by the checklist answer. Exact shapes:
+       `lib/case-choice-attendance.ts`. If `scripts/probe-nova-case-choices.ts`
+       exits non-zero, brief the yes/no fallback and record why under
+       `## Build notes`.
      - `screen-grouping` — always, for any form that puts more than one
        question in a `group`. A group is a CommCare field-list, so its children
        share ONE scrollable screen. Multiple questions per screen is GOOD
