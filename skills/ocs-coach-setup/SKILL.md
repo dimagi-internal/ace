@@ -11,7 +11,8 @@ disable-model-invocation: false
 Design and rationale: `docs/superpowers/specs/2026-10-06-ocs-coach-design.md`
 (including the review of the real KMC Audit bot this generalises).
 
-**ACE never triggers coaching.** This skill builds and tests the Coach. A person
+**ACE never triggers coaching** — except to its own Connect test user, to record itself
+answering (`skills/coach-session-capture`, owner carve-out 2026-10-07). This skill builds and tests the Coach. A person
 starts each conversation from the Labs run page — the workflow's
 `start_ocs_outreach` action, from its button or by asking the page's canopy agent
 ("start coaching sessions for the red facilitators"), which previews and waits for
@@ -73,7 +74,10 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    flag: that team cannot deliver coaching to a worker's Connect app, so stop and
    report it (name the team) — the flag must be switched on, then re-run this step.
 6. **Publish** with `ocs_publish_chatbot_version`.
-7. **QA with a simulated worker** over the OCS chat-completions API
+7. **QA with a simulated worker** — prefer `skills/coach-session-capture` web mode, which
+   starts the session exactly as Labs does (opening verbatim, briefing in
+   `session_state.coach_briefing`); the chat-completions route below puts the briefing in
+   the conversation instead, which is not the production path. Fallback: over the OCS chat-completions API
    (`POST /api/openai/<public_id>/chat/completions`, team API key), never the
    Connect channel. First user message = a briefing from `renderBriefing`; then play
    the worker. Cover at least: (a) agrees → a specific plan; (b) disputes with a

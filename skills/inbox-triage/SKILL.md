@@ -4,8 +4,8 @@ description: >
   The email half of an ACE turn. Reads unread mail to ace@dimagi-ai.com, processes ONE
   thread at a time with strict per-sender isolation, routes each thread to the opp/run it
   belongs to, resolves the sender's tier (internal act vs external correspond vs unknown),
-  proposes one action per thread, and only sends after human approval. Invoked as Step 3
-  of skills/turn — don't run it in isolation and forget the board drain.
+  proposes one action per thread, and only sends after human approval. Step 3 of
+  skills/turn — don't run it alone and skip the board drain.
 ---
 
 # Inbox Triage — routing ACE's mail back into its runs

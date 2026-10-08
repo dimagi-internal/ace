@@ -1,0 +1,86 @@
+appId: org.commcare.dalvik
+---
+# connect-messaging-open.yaml — open a PersonalID messaging thread (skills/coach-session-capture).
+#
+# Pre-state: the ACE test user is registered and signed in (mobile_ensure_avd_running /
+# mobile_register_test_user), and a bot has already messaged it — Labs
+# start_ocs_outreach with deliver_to = the test user's ConnectID username, so the
+# OCS commcare_connect channel exists for this user. Before the first send the
+# Channels list is EMPTY (messaging-no-channels), so this recipe cannot be run first.
+#
+# Post-state: the thread for ${CHANNEL_NAME} is open (messaging-chat-list visible),
+# its newest message on screen.
+#
+# Required env vars:
+#   CHANNEL_NAME — the OCS channel's commcare_connect bot name, verbatim (e.g.
+#                  "Chlorine Coach"; ocs-coach-build.ts --connect-bot-name).
+#   PIN          — the test user's device PIN, for the "Unlock PersonalID" prompt.
+#
+# Live-verified 2026-10-07 on CommCare 2.64.0 (selectors: connect-2.64.0.yaml
+# § PersonalID messaging).
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# From Connect home the toolbar shows "Navigate up" instead of the drawer toggle:
+# back out to the CommCare shell first.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:home-jobs-recycler}"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# Right after launch the first tap on the toggle can land before the drawer is
+# interactive and do nothing (observed 2026-10-07, run 1791419787438-spwegl: tap
+# COMPLETED, drawer closed). Wait for the toggle, tap, and tap once more if the
+# drawer's Messaging row is still not on screen.
+- extendedWaitUntil:
+    visible:
+      text: "${SELECTOR:nav-drawer-toggle}"
+    timeout: 15000
+- tapOn:
+    text: "${SELECTOR:nav-drawer-toggle}"
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:
+    when:
+      notVisible:
+        text: "${SELECTOR:nav-drawer-messaging}"
+    commands:
+      - tapOn:
+          text: "${SELECTOR:nav-drawer-toggle}"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    text: "${SELECTOR:nav-drawer-messaging}"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:system-lockpassword}"
+    commands:
+      - tapOn:
+          id: "${SELECTOR:system-lockpassword}"
+      - inputText: ${PIN}
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:messaging-channel-list}"
+    timeout: 20000
+- takeScreenshot: messaging-channels
+- tapOn:
+    text: ${CHANNEL_NAME}
+    id: "${SELECTOR:messaging-channel-name}"
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:messaging-chat-list}"
+    timeout: 15000
+- takeScreenshot: messaging-thread-open

@@ -7,6 +7,10 @@ API channel. **Blocked for real sends:** OCS team `connect-ace` lacks the
 `flag_commcare_connect` feature flag, so the Coach has no Connect channel yet
 (`Vaccine_Coach` has it). Not yet wired into the Phase 5/7 agents — run the skill
 at the Phase 7 boundary. Owner decision recorded: **ACE never triggers outreach.**
+**One carve-out (Jonathan, 2026-10-07):** ACE may send a coaching conversation to ITS
+OWN Connect test user (the `+7426` demo user on the ACE AVD), to record itself
+answering on mobile — `skills/coach-session-capture`. Nothing wider; enforced in
+`lib/coach-session-capture.ts` `assertAceTestRecipient` + `scripts/coach-capture-mobile-plan.ts`.
 ACE builds the Coach and wires the Labs workflow so that an operator, on the
 right run page, can tell the canopy panel *"trigger all coaching sessions"* and
 confirm a preview.

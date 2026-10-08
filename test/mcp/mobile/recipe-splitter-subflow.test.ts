@@ -221,6 +221,9 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
   const EXPECTED: Record<string, { leading?: string; trailing?: string }> = {
     'connect-claim-opp.yaml': { trailing: 'claim-opp-handoff-learn-home' },
     'connect-login.yaml': { trailing: 'connect-login-home' },
+    'connect-messaging-await.yaml': { trailing: 'messaging-reply' },
+    'connect-messaging-open.yaml': { trailing: 'messaging-thread-open' },
+    'connect-messaging-reply.yaml': { trailing: 'messaging-sent' },
     'connect-register-from-otp.yaml': {},
     'connect-register-to-otp.yaml': {},
     'connect-resume-opp.yaml': { trailing: 'connect-resume-opp-landed' },

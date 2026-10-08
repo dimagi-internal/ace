@@ -176,7 +176,10 @@ simulated worker over the OCS API, and puts coaching on the reports Step 1 built
 the programme report and each partner's opportunity report get the
 `start_ocs_outreach` action (bot = this Coach) and the canopy panel. Those are the
 pages Step 3 films, so coaching appears in the demo as part of the report. It never
-sends to a worker; a person starts coaching from those pages.
+sends to a worker; a person starts coaching from those pages. What the WORKER sees next
+— the conversation in the Connect app — is footage `skills/coach-session-capture`
+records on the AVD by sending to ACE's own test user (mobile mode; owner carve-out
+2026-10-07). Use it when the narrative has a coaching cut.
 
 It is **required**: Phase 7 cannot be `done` without the Coach. The phase boundary
 checks `products.ocs_coach.experiment_id` and `products.ocs_coach.coaching_on`
