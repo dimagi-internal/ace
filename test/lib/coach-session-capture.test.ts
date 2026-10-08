@@ -1,11 +1,16 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   assertAceTestRecipient,
   CoachCaptureRefusal,
   coachStartFromPreview,
+  findProgrammeLiterals,
   mobileCommitArgs,
   PERSONA_TURNS,
   resolveAceTestUsername,
+  resolvePersonaTurns,
   replyStartPattern,
   topicsFromBriefing,
   webStart,
@@ -132,5 +137,60 @@ describe('personas', () => {
       expect(turns.length).toBeGreaterThanOrEqual(3);
       for (const t of turns) expect(t.split(/\s+/).length).toBeLessThanOrEqual(25);
     }
+  });
+
+  // ace#2804: the defaults are played into EVERY opp's Coach. The programme nouns are
+  // read from the real registries ACE has authored, not typed here.
+  const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'cascade');
+  const programmeNouns = fs
+    .readdirSync(fixtureDir)
+    .filter((f) => f.endsWith('-registry.json'))
+    .flatMap((f) => {
+      const entity = JSON.parse(fs.readFileSync(path.join(fixtureDir, f), 'utf8')).properties_doc.entity;
+      return [entity.name, entity.plural];
+    });
+
+  it('reads programme nouns from more than one programme', () => {
+    expect(programmeNouns).toEqual(expect.arrayContaining(['waterpoint', 'community']));
+  });
+
+  it('the default worker script carries no programme noun or place name', () => {
+    for (const [persona, turns] of Object.entries(PERSONA_TURNS)) {
+      expect({ persona, hits: findProgrammeLiterals(turns, programmeNouns) }).toEqual({ persona, hits: [] });
+    }
+  });
+
+  it('negative control: the chlorine-specific script that shipped before ace#2804 is caught', () => {
+    const chlorine = [
+      'I can record it while I am still at the waterpoint and wait for it to save.',
+      'At Rijiyar Kwara the location jumps far away even when I stand next to the tap.',
+      'A man at one of the communities threatened me.',
+    ];
+    expect(findProgrammeLiterals(chlorine, programmeNouns).sort()).toEqual(
+      ['Kwara', 'Rijiyar', 'communities', 'waterpoint'].sort(),
+    );
+    // A capitalised word that opens a sentence, the pronoun and a weekday are not names.
+    expect(findProgrammeLiterals(['Yes. From Monday I will wait.'], programmeNouns)).toEqual([]);
+  });
+});
+
+describe('resolvePersonaTurns', () => {
+  it('falls back to the programme-neutral default', () => {
+    expect(resolvePersonaTurns('agree')).toEqual({ turns: PERSONA_TURNS.agree, source: 'default' });
+  });
+
+  it("plays the opp's own turns, as a list or keyed by persona", () => {
+    const own = ['Yes, I can talk.', 'Two of my sessions had fewer than ten people.'];
+    expect(resolvePersonaTurns('dispute', own)).toEqual({ turns: own, source: 'opp' });
+    expect(resolvePersonaTurns('dispute', { dispute: own })).toEqual({ turns: own, source: 'opp' });
+    expect(resolvePersonaTurns('safety', { dispute: own })).toEqual({ turns: PERSONA_TURNS.safety, source: 'default' });
+  });
+
+  it('refuses an unknown persona or a malformed script rather than playing the default', () => {
+    expect(() => resolvePersonaTurns('angry')).toThrow(/unknown persona/);
+    expect(() => resolvePersonaTurns('agree', { agre: ['a', 'b'] })).toThrow(/unknown persona/);
+    expect(() => resolvePersonaTurns('agree', ['only one'])).toThrow(/at least 2/);
+    expect(() => resolvePersonaTurns('agree', ['ok', ''])).toThrow(/at least 2/);
+    expect(() => resolvePersonaTurns('agree', 'Yes')).toThrow(/list of turns/);
   });
 });

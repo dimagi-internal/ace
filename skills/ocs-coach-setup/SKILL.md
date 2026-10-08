@@ -76,7 +76,10 @@ residual to record — we know the Coach builds (Spark Coach 13972).
 6. **Publish** with `ocs_publish_chatbot_version`.
 7. **QA with a simulated worker** — prefer `skills/coach-session-capture` web mode, which
    starts the session exactly as Labs does (opening verbatim, briefing in
-   `session_state.coach_briefing`); the chat-completions route below puts the briefing in
+   `session_state.coach_briefing`). Author the worker's lines for THIS opp from its
+   PDD and app summary and pass them as `--turns` (that skill's § Worker turns); the
+   built-in default is programme-neutral, never another programme's script (ace#2804).
+   The chat-completions route below puts the briefing in
    the conversation instead, which is not the production path. Fallback: over the OCS chat-completions API
    (`POST /api/openai/<public_id>/chat/completions`, team API key), never the
    Connect channel. First user message = a briefing from `renderBriefing`; then play

@@ -39,10 +39,30 @@ nothing through Connect, so it needs no carve-out.
 |---|---|
 | Report run | a programme or opportunity report the Coach is wired to — `phases.synthetic-data-and-workflows.products.ocs_coach.coaching_on[]` (`workflow_id`, `run_id`, scope) |
 | Worker | one worker key with a red or yellow coachable indicator — `workflow_run_indicators(band: "red")` |
-| Persona | `agree` (default), `dispute`, `safety` — `PERSONA_TURNS` in `lib/coach-session-capture.ts` |
+| Persona | `agree` (default), `dispute`, `safety` |
+| Worker turns | `turns.json` — the worker's lines for each persona, authored for THIS opp (see below); optional |
 | Coach | `ocs_coach.experiment_id` (pk) + its PUBLISHED version number (`ocs_get_chatbot`) |
 | Channel name (mobile) | the Coach's `commcare_connect` bot name (`ocs-coach-build.ts --connect-bot-name`) |
 | HQ domain (mobile) | `ACE_HQ_DOMAIN` — where the test user's mobile worker lives |
+
+### Worker turns: the opp's own words, or neutral
+
+The default script (`PERSONA_TURNS` in `lib/coach-session-capture.ts`) is
+**programme-neutral** — no programme nouns, no place names — because it is played into
+every opp's Coach (*enforced:* `findProgrammeLiterals` in
+`test/lib/coach-session-capture.test.ts`). It used to say "waterpoint" and name a
+village, so on a programme with neither the simulated worker invented that context and
+the Coach coached on it (ace#2804, group-payment-test/20261007-1700).
+
+For footage, or to test grounding properly, write `turns.json` for this opp:
+`{"agree": [...], "dispute": [...], "safety": [...]}` (a persona you omit plays the
+default). Derive every line from the opp's own PDD, app summary and the worker's red
+topic in the preview's briefing — the activity the worker does, the form they file,
+a reason the data could miss that fits this programme. Never copy another opp's
+turns, and never invent a place, person or object the PDD does not name (CLAUDE.md
+§ No inferred backstory). Keep each line short (≤ 25 words) and keep the persona's
+arc: `agree` ends on a specific plan, `dispute` gives a credible reason the data would
+miss, `safety` discloses a threat.
 
 ## Products
 
@@ -68,8 +88,11 @@ nothing. Save the response to `preview.json`.
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/coach-capture-web.ts" \
-  --preview preview.json --experiment-pk <pk> --version <published> --persona agree --out <dir>
+  --preview preview.json --experiment-pk <pk> --version <published> --persona agree \
+  [--turns turns.json] --out <dir>
 ```
+
+`transcript.json` records `turns_source: opp | default`.
 
 It starts an OCS web chat (`start_authed_web_session`), writes the start's
 `session_data` into the session state before the first message, plays the persona,
@@ -108,7 +131,8 @@ not use web footage in a demo.
    message and `state.coach_briefing` set.
 4. **Open the thread.** `mobile_run_recipe(connect-messaging-open.yaml, envVars:
    {CHANNEL_NAME, PIN: ACE_E2E_PIN})`. The channel row exists only after step 3.
-5. **Each persona turn:** `mobile_run_recipe(connect-messaging-reply.yaml, {MESSAGE})`;
+5. **Each persona turn** (the same lines web mode plays — `turns.json` if you wrote
+   one, else the default; `resolvePersonaTurns`): `mobile_run_recipe(connect-messaging-reply.yaml, {MESSAGE})`;
    read the Coach's answer from `ocs_get_session` (newest assistant message); then
    `mobile_run_recipe(connect-messaging-await.yaml, {REPLY_START:
    replyStartPattern(answer)})`. The answer appears on the phone without push
@@ -142,3 +166,5 @@ Worker-facing text follows `skills/_terminology.md` — the platform is "Connect
 - 2026-10-07 — Created. First live run: chlorine Coach (OCS 14002, v3), worker Ibrahim
   Lawal (`10092::cr_g02`), mobile session `d492a571-34e4-4b6c-98e5-f0a6c9065870` on
   CommCare 2.64.0, web sessions for all three personas.
+- 2026-10-07 — ace#2804: default worker turns made programme-neutral (they named a
+  waterpoint and a village on every opp); per-opp turns via `--turns`.
