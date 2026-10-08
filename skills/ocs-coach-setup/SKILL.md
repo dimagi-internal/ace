@@ -135,6 +135,31 @@ nothing red or yellow are skipped with a reason. So **do not put a briefing in
 The report shows "Start coaching" only on workers who are off target or on watch;
 Dimagi staff coaching one worker get a "Send to me instead (QA)" box (`deliver_to`).
 
+## The briefing picture (optional)
+
+A Coach can open with a picture of the worker's OWN figures. It is optional on
+both sides: nothing changes for a session that does not ask for one.
+
+- **Labs** (`start_ocs_outreach` with `include_image: true`, or a workflow default)
+  adds two keys to the session data: `coach_image_url`, a signed link (7 days) to a
+  chart Labs renders from the same topics as the briefing, and
+  `coach_image_caption`, one sentence naming what it shows.
+- **The status node** (`templates/ocs-coach/status_node.py`) fetches that link once,
+  on the Coach's first reply, and attaches the PNG with OCS's
+  `add_file_attachment`. A failure never blocks the reply: it lands in session
+  state `coach_image_error` and the reply goes out as text. The code decides, not
+  the model, so the picture cannot repeat (the model DOES re-send media it chose
+  itself — ace#2822).
+- **The prompt** reads `{session_state.coach_image_caption}`: empty means no
+  picture, and the Coach must not mention one.
+- **The fetch authenticates** with an OCS Auth Provider named exactly
+  `connect-labs` (type Bearer) on the Coach's OCS team, holding a Labs token of
+  scope `coach-images` (minted at `/labs/mcp/tokens/`). That token can fetch
+  coaching pictures and nothing else. Without the provider every fetch fails into
+  `coach_image_error`, so add it once per OCS team that runs Coaches.
+- Connect delivers the picture only on apps with rich messaging (CommCare 2.66+,
+  commcare-android#3946); older apps show an "update your app" notice instead.
+
 ## Terminology
 
 Worker-facing text follows `skills/_terminology.md` — the platform is "Connect".
