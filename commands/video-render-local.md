@@ -18,7 +18,9 @@ resolution, prerequisites, both modes, and how to read the timing report:
 python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print(d['plugins']['ace@ace'][0]['installPath'] + '/skills/video-render-local/SKILL.md')"
 ```
 
-Read that file with the Read tool and follow it. Map the invocation's
+Read that file with the Read tool and follow it. A `style: recorded` spec
+(canopy's per-cut `explainer_spec.<cut>.yaml`) is the exception: it renders
+through canopy's `video-engine/render_locally.py`, not here (ace#2788). Map the invocation's
 arguments onto the skill's Mode A (`--local-spec` + `--master`) or Mode B
 (`<program-slug>`). Report the output mp4 path and the timing report to the
 user; flag any `held-frame overrun` so they can decide whether to trim the
