@@ -1142,9 +1142,17 @@ reproducer, see reference.md § Runtime install validation.
    })
    ```
 
-   For multi-module apps, invoke `play` once per module (`[0,0]`,
-   `[1,0]`, …) to cover every form's `initAllTriggerables`. **Fire all
-   per-module `play` calls in parallel** (one assistant turn, multiple
+   `entry_path` is the menu position **as displayed**, not the HQ module
+   index (ace#2784). Child modules nest inside their parent menu, so on a
+   Deliver app with nested child modules the root shows fewer items than
+   there are modules. On group-payment-test the root lists `m0 / m3 / m4`
+   as `0 / 1 / 2`, so the paid form `m3-f0` is `[1,0]`. Read the root and
+   submenus off suite.xml's `<menu>` blocks: a menu with no `root=` is at
+   the root, and `root="mN"` places it inside `mN` after that menu's own
+   forms. Invoke `play` once per **form** you need covered. Each result
+   echoes `command_id`, so check that it names the form you meant.
+   **Fire all
+   per-form `play` calls in parallel** (one assistant turn, multiple
    `commcare_validate_ccz` tool calls) — they read the same on-disk CCZ
    read-only and differ only by `entry_path`, so there's no ordering
    dependency. Likewise, run the Learn and Deliver `validate`/`play`
@@ -1155,9 +1163,14 @@ reproducer, see reference.md § Runtime install validation.
 3. **Response shape (both modes):**
 
    ```
-   { verdict: 'pass' | 'fail',
+   { verdict: 'pass' | 'fail' | 'skipped',   // 'skipped' is play-only
      exit_code: <int>,
      // play-mode only:
+     command_id?: 'm3-f0',            // the suite command entry_path resolved to
+     skip_reason?: 'empty-case-list' | 'form-entry-not-reached'
+                 | 'cli-case-index-unsupported' | 'entry-path-unresolved',
+     nav_unresolved?: <why entry_path landed on no command>,
+     seeded_case_types?: [...],
      failing_binding?: '/data/du_bednet_visit/deliver',
      unresolved_xpath?: 'instance(commcaresession)/session/data/case_id',
      // both modes:
@@ -1178,7 +1191,11 @@ reproducer, see reference.md § Runtime install validation.
    - **`input_error: 'jar_not_found'`** (either mode) → emit `[WARN]` `cli-validator-unavailable` with the setup remediation below; continue. Structural Steps 3–4 still authoritative.
    - **`validate verdict: 'fail'`** → halt with `[BLOCKER]` `cli-validate-parser-error` naming `parser_message` + `failed_resource`. Don't bother running `play` — `validate` already proved the CCZ is structurally broken.
    - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message` (see § Failure modes for the bednet class + fix).
-   - **`play verdict: 'skipped'`** → emit `[INFO]` naming `skip_reason`; **do NOT halt**. The form was never opened, so nothing about form-init was observed either way. Today the only reason is `empty-case-list`: the module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (it carries `case_type` / `case_name` / `owner_id` and no other properties). Record `cli_validate.play: {verdict: skipped, skip_reason, seeded_case_types}` so the coverage gap is legible rather than silently reported as a pass.
+   - **`play verdict: 'skipped'`** → **do NOT halt**, and **never record it as a pass**: form-init was not observed, so the form is UNEVALUATED. Record `cli_validate.play: {verdict: skipped, skip_reason, command_id, seeded_case_types}` so the coverage gap is legible. The reasons are:
+     - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (the seed carries `case_type` / `case_name` / `owner_id` and no other properties).
+     - `cli-case-index-unsupported` → `[INFO]` (ace#2784). Form entry WAS reached, but form-init ran a casedb index query (`case[index/parent = …]`, e.g. a `join()` over a group's member cases), and the CLI's in-memory sandbox has no `CaseIndexTable` (`"this.caseIndexTable" is null`). A device has one, so this is the harness's limit, not a defect. Observed on both group-payment-test session forms.
+     - `form-entry-not-reached` → `[WARN]`. The walk ended without the CLI printing `Starting form entry` / `Form Start:`. This means the walk is wrong for this app shape (a datum screen it did not answer), so name `entry_path` + `command_id` and file it. Before ace#2784 this case was graded `pass`.
+     - `entry-path-unresolved` → `[WARN]`. Your `entry_path` lands on no command, and the CLI was not run. `nav_unresolved` lists what that menu actually shows, so re-issue with the display position.
 
    **Case seeding (dimagi-internal/ace#1088).** *Most* ACE Deliver apps' payable
    form is a `followup` on a case type — but **not all**: the 2026-08-13
@@ -1189,9 +1206,12 @@ reproducer, see reference.md § Runtime install validation.
    had **never once** exercised `initAllTriggerables` on an ACE Deliver
    followup form, while reporting `fail` on clean builds. `play` now
    derives the case types from `suite.xml` and seeds one open case each,
-   and derives the menu walk from the same file (a case datum inserts a
-   case-list screen, and `detail-confirm` a confirmation screen, between
-   the module and form choices). Nothing is sent after form entry —
+   and derives the menu walk from the same file. A case datum inserts a
+   case-list screen, and `detail-confirm` adds a confirmation screen. They
+   come BEFORE the form choice when every entry in the menu needs that
+   datum, and AFTER it otherwise. The menu tree comes from the `<menu
+   root=…>` blocks, not from module indices (ace#2784). Nothing is sent
+   after form entry —
    stray keystrokes are typed as *answers*, and a `0` on a date question
    raises `IllegalArgumentException: Invalid cast of data [0] to type
    Date`, which reads as a CCZ defect.
@@ -1202,11 +1222,20 @@ reproducer, see reference.md § Runtime install validation.
      carries no properties, so such a list is still empty → `skipped`.
    - Case **search** / registry entries (`<query>` screens) and any datum
      screen other than a plain entity list.
-   - `entry_path` where the form index is non-zero on a case-managed
-     module: the walk assumes the caller's second index is the form, and
-     a module with 2+ forms behind a case list has not been exercised.
-     ACE calls this as `[0,0]`, `[1,0]`, … (one per module, form 0), which
-     is the calibrated path.
+   - Form-init that queries casedb by **index** (parent/child) →
+     `skipped`/`cli-case-index-unsupported`. The CLI has no case index
+     table. That form's init is not exercised by this gate at all.
+   - `relevant=` conditions on menus/commands are not evaluated. An app
+     that hides a menu item that way shifts the display positions the
+     walk assumes; `command_id` is how you catch that.
+   - The child-menu listing (parent's forms first, then its child menus)
+     and the descent into a child menu were observed live on
+     group-payment-test (`0 / 2` lists `Register group / Add member /
+     Group members / Session records (B)`, then opens the group case
+     list). That app's child menus hold case lists, not forms, so walking
+     all the way to a FORM inside a child menu has not been observed live. Non-zero form indices on a case-managed menu (`[0,1]` on
+     group-payment-test `m0`) were walked live on 2026-10-07 and reach the
+     form.
 
 **Operator one-time setup (only when `input_error: 'jar_not_found'` fires):**
 

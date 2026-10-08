@@ -388,10 +388,13 @@ export interface CommCareCliPlayOptions {
    */
   restorePath?: string;
   /**
-   * Menu-index sequence to navigate to a form. Default `[0, 0]` walks
-   * "first module → first form" — the common case. For multi-module apps
-   * the caller invokes play once per module (`[0,0]`, `[1,0]`, ...) to
-   * cover every form-init.
+   * Menu-index sequence to navigate to a form, as the CLI DISPLAYS it —
+   * root-menu position first, then (for nested menus) the position inside
+   * each submenu, then the form's position in its menu. Default `[0, 0]`
+   * walks "first root item → first form". These are display positions, not
+   * HQ module indices: with child modules nested under a parent menu the two
+   * diverge (ace#2784), and `resolveEntryPath` maps one to the other from
+   * suite.xml. The resolved command is echoed back as `command_id`.
    */
   entryPath?: number[];
   javaPath?: string;
@@ -413,7 +416,26 @@ export interface CommCareCliPlayOptions {
  */
 export type CommCareCliPlayVerdict = 'pass' | 'fail' | 'skipped';
 
-export type CommCareCliPlaySkipReason = 'empty-case-list';
+/**
+ * - `empty-case-list` (ace#1088): the case list rendered zero rows.
+ * - `form-entry-not-reached` (ace#2784): the walk ended without the CLI ever
+ *   printing `Starting form entry` / `Form Start:`. Nothing about form-init
+ *   was observed, so this can never be a pass — the old rule ("no fatal
+ *   marker → pass") graded a walk stranded on a case-confirm screen green.
+ * - `cli-case-index-unsupported` (ace#2784): form entry WAS reached, but
+ *   form-init evaluated a casedb index query (`case[index/parent = …]`) and
+ *   the CLI's in-memory sandbox has no `CaseIndexTable`, so it NPE'd inside
+ *   `CaseInstanceTreeElement.performCaseIndexQuery`. A device has the table;
+ *   this is the harness's limit, and form-init is UNEVALUATED, not failed.
+ * - `entry-path-unresolved` (ace#2784): suite.xml declares its menus and the
+ *   path lands on no command (out of range, or stops on a menu). The CLI is
+ *   not run; `nav_unresolved` lists what the menu actually shows.
+ */
+export type CommCareCliPlaySkipReason =
+  | 'entry-path-unresolved'
+  | 'empty-case-list'
+  | 'form-entry-not-reached'
+  | 'cli-case-index-unsupported';
 
 export interface CommCareCliPlayResult {
   verdict: CommCareCliPlayVerdict;
@@ -421,6 +443,14 @@ export interface CommCareCliPlayResult {
   skip_reason?: CommCareCliPlaySkipReason;
   /** Case types seeded into the restore for this run (echo, for the verdict). */
   seeded_case_types?: string[];
+  /**
+   * The suite command (`m3-f0`) the entry path resolved to, when suite.xml
+   * declares its menus. Absent when the path could not be resolved — in
+   * which case `nav_unresolved` says why.
+   */
+  command_id?: string;
+  /** Why `entry_path` did not resolve to a command (see `resolveEntryPath`). */
+  nav_unresolved?: string;
   exit_code: number;
   /** Form path navigated to (echo of entryPath). */
   entry_path: number[];
@@ -567,7 +597,10 @@ export function readCczSuiteXml(cczPath: string): string {
  * derived rather than guessed. Confirmed live on the spark-facilitator
  * Deliver CCZ: module 0 (`m0-f0`, case datum + `detail-confirm`) needs
  * `0 / 0 / <enter> / 0`; module 1 (`m1-f0`, `function="uuid()"` datum) needs
- * `1 / 0`. Both then reach `Form Start`.
+ * `1 / 0`. Both then reach `Form Start`. Whether the case screen comes
+ * BEFORE or AFTER the form choice depends on whether every entry in the menu
+ * shares the datum, and the menu tree is not the module list — see
+ * `resolveEntryPath` (ace#2784).
  *
  * Nothing is sent after form entry — `:quit` follows immediately. Form-init
  * has already run by then, and stray keystrokes get typed as *answers*: a
@@ -576,28 +609,206 @@ export function readCczSuiteXml(cczPath: string): string {
  * would read as a CCZ defect. (Observed live while calibrating this.)
  */
 export function deriveNavInput(entryPath: number[], suiteXml?: string): string {
+  return resolveEntryPath(entryPath, suiteXml).navInput;
+}
+
+export interface ResolvedEntryPath {
+  /** stdin for `play`: the walk, then `:quit`. */
+  navInput: string;
+  /** The suite command the path selects (`m3-f0`), when it resolved. */
+  commandId?: string;
+  /** Set when suite.xml declares menus but the path does not land on a command. */
+  unresolved?: string;
+}
+
+export interface SuiteMenu {
+  id: string;
+  /** Parent menu id; CommCare defaults an absent `root` to `root`. */
+  root: string;
+  commands: string[];
+}
+
+/** Every `<menu>` in suite order, with its `root` and its own commands. */
+export function parseSuiteMenus(suiteXml: string): SuiteMenu[] {
+  const out: SuiteMenu[] = [];
+  if (!suiteXml) return out;
+  for (const m of suiteXml.matchAll(/<menu\b([^>]*)>([\s\S]*?)<\/menu>/g)) {
+    const attrs = m[1];
+    const id = attrs.match(/\bid\s*=\s*"([^"]+)"/)?.[1];
+    if (!id) continue;
+    const root = attrs.match(/\broot\s*=\s*"([^"]+)"/)?.[1] ?? 'root';
+    const commands = [...m[2].matchAll(/<command\s+id\s*=\s*"([^"]+)"/g)].map((c) => c[1]);
+    out.push({ id, root, commands });
+  }
+  return out;
+}
+
+type MenuItem = { kind: 'command' | 'menu'; id: string };
+
+/**
+ * What the CLI lists on screen inside `menuId`, in order. Mirrors commcare-
+ * core's `MenuLoader`: walk the suite's menus in declaration order; a menu
+ * whose id IS `menuId` contributes its commands, and a menu whose `root` is
+ * `menuId` contributes itself as a submenu (once).
+ *
+ * This is the whole of ace#2784: a child module (`<menu id="m1" root="m0">`)
+ * is listed inside `m0`, not at the root, so from the first nested module on
+ * a root display position is no longer the HQ module index. Live on the
+ * group-payment-test Deliver CCZ the root shows `m0 / m3 / m4` as `0 / 1 / 2`.
+ * Relevancy (`relevant=` XPath on a menu or command) is not evaluated — an
+ * app hiding an item that way would shift positions.
+ */
+function menuDisplayItems(menus: SuiteMenu[], menuId: string): MenuItem[] {
+  const items: MenuItem[] = [];
+  const listedMenus = new Set<string>();
+  for (const m of menus) {
+    if (m.id === menuId) {
+      for (const c of m.commands) items.push({ kind: 'command', id: c });
+    } else if (m.root === menuId && !listedMenus.has(m.id)) {
+      listedMenus.add(m.id);
+      items.push({ kind: 'menu', id: m.id });
+    }
+  }
+  return items;
+}
+
+interface SuiteDatum {
+  id: string;
+  /** Normalised tag — two entries share a datum only if these are equal. */
+  key: string;
+  /** Backed by a `nodeset`: an entity list goes on screen. */
+  entity: boolean;
+  confirm: boolean;
+}
+
+function entryDatums(entry: string): SuiteDatum[] {
+  const out: SuiteDatum[] = [];
+  for (const d of entry.matchAll(/<datum\b[^>]*>/g)) {
+    const tag = d[0];
+    out.push({
+      id: tag.match(/\bid\s*=\s*"([^"]+)"/)?.[1] ?? '',
+      key: tag.replace(/\s+/g, ' '),
+      entity: /\bnodeset\s*=/.test(tag),
+      confirm: /\bdetail-confirm\s*=/.test(tag),
+    });
+  }
+  return out;
+}
+
+/** Keystrokes for one datum: pick the first (seeded) row, then Enter to confirm. */
+function datumSteps(d: SuiteDatum): string[] {
+  // Only a datum backed by a `nodeset` puts an entity list on screen.
+  // `value=` / `function=` datums are computed silently.
+  if (!d.entity) return [];
+  return d.confirm ? ['0', ''] : ['0'];
+}
+
+/**
+ * Resolve a DISPLAY entry path to the suite command it selects, and build the
+ * keystrokes that walk `play` there (ace#2784).
+ *
+ * When CommCare enters a menu it asks for any datum that EVERY entry in that
+ * menu needs next, before listing the commands; a datum the entries disagree
+ * on is asked after the command is picked. That is why the calibrated spark
+ * walk is `0 / 0 / <enter> / 0` (one followup form: the case is asked at the
+ * menu), while on the group-payment-test `m0` — a `uuid()` registration form
+ * beside a case followup — the form list comes first and the case after:
+ * `0 / 1 / 0 / <enter>` reaches `m0-f1`. Both observed live with
+ * commcare-cli on the released CCZs.
+ *
+ * Suites with no `<menu>` declarations (bare fixtures) fall back to the
+ * legacy `m<first>-f<last>` assumption.
+ */
+export function resolveEntryPath(entryPath: number[], suiteXml?: string): ResolvedEntryPath {
+  const menus = suiteXml ? parseSuiteMenus(suiteXml) : [];
+  if (!suiteXml || menus.length === 0) return legacyResolve(entryPath, suiteXml);
+
+  const steps: string[] = [];
+  const collected = new Set<string>();
+  let current = 'root';
+  for (let i = 0; i < entryPath.length; i++) {
+    const idx = entryPath[i];
+    const items = menuDisplayItems(menus, current);
+    const item = items[idx];
+    if (!item) {
+      return {
+        navInput: finishNav(entryPath.map(String)),
+        unresolved: `index ${idx} at depth ${i} is out of range: menu "${current}" lists ${items.length} item(s) [${items.map((x) => x.id).join(', ')}]`,
+      };
+    }
+    steps.push(String(idx));
+    if (item.kind === 'menu') {
+      steps.push(...sharedMenuDatumSteps(suiteXml, menus, item.id, collected));
+      current = item.id;
+      continue;
+    }
+    if (i !== entryPath.length - 1) {
+      return {
+        navInput: finishNav(entryPath.map(String)),
+        unresolved: `index ${idx} at depth ${i} selects command ${item.id}, but the path continues`,
+      };
+    }
+    const entry = findEntryForCommand(suiteXml, item.id) ?? '';
+    for (const d of entryDatums(entry)) {
+      if (collected.has(d.id)) continue;
+      collected.add(d.id);
+      steps.push(...datumSteps(d));
+    }
+    return { navInput: finishNav(steps), commandId: item.id };
+  }
+  return {
+    navInput: finishNav(entryPath.map(String)),
+    unresolved: `path ends on menu "${current}", not on a command`,
+  };
+}
+
+function finishNav(steps: string[]): string {
+  return steps.join('\n') + '\n:quit\n';
+}
+
+/** Datums every entry of `menuId` needs next — asked on entering the menu. */
+function sharedMenuDatumSteps(
+  suiteXml: string,
+  menus: SuiteMenu[],
+  menuId: string,
+  collected: Set<string>,
+): string[] {
+  const entries = menus
+    .filter((m) => m.id === menuId)
+    .flatMap((m) => m.commands)
+    .map((c) => findEntryForCommand(suiteXml, c))
+    .filter((e): e is string => e !== undefined)
+    .map(entryDatums);
+  if (entries.length === 0) return [];
+  const steps: string[] = [];
+  for (;;) {
+    const next = entries.map((ds) => ds.find((d) => !collected.has(d.id)));
+    const first = next[0];
+    if (!first || next.some((d) => !d || d.key !== first.key)) return steps;
+    collected.add(first.id);
+    steps.push(...datumSteps(first));
+  }
+}
+
+/** Pre-ace#2784 walk, kept for suites that declare no `<menu>`s. */
+function legacyResolve(entryPath: number[], suiteXml: string | undefined): ResolvedEntryPath {
   const steps: string[] = [];
   const [moduleIdx, ...rest] = entryPath;
   if (moduleIdx !== undefined) steps.push(String(moduleIdx));
   const formIdx = rest.length > 0 ? rest[rest.length - 1] : undefined;
+  let commandId: string | undefined;
 
   if (suiteXml && moduleIdx !== undefined && formIdx !== undefined) {
-    const commandId = `m${moduleIdx}-f${formIdx}`;
-    const entry = findEntryForCommand(suiteXml, commandId);
+    const candidate = `m${moduleIdx}-f${formIdx}`;
+    const entry = findEntryForCommand(suiteXml, candidate);
     if (entry) {
-      for (const datum of entry.matchAll(/<datum\b[^>]*>/g)) {
-        const tag = datum[0];
-        // Only a datum backed by a `nodeset` puts an entity list on screen.
-        // `value=` / `function=` datums are computed silently.
-        if (!/\bnodeset\s*=/.test(tag)) continue;
-        steps.push('0'); // pick the first (seeded) row
-        if (/\bdetail-confirm\s*=/.test(tag)) steps.push(''); // Enter to confirm
-      }
+      commandId = candidate;
+      for (const d of entryDatums(entry)) steps.push(...datumSteps(d));
     }
   }
 
   for (const idx of rest) steps.push(String(idx));
-  return steps.join('\n') + '\n:quit\n';
+  return { navInput: finishNav(steps), ...(commandId ? { commandId } : {}) };
 }
 
 function findEntryForCommand(suiteXml: string, commandId: string): string | undefined {
@@ -652,6 +863,26 @@ export async function commcareCliPlayCcz(
   const suiteXml = readCczSuiteXml(opts.cczPath);
   const seededCaseTypes = opts.seedCaseTypes ?? extractCaseTypesFromSuite(suiteXml);
 
+  // A path suite.xml says lands on no command cannot open a form. Running it
+  // anyway made the CLI index past the menu (AIOOBE) and grade the CCZ `fail`
+  // for the caller's mistake — e.g. an HQ module index passed as a display
+  // position (ace#2784). Say so instead.
+  const nav = resolveEntryPath(entryPath, suiteXml);
+  if (nav.unresolved) {
+    return {
+      verdict: 'skipped',
+      skip_reason: 'entry-path-unresolved',
+      nav_unresolved: nav.unresolved,
+      seeded_case_types: seededCaseTypes,
+      exit_code: -1,
+      entry_path: entryPath,
+      stdout: '',
+      stderr: '',
+      timeout_ms: timeoutMs,
+      timed_out: false,
+    };
+  }
+
   // Resolve restore: caller path > seeded temp.
   let restorePath = opts.restorePath;
   let restoreTempDir: string | undefined;
@@ -664,7 +895,7 @@ export async function commcareCliPlayCcz(
     );
   }
 
-  const navInput = deriveNavInput(entryPath, suiteXml);
+  const navInput = nav.navInput;
 
   try {
     return await new Promise<CommCareCliPlayResult>((resolve, reject) => {
@@ -710,6 +941,7 @@ export async function commcareCliPlayCcz(
             entryPath,
           }),
           seeded_case_types: seededCaseTypes,
+          ...(nav.commandId ? { command_id: nav.commandId } : {}),
         });
       });
     });
@@ -746,7 +978,15 @@ export interface ParsePlayOutputInput {
  *     with `skip_reason: 'empty-case-list'` (ace#1088) — a harness gap, not
  *     a CCZ defect. Normally unreachable now that the restore seeds cases;
  *     it still fires when a case-list *filter* excludes the generic seed.
- *   - Otherwise → pass.
+ *   - Form entry reached, then the CLI's sandbox NPEs on its missing
+ *     `CaseIndexTable` → `skipped` / `cli-case-index-unsupported` (ace#2784).
+ *   - No form-init failure AND form entry observed (`Starting form entry` or
+ *     `Form Start:`) → pass.
+ *   - Otherwise → `skipped` / `form-entry-not-reached` (ace#2784). This rule
+ *     used to read "otherwise → pass", which graded a walk that stopped on a
+ *     case-confirm screen (exit 255, form never opened) as a clean pass. The
+ *     gate exists to OBSERVE form-init; a run that observed nothing passes
+ *     nothing.
  */
 export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayResult {
   const stdout = trimLog(input.stdout);
@@ -757,18 +997,28 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
   const unresolvedXpath = extractUnresolvedXpath(combined);
   const parserMessage = extractPlayParserMessage(combined);
 
-  const outcome = classifyPlayStream(combined);
-  const verdict: CommCareCliPlayVerdict = input.timedOut
-    ? 'fail'
-    : outcome === 'ok'
-      ? 'pass'
-      : outcome === 'empty-case-list'
-        ? 'skipped'
-        : 'fail';
+  // Read off the UNTRIMMED streams: the marker sits after every menu screen,
+  // so on a large app it can fall past the 4KB log trim.
+  const classified = classifyPlayStream(combined);
+  const outcome: PlayStreamOutcome =
+    classified === 'ok' && !reachedFormEntry(`${input.stdout}\n${input.stderr}`)
+      ? 'form-entry-not-reached'
+      : classified;
+
+  let verdict: CommCareCliPlayVerdict;
+  let skipReason: CommCareCliPlaySkipReason | undefined;
+  if (input.timedOut || outcome === 'form-init-error') {
+    verdict = 'fail';
+  } else if (outcome === 'ok') {
+    verdict = 'pass';
+  } else {
+    verdict = 'skipped';
+    skipReason = outcome;
+  }
 
   return {
     verdict,
-    skip_reason: verdict === 'skipped' ? 'empty-case-list' : undefined,
+    skip_reason: skipReason,
     exit_code: input.exitCode,
     entry_path: input.entryPath,
     failing_binding: failingBinding,
@@ -781,7 +1031,18 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
   };
 }
 
-type PlayStreamOutcome = 'ok' | 'form-init-error' | 'empty-case-list';
+type PlayStreamOutcome = 'ok' | 'form-init-error' | CommCareCliPlaySkipReason;
+
+/**
+ * Did the CLI open the form? `ApplicationHost` prints `Starting form entry
+ * with the following stack frame` as it hands the session to the form
+ * player, and the player prints `Form Start:` on its first screen. Both
+ * observed live on the group-payment-test Deliver CCZ (ace#2784); a walk
+ * stranded on a menu or a case-confirm screen prints neither.
+ */
+function reachedFormEntry(s: string): boolean {
+  return /Starting form entry|Form Start:/.test(s);
+}
 
 /**
  * Classify a play stream. Precedence matters:
@@ -819,6 +1080,19 @@ function classifyPlayStream(s: string): PlayStreamOutcome {
     /(?:ArrayIndex)?IndexOutOfBoundsException/.test(s)
   ) {
     return 'empty-case-list';
+  }
+  // (2b) Form-init evaluated a casedb INDEX query (`case[index/parent = …]`,
+  // typically a `join()` in an xforms-ready setvalue) and the CLI's in-memory
+  // case sandbox has no CaseIndexTable. Verbatim, group-payment-test Deliver
+  // m3-f0 / m4-f0 (ace#2784):
+  //   NullPointerException: Cannot invoke "…CaseIndexTable.getCasesMatchingIndex
+  //   (String, String)" because "this.caseIndexTable" is null
+  //     at …CaseInstanceTreeElement.performCaseIndexQuery(…)
+  //     at org.javarosa.core.model.FormDef.initialize(…)
+  // A device builds that table, so this is the harness's limit. Rule (1) still
+  // runs first: a real XPath defect in the same stream is never masked.
+  if (/"this\.caseIndexTable" is null|CaseInstanceTreeElement\.performCaseIndexQuery/.test(s)) {
+    return 'cli-case-index-unsupported';
   }
   // (3) `Unhandled Fatal Error executing CommCare app` followed by ANY other
   // exception class (not the benign `String.startsWith` NPE). The CLI
