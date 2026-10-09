@@ -137,7 +137,10 @@ describe('the coach prompt template', () => {
     };
     const withKb = renderCoachPrompt(template, { ...base, knowledgeBase: true });
     const without = renderCoachPrompt(template, { ...base, knowledgeBase: false });
-    expect(withKb).toMatch(/knowledge base \(training, app\s+guides, programme design\) is searched automatically/);
+    expect(withKb).toMatch(/knowledge base \(the documents\s+attached to you/);
+    // The kinds of document are examples, not a promise: the KMC coach had app and
+    // indicator guides but no training when the fixed list claimed all three.
+    expect(withKb).not.toMatch(/\(training, app\s+guides, programme design\)/);
     expect(withKb).toMatch(/contact from the knowledge base verbatim/);
     // KMC case coach, 2026-10-09: collections detached, yet the prompt said the knowledge
     // base was "searched automatically" and to give contacts "from the knowledge base".
