@@ -7,6 +7,7 @@ import {
   renderCaseBriefing,
   renderBriefing,
   renderCoachPrompt,
+  CLAIMS_KNOWLEDGE_BASE,
   renderIndicatorCards,
   type RegistryMeasure,
 } from '../../lib/coach-briefing.js';
@@ -119,9 +120,36 @@ describe('the coach prompt template', () => {
       openingLanguage: 'English',
       indicatorCards: 'cards',
       appSummary: 'summary',
+      knowledgeBase: true,
     };
     expect(renderCoachPrompt(template, vars)).not.toMatch(/\{\{/);
     expect(() => renderCoachPrompt(template + ' {{NEW_THING}}', vars)).toThrow(/NEW_THING/);
+  });
+
+  it('mentions a knowledge base only when the coach has one', () => {
+    const base = {
+      programName: 'KMC',
+      workerName: 'community health worker',
+      workerPlural: 'community health workers',
+      openingLanguage: 'English',
+      indicatorCards: 'cards',
+      appSummary: 'summary',
+    };
+    const withKb = renderCoachPrompt(template, { ...base, knowledgeBase: true });
+    const without = renderCoachPrompt(template, { ...base, knowledgeBase: false });
+    expect(withKb).toMatch(/knowledge base \(training, app\s+guides, programme design\) is searched automatically/);
+    expect(withKb).toMatch(/contact from the knowledge base verbatim/);
+    // KMC case coach, 2026-10-09: collections detached, yet the prompt said the knowledge
+    // base was "searched automatically" and to give contacts "from the knowledge base".
+    expect(without).not.toMatch(CLAIMS_KNOWLEDGE_BASE);
+    expect(withKb).toMatch(CLAIMS_KNOWLEDGE_BASE);
+    expect(without).toMatch(/There is no knowledge base/);
+    expect(without).toMatch(/never give a phone number or other contact/);
+    expect(without).toMatch(/^## How the app works$/m);
+    for (const out of [withKb, without]) {
+      expect(out).not.toMatch(/<!--\/?(no-)?kb-->/);
+      expect(out).not.toMatch(/\n{3,}/);
+    }
   });
 
   it('uses exactly two OCS prompt variables, both from Labs session data', () => {

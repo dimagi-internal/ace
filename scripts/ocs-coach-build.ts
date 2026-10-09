@@ -29,6 +29,7 @@ import { PlaywrightBackend } from '../mcp/ocs/backends/playwright.js';
 import { extractPipelineErrors } from '../mcp/ocs/backends/pipeline-patch.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { makeProductionRequest } from '../lib/ocs-script-request.js';
+import { CLAIMS_KNOWLEDGE_BASE } from '../lib/coach-briefing.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -57,6 +58,12 @@ const collections = detachCollections
       .filter(Boolean)
       .map(Number);
 const prompt = readFileSync(values.prompt, 'utf8');
+if (detachCollections && CLAIMS_KNOWLEDGE_BASE.test(prompt)) {
+  throw new Error(
+    '--collections none, but the prompt mentions a knowledge base. Render it with ' +
+      '`render-coach-prompt.ts --knowledge-base no` so the coach is not told to search material it does not have.',
+  );
+}
 const code = readFileSync(new URL('../templates/ocs-coach/status_node.py', import.meta.url), 'utf8');
 
 interface GraphNode {
