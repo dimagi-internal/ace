@@ -1,7 +1,8 @@
 ---
 name: output-preview-capture
 description: >
-  Screenshot run outputs that lack a preview. Use at each phase end.
+  Internal /ace:run step — Screenshot run outputs that lack a preview.
+user-invocable: false
 disable-model-invocation: false
 ---
 

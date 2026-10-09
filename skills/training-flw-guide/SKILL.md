@@ -1,8 +1,9 @@
 ---
 name: training-flw-guide
 description: >
-  Generate the FLW-facing step-by-step guide for the Learn and Deliver
-  apps. Owns one artifact: training-flw-guide.md.
+  Internal /ace:run step — Generate the FLW-facing step-by-step guide for the Learn and Deliver
+  apps.
+user-invocable: false
 disable-model-invocation: false
 ---
 

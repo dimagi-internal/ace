@@ -1,8 +1,9 @@
 ---
 name: training-deck-render
 description: >
-  Render a training deck spec.yaml into a Google Slides deck via the
-  14-stencil ACE template. Produces a presentable Slides URL.
+  Internal /ace:run step — Render a training deck spec.yaml into a Google Slides deck via the
+  14-stencil ACE template.
+user-invocable: false
 disable-model-invocation: false
 ---
 

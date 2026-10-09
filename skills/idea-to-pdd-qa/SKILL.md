@@ -1,9 +1,8 @@
 ---
 name: idea-to-pdd-qa
 description: >
-  Structural QA on the PDD artifact produced by idea-to-pdd. Binary pass/fail.
-  Catches missing sections, malformed archetype declaration, etc. Static-only;
-  no LLM. Gates idea-to-pdd-eval — eval is skipped if QA fails irrecoverably.
+  Internal /ace:run step — Structural QA on the PDD artifact produced by idea-to-pdd.
+user-invocable: false
 disable-model-invocation: false
 ---
 

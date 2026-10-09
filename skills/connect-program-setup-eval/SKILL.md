@@ -1,8 +1,9 @@
 ---
 name: connect-program-setup-eval
 description: >
-  Grade Connect Program + Opportunity configuration against the PDD —
-  reuse-vs-create, verification rules, delivery units, payment units.
+  Internal /ace:run step — Grade Connect Program setup against the PDD: reuse-vs-create,
+  verification rules, delivery and payment units.
+user-invocable: false
 disable-model-invocation: false
 ---
 

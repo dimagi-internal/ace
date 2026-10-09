@@ -1,8 +1,9 @@
 ---
 name: decisions-render
 description: >
-  Render a per-run decisions.yaml into a prose Google Doc at one stable
-  URL per run. Invoked at end of every phase; idempotent.
+  Internal /ace:run step — Render a per-run decisions.yaml into a prose Google Doc at one stable
+  URL per run.
+user-invocable: false
 disable-model-invocation: false
 ---
 

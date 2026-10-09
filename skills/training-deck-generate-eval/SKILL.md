@@ -1,8 +1,9 @@
 ---
 name: training-deck-generate-eval
 description: >
-  Grade the Phase 6 training-deck spec for module coverage, content
-  concreteness, image ref validity, and slide count.
+  Internal /ace:run step — Grade the training-deck spec for module coverage, concreteness, image
+  refs, and slide count.
+user-invocable: false
 disable-model-invocation: false
 ---
 

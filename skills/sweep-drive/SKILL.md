@@ -1,8 +1,9 @@
 ---
 name: sweep-drive
 description: >
-  Diff Drive ACE/ against the live-set, score orphan candidates, render a
-  triage report, and trash approved items. Use when sweeping Drive.
+  Internal /ace:sweep step — Diff Drive ACE/ against the live-set, triage orphans, trash approved
+  items.
+user-invocable: false
 disable-model-invocation: false
 ---
 

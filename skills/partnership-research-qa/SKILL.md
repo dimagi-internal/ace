@@ -1,9 +1,8 @@
 ---
 name: partnership-research-qa
 description: >
-  Structural QA on the two research artifacts from partnership-research.
-  Binary pass/fail. Gates partnership-research-eval — eval is skipped if
-  QA fails irrecoverably.
+  Internal /ace:partnership-video step — Structural QA on the partnership research artifacts.
+user-invocable: false
 disable-model-invocation: false
 ---
 

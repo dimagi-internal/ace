@@ -1,9 +1,9 @@
 ---
 name: training-quick-reference-eval
 description: >
-  Grade the Phase 6 quick-reference card for mid-visit scannability,
-  coverage of key numbers (daily caps, payment per visit, support
-  contact), and printability.
+  Internal /ace:run step — Grade the FLW quick-reference card for scannability, key-number
+  coverage, and printability.
+user-invocable: false
 disable-model-invocation: false
 ---
 

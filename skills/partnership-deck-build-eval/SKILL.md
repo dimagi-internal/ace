@@ -1,8 +1,8 @@
 ---
 name: partnership-deck-build-eval
 description: >
-  LLM-as-judge quality eval for the partnership pitch deck. Grades arc match,
-  grounding, completeness, and visual polish. Writes a verdict YAML.
+  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership pitch deck.
+user-invocable: false
 disable-model-invocation: false
 ---
 

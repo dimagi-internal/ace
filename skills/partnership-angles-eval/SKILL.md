@@ -1,9 +1,8 @@
 ---
 name: partnership-angles-eval
 description: >
-  LLM-as-judge quality eval for the partnership-angles artifact. Grades
-  grounding, distinctness, capability fit, and persuasiveness. Writes a
-  verdict YAML. Gated by partnership-angles inline QA.
+  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership angles.
+user-invocable: false
 disable-model-invocation: false
 ---
 

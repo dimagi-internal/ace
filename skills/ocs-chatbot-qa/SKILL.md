@@ -1,8 +1,9 @@
 ---
 name: ocs-chatbot-qa
 description: >
-  Exercise the per-opp OCS chatbot via its anonymous widget and capture
-  a transcript with structural checks. Modes: --quick / --deep / --monitor.
+  Internal /ace:run step — Exercise the per-opp OCS chatbot via its anonymous widget and capture a
+  transcript with structural checks.
+user-invocable: false
 disable-model-invocation: false
 ---
 

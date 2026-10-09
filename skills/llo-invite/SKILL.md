@@ -1,10 +1,8 @@
 ---
 name: llo-invite
 description: >
-  Email each PDD-named candidate LLO the public solicitation URL.
-  PUBLISH-ONLY BY DEFAULT: a no-op unless the operator explicitly opts in
-  (--invite-candidates / ACE_SOLICITATION_INVITE_CANDIDATES). Also a no-op
-  when the PDD names no candidates.
+  Internal /ace:run step — Email each PDD-named candidate LLO the public solicitation URL.
+user-invocable: false
 disable-model-invocation: false
 ---
 

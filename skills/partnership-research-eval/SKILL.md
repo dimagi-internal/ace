@@ -1,9 +1,8 @@
 ---
 name: partnership-research-eval
 description: >
-  LLM-as-judge quality eval for the partnership-research artifacts. Grades
-  grounding, relevance, capability fit, and factual safety. Writes a verdict
-  YAML. Gated by partnership-research-qa.
+  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership research artifacts.
+user-invocable: false
 disable-model-invocation: false
 ---
 

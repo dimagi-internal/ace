@@ -1,8 +1,9 @@
 ---
 name: partnership-video-build
 description: >
-  Fill the ace-web partnership-pitch video template, POST the spec, trigger
-  render, and poll until done. Writes video_spec.yaml + package.yaml.
+  Internal /ace:partnership-video step — Fill the partnership-pitch video template, POST the spec,
+  render, and poll until done.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,10 +1,9 @@
 ---
 name: demo-narrative
 description: >
-  Author a funder-tuned canopy DDD narrative (WhyBrief + UnifiedSpec) on top of
-  a demo-data-setup realized map, with scenes that render the live labs
-  dashboard (par_url). Validated by canopy's own scripts.ddd.validate — the
-  authoritative gate. Hands off to the DDD loop.
+  Internal /ace:demo step — Author a funder-tuned canopy DDD narrative over a demo-data-setup
+  realized map and the live labs dashboard.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,6 +1,9 @@
 ---
 name: synthetic-narrative-plan
-description: Author a richer synthetic-data manifest — named FLWs, deliberate anomalies, a week-over-week story. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
+description: >
+  Internal /ace:run step — DEPRECATED fallback: author a synthetic-data manifest with named FLWs
+  and anomalies.
+user-invocable: false
 disable-model-invocation: false
 ---
 

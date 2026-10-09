@@ -1,8 +1,9 @@
 ---
 name: eval-calibration
 description: >
-  Methodology reference for calibrating ACE's per-skill -eval rubrics —
-  ground-truth catalogues, variance protocol, detection-rate metric.
+  Internal /ace:run step — Methodology reference for calibrating per-skill -eval rubrics: ground-
+  truth catalogues, variance, detection rate.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,12 +1,8 @@
 ---
 name: pdd-to-work-order-eval
 description: >
-  Independent quality re-grade for the Work Order produced by
-  pdd-to-work-order. LLM-as-Judge, seven quality dimensions: contractual
-  clarity, PDD alignment, decisions traceability, verification realism,
-  commercial realism, archetype fit, writing style. Skipped if
-  pdd-to-work-order-qa returned verdict: incomplete. Verdict shape per
-  lib/verdict-schema.ts.
+  Internal /ace:run step — Independent LLM-as-Judge re-grade of the drafted Work Order.
+user-invocable: false
 disable-model-invocation: false
 ---
 

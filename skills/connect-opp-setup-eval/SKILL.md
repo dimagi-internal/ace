@@ -1,10 +1,9 @@
 ---
 name: connect-opp-setup-eval
 description: >
-  Grade Connect Opportunity configuration against the PDD — verification
-  flags, payment units, deliver-unit wiring, active window. Sibling of
-  connect-program-setup-eval; this rubric judges the opp-side that
-  follows program creation.
+  Internal /ace:run step — Grade Connect Opportunity configuration against the PDD — verification
+  flags, payment units, deliver-unit wiring, active window.
+user-invocable: false
 disable-model-invocation: false
 ---
 

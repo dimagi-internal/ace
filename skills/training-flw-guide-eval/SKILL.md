@@ -1,9 +1,9 @@
 ---
 name: training-flw-guide-eval
 description: >
-  Grade the Phase 6 FLW guide for step-by-step concreteness (a worker
-  with no prior context can follow), screenshot completeness, and
-  language accessibility.
+  Internal /ace:run step — Grade the FLW guide for step-by-step concreteness, screenshot
+  completeness, and accessibility.
+user-invocable: false
 disable-model-invocation: false
 ---
 

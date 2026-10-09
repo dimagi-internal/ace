@@ -1,8 +1,9 @@
 ---
 name: synthetic-data-generate
 description: >
-  Generate a synthetic FLW + visit + payment dataset against an ACE-built opp
-  via the connect-labs synthetic_generate_from_manifest atom.
+  Internal /ace:run step — Generate a synthetic FLW + visit + payment dataset against an ACE-built
+  opp via connect-labs.
+user-invocable: false
 disable-model-invocation: false
 ---
 

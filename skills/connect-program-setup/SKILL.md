@@ -1,8 +1,9 @@
 ---
 name: connect-program-setup
 description: >
-  Create or reuse a Connect Program for the opportunity, archetype-matched
-  to the PDD. Captures program_id for downstream skills.
+  Internal /ace:run step — Create or reuse a Connect Program for the opportunity, archetype-
+  matched to the PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

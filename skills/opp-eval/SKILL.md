@@ -1,8 +1,9 @@
 ---
 name: opp-eval
 description: >
-  Umbrella aggregator that rolls every per-skill -eval verdict into a
-  run-level scorecard. Modes: --quick / --deep / --monitor.
+  Internal /ace:run step — Umbrella aggregator that rolls every per-skill -eval verdict into a
+  run-level scorecard.
+user-invocable: false
 disable-model-invocation: false
 ---
 

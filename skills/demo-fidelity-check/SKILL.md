@@ -1,9 +1,9 @@
 ---
 name: demo-fidelity-check
 description: >
-  Clone-only QA gate. Confirms a cloned/profiled synthetic dataset reproduces the
-  real source's statistical shape before it reaches a funder. Wraps the labs
-  synthetic_fidelity_report atom. Binary pass/fail, no LLM.
+  Internal /ace:demo step — Clone-only QA gate: confirm a cloned synthetic dataset reproduces the
+  real source's statistical shape.
+user-invocable: false
 disable-model-invocation: false
 ---
 

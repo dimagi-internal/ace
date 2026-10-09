@@ -1,10 +1,9 @@
 ---
 name: pdd-to-work-order
 description: >
-  Draft a contractual Work Order from the approved PDD and the run's
-  decisions.yaml. Generic by default — partner identity is a placeholder
-  unless an LLO was supplied. Renders to a clean Google Doc. Parallel to
-  Phase 8 solicitation, not a replacement.
+  Internal /ace:run step — Draft a contractual Work Order from the approved PDD and the run's
+  decisions.yaml.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,9 @@
 ---
 name: partnership-deck-build
 description: >
-  Fill the connect-pitch-partnership deck spec from prospect research + picked
-  angle, render to Google Slides via the 14-stencil machinery. Use in the
-  produce phase after partnership-video-build.
+  Internal /ace:partnership-video step — Fill the partnership pitch deck spec from research + the
+  picked angle and render to Google Slides.
+user-invocable: false
 disable-model-invocation: false
 ---
 

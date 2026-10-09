@@ -1,9 +1,9 @@
 ---
 name: sweep-ocs
 description: >
-  Diff OCS chatbots/pipelines/collections/sessions against the live-set,
-  score orphans, auto-delete per-opp clones and their pipelines and
-  per-opp collections. Golden template + shared collection are safe-listed.
+  Internal /ace:sweep step — Diff OCS chatbots/pipelines/collections/sessions against the live-set
+  and delete per-opp orphans.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,9 @@
 ---
 name: solicitation-monitor
 description: >
-  Recurring poll for solicitation responses. Modes: --quick (count
-  only) / --monitor (full pull, default) / --close (final pull).
+  Internal /ace:run step — Recurring poll for solicitation responses (--quick / --monitor /
+  --close).
+user-invocable: false
 disable-model-invocation: false
 ---
 

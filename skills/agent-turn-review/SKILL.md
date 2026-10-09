@@ -1,9 +1,9 @@
 ---
 name: agent-turn-review
 description: >
-  ACE's pre-send review — ONE inline pass through §A–§F (canopy's fleet body, READ from disk,
-  plus ACE's §F). Never dispatched as a Skill. Run before EVERY outbound reply / deliverable /
-  PR / turn-closing report.
+  Internal ACE turn step — ACE's pre-send review: one inline §A–§F pass before every outbound
+  reply, deliverable or PR.
+user-invocable: false
 ---
 
 # Agent turn review (ACE)

@@ -1,8 +1,8 @@
 ---
 name: timeline-monitor
 description: >
-  Watch whether LLOs are hitting expected milestones on schedule.
-  Email prompts when behind. Recurring during active opp.
+  Internal /ace:run step — Watch whether LLOs are hitting expected milestones on schedule.
+user-invocable: false
 disable-model-invocation: false
 ---
 

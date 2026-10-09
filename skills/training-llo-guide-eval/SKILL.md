@@ -1,9 +1,9 @@
 ---
 name: training-llo-guide-eval
 description: >
-  Grade the Phase 6 LLO guide for operational completeness (morning
-  check-ins, daily caps, escalation triggers), action-orientation (the
-  LLO knows what to do next), and screenshot grounding.
+  Internal /ace:run step — Grade the LLO guide for operational completeness, action-orientation,
+  and screenshot grounding.
+user-invocable: false
 disable-model-invocation: false
 ---
 

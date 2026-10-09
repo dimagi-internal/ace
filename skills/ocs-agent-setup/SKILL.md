@@ -1,8 +1,9 @@
 ---
 name: ocs-agent-setup
 description: >
-  Clone the ACE OCS template into a per-opp chatbot, attach a RAG
-  collection from PDD + training + app summaries, publish, return embed credentials.
+  Internal /ace:run step — Clone the ACE OCS template into a per-opp chatbot with a RAG
+  collection, publish, return embed credentials.
+user-invocable: false
 disable-model-invocation: false
 ---
 

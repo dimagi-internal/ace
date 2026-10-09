@@ -1,8 +1,9 @@
 ---
 name: app-screenshot-capture
 description: >
-  Run app smoke recipes against a local AVD and capture per-step
-  screenshots for the training deck. Per-opp content only.
+  Internal /ace:run step — Run app smoke recipes against a local AVD and capture per-step
+  screenshots for the training deck.
+user-invocable: false
 disable-model-invocation: false
 ---
 

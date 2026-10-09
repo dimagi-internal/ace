@@ -1,11 +1,9 @@
 ---
 name: selector-map-heal
 description: >
-  Repair the mobile selector map from a live failure dump when a Phase 6 walk
-  hits a surface the map has never covered. Triggered by an atlas-report.yaml
-  carrying `classification: unmapped-surface`. Proposes NEW selector rows from
-  the dump, proves them by re-running the blocked leg on-device, and ships them
-  only on green. Narrow sibling of selector-map-calibrate, which stays manual.
+  Internal /ace:run step — Repair the mobile selector map from a live failure dump when a device
+  walk hits an unmapped surface.
+user-invocable: false
 ---
 
 # Selector-Map Heal

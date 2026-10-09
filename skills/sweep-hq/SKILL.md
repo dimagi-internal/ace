@@ -1,9 +1,9 @@
 ---
 name: sweep-hq
 description: >
-  Diff CommCare HQ applications in the ACE-owned domain against the
-  live-set, score orphans, auto-soft-delete approved orphans via the
-  HQ delete_app web view. Builds and multimedia remain upstream gaps.
+  Internal /ace:sweep step — Diff HQ apps in the ACE domain against the live-set and soft-delete
+  approved orphans.
+user-invocable: false
 disable-model-invocation: false
 ---
 

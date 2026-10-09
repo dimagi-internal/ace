@@ -1,6 +1,9 @@
 ---
 name: synthetic-walkthrough-spec
-description: Generate per-persona walkthrough specs from the narrative plan. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
+description: >
+  Internal /ace:run step — DEPRECATED fallback: generate per-persona walkthrough specs from the
+  narrative plan.
+user-invocable: false
 disable-model-invocation: false
 ---
 

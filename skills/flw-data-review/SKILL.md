@@ -1,8 +1,9 @@
 ---
 name: flw-data-review
 description: >
-  Analyze FLW submissions to identify quality issues, trends, and
-  improvement opportunities. Recurring during active opp.
+  Internal /ace:run step — Analyze FLW submissions to identify quality issues, trends, and
+  improvement opportunities.
+user-invocable: false
 disable-model-invocation: false
 ---
 

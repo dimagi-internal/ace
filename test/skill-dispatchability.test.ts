@@ -124,7 +124,9 @@ describe('skill dispatchability', () => {
    * doubling every session's context. Raise CATALOG_BUDGET_CHARS only with a
    * measured reason — and say what you measured.
    */
-  const CATALOG_BUDGET_CHARS = 27_000;
+  // 27,000 → 20,000 (canopy#851, 2026-10-09): internal steps got user-invocable: false
+  // and one-line `Internal … step —` descriptions; measured catalog 26,429 → 19,371.
+  const CATALOG_BUDGET_CHARS = 20_000;
 
   it('the dispatchable catalog stays inside its char budget', () => {
     const entries: { skill: string; chars: number }[] = [];

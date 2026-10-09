@@ -1,7 +1,8 @@
 ---
 name: app-release-qa
 description: >
-  Structural and install-time QA on the released Learn and Deliver CCZs. Use after app-release, before Connect reads the apps.
+  Internal /ace:run step — Structural and install-time QA on the released Learn and Deliver CCZs.
+user-invocable: false
 disable-model-invocation: false
 ---
 

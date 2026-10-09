@@ -1,8 +1,9 @@
 ---
 name: sweep-live-set
 description: >
-  Walk Drive ACE/ and build a live-set of identifiers still referenced by
-  visible opps. Use before any per-system sweep.
+  Internal /ace:sweep step — Walk Drive ACE/ and build a live-set of identifiers still referenced
+  by visible opps.
+user-invocable: false
 disable-model-invocation: false
 ---
 

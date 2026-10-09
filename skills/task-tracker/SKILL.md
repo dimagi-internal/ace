@@ -1,8 +1,9 @@
 ---
 name: task-tracker
 description: >
-  Track ACE's tasks and projects on the canopy-web board, per canopy's fleet procedure. Use for
-  multi-turn work, new requests, and every turn's board drain and close.
+  Internal ACE turn step — Track ACE's tasks and projects on the canopy-web board, per canopy's
+  fleet procedure.
+user-invocable: false
 ---
 
 # Task Tracker — ACE (stub over the fleet-canonical core)

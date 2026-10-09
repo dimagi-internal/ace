@@ -1,11 +1,8 @@
 ---
 name: turn
 description: >
-  ACE's turn-of-work orchestrator. Use when a human says "do a turn", "check your inbox",
-  or otherwise triggers ACE to process what's come in. The canonical procedure is fleet-wide
-  and lives in the installed canopy plugin (agent-core/turn.md); this stub binds it to ACE's
-  identity. This is the counterpart-facing entry point; /ace:run remains the pipeline entry
-  point — a turn wraps around runs, it does not replace them.
+  ACE's turn-of-work entry point. Use when a human says "do a turn" or "check your inbox" —
+  process what's come in. Wraps around /ace:run pipeline runs; does not replace them.
 ---
 
 # Turn — ACE (stub over the fleet-canonical core)

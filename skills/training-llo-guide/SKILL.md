@@ -1,8 +1,9 @@
 ---
 name: training-llo-guide
 description: >
-  Generate the LLO-facing operations document for overseeing FLW
-  deployment. Owns one artifact: training-llo-guide.md.
+  Internal /ace:run step — Generate the LLO-facing operations document for overseeing FLW
+  deployment.
+user-invocable: false
 disable-model-invocation: false
 ---
 

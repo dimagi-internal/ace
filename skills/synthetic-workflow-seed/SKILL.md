@@ -1,10 +1,9 @@
 ---
 name: synthetic-workflow-seed
 description: >
-  Instantiate the LLO weekly review + program admin audit workflows —
-  examine the labs template registry and adapt the best-fit template, or
-  build from scratch via workflow_create (following the live authoring
-  guide) — then wire them to the manifest's KPIs + coaching arcs.
+  Internal /ace:run step — Instantiate the LLO weekly review + program admin audit workflows and
+  wire them to the manifest's KPIs.
+user-invocable: false
 disable-model-invocation: false
 ---
 

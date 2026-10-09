@@ -1,8 +1,9 @@
 ---
 name: solicitation-review-eval
 description: >
-  Compare ACE's top-ranked solicitation recommendation against the
-  human's actual award. Detection-rate metric.
+  Internal /ace:run step — Compare ACE's top-ranked solicitation pick against the human's actual
+  award.
+user-invocable: false
 disable-model-invocation: false
 ---
 

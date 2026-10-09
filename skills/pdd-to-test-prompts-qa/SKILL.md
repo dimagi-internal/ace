@@ -1,10 +1,8 @@
 ---
 name: pdd-to-test-prompts-qa
 description: >
-  Structural QA on pdd-to-test-prompts.md — header + total count match,
-  ≥8 prompts each with required fields, all 7 adversarial categories,
-  ≥20% adversarial share, plus training-gap / product-feedback / escalation
-  prompts. Binary pass/fail; gates pdd-to-test-prompts-eval.
+  Internal /ace:run step — Structural pass/fail QA on the derived chatbot test prompts.
+user-invocable: false
 disable-model-invocation: false
 ---
 

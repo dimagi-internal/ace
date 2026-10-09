@@ -1,8 +1,8 @@
 ---
 name: llo-launch-eval
 description: >
-  Grade an llo-launch activation against PDD launch preconditions —
-  UAT sign-off, Connect activation, app-publish, go-live notify.
+  Internal /ace:run step — Grade an llo-launch activation against the PDD launch preconditions.
+user-invocable: false
 disable-model-invocation: false
 ---
 

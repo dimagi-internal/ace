@@ -1,8 +1,8 @@
 ---
 name: training-faq
 description: >
-  Generate anticipated LLO + FLW questions with authoritative answers.
-  Owns one artifact: training-faq.md.
+  Internal /ace:run step — Generate anticipated LLO + FLW questions with authoritative answers.
+user-invocable: false
 disable-model-invocation: false
 ---
 
