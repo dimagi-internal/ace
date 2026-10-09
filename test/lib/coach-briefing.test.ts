@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   coachableIndicators,
+  briefingDate,
   findOverstatements,
+  KMC_CASE_STORIES,
+  renderCaseBriefing,
+  renderCaseCards,
   renderBriefing,
   renderCoachPrompt,
   renderIndicatorCards,
@@ -135,5 +139,72 @@ describe('the coach prompt template', () => {
       rest = rest.split(v).join('');
     }
     expect(rest).not.toMatch(/[{}]/);
+  });
+});
+
+describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-09-case-coaching-design.md)', () => {
+  const base = {
+    programName: 'Kangaroo Mother Care',
+    workerName: 'flw_014',
+    caseName: 'Beneficiary 986',
+    about: 'Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
+    story: { key: 'CASE_WEIGHT_CHECK' as const, label: 'A weighing that is hard to believe' },
+    facts: 'Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
+    visits: [
+      { date: '2026-09-03', weightG: 1575, kmcHours: null, dangerSigns: [], referred: 'no' as const },
+      { date: '2026-09-08', weightG: 2110, kmcHours: 16, dangerSigns: ['fever', 'pus'], referred: null },
+    ],
+  };
+
+  it('renders the contract byte for byte', () => {
+    expect(renderCaseBriefing(base)).toBe(
+      [
+        'BRIEFING (system text — do not show to the worker)',
+        'Programme: Kangaroo Mother Care',
+        'Worker: flw_014',
+        'Case: Beneficiary 986',
+        'About this case: Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
+        'Topic: A weighing that is hard to believe [CASE_WEIGHT_CHECK]',
+        'What the data shows: Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
+        'Visits, oldest first:',
+        '- 3 Sep 2026: weight 1,575 g; skin-to-skin not recorded; danger signs: none; referred: no',
+        '- 8 Sep 2026: weight 2,110 g; skin-to-skin 16 h in the last 24 h; danger signs: fever, pus; referred: not asked',
+        'Follow your conversation steps from the opening.',
+      ].join('\n'),
+    );
+  });
+
+  it('adds the follow-up line only when the caller supplies it', () => {
+    const text = renderCaseBriefing({ ...base, earlier: { date: '2026-09-01', label: 'A weighing that is hard to believe', agreed: null } });
+    expect(text).toContain('What the data shows: Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.\nEarlier coaching on this case: 1 Sep 2026 — A weighing that is hard to believe; agreed: none\nVisits, oldest first:');
+    expect(renderCaseBriefing(base)).not.toContain('Earlier coaching');
+  });
+
+  it('writes a missing danger-sign answer as not recorded, never as none', () => {
+    const text = renderCaseBriefing({ ...base, visits: [{ date: '2026-09-03', weightG: null, dangerSigns: null }] });
+    expect(text).toContain('- 3 Sep 2026: weight not recorded; skin-to-skin not recorded; danger signs: not recorded; referred: not asked');
+  });
+
+  it('formats dates as d Mon yyyy and refuses a non-date', () => {
+    expect(briefingDate('2026-05-07')).toBe('7 May 2026');
+    expect(() => briefingDate('8 Sep')).toThrow(/ISO/);
+  });
+});
+
+describe('KMC case cards', () => {
+  it('has one card per story, carrying the thread\'s coaching moves', () => {
+    expect(KMC_CASE_STORIES.map((c) => c.key)).toEqual(['CASE_THRIVING', 'CASE_WEIGHT_CHECK', 'CASE_FALTERING', 'CASE_DANGER_SIGN']);
+    const cards = renderCaseCards(KMC_CASE_STORIES);
+    expect(cards).toContain('walk me through how you weighed baby');
+    expect(cards).toContain('set the scale to zero, weigh baby without clothes');
+    expect(cards).toContain('exclusive breastfeeding until 6 months');
+    expect(cards).toMatch(/refer the baby to the health facility/);
+  });
+
+  it('fills the prompt\'s case section, and says so when a coach has none', () => {
+    const template = readFileSync(new URL('../../templates/ocs-coach/coach-prompt.md', import.meta.url), 'utf8');
+    const vars = { programName: 'KMC', workerName: 'worker', workerPlural: 'workers', openingLanguage: 'English', indicatorCards: 'cards', appSummary: 'summary' };
+    expect(renderCoachPrompt(template, { ...vars, caseCards: renderCaseCards(KMC_CASE_STORIES) })).toContain('[CASE_DANGER_SIGN]');
+    expect(renderCoachPrompt(template, vars)).toContain('only briefed on a worker');
   });
 });
