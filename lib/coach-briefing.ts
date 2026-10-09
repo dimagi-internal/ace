@@ -282,6 +282,9 @@ export function findOverstatements(assistantMessages: string[], topics: Briefing
   return out;
 }
 
+/** Wording that tells the coach it HAS a knowledge base ("There is no knowledge base" is fine). */
+export const CLAIMS_KNOWLEDGE_BASE = /knowledge base (\(|is searched|was written|has detail)|from the knowledge base/i;
+
 export function renderCoachPrompt(
   template: string,
   vars: {

@@ -7,6 +7,7 @@ import {
   renderCaseBriefing,
   renderBriefing,
   renderCoachPrompt,
+  CLAIMS_KNOWLEDGE_BASE,
   renderIndicatorCards,
   type RegistryMeasure,
 } from '../../lib/coach-briefing.js';
@@ -140,7 +141,8 @@ describe('the coach prompt template', () => {
     expect(withKb).toMatch(/contact from the knowledge base verbatim/);
     // KMC case coach, 2026-10-09: collections detached, yet the prompt said the knowledge
     // base was "searched automatically" and to give contacts "from the knowledge base".
-    expect(without).not.toMatch(/knowledge base (\(|was|has|verbatim)/i);
+    expect(without).not.toMatch(CLAIMS_KNOWLEDGE_BASE);
+    expect(withKb).toMatch(CLAIMS_KNOWLEDGE_BASE);
     expect(without).toMatch(/There is no knowledge base/);
     expect(without).toMatch(/never give a phone number or other contact/);
     expect(without).toMatch(/^## How the app works$/m);
