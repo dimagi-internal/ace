@@ -1,8 +1,7 @@
 ---
 name: partnership-research-eval
 description: >
-  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership research artifacts.
-user-invocable: false
+  Grade partnership research for grounding, relevance, capability fit, and factual safety.
 disable-model-invocation: false
 ---
 

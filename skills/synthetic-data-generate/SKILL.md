@@ -1,9 +1,8 @@
 ---
 name: synthetic-data-generate
 description: >
-  Internal /ace:run step — Generate a synthetic FLW + visit + payment dataset against an ACE-built
-  opp via connect-labs.
-user-invocable: false
+  Generate a synthetic worker, visit, and payment dataset for an ACE-built opportunity via
+  connect-labs. Needs the opp and a synthetic manifest.
 disable-model-invocation: false
 ---
 

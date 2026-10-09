@@ -1,9 +1,8 @@
 ---
 name: learnings-summary
 description: >
-  Internal /ace:run step — Synthesize learnings from a completed opportunity; draft a seed PDD for
-  the next cycle when warranted.
-user-invocable: false
+  Summarize what a completed opportunity taught and, when another cycle is warranted, draft a seed
+  PDD for it.
 disable-model-invocation: false
 ---
 

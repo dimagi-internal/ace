@@ -1,8 +1,8 @@
 ---
 name: semantic-registry-author-qa
 description: >
-  Internal /ace:run step — Binary QA on the authored semantic registry before any labs write.
-user-invocable: false
+  Pass/fail check of an authored semantic registry (live labs validation plus PDD fidelity) before
+  any labs write.
 disable-model-invocation: false
 ---
 

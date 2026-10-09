@@ -1,8 +1,7 @@
 ---
 name: partnership-video-build-eval
 description: >
-  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership video build.
-user-invocable: false
+  Grade a partnership video build for spec validity, grounding, render success, and brand safety.
 disable-model-invocation: false
 ---
 

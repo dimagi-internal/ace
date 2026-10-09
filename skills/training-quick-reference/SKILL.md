@@ -1,9 +1,8 @@
 ---
 name: training-quick-reference
 description: >
-  Internal /ace:run step — Generate the one-page printable pocket-card summary for FLWs in the
-  field.
-user-invocable: false
+  Write a one-page printable pocket card for frontline workers: key steps, daily caps, pay per
+  visit, support contact. Needs the PDD.
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: idea-to-pdd-qa
 description: >
-  Internal /ace:run step — Structural QA on the PDD artifact produced by idea-to-pdd.
-user-invocable: false
+  Pass/fail structural check of a PDD (missing sections, malformed archetype, etc.). Static, no
+  LLM. Use before grading a PDD.
 disable-model-invocation: false
 ---
 

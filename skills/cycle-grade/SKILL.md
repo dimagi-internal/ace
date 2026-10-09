@@ -1,9 +1,8 @@
 ---
 name: cycle-grade
 description: >
-  Internal /ace:run step — Grade the closed ACE cycle end-to-end with concrete improvement
-  recommendations for the next cycle.
-user-invocable: false
+  Grade a closed ACE cycle end to end and recommend concrete improvements for the next one. Needs
+  a completed run.
 disable-model-invocation: false
 ---
 

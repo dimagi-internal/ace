@@ -1,9 +1,8 @@
 ---
 name: app-screenshot-capture
 description: >
-  Internal /ace:run step — Run app smoke recipes against a local AVD and capture per-step
-  screenshots for the training deck.
-user-invocable: false
+  Run app smoke recipes on a local Android emulator and capture per-step screenshots (e.g. for a
+  training deck). Needs Maestro recipes and released apps.
 disable-model-invocation: false
 ---
 

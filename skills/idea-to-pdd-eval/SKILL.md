@@ -1,9 +1,8 @@
 ---
 name: idea-to-pdd-eval
 description: >
-  Internal /ace:run step — Independently grade a PDD against its source idea pack and reviewer-
-  comment fidelity.
-user-invocable: false
+  Grade a PDD independently against its source material: re-runs the stress test and checks
+  reviewer comments were honored. Needs the PDD and its idea pack.
 disable-model-invocation: false
 ---
 

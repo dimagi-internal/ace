@@ -1,8 +1,7 @@
 ---
 name: partnership-microdemo-eval
 description: >
-  Internal /ace:partnership-video step — LLM-as-judge eval of the micro-demo clips.
-user-invocable: false
+  Grade partnership micro-demo clips for fidelity, angle relevance, and honest provenance.
 disable-model-invocation: false
 ---
 

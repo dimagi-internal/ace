@@ -1,9 +1,7 @@
 ---
 name: partnership-deck-build
 description: >
-  Internal /ace:partnership-video step — Fill the partnership pitch deck spec from research + the
-  picked angle and render to Google Slides.
-user-invocable: false
+  Build a partnership pitch deck in Google Slides from prospect research and a chosen angle.
 disable-model-invocation: false
 ---
 

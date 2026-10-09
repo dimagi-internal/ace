@@ -1,8 +1,7 @@
 ---
 name: partnership-angles-eval
 description: >
-  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership angles.
-user-invocable: false
+  Grade partnership pitch angles for grounding, distinctness, capability fit, and persuasiveness.
 disable-model-invocation: false
 ---
 

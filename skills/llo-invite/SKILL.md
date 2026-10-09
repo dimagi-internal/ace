@@ -1,8 +1,8 @@
 ---
 name: llo-invite
 description: >
-  Internal /ace:run step — Email each PDD-named candidate LLO the public solicitation URL.
-user-invocable: false
+  Email a PDD's named candidate LLOs the public solicitation link. Opt-in only: a no-op unless
+  explicitly enabled. Needs a published solicitation.
 disable-model-invocation: false
 ---
 

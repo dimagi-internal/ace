@@ -1,8 +1,8 @@
 ---
 name: training-faq
 description: >
-  Internal /ace:run step — Generate anticipated LLO + FLW questions with authoritative answers.
-user-invocable: false
+  Write a FAQ of the questions LLOs and frontline workers will ask, with answers grounded in the
+  PDD and apps. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

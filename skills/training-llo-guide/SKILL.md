@@ -1,9 +1,8 @@
 ---
 name: training-llo-guide
 description: >
-  Internal /ace:run step — Generate the LLO-facing operations document for overseeing FLW
-  deployment.
-user-invocable: false
+  Write the LLO operations guide for overseeing frontline-worker deployment: check-ins, daily
+  caps, escalation. Needs the PDD and built apps.
 disable-model-invocation: false
 ---
 

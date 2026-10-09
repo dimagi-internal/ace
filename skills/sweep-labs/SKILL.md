@@ -1,9 +1,8 @@
 ---
 name: sweep-labs
 description: >
-  Internal /ace:sweep step — Diff connect-labs workflows/pipelines/synthetic/solicitations against
-  the live-set and clean orphans.
-user-invocable: false
+  Find orphaned connect-labs workflows, pipelines, synthetic data, and solicitations and clean
+  them up. Needs a live-set from sweep-live-set.
 disable-model-invocation: false
 ---
 

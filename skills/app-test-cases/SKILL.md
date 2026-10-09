@@ -1,9 +1,8 @@
 ---
 name: app-test-cases
 description: >
-  Internal /ace:run step — Bind each PDD user journey to the Nova-built app structure and emit a
-  Maestro recipe per journey with real selectors.
-user-invocable: false
+  Turn PDD user journeys into Maestro test recipes with real selectors from a Nova-built app.
+  Needs the app-journeys doc and the Nova app.
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,8 @@
 ---
 name: semantic-registry-author
 description: >
-  Internal /ace:run step — Author the labs semantic registry (entity, one indicator per PDD
-  metric) from the PDD.
-user-invocable: false
+  Author a labs semantic registry from a PDD: the entity, one indicator per PDD metric, and the
+  program's nouns. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

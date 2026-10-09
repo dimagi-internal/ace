@@ -1,9 +1,8 @@
 ---
 name: pdd-to-work-order
 description: >
-  Internal /ace:run step — Draft a contractual Work Order from the approved PDD and the run's
-  decisions.yaml.
-user-invocable: false
+  Draft a contractual Work Order as a Google Doc from an approved PDD; partner details stay
+  placeholders unless an LLO is given. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: pdd-to-app-journeys
 description: >
-  Internal /ace:run step — Derive opp-specific expected user journeys from an approved PDD.
-user-invocable: false
+  Derive the expected frontline-worker user journeys from an approved PDD, the UX ground truth for
+  app testing. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,8 @@
 ---
 name: ocs-knowledge-refresh
 description: >
-  Internal /ace:run step — Add the training documents to the per-opp chatbot's RAG collection and
-  republish it.
-user-invocable: false
+  Add training documents to a program chatbot's RAG collection and republish the bot. Needs the
+  bot and the training docs.
 disable-model-invocation: false
 ---
 

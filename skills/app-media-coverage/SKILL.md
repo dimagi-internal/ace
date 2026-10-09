@@ -1,9 +1,8 @@
 ---
 name: app-media-coverage
 description: >
-  Internal /ace:run step — Attach images to the Nova-built Learn and Deliver apps from
-  inputs/media/, built-in icons, and the Content Generator.
-user-invocable: false
+  Attach images to Nova-built Learn and Deliver apps from supplied media, built-in icons, and the
+  Content Generator. Needs the Nova app ids.
 ---
 
 # App Media Coverage

@@ -1,9 +1,8 @@
 ---
 name: demo-narrative
 description: >
-  Internal /ace:demo step — Author a funder-tuned canopy DDD narrative over a demo-data-setup
-  realized map and the live labs dashboard.
-user-invocable: false
+  Write a funder-tuned DDD narrative (why-brief + spec) whose scenes render a live labs dashboard.
+  Needs a demo dashboard URL. Also run by /ace:demo.
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,8 @@
 ---
 name: connect-program-setup
 description: >
-  Internal /ace:run step — Create or reuse a Connect Program for the opportunity, archetype-
-  matched to the PDD.
-user-invocable: false
+  Create or reuse a Connect program matched to a PDD's delivery archetype and record its id. Needs
+  an approved PDD.
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,7 @@
 ---
 name: sweep-opp-runs
 description: >
-  Internal /ace:sweep step — Retention prune: keep the newest N runs per opp in Drive, trash the
-  rest after approval.
-user-invocable: false
+  Prune old ACE runs in Drive: keep the newest N per opp and trash the rest after approval.
 disable-model-invocation: false
 ---
 

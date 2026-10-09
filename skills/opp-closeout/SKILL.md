@@ -1,9 +1,8 @@
 ---
 name: opp-closeout
 description: >
-  Internal /ace:run step — Pull invoices from the completed opportunity and create a Jira ticket
-  to issue payment to the LLO.
-user-invocable: false
+  Close out a completed opportunity: pull its Connect invoices and open a Jira ticket to pay the
+  LLO.
 disable-model-invocation: false
 ---
 

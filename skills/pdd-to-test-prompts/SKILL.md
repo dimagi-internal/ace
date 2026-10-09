@@ -1,8 +1,8 @@
 ---
 name: pdd-to-test-prompts
 description: >
-  Internal /ace:run step — Derive opp-specific Q&A test prompts from an approved PDD.
-user-invocable: false
+  Write a Q&A test-prompt suite, including adversarial and escalation prompts, for a program's
+  support chatbot. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

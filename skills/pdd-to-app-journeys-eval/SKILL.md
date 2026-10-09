@@ -1,8 +1,8 @@
 ---
 name: pdd-to-app-journeys-eval
 description: >
-  Internal /ace:run step — LLM-as-Judge quality eval of the derived app user journeys.
-user-invocable: false
+  Grade PDD-derived app journeys for persona specificity, coverage, measurable pass criteria, and
+  deployability.
 disable-model-invocation: false
 ---
 

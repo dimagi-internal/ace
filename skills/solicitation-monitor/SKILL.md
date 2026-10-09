@@ -1,9 +1,8 @@
 ---
 name: solicitation-monitor
 description: >
-  Internal /ace:run step — Recurring poll for solicitation responses (--quick / --monitor /
-  --close).
-user-invocable: false
+  Check a solicitation's responses: count only (--quick), full pull (--monitor), or final pull
+  (--close). Needs a solicitation id.
 disable-model-invocation: false
 ---
 

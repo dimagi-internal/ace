@@ -126,7 +126,10 @@ describe('skill dispatchability', () => {
    */
   // 27,000 → 20,000 (canopy#851, 2026-10-09): internal steps got user-invocable: false
   // and one-line `Internal … step —` descriptions; measured catalog 26,429 → 19,371.
-  const CATALOG_BUDGET_CHARS = 20_000;
+  // 20,000 → 21,650 (2026-10-09, same day): standalone-capable skills un-hidden and
+  // re-described as standalone capabilities (skills used outside /ace:run); measured
+  // 19,603 (main at the time) → 20,610, limit = measured + ~5% headroom.
+  const CATALOG_BUDGET_CHARS = 21_650;
 
   it('the dispatchable catalog stays inside its char budget', () => {
     const entries: { skill: string; chars: number }[] = [];

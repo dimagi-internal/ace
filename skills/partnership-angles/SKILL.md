@@ -1,9 +1,8 @@
 ---
 name: partnership-angles
 description: >
-  Internal /ace:partnership-video step — Ground the narrative templates against prospect research
-  into three distinct, capability-tied angles.
-user-invocable: false
+  Turn prospect research into three distinct, capability-tied narrative angles for a partnership
+  pitch. Needs partnership-research output.
 disable-model-invocation: false
 ---
 

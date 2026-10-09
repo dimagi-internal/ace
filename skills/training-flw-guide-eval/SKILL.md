@@ -1,9 +1,7 @@
 ---
 name: training-flw-guide-eval
 description: >
-  Internal /ace:run step — Grade the FLW guide for step-by-step concreteness, screenshot
-  completeness, and accessibility.
-user-invocable: false
+  Grade an FLW guide for followable steps, screenshot completeness, and accessible language.
 disable-model-invocation: false
 ---
 

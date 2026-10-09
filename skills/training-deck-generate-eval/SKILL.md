@@ -1,9 +1,7 @@
 ---
 name: training-deck-generate-eval
 description: >
-  Internal /ace:run step — Grade the training-deck spec for module coverage, concreteness, image
-  refs, and slide count.
-user-invocable: false
+  Grade a training deck spec for module coverage, concreteness, valid image refs, and slide count.
 disable-model-invocation: false
 ---
 
