@@ -29,6 +29,7 @@ dotenvConfig({
 });
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createIdentityGate, installIdentityGate, platformRefusalHint } from '../lib/agent-identity-gate.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
@@ -258,6 +259,11 @@ async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type
 }
 
 const server = new McpServer({ name: 'ace-connect', version: '0.1.0' });
+
+// Session identity (canopy#850): act as ACE only when `canopy cred check --agent ace`
+// allows it — checked lazily at the first tool call, never a fallback to ACE's own
+// credentials. Installed before any other wrapper so it is the outermost layer.
+installIdentityGate(server as never, createIdentityGate({ hint: platformRefusalHint('CommCare HQ / Connect') }));
 
 // ── Programs ──────────────────────────────────────────────────────
 

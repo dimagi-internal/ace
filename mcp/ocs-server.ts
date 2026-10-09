@@ -42,6 +42,7 @@ dotenvConfig({
 });
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createIdentityGate, installIdentityGate, platformRefusalHint } from '../lib/agent-identity-gate.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
@@ -266,6 +267,11 @@ const composite = createLoggingProxy(compositeRaw, defaultFileLogger());
 // ── MCP Server Setup ────────────────────────────────────────────────
 
 const server = new McpServer({ name: 'ocs', version: '1.0.0' });
+
+// Session identity (canopy#850): act as ACE only when `canopy cred check --agent ace`
+// allows it — checked lazily at the first tool call, never a fallback to ACE's own
+// credentials. Installed before any other wrapper so it is the outermost layer.
+installIdentityGate(server as never, createIdentityGate({ hint: platformRefusalHint('OCS') }));
 
 function result(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
