@@ -15,6 +15,9 @@
  *   npx tsx scripts/ocs-coach-build.ts --experiment <id> --prompt <file> \
  *     --collections 605 --connect-bot-name "Spark Coach" [--team connect-ace]
  *
+ * `--collections none` detaches every collection (a clone keeps its source's
+ * otherwise — a KMC coach cloned from the chlorine coach must not search chlorine docs).
+ *
  * Does NOT publish: run `ocs_publish_chatbot_version` after reviewing.
  */
 import { chromium } from 'playwright';
@@ -46,10 +49,13 @@ const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 const teamSlugOrNone = values.team ?? process.env.OCS_TEAM_SLUG;
 if (!teamSlugOrNone) throw new Error('no --team and OCS_TEAM_SLUG is unset');
 const teamSlug: string = teamSlugOrNone;
-const collections = (values.collections ?? '')
-  .split(',')
-  .filter(Boolean)
-  .map(Number);
+const detachCollections = values.collections === 'none';
+const collections = detachCollections
+  ? []
+  : (values.collections ?? '')
+      .split(',')
+      .filter(Boolean)
+      .map(Number);
 const prompt = readFileSync(values.prompt, 'utf8');
 const code = readFileSync(new URL('../templates/ocs-coach/status_node.py', import.meta.url), 'utf8');
 
@@ -119,7 +125,7 @@ async function main() {
     await backend.setChatbotPipeline({
       experiment_id: experimentId,
       prompt,
-      ...(collections.length ? { collection_index_ids: collections } : {}),
+      ...(collections.length || detachCollections ? { collection_index_ids: collections } : {}),
     });
     console.log(`prompt set (${prompt.length} chars); collections ${JSON.stringify(collections)}`);
 

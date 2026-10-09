@@ -62,6 +62,11 @@ residual to record — we know the Coach builds (Spark Coach 13972).
 
    It refuses an unfilled placeholder. Read the cards it prints: a data-quality
    signal must read as a REVIEW FLAG; an outcome with no target must say so.
+
+   **Case coaching** (one case, one story per conversation —
+   `docs/superpowers/specs/2026-10-09-case-coaching-design.md`): add
+   `--case-stories kmc` to also give the Coach the case cards. Labs writes the case
+   briefing; the cards are `lib/coach-briefing.ts` `KMC_CASE_STORIES`.
 5. **Build:**
 
    ```bash
@@ -70,7 +75,10 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    ```
 
    Splices `templates/ocs-coach/status_node.py` between the LLM and End nodes,
-   sets prompt + collection, and creates the `commcare_connect` channel. If the
+   sets prompt + collection, and creates the `commcare_connect` channel. A clone
+   keeps its source's collections unless you pass some: `--collections none`
+   detaches them all (a coach cloned from another programme's coach must not search
+   that programme's documents). If the
    channel step fails with *flag_commcare_connect*, the OCS team lacks that feature
    flag: that team cannot deliver coaching to a worker's Connect app, so stop and
    report it (name the team) — the flag must be switched on, then re-run this step.
