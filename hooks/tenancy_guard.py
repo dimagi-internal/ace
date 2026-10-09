@@ -25,7 +25,7 @@ have had checked is appended to <bind dir>/unbound-writes.log, so today's runs
 keep working until every entry point binds. `ACE_TENANCY_GUARD=off` disables
 the hook.
 
-STDLIB ONLY, like hooks/gating_guard.py: it runs under whatever python3 is on
+STDLIB ONLY, like canopy's gating engine: it runs under whatever python3 is on
 PATH.
 """
 from __future__ import annotations

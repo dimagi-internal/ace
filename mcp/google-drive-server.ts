@@ -1237,7 +1237,7 @@ server.tool(
  *
  * Drive's `permissions.create` **sends the grantee an email unless you pass
  * `sendNotificationEmail: false`**. ACE's outbound email is gated: every send
- * goes through `bin/ace-email`, and `hooks/gating_guard.py` hard-blocks raw
+ * goes through `bin/ace-email`, and canopy's session gating hook (`config/gating.json` rails) hard-blocks raw
  * `gog gmail send|reply` under the ACE identity. A Drive-sent share notification
  * would route around that gate entirely — an external party silently emailed as
  * a side effect of a permission change. So the default is `false`, and sending

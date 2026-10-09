@@ -14,15 +14,6 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/gating_guard.py\""
-          }
-        ]
-      },
-      {
         "matcher": "mcp__.*(ace-connect|ace-ocs|connect-labs|connect_labs|nova)__.*",
         "hooks": [
           {
