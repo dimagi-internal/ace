@@ -9,7 +9,7 @@
  *
  * The measures are `indicators_doc.measures` from `semantic_registry_get`.
  * `--properties` is `properties_doc.properties` from the same registry: its case states
- * (properties with a `state:` block) become the coach's case cards
+ * (properties with a `case_state:` block) become the coach's case cards
  * (docs/superpowers/specs/2026-10-09-case-coaching-design.md).
  */
 import { readFileSync, writeFileSync } from 'node:fs';

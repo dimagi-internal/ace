@@ -148,7 +148,7 @@ describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-
     workerName: 'flw_014',
     caseName: 'Beneficiary 986',
     about: 'Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
-    story: { key: 'state_weight_check', label: 'A weighing that is hard to believe' },
+    story: { key: 'case_state_weight_check', label: 'A weighing that is hard to believe' },
     facts: 'Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
     visits: [
       { date: '2026-09-03', weightG: 1575, kmcHours: null, dangerSigns: [], referred: 'no' as const },
@@ -164,7 +164,7 @@ describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-
         'Worker: flw_014',
         'Case: Beneficiary 986',
         'About this case: Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
-        'Topic: A weighing that is hard to believe [state_weight_check]',
+        'Topic: A weighing that is hard to believe [case_state_weight_check]',
         'What the data shows: Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
         'Visits, oldest first:',
         '- 3 Sep 2026: weight 1,575 g; skin-to-skin not recorded; danger signs: none; referred: no',
@@ -195,22 +195,22 @@ describe('case cards from the registry\'s case states', () => {
   const coach = (x: string) => ({ approach: `${x} approach`, next_steps: `${x} step`, limits: `${x} limits` });
   const properties = [
     { name: 'started', label: 'Started', means: 'One or more follow-up visits.', type: 'bool' },
-    { name: 'state_thriving', label: 'Baby is growing well', means: 'Gained steadily.', type: 'bool', state: { tone: 'celebrate' as const, priority: 40, coach: coach('thriving') } },
-    { name: 'state_danger_unreferred', label: 'Danger sign recorded, no referral', means: 'A danger sign, not referred.', type: 'bool', state: { tone: 'urgent' as const, priority: 10, coach: coach('danger') } },
+    { name: 'case_state_thriving', label: 'Baby is growing well', means: 'Gained steadily.', type: 'bool', case_state: { tone: 'celebrate' as const, priority: 40, coach: coach('thriving') } },
+    { name: 'case_state_danger_unreferred', label: 'Danger sign recorded, no referral', means: 'A danger sign, not referred.', type: 'bool', case_state: { tone: 'urgent' as const, priority: 10, coach: coach('danger') } },
   ];
 
   it('renders only properties with a state block, most urgent first, keyed by the property name', () => {
     const cards = caseStateCards(properties);
-    expect(cards.map((c) => c.key)).toEqual(['state_danger_unreferred', 'state_thriving']);
+    expect(cards.map((c) => c.key)).toEqual(['case_state_danger_unreferred', 'case_state_thriving']);
     expect(renderCaseCards(cards)).toBe(
       [
-        '### Danger sign recorded, no referral [state_danger_unreferred]',
+        '### Danger sign recorded, no referral [case_state_danger_unreferred]',
         '- What it means: A danger sign, not referred.',
         '- How to talk about it: danger approach',
         '- The step to agree: danger step',
         '- What it does not tell you: danger limits',
         '',
-        '### Baby is growing well [state_thriving]',
+        '### Baby is growing well [case_state_thriving]',
         '- What it means: Gained steadily.',
         '- How to talk about it: thriving approach',
         '- The step to agree: thriving step',
@@ -220,14 +220,14 @@ describe('case cards from the registry\'s case states', () => {
   });
 
   it('refuses a state the coach would have no guidance for', () => {
-    const bad = [{ name: 'state_x', label: 'X', means: 'x', state: { coach: { approach: 'a', next_steps: '' } } }];
-    expect(() => caseStateCards(bad)).toThrow(/state_x is missing state.coach.next_steps, state.coach.limits/);
+    const bad = [{ name: 'case_state_x', label: 'X', means: 'x', case_state: { coach: { approach: 'a', next_steps: '' } } }];
+    expect(() => caseStateCards(bad)).toThrow(/case_state_x is missing case_state.coach.next_steps, case_state.coach.limits/);
   });
 
   it('fills the prompt\'s case section, and says so when a coach has none', () => {
     const template = readFileSync(new URL('../../templates/ocs-coach/coach-prompt.md', import.meta.url), 'utf8');
     const vars = { programName: 'KMC', workerName: 'worker', workerPlural: 'workers', openingLanguage: 'English', indicatorCards: 'cards', appSummary: 'summary' };
-    expect(renderCoachPrompt(template, { ...vars, caseCards: renderCaseCards(caseStateCards(properties)) })).toContain('[state_danger_unreferred]');
+    expect(renderCoachPrompt(template, { ...vars, caseCards: renderCaseCards(caseStateCards(properties)) })).toContain('[case_state_danger_unreferred]');
     expect(renderCoachPrompt(template, vars)).toContain('only briefed on a worker');
   });
 });

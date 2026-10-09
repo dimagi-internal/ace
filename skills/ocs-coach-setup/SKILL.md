@@ -66,8 +66,8 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    **Case states** (one case, one state per conversation —
    `docs/superpowers/specs/2026-10-09-case-coaching-design.md`): also pass
    `--properties <json>` = the registry's `properties_doc.properties`. Every property
-   with a `state:` block becomes a case card (`lib/coach-briefing.ts`
-   `caseStateCards`); a state missing `state.coach` guidance is refused. Labs writes
+   with a `case_state:` block becomes a case card (`lib/coach-briefing.ts`
+   `caseStateCards`); a case state missing `case_state.coach` guidance is refused. Labs writes
    the case briefing.
 
 5. **Build:**

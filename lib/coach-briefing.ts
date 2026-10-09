@@ -169,12 +169,12 @@ export function renderBriefing(b: Briefing): string {
 
 // ── Case states (docs/superpowers/specs/2026-10-09-case-coaching-design.md) ──
 // A case state is a bool Layer-2 property in the programme's SEMANTIC REGISTRY
-// carrying a `state:` block; Labs evaluates it per case as of the run date. One
+// carrying a `case_state:` block ("case" because a worker could have states too); Labs evaluates it per case as of the run date. One
 // conversation is about ONE case in ONE state. The coach's case cards are rendered
 // from the registry's state meta, as the indicator cards are from its measures —
 // nothing programme-specific lives here.
 
-export interface RegistryStateMeta {
+export interface RegistryCaseStateMeta {
   tone?: 'celebrate' | 'check' | 'concern' | 'urgent';
   /** Lower is more urgent; a case's state is its true state with the lowest priority. */
   priority?: number;
@@ -190,11 +190,11 @@ export interface RegistryProperty {
   label?: string;
   means?: string;
   type?: string;
-  state?: RegistryStateMeta;
+  case_state?: RegistryCaseStateMeta;
 }
 
 export interface CaseStateCard {
-  /** The state property's name: the briefing's topic key and the task's coaching_indicators entry. */
+  /** The case-state property's name: the briefing's topic key and the task's coaching_indicators entry. */
   key: string;
   label: string;
   means: string;
@@ -204,16 +204,16 @@ export interface CaseStateCard {
   priority: number;
 }
 
-/** The registry's case states, most urgent first. A state without coach guidance is refused:
- *  the coach would be briefed on something it has no card for. */
+/** The registry's case states, most urgent first. A case state without coach guidance is
+ *  refused: the coach would be briefed on something it has no card for. */
 export function caseStateCards(properties: RegistryProperty[]): CaseStateCard[] {
   const cards = properties
-    .filter((p) => p.state)
+    .filter((p) => p.case_state)
     .map((p) => {
-      const coach = p.state!.coach ?? {};
+      const coach = p.case_state!.coach ?? {};
       const missing = (['approach', 'next_steps', 'limits'] as const).filter((k) => !coach[k]?.trim());
       if (missing.length || !p.label?.trim() || !p.means?.trim()) {
-        const gaps = [...missing.map((k) => `state.coach.${k}`), ...(!p.label?.trim() ? ['label'] : []), ...(!p.means?.trim() ? ['means'] : [])];
+        const gaps = [...missing.map((k) => `case_state.coach.${k}`), ...(!p.label?.trim() ? ['label'] : []), ...(!p.means?.trim() ? ['means'] : [])];
         throw new Error(`case state ${p.name} is missing ${gaps.join(', ')} in the registry`);
       }
       return {
@@ -223,7 +223,7 @@ export function caseStateCards(properties: RegistryProperty[]): CaseStateCard[] 
         approach: coach.approach!.trim(),
         nextSteps: coach.next_steps!.trim(),
         limits: coach.limits!.trim(),
-        priority: p.state!.priority ?? Number.MAX_SAFE_INTEGER,
+        priority: p.case_state!.priority ?? Number.MAX_SAFE_INTEGER,
       };
     });
   return cards.sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
@@ -257,7 +257,7 @@ export interface CaseBriefing {
   workerName: string;
   caseName: string;
   about: string;
-  /** The case's state: its registry property name and label. */
+  /** The case state: its registry property name and label. */
   story: { key: string; label: string };
   facts: string;
   /** Set on a spotlight follow-up: the last conversation about this case. */

@@ -22,23 +22,26 @@ whole point."
 | Layer | What a case state uses |
 |---|---|
 | Layer 1 (pipeline columns) | The visit fields the states read (weights, skin-to-skin hours, danger signs, referral). |
-| Layer 2 (`properties.yml`, one row per case, evaluated `:as_of` the run) | Each state is a **bool property with a `state:` block**. Its SQL composes other properties and registry constants, so thresholds change with a registry edit, not a deploy. |
+| Layer 2 (`properties.yml`, one row per case, evaluated `:as_of` the run) | Each case state is a **bool property with a `case_state:` block**. Its SQL composes other properties and registry constants, so thresholds change with a registry edit, not a deploy. |
 | Layer 3 (`indicators.yml`) | A count indicator per state. The existing grading gives "cases in state X" per worker, on the existing scorecard and history. |
 | Saved run (`snapshot_inputs.case_index`) | The state properties and their evidence are case-index fields, so every saved run records each case's state **as of that run**. History comes from reading earlier runs. |
-| Read API | `workflow_run_cases`: a run's cases filtered by state and worker, the case-level sibling of `workflow_run_indicators`. The snapshot carries `stateCatalog`. |
+| Read API | `workflow_run_cases`: a run's cases filtered by state and worker, the case-level sibling of `workflow_run_indicators`. The snapshot carries `caseStateCatalog`. |
 
 Anything the engine cannot yet express is added to the semantic layer as a
 programme-agnostic feature. No programme-specific logic lives in Python.
 
-### The `state:` block (on a bool Layer-2 property)
+### The `case_state:` block (on a bool Layer-2 property)
+
+Named `case_state`, not `state`, because a worker (FLW) could have states too (owner,
+2026-10-09); a worker-level state would take the same shape.
 
 ```yaml
-- name: state_weight_check            # the property name is the topic key
+- name: case_state_weight_check       # the property name is the topic key
   label: 'A weighing that is hard to believe'   # the state's label
   means: '...'                          # the card's "What it means"
   type: bool
   sql: '...'
-  state:
+  case_state:
     tone: celebrate | check | concern | urgent
     priority: <int>                     # lower = more urgent; a case's state is its true state with the lowest priority
     evidence: [<property/aggregate names>]   # quoted in "What the data shows", read by the picture
@@ -50,8 +53,8 @@ programme-agnostic feature. No programme-specific logic lives in Python.
       limits: '<what it does not tell you>'
 ```
 
-KMC's four states: `state_danger_unreferred`, `state_weight_check`, `state_faltering`,
-`state_thriving`. Lessons from scanning the synthetic KMC opportunities, now registry rules:
+KMC's four states: `case_state_danger_unreferred`, `case_state_weight_check`,
+`case_state_faltering`, `case_state_thriving`. Lessons from scanning the synthetic KMC opportunities, now registry rules:
 
 - **Believable weights first.** A case whose weights fail the plausibility rules is in the
   weight-check state and nothing else: a "faltering" baby was really 3,213 → 2,881 → 3,300 g,
@@ -76,7 +79,7 @@ KMC's four states: `state_danger_unreferred`, `state_weight_check`, `state_falte
 - **Case cards are generated from the registry**, the way indicator cards come from its
   measures: `lib/coach-briefing.ts` `caseStateCards(properties_doc.properties)` →
   `renderCaseCards`, via `scripts/render-coach-prompt.ts --properties`. A state without
-  `state.coach` guidance is refused.
+  `case_state.coach` guidance is refused.
 - **The briefing** (Labs writes it into `session_data.coach_briefing`; ACE pins the same
   shape in `renderCaseBriefing`):
 
@@ -86,7 +89,7 @@ Programme: <programme>
 Worker: <worker display name, or username>
 Case: <case display name>
 About this case: <one line>
-Topic: <state label> [<state property name>]
+Topic: <case state label> [<case state property name>]
 What the data shows: <the state's facts template, filled from its evidence as of the run>
 Earlier coaching on this case: <d Mon yyyy> — <state label>; agreed: <step, or none>   (optional: only when the caller supplies it)
 Visits, oldest first:
@@ -100,7 +103,7 @@ Follow your conversation steps from the opening.
 
 ## The picture and the send
 
-- The picture is a generic Labs case chart, chosen by the state's `picture` meta and filled
+- The picture is a generic Labs case chart, chosen by the case state's `picture` meta and filled
   from the case index and the case's series; its words come from the registry.
 - `start_ocs_outreach` with a `case` reads the case's state from the run's case index. On
   the synthetic opportunities the only send is **Send to me (QA test)** (`deliver_to`)
