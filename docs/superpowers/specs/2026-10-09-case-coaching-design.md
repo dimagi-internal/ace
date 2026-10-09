@@ -1,89 +1,107 @@
-# Case coaching: coach a worker about ONE case, with a picture of that case
+# Case states: what we think about a case as of a run, and coaching on it
 
 Owner request (Jonathan, 2026-10-09, Slack #C05UCR4VDHR thread 1791521280.070339), for the
-IDM AI talk (13–14 Oct 2026). Ideas from Lilianna Bagnoli and Surabhi Dubey in that thread.
+IDM AI talk (13–14 Oct 2026). Coaching ideas from Lilianna Bagnoli and Surabhi Dubey in
+that thread.
 
-Until now a Coach conversation was about a WORKER's indicators (`renderBriefing`,
-connect-labs `workflow/coach_briefing.py`). This adds a conversation about one CASE (one
-baby, in KMC): Labs picks out the case's story from its visits, draws a picture of THAT
-case, and briefs the Coach with the case's own visits.
+## What this is
 
-## The loop (owner, 2026-10-09)
+A **case state** is what we think about one case (in KMC, one baby) as of a run's date:
+"growing well", "a weighing that is hard to believe", "weight stalled and skin-to-skin
+falling", "danger sign with no referral". It is the case-level sibling of indicators and
+flags, which already work end to end. So it lives where they do: in the programme's
+**semantic registry**, evaluated by the semantic engine as of the run date, stored in the
+run's snapshot, and read by the same tools.
 
-- **One story per conversation.** A worker gets roughly one case conversation a week, about
-  one case and one story. The Coach is never asked to cover two stories in a thread.
-- **Per opportunity.** Whoever runs the opportunity (Dimagi or the LLO) coaches its workers;
-  nothing here is programme-level.
-- **The production rule** is automated: find every eligible story per worker, then start a
-  session either on the worker's **spotlight** case (the baby coached about last time, when
-  it has new visits to follow up) or on a story the worker has **not been coached on
-  recently**.
-- **Who decides what.** Labs is deterministic: eligibility, the facts and the pictures,
-  saved in each run's snapshot per worker. The **canopy agent** on the opportunity's
-  workflow is the planner. It works out each worker's case-coaching history ITSELF, by
-  reading earlier saved runs' snapshots and the coaching sessions started from them. There
-  is no history feature in Labs (owner, 2026-10-09: too large for now). It then proposes
-  one session per worker with its reason (follow up the spotlight baby, or rotate to a story
-  not done lately), the person picks or approves, and it triggers them. Every saved run must
-  carry what the agent needs to decide and to write the session.
-- **Recent** means the story's evidence falls within 30 days of the opportunity's latest
-  visit.
-- **Believable weights first.** THRIVING, FALTERING and DANGER_SIGN only apply to a case
-  whose whole weight series is plausible (800–5,000 g, no interval that is itself a weight
-  check). Otherwise the bad weighing is the story. Scan of the synthetic KMC opportunities
-  2026-10-09: without this rule, a "faltering" baby was really 3,213 → 2,881 → 3,300 g and a
-  "danger sign" baby weighed 250 g.
-- **Weight per visit.** Follow-up forms carry the registration weight as well
-  (`child_details.birth_weight_reg.child_weight_reg`). Take a visit's weight only from
-  `anthropometric.child_weight_visit`, and the registration weight only from the
-  registration form. Reading the repeated field made 371 of 606 BERI babies look like they
-  had lost more than 10%.
+Owner (2026-10-09): "this is just another way of thinking about indicators / flags that
+already work end to end", and "just add to the semantic layer if we need to, that's the
+whole point."
 
-## The four stories (topic keys)
+## How it fits the semantic layer (connect-labs)
 
-| Key | Label | When Labs says so (KMC) | What the coach does |
-|---|---|---|---|
-| `CASE_THRIVING` | Baby is growing well | every interval between weighings at or above 15 g/kg/day and the latest weight above the first by 20% or more | Recognise the worker's effort, ask what they think worked with this family, then next steps: keep up follow-up visits, vaccines on time, exclusive breastfeeding to 6 months. |
-| `CASE_WEIGHT_CHECK` | A weighing that is hard to believe | one interval's gain above 40 g/kg/day, OR a loss of more than 10% between visits, OR the same weight on three visits in a row | Non-judgemental, about data quality: "Can you walk me through how you weighed baby on this visit?" Weighing checklist: set the scale to zero, weigh baby without clothes, read the number when baby is still, write it down straight away. |
-| `CASE_FALTERING` | Weight has stalled and skin-to-skin time is falling | gain below 5 g/kg/day over the last two intervals, and skin-to-skin hours lower at the latest visit than at the one before | Ask how the family is managing; reinforce KMC practices (hours of skin-to-skin, feeding); agree a sooner follow-up visit. |
-| `CASE_DANGER_SIGN` | Danger sign recorded, no referral | a visit records a danger sign and `child_referred` is no | Explain why that sign needs a health facility, ask the worker to check in with the family and refer the baby if the sign is still there. Never diagnose. |
+| Layer | What a case state uses |
+|---|---|
+| Layer 1 (pipeline columns) | The visit fields the states read (weights, skin-to-skin hours, danger signs, referral). |
+| Layer 2 (`properties.yml`, one row per case, evaluated `:as_of` the run) | Each state is a **bool property with a `state:` block**. Its SQL composes other properties and registry constants, so thresholds change with a registry edit, not a deploy. |
+| Layer 3 (`indicators.yml`) | A count indicator per state. The existing grading gives "cases in state X" per worker, on the existing scorecard and history. |
+| Saved run (`snapshot_inputs.case_index`) | The state properties and their evidence are case-index fields, so every saved run records each case's state **as of that run**. History comes from reading earlier runs. |
+| Read API | `workflow_run_cases`: a run's cases filtered by state and worker, the case-level sibling of `workflow_run_indicators`. The snapshot carries `stateCatalog`. |
 
-Thresholds are Labs' and live in connect-labs; this table is what the coach is told they mean.
+Anything the engine cannot yet express is added to the semantic layer as a
+programme-agnostic feature. No programme-specific logic lives in Python.
 
-## The briefing contract (Labs writes it, the Coach reads `{session_state.coach_briefing}`)
+### The `state:` block (on a bool Layer-2 property)
+
+```yaml
+- name: state_weight_check            # the property name is the topic key
+  label: 'A weighing that is hard to believe'   # the state's label
+  means: '...'                          # the card's "What it means"
+  type: bool
+  sql: '...'
+  state:
+    tone: celebrate | check | concern | urgent
+    priority: <int>                     # lower = more urgent; a case's state is its true state with the lowest priority
+    evidence: [<property/aggregate names>]   # quoted in "What the data shows", read by the picture
+    facts: '<template over evidence>'
+    picture: {type: series_vs_reference | series_highlight_step | series_with_bars | sign_card, ...}
+    coach:
+      approach: '<how to talk about it>'
+      next_steps: '<the step to agree>'
+      limits: '<what it does not tell you>'
+```
+
+KMC's four states: `state_danger_unreferred`, `state_weight_check`, `state_faltering`,
+`state_thriving`. Lessons from scanning the synthetic KMC opportunities, now registry rules:
+
+- **Believable weights first.** A case whose weights fail the plausibility rules is in the
+  weight-check state and nothing else: a "faltering" baby was really 3,213 → 2,881 → 3,300 g,
+  and a "danger sign" baby weighed 250 g.
+- **Weight per visit.** Follow-up forms repeat the registration weight; reading it as that
+  visit's weight made 371 of 606 BERI babies look like they had lost more than 10%.
+- The weight-check rule is the registry's own `pct_impossible_weight_changes` step rule, so
+  coaching and the dashboard agree.
+
+## The loop
+
+- **One state per conversation.** A worker gets roughly one case conversation a week.
+- **Per opportunity.** Whoever runs the opportunity (Dimagi or the LLO) coaches its workers.
+- **Labs is deterministic; the canopy agent plans.** The agent on the opportunity's
+  workflow reads the run's cases by state and earlier runs' case indexes, then proposes one
+  session per worker: follow up the **spotlight** case, or rotate to a state the worker has
+  not been coached on recently. The person picks; the agent sends. Labs stores no coaching
+  history of its own.
+
+## The coach (ACE)
+
+- **Case cards are generated from the registry**, the way indicator cards come from its
+  measures: `lib/coach-briefing.ts` `caseStateCards(properties_doc.properties)` →
+  `renderCaseCards`, via `scripts/render-coach-prompt.ts --properties`. A state without
+  `state.coach` guidance is refused.
+- **The briefing** (Labs writes it into `session_data.coach_briefing`; ACE pins the same
+  shape in `renderCaseBriefing`):
 
 ```
 BRIEFING (system text — do not show to the worker)
-Programme: Kangaroo Mother Care
+Programme: <programme>
 Worker: <worker display name, or username>
 Case: <case display name>
-About this case: <one line: birth weight, date registered, number of visits, date of the last>
-Topic: <label> [<CASE_* key>]
-What the data shows: <one or two factual sentences with the figures Labs computed>
-Earlier coaching on this case: <d Mon yyyy> — <story label>; agreed: <the step agreed, or none>   (optional: written only when the caller supplies it, e.g. the agent from earlier snapshots)
+About this case: <one line>
+Topic: <state label> [<state property name>]
+What the data shows: <the state's facts template, filled from its evidence as of the run>
+Earlier coaching on this case: <d Mon yyyy> — <state label>; agreed: <step, or none>   (optional: only when the caller supplies it)
 Visits, oldest first:
-- <d Mon yyyy>: weight <n,nnn> g; skin-to-skin <h> h in the last 24 h; danger signs: <comma list | none>; referred: <yes | no | not asked>
+- <d Mon yyyy>: weight <n,nnn> g; skin-to-skin <h> h in the last 24 h; danger signs: <list | none>; referred: <yes | no | not asked>
 ...
 Follow your conversation steps from the opening.
 ```
 
-- One topic per conversation. The topic key is also the task's `coaching_indicators`
-  entry, so coaching progress counts it like an indicator.
-- A missing value is written `not recorded`, never left blank or guessed.
-- ACE renders the same shape in `lib/coach-briefing.ts` `renderCaseBriefing` (tests pin
-  it); the coach prompt's **Case cards** say what each key means and how to talk about it.
+  One topic per conversation; the topic key is also the task's `coaching_indicators`
+  entry. A missing value is `not recorded`, never guessed.
 
-## The picture
+## The picture and the send
 
-A case picture is a Labs chart type (connect-labs `workflow/coach_charts`), drawn by Labs
-from the case's own visits — one per story, so a field worker understands it at a glance
-on a phone. The caption (`coach_image_caption`) names the baby's story in plain words, no
-numbers.
-
-## The send
-
-On the KMC worker review's case panel, a "Coach about this baby" button previews the
-conversation (picture, opening, briefing). On these synthetic opportunities it offers ONLY
-**Send to me (QA test)** — `deliver_to` = the viewer's own ConnectID username — and no
-send to the worker (Jonathan: "since these are not real users, don't even have the real
-send button").
+- The picture is a generic Labs case chart, chosen by the state's `picture` meta and filled
+  from the case index and the case's series; its words come from the registry.
+- `start_ocs_outreach` with a `case` reads the case's state from the run's case index. On
+  the synthetic opportunities the only send is **Send to me (QA test)** (`deliver_to`)
+  (Jonathan: "since these are not real users, don't even have the real send button").
