@@ -15,8 +15,9 @@ Design and rationale: `docs/superpowers/specs/2026-10-06-ocs-coach-design.md`
 answering (`skills/coach-session-capture`, owner carve-out 2026-10-07). This skill builds and tests the Coach. A person
 starts each conversation from the Labs run page — the workflow's
 `start_ocs_outreach` action, from its button or by asking the page's canopy agent
-("start coaching sessions for the red facilitators"), which previews and waits for
-a yes (`skills/coach-from-labs-page`: picture first, then Send buttons). QA conversations to Dimagi staff use the action's `deliver_to` argument.
+("start coaching sessions for the red facilitators"), which previews; the person
+then sends with the Send button on Labs' coaching card in canopy's chat (MCP Apps,
+connect-labs#2348). The agent never holds a send token for a worker. QA conversations to Dimagi staff use the action's `deliver_to` argument.
 
 ## When it runs
 

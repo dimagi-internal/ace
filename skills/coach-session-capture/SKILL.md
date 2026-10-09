@@ -32,8 +32,8 @@ ConnectID. Mobile mode commits ONLY through `scripts/coach-capture-mobile-plan.t
 which resolves the test user's ConnectID username from CommCare HQ by `ACE_E2E_PHONE`
 (a `+7426` demo number) and refuses (exit 2) any other `deliver_to`. Web mode sends
 nothing through Connect, so it needs no carve-out. (A person sending from the Labs
-panel by their own click is a different case, ACE carrying out THEIR action:
-`skills/coach-from-labs-page`.)
+panel is a different case: Labs' coaching card in canopy's chat sends on their click,
+and ACE holds no token for it.)
 
 ## Inputs
 
@@ -78,12 +78,16 @@ Under the demo's or run's Drive folder, `coach-capture/`:
 
 ### 1. Preview (both modes)
 
-`workflow_run_action(action: "initiate_ai_coach", run_id, program_id|opportunity_id,
-arguments: {workers: [{key}], deliver_to: <ACE test username>})` **without** `confirm`.
-Pass `deliver_to` in web mode too: on a synthetic opportunity Labs only resolves the
-REAL Coach when `deliver_to` is set (otherwise the preview names the sample bot
-`synthetic-muac-coaching`, which `coachStartFromPreview` refuses). A preview sends
-nothing. Save the response to `preview.json`.
+`workflow_action_preview_view(action: "initiate_ai_coach", run_id, program_id|opportunity_id,
+arguments: {workers: [{key}]}, deliver_to: <ACE test username>)`. This is Labs'
+app-only preview (the MCP Apps coaching View's): since connect-labs#2348 the agent-facing
+`workflow_run_action` preview of a coaching action carries no `confirm` (a send to a
+worker is a person's click), and off canopy this tool previews a QA send only, so
+`deliver_to` is required (connect-labs#2351). Pass it in web mode too: on a synthetic
+opportunity Labs only resolves the REAL Coach when `deliver_to` is set (otherwise the
+preview names the sample bot `synthetic-muac-coaching`, which `coachStartFromPreview`
+refuses). A preview sends nothing. Save the response to `preview.json`; its workers
+also carry the picture inline (`image.data_uri`), which nothing here needs.
 
 ### 2. Web mode
 
