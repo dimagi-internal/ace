@@ -1,8 +1,8 @@
 ---
 name: self-review
 description: >
-  Superseded — ACE's pre-send discipline lives in skills/agent-turn-review, applied inline.
-  This stub remains so older references keep working.
+  Superseded stub — ACE's pre-send discipline is skills/agent-turn-review, applied inline.
+disable-model-invocation: true
 ---
 
 # Self-review → agent-turn-review

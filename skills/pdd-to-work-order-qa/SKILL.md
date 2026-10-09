@@ -1,11 +1,8 @@
 ---
 name: pdd-to-work-order-qa
 description: >
-  Structural QA on the work-order artifact produced by pdd-to-work-order.
-  Binary pass/fail. Catches missing sections, missing wo-* decision rows,
-  malformed payment schedule, leaked scaffolding markers, etc. Static-only;
-  no LLM. Gates pdd-to-work-order-eval — eval is skipped if QA fails
-  irrecoverably.
+  Internal /ace:run step — Structural pass/fail QA on the drafted Work Order.
+user-invocable: false
 disable-model-invocation: false
 ---
 

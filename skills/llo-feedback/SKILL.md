@@ -1,8 +1,9 @@
 ---
 name: llo-feedback
 description: >
-  Prompt LLOs for feedback on application, process, and next-step
-  suggestions. Collect and document responses for closeout.
+  Internal /ace:run step — Prompt LLOs for feedback on application, process, and next-step
+  suggestions.
+user-invocable: false
 disable-model-invocation: false
 ---
 

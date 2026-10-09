@@ -1,6 +1,9 @@
 ---
 name: synthetic-summary
-description: Compose a one-page reviewer-facing summary of an opportunity's synthetic-data demo. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
+description: >
+  Internal /ace:run step — DEPRECATED fallback: one-page reviewer summary of a synthetic-data
+  demo.
+user-invocable: false
 disable-model-invocation: false
 ---
 

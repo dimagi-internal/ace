@@ -1,8 +1,9 @@
 ---
 name: semantic-registry-author
 description: >
-  Author the labs semantic registry from the PDD (entity, one indicator per PDD
-  metric, the programme's nouns) that Phase 7's indicator cascade binds to.
+  Internal /ace:run step — Author the labs semantic registry (entity, one indicator per PDD
+  metric) from the PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

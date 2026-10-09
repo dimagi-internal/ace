@@ -1,12 +1,8 @@
 ---
 name: pdd-to-test-prompts-eval
 description: >
-  Quality eval on pdd-to-test-prompts.md. Seven dimensions via LLM-as-Judge:
-  expected-answer specificity, adversarial-prompt quality, archetype
-  coverage, prompt phrasing realism, expected-tag correctness, escalation-
-  prompt quality, and an out-of-chain failure-mode-coverage axis (does the
-  suite stress the safety-critical and out-of-KB scenarios a real LLO
-  supervisor in this domain would hit?).
+  Internal /ace:run step — LLM-as-Judge quality eval of the derived chatbot test prompts.
+user-invocable: false
 disable-model-invocation: false
 ---
 

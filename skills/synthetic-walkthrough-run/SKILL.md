@@ -1,6 +1,9 @@
 ---
 name: synthetic-walkthrough-run
-description: Run a walkthrough per persona and collect the slideshow and scored screenshots. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
+description: >
+  Internal /ace:run step — DEPRECATED fallback: run a walkthrough per persona and collect scored
+  screenshots.
+user-invocable: false
 disable-model-invocation: false
 ---
 

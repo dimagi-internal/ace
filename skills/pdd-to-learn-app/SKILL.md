@@ -1,8 +1,9 @@
 ---
 name: pdd-to-learn-app
 description: >
-  Build the CommCare Learn (training) app from the PDD via Nova's
-  /nova:autobuild. Captures nova_app_id and writes a structure summary.
+  Internal /ace:run step — Build the CommCare Learn (training) app from the PDD via Nova's
+  /nova:autobuild.
+user-invocable: false
 disable-model-invocation: false
 ---
 

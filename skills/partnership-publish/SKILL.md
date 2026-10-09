@@ -1,8 +1,9 @@
 ---
 name: partnership-publish
 description: >
-  Assemble and publish the partnership package (video + deck + narrative + research
-  appendix) to canopy-web. Requires explicit operator approval before any external send.
+  Internal /ace:partnership-video step — Assemble and publish the partnership package to canopy-
+  web (operator-approved).
+user-invocable: false
 disable-model-invocation: false
 ---
 

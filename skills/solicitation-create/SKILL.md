@@ -1,8 +1,9 @@
 ---
 name: solicitation-create
 description: >
-  Translate the PDD into a solicitation payload, derive evaluation
-  criteria, and publish via connect-labs MCP. Captures solicitation_id.
+  Internal /ace:run step — Translate the PDD into a solicitation payload, derive evaluation
+  criteria, and publish via connect-labs MCP.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,9 @@
 ---
 name: training-onboarding-email
 description: >
-  Generate the LLO onboarding email body, consumed by llo-onboarding
-  and personalized per LLO at send time. Owns one artifact.
+  Internal /ace:run step — Generate the LLO onboarding email body, consumed by llo-onboarding and
+  personalized per LLO at send time.
+user-invocable: false
 disable-model-invocation: false
 ---
 

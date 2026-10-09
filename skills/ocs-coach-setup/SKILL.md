@@ -1,8 +1,9 @@
 ---
 name: ocs-coach-setup
 description: >
-  Build and QA the per-run OCS Coach a supervisor triggers from Labs to coach a
-  flagged worker. Never sends to a real worker.
+  Internal /ace:run step — Build and QA the per-run OCS Coach a supervisor triggers from Labs to
+  coach a flagged worker.
+user-invocable: false
 disable-model-invocation: false
 ---
 

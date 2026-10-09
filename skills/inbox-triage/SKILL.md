@@ -1,11 +1,9 @@
 ---
 name: inbox-triage
 description: >
-  The email half of an ACE turn. Reads unread mail to ace@dimagi-ai.com, processes ONE
-  thread at a time with strict per-sender isolation, routes each thread to the opp/run it
-  belongs to, resolves the sender's tier (internal act vs external correspond vs unknown),
-  proposes one action per thread, and only sends after human approval. Step 3 of
-  skills/turn — don't run it alone and skip the board drain.
+  Internal ACE turn step — The email half of an ACE turn: triage ace@ unread mail one thread at a
+  time. Run via the turn, not alone.
+user-invocable: false
 ---
 
 # Inbox Triage — routing ACE's mail back into its runs

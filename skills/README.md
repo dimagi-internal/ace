@@ -174,6 +174,28 @@ Caught on `hh-poverty-targeting/20260812-1613` Phase 2 (dimagi-internal/ace#1203
 *Enforced:* `test/skill-dispatchability.test.ts` — fails if any skill referenced in
 `agents/*.md` carries the flag, and fails if descriptions blow the catalog budget.
 
+### `user-invocable: false` — internal pipeline steps (canopy#851)
+
+Every skill an orchestrator dispatches but a person would not ask for by name
+(phase steps, `-qa`/`-eval` passes, `/ace:sweep` / `/ace:partnership-video` /
+`/ace:demo` sub-steps, turn machinery) carries `user-invocable: false` and a short
+description that opens `Internal <orchestrator> step — …`.
+
+Verified 2026-10-09 (Claude Code 2.1.295, docs + live probe):
+
+- `user-invocable: false` only hides the skill from the `/` menu. Its description
+  **stays** in the model's listing and `Skill(<name>)` still works, so dispatch is
+  unaffected. The `/ace:step <skill>` entry point is how a human runs one step.
+- It cannot remove the description from the model listing — only
+  `disable-model-invocation: true` does that, and that blocks dispatch (above). So the
+  listing lever for dispatched skills is the description itself: keep the
+  `Internal … step —` line to one short sentence (≤ ~160 chars). The `Internal` prefix
+  also tells the model not to route a casual user request there.
+- A person should never be told to type `/ace:<internal-skill>`; the flag makes that
+  a no-op.
+
+PUBLIC skills (a user plausibly asks for them directly) keep the default.
+
 ### Other fields
 
 No other frontmatter fields are used. Don't add `version:`, `author:`,

@@ -1,8 +1,8 @@
 ---
 name: solicitation-create-eval
 description: >
-  Grade a published solicitation against its source PDD — scope
-  fidelity, field completeness, deadline sensibility.
+  Internal /ace:run step — Grade a published solicitation against its source PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

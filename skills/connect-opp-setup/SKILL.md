@@ -1,8 +1,9 @@
 ---
 name: connect-opp-setup
 description: >
-  Create and fully configure a Connect Opportunity — opp shell, verification
-  flags, payment units, ACE test-user pre-invite for emulator testing.
+  Internal /ace:run step — Create and configure a Connect Opportunity: shell, verification flags,
+  payment units, ACE test-user pre-invite.
+user-invocable: false
 disable-model-invocation: false
 ---
 

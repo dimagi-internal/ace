@@ -1,9 +1,9 @@
 ---
 name: training-deck-generate
 description: >
-  Generate a training deck spec.yaml from PDD, app summaries, screenshot
-  manifests, and a template bundle. The spec is the source of truth for the
-  training deck — training-deck-render produces Google Slides from it.
+  Internal /ace:run step — Generate a training deck spec.yaml from PDD, app summaries, screenshot
+  manifests, and a template bundle.
+user-invocable: false
 disable-model-invocation: false
 ---
 

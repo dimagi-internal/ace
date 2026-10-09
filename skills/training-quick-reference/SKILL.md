@@ -1,8 +1,9 @@
 ---
 name: training-quick-reference
 description: >
-  Generate the one-page printable pocket-card summary for FLWs in the
-  field. Owns one artifact: training-quick-reference.md.
+  Internal /ace:run step — Generate the one-page printable pocket-card summary for FLWs in the
+  field.
+user-invocable: false
 disable-model-invocation: false
 ---
 

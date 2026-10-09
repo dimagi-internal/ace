@@ -1,9 +1,9 @@
 ---
 name: training-faq-eval
 description: >
-  Grade the Phase 6 FAQ artifact for comprehensiveness against anticipated
-  FLW/LLO questions, accuracy against the PDD + deployed apps, and
-  scannability for a worker thumbing through it mid-visit.
+  Internal /ace:run step — Grade the training FAQ for comprehensiveness, accuracy against PDD +
+  apps, and scannability.
+user-invocable: false
 disable-model-invocation: false
 ---
 

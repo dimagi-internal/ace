@@ -1,8 +1,9 @@
 ---
 name: app-connect-coverage
 description: >
-  Verify every form in a Nova-built Learn or Deliver app has the right
-  CommCare Connect markers, auto-fix via Nova edits, loop until clean.
+  Internal /ace:run step — Verify each Nova-built Learn/Deliver form has the right Connect
+  markers; auto-fix via Nova until clean.
+user-invocable: false
 disable-model-invocation: false
 ---
 

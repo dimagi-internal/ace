@@ -1,8 +1,9 @@
 ---
 name: app-deploy
 description: >
-  Upload Nova-built Learn + Deliver apps to CommCare HQ as draft
-  builds via /nova:upload_to_hq. Captures HQ app IDs and writes a deploy summary.
+  Internal /ace:run step — Upload Nova-built Learn + Deliver apps to CommCare HQ as draft builds
+  via /nova:upload_to_hq.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,9 @@
 ---
 name: llo-onboarding
 description: >
-  Issue the Connect program invite and send the awarded LLO the ACE
-  onboarding email with training materials and OCS widget link.
+  Internal /ace:run step — Issue the Connect program invite and send the awarded LLO the
+  onboarding email and training materials.
+user-invocable: false
 disable-model-invocation: false
 ---
 

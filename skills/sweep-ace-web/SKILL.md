@@ -1,10 +1,8 @@
 ---
 name: sweep-ace-web
 description: >
-  Bulk-delete uploaded chat Sessions from a deployed ace-web. Lists every
-  Session in workspaces the caller's PAT can write to, prints a report,
-  prompts for approval, then issues a single bulk-delete call. No live-set
-  dependency. Use when sweeping ace-web.
+  Internal /ace:sweep step — Bulk-delete uploaded chat Sessions from a deployed ace-web.
+user-invocable: false
 disable-model-invocation: false
 ---
 

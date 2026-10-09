@@ -1,9 +1,9 @@
 ---
 name: partnership-research
 description: >
-  Research a non-Connect prospect org for a partnership video: deep web
-  research (what they do, scale, model, geography, the expansion thesis)
-  plus a Connect/Dimagi capability-fit memo. Cited.
+  Internal /ace:partnership-video step — Deep web research on a non-Connect prospect org plus a
+  Connect/Dimagi capability-fit memo, cited.
+user-invocable: false
 disable-model-invocation: false
 ---
 

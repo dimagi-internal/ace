@@ -1,6 +1,8 @@
 ---
 name: synthetic-workflow-polish
-description: Layer per-opportunity visuals over seeded workflows — hero panel, FLW story cards, anomaly callouts. DEPRECATED — use the /ace:demo pipeline; kept only as a fallback.
+description: >
+  Internal /ace:run step — DEPRECATED fallback: layer per-opp visuals over seeded workflows.
+user-invocable: false
 disable-model-invocation: false
 ---
 

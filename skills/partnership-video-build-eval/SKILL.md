@@ -1,9 +1,8 @@
 ---
 name: partnership-video-build-eval
 description: >
-  LLM-as-judge quality eval for the partnership-video-build artifact. Grades
-  spec validity, grounding, render success, and brand safety. Writes a
-  verdict YAML. Gated by partnership-video-build inline QA.
+  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership video build.
+user-invocable: false
 disable-model-invocation: false
 ---
 

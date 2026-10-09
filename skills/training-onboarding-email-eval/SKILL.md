@@ -1,9 +1,9 @@
 ---
 name: training-onboarding-email-eval
 description: >
-  Grade the Phase 6 LLO onboarding email draft for warmth, clarity, and
-  call-to-action effectiveness — the email Phase 9 sends to kick off
-  LLO onboarding.
+  Internal /ace:run step — Grade the LLO onboarding email draft for warmth, clarity, and call to
+  action.
+user-invocable: false
 disable-model-invocation: false
 ---
 

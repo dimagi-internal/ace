@@ -1,11 +1,8 @@
 ---
 name: pdd-to-app-journeys-eval
 description: >
-  Quality eval on the pdd-to-app-journeys.md artifact. Seven dimensions
-  graded via LLM-as-Judge: persona specificity, archetype alignment,
-  coverage completeness, happy-path voice, edge-case recoverability,
-  pass-criteria measurability, and an out-of-chain deployability-fitness
-  axis (would a CommCare expert ship an app built from these journeys?).
+  Internal /ace:run step — LLM-as-Judge quality eval of the derived app user journeys.
+user-invocable: false
 disable-model-invocation: false
 ---
 

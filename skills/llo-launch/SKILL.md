@@ -1,8 +1,9 @@
 ---
 name: llo-launch
 description: >
-  Activate the opportunity for live use. Verifies UAT sign-offs and
-  deep-QA verdicts, activates in Connect, notifies LLOs of go-live.
+  Internal /ace:run step — Activate the opportunity for live use after UAT and deep-QA sign-off;
+  notify LLOs of go-live.
+user-invocable: false
 disable-model-invocation: false
 ---
 

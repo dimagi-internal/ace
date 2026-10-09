@@ -1,10 +1,9 @@
 ---
 name: sweep-connect
 description: >
-  Diff Connect programs/opportunities/payment-units/invites against the
-  live-set, score orphans, surface a triage report. Soft-deactivate
-  orphan opportunities; auto-delete orphan unaccepted FLW invites;
-  report-only for programs and payment units.
+  Internal /ace:sweep step — Diff Connect programs/opps/payment units/invites against the live-set
+  and triage orphans.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,9 @@
 ---
 name: ocs-widget-handoff-eval
 description: >
-  Grade the OCS widget-handoff staging artifact for HITL paste-in —
-  widget URL, embed key, opportunity-binding instructions.
+  Internal /ace:run step — Grade the OCS widget-handoff staging artifact: widget URL, embed key,
+  binding instructions.
+user-invocable: false
 disable-model-invocation: false
 ---
 

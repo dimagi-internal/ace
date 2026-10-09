@@ -1,10 +1,9 @@
 ---
 name: ocs-knowledge-refresh
 description: >
-  Add the Phase 6 training documents to the per-opp chatbot's RAG collection
-  and republish it. The second half of OCS setup, owned by Phase 6 because
-  that is where its inputs are produced. Runs as the last step of
-  qa-and-training.
+  Internal /ace:run step — Add the training documents to the per-opp chatbot's RAG collection and
+  republish it.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,11 +1,9 @@
 ---
 name: app-hq-settings
 description: >
-  Apply the two HQ-layer standing-instruction settings Nova can't set at
-  build time — camera-only photo capture (appearance="acquire" on Deliver
-  image uploads) and grid menu display on every module — to the deployed
-  draft apps, then resolve the matching Phase-3 residuals. Runs between
-  app-deploy and app-release.
+  Internal /ace:run step — Apply camera-only photo capture and grid menu display to the deployed
+  draft HQ apps (settings Nova can't set).
+user-invocable: false
 disable-model-invocation: false
 ---
 

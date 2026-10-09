@@ -1,9 +1,8 @@
 ---
 name: shipping
 description: >
-  Ship an ACE change: branch → PR → wait → merge → verify it landed.
-  Use whenever a turn opens, waits on, or merges a PR — the wait is
-  never a hand-rolled foreground sleep loop.
+  Internal ACE turn step — Ship an ACE change: branch → PR → wait → merge → verify it landed.
+user-invocable: false
 disable-model-invocation: false
 ---
 

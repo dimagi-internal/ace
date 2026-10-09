@@ -1,11 +1,8 @@
 ---
 name: fork-run
 description: >
-  Fork an existing ACE run at a phase OR skill boundary via ace-web's
-  POST /api/w/<workspace_slug>/opps/<slug>/fork endpoint. Copies
-  upstream-of-fork artifacts into a new run and seeds the new working session
-  with your reason; preserves the source run for diff/debug. Use to A/B test
-  skill changes, or to re-run the tail of a phase, without overwriting a run.
+  Fork an existing ACE run at a phase or skill boundary via ace-web, copying upstream artifacts
+  into a new run. Use to A/B test skill changes or re-run a phase tail without overwriting a run.
 disable-model-invocation: false
 ---
 

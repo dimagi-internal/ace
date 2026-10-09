@@ -1,9 +1,9 @@
 ---
 name: demo-data-setup-qa
 description: >
-  Structural QA on the demo-data-setup handoff (realized.json + the source
-  block). Binary pass/fail. Catches a dead/blank dashboard BEFORE demo-narrative
-  authors scenes against it. Static-only, no LLM.
+  Internal /ace:demo step — Structural QA on the demo-data-setup handoff (realized.json + the
+  source block).
+user-invocable: false
 disable-model-invocation: false
 ---
 

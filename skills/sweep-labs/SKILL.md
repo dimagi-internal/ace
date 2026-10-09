@@ -1,9 +1,9 @@
 ---
 name: sweep-labs
 description: >
-  Diff connect-labs workflows/pipelines/synthetic/solicitations against
-  the live-set, score orphans, auto-delete/disable. Funds and standalone
-  reviews/responses remain report-only (no upstream per-type atom yet).
+  Internal /ace:sweep step — Diff connect-labs workflows/pipelines/synthetic/solicitations against
+  the live-set and clean orphans.
+user-invocable: false
 disable-model-invocation: false
 ---
 

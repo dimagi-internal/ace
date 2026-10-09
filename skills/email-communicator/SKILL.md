@@ -1,9 +1,9 @@
 ---
 name: email-communicator
 description: >
-  Send/receive email via GOG CLI using the ACE Gmail account. Utility
-  skill — other skills delegate here for any Gmail operation. Sends go
-  ONLY through bin/ace-email (hook-enforced, approval-gated).
+  Internal ACE turn step — Send/receive email as ace@ via gog; sends go only through bin/ace-
+  email.
+user-invocable: false
 disable-model-invocation: false
 ---
 

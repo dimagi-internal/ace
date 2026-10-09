@@ -1,8 +1,9 @@
 ---
 name: app-release-eval
 description: >
-  Verify every Learn + Deliver build was actually released so Connect
-  can read deliver units. Provisional rubric pending 3+ real releases.
+  Internal /ace:run step — Verify every Learn + Deliver build was actually released so Connect can
+  read deliver units.
+user-invocable: false
 disable-model-invocation: false
 ---
 

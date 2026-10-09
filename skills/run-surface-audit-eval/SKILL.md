@@ -1,7 +1,9 @@
 ---
 name: run-surface-audit-eval
 description: >
-  Judge a run's review page as an outsider reads it — orientation, jargon, accuracy, actionability. Use before sharing a run-summary URL.
+  Internal /ace:run step — Judge a run's review page as an outsider reads it — orientation,
+  jargon, accuracy, actionability.
+user-invocable: false
 ---
 
 # Run-surface audit — eval
