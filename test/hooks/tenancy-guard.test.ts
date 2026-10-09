@@ -13,7 +13,7 @@
  * logged, so today's runs keep working until every entry point binds.
  *
  * These tests spawn the real hook and the real bin/ace-bind with a temp bind
- * dir, the way test/hooks/gating-guard.test.ts spawns gating_guard.py.
+ * dir, the way test/hooks/gating-guard.test.ts spawns canopy's gating hook.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';

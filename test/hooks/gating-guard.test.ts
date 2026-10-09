@@ -1,32 +1,29 @@
 /**
  * Gating-guard preventer suite.
  *
- * hooks/gating_guard.py is the fleet-standard LOADER (canopy factory template):
- * it resolves the installed canopy plugin and runs the fleet engine
- * `agent-core/gating_guard.py` against config/gating.json. ACE keeps only
- * CONFIG — its deny rails. There are deliberately NO approve/ask rules —
- * interactive permission prompts stall autonomous runs; ACE governs outbound
- * moments procedurally (pause points, review posture, solicitation-review's
- * HITL checkpoint). See config/gating.json's _doc.
+ * ACE keeps only CONFIG — its deny rails in config/gating.json. The hook that
+ * enforces them is canopy's (canopy#849): the canopy plugin registers
+ * `agent-core/gating_guard.py --session`, which works out whose session it is
+ * ($CANOPY_AGENT_SLUG, then $CANOPY_AGENT — `ace` in .claude/settings.json —
+ * then the agent repo at or above the project dir) and applies the fleet
+ * baseline plus that agent's rails. ACE registers no gating hook of its own;
+ * before #849 it did, in hooks/hooks.json, so ACE's rails fired in every
+ * session on the machine.
  *
- * These tests spawn the real hook with real PreToolUse JSON so a regex edit
- * in config/gating.json (or a loader/engine change) can't silently turn
- * "blocked" into "allowed" — or "allowed" into a run-stalling prompt.
+ * There are deliberately NO approve/ask rules — interactive permission prompts
+ * stall autonomous runs; ACE governs outbound moments procedurally (pause
+ * points, review posture, solicitation-review's HITL checkpoint). See
+ * config/gating.json's _doc.
  *
- * EVERY rail suite runs in two modes, because the hook has two code paths and
- * both are live in the field:
- *
- *   - `engine`   — loader -> the REAL canopy engine from the installed plugin
- *                  (CANOPY_PLUGIN_DIR, else ~/.claude/plugins/installed_plugins.json).
- *                  Skipped, visibly, where canopy is not installed (CI: the
- *                  canopy repo is private, so the runner cannot fetch it).
- *   - `degraded` — loader with the engine unresolvable: the loader's own
- *                  minimal matcher enforces the local deny rails. This is what
- *                  runs on a machine with ACE installed but not canopy, and it
- *                  must block exactly what the engine blocks.
- *
- * The hook is stdlib-only python3 by design (it runs under whatever python3 is
- * on PATH in an installed plugin); the tests spawn `python3` the same way.
+ * These tests spawn canopy's real session hook with real PreToolUse JSON, as it
+ * fires in an ACE session on THIS checkout (CANOPY_AGENT=ace,
+ * CLAUDE_PROJECT_DIR=<repo>), so a regex edit in config/gating.json (or an
+ * engine change) can't silently turn "blocked" into "allowed" — or "allowed"
+ * into a run-stalling prompt. The engine is resolved from the installed canopy
+ * plugin (CANOPY_PLUGIN_DIR, else ~/.claude/plugins/installed_plugins.json,
+ * else the highest cached version); the rail suites are skipped, visibly, where
+ * canopy is not installed (CI: the canopy repo is private, so the runner cannot
+ * fetch it).
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -36,8 +33,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GUARD = path.join(REPO_ROOT, 'hooks', 'gating_guard.py');
 const CONFIG = path.join(REPO_ROOT, 'config', 'gating.json');
+const ENGINE_REL = path.join('agent-core', 'gating_guard.py');
 
 interface GuardResult {
   exitCode: number;
@@ -49,43 +46,73 @@ interface GuardResult {
 type RunGuard = (toolName: string, toolInput: Record<string, unknown>) => GuardResult;
 type RunRaw = (input: string) => { status: number | null; stdout: string; stderr: string };
 
-/** The installed canopy plugin dir, or null when canopy is not installed here. */
+function versionKey(name: string): number[] {
+  return name.split('.').map((b) => (/^\d+$/.test(b) ? Number(b) : -1));
+}
+
+/** The installed canopy plugin dir holding the engine, or null when canopy is not installed here. */
 function resolveCanopyPluginDir(): string | null {
+  const has = (dir: string | undefined | null): dir is string =>
+    !!dir && fs.existsSync(path.join(dir, ENGINE_REL));
   const fromEnv = process.env.CANOPY_PLUGIN_DIR;
-  if (fromEnv) return fs.existsSync(path.join(fromEnv, 'agent-core', 'gating_guard.py')) ? fromEnv : null;
+  if (fromEnv) return has(fromEnv) ? fromEnv : null;
+  const plugins = path.join(os.homedir(), '.claude', 'plugins');
   try {
-    const reg = JSON.parse(
-      fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), 'utf8'),
-    );
+    const reg = JSON.parse(fs.readFileSync(path.join(plugins, 'installed_plugins.json'), 'utf8'));
     const dir: string | undefined = reg?.plugins?.['canopy@canopy']?.[0]?.installPath;
-    return dir && fs.existsSync(path.join(dir, 'agent-core', 'gating_guard.py')) ? dir : null;
+    if (has(dir)) return dir;
   } catch {
-    return null;
+    // fall through to the cache
   }
+  const cache = path.join(plugins, 'cache', 'canopy', 'canopy');
+  try {
+    const versions = fs
+      .readdirSync(cache)
+      .sort((a, b) => {
+        const ka = versionKey(a);
+        const kb = versionKey(b);
+        for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+          const d = (kb[i] ?? -1) - (ka[i] ?? -1);
+          if (d !== 0) return d;
+        }
+        return 0;
+      });
+    for (const v of versions) {
+      const dir = path.join(cache, v);
+      if (has(dir)) return dir;
+    }
+  } catch {
+    // no cache
+  }
+  return null;
 }
 
 const CANOPY_PLUGIN_DIR = resolveCanopyPluginDir();
-// A path that cannot hold the engine: the loader's _engine() raises and it falls to _degraded().
-const NO_ENGINE = path.join(os.tmpdir(), 'ace-gating-test-no-canopy-here');
+const ENGINE = CANOPY_PLUGIN_DIR ? path.join(CANOPY_PLUGIN_DIR, ENGINE_REL) : '';
 
-function hookEnv(pluginDir: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, CANOPY_PLUGIN_DIR: pluginDir, ...extra };
-  // The loader only setdefault()s this; an inherited value would point the engine at another repo.
+/** Env for the session hook. `agent` null = a session that belongs to no agent. */
+function hookEnv(agent: string | null, projectDir: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
+  // A runner slug outranks CANOPY_AGENT, and the launching session's own agent must not leak in.
+  delete env.CANOPY_AGENT_SLUG;
   delete env.CANOPY_AGENT_REPO;
+  delete env.CANOPY_AGENT;
+  if (agent) env.CANOPY_AGENT = agent;
+  if (CANOPY_PLUGIN_DIR) env.CANOPY_PLUGIN_DIR = CANOPY_PLUGIN_DIR;
   return env;
 }
 
-function makeRunRaw(env: NodeJS.ProcessEnv): RunRaw {
+function makeRunRaw(env: NodeJS.ProcessEnv, cwd: string): RunRaw {
   return (input: string) => {
-    const r = spawnSync('python3', [GUARD], { input, encoding: 'utf8', env });
+    const r = spawnSync('python3', [ENGINE, '--session'], { input, encoding: 'utf8', env, cwd });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
   };
 }
 
-function makeRunGuard(env: NodeJS.ProcessEnv): RunGuard {
-  const raw = makeRunRaw(env);
+function makeRunGuard(env: NodeJS.ProcessEnv, cwd: string): RunGuard {
+  const raw = makeRunRaw(env, cwd);
   return (toolName, toolInput) => {
-    const r = raw(JSON.stringify({ tool_name: toolName, tool_input: toolInput }));
+    const r = raw(JSON.stringify({ tool_name: toolName, tool_input: toolInput, cwd }));
     let decision: string | null = null;
     if (r.stdout.trim()) {
       try {
@@ -98,39 +125,35 @@ function makeRunGuard(env: NodeJS.ProcessEnv): RunGuard {
   };
 }
 
-const MODES: Array<{ name: string; pluginDir: string | null }> = [
-  { name: 'engine', pluginDir: CANOPY_PLUGIN_DIR },
-  { name: 'degraded', pluginDir: NO_ENGINE },
-];
-
-for (const mode of MODES) {
-  describe.skipIf(mode.pluginDir === null)(`[${mode.name}]`, () => {
-    const env = hookEnv(mode.pluginDir ?? NO_ENGINE);
-    railSuites(makeRunGuard(env), makeRunRaw(env));
-  });
-}
+describe.skipIf(CANOPY_PLUGIN_DIR === null)('[engine] ACE session', () => {
+  const env = hookEnv('ace', REPO_ROOT);
+  railSuites(makeRunGuard(env, REPO_ROOT), makeRunRaw(env, REPO_ROOT));
+});
 
 /**
- * The loader + config contract. These hold in BOTH modes and are what keeps a
- * PLUGIN-LEVEL hook — one that fires in every session on the machine, not just
- * ACE's own (hooks/hooks.json, `${CLAUDE_PLUGIN_ROOT}`) — from turning into a
- * machine-wide outage or a machine-wide policy for somebody else's mailbox.
+ * The config + wiring contract. ACE ships rails, never a hook of its own: a
+ * hook in hooks/hooks.json is plugin-level and fires in every session on the
+ * machine (canopy#849 — ACE's body-file rail blocked a `gh pr create` in an
+ * Ada session).
  */
-describe('gating_guard.py — loader + config contract', () => {
+describe('gating — config + wiring contract', () => {
   const cfg = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
-  const loader = fs.readFileSync(GUARD, 'utf8');
 
-  it('the hook is the canopy LOADER, not a local engine', () => {
-    expect(loader).toContain('a LOADER. The engine lives in canopy');
-    expect(loader).toContain('agent-core');
-    expect(loader).toContain('runpy.run_path(ENGINE');
-    // The current template's fresh-account bootstrap (canopy#701).
-    expect(loader).toContain('claude plugin marketplace add dimagi-internal/canopy');
-    // No approve/ask logic lives here any more.
-    expect(loader).not.toContain('permissionDecision');
+  it('registers NO gating hook of its own — canopy\'s session hook enforces ACE\'s rails', () => {
+    const hooks = fs.readFileSync(path.join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf8');
+    expect(hooks).not.toContain('gating_guard');
+    expect(fs.existsSync(path.join(REPO_ROOT, 'hooks', 'gating_guard.py'))).toBe(false);
+    const settingsPath = path.join(REPO_ROOT, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(JSON.stringify(settings.hooks ?? {})).not.toContain('gating_guard');
   });
 
-  it('names its slug — the engine would otherwise label ACE by the plugin-cache dir (a version number)', () => {
+  it('pins the session to ACE via CANOPY_AGENT in .claude/settings.json', () => {
+    const settings = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
+    expect(settings.env?.CANOPY_AGENT).toBe('ace');
+  });
+
+  it('names its slug — the engine resolves the agent from it', () => {
     expect(cfg.slug).toBe('ace');
   });
 
@@ -138,79 +161,39 @@ describe('gating_guard.py — loader + config contract', () => {
     expect(cfg.approve).toEqual([]);
   });
 
-  it('mounts NO channels — a mount would apply machine-wide and fail closed machine-wide', () => {
-    // See config/gating.json _doc (2). Flip this only together with a canopy
-    // feature that scopes a channel mount to ACE's own sessions.
+  it('mounts NO channels — see config/gating.json _doc before changing this', () => {
+    // ACE's identity-scoped mail rails already cover the ACE mailbox. Mounting
+    // a channel is a deliberate, separate change, not a side effect of #849.
     expect(cfg.channels).toEqual([]);
-  });
-
-  it('uses no engine-only rule feature, so degraded mode matches the engine exactly', () => {
-    // The loader's degraded matcher treats a `tool_pattern` / `per_statement`
-    // rule as MATCHING. In a plugin-level hook that would block every shell
-    // call in every session on a machine without canopy.
-    for (const rule of cfg.deny) {
-      expect(rule.tool, rule.message).toBe('Bash');
-      expect(typeof rule.pattern, rule.message).toBe('string');
-      expect(rule.message.startsWith('BLOCKED'), rule.message).toBe(true);
-      expect(rule.tool_pattern, rule.message).toBeUndefined();
-      expect(rule.per_statement, rule.message).toBeUndefined();
-      expect(rule.requires_path, rule.message).toBeUndefined();
-    }
-  });
-
-  it('canopy NOT INSTALLED at all: local rails still hold and ordinary Bash still runs (never fail closed)', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-gating-nohome-'));
-    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
-    delete env.CANOPY_PLUGIN_DIR;
-    delete env.CANOPY_AGENT_REPO;
-    const run = makeRunGuard(env);
-    const send = run('Bash', { command: 'gog gmail send --account ace@dimagi-ai.com --to x@y.com' });
-    expect(send.exitCode).toBe(2);
-    expect(send.stderr).toContain('bin/ace-email');
-    const ls = run('Bash', { command: 'ls -la && git status' });
-    expect(ls.exitCode).toBe(0);
-    expect(ls.stderr).toBe('');
   });
 });
 
 /**
- * Cross-session: the plugin hook fires in OTHER repos' sessions too. The loader
- * reads the config next to itself, so what a foreign session sees is exactly
- * ACE's rails — not the foreign repo's, and not nothing.
+ * Cross-session: since canopy#849 ACE's rails apply only in ACE's sessions.
+ * A session that belongs to no agent gets only the baseline `always` rails,
+ * and another agent's session gets that agent's rails — never ACE's.
  */
-describe.skipIf(CANOPY_PLUGIN_DIR === null)('gating_guard.py — in someone else\'s session [engine]', () => {
+describe.skipIf(CANOPY_PLUGIN_DIR === null)('gating — in someone else\'s session [engine]', () => {
   const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-gating-foreign-'));
-  const env = hookEnv(CANOPY_PLUGIN_DIR ?? NO_ENGINE, { CANOPY_AGENT: 'ada', CLAUDE_PROJECT_DIR: foreign });
-  const raw = makeRunRaw(env);
+  const raw = makeRunRaw(hookEnv(null, foreign), foreign);
   const run = (command: string) => {
-    const r = spawnSync('python3', [GUARD], {
-      input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: foreign }),
-      encoding: 'utf8',
-      env,
-      cwd: foreign,
-    });
+    const r = raw(JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: foreign }));
     return { exitCode: r.status ?? -1, stderr: r.stderr };
   };
 
-  it('still enforces ACE\'s identity-scoped send rail', () => {
+  it('does NOT enforce ACE\'s rails in a session that belongs to no agent', () => {
+    // The incident behind canopy#849: an ACE rail firing outside ACE.
     const r = run('gog gmail send --account ace@dimagi-ai.com --to x@y.com');
-    expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('bin/ace-email');
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('bin/ace-email');
   });
 
-  it('does NOT impose the baseline `email` channel on another identity\'s raw send', () => {
-    // Mounting `email` would block this and tell a non-ACE session to use bin/ace-email.
+  it('does NOT impose a mail channel on another identity\'s raw send', () => {
     expect(run('gog gmail send --account someone@dimagi.com --to x@y.com').exitCode).toBe(0);
   });
 
-  it('does NOT impose the baseline `gws` channel on another session\'s Drive create', () => {
+  it('does NOT impose a `gws` channel on another session\'s Drive create', () => {
     expect(run('gog docs create "Notes"').exitCode).toBe(0);
-  });
-
-  it('DOES carry the baseline `always` rails, labelled as ACE (proves the engine ran with slug=ace)', () => {
-    const r = run("echo =====");
-    expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain("ace's Bash runs under zsh");
   });
 
   it('never blocks on malformed input', () => {

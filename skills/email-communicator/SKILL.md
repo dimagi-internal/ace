@@ -14,8 +14,8 @@ other skills delegate to it whenever they need to send or read email rather than
 Gmail access themselves.
 
 **The send path is a rail, and approval is procedural.** Raw `gog gmail send`/`reply` under the ACE
-identity is hard-blocked by the plugin's PreToolUse deny rail (`hooks/gating_guard.py` +
-`config/gating.json`) — `bin/ace-email` is the only way email leaves ACE, which also guarantees the
+identity is hard-blocked by a deny rail in `config/gating.json`, enforced by canopy's session gating hook
+(`agent-core/gating_guard.py --session`; canopy#849) — `bin/ace-email` is the only way email leaves ACE, which also guarantees the
 comms-log threadId capture. The rail never prompts; *whether* a send is appropriate is governed by
 the calling context's procedure (a run's pause-point mode, a turn's review posture) — see
 `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md § Gating`.
