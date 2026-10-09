@@ -1,8 +1,7 @@
 ---
 name: sweep-ace-web
 description: >
-  Internal /ace:sweep step — Bulk-delete uploaded chat Sessions from a deployed ace-web.
-user-invocable: false
+  Bulk-delete uploaded chat sessions from a deployed ace-web, after a report and your approval.
 disable-model-invocation: false
 ---
 

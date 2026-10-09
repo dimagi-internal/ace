@@ -1,9 +1,8 @@
 ---
 name: cycle-grade-eval
 description: >
-  Internal /ace:run step — Independently re-grade a closed cycle's cycle-grade output for
-  inflation and vague recommendations.
-user-invocable: false
+  Independently re-grade a cycle-grade report for self-grade inflation, missing learnings, and
+  vague recommendations.
 disable-model-invocation: false
 ---
 

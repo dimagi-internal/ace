@@ -1,9 +1,8 @@
 ---
 name: app-release-eval
 description: >
-  Internal /ace:run step — Verify every Learn + Deliver build was actually released so Connect can
-  read deliver units.
-user-invocable: false
+  Grade whether every Learn and Deliver build was actually released so Connect can read deliver
+  units. Needs the HQ app ids.
 disable-model-invocation: false
 ---
 

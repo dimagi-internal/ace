@@ -1,9 +1,8 @@
 ---
 name: semantic-registry-author-eval
 description: >
-  Internal /ace:run step — Grade the PDD-authored semantic registry: fidelity, correctness, honest
-  coverage, domain-expert fitness.
-user-invocable: false
+  Grade a PDD-authored semantic registry for fidelity, correctness, honest coverage, and domain-
+  expert fitness.
 disable-model-invocation: false
 ---
 

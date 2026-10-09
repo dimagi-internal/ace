@@ -1,9 +1,8 @@
 ---
 name: flw-data-review-eval
 description: >
-  Internal /ace:run step — Grade an flw-data-review report: signal coverage, outlier rigor,
-  actionability, evidence.
-user-invocable: false
+  Grade an FLW data review report for signal coverage, outlier rigor, actionable recommendations,
+  and cited evidence.
 disable-model-invocation: false
 ---
 

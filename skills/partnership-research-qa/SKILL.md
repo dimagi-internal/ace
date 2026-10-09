@@ -1,8 +1,7 @@
 ---
 name: partnership-research-qa
 description: >
-  Internal /ace:partnership-video step — Structural QA on the partnership research artifacts.
-user-invocable: false
+  Pass/fail structural check of partnership research artifacts, run before grading them.
 disable-model-invocation: false
 ---
 

@@ -35,7 +35,7 @@ disable-model-invocation: true
 
 Must match the directory name exactly.
 
-### `description` (required, ≤200 chars, target ~120)
+### `description` (required, ≤250 chars, target ~150)
 
 The description appears in the harness skill catalog at session start —
 ACE plus other plugins competes for an aggregate budget around 8K-16K
@@ -50,7 +50,7 @@ The CI lint (planned) fails if any of these match:
 
 | Pattern | Where to put it |
 |---|---|
-| `Phase N` / `Step N of Phase M` | Body intro paragraph |
+| `Phase N` / `Step N of Phase M` (a trailing "Also run by …" clause is fine) | Body intro paragraph |
 | File paths (`*.yaml`, `*.md`, `ACE/<opp>/...`) | `## Inputs` / `## Products` |
 | `reads X, writes Y` | `## Inputs` / `## Products` |
 | `Sibling of` / `Successor to` / `Mirror of` | `## Related skills` |
@@ -174,27 +174,41 @@ Caught on `hh-poverty-targeting/20260812-1613` Phase 2 (dimagi-internal/ace#1203
 *Enforced:* `test/skill-dispatchability.test.ts` — fails if any skill referenced in
 `agents/*.md` carries the flag, and fails if descriptions blow the catalog budget.
 
-### `user-invocable: false` — internal pipeline steps (canopy#851)
+### Public by default; `user-invocable: false` only for machinery
 
-Every skill an orchestrator dispatches but a person would not ask for by name
-(phase steps, `-qa`/`-eval` passes, `/ace:sweep` / `/ace:partnership-video` /
-`/ace:demo` sub-steps, turn machinery) carries `user-invocable: false` and a short
-description that opens `Internal <orchestrator> step — …`.
+**Rule:** every skill is public (the default — in the `/` menu and in the model's
+listing) and is described as a **standalone capability**: what it does on its own,
+when to reach for it, and its key inputs ("Needs an approved PDD."). People run ACE's
+skills outside the `/ace:run` cascade — a PDD grader, a FAQ writer, a sweep, a
+partnership step — and that is the point (Jonathan, 2026-10-09). `-qa` structural
+checks and `-eval` graders are public too: "grade this PDD" is a real request.
+
+Write the description for someone who has never heard of the cascade:
+
+- Lead with the verb and the artifact or answer it produces. No `Internal … step`
+  framing, no phase numbers up front.
+- Name the key inputs it needs, so a person (or the model) knows whether it can run.
+- Mention the orchestrator at most as a trailing clause ("Also run by /ace:demo.").
+- Aim ≤ 250 chars; the catalog budget below still applies.
+
+**Hide (`user-invocable: false`) only pure machinery** with no standalone value to a
+person: turn sub-steps and turn utilities (`agent-turn-review`, `inbox-triage`,
+`task-tracker`, `shipping`, `email-communicator`), per-phase bookkeeping
+(`decisions-render`, `output-preview-capture`), failure-triggered repair
+(`selector-map-heal`), methodology references (`eval-calibration`), aggregators that
+already have a public entry point (`opp-eval` behind `/ace:eval`), deprecated
+fallbacks, and canopy-started entry points. When unsure, leave it public.
 
 Verified 2026-10-09 (Claude Code 2.1.295, docs + live probe):
 
 - `user-invocable: false` only hides the skill from the `/` menu. Its description
   **stays** in the model's listing and `Skill(<name>)` still works, so dispatch is
-  unaffected. The `/ace:step <skill>` entry point is how a human runs one step.
-- It cannot remove the description from the model listing — only
-  `disable-model-invocation: true` does that, and that blocks dispatch (above). So the
-  listing lever for dispatched skills is the description itself: keep the
-  `Internal … step —` line to one short sentence (≤ ~160 chars). The `Internal` prefix
-  also tells the model not to route a casual user request there.
-- A person should never be told to type `/ace:<internal-skill>`; the flag makes that
-  a no-op.
-
-PUBLIC skills (a user plausibly asks for them directly) keep the default.
+  unaffected. It does **not** save catalog budget — only description length does.
+- Only `disable-model-invocation: true` removes a description from the model listing,
+  and that blocks dispatch (above). It stays reserved for skills nothing dispatches
+  (e.g. the superseded `self-review` stub) and human-only `/ace:` entries.
+- A person should never be told to type `/ace:<hidden-skill>`; the flag makes that a
+  no-op. Hidden machinery is reached through its orchestrator.
 
 ### Other fields
 
@@ -1008,7 +1022,7 @@ Before committing a new SKILL.md, verify:
 
 - [ ] Directory name matches frontmatter `name`
 - [ ] Frontmatter has `name:`, `description:`, `disable-model-invocation: true` (omit only with explicit justification)
-- [ ] Description ≤200 chars (target ~120), follows `<verb> <object>. Use when <condition>.` format
+- [ ] Description ≤250 chars (target ~150), describes the skill as a standalone capability (what it produces, when to use it, key inputs) — no `Internal … step` framing
 - [ ] Description does NOT contain banned patterns (phase labels, file paths, sibling/successor refs, `TEMPORARY`/`Provisional`, trigger-phrase enumeration)
 - [ ] All seven required sections present in order: `# <Display Name>` → `## Inputs` → `## Products` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)

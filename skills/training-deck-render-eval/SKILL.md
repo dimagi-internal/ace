@@ -1,9 +1,8 @@
 ---
 name: training-deck-render-eval
 description: >
-  Internal /ace:run step — Judge the rendered training deck slide by slide — overflow, image
-  placement, empty or placeholder slides.
-user-invocable: false
+  Judge a rendered training deck slide by slide: overflow, image placement, empty or placeholder
+  slides.
 disable-model-invocation: false
 ---
 

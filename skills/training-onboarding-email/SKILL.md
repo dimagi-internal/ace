@@ -1,9 +1,8 @@
 ---
 name: training-onboarding-email
 description: >
-  Internal /ace:run step — Generate the LLO onboarding email body, consumed by llo-onboarding and
-  personalized per LLO at send time.
-user-invocable: false
+  Draft the LLO onboarding email body for a program, ready to personalize per LLO. Needs the PDD
+  and training materials.
 disable-model-invocation: false
 ---
 

@@ -1,9 +1,8 @@
 ---
 name: connect-program-setup-eval
 description: >
-  Internal /ace:run step — Grade Connect Program setup against the PDD: reuse-vs-create,
-  verification rules, delivery and payment units.
-user-invocable: false
+  Grade a Connect program setup against its PDD: reuse-vs-create, verification rules, delivery and
+  payment units.
 disable-model-invocation: false
 ---
 

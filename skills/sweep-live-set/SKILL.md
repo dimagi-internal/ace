@@ -1,9 +1,8 @@
 ---
 name: sweep-live-set
 description: >
-  Internal /ace:sweep step — Walk Drive ACE/ and build a live-set of identifiers still referenced
-  by visible opps.
-user-invocable: false
+  List every identifier still referenced by visible ACE opps in Drive: the keep-list every orphan
+  sweep diffs against.
 disable-model-invocation: false
 ---
 

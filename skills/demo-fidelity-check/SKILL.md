@@ -1,9 +1,8 @@
 ---
 name: demo-fidelity-check
 description: >
-  Internal /ace:demo step — Clone-only QA gate: confirm a cloned synthetic dataset reproduces the
-  real source's statistical shape.
-user-invocable: false
+  Pass/fail check that a cloned synthetic dataset reproduces the real source's statistical shape
+  before a funder sees it. Needs the clone and its source opp.
 disable-model-invocation: false
 ---
 

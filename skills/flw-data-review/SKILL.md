@@ -1,9 +1,8 @@
 ---
 name: flw-data-review
 description: >
-  Internal /ace:run step — Analyze FLW submissions to identify quality issues, trends, and
-  improvement opportunities.
-user-invocable: false
+  Analyze frontline-worker submissions on a live opportunity for quality issues, trends, and
+  improvement opportunities. Needs a Connect opportunity with visits.
 disable-model-invocation: false
 ---
 

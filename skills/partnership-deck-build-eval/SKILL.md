@@ -1,8 +1,7 @@
 ---
 name: partnership-deck-build-eval
 description: >
-  Internal /ace:partnership-video step — LLM-as-judge eval of the partnership pitch deck.
-user-invocable: false
+  Grade a partnership pitch deck for arc, grounding, completeness, and visual polish.
 disable-model-invocation: false
 ---
 

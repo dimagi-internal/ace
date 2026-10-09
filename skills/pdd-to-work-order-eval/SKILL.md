@@ -1,8 +1,8 @@
 ---
 name: pdd-to-work-order-eval
 description: >
-  Internal /ace:run step — Independent LLM-as-Judge re-grade of the drafted Work Order.
-user-invocable: false
+  Grade a Work Order for contractual clarity, PDD alignment, and verification and commercial
+  realism.
 disable-model-invocation: false
 ---
 

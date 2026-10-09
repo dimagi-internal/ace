@@ -1,9 +1,8 @@
 ---
 name: app-release
 description: >
-  Internal /ace:run step — Build and release the Learn + Deliver CommCare apps on CCHQ so Connect
-  can read their form schema and surface deliver units.
-user-invocable: false
+  Build and release Learn and Deliver apps on CommCare HQ so Connect can read their form schema
+  and deliver units. Needs the deployed HQ app ids.
 disable-model-invocation: false
 ---
 

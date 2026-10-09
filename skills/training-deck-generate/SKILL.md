@@ -1,9 +1,8 @@
 ---
 name: training-deck-generate
 description: >
-  Internal /ace:run step — Generate a training deck spec.yaml from PDD, app summaries, screenshot
-  manifests, and a template bundle.
-user-invocable: false
+  Write a training deck spec from a PDD, app summaries, and screenshots; training-deck-render
+  turns it into Slides. Needs an approved PDD and built apps.
 disable-model-invocation: false
 ---
 

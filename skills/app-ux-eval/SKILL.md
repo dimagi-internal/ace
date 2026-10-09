@@ -1,9 +1,8 @@
 ---
 name: app-ux-eval
 description: >
-  Internal /ace:run step — Grade the FLW experience of the built apps via LLM-as-Judge over
-  captured screenshots.
-user-invocable: false
+  Grade the frontline-worker experience of CommCare apps from captured screenshots (LLM-as-judge).
+  Needs app screenshots and the PDD's user journeys. Also run by /ace:qa-deep.
 disable-model-invocation: false
 ---
 

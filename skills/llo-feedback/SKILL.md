@@ -1,9 +1,8 @@
 ---
 name: llo-feedback
 description: >
-  Internal /ace:run step — Prompt LLOs for feedback on application, process, and next-step
-  suggestions.
-user-invocable: false
+  Ask an opportunity's LLOs for feedback on the application, process, and next steps, and record
+  their responses.
 disable-model-invocation: false
 ---
 

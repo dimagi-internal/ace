@@ -1,9 +1,8 @@
 ---
 name: ocs-chatbot-eval
 description: >
-  Internal /ace:run step — LLM-as-Judge grader for OCS chatbot transcripts (--quick / --deep /
-  --monitor).
-user-invocable: false
+  Grade OCS chatbot transcripts (LLM-as-judge): --quick 1-dim smoke, --deep / --monitor 5-dim
+  calibrated. Needs a transcript and its test prompts.
 disable-model-invocation: false
 ---
 

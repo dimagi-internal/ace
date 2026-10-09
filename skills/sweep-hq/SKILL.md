@@ -1,9 +1,8 @@
 ---
 name: sweep-hq
 description: >
-  Internal /ace:sweep step — Diff HQ apps in the ACE domain against the live-set and soft-delete
-  approved orphans.
-user-invocable: false
+  Find orphaned CommCare HQ apps in the ACE domain and soft-delete the ones you approve. Needs a
+  live-set from sweep-live-set.
 disable-model-invocation: false
 ---
 

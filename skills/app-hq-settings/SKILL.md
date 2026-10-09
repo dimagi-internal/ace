@@ -1,9 +1,8 @@
 ---
 name: app-hq-settings
 description: >
-  Internal /ace:run step — Apply camera-only photo capture and grid menu display to the deployed
-  draft HQ apps (settings Nova can't set).
-user-invocable: false
+  Apply the HQ settings Nova can't set at build time (camera-only photo capture, grid menu
+  display) to deployed Learn and Deliver apps. Needs the HQ app ids.
 disable-model-invocation: false
 ---
 

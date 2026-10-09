@@ -1,9 +1,8 @@
 ---
 name: connect-opp-setup
 description: >
-  Internal /ace:run step — Create and configure a Connect Opportunity: shell, verification flags,
-  payment units, ACE test-user pre-invite.
-user-invocable: false
+  Create and configure a Connect opportunity from a PDD: shell, verification flags, payment units,
+  test-user invite. Needs an approved PDD, a program, and released apps.
 disable-model-invocation: false
 ---
 

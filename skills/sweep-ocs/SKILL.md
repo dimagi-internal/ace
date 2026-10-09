@@ -1,9 +1,8 @@
 ---
 name: sweep-ocs
 description: >
-  Internal /ace:sweep step — Diff OCS chatbots/pipelines/collections/sessions against the live-set
-  and delete per-opp orphans.
-user-invocable: false
+  Find orphaned OCS chatbots, pipelines, collections, and sessions and delete per-opp clones; the
+  template is protected. Needs a live-set from sweep-live-set.
 disable-model-invocation: false
 ---
 

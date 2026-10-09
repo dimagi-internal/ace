@@ -1,8 +1,8 @@
 ---
 name: llo-uat
 description: >
-  Internal /ace:run step — Coordinate User Acceptance Testing with onboarded LLOs.
-user-invocable: false
+  Run user acceptance testing with onboarded LLOs: send instructions, track feedback, compile
+  sign-off status.
 disable-model-invocation: false
 ---
 

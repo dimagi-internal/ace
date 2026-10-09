@@ -1,9 +1,8 @@
 ---
 name: sweep-connect
 description: >
-  Internal /ace:sweep step — Diff Connect programs/opps/payment units/invites against the live-set
-  and triage orphans.
-user-invocable: false
+  Find orphaned Connect programs, opportunities, payment units, and invites; deactivate or delete
+  the safe ones. Needs a live-set from sweep-live-set.
 disable-model-invocation: false
 ---
 

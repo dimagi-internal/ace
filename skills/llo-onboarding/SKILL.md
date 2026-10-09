@@ -1,9 +1,8 @@
 ---
 name: llo-onboarding
 description: >
-  Internal /ace:run step — Issue the Connect program invite and send the awarded LLO the
-  onboarding email and training materials.
-user-invocable: false
+  Onboard an awarded LLO: issue the Connect program invite and send the onboarding email with
+  training materials and chatbot link. Needs a recorded award.
 disable-model-invocation: false
 ---
 

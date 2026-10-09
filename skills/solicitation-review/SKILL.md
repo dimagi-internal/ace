@@ -1,9 +1,8 @@
 ---
 name: solicitation-review
 description: >
-  Internal /ace:run step — Score solicitation responses, recommend an awardee, and after HITL
-  approval record the award.
-user-invocable: false
+  Score a solicitation's responses and recommend an awardee; after human approval, record the
+  award. Needs a solicitation with responses.
 disable-model-invocation: false
 ---
 

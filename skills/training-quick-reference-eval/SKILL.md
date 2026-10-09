@@ -1,9 +1,7 @@
 ---
 name: training-quick-reference-eval
 description: >
-  Internal /ace:run step — Grade the FLW quick-reference card for scannability, key-number
-  coverage, and printability.
-user-invocable: false
+  Grade a quick-reference card for mid-visit scannability, key-number coverage, and printability.
 disable-model-invocation: false
 ---
 

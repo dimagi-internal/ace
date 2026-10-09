@@ -1,9 +1,8 @@
 ---
 name: demo-data-setup-qa
 description: >
-  Internal /ace:demo step — Structural QA on the demo-data-setup handoff (realized.json + the
-  source block).
-user-invocable: false
+  Pass/fail check that a demo dataset and dashboard handoff is live and non-blank before a
+  narrative is written over it. Static, no LLM.
 disable-model-invocation: false
 ---
 

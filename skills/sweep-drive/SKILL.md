@@ -1,9 +1,8 @@
 ---
 name: sweep-drive
 description: >
-  Internal /ace:sweep step — Diff Drive ACE/ against the live-set, triage orphans, trash approved
-  items.
-user-invocable: false
+  Find orphaned items under ACE's Drive root and trash the ones you approve. Needs a live-set from
+  sweep-live-set.
 disable-model-invocation: false
 ---
 

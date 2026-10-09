@@ -1,8 +1,8 @@
 ---
 name: timeline-monitor
 description: >
-  Internal /ace:run step — Watch whether LLOs are hitting expected milestones on schedule.
-user-invocable: false
+  Check whether an opportunity's LLOs are hitting milestones on schedule and email a nudge to any
+  that are behind.
 disable-model-invocation: false
 ---
 

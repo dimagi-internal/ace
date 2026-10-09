@@ -1,8 +1,8 @@
 ---
 name: pdd-to-test-prompts-eval
 description: >
-  Internal /ace:run step — LLM-as-Judge quality eval of the derived chatbot test prompts.
-user-invocable: false
+  Grade a chatbot test-prompt suite for answer specificity, adversarial quality, coverage, and
+  realism.
 disable-model-invocation: false
 ---
 
