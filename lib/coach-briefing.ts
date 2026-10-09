@@ -291,9 +291,20 @@ export function renderCoachPrompt(
     openingLanguage: string;
     indicatorCards: string;
     appSummary: string;
+    /** Whether the coach has indexed collections attached. Without one, every
+     * mention of a knowledge base is dropped: a coach told one is "searched
+     * automatically" when none is attached will cite material it does not have. */
+    knowledgeBase: boolean;
   },
 ): string {
-  const filled = template
+  const keep = vars.knowledgeBase ? 'kb' : 'no-kb';
+  const drop = vars.knowledgeBase ? 'no-kb' : 'kb';
+  const sectioned = template
+    .replace(new RegExp(`<!--${drop}-->[\\s\\S]*?<!--/${drop}-->`, 'g'), '')
+    .replace(new RegExp(`<!--/?${keep}-->`, 'g'), '')
+    .replace(/\n{3,}/g, '\n\n');
+  if (/<!--\/?(no-)?kb-->/.test(sectioned)) throw new Error('coach prompt has an unbalanced kb section marker');
+  const filled = sectioned
     .replaceAll('{{PROGRAM_NAME}}', vars.programName)
     .replaceAll('{{WORKER_NAME}}', vars.workerName)
     .replaceAll('{{WORKER_PLURAL}}', vars.workerPlural)

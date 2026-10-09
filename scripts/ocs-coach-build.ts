@@ -57,6 +57,12 @@ const collections = detachCollections
       .filter(Boolean)
       .map(Number);
 const prompt = readFileSync(values.prompt, 'utf8');
+if (detachCollections && /knowledge base/i.test(prompt)) {
+  throw new Error(
+    '--collections none, but the prompt mentions a knowledge base. Render it with ' +
+      '`render-coach-prompt.ts --knowledge-base no` so the coach is not told to search material it does not have.',
+  );
+}
 const code = readFileSync(new URL('../templates/ocs-coach/status_node.py', import.meta.url), 'utf8');
 
 interface GraphNode {

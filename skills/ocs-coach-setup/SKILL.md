@@ -56,11 +56,12 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/render-coach-prompt.ts" --measures <json> --app-summary <md> \
-     --program "<programme>" --worker <noun> --workers <plural> --out <prompt.md>
+     --program "<programme>" --worker <noun> --workers <plural> --knowledge-base yes|no --out <prompt.md>
    ```
 
-
-   It refuses an unfilled placeholder. Read the cards it prints: a data-quality
+   `--knowledge-base` must match what step 5 attaches: `no` when the coach is built with
+   `--collections none`, so the prompt does not tell the coach to search material it does
+   not have (`ocs-coach-build.ts` refuses that combination). It refuses an unfilled placeholder. Read the cards it prints: a data-quality
    signal must read as a REVIEW FLAG; an outcome with no target must say so.
 
    **Case states** need nothing here: Labs' case briefing carries each case state's
