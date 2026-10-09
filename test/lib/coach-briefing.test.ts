@@ -4,9 +4,7 @@ import {
   coachableIndicators,
   briefingDate,
   findOverstatements,
-  caseStateCards,
   renderCaseBriefing,
-  renderCaseCards,
   renderBriefing,
   renderCoachPrompt,
   renderIndicatorCards,
@@ -148,7 +146,13 @@ describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-
     workerName: 'flw_014',
     caseName: 'Beneficiary 986',
     about: 'Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
-    story: { key: 'state_weight_check', label: 'A weighing that is hard to believe' },
+    story: { key: 'case_state_weight_check', label: 'A weighing that is hard to believe' },
+    guidance: {
+      means: 'One weight is hard to believe next to the others.',
+      approach: 'Ask how the baby was weighed, without judgement.',
+      nextSteps: 'Use the weighing checklist at the next visit.',
+      limits: 'An unusual number is a reason to ask, not proof of a mistake.',
+    },
     facts: 'Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
     visits: [
       { date: '2026-09-03', weightG: 1575, kmcHours: null, dangerSigns: [], referred: 'no' as const },
@@ -164,7 +168,11 @@ describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-
         'Worker: flw_014',
         'Case: Beneficiary 986',
         'About this case: Birth weight 1,400 g; registered 3 Sep 2026; 2 visits, the last on 8 Sep 2026.',
-        'Topic: A weighing that is hard to believe [state_weight_check]',
+        'Topic: A weighing that is hard to believe [case_state_weight_check]',
+        'What it means: One weight is hard to believe next to the others.',
+        'How to talk about it: Ask how the baby was weighed, without judgement.',
+        'The step to agree: Use the weighing checklist at the next visit.',
+        'What it does not tell you: An unusual number is a reason to ask, not proof of a mistake.',
         'What the data shows: Weight rose 535 g in 5 days between 3 and 8 Sep, about 68 g/kg/day; healthy growth is 15–20 g/kg/day.',
         'Visits, oldest first:',
         '- 3 Sep 2026: weight 1,575 g; skin-to-skin not recorded; danger signs: none; referred: no',
@@ -191,43 +199,11 @@ describe('renderCaseBriefing (the Labs contract, docs/superpowers/specs/2026-10-
   });
 });
 
-describe('case cards from the registry\'s case states', () => {
-  const coach = (x: string) => ({ approach: `${x} approach`, next_steps: `${x} step`, limits: `${x} limits` });
-  const properties = [
-    { name: 'started', label: 'Started', means: 'One or more follow-up visits.', type: 'bool' },
-    { name: 'state_thriving', label: 'Baby is growing well', means: 'Gained steadily.', type: 'bool', state: { tone: 'celebrate' as const, priority: 40, coach: coach('thriving') } },
-    { name: 'state_danger_unreferred', label: 'Danger sign recorded, no referral', means: 'A danger sign, not referred.', type: 'bool', state: { tone: 'urgent' as const, priority: 10, coach: coach('danger') } },
-  ];
 
-  it('renders only properties with a state block, most urgent first, keyed by the property name', () => {
-    const cards = caseStateCards(properties);
-    expect(cards.map((c) => c.key)).toEqual(['state_danger_unreferred', 'state_thriving']);
-    expect(renderCaseCards(cards)).toBe(
-      [
-        '### Danger sign recorded, no referral [state_danger_unreferred]',
-        '- What it means: A danger sign, not referred.',
-        '- How to talk about it: danger approach',
-        '- The step to agree: danger step',
-        '- What it does not tell you: danger limits',
-        '',
-        '### Baby is growing well [state_thriving]',
-        '- What it means: Gained steadily.',
-        '- How to talk about it: thriving approach',
-        '- The step to agree: thriving step',
-        '- What it does not tell you: thriving limits',
-      ].join('\n'),
-    );
-  });
-
-  it('refuses a state the coach would have no guidance for', () => {
-    const bad = [{ name: 'state_x', label: 'X', means: 'x', state: { coach: { approach: 'a', next_steps: '' } } }];
-    expect(() => caseStateCards(bad)).toThrow(/state_x is missing state.coach.next_steps, state.coach.limits/);
-  });
-
-  it('fills the prompt\'s case section, and says so when a coach has none', () => {
+describe('the coach prompt holds no case-state knowledge', () => {
+  it('tells the coach to follow the guidance the case briefing carries', () => {
     const template = readFileSync(new URL('../../templates/ocs-coach/coach-prompt.md', import.meta.url), 'utf8');
-    const vars = { programName: 'KMC', workerName: 'worker', workerPlural: 'workers', openingLanguage: 'English', indicatorCards: 'cards', appSummary: 'summary' };
-    expect(renderCoachPrompt(template, { ...vars, caseCards: renderCaseCards(caseStateCards(properties)) })).toContain('[state_danger_unreferred]');
-    expect(renderCoachPrompt(template, vars)).toContain('only briefed on a worker');
+    expect(template).toContain('`How to talk about\nit`');
+    expect(template).not.toMatch(/Case cards|CASE_CARDS|state_weight_check|weighing checklist/);
   });
 });
