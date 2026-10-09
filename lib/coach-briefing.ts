@@ -167,88 +167,69 @@ export function renderBriefing(b: Briefing): string {
   return lines.join('\n');
 }
 
-// ── Case coaching (docs/superpowers/specs/2026-10-09-case-coaching-design.md) ──
-// One conversation is about ONE case and ONE story. Labs finds the case and writes
-// the briefing; these cards tell the Coach what each story means and how to talk
-// about it. The keys are the task's coaching_indicators entry, like an indicator key.
+// ── Case states (docs/superpowers/specs/2026-10-09-case-coaching-design.md) ──
+// A case state is a bool Layer-2 property in the programme's SEMANTIC REGISTRY
+// carrying a `state:` block; Labs evaluates it per case as of the run date. One
+// conversation is about ONE case in ONE state. The coach's case cards are rendered
+// from the registry's state meta, as the indicator cards are from its measures —
+// nothing programme-specific lives here.
 
-export type CaseStoryKey = 'CASE_THRIVING' | 'CASE_WEIGHT_CHECK' | 'CASE_FALTERING' | 'CASE_DANGER_SIGN';
-
-export interface CaseStoryCard {
-  key: CaseStoryKey;
-  label: string;
-  /** What Labs saw, in the words the Coach may use. */
-  means: string;
-  /** How to open and hold the conversation. */
-  approach: string;
-  /** The step(s) to agree. */
-  nextSteps: string;
-  /** What this story does NOT tell you. */
-  limits: string;
+export interface RegistryStateMeta {
+  tone?: 'celebrate' | 'check' | 'concern' | 'urgent';
+  /** Lower is more urgent; a case's state is its true state with the lowest priority. */
+  priority?: number;
+  evidence?: string[];
+  facts?: string;
+  picture?: Record<string, unknown>;
+  coach?: { approach?: string; next_steps?: string; limits?: string };
 }
 
-/** The KMC case stories, from the Slack thread of 2026-10-09 (Lilianna Bagnoli, Surabhi Dubey). */
-export const KMC_CASE_STORIES: CaseStoryCard[] = [
-  {
-    key: 'CASE_THRIVING',
-    label: 'Baby is growing well',
-    means: 'The baby has gained weight steadily at every weighing, at or above a healthy rate, and may have reached a milestone such as 2.5 kg.',
-    approach:
-      'This is a celebration. Open by recognising the worker\'s effort with this family in specific words (name the gain). ' +
-      'Then ask what they think worked with this family. Listen, and reflect it back. There is nothing to correct.',
-    nextSteps:
-      'Agree how the worker will keep it going: keep up the follow-up visits, help the family get vaccines on time, ' +
-      'and support exclusive breastfeeding until 6 months.',
-    limits: 'Good growth so far does not mean visits can stop. Never call the baby "out of danger" or "healthy" in general.',
-  },
-  {
-    key: 'CASE_WEIGHT_CHECK',
-    label: 'A weighing that is hard to believe',
-    means:
-      'One weight recorded for this baby is hard to believe next to the others: a very large jump or drop in a few days, ' +
-      'or exactly the same weight three visits in a row.',
-    approach:
-      'This is about how the weighing was done, never about honesty. Say the number looks unusual and ask, without judgement: ' +
-      '"Can you walk me through how you weighed baby on this visit?" Listen for the scale not set to zero, clothes or a blanket ' +
-      'left on, the baby moving, the number read too early, or the number written down later from memory.',
-    nextSteps:
-      'Agree to use the weighing checklist at the next visit: set the scale to zero, weigh baby without clothes, read the ' +
-      'number when baby is still, and write it down straight away. If the worker thinks the number was right, agree to ' +
-      'weigh carefully next visit to confirm.',
-    limits: 'An unusual number is a reason to ask, not proof of a mistake. Babies do sometimes gain or lose quickly when unwell.',
-  },
-  {
-    key: 'CASE_FALTERING',
-    label: 'Weight has stalled and skin-to-skin time is falling',
-    means:
-      'The baby has gained little or no weight over the last visits, and the hours of skin-to-skin care the family reports ' +
-      'have gone down.',
-    approach:
-      'Ask how the family is managing with this baby and what has changed at home. Ask about feeding and about the ' +
-      'skin-to-skin hours: what makes long hours hard for this family right now.',
-    nextSteps:
-      'Agree a sooner follow-up visit, and one thing the worker will reinforce with the family: more hours of skin-to-skin ' +
-      'care (who else in the family can help hold the baby) and frequent breastfeeding. If the baby seems unwell, the ' +
-      'family should go to a health facility.',
-    limits: 'Slow gain has many causes. Never blame the mother or the worker, and never diagnose.',
-  },
-  {
-    key: 'CASE_DANGER_SIGN',
-    label: 'Danger sign recorded, no referral',
-    means: 'At a recent visit the worker recorded a danger sign for this baby, and the visit shows the baby was not referred.',
-    approach:
-      'Explain in simple words that this sign can mean the baby is seriously ill and needs care at a health facility, more ' +
-      'than a home visit can give. Then ask what happened at that visit and how the baby is now.',
-    nextSteps:
-      'Agree that the worker will check in with the family as soon as possible and, if the sign is still there or the baby ' +
-      'seems unwell, refer the baby to the health facility the same day.',
-    limits:
-      'You do not know how the baby is today, and the family may already have gone to a facility. Never diagnose and ' +
-      'never give treatment advice. If the worker says the baby is very ill now, escalate (safety).',
-  },
-];
+/** A Layer-2 property from `properties_doc.properties` (semantic_registry_get). */
+export interface RegistryProperty {
+  name: string;
+  label?: string;
+  means?: string;
+  type?: string;
+  state?: RegistryStateMeta;
+}
 
-export function renderCaseCards(cards: CaseStoryCard[]): string {
+export interface CaseStateCard {
+  /** The state property's name: the briefing's topic key and the task's coaching_indicators entry. */
+  key: string;
+  label: string;
+  means: string;
+  approach: string;
+  nextSteps: string;
+  limits: string;
+  priority: number;
+}
+
+/** The registry's case states, most urgent first. A state without coach guidance is refused:
+ *  the coach would be briefed on something it has no card for. */
+export function caseStateCards(properties: RegistryProperty[]): CaseStateCard[] {
+  const cards = properties
+    .filter((p) => p.state)
+    .map((p) => {
+      const coach = p.state!.coach ?? {};
+      const missing = (['approach', 'next_steps', 'limits'] as const).filter((k) => !coach[k]?.trim());
+      if (missing.length || !p.label?.trim() || !p.means?.trim()) {
+        const gaps = [...missing.map((k) => `state.coach.${k}`), ...(!p.label?.trim() ? ['label'] : []), ...(!p.means?.trim() ? ['means'] : [])];
+        throw new Error(`case state ${p.name} is missing ${gaps.join(', ')} in the registry`);
+      }
+      return {
+        key: p.name,
+        label: p.label!.trim(),
+        means: p.means!.trim(),
+        approach: coach.approach!.trim(),
+        nextSteps: coach.next_steps!.trim(),
+        limits: coach.limits!.trim(),
+        priority: p.state!.priority ?? Number.MAX_SAFE_INTEGER,
+      };
+    });
+  return cards.sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
+}
+
+export function renderCaseCards(cards: CaseStateCard[]): string {
   return cards
     .map((c) =>
       [
@@ -276,7 +257,8 @@ export interface CaseBriefing {
   workerName: string;
   caseName: string;
   about: string;
-  story: { key: CaseStoryKey; label: string };
+  /** The case's state: its registry property name and label. */
+  story: { key: string; label: string };
   facts: string;
   /** Set on a spotlight follow-up: the last conversation about this case. */
   earlier?: { date: string; label: string; agreed?: string | null };

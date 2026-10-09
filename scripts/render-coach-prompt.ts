@@ -5,17 +5,18 @@
  *   npx tsx scripts/render-coach-prompt.ts \
  *     --measures <registry measures JSON array> --app-summary <markdown file> \
  *     --program "Spark facilitator pilot" --worker facilitator --workers facilitators \
- *     [--language English] [--case-stories kmc] --out <prompt file>
+ *     [--language English] [--properties <registry properties JSON>] --out <prompt file>
  *
  * The measures are `indicators_doc.measures` from `semantic_registry_get`.
- * `--case-stories kmc` also briefs the coach on single-case conversations
+ * `--properties` is `properties_doc.properties` from the same registry: its case states
+ * (properties with a `state:` block) become the coach's case cards
  * (docs/superpowers/specs/2026-10-09-case-coaching-design.md).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import {
   coachableIndicators,
-  KMC_CASE_STORIES,
+  caseStateCards,
   renderCaseCards,
   renderCoachPrompt,
   renderIndicatorCards,
@@ -29,7 +30,7 @@ const { values } = parseArgs({
     worker: { type: 'string' },
     workers: { type: 'string' },
     language: { type: 'string', default: 'English' },
-    'case-stories': { type: 'string' },
+    properties: { type: 'string' },
     out: { type: 'string' },
   },
 });
@@ -37,10 +38,7 @@ for (const k of ['measures', 'app-summary', 'program', 'worker', 'workers', 'out
   if (!values[k]) throw new Error(`--${k} is required`);
 }
 
-const CASE_STORIES = { kmc: KMC_CASE_STORIES } as const;
-const caseKey = values['case-stories'];
-if (caseKey && !(caseKey in CASE_STORIES)) throw new Error(`--case-stories: unknown set ${caseKey}; known: ${Object.keys(CASE_STORIES).join(', ')}`);
-const caseStories = caseKey ? CASE_STORIES[caseKey as keyof typeof CASE_STORIES] : undefined;
+const caseCards = values.properties ? caseStateCards(JSON.parse(readFileSync(values.properties, 'utf8'))) : undefined;
 
 const template = readFileSync(new URL('../templates/ocs-coach/coach-prompt.md', import.meta.url), 'utf8');
 const cards = coachableIndicators(JSON.parse(readFileSync(values.measures!, 'utf8')));
@@ -51,7 +49,7 @@ const prompt = renderCoachPrompt(template, {
   openingLanguage: values.language!,
   indicatorCards: renderIndicatorCards(cards),
   appSummary: readFileSync(values['app-summary']!, 'utf8').trim(),
-  caseCards: caseStories ? renderCaseCards(caseStories) : undefined,
+  caseCards: caseCards?.length ? renderCaseCards(caseCards) : undefined,
 });
 writeFileSync(values.out!, prompt);
-console.log(JSON.stringify({ out: values.out, chars: prompt.length, topics: cards.map((c) => c.key), caseTopics: caseStories?.map((c) => c.key) ?? [] }));
+console.log(JSON.stringify({ out: values.out, chars: prompt.length, topics: cards.map((c) => c.key), caseStates: caseCards?.map((c) => c.key) ?? [] }));
