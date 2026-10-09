@@ -76,6 +76,7 @@ import {
 } from '../lib/replacement-coverage.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
+import { createIdentityGate, installIdentityGate, DRIVE_REFUSAL_HINT } from '../lib/agent-identity-gate.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -336,6 +337,11 @@ const server = new McpServer({
   name: 'ace-gdrive',
   version: '0.2.0',
 });
+
+// Session identity (canopy#850): act as ACE only when `canopy cred check --agent ace`
+// allows it — checked lazily at the first tool call, never a fallback to the bundled
+// credentials. Installed before any other wrapper so it is the outermost layer.
+installIdentityGate(server as never, createIdentityGate({ hint: DRIVE_REFUSAL_HINT }));
 // Tenancy guard (Drive half): a session bound to an opp writes only inside its
 // folder. Must run before the first registration.
 installDriveTenancyGuard(server as never, googleDriveLookup(drive as never));
