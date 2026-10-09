@@ -168,80 +168,12 @@ export function renderBriefing(b: Briefing): string {
 }
 
 // ── Case states (docs/superpowers/specs/2026-10-09-case-coaching-design.md) ──
-// A case state is a bool Layer-2 property in the programme's SEMANTIC REGISTRY
-// carrying a `state:` block; Labs evaluates it per case as of the run date. One
-// conversation is about ONE case in ONE state. The coach's case cards are rendered
-// from the registry's state meta, as the indicator cards are from its measures —
-// nothing programme-specific lives here.
-
-export interface RegistryStateMeta {
-  tone?: 'celebrate' | 'check' | 'concern' | 'urgent';
-  /** Lower is more urgent; a case's state is its true state with the lowest priority. */
-  priority?: number;
-  evidence?: string[];
-  facts?: string;
-  picture?: Record<string, unknown>;
-  coach?: { approach?: string; next_steps?: string; limits?: string };
-}
-
-/** A Layer-2 property from `properties_doc.properties` (semantic_registry_get). */
-export interface RegistryProperty {
-  name: string;
-  label?: string;
-  means?: string;
-  type?: string;
-  state?: RegistryStateMeta;
-}
-
-export interface CaseStateCard {
-  /** The state property's name: the briefing's topic key and the task's coaching_indicators entry. */
-  key: string;
-  label: string;
-  means: string;
-  approach: string;
-  nextSteps: string;
-  limits: string;
-  priority: number;
-}
-
-/** The registry's case states, most urgent first. A state without coach guidance is refused:
- *  the coach would be briefed on something it has no card for. */
-export function caseStateCards(properties: RegistryProperty[]): CaseStateCard[] {
-  const cards = properties
-    .filter((p) => p.state)
-    .map((p) => {
-      const coach = p.state!.coach ?? {};
-      const missing = (['approach', 'next_steps', 'limits'] as const).filter((k) => !coach[k]?.trim());
-      if (missing.length || !p.label?.trim() || !p.means?.trim()) {
-        const gaps = [...missing.map((k) => `state.coach.${k}`), ...(!p.label?.trim() ? ['label'] : []), ...(!p.means?.trim() ? ['means'] : [])];
-        throw new Error(`case state ${p.name} is missing ${gaps.join(', ')} in the registry`);
-      }
-      return {
-        key: p.name,
-        label: p.label!.trim(),
-        means: p.means!.trim(),
-        approach: coach.approach!.trim(),
-        nextSteps: coach.next_steps!.trim(),
-        limits: coach.limits!.trim(),
-        priority: p.state!.priority ?? Number.MAX_SAFE_INTEGER,
-      };
-    });
-  return cards.sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
-}
-
-export function renderCaseCards(cards: CaseStateCard[]): string {
-  return cards
-    .map((c) =>
-      [
-        `### ${c.label} [${c.key}]`,
-        `- What it means: ${c.means}`,
-        `- How to talk about it: ${c.approach}`,
-        `- The step to agree: ${c.nextSteps}`,
-        `- What it does not tell you: ${c.limits}`,
-      ].join('\n'),
-    )
-    .join('\n\n');
-}
+// A case state is what Labs thinks about one case as of a run, declared in the
+// programme's semantic registry. Labs writes a case briefing that carries the
+// state's own guidance (what it means, how to talk about it, the step to agree,
+// what it does not tell you), read from the registry at send time — so the coach
+// holds no case-state knowledge of its own and a registry edit needs no rebuild.
+// renderCaseBriefing pins the shape Labs writes.
 
 export interface CaseVisit {
   /** ISO date (yyyy-mm-dd). */
@@ -257,8 +189,10 @@ export interface CaseBriefing {
   workerName: string;
   caseName: string;
   about: string;
-  /** The case's state: its registry property name and label. */
+  /** The case state: its registry property name and label. */
   story: { key: string; label: string };
+  /** The case state's guidance, from the registry (`means`, `case_state.coach.*`). */
+  guidance: { means: string; approach: string; nextSteps: string; limits: string };
   facts: string;
   /** Set on a spotlight follow-up: the last conversation about this case. */
   earlier?: { date: string; label: string; agreed?: string | null };
@@ -302,6 +236,10 @@ export function renderCaseBriefing(b: CaseBriefing): string {
     `Case: ${b.caseName}`,
     `About this case: ${b.about}`,
     `Topic: ${b.story.label} [${b.story.key}]`,
+    `What it means: ${b.guidance.means}`,
+    `How to talk about it: ${b.guidance.approach}`,
+    `The step to agree: ${b.guidance.nextSteps}`,
+    `What it does not tell you: ${b.guidance.limits}`,
     `What the data shows: ${b.facts}`,
   );
   if (b.earlier) {
@@ -344,8 +282,6 @@ export function findOverstatements(assistantMessages: string[], topics: Briefing
   return out;
 }
 
-const NO_CASE_CARDS = 'None: this coach is only briefed on a worker\'s figures, never on a single case.';
-
 export function renderCoachPrompt(
   template: string,
   vars: {
@@ -355,8 +291,6 @@ export function renderCoachPrompt(
     openingLanguage: string;
     indicatorCards: string;
     appSummary: string;
-    /** `renderCaseCards(...)` for a coach that is also briefed on single cases. */
-    caseCards?: string;
   },
 ): string {
   const filled = template
@@ -365,8 +299,7 @@ export function renderCoachPrompt(
     .replaceAll('{{WORKER_PLURAL}}', vars.workerPlural)
     .replaceAll('{{OPENING_LANGUAGE}}', vars.openingLanguage)
     .replaceAll('{{INDICATOR_CARDS}}', vars.indicatorCards)
-    .replaceAll('{{APP_SUMMARY}}', vars.appSummary)
-    .replaceAll('{{CASE_CARDS}}', vars.caseCards ?? NO_CASE_CARDS);
+    .replaceAll('{{APP_SUMMARY}}', vars.appSummary);
   const left = filled.match(/\{\{[A-Z_]+\}\}/g);
   if (left) throw new Error(`coach prompt has unfilled placeholders: ${[...new Set(left)].join(', ')}`);
   return filled;

@@ -63,12 +63,10 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    It refuses an unfilled placeholder. Read the cards it prints: a data-quality
    signal must read as a REVIEW FLAG; an outcome with no target must say so.
 
-   **Case states** (one case, one state per conversation —
-   `docs/superpowers/specs/2026-10-09-case-coaching-design.md`): also pass
-   `--properties <json>` = the registry's `properties_doc.properties`. Every property
-   with a `state:` block becomes a case card (`lib/coach-briefing.ts`
-   `caseStateCards`); a state missing `state.coach` guidance is refused. Labs writes
-   the case briefing.
+   **Case states** need nothing here: Labs' case briefing carries each case state's
+   guidance from the registry at send time
+   (`docs/superpowers/specs/2026-10-09-case-coaching-design.md`), and the prompt tells
+   the coach to follow it.
 
 5. **Build:**
 
