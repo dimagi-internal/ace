@@ -1261,6 +1261,8 @@ operator experience than auto-stub + warning.
 
 **This table is the standing, per-mode matrix — not the only way to pause.** An operator can also ask, mid-run, for a one-off stop after a specific named phase without switching the whole run to `review`. That is `run_state.yaml`'s `operator_stop_after_phase` (§ State Schema above), recognized and fired per `ace-orchestrator.md § Ad-hoc stop-after-phase instructions`. It is orthogonal to the table below: it fires once, in whichever mode the run is already in, and clears (`status: fired`) so it never fires twice.
 
+**Asking for it in prose mid-phase is NOT reliable, and the fence re-reads `run_state.yaml` because of it** (dimagi-internal/ace#2848). While a phase runs, the orchestrator is parked inside `Agent(<phase>)` and a message sent to the session is not injected until that call returns — measured 2026-10-12, an operator stop request was still absent from the session transcript 100 seconds after sending, with `run_state.yaml` untouched. The directive is therefore most often written **out-of-band** (`update_yaml_file`, `merge: 'deep'`) by the operator's own second session, another agent, or an ace-web control, and the boundary fence must read the file fresh rather than trust a copy taken before the dispatch. Prose still works for a genuine mid-run change of mind — it simply lands when the current phase returns, not when it was sent.
+
 **Pause points and per-mode behavior:**
 
 | Checkpoint | Phase | `default` | `review` | `auto` |

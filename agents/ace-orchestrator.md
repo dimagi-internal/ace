@@ -1019,6 +1019,37 @@ receipt in one line ("Got it — stopping after Phase N (`<phase>`) and
 will report there.") and continue the current phase; do not re-derive
 the stop point from conversation history later.
 
+**"Immediately" means the moment you RECEIVE it, which is not the moment
+it was sent — and mid-phase those are far apart** (dimagi-internal/ace#2848).
+While a phase is running you are parked inside `Agent(<phase>)`, and a
+message sent to the session is not injected into your context until that
+call returns. You cannot record what you have not been given, so this
+instruction binds only when you are actually executing: between phases,
+or when the dispatch returns. Record it the first moment you see it,
+whenever that is, and do not assume an operator's mid-phase message
+reached you when they sent it.
+
+**This is why the fence RE-READS `run_state.yaml` (below), and why an
+operator who needs a stop armed during a long phase should write the
+block out-of-band rather than ask for it in prose:**
+
+```
+update_yaml_file(fileId, merge: 'deep',
+                 patch: {operator_stop_after_phase: {...}})
+```
+
+Anyone with Drive write access can arm it that way — the operator's own
+second session, another agent, an ace-web control — and the fence will
+honour it without this orchestrator ever having seen a message.
+
+*Measured 2026-10-12 on `turmeric-market-study-ghana/20261012-1749`: Phase 1
+was dispatched at 17:59:18; an operator stop request sent at 18:17:09 was,
+100 seconds later, absent from the session transcript entirely and had left
+`run_state.yaml` untouched at revision 19. The session was live and healthy
+the whole time. That is the shape the `e0505ad2` `strong_correction` was
+most likely recording — a message delivered late, not an ask that could
+not be honoured.*
+
 **If the named phase already completed** before the instruction
 arrived, there is no future fence call to catch it — honor it right
 now: stop before dispatching the next phase, report per the shape
@@ -1026,9 +1057,17 @@ below, and write the directive `status: fired` in the same patch.
 
 **Wire it into the Phase boundary fence.** Once the existing
 classify/verify/products/validate branch resolves to "proceed" (§ Phase
-boundary fence), check `operator_stop_after_phase` from the already-read
-`run_state.yaml` before the step that dispatches `Agent(<next-phase>)`
-runs. If `status: pending` AND `phase` equals the phase that just
+boundary fence), check `operator_stop_after_phase` before the step that
+dispatches `Agent(<next-phase>)` runs.
+
+**RE-READ `run_state.yaml` from Drive for this check — never the copy you
+were already holding** (dimagi-internal/ace#2848). The directive is very
+often written while the phase was running, by something that is not this
+orchestrator, and a copy read before the dispatch cannot contain it. One
+`drive_read_file` at the fence is the whole cost, and it is the only
+thing that makes the stop reachable during a phase.
+
+If `status: pending` AND `phase` equals the phase that just
 completed: do **not** dispatch the next phase this turn; patch
 `operator_stop_after_phase.status` to `fired`; report per § Talking to
 the operator mid-run — lead with the fact that you stopped because he
@@ -2015,12 +2054,17 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
              - classify='ok' AND verify.ok=true AND products.ok=true
                AND run_state.valid=true AND verify.decisions.ok is not
                false (the block is absent outside commcare/connect)
-                 → check operator_stop_after_phase (§ Ad-hoc
-                   stop-after-phase instructions): if `status: pending`
-                   AND `phase` equals the phase that just completed,
-                   patch it to `status: fired`, do NOT dispatch
-                   Agent(<next-phase>), and report the stop instead —
-                   this is the one case Turn N+3 does not fire.
+                 → RE-READ run_state.yaml from Drive, then check
+                   operator_stop_after_phase (§ Ad-hoc stop-after-phase
+                   instructions). The re-read is required, not an
+                   optimisation: the directive is usually written DURING
+                   the phase, by something other than this orchestrator,
+                   so a copy read earlier cannot hold it (ace#2848).
+                   If `status: pending` AND `phase` equals the phase that
+                   just completed, patch it to `status: fired`,
+                   do NOT dispatch Agent(<next-phase>), and report the
+                   stop instead — this is the one case Turn N+3 does
+                   not fire.
                    Otherwise (absent, or naming a different phase)
                    → proceed to Turn N+3 unchanged
              - verify.decisions.ok=false (build phase: a producer's build
