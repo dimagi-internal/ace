@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# ace-env — run a command with ACE's gog keyring credentials loaded from the
+# installed plugin's .env.
+#
+#   bin/ace-env gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com -j
+#   bin/ace-env canopy email read --repo . <threadId>
+#   bin/ace-env canopy email dangling --repo .
+#
+# WHY THIS EXISTS (dimagi-internal/ace#2844)
+#
+# gog stores its OAuth client secret in a FILE keyring (deliberate: the macOS
+# Keychain blocks forever on a GUI prompt in a non-interactive agent shell —
+# jjackson/ace#827). Opening that keyring needs GOG_KEYRING_PASSWORD, which
+# lives in the plugin-data `.env` and in no shell profile. A session the
+# operator starts by hand inherits it from the `/ace:*` skills' own env
+# loading; a session a canopy RUNNER spawns does not, and every Gmail call in
+# it dies with:
+#
+#   read OAuth client secret from keyring: ... no TTY available for keyring
+#   file backend password prompt; set GOG_KEYRING_PASSWORD
+#
+# so ACE's whole email surface — read AND send — is dead in every /ace:turn
+# and /ace:ask on a paired Mac.
+#
+# THE ROUTES THAT DO NOT WORK, so nobody re-derives them:
+#
+#   * `EnvironmentVariables` in ~/Library/LaunchAgents/com.canopy.runner.plist
+#     reaches the runner DAEMON and nothing else. Turns are spawned by the
+#     Emdash GUI app, which is not a child of that launchd job — measured
+#     2026-10-12 on stewari-mbp-cdp: the plist was correctly populated, the
+#     daemon had been restarted 22s after the edit, `pgrep -P <runner-pid>`
+#     returned zero children, and the spawned session still could not make a
+#     single Gmail call. The daemon's own mailbox probe keeps passing, which
+#     is why canopy-web's `mailboxes_readable` advertises the mailbox as
+#     readable while no session can read it.
+#   * `launchctl setenv GOG_KEYRING_PASSWORD` does reach a GUI-launched
+#     emdash, but hands the password to every process running as this user.
+#     `canopy email preflight` explicitly forbids it.
+#
+# This wrapper keeps the secret in the one file that already holds it, loads it
+# only into the one child that needs it, and never puts it in argv (where `ps`
+# would show it).
+set -euo pipefail
+
+if [ "$#" -eq 0 ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,5p' "$0"
+  echo "Usage: bin/ace-env <command> [args...]" >&2
+  [ "$#" -eq 0 ] && exit 2
+  exit 0
+fi
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Same resolution order as bin/ace-doctor's DATA_DIR.
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ace-ace}"
+ENV_FILE=""
+if [ -f "$DATA_DIR/.env" ]; then
+  ENV_FILE="$DATA_DIR/.env"
+elif [ -f "$ROOT/.env" ]; then
+  ENV_FILE="$ROOT/.env"
+fi
+
+# Only the keyring pair. Sourcing the whole .env would hand every ACE secret to
+# an arbitrary child — the wide-exposure problem this exists to avoid, moved.
+# An existing value in the environment always wins (dotenv never overrides).
+if [ -n "$ENV_FILE" ]; then
+  for _k in GOG_KEYRING_PASSWORD GOG_KEYRING_BACKEND; do
+    if [ -z "${!_k:-}" ]; then
+      # Read with the shell so the value never becomes an argument.
+      _v=""
+      while IFS= read -r _line || [ -n "$_line" ]; do
+        if [[ "$_line" == "$_k="* ]]; then
+          _v="${_line#*=}"
+          break
+        elif [[ "$_line" == "export $_k="* ]]; then
+          _v="${_line#*=}"
+          break
+        fi
+      done < "$ENV_FILE"
+      _v="${_v%\"}"; _v="${_v#\"}"; _v="${_v%\'}"; _v="${_v#\'}"
+      [ -n "$_v" ] && export "$_k=$_v"
+      unset _v _line
+    fi
+  done
+  unset _k
+fi
+
+exec "$@"

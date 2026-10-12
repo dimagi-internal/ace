@@ -30,6 +30,21 @@ improvements ship once (a canopy PR) instead of N backports.
   paused run at the instruction of an **act**-tier sender, executing the same procedure the pause
   point defines. Design + counterpart model:
   `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
+- **EVERY raw `gog` or `canopy email` call goes through `bin/ace-env` — no exceptions**
+  (dimagi-internal/ace#2844). gog keeps its OAuth client secret in a FILE keyring whose password
+  lives in the plugin-data `.env` and in no shell profile. A session a canopy RUNNER spawns never
+  sees it, so an unwrapped call dies with `no TTY available for keyring file backend password
+  prompt` and ACE's whole email surface — read AND send — is dead for that turn. `bin/ace-env`
+  loads just that pair and execs the command:
+  `bin/ace-env gog gmail search …`, `bin/ace-env canopy email read --repo . <threadId>`,
+  `bin/ace-env canopy email dangling --repo .`. ACE's own shims (`bin/ace-email`,
+  `bin/ace-mark-read`) already load it in-process, so those need no prefix.
+  **Do NOT "fix" this with `launchctl setenv`** (canopy email preflight forbids it — it hands the
+  password to every process of this user) **or with the runner's LaunchAgent plist**: that reaches
+  the runner DAEMON only, never the Emdash-spawned session a turn actually runs in. Measured
+  2026-10-12 — plist correctly populated, daemon restarted, `pgrep -P <runner-pid>` zero children,
+  session still dead. The daemon's own probe keeps passing, which is why canopy-web's
+  `mailboxes_readable` can advertise the mailbox as readable while no turn can read it.
 - **Preflight (core Step 1) specifics:** `bin/ace-doctor --installed` — read the `[Auth liveness]`
   block. **Start it in the BACKGROUND and gate the turn on the inbox read instead — the doctor is
   slow AND silent.** It runs ~3-4 minutes (measured 3m39s, 2026-09-01) because it makes live HTTP
@@ -46,7 +61,7 @@ improvements ship once (a canopy PR) instead of N backports.
   denylist of gog error strings, and gog's "no token for this (mailbox, client) pair" message
   (`No auth for gmail <mailbox>.`) matches none of them, so a mailbox that cannot make a single
   call reports `PASS … live scopes OK`. That is the #1189 gate defeated at its source. So run the
-  inbox pull yourself as the real preflight — `gog gmail search "in:inbox is:unread" -a
+  inbox pull yourself as the real preflight — `bin/ace-env gog gmail search "in:inbox is:unread" -a
   ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j` — and treat an auth error there as TURN-BLOCKING no matter
   what the doctor printed. If the read fails under the configured client, check
   `gog auth tokens list` for a `token:<client>:<mailbox>` key: the pair, not the account, is what
@@ -66,7 +81,7 @@ improvements ship once (a canopy PR) instead of N backports.
   not function` on a machine that is in fact HEALTHY, every turn, which is how a preflight verdict
   becomes noise people route around. (`agents/ace-orchestrator.md` § preflight already resolves the
   install path for the same reason — this keeps turns consistent with runs.) Gmail as ACE:
-  `gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
+  `bin/ace-env gog gmail search "in:inbox is:unread" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
   (the mailbox is the literal from `config/agent.json`; the client comes from `canopy email client`.
   The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under. `$ACE_GMAIL_ACCOUNT` /
   `$ACE_GMAIL_CLIENT` were RETIRED with ace#1147 and expand to EMPTY in a shell)

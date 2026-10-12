@@ -96,7 +96,7 @@ of this validation (`waiver-unmatched:<id>`) or with no git email to record
 report (`blockers[].id`).
 
 **`--from-thread <id>`.** Read the ace@ thread that asked for the review
-(`canopy email read <id>`), collect every From / To / Cc address, and split
+(`bin/ace-env canopy email read <id>`), collect every From / To / Cc address, and split
 them with `$RC thread-recipients --participants "<addr>,…"`: every Dimagi
 staff member (`@dimagi.com`) on the thread is a **reviewer** (ace#2720);
 partners, ACE's own mailbox and anyone else are **excluded**, each with its

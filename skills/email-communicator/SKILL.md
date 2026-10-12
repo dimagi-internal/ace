@@ -87,14 +87,15 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
    - Replies maintain the Gmail thread via the message id.
 
 5. **For search operations:**
-   - Use: `gog gmail search "<query>" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
-     (The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under.)
+   - Use: `bin/ace-env gog gmail search "<query>" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`
+     (The two fleet clients (`canopy`, `canopy-web`) are one app — never type a client name; `canopy email client` picks the one this machine holds a token under.
+     The `bin/ace-env` prefix carries gog's file-keyring password, which a runner-spawned session cannot otherwise see — ace#2844.)
    - Common queries: `from:<address>`, `to:<address>`, `subject:<text>`, `in:inbox`, `is:unread`,
      `newer_than:1d` — combined with spaces.
    - Returns thread list with IDs, dates, senders, subjects.
 
 6. **For read operations** (use the shared canopy engine, not raw `gog` — canopy ≥ 0.2.346):
-   - Use: `canopy email read <threadId> --repo .`
+   - Use: `bin/ace-env canopy email read <threadId> --repo .`
    - Returns normalized JSON: per message the headers + decoded `body_text` (quoted reply tail
      trimmed) + each attachment's `attachment_id`, PLUS a thread-level `reply_all` recipient set
      (`{to, cc, reply_to_message_id}`). Pass a **THREAD id** — gog reads threads and 404s on a

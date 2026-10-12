@@ -20,6 +20,21 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+sys.path.insert(0, os.path.join(REPO, "hooks"))
+import tenancy_guard as _tg  # noqa: E402
+
+
+def _load_keyring_env():
+    """gog's file-keyring credentials, for the same reason bin/ace-email loads
+    them: `canopy email mark-read` shells out to `gog gmail thread modify`, and
+    in a runner-spawned session the password is unreachable, so marking a
+    handled thread read fails exactly where inbox-triage calls it. ace#2844."""
+    for key in ("GOG_KEYRING_PASSWORD", "GOG_KEYRING_BACKEND"):
+        if not os.environ.get(key):
+            value = _tg.plugin_env(key)
+            if value:
+                os.environ[key] = value
+
 
 def _exec_via_canopy_runtime(args):
     """Fallback when `canopy` isn't on PATH: run the engine via uv from canopy's
@@ -44,6 +59,8 @@ def _exec_via_canopy_runtime(args):
     except Exception:
         return
 
+
+_load_keyring_env()
 
 try:
     os.execvp("canopy", ["canopy", "email", "mark-read", "--repo", REPO, *sys.argv[1:]])
