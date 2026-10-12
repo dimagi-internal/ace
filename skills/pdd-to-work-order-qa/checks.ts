@@ -17,6 +17,7 @@ import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types'
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { classifyGrainRelation, readProgramParameter } from '../../lib/payment-grain';
 import { compareCommercialTerms } from '../../lib/commercial-terms-consistency';
+import { COUNTRY_CURRENCY } from '../../lib/program-locale';
 
 /**
  * The 11 required headings in a complete work order. Matched against
@@ -256,33 +257,186 @@ export function checkPaymentScheduleSumsTo100(raw: string): QACheckResult {
   };
 }
 
+// ── Currency ───────────────────────────────────────────────────────
+
 /**
- * Check 5: § 6.1 Total Not-to-Exceed has a USD amount or explicit placeholder.
- *
- * Accepts `USD 2500`, `USD 2,500`, `USD [TBD]`. Rejects bare `USD ` with nothing after.
+ * The ISO-4217 codes ACE recognises when it meets one in a contract, taken
+ * from `lib/program-locale.ts`'s country→currency table — the same table
+ * `idea-to-pdd-qa § launch_parameters_present` validates a PDD's
+ * `opportunity_currency` against. Sharing the source is the point: the PDD and
+ * the Work Order cannot disagree about what counts as a currency.
  */
-export function checkTotalNtePresent(raw: string): QACheckResult {
+const KNOWN_CURRENCY_CODES: ReadonlySet<string> = new Set(Object.values(COUNTRY_CURRENCY));
+
+/** Only used when no programme currency reaches this QA at all. */
+const DEFAULT_CURRENCY = 'USD';
+
+/**
+ * Which currency is this Work Order's money denominated in?
+ *
+ * The programme currency is not this check's to invent — it is declared once,
+ * in the PDD's § Program Parameters `opportunity_currency` row, and
+ * `idea-to-pdd-qa § launch_parameters_present` already gates it against
+ * `opportunity_country` (**"Never default to USD"**,
+ * `templates/pdd-template.md:255`). This reads that row; it does not guess, and
+ * it never converts.
+ *
+ * Order: `ctx.currency` (explicit) → the PDD body via `--pdd` → `USD`.
+ *
+ * The USD fallback is the NO-CONTEXT case, not a default for the programme: a
+ * QA invoked without `--pdd` scores exactly as it did before currency entered
+ * this file, so a USD run and a context-free run are both unchanged.
+ * `[PROPOSED]` / `[TBD]` markers are stripped — an unsettled currency is still
+ * a declared one (same treatment as `idea-to-pdd-qa`).
+ */
+export function resolveWorkOrderCurrency(ctx?: QACheckContext): { code: string; source: string } {
+  const explicit = (ctx?.currency as string | undefined)?.trim();
+  if (explicit && /^[A-Za-z]{3}$/.test(explicit)) {
+    return { code: explicit.toUpperCase(), source: 'ctx.currency' };
+  }
+
+  const pddText = (ctx?.pddText as string | undefined) ?? '';
+  for (const key of ['opportunity_currency', 'currency', 'payment_rate_currency']) {
+    const raw = readProgramParameter(pddText, key);
+    if (!raw) continue;
+    const code = raw.replace(/\[[^\]]*\]/g, '').trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(code)) {
+      return { code, source: `PDD § Program Parameters \`${key}\`` };
+    }
+  }
+
+  return { code: DEFAULT_CURRENCY, source: 'default (no opportunity_currency reached this QA)' };
+}
+
+/**
+ * Does the § 6 body state how a USD figure and the local currency relate?
+ *
+ * The escape hatch for the one legitimate non-USD shape that is NOT "state the
+ * cap in the local currency": a USD cap with a stated conversion rule, which is
+ * what ace#2583's own "Fix lands here" offers as the alternative and what
+ * `spark-facilitator/20261001-2208` actually rendered ("converted to USD at the
+ * exchange rate the parties agree", graded 10/10 by `pdd-to-work-order-eval`).
+ * Both halves are required — a bare mention of the local code next to a USD cap
+ * is the defect, not the cure.
+ */
+function conversionRuleStated(section: string, localCode: string): boolean {
+  const mentionsLocal = new RegExp(`\\b${escapeRegExp(localCode)}\\b`).test(section);
+  const rule =
+    /\b(?:exchange rate|conversion rate|rate of exchange|converted (?:to|at|into)|convertible at)\b/i.test(
+      section,
+    );
+  return mentionsLocal && rule;
+}
+
+/**
+ * Is the § 6.1 cap a real number, or a bracketed placeholder?
+ *
+ * Answers from the TEXT, never from whether `checkTotalNtePresent` matched —
+ * the cascade is what made a correct GHS cap read as unresolved (ace#2583).
+ * A currency code followed by digits is a resolved cap for ANY code ACE
+ * recognises, plus the programme's own resolved code, so this cannot be
+ * wrong-footed by a currency the country table does not list.
+ */
+function capIsResolved(nte: string, ctx?: QACheckContext): boolean {
+  const { code: cur } = resolveWorkOrderCurrency(ctx);
+  if (new RegExp(`\\b${escapeRegExp(cur)}\\s+\\d`).test(nte)) return true;
+  for (const m of nte.matchAll(/\b([A-Z]{3})\s+\d/g)) {
+    if (KNOWN_CURRENCY_CODES.has(m[1])) return true;
+  }
+  return false;
+}
+
+/**
+ * Check 5: § 6.1 Total Not-to-Exceed states a cap, in the programme's own
+ * currency, as either an amount or an explicit placeholder.
+ *
+ * Accepts `GHS 11,000`, `USD 2,500`, `INR [TBD]` — the currency being whatever
+ * `resolveWorkOrderCurrency` resolves. Rejects a bare code with nothing after.
+ *
+ * ## Why this is not hardcoded USD any more (ace#2583)
+ *
+ * It was, and that made the gate UN-PASSABLE for a correct contract. Phase 1 of
+ * `turmeric-market-study-ghana/20261012-1749` designed a Ghana programme with
+ * `opportunity_currency: GHS` and a fully-resolved cap of GHS 11,000. The
+ * document said so, correctly. This check demanded the literal string `USD`
+ * followed by a digit, so the only way to satisfy it was to write
+ * `USD 11,000` — a ~15x overstatement (GHS runs ~12-15/USD) in a document that
+ * gets SIGNED. `advance_contingent_when_cap_unresolved` then cascaded off the
+ * same miss and instructed the producer to declare the cap unresolved, which
+ * was the opposite of the truth. The run refused both and halted at 14/16 with
+ * every substantive check passing.
+ *
+ * The INR repro in the issue body hid the severity: it left the cap as
+ * `USD [Set at contract execution]`, which passed via the `[` branch, so the
+ * defect read as prose/readability rather than as a blocked gate. Only a
+ * RESOLVED non-USD cap trips it.
+ *
+ * Never instruct a producer to convert. An exchange rate is not ACE's to pick,
+ * and the PDD's figure is already denominated correctly.
+ */
+export function checkTotalNtePresent(raw: string, ctx?: QACheckContext): QACheckResult {
   const wo = normalizeDriveExport(raw);
+  const { code: cur, source } = resolveWorkOrderCurrency(ctx);
   const body = extractNumberedSection(wo, '6.1');
   if (body === null) {
     return {
       pass: false,
       detail: 'missing § 6.1 Total Not-to-Exceed section',
       auto_fix_hint:
-        'add a `### 6.1 Total Not-to-Exceed` section stating `USD <amount>` or `USD [TBD]` if the cap is still being finalized',
+        `add a \`### 6.1 Total Not-to-Exceed\` section stating \`${cur} <amount>\` or \`${cur} [TBD]\` ` +
+        `if the cap is still being finalized (${cur} is this programme's currency, from ${source})`,
     };
   }
-  // Match `USD` followed by whitespace then either a digit or `[`.
-  const m = body.match(/USD\s+([\d\[])/);
-  if (!m) {
+
+  // Match the programme's currency code followed by whitespace then either a
+  // digit or `[`.
+  const stated = new RegExp(`\\b${escapeRegExp(cur)}\\s+[\\d\\[]`).test(body);
+  if (stated) {
+    return {
+      pass: true,
+      detail:
+        cur === DEFAULT_CURRENCY
+          ? undefined
+          : `cap stated in ${cur} (the programme currency, from ${source})`,
+    };
+  }
+
+  // A USD cap on a non-USD programme is acceptable ONLY with a stated
+  // conversion rule; otherwise it is the ace#2583 defect, and silence about
+  // the rate is exactly what the issue was filed for.
+  if (cur !== DEFAULT_CURRENCY && /\bUSD\s+[\d\[]/.test(body)) {
+    const payment = extractNumberedSection(wo, '6') ?? wo;
+    if (conversionRuleStated(payment, cur)) {
+      return {
+        pass: true,
+        detail: `cap stated in USD with a conversion rule covering ${cur} (programme currency, from ${source})`,
+      };
+    }
     return {
       pass: false,
-      detail: '§ 6.1 has no `USD <amount>` (need a digit or `[TBD]` placeholder after `USD`)',
+      detail:
+        `§ 6.1 states the cap in USD, but this programme's money is denominated in ${cur} ` +
+        `(from ${source}), and § 6 states no conversion rule. A USD figure beside ${cur} rates is ` +
+        `either a mislabelled cap or an unstated exchange rate — both unsignable.`,
       auto_fix_hint:
-        'in § 6.1, state Dimagi\'s commitment as `USD <amount>` (numeric, e.g. `USD 2500`) or `USD [TBD]` if pending',
+        `restate the § 6.1 cap in ${cur} — the PDD's budget figure is ALREADY denominated in ${cur}, ` +
+        `so this is a relabel, not a conversion. Do NOT invent an exchange rate and do NOT write the ` +
+        `${cur} number after the letters \`USD\`: on a GHS programme that overstates the cap ~15x in a ` +
+        `document that gets signed (ace#2583). Also relabel the § 6.2 \`Amount (USD)\` column header. ` +
+        `If the cap genuinely must be capped in USD, keep it and add the conversion rule to § 6 ` +
+        `(the rate source and the date it is struck), naming ${cur} explicitly.`,
     };
   }
-  return { pass: true };
+
+  return {
+    pass: false,
+    detail:
+      `§ 6.1 has no \`${cur} <amount>\` (need a digit or \`[TBD]\` placeholder after \`${cur}\`, ` +
+      `the programme currency from ${source})`,
+    auto_fix_hint:
+      `in § 6.1, state Dimagi's commitment as \`${cur} <amount>\` (numeric, e.g. \`${cur} 2500\`) or ` +
+      `\`${cur} [TBD]\` if pending. Use the ISO code, not a symbol.`,
+  };
 }
 
 /**
@@ -798,7 +952,10 @@ function resolveEntityIdGrain(
  * where they live. ace#1481 asserted otherwise and was closed NOT_PLANNED with
  * the premise disproved; do not re-add that check.
  */
-export function checkAdvanceContingentWhenCapUnresolved(raw: string): QACheckResult {
+export function checkAdvanceContingentWhenCapUnresolved(
+  raw: string,
+  ctx?: QACheckContext,
+): QACheckResult {
   const wo = normalizeDriveExport(raw);
   const nte = extractNumberedSection(wo, '6.1');
   const schedule = extractNumberedSection(wo, '6.2');
@@ -806,10 +963,16 @@ export function checkAdvanceContingentWhenCapUnresolved(raw: string): QACheckRes
   // double-report it here.
   if (nte === null || schedule === null) return { pass: true };
 
-  // Is the cap a real number, or a bracketed placeholder? `checkTotalNtePresent`
-  // has already established one of the two forms follows `USD`.
-  const capResolved = /USD\s+\d/.test(nte);
-  if (capResolved) return { pass: true };
+  // Is the cap a real number, or a bracketed placeholder?
+  //
+  // This reads the AMOUNT, independently of what `checkTotalNtePresent`
+  // matched. It used to test `/USD\s+\d/` — i.e. it cascaded off that check's
+  // hardcoded USD, so a fully-resolved `GHS 11,000` cap read as a placeholder
+  // and this check told the producer to write "no amount is payable until the
+  // cap is fixed at contract execution" into a contract whose cap WAS fixed.
+  // Stating the opposite of the truth in a signable document is a worse
+  // outcome than the one the check exists to prevent (ace#2583).
+  if (capIsResolved(nte, ctx)) return { pass: true };
 
   // Cap is unresolved. Does the schedule state that nothing is owed yet?
   const contingencyStated =
@@ -1164,8 +1327,11 @@ export const CHECKS: QACheck[] = [
   {
     id: 'total_nte_present',
     type: 'static',
-    description: '§ 6.1 has `USD <amount>` (numeric) or `USD [TBD]` placeholder',
-    run: (wo: string) => checkTotalNtePresent(wo),
+    description:
+      '§ 6.1 has `<CUR> <amount>` (numeric) or `<CUR> [TBD]` placeholder, where `<CUR>` is the ' +
+      'programme currency from the PDD’s `opportunity_currency` — never a hardcoded USD ' +
+      '(dimagi-internal/ace#2583)',
+    run: (wo: string, ctx?: QACheckContext) => checkTotalNtePresent(wo, ctx),
   },
   {
     id: 'signature_blocks_present',
@@ -1199,8 +1365,10 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description:
       'A milestone percentage stated against an unresolved \u00a7 6.1 cap must say that nothing is ' +
-      'payable until the cap is fixed (dimagi-internal/ace#2007)',
-    run: (wo: string) => checkAdvanceContingentWhenCapUnresolved(wo),
+      'payable until the cap is fixed (dimagi-internal/ace#2007). "Resolved" is read from the ' +
+      'amount itself, in any currency — it does not cascade off `total_nte_present` ' +
+      '(dimagi-internal/ace#2583)',
+    run: (wo: string, ctx?: QACheckContext) => checkAdvanceContingentWhenCapUnresolved(wo, ctx),
   },
   {
     id: 'payment_models_reconciled',

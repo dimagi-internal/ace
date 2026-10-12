@@ -27,6 +27,7 @@ import {
   checkAcceptanceDefined,
   checkRenderedFromTemplate,
   checkCommercialTermsMatchSolicitation,
+  resolveWorkOrderCurrency,
   normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
@@ -1450,5 +1451,170 @@ describe('checkCommercialTermsMatchSolicitation', () => {
   test('is wired into CHECKS and fails the real spark pair through the runner shape', async () => {
     const c = CHECKS.find((x) => x.id === 'commercial_terms_match_solicitation')!;
     expect((await c.run(SPARK_WO, { decisionsYaml: SPARK_DECISIONS })).pass).toBe(false);
+  });
+});
+
+// ─── currency-aware cap checks (dimagi-internal/ace#2583) ────────────
+//
+// `total_nte_present` matched the literal string `USD`, so a work order whose
+// cap was correctly denominated in the programme's own currency could not
+// pass. On `turmeric-market-study-ghana/20261012-1749` (GHS, cap GHS 11,000,
+// fully resolved) the only way to satisfy the check was to write `USD 11,000`
+// — a ~15x overstatement in a document that gets SIGNED — and
+// `advance_contingent_when_cap_unresolved` cascaded off the same miss,
+// instructing the producer to declare the resolved cap unresolved. The run
+// refused both and halted at 14/16 with every substantive check passing.
+//
+// The INR repro in the issue body hid the severity: `USD [Set at contract
+// execution]` passes via the `[` branch, so only a RESOLVED non-USD cap trips
+// it.
+
+/** A PDD § Program Parameters table declaring the programme's currency. */
+const pddWithCurrency = (code: string) => `
+## Program Parameters
+
+| Parameter | Value |
+|---|---|
+| opportunity_country | ${code === 'GHS' ? 'GHA' : code === 'INR' ? 'IND' : 'USA'} |
+| opportunity_currency | ${code} |
+`;
+
+describe('checkTotalNtePresent is currency-aware (ace#2583)', () => {
+  const ghana = { pddText: pddWithCurrency('GHS') };
+
+  test('a RESOLVED cap in the programme currency passes — the blocked case', () => {
+    const wo = GOOD_WO.replace('USD 2500', 'GHS 11,000');
+    const r = checkTotalNtePresent(wo, ghana);
+    expect(r.pass).toBe(true);
+  });
+
+  test('an UNRESOLVED placeholder in the programme currency still passes', () => {
+    const wo = GOOD_WO.replace('USD 2500', 'GHS [Set at contract execution]');
+    expect(checkTotalNtePresent(wo, ghana).pass).toBe(true);
+  });
+
+  test('a USD work order with no context is unchanged', () => {
+    expect(checkTotalNtePresent(GOOD_WO).pass).toBe(true);
+    expect(checkTotalNtePresent(GOOD_WO.replace('USD 2500', 'USD [TBD]')).pass).toBe(true);
+    expect(checkTotalNtePresent(GOOD_WO.replace('USD 2500', 'USD ')).pass).toBe(false);
+  });
+
+  test('a USD work order on a declared USD programme is unchanged', () => {
+    const usd = { pddText: pddWithCurrency('USD') };
+    expect(checkTotalNtePresent(GOOD_WO, usd).pass).toBe(true);
+    expect(checkTotalNtePresent(GOOD_WO.replace('USD 2500', 'USD [TBD]'), usd).pass).toBe(true);
+  });
+
+  test('a USD cap on a GHS programme FAILS, and the hint never says to write USD', () => {
+    const r = checkTotalNtePresent(GOOD_WO, ghana);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/GHS/);
+    expect(r.auto_fix_hint).toMatch(/restate the § 6.1 cap in GHS/);
+    // The old hint told the producer to state the commitment as `USD <amount>`.
+    // Following it on this run would have written `USD 11,000` for GHS 11,000.
+    expect(r.auto_fix_hint).not.toMatch(/state Dimagi's commitment as `USD/);
+  });
+
+  test('the original INR repro — `USD [placeholder]` beside INR rates — now FAILS', () => {
+    const wo = GOOD_WO.replace('USD 2500', 'USD [Set at contract execution]');
+    const r = checkTotalNtePresent(wo, { pddText: pddWithCurrency('INR') });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no conversion rule/);
+  });
+
+  test('a USD cap WITH a stated conversion rule passes (spark-facilitator shape)', () => {
+    const wo = GOOD_WO.replace(
+      'USD 2500',
+      'USD 2500 (MWK amounts converted to USD at the exchange rate the parties agree on the ' +
+        'date of each invoice)',
+    );
+    const r = checkTotalNtePresent(wo, { pddText: pddWithCurrency('MWK') });
+    expect(r.pass).toBe(true);
+  });
+
+  test('ctx.currency beats the PDD, and an absent/garbled value falls back to USD', () => {
+    expect(resolveWorkOrderCurrency({ currency: 'ngn', pddText: pddWithCurrency('GHS') }).code).toBe(
+      'NGN',
+    );
+    expect(resolveWorkOrderCurrency({ pddText: pddWithCurrency('GHS') }).code).toBe('GHS');
+    expect(resolveWorkOrderCurrency({}).code).toBe('USD');
+    expect(resolveWorkOrderCurrency({ currency: 'rupees' }).code).toBe('USD');
+  });
+
+  test('a [PROPOSED] marker on the currency row is stripped, not read as the value', () => {
+    const pddText = pddWithCurrency('GHS').replace('| GHS |', '| GHS [PROPOSED] |');
+    expect(resolveWorkOrderCurrency({ pddText }).code).toBe('GHS');
+  });
+});
+
+describe('checkAdvanceContingentWhenCapUnresolved does not cascade off USD (ace#2583)', () => {
+  const schedule = (cap: string, extra = '') => `
+### 6.1 Total Not-to-Exceed
+
+Dimagi's total financial commitment under this Work Order is ${cap}, not-to-exceed.
+
+### 6.2 Payment Schedule
+
+| # | Milestone | % of Cap | Amount | Trigger | Timing |
+|---|---|---|---|---|---|
+| 1 | Mobilization advance | 40% | [Amount derived from the agreed cap] | Signature | On execution |
+| 2 | Final reconciliation | 60% | [Amount derived from the agreed cap] | Final verified unit | On delivery |
+${extra}
+
+## 7. Roles and Responsibilities
+`;
+
+  test('a RESOLVED cap in a non-USD currency is resolved — no contingency sentence needed', () => {
+    expect(checkAdvanceContingentWhenCapUnresolved(schedule('GHS 11,000')).pass).toBe(true);
+    expect(
+      checkAdvanceContingentWhenCapUnresolved(schedule('GHS 11,000'), {
+        pddText: pddWithCurrency('GHS'),
+      }).pass,
+    ).toBe(true);
+  });
+
+  test('an unrecognised code still resolves when the PDD declares it', () => {
+    // `XYZ` is in no country table, so only the programme-currency branch can
+    // see it — which is why this check reads that branch as well as the table.
+    expect(
+      checkAdvanceContingentWhenCapUnresolved(schedule('XYZ 11,000'), { currency: 'XYZ' }).pass,
+    ).toBe(true);
+  });
+
+  test('an UNRESOLVED non-USD cap with no contingency sentence still fails', () => {
+    const r = checkAdvanceContingentWhenCapUnresolved(schedule('GHS [Set at contract execution]'), {
+      pddText: pddWithCurrency('GHS'),
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/not a signable commitment/);
+  });
+
+  test('the USD cases are unchanged', () => {
+    expect(checkAdvanceContingentWhenCapUnresolved(schedule('USD 42500')).pass).toBe(true);
+    expect(checkAdvanceContingentWhenCapUnresolved(schedule('USD [TBD]')).pass).toBe(false);
+    expect(
+      checkAdvanceContingentWhenCapUnresolved(
+        schedule(
+          'USD [TBD]',
+          '\nThese percentages are indicative of the agreed split only. No amount is payable ' +
+            'under this schedule until the total not-to-exceed in § 6.1 is fixed at contract execution.',
+        ),
+      ).pass,
+    ).toBe(true);
+  });
+});
+
+describe('a correct GHS work order clears the cap checks through the runner shape (ace#2583)', () => {
+  test('both cap checks pass via CHECKS with the PDD in ctx', async () => {
+    const wo = GOOD_WO.replace('USD 2500', 'GHS 11,000');
+    const ctx = {
+      decisionsYaml: GOOD_DECISIONS,
+      archetype: 'atomic-visit',
+      pddText: pddWithCurrency('GHS'),
+    };
+    for (const id of ['total_nte_present', 'advance_contingent_when_cap_unresolved']) {
+      const c = CHECKS.find((x) => x.id === id)!;
+      expect((await c.run(wo, ctx)).pass, `${id} failed on a correct GHS work order`).toBe(true);
+    }
   });
 });
