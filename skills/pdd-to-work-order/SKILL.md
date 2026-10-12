@@ -249,7 +249,17 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
        present (hh-poverty-targeting/20260728-0705). The rate itself is negotiated
        via the solicitation response and is NOT set here.
        *Enforced:* `pdd-to-work-order-qa § no_renderer_instructions`.
-     - `{{wo_total_not_to_exceed_usd}}` — bare number
+     - `{{wo_total_not_to_exceed_usd}}` — bare number, **in the programme's own currency** (see directly below)
+
+       **The template's literal `USD` is not the programme's currency — relabel it, never convert (ace#2583).** The token's name ends `_usd` for historical reasons only. Every payment figure in the PDD is denominated in `opportunity_currency`, the LOCAL currency of `opportunity_country` (`templates/pdd-template.md:255`, "Never default to USD", gated by `idea-to-pdd-qa § launch_parameters_present`), and the template hardcodes `USD ` before this token in § 6.1 plus an `Amount (USD)` column header in § 6.2. So when `opportunity_currency` is anything other than `USD`, pass these TWO literal replacements to `docs_copy_template` **instead of** the bare `{{wo_total_not_to_exceed_usd}}` key (`replacements` is a plain find→replace map; the keys need not be tokens, and the composite key consumes the token so the ace#819 leftover-`{{` scan stays clean):
+
+       ```
+       "USD {{wo_total_not_to_exceed_usd}}": "GHS 11,000"
+       "Amount (USD)":                       "Amount (GHS)"
+       ```
+
+       Then restate every other money figure in § 6 in the same code. **Do NOT apply an exchange rate.** The PDD's number is already denominated correctly, so this is a relabel: writing the GHS figure after the letters `USD` overstates a Ghana cap ~15x in a document that gets SIGNED. ACE does not pick exchange rates. If the cap genuinely must be capped in USD (a funder constraint, recorded in a decision row), keep `USD` and add the conversion rule to § 6 — the rate source and the date it is struck — naming the local code explicitly; `pdd-to-work-order-qa § total_nte_present` accepts that shape and rejects a bare USD cap beside local-currency rates. Verified live on `turmeric-market-study-ghana/20261012-1749`, where the hardcoded USD made the QA gate un-passable for a correct contract (14/16, both failures demanding a false figure).
+       *Enforced:* `pdd-to-work-order-qa § total_nte_present`.
      - `{{ethics_body}}` — prose
      - `{{pdd_link}}` (Drive URL of the PDD from `phases.idea-to-design.products.pdd.file_id`)
      - `{{annexure_b_placeholder}}` ("To be provided" if no opp-specific annexure)
