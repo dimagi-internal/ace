@@ -85,4 +85,51 @@ describe('ad-hoc stop-after-phase instructions (dimagi-internal/ace agent-review
     const section = ORCH.slice(start, end);
     expect(section).toMatch(/\/ace:run <opp>\/<run-id>/);
   });
+
+  /**
+   * ace#2848 — the directive was reachable in theory and not in practice.
+   *
+   * "Record it immediately" cannot be obeyed from inside a phase dispatch:
+   * the level-0 orchestrator is parked in `Agent(<phase>)`, and a message
+   * sent to the session is not injected into its context until that call
+   * returns. Measured 2026-10-12 on turmeric-market-study-ghana/20261012-1749
+   * — Phase 1 dispatched 17:59:18, an operator stop request sent 18:17:09 was
+   * absent from the transcript 100s later and run_state.yaml was untouched at
+   * revision 19.
+   *
+   * So the stop has to be armable WITHOUT the orchestrator receiving anything,
+   * which makes the fence's read the load-bearing part: it must come off Drive
+   * at the boundary, not from a copy taken before the dispatch.
+   */
+  it('the fence RE-READS run_state.yaml rather than trusting an already-read copy', () => {
+    const branch = branchSlice(ORCH);
+    expect(branch).toMatch(/RE-READ run_state\.yaml/);
+    // The old wording is the bug: a copy read before the dispatch cannot hold
+    // a directive written during it.
+    expect(branch).not.toMatch(/already-read/);
+  });
+
+  it('says plainly that a mid-phase message is not delivered when it is sent', () => {
+    const start = ORCH.indexOf('### Ad-hoc stop-after-phase instructions');
+    const end = ORCH.indexOf('### Why default mode looks like this');
+    const section = ORCH.slice(start, end);
+    expect(section).toMatch(/parked inside `Agent\(<phase>\)`/);
+    expect(section).toMatch(/not injected into your context until that\s+call returns/);
+    expect(section).toMatch(/2848/);
+  });
+
+  it('documents the out-of-band arming path, which needs no message at all', () => {
+    const start = ORCH.indexOf('### Ad-hoc stop-after-phase instructions');
+    const end = ORCH.indexOf('### Why default mode looks like this');
+    const section = ORCH.slice(start, end);
+    expect(section).toMatch(/update_yaml_file/);
+    expect(section).toMatch(/out-of-band/);
+    // Anyone with Drive write access — not only a level-0 orchestrator.
+    expect(section).toMatch(/second session|another agent|ace-web/);
+  });
+
+  it('the reference doc carries the same warning, not just the procedure doc', () => {
+    expect(REF).toMatch(/2848/);
+    expect(REF).toMatch(/out-of-band/);
+  });
 });
