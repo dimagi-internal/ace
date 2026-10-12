@@ -43,8 +43,25 @@ import { join } from 'node:path';
  * warning about what the export does not cover.
  *
  * Asserted on source text rather than by running doctor: the probe shells out
- * to a login shell and reads launchd state, neither of which a unit test
- * should depend on.
+ * and reads machine state, which a unit test should not depend on.
+ *
+ * ## UPDATE, ace#2844 — the check was right, its probe and its fix were not
+ *
+ * The warning above is real and still fires for the right reason. What was
+ * wrong was everything around it:
+ *
+ *  - It probed a login shell and `launchctl getenv`, which answers "does this
+ *    operator's GUI environment carry the password?" — not "can ACE send
+ *    mail?". It therefore flagged TURN-BLOCKING on correctly-configured boxes.
+ *  - Its fix hint offered `launchctl setenv` (which `canopy email preflight`
+ *    forbids outright) and the runner's LaunchAgent plist (which reaches the
+ *    runner daemon only, never the Emdash-spawned session a turn runs in).
+ *
+ * The remedy is `bin/ace-env`: it loads the keyring pair from the plugin-data
+ * `.env` and execs the command, and every mandated gog / canopy email call in
+ * the skills now goes through it. `bin/ace-email` and `bin/ace-mark-read` load
+ * the same pair in-process. So the probe now asks whether that shim can hand
+ * the credential to a child.
  */
 
 const DOCTOR = readFileSync(
@@ -71,17 +88,51 @@ describe('ace-doctor checks the runner session environment', () => {
     expect(DOCTOR).toMatch(/warn_turn "runner_session_env/);
   });
 
-  it('probes a spawned shell rather than trusting doctor\'s own env', () => {
+  it('probes without trusting doctor\'s own env', () => {
     // The whole point: doctor's process has the variable (it exported it).
     // Reading $GOG_KEYRING_PASSWORD here would always pass. The probe must
-    // strip it and ask a login shell, which is what emdash gives a session.
+    // strip it before asking.
     expect(DOCTOR).toMatch(/env -u GOG_KEYRING_PASSWORD/);
   });
 
-  it('also accepts the launchd user environment as a valid source', () => {
-    // `launchctl setenv` is the other way the variable can legitimately reach
-    // a GUI-spawned emdash, so a box fixed that way must not be flagged.
-    expect(DOCTOR).toMatch(/launchctl getenv GOG_KEYRING_PASSWORD/);
+  it('probes bin/ace-env — the path ACE actually uses (ace#2844)', () => {
+    // Until ace#2844 this probed a login shell and `launchctl getenv`, i.e.
+    // "does the operator's GUI environment happen to carry the password?".
+    // That is a property of their machine setup, not of whether ACE can send
+    // mail, and it reported TURN-BLOCKING on a box where email worked fine.
+    // What decides it is whether `bin/ace-env` can hand the credential to a
+    // child, because that is what every mandated gog / canopy email call now
+    // goes through.
+    expect(DOCTOR).toMatch(/bin\/ace-env/);
+    expect(DOCTOR).toMatch(/_rse_shim="\$ROOT\/bin\/ace-env"/);
+    expect(DOCTOR).toMatch(/\$_rse_shim" printenv GOG_KEYRING_PASSWORD/);
+  });
+
+  it('never recommends launchctl setenv or the runner plist', () => {
+    // Both were offered as remedies and BOTH are wrong, in different ways:
+    //
+    //  * `launchctl setenv` reaches a GUI-spawned emdash but hands the
+    //    password to every process of this user — `canopy email preflight`
+    //    forbids it in terms, so doctor recommending it put the two tools in
+    //    direct contradiction in the same session.
+    //  * `EnvironmentVariables` in com.canopy.runner.plist reaches the runner
+    //    DAEMON and nothing else. Turns run in a session spawned by the Emdash
+    //    GUI app, which is not a child of that launchd job. Measured
+    //    2026-10-12 on stewari-mbp-cdp: plist correctly populated, daemon
+    //    restarted 22s after the edit, `pgrep -P <runner-pid>` zero children,
+    //    and the spawned turn still could not make one Gmail call.
+    //
+    // The second is the dangerous one to leave in a fix hint: it LOOKS like it
+    // worked, because the daemon's own mailbox probe starts passing and
+    // canopy-web then advertises `mailboxes_readable` for a box where no turn
+    // can read mail.
+    const start = DOCTOR.indexOf('runner_session_env');
+    const block = DOCTOR.slice(start, start + 6000);
+    expect(block).not.toMatch(/fix[^"]*launchctl setenv GOG_KEYRING_PASSWORD <the value/);
+    // It may NAME them as things not to do; it must not offer them as the fix.
+    // Backticks are backslash-escaped in doctor's double-quoted shell strings.
+    expect(block).toMatch(/Do NOT use \\?`launchctl setenv/);
+    expect(block).toMatch(/reaches the runner DAEMON only/);
   });
 
   it('stays silent when no file keyring password is configured at all', () => {

@@ -70,6 +70,26 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+sys.path.insert(0, os.path.join(REPO, "hooks"))
+import tenancy_guard as _tg  # noqa: E402
+
+
+def _load_keyring_env():
+    """Put gog's file-keyring credentials in this process's env before exec'ing
+    canopy, which shells out to gog.
+
+    Without this, SEND is dead in any session a canopy runner spawns: the
+    password lives in the plugin-data `.env` and in no shell profile, so gog
+    cannot open its keyring and fails with `no TTY available for keyring file
+    backend password prompt`. An existing value always wins. Same pair, same
+    order, as bin/ace-env — see its header for the routes that do NOT work (the
+    runner LaunchAgent plist reaches the daemon only). ace#2844."""
+    for key in ("GOG_KEYRING_PASSWORD", "GOG_KEYRING_BACKEND"):
+        if not os.environ.get(key):
+            value = _tg.plugin_env(key)
+            if value:
+                os.environ[key] = value
+
 
 def _exec_via_canopy_runtime(args):
     """Fallback when `canopy` isn't on PATH: run the engine via uv from canopy's
@@ -256,6 +276,8 @@ if VERB == "forward":
 ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(_ARGV))
 _check_run_page(ARGS, _OVERRIDE)
 _check_canopy_urls(ARGS)
+
+_load_keyring_env()
 
 try:
     os.execvp("canopy", ["canopy", "email", VERB, "--repo", REPO, *ARGS])

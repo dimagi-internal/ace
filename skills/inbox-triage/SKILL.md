@@ -110,7 +110,7 @@ the shape of the turn.
 A `gog gmail search -j` thread row reports `date` from the thread's NEWEST message and `from` from
 its OLDEST, and says nothing about the mismatch. On any thread past its first reply those are two
 different people. Both the "sender" you present here and the noise-table match must come from the
-structured read (`canopy email read <threadId>`), whose `messages[-1].from` is the counterpart
+structured read (`bin/ace-env canopy email read <threadId>`), whose `messages[-1].from` is the counterpart
 actually writing to ACE; use the row only for the thread id, the subject and the date. Two distinct
 failures otherwise, and §2c cannot save you from the second because it runs after the disposal:
 a thread STARTED by an `@dimagi.com` colleague and last replied to by an external party presents as
@@ -190,9 +190,9 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
        feedback, a solicitation question) becomes a **drafted reply + an escalation note** to the
        act-tier operator on the run (`initiated_by` / `last_actor` in `run_state.yaml`).
      - **File** — save an attachment/asset to the run's Drive folder. Intake recipe (use the
-       shared canopy engine, not raw `gog` — canopy ≥ 0.2.344): `canopy email read <threadId>
-       --repo .` returns each message's `attachments[]` with the `attachment_id`; then `canopy
-       email fetch-attachment <messageId> <attachmentId> --repo . --out <dir>` downloads it and
+       shared canopy engine, not raw `gog` — canopy ≥ 0.2.344): `bin/ace-env canopy email read
+       <threadId> --repo .` returns each message's `attachments[]` with the `attachment_id`; then
+       `bin/ace-env canopy email fetch-attachment <messageId> <attachmentId> --repo . --out <dir>` downloads it and
        returns `.path`/`saved_to` (there is NO `-o` flag and no base64 `data` field — that's
        what the engine handles). Parse xlsx/docx with Python **stdlib** (`zipfile` + `xml`) — the
        runtime env is externally-managed, so don't `pip install`. Then upload the file to the
@@ -376,7 +376,7 @@ gate, not the date, is what a later turn reads.)
 ### 4b. A STALE inbound is closed, not answered late (Jon, 2026-08-14)
 Aging cuts both ways. §4 covers a thread ACE is sitting on; this covers the inbound that went
 unread so long that **answering it is the wrong move**. Once an unread inbound is roughly **two
-weeks or older**, the default action is **close it (`canopy email archive`) WITHOUT sending** —
+weeks or older**, the default action is **close it (`bin/ace-env canopy email archive`) WITHOUT sending** —
 not draft the substantive reply it would have earned on day one. The world has moved: the run it
 referenced has been superseded, the question has been overtaken, or the sender has stopped
 waiting. A detailed answer to a three-week-old message spends the counterpart's attention

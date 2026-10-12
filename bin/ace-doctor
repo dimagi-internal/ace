@@ -2675,25 +2675,35 @@ if [ -f "$HOME/.canopy/runner.json" ]; then
     # Strip the variable before asking, or we would read the copy doctor
     # exported above and always pass. `-lc` because emdash hands a session a
     # login shell, which is the only thing that would source a profile.
+    # Probe the path ACE actually uses: `bin/ace-env` loads the keyring pair
+    # out of the plugin-data .env and execs the command (ace#2844), and
+    # bin/ace-email + bin/ace-mark-read do the same in-process. Strip the
+    # variable first, or we would read the copy doctor exported above and
+    # always pass.
+    #
+    # Probing a login shell / `launchctl getenv` (what this check did until
+    # ace#2844) answered the wrong question: it asked where the GUI environment
+    # happens to carry the password, which is a property of the operator's
+    # machine setup, not of whether ACE can send mail. It therefore reported
+    # TURN-BLOCKING on a correctly-configured box and pushed the operator
+    # toward `launchctl setenv` — which `canopy email preflight` forbids in the
+    # same breath, because it hands the password to every process of this user.
     _rse_to="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
-    _rse_shell="${SHELL:-/bin/zsh}"
-    _rse_shell_pw=""
-    if [ -x "$_rse_shell" ]; then
+    _rse_shim="$ROOT/bin/ace-env"
+    _rse_shim_pw=""
+    if [ -x "$_rse_shim" ]; then
       if [ -n "$_rse_to" ]; then
-        _rse_shell_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_to" 10 "$_rse_shell" -lc 'printf %s "${GOG_KEYRING_PASSWORD:-}"' 2>/dev/null || true)"
+        _rse_shim_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_to" 10 "$_rse_shim" printenv GOG_KEYRING_PASSWORD 2>/dev/null || true)"
       else
-        _rse_shell_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_shell" -lc 'printf %s "${GOG_KEYRING_PASSWORD:-}"' 2>/dev/null || true)"
+        _rse_shim_pw="$(env -u GOG_KEYRING_PASSWORD "$_rse_shim" printenv GOG_KEYRING_PASSWORD 2>/dev/null || true)"
       fi
     fi
-    # The other legitimate source: `launchctl setenv` puts it in the user's
-    # launchd environment, which a GUI-launched emdash does inherit.
-    _rse_launchd_pw="$(launchctl getenv GOG_KEYRING_PASSWORD 2>/dev/null || true)"
-    if [ -n "$_rse_shell_pw" ] || [ -n "$_rse_launchd_pw" ]; then
-      _rse_src="login shell"
-      [ -z "$_rse_shell_pw" ] && _rse_src="launchd user env"
-      pass "runner_session_env: a canopy runner is paired and a spawned session can reach GOG_KEYRING_PASSWORD (via $_rse_src) — runner-driven email can open the gog keyring"
+    if [ -n "$_rse_shim_pw" ]; then
+      pass "runner_session_env: bin/ace-env supplies GOG_KEYRING_PASSWORD from the plugin-data .env, so a runner-spawned session can open the gog keyring — email works in /ace:turn and /ace:ask. Raw UNWRAPPED \`gog\`/\`canopy email\` calls still cannot: prefix them with bin/ace-env"
+    elif [ ! -x "$_rse_shim" ]; then
+      warn_turn "runner_session_env: GOG_KEYRING_PASSWORD is in the plugin-data .env but bin/ace-env is missing or not executable, so nothing carries it into a runner-spawned session. gog cannot open its file keyring without a TTY, so ACE can neither read nor send email there, and /ace:turn inbox triage fails with it" "chmod +x \"$ROOT/bin/ace-env\" (and reinstall the plugin if the file is absent: /ace:update)"
     else
-      warn_turn "runner_session_env: a canopy runner is paired here, but a session it spawns sees NO GOG_KEYRING_PASSWORD (checked a login shell and the launchd user env). gog cannot open its file keyring without a TTY, so ACE can neither read nor send email in any runner-driven session, and /ace:turn inbox triage fails with it. gog_auth above PASSES because doctor exports the password into its own process (ace#2358) — the runner does not" "immediate unblock (per-boot, and visible to every process of your user): launchctl setenv GOG_KEYRING_PASSWORD <the value from the plugin-data .env>. Narrower but re-rendered by the next install-runner.sh: add it to EnvironmentVariables in ~/Library/LaunchAgents/com.canopy.runner.plist. The durable fix is canopy's own runner-credential path (set_runner_credential / set_agent_credentials on the canopy-web MCP), which survives runner updates and keeps the secret out of the GUI environment"
+      warn_turn "runner_session_env: bin/ace-env ran but could not resolve GOG_KEYRING_PASSWORD from the plugin-data .env, so a runner-spawned session cannot open the gog keyring and ACE can neither read nor send email there. gog_auth above PASSES because doctor exports the password into its own process (ace#2358) — a spawned session does not" "confirm the key is present: grep -c '^GOG_KEYRING_PASSWORD=' \"\${CLAUDE_PLUGIN_DATA:-\$HOME/.claude/plugins/data/ace-ace}/.env\" — if it is 0, re-inject with /ace:setup. Do NOT use \`launchctl setenv\` (canopy email preflight forbids it: it hands the password to every process of this user), and do NOT add it to EnvironmentVariables in ~/Library/LaunchAgents/com.canopy.runner.plist — that reaches the runner DAEMON only, never the Emdash-spawned session a turn runs in (measured 2026-10-12, ace#2844)"
     fi
   fi
 fi

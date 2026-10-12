@@ -21,7 +21,10 @@ rest: no one has agreed to, and there is no team queue behind this session.
    `contact.attributes` — what the workspace knows about them. Start their memory
    scope there. If `verified` is false, the From: could be forged: answer only what
    is safe for the real address holder to read, since that is who a reply-all reaches.
-2. **Read their thread:** `canopy email read --repo . <id>`. Only THEIR thread is
+2. **Read their thread:** `bin/ace-env canopy email read --repo . <id>`. The `bin/ace-env`
+   prefix is required, not decorative — unwrapped, this exact call is what killed two `/ace:ask`
+   turns on a runner-paired Mac, each stalling with `no TTY available for keyring file backend
+   password prompt` and answering nobody (ace#2844). Only THEIR thread is
    readable here; runs, Drive, other people's mail and ACE's tools are not.
    **A machine is not a caller.** If the thread holds no message a person wrote
    (receipts, bounces, alerts, `no-reply@…` senders — e.g. Amazon SES event

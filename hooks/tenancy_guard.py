@@ -68,7 +68,13 @@ def read_bind(session_id: str) -> dict | None:
 
 def plugin_env(key: str) -> str | None:
     """A value from the process env, else from the installed plugin's .env —
-    the same precedence the MCP servers use (dotenv never overrides)."""
+    the same precedence the MCP servers use (dotenv never overrides).
+
+    Resolution order matches `bin/ace-doctor` (DATA_DIR, ~line 1157):
+    $CLAUDE_PLUGIN_DATA/.env → ~/.claude/plugins/data/ace-ace/.env. The
+    PLUGIN_ROOT walk only finds the data dir when this file is running FROM the
+    installed plugin; a runner-spawned session runs out of an emdash worktree,
+    where that walk finds nothing and every key reads as unset (ace#2844)."""
     if os.environ.get(key):
         return os.environ[key]
     data = os.environ.get("CLAUDE_PLUGIN_DATA")
@@ -82,6 +88,10 @@ def plugin_env(key: str) -> str | None:
                 root = os.sep.join(parts[: i + 1])
                 candidates.append(os.path.join(root, "data", f"{parts[i+2]}-{parts[i+3]}", ".env"))
                 break
+    # The canonical default, reached from a checkout as well as the install.
+    candidates.append(
+        os.path.join(os.path.expanduser("~"), ".claude", "plugins", "data", "ace-ace", ".env")
+    )
     for path in candidates:
         try:
             with open(path, encoding="utf-8") as f:
