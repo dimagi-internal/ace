@@ -18,7 +18,19 @@ keeps that dispatch at level 1 with the full depth budget behind it (see
 
 The runner executes a **plain resume** — `/ace:run <opp>/<new-run-id>` against a
 run that was already forked + shaped (`{3,4,6: pending, 5/7/8+: skipped}`)
-before dispatch. It's an ordinary resume that writes a normal `run_state.yaml`;
+before dispatch.
+
+**The shaping step MUST also write `phases.qa-and-training.mode: app-QA-only`
+explicitly** (ace#2897). The loop measures app-build quality and never reads the
+training artifacts, so skipping Step 2 keeps each iteration fast — but that is
+now an opt-in the seeder states, not something Phase 6 infers from
+`ocs-setup.status == skipped`. The inference was removed because it also fired
+on ordinary 1/2/3/4/6 operator runs, stripping all seven partner-facing training
+artifacts while the phase reported `verdict: pass`. Omit the field here and
+iterations get slower (they will produce the full training set); omit it
+*there* and a real partner silently receives nothing.
+
+It's an ordinary resume that writes a normal `run_state.yaml`;
 run shape lives in that file, NOT in a `--seed-from`/`--only` flag (the headless
 runner ignored those — jjackson/ace#672). This procedure reads the
 `run_state.yaml` + the Claude session transcript and does ALL loop
