@@ -407,6 +407,13 @@ export interface CommCareCliPlayOptions {
    * is supplied — a caller-provided restore is used verbatim.
    */
   seedCaseTypes?: string[];
+  /**
+   * Lookup-table (item-list) fixture tags to seed as empty fixture roots.
+   * Defaults to every `jr://fixture/item-list:<tag>` the CCZ's XML declares
+   * (see `extractItemListFixtureTags`); pass `[]` to seed none. Ignored when
+   * `restorePath` is supplied (ace#2860).
+   */
+  seedFixtureTags?: string[];
 }
 
 /**
@@ -430,12 +437,19 @@ export type CommCareCliPlayVerdict = 'pass' | 'fail' | 'skipped';
  * - `entry-path-unresolved` (ace#2784): suite.xml declares its menus and the
  *   path lands on no command (out of range, or stops on a menu). The CLI is
  *   not run; `nav_unresolved` lists what the menu actually shows.
+ * - `cli-fixture-unseeded` (ace#2860): form-init asked the restore for a
+ *   fixture it does not carry (`FixtureInitializationException: Unable to
+ *   find lookup table`). The play restore seeds an empty root for every
+ *   `jr://fixture/item-list:<tag>` the CCZ declares, so this only fires for
+ *   a fixture kind the seed does not cover (or a caller-supplied restore). A
+ *   device receives the fixture on sync; form-init is UNEVALUATED, not failed.
  */
 export type CommCareCliPlaySkipReason =
   | 'entry-path-unresolved'
   | 'empty-case-list'
   | 'form-entry-not-reached'
-  | 'cli-case-index-unsupported';
+  | 'cli-case-index-unsupported'
+  | 'cli-fixture-unseeded';
 
 export interface CommCareCliPlayResult {
   verdict: CommCareCliPlayVerdict;
@@ -443,6 +457,8 @@ export interface CommCareCliPlayResult {
   skip_reason?: CommCareCliPlaySkipReason;
   /** Case types seeded into the restore for this run (echo, for the verdict). */
   seeded_case_types?: string[];
+  /** Item-list fixture tags seeded (empty) into the restore (ace#2860). */
+  seeded_fixture_tags?: string[];
   /**
    * The suite command (`m3-f0`) the entry path resolved to, when suite.xml
    * declares its menus. Absent when the path could not be resolved — in
@@ -483,6 +499,11 @@ export interface BuildPlayRestoreOptions {
    * `suite.xml` by `commcareCliPlayCcz`; pass explicitly to override.
    */
   caseTypes?: string[];
+  /**
+   * Lookup-table tags to seed as EMPTY `item-list:<tag>` fixture roots
+   * (ace#2860). Derived from the CCZ's XML by `commcareCliPlayCcz`.
+   */
+  fixtureTags?: string[];
   /** Override the restore user's uuid (also the seeded cases' owner). */
   userId?: string;
 }
@@ -513,6 +534,19 @@ export interface BuildPlayRestoreOptions {
  * a case list whose detail columns reference missing properties renders them
  * blank, which is harmless, whereas fabricating property values would be
  * guessing at data the app owns.
+ *
+ * **Why fixture seeding exists (dimagi-internal/ace#2860).** A form that
+ * declares `<instance src="jr://fixture/item-list:<tag>"/>` (a select bound
+ * to a lookup table) asks the restore for that fixture inside
+ * `FormDef.initialize`; with none present the CLI throws
+ * `FixtureInitializationException: Unable to find lookup table` and the gate
+ * graded a clean build `fail`. Observed on smallholder-seasonal/20261012-1549
+ * (Deliver app `6137de982ff24e17bd061ec4d775da21`, build
+ * `097297a26e304c90a990f230f5564413`) for `seasonal_calendar`, `curriculum`
+ * and `services`; with one empty `<fixture id="item-list:<tag>">` per table
+ * all three reached `Form Start:`. We seed EMPTY roots, not HQ's rows: the
+ * gate exercises form-init, which only needs the instance to resolve, and
+ * fetching rows would couple an offline CCZ check to live HQ credentials.
  */
 export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string {
   const userId = opts.userId ?? PLAY_USER_UUID;
@@ -529,6 +563,15 @@ export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string 
 `,
     )
     .join('');
+  const fixtures = (opts.fixtureTags ?? [])
+    .filter(isXmlNameSafe)
+    .map(
+      (tag) => `  <fixture id="item-list:${tag}" user_id="${userId}">
+    <${tag}_list></${tag}_list>
+  </fixture>
+`,
+    )
+    .join('');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <OpenRosaResponse xmlns="http://openrosa.org/http/response">
   <message nature="ota_restore_success">Successful</message>
@@ -542,7 +585,7 @@ export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string 
       <data key="commcare_last_name">User</data>
     </user_data>
   </Registration>
-${cases}</OpenRosaResponse>
+${cases}${fixtures}</OpenRosaResponse>
 `;
 }
 
@@ -570,6 +613,43 @@ export function extractCaseTypesFromSuite(suiteXml: string): string[] {
     if (t) out.add(t);
   }
   return Array.from(out);
+}
+
+/** A lookup-table tag must be a legal XML element name to become `<tag_list>`. */
+function isXmlNameSafe(tag: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(tag);
+}
+
+/**
+ * Every lookup-table tag an XML document reads, from its
+ * `jr://fixture/item-list:<tag>` instance srcs (ace#2860). Forms declare them
+ * as `<instance id="..." src="jr://fixture/item-list:<tag>"/>`; suite.xml can
+ * too (case-list filters). Order of first appearance, de-duplicated.
+ */
+export function extractItemListFixtureTags(...xmls: string[]): string[] {
+  const out = new Set<string>();
+  for (const xml of xmls) {
+    if (!xml) continue;
+    for (const m of xml.matchAll(/jr:\/\/fixture\/item-list:([^"'\s<>]+)/g)) {
+      if (isXmlNameSafe(m[1])) out.add(m[1]);
+    }
+  }
+  return Array.from(out);
+}
+
+/** Every item-list fixture tag any XML file in a CCZ reads. [] on unreadable. */
+export function readCczItemListFixtureTags(cczPath: string): string[] {
+  try {
+    const files = unzipSync(new Uint8Array(fs.readFileSync(cczPath)));
+    return extractItemListFixtureTags(
+      ...Object.keys(files)
+        .filter((k) => k.endsWith('.xml'))
+        .sort()
+        .map((k) => strFromU8(files[k])),
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Read `suite.xml` out of a CCZ. Returns '' when absent/unreadable. */
@@ -862,6 +942,8 @@ export async function commcareCliPlayCcz(
   // suite.xml drives BOTH the case seed and the menu walk (ace#1088).
   const suiteXml = readCczSuiteXml(opts.cczPath);
   const seededCaseTypes = opts.seedCaseTypes ?? extractCaseTypesFromSuite(suiteXml);
+  // Lookup tables the forms read must resolve at form-init (ace#2860).
+  const seededFixtureTags = opts.seedFixtureTags ?? readCczItemListFixtureTags(opts.cczPath);
 
   // A path suite.xml says lands on no command cannot open a form. Running it
   // anyway made the CLI index past the menu (AIOOBE) and grade the CCZ `fail`
@@ -874,6 +956,7 @@ export async function commcareCliPlayCcz(
       skip_reason: 'entry-path-unresolved',
       nav_unresolved: nav.unresolved,
       seeded_case_types: seededCaseTypes,
+      seeded_fixture_tags: seededFixtureTags,
       exit_code: -1,
       entry_path: entryPath,
       stdout: '',
@@ -891,7 +974,7 @@ export async function commcareCliPlayCcz(
     restorePath = path.join(restoreTempDir, 'restore.xml');
     await fs.promises.writeFile(
       restorePath,
-      buildPlayRestoreXml({ caseTypes: seededCaseTypes }),
+      buildPlayRestoreXml({ caseTypes: seededCaseTypes, fixtureTags: seededFixtureTags }),
     );
   }
 
@@ -941,6 +1024,7 @@ export async function commcareCliPlayCcz(
             entryPath,
           }),
           seeded_case_types: seededCaseTypes,
+          seeded_fixture_tags: seededFixtureTags,
           ...(nav.commandId ? { command_id: nav.commandId } : {}),
         });
       });
@@ -980,6 +1064,9 @@ export interface ParsePlayOutputInput {
  *     it still fires when a case-list *filter* excludes the generic seed.
  *   - Form entry reached, then the CLI's sandbox NPEs on its missing
  *     `CaseIndexTable` → `skipped` / `cli-case-index-unsupported` (ace#2784).
+ *   - Form-init asks the synthetic restore for a fixture it lacks
+ *     (`FixtureInitializationException`) → `skipped` / `cli-fixture-unseeded`
+ *     (ace#2860).
  *   - No form-init failure AND form entry observed (`Starting form entry` or
  *     `Form Start:`) → pass.
  *   - Otherwise → `skipped` / `form-entry-not-reached` (ace#2784). This rule
@@ -1093,6 +1180,17 @@ function classifyPlayStream(s: string): PlayStreamOutcome {
   // runs first: a real XPath defect in the same stream is never masked.
   if (/"this\.caseIndexTable" is null|CaseInstanceTreeElement\.performCaseIndexQuery/.test(s)) {
     return 'cli-case-index-unsupported';
+  }
+  // (2c) Form-init asked the restore for a fixture it does not carry
+  // (ace#2860). Verbatim, smallholder-seasonal Deliver m0-f0:
+  //   CommCareInstanceInitializer$FixtureInitializationException: Unable to
+  //   find lookup table: jr://fixture/item-list:seasonal_calendar
+  //     at …CommCareInstanceInitializer.loadFixtureRoot(…)
+  //     at org.javarosa.core.model.FormDef.initialize(…)
+  // A device gets the table on sync, so a missing fixture in the SYNTHETIC
+  // restore is the harness's gap. Rule (1) still runs first.
+  if (/FixtureInitializationException/.test(s)) {
+    return 'cli-fixture-unseeded';
   }
   // (3) `Unhandled Fatal Error executing CommCare app` followed by ANY other
   // exception class (not the benign `String.startsWith` NPE). The CLI
