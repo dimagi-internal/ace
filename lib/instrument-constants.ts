@@ -846,6 +846,53 @@ export function resolveInstrumentSource(input: {
     };
   }
 
+  // ace#2852: a DERIVED inputs[] entry does not end the search. When the
+  // publisher's own file sits in a manifest-recorded subfolder, it outranks
+  // ACE's extraction of it — otherwise the check diffs the build against an
+  // extraction (unfalsifiable, ace#2110) while the published source is one
+  // level down. The inputs[] entry still wins when it is itself published, or
+  // when the subfolder holds nothing published.
+  if (input.manifestEntry && classifyInstrumentArtifact(input.manifestEntry) === 'derived') {
+    const derivedEntry = input.manifestEntry;
+    const published = subfolderCandidates.filter(
+      (c) => classifyInstrumentArtifact(c) === 'published',
+    );
+    if (published.length === 1) {
+      const hit = published[0];
+      const detail =
+        `resolved ${named} by walking a manifest-recorded subfolder id one level ` +
+        `(${hit.name}, file_id ${hit.file_id}${hit.folder_id ? `, in folder ${hit.folder_id}` : ''}); ` +
+        `the publisher's file was preferred over the derived inputs[] entry ` +
+        `${derivedEntry.name} (file_id ${derivedEntry.file_id}) — ace#2852`;
+      return {
+        disposition: 'proceed',
+        reason: 'resolved-from-subfolder',
+        source: hit,
+        candidates: [hit, derivedEntry],
+        detail,
+        memo: `instrument_constants: checked — ${detail}`,
+        artifactClass: 'published',
+      };
+    }
+    if (published.length > 1) {
+      const listed = published.map((c) => `${c.name} (${c.file_id})`).join(', ');
+      const detail =
+        `HALT: ${named} is [FIXED]; inputs[] holds only a derived extraction ` +
+        `(${derivedEntry.name}), and more than one publisher file matched in the manifest-recorded ` +
+        `subfolders — ${listed}. Picking one would be a guess. Narrow the match to the one file ` +
+        'that carries the scorecard and lookup table, and re-run.';
+      return {
+        disposition: 'halt',
+        reason: 'ambiguous',
+        source: null,
+        candidates: [...published, derivedEntry],
+        detail,
+        memo: `instrument_constants: HALT — ${detail}`,
+        artifactClass: null,
+      };
+    }
+  }
+
   if (input.manifestEntry) {
     const artifactClass = classifyInstrumentArtifact(input.manifestEntry);
     const detail =

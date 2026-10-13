@@ -586,3 +586,101 @@ describe('resolveInstrumentSource carries the artifact class (ace#2110)', () => 
     ).toBeNull();
   });
 });
+
+// ace#2852. ace#2110 covered "the derived extraction is the ONLY instrument
+// artifact" (disclose, proceed). This is the other shape: BOTH exist. The
+// extraction sits at the top of `inputs/` (so it is in `inputs[]`), and the
+// publisher's workbook sits one level down in a manifest-recorded subfolder.
+// The resolver returned the `inputs[]` match before it looked at the
+// subfolder, so Step 4k — run as written — diffed the build against ACE's own
+// extraction while the published workbook was right there. Layout and ids are
+// the real `smallholder-seasonal/20261012-1549` inputs.
+describe('resolveInstrumentSource prefers the publisher over a derived inputs[] entry (ace#2852)', () => {
+  const DERIVED_IN_INPUTS = {
+    file_id: '1Dv71yYLGO2YEl32rtrHtD1yZbHQl1dRX',
+    name: 'INSTRUMENT — Nigeria 2018 PPI (official povertyindex.org workbook, extracted verbatim).md',
+    mime_type: 'text/markdown',
+  };
+  const SUBFOLDER = '1eq7szP1nTr5RUVoyxezjnbe8JXoIMB0D';
+  const PUBLISHED_IN_SUBFOLDER = {
+    file_id: '1AVa_3tsy4q8xa3q1RAYii1vHqWjeAG_O',
+    name: 'nigeria-ppi-2020-scorecard-and-lookup-table.xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    folder_id: SUBFOLDER,
+  };
+
+  it('resolves the published subfolder file, not the derived inputs[] extraction', () => {
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: DERIVED_IN_INPUTS,
+      subfolderCandidates: [PUBLISHED_IN_SUBFOLDER],
+      manifestRecordsSubfolders: true,
+      instrumentName: 'Nigeria 2018 PPI',
+    });
+    expect(r.disposition).toBe('proceed');
+    expect(r.reason).toBe('resolved-from-subfolder');
+    expect(r.source?.file_id).toBe(PUBLISHED_IN_SUBFOLDER.file_id);
+    expect(r.artifactClass).toBe('published');
+    expect(r.memo).not.toMatch(/DERIVED artifact/);
+  });
+
+  it('records the derived entry it passed over, so the memo shows the provenance choice', () => {
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: DERIVED_IN_INPUTS,
+      subfolderCandidates: [PUBLISHED_IN_SUBFOLDER],
+      manifestRecordsSubfolders: true,
+    });
+    expect(r.candidates.map((c) => c.file_id)).toEqual([
+      PUBLISHED_IN_SUBFOLDER.file_id,
+      DERIVED_IN_INPUTS.file_id,
+    ]);
+    expect(r.memo).toContain(DERIVED_IN_INPUTS.file_id);
+    expect(r.memo).toMatch(/preferred over the derived inputs\[\] entry/);
+  });
+
+  it('keeps the derived entry, with its caveat, when the subfolder holds nothing published', () => {
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: DERIVED_IN_INPUTS,
+      subfolderCandidates: [{ ...DERIVED_IN_INPUTS, file_id: 'other-md', folder_id: SUBFOLDER }],
+      manifestRecordsSubfolders: true,
+    });
+    expect(r.reason).toBe('resolved-from-inputs');
+    expect(r.source?.file_id).toBe(DERIVED_IN_INPUTS.file_id);
+    expect(r.artifactClass).toBe('derived');
+    expect(r.memo).toMatch(/DERIVED artifact/);
+  });
+
+  it('HALTS rather than picking between two published subfolder files', () => {
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: DERIVED_IN_INPUTS,
+      subfolderCandidates: [
+        PUBLISHED_IN_SUBFOLDER,
+        {
+          file_id: 'pdf-1',
+          name: 'Nigeria 2018 PPI Scorecard.pdf',
+          mime_type: 'application/pdf',
+          folder_id: SUBFOLDER,
+        },
+      ],
+      manifestRecordsSubfolders: true,
+    });
+    expect(r.disposition).toBe('halt');
+    expect(r.reason).toBe('ambiguous');
+    expect(r.detail).toContain('Nigeria 2018 PPI Scorecard.pdf');
+  });
+
+  it('leaves a PUBLISHED inputs[] entry in place — inputs[] still wins when it is the publisher', () => {
+    const { folder_id: _ignored, ...inputsWorkbook } = { ...PUBLISHED_IN_SUBFOLDER, file_id: 'inputs-wb' };
+    const r = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: inputsWorkbook,
+      subfolderCandidates: [PUBLISHED_IN_SUBFOLDER],
+      manifestRecordsSubfolders: true,
+    });
+    expect(r.reason).toBe('resolved-from-inputs');
+    expect(r.source?.file_id).toBe('inputs-wb');
+  });
+});
