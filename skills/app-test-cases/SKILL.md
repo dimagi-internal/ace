@@ -629,6 +629,19 @@ Two matcher traps on that screen:
 - **Regex metacharacters break Maestro's full-match `text:`.** Question
   labels routinely contain parentheses. Compose the matcher as
   `"<literal prefix>.*"` rather than the full label.
+- **Option matchers use the RENDERED label, not the Nova label (ace#1689,
+  ace#2876).** CommCare renders every choice label through its
+  `form="markdown"` twin, so a label that starts with a markdown block
+  marker loses it on-device: Nova's `25. At most 25 surveys a day are paid`
+  is a RadioButton reading `At most 25 surveys a day are paid`
+  (smallholder-seasonal/20261012-1549, Learn Module 3 q4). Before you write
+  any `text:` for an option, pass the Nova label through
+  `renderMarkdownLabel(label).rendered` (`lib/choice-label-integrity.ts`)
+  and compose the matcher from THAT string (still replacing regex
+  metacharacters with `.`). *Enforced:* `recipe-sanity-probe` fails
+  `markdown-eaten-option-matcher` on a matcher that matches the authored
+  label but not the rendered one — supply each field's `options` in Step
+  2.6's `fields` or the check cannot run.
 - **N identical option labels are not text-matchable.** A field-list
   carrying nine `"Option A"`s cannot be disambiguated by text. Leave
   OPTIONAL children unanswered until the labels are distinct, and say so
@@ -1696,7 +1709,25 @@ For each form-walk segment of a recipe:
    on-device.) (c) The tap **auto-captures** when a
    mock fix is pre-seeded — wait for the Latitude/Longitude/Altitude/
    Accuracy readout to render under the button (no separate capture
-   dialog). On the REPLACE branch that readout, and the
+   dialog). Emit exactly:
+
+   ```yaml
+   - tapOn:
+       ${SELECTOR:geopoint-record-location}
+   - extendedWaitUntil:
+       visible:
+         ${SELECTOR:geopoint-captured-readout}   # "[\\s\\S]*Accuracy: [\\s\\S]*"
+       timeout: 30000
+   ```
+
+   **Never wait on `REPLACE LOCATION` as proof of capture (ace#2878).**
+   On APK 2.64.0 the button does NOT relabel after a fresh fix — it stays
+   `RECORD LOCATION` with the readout rendered below it
+   (smallholder-seasonal/20261012-1549: all three geopoint steps of the
+   Deliver leg failed on that wait, and all three passed on-device with the
+   readout wait above). *Enforced:* `mcp/mobile/recipe-lint.ts`
+   `geopoint-wait-on-replace-relabel`, which `mobile_validate_recipe` and
+   `mobile_run_recipe` both run. On the REPLACE branch that readout, and the
    "Location accuracy is good." label, are ALREADY on screen before the
    tap — carried over from the previous visit — so do not treat their
    presence as proof this walk captured a fresh fix. If a FUTURE APK

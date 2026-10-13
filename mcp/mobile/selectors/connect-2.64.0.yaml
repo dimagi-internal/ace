@@ -406,8 +406,12 @@ selectors:
   geopoint-record-location:
     type: text
     value: "(RECORD|REPLACE) LOCATION"
-    unverified: true
-    purpose: "Native geopoint capture button (android.widget.Button, no resource-id). RECORD branch live-calibrated 2026-07-13 on 2.63.0 (#861); REPLACE branch live-captured 2026-09-01 on 2.63.2 (#1879). NOT re-observed on 2.64.0 — no geopoint question was reached. Precondition unchanged: seed a mock fix via mobile_set_location (LONGITUDE first; AVD backend only) before the tap."
+    purpose: "Native geopoint capture button (android.widget.Button, no resource-id). RECORD branch live-calibrated 2026-07-13 on 2.63.0 (#861) and RE-OBSERVED + TAPPED on 2.64.0 on smallholder-seasonal/20261012-1549 (2026-10-13, three geopoint screens, journey-deliver-*-gps-captured.xml: text=\"RECORD LOCATION\" class=\"android.widget.Button\"); REPLACE branch live-captured 2026-09-01 on 2.63.2 (#1879), not re-observed on 2.64.0. **On 2.64.0 the button does NOT relabel after a fresh capture** — it stays RECORD LOCATION and the readout renders below it (ace#2878) — so never wait on REPLACE as proof of capture; wait on geopoint-captured-readout. Precondition unchanged: seed a mock fix via mobile_set_location (LONGITUDE first; AVD backend only) before the tap."
+
+  geopoint-captured-readout:
+    type: text
+    value: "[\\s\\S]*Accuracy: [\\s\\S]*"
+    purpose: "The post-capture readout TextView under the geopoint button — the ONLY proof a fix was captured (ace#2878). Live-captured on 2.64.0 on smallholder-seasonal/20261012-1549 (2026-10-13): text='Latitude: N 12°0'7\"&#10;Longitude: E 8°31'0\"&#10;Altitude: 480m&#10;Accuracy: 5m' class=\"android.widget.TextView\" (multi-line, so the [\\s\\S]* wrap is required). `extendedWaitUntil: visible:` on this row (timeout 30000) after the capture tap passed on all three geopoint screens of that leg, same session. Caveat: on a PRELOADED field (REPLACE branch, #1879) the previous visit's readout is already on screen before the tap, so this proves a fix exists, not that this walk took a fresh one."
 
   # ── Learn / CommCare app home + form entry ─────────────────────
   learn-home-start-tile:

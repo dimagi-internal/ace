@@ -890,3 +890,87 @@ describe('lintRecipeText — date-picker-next-cell-tap-noop (ace#2518)', () => {
     expect(lintRecipeText(fling, { apkVersion: '2.64.0' }).ok).toBe(true);
   });
 });
+
+// ace#2878 — the composed Deliver recipe on smallholder-seasonal/20261012-1549
+// waited for the capture button to relabel to REPLACE LOCATION after a fresh
+// GPS capture. On APK 2.64.0 it does not relabel (failure dump: text="RECORD
+// LOCATION" Button + the "...Accuracy: 5m" readout), so every geopoint step
+// failed. The repaired recipe waited on the readout and passed on-device.
+describe('geopoint-wait-on-replace-relabel (ace#2878)', () => {
+  const geoStep = (wait: string, tap = '    ${SELECTOR:geopoint-record-location}') =>
+    [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      tap,
+      '- extendedWaitUntil:',
+      '    visible:',
+      `      ${wait}`,
+      '    timeout: 30000',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME: "journey-deliver-walk-gps-captured"',
+      '',
+    ].join('\n');
+  const rule = (yaml: string) =>
+    lintRecipeText(yaml).violations.filter((v) => v.rule === 'geopoint-wait-on-replace-relabel');
+
+  it('flags the composed shape: wait on "REPLACE LOCATION" after the capture tap', () => {
+    const v = rule(geoStep('text: "REPLACE LOCATION"'));
+    expect(v).toHaveLength(1);
+    expect(v[0].line).toBe(7);
+    expect(v[0].remediation).toContain('geopoint-captured-readout');
+  });
+
+  it('flags it after a RESOLVED capture tap too', () => {
+    expect(rule(geoStep('text: "REPLACE LOCATION"', '    text: "(RECORD|REPLACE) LOCATION"'))).toHaveLength(1);
+  });
+
+  it('flags an assertVisible on the relabel', () => {
+    const yaml = [
+      '- tapOn:',
+      '    ${SELECTOR:geopoint-record-location}',
+      '- assertVisible:',
+      '    text: "REPLACE.*"',
+      '',
+    ].join('\n');
+    expect(rule(yaml)).toHaveLength(1);
+  });
+
+  it('does NOT flag the repaired recipe: wait on the Accuracy readout', () => {
+    expect(rule(geoStep('text: "[\\\\s\\\\S]*Accuracy: [\\\\s\\\\S]*"'))).toEqual([]);
+    expect(rule(geoStep('${SELECTOR:geopoint-captured-readout}'))).toEqual([]);
+  });
+
+  it('does NOT flag the capture tap\'s own alternation', () => {
+    expect(rule(geoStep('text: "[\\\\s\\\\S]*Accuracy: [\\\\s\\\\S]*"', '    text: "(RECORD|REPLACE) LOCATION"'))).toEqual([]);
+  });
+
+  it('does NOT flag a REPLACE assertion outside the post-tap window', () => {
+    const yaml = [
+      '- assertVisible:',
+      '    text: "REPLACE LOCATION"   ',
+      '- tapOn:',
+      '    ${SELECTOR:geopoint-record-location}',
+      '- extendedWaitUntil:',
+      '    visible:',
+      '      ${SELECTOR:geopoint-captured-readout}',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME: "x"',
+      '- assertVisible:',
+      '    text: "REPLACE LOCATION"',
+      '',
+    ].join('\n');
+    expect(rule(yaml)).toEqual([]);
+  });
+
+  it('every shipped static palette recipe lints clean under the rule', () => {
+    const dir = new URL('../../../mcp/mobile/recipes/static/', import.meta.url);
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.yaml'))) {
+      expect({ f, v: rule(readFileSync(new URL(f, dir), 'utf8')) }).toEqual({ f, v: [] });
+    }
+  });
+});

@@ -110,7 +110,7 @@ authored from the PDD per run):
 
 | Component | App | Trigger | Enforced by (eval dimension) |
 |---|---|---|---|
-| [`choice-label-rendering`](#choice-label-rendering) | Deliver + Learn | Always, whenever a choice label is authored | `lib/choice-label-integrity.ts § checkMarkdownEatenLabels` (ace#1689) |
+| [`choice-label-rendering`](#choice-label-rendering) | Deliver + Learn | Always, whenever a choice label is authored | `lib/choice-label-integrity.ts § renderMarkdownLabel`, gated over composed recipes by `recipe-sanity-probe § markdown-eaten-option-matcher` (ace#1689, ace#2876) |
 | [`case-list-enum-fidelity`](#case-list-enum-fidelity) | Deliver | A case-list column renders a property through an id-mapping enum a form also writes | `lib/choice-label-integrity.ts § checkCaseListEnumDrift`, gated over the CCZ by `lib/ccz-enum-fidelity.ts` at `app-release-qa § Step 4` (ace#1688) |
 | [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius or accuracy tolerance (observability only — a hard gate is unbuildable, ace#1006) | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
@@ -2353,7 +2353,14 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 - **App:** Deliver and Learn — any `select1` / `select` choice list.
 - **Trigger:** always, whenever a choice label is authored.
 - **Parameters:** none.
-- **Enforced by:** `checkMarkdownEatenLabels` (`lib/choice-label-integrity.ts`).
+- **Enforced by:** the renderer model `renderMarkdownLabel` /
+  `checkMarkdownEatenLabels` (`lib/choice-label-integrity.ts`), which until
+  ace#2876 had NO caller. The live gate is now `recipe-sanity-probe`'s
+  `markdown-eaten-option-matcher` (Phase 3 Step 2.6 and Phase 6 Step 2.6):
+  a recipe `text:` matcher that matches an authored option label but not
+  its rendered form fails the probe. The authoring guard below is still
+  prose — an `N. ` label that ships is caught where it breaks a recipe,
+  not where it is authored.
 - **Origin:** ace#1689. Nova emits every choice label with a
   `form="markdown"` twin and CommCare prefers it. `1. Planning` at the start of
   a line **is** a markdown ordered-list item, so the renderer consumes the

@@ -3225,3 +3225,92 @@ describe('probeRecipeSanity — failure class: content-form-finish-overrun (#257
     }
   });
 });
+
+// ace#2876 — the ace#1689 preventer, finally wired. CommCare renders choice
+// labels as markdown, so an authored "25. At most 25 surveys a day are paid"
+// displays as "At most 25 surveys a day are paid" (smallholder-seasonal/
+// 20261012-1549, journey-learn-FAILURE.xml: `"text": "At most 25 surveys a
+// day are paid", "class": "android.widget.RadioButton"`). The probe passed the
+// recipe that matched the authored text; it must not any more.
+describe('markdown-eaten-option-matcher (ace#2876 / ace#1689)', () => {
+  const AUTHORED = '25. At most 25 surveys a day are paid';
+  const quizApp: NovaAppSlice = {
+    app_id: 'learn',
+    modules: [
+      {
+        module_name: 'Module 3',
+        forms: [
+          {
+            form_name: 'Check',
+            fields: [
+              {
+                id: 'q4',
+                kind: 'single_select',
+                label: 'How many surveys a day are paid?',
+                options: [{ label: AUTHORED }, { label: '30. Thirty a day' }, { label: 'No cap' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const tapRecipe = (matcher: string) => ({
+    name: 'journey-learn.yaml',
+    text:
+      'appId: org.commcare.dalvik\n---\n' +
+      `- runFlow:\n    when:\n      notVisible:\n        text: "${matcher}"\n    commands:\n` +
+      `      - scrollUntilVisible:\n          element:\n            text: "${matcher}"\n          direction: DOWN\n` +
+      `- tapOn:\n    text: "${matcher}"\n`,
+  });
+  const run = (matcher: string) =>
+    probeRecipeSanity({ recipes: [tapRecipe(matcher)], novaApps: [quizApp], connectOpp: LIVE_OPP });
+  const hits = (v: ReturnType<typeof probeRecipeSanity>) =>
+    v.failures.filter((f) => f.class === 'markdown-eaten-option-matcher');
+
+  it('flags the live repro: a matcher equal to the authored "N. " label', () => {
+    const v = run(AUTHORED);
+    expect(v.ok).toBe(false);
+    expect(hits(v).length).toBeGreaterThan(0);
+    expect(hits(v)[0].detail).toContain('"At most 25 surveys a day are paid"');
+  });
+
+  it('flags a regex-escaped authored matcher ("25. At most.*")', () => {
+    expect(hits(run('25. At most.*')).length).toBeGreaterThan(0);
+  });
+
+  it('does NOT flag a matcher composed from the rendered label', () => {
+    expect(hits(run('At most 25 surveys a day are paid'))).toEqual([]);
+  });
+
+  it('does NOT flag the in-run recovery matcher that tolerates both', () => {
+    expect(hits(run('.*At most 25 surveys a day are paid'))).toEqual([]);
+  });
+
+  it('does NOT flag a label markdown leaves alone', () => {
+    expect(hits(run('No cap'))).toEqual([]);
+  });
+
+  it('does NOT read an inputText value as a matcher', () => {
+    const v = probeRecipeSanity({
+      recipes: [
+        {
+          name: 'journey-learn.yaml',
+          text: `appId: x\n---\n- eraseText\n- inputText:\n    text: "${AUTHORED}"\n`,
+        },
+      ],
+      novaApps: [quizApp],
+      connectOpp: LIVE_OPP,
+    });
+    expect(hits(v)).toEqual([]);
+  });
+
+  it('negative control: inert when no options are supplied', () => {
+    const v = probeRecipeSanity({
+      recipes: [tapRecipe(AUTHORED)],
+      novaApps: [novaApp('learn', { 'Module 3': ['Check'] })],
+      connectOpp: LIVE_OPP,
+    });
+    expect(hits(v)).toEqual([]);
+  });
+});

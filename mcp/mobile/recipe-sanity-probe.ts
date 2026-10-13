@@ -30,6 +30,7 @@
 
 import { parseAllDocuments } from 'yaml';
 import { evaluateValidateWithTodayDefault } from '../../lib/date-default-validate.js';
+import { renderMarkdownLabel } from '../../lib/choice-label-integrity.js';
 
 /** Failure classes the probe can surface. Stable strings — telemetry
  * and the SKILL.md remediation table reference them by name. */
@@ -45,6 +46,7 @@ export type SanityFailureClass =
   | 'content-form-finish-overrun'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
+  | 'markdown-eaten-option-matcher'
   | 'unguarded-option-tap-below-long-label'
   | 'input-anchor-skips-hint'
   | 'input-focus-scroll-is-guarded'
@@ -286,6 +288,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   const groupScreens = collectGroupScreens(inputs.novaApps);
   const formShapes = collectFormShapes(inputs.novaApps);
   const anchorFields = collectAnchorFields(inputs.novaApps);
+  const markdownEatenOptions = collectMarkdownEatenOptions(inputs.novaApps);
   const hintDataSupplied = anchorFields.some((f) => !!f.hint && f.hint.trim() !== '');
   const fieldDataSupplied = inputs.novaApps.some((app) =>
     app.modules.some((mod) => mod.forms.some((form) => form.fields !== undefined)),
@@ -685,6 +688,32 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'inputText',
         value,
+      });
+    }
+
+    // 7.6 markdown-eaten-option-matcher → a `text:` matcher written
+    // against an option label CommCare will NOT display verbatim (ace#1689,
+    // ace#2876). Nova emits every choice label with a `form="markdown"`
+    // twin and CommCare renders it, so an authored `25. At most 25 surveys
+    // a day are paid` is an ordered-list item and the RadioButton reads
+    // `At most 25 surveys a day are paid`. A matcher that full-matches the
+    // AUTHORED label but not the RENDERED one can never resolve on-device.
+    // `lib/choice-label-integrity.ts` modelled the renderer for #1689 and
+    // nothing called it — smallholder-seasonal/20261012-1549 died on exactly
+    // this at Learn Module 3 q4 with `recipe_sanity_probe: pass`.
+    //
+    // Precision: fires only when the matcher matches the authored label AND
+    // misses the rendered one, so a matcher composed against the rendered
+    // text (or one tolerating both, `.*At most …`) is never flagged. Inert
+    // without `fields` carrying `options`.
+    for (const hit of findMarkdownEatenOptionMatchers(recipe.text, markdownEatenOptions)) {
+      failures.push({
+        class: 'markdown-eaten-option-matcher',
+        detail: `recipe ${recipe.name} matches text "${hit.matcher}" (line ${hit.line}), written against the authored option label "${hit.authored}"${hit.field ? ` of "${hit.field}"` : ''} — CommCare renders choice labels as markdown, so the ${hit.construct} marker is consumed and the device shows "${hit.rendered}", which this matcher cannot match (ace#1689)`,
+        remediation: `compose the matcher from the RENDERED label — renderMarkdownLabel(label).rendered in lib/choice-label-integrity.ts, i.e. "${hit.rendered}" (regex metacharacters replaced by ".") — per skills/app-test-cases/SKILL.md § Option matchers use the RENDERED label; re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'text',
+        value: hit.matcher,
       });
     }
 
@@ -1961,6 +1990,85 @@ function findBriefStyleTapOnLabels(
         if (briefPatterns.some((p) => p.test(label))) {
           out.push({ label, line: i + 1 });
         }
+      }
+    }
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ace#1689 / ace#2876 — option matchers written against markdown-eaten labels.
+
+interface MarkdownEatenOption {
+  authored: string;
+  rendered: string;
+  construct: string;
+  field?: string;
+}
+
+/** Every supplied option label whose DISPLAYED text differs from its
+ * authored text under CommCare's markdown rendering. */
+function collectMarkdownEatenOptions(apps: NovaAppSlice[]): MarkdownEatenOption[] {
+  const out: MarkdownEatenOption[] = [];
+  const visit = (field: NovaFieldSlice, depth: number): void => {
+    if (depth > 8) return;
+    for (const opt of field.options ?? []) {
+      const authored = opt.label?.trim();
+      if (!authored) continue;
+      const { rendered, construct } = renderMarkdownLabel(authored);
+      if (construct && rendered !== authored) {
+        out.push({ authored, rendered, construct, field: field.label });
+      }
+    }
+    for (const child of field.children ?? []) visit(child, depth + 1);
+  };
+  for (const app of apps) {
+    for (const mod of app.modules) {
+      for (const form of mod.forms) {
+        for (const field of form.fields ?? []) visit(field, 0);
+      }
+    }
+  }
+  return out;
+}
+
+/** Unescape a YAML double-quoted scalar body for the escapes recipes
+ * actually use: `\\` -> `\` and `\"` -> `"`. */
+function unescapeDoubleQuoted(raw: string): string {
+  return raw.replace(/\\(["\\])/g, '$1');
+}
+
+/**
+ * Every `text:` matcher (outside an `inputText` step, whose `text:` is a
+ * typed VALUE, not a selector) that full-matches an authored markdown-eaten
+ * option label but NOT the label CommCare actually renders.
+ */
+function findMarkdownEatenOptionMatchers(
+  yaml: string,
+  options: MarkdownEatenOption[],
+): ({ matcher: string; line: number } & MarkdownEatenOption)[] {
+  if (options.length === 0) return [];
+  const out: ({ matcher: string; line: number } & MarkdownEatenOption)[] = [];
+  const lines = yaml.split('\n');
+  let inInputText = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line)) continue;
+    // A new list item resets the step context.
+    const item = line.match(/^\s*-\s+([A-Za-z]+)/);
+    if (item) inInputText = item[1] === 'inputText';
+    if (inInputText) continue;
+    const m = line.match(/(?:^|[\s{,])text:\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/);
+    if (!m) continue;
+    const matcher = m[1] !== undefined ? unescapeDoubleQuoted(m[1]) : m[2];
+    if (!matcher) continue;
+    for (const opt of options) {
+      if (
+        maestroTextMatches(matcher, opt.authored) &&
+        !maestroTextMatches(matcher, opt.rendered)
+      ) {
+        out.push({ matcher, line: i + 1, ...opt });
+        break;
       }
     }
   }
