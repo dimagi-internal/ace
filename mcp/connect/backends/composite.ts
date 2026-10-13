@@ -7,6 +7,22 @@ export interface CompositeOptions {
 }
 
 /**
+ * Is this `delivery_type` the int FK rather than a slug?
+ *
+ * `connect_create_program`'s Zod union puts `z.string()` first, so the wire
+ * value `"19"` arrives as a STRING while `19` arrives as a number. Both mean
+ * the same `<option value>` and both are rejected by REST, so both route to
+ * the form. See `CompositeBackend.createProgram`.
+ */
+export function isDeliveryTypeIntFk(v: number | string | undefined | null): boolean {
+  if (typeof v === 'number') return Number.isInteger(v);
+  // Anything that is not recognisably an int FK keeps the pre-existing
+  // REST-first route — the routing decision must never be the thing that
+  // throws.
+  return typeof v === 'string' && /^\d+$/.test(v.trim());
+}
+
+/**
  * Routes each ConnectClient method to either REST or Playwright per
  * `capability-map.ts`.
  *
@@ -33,8 +49,40 @@ export class CompositeBackend implements ConnectClient {
   constructor(private opts: CompositeOptions) {}
 
   // ── REST with Playwright fallback (commcare-connect PR #1135) ────
+
+  /**
+   * `delivery_type` decides the backend, because the two backends key on
+   * different things and only one of them can take an int.
+   *
+   * Connect's create serializer resolves `delivery_type` by SLUG, so the int
+   * FK — the value `connect_list_delivery_types` reports as `id`, straight off
+   * the form's `<option value>` — comes back from REST as
+   * `validation_error: delivery_type: Object with slug=<n> does not exist.`
+   * Observed twice, three months apart and both verbatim: `14` on
+   * hh-poverty-targeting/20260702-1456 (jjackson/ace#835) and `19` on
+   * turmeric-market-study-ghana/20261012-1749 (dimagi-internal/ace#2865).
+   * The HTML form is the path that WANTS the int, and it took `19` on the
+   * first attempt in that same run.
+   *
+   * ace#835's fix was to make the list atom emit `slug: slugify(label)` so a
+   * caller always had a string to send. That is a guess about a value Connect
+   * owns; it held for 18 delivery types and left the 19th with no working
+   * input on either backend. ace#2865 removed the guess, which leaves the int
+   * as the only honest handle — so route it to the backend that accepts it
+   * instead of spending a guaranteed 400.
+   *
+   * A real string slug still goes REST-first with the usual 404 fallback.
+   * Note what is deliberately NOT done here: the 404-only fallback is not
+   * widened to cover a `delivery_type` 400. A wrong slug that fell through to
+   * the form would be re-resolved by LABEL and could quietly create the
+   * programme under a DIFFERENT delivery type — and `delivery_type` is
+   * create-time-only, so that is unrepairable. A declared slug that Connect
+   * rejects must surface.
+   */
   createProgram = async (a: Parameters<ConnectClient['createProgram']>[0]) =>
-    this.tryRestThenPlaywright('createProgram', a);
+    isDeliveryTypeIntFk(a.delivery_type)
+      ? this.opts.playwright.createProgram(a)
+      : this.tryRestThenPlaywright('createProgram', a);
   createOpportunity = async (a: Parameters<ConnectClient['createOpportunity']>[0]) =>
     this.tryRestThenPlaywright('createOpportunity', a);
   createPaymentUnit = async (a: Parameters<ConnectClient['createPaymentUnit']>[0]) =>

@@ -318,10 +318,17 @@ export interface Invoice {
   created_at?: string;
 }
 
+/**
+ * A row of Connect's `<select name="delivery_type">`. Deliberately has NO
+ * `slug`: the only source ACE can read (the programme-create form) renders
+ * `value` + label and nothing else, and a slug derived from the label is a
+ * guess about a value Connect owns (dimagi-internal/ace#2865 — the guess was
+ * right for 18 delivery types and wrong for the 19th). Pass `id` to
+ * `connect_create_program`.
+ */
 export interface DeliveryType {
   id: number;
   name: string;
-  slug?: string;
 }
 
 /**

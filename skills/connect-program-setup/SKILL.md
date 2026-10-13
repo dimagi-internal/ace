@@ -208,11 +208,23 @@ alone makes the artifact land outside `4-connect` and fail
    - `description`: PDD's intervention summary
    - `delivery_type`: **read `connect_delivery_type` from the PDD's
      § Program Parameters — do NOT choose one here.** Resolve it against
-     `connect_list_delivery_types({organization_slug})` and pass the
-     matching slug (the automation API accepts the slug directly; the old
-     form-driven backend required the int FK). **HALT if the PDD declares
-     none, or if the declared slug is not in the live list** — say which
-     slugs exist and ask. Never fall back to a nearest-looking label.
+     `connect_list_delivery_types({organization_slug})` and **pass the
+     matching row's int `id`.** **HALT if the PDD declares none, or if
+     nothing in the live list matches** — list the `{id, name}` rows that
+     exist and ask. Never fall back to a nearest-looking label.
+
+     > **Pass the `id`, never a slug you derived from the name**
+     > (dimagi-internal/ace#2865). The list atom deliberately returns no
+     > `slug`: the only page ACE can read renders `<option value>` + label,
+     > so a slug is unreadable from here, and the derived one this atom used
+     > to return was right for 18 of 19 live delivery types and wrong for
+     > the 19th — on which Connect's REST create answered *"delivery_type:
+     > Object with slug=19 does not exist."* and Phase 4 had no working
+     > value at all. Matching the PDD's `connect_delivery_type` text against
+     > the live LABELS is the right move; sending your normalisation of that
+     > text to Connect as if it were Connect's own slug is not. A string
+     > `delivery_type` is still accepted and goes to the REST API — use it
+     > only for a slug you have from Connect itself.
    - `budget`: total program budget from the PDD
    - `currency` / `country`: **read `opportunity_currency` and
      `opportunity_country` from the PDD, then gate them through
@@ -496,7 +508,7 @@ alone makes the artifact land outside `4-connect` and fail
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_list_programs` — discovery (`name` = case-insensitive substring; filtered rows hydrated with FULL descriptions). Unfiltered rows carry capped descriptions flagged `description_truncated` (ace#1799); `full_descriptions: true` or `write_to_path` opt out
-  - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
+  - `connect_list_delivery_types` — resolve the PDD's `connect_delivery_type` against the live `{id, name}` rows; pass the **int `id`** to create. Returns no `slug` on purpose (ace#2865)
   - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
   - `connect_list_opportunities` — prefer `summarize_by_program`, which implies hydrate and returns the Σ classification instead of the rows (ace#1799); `write_to_path` writes the rows to disk. With `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)

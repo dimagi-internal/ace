@@ -72,13 +72,15 @@ describe('parseDeliveryTypeOptions', () => {
   it('extracts the live delivery_type lookup', () => {
     const options = parseDeliveryTypeOptions(fix('a-ai-demo-space-program-init.html'));
     expect(options.length).toBeGreaterThanOrEqual(13);
-    // Each row carries a derived slug — the value connect_create_program (REST)
-    // accepts — so callers don't have to guess it (jjackson/ace#835).
-    expect(options.find((o) => o.name === 'Nutrition')).toEqual({ id: 13, name: 'Nutrition', slug: 'nutrition' });
+    // Each row carries ONLY what the page states: the int FK and the label.
+    // Rows used to carry `slug: slugify(name)` per jjackson/ace#835; that was
+    // a guess about a value Connect owns and it had no working answer for
+    // "Turmeric Market Study" (dimagi-internal/ace#2865). Full regression
+    // suite: test/mcp/connect/unit/delivery-type-resolution.test.ts.
+    expect(options.find((o) => o.name === 'Nutrition')).toEqual({ id: 13, name: 'Nutrition' });
     expect(options.find((o) => o.name === 'Infant Vaccine Promotion')).toEqual({
       id: 1,
       name: 'Infant Vaccine Promotion',
-      slug: 'infant-vaccine-promotion',
     });
   });
 });
