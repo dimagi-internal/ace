@@ -819,19 +819,37 @@ row approves on says `yes` to the wrong number of encounters, or to a set that
 is not the first N — a finding even when a clamped key is also present and
 correct, because the rule pays what the slot marks).
 
+**The slot's name and shape vary; the helper reads both (ace#2861).** The
+library calls the node `payable_slot`, but builds also ship `paid_slot` (after
+a PDD's "paid-slot answer"); both are read, and when the Phase 4
+`form_field_rules` row names the node, pass it as `slotNode` so any name is
+read. A ONCE-ONLY cap (cap 1) is usually a history predicate rather than a
+counter — `if(#participant/baseline_done = 'yes', 'no', 'yes')`, or
+`if(<payable> and #participant/x_ever != 'yes', 'yes', 'no')` over a flag the
+form writes back, or `if(#form/earlier_versions = 0, 'yes', 'no')` over a
+casedb count. The helper grades all three as a slot admitting 1
+(`report.payableSlot.shape` is `once-only-flag` for the flag form, with
+`flagProperty` and `flagWrite`; copy them into the verdict).
+
 `report.status === 'unable'` means the check **did not run** — NOT a pass.
-Record it in `checks[]` with its `reason` and treat the cap as UNVERIFIED. The
-reasons that are not benign: *no clamped counter in `entity_id` and no
-`payable_slot`-style calculate* on a form whose PDD DOES declare a per-entity
-cap means the cap is not enforced by EITHER mechanism (raise it as a
-`[BLOCKER]` yourself, naming the declared cap). An unclamped key alone is NOT
-that reason — with a `payable_slot` present the helper grades the slot
-instead, and only its findings block (ace#2649: the old rule told the reader to
-block a correct unclamped-key build). *The counter never resolves to a casedb
-read* — for the clamp, or for the slot ("the cap rides in payable_slot, but …")
-— means the timing is undecidable: trace it by hand over the first `cap + 1`
-payable encounters rather than assuming one, because a guessed timing is an
-off-by-one in the other direction.
+Record it in `checks[]` with its `reason` and treat the cap as UNVERIFIED.
+Exactly ONE reason is a `[BLOCKER]` on its own: *no clamped counter in
+`entity_id` and no `payable_slot`-style calculate* on a form whose PDD DOES
+declare a per-entity cap — the cap is enforced by NEITHER mechanism (raise it
+yourself, naming the declared cap). Every other `unable` is a shape or input
+the helper could not grade, and is **never mapped to a `[BLOCKER]` by
+itself**: trace the slot by hand over the first `cap + 1` payable encounters,
+record the trace in the verdict, and block only on what the trace shows. That
+covers an unclamped key with a slot present (ace#2649), a slot shape the
+helper does not recognise ("… a slot shape this check does not recognise"),
+a once-only slot whose flag this form never writes back (check the other
+forms — a flag nothing writes IS a missing cap, but that is a finding of the
+trace, not of the `unable`), and *the counter never resolves to a casedb
+read* — for the clamp, or for the slot — where the timing is undecidable;
+never assume one, because a guessed timing is an off-by-one in the other
+direction. Blocking on an unrecognised shape halts a correct build: on
+`smallholder-seasonal/20261012-1549` 12 of 12 paid forms came back `unable`
+while every once-only cap was enforced.
 
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
