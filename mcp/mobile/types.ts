@@ -295,6 +295,13 @@ export interface RunRecipeOptions {
    * `classification: unmapped-surface`.
    */
   captureAllBoundaries?: boolean;
+  /**
+   * Real progress events (dispatch start, every chunk start/finish), so the
+   * MCP layer can send `notifications/progress` and keep a long but healthy
+   * walk inside Claude Code's idle timeout (ace#2877). Advisory only: a
+   * throwing listener never changes the verdict. See `recipe-progress.ts`.
+   */
+  onProgress?: import('./recipe-progress.js').RecipeProgressListener;
 }
 
 export interface RecipeRunResult {

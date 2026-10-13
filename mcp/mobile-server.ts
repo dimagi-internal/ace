@@ -51,6 +51,7 @@ import {
 import { logInfo, logError } from './mobile/logging.js';
 import { resolveBackend } from './mobile/backend-toggle.js';
 import { installToolErrorGuard, serializeMobileToolError } from './mobile/tool-error.js';
+import { withRecipeProgress } from './mobile/recipe-progress.js';
 
 // A bare `new MobileClient()` resolves its palette dir via
 // `resolveStaticRecipesDir()`, so it honours `ACE_MOBILE_STATIC_RECIPES_DIR`
@@ -297,17 +298,21 @@ server.tool(
     avdName: z.string().optional(),
     captureAllBoundaries: z.boolean().optional().describe('Tier 2 of the mapping ladder. EXPENSIVE — opens an extra ui-dump window at every top-level `runFlow` boundary, not just at `takeScreenshot` (one extra `maestro test` invocation per window; measured 3→10 and 1→9 on the two calibration recipes). Default false. Only turn this on for a targeted re-walk after an atlas-report.yaml reports `classification: unmapped-surface`.'),
   },
-  async ({ recipePath, envVars, screenshotDir, avdName, captureAllBoundaries }) => {
+  async ({ recipePath, envVars, screenshotDir, avdName, captureAllBoundaries }, extra) => {
     const resolvedAvd = avdName ?? process.env.ACE_AVD_NAME;
     try {
+      // MCP progress (ace#2877): Claude Code aborts a stdio tool call that
+      // sends "no response or progress" for 1800s, which killed a healthy
+      // 25-form Learn walk mid-flight. `withRecipeProgress` sends a real
+      // event per chunk plus a bounded 30s heartbeat when the request
+      // carries a progressToken — see `mobile/recipe-progress.ts`.
+      const result = await withRecipeProgress(extra, (onProgress) =>
+        client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd, { captureAllBoundaries, onProgress }),
+      );
       return {
         content: [{
           type: 'text',
-          text: JSON.stringify(
-            await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd, { captureAllBoundaries }),
-            null,
-            2,
-          ),
+          text: JSON.stringify(result, null, 2),
         }],
       };
     } catch (e) {
