@@ -52,7 +52,7 @@ design (that is Phase 1).
 | `target-geographies` | The core loop: read prior research, establish the indicator's family and unit, select, read the honesty fields, cost it. |
 | `scan-data-sources` | Sweeps for sources that could answer an indicator, vets each on licence first, records the verdict as a durable note. |
 | `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`targeting_compare_criteria`), writes the three-paragraph defence. |
-| `cost-effectiveness` | What a round of spend buys in one area: deaths averted, cost per death, the multiple of GiveWell's bar and the break-even price (`targeting_cost_effectiveness`), in three scenarios, with what is not counted. |
+| `cost-effectiveness` | What a round of spend buys: deaths averted, cost per death, the multiple of GiveWell's bar, in scenarios, with what is not counted. ORS per area (`targeting_cost_effectiveness`, with the break-even price); PMC per state and schedule (`targeting_pmc_rank`, on the lower of two death estimates). |
 | `build-targeting-model` | The Google Doc and the formula-driven Excel model with a ranked geography table. |
 
 ## How it runs
