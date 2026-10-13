@@ -29,8 +29,19 @@
  * of locked claims that `agents/synthetic-data-and-workflows.md` Step 3 hands
  * the loop with the rule: re-check these before any edit to that page.
  *
+ * (3) The spec check above cannot see what the page PRINTS. Labs draws its
+ * reports inside the `/labs/sandbox/render/` iframe (ace#2885), so a capture
+ * of the top page's text is blind to every report figure.
+ * `checkNarratedFiguresAgainstScreenText` reads a capture that entered the
+ * frame (`scripts/capture-scene-text.ts`, which records `frame_texts`). Given an
+ * outer-page-only capture (canopy's `scene_<N>_page_text.json`) of a labs
+ * report scene, it says the capture is blind once per scene. It does not flag
+ * every figure as missing.
+ *
  * Pure: no I/O.
  */
+
+import { combineFrameTexts, isLabsReportSurface, type FrameText } from './labs-report-frame.js';
 
 export interface NarrationAction {
   kind: string;
@@ -57,7 +68,11 @@ export type NarrationFindingKind =
   /** A narrated figure no `features[].verify` or `wait_for` anchors to the end frame. */
   | 'unanchored-figure'
   /** A narrated figure whose only anchor is a hover / tooltip — not in the end frame. */
-  | 'hover-only-figure';
+  | 'hover-only-figure'
+  /** ace#2885 — a narrated figure absent from the scene's captured on-screen text (frames included). */
+  | 'figure-not-on-screen'
+  /** ace#2885 — the capture read only the top page of a labs report, so it cannot see the report's figures. */
+  | 'screen-text-outer-page-only';
 
 export interface NarrationFinding {
   kind: NarrationFindingKind;
@@ -215,4 +230,63 @@ export function renderClaimsLedger(ledger: readonly SurfaceClaims[]): string {
     }
   }
   return lines.join('\n');
+}
+
+/**
+ * One scene's captured on-screen text, in the layout canopy writes
+ * (`scene_<N>_page_text.json`, N 1-based). `frame_texts` is present only when
+ * the capture entered child frames (`scripts/capture-scene-text.ts`). canopy's
+ * recorder writes `page_text` from the top page alone.
+ */
+export interface SceneScreenText {
+  scene_index: number;
+  page_text: string;
+  frame_texts?: FrameText[];
+}
+
+/**
+ * Check every narrated figure against the text the scene's end frame actually
+ * printed, child frames included (ace#2885). Captures are keyed by canopy's
+ * 1-based `scene_index`; a scene with no capture is skipped, as canopy's
+ * `narrated_numbers` skips it.
+ */
+export function checkNarratedFiguresAgainstScreenText(
+  scenes: readonly NarratedScene[],
+  captures: readonly SceneScreenText[],
+): NarrationReport {
+  const findings: NarrationFinding[] = [];
+  const byIndex = new Map(captures.map((c) => [c.scene_index, c]));
+  let surface: string | null | undefined = null;
+  scenes.forEach((scene, i) => {
+    if (scene.url) surface = scene.url;
+    const figures = extractNarratedFigures(narrationText(scene.narrative));
+    const cap = byIndex.get(i + 1);
+    if (!figures.length || !cap) return;
+    const name = sceneName(scene, i);
+    if (cap.frame_texts === undefined && isLabsReportSurface(surface)) {
+      findings.push({
+        kind: 'screen-text-outer-page-only',
+        scene: name,
+        figure: figures.join(', '),
+        detail:
+          'This capture read only the top page. Labs draws the report in the /labs/sandbox/render/ iframe, so ' +
+          'none of its figures can be checked from this text (canopy\'s recorder writes the top page\'s ' +
+          'document.body.innerText). Re-capture with scripts/capture-scene-text.ts, which enters the frame.',
+      });
+      return;
+    }
+    const onScreen = norm(combineFrameTexts(cap.page_text, cap.frame_texts ?? []));
+    for (const fig of figures) {
+      if (onScreen.includes(norm(fig))) continue;
+      findings.push({
+        kind: 'figure-not-on-screen',
+        scene: name,
+        figure: fig,
+        detail:
+          `"${fig}" is narrated, but the scene's captured end-frame text (child frames included) does not contain it. ` +
+          'Say the figure the page prints, or cut it.',
+      });
+    }
+  });
+  return { ok: findings.length === 0, findings };
 }

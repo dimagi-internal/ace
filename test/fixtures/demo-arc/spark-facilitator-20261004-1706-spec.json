@@ -1,5 +1,5 @@
 {
- "source": "Authored DDD spec of spark-facilitator/20261004-1706 Phase 7 (canopy run spark-facilitator-programme-cascade-2026-10-06-002, spark-facilitator-programme-cascade.yaml) and its realized.json, read 2026-10-06; trimmed to name, personas, scenes",
+ "source": "Authored DDD spec of spark-facilitator/20261004-1706 Phase 7 (canopy run spark-facilitator-programme-cascade-2026-10-06-002, spark-facilitator-programme-cascade.yaml) and its realized.json, read 2026-10-06; trimmed to name, personas, scenes. Every scene target was then rewritten through inLabsReportFrame (lib/labs-report-frame.ts, ace#2885): labs now draws report bodies in the /labs/sandbox/render/ iframe, so this is the form demo-narrative authors today",
  "spec": {
   "name": "spark-facilitator-programme-cascade",
   "personas": {
@@ -22,11 +22,11 @@
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:tr:has-text(\"Kuunika Outreach Network (example)\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Kuunika Outreach Network (example)\")"
      },
      {
       "kind": "hover",
-      "target": "css:th:has-text(\"Partner\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> th:has-text(\"Partner\")"
      },
      {
       "kind": "hold",
@@ -44,12 +44,12 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:tr:has-text(\"Kuunika Outreach Network (example)\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Kuunika Outreach Network (example)\")"
      },
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:tr:has-text(\"Ulemu Chirwa\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Ulemu Chirwa\")"
      },
      {
       "kind": "hold",
@@ -58,20 +58,20 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
      },
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> table:has(tr:has-text(\"Ulemu Chirwa\")) button[aria-label=\"Sort by Meeting regularity\"]"
      },
      {
       "kind": "scroll_to",
-      "target": "css:tr:has-text(\"Ulemu Chirwa\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Ulemu Chirwa\")"
      },
      {
       "kind": "hover",
-      "target": "css:tr:has-text(\"Chimwemwe Kamanga\") td:first-child"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Chimwemwe Kamanga\") td:first-child"
      },
      {
       "kind": "hold",
@@ -90,11 +90,11 @@
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:h1:has-text(\"Ulemu Chirwa\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> h1:has-text(\"Ulemu Chirwa\")"
      },
      {
       "kind": "hover",
-      "target": "css:tr:has-text(\"Chisoti\") td:first-child"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Chisoti\") td:first-child"
      },
      {
       "kind": "hold",
@@ -112,16 +112,16 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:tr:has-text(\"Chisoti\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Chisoti\")"
      },
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:h2:has-text(\"Community Chisoti\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> h2:has-text(\"Community Chisoti\")"
      },
      {
       "kind": "scroll_to",
-      "target": "css:tr:has-text(\"14 Jul\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"14 Jul\")"
      },
      {
       "kind": "hold",
@@ -140,11 +140,11 @@
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:h1:has-text(\"Gomezgani Zgambo\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> h1:has-text(\"Gomezgani Zgambo\")"
      },
      {
       "kind": "scroll_to",
-      "target": "css:tr:has-text(\"Repeat counts\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Repeat counts\")"
      },
      {
       "kind": "hold",
@@ -153,12 +153,12 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:tr:has-text(\"Lumbadzi\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"Lumbadzi\")"
      },
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:h2:has-text(\"Community Lumbadzi\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> h2:has-text(\"Community Lumbadzi\")"
      },
      {
       "kind": "hold",
@@ -166,11 +166,11 @@
      },
      {
       "kind": "scroll_to",
-      "target": "css:tr:has-text(\"27 Aug\"):has-text(\"rejected\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"27 Aug\"):has-text(\"rejected\")"
      },
      {
       "kind": "hover",
-      "target": "css:tr:has-text(\"27 May\"):has-text(\"approved\") td:first-child"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> tr:has-text(\"27 May\"):has-text(\"approved\") td:first-child"
      },
      {
       "kind": "hold",
@@ -189,11 +189,11 @@
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:*:has-text(\"From the programme report\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> *:has-text(\"From the programme report\")"
      },
      {
       "kind": "hover",
-      "target": "text:From the programme report"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> internal:text=\"From the programme report\"i"
      },
      {
       "kind": "hold",
@@ -202,12 +202,12 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "role:tab:Benchmarks"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> internal:role=tab[name=\"Benchmarks\"s]"
      },
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:button.w-full.text-left:has-text(\"Meeting regularity\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> button.w-full.text-left:has-text(\"Meeting regularity\")"
      },
      {
       "kind": "hold",
@@ -216,12 +216,12 @@
      {
       "kind": "click",
       "must_succeed": true,
-      "target": "css:button.w-full.text-left:has-text(\"Meeting regularity\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> button.w-full.text-left:has-text(\"Meeting regularity\")"
      },
      {
       "kind": "wait_for",
       "must_succeed": true,
-      "target": "css:*:has-text(\"Another organization\")"
+      "target": "css:iframe[src*=\"/labs/sandbox/render/\"] >> internal:control=enter-frame >> *:has-text(\"Another organization\")"
      },
      {
       "kind": "hold",

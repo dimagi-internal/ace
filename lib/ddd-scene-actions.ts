@@ -142,6 +142,8 @@
  * spec before handing off to the DDD loop.
  */
 
+import { checkLabsReportFrameTargets } from './labs-report-frame.js';
+
 export interface SceneAction {
   kind: string;
   target?: string;
@@ -154,6 +156,12 @@ export interface SceneFeature {
 
 export interface DddScene {
   title?: string;
+  /**
+   * The scene's page. Follow-on scenes omit it and inherit the previous one's.
+   * `checkSceneActions` reads it to know when a target is on a labs report,
+   * whose body is drawn in the sandbox iframe (ace#2885).
+   */
+  url?: string | null;
   actions?: SceneAction[];
   /** Off-camera actions restoring this scene's precondition (#1380). */
   restore?: SceneAction[];
@@ -179,7 +187,9 @@ export type SceneFindingKind =
   /** #1670 — the axis this demonstration depends on is not in the handoff. */
   | 'unknown-cardinality'
   /** ace#2316 — the below-programme-scale escape was taken and its promise broken. */
-  | 'escaped-payoff-unhonoured';
+  | 'escaped-payoff-unhonoured'
+  /** ace#2885 — a labs report target that does not enter the /labs/sandbox/render/ iframe. */
+  | 'labs-report-target-outside-frame';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -295,6 +305,10 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
 
     }
   }
+
+  // ace#2885: a labs report's body is in the sandbox iframe, and the recorder
+  // resolves targets on the top page. One helper owns the frame selector.
+  findings.push(...checkLabsReportFrameTargets(scenes ?? []));
 
   return { ok: findings.length === 0, findings };
 }

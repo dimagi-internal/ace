@@ -111,7 +111,7 @@ paraphrase the schema here — read the model / schema and validate.
    | # | persona | url / action | what the viewer sees |
    |---|---|---|---|
    | 1 | programme manager | `${programme_par_url}` | headline tiles against the PDD's targets; which one is off target |
-   | 2 | programme manager | click `tr:has-text("${lagging_partner_label}")` | the lagging partner's tiles and its facilitators ranked |
+   | 2 | programme manager | click `inLabsReportFrame('css:tr:has-text("${lagging_partner_label}")')` | the lagging partner's tiles and its facilitators ranked |
    | 3 | programme manager | `${worker_review_url}` for a lagging-partner facilitator | one worker against same-month / similar-caseload peers |
    | 4 | programme manager | click the community row | that case's visit history — the not-held weeks as gaps |
    | 5 | programme manager | the data-quality worker's review (`${data_quality_worker}`) | the PDD's review flag concentrated on one worker — the record to check, not a verdict |
@@ -126,6 +126,25 @@ paraphrase the schema here — read the model / schema and validate.
    pure read, declare `finale_is_read: {reason}` per step 3's ladder rule.
    Opportunities render as "Opportunity <id>" (labs residual) — narrate the
    partner, not the opportunity id.
+
+   **Every target on these reports enters the sandbox frame (ace#2885).** Labs
+   draws a report's body in an iframe at `/labs/sandbox/render/`
+   (dimagi-internal/connect-labs#2449 / #2466 / #2470). Outside it the top page
+   holds only the breadcrumb and "Opportunities: N selected". canopy's recorder
+   resolves a target on the TOP page, so `css:tr:has-text(…)`, `role:tab:Benchmarks`
+   and `css:h1:has-text(…)` all miss: on `smallholder-seasonal/20261012-1549`
+   scene 1's `wait_for` failed the first render. Write every target, then pass
+   it through `inLabsReportFrame` (`lib/labs-report-frame.ts`). It prefixes
+   `iframe[src*="/labs/sandbox/render/"] >> internal:control=enter-frame >> `
+   and turns `role:` / `text:` / `testid:` / `aria:` into the selector engine
+   canopy's `get_by_*` call would use, so `role:tab:Benchmarks` becomes
+   `css:<frame> >> internal:role=tab[name="Benchmarks"s]`. Do not write the
+   prefix by hand: the helper holds it in one place. Step 3b's
+   `checkSceneActions` flags any report target left outside the frame
+   (`labs-report-target-outside-frame`), with the rewritten target in the
+   finding. A report built before the labs rollout may still draw unframed. If
+   `scripts/capture-scene-text.ts` (step 3b) logs "labs surface with NO sandbox
+   frame" for a surface, keep that surface's targets unframed and record why.
 
 3. **Author the `UnifiedSpec`** (`<demo-slug>.yaml`):
    - `base_url: https://labs.connect.dimagi.com`; no `auth` block (labs cookies
@@ -372,7 +391,14 @@ paraphrase the schema here — read the model / schema and validate.
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
 
-   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
+   - **`labs-report-target-outside-frame`** — a target on a labs report that
+    does not enter the `/labs/sandbox/render/` iframe, so the recorder looks
+    for it on the top page and misses (ace#2885). Replace it with the rewritten
+    target the finding prints (`inLabsReportFrame`, step 2c). Leave it only if
+    it names the outer page (the breadcrumb, the scope picker), or if the
+    capture shows that surface draws no sandbox frame.
+
+  The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
    A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
    alone — you have already named one element, and counting the words in its
    id cannot say whether it is post-state-only (ace#1660).
@@ -480,6 +506,29 @@ paraphrase the schema here — read the model / schema and validate.
    spec, not the rendered page) and, as with cardinality, **every flag is
    resolved**: say a figure the frame prints, make the page print it, or cut
    it.
+
+   **Then check the figures against what the page PRINTS, frame included
+   (ace#2885).** The spec check above reads the spec, not the page. canopy's
+   recorder saves the top page's `document.body.innerText`, and on a labs
+   report that is the breadcrumb alone (270 characters on programme report
+   8529), so canopy's narrated-numbers check cannot see a single report figure.
+   Fetching the render URL does not help: the shell is data-free, and the
+   report arrives over a message bridge. Capture each scene's end-frame text
+   with a browser that enters the frame, then run the check against it:
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/capture-scene-text.ts" \
+     --spec <demo-run>/7-synthetic/<demo-slug>.yaml --realized <demo-run>/7-synthetic/realized.json \
+     --out <scratch>/scene-text
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/narration-claims.ts" \
+     --spec <demo-run>/7-synthetic/<demo-slug>.yaml --check --screen-text <scratch>/scene-text
+   ```
+   The capture is read-only. It replays each scene's `wait_for` and `click`
+   actions, but never a click on a scene with `restore:` or a click that names
+   a mutating verb. **`figure-not-on-screen`**: the end frame does not print a
+   narrated figure, so resolve it like `unanchored-figure`.
+   **`screen-text-outer-page-only`**: you passed a top-page-only capture
+   (canopy's own `scene_<N>_page_text.json`), so the check could not read the
+   report. Re-capture; never read it as "the figures are fine".
 
    *Why the existing rule did not catch it.* Step 2c's only figure rule —
    "never claim a figure the saved run does not show" — checks the DATA. On
@@ -596,6 +645,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-13 | **Labs report targets enter the sandbox iframe, and figures are checked against the frame's text (ace#2885).** Labs now draws report bodies in `/labs/sandbox/render/` (dimagi-internal/connect-labs#2449, #2466, #2470). The recorder resolves targets on the top page, so `smallholder-seasonal/20261012-1549` scene 1's `wait_for` missed. Its captured text was the breadcrumb only, so every narrated figure had to be checked by hand. Step 2c now passes every report target through `inLabsReportFrame` (`lib/labs-report-frame.ts`, the one place the frame prefix lives), and `checkSceneActions` flags `labs-report-target-outside-frame`. Step 3b adds `scripts/capture-scene-text.ts`, a read-only capture that enters the frame, and `narration-claims.ts --screen-text`, which flags `figure-not-on-screen` and refuses a top-page-only capture (`screen-text-outer-page-only`). The Spark worked example (`test/fixtures/demo-arc/spark-facilitator-20261004-1706-spec.json`) carries the framed targets. | ACE team |
 | 2026-10-06 | **Step 3c — a pre-render arc check over the spec's text (ace#2735).** `scripts/demo-arc-precheck.ts` / `lib/demo-arc-precheck.ts`: blocks consecutive scenes on the same surface + component and a finale claim that only restates scene 1's; reports a restated opening fact and a side-branch scene; then ONE text-only judge pass with a rubric mirroring `ddd-arc-eval`, gated by `gateArcPrecheckVerdict`. Never replaces the post-render arc judge. On `spark-facilitator/20261004-1706` it finds all three things that run's arc judge found after render, while `checkSceneVariety` and `checkArcLadder` both pass it (`test/lib/demo-arc-precheck.test.ts`). | ACE team |
 | 2026-10-06 | **Narrated figures must be on the end frame, never hover-only (ace#2727).** Step 3b runs `checkNarratedFiguresOnScreen` (`lib/narration-on-screen.ts`; CLI `scripts/narration-claims.ts --check`): every narrated percentage / "N of M" / money / date is anchored by a `features[].verify` or a `wait_for`, and a hover/tooltip anchor flags `hover-only-figure`. Step 2c's "never claim a figure the saved run does not show" checked the data, not the frame, so `spark-facilitator/20261004-1706` narrated *"100% as of 12 Jul"* from a tooltip. Step 2c also names workers/communities by the story plan's display roster, not codes. | ACE team |
 | 2026-09-10 | **This skill is now the DECLARED producer of `products.synthetic.narrative` (ace#2354).** `PRODUCT_PRODUCERS` in `lib/phase-products-schema.ts` attributes each `products.*` key to its writer and ace-web's skill fork trims by it, so a fork AT this skill drops the stale `narrative` (and the Phase 7 agent's `ddd_*`) while keeping `demo-data-setup`'s `source` / `workflows` / `labs_opp_id`. Nothing changes in what this skill writes. | ACE team |
