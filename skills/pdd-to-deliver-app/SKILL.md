@@ -1203,11 +1203,34 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        the SAVED app (`app_id` reads). Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
        still on `degraded` after the third iteration MUST appear as a decision
-       row (§ Decisions Log, with `review_ask: recommended-confirmation` +
-       `confirm_reason`, since it is a go-live prerequisite) and in the Step 7
-       summary's `option_source_gaps` list, with the
-       field id, what the PDD declared, what shipped, and the exact table +
-       value column + label column that needs to exist before go-live.
+       row (§ Decisions Log) and in the Step 7 summary's `option_source_gaps`
+       list, with the field id, what the PDD declared, what shipped, and the
+       exact table + value column + label column that needs to exist before
+       go-live.
+
+       **Do not decide halt-vs-record by reading the paragraphs below — call
+       `classifyOptionSourceGap` in `lib/option-register.ts`, once per
+       still-degraded field, and do what it returns** (ace#2857). It takes
+       facts, not conclusions: `{feeds_entity_id, payable,
+       non_enumerable_by_nature, candidate_values, declares_partner_register}`,
+       where `candidate_values` is every legitimate member of the option set
+       you actually FOUND in the PDD / frozen `inputs/` / a source `.ccz`.
+       `outcome: 'halt'` halts; `outcome: 'record'` records the row and
+       proceeds, carrying `exemption` and `reason` verbatim into it. The prose
+       below is the rationale for what that function does, not a second,
+       hand-applied copy of it.
+
+       **Every recorded gap is `review_ask: required-before` +
+       `needed_by: go-live`** — the ask the function returns, and never
+       `recommended-confirmation`. An option-source gap IS a go-live
+       prerequisite by definition, and `recommended-confirmation` is
+       explicitly the ask that gates nothing (`lib/decisions-schema.ts`:
+       *"`required-before` is the only one that gates anything"*), so the old
+       wording asked for the non-blocking ask in the same sentence as "since
+       it is a go-live prerequisite". `required-before` is an enforced release
+       blocker (`assessRequiredBeforeAsks`, `lib/release-readiness.ts`), so the
+       gap now gates the gate it belongs to.
+
        **Halt** — do not write the success summary — if any still-degraded
        field `feeds_entity_id` **on a PAYABLE deliver unit**: a free-text
        component of Connect's dedup / payment grain is a payment-correctness
@@ -1379,10 +1402,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        not actually run — not a pass). Fixing one here costs a row edit; the
        same fix after `app-deploy` costs the whole of Phase 3 again.
 
-       **Two exemptions, both from the halt's own rationale (ace#1295).**
-       The rationale is payment correctness, so it does not reach a case where
-       payment cannot be affected, and the escape ladder in step 5 has no rung
-       that fits a field which is not enumerable in principle:
+       **Three exemptions (ace#1295, ace#2857) — all returned by
+       `classifyOptionSourceGap`, none applied by hand.** Each comes from the
+       halt's own rationale: it is payment correctness, so it does not reach a
+       case where payment cannot be affected, and the escape ladder in step 5
+       has no rung that fits a set nobody can enumerate:
 
        - **The deliver unit is UNPAID.** A form the PDD declares not payable
          carries no payment unit (`app-connect-coverage § Step 2` decides
@@ -1396,13 +1420,45 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          Other" is nonsense for a name field. `concat(username,
          hh_head_name, visit_date)` is the STANDARD registration-key shape,
          not a degradation.
+       - **No candidate value exists anywhere (`no-candidate-values`,
+         ace#2857).** Not one legitimate member of the set appears in the PDD,
+         the frozen `inputs/`, or a source `.ccz`. Then every rung of the
+         step-5 ladder is empty *by construction* — no table holds a set that
+         does not exist, there is nothing to enumerate inline, and "the values
+         you DO have plus Other" is just Other — and **any value shipped would
+         be invented**, which is `CLAUDE.md § No inferred backstory` on the
+         partner's own vocabulary.
 
-       Both exemptions must be **stated in a decision row with the reason**
-       (§ Decisions Log),
-       never taken silently — and when the unit is payable, a non-enumerable
-       component still halts. Live false-halt:
-       `bednet-check-2-visit/20260813-2313`, Deliver app `74a097c6`, where
-       both exemptions applied at once.
+         More to the point, **halting accomplishes nothing here**: re-running
+         Phase 3 cannot produce the set, because it is the partner's to supply
+         before go-live. So the protection moves to the gate the risk actually
+         belongs to. Nothing is paid during Phases 3–8; the typo and the
+         collapse both happen when real workers submit real deliveries. A
+         `required-before` / `go-live` row is an enforced release blocker, so
+         the set must arrive before anyone can be paid either way.
+
+         **This is deliberately NOT the exemption ace#2857 proposed.** That one
+         keyed on the PDD declaring free text as an "advisory mechanism" — but
+         the PDD is AI-authored, so that lets Phase 1's own prose disarm
+         Phase 3's payment gate, and the qualifying phrase was one run's house
+         style. This one keys on a fact about the world, and the caller records
+         the search it ran.
+
+         Live false-halt: `turmeric-market-study-ghana/20261012-1749`, Deliver
+         app `d3a23546`, `market` — a PDD-declared select, a component of the
+         payable `turmeric_survey` entity key, with **no market named anywhere
+         in any input** because the implementing organisation chooses them
+         after the build (operator ruling `market-list-source-confirmed`).
+         Phase 2's journeys passed on either shape. The build was correct and
+         the phase halted; the agent overrode the halt and recorded the
+         override, which is the right outcome by the wrong mechanism.
+
+       Every exemption is **stated in the decision row with the reason**
+       (§ Decisions Log) — pass `verdict.exemption` and `verdict.reason`
+       through verbatim — and never taken silently. When the unit is payable
+       and candidate values DO exist, a degraded component still halts. Second
+       live false-halt: `bednet-check-2-visit/20260813-2313`, Deliver app
+       `74a097c6`, where the first two exemptions applied at once.
 
     (Apps whose PDD declares no select/lookup fields skip cleanly at step 1.)
 
