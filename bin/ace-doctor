@@ -722,6 +722,73 @@ if [ -n "$PWD_MATCH" ] && [ "$PWD_MATCH" != "$ROOT" ]; then
 
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+
+# ---------------------------------------------------------------------------
+# Line-probes: a sub-probe that prints its OWN PASS/WARN/FAIL/INFO lines.
+#
+# Several probes delegate to `node $TSX_CLI scripts/doctor-*.ts --format=lines`
+# and print the result verbatim, because the script already emits the exact
+# shape pass()/warn() produce and the end-of-run summary (which greps
+# ^PASS/^WARN/^FAIL) therefore counts it with no bookkeeping here.
+#
+# That contract has a hole: **no output is no line, and no line is no bucket.**
+# The script failing, $TSX_CLI being unresolvable, or the script file being
+# absent all collapse to the empty string, `2>/dev/null || true` throws away
+# both the reason and the exit code, and `[ -n "$X" ] && printf …` then prints
+# nothing at all. The probe does not appear in PASS, WARN or FAIL — it simply
+# is not there, and an absence reads as "not a failure".
+#
+# For `nova_header_readiness` that is a silent-green HARD GATE:
+# `agents/commcare-setup.md § Step 0a` halts Phase 3 until it is green, and an
+# agent following that literally cannot tell green from never-ran. The probe is
+# also the thing that INSTALLS the user-scope `nova` MCP entry — since nova
+# plugin v2 the only path by which the API key reaches Nova — so the silent
+# case is precisely the case where the self-heal did not run, and ace#1604's
+# documented remedy ("run /ace:doctor, its nova_header_readiness probe installs
+# the entry") silently no-ops too. dimagi-internal/ace#2855.
+#
+# Reproduced with the capture expression verbatim and TSX_CLI unresolvable:
+# captured_length=0, zero lines printed, NOVA_HDR_READY=0.
+#
+# So: run through run_line_probe, emit through emit_line_probe. A probe that
+# could not run says so, in the summary, with the reason — the way connect_orgs
+# already degrades on this same missing-tsx cause.
+#
+# run_line_probe <script-rel-path> [args...]
+#   → LINE_PROBE_OUT / LINE_PROBE_ERR / LINE_PROBE_RC / LINE_PROBE_MISSING
+run_line_probe() {
+  _lp_script="$1"; shift
+  LINE_PROBE_OUT=""; LINE_PROBE_ERR=""; LINE_PROBE_RC=0; LINE_PROBE_MISSING=0
+  if [ ! -f "$ROOT/$_lp_script" ]; then
+    LINE_PROBE_MISSING=1
+    return 0
+  fi
+  _lp_err_file="$(mktemp 2>/dev/null || printf '/tmp/ace-doctor-lineprobe.%s' "$$")"
+  LINE_PROBE_OUT="$(cd "$ROOT" && node "$TSX_CLI" "$_lp_script" "$@" 2>"$_lp_err_file")" || LINE_PROBE_RC=$?
+  LINE_PROBE_ERR="$(head -c 400 "$_lp_err_file" 2>/dev/null | tr '\n' ' ')"
+  rm -f "$_lp_err_file"
+  return 0
+}
+
+# emit_line_probe <probe-name> <fix-hint>
+#   Prints the captured lines, or a WARN naming why there are none.
+emit_line_probe() {
+  _lp_name="$1"; _lp_fix="${2:-}"
+  if [ -n "$LINE_PROBE_OUT" ]; then
+    printf '%s\n' "$LINE_PROBE_OUT"
+    return 0
+  fi
+  if [ "${LINE_PROBE_MISSING:-0}" = "1" ]; then
+    warn "$_lp_name: probe did not run — its script is not present in this checkout" \
+         "${_lp_fix:-re-install the plugin (/ace:update); this is NOT a pass}"
+    return 0
+  fi
+  _lp_why="the probe produced no output"
+  [ "${LINE_PROBE_RC:-0}" != "0" ] && _lp_why="exit $LINE_PROBE_RC"
+  [ -n "${LINE_PROBE_ERR:-}" ] && _lp_why="$_lp_why: $LINE_PROBE_ERR"
+  warn "$_lp_name: probe did not run ($_lp_why) — this is NOT a pass, the check did not happen" \
+       "${_lp_fix:-run \`npm ci\` in the plugin root (tsx missing?), then re-run /ace:doctor}"
+}
 # A WARN that is fatal to /ace:turn but not to /ace:run (dimagi-internal/ace#1189).
 #
 # Flipping these to FAIL would be wrong: FAIL renders "BROKEN — ACE will not
@@ -2439,13 +2506,13 @@ fi
 # `bednet-check-2-visit/20260823-2210`, where this exact call returned
 # `configured:true` while the in-session Nova connection was unusable. That
 # question belongs to nova_header_readiness below, which outranks this line.
-if [ -f "$ROOT/scripts/doctor-nova-scopes.ts" ]; then
-  NOVA_SCOPES_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-scopes.ts --format=lines 2>/dev/null || true)"
-  # Printed verbatim: the script emits the exact PASS/WARN/FAIL/INFO shape
-  # pass()/warn()/fail() produce, so the end-of-run summary counts it with no
-  # bookkeeping here — same contract as nova_header_readiness below.
-  [ -n "$NOVA_SCOPES_LINES" ] && printf '%s\n' "$NOVA_SCOPES_LINES"
-fi
+# Printed verbatim: the script emits the exact PASS/WARN/FAIL/INFO shape
+# pass()/warn()/fail() produce, so the end-of-run summary counts it with no
+# bookkeeping here — same contract as nova_header_readiness below. Routed
+# through run_line_probe/emit_line_probe so silence is a WARN, not a vanishing
+# probe (ace#2855).
+run_line_probe scripts/doctor-nova-scopes.ts --format=lines
+emit_line_probe nova_scopes
 
 # 7a2. gog_auth — GOG CLI (Google services) for the ACE Gmail identity.
 # email-communicator (Phase 8 LLO invites + training emails) and any Google
@@ -2749,10 +2816,11 @@ fi
 # that entry will send a header (PASS), NOVA_API_KEY in Claude Code's env and a
 # needs-auth mark on the OAuth-only `plugin:nova:nova` connection are both
 # irrelevant. Output is printed at 7b-ii below.
-NOVA_HDR_LINES=""
-if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
-  NOVA_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
-fi
+run_line_probe scripts/doctor-nova-header.ts --format=lines --heal
+NOVA_HDR_LINES="$LINE_PROBE_OUT"
+NOVA_HDR_MISSING="$LINE_PROBE_MISSING"
+NOVA_HDR_RC="$LINE_PROBE_RC"
+NOVA_HDR_ERR="$LINE_PROBE_ERR"
 NOVA_HDR_READY=0
 printf '%s\n' "$NOVA_HDR_LINES" | grep -q '^PASS nova_header_readiness' && NOVA_HDR_READY=1
 
@@ -2860,16 +2928,17 @@ fi
 # Printed verbatim: the script already emits the exact PASS/INFO/WARN shape
 # pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
 # counts it without any bookkeeping here.
-[ -n "$NOVA_HDR_LINES" ] && printf '%s\n' "$NOVA_HDR_LINES"
+LINE_PROBE_OUT="$NOVA_HDR_LINES"; LINE_PROBE_MISSING="$NOVA_HDR_MISSING"
+LINE_PROBE_RC="$NOVA_HDR_RC"; LINE_PROBE_ERR="$NOVA_HDR_ERR"
+emit_line_probe nova_header_readiness \
+  "run \`npm ci\` in the plugin root (tsx missing?), then re-run /ace:doctor. This probe INSTALLS the user-scope nova MCP entry, the only path by which the API key reaches Nova (nova plugin v2) — while it is silent, Phase 3's Step 0a gate has nothing to read and ace#1604's remedy no-ops. ace#2855"
 
 # 7b-iii. static_header_drift — the same question, asked of EVERY user-scope
 # MCP entry rather than only nova (ace#2159). Runs AFTER nova_header_readiness
 # so nova's own entry is already healed by the probe that owns it, and this one
 # reports rather than re-writes it.
-if [ -f "$ROOT/scripts/doctor-static-header-drift.ts" ]; then
-  STATIC_HDR_LINES="$(cd "$ROOT" && node "$TSX_CLI" scripts/doctor-static-header-drift.ts --format=lines --heal 2>/dev/null || true)"
-  [ -n "$STATIC_HDR_LINES" ] && printf '%s\n' "$STATIC_HDR_LINES"
-fi
+run_line_probe scripts/doctor-static-header-drift.ts --format=lines --heal
+emit_line_probe static_header_drift
 
 # 7c. nova_needs_auth_cache — verify Claude Code is not caching
 # `plugin:nova:nova` as needs-authentication. When this entry exists,
