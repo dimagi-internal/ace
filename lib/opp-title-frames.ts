@@ -47,6 +47,26 @@
 //   - `connect-resume-opp-landed` — the card AND a certificate that repeats
 //     the title mid-screen. No top crop removes both.
 //
+// The DELIVER app home has the same job card as the Learn home (ace#2879):
+// the card reading "<run_id> · <name>" sits directly under the app bar,
+// followed by the red "job has not started" banner, then the CommCare logo.
+// Every frame that lands on that screen shows it — `deliver-launch-home`, the
+// post-sync frames `deliver-sync-success` / `-counter-unrefreshed` / `-final`,
+// and the journey's `*deliver-home*` captures. Verified on the real frames of
+// spark-facilitator/20260925-1536 and smallholder-seasonal/20261012-1549
+// (1080x2400; `belowTitleCropTop` cuts at y=1001, below the banner, above the
+// logo). `deliver-sync-pre` is NOT the home (it is the module form list), and
+// `deliver-launch-opp-detail` is the card plus the certificate repeating the
+// title — the `connect-resume-opp-landed` shape.
+//
+// A step list cannot keep up with new recipes on its own, so the frame's own
+// `shows:` line is read as CONTENT evidence too: a run-id prefix quoted there
+// means the title is visible (uncalibrated → `repeated`), and a `shows:` that
+// opens by naming the Learn/Deliver app HOME means the job card is on screen
+// (→ `top`, the calibrated home shape). A `shows:` writer that names the home
+// but leaves the card's title out (as § 5.6 writers routinely do) is exactly
+// the case that slipped past ace#2660's fallback.
+//
 
 import { zlibSync } from 'fflate';
 import type { Raster } from './frame-pixels.js';
@@ -55,9 +75,17 @@ import type { Raster } from './frame-pixels.js';
 export const RUN_ID_TITLE_PREFIX = /\b\d{8}-\d{4}\s*·/;
 
 /** Steps whose frame renders the opportunity title ONCE, at the top — croppable. */
-const TITLE_AT_TOP_STEP = /^(claim-opp|claim-opp-detail|claim-opp-handoff-learn-home|learn-launch-home-tiles)$/;
+const TITLE_AT_TOP_STEP =
+  /^(claim-opp|claim-opp-detail|claim-opp-handoff-learn-home|learn-launch-home-tiles|deliver-launch-home|deliver-sync-(success|counter-unrefreshed|final))$|(^|-)deliver-home(-|$)/;
 /** Steps whose frame renders the title more than once, or in a list — not croppable. */
-const TITLE_REPEATED_STEP = /^(claim-opp-list.*|claim-opp-new-tile|connect-resume-.*)$/;
+const TITLE_REPEATED_STEP = /^(claim-opp-list.*|claim-opp-new-tile|connect-resume-.*|deliver-launch-opp-detail)$/;
+/**
+ * A `shows:` line that OPENS by naming the Learn/Deliver app home — the screen
+ * whose job card carries the opportunity title under the app bar (ace#2879).
+ * Anchored at the start: `shows:` leads with the screen it describes, so a
+ * passing mention ("…then back to the Deliver home") does not count.
+ */
+const SHOWS_JOB_CARD_HOME = /^\W*(the\s+)?(connect\s+)?(learn|deliver)(\s+app)?\s+home\b/i;
 
 export type OppTitleExposure = 'none' | 'top' | 'repeated';
 
@@ -66,12 +94,15 @@ export type OppTitleExposure = 'none' | 'top' | 'repeated';
  * where? Decided by the recipe step first — the step is what the recipe set out
  * to capture — and by `shows:` second, so a frame of an unlisted step whose
  * description quotes a run-id prefix is still caught (as `repeated`: nobody has
- * calibrated where its title sits, so nobody may crop it).
+ * calibrated where its title sits, so nobody may crop it), and one whose
+ * description opens on the Learn/Deliver app home is caught as `top` (the job
+ * card's calibrated position, ace#2879).
  */
 export function oppTitleExposure(frame: { step: string; shows?: string }): OppTitleExposure {
   if (TITLE_AT_TOP_STEP.test(frame.step)) return 'top';
   if (TITLE_REPEATED_STEP.test(frame.step)) return 'repeated';
   if (RUN_ID_TITLE_PREFIX.test(frame.shows ?? '')) return 'repeated';
+  if (SHOWS_JOB_CARD_HOME.test(frame.shows ?? '')) return 'top';
   return 'none';
 }
 
