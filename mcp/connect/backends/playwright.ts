@@ -690,7 +690,24 @@ export class PlaywrightBackend implements ConnectClient {
       ...(s.holding_organization_name !== undefined ? { holding_organization_name: s.holding_organization_name } : {}),
       ...(s.program_name !== undefined ? { program_name: s.program_name } : {}),
     })) as unknown as Opportunity[];
-    if (name) opportunities = opportunities.filter((o) => o.name === name);
+    if (name) {
+      // Case-insensitive SUBSTRING match, applied client-side — same contract
+      // as listPrograms above, deliberately. Exact-match here returned a
+      // silent [] for a real prefix of a real opportunity name while
+      // `listing.complete` stayed true, which reads as an authoritative "it
+      // does not exist". Every ACE opp is named `<run_id> · <display name>`,
+      // so the run id is the natural key and `name: "<run_id>"` is how a
+      // caller asks "did my create land?" after an ambiguous response. On a
+      // create that returned HTTP 504 but had in fact succeeded, that false
+      // negative invites a retry — and a duplicate opportunity is
+      // unrepairable: `target_organization_slug` is create-time only, and a
+      // second opp against the same released Deliver app permanently burns
+      // the shared DeliverUnit.payment_unit binding (jjackson/ace#573), so
+      // the duplicate cannot create payment units at all. ace#2891; the
+      // sibling fix on listPrograms is jjackson/ace#1089.
+      const needle = name.trim().toLowerCase();
+      opportunities = opportunities.filter((o) => o.name.toLowerCase().includes(needle));
+    }
     if (hydrate) {
       opportunities = await mapWithConcurrency(
         opportunities,

@@ -423,9 +423,13 @@ alone makes the artifact land outside `4-connect` and fail
    `spark-facilitator/20261001-2208`: `504 Gateway Time-out`, an immediate
    list showed no new row, and ~2–3 minutes later the opportunity was there.
    A retry would have minted a second opportunity on the program. So: wait,
-   then `connect_list_opportunities({organization_slug, name: <the exact
-   opportunity name>})` (`name` is EXACT-match here, and the run-id prefix
-   makes it unique) — repeat over a bounded window of ~5 minutes. If the row
+   then `connect_list_opportunities({organization_slug, name: <the run id>})`
+   (`name` is a case-insensitive SUBSTRING match, so the run-id prefix alone
+   is enough and is unique; it was strict equality until ace#2891, which made
+   a run-id lookup answer `[]` with `listing.complete: true` — the one answer
+   that licenses exactly the retry this paragraph exists to prevent) — repeat
+   over a bounded window of ~5 minutes. **Corroborate a `[]` against the
+   UNFILTERED walk's `listing.total_count` before believing it.** If the row
    appears, adopt it: take `deliver_units[].server_id` from
    `connect_list_deliver_units` and `connect_int_id` from the Step 6.5
    `/activate/` response (it returns `id`, the integer), and say in the

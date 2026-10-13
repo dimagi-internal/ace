@@ -311,9 +311,17 @@ describe('listOpportunities pagination (#1590)', () => {
 
   it('reports total_count BEFORE the client-side name filter narrows it', async () => {
     const { backend } = fakeConnect({ total: 250 });
+    // `Opp 249` is the last row (the fixture indexes from 0) and is chosen
+    // because it is unique as a SUBSTRING: the name filter
+    // is a case-insensitive substring match (ace#2891 — it was strict equality
+    // until the run-id-prefix false negative, see
+    // test/mcp/connect/list-opportunities-name-filter.test.ts), so the old
+    // `Opp 7` here would now legitimately match Opp 7 and Opp 70-79. This
+    // test is about `listing` reporting the UNFILTERED total, so it wants an
+    // unambiguous filter, not a particular filter semantics.
     const { opportunities, listing } = await backend.listOpportunities({
       organization_slug: 'ai-demo-space',
-      name: 'Opp 7',
+      name: 'Opp 249',
     });
     expect(opportunities).toHaveLength(1);
     expect(listing.total_count).toBe(250);
