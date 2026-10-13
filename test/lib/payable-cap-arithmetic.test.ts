@@ -40,6 +40,7 @@ import {
   findClamp,
   firstOvercappedSubmission,
   formatPayableCapReport,
+  novaToXPath,
   parseClamp,
   payableCapacity,
   payableKeyIndices,
@@ -586,5 +587,165 @@ describe('ace#2649 — an unclamped key whose cap is held by payable_slot', () =
     expect(report.mechanism).toBe('clamped-key');
     expect(report.ok).toBe(false);
     expect(report.findings.map((f) => f.kind)).toEqual(['payable-slot-off-by-one']);
+  });
+});
+
+/**
+ * ace#2861 — a once-only `paid_slot` (name + history-predicate shape).
+ *
+ * `smallholder-seasonal/20261012-1549` (Deliver HQ app
+ * `6137de982ff24e17bd061ec4d775da21`, build `097297a26e304c90a990f230f5564413`)
+ * named its slot `paid_slot`, after the PDD's "paid-slot answer", and capped 11
+ * units at ONE per entity with a history predicate instead of a counter
+ * comparison. `checkPayableCapArithmetic` returned `unable` with "the cap is not
+ * enforced at all" on 12 of 12 paid forms, and app-release-qa told the reader to
+ * BLOCKER a build whose cap IS enforced. The slot calculates below are the ones
+ * quoted from the Nova blueprint (`get_form`) in the issue, rewritten through
+ * `novaToXPath` exactly as the released XForm spells them; the write-back binds
+ * use the `/data/case/update/<prop>` shape Nova compiles (see the 20260906
+ * fixture).
+ */
+describe('ace#2861 — a once-only paid_slot is an enforced cap of 1', () => {
+  const KEY: [string, string] = [
+    '/data/deliver/entity_id',
+    "concat(instance('commcaresession')/session/data/case_id, '-', /data/unit_code)",
+  ];
+  const slotForm = (slotNova: string, extra: Array<[string, string]> = []) =>
+    form([
+      ['/data/paid_slot', novaToXPath(slotNova).replace(/</g, '&lt;')],
+      ...extra,
+      KEY,
+    ]);
+  /** The form writes the flag back as `'yes'`, as each of the issue's forms does. */
+  const writes = (prop: string): Array<[string, string]> => [
+    [`/data/case_${prop}`, "'yes'"],
+    [`/data/case/update/${prop}`, `/data/case_${prop}`],
+  ];
+
+  const ONCE_ONLY_FLAG: Array<[string, string, string]> = [
+    ['Baseline visit', "if(#participant/baseline_done = 'yes', 'no', 'yes')", 'baseline_done'],
+    ['Community validation meeting', "if(#community/validation_done = 'yes', 'no', 'yes')", 'validation_done'],
+    ['Grant follow-up visit', "if(#participant/grant_followup_done = 'yes', 'no', 'yes')", 'grant_followup_done'],
+    [
+      'Onboarding checklist',
+      "if(#form/account_confirmed_now = 'yes' and #participant/account_confirmed_ever != 'yes', 'yes', 'no')",
+      'account_confirmed_ever',
+    ],
+  ];
+
+  for (const [name, slot, prop] of ONCE_ONLY_FLAG) {
+    it(`${name}: a history-flag slot written back by the form is CHECKED clean at a cap of 1`, () => {
+      const report = checkPayableCapArithmetic(slotForm(slot, writes(prop)), { declaredCap: 1 });
+      assertChecked(report);
+      expect(report.ok).toBe(true);
+      expect(report.mechanism).toBe('payable-slot');
+      expect(report.payableSlot?.node).toBe('/data/paid_slot');
+      expect(report.payableSlot?.shape).toBe('once-only-flag');
+      expect(report.payableSlot?.flagProperty).toBe(prop);
+      expect(report.capacity).toBe(1);
+      expect(formatPayableCapReport(report)).toContain('clean');
+    });
+  }
+
+  /** A pre-submission casedb count of this entity's earlier records. */
+  const priorCount = (caseType: string) =>
+    `count(instance('casedb')/casedb/case[@case_type = '${caseType}'][index/parent = instance('commcaresession')/session/data/case_id])`;
+
+  const ONCE_ONLY_COUNT: Array<[string, string, string, string]> = [
+    ['Group session', "if(#form/sessions_same_day = 0, 'yes', 'no')", '/data/sessions_same_day', 'group_session'],
+    ['Farm plan', "if(#form/earlier_versions = 0, 'yes', 'no')", '/data/earlier_versions', 'farm_plan'],
+  ];
+
+  for (const [name, slot, node, caseType] of ONCE_ONLY_COUNT) {
+    it(`${name}: an equality-to-zero history count is CHECKED clean at a cap of 1`, () => {
+      const report = checkPayableCapArithmetic(slotForm(slot, [[node, priorCount(caseType)]]), {
+        declaredCap: 1,
+      });
+      assertChecked(report);
+      expect(report.ok).toBe(true);
+      expect(report.payableSlot?.shape).toBe('counter');
+      expect(report.payableSlot?.trace.slice(0, 3)).toEqual([true, false, false]);
+      expect(report.capacity).toBe(1);
+    });
+  }
+
+  it('the issue repro (no declaredCap) is no longer the "not enforced at all" reason', () => {
+    const [, slot, prop] = ONCE_ONLY_FLAG[0];
+    const report = checkPayableCapArithmetic(slotForm(slot, writes(prop)), {});
+    assertUnable(report);
+    expect(report.reason).not.toContain('not enforced at all');
+    expect(report.reason).toContain('once-only');
+  });
+
+  it('a once-only slot against a declared cap of 3 is a finding, not clean', () => {
+    const [, slot, prop] = ONCE_ONLY_FLAG[0];
+    const report = checkPayableCapArithmetic(slotForm(slot, writes(prop)), { declaredCap: 3 });
+    assertChecked(report);
+    expect(report.ok).toBe(false);
+    expect(report.findings[0].kind).toBe('payable-slot-mismatch');
+  });
+
+  it('a history flag the form NEVER writes is unable with a distinct reason — not clean, not "not enforced"', () => {
+    const [, slot] = ONCE_ONLY_FLAG[0];
+    const report = checkPayableCapArithmetic(slotForm(slot), { declaredCap: 1 });
+    assertUnable(report);
+    expect(report.reason).toContain('baseline_done');
+    expect(report.reason).toContain('never writes');
+    expect(report.reason).not.toContain('not enforced at all');
+  });
+
+  it('a flag written back as a non-yes literal is not a once-only cap', () => {
+    const [, slot] = ONCE_ONLY_FLAG[0];
+    const report = checkPayableCapArithmetic(
+      slotForm(slot, [
+        ['/data/case_baseline_done', "'no'"],
+        ['/data/case/update/baseline_done', '/data/case_baseline_done'],
+      ]),
+      { declaredCap: 1 },
+    );
+    assertUnable(report);
+    expect(report.reason).not.toContain('not enforced at all');
+  });
+
+  it('Census: a payability-only paid_slot (no history predicate) is unable as an UNRECOGNISED shape', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm(
+        "if(#screen_pass/consent = 'yes' and (#screen_pass/screened_after_cut = 'yes' or #form/community_list_cut != 'yes'), 'yes', 'no')",
+      ),
+      { declaredCap: 1 },
+    );
+    assertUnable(report);
+    expect(report.reason).toContain('/data/paid_slot');
+    expect(report.reason).not.toContain('not enforced at all');
+  });
+
+  it('an explicit slotNode from the Phase 4 rule finds a slot under any name', () => {
+    const xml = form([
+      ['/data/visit_slot', novaToXPath("if(#participant/baseline_done = 'yes', 'no', 'yes')")],
+      ...writes('baseline_done'),
+      KEY,
+    ]);
+    const blind = checkPayableCapArithmetic(xml, { declaredCap: 1 });
+    assertUnable(blind);
+    const report = checkPayableCapArithmetic(xml, { declaredCap: 1, slotNode: 'visit_slot' });
+    assertChecked(report);
+    expect(report.ok).toBe(true);
+  });
+
+  it('NEGATIVE control: a paid form with no cap at all still says the cap is not enforced', () => {
+    const report = checkPayableCapArithmetic(
+      form([['/data/answer', "'x'"], KEY]),
+      { declaredCap: 1 },
+    );
+    assertUnable(report);
+    expect(report.reason).toContain('the cap is not enforced at all');
+  });
+
+  it('NEGATIVE control: a paid_slot that always says yes is not a cap', () => {
+    const report = checkPayableCapArithmetic(
+      slotForm("if(#form/answer = 'x', 'yes', 'no')"),
+      { declaredCap: 1 },
+    );
+    assertUnable(report);
   });
 });

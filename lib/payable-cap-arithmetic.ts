@@ -588,20 +588,46 @@ function splitTopLevelKeyword(expr: string, word: 'and' | 'or'): string[] {
   return out;
 }
 
-type CmpOp = '<' | '<=' | '>' | '>=';
+type CmpOp = '<' | '<=' | '>' | '>=' | '=' | '!=';
+
+/**
+ * The first TOP-LEVEL comparison operator in `expr` — quote-, paren- and
+ * bracket-aware, so the `=` inside a casedb predicate
+ * (`case[@case_id = …]`) is never mistaken for the comparison (ace#2861).
+ */
+function topLevelComparison(expr: string): { left: string; op: CmpOp; right: string } | null {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && (c === '<' || c === '>' || c === '=' || c === '!')) {
+      const two = expr.slice(i, i + 2);
+      const op: CmpOp | null =
+        two === '<=' || two === '>=' || two === '!=' ? two : c === '!' ? null : (c as CmpOp);
+      if (!op) continue;
+      return { left: expr.slice(0, i).trim(), op, right: expr.slice(i + op.length).trim() };
+    }
+  }
+  return null;
+}
 
 /** `counter <op> N`, oriented so the counter is on the left, or `null`. */
 function orientComparison(cond: string): { counter: string; op: CmpOp; n: number } | null {
-  const m = unwrap(cond).match(/^(.*?)(>=|<=|>|<)(.*)$/s);
+  const m = topLevelComparison(unwrap(cond));
   if (!m) return null;
-  const left = m[1].trim();
-  const right = m[3].trim();
-  const op = m[2] as CmpOp;
+  const { left, right, op } = m;
   const ln = intLiteral(left);
   const rn = intLiteral(right);
   if (rn !== null && ln === null && left) return { counter: left, op, n: rn };
   if (ln !== null && rn === null && right) {
-    const flip: Record<CmpOp, CmpOp> = { '>=': '<=', '<=': '>=', '>': '<', '<': '>' };
+    const flip: Record<CmpOp, CmpOp> = { '>=': '<=', '<=': '>=', '>': '<', '<': '>', '=': '=', '!=': '!=' };
     return { counter: right, op: flip[op], n: ln };
   }
   return null;
@@ -611,13 +637,84 @@ function compare(v: number, op: CmpOp, n: number): boolean {
   if (op === '<') return v < n;
   if (op === '<=') return v <= n;
   if (op === '>') return v > n;
+  if (op === '=') return v === n;
+  if (op === '!=') return v !== n;
   return v >= n;
+}
+
+/**
+ * The `casedb` read an expression resolves to — directly, or through
+ * single-path `/data/…` hops — or `null`.
+ */
+function resolveCasedbRead(expr: string, binds: Map<string, string>, depth = 0): string | null {
+  if (depth > MAX_EVAL_DEPTH) return null;
+  const t = unwrap(expr);
+  if (CASEDB_READ.test(t)) return t;
+  if (SINGLE_DATA_PATH.test(t)) {
+    const calc = binds.get(t);
+    return calc === undefined ? null : resolveCasedbRead(calc, binds, depth + 1);
+  }
+  return null;
+}
+
+/** Follow single-path `/data/…` hops to the expression a node finally holds. */
+function resolveValue(expr: string, binds: Map<string, string>, depth = 0): string {
+  const t = unwrap(expr);
+  if (depth > MAX_EVAL_DEPTH || !SINGLE_DATA_PATH.test(t)) return t;
+  const calc = binds.get(t);
+  return calc === undefined ? t : resolveValue(calc, binds, depth + 1);
+}
+
+/**
+ * A history-flag conjunct — `<casedb flag> = 'yes'` (`set: true`) or
+ * `<casedb flag> != 'yes'` / `not(<casedb flag> = 'yes')` (`set: false`) —
+ * or `null` (ace#2861).
+ */
+function readHistoryFlag(
+  conjunct: string,
+  binds: Map<string, string>,
+): { read: string; property: string; set: boolean } | null {
+  let t = unwrap(conjunct);
+  let negate = false;
+  if (/^not\s*\(/.test(t) && matchingParen(t, t.indexOf('(')) === t.length - 1) {
+    t = unwrap(t.slice(t.indexOf('(') + 1, -1));
+    negate = true;
+  }
+  const cmp = topLevelComparison(t);
+  if (!cmp || (cmp.op !== '=' && cmp.op !== '!=')) return null;
+  const isYes = (x: string) => YES_LITERAL.test(x) && intLiteral(x) === null;
+  const other = isYes(cmp.right) ? cmp.left : isYes(cmp.left) ? cmp.right : null;
+  if (other === null) return null;
+  const read = resolveCasedbRead(other, binds);
+  if (!read) return null;
+  const property = /\/([A-Za-z_][\w-]*)$/.exec(read)?.[1];
+  if (!property) return null;
+  return { read, property, set: (cmp.op === '=') !== negate };
+}
+
+/**
+ * Where this form writes case property `property`, and what it writes:
+ * `null` when no `…/case/update/<property>` bind exists.
+ */
+function flagWriteBack(property: string, binds: Map<string, string>): { node: string; value: string } | null {
+  const suffix = `case/update/${property}`;
+  for (const [nodeset, calc] of binds) {
+    if (nodeset === suffix || nodeset.endsWith(`/${suffix}`)) {
+      return { node: nodeset, value: resolveValue(calc, binds) };
+    }
+  }
+  return null;
 }
 
 const YES_LITERAL = /^(?:'(?:yes|true|1)'|"(?:yes|true|1)"|1)$/i;
 const LITERAL = /^(?:'[^']*'|"[^"]*"|-?\d+)$/;
-/** A node named like the Connect-gated slot (`payable_slot`, `is_payable_slot`, …). */
-const SLOT_NODE = /(?:^|\/)[\w-]*payable_slot[\w-]*$/i;
+/**
+ * A node named like the Connect-gated slot. The component library calls it
+ * `payable_slot`; builds also ship `paid_slot` (after a PDD's "paid-slot
+ * answer" — `smallholder-seasonal/20261012-1549`, ace#2861). When the Phase 4
+ * `form_field_rules` row names the node, pass it as `slotNode` instead.
+ */
+const SLOT_NODE = /(?:^|\/)[\w-]*(?:payable|paid)_slot[\w-]*$/i;
 
 export type PayableSlotRead =
   | { found: false }
@@ -635,12 +732,17 @@ export type PayableSlotRead =
  * submissions, as the clamp is — never read off its constant, because the
  * counter's timing decides what `<= 3` means (ace#2148).
  */
-export function readPayableSlot(binds: Map<string, string>): PayableSlotRead {
+export function readPayableSlot(binds: Map<string, string>, slotNode?: string): PayableSlotRead {
+  const named = (nodeset: string) =>
+    slotNode === undefined
+      ? SLOT_NODE.test(nodeset)
+      : nodeset === slotNode || nodeset.endsWith(`/${slotNode.replace(/^\/+/, '')}`);
   const candidates = [...binds].filter(
-    ([nodeset, calc]) => SLOT_NODE.test(nodeset) && !SINGLE_DATA_PATH.test(calc.trim()),
+    ([nodeset, calc]) => named(nodeset) && !SINGLE_DATA_PATH.test(calc.trim()),
   );
   if (candidates.length === 0) return { found: false };
   const [node, raw] = candidates[0];
+  let onceOnlyReason: string | null = null;
 
   for (let i = 0; i < raw.length; i++) {
     if (raw[i] !== 'i' || !/^if\s*\(/.test(raw.slice(i))) continue;
@@ -656,26 +758,72 @@ export function readPayableSlot(binds: Map<string, string>): PayableSlotRead {
     if (yesOnTrue === null) continue;
     if (splitTopLevelKeyword(cond, 'or').length > 1) continue;
 
+    const conjuncts = splitTopLevelKeyword(cond, 'and');
     const decidable: Array<{ counter: string; op: CmpOp; n: number; timing: CounterTiming }> = [];
-    for (const conjunct of splitTopLevelKeyword(cond, 'and')) {
+    for (const conjunct of conjuncts) {
       const cmp = orientComparison(conjunct);
       if (!cmp) continue;
       const timing = classifyCounterTiming(cmp.counter, binds);
       if (timing) decidable.push({ ...cmp, timing });
     }
-    if (decidable.length !== 1) continue;
 
-    const { counter, op, n, timing } = decidable[0];
-    const trace: boolean[] = [];
-    for (let k = 1; k <= Math.max(n + 3, 4); k++) {
-      const v = timing === 'pre-increment' ? k - 1 : k;
-      trace.push(compare(v, op, n) === yesOnTrue);
+    if (decidable.length === 1) {
+      const { counter, op, n, timing } = decidable[0];
+      const trace: boolean[] = [];
+      for (let k = 1; k <= Math.max(n + 3, 4); k++) {
+        const v = timing === 'pre-increment' ? k - 1 : k;
+        trace.push(compare(v, op, n) === yesOnTrue);
+      }
+      const firstNo = trace.indexOf(false);
+      const isPrefix = firstNo !== -1 && trace.slice(firstNo).every((y) => !y);
+      return {
+        found: true,
+        slot: { node, raw, shape: 'counter', counter, timing, trace, capacity: isPrefix ? firstNo : null },
+      };
     }
-    const firstNo = trace.indexOf(false);
-    const isPrefix = firstNo !== -1 && trace.slice(firstNo).every((y) => !y);
+    if (decidable.length > 1) continue;
+
+    // ace#2861: the ONCE-ONLY shape — no counter, a history flag read from
+    // casedb (the state before this submission) that the form writes back.
+    // `if(<flag> = 'yes', 'no', 'yes')`, or `if(<payable> and <flag> != 'yes',
+    // 'yes', 'no')`: the slot says yes until the first payable encounter
+    // writes the flag, then never again — a cap of 1.
+    const flags = conjuncts
+      .map((c) => readHistoryFlag(c, binds))
+      .filter((f): f is NonNullable<typeof f> => f !== null);
+    if (flags.length !== 1) continue;
+    const flag = flags[0];
+    const onceOnly = yesOnTrue ? !flag.set : flag.set && conjuncts.length === 1;
+    if (!onceOnly) continue;
+    const write = flagWriteBack(flag.property, binds);
+    if (!write) {
+      onceOnlyReason =
+        `\`${node}\` = ${raw} is a once-only slot on the history flag \`${flag.property}\`, but this ` +
+        `form never writes \`${flag.property}\` back (no \`case/update/${flag.property}\` bind), so from ` +
+        'this form alone nothing stops a second `yes`. Check whether another form writes it, and trace ' +
+        'the slot by hand over two payable encounters';
+      continue;
+    }
+    if (LITERAL.test(write.value) && !YES_LITERAL.test(write.value)) {
+      onceOnlyReason =
+        `\`${node}\` = ${raw} is a once-only slot on the history flag \`${flag.property}\`, but the form ` +
+        `writes it back as ${write.value} (\`${write.node}\`), never \`yes\` — so the slot never closes. ` +
+        'Trace it by hand over two payable encounters';
+      continue;
+    }
     return {
       found: true,
-      slot: { node, raw, counter, timing, trace, capacity: isPrefix ? firstNo : null },
+      slot: {
+        node,
+        raw,
+        shape: 'once-only-flag',
+        counter: flag.read,
+        timing: 'pre-increment',
+        trace: [true, false, false, false],
+        capacity: 1,
+        flagProperty: flag.property,
+        flagWrite: `${write.node} = ${write.value}`,
+      },
     };
   }
   return {
@@ -684,8 +832,11 @@ export function readPayableSlot(binds: Map<string, string>): PayableSlotRead {
     node,
     raw,
     reason:
-      `\`${node}\` = ${raw} has no \`if(<counter> <op> N, <yes>, <no>)\` whose counter reduces to a ` +
-      'casedb read plus 0 or 1, so which encounters it marks payable cannot be decided from the form',
+      onceOnlyReason ??
+      `\`${node}\` = ${raw} is a slot shape this check does not recognise — no ` +
+        '`if(<counter> <op> N, <yes>, <no>)` whose counter reduces to a casedb read plus 0 or 1, and no ' +
+        'once-only history flag the form writes back — so which encounters it marks payable cannot be ' +
+        'decided from the form. This is an unrecognised shape, NOT a missing cap',
   };
 }
 
@@ -715,7 +866,10 @@ function slotFindings(slot: PayableSlot, cap: number, capSource: CapSource): Pay
       cap,
       capSource,
       firstOvercapped,
-      remedy: `if(${slot.counter} ${bound}, 'yes', 'no')`,
+      remedy:
+        slot.shape === 'once-only-flag'
+          ? `if(<casedb count of this entity's earlier payable encounters> < ${cap}, 'yes', 'no') — a once-only flag admits exactly 1`
+          : `if(${slot.counter} ${bound}, 'yes', 'no')`,
       detail:
         `\`${slot.node}\` = ${slot.raw} over a ${slot.timing} counter says yes to ` +
         (slot.capacity === null
@@ -759,13 +913,23 @@ export interface PayableSlot {
   node: string;
   /** Its calculate, verbatim. */
   raw: string;
-  /** The counter its comparison reads. */
+  /**
+   * `counter` — a comparison of a casedb count against an integer, simulated.
+   * `once-only-flag` — a history flag read from casedb that the form writes
+   * back, so the slot says `yes` once per entity (ace#2861).
+   */
+  shape: 'counter' | 'once-only-flag';
+  /** The counter its comparison reads (for `once-only-flag`, the flag's casedb read). */
   counter: string;
   timing: CounterTiming;
   /** Per payable submission 1..n: does the slot say `yes`? */
   trace: boolean[];
   /** How many encounters get `yes` when the `yes` set is a prefix; `null` when it is not. */
   capacity: number | null;
+  /** `once-only-flag` only: the case property the slot's history predicate reads. */
+  flagProperty?: string;
+  /** `once-only-flag` only: the bind that writes the flag back, `node = value`. */
+  flagWrite?: string;
 }
 
 export interface PayableCapFinding {
@@ -820,7 +984,15 @@ export type PayableCapReport = CheckOutcome<PayableCapFinding, PayableCapExtra>;
  */
 export function checkPayableCapArithmetic(
   formXml: string,
-  opts: { declaredCap?: number } = {},
+  opts: {
+    declaredCap?: number;
+    /**
+     * The slot node the Phase 4 `form_field_rules` row gates on, when known
+     * (e.g. `paid_slot` or `/data/paid_slot`). Omitted, any node named like
+     * `payable_slot` / `paid_slot` is read (ace#2861).
+     */
+    slotNode?: string;
+  } = {},
 ): PayableCapReport {
   const entity = extractEntityIdComponents(formXml);
   if (!entity.resolved) {
@@ -846,7 +1018,7 @@ export function checkPayableCapArithmetic(
       break;
     }
   }
-  const slotRead = readPayableSlot(binds);
+  const slotRead = readPayableSlot(binds, opts.slotNode);
 
   if (!clamp || !node) {
     // ace#2649: since ace#2512 the cap is enforced Connect-side by
@@ -856,7 +1028,7 @@ export function checkPayableCapArithmetic(
     if (!slotRead.found) {
       return unable(
         `no clamped counter in \`entity_id\` (components: ${entity.components.join(', ')}) and ` +
-          'no `payable_slot`-style calculate — this form caps payable events per entity by ' +
+          'no `payable_slot`-style calculate (nor `paid_slot`) — this form caps payable events per entity by ' +
           'neither mechanism, so there is no cap arithmetic to check. If the PDD DOES declare ' +
           'a per-entity cap, that is the finding: the cap is not enforced at all.',
       );
@@ -864,7 +1036,8 @@ export function checkPayableCapArithmetic(
     if (slotRead.slot === null) {
       return unable(
         `no clamped counter in \`entity_id\`; the cap rides in payable_slot, but ${slotRead.reason}. ` +
-          'Trace the slot by hand over the first cap + 1 payable encounters — do not assume a timing.',
+          'Trace the slot by hand over the first cap + 1 payable encounters — do not assume a timing. ' +
+          'A slot IS present, so this is not the "neither mechanism" finding.',
       );
     }
     const slot = slotRead.slot;
@@ -877,8 +1050,12 @@ export function checkPayableCapArithmetic(
       opts.declaredCap !== undefined ? 'declared' : derived !== null ? 'is_payable' : null;
     if (slotCap === null || slotCapSource === null) {
       return unable(
-        `\`${slot.node}\` (payable_slot) gates \`${slot.counter}\`, but no per-entity cap is ` +
-          'available to check it against — pass the PDD\'s cap as `declaredCap`.',
+        (slot.shape === 'once-only-flag'
+          ? `\`${slot.node}\` (payable_slot) is a once-only slot on \`${slot.flagProperty}\` — it admits ` +
+            '1 payable encounter per entity — but no per-entity cap is available to check it against'
+          : `\`${slot.node}\` (payable_slot) gates \`${slot.counter}\`, but no per-entity cap is ` +
+            'available to check it against') +
+          ' — pass the PDD\'s cap as `declaredCap`.',
       );
     }
     const findings = slotFindings(slot, slotCap, slotCapSource);
@@ -998,7 +1175,11 @@ export function formatPayableCapReport(report: PayableCapReport): string {
   if (report.ok) {
     return (
       `payable-cap-arithmetic: clean — ${report.node} admits ${report.capacity} payable ` +
-      (report.mechanism === 'payable-slot' ? 'encounter(s) via payable_slot' : 'key(s)') +
+      (report.mechanism === 'payable-slot'
+        ? report.payableSlot?.shape === 'once-only-flag'
+          ? `encounter(s) via a once-only payable_slot on ${report.payableSlot.flagProperty}`
+          : 'encounter(s) via payable_slot'
+        : 'key(s)') +
       ` per entity against a cap of ${report.cap} (${report.capSource}, ${report.timing})` +
       (report.mechanism === 'clamped-key' && report.payableSlot
         ? `; payable_slot ${report.payableSlot.node} agrees`
