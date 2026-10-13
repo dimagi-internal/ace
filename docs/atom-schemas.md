@@ -827,7 +827,7 @@ Mint a CommCare HQ API key RESTRICTED TO ONE project space, owned by ACE's HQ us
 
 ### `commcare_get_lookup_table`
 
-Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_table/ via Tastypie (session auth OK). Lists all tables in the domain and returns the one whose `tag` matches; returns `{table: null}` if not found. Use this to verify a lookup table exists before appending rows (see also commcare_lookup_table_append_rows, planned).
+Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_table/ via Tastypie (session auth OK). Lists all tables in the domain (every page) and returns the one whose `tag` matches; returns `{table: null}` if not found. Use this to verify a lookup table exists before appending rows (see also commcare_lookup_table_append_rows).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1034,7 +1034,7 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 
 ### `commcare_get_lookup_table_rows`
 
-Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns ALL rows in the domain (no querystring filter); this atom client-side filters by data_type_id resolved from the supplied tag or UUID. Returns each row's fields as a flat map (column → first field_value).
+Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns rows for the whole domain in pages of 20 (no table filter); this atom reads every page and client-side filters by data_type_id resolved from the supplied tag or UUID (ace#2853: reading page one only made new tables look empty). Returns each row's fields as a flat map (column → first field_value).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1044,7 +1044,7 @@ Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_it
 
 ### `commcare_lookup_table_append_rows`
 
-Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table_item/ once per row (Tastypie doesn't support list POST for this resource). Each row is a flat field_name→string-value map; HQ wraps it into its field_list shape internally. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.
+Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/lookup_table_item/v2/ once per row (no list POST; v2 returns the created row so its id is known — v0.5 answers 201 with no id). Each row is a flat field_name→string-value map, wrapped into HQ's field_list shape. Fails loud: a 2xx with no id, or a returned id missing from the table on read-back, throws (naming rows already written) — so on success row_ids.length equals rows.length. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

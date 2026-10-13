@@ -1409,22 +1409,10 @@ export class CommCareBackend {
   async getLookupTable(args: GetLookupTableArgs): Promise<{ table: LookupTable | null }> {
     return this.runWithSessionRetry(async (request) => {
       const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table/`;
-      const res = await request.get(`${this.opts.baseUrl}${path}`, {
-        maxRedirects: 0,
-        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_lookup_table') },
-      });
-      if (res.status() === 302) {
-        CommCareBackend.assertNotLoginRedirect(res, `commcare_get_lookup_table GET ${path}`);
-      }
-      if (res.status() !== 200) {
-        throw new Error(
-          `commcare_get_lookup_table GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
-        );
-      }
-      const parsed = JSON.parse(await res.text()) as {
-        objects?: Array<{ id?: string; tag?: string; is_global?: boolean; fields?: any[]; item_attributes?: string[] }>;
-      };
-      const match = (parsed.objects ?? []).find((t) => t.tag === args.tag);
+      const objects = await this.listAllTastypie<{
+        id?: string; tag?: string; is_global?: boolean; fields?: any[]; item_attributes?: string[];
+      }>(request, path, 'commcare_get_lookup_table');
+      const match = objects.find((t) => t.tag === args.tag);
       if (!match || !match.id) {
         return { table: null };
       }
@@ -1493,8 +1481,11 @@ export class CommCareBackend {
           `commcare_create_lookup_table POST ${path} returned ${res.status()}: ${text.slice(0, 400)}`,
         );
       }
-      // Tastypie returns the created object on 201 with Location header
-      // pointing at the detail URI. Parse Location for the id.
+      // Observed live 2026-10-13 (ace#2853): HQ answers 201 with an EMPTY
+      // Location header and an empty body for this resource, so in practice
+      // the id comes from the list read-back below. Location/body are kept
+      // for an HQ that starts returning them. A 2xx alone is never success:
+      // with no id from any source this throws.
       const location = res.headers()['location'] || '';
       const idFromLocation = location.match(/\/lookup_table\/([0-9a-f]+)\/?$/i)?.[1];
       if (idFromLocation) {
@@ -1512,6 +1503,49 @@ export class CommCareBackend {
         `commcare_create_lookup_table POST ${path} returned ${res.status()} but neither Location header nor body nor list-readback exposed the new table's id.`,
       );
     });
+  }
+
+  /**
+   * GET every object of a Tastypie list endpoint, following `meta.next`.
+   *
+   * HQ's fixture resources (`lookup_table`, `lookup_table_item`) set no
+   * `limit` in their Meta, so a bare GET returns Tastypie's default page of
+   * 20 — the rest of the domain is silently beyond `meta.next`. Reading only
+   * page one is what made rows appended to a new table look absent
+   * (ace#2853: 119 rows in connect-ace-prod, the bare GET returned 20, none
+   * of them the new tables'). `limit=0` asks for Tastypie's max page (1000).
+   */
+  private async listAllTastypie<T>(
+    request: APIRequestContext,
+    path: string,
+    label: string,
+  ): Promise<T[]> {
+    const all: T[] = [];
+    let offset = 0;
+    for (let page = 0; page < 1000; page++) {
+      const url = `${this.opts.baseUrl}${path}?limit=0&offset=${offset}`;
+      const res = await request.get(url, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader(label) },
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `${label} GET ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(`${label} GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const parsed = JSON.parse(await res.text()) as {
+        meta?: { next?: string | null; total_count?: number };
+        objects?: T[];
+      };
+      const objects = parsed.objects ?? [];
+      all.push(...objects);
+      offset += objects.length;
+      const total = parsed.meta?.total_count;
+      if (!parsed.meta?.next || objects.length === 0) break;
+      if (typeof total === 'number' && all.length >= total) break;
+    }
+    return all;
   }
 
   /**
@@ -2622,56 +2656,69 @@ export class CommCareBackend {
 
   /**
    * Get rows of a lookup table. Tastypie LookupTableItemResource returns
-   * ALL rows in the domain (no querystring filter), so this atom
-   * client-side filters by `data_type_id`.
+   * every row in the domain (no table filter), so this atom reads ALL pages
+   * and client-side filters by `data_type_id`. It must page: the resource
+   * has no Meta `limit`, so a bare GET returns only the first 20 rows of the
+   * whole domain — a new table's rows land beyond that and read back as
+   * `[]` while they are stored (ace#2853).
    *
    * Each row's `fields` is flattened: `{column_name: first_field_value}`
    * (the team's Connect Interviews lookup tables don't use sub-properties
    * or multi-value field_lists).
    *
-   * Endpoint: GET /a/<domain>/api/v0.5/lookup_table_item/
+   * Endpoint: GET /a/<domain>/api/v0.5/lookup_table_item/?limit=0&offset=N
    * Auth: API key (Tastypie default for this resource).
    */
   async getLookupTableRows(args: GetLookupTableRowsArgs): Promise<{ rows: LookupTableRow[] }> {
     return this.runWithSessionRetry(async (request) => {
       const tableId = await this.resolveTableId(args.domain, args.table_id_or_tag);
-      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table_item/`;
-      const res = await request.get(`${this.opts.baseUrl}${path}`, {
-        maxRedirects: 0,
-        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_lookup_table_rows') },
-      });
-      if (res.status() !== 200) {
-        throw new Error(
-          `commcare_get_lookup_table_rows GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
-        );
-      }
-      const parsed = JSON.parse(await res.text()) as {
-        objects?: Array<{ id?: string; data_type_id?: string; fields?: any; item_attributes?: any }>;
-      };
-      const rows = (parsed.objects ?? [])
-        .filter((r) => r.data_type_id === tableId)
-        .map((r) => {
-          const flatFields: Record<string, string> = {};
-          for (const [col, container] of Object.entries(r.fields ?? {})) {
-            const list = (container as any)?.field_list ?? [];
-            flatFields[col] = list[0]?.field_value ?? list[0]?.value ?? '';
-          }
-          return {
-            id: r.id ?? '',
-            data_type_id: r.data_type_id ?? tableId,
-            fields: flatFields,
-            item_attributes: (r.item_attributes ?? {}) as Record<string, string>,
-          };
-        });
-      return { rows };
+      return { rows: await this.listTableRows(request, args.domain, tableId, 'commcare_get_lookup_table_rows') };
     });
   }
 
+  private async listTableRows(
+    request: APIRequestContext,
+    domain: string,
+    tableId: string,
+    label: string,
+  ): Promise<LookupTableRow[]> {
+    const path = `/a/${encodeURIComponent(domain)}/api/v0.5/lookup_table_item/`;
+    const objects = await this.listAllTastypie<{
+      id?: string; data_type_id?: string; fields?: any; item_attributes?: any;
+    }>(request, path, label);
+    return objects
+      .filter((r) => r.data_type_id === tableId)
+      .map((r) => {
+        const flatFields: Record<string, string> = {};
+        for (const [col, container] of Object.entries(r.fields ?? {})) {
+          const list = (container as any)?.field_list ?? [];
+          flatFields[col] = list[0]?.field_value ?? list[0]?.value ?? '';
+        }
+        return {
+          id: r.id ?? '',
+          data_type_id: r.data_type_id ?? tableId,
+          fields: flatFields,
+          item_attributes: (r.item_attributes ?? {}) as Record<string, string>,
+        };
+      });
+  }
+
   /**
-   * Append rows to a lookup table. POSTs one row at a time to
-   * /a/<domain>/api/v0.5/lookup_table_item/ — the Tastypie resource
-   * doesn't accept a list payload, only single-row POST. Returns the
-   * array of created row ids.
+   * Append rows to a lookup table, one POST per row (the resource has no
+   * list POST), then prove every row landed.
+   *
+   * Endpoint: POST /a/<domain>/api/lookup_table_item/v2/ — the v2 resource
+   * (`fixtures/resources/v0_6.py`) is v0.5's with `always_return_data =
+   * True`, so the 201 body carries the new row's `id`. The v0.5 URL this
+   * atom used to POST to answers 201 with an EMPTY Location header and an
+   * EMPTY body (observed live 2026-10-13, ace#2853): the row IS stored but
+   * its id is unrecoverable, which is how `row_ids: []` came back as
+   * "success". Same body shape on both versions.
+   *
+   * Fail-loud contract: a 2xx with no id in the body throws, and after the
+   * loop the table is re-read (all pages) and every returned id must be in
+   * it — so `row_ids.length === rows.length` on every success. Errors name
+   * the ids already written, because a blind retry would duplicate them.
    *
    * For Connect Interviews `interview_schedule`, each row is a flat
    * `{cohort_id, previous_interview, next_interview, frequency_days}`
@@ -2679,10 +2726,12 @@ export class CommCareBackend {
    */
   async appendLookupTableRows(args: AppendLookupTableRowsArgs): Promise<{ row_ids: string[] }> {
     return this.runWithSessionRetry(async (request) => {
+      const label = 'commcare_lookup_table_append_rows';
       const tableId = await this.resolveTableId(args.domain, args.table_id_or_tag);
-      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table_item/`;
-      const authHeader = this.apiKeyAuthHeader('commcare_lookup_table_append_rows');
+      const path = `/a/${encodeURIComponent(args.domain)}/api/lookup_table_item/v2/`;
+      const authHeader = this.apiKeyAuthHeader(label);
       const ids: string[] = [];
+      const written = () => (ids.length ? ` Rows already written (do not re-append them): ${JSON.stringify(ids)}.` : '');
       for (const flatRow of args.rows) {
         const fields: Record<string, { field_list: Array<{ field_value: string; properties: Record<string, string> }> }> = {};
         for (const [col, val] of Object.entries(flatRow)) {
@@ -2695,24 +2744,41 @@ export class CommCareBackend {
         };
         const res = await request.post(`${this.opts.baseUrl}${path}`, {
           data: JSON.stringify(body),
-          headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: authHeader },
           maxRedirects: 0,
         });
+        if (res.status() === 302) {
+          CommCareBackend.assertNotLoginRedirect(res, `${label} POST ${path}`);
+        }
+        const text = await res.text();
         if (res.status() !== 201 && res.status() !== 200) {
           throw new Error(
-            `commcare_lookup_table_append_rows POST ${path} for row ${JSON.stringify(flatRow)} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+            `${label} POST ${path} for row ${JSON.stringify(flatRow)} returned ${res.status()}: ${text.slice(0, 300)}.${written()}`,
           );
         }
-        // Tastypie returns the created row with id on 201 + Location header.
-        const location = res.headers()['location'] || '';
-        const id = location.match(/\/lookup_table_item\/([0-9a-f]+)\/?$/i)?.[1];
-        if (id) ids.push(id);
-        else {
-          try {
-            const parsed = JSON.parse(await res.text());
-            if (parsed?.id) ids.push(parsed.id);
-          } catch { /* drop — caller can re-list */ }
+        let id: string | undefined;
+        try {
+          const parsed = JSON.parse(text);
+          if (typeof parsed?.id === 'string' && parsed.id) id = parsed.id;
+        } catch { /* handled below */ }
+        if (!id) {
+          throw new Error(
+            `${label} POST ${path} for row ${JSON.stringify(flatRow)} returned ${res.status()} but no row id ` +
+            `(body: ${JSON.stringify(text.slice(0, 200))}). A 2xx without an id is not proof the row was stored.${written()}`,
+          );
         }
+        ids.push(id);
+      }
+      // Read-back: every id HQ handed us must be in the table now.
+      const stored = new Set(
+        (await this.listTableRows(request, args.domain, tableId, label)).map((r) => r.id),
+      );
+      const missing = ids.filter((id) => !stored.has(id));
+      if (missing.length) {
+        throw new Error(
+          `${label}: HQ returned ids for ${ids.length} row(s) but ${missing.length} are absent from table ` +
+          `${args.table_id_or_tag} (${tableId}) on read-back: ${JSON.stringify(missing)}.${written()}`,
+        );
       }
       return { row_ids: ids };
     });
