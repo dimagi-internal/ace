@@ -306,6 +306,7 @@ export interface PlanContext {
  * | Connect program | its card on the org's Programs page, found by UUID or exact name, else skipped (Connect has no program detail route — the recorded `/program/<uuid>/` 404s) |
  * | Connect opportunity | top of its page; then its Verification / payments section |
  * | Chatbot | the PUBLIC chat with one real Phase 2 question answered — never the admin page |
+ * | Any other output on a session the script has no login for (`auth: ocs`, e.g. `ocs_coach`) | the bot's public chat from `public_url` / `team_slug` + `public_id`, else skipped with the reason — never a login page |
  * | Solicitation | its labs page, opened in the solicitation's own program context |
  * | Labs dashboard / report | the rendered report with data loaded (top of page) |
  * | Demo-walkthrough package | the canopy package page, at its walkthrough's first scene |
@@ -331,6 +332,24 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
   }
 
   if (!gap.url) return { ...base, strategy: 'page', url: null, shots: [], skip: 'the gap has no url' };
+
+  // A non-chatbot gap whose session the capture script cannot open (ace#2887).
+  // A page shot would land on that system's login page every time, and the
+  // retry would repeat it. OCS has an anonymous page for a bot — its public
+  // chat — so use that when the product names one; otherwise skip, named.
+  if (gap.kind !== 'chatbot' && !PAGE_SESSIONS.has(auth)) {
+    if (auth === 'ocs') {
+      return planPublicChat(
+        base,
+        gap,
+        product,
+        ctx,
+        (q) => `${t} answering: "${truncate(q, 120)}"`,
+        'the capture script has no OCS login (the admin page only shows the login), and the output carries no public chat url (public_url, or team_slug + public_id)',
+      );
+    }
+    return { ...base, strategy: 'page', url: gap.url, shots: [], skip: `the capture script has no ${auth} session to open ${gap.url}` };
+  }
 
   switch (gap.kind) {
     case 'connect_program': {
@@ -377,19 +396,8 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
           { step: 'verification', mode: 'scroll-to-text', text: 'Verification', caption: `Connect opportunity "${t}" — verification and worker payments` },
         ],
       };
-    case 'chatbot': {
-      const publicUrl = str(gap.public_url) || ocsPublicUrl(product);
-      if (!publicUrl) return { ...base, strategy: 'ocs-chat', url: null, shots: [], skip: 'no public chat url (products.ocs_chatbot.public_url, or team_slug + public_id)' };
-      const q = (ctx.chatQuestion ?? '').trim();
-      if (!q) return { ...base, strategy: 'ocs-chat', url: publicUrl, shots: [], skip: 'no Phase 2 test question to ask (2-scenarios/pdd-to-test-prompts.md)' };
-      return {
-        ...base,
-        strategy: 'ocs-chat',
-        url: publicUrl,
-        question: q,
-        shots: [{ step: 'answer', mode: 'viewport', caption: `Support chatbot answering: "${truncate(q, 120)}"` }],
-      };
-    }
+    case 'chatbot':
+      return planPublicChat(base, gap, product, ctx, (q) => `Support chatbot answering: "${truncate(q, 120)}"`, 'no public chat url (products.ocs_chatbot.public_url, or team_slug + public_id)');
     case 'solicitation':
       return {
         ...base,
@@ -429,6 +437,30 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
         shots: [{ step: auth === 'labs' ? 'report' : 'page', mode: 'viewport', caption: `${t} — ${auth === 'labs' ? 'the rendered report with its data' : 'top of the page'}` }],
       };
   }
+}
+
+/**
+ * Sessions the capture script can open a PAGE with (`scripts/browser-sessions.ts`):
+ * connect/hq log in, labs restores its session, canopy sends ACE's PAT, public
+ * needs nothing. `ocs` is deliberately absent — that context is anonymous, so it
+ * only ever opens a bot's PUBLIC chat; `google` never reaches a page shot.
+ */
+export const PAGE_SESSIONS: ReadonlySet<PreviewAuth> = new Set<PreviewAuth>(['connect', 'hq', 'labs', 'canopy', 'public']);
+
+/** The `ocs-chat` plan on a bot's public chat — shared by `chatbot` and any `auth: ocs` output (ace#2887). */
+function planPublicChat(
+  base: Pick<CapturePlan, 'gap' | 'auth' | 'folder'>,
+  gap: PreviewGap,
+  product: Record<string, unknown> | null,
+  ctx: PlanContext,
+  caption: (question: string) => string,
+  noUrlReason: string,
+): CapturePlan {
+  const publicUrl = str(gap.public_url) || ocsPublicUrl(product);
+  if (!publicUrl) return { ...base, strategy: 'ocs-chat', url: null, shots: [], skip: noUrlReason };
+  const q = (ctx.chatQuestion ?? '').trim();
+  if (!q) return { ...base, strategy: 'ocs-chat', url: publicUrl, shots: [], skip: 'no Phase 2 test question to ask (2-scenarios/pdd-to-test-prompts.md)' };
+  return { ...base, strategy: 'ocs-chat', url: publicUrl, question: q, shots: [{ step: 'answer', mode: 'viewport', caption: caption(q) }] };
 }
 
 const PROGRAM_CARD_DETAIL = 'its card on the Programs page: delivery type, dates, budget and invite funnel';

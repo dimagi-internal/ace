@@ -54,6 +54,7 @@ reads any mapping there with a `file_id` as an output.
 | `connect_opportunity` | top of the opportunity page (apps, payment units, dates, budget); then its Verification / payments section | connect |
 | `connect_program` | its CARD on `…/a/<org>/program/` — Connect has no program detail route; the recorded `/program/<uuid>/` 404s. The card is found by the program's UUID (its edit / invite / new-opportunity controls carry `/program/<uuid>/`), else by its EXACT recorded name — never by the gap title. Before the shot the card's description is clamped to 3 full-width lines, so the frame is a landscape card (name, description, delivery type, dates, budget, invite funnel) rather than a tall strip of wrapped text. Neither → **skipped** (`could not identify the program's card`): a frame of the wrong program is never the fallback | connect |
 | `chatbot` | the PUBLIC chat page (the gap's `public_url`, else run_state's) with one real Phase 2 question answered — the question with the SHORTEST expected answer — framed so the user's question sits at the top and the whole answer fits (viewport grown to ≤2000px), the widget's `[no tag]` debug line hidden. Never the OCS admin page | none (anonymous) |
+| any other output on a session the script has no login for — `auth: ocs`, e.g. Phase 7's `products.ocs_coach` (`kind: link`) | the bot's PUBLIC chat, exactly as for `chatbot`: the gap's `public_url`, else built from the product's `team_slug` + `public_id`. Neither → **skipped** (`the capture script has no OCS login …`): the admin URL is never opened, because it can only land on OCS's login page (ace#2887). Any other session the script cannot open is skipped the same way | none (anonymous) |
 | `solicitation` | its labs page opened with `?program_id=<labs_program_id>` — labs' sticky context otherwise 404s it | labs |
 | `dashboard` / labs report | the rendered report, top of page, with data loaded | labs |
 | `walkthrough` (canopy DDD package) | the package page at its walkthrough's first scene — its hero video is H.264, which headless Chromium paints white | canopy |
@@ -90,7 +91,9 @@ reads any mapping there with a `file_id` as an output.
    `deferred`); `<scratch dir>/plan.json` has, per gap, the target `folder`
    (relative to the run folder), the local frame paths, each frame's caption and
    its deterministic screen verdict. The script already retried each failure once
-   with a fresh session. A 404 from ace-web means its gap endpoint is not deployed
+   with a fresh session. A `skipped` gap was never attempted: its reason is
+   structural (no public chat url, no session for that auth, no program id), so
+   no retry can close it — report the reason, do not re-run it. A 404 from ace-web means its gap endpoint is not deployed
    — report that and stop (nothing to do, nothing to fail).
 
    **Sessions — all headless, all work on canopy's cloud runner:**
@@ -108,7 +111,9 @@ reads any mapping there with a `file_id` as an output.
      itself (ace#2805). A missing PAT fails loudly — run `/ace:setup`. A labs session
      does NOT open canopy pages (they bounce to Google sign-in).
    - **ocs:** none — the chatbot's public chat page is anonymous.
-     `/ace:ocs-login` is not needed for previews.
+     `/ace:ocs-login` is not needed for previews. So EVERY `auth: ocs` output —
+     a `chatbot`, or a `link` such as `products.ocs_coach` — is photographed on its public
+     chat or skipped; its admin URL is never a target (ace#2887).
    - **google:** the Drive service account key (`gws-sa-key.json`).
 
 3. **LOOK at every frame — this is the gate, not the screen verdict.** `Read`
@@ -123,6 +128,10 @@ reads any mapping there with a `file_id` as an output.
    - **All frames of a gap rejected:** re-run step 2 ONCE for that gap alone
      (`--only <gap id>`); a second rejection means write NOTHING for that output
      and record why (what the frame showed).
+     Never re-run a `skipped` gap, nor a `failed` one whose reason is `login`
+     on a session the script cannot log in to (`ocs`): the retry repeats a step
+     that cannot pass. The fix for those is the gap's data (ace-web's
+     `public_url`, or run_state's `team_slug` + `public_id`), not another attempt.
    - A `failed` or `skipped` gap: nothing to upload; carry its reason to the report.
 
 4. **Write each gap that has ≥1 accepted frame.** Per gap, in order:
