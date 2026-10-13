@@ -28,7 +28,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
-import { qaResultWriteRefusal, verdictWriteRefusal } from '../lib/qa-result-write-guard.js';
+import { qaResultWriteRefusal, verdictWriteRefusal, yamlParseWriteRefusal } from '../lib/qa-result-write-guard.js';
 import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch, updateFileMediaMimeType } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
@@ -837,16 +837,6 @@ server.tool(
   async ({ fileId, content, localFilePath, ifMatchRevisionId }) => {
     try {
       const newContent = resolveUpdateFileContent({ content, localFilePath });
-      // A QA result rewritten in place goes through the same guard as a create.
-      // Only content that names a -qa skill costs the extra metadata read.
-      if (/^skill:\s*\S+-(qa|eval)\s*$/m.test(newContent)) {
-        const meta = await withTransientRetry(() =>
-          drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }),
-        );
-        const fname = String((meta.data as any).name ?? '');
-        const qaRefusal = qaResultWriteRefusal(fname, newContent) ?? verdictWriteRefusal(fname, newContent);
-        if (qaRefusal) return error(qaRefusal);
-      }
       // Optimistic concurrency: re-read the file's `version` and compare. Drive's
       // files.update has no native If-Match equivalent, so we do the check
       // server-side here. This narrows but does not eliminate the race; for
@@ -869,8 +859,22 @@ server.tool(
       // part's type, so a fixed text/plain turned text/markdown and text/yaml
       // files into text/plain (ace#2215, ace#2606).
       const typeMeta = await withTransientRetry(() =>
-        drive.files.get({ fileId, fields: 'mimeType', supportsAllDrives: true }),
+        drive.files.get({ fileId, fields: 'name, mimeType', supportsAllDrives: true }),
       );
+      // The name-keyed write guards run here rather than at the top of the
+      // handler because this read is UNCONDITIONAL and already paid for — the
+      // name comes free with the mimeType. Previously the QA/verdict guards
+      // cost their own extra `files.get` and so were gated behind a content
+      // sniff (`^skill: …-qa$`), which meant an in-place rewrite of any OTHER
+      // state file was checked by nothing at all. That is the hole ace#2866
+      // came through: `opp.yaml` was repaired through this atom, and a
+      // repair that re-broke the file would have been written silently.
+      const fname = String((typeMeta.data as any).name ?? '');
+      const writeRefusal =
+        qaResultWriteRefusal(fname, newContent) ??
+        verdictWriteRefusal(fname, newContent) ??
+        yamlParseWriteRefusal(fname, newContent);
+      if (writeRefusal) return error(writeRefusal);
       const mediaType = updateFileMediaMimeType((typeMeta.data as any).mimeType);
       const resp = await withTransientRetry(() => drive.files.update({
         fileId,
@@ -936,7 +940,10 @@ server.tool(
         atom: 'drive_create_file', inlineParam: 'content',
         inline: fileContent, localFilePath,
       });
-      const qaRefusal = qaResultWriteRefusal(fileName, resolved) ?? verdictWriteRefusal(fileName, resolved);
+      const qaRefusal =
+        qaResultWriteRefusal(fileName, resolved) ??
+        verdictWriteRefusal(fileName, resolved) ??
+        yamlParseWriteRefusal(fileName, resolved);
       if (qaRefusal) return error(qaRefusal);
       const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
@@ -1038,7 +1045,11 @@ server.tool(
       if (buf.length === 0) {
         return error('File is empty (0 bytes).');
       }
-      const qaRefusal = qaResultWriteRefusal(fileName, buf.toString('utf8')) ?? verdictWriteRefusal(fileName, buf.toString('utf8'));
+      const uploadedText = buf.toString('utf8');
+      const qaRefusal =
+        qaResultWriteRefusal(fileName, uploadedText) ??
+        verdictWriteRefusal(fileName, uploadedText) ??
+        yamlParseWriteRefusal(fileName, uploadedText);
       if (qaRefusal) return error(qaRefusal);
       return result(
         await handleUploadBinary(
