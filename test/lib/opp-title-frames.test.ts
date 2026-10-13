@@ -55,9 +55,43 @@ describe('which frames show the dogfood opportunity title', () => {
   });
 
   it('frames without the title are clean', () => {
-    for (const step of ['learn-launch-suite-root', 'commcare-welcome', 'deliver-launch-home', 'personal-id-phone']) {
+    for (const step of [
+      'learn-launch-suite-root', 'commcare-welcome', 'personal-id-phone',
+      // ace#2879: verified on the real frames — the form list and the Delivery
+      // Details download card carry no job card.
+      'deliver-sync-pre', 'deliver-launch-download-gate',
+    ]) {
       expect(oppTitleExposure({ step }), step).toBe('none');
     }
+  });
+
+  it('the Deliver app home carries the same job card as the Learn home (ace#2879)', () => {
+    // Real frames, spark-facilitator/20260925-1536 + smallholder-seasonal/20261012-1549:
+    // the card "<run_id> · <name>" sits directly under the app bar.
+    for (const step of [
+      'deliver-launch-home', 'deliver-sync-success', 'deliver-sync-counter-unrefreshed', 'deliver-sync-final',
+      'journey-deliver-home-before-enrolment', 'journey-deliver-home-before-meeting',
+    ]) {
+      expect(oppTitleExposure({ step }), step).toBe('top');
+    }
+    // The card AND a certificate repeating the title mid-screen — not croppable.
+    expect(oppTitleExposure({ step: 'deliver-launch-opp-detail' })).toBe('repeated');
+  });
+
+  it('an unlisted step whose shows: opens on the app home is caught by content, not by name (ace#2879)', () => {
+    // The real § 5.6 shows: lines from spark-facilitator/20260925-1536 — they
+    // name the home and its card but leave the run-id title out, so the run-id
+    // fallback alone never fired.
+    const real = [
+      "Deliver app home 'Spark Facilitator Deliver app': opp card 'Paid per verified FCAP community meeting', Daily Visits 0/1",
+      "Deliver home after sync: Daily Visits 0/1 under the red 'The job has not started yet.' banner",
+      'Deliver home after Facilitator Registration submit: same card, Daily Visits 0/1, not-started banner.',
+      'Learn home: job card above the CommCare logo and the module tiles.',
+    ];
+    for (const shows of real) expect(oppTitleExposure({ step: 'some-new-recipe-step', shows }), shows).toBe('top');
+    // A passing mention of the home is not a frame OF the home.
+    expect(oppTitleExposure({ step: 'some-new-recipe-step', shows: "'Community meetings' form list, reached from the Deliver home." })).toBe('none');
+    expect(oppTitleExposure({ step: 'some-new-recipe-step', shows: "Learn app 'Spark Facilitator Learn app' grid menu with icon tiles" })).toBe('none');
   });
 
   it('a sibling of the same screen is a variant of the same step, not a word match', () => {
@@ -98,6 +132,21 @@ describe('the crop — pixels from the real frame', () => {
   });
 });
 
+describe('the crop — the real Deliver app home (ace#2879)', () => {
+  // 270x600 downscale of spark-facilitator/20260925-1536 deliver-launch-home
+  // (Drive 1NkVDa6Cghp638RGjMEhrlOwwQ-sOSRHX). Full size 1080x2400 cuts at
+  // y=1001 — the same cut on smallholder-seasonal/20261012-1549's frame.
+  const r = decodePng(new Uint8Array(readFileSync(join(FIX, 'frames/deliver-launch-home.png'))));
+
+  it('cuts below the job card and its not-started banner, above the CommCare logo', () => {
+    const top = belowTitleCropTop(r);
+    expect(top).not.toBeNull();
+    // card + banner end at ~0.38 of the height; the logo starts at ~0.44.
+    expect(top! / r.height).toBeGreaterThan(0.38);
+    expect(top! / r.height).toBeLessThan(0.44);
+  });
+});
+
 describe('bindDeckFrames on the real deck (ace#2660)', () => {
   // On the real deck: `claim-opportunity` cites @claim-opp-detail,
   // `install-learn` is bound to learn-launch-home-tiles, `connect-home`
@@ -110,7 +159,22 @@ describe('bindDeckFrames on the real deck (ace#2660)', () => {
   it('the raw frames ship today: without a crop or sibling, the binder says so instead of passing silently', () => {
     const { spec, report } = bindDeckFrames(SPEC, { pool: POOL, stats: STATS });
     expect(slide(spec, 'claim-opportunity')?.image).toBe('@claim-opp-detail');
-    expect(report.opp_title_visible).toEqual(['connect-home', 'claim-opportunity', 'install-learn']);
+    // `syncing` cites @deliver-sync-success — the Deliver home after sync, whose
+    // job card reads "20260925-1536 · …". Before ace#2879 it classified as
+    // 'none' and shipped uncropped with no report.
+    expect(report.opp_title_visible).toEqual(['connect-home', 'claim-opportunity', 'install-learn', 'syncing']);
+  });
+
+  it('the Deliver home frame the binder picks for `syncing` is cropped below its job card, like the Learn home (ace#2879)', () => {
+    // Every Deliver-home capture in the pool cuts at the same row (measured: 1001 of 2400).
+    const homes = ['deliver-launch-home', 'deliver-sync-success', 'deliver-sync-counter-unrefreshed', 'journey-deliver-home-before-meeting'];
+    const tops = new Map(cropTops);
+    for (const a of homes) if (POOL.some((f) => f.alias === a)) tops.set(fileIdOf(a), 1001);
+    const { spec, report } = bindDeckFrames(SPEC, { pool: POOL, stats: STATS, cropTops: tops });
+    const image = slide(spec, 'syncing')?.image ?? '';
+    expect(homes.map((a) => `@${belowTitleAlias(a)}`)).toContain(image);
+    expect(report.crops).toContainEqual(expect.objectContaining({ top: 1001, slides: ['syncing'] }));
+    expect(report.opp_title_visible).not.toContain('syncing');
   });
 
   it('PREFERS a clean sibling of the same screen when the pool has one', () => {
