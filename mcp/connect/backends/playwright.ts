@@ -15,6 +15,7 @@ import {
   UnsupportedVerificationFlagError,
   CrossOrgCreateUnsupportedError,
   VerificationPagePmOnlyError,
+  VerificationRuleDeliverUnitChangedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
@@ -25,6 +26,9 @@ import {
   decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
+  extractFormFieldValueLists,
+  parseFormJsonRules,
+  type PersistedFormFieldRule,
   isCheckboxChecked,
   parseOpportunityDashboard,
   classifyDashboardRead,
@@ -54,6 +58,66 @@ import {
  * stay one of those four. 100 is the largest, minimising round-trips.
  */
 const OPPORTUNITY_LIST_PAGE_SIZE = 100;
+
+/**
+ * Serialize a form body for `request.post({ form })`. A plain record when every
+ * value is single (the common case, and what the unit-test harnesses capture);
+ * a `FormData` with repeated keys when a checkbox group submits several values
+ * — a record cannot carry a repeated key, and joining values would post one
+ * bogus value instead (dimagi-internal/ace#2863).
+ */
+export function toPostForm(form: Record<string, string | string[]>): Record<string, string> | FormData {
+  if (!Object.values(form).some(Array.isArray)) return form as Record<string, string>;
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(form)) {
+    for (const one of Array.isArray(v) ? v : [v]) fd.append(k, one);
+  }
+  return fd;
+}
+
+/** The `form_json` rows (id + deliver units) a POST body is about to submit. */
+export function postedFormJsonRules(
+  form: Record<string, string | string[]>,
+): Array<{ id: string; name: string; deliver_unit_ids: string[] }> {
+  const out: Array<{ id: string; name: string; deliver_unit_ids: string[] }> = [];
+  for (const k of Object.keys(form)) {
+    const m = k.match(/^form_json-(\d+)-id$/);
+    if (!m) continue;
+    const i = m[1];
+    const du = form[`form_json-${i}-deliver_unit`];
+    const name = form[`form_json-${i}-name`];
+    out.push({
+      id: String(form[k]),
+      name: Array.isArray(name) ? name[name.length - 1] : (name ?? ''),
+      deliver_unit_ids: du == null ? [] : (Array.isArray(du) ? du : [du]).filter((v) => v !== ''),
+    });
+  }
+  return out;
+}
+
+/**
+ * Existing rules (matched by row PK) whose deliver-unit set differs between
+ * `before` and `after`. Rules absent from `after` are not reported — this
+ * guards against MOVING a payment rule, which is silent; a deleted rule is
+ * visible in the count.
+ */
+export function deliverUnitMoves(
+  before: Array<{ id: string; name: string; deliver_unit_ids: string[] }>,
+  after: Array<{ id: string; name: string; deliver_unit_ids: string[] }>,
+): Array<{ id: string; name: string; before: string[]; after: string[] }> {
+  const afterById = new Map(after.filter((r) => r.id).map((r) => [r.id, r]));
+  const norm = (xs: string[]) => [...xs].sort().join(',');
+  const moved: Array<{ id: string; name: string; before: string[]; after: string[] }> = [];
+  for (const b of before) {
+    if (!b.id) continue;
+    const a = afterById.get(b.id);
+    if (!a) continue;
+    if (norm(a.deliver_unit_ids) !== norm(b.deliver_unit_ids)) {
+      moved.push({ id: b.id, name: b.name, before: [...b.deliver_unit_ids], after: [...a.deliver_unit_ids] });
+    }
+  }
+  return moved;
+}
 
 /**
  * Hard stop on the page walk so a server that ignores `page` can never spin
@@ -1071,6 +1135,14 @@ export class PlaywrightBackend implements ConnectClient {
 
     const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
     const current = extractFormFieldValues(html);
+    // Submission-semantics read of every control (checked boxes only, every
+    // box of a checkbox group) and the persisted rules parsed from it. The
+    // formset replay MUST come from these: a rule's `deliver_unit` is a
+    // checkbox group, and replaying a value-attribute scrape of it re-pointed
+    // every existing rule at the last deliver unit on the page
+    // (dimagi-internal/ace#2863).
+    const currentLists = extractFormFieldValueLists(html);
+    const persistedBefore = parseFormJsonRules(html);
 
     // `location` is the form's numeric "GPS radius (meters)" field — NOT
     // a boolean toggle. Surfaced through `flags.gps_radius_meters` since
@@ -1078,7 +1150,7 @@ export class PlaywrightBackend implements ConnectClient {
     // explicitly set. Renamed from the historic boolean-shaped
     // `flags.location` which never worked anyway.
     const radiusFromArg = flags.gps_radius_meters != null ? String(flags.gps_radius_meters) : undefined;
-    const form: Record<string, string> = {
+    const form: Record<string, string | string[]> = {
       csrfmiddlewaretoken: csrf,
       location: radiusFromArg ?? current['location'] ?? '10',
       form_submission_start: flags.form_submission_start ?? current['form_submission_start'] ?? '',
@@ -1103,8 +1175,10 @@ export class PlaywrightBackend implements ConnectClient {
     ]) {
       if (current[k] != null) form[k] = current[k];
     }
-    for (const [k, v] of Object.entries(current)) {
-      if (/^(deliver_unit|form_json)-\d+-/.test(k)) form[k] = v;
+    // Replay what a browser would submit: checked boxes only, and EVERY checked
+    // box of a group (ace#2863).
+    for (const [k, vs] of Object.entries(currentLists)) {
+      if (/^(deliver_unit|form_json)-\d+-/.test(k)) form[k] = vs.length === 1 ? vs[0] : [...vs];
     }
     if (flags.deliver_unit_checks) {
       for (const c of flags.deliver_unit_checks) {
@@ -1148,35 +1222,28 @@ export class PlaywrightBackend implements ConnectClient {
     // too is deliberate: it repairs an opportunity a previous run poisoned,
     // rather than faithfully re-posting the value that breaks it.
     if (flags.form_field_rules?.length) {
-      const rowIndices = new Set<number>();
-      for (const k of Object.keys(current)) {
-        const m = k.match(/^form_json-(\d+)-/);
-        if (m) rowIndices.add(Number(m[1]));
-      }
+      // Existing rows come from `parseFormJsonRules`, which reads each rule's
+      // deliver unit from the CHECKED box(es) of its group — never from the
+      // last box on the page (ace#2863). Blank "add another" rows and the
+      // `__prefix__` template are already skipped there.
+      type JsonRow = { name: string; question_path: string; question_value: string; deliver_unit: string[]; id: string };
+      const rows: JsonRow[] = persistedBefore.map((r) => ({
+        name: r.name,
+        question_path: toConnectQuestionPath(r.question_path),
+        question_value: r.question_value,
+        deliver_unit: [...r.deliver_unit_ids],
+        id: r.id,
+      }));
 
-      type JsonRow = { name: string; question_path: string; question_value: string; deliver_unit: string; id: string };
-      const rows: JsonRow[] = [];
-      for (const i of [...rowIndices].sort((a, b) => a - b)) {
-        const row: JsonRow = {
-          name: current[`form_json-${i}-name`] ?? '',
-          question_path: toConnectQuestionPath(current[`form_json-${i}-question_path`] ?? ''),
-          question_value: current[`form_json-${i}-question_value`] ?? '',
-          deliver_unit: current[`form_json-${i}-deliver_unit`] ?? '',
-          id: current[`form_json-${i}-id`] ?? '',
-        };
-        // Skip blank template rows Django renders for the "add another" slot.
-        if (row.question_path || row.id) rows.push(row);
-      }
-
-      const keyOf = (r: { question_path: string; question_value: string; deliver_unit: string }) =>
-        `${r.question_path}\u0000${r.question_value}\u0000${r.deliver_unit}`;
+      const keyOf = (r: { question_path: string; question_value: string; deliver_unit: string[] }) =>
+        `${r.question_path}\u0000${r.question_value}\u0000${[...r.deliver_unit].sort().join(',')}`;
       const seen = new Set(rows.map(keyOf));
       for (const r of flags.form_field_rules) {
         const row: JsonRow = {
           name: r.name,
           question_path: toConnectQuestionPath(r.question_path),
           question_value: r.question_value,
-          deliver_unit: String(r.deliver_unit_id),
+          deliver_unit: [String(r.deliver_unit_id)],
           id: r.id != null ? String(r.id) : '',
         };
         if (seen.has(keyOf(row))) continue;
@@ -1192,7 +1259,10 @@ export class PlaywrightBackend implements ConnectClient {
         form[`form_json-${i}-name`] = row.name;
         form[`form_json-${i}-question_path`] = row.question_path;
         form[`form_json-${i}-question_value`] = row.question_value;
-        form[`form_json-${i}-deliver_unit`] = row.deliver_unit;
+        // A browser omits a group with nothing checked; one value posts as a
+        // string, several as repeated keys (see `toPostForm`).
+        if (row.deliver_unit.length === 1) form[`form_json-${i}-deliver_unit`] = row.deliver_unit[0];
+        else if (row.deliver_unit.length > 1) form[`form_json-${i}-deliver_unit`] = [...row.deliver_unit];
         form[`form_json-${i}-id`] = row.id;
       });
       form['form_json-TOTAL_FORMS'] = String(rows.length);
@@ -1201,8 +1271,18 @@ export class PlaywrightBackend implements ConnectClient {
       if (form['form_json-MAX_NUM_FORMS'] == null) form['form_json-MAX_NUM_FORMS'] = '1000';
     }
 
+    // Fail loud BEFORE the write if the replay would move any existing rule
+    // onto a different deliver unit. The comparison is against the rules as
+    // parsed off the page we just fetched, keyed by row PK, so a future change
+    // to the replay/rebuild above cannot silently re-point payment rules again
+    // (dimagi-internal/ace#2863).
+    const preWriteMoves = deliverUnitMoves(persistedBefore, postedFormJsonRules(form));
+    if (preWriteMoves.length) {
+      throw new VerificationRuleDeliverUnitChangedError(path, 'pre_write', preWriteMoves);
+    }
+
     const postRes = await this.request.post(path, {
-      form,
+      form: toPostForm(form),
       maxRedirects: 0,
       headers: {
         Referer: `${this.opts.baseUrl}/a/${organization_slug}/opportunity/${opportunity_id}/`,
@@ -1223,17 +1303,27 @@ export class PlaywrightBackend implements ConnectClient {
       // INITIAL_FORMS counts rows Django loaded from the DB, so re-reading it
       // after the POST is a direct measure of what was actually persisted.
       let form_field_rules_saved: number | undefined;
+      let persistedAfter: PersistedFormFieldRule[] | undefined;
       try {
         const afterRes = await this.request.get(path);
         if (afterRes.status() === 200) {
-          const after = extractFormFieldValues(await afterRes.text());
+          const afterHtml = await afterRes.text();
+          const after = extractFormFieldValues(afterHtml);
           const initial = Number(after['form_json-INITIAL_FORMS']);
           if (Number.isFinite(initial)) form_field_rules_saved = initial;
+          persistedAfter = parseFormJsonRules(afterHtml);
         }
       } catch {
-        // Read-back is diagnostic only — never fail a successful write on it.
+        // A read-back that cannot RUN is diagnostic only — never fail a
+        // successful write on a network blip.
       }
-      return { ok: true, form_field_rules_saved };
+      // A read-back that DID run and shows an existing rule on a different
+      // deliver unit is not diagnostic: the payment rules are now wrong.
+      if (persistedAfter) {
+        const moved = deliverUnitMoves(persistedBefore, persistedAfter);
+        if (moved.length) throw new VerificationRuleDeliverUnitChangedError(path, 'post_write', moved);
+      }
+      return { ok: true, form_field_rules_saved, form_field_rules: persistedAfter };
     }
     throw await httpErrorFor(postRes, path, 'POST');
   };

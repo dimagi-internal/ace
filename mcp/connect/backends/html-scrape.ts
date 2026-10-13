@@ -335,24 +335,6 @@ export function parseInvitesList(html: string, programId: string): Invite[] {
 }
 
 /**
- * Extract the prefilled values of every named field in a Django form. Handles
- * <input value="..."> (any attribute order), <textarea>...</textarea>, and
- * <select> with a `selected` <option>. Skips inputs without a name.
- *
- * Returns a flat name→value map. For multi-value fields (checkboxes, multi-
- * select) the last value wins; we don't have any of those today so it doesn't
- * matter.
- *
- * **Every value is passed through {@link decodeHtmlEntities}** (all three
- * branches — input `value`, textarea body, selected option `value`). Django
- * autoescapes on render, so without this the caller gets `Spark&#x27;s` for a
- * stored `Spark's`. The write-side consequence is the serious one: the
- * read-modify-write update paths (`updateProgram`, `postEditForm`) re-POST
- * every field they weren't asked to change straight out of this map, so an
- * un-decoded read gets STORED and re-escaped on the next render — one extra
- * level of escaping per update, forever (dimagi-internal/ace#1140).
- */
-/**
  * Narrow `html` to the single `<form>` element that owns a control named
  * `fieldName`. Returns the whole document unchanged when there is no such
  * form, so callers degrade to today's behaviour rather than to an empty map.
@@ -446,32 +428,153 @@ export function isCheckboxChecked(
   return new RegExp(`name="${escaped}"[^>]*\\bchecked\\b`).test(html);
 }
 
-export function extractFormFieldValues(html: string): Record<string, string> {
-  const out: Record<string, string> = {};
+/**
+ * The values a BROWSER would submit for every named control in a Django form,
+ * as a list per name, in document order. This is the authoritative read;
+ * {@link extractFormFieldValues} is a single-value view over it.
+ *
+ * Submission semantics, not attribute scraping (dimagi-internal/ace#2863):
+ *
+ * - `<input type="checkbox">` / `<input type="radio">` contribute ONLY when
+ *   `checked`, and a checked box with no `value` attribute submits `'on'`
+ *   (what a browser sends). An unchecked box contributes nothing — its name is
+ *   absent unless another control of that name submitted.
+ * - A checkbox GROUP (one name, many boxes) yields every checked value.
+ * - `<select>` yields its `selected` option(s); a select with nothing selected
+ *   yields `['']` (kept for the read-modify-write callers, see ace#1449).
+ * - `<input>` of any other type yields its `value` (or `''`).
+ * - `<textarea>` yields its body.
+ *
+ * Why it matters: Connect renders a verification rule's `deliver_unit` as a
+ * checkbox group — one `<input type="checkbox" name="form_json-N-deliver_unit">`
+ * per deliver unit, the chosen one `checked="checked"`. A value-attribute
+ * scrape answered with the LAST box on the page for every row, and
+ * `connect_set_verification_flags` re-posted that, moving every existing
+ * payment rule onto one deliver unit on any second call.
+ *
+ * **Every value is passed through {@link decodeHtmlEntities}.** Django
+ * autoescapes on render, and the read-modify-write update paths
+ * (`updateProgram`, `postEditForm`) re-POST every field they weren't asked to
+ * change, so an un-decoded read gets STORED and re-escaped on the next render
+ * — one extra level of escaping per update, forever (dimagi-internal/ace#1140).
+ */
+export function extractFormFieldValueLists(html: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const push = (name: string, value: string) => {
+    (out[name] ??= []).push(decodeHtmlEntities(value));
+  };
 
-  // <input> — name and value can appear in either order
+  // <input> — name, type and value can appear in any order
   for (const m of html.matchAll(/<input\b([^>]*)>/g)) {
     const attrs = m[1];
     const name = attrs.match(/\bname="([^"]+)"/)?.[1];
-    const value = attrs.match(/\bvalue="([^"]*)"/)?.[1] ?? '';
-    if (name) out[name] = decodeHtmlEntities(value);
+    if (!name) continue;
+    const type = (attrs.match(/\btype="([^"]*)"/)?.[1] ?? 'text').toLowerCase();
+    const value = attrs.match(/\bvalue="([^"]*)"/)?.[1];
+    if (type === 'checkbox' || type === 'radio') {
+      if (hasBareAttribute(attrs, 'checked')) push(name, value ?? 'on');
+      continue;
+    }
+    push(name, value ?? '');
   }
 
   // <textarea>...content...</textarea>
   for (const m of html.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/g)) {
     const name = m[1].match(/\bname="([^"]+)"/)?.[1];
-    if (name) out[name] = decodeHtmlEntities(m[2].trim());
+    if (name) push(name, m[2].trim());
   }
 
-  // <select>: find its name and the value of its `selected` <option>
+  // <select>: the value(s) of its `selected` <option>(s)
   for (const m of html.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/g)) {
     const name = m[1].match(/\bname="([^"]+)"/)?.[1];
     if (!name) continue;
-    const sel = m[2].match(/<option\s+value="([^"]*)"[^>]*\sselected\b/);
-    out[name] = decodeHtmlEntities(sel?.[1] ?? '');
+    const selected: string[] = [];
+    for (const o of m[2].matchAll(/<option\b([^>]*)>/g)) {
+      if (!hasBareAttribute(o[1], 'selected')) continue;
+      selected.push(o[1].match(/\bvalue="([^"]*)"/)?.[1] ?? '');
+    }
+    if (selected.length === 0) selected.push('');
+    // A select REPLACES an earlier same-named control (last-wins, as before).
+    // The two-form page in ace#1449 is handled by callers scoping to one form,
+    // not by merging across forms here.
+    out[name] = selected.map(decodeHtmlEntities);
   }
 
   return out;
+}
+
+/**
+ * Single-value view of {@link extractFormFieldValueLists}: name -> the value a
+ * browser would submit. Unchecked checkboxes/radios are ABSENT; a checked
+ * valueless checkbox reads `'on'`.
+ *
+ * A name that submits SEVERAL values (a checkbox group with more than one box
+ * checked, a multi-select) reads as its last value here — a caller that can
+ * meet such a group must use the list form, as `setVerificationFlags` does
+ * (dimagi-internal/ace#2863).
+ */
+export function extractFormFieldValues(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, values] of Object.entries(extractFormFieldValueLists(html))) {
+    out[name] = values[values.length - 1];
+  }
+  return out;
+}
+
+/**
+ * Is a bare boolean attribute (`checked`, `selected`) present on a tag's
+ * attribute string? Quoted values are blanked first so a NAME or VALUE that
+ * merely contains the word (`name="unchecked_items"`) cannot match, while
+ * `checked`, `checked=""` and `checked="checked"` all do.
+ */
+function hasBareAttribute(attrs: string, attr: string): boolean {
+  const names = attrs.replace(/="[^"]*"/g, '=""').replace(/='[^']*'/g, "=''");
+  return new RegExp(`(?:^|\\s)${attr}(?:\\s|=|/|$)`).test(names);
+}
+
+/** One `form_json` verification rule as Connect has it PERSISTED. */
+export interface PersistedFormFieldRule {
+  /** Row index on the rendered page (`form_json-<index>-*`). */
+  index: number;
+  /** Connect's row PK; `''` for an unsaved row. */
+  id: string;
+  name: string;
+  question_path: string;
+  question_value: string;
+  /** Every CHECKED deliver-unit PK for this rule (normally exactly one). */
+  deliver_unit_ids: string[];
+}
+
+/**
+ * Parse the persisted `form_json` rules off a `verification_flags_config` page,
+ * reading each rule's deliver unit from the CHECKED box(es) of its checkbox
+ * group (dimagi-internal/ace#2863). The Django `__prefix__` template row and
+ * blank "add another" rows are skipped.
+ */
+export function parseFormJsonRules(html: string): PersistedFormFieldRule[] {
+  const lists = extractFormFieldValueLists(html);
+  const one = (k: string) => {
+    const v = lists[k];
+    return v && v.length ? v[v.length - 1] : '';
+  };
+  const indices = new Set<number>();
+  for (const k of Object.keys(lists)) {
+    const m = k.match(/^form_json-(\d+)-/);
+    if (m) indices.add(Number(m[1]));
+  }
+  const rules: PersistedFormFieldRule[] = [];
+  for (const i of [...indices].sort((a, b) => a - b)) {
+    const rule: PersistedFormFieldRule = {
+      index: i,
+      id: one(`form_json-${i}-id`),
+      name: one(`form_json-${i}-name`),
+      question_path: one(`form_json-${i}-question_path`),
+      question_value: one(`form_json-${i}-question_value`),
+      deliver_unit_ids: (lists[`form_json-${i}-deliver_unit`] ?? []).filter((v) => v !== ''),
+    };
+    if (rule.question_path || rule.id) rules.push(rule);
+  }
+  return rules;
 }
 
 /**
