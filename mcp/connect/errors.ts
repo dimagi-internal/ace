@@ -414,3 +414,49 @@ export class VerificationPagePmOnlyError extends ConnectError {
     };
   }
 }
+
+/**
+ * A `connect_set_verification_flags` call would move — or did move — an
+ * EXISTING `form_json` rule onto a different deliver unit (dimagi-internal/ace#2863).
+ *
+ * The atom is additive: every call re-posts every persisted rule row. Connect
+ * renders a rule's `deliver_unit` as a checkbox group, and the old scrape read
+ * the LAST box on the page instead of the CHECKED one, so any second call
+ * silently re-pointed every payment rule at one deliver unit — the once-only
+ * `paid_slot` stops came off every other unit and repeat visits were paid
+ * again, while `form_field_rules_saved` reported the same count.
+ *
+ * The replay is now checked against an independent read of the persisted rules
+ * twice: BEFORE the POST (`phase: 'pre_write'` — nothing was sent) and from a
+ * fresh GET AFTER it (`phase: 'post_write'` — the write landed and the listed
+ * rules are now wrong; repair them in the Connect UI before any visit is paid).
+ */
+export class VerificationRuleDeliverUnitChangedError extends ConnectError {
+  retryable = false;
+  constructor(
+    public path: string,
+    public phase: 'pre_write' | 'post_write',
+    public changed: Array<{ id: string; name: string; before: string[]; after: string[] }>,
+  ) {
+    super(
+      `connect_set_verification_flags ${phase === 'pre_write' ? 'refused to POST: the replay would move' : 'POSTed and the read-back shows it MOVED'} ` +
+        `${changed.length} existing verification rule(s) to a different deliver unit on ${path}: ` +
+        changed.map((c) => `rule ${c.id} "${c.name}" [${c.before.join(',')}] -> [${c.after.join(',')}]`).join('; ') +
+        (phase === 'post_write'
+          ? '. The rules above are now attached to the wrong deliver unit — fix them in the Connect UI before any visit is paid. '
+          : '. Nothing was written. ') +
+        'An existing rule\'s deliver unit must never change on replay (dimagi-internal/ace#2863).',
+    );
+  }
+
+  toJSON() {
+    return {
+      error: 'verification_rule_deliver_unit_changed' as const,
+      message: this.message,
+      path: this.path,
+      phase: this.phase,
+      changed: this.changed,
+      retryable: false as const,
+    };
+  }
+}

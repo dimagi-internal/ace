@@ -71,12 +71,16 @@ function configPage(opts: { savedRules?: Array<{ name: string; path: string; val
     <input type="number" name="location" value="10">
     <input type="checkbox" name="deliver_unit-0-check_attachments">`
     : '';
+  // `deliver_unit` is a CHECKBOX GROUP on the live page: one box per deliver
+  // unit, the chosen one `checked="checked"` (ace#2863). The chosen unit is
+  // deliberately NOT the last box, so a last-box read is caught.
+  const dus = ['6455', '6456', '6457'];
   const rows = saved
     .map((r, i) => `
       <input type="text" name="form_json-${i}-name" value="${r.name}">
       <input type="text" name="form_json-${i}-question_path" value="${r.path}">
       <input type="text" name="form_json-${i}-question_value" value="${r.value}">
-      <input type="checkbox" name="form_json-${i}-deliver_unit" value="${r.du}">
+      ${[...new Set([...dus, r.du])].map((d) => `<input type="checkbox" class=""${d === r.du ? ' checked="checked"' : ''} name="form_json-${i}-deliver_unit" value="${d}">`).join('\n      ')}
       <input type="hidden" name="form_json-${i}-id" value="${r.id}">`)
     .join('\n');
   return `<html><body><form method="post">

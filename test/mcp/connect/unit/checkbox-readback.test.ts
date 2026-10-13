@@ -50,8 +50,9 @@ describe('boolean checkbox read-back on the live opportunity edit form', () => {
   it('the fixture really does render a valueless checked checkbox (the whole premise)', () => {
     expect(html).toMatch(/name="is_test"[^>]*\bchecked\b/);
     expect(html).not.toMatch(/name="is_test"[^>]*\bvalue=/);
-    // …and that is why the extracted map cannot answer the question alone.
-    expect(values['is_test']).toBe('');
+    // Since ace#2863 the map carries SUBMISSION semantics: a checked valueless
+    // box reads 'on' (what a browser posts) and an unchecked one is absent.
+    expect(values['is_test']).toBe('on');
   });
 
   it('reads a CHECKED valueless checkbox as true', () => {

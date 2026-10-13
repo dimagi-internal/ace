@@ -215,6 +215,21 @@ export interface ConnectClient {
      * evidence the rules landed (dimagi-internal/ace#1011).
      */
     form_field_rules_saved?: number;
+    /**
+     * The `form_json` rules as Connect PERSISTED them, read back from a fresh
+     * GET after the POST — each with the CHECKED deliver unit(s) of its
+     * checkbox group. Undefined when the read-back could not run. Read each
+     * rule back rather than trusting a count: a count cannot see a rule moved
+     * onto the wrong deliver unit (dimagi-internal/ace#2863).
+     */
+    form_field_rules?: Array<{
+      index: number;
+      id: string;
+      name: string;
+      question_path: string;
+      question_value: string;
+      deliver_unit_ids: string[];
+    }>;
   }>;
   listDeliverUnits(args: {
     organization_slug: string;
