@@ -35,6 +35,7 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | the PDD (`phases.idea-to-design.products.pdd`, read with `writeToPath`) | archetype, the followed entity, § Success Metrics, § Evidence Model, payment rule, state vocabulary |
+| Phase 3 | the released Deliver CCZ (`3-commcare/app-release_summary.md` → build id; `commcare_download_ccz`) | the paths every submission actually carries — the authority for the entity key and the QA input |
 | Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` + the Nova app (`get_form` — `mcp__nova__get_form` via ACE's user-scope PAT entry, or `mcp__plugin_nova_nova__get_form` on the plugin's OAuth connection; accept either) | the REAL form paths of the paid form — the registry reads what the app submits, nothing else |
 | Caller | `partners: [{label, opportunity_id}]` | the synthetic partner opportunities → `deployment.llo_map` (supplied by `demo-data-setup` § C1, which creates them) |
 | Caller | `program_id` | the labs-only program the record lives in |
@@ -42,6 +43,7 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
 ## Products
 
 - `7-synthetic/semantic-registry-author_registry.json` — `{properties_doc, indicators_doc, deployment}` exactly as sent to labs
+- `7-synthetic/semantic-registry-author_layer1.json` — `{fields: [{name, path | paths, transform?}]}`, the Layer-1 fields the registry reads, in the labs pipeline-field shape `demo-data-setup` § C3 writes (QA resolves every one against the released app)
 - `7-synthetic/semantic-registry-author_summary.md` — the indicator table (below) + the not-computable list
 - labs registry record (`semantic_registry_create`, home = the synthetic program)
 - `run_state.phases.synthetic-data-and-workflows.products.synthetic.cascade.registry` — `{registry_id, program_id, version, indicators[]}`, written **the moment the create returns** (ace#2412), `update_yaml_file({merge: 'deep'})`
@@ -58,8 +60,36 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
   unless the two coincide.** Connect's `entity_id` is the DELIVER UNIT key the
   app computes — Spark's is `concat(case_id, step, capped_index, kind)`, one per
   payable slot, so keying on it would make every meeting its own "community".
-  For a followup form the followed case is `form.case.@case_id`; name that
-  pipeline field (e.g. `community_case_id`) and key on it.
+  Name that pipeline field (e.g. `community_case_id`, `participant_case_id`) and
+  key on it.
+- **The key's path is the one the RELEASED app writes on every paid form — read
+  it, don't assume it** (ace#2883). Where the followed case's id sits depends on
+  how the app was built:
+  - a form whose session case is updated by the form's own case block writes
+    `form.case.@case_id` (Spark's Community Meeting Record);
+  - a Nova form whose case writes are **operations** writes each one under
+    `form.__nova_operations.<op>.case` — the followed case's id is
+    `form.__nova_operations.<update-op-on-that-case>.case.@case_id`, and a child
+    case created against it carries the parent's id at
+    `form.__nova_operations.<create-op>.case.index.parent.#text` (`parent`
+    carries a `case_type` attribute, so its value arrives as `{"#text", "@case_type"}`).
+
+  Find them in the released Deliver CCZ (`commcare_download_ccz({domain, app_id,
+  build_id: <released>, write_to_path})` → unzip → `grep -o
+  'nodeset="/data/[^"]*/case/@case_id"' modules-*/forms-*.xml`), and declare the
+  key with `paths` — labs COALESCEs them in order and ignores `path` when `paths`
+  is set — one per paid-form shape, followed LAST by `form.case.@case_id`, the
+  path the labs synthetic generator stamps on every synthetic visit
+  (connect-labs `synthetic/generator/fixtures/entities.py`), so the demo keys too.
+  Only add an op whose case IS the followed entity: a crop-cycle `update_crop_cycle`
+  id would key that visit to the cycle, not the woman. A paid form that records
+  no id of the followed entity cannot be attributed — name it in the summary's
+  `## Not computable from visit data`, never paper over it.
+  Registry 8527 (smallholder-seasonal/20261012-1549) keyed on `form.case.@case_id`
+  alone; every real Farm-plan, Grant and Harvest visit read a NULL key and the
+  compiled `WHERE <key> IS NOT NULL` dropped it, while QA passed 12/12.
+  *Enforced:* `entity-key` and `layer1-paths` in `semantic-registry-author-qa`
+  (`lib/layer1-path-check.ts`).
 - **`pipelines.entity`** = `visits` (the alias the programme report template
   creates). `demo-data-setup` § C3 writes that pipeline's fields; list here
   exactly the columns your rules read, with their form paths, in the summary so
@@ -279,6 +309,7 @@ around the refusal by another route, and never record the step as done.
 
 | Date | Change |
 |---|---|
+| 2026-10-13 | § 1: the entity key's path is the one the RELEASED app writes — Nova operation forms put it under `form.__nova_operations.<op>.case.@case_id` — declared as `paths` with the generator's `form.case.@case_id` last; new product `semantic-registry-author_layer1.json`. Enforced by `entity-key` / `layer1-paths` in QA (`lib/layer1-path-check.ts`). Found on smallholder-seasonal/20261012-1549, registry 8527 (ace#2883). | ACE team |
 | 2026-10-06 | § 3: reader-facing registry text is plain language for a programme manager (no PDD/§/section numbers, indicator codes, `≥`/`≤`, or column names); the Spark `targets_note` before/after. Enforced by `lib/registry-display-text.ts` in both QA gates (ace#2748). The worked example's `targets_note` is rewritten to match. | ACE team |
 | 2026-10-05 | § After a registry edit: re-publish the benchmark per rebuilt run, oldest first, planned by `lib/benchmark-republish.ts`; verify the Benchmarks tab's as-of is the latest week; a classifier refusal is surfaced, never worked around (ace#2717). | ACE team |
 | 2026-10-05 | § After a registry edit: a rebuild mints new run ids; relink every artifact from before/after `workflow_history_runs` listings via `scripts/relink-rebuilt-history.ts` (ace#2700). Proved on spark-facilitator/20261004-1706 (registry 7185 v3). | ACE team |

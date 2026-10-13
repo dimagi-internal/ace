@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<!-- Shaped on smallholder-seasonal/20261012-1549's released Deliver app (HQ 6137de98 v23),
+     modules-11/forms-0.xml "Grant follow-up", from the ace#2883 grep evidence:
+       nodeset="/data/__nova_operations/update_participant_grant/case/@case_id" -->
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms">
+  <h:head>
+    <h:title>Grant follow-up</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/a2" uiVersion="1" version="23" name="Grant follow-up">
+          <grant_use>
+            <amount_spent/>
+          </grant_use>
+          <__nova_operations>
+            <update_participant_grant>
+              <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+                <update>
+                  <amount_spent/>
+                </update>
+              </case>
+            </update_participant_grant>
+          </__nova_operations>
+          <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="grant_follow_up">
+            <name/>
+            <entity_id/>
+          </deliver>
+        </data>
+      </instance>
+      <bind nodeset="/data/grant_use/amount_spent" type="xsd:decimal"/>
+      <bind nodeset="/data/__nova_operations/update_participant_grant/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+    </model>
+  </h:head>
+  <h:body/>
+</h:html>

@@ -5,6 +5,16 @@ from the ace#2510 proof (spark-facilitator/20260926-1800) — substitute your ow
 Worked example for skills/demo-data-setup § Process (ace-run) step C3."""
 import json, subprocess, sys
 fields = [
+    # The entity key. Spark's Community Meeting Record updates its session case
+    # with the form's own case block, so the released form writes
+    # /data/case/@case_id -> form.case.@case_id. That is NOT universal: a Nova form
+    # whose case writes are operations writes form.__nova_operations.<op>.case.@case_id
+    # instead, and needs a `paths` list (semantic-registry-author § 1, ace#2883), e.g.
+    #   {"name": "participant_case_id", "paths": [
+    #       "form.__nova_operations.update_participant_plan.case.@case_id",
+    #       "form.__nova_operations.update_participant_grant.case.@case_id",
+    #       "form.case.@case_id"]}   # last: the path the labs synthetic generator writes
+    # Read it from the released CCZ; semantic-registry-author-qa `entity-key` checks it.
     ("community_case_id", "form.case.@case_id", None),
     ("meeting_conducted", "form.about_this_meeting.meeting_conducted", None),
     ("meeting_type", "form.about_this_meeting.meeting_type", None),
