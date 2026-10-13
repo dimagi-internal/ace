@@ -169,9 +169,13 @@ preventer for jjackson/ace#635.
 
 ## Failure Modes
 
-- **Step 1 fails (`connect_create_program` rejected):** common cause is
-  invalid `delivery_type` int FK. Re-run `connect_list_delivery_types`
-  to map the human name to the right id.
+- **Step 1 fails (`connect_create_program` rejected):** common cause is a
+  `delivery_type` that is not in this org's list. Re-run
+  `connect_list_delivery_types` and pass the matching row's **int `id`**
+  — it returns no `slug`, deliberately, and a slug derived from the label
+  is a guess Connect rejects (ace#2865). `delivery_type: Object with
+  slug=<n> does not exist.` means an int reached the REST backend; that
+  routing is fixed, so it now indicates a stale MCP subprocess.
 - **Step 2 fails on opportunity create:** common cause is invalid
   `learn_app` / `deliver_app` IDs (HQ apps not actually published, or
   the API key in `.env` doesn't have access to the named project space).

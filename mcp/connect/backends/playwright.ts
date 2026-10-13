@@ -36,6 +36,7 @@ import {
   scopeToFormContaining,
   extractUuidFromPath,
   parseDeliveryTypeOptions,
+  normalizeDeliveryTypeLabel,
   parseProgramsList,
   parseOpportunitiesList,
   parseTablePagination,
@@ -1775,18 +1776,42 @@ export class PlaywrightBackend implements ConnectClient {
     return partial?.[1] ?? s;
   }
 
-  // Resolve a delivery_type input (string slug or int) → the int FK that
-  // the form's <select> actually accepts. The REST API tolerates either
-  // shape; the HTML form requires the int.
+  // Resolve a delivery_type input (slug-shaped string, display name, or int
+  // FK) → the int FK the form's <select> accepts.
+  //
+  // Two things this used to get wrong (dimagi-internal/ace#2865):
+  //
+  //  1. It compared the input against `t.name` ONLY. A hyphenated,
+  //     slug-shaped string — which is exactly what a PDD's
+  //     `connect_delivery_type` holds, and what the old
+  //     `connect_list_delivery_types` handed back as `slug` — never matched:
+  //     `"turmeric-market-study"` is neither `=== "turmeric market study"`
+  //     nor `.includes()`-d by it. Both sides are now normalised through
+  //     `normalizeDeliveryTypeLabel`, so the two spellings meet.
+  //  2. On a miss it returned `''`, and the caller posted an EMPTY
+  //     `delivery_type` — a wrong value dressed as a resolution. Now it
+  //     throws, naming every `{id, name}` the live form offers, because a
+  //     create-time-only field posted blank is not something a downstream
+  //     error message can ever explain.
   private resolveDeliveryTypeId(html: string, input: number | string): string {
     if (typeof input === 'number') return String(input);
     if (/^\d+$/.test(input)) return input;
     const types = parseDeliveryTypeOptions(html);
-    const lc = input.toLowerCase();
+    const want = normalizeDeliveryTypeLabel(input);
     const hit =
-      types.find((t) => t.name.toLowerCase() === lc) ??
-      types.find((t) => t.name.toLowerCase().includes(lc));
-    return hit ? String(hit.id) : '';
+      types.find((t) => normalizeDeliveryTypeLabel(t.name) === want) ??
+      types.find((t) => normalizeDeliveryTypeLabel(t.name).includes(want));
+    if (!hit) {
+      const offered = types.map((t) => `${t.id}=${t.name}`).join(', ') || '(none parsed)';
+      const msg =
+        `delivery_type: no delivery type on this organization matches ` +
+        `${JSON.stringify(input)}. Connect's programme-create form offers: ${offered}. ` +
+        `Pass the int id from connect_list_delivery_types — the form keys on the int FK, ` +
+        `and the page exposes no slug to match a slug-shaped string against ` +
+        `(dimagi-internal/ace#2865).`;
+      throw new ConnectValidationError([msg], { delivery_type: [msg] });
+    }
+    return String(hit.id);
   }
 
   // ── Programs ──────────────────────────────────────────────────────

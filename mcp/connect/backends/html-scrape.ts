@@ -104,14 +104,28 @@ export function extractUuidFromPath(loc: string, segment: string): string | unde
 }
 
 /**
- * Django-style slugify: lowercase, non-alphanumerics → single hyphens,
- * trimmed. Matches Connect's ProgramDeliveryType.slug convention (confirmed
- * for "Nutrition" → "nutrition"; multi-word forms like "Infant Vaccine
- * Promotion" → "infant-vaccine-promotion" follow Django's default and are
- * ACE's best-effort derivation until a REST reads endpoint exposes the slug
- * verbatim — see jjackson/ace#835).
+ * Normalise a delivery-type LABEL for local matching: lowercase,
+ * non-alphanumerics → single hyphens, trimmed.
+ *
+ * **This is a matcher, not a value you may send to Connect.** It exists so
+ * ACE can line a human-written string ("Turmeric Market Study", or a PDD's
+ * `connect_delivery_type: turmeric-market-study`) up against the labels the
+ * programme-create form renders. The result is ACE's own normalisation of
+ * ACE's own text — it is NOT `ProgramDeliveryType.slug`, which lives in
+ * Connect's database and is editable independently of the display name.
+ *
+ * jjackson/ace#835 closed COMPLETED by shipping this derivation AS the slug
+ * on every `connect_list_delivery_types` row. It was indistinguishable from
+ * a working fix for the 18 delivery types whose real slug happened to equal
+ * `slugify(label)`, and produced no working `delivery_type` value at all for
+ * the 19th (dimagi-internal/ace#2865, "Turmeric Market Study", observed
+ * 2026-10-12 on turmeric-market-study-ghana/20261012-1749). The form page
+ * carries no slug anywhere — a `grep -c slug` over the captured
+ * programme-init fixture returns `0`, pinned by
+ * `test/mcp/connect/unit/delivery-type-resolution.test.ts` — so there is
+ * nothing here to read one from, and a derivation cannot stand in.
  */
-export function slugifyDeliveryType(name: string): string {
+export function normalizeDeliveryTypeLabel(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -122,12 +136,11 @@ export function slugifyDeliveryType(name: string): string {
  * Parse Connect's `<select name="delivery_type">` options into a typed list.
  * Skips the placeholder option (value="").
  *
- * The `<option>` exposes only the int FK (`value`) and the display name — no
- * slug. But `connect_create_program` (REST) accepts the string SLUG, not the
- * int FK, so each row carries a derived `slug` (`slugifyDeliveryType(name)`)
- * that a caller can hand straight to `connect_create_program`. Closes the
- * discovery gap in jjackson/ace#835 (previously the list returned no slug, so
- * callers had to guess the accepted value).
+ * Each row carries exactly what the page actually states: the int FK
+ * (`<option value>`) and the display name. **No `slug`** — see
+ * `normalizeDeliveryTypeLabel` above for why a derived one was worse than
+ * none. The int FK is the value the HTML create form accepts, and since
+ * dimagi-internal/ace#2865 it is the value `connect_create_program` routes on.
  */
 export function parseDeliveryTypeOptions(html: string): DeliveryType[] {
   const selectMatch = html.match(/<select[^>]*name="delivery_type"[^>]*>([\s\S]*?)<\/select>/);
@@ -137,7 +150,7 @@ export function parseDeliveryTypeOptions(html: string): DeliveryType[] {
     const id = Number(m[1]);
     const name = m[2].replace(/\s+/g, ' ').trim();
     if (Number.isFinite(id) && name && name !== '---------') {
-      out.push({ id, name, slug: slugifyDeliveryType(name) });
+      out.push({ id, name });
     }
   }
   return out;

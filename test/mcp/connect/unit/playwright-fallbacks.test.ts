@@ -1251,7 +1251,9 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
 
   it('createProgram: REST 404 → Playwright fallback fires', async () => {
     let pwCalled = false;
+    let restCalled = false;
     const rest = makeMock('createProgram', async () => {
+      restCalled = true;
       throw new HttpError(404, 'POST /api/programs/', '<html>404</html>', 'text/html');
     });
     const playwright = makeMock('createProgram', async () => {
@@ -1274,7 +1276,10 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
       organization_slug: 'pm-org',
       name: 'Fallback',
       description: '',
-      delivery_type: 13,
+      // A SLUG, so this exercises the REST-first 404 fallback. An int
+      // delivery_type goes straight to the form backend and would make this
+      // assertion pass without REST ever being called (ace#2865).
+      delivery_type: 'nutrition',
       budget: 0,
       currency: 'USD',
       country: 'USA',
@@ -1282,6 +1287,7 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
       end_date: '2026-12-31',
     });
     expect(pwCalled).toBe(true);
+    expect(restCalled).toBe(true);
     expect(out.id).toBe('prog-uuid');
   });
 
@@ -1298,7 +1304,8 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
         organization_slug: 'p',
         name: 'X',
         description: '',
-        delivery_type: 13,
+        // A slug keeps this on the REST-first route (ace#2865).
+        delivery_type: 'nutrition',
         budget: 0,
         currency: 'USD',
         country: 'USA',

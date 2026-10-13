@@ -320,9 +320,16 @@ server.tool('connect_create_program',
     name: z.string(),
     description: z.string(),
     delivery_type: z.union([z.string(), z.coerce.number().int()]).describe(
-      'Delivery type slug (preferred — e.g. "nutrition") or its int FK. ' +
-      'The Connect REST API accepts the slug; pass the int FK only if you ' +
-      'already resolved it via `connect_list_delivery_types`.',
+      'PREFERRED: the int `id` from `connect_list_delivery_types`. That is the ' +
+      'only delivery-type value ACE can actually read from Connect — the ' +
+      'programme-create form renders `<option value="19">Turmeric Market ' +
+      'Study</option>` and no slug anywhere — and it is routed to the HTML ' +
+      'form backend, which keys on it. A string is treated as a real ' +
+      'ProgramDeliveryType.slug and sent to the REST API, which resolves ' +
+      'delivery_type by slug; use that shape only when you know the slug from ' +
+      'Connect itself, NOT from slugifying a display name. A slugified label ' +
+      'matched 18 of 19 live delivery types and left the 19th with no working ' +
+      'value on either backend (dimagi-internal/ace#2865, jjackson/ace#835).',
     ),
     budget: z.coerce.number(),
     currency: z.string().describe('ISO 4217 code (e.g. "USD").'),
@@ -361,6 +368,7 @@ server.tool('connect_update_program',
 );
 
 server.tool('connect_list_delivery_types',
+  'List the delivery types this organization\'s programme-create form offers, as `{id, name}` per row.\n\n**There is no `slug` field, and its absence is the fix, not a gap** (dimagi-internal/ace#2865). The only source ACE can read is the form page, which renders `<option value>` + label and nothing else; `ProgramDeliveryType.slug` lives in Connect\'s database and is editable independently of the display name. Rows used to carry `slug: slugify(name)` — a guess, indistinguishable from a working value for the 18 delivery types where it happened to be right, and leaving the 19th ("Turmeric Market Study", id 19) with no accepted `delivery_type` on either backend. Pass the int `id` to `connect_create_program`. When a REST reads endpoint (`GET /api/delivery-types/`) ships, read the real slug from there rather than deriving one.',
   { organization_slug: z.string() },
   async (args) => runAtom(async () => (await client()).listDeliveryTypes(args))
 );
