@@ -92,8 +92,69 @@ const EVIDENCE_ACTIONS: { action: string; phrases: RegExp; kinds: string[] }[] =
 // neither is a linguistic variant worth failing on. Both near-missed phrasings
 // already in the list, which is the signature of this module's recurring bug
 // class (ace#1332, #1538, #1576, #1634): the matcher, not the curriculum.
+//
+// ace#2856 made ONE change here, and it is a removal rather than an addition:
+// the noun after `every` / `each` was a CLOSED list (`visit|household|door|
+// outcome`), so a programme whose unit of observation is anything else was
+// unreachable by construction. `turmeric-market-study-ghana/20261012-1749`
+// observes a seller at a market stall, so "at every stall" and "of every
+// seller" both missed — not exotic phrasings, the only way that curriculum
+// could state the rule. The noun is a property of the programme, exactly like
+// the count in `all <n>` that ace#1793 generalised for the same reason.
+//
+// What was deliberately NOT done is add the other phrasings the issue measured
+// ("in all cases", "without exception"). That is the move that cannot
+// converge — the denominator is English — and it is the move that produced
+// ace#1793 and then this recurrence. Those two now land in `unclassified`
+// below, which is loud, which is the actual fix.
 const UNCONDITIONAL_MARKERS =
-  /\b(you still do all of this|(?:at |on )?(?:every|each) (?:visit|household|door|outcome)|including empty|always|all (?:two|three|four|five|six))\b/i;
+  /\b(you still do all of this|(?:at |on |in )?(?:every|each) \w+|including empty|always|all (?:two|three|four|five|six))\b/i;
+
+/**
+ * Text that states an evidence step applies only SOMETIMES.
+ *
+ * This is not a second list of phrasings to keep topping up — it exists to
+ * separate two outcomes that `unable` used to conflate (ace#2856):
+ *
+ *   (a) the curriculum genuinely teaches no UNCONDITIONAL evidence step, and
+ *   (b) the matcher could not tell.
+ *
+ * Both printed the same "nothing to cross-check" line, so a reader could not
+ * distinguish a correct negative from a broken matcher without reading both
+ * curricula by hand — which is the work this check exists to remove. Four
+ * recurrences of this module's bug class reached production that way.
+ *
+ * Conditionals are a far smaller and more stable class than unconditionals
+ * because they are grammatical constructions (consent, dependency, permission)
+ * rather than open-ended restatements of "every <programme noun>". A label
+ * carrying one is an AFFIRMATIVE (a): the curriculum says "sometimes", and
+ * the Deliver form is under no obligation to collect on every branch.
+ *
+ * **An unconditional marker outranks a conditional one** — see
+ * `classifyLearnLabel`. "Always photograph the stall, even if she declines"
+ * is unconditional prose containing the word `if`, and precedence this way
+ * round means no label that classifies as unconditional today can be
+ * reclassified by this addition. The change is monotonic.
+ */
+const CONDITIONAL_MARKERS =
+  /\b(if (?:she|he|they|the \w+) (?:agrees?|consents?|permits?|allows?|is willing|says yes)|only (?:when|if|where)|depend(?:s|ing)? (?:on|upon)|with (?:her|his|their) (?:consent|permission)|if (?:consent|permission) is (?:given|granted)|where (?:she|he|they) (?:agrees?|consents?)|provided (?:that )?(?:she|he|they) (?:agrees?|consents?))\b/i;
+
+/**
+ * How a single Learn label states the conditionality of what it teaches.
+ *
+ * - `unconditional` — cross-check it against the Deliver form.
+ * - `conditional` — the curriculum says "sometimes"; nothing to enforce.
+ * - `unclassified` — **the matcher could not tell.** Neither marker class
+ *   matched. This is the state that must be loud: it is where every
+ *   recurrence of this bug class has lived, wearing `unable`'s clothes.
+ */
+export type LabelConditionality = 'unconditional' | 'conditional' | 'unclassified';
+
+export function classifyLearnLabel(text: string): LabelConditionality {
+  if (UNCONDITIONAL_MARKERS.test(text)) return 'unconditional';
+  if (CONDITIONAL_MARKERS.test(text)) return 'conditional';
+  return 'unclassified';
+}
 
 export type TaughtFindingReason = 'absent' | 'gated';
 
@@ -137,12 +198,22 @@ function gateText(relevant: unknown): string {
   return String(relevant);
 }
 
+/** Keep a quoted label readable in a one-line verdict reason. */
+function trimLabel(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > 140 ? `${flat.slice(0, 137)}…` : flat;
+}
+
 export function checkTaughtStepsCollectable(
   learn: Blueprint | undefined | null,
   deliver: Blueprint | undefined | null,
 ): TaughtVsCollectableReport {
   const findings: TaughtFinding[] = [];
   let taughtAny = false;
+  // ace#2856: what the matcher DID see, so `unable` can say which of its two
+  // meanings it means. `unclassified` is the one that used to be invisible.
+  const conditional: string[] = [];
+  const unclassified: string[] = [];
 
   const deliverFields = (deliver?.modules ?? []).flatMap((m) =>
     (m.forms ?? []).flatMap((f) => flatten(f.fields)),
@@ -152,7 +223,16 @@ export function checkTaughtStepsCollectable(
     for (const form of mod.forms ?? []) {
       for (const field of form.fields ?? []) {
         const text = field.label ?? '';
-        if (!text || !UNCONDITIONAL_MARKERS.test(text)) continue;
+        if (!text) continue;
+        // Only labels that teach an evidence action are of any interest — the
+        // conditionality of a label about something else is irrelevant, and
+        // counting it would make `unclassified` fire on every curriculum.
+        if (!EVIDENCE_ACTIONS.some((a) => a.phrases.test(text))) continue;
+        const conditionality = classifyLearnLabel(text);
+        if (conditionality !== 'unconditional') {
+          (conditionality === 'conditional' ? conditional : unclassified).push(text.trim());
+          continue;
+        }
         for (const action of EVIDENCE_ACTIONS) {
           if (!action.phrases.test(text)) continue;
           taughtAny = true;
@@ -182,11 +262,34 @@ export function checkTaughtStepsCollectable(
   }
 
   if (!taughtAny) {
+    // Three different facts used to print one sentence (ace#2856). The point
+    // of splitting them is that a reader can now tell a correct negative from
+    // a matcher that gave up, which is precisely what four recurrences of this
+    // bug class needed and did not have.
+    if (unclassified.length > 0) {
+      return unable(
+        `MATCHER LIMITED, not a clean negative: ${unclassified.length} Learn label(s) teach an ` +
+          'evidence action, and the matcher could classify NONE of them as either unconditional or ' +
+          'conditional — so this is most likely the recurring matcher bug (ace#1332, #1538, #1576, ' +
+          '#1634, #1793, #2856), not a curriculum that teaches nothing unconditionally. READ THESE ' +
+          `AND DECIDE BY HAND: ${unclassified.map((t) => JSON.stringify(trimLabel(t))).join('; ')}` +
+          (conditional.length > 0
+            ? `. (${conditional.length} further label(s) WERE read as conditional.)`
+            : ''),
+      );
+    }
+    if (conditional.length > 0) {
+      return unable(
+        `the curriculum teaches ${conditional.length} evidence step(s) and states every one of them ` +
+          'CONDITIONALLY, so the Deliver form is under no obligation to collect on all branches and ' +
+          'there is nothing to cross-check. This is a read of the curriculum, not a matcher giving ' +
+          `up: ${conditional.map((t) => JSON.stringify(trimLabel(t))).join('; ')}`,
+      );
+    }
     return unable(
-      'the Learn blueprint states no unconditionally-taught evidence step (no label matched both an ' +
-        'UNCONDITIONAL_MARKERS phrase and an EVIDENCE_ACTIONS phrase), so there was nothing to ' +
-        'cross-check against the Deliver form. If the curriculum DOES teach one, the phrase ' +
-        'matchers are the bug',
+      'no Learn label teaches an evidence step at all (none matched an EVIDENCE_ACTIONS phrase), so ' +
+        'there was nothing to cross-check against the Deliver form. If the curriculum DOES teach ' +
+        'one — a photograph, a GPS fix, an audio recording — the EVIDENCE_ACTIONS matcher is the bug',
     );
   }
   return checked(findings.length === 0, findings);

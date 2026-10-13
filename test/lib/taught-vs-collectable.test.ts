@@ -130,7 +130,13 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
     // `ok` on this branch to say otherwise (ace#1634).
     expect(report.status).toBe('unable');
     assertUnable(report);
-    expect(report.reason).toMatch(/unconditionally-taught evidence step/i);
+    // This fixture teaches no evidence action at all, so since ace#2856 it
+    // gets the most specific of the three `unable` reasons rather than the one
+    // sentence all three used to share. The assertion moved with it; what the
+    // test is actually about — unable, NOT a pass, no green-looking word — is
+    // unchanged below.
+    expect(report.reason).toMatch(/no Learn label teaches an evidence step at all/i);
+    expect(report.reason).toMatch(/EVIDENCE_ACTIONS matcher is the bug/i);
     const text = formatTaughtVsCollectableReport(report);
     expect(text).toMatch(/UNABLE TO CHECK/);
     expect(text).toMatch(/NOT a pass/);
