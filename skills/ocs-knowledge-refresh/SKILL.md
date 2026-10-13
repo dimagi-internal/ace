@@ -176,16 +176,26 @@ call — run the strip pass over that directory:
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/strip-inline-data-uris.ts" <download-dir>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/redact-kb-answer-keys.ts" <download-dir>
 ```
 
-It rewrites in place and prints one JSON line of per-file
+The first rewrites in place and prints one JSON line of per-file
 `{bytes_before, bytes_after, payloads_stripped}`. **Record those numbers in the
 product artifact.** A non-zero exit means a payload survived a shape the
 stripper does not know about — do NOT upload; report it on
 dimagi-internal/ace#1827 with the file.
 
-Three constraints carry over from `ocs-agent-setup § Step 5` and are not
+The second removes any assessment answer key a training document quotes (an
+FLW guide walking through the Learn quiz, a FAQ answering "what is the answer
+to question 3") — this collection serves the workers those assessments gate
+(dimagi-internal/ace#2869). A non-zero exit means a key survived — do NOT
+upload; report it on ace#2869 with the file.
+
+Four constraints carry over from `ocs-agent-setup § Step 5` and are not
 restated in full here — read them there:
+
+- **Never index an assessment answer key** (ace#2869) — the redactor above is
+  the enforcement.
 
 - **Spreadsheets cannot be indexed** (`is_index: true` collections use the
   `file_search` allowlist). Upload a text extract instead.

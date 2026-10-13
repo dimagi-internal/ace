@@ -1065,6 +1065,15 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      per-item table, plus any `checkAnswerKeyPattern` `unable` reason,
      verbatim.
 
+   **`## Build notes` is internal, and it is the ONLY place the built answer
+   keys go** (dimagi-internal/ace#2869). This summary is also indexed into the
+   FLW support chatbot's knowledge base (`ocs-agent-setup` § Step 5), whose
+   audience is the workers these assessments gate. That path drops
+   `## Build notes` whole and redacts any key-shaped line elsewhere
+   (`scripts/redact-kb-answer-keys.ts`), so a key written under the module
+   list or the Connect configuration would cost that section a line rather
+   than leak, but keep keys, correct options and `qN_score` literals here.
+
    The Phase 3 boundary fails this skill if it wrote its summary but zero
    decision rows carry `skill: pdd-to-learn-app` (ace#2384).
 
