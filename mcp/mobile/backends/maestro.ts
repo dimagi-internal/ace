@@ -8,6 +8,7 @@ import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
+import { emitProgress, type RecipeProgressListener } from '../recipe-progress.js';
 import { resolveChunkTimeout, countRecipeSteps } from '../../../lib/maestro-chunk-timeout.js';
 import { classifyTeardownFailure, teardownWarning } from '../../../lib/maestro-teardown.js';
 import {
@@ -258,6 +259,8 @@ export class MaestroBackend {
        * has never heard of the device (ace#2309).
        */
       adbServerPort?: number;
+      /** Chunk start/finish events for MCP progress (ace#2877). */
+      onProgress?: RecipeProgressListener;
     } = {},
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
@@ -292,13 +295,18 @@ export class MaestroBackend {
         serial: string;
         captureAllBoundaries?: boolean;
         adbServerPort?: number;
+        onProgress?: RecipeProgressListener;
       });
     }
 
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath, opts.serial);
+    emitProgress(opts.onProgress, { kind: 'chunk-start', chunkIndex: 1, chunksTotal: 1, screenshotName: null });
     const r = await this.runMaestroChunk(args, screenshotDir, {
       recipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
       stepCount: safeCountSteps(recipePath),
+    });
+    emitProgress(opts.onProgress, {
+      kind: 'chunk-done', chunkIndex: 1, chunksTotal: 1, screenshotName: null, exitCode: r.exitCode,
     });
     const screenshots = this.collectScreenshots(screenshotDir);
     return finalizeRecipeResult({
@@ -547,7 +555,13 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number; serial: string; captureAllBoundaries?: boolean; adbServerPort?: number },
+    opts: {
+      adbPort?: number;
+      serial: string;
+      captureAllBoundaries?: boolean;
+      adbServerPort?: number;
+      onProgress?: RecipeProgressListener;
+    },
   ): Promise<RecipeRunResult> {
     const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
     const body = fs.readFileSync(absoluteRecipePath, 'utf8');
@@ -576,9 +590,13 @@ export class MaestroBackend {
     // chunk-write overhead for no benefit.
     if (chunks.length === 1 && !chunks[0].screenshotName) {
       const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath, opts.serial);
+      emitProgress(opts.onProgress, { kind: 'chunk-start', chunkIndex: 1, chunksTotal: 1, screenshotName: null });
       const r = await this.runMaestroChunk(args, screenshotDir, {
         recipePath: absoluteRecipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
         stepCount: countRecipeSteps(body),
+      });
+      emitProgress(opts.onProgress, {
+        kind: 'chunk-done', chunkIndex: 1, chunksTotal: 1, screenshotName: null, exitCode: r.exitCode,
       });
       const screenshots = this.collectScreenshots(screenshotDir);
       return finalizeRecipeResult({
@@ -649,17 +667,33 @@ export class MaestroBackend {
     let dumpWindowsAttempted = 0;
 
     try {
-      for (const chunk of chunks) {
+      for (const [position, chunk] of chunks.entries()) {
         const chunkPath = path.join(chunkDir, `chunk-${chunk.index}.yaml`);
         fs.writeFileSync(chunkPath, chunk.yaml, 'utf8');
 
         const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath, opts.serial);
+        // Chunk boundaries are the natural MCP progress tick (ace#2877):
+        // a 25-form Learn walk otherwise runs past Claude Code's 1800s idle
+        // window in silence and the client aborts a healthy dispatch.
+        emitProgress(opts.onProgress, {
+          kind: 'chunk-start',
+          chunkIndex: position + 1,
+          chunksTotal: chunks.length,
+          screenshotName: chunk.screenshotName ?? null,
+        });
         const r = await this.runMaestroChunk(args, screenshotDir, {
           recipePath: absoluteRecipePath,
           chunksCompleted,
           chunksTotal: chunks.length,
           lastCompletedScreenshot,
           stepCount: countRecipeSteps(chunk.yaml),
+        });
+        emitProgress(opts.onProgress, {
+          kind: 'chunk-done',
+          chunkIndex: position + 1,
+          chunksTotal: chunks.length,
+          screenshotName: chunk.screenshotName ?? null,
+          exitCode: r.exitCode,
         });
         const chunkLabel = `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---`;
         stdoutParts.push(`${chunkLabel}\n${r.stdout}`);

@@ -99,6 +99,12 @@ Bounded on both sides so [#756](https://github.com/jjackson/ace/issues/756) fres
 
 Triage tip: read `rescued--maestro.log` first — its last `COMMAND` line is where the walk actually died. `journey-*-FAILURE.xml` is dumped *after* the app returns to the Connect jobs list, so it reads like a claim/resume stall regardless of the real cause.
 
+## Long walks and Claude Code's idle timeout (ace#2877)
+
+Claude Code aborts a stdio MCP tool call that sends "no response or progress" for `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` (default 1800s). Progress notifications reset that clock: verified in Claude Code 2.1.296, whose tool-call path passes `onprogress` to `callTool` and resets its idle timer inside it. They do NOT extend the separate hard per-server `timeout` / `MCP_TOOL_TIMEOUT`. So `mobile_run_recipe` sends `notifications/progress` (`mcp/mobile/recipe-progress.ts`): one event at dispatch start and at each chunk start and finish, plus a 30s heartbeat. The heartbeat is bounded. It goes quiet once no real event has arrived for longer than the per-chunk ceiling + 5 min, so a real hang still reaches the idle timeout. The ace#1164 per-chunk watchdog is still the stall guard.
+
+If a call is aborted anyway, the walk keeps running on the device, but the tool result is lost. Read `<screenshotDir>/<recipeId>/dispatch-progress.json` to see how far it got: `state`, `chunksCompleted`/`chunksTotal`, `lastCompletedScreenshot`. The screenshots are next to it.
+
 ## Dispatch-scoped output dirs
 
 `screenshotDir` is a run-scoped **root**, not the literal output directory. Each `mobile_run_recipe` dispatch owns `<screenshotDir>/<recipeId>/` — PNGs, ui-dump XMLs, `*-FAILURE.*` forensics, provenance sidecars, mp4s — and the start-of-run wipe ([#756](https://github.com/jjackson/ace/issues/756)) targets **only** that subdirectory. Read artifacts back from the returned `screenshotsDir` / `screenshots[].path`; a glob over the root spans every recipe the phase ran.

@@ -53,6 +53,11 @@ import {
 } from './screenshot-dir.js';
 import { runRecipeWithDriverHeal } from './maestro-driver-retry.js';
 import {
+  createDispatchProgressRecorder,
+  emitProgress,
+  type RecipeProgressEvent,
+} from './recipe-progress.js';
+import {
   buildProvenance,
   getAceVersion,
   getGitSha,
@@ -2127,6 +2132,18 @@ export class MobileClient {
       throw explained ?? err;
     }
 
+    // Progress (ace#2877). Every real event goes two places: the caller's
+    // listener (→ MCP `notifications/progress`, which keeps a long healthy
+    // walk inside Claude Code's idle timeout) and `dispatch-progress.json` in
+    // this dispatch's own dir, which survives a client-side abort that loses
+    // the tool result. Both best-effort — neither can change a verdict.
+    const progressRecord = createDispatchProgressRecorder({ recipeId, dispatchId, screenshotsDir: runDir });
+    const onProgress = (ev: RecipeProgressEvent) => {
+      progressRecord.observe(ev);
+      emitProgress(opts?.onProgress, ev);
+    };
+    onProgress({ kind: 'dispatch-start', recipeId, screenshotsDir: runDir });
+
     // Screen recording (local backend only — cloud is Phase 2). Best-effort
     // throughout: a recording failure must never change the recipe verdict.
     const recorderConfig = recorderConfigFromEnv();
@@ -2217,6 +2234,7 @@ export class MobileClient {
                 serial: avdInfo?.serial,
                 captureAllBoundaries: opts?.captureAllBoundaries,
                 adbServerPort,
+                onProgress,
               });
             } finally {
               if (handle) {
@@ -2354,6 +2372,7 @@ export class MobileClient {
       } catch (pe) {
         logInfo(`runRecipe: could not attach partial result on thrown failure for ${recipeId}: ${String(pe)}`);
       }
+      progressRecord.finish('error');
       throw e;
     }
 
@@ -2456,6 +2475,7 @@ export class MobileClient {
     // passed" is the client's to guarantee — a caller that globs the root
     // would see sibling journeys' artifacts.
     result.screenshotsDir = runDir;
+    progressRecord.finish(result.status);
     return result;
   }
 

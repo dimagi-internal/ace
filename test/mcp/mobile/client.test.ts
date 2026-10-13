@@ -962,7 +962,9 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
       // At backend-call time the dir must ALREADY be empty — the wipe
       // happens before the flow runs, not after.
       expect(dir).toBe(runDir);
-      expect(fs.readdirSync(dir)).toEqual([]);
+      // `dispatch-progress.json` is THIS dispatch's own record (ace#2877),
+      // written right after the wipe — not a stale carry-over.
+      expect(fs.readdirSync(dir).filter((f) => f !== 'dispatch-progress.json')).toEqual([]);
       const fresh = path.join(dir, 'fresh.png');
       fs.writeFileSync(fresh, Buffer.from([0x89]));
       return {
@@ -979,7 +981,7 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
     expect(result.status).toBe('pass');
     expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
     const remaining = fs.readdirSync(runDir).sort();
-    expect(remaining).toEqual(['fresh.png', 'fresh.png.meta.json']);
+    expect(remaining).toEqual(['dispatch-progress.json', 'fresh.png', 'fresh.png.meta.json']);
   });
 
   it('creates the dispatch output dir (under the root) when it does not exist yet', async () => {
