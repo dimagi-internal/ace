@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<!-- Shaped on smallholder-seasonal/20261012-1549's released Deliver app (HQ 6137de98 v23),
+     modules-12/forms-0.xml "Harvest visit", from the ace#2883 grep evidence:
+       nodeset="/data/__nova_operations/update_crop_cycle/case/@case_id"          (the CYCLE, not the woman)
+       nodeset="/data/__nova_operations/create_noncrop_cycle/case/index/parent"   (non-crop cycles only)
+     The `relevant` gating the non-crop op is reconstructed from the issue's
+     "non-crop cycles only" note; the release's exact expression was not quoted. -->
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms">
+  <h:head>
+    <h:title>Harvest visit</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/a3" uiVersion="1" version="23" name="Harvest visit">
+          <harvest>
+            <cycle_kind/>
+            <harvest_kg/>
+          </harvest>
+          <__nova_operations>
+            <update_crop_cycle>
+              <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+                <update>
+                  <harvest_kg/>
+                </update>
+              </case>
+            </update_crop_cycle>
+            <create_noncrop_cycle>
+              <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+                <create>
+                  <case_type>noncrop_cycle</case_type>
+                  <case_name/>
+                  <owner_id/>
+                </create>
+                <index>
+                  <parent case_type="participant"/>
+                </index>
+              </case>
+            </create_noncrop_cycle>
+          </__nova_operations>
+          <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="harvest_visit">
+            <name/>
+            <entity_id/>
+          </deliver>
+        </data>
+      </instance>
+      <bind nodeset="/data/harvest/cycle_kind" type="xsd:string"/>
+      <bind nodeset="/data/harvest/harvest_kg" type="xsd:decimal"/>
+      <bind nodeset="/data/__nova_operations/update_crop_cycle/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+      <bind nodeset="/data/__nova_operations/create_noncrop_cycle" relevant="/data/harvest/cycle_kind = &apos;noncrop&apos;"/>
+      <bind nodeset="/data/__nova_operations/create_noncrop_cycle/case/index/parent" calculate="instance('commcaresession')/session/data/case_id"/>
+    </model>
+  </h:head>
+  <h:body/>
+</h:html>

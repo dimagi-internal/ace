@@ -16,6 +16,7 @@
  */
 
 import { checkRegistryDisplayText, DISPLAY_TEXT_FIX } from './registry-display-text.js';
+import { checkLayer1Paths, type Layer1Field, type ReleasedForm } from './layer1-path-check.js';
 
 export interface RegistryDocs {
   properties_doc: Record<string, unknown>;
@@ -63,6 +64,18 @@ export interface AuthoringOptions {
    * the only menu.
    */
   appForms?: readonly string[];
+  /**
+   * Layer 1 against the RELEASED app (ace#2883): the pipeline fields the registry
+   * reads (`{name, path | paths}`, the `semantic-registry-author_layer1.json`
+   * product) and the released Deliver CCZ's form XMLs. Enables `layer1-paths`
+   * and `entity-key` (`lib/layer1-path-check.ts`).
+   */
+  layer1?: {
+    fields: readonly Layer1Field[];
+    forms: readonly ReleasedForm[];
+    /** In-zip form path → why its visits legitimately carry no entity key. */
+    keyExempt?: Readonly<Record<string, string>>;
+  };
 }
 
 const CASE_FIELD_FORMATS = new Set(['date', 'count', 'number', 'text']);
@@ -298,6 +311,22 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
     add('display-text', `${f.path}: "${f.match}" in "${f.text}" — ${DISPLAY_TEXT_FIX[f.rule]}`);
   }
 
+  // ── Layer 1 against the released app (ace#2883) ────────────────────────
+  // Labs compiles the registry and the generator fills form.case.@case_id on
+  // every synthetic visit, so a path no released form writes renders fine on
+  // the demo and goes NULL on real data. The released form XML is the authority.
+  if (opts.layer1) {
+    const l1 = checkLayer1Paths({
+      fields: opts.layer1.fields,
+      forms: opts.layer1.forms,
+      keyExempt: opts.layer1.keyExempt,
+      keyField: typeof entity.key === 'string' ? entity.key : undefined,
+    });
+    for (const f of l1.findings) {
+      add(f.check, `${f.field ? `\`${f.field}\`: ` : ''}${f.detail}`, undefined, f.severity);
+    }
+  }
+
   // ── Organisation level: every partner opportunity mapped ────────────────
   const lloMap = asObj(asObj(reg.deployment).llo_map);
   const mapped = new Map(Object.entries(lloMap).map(([k, v]) => [Number(k), String(v)]));
@@ -336,6 +365,8 @@ export const REGISTRY_AUTHORING_CHECKS = [
   'display',
   'display-text',
   'llo-map',
+  'layer1-paths',
+  'entity-key',
 ] as const;
 
 export interface LabsValidateResult {
@@ -356,7 +387,7 @@ export interface LabsValidateResult {
 export function registryQAOutcomes(
   report: AuthoringReport,
   labs: LabsValidateResult | null | undefined,
-  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[]; appForms?: readonly string[]; pddSupplied?: boolean },
+  inputs: { pddSections?: readonly string[]; opportunityIds?: readonly number[]; appForms?: readonly string[]; pddSupplied?: boolean; layer1Supplied?: boolean },
 ): Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> {
   const out: Array<{ check: string; type: 'static'; result: { pass: boolean; detail?: string; auto_fix_hint?: string } }> = [];
   const labsErrors = Array.isArray(labs?.errors) ? (labs!.errors as unknown[]) : [];
@@ -376,6 +407,10 @@ export function registryQAOutcomes(
         continue;
       }
       out.push({ check, type: 'static', result: { pass: false, detail: 'neither the PDD nor the released app was supplied, so no indicator anchor was checked', auto_fix_hint: 'pass the PDD markdown (pddSectionIds), or with no PDD the Deliver app structure (--app)' } });
+      continue;
+    }
+    if ((check === 'layer1-paths' || check === 'entity-key') && !inputs.layer1Supplied) {
+      out.push({ check, type: 'static', result: { pass: false, detail: 'the Layer-1 fields and the released Deliver form XML were not both supplied, so no registry path was checked against the app (ace#2883)', auto_fix_hint: 'pass --layer1 <semantic-registry-author_layer1.json> and --ccz-dir <unzipped released Deliver CCZ>' } });
       continue;
     }
     if (check === 'llo-map' && !inputs.opportunityIds?.length) {
