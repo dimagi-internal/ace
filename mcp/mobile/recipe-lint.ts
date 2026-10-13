@@ -32,7 +32,8 @@ export interface LintViolation {
     | 'repeat-palette-invocation-without-discriminator'
     | 'selector-inline-key-position'
     | 'selector-value-position-type-mismatch'
-    | 'date-picker-next-cell-tap-noop';
+    | 'date-picker-next-cell-tap-noop'
+    | 'geopoint-wait-on-replace-relabel';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -382,7 +383,123 @@ export function lintRecipeText(yaml: string, options: LintOptions = {}): LintRes
     }
   }
 
+  // Rule: geopoint-wait-on-replace-relabel (dimagi-internal/ace#2878).
+  //
+  // After the geopoint capture tap, a recipe must gate on the captured-fix
+  // READOUT, never on the button relabelling to `REPLACE LOCATION`. Not
+  // APK-gated: on 2.64.0 the relabel never happens on a fresh capture
+  // (measured), and on every version REPLACE is already on screen before
+  // the tap when the field was preloaded (ace#1879), so it proves nothing.
+  for (const v of findGeopointReplaceRelabelWaits(yaml)) {
+    violations.push(v);
+  }
+
   return { ok: violations.length === 0, violations };
+}
+
+/**
+ * The geopoint capture tap, in either the placeholder or a resolved form.
+ * A resolved row is `text: "(RECORD|REPLACE) LOCATION"` (or a single label
+ * on older recipes), so the literal `LOCATION` button text is recognised too.
+ */
+const GEOPOINT_TAP_TARGET_RE =
+  /\$\{SELECTOR:geopoint-record-location\}|text:\s*["'][^"']*(?:RECORD|REPLACE)[^"']*LOCATION[^"']*["']/;
+
+/** Unescape the two YAML double-quoted escapes recipes use. */
+function unescapeYamlDq(raw: string): string {
+  return raw.replace(/\\(["\\])/g, '$1');
+}
+
+/** Maestro `text:` semantics: a full-match regex (DOTALL, case-insensitive). */
+function maestroFullMatch(pattern: string, label: string): boolean {
+  if (pattern === label) return true;
+  try {
+    return new RegExp(`^(?:${pattern})$`, 'is').test(label);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Flag a wait/assert/guard that, right after the geopoint capture tap, gates
+ * on `REPLACE LOCATION` — a matcher that matches that label but NOT
+ * `RECORD LOCATION` (dimagi-internal/ace#2878).
+ *
+ * Measured on smallholder-seasonal/20261012-1549 (APK 2.64.0, a NEW
+ * registration form, empty geopoint):
+ *
+ *     Tap on "(RECORD|REPLACE) LOCATION"... COMPLETED
+ *     Assert that "REPLACE LOCATION" is visible... FAILED
+ *
+ * while the failure ui-dump held `text="RECORD LOCATION"
+ * class="android.widget.Button"` AND the captured readout
+ * `Latitude: N 12°0'7"\nLongitude: E 8°31'0"\nAltitude: 480m\nAccuracy: 5m`.
+ * The fix WAS captured; the button simply does not relabel on 2.64.0. All
+ * three geopoint screens of that leg then passed on-device, same session,
+ * with the wait replaced by `text: "[\\s\\S]*Accuracy: [\\s\\S]*"` — the
+ * `geopoint-captured-readout` selector row.
+ *
+ * Window: from the capture tap to the next form advance or the next tapOn,
+ * so a deliberate preload assertion elsewhere in a recipe is untouched. The
+ * tap step's own `text:` (the alternation, which matches RECORD too) never
+ * fires.
+ */
+function findGeopointReplaceRelabelWaits(yaml: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  const lines = yaml.split('\n');
+  let armedAt = -1; // 1-based line of the capture tap, -1 when not armed
+  let inTapStep = false;
+  let tapIndent = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line) || /^\s*$/.test(line)) continue;
+    const item = line.match(/^(\s*)-\s+([A-Za-z]+)/);
+    if (item) {
+      const [, indent, cmd] = item;
+      if (cmd === 'tapOn') {
+        // A tap ends any open window; it opens a new one if it IS the
+        // geopoint capture (checked on this line and the step's body).
+        armedAt = -1;
+        inTapStep = true;
+        tapIndent = indent.length;
+        if (GEOPOINT_TAP_TARGET_RE.test(line)) armedAt = i + 1;
+        continue;
+      }
+      if (inTapStep && indent.length <= tapIndent) inTapStep = false;
+    } else if (inTapStep) {
+      const indent = (line.match(/^(\s*)/) ?? ['', ''])[1].length;
+      if (indent > tapIndent) {
+        if (GEOPOINT_TAP_TARGET_RE.test(line)) armedAt = armedAt === -1 ? i + 1 : armedAt;
+        continue;
+      }
+      inTapStep = false;
+    }
+    if (armedAt === -1) continue;
+    if (/file:\s*form-advance\.yaml|\$\{SELECTOR:form-nav-next\}|nav_btn_next/.test(line)) {
+      armedAt = -1;
+      continue;
+    }
+    const m = line.match(/(?:^|[\s{,])text:\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/);
+    if (!m) continue;
+    const pattern = m[1] !== undefined ? unescapeYamlDq(m[1]) : m[2];
+    if (!pattern) continue;
+    if (maestroFullMatch(pattern, 'REPLACE LOCATION') && !maestroFullMatch(pattern, 'RECORD LOCATION')) {
+      out.push({
+        rule: 'geopoint-wait-on-replace-relabel',
+        line: i + 1,
+        detail:
+          `line ${i + 1} gates on "${pattern}" after the geopoint capture tap (line ${armedAt}) — ` +
+          `the capture button does NOT relabel to REPLACE LOCATION after a fresh fix on APK 2.64.0 ` +
+          `(smallholder-seasonal/20261012-1549: button still "RECORD LOCATION" with the Accuracy readout rendered), ` +
+          `and on a preloaded field REPLACE is visible BEFORE the tap, so this wait either fails on a captured fix ` +
+          `or passes without proving one (dimagi-internal/ace#2878)`,
+        remediation:
+          'wait on the captured-fix readout instead: `- extendedWaitUntil:\\n    visible:\\n      ${SELECTOR:geopoint-captured-readout}\\n    timeout: 30000` ' +
+          '(resolves to text: "[\\\\s\\\\S]*Accuracy: [\\\\s\\\\S]*") — skills/app-test-cases/SKILL.md Step 3 item 4.5(c)',
+      });
+    }
+  }
+  return out;
 }
 
 /** Matcher keys a value-position selector can legitimately sit under. */
