@@ -16,7 +16,7 @@
 // Build the file with `scripts/qa-result.ts` (`aggregateQAResult`) and it
 // always passes.
 
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { validateQAResult } from './qa-types.js';
 
 export const QA_RESULT_NAME = /-qa_result\.ya?ml$/i;
@@ -77,4 +77,77 @@ export function verdictWriteRefusal(name: string, text: string): string | null {
     return `INVALID_VERDICT: ${name} is not a verdict mapping with a \`verdict\` field (lib/verdict-schema.ts). Nothing was written.`;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// The floor under both of the above: a .yaml file must BE YAML
+// ---------------------------------------------------------------------------
+
+export const YAML_NAME = /\.ya?ml$/i;
+
+/**
+ * Any file ACE writes with a `.yaml` / `.yml` name must parse.
+ *
+ * The two guards above cover `-qa_result.yaml` and `*_verdict.yaml` because
+ * those have a SHAPE worth checking. Every other YAML artifact had nothing at
+ * all — and the ones with no shape check are the load-bearing ones:
+ * `opp.yaml`, `run_state.yaml`, `decisions.yaml`. `update_yaml_file` is
+ * read-parse-merge-write, so an unparseable file is not merely wrong, it is
+ * UNWRITABLE by the documented path.
+ *
+ * Observed on turmeric-market-study-ghana (dimagi-internal/ace#2866). A
+ * hand-authored `opp.yaml` carried a `notes:` item whose prose first line
+ * ended in a colon:
+ *
+ *     notes:
+ *       - No connect.program is recorded here on purpose. Phase 4 must CREATE one:
+ *         country, currency and delivery_type are create-time-only on a Connect
+ *
+ * The trailing `:` makes the parser read the line as an implicit mapping key
+ * and the continuation line then fails. Nothing checked it at write time and
+ * nothing checks it at read time, so it stayed invisible until Phase 4 tried
+ * to record `connect.program` — the opp's only durable cross-run Connect
+ * reference — and got `Implicit keys need to be on a single line at line 19`.
+ * A later run would have re-read the file, found no `connect.program`, and
+ * created a SECOND programme.
+ *
+ * This is the same hazard class `update_yaml_file` already defends against on
+ * its own writes (YAML-1.1-safe serialization, ace#2296) — that protection
+ * covers the SERIALIZER, and these artifacts are authored as raw text through
+ * `drive_create_file` / `drive_update_file` / `drive_upload_binary`, which
+ * bypass it entirely. A detector at the read boundary would only name the
+ * damage; this makes emitting it impossible.
+ *
+ * Deliberately only a PARSE check. Top-level shape is not asserted here — a
+ * `.yaml` artifact is legitimately a mapping in some places and a sequence in
+ * others, and over-reaching would refuse writes that are fine. Multi-document
+ * YAML is accepted (`parseAllDocuments`), so a `---`-separated file is not a
+ * false refusal.
+ */
+export function yamlParseWriteRefusal(name: string, text: string): string | null {
+  if (!YAML_NAME.test(name ?? '')) return null;
+  const body = String(text ?? '').replace(/\r\n/g, '\n');
+  let problem: string | undefined;
+  try {
+    const docs = parseAllDocuments(body);
+    const firstError = docs.flatMap((d) => d.errors ?? [])[0];
+    if (firstError) problem = firstError.message;
+  } catch (e) {
+    problem = (e as Error).message;
+  }
+  if (!problem) return null;
+
+  const firstLine = problem.split('\n')[0];
+  // Grounded hint for the one shape that has actually been observed. Any other
+  // syntax error gets the generic remedy, which is correct for all of them.
+  const hint = /implicit key/i.test(problem)
+    ? ' This is usually a PROSE line ending in a colon (`- ... must CREATE one:`), which YAML reads ' +
+      'as an implicit mapping key — quote the whole scalar, or drop the trailing colon.'
+    : '';
+  return (
+    `INVALID_YAML: ${name} does not parse as YAML — ${firstLine}. Nothing was written.${hint} ` +
+    'Serialize the document (`yaml.stringify`, or `update_yaml_file`, which serializes 1.1-safely) ' +
+    'rather than hand-authoring the text; an unparseable state file is unreadable AND unwritable, ' +
+    'because update_yaml_file is read-parse-merge-write (ace#2866).'
+  );
 }
