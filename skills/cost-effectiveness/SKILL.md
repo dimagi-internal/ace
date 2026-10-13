@@ -90,10 +90,15 @@ monthly all year; 3–24 months or 12–24 only). It returns a `recommendation`
 its own best), `versus_quarterly`, `step_up`, `budget_plans`, `by_design`, and
 an `explorer_path` that opens the PMC page on the same states and price.
 
-- **States.** Pass the proposal's states, or the year-round set the page uses
-  (under 50% of the year's rain in the wettest quarter and child prevalence of
-  at least 10%), less any the proposal excludes. Say the rule; a state near the
-  cut-off (Benue, 49.5%) is worth naming.
+- **States.** Pass the proposal's states, or every state where seasonal malaria
+  chemoprevention (SMC) does not run, less any the proposal excludes. The answer's
+  `smc` names each state in the selection where SMC already runs (statewide or some
+  LGAs, sourced); leave those out and say why — PMC there would be valued as if no
+  chemoprevention ran. Apply no rainfall or prevalence cutoff: the ranking and the
+  bar drop low transmission on their own.
+- **The card.** When the visitor is choosing states (not on the PMC page itself),
+  call `targeting_pmc_states` so they get the candidate-states card to tick and
+  open; then point to it in one line rather than repeating its numbers.
 - **Price.** `cost_per_visit` defaults to the launch price ($0.80, $1.01 a dose).
   Pass the at-scale price when the funder judges at scale, and make sure the
   `explorer_path` you give carries it.
