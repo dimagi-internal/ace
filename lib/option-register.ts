@@ -823,3 +823,204 @@ export function auditLookupBinds(sites: readonly LookupBindSite[]): LookupBindAu
 export function describeLookupBindAudit(audit: LookupBindAudit): string[] {
   return audit.failures.map((f) => `[${f.code}] ${f.field}: ${f.message}`);
 }
+
+// ---------------------------------------------------------------------------
+// Step 4f's halt-or-record decision, as code rather than prose
+// ---------------------------------------------------------------------------
+
+/**
+ * A PDD-declared select that shipped as free text and survived every rung of
+ * Step 4f's escape ladder: halt the build, or record a gap and proceed?
+ *
+ * Why this is a function (dimagi-internal/ace#2857). The rule lived as three
+ * paragraphs of skill prose with two exemptions, and on
+ * `turmeric-market-study-ghana/20261012-1749` it halted a build that was
+ * CORRECT — the `market` field, where the PDD named a text field as the
+ * sanctioned interim mechanism, an operator had ruled that the implementing
+ * organisation picks the markets after the build, and no market was named
+ * anywhere in any input. The Phase 3 agent overrode the halt on its own
+ * judgement and recorded the override. That outcome was right and the
+ * mechanism was wrong: a documented halt discharged by an agent deciding it
+ * does not apply is what a prose rule degrades into.
+ *
+ * Two things are deliberately NOT done here.
+ *
+ * **The filed remedy is not taken.** It proposed exempting a field whose PDD
+ * row "splits the field into a requirement and an advisory mechanism" and
+ * names text as the fallback. That keys a PAYMENT gate on PDD PROSE — and the
+ * PDD is AI-authored (CLAUDE.md: "AI interpretations of an AI-authored PDD,
+ * not ground truth"), so Phase 1's own wording would disarm Phase 3's gate.
+ * The qualifying phrase ("Mechanism (advisory)") is also one run's house
+ * style, and keying a gate on a string observed once is the narrower-guess
+ * trap the issue itself warns about.
+ *
+ * **The threshold is not re-tuned.** The exemption added here keys on a fact
+ * about the WORLD, checkable and recorded: whether ACE can name a single
+ * legitimate member of the option set from the PDD, the run's frozen
+ * `inputs/`, or a source `.ccz`. If it cannot, every rung of the step-5 ladder
+ * is empty by construction — no table holds the set, there is nothing to
+ * enumerate inline, and "the values you DO have plus Other" is just Other.
+ * Shipping any value would be `no-inferred-backstory`, which the run's
+ * operator called "the single most damaging thing you could do in this phase".
+ *
+ * And in that state **halting accomplishes nothing**: re-running Phase 3
+ * cannot produce the option set, because the set is the partner's and arrives
+ * before go-live. The precondition is not restorable by the phase.
+ *
+ * So the protection moves to where the risk lives. The harm — a typo minting a
+ * second payable delivery, two entities collapsing into one — occurs when real
+ * workers submit real deliveries, i.e. at GO-LIVE. Nothing is paid during
+ * Phases 3-8. `review_ask: 'required-before'` + `needed_by: 'go-live'` is an
+ * enforced release blocker (`assessRequiredBeforeAsks` in
+ * `lib/release-readiness.ts`; `/ace:release` refuses while validation is not
+ * READY), so the gap now gates the thing it endangers rather than the thing it
+ * does not.
+ *
+ * That channel is also why the NON-exempt recording path changes. Step 4f
+ * prescribed `review_ask: 'recommended-confirmation'` for every recorded gap,
+ * in the same sentence as "since it is a go-live prerequisite" — but
+ * `recommended-confirmation` is explicitly the ask that gates nothing
+ * (`lib/decisions-schema.ts`: "`required-before` is the only one that gates
+ * anything"). Every option-source gap is a go-live prerequisite by definition,
+ * so every one of them is `required-before` / `go-live`. That correction is
+ * independent of the exemption and is what makes the exemption safe.
+ */
+export type OptionSourceGapOutcome = 'halt' | 'record';
+
+export type OptionSourceGapExemption =
+  | 'unpaid-deliver-unit'
+  | 'not-in-entity-key'
+  | 'non-enumerable-by-nature'
+  | 'no-candidate-values';
+
+export interface OptionSourceGapInput {
+  field_id: string;
+  /** Is this field a component of the deliver unit's `entity_id` / entity key? */
+  feeds_entity_id: boolean;
+  /** Does the deliver unit carrying this form have a payment unit? */
+  payable: boolean;
+  /**
+   * Non-enumerable BY NATURE — a personal name, a free-text identifier,
+   * anything captured as the entity first enters the system.
+   */
+  non_enumerable_by_nature: boolean;
+  /**
+   * Every legitimate member of the option set the build could FIND in the PDD,
+   * the run's frozen `inputs/`, or a source `.ccz`. Empty means the search came
+   * back empty — not "few", not "unsure": zero.
+   */
+  candidate_values: readonly string[];
+  /**
+   * True when the PDD names a partner register for this field
+   * (`parseRegisterDeclaration` returned a declaration). The ace#1621 halt
+   * outranks every exemption here.
+   */
+  declares_partner_register?: boolean;
+}
+
+export interface OptionSourceGapVerdict {
+  field_id: string;
+  outcome: OptionSourceGapOutcome;
+  /** Which exemption carried a `record`. Absent on a halt. */
+  exemption?: OptionSourceGapExemption;
+  /** Every recorded gap is a go-live prerequisite, so every one of them gates. */
+  review_ask: 'required-before';
+  needed_by: 'go-live';
+  reason: string;
+}
+
+/**
+ * Decide Step 4f's halt for ONE still-degraded field. Pure; no I/O.
+ *
+ * The caller supplies facts, not conclusions — in particular
+ * `candidate_values`, which is the list it actually found, so an empty list is
+ * a search that came back empty rather than an assertion that one would.
+ */
+export function classifyOptionSourceGap(
+  input: OptionSourceGapInput,
+): OptionSourceGapVerdict {
+  const base = {
+    field_id: input.field_id,
+    review_ask: 'required-before' as const,
+    needed_by: 'go-live' as const,
+  };
+
+  // ace#1621 outranks everything: a PDD-named register that did not bind is a
+  // halt regardless of payability, and is never dischargeable as a named gap.
+  if (input.declares_partner_register) {
+    return {
+      ...base,
+      outcome: 'halt',
+      reason:
+        `${input.field_id}: the PDD names a partner register for this field and it is not bound. ` +
+        'Not dischargeable as a gap (ace#1621) — extract, create, bind and verify per Step 4f step 7.',
+    };
+  }
+
+  // The halt's whole rationale is payment correctness, so it cannot reach a
+  // case where payment is not in play.
+  if (!input.payable) {
+    return {
+      ...base,
+      outcome: 'record',
+      exemption: 'unpaid-deliver-unit',
+      reason:
+        `${input.field_id}: the deliver unit is UNPAID, so it carries no payment unit and neither ` +
+        'payment failure mode exists.',
+    };
+  }
+  if (!input.feeds_entity_id) {
+    return {
+      ...base,
+      outcome: 'record',
+      exemption: 'not-in-entity-key',
+      reason:
+        `${input.field_id}: not a component of the payable deliver unit's entity key, so a typo ` +
+        'cannot mint a second payable delivery and two entities cannot collapse into one.',
+    };
+  }
+
+  if (input.non_enumerable_by_nature) {
+    return {
+      ...base,
+      outcome: 'record',
+      exemption: 'non-enumerable-by-nature',
+      reason:
+        `${input.field_id}: non-enumerable BY NATURE — no roster can exist to select from, and a ` +
+        'concat() registration key is the standard shape rather than a degradation.',
+    };
+  }
+
+  if (input.candidate_values.length === 0) {
+    return {
+      ...base,
+      outcome: 'record',
+      exemption: 'no-candidate-values',
+      reason:
+        `${input.field_id}: not one legitimate member of the option set appears in the PDD, the ` +
+        'frozen inputs/ or a source .ccz, so every rung of the step-5 ladder is empty and any value ' +
+        'shipped would be invented (no-inferred-backstory). Re-running Phase 3 cannot produce the ' +
+        "set — it is the partner's to supply before go-live, which is the gate this row blocks " +
+        '(ace#2857).',
+    };
+  }
+
+  return {
+    ...base,
+    outcome: 'halt',
+    reason:
+      `${input.field_id}: ${input.candidate_values.length} candidate value(s) are available ` +
+      `(${input.candidate_values.slice(0, 5).join(', ')}${input.candidate_values.length > 5 ? ', …' : ''}), ` +
+      'so a rung of the step-5 ladder is open and a free-text component of the payment grain is a ' +
+      'payment-correctness defect, not a data-quality one.',
+  };
+}
+
+/** One line per field, for a halt message or the build summary. */
+export function describeOptionSourceGaps(
+  verdicts: readonly OptionSourceGapVerdict[],
+): string[] {
+  return verdicts.map(
+    (v) => `[${v.outcome}${v.exemption ? `:${v.exemption}` : ''}] ${v.reason}`,
+  );
+}
