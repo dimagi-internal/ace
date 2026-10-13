@@ -398,14 +398,38 @@ and prevents a whole class of "guessed from indirect signals" mistakes.
 
 ## Mode: app-QA-only
 
-Active when **Phase 5 (OCS) was skipped this run** — i.e.
-`run_state.yaml.phases.ocs-setup.status == skipped`. This is the structural
-signal a seeded mid-pipeline run leaves (the iteration loop `/ace:iterate`
-seeds `{3,4,6: pending, 5: skipped}` and resumes); the orchestrator passes
-"Phase 5 was skipped; run app-QA-only" in the dispatch context. A normal full
-`/ace:run` always runs Phase 5 before Phase 6, so this mode never fires there.
-(There is no `--only` flag any more — run shape lives in `run_state.yaml`; see
-jjackson/ace#672.)
+Active **only when `run_state.yaml.phases.qa-and-training.mode` is literally
+`app-QA-only`** — an explicit, opt-in choice written by whoever seeded the run.
+It is a SPEED mode for the iteration loop, not a capability statement.
+
+**It is NOT derived from `phases.ocs-setup.status == skipped`** (ace#2897).
+That derivation was wrong, and expensive: it meant any 1/2/3/4/6 run — the
+normal shape when an operator skips the chatbot — silently lost all seven
+partner-facing training artifacts and still reported `verdict: pass`, with the
+fences waived so nothing asked for them. Observed on
+`turmeric-market-study-ghana/20261012-1749`.
+
+**The training skills do not need Phase 5.** Their own front matter says what
+they need, and none of them names OCS:
+
+| skill | declared requirement |
+|---|---|
+| `training-deck-generate` | an approved PDD and built apps |
+| `training-llo-guide` | the PDD and built apps |
+| `training-flw-guide` | the PDD |
+| `training-quick-reference` | the PDD |
+| `training-faq` | an approved PDD |
+| `training-onboarding-email` | the PDD |
+
+The only chatbot reference in the whole set is `training-deck-generate` §
+"add OCS widget URL from `ocs-setup_widget-handoff.md` **if available**" —
+optional by construction. **With no Phase 5, omit the widget URL and produce
+the artifact anyway.** Never invent a URL, never leave a dangling placeholder,
+and never tell a partner a support bot exists when it does not.
+
+So: a run that skipped Phase 5 runs Phase 6 **in full**. Only an explicitly
+seeded `mode: app-QA-only` reduces it. (There is no `--only` flag — run shape
+lives in `run_state.yaml`; see jjackson/ace#672.)
 
 In this mode:
 
@@ -413,11 +437,12 @@ In this mode:
   opp → Learn leg → Deliver leg + its inline thin UX judge). Its
   `app-screenshot-capture_verdict-shallow.yaml` is the sole input to the phase
   verdict.
-- **Skip all of Step 2** — the training skills depend on the OCS chatbot URL,
-  which is absent without Phase 5: `training-llo-guide`, `training-flw-guide`,
+- **Skip all of Step 2** — `training-llo-guide`, `training-flw-guide`,
   `training-quick-reference`, `training-faq`, `training-deck-generate`,
-  `training-deck-render`, `training-onboarding-email` (and their `-eval`s).
-  Mark each `steps.<skill>.status: skipped`, `note: "app-QA-only mode (no Phase 5)"`.
+  `training-deck-render`, `training-onboarding-email` (and their `-eval`s) —
+  because the iteration loop measures app-build quality and does not read them,
+  NOT because they could not be produced. Mark each
+  `steps.<skill>.status: skipped`, `note: "app-QA-only mode (explicitly seeded)"`.
 - **Write-back**: the phase verdict is computed from the app-QA judge alone.
   The skipped training skills are marked `skipped` (NOT `deferred`) so the
   Phase Write-Back Contract's "no `has_judge` skill left `deferred`" rule does
