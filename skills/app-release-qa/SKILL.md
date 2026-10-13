@@ -1171,9 +1171,11 @@ reproducer, see reference.md § Runtime install validation.
      // play-mode only:
      command_id?: 'm3-f0',            // the suite command entry_path resolved to
      skip_reason?: 'empty-case-list' | 'form-entry-not-reached'
-                 | 'cli-case-index-unsupported' | 'entry-path-unresolved',
+                 | 'cli-case-index-unsupported' | 'entry-path-unresolved'
+                 | 'cli-fixture-unseeded',
      nav_unresolved?: <why entry_path landed on no command>,
      seeded_case_types?: [...],
+     seeded_fixture_tags?: [...],     // item-list lookup tables seeded empty (ace#2860)
      failing_binding?: '/data/du_bednet_visit/deliver',
      unresolved_xpath?: 'instance(commcaresession)/session/data/case_id',
      // both modes:
@@ -1197,6 +1199,7 @@ reproducer, see reference.md § Runtime install validation.
    - **`play verdict: 'skipped'`** → **do NOT halt**, and **never record it as a pass**: form-init was not observed, so the form is UNEVALUATED. Record `cli_validate.play: {verdict: skipped, skip_reason, command_id, seeded_case_types}` so the coverage gap is legible. The reasons are:
      - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (the seed carries `case_type` / `case_name` / `owner_id` and no other properties).
      - `cli-case-index-unsupported` → `[INFO]` (ace#2784). Form entry WAS reached, but form-init ran a casedb index query (`case[index/parent = …]`, e.g. a `join()` over a group's member cases, or a `case-choice-attendance` checklist's `casedb` itemset and roster — `voidcraft-labs/commcare-nova#728`), and the CLI's in-memory sandbox has no `CaseIndexTable` (`"this.caseIndexTable" is null`). A device has one, so this is the harness's limit, not a defect. Observed on both group-payment-test session forms.
+     - `cli-fixture-unseeded` → `[INFO]` (ace#2860). Form-init asked the synthetic restore for a fixture it does not carry (`FixtureInitializationException: Unable to find lookup table`). `play` seeds an empty `item-list:<tag>` fixture root for every `jr://fixture/item-list:<tag>` the CCZ's XML declares (echoed as `seeded_fixture_tags`), so this only fires for a fixture kind that seed does not cover. A device receives the table on sync, so this is the harness's limit. Before ace#2860 the restore seeded no fixtures and every lookup-backed form graded `fail` → `cli-form-init-error` on a clean build. To check the device side, confirm the table exists on HQ with `commcare_get_lookup_table`.
      - `form-entry-not-reached` → `[WARN]`. The walk ended without the CLI printing `Starting form entry` / `Form Start:`. This means the walk is wrong for this app shape (a datum screen it did not answer), so name `entry_path` + `command_id` and file it. Before ace#2784 this case was graded `pass`.
      - `entry-path-unresolved` → `[WARN]`. Your `entry_path` lands on no command, and the CLI was not run. `nav_unresolved` lists what that menu actually shows, so re-issue with the display position.
 
