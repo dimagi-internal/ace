@@ -1722,10 +1722,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        table or the Nova brief for the file, and **do not compose a path by
        name**.
 
-    2. **Resolve from the MANIFEST — `inputs[]` first, then the folder ids the
-       manifest itself records, ONE LEVEL (ace#1648) — then fetch the bytes.**
+    2. **Resolve from the MANIFEST — `inputs[]` and the folder ids the
+       manifest itself records, ONE LEVEL (ace#1648) — publisher's file
+       first (ace#2852) — then fetch the bytes.**
        Read `inputs-manifest.yaml` and match the entry for the instrument the
-       PDD names. If no `inputs[]` entry matches, walk the manifest's own
+       PDD names. If no `inputs[]` entry matches, **or the match is a derived
+       extraction** (`classifyInstrumentArtifact(entry) === 'derived'` — e.g.
+       a `text/markdown` "extracted verbatim" file), walk the manifest's own
        recorded folder ids — each `subfolders_not_listed[].folder_id`, plus
        `source_folder_id` when present — with
        `drive_list_folder({folderId})`, **one level deep, never recursively**,
@@ -1738,6 +1741,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        Walking an id the manifest ITSELF recorded is not guessing; composing a
        path from a name still is, and is still forbidden. Exactly one match →
        proceed; more than one → HALT rather than pick; zero → HALT per step 1.
+       Pass BOTH the derived `inputs[]` entry and the walk's matches to the
+       helper: it resolves the single publisher-class subfolder file over the
+       extraction and names the passed-over entry in its memo; it keeps the
+       extraction (with its ace#2110 caveat) only when the subfolders hold no
+       published file. Before ace#2852 the `inputs[]` match ended the search,
+       so on `smallholder-seasonal/20261012-1549` the strict path resolved the
+       extracted `.md` while the publisher's `.xlsx` sat one level down in a
+       manifest-recorded subfolder.
 
        Classify the outcome with the helper rather than by eye — it owns the
        skip-vs-halt split, so the branch cannot silently revert:
@@ -2662,6 +2673,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-12 | **Step 4k prefers the publisher's file over a derived `inputs[]` extraction (ace#2852).** `resolveInstrumentSource` returned the `inputs[]` match before it looked at manifest-recorded subfolders, even when that match classed `derived` — so on `smallholder-seasonal/20261012-1549` the strict path resolved `INSTRUMENT — Nigeria 2018 PPI (… extracted verbatim).md` while the publisher's `nigeria-ppi-2020-scorecard-and-lookup-table.xlsx` sat in the recorded subfolder `official-nigeria-2018-ppi (povertyindex.org)`. The ace#1648 order (inputs[] first) predates the ace#2110 classifier, which disclosed a derived source but never re-ordered the search. Step 2 now walks the subfolders when the `inputs[]` match is derived; the helper resolves a single published subfolder file over it (naming the passed-over entry in its memo), halts on more than one, and keeps the derived entry with its caveat only when nothing published exists. *Enforced:* `test/lib/instrument-constants.test.ts` (real layout and ids from that run). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every `[ACE]` latitude, `[FIXED]` ambiguity, stated exemption and not-computable metric this skill used to tabulate under the summary's `## Build memo` is now a decision row only (`plain`, `check_at`/`correct_looks_like`, `review_ask` + `confirm_reason` for open questions), the non-decision check records move to the summary's `## Build notes`, and the Phase 3 boundary fails a written summary with zero rows under `skill: pdd-to-deliver-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **New Step 4o — every PDD § Success Metrics term is SUBMITTED on the paid form (ace#2590).** On `spark-facilitator/20261001-2208` the Community Meeting Record read `#community/number_of_households` inside a validate and never submitted it, so PDD §8.2 S1 (households represented ÷ enrolled households) was not computable in Connect and Phase 7 listed it under "Not computable from visit data" — the run completed and a partner-owned indicator silently vanished. 4h covered taught-vs-collectable; nothing covered measured-vs-submitted. 4o resolves each metric term to a paid-form field, a case property, or an `external` source with a reason, runs `checkMetricTermsSubmitted` (`lib/metric-terms-submitted.ts`) over the paid form, mirrors any case-held term as a hidden `calculate`, and names every term still unsubmitted as not computable in the summary (`metric_terms` frontmatter + build memo). *Enforced:* `test/lib/metric-terms-submitted.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-10-01 | **Step 7: every app check in the build memo is stated at the scope it is keyed on (build-memo-eval, spark-facilitator/20260926-1800).** The Deliver memo called the per-community date check the "one-community-meeting-per-day check" and judged it "coherent" with the per-worker daily cap of 1; Phase 4 and the programme memo then credited the app with enforcing that cap, which only Connect's payment unit `max_daily` does. Paired with `connect-opp-setup` Step 8's scope paragraph and `skills/build-memo`'s `--check`. | ACE team |
