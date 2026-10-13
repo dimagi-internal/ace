@@ -281,6 +281,76 @@ describe('shot plan', () => {
     expect(p.shots.map((s) => s.mode)).toEqual(['scroll-to-text']);
   });
 
+  // ace#2887 — smallholder-seasonal/20261012-1549: ace-web lists the Phase 7
+  // coach as `kind: link` + `auth: ocs` with `public_url: null`. The default
+  // branch shot the admin URL anonymously, landed on OCS's login page, and the
+  // retry repeated it. The script has no OCS login, so the admin page is never
+  // a target: the public chat is, or the gap is skipped with the reason.
+  describe('a link gap whose session the script cannot open (ace#2887)', () => {
+    const coach = (over: Partial<PreviewGap> = {}) =>
+      gap({
+        id: 'synthetic-data-and-workflows:ocs_coach',
+        phase: 'synthetic-data-and-workflows',
+        output_key: 'ocs_coach',
+        kind: 'link',
+        title: 'ocs_coach',
+        url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/14131/',
+        auth: 'ocs',
+        public_url: null,
+        ...over,
+      });
+
+    it('opens the coach on its public chat, derived from team_slug + public_id — never the admin page', () => {
+      const p = planCapture(coach(), {
+        product: { team_slug: 'connect-ace', public_id: 'b3995fc9-0000-4000-8000-000000000001', admin_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/14131/' },
+        chatQuestion: 'How many days between visits?',
+      });
+      expect(p.skip).toBeUndefined();
+      expect(p.strategy).toBe('ocs-chat');
+      expect(p.url).toBe('https://www.openchatstudio.com/a/connect-ace/chatbots/b3995fc9-0000-4000-8000-000000000001/start/');
+      expect(p.question).toBe('How many days between visits?');
+      expect(p.shots[0].caption).not.toMatch(/Support chatbot/);
+      expect(p.folder).toBe('7-synthetic/previews/ocs-coach');
+    });
+
+    it("prefers ace-web's public_url when the gap carries one", () => {
+      const p = planCapture(coach({ public_url: 'https://www.openchatstudio.com/a/t/chatbots/pub/start/' }), { product: null, chatQuestion: 'q?' });
+      expect(p.strategy).toBe('ocs-chat');
+      expect(p.url).toBe('https://www.openchatstudio.com/a/t/chatbots/pub/start/');
+    });
+
+    it('skips with a named reason when the product carries no public id', () => {
+      for (const product of [{ team_slug: 'connect-ace' }, {}, null]) {
+        const p = planCapture(coach(), { product, chatQuestion: 'q?' });
+        expect(p.strategy).toBe('ocs-chat');
+        expect(p.shots).toEqual([]);
+        expect(p.skip).toMatch(/no OCS login/);
+        expect(p.skip).toMatch(/team_slug \+ public_id/);
+      }
+    });
+
+    it('skips rather than shooting the login page when there is no question to ask', () => {
+      const p = planCapture(coach(), { product: { team_slug: 'connect-ace', public_id: 'p1' } });
+      expect(p.shots).toEqual([]);
+      expect(p.skip).toMatch(/test question/);
+    });
+
+    it('never plans a page shot for an auth the script has no session for', () => {
+      for (const kind of ['link', 'dashboard', 'connect_opportunity', 'solicitation', 'walkthrough', 'commcare_app']) {
+        const p = planCapture(coach({ kind }), { product: {}, chatQuestion: 'q?' });
+        expect(p.strategy === 'page' && !p.skip).toBe(false);
+      }
+    });
+
+    it('control: an ordinary public link is still a plain page shot', () => {
+      const p = planCapture(gap({ kind: 'link', title: 'Docs site', url: 'https://example.org/report', auth: 'public' }));
+      expect(p.skip).toBeUndefined();
+      expect(p.strategy).toBe('page');
+      expect(p.url).toBe('https://example.org/report');
+      expect(p.shots).toEqual([{ step: 'page', mode: 'viewport', caption: 'Docs site — top of the page' }]);
+    });
+  });
+
   it('skips an output with nothing to open, and says why', () => {
     expect(planCapture(gap({ url: null })).skip).toMatch(/no url/);
   });
