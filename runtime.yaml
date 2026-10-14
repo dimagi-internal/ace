@@ -19,11 +19,20 @@
 
 version: 1
 
-# ACE runs headless on the cloud runner for /ace:run and /ace:turn. Phase 6 (device
-# walks) and DDD video capture are LAPTOP-ONLY in practice — the cloud box has no
-# Android emulator and is not fast enough for video — so "any" is correct here and
-# the placement decision belongs to routing, not to this file.
+# ACE runs headless on the cloud runner for /ace:run and /ace:turn. The runner box
+# itself has no KVM, so it never hosts an emulator: device walks (Phase 6,
+# /ace:qa-deep) lease one through the `android-emulator` capability below, a fresh
+# EC2 machine per lease. DDD video capture still wants a laptop. "any" is correct
+# here; placement belongs to routing, not to this file.
 engine: any
+
+# Cloud capabilities ACE claims through canopy-web (one ephemeral machine per
+# lease, booted from ACE's image, terminated on release). Each manifest's IaC —
+# stack params, image, deploy/bake/teardown scripts — lives beside it; start at
+# infra/capabilities/android-emulator/README.md. Published by that dir's deploy.sh
+# (`canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`).
+capabilities:
+  - manifest: infra/capabilities/android-emulator/capability.yaml
 
 plugins:
   - name: canopy
@@ -44,7 +53,7 @@ tools:
   - name: node        # the five MCP servers run straight from TypeScript via `npx tsx`
   - name: java        # commcare-cli.jar — app-release-qa's install-time CCZ gate
     optional: true
-  - name: adb         # Phase 6 device walks; laptop-only, absent on the cloud box
+  - name: adb         # local-AVD device walks only; the cloud box leases an emulator instead
     optional: true
   - name: maestro
     optional: true
@@ -232,7 +241,7 @@ secrets:
     optional: true
     op: "op://Agent-Ace/Content Generator API/credential"
 
-  # --- Mobile (Phase 6 device walks) — laptop-only -----------------------
+  # --- Mobile (Phase 6 device walks) — the local AVD and the lease backend --
   - name: ace-avd-name
     env: ACE_AVD_NAME
     optional: true
@@ -243,8 +252,9 @@ secrets:
     value: 2.64.0
   # The Connect demo user the device walk signs in as. Rotated in 1Password when a
   # phone's OpportunityAccess tiles accumulate (/ace:sweep connect does not clear
-  # them) — see the demo-user rotation note in CLAUDE.md. All optional: a headless
-  # box never runs Phase 6.
+  # them) — see the demo-user rotation note in CLAUDE.md. Optional because only a
+  # turn that walks a device needs them; on the cloud box that walk runs on a
+  # leased emulator, and `ace-mobile register-test-user` receives them from here.
   - name: ace-e2e-phone
     env: ACE_E2E_PHONE
     optional: true

@@ -1,0 +1,21 @@
+[Unit]
+Description=ACE android-emulator boot hook: read the lease, arm the halt, boot the AVD, write ready.json
+Documentation=https://github.com/dimagi-internal/ace/tree/main/infra/capabilities/android-emulator
+# Needs the network for IMDS and S3. cloud-init ignores the lease's JSON
+# user-data (it is not a format cloud-init handles), so there is no ordering
+# against cloud-final to get right.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The hook bounds its own wait by the manifest's ready_timeout_s; this is only a
+# backstop so a hung hook cannot hold the boot transaction forever.
+TimeoutStartSec=1200
+ExecStart=/usr/local/sbin/ace-capability-boot
+StandardOutput=append:/var/log/ace-mobile/boot.log
+StandardError=append:/var/log/ace-mobile/boot.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1577 @@
+[
+ {
+  "command": {
+   "defineVariablesCommand": {
+    "env": {
+     "OPP_RUN_ID": "${OPP_RUN_ID}"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780775170,
+   "duration": 340,
+   "sequenceNumber": 3,
+   "evaluatedCommand": {
+    "defineVariablesCommand": {
+     "env": {
+      "OPP_RUN_ID": "20260820-0817"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "applyConfigurationCommand": {
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780775510,
+   "duration": 0,
+   "sequenceNumber": 4,
+   "evaluatedCommand": {
+    "applyConfigurationCommand": {
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "waitForAnimationToEndCommand": {
+    "timeout": "3000",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780780335,
+   "duration": 258,
+   "sequenceNumber": 13,
+   "evaluatedCommand": {
+    "waitForAnimationToEndCommand": {
+     "timeout": "3000",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "defineVariablesCommand": {
+    "env": {
+     "OPP_RUN_ID": "20260820-0817",
+     "OPP_NAME": "20260820-0817 \u00b7 Spark FCAP Facilitator",
+     "PIN": "000000",
+     "PHONE": "+74260000000",
+     "PHONE_LOCAL": "4260000000",
+     "COUNTRY_CODE": "+7",
+     "BACKUP_CODE": "000000",
+     "NAME": "ACE Test",
+     "MAESTRO_FILENAME": "chunk-0",
+     "MAESTRO_DEVICE_UDID": "localhost:5555",
+     "MAESTRO_SHARD_ID": "1",
+     "MAESTRO_SHARD_INDEX": "0"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780775156,
+   "duration": 3,
+   "sequenceNumber": 0,
+   "evaluatedCommand": {
+    "defineVariablesCommand": {
+     "env": {
+      "OPP_RUN_ID": "20260820-0817",
+      "OPP_NAME": "20260820-0817 \u00b7 Spark FCAP Facilitator",
+      "PIN": "000000",
+      "PHONE": "+74260000000",
+      "PHONE_LOCAL": "4260000000",
+      "COUNTRY_CODE": "+7",
+      "BACKUP_CODE": "000000",
+      "NAME": "ACE Test",
+      "MAESTRO_FILENAME": "chunk-0",
+      "MAESTRO_DEVICE_UDID": "localhost:5555",
+      "MAESTRO_SHARD_ID": "1",
+      "MAESTRO_SHARD_INDEX": "0"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "runFlowCommand": {
+    "commands": [
+     {
+      "pressKeyCommand": {
+       "code": "BACK",
+       "optional": false
+      }
+     },
+     {
+      "waitForAnimationToEndCommand": {
+       "timeout": "3000",
+       "optional": false
+      }
+     }
+    ],
+    "condition": {
+     "notVisible": {
+      "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+      "optional": false
+     }
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780777294,
+   "duration": 1657,
+   "sequenceNumber": 8,
+   "evaluatedCommand": {
+    "runFlowCommand": {
+     "commands": [
+      {
+       "pressKeyCommand": {
+        "code": "BACK",
+        "optional": false
+       }
+      },
+      {
+       "waitForAnimationToEndCommand": {
+        "timeout": "3000",
+        "optional": false
+       }
+      }
+     ],
+     "condition": {
+      "notVisible": {
+       "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+       "optional": false
+      }
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "assertConditionCommand": {
+    "condition": {
+     "visible": {
+      "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+      "optional": false
+     }
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "FAILED",
+   "timestamp": 1787780795882,
+   "duration": 1847,
+   "error": {
+    "message": "Assertion is false: id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible",
+    "hierarchyRoot": {
+     "_scrubbed": "view hierarchy removed from the recorded fixture"
+    },
+    "debugMessage": "Assertion 'id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible' failed. Check the UI hierarchy in debug artifacts to verify the element state and properties.\n\nPossible causes:\n- Element selector may be incorrect - check if there are similar elements with slightly different names/properties.\n- Element may be temporarily unavailable due to loading state\n- This could be a real regression that needs to be addressed",
+    "stackTrace": [
+     {
+      "classLoaderName": "app",
+      "methodName": "assertConditionCommand",
+      "fileName": "Orchestra.kt",
+      "lineNumber": 432,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "access$assertConditionCommand",
+      "fileName": "Orchestra.kt",
+      "lineNumber": 126,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "invokeSuspend",
+      "fileName": "Orchestra.kt",
+      "lineNumber": -1,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra$assertConditionCommand$1"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "resumeWith",
+      "fileName": "ContinuationImpl.kt",
+      "lineNumber": 34,
+      "nativeMethod": false,
+      "className": "kotlin.coroutines.jvm.internal.BaseContinuationImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "DispatchedTask.kt",
+      "lineNumber": 100,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.DispatchedTask"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "processNextEvent",
+      "fileName": "EventLoop.common.kt",
+      "lineNumber": 263,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.EventLoopImplBase"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "joinBlocking",
+      "fileName": "Builders.kt",
+      "lineNumber": 94,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BlockingCoroutine"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking",
+      "fileName": "Builders.kt",
+      "lineNumber": 70,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt__BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking",
+      "lineNumber": 1,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking$default",
+      "fileName": "Builders.kt",
+      "lineNumber": 48,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt__BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking$default",
+      "lineNumber": 1,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingle$lambda$0",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 75,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runCatching-ta8aW1Q",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 204,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingle",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 66,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingleFlow",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 561,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runShardSuite$lambda$10",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 529,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "newSession",
+      "fileName": "MaestroSessionManager.kt",
+      "lineNumber": 132,
+      "nativeMethod": false,
+      "className": "maestro.cli.session.MaestroSessionManager"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "newSession$default",
+      "fileName": "MaestroSessionManager.kt",
+      "lineNumber": 66,
+      "nativeMethod": false,
+      "className": "maestro.cli.session.MaestroSessionManager"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runShardSuite",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 476,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "access$runShardSuite",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 80,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "invokeSuspend",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 435,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand$handleSessions$1$results$1$1"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "resumeWith",
+      "fileName": "ContinuationImpl.kt",
+      "lineNumber": 34,
+      "nativeMethod": false,
+      "className": "kotlin.coroutines.jvm.internal.BaseContinuationImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "DispatchedTask.kt",
+      "lineNumber": 100,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.DispatchedTask"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "LimitedDispatcher.kt",
+      "lineNumber": 124,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.internal.LimitedDispatcher$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "Tasks.kt",
+      "lineNumber": 89,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.TaskImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSafely",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 586,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "executeTask",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 820,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runWorker",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 717,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 704,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     }
+    ],
+    "localizedMessage": "Assertion is false: id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible"
+   },
+   "sequenceNumber": 15,
+   "evaluatedCommand": {
+    "assertConditionCommand": {
+     "condition": {
+      "visible": {
+       "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+       "optional": false
+      }
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "pressKeyCommand": {
+    "code": "BACK",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780779515,
+   "duration": 820,
+   "sequenceNumber": 12,
+   "evaluatedCommand": {
+    "pressKeyCommand": {
+     "code": "BACK",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "applyConfigurationCommand": {
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780775160,
+   "duration": 2,
+   "sequenceNumber": 1,
+   "evaluatedCommand": {
+    "applyConfigurationCommand": {
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "runFlowCommand": {
+    "commands": [
+     {
+      "defineVariablesCommand": {
+       "env": {
+        "OPP_RUN_ID": "${OPP_RUN_ID}"
+       },
+       "optional": false
+      }
+     },
+     {
+      "applyConfigurationCommand": {
+       "config": {
+        "appId": "org.commcare.dalvik"
+       },
+       "optional": false
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "pressKeyCommand": {
+          "code": "BACK",
+          "optional": false
+         }
+        },
+        {
+         "waitForAnimationToEndCommand": {
+          "timeout": "3000",
+          "optional": false
+         }
+        }
+       ],
+       "condition": {
+        "notVisible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "pressKeyCommand": {
+          "code": "BACK",
+          "optional": false
+         }
+        },
+        {
+         "waitForAnimationToEndCommand": {
+          "timeout": "3000",
+          "optional": false
+         }
+        }
+       ],
+       "condition": {
+        "notVisible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "pressKeyCommand": {
+          "code": "BACK",
+          "optional": false
+         }
+        },
+        {
+         "waitForAnimationToEndCommand": {
+          "timeout": "3000",
+          "optional": false
+         }
+        }
+       ],
+       "condition": {
+        "notVisible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "assertConditionCommand": {
+       "condition": {
+        "visible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "timeout": "15000",
+       "optional": true
+      }
+     },
+     {
+      "assertConditionCommand": {
+       "condition": {
+        "visible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "tapOnElement": {
+       "selector": {
+        "idRegex": "org.commcare.dalvik:id/action_sync",
+        "optional": true
+       },
+       "retryIfNoChange": false,
+       "waitUntilVisible": false,
+       "longPress": false,
+       "optional": true
+      }
+     },
+     {
+      "waitForAnimationToEndCommand": {
+       "timeout": "8000",
+       "optional": false
+      }
+     },
+     {
+      "takeScreenshotCommand": {
+       "path": "connect-resume-opp-list-synced",
+       "optional": false
+      }
+     },
+     {
+      "scrollUntilVisible": {
+       "selector": {
+        "textRegex": ".*${OPP_RUN_ID}.*",
+        "optional": false
+       },
+       "direction": "DOWN",
+       "scrollDuration": "40",
+       "visibilityPercentage": 30,
+       "timeout": "120000",
+       "centerElement": true,
+       "originalSpeedValue": "40",
+       "optional": true,
+       "visibilityPercentageNormalized": 0.0
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "scrollUntilVisible": {
+          "selector": {
+           "textRegex": ".*${OPP_RUN_ID}.*",
+           "optional": false
+          },
+          "direction": "UP",
+          "scrollDuration": "40",
+          "visibilityPercentage": 30,
+          "timeout": "120000",
+          "centerElement": true,
+          "originalSpeedValue": "40",
+          "optional": false,
+          "visibilityPercentageNormalized": 0.0
+         }
+        }
+       ],
+       "condition": {
+        "notVisible": {
+         "textRegex": ".*${OPP_RUN_ID}.*",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "assertConditionCommand": {
+       "condition": {
+        "visible": {
+         "textRegex": ".*${OPP_RUN_ID}.*",
+         "optional": false
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "takeScreenshotCommand": {
+       "path": "connect-resume-opp-tile",
+       "optional": false
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "tapOnElement": {
+          "selector": {
+           "idRegex": "org.commcare.dalvik:id/btn_resume",
+           "optional": false,
+           "childOf": {
+            "containsChild": {
+             "textRegex": ".*${OPP_RUN_ID}.*",
+             "optional": false
+            },
+            "optional": false
+           }
+          },
+          "retryIfNoChange": true,
+          "waitUntilVisible": false,
+          "longPress": false,
+          "optional": false
+         }
+        }
+       ],
+       "condition": {
+        "visible": {
+         "idRegex": "org.commcare.dalvik:id/btn_resume",
+         "optional": false,
+         "childOf": {
+          "containsChild": {
+           "textRegex": ".*${OPP_RUN_ID}.*",
+           "optional": false
+          },
+          "optional": false
+         }
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "runFlowCommand": {
+       "commands": [
+        {
+         "tapOnElement": {
+          "selector": {
+           "textRegex": "Proceed",
+           "optional": false,
+           "childOf": {
+            "containsChild": {
+             "textRegex": ".*${OPP_RUN_ID}.*",
+             "optional": false
+            },
+            "optional": false
+           }
+          },
+          "retryIfNoChange": true,
+          "waitUntilVisible": false,
+          "longPress": false,
+          "optional": false
+         }
+        }
+       ],
+       "condition": {
+        "visible": {
+         "textRegex": "Proceed",
+         "optional": false,
+         "childOf": {
+          "containsChild": {
+           "textRegex": ".*${OPP_RUN_ID}.*",
+           "optional": false
+          },
+          "optional": false
+         }
+        }
+       },
+       "optional": false
+      }
+     },
+     {
+      "assertConditionCommand": {
+       "condition": {
+        "notVisible": {
+         "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+         "optional": false
+        }
+       },
+       "timeout": "10000",
+       "optional": false
+      }
+     },
+     {
+      "takeScreenshotCommand": {
+       "path": "connect-resume-opp-landed",
+       "optional": false
+      }
+     }
+    ],
+    "sourceDescription": "connect-resume-opp.yaml",
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "FAILED",
+   "timestamp": 1787780775162,
+   "duration": 22646,
+   "error": {
+    "message": "Assertion is false: id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible",
+    "hierarchyRoot": {
+     "_scrubbed": "view hierarchy removed from the recorded fixture"
+    },
+    "debugMessage": "Assertion 'id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible' failed. Check the UI hierarchy in debug artifacts to verify the element state and properties.\n\nPossible causes:\n- Element selector may be incorrect - check if there are similar elements with slightly different names/properties.\n- Element may be temporarily unavailable due to loading state\n- This could be a real regression that needs to be addressed",
+    "stackTrace": [
+     {
+      "classLoaderName": "app",
+      "methodName": "assertConditionCommand",
+      "fileName": "Orchestra.kt",
+      "lineNumber": 432,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "access$assertConditionCommand",
+      "fileName": "Orchestra.kt",
+      "lineNumber": 126,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "invokeSuspend",
+      "fileName": "Orchestra.kt",
+      "lineNumber": -1,
+      "nativeMethod": false,
+      "className": "maestro.orchestra.Orchestra$assertConditionCommand$1"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "resumeWith",
+      "fileName": "ContinuationImpl.kt",
+      "lineNumber": 34,
+      "nativeMethod": false,
+      "className": "kotlin.coroutines.jvm.internal.BaseContinuationImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "DispatchedTask.kt",
+      "lineNumber": 100,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.DispatchedTask"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "processNextEvent",
+      "fileName": "EventLoop.common.kt",
+      "lineNumber": 263,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.EventLoopImplBase"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "joinBlocking",
+      "fileName": "Builders.kt",
+      "lineNumber": 94,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BlockingCoroutine"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking",
+      "fileName": "Builders.kt",
+      "lineNumber": 70,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt__BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking",
+      "lineNumber": 1,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking$default",
+      "fileName": "Builders.kt",
+      "lineNumber": 48,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt__BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runBlocking$default",
+      "lineNumber": 1,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.BuildersKt"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingle$lambda$0",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 75,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runCatching-ta8aW1Q",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 204,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingle",
+      "fileName": "TestRunner.kt",
+      "lineNumber": 66,
+      "nativeMethod": false,
+      "className": "maestro.cli.runner.TestRunner"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSingleFlow",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 561,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runShardSuite$lambda$10",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 529,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "newSession",
+      "fileName": "MaestroSessionManager.kt",
+      "lineNumber": 132,
+      "nativeMethod": false,
+      "className": "maestro.cli.session.MaestroSessionManager"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "newSession$default",
+      "fileName": "MaestroSessionManager.kt",
+      "lineNumber": 66,
+      "nativeMethod": false,
+      "className": "maestro.cli.session.MaestroSessionManager"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runShardSuite",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 476,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "access$runShardSuite",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 80,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "invokeSuspend",
+      "fileName": "TestCommand.kt",
+      "lineNumber": 435,
+      "nativeMethod": false,
+      "className": "maestro.cli.command.TestCommand$handleSessions$1$results$1$1"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "resumeWith",
+      "fileName": "ContinuationImpl.kt",
+      "lineNumber": 34,
+      "nativeMethod": false,
+      "className": "kotlin.coroutines.jvm.internal.BaseContinuationImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "DispatchedTask.kt",
+      "lineNumber": 100,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.DispatchedTask"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "LimitedDispatcher.kt",
+      "lineNumber": 124,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.internal.LimitedDispatcher$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "Tasks.kt",
+      "lineNumber": 89,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.TaskImpl"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runSafely",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 586,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "executeTask",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 820,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "runWorker",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 717,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     },
+     {
+      "classLoaderName": "app",
+      "methodName": "run",
+      "fileName": "CoroutineScheduler.kt",
+      "lineNumber": 704,
+      "nativeMethod": false,
+      "className": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+     }
+    ],
+    "localizedMessage": "Assertion is false: id: org.commcare.dalvik:id/connect_fragment_jobs_list is visible"
+   },
+   "sequenceNumber": 2,
+   "evaluatedCommand": {
+    "runFlowCommand": {
+     "commands": [
+      {
+       "defineVariablesCommand": {
+        "env": {
+         "OPP_RUN_ID": "${OPP_RUN_ID}"
+        },
+        "optional": false
+       }
+      },
+      {
+       "applyConfigurationCommand": {
+        "config": {
+         "appId": "org.commcare.dalvik"
+        },
+        "optional": false
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "pressKeyCommand": {
+           "code": "BACK",
+           "optional": false
+          }
+         },
+         {
+          "waitForAnimationToEndCommand": {
+           "timeout": "3000",
+           "optional": false
+          }
+         }
+        ],
+        "condition": {
+         "notVisible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "pressKeyCommand": {
+           "code": "BACK",
+           "optional": false
+          }
+         },
+         {
+          "waitForAnimationToEndCommand": {
+           "timeout": "3000",
+           "optional": false
+          }
+         }
+        ],
+        "condition": {
+         "notVisible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "pressKeyCommand": {
+           "code": "BACK",
+           "optional": false
+          }
+         },
+         {
+          "waitForAnimationToEndCommand": {
+           "timeout": "3000",
+           "optional": false
+          }
+         }
+        ],
+        "condition": {
+         "notVisible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "assertConditionCommand": {
+        "condition": {
+         "visible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "timeout": "15000",
+        "optional": true
+       }
+      },
+      {
+       "assertConditionCommand": {
+        "condition": {
+         "visible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "tapOnElement": {
+        "selector": {
+         "idRegex": "org.commcare.dalvik:id/action_sync",
+         "optional": true
+        },
+        "retryIfNoChange": false,
+        "waitUntilVisible": false,
+        "longPress": false,
+        "optional": true
+       }
+      },
+      {
+       "waitForAnimationToEndCommand": {
+        "timeout": "8000",
+        "optional": false
+       }
+      },
+      {
+       "takeScreenshotCommand": {
+        "path": "connect-resume-opp-list-synced",
+        "optional": false
+       }
+      },
+      {
+       "scrollUntilVisible": {
+        "selector": {
+         "textRegex": ".*${OPP_RUN_ID}.*",
+         "optional": false
+        },
+        "direction": "DOWN",
+        "scrollDuration": "40",
+        "visibilityPercentage": 30,
+        "timeout": "120000",
+        "centerElement": true,
+        "originalSpeedValue": "40",
+        "optional": true,
+        "visibilityPercentageNormalized": 0.0
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "scrollUntilVisible": {
+           "selector": {
+            "textRegex": ".*${OPP_RUN_ID}.*",
+            "optional": false
+           },
+           "direction": "UP",
+           "scrollDuration": "40",
+           "visibilityPercentage": 30,
+           "timeout": "120000",
+           "centerElement": true,
+           "originalSpeedValue": "40",
+           "optional": false,
+           "visibilityPercentageNormalized": 0.0
+          }
+         }
+        ],
+        "condition": {
+         "notVisible": {
+          "textRegex": ".*${OPP_RUN_ID}.*",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "assertConditionCommand": {
+        "condition": {
+         "visible": {
+          "textRegex": ".*${OPP_RUN_ID}.*",
+          "optional": false
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "takeScreenshotCommand": {
+        "path": "connect-resume-opp-tile",
+        "optional": false
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "tapOnElement": {
+           "selector": {
+            "idRegex": "org.commcare.dalvik:id/btn_resume",
+            "optional": false,
+            "childOf": {
+             "containsChild": {
+              "textRegex": ".*${OPP_RUN_ID}.*",
+              "optional": false
+             },
+             "optional": false
+            }
+           },
+           "retryIfNoChange": true,
+           "waitUntilVisible": false,
+           "longPress": false,
+           "optional": false
+          }
+         }
+        ],
+        "condition": {
+         "visible": {
+          "idRegex": "org.commcare.dalvik:id/btn_resume",
+          "optional": false,
+          "childOf": {
+           "containsChild": {
+            "textRegex": ".*${OPP_RUN_ID}.*",
+            "optional": false
+           },
+           "optional": false
+          }
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "runFlowCommand": {
+        "commands": [
+         {
+          "tapOnElement": {
+           "selector": {
+            "textRegex": "Proceed",
+            "optional": false,
+            "childOf": {
+             "containsChild": {
+              "textRegex": ".*${OPP_RUN_ID}.*",
+              "optional": false
+             },
+             "optional": false
+            }
+           },
+           "retryIfNoChange": true,
+           "waitUntilVisible": false,
+           "longPress": false,
+           "optional": false
+          }
+         }
+        ],
+        "condition": {
+         "visible": {
+          "textRegex": "Proceed",
+          "optional": false,
+          "childOf": {
+           "containsChild": {
+            "textRegex": ".*${OPP_RUN_ID}.*",
+            "optional": false
+           },
+           "optional": false
+          }
+         }
+        },
+        "optional": false
+       }
+      },
+      {
+       "assertConditionCommand": {
+        "condition": {
+         "notVisible": {
+          "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+          "optional": false
+         }
+        },
+        "timeout": "10000",
+        "optional": false
+       }
+      },
+      {
+       "takeScreenshotCommand": {
+        "path": "connect-resume-opp-landed",
+        "optional": false
+       }
+      }
+     ],
+     "sourceDescription": "connect-resume-opp.yaml",
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "runFlowCommand": {
+    "commands": [
+     {
+      "pressKeyCommand": {
+       "code": "BACK",
+       "optional": false
+      }
+     },
+     {
+      "waitForAnimationToEndCommand": {
+       "timeout": "3000",
+       "optional": false
+      }
+     }
+    ],
+    "condition": {
+     "notVisible": {
+      "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+      "optional": false
+     }
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780775510,
+   "duration": 1783,
+   "sequenceNumber": 5,
+   "evaluatedCommand": {
+    "runFlowCommand": {
+     "commands": [
+      {
+       "pressKeyCommand": {
+        "code": "BACK",
+        "optional": false
+       }
+      },
+      {
+       "waitForAnimationToEndCommand": {
+        "timeout": "3000",
+        "optional": false
+       }
+      }
+     ],
+     "condition": {
+      "notVisible": {
+       "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+       "optional": false
+      }
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "waitForAnimationToEndCommand": {
+    "timeout": "3000",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780776957,
+   "duration": 336,
+   "sequenceNumber": 7,
+   "evaluatedCommand": {
+    "waitForAnimationToEndCommand": {
+     "timeout": "3000",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "waitForAnimationToEndCommand": {
+    "timeout": "3000",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780778714,
+   "duration": 236,
+   "sequenceNumber": 10,
+   "evaluatedCommand": {
+    "waitForAnimationToEndCommand": {
+     "timeout": "3000",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "assertConditionCommand": {
+    "condition": {
+     "visible": {
+      "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+      "optional": false
+     }
+    },
+    "timeout": "15000",
+    "optional": true
+   }
+  },
+  "metadata": {
+   "status": "WARNED",
+   "timestamp": 1787780780593,
+   "sequenceNumber": 14,
+   "evaluatedCommand": {
+    "assertConditionCommand": {
+     "condition": {
+      "visible": {
+       "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+       "optional": false
+      }
+     },
+     "timeout": "15000",
+     "optional": true
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "pressKeyCommand": {
+    "code": "BACK",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780777902,
+   "duration": 812,
+   "sequenceNumber": 9,
+   "evaluatedCommand": {
+    "pressKeyCommand": {
+     "code": "BACK",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "runFlowCommand": {
+    "commands": [
+     {
+      "pressKeyCommand": {
+       "code": "BACK",
+       "optional": false
+      }
+     },
+     {
+      "waitForAnimationToEndCommand": {
+       "timeout": "3000",
+       "optional": false
+      }
+     }
+    ],
+    "condition": {
+     "notVisible": {
+      "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+      "optional": false
+     }
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780778951,
+   "duration": 1642,
+   "sequenceNumber": 11,
+   "evaluatedCommand": {
+    "runFlowCommand": {
+     "commands": [
+      {
+       "pressKeyCommand": {
+        "code": "BACK",
+        "optional": false
+       }
+      },
+      {
+       "waitForAnimationToEndCommand": {
+        "timeout": "3000",
+        "optional": false
+       }
+      }
+     ],
+     "condition": {
+      "notVisible": {
+       "idRegex": "org.commcare.dalvik:id/connect_fragment_jobs_list",
+       "optional": false
+      }
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "pressKeyCommand": {
+    "code": "BACK",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787780776118,
+   "duration": 838,
+   "sequenceNumber": 6,
+   "evaluatedCommand": {
+    "pressKeyCommand": {
+     "code": "BACK",
+     "optional": false
+    }
+   }
+  }
+ }
+]

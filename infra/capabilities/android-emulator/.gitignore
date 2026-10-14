@@ -1,0 +1,3 @@
+__pycache__/
+# Written by `packer build` (bake.sh reads the AMI id from it).
+image/packer-manifest.json
