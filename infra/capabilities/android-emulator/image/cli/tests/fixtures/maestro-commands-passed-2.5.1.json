@@ -1,0 +1,806 @@
+[
+ {
+  "command": {
+   "hideKeyboardCommand": {
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781426419,
+   "duration": 1340,
+   "sequenceNumber": 20,
+   "evaluatedCommand": {
+    "hideKeyboardCommand": {
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "below": {
+      "textRegex": "[\\s\\S]*The total the group is holding now[\\s\\S]*",
+      "optional": false
+     },
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781432787,
+   "duration": 3074,
+   "sequenceNumber": 22,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "below": {
+       "textRegex": "[\\s\\S]*The total the group is holding now[\\s\\S]*",
+       "optional": false
+      },
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "below": {
+      "textRegex": "[\\s\\S]*How many households are saving[\\s\\S]*",
+      "optional": false
+     },
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781407407,
+   "duration": 2924,
+   "sequenceNumber": 10,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "below": {
+       "textRegex": "[\\s\\S]*How many households are saving[\\s\\S]*",
+       "optional": false
+      },
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "takeScreenshotCommand": {
+    "path": "${SCREENSHOT_NAME}",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402319,
+   "duration": 459,
+   "sequenceNumber": 5,
+   "evaluatedCommand": {
+    "takeScreenshotCommand": {
+     "path": "journey-deliver-attendance-done",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "defineVariablesCommand": {
+    "env": {
+     "SCREENSHOT_NAME": "journey-deliver-attendance-done"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402318,
+   "duration": 0,
+   "sequenceNumber": 3,
+   "evaluatedCommand": {
+    "defineVariablesCommand": {
+     "env": {
+      "SCREENSHOT_NAME": "journey-deliver-attendance-done"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "below": {
+      "textRegex": "[\\s\\S]*How many males are saving[\\s\\S]*",
+      "optional": false
+     },
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781412388,
+   "duration": 2909,
+   "sequenceNumber": 14,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "below": {
+       "textRegex": "[\\s\\S]*How many males are saving[\\s\\S]*",
+       "optional": false
+      },
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "textRegex": "Yes",
+     "below": {
+      "textRegex": "[\\s\\S]*Is this community saving money together[\\s\\S]*",
+      "optional": false
+     },
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781405230,
+   "duration": 2087,
+   "sequenceNumber": 8,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "textRegex": "Yes",
+      "below": {
+       "textRegex": "[\\s\\S]*Is this community saving money together[\\s\\S]*",
+       "optional": false
+      },
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "defineVariablesCommand": {
+    "env": {
+     "OPP_RUN_ID": "20260820-0817",
+     "OPP_NAME": "20260820-0817 \u00b7 Spark FCAP Facilitator",
+     "PIN": "000000",
+     "PHONE": "+74260000000",
+     "PHONE_LOCAL": "4260000000",
+     "COUNTRY_CODE": "+7",
+     "BACKUP_CODE": "000000",
+     "NAME": "ACE Test",
+     "MAESTRO_FILENAME": "chunk-8",
+     "MAESTRO_DEVICE_UDID": "localhost:5555",
+     "MAESTRO_SHARD_ID": "1",
+     "MAESTRO_SHARD_INDEX": "0"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402306,
+   "duration": 3,
+   "sequenceNumber": 0,
+   "evaluatedCommand": {
+    "defineVariablesCommand": {
+     "env": {
+      "OPP_RUN_ID": "20260820-0817",
+      "OPP_NAME": "20260820-0817 \u00b7 Spark FCAP Facilitator",
+      "PIN": "000000",
+      "PHONE": "+74260000000",
+      "PHONE_LOCAL": "4260000000",
+      "COUNTRY_CODE": "+7",
+      "BACKUP_CODE": "000000",
+      "NAME": "ACE Test",
+      "MAESTRO_FILENAME": "chunk-8",
+      "MAESTRO_DEVICE_UDID": "localhost:5555",
+      "MAESTRO_SHARD_ID": "1",
+      "MAESTRO_SHARD_INDEX": "0"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "scrollUntilVisible": {
+    "selector": {
+     "textRegex": "[\\s\\S]*How many households are saving[\\s\\S]*",
+     "optional": false
+    },
+    "direction": "DOWN",
+    "scrollDuration": "30",
+    "visibilityPercentage": 60,
+    "timeout": "20000",
+    "centerElement": true,
+    "originalSpeedValue": "30",
+    "optional": false,
+    "visibilityPercentageNormalized": 0.0
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781407317,
+   "duration": 89,
+   "sequenceNumber": 9,
+   "evaluatedCommand": {
+    "scrollUntilVisible": {
+     "selector": {
+      "textRegex": "[\\s\\S]*How many households are saving[\\s\\S]*",
+      "optional": false
+     },
+     "direction": "DOWN",
+     "scrollDuration": "701",
+     "visibilityPercentage": 60,
+     "timeout": "20000",
+     "centerElement": true,
+     "originalSpeedValue": "30",
+     "optional": false,
+     "visibilityPercentageNormalized": 0.0
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "inputTextCommand": {
+    "text": "12",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781415297,
+   "duration": 755,
+   "sequenceNumber": 15,
+   "evaluatedCommand": {
+    "inputTextCommand": {
+     "text": "12",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "applyConfigurationCommand": {
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402309,
+   "duration": 2,
+   "sequenceNumber": 1,
+   "evaluatedCommand": {
+    "applyConfigurationCommand": {
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "below": {
+      "textRegex": "[\\s\\S]*How many females are saving[\\s\\S]*",
+      "optional": false
+     },
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781422967,
+   "duration": 2674,
+   "sequenceNumber": 18,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "below": {
+       "textRegex": "[\\s\\S]*How many females are saving[\\s\\S]*",
+       "optional": false
+      },
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "runFlowCommand": {
+    "commands": [
+     {
+      "defineVariablesCommand": {
+       "env": {
+        "SCREENSHOT_NAME": "journey-deliver-attendance-done"
+       },
+       "optional": false
+      }
+     },
+     {
+      "applyConfigurationCommand": {
+       "config": {
+        "appId": "org.commcare.dalvik"
+       },
+       "optional": false
+      }
+     },
+     {
+      "takeScreenshotCommand": {
+       "path": "${SCREENSHOT_NAME}",
+       "optional": false
+      }
+     },
+     {
+      "tapOnElement": {
+       "selector": {
+        "idRegex": "org.commcare.dalvik:id/nav_btn_next",
+        "optional": false
+       },
+       "retryIfNoChange": false,
+       "waitUntilVisible": false,
+       "longPress": false,
+       "optional": false
+      }
+     },
+     {
+      "waitForAnimationToEndCommand": {
+       "timeout": "3000",
+       "optional": false
+      }
+     }
+    ],
+    "sourceDescription": "form-advance.yaml",
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402311,
+   "duration": 2919,
+   "sequenceNumber": 2,
+   "evaluatedCommand": {
+    "runFlowCommand": {
+     "commands": [
+      {
+       "defineVariablesCommand": {
+        "env": {
+         "SCREENSHOT_NAME": "journey-deliver-attendance-done"
+        },
+        "optional": false
+       }
+      },
+      {
+       "applyConfigurationCommand": {
+        "config": {
+         "appId": "org.commcare.dalvik"
+        },
+        "optional": false
+       }
+      },
+      {
+       "takeScreenshotCommand": {
+        "path": "${SCREENSHOT_NAME}",
+        "optional": false
+       }
+      },
+      {
+       "tapOnElement": {
+        "selector": {
+         "idRegex": "org.commcare.dalvik:id/nav_btn_next",
+         "optional": false
+        },
+        "retryIfNoChange": false,
+        "waitUntilVisible": false,
+        "longPress": false,
+        "optional": false
+       }
+      },
+      {
+       "waitForAnimationToEndCommand": {
+        "timeout": "3000",
+        "optional": false
+       }
+      }
+     ],
+     "sourceDescription": "form-advance.yaml",
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "tapOnElement": {
+    "selector": {
+     "idRegex": "org.commcare.dalvik:id/nav_btn_next",
+     "optional": false
+    },
+    "retryIfNoChange": false,
+    "waitUntilVisible": false,
+    "longPress": false,
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402778,
+   "duration": 2123,
+   "sequenceNumber": 6,
+   "evaluatedCommand": {
+    "tapOnElement": {
+     "selector": {
+      "idRegex": "org.commcare.dalvik:id/nav_btn_next",
+      "optional": false
+     },
+     "retryIfNoChange": false,
+     "waitUntilVisible": false,
+     "longPress": false,
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "inputTextCommand": {
+    "text": "18",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781425641,
+   "duration": 778,
+   "sequenceNumber": 19,
+   "evaluatedCommand": {
+    "inputTextCommand": {
+     "text": "18",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "hideKeyboardCommand": {
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781437173,
+   "duration": 1656,
+   "sequenceNumber": 24,
+   "evaluatedCommand": {
+    "hideKeyboardCommand": {
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "inputTextCommand": {
+    "text": "160000",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781435861,
+   "duration": 1312,
+   "sequenceNumber": 23,
+   "evaluatedCommand": {
+    "inputTextCommand": {
+     "text": "160000",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "scrollUntilVisible": {
+    "selector": {
+     "textRegex": "[\\s\\S]*How many females are saving[\\s\\S]*",
+     "optional": false
+    },
+    "direction": "DOWN",
+    "scrollDuration": "30",
+    "visibilityPercentage": 60,
+    "timeout": "20000",
+    "centerElement": true,
+    "originalSpeedValue": "30",
+    "optional": false,
+    "visibilityPercentageNormalized": 0.0
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781417729,
+   "duration": 5238,
+   "sequenceNumber": 17,
+   "evaluatedCommand": {
+    "scrollUntilVisible": {
+     "selector": {
+      "textRegex": "[\\s\\S]*How many females are saving[\\s\\S]*",
+      "optional": false
+     },
+     "direction": "DOWN",
+     "scrollDuration": "701",
+     "visibilityPercentage": 60,
+     "timeout": "20000",
+     "centerElement": true,
+     "originalSpeedValue": "30",
+     "optional": false,
+     "visibilityPercentageNormalized": 0.0
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "waitForAnimationToEndCommand": {
+    "timeout": "3000",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781404902,
+   "duration": 328,
+   "sequenceNumber": 7,
+   "evaluatedCommand": {
+    "waitForAnimationToEndCommand": {
+     "timeout": "3000",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "scrollUntilVisible": {
+    "selector": {
+     "textRegex": "[\\s\\S]*The total the group is holding now[\\s\\S]*",
+     "optional": false
+    },
+    "direction": "DOWN",
+    "scrollDuration": "30",
+    "visibilityPercentage": 60,
+    "timeout": "20000",
+    "centerElement": true,
+    "originalSpeedValue": "30",
+    "optional": false,
+    "visibilityPercentageNormalized": 0.0
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781427759,
+   "duration": 5028,
+   "sequenceNumber": 21,
+   "evaluatedCommand": {
+    "scrollUntilVisible": {
+     "selector": {
+      "textRegex": "[\\s\\S]*The total the group is holding now[\\s\\S]*",
+      "optional": false
+     },
+     "direction": "DOWN",
+     "scrollDuration": "701",
+     "visibilityPercentage": 60,
+     "timeout": "20000",
+     "centerElement": true,
+     "originalSpeedValue": "30",
+     "optional": false,
+     "visibilityPercentageNormalized": 0.0
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "hideKeyboardCommand": {
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781416052,
+   "duration": 1677,
+   "sequenceNumber": 16,
+   "evaluatedCommand": {
+    "hideKeyboardCommand": {
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "scrollUntilVisible": {
+    "selector": {
+     "textRegex": "[\\s\\S]*How many males are saving[\\s\\S]*",
+     "optional": false
+    },
+    "direction": "DOWN",
+    "scrollDuration": "30",
+    "visibilityPercentage": 60,
+    "timeout": "20000",
+    "centerElement": true,
+    "originalSpeedValue": "30",
+    "optional": false,
+    "visibilityPercentageNormalized": 0.0
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781412261,
+   "duration": 126,
+   "sequenceNumber": 13,
+   "evaluatedCommand": {
+    "scrollUntilVisible": {
+     "selector": {
+      "textRegex": "[\\s\\S]*How many males are saving[\\s\\S]*",
+      "optional": false
+     },
+     "direction": "DOWN",
+     "scrollDuration": "701",
+     "visibilityPercentage": 60,
+     "timeout": "20000",
+     "centerElement": true,
+     "originalSpeedValue": "30",
+     "optional": false,
+     "visibilityPercentageNormalized": 0.0
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "applyConfigurationCommand": {
+    "config": {
+     "appId": "org.commcare.dalvik"
+    },
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781402318,
+   "duration": 1,
+   "sequenceNumber": 4,
+   "evaluatedCommand": {
+    "applyConfigurationCommand": {
+     "config": {
+      "appId": "org.commcare.dalvik"
+     },
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "inputTextCommand": {
+    "text": "30",
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781410331,
+   "duration": 755,
+   "sequenceNumber": 11,
+   "evaluatedCommand": {
+    "inputTextCommand": {
+     "text": "30",
+     "optional": false
+    }
+   }
+  }
+ },
+ {
+  "command": {
+   "hideKeyboardCommand": {
+    "optional": false
+   }
+  },
+  "metadata": {
+   "status": "COMPLETED",
+   "timestamp": 1787781411086,
+   "duration": 1175,
+   "sequenceNumber": 12,
+   "evaluatedCommand": {
+    "hideKeyboardCommand": {
+     "optional": false
+    }
+   }
+  }
+ }
+]
