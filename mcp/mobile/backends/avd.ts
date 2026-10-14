@@ -612,7 +612,7 @@ export class AvdBackend {
    * hits the DEFAULT 5037 and prints an empty device list while the emulator
    * is running fine. That reads exactly like a dead emulator, and until now
    * the only authoritative read was the process table — `mobile_diagnose`
-   * was cloud-only, so the local backend had no self-describing probe at
+   * was remote-only, so the local backend had no self-describing probe at
    * all. It cost real time on 2026-07-26 validating #957, where
    * `mobile_capture_ui_dump` returned a live hierarchy at the same moment
    * `adb devices` showed nothing.
@@ -763,8 +763,8 @@ export class AvdBackend {
    * AVD path. The extra ~30-60s is the price of guaranteed clean state;
    * cheaper than debugging another junk-state class out-of-band.
    *
-   * Cloud backend follows the same contract via a different mechanism —
-   * `/api/mobile/ensure-running` cold-boots from AMI on every call.
+   * The lease backend follows the same contract via a different mechanism —
+   * every lease is a fresh machine from ACE's image.
    */
   async ensureAvdRunning(avdName: string): Promise<AvdInfo> {
     // Sweep stale qemu+adb daemon state BEFORE listing/killing/booting.

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -8,6 +8,7 @@ import {
   clearSessionBackend,
   preflightMobileBackend,
   mobileStateDir,
+  resetDeprecationWarnings,
   type ResolvedBackend,
 } from '../../../mcp/mobile/backend-toggle.js';
 
@@ -37,10 +38,10 @@ describe('backend-toggle: resolveBackend', () => {
     expect(r.ppid).toBe(process.ppid);
   });
 
-  it('reads cloud from the session file', () => {
-    setSessionBackend('cloud');
+  it('reads lease from the session file', () => {
+    setSessionBackend('lease');
     const r = resolveBackend();
-    expect(r.backend).toBe('cloud');
+    expect(r.backend).toBe('lease');
     expect(r.source).toBe('session-file');
     expect(r.sessionFile).toBe(SESSION_FILE);
   });
@@ -54,15 +55,15 @@ describe('backend-toggle: resolveBackend', () => {
 
   it('process env wins over session file', () => {
     setSessionBackend('local');
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     const r = resolveBackend();
-    expect(r.backend).toBe('cloud');
+    expect(r.backend).toBe('lease');
     expect(r.source).toBe('env');
   });
 
   it('case-insensitive env values are accepted', () => {
-    process.env.ACE_MOBILE_BACKEND = 'CLOUD';
-    expect(resolveBackend().backend).toBe('cloud');
+    process.env.ACE_MOBILE_BACKEND = 'LEASE';
+    expect(resolveBackend().backend).toBe('lease');
     process.env.ACE_MOBILE_BACKEND = 'Local';
     expect(resolveBackend().backend).toBe('local');
   });
@@ -83,8 +84,8 @@ describe('backend-toggle: resolveBackend', () => {
   });
 
   it('reads fresh from disk on every call (no caching)', () => {
-    setSessionBackend('cloud');
-    expect(resolveBackend().backend).toBe('cloud');
+    setSessionBackend('lease');
+    expect(resolveBackend().backend).toBe('lease');
     setSessionBackend('local');
     expect(resolveBackend().backend).toBe('local');
     clearSessionBackend();
@@ -97,12 +98,17 @@ describe('backend-toggle: setSessionBackend', () => {
   afterEach(() => clearSessionBackend());
 
   it('rejects unknown backend names', () => {
-    expect(() => setSessionBackend('weird' as 'cloud')).toThrow(/invalid backend/);
+    expect(() => setSessionBackend('weird' as 'lease')).toThrow(/invalid backend/);
   });
 
   it('writes a file containing the backend name + newline', () => {
+    const file = setSessionBackend('lease');
+    expect(fs.readFileSync(file, 'utf8')).toBe('lease\n');
+  });
+
+  it('writes the deprecated cloud alias as lease, so the file never carries the retired name', () => {
     const file = setSessionBackend('cloud');
-    expect(fs.readFileSync(file, 'utf8')).toBe('cloud\n');
+    expect(fs.readFileSync(file, 'utf8')).toBe('lease\n');
   });
 
   it('supports a custom ppid (used by the slash command)', () => {
@@ -114,63 +120,47 @@ describe('backend-toggle: setSessionBackend', () => {
   });
 });
 
-describe('backend-toggle: preflightMobileBackend (jjackson/ace#839)', () => {
-  const resolved = (
-    backend: ResolvedBackend['backend'],
-    source: ResolvedBackend['source'],
-  ): ResolvedBackend => ({
-    backend,
-    source,
-    sessionFile: '/tmp/unused',
-    ppid: 1,
+// ── `cloud` is a deprecated alias for `lease` (ace-web's emulator retired 2026-10-14) ──
+describe('backend-toggle: deprecated cloud alias', () => {
+  let savedEnv: string | undefined;
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    savedEnv = process.env.ACE_MOBILE_BACKEND;
+    delete process.env.ACE_MOBILE_BACKEND;
+    clearSessionBackend();
+    resetDeprecationWarnings();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedEnv;
+    clearSessionBackend();
+    warn.mockRestore();
   });
 
-  it('fails loud when cloud is resolved but cloud is not configured', () => {
-    const pf = preflightMobileBackend({
-      resolved: resolved('cloud', 'session-file'),
-      cloudConfigured: false,
-    });
-    expect(pf.fatal).toBeDefined();
-    expect(pf.fatal?.code).toBe('CLOUD_NOT_CONFIGURED');
-    expect(pf.fatal?.remediation).toMatch(/ACE_WEB_BASE_URL/);
-    expect(pf.note).toBeUndefined();
+  it('ACE_MOBILE_BACKEND=cloud resolves to lease, from env', () => {
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    const r = resolveBackend();
+    expect(r.backend).toBe('lease');
+    expect(r.source).toBe('env');
   });
 
-  it('proceeds silently when cloud is resolved AND configured (happy path)', () => {
-    const pf = preflightMobileBackend({
-      resolved: resolved('cloud', 'env'),
-      cloudConfigured: true,
-    });
-    expect(pf.fatal).toBeUndefined();
-    expect(pf.note).toBeUndefined();
-    expect(pf.backend).toBe('cloud');
+  it('a pre-retirement `cloud` session file resolves to lease, from the file', () => {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(SESSION_FILE, 'cloud\n');
+    const r = resolveBackend();
+    expect(r.backend).toBe('lease');
+    expect(r.source).toBe('session-file');
   });
 
-  it('notes the mismatch when local is a DEFAULT and cloud IS configured', () => {
-    const pf = preflightMobileBackend({
-      resolved: resolved('local', 'default'),
-      cloudConfigured: true,
-    });
-    expect(pf.fatal).toBeUndefined();
-    expect(pf.note).toMatch(/\/ace:mobile-backend cloud/);
-  });
-
-  it('does NOT nag when local is EXPLICITLY chosen even if cloud is configured', () => {
-    const pf = preflightMobileBackend({
-      resolved: resolved('local', 'session-file'),
-      cloudConfigured: true,
-    });
-    expect(pf.fatal).toBeUndefined();
-    expect(pf.note).toBeUndefined();
-  });
-
-  it('does NOT nag on the ordinary local-default, cloud-unconfigured dev case', () => {
-    const pf = preflightMobileBackend({
-      resolved: resolved('local', 'default'),
-      cloudConfigured: false,
-    });
-    expect(pf.fatal).toBeUndefined();
-    expect(pf.note).toBeUndefined();
+  it('logs ONE deprecation line per source, not one per routing decision', () => {
+    process.env.ACE_MOBILE_BACKEND = 'Cloud';
+    resolveBackend();
+    resolveBackend();
+    resolveBackend();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/'cloud' \(ACE_MOBILE_BACKEND\) is deprecated.*using 'lease'/);
   });
 });
 
@@ -201,7 +191,7 @@ describe('backend-toggle: state dir is isolated from the real $HOME under test',
     const homeFile = path.join(os.homedir(), '.ace', `mobile-backend.${process.ppid}`);
     const existedBefore = fs.existsSync(homeFile);
 
-    const written = setSessionBackend('cloud');
+    const written = setSessionBackend('lease');
     expect(written.startsWith(mobileStateDir())).toBe(true);
     expect(fs.existsSync(written)).toBe(true);
     expect(fs.existsSync(homeFile)).toBe(existedBefore);
@@ -220,11 +210,11 @@ describe('backend-toggle: state dir is isolated from the real $HOME under test',
       process.env.ACE_MOBILE_STATE_DIR = tmp;
       expect(mobileStateDir()).toBe(tmp);
 
-      const file = setSessionBackend('cloud');
+      const file = setSessionBackend('lease');
       expect(file).toBe(path.join(tmp, `mobile-backend.${process.ppid}`));
 
       const r = resolveBackend();
-      expect(r.backend).toBe('cloud');
+      expect(r.backend).toBe('lease');
       expect(r.source).toBe('session-file');
       expect(r.sessionFile).toBe(file);
 
@@ -288,7 +278,8 @@ describe('backend-toggle: selection matrix (lease backend)', () => {
   const cases: Array<{
     name: string;
     env?: string;
-    file?: 'cloud' | 'local' | 'lease';
+    file?: 'local' | 'lease';
+    rawFile?: string;
     avd: 'provisioned' | 'unmarked' | 'bad-marker' | 'none';
     want: string;
     source: string;
@@ -299,20 +290,24 @@ describe('backend-toggle: selection matrix (lease backend)', () => {
     { name: 'nothing set, unreadable marker → lease (fails closed)', avd: 'bad-marker', want: 'lease', source: 'default' },
     { name: 'session file lease beats a provisioned AVD', file: 'lease', avd: 'provisioned', want: 'lease', source: 'session-file' },
     { name: 'session file local beats no AVD', file: 'local', avd: 'none', want: 'local', source: 'session-file' },
-    { name: 'session file cloud (legacy) still honoured', file: 'cloud', avd: 'none', want: 'cloud', source: 'session-file' },
+    { name: 'session file cloud (deprecated alias) resolves to lease', rawFile: 'cloud', avd: 'provisioned', want: 'lease', source: 'session-file' },
     { name: 'env lease beats session file local', env: 'lease', file: 'local', avd: 'provisioned', want: 'lease', source: 'env' },
     { name: 'env local beats no AVD', env: 'local', avd: 'none', want: 'local', source: 'env' },
-    { name: 'env cloud (legacy) beats everything', env: 'cloud', file: 'lease', avd: 'provisioned', want: 'cloud', source: 'env' },
+    { name: 'env cloud (deprecated alias) beats everything, as lease', env: 'cloud', file: 'local', avd: 'provisioned', want: 'lease', source: 'env' },
     { name: 'env is case/space-insensitive', env: '  LEASE ', avd: 'provisioned', want: 'lease', source: 'env' },
     { name: 'an unknown env value falls through to the default', env: 'remote', avd: 'none', want: 'lease', source: 'default' },
   ];
 
-  it.each(cases)('$name', ({ env, file, avd, want, source }) => {
+  it.each(cases)('$name', ({ env, file, rawFile, avd, want, source }) => {
     if (avd === 'provisioned') makeAvd('ACE_Pixel_API_34', GOOD);
     if (avd === 'unmarked') makeAvd('ACE_Pixel_API_34', null);
     if (avd === 'bad-marker') makeAvd('ACE_Pixel_API_34', '{not json');
     if (env !== undefined) process.env.ACE_MOBILE_BACKEND = env;
     if (file) setSessionBackend(file);
+    if (rawFile) {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+      fs.writeFileSync(SESSION_FILE, `${rawFile}\n`);
+    }
     const r = resolveBackend();
     expect(r.backend).toBe(want);
     expect(r.source).toBe(source);
@@ -343,7 +338,7 @@ describe('backend-toggle: selection matrix (lease backend)', () => {
 });
 
 describe('backend-toggle: lease preflight', () => {
-  const resolved = (backend: 'lease' | 'local' | 'cloud', source: 'env' | 'session-file' | 'default' = 'default'): ResolvedBackend => ({
+  const resolved = (backend: 'lease' | 'local', source: 'env' | 'session-file' | 'default' = 'default'): ResolvedBackend => ({
     backend,
     source,
     sessionFile: '/tmp/x',
@@ -352,20 +347,24 @@ describe('backend-toggle: lease preflight', () => {
   });
 
   it('lease without a PAT is fatal LEASE_NOT_CONFIGURED (never falls through to local)', () => {
-    const p = preflightMobileBackend({ resolved: resolved('lease'), cloudConfigured: false, leaseConfigured: false });
+    const p = preflightMobileBackend({ resolved: resolved('lease'), leaseConfigured: false });
     expect(p.fatal?.code).toBe('LEASE_NOT_CONFIGURED');
     expect(p.fatal?.message).toContain('no provisioned AVD');
     expect(p.fatal?.remediation).toContain('/ace:mobile-bootstrap');
   });
 
   it('a pinned lease names the pin, not the default', () => {
-    const p = preflightMobileBackend({ resolved: resolved('lease', 'env'), cloudConfigured: true, leaseConfigured: false });
+    const p = preflightMobileBackend({ resolved: resolved('lease', 'env'), leaseConfigured: false });
     expect(p.fatal?.message).toContain('pinned to lease (env)');
   });
 
   it('lease with a PAT proceeds silently', () => {
-    const p = preflightMobileBackend({ resolved: resolved('lease'), cloudConfigured: false, leaseConfigured: true });
+    const p = preflightMobileBackend({ resolved: resolved('lease'), leaseConfigured: true });
     expect(p.fatal).toBeUndefined();
-    expect(p.note).toBeUndefined();
+  });
+
+  it('local proceeds silently whether or not a lease is configured', () => {
+    expect(preflightMobileBackend({ resolved: resolved('local', 'default'), leaseConfigured: true }).fatal).toBeUndefined();
+    expect(preflightMobileBackend({ resolved: resolved('local', 'session-file') }).fatal).toBeUndefined();
   });
 });

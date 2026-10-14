@@ -1,13 +1,13 @@
-// Shared plumbing for the two REMOTE mobile backends — `cloud.ts` (legacy
-// ace-web `/api/mobile`) and `lease.ts` (canopy-web capability leases).
+// Shared plumbing for REMOTE mobile backends — today `lease.ts` (canopy-web
+// capability leases). Extracted from the retired ace-web `cloud.ts` backend,
+// whose download/retry/screenshot helpers the lease reuses.
 //
-// Both drive an emulator they cannot see, over HTTP, and both hand callers
-// the same on-disk shape MaestroBackend produces: artifacts downloaded from
-// presigned URLs into the caller's screenshotDir, images surfaced as
-// ScreenshotEntry. Extracted from cloud.ts so the second backend reuses the
-// retry envelope, the download, the artifact-name containment (ace#1110) and
-// the step normalisation instead of copying them — a copy would inherit none
-// of the next fix.
+// A remote backend drives an emulator it cannot see, over HTTP, and hands
+// callers the same on-disk shape MaestroBackend produces: artifacts downloaded
+// from presigned URLs into the caller's screenshotDir, images surfaced as
+// ScreenshotEntry. Kept as its own module so the retry envelope, the download,
+// the artifact-name containment (ace#1110) and the step normalisation have one
+// home — a copy would inherit none of the next fix.
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -98,7 +98,7 @@ export async function downloadToFile(
   url: string,
   dest: string,
   retry: RetryConfig,
-  errorCode = 'CLOUD_DOWNLOAD_FAILED',
+  errorCode = 'REMOTE_DOWNLOAD_FAILED',
 ): Promise<number> {
   const { response, lastError, attempts } = await fetchWithRetry(fetchImpl, url, undefined, retry);
   if (!response) {
@@ -135,7 +135,7 @@ export async function materializeArtifacts(
   artifacts: RemoteArtifact[],
   screenshotDir: string,
   download: (url: string, dest: string) => Promise<number>,
-  logTag = 'cloud',
+  logTag = 'remote',
 ): Promise<ScreenshotEntry[]> {
   await fs.mkdir(screenshotDir, { recursive: true });
   const screenshots: ScreenshotEntry[] = [];

@@ -12,7 +12,7 @@ import type { AvdInfo, RecipeRunResult, VideoArtifact } from '../../../mcp/mobil
 // production code path instead of the refusal.
 process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
 
-// Every client in this file is built with `cloud: null` — these suites are
+// Every client in this file is built with `lease: null` — these suites are
 // about the LOCAL recorder/spool path. Backend selection reads
 // ACE_MOBILE_BACKEND, and vitest reuses a worker process across test files, so
 // a sibling mobile suite that sets it to 'cloud' leaks in whenever the
@@ -147,7 +147,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new MobileClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never,
+      lease: null,
       bootstrapConfig: null,
       recorder: rec.hooks,
       spool: spool.hooks,
@@ -214,7 +214,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new HealStubClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never,
+      lease: null,
       bootstrapConfig: null,
       recorder: rec.hooks,
       spool: spool.hooks,
@@ -250,7 +250,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new MobileClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never, bootstrapConfig: null,
+      lease: null, bootstrapConfig: null,
       recorder: rec.hooks, spool: spool.hooks,
     });
 
@@ -283,7 +283,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new MobileClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never, bootstrapConfig: null,
+      lease: null, bootstrapConfig: null,
       recorder: rec.hooks, spool: spool.hooks,
     });
 
@@ -318,7 +318,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new MobileClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never, bootstrapConfig: null,
+      lease: null, bootstrapConfig: null,
       recorder: exploding, spool: fakeSpool().hooks,
     });
 
@@ -345,7 +345,7 @@ describe('MobileClient.runRecipe recording', () => {
     const client = new MobileClient({
       maestro: maestro as never,
       avd: fakeAvd() as never,
-      cloud: null as never, bootstrapConfig: null,
+      lease: null, bootstrapConfig: null,
       recorder: hooks, spool: fakeSpool().hooks,
     });
 
@@ -357,24 +357,24 @@ describe('MobileClient.runRecipe recording', () => {
     expect(result.videos ?? []).toEqual([]);
   });
 
-  it('does not record on the cloud backend', async () => {
+  it('does not record on the lease backend', async () => {
     const rec = fakeRecorder();
     const dir = tmpShots();
     const recipePath = tmpRecipe();
 
-    const cloud = { runRecipe: vi.fn(async () => passResult(dir)) };
+    const lease = { runRecipe: vi.fn(async () => passResult(dir)) };
     const client = new MobileClient({
-      cloud: cloud as never, bootstrapConfig: null,
+      lease: lease as never, bootstrapConfig: null,
       recorder: rec.hooks, spool: fakeSpool().hooks,
       avd: fakeAvd() as never,
     });
-    // Force the cloud branch the same way the existing cloud tests do.
+    // Force the lease branch the same way the existing lease tests do.
     // Save and RESTORE — a bare `delete` here dropped the module-scope
     // 'local' pin set at the top of this file for the rest of the worker's
     // life, which is what let the shared ~/.ace/mobile-backend file
     // resolve 'cloud' into whatever mobile file ran next. ace#1797.
     const prev = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     try {
       const result = await client.runRecipe(recipePath, {}, dir, 'cc-baseline');
       expect(rec.start).not.toHaveBeenCalled();
@@ -390,7 +390,7 @@ describe('MobileClient session-video spool atoms', () => {
   it('list/clear are scoped to this session and report a real count', () => {
     const spool = fakeSpool();
     const client = new MobileClient({
-      avd: fakeAvd() as never, cloud: null as never,
+      avd: fakeAvd() as never, lease: null,
       bootstrapConfig: null, spool: spool.hooks,
     });
 

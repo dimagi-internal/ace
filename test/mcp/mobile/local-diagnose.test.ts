@@ -130,8 +130,9 @@ describe('mobile_diagnose is no longer cloud-only (#961)', () => {
     expect(CAPABILITY_MAP.diagnose.backend).not.toBe('CLOUD');
     expect(CAPABILITY_MAP.diagnose.description).not.toMatch(/CLOUD_ONLY_OPERATION/);
     expect(CAPABILITY_MAP.diagnose.description).toMatch(/adb server port/i);
-    // Its cloud-only siblings must NOT have been loosened by the same change.
-    expect(CAPABILITY_MAP.restart_runner.backend).toBe('CLOUD');
+    // The cloud-only sibling (`restart_runner`) went with the retired ace-web
+    // cloud backend (2026-10-14).
+    expect('restart_runner' in CAPABILITY_MAP).toBe(false);
   });
 
   it('MobileClient.diagnose does not route local callers into requireCloudOnly', async () => {
@@ -143,8 +144,8 @@ describe('mobile_diagnose is no longer cloud-only (#961)', () => {
     );
     // The pre-fix body, verbatim.
     expect(src).not.toMatch(/requireCloudOnly\('mobile_diagnose'\)/);
-    // The cloud-only siblings still gate.
-    expect(src).toMatch(/requireCloudOnly\('mobile_restart_runner'\)/);
+    // ...and the cloud-only gate itself is gone with the cloud backend.
+    expect(src).not.toMatch(/requireCloudOnly/);
   });
 
   it('CLAUDE.md names the enforcement instead of "Not enforced"', async () => {

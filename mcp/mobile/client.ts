@@ -8,10 +8,6 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { AvdBackend, defaultShell, pinAdbServerPort } from './backends/avd.js';
-import {
-  CloudBackend,
-  type CloudDiagnostics,
-} from './backends/cloud.js';
 import { LeaseBackend, type LeaseDiagnostics } from './backends/lease.js';
 import { MaestroBackend, collectScreenshotsFromDir } from './backends/maestro.js';
 import {
@@ -86,18 +82,14 @@ import { clearSpool, listSpooled, spoolDir,
  *
  *   const d = await client.diagnose();
  *   if (d.backend === 'local') d.adb_server_port;      // 5039, typically
- *   else                       d.runner_service_state; // cloud in-VM state
+ *   else                       d.lease;                // lease + in-VM state
  *
  * The union lives here rather than in `types.ts` because `types.ts` is
- * deliberately backend-agnostic and does not import `CloudDiagnostics`.
+ * deliberately backend-agnostic and does not import `LeaseDiagnostics`.
  */
 export type MobileDiagnostics =
   | LocalDiagnostics
-  | ({ backend: 'cloud' } & CloudDiagnostics)
   | ({ backend: 'lease' } & LeaseDiagnostics);
-
-/** The two backends that drive an emulator they cannot see (cloud = legacy ace-web, lease = canopy-web). */
-export type RemoteBackend = CloudBackend | LeaseBackend;
 
 /**
  * Screen-recorder seam. Injected only by tests; production binds the real
@@ -131,7 +123,6 @@ export interface SpoolHooks {
 export interface MobileClientOpts {
   avd?: AvdBackend;
   maestro?: MaestroBackend;
-  cloud?: CloudBackend;
   /**
    * Lease backend (canopy-web capability broker). `null` = not configured;
    * omitted = constructed from ACE's canopy-web PAT when one is present.
@@ -709,7 +700,7 @@ export function classifyDeviceUserState(
  *
  * This is the single source of truth for that vocabulary — both the local
  * funnel (which downgrades only when its post-bootstrap probe couldn't
- * confirm) and the cloud funnel (which never verifies at all) route through
+ * confirm) and the lease funnel (which never verifies at all) route through
  * it, so the two backends can't drift into describing the same uncertainty
  * with different words.
  */
@@ -733,14 +724,14 @@ function isApkZipMagic(buf: Buffer): boolean {
  * Tar + gzip every file in `dir` (non-recursive into hidden dirs that
  * Maestro doesn't reference — we tar the visible contents only) and
  * return a base64 string. Used to ship the resolved palette to the
- * cloud backend so the server's Maestro sees the same sibling layout
- * the local backend's Maestro sees. The `cd` form means the tarball
+ * lease backend so the leased machine's Maestro sees the same sibling
+ * layout the local backend's Maestro sees. The `cd` form means the tarball
  * contains *relative* paths, so server-side `tar xzf - -C run_dir`
  * lays them out as direct children of `run_dir`.
  *
  * `COPYFILE_DISABLE=1` suppresses macOS AppleDouble (`._foo.yaml`)
  * sidecar files that bsdtar otherwise embeds for filesystem extended
- * attributes. Without this, the cloud-side `tar xzf` on Linux emits a
+ * attributes. Without this, the remote `tar xzf` on Linux emits a
  * `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'`
  * warning per file and lands stray `._*.yaml` files in `run_dir` —
  * harmless to Maestro but they pollute the S3 artifact list. Verified
@@ -798,14 +789,6 @@ export class MobileClient {
   /** Root for `registerTestUser` scratch dirs. See MobileClientOpts.regTmpRoot (ace#1942). */
   readonly regTmpRoot: string;
   /**
-   * Cloud backend handle. Always pre-constructed when ACE_WEB env is
-   * available so a mid-session toggle to cloud routes immediately. Null
-   * only when the runtime can't build a CloudBackend (missing
-   * ACE_WEB_BASE_URL / ACE_WEB_PAT_TOKEN), in which case routing to
-   * cloud throws a clear typed error.
-   */
-  readonly cloud: CloudBackend | null;
-  /**
    * Lease backend handle (ACE's own ephemeral android-emulator, leased from
    * canopy-web). Pre-constructed whenever ACE's canopy-web PAT is present so
    * a mid-session toggle routes immediately; null when it isn't, in which
@@ -857,22 +840,9 @@ export class MobileClient {
       dir: spoolDir,
       count: countSpooledEntries,
     };
-    // Eagerly try to construct CloudBackend so /ace:mobile-backend can
+    // Eagerly try to construct the LeaseBackend so /ace:mobile-backend can
     // flip the toggle mid-session without an MCP restart. We catch the
-    // typed env-missing error so envs without ACE_WEB still start up.
-    if (opts.cloud !== undefined) {
-      this.cloud = opts.cloud;
-    } else {
-      try {
-        this.cloud = new CloudBackend();
-      } catch (e) {
-        if (e instanceof MobileError && e.code === 'CLOUD_NOT_CONFIGURED') {
-          this.cloud = null;
-        } else {
-          throw e;
-        }
-      }
-    }
+    // typed env-missing error so envs without a canopy-web PAT still start up.
     if (opts.lease !== undefined) {
       this.lease = opts.lease;
     } else {
@@ -889,35 +859,19 @@ export class MobileClient {
   }
 
   /**
-   * Resolve the active backend on every routing decision so a slash-
-   * command toggle takes effect mid-session.
-   *
-   * True for EITHER remote backend — legacy `cloud` (ace-web) or `lease`
-   * (canopy-web). Both drive an emulator this process cannot see, through the
-   * same method surface, so every `useCloud` branch below serves both; the few
-   * places they differ check `useLease`.
+   * True when the active backend is the canopy-web lease — the one remote
+   * backend, driving an emulator this process cannot see. Resolved on every
+   * routing decision so a slash-command toggle takes effect mid-session.
    */
-  get useCloud(): boolean {
-    const b = resolveBackend().backend;
-    return b === 'cloud' || b === 'lease';
-  }
-
-  /** True when the active backend is the canopy-web lease. */
   get useLease(): boolean {
     return resolveBackend().backend === 'lease';
   }
 
   /**
-   * The active remote backend. If the toggle says cloud/lease but that
-   * backend wasn't constructible, throw a typed error pointing at the missing
-   * config so the caller sees a clear signal instead of silently falling back
-   * to local.
+   * The lease backend. If the toggle says lease but it wasn't constructible,
+   * throw a typed error pointing at the missing config so the caller sees a
+   * clear signal instead of silently falling back to local.
    */
-  private requireCloud(): RemoteBackend {
-    if (this.useLease) return this.requireLease();
-    return this.requireLegacyCloud();
-  }
-
   private requireLease(): LeaseBackend {
     if (!this.lease) {
       throw new MobileError(
@@ -927,17 +881,6 @@ export class MobileClient {
       );
     }
     return this.lease;
-  }
-
-  private requireLegacyCloud(): CloudBackend {
-    if (!this.cloud) {
-      throw new MobileError(
-        'CLOUD_NOT_CONFIGURED',
-        'cloud backend selected but not configured',
-        'Set ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN in .env, or switch backend with /ace:mobile-backend local.',
-      );
-    }
-    return this.cloud;
   }
 
   // ---- Atom-level methods (one per capability) ----
@@ -961,20 +904,17 @@ export class MobileClient {
    * for Maestro": `mobile-bootstrap`, Phase 6's pre-flight, and
    * `app-screenshot-capture` Step 3 all call this same path. DRY.
    *
-   * Cloud backend skips the local driver check — its workers manage
-   * Maestro state on their side, and the gRPC channel they expose
-   * through ace-web has its own health semantics.
+   * The lease backend skips the local driver check — the leased machine
+   * manages Maestro state on its side (`ace-mobile` beside the emulator).
    */
   async ensureAvdRunning(name: string, opts?: EnsureAvdRunningOptions): Promise<AvdInfo> {
     // Pre-boot backend preflight (jjackson/ace#839): fail loud on an
-    // unconfigured cloud toggle, or note a likely dispatch/session mismatch,
-    // BEFORE booting any local AVD. Purely a check over the resolved backend
-    // + cloud-config presence — no I/O, no state change. Runs first so a
-    // wrong local boot on a shared host can't squat a busy emulator port
-    // before the misconfiguration surfaces.
+    // unconfigured lease toggle BEFORE booting any local AVD. Purely a check
+    // over the resolved backend + lease-config presence — no I/O, no state
+    // change. Runs first so a wrong local boot on a shared host can't squat a
+    // busy emulator port before the misconfiguration surfaces.
     const preflight = preflightMobileBackend({
       resolved: resolveBackend(),
-      cloudConfigured: this.cloud !== null,
       leaseConfigured: this.lease !== null,
     });
     if (preflight.fatal) {
@@ -983,9 +923,6 @@ export class MobileClient {
         preflight.fatal.message,
         preflight.fatal.remediation,
       );
-    }
-    if (preflight.note) {
-      logInfo(`ensure_avd_running: ${preflight.note}`);
     }
 
     // ace#1821, visibility half. Two sessions on ONE OPPORTUNITY is a different
@@ -1020,42 +957,14 @@ export class MobileClient {
       }
     }
 
-    if (this.useCloud) {
-      // Per-run test-user overrides are LOCAL-ONLY (dimagi-internal/ace#1289).
-      // The cloud backend registers inside the AMI from its own baked recipes,
-      // so honouring an override here would need `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`
-      // AND an ace-web change to forward caller-supplied credentials. Throw
-      // rather than silently register the env-derived user under a caller that
-      // believes it minted a fresh one — a silent fallback would reintroduce
-      // the accumulated-invite class the override exists to close.
-      // The LEASE backend registers from this client (cloudBootstrapHeal), so
-      // it can honour an override; only legacy cloud cannot.
-      if (opts?.testUser && !this.useLease) {
-        throw new MobileError(
-          'CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED',
-          'mobile_ensure_avd_running: per-run testUser overrides are not supported on the cloud backend — ' +
-            'registration happens inside the AMI from its baked recipes, which do not accept ' +
-            'caller-supplied credentials.',
-          'Run on the local AVD backend (/ace:mobile-backend local), or land ' +
-            'ACE_MOBILE_CLOUD_LIVE_REGISTER=true plus ace-web support for caller-supplied ' +
-            'registration credentials first.',
-        );
-      }
-      const info = await this.requireCloud().ensureAvdRunning(name);
+    if (this.useLease) {
+      const info = await this.requireLease().ensureAvdRunning(name);
       // Symmetric with the local branch — drive registration through
       // `restoreDeviceUserState` so the same contract holds across
       // backends: *after this method returns, the device is at the
-      // Connect home, signed in as the test user*.
-      //
-      // The cloud branch of `restoreDeviceUserState` dispatches to
-      // `cloudBootstrapHeal` when `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`
-      // (the post-Phase-D AMI default), otherwise returns the legacy
-      // `{ attempted: false }` stub — preserving behavior for any
-      // deployment that's still riding the pre-Phase-D AMI's pre-baked
-      // demo user. Pre-2026-05-26 this method short-circuited with the
-      // stub unconditionally, which silently left the cloud AVD
-      // unregistered on every fresh-AMI boot and forced operators to
-      // run `/ace:mobile-bootstrap` by hand mid-`/ace:run`.
+      // Connect home, signed in as the test user*. The lease registers from
+      // this client (`leaseBootstrapHeal`), so a per-run testUser override
+      // is honoured here exactly as on local (dimagi-internal/ace#1289).
       const deviceUserState = await this.restoreDeviceUserState(info, opts);
       return { ...info, heal: { deviceUserState } };
     }
@@ -1141,10 +1050,10 @@ export class MobileClient {
    * the snapshot from the heal path entirely. Demo users skip OTP — see
    * `docs/learnings/2026-05-14-demo-user-no-otp.md` for the rationale.
    *
-   * **Cloud backend follows the same contract via a different mechanism.**
-   * `backends/cloud.ts` documents that each `/api/mobile/ensure-running`
-   * call cold-boots the AVD and runs registration recipes against it.
-   * The contract — *"after `MobileClient.ensureAvdRunning` returns, the
+   * **The lease backend follows the same contract via a different
+   * mechanism.** Every lease is a fresh EC2 machine from ACE's image
+   * (`infra/capabilities/android-emulator/`), and `leaseBootstrapHeal`
+   * registers the test user live on it. The contract — *"after `MobileClient.ensureAvdRunning` returns, the
    * device is at the Connect home, signed in as the test user"* — is
    * identical across backends; only the mechanism differs.
    *
@@ -1167,21 +1076,12 @@ export class MobileClient {
     avd: AvdInfo,
     opts?: EnsureAvdRunningOptions,
   ): Promise<DeviceStateHealLog> {
-    if (this.useCloud) {
-      // Two cloud modes, gated on ACE_MOBILE_CLOUD_LIVE_REGISTER:
-      //   true  → live cloud-bootstrap (pm clear + registerTestUser),
-      //           mirroring local's always-deterministic-bootstrap.
-      //   else  → legacy stub. The AMI's cold-boot path is the
-      //           equivalent restore mechanism for pre-Phase-D AMIs;
-      //           see `backends/cloud.ts` header.
-      //
-      // The LEASE backend always takes the live path: its machine is fresh
-      // from the image, no user is pre-registered, and registration is driven
-      // from here (`ace-mobile register-test-user`), so the flag is moot.
-      if (this.useLease || process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER === 'true') {
-        return this.cloudBootstrapHeal(avd, opts);
-      }
-      return { classified_as: 'unknown', attempted: false };
+    if (this.useLease) {
+      // The lease always takes the live path (pm clear + registerTestUser),
+      // mirroring local's always-deterministic-bootstrap: its machine is
+      // fresh from the image, no user is pre-registered, and registration is
+      // driven from here (`ace-mobile register-test-user`).
+      return this.leaseBootstrapHeal(avd, opts);
     }
 
     if (!this.bootstrapConfig) {
@@ -1892,41 +1792,40 @@ export class MobileClient {
     return { ...r, adbPort, portKind, driverPackages: packages };
   }
   stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
-    if (this.useCloud) return this.requireCloud().stopAvd(name, opts);
+    if (this.useLease) return this.requireLease().stopAvd(name, opts);
     // The local AVD backend has no busy guard — opts is ignored there.
     return this.avd.stopAvd(name);
   }
   listAvds(): Promise<string[]> {
-    if (this.useCloud) return this.requireCloud().listAvds();
+    if (this.useLease) return this.requireLease().listAvds();
     return this.avd.listAvds();
   }
   installApk(avdName: string, apk: string): Promise<ApkInfo> {
-    if (this.useCloud) return this.requireCloud().installApk(avdName, apk);
+    if (this.useLease) return this.requireLease().installApk(avdName, apk);
     return this.avd.installApk(avdName, apk);
   }
   uninstallApk(avdName: string, pkg: string): Promise<{ uninstalled: boolean }> {
-    if (this.useCloud) return this.requireCloud().uninstallApk(avdName, pkg);
+    if (this.useLease) return this.requireLease().uninstallApk(avdName, pkg);
     return this.avd.uninstallApk(avdName, pkg);
   }
   captureUiDump(avdName: string): Promise<UiDumpResult> {
-    if (this.useCloud) return this.requireCloud().captureUiDump(avdName);
+    if (this.useLease) return this.requireLease().captureUiDump(avdName);
     return this.avd.captureUiDump(avdName);
   }
   saveSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    if (this.useCloud) return this.requireCloud().saveSnapshot(avdName, snapshotName);
+    if (this.useLease) return this.requireLease().saveSnapshot(avdName, snapshotName);
     return this.avd.saveSnapshot(avdName, snapshotName);
   }
   loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    if (this.useCloud) return this.requireCloud().loadSnapshot(avdName, snapshotName);
+    if (this.useLease) return this.requireLease().loadSnapshot(avdName, snapshotName);
     return this.avd.loadSnapshot(avdName, snapshotName);
   }
   /**
-   * Set a mock GPS fix on the AVD (longitude-FIRST). Local-AVD only for
-   * now — the cloud emulator backend has no location-set endpoint yet, so
-   * a `cloud` session throws a clear `CLOUD_MOCK_LOCATION_UNSUPPORTED`
-   * rather than silently no-op'ing. The local cold-boot baseline already
-   * seeds DEFAULT_MOCK_LOCATION, so geopoint capture works without an
-   * explicit call; use this to override with opp-specific coordinates.
+   * Set a mock GPS fix on the AVD (longitude-FIRST). Local AVD and lease
+   * (`ace-mobile set-location` beside the emulator). The local cold-boot
+   * baseline already seeds DEFAULT_MOCK_LOCATION, so geopoint capture works
+   * without an explicit call; use this to override with opp-specific
+   * coordinates.
    */
   setLocation(
     avdName: string,
@@ -1939,76 +1838,38 @@ export class MobileClient {
     if (this.useLease) {
       return this.requireLease().setLocation(avdName, longitude, latitude, altitude, satellites);
     }
-    if (this.useCloud) {
-      throw new MobileError(
-        'CLOUD_MOCK_LOCATION_UNSUPPORTED',
-        'mobile_set_location is not yet supported on the cloud emulator backend ' +
-          '(no /api/mobile location-set endpoint). Run against the local AVD ' +
-          '(ACE_MOBILE_BACKEND unset / =local), or add a cloud location-set route.',
-      );
-    }
     return this.avd.setLocation(avdName, longitude, latitude, altitude, satellites);
   }
 
-  // ── Diagnostics + cloud-only admin ─────────────────────────────────
+  // ── Diagnostics ────────────────────────────────────────────────
   //
-  // `diagnose` is DUAL-MODE (dimagi-internal/ace#961): cloud returns the
-  // in-VM `CloudDiagnostics`, local returns `LocalDiagnostics` (adb server
-  // port + serial + device visibility on THAT port). Callers discriminate
-  // on the `backend` field.
-  //
-  // `restartRunner` remains cloud-only — there is no local analogue of the
-  // runner unit. When the active backend is local it throws a clear typed
-  // error rather than silently no-op'ing, so a skill sees a signal instead of
-  // an empty result. (`patchLaunchScript` was removed in ace#1113.)
-
-  private requireCloudOnly(operation: string): RemoteBackend {
-    if (!this.useCloud) {
-      throw new MobileError(
-        'CLOUD_ONLY_OPERATION',
-        `${operation} is only available on the cloud mobile backend`,
-        'Switch to cloud with /ace:mobile-backend cloud, or invoke this against the cloud directly.',
-      );
-    }
-    return this.requireCloud();
-  }
+  // `diagnose` is DUAL-MODE (dimagi-internal/ace#961): lease returns the
+  // in-VM `ace-mobile diagnose` snapshot plus the lease it ran on, local
+  // returns `LocalDiagnostics` (adb server port + serial + device visibility
+  // on THAT port). Callers discriminate on the `backend` field.
+  // (`restartRunner` went with the retired ace-web cloud backend: a lease has
+  // no long-lived runner — release + re-acquire is the restore there.)
 
   /**
    * Read-only diagnostic snapshot of whichever backend is active
    * (dimagi-internal/ace#961). Never boots, heals, or mutates.
    *
-   *  - cloud → the in-VM `CloudDiagnostics` from `/api/mobile/diagnose`,
-   *    tagged `backend: 'cloud'`.
+   *  - lease → the in-VM `ace-mobile diagnose` snapshot plus a `lease`
+   *    block, tagged `backend: 'lease'`.
    *  - local → `LocalDiagnostics`: the adb server port this session
    *    ACTUALLY allocated, the devices visible on that port, and the AVD
    *    behind them.
    *
    * Why local matters: the local backend probe-allocates its own adb server
    * (typically 5039), so a raw `adb devices` hits the default 5037, shows
-   * nothing, and reads as a dead emulator. Before this the atom threw
-   * `CLOUD_ONLY_OPERATION` on local, leaving the process table as the only
-   * authoritative read.
+   * nothing, and reads as a dead emulator.
    */
   async diagnose(): Promise<MobileDiagnostics> {
     if (this.useLease) {
       return { backend: 'lease', ...(await this.requireLease().diagnose()) };
     }
-    if (this.useCloud) {
-      return { backend: 'cloud', ...(await this.requireLegacyCloud().diagnose()) };
-    }
     return this.avd.diagnose();
   }
-
-  /**
-   * Cleanly restart the in-VM ace-mobile-runner unit. Legacy cloud only — on
-   * the lease backend it throws LEASE_UNSUPPORTED (release + re-acquire is
-   * the restore there).
-   */
-  restartRunner(opts: { waitForReady?: boolean } = {}): Promise<CloudDiagnostics> {
-    return this.requireCloudOnly('mobile_restart_runner').restartRunner(opts);
-  }
-
-  /** Hot-patch the in-VM ace-emulator-launch script. Cloud only. */
 
   /**
    * When `avdName` is provided, the recipe runs against that emulator's
@@ -2018,9 +1879,9 @@ export class MobileClient {
    * `MaestroBackend.runRecipe`). Without `avdName` we fall back to
    * Maestro's default device auto-discovery for backward compatibility.
    *
-   * On the cloud backend `avdName` is the desired baked state (e.g.
-   * `cc-2.62.0`). The recipe is shipped as a YAML string in the request
-   * body and screenshots are downloaded into this dispatch's output dir.
+   * On the lease backend `avdName` is the desired baked state (e.g.
+   * `cc-2.62.0`). The recipe is uploaded to the leased machine and
+   * screenshots are downloaded into this dispatch's output dir.
    *
    * `screenshotDir` is a run-scoped ROOT, not the literal output dir
    * (dimagi-internal/ace#1130). Artifacts land in
@@ -2138,11 +1999,9 @@ export class MobileClient {
     // resolved files are written to a temp dir; Maestro's relative-path
     // `runFlow: file:` refs naturally resolve to the temp-dir siblings.
     // Closes harness-gap-2 from turmeric retry #5. Both backends go
-    // through the same prep — for cloud we ship the resolved temp dir
-    // as a tarball alongside the top recipe, so cloud's Maestro sees
-    // the same sibling layout the local path's Maestro sees. (Pre-
-    // 2026-05-16 the cloud branch skipped this entirely on the
-    // assumption that ace-web resolved server-side; it never did.)
+    // through the same prep — for the lease we ship the resolved temp dir
+    // as a tarball alongside the top recipe, so the leased machine's
+    // Maestro sees the same sibling layout the local path's Maestro sees.
     // Resolves selector placeholders against the configured APK
     // version's selector map at `mcp/mobile/selectors/connect-<v>.yaml`.
     // Sources from `ACE_CONNECT_APK_VERSION` so opt-in QA against a new
@@ -2193,7 +2052,7 @@ export class MobileClient {
     // shared runner) otherwise sit exactly where fresh ones land, and a
     // failed recipe leaves them masquerading as its output. Wipe-and-
     // recreate before the flow runs — covers BOTH backends from one
-    // choke point (local Maestro writes into the dir; cloud downloads
+    // choke point (local Maestro writes into the dir; the lease downloads
     // into it). Runs AFTER prepareRecipeForMaestro so a recipe that
     // happens to live inside the dir has already been copied out, and
     // AFTER the freshness gate so a pre-flight rejection doesn't
@@ -2219,7 +2078,7 @@ export class MobileClient {
     };
     onProgress({ kind: 'dispatch-start', recipeId, screenshotsDir: runDir });
 
-    // Screen recording (local backend only — cloud is Phase 2). Best-effort
+    // Screen recording (local backend only). Best-effort
     // throughout: a recording failure must never change the recipe verdict.
     const recorderConfig = recorderConfigFromEnv();
     const videos: VideoArtifact[] = [];
@@ -2232,9 +2091,9 @@ export class MobileClient {
 
     let result: RecipeRunResult;
     try {
-      if (this.useCloud) {
+      if (this.useLease) {
         const paletteTarB64 = tarDirAsBase64(prep.tempDir);
-        result = await this.requireCloud().runRecipe(
+        result = await this.requireLease().runRecipe(
           prep.resolvedPath,
           enrichedEnv,
           runDir,
@@ -2644,8 +2503,8 @@ export class MobileClient {
         `appId: org.commcare.dalvik\n---\n- takeScreenshot: "${base}"\n`,
       );
       try {
-        if (this.useCloud) {
-          await this.requireCloud().runRecipe(tmpRecipe, {}, screenshotDir, {
+        if (this.useLease) {
+          await this.requireLease().runRecipe(tmpRecipe, {}, screenshotDir, {
             state: avdName,
             screenshotPrefix: base,
           });
@@ -2728,11 +2587,11 @@ export class MobileClient {
 
   /**
    * `logcat -b crash` on the local AVD, or undefined when there is no AVD,
-   * the backend is cloud, or the read failed. Diagnostic only: an unreadable
+   * the backend is the lease, or the read failed. Diagnostic only: an unreadable
    * buffer degrades to "no crash seen", never to a thrown error (ace#2584).
    */
   private async readCrashBufferBestEffort(avdName: string | undefined): Promise<string | undefined> {
-    if (this.useCloud || !avdName) return undefined;
+    if (this.useLease || !avdName) return undefined;
     try {
       return await this.avd.readCrashBuffer(avdName);
     } catch (e) {
@@ -2771,24 +2630,11 @@ export class MobileClient {
     backupCode: string;
     name: string;
   }): Promise<TestUserRegistrationResult> {
-    if (this.useCloud) {
-      // Feature-flagged: when `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`,
-      // call the new ace-web endpoint to drive the same two-recipe
-      // walkthrough server-side that the local backend runs here
-      // — converging cloud onto local's always-deterministic-bootstrap
-      // model. Otherwise fall back to the legacy "trust the AMI cold-
-      // boot pre-bake" no-op for the in-flight rollout.
-      //
-      // The AMI's `ace-emulator-launch` (pre-cutover) registers the
-      // +7426 demo user using AWS Secrets Manager creds before the
-      // `/run/ace-mobile/ready` marker fires. Once Phase D rebakes the
-      // AMI to drop the pre-bake, the flag must be on or every
-      // dispatch will fail with an unregistered Connect app.
-      if (this.useLease || process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER === 'true') {
-        return this.cloudRegisterTestUser(args);
-      }
-      logInfo(`register_test_user: cloud backend — no-op (AMI cold-boot path registers ${args.phone})`);
-      return { alreadyRegistered: true, phone: args.phone };
+    if (this.useLease) {
+      // The leased machine runs the same two-recipe walkthrough the local
+      // backend runs here (`ace-mobile register-test-user`), so both
+      // backends follow the always-deterministic-bootstrap model.
+      return this.leaseRegisterTestUser(args);
     }
     // Use requireRunningAvd, not ensureAvdRunning — registerTestUser is
     // called by runLocalBootstrap after the orchestrator has already
@@ -2823,7 +2669,7 @@ export class MobileClient {
     const tmp = fs.mkdtempSync(path.join(this.regTmpRoot, 'ace-mobile-reg-'));
 
     // Resolve `${SELECTOR:...}` placeholders BEFORE handing the recipes to
-    // Maestro — the same prep `runRecipe` and `cloudRegisterTestUser` run.
+    // Maestro — the same prep `runRecipe` and `leaseRegisterTestUser` run.
     // PR #650 migrated connect-register-{to,from}-otp.yaml off raw
     // `org.commcare.dalvik:id/*` literals onto `${SELECTOR:...}` tokens; this
     // bootstrap path was still passing the RAW recipe paths to Maestro, so
@@ -2991,22 +2837,19 @@ export class MobileClient {
   }
 
   /**
-   * Cloud-side counterpart to ``registerTestUser`` — drives the two-
-   * recipe walkthrough on the cloud AVD via ace-web's
-   * ``/api/mobile/register-test-user`` endpoint. The server runs the
-   * same two recipes + GMS toggle that local does inline.
+   * Lease-side counterpart to ``registerTestUser`` — drives the two-
+   * recipe walkthrough on the leased emulator via `ace-mobile
+   * register-test-user` beside it. The machine runs the same two recipes
+   * + GMS toggle that local does inline.
    *
-   * Recipes ship to the server as a base64 tar.gz of the resolved
+   * Recipes ship to the machine as a base64 tar.gz of the resolved
    * static palette. Uses ``prepareRecipeForMaestro`` to produce the
    * same resolved temp-dir layout the local Maestro sees (selector
    * placeholders expanded, palette siblings populated). The two
    * recipe basenames are passed alongside so the server knows which
    * file to invoke first vs. second.
-   *
-   * Behind ``ACE_MOBILE_CLOUD_LIVE_REGISTER`` — see the caller
-   * ``registerTestUser`` for the gate and rollout rationale.
    */
-  private async cloudRegisterTestUser(args: {
+  private async leaseRegisterTestUser(args: {
     avdName: string;
     phone: string;
     phoneLocal: string;
@@ -3019,7 +2862,7 @@ export class MobileClient {
     const fromName = 'connect-register-from-otp.yaml';
     const toPath = path.join(this.staticRecipesDir, toName);
 
-    // Resolve the static palette into a temp dir so the server sees
+    // Resolve the static palette into a temp dir so the machine sees
     // the same sibling layout local does. We hand `to_otp` to
     // `prepareRecipeForMaestro` as the "top" recipe; the palette
     // includes both register recipes (the function resolves *every*
@@ -3032,9 +2875,9 @@ export class MobileClient {
     try {
       const paletteTarB64 = tarDirAsBase64(prep.tempDir);
       logInfo(
-        `register_test_user: cloud backend — live register for ${args.phone} (palette ${paletteTarB64.length}b)`,
+        `register_test_user: lease backend — live register for ${args.phone} (palette ${paletteTarB64.length}b)`,
       );
-      return await this.requireCloud().registerTestUser({
+      return await this.requireLease().registerTestUser({
         phone: args.phone,
         phoneLocal: args.phoneLocal,
         countryCode: args.countryCode,
@@ -3055,23 +2898,22 @@ export class MobileClient {
   }
 
   /**
-   * Cloud-side heal flow — mirrors ``runLocalBootstrap``'s
+   * Lease-side heal flow — mirrors ``runLocalBootstrap``'s
    * ``clearConnectAppData + registerTestUser`` sequence against the
-   * cloud AVD. Called from ``restoreDeviceUserState``'s cloud branch
-   * when ``ACE_MOBILE_CLOUD_LIVE_REGISTER=true``.
+   * leased emulator. Called from ``restoreDeviceUserState``'s lease branch.
    *
    * Returns a ``DeviceStateHealLog`` shaped identically to the
    * local-bootstrap variant so downstream telemetry doesn't have to
    * branch — only the ``healed_via`` field shifts to
-   * ``'cloud-bootstrap'`` so the operator can distinguish the path.
+   * ``'lease-bootstrap'`` so the operator can distinguish the path.
    *
    * Defends against missing ``bootstrapConfig`` the same way the local
    * branch does: env vars (``ACE_E2E_*``) must be present, otherwise
    * we have no credentials to register with and the heal can't proceed.
    *
    * Verification step (``probeDeviceUserState``) is NOT called here:
-   * unlike the local backend, the cloud backend has no lightweight UI dump
-   * probe that doesn't go through a full Maestro round-trip.
+   * unlike the local backend, the lease backend has no lightweight UI dump
+   * probe that doesn't go through a full remote round-trip.
    *
    * Because of that, this path does not claim a verified state
    * (dimagi-internal/ace#1067). It returns ``classified_as: 'unknown'``, omits
@@ -3082,7 +2924,7 @@ export class MobileClient {
    * was a claim about the CALL, and the whole point of #1067 is that callers
    * act on the difference.
    */
-  private async cloudBootstrapHeal(
+  private async leaseBootstrapHeal(
     avd: AvdInfo,
     opts?: EnsureAvdRunningOptions,
   ): Promise<DeviceStateHealLog> {
@@ -3094,25 +2936,25 @@ export class MobileClient {
           : `bootstrapConfig:absent (explicitly disabled by caller)`;
       throw new DeviceUserStateError('unknown', [detail]);
     }
-    // A per-run override reaches here only on the lease backend (legacy cloud
-    // refuses it in ensureAvdRunning); omitted, this is the env user itself.
+    // A per-run override is honoured here exactly as on local; omitted, this
+    // is the env user itself.
     const testUser = mergeTestUserOverride(this.bootstrapConfig.testUser, opts?.testUser);
-    const cloud = this.requireCloud();
+    const lease = this.requireLease();
 
     // Step 1: wipe Connect's per-app data. Idempotent — if the package
-    // isn't installed (the post-Phase-D AMI state) the server reports
-    // cleared=false and we still proceed.
-    logInfo(`cloud_bootstrap: pm clear org.commcare.dalvik on ${avd.serial}`);
-    const cleared = await cloud.clearAppData('org.commcare.dalvik').catch(() => false);
+    // isn't installed (a fresh machine) the remote reports cleared=false
+    // and we still proceed.
+    logInfo(`lease_bootstrap: pm clear org.commcare.dalvik on ${avd.serial}`);
+    const cleared = await lease.clearAppData('org.commcare.dalvik').catch(() => false);
     const steps: string[] = [cleared ? 'app-data-cleared' : 'app-data-clear-noop'];
 
-    // Step 2: register the test user via the cloud endpoint. Uses the
-    // same flag-gated path that ``MobileClient.registerTestUser``'s
-    // cloud branch takes — but called directly here to keep the heal
+    // Step 2: register the test user on the leased machine. Uses the
+    // same path that ``MobileClient.registerTestUser``'s lease branch
+    // takes — but called directly here to keep the heal
     // log shape clean (the public method's return is the
     // ``TestUserRegistrationResult``, not a ``DeviceStateHealLog``).
-    logInfo(`cloud_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
-    const reg = await this.cloudRegisterTestUser({
+    logInfo(`lease_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
+    const reg = await this.leaseRegisterTestUser({
       avdName: avd.name,
       phone: testUser.phone,
       phoneLocal: testUser.phoneLocal,
@@ -3123,9 +2965,9 @@ export class MobileClient {
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
 
-    // Report what we actually know, which on this path is "the cloud
-    // endpoints returned without error" — nothing more
-    // (dimagi-internal/ace#1067, the cloud twin of the local overclaim).
+    // Report what we actually know, which on this path is "the remote
+    // calls returned without error" — nothing more
+    // (dimagi-internal/ace#1067, the remote twin of the local overclaim).
     //
     // This used to return `classified_as: 'ready'` AND `verified_as: 'ready'`
     // with `bootstrap_steps: [..., 'registered']`, having probed nothing at
@@ -3141,15 +2983,15 @@ export class MobileClient {
     // passing runs. The fix for an overclaim is to stop overclaiming, not to
     // start failing runs that work.
     //
-    // The honest ceiling here is a *reporting* fix: a real cloud
-    // verification needs a probe the cloud backend does not have (its only
-    // UI-dump route is a full Maestro round-trip). If one is added, feed its
+    // The honest ceiling here is a *reporting* fix: a real remote
+    // verification needs a cheap probe the lease backend does not have (its
+    // only UI-dump route is a full remote round-trip). If one is added, feed its
     // verdict into `classified_as`/`verified_as` and drop the suffix on
     // confirmation, exactly as the local path does.
     return {
       classified_as: 'unknown',
       attempted: true,
-      healed_via: 'cloud-bootstrap',
+      healed_via: 'lease-bootstrap',
       bootstrap_steps: markRegistrationUnverified(steps),
     };
   }

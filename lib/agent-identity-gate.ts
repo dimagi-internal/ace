@@ -26,7 +26,7 @@
  *
  * ace-mobile is deliberately NOT gated: it drives a local emulator, its only
  * identity is the E2E test FLW (a fixture persona, not ACE's account), and its
- * cloud backend authenticates with the caller's own ace-web PAT.
+ * lease backend is authorised by canopy-web's own capability grant check.
  */
 import { execFile } from 'node:child_process';
 

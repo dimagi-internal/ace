@@ -193,7 +193,7 @@ describe('the throw-path stamp/spool guard is proven, not assumed (#1084 item 2)
         diagnose: async () => ({}),
       } as never,
       maestro: { runRecipe: async () => { throw original; } } as never,
-      cloud: null as never,
+      lease: null,
       bootstrapConfig: null,
       recorder: recorder as never,
       spool: spool as never,

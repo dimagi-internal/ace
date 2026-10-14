@@ -128,15 +128,3 @@ describe('runLocalBootstrap — the switch-on path registers the minted user', (
     expect(registerTestUser.mock.calls[0][0].phone).toBe(ENV_TEST_USER.phone);
   });
 });
-
-describe('cloud backend is explicitly OUT OF SCOPE and fails loud', () => {
-  it('throws rather than silently registering the env user under a per-run caller', async () => {
-    const { client } = makeClient();
-    // Route to cloud without touching the real toggle plumbing.
-    Object.defineProperty(client, 'useCloud', { get: () => true });
-    (client as any).cloud = { ensureAvdRunning: vi.fn() };
-    await expect(
-      client.ensureAvdRunning('AVD', { testUser: derivePerRunTestUser('20260823-1412') }),
-    ).rejects.toThrow(/not supported on the cloud backend/);
-  });
-});

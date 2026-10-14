@@ -79,7 +79,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   mobile: {
     file: 'mcp/mobile-server.ts',
-    expectedCount: 18, // -1: mobile_patch_launch_script deleted (ace#1113)
+    expectedCount: 17, // -1: mobile_patch_launch_script deleted (ace#1113); -1: mobile_restart_runner retired with ace-web's cloud emulator
     allowedPrefixes: ['mobile_'],
     // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
     // with the server registrations. The previously-extra
@@ -90,6 +90,8 @@ const SERVERS: Record<string, ServerSpec> = {
     // patch_launch_script) then appeared in both places. `patch_launch_script`
     // was later DELETED outright (ace#1113 — an unguarded RCE on the shared
     // cloud runner with no production caller), so it is absent from both.
+    // `restart_runner` went the same way 2026-10-14 with ace-web's cloud
+    // emulator — no remaining backend has a long-lived runner to restart.
     capabilityMap: MOBILE_MAP,
     capabilityPrefix: 'mobile_',
   },

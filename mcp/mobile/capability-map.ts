@@ -1,7 +1,7 @@
-export type Backend = 'MAESTRO' | 'AVD' | 'COMPOSITE' | 'CLOUD';
-// CLOUD = ace-web's cloud emulator (HTTP API). Selected at runtime
-// when ACE_MOBILE_BACKEND=cloud is set; otherwise the existing
-// AVD/MAESTRO/COMPOSITE backends drive a local emulator.
+export type Backend = 'MAESTRO' | 'AVD' | 'COMPOSITE';
+// The route names the LOCAL mechanism. On the `lease` backend
+// (backends/lease.ts, selected at runtime — backend-toggle.ts) every atom
+// routes to the leased machine's `ace-mobile` CLI instead.
 
 export type Capability =
   | 'ensure_avd_running'
@@ -20,8 +20,7 @@ export type Capability =
   | 'probe_maestro_driver'
   | 'list_session_videos'
   | 'clear_session_videos'
-  | 'diagnose'
-  | 'restart_runner';
+  | 'diagnose';
 
 export interface CapabilityRoute {
   backend: Backend;
@@ -41,12 +40,11 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   capture_ui_dump: { backend: 'AVD', description: 'adb shell uiautomator dump' },
   save_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot save <name>' },
   load_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot load <name>' },
-  set_location: { backend: 'AVD', description: 'adb emu geo fix <lon> <lat> [alt] [sats] — seed a mock GPS fix so CommCare geopoint Capture works. Cold-boot baseline seeds a default; this overrides per-opp. Local AVD + lease (`ace-mobile set-location` beside the emulator); legacy cloud throws CLOUD_MOCK_LOCATION_UNSUPPORTED.' },
+  set_location: { backend: 'AVD', description: 'adb emu geo fix <lon> <lat> [alt] [sats] — seed a mock GPS fix so CommCare geopoint Capture works. Cold-boot baseline seeds a default; this overrides per-opp. Local AVD + lease (`ace-mobile set-location` beside the emulator).' },
   probe_maestro_driver: { backend: 'MAESTRO', description: 'Read-only: does the on-device Maestro driver gRPC channel respond on the AVD? No recovery — use ensure_avd_running for the heal path.' },
   list_session_videos: { backend: 'AVD', description: "Host-side: list the mp4s this session's local recipe runs spooled to ~/.ace/mobile-videos/<ppid>/, plus the spool dir. The ppid keys the spool and belongs to the MCP process, so skills cannot resolve it themselves." },
   clear_session_videos: { backend: 'AVD', description: "Host-side: clear THIS session's video spool (scoped to the MCP's own ppid, so it cannot touch a concurrent session's spool). Returns the number of files removed." },
-  diagnose: { backend: 'COMPOSITE', description: 'Dual-mode read-only probe (ace#961). Cloud: runner-VM diagnostics (SSM state, runner-ready marker, adb devices). Local: the adb server port this session actually allocated (raw `adb` defaults to 5037 and sees nothing), plus emulator ports, visible devices on THAT port, and the running AVD. Discriminate on the `backend` field.' },
-  restart_runner: { backend: 'CLOUD', description: 'Legacy-cloud-only: restart the in-VM runner process. Throws CLOUD_ONLY_OPERATION on local AVD and LEASE_UNSUPPORTED on lease (release + re-acquire instead).' },
+  diagnose: { backend: 'COMPOSITE', description: 'Dual-mode read-only probe (ace#961). Lease: the `ace-mobile diagnose` snapshot from the leased machine (adb devices, emulator state) plus the lease (id, status, instance, expiry). Local: the adb server port this session actually allocated (raw `adb` defaults to 5037 and sees nothing), plus emulator ports, visible devices on THAT port, and the running AVD. Discriminate on the `backend` field.' },
 };
 
 // Note: `mobile_generate_recipes_from_app_summary` is intentionally NOT

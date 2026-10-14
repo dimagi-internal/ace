@@ -83,7 +83,7 @@ describe('runRecipe lints before dispatch (ace#1690 gap 1)', () => {
       'appId: org.commcare.dalvik\n---\n- tapOn: ${SELECTOR:geopoint-record-location}\n',
     );
     const { avd, maestro } = fakeBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     await expect(client.runRecipe(recipePath, {}, shotDir())).rejects.toMatchObject({
       code: 'RECIPE_LINT_FAILED',
@@ -97,7 +97,7 @@ describe('runRecipe lints before dispatch (ace#1690 gap 1)', () => {
       'appId: org.commcare.dalvik\n---\n- tapOn: ${SELECTOR:geopoint-record-location}\n',
     );
     const { avd, maestro } = fakeBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     const err = await client.runRecipe(recipePath, {}, shotDir()).catch((e) => e);
     expect(err).toBeInstanceOf(MobileError);
@@ -112,7 +112,7 @@ describe('runRecipe lints before dispatch (ace#1690 gap 1)', () => {
       'appId: org.commcare.dalvik\n---\n- tapOn:\n    text: "Continue"\n',
     );
     const { avd, maestro } = fakeBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     const result = await client.runRecipe(recipePath, {}, shotDir());
     expect(result.status).toBe('pass');

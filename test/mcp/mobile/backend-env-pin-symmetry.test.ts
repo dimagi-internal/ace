@@ -20,7 +20,7 @@
  * not deleted. The correct idiom is save-then-restore:
  *
  *     const prev = process.env.ACE_MOBILE_BACKEND;
- *     process.env.ACE_MOBILE_BACKEND = 'cloud';
+ *     process.env.ACE_MOBILE_BACKEND = 'lease';
  *     try { ... } finally {
  *       if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
  *       else process.env.ACE_MOBILE_BACKEND = prev;

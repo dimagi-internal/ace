@@ -40,7 +40,10 @@ describe('C1 — no credentials on a curl command line (#1114)', () => {
 
   it('every secret-bearing probe goes through curl_auth', () => {
     const src = code(read('bin/ace-doctor'));
-    for (const tok of ['$LABS_TOKEN', '$NOVA_KEY_VAL', '$PAT_TOKEN', '$HQ_KEY_VAL']) {
+    // `$PAT_TOKEN` (ACE_WEB_PAT_TOKEN) left this list 2026-10-14: its only
+    // curl was the retired `cloud_emu` probe (GET /api/mobile/diagnose). The
+    // doctor now only checks that the token is set; it sends it nowhere.
+    for (const tok of ['$LABS_TOKEN', '$NOVA_KEY_VAL', '$HQ_KEY_VAL']) {
       const line = src.split('\n').find((l) => l.includes(tok) && l.includes('Authorization'));
       expect(line, `no auth line found for ${tok}`).toBeTruthy();
       expect(line, `${tok} must be passed via curl_auth`).toMatch(/curl_auth/);

@@ -237,7 +237,7 @@ export function lintRecipeText(yaml: string, options: LintOptions = {}): LintRes
 
   // Rule: unknown-property-textRegex.
   //
-  // Maestro 2.5.1 (current pin in both local + cloud AMI) does NOT
+  // Maestro 2.5.1 (current pin in both local + the leased image) does NOT
   // accept `textRegex` as a property on any matcher. A recipe that
   // uses it surfaces at parse time as:
   //

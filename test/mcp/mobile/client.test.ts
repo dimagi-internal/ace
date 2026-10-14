@@ -249,50 +249,21 @@ describe('MobileClient.registerTestUser', () => {
     expect(r.alreadyRegistered).toBe(true);
   });
 
-  it('returns alreadyRegistered=true without invoking AVD/maestro on cloud backend', async () => {
+  it('lease branch calls LeaseBackend.registerTestUser (always live)', async () => {
     const prev = process.env.ACE_MOBILE_BACKEND;
-    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
-    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     try {
       const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
-      // Stub the cloud backend so the client constructor doesn't try to hit ace-web env.
-      const cloud = {} as any;
-      const client = new MobileClient({ avd, maestro, cloud, staticRecipesDir: '/static' });
-
-      const r = await client.registerTestUser({
-        avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
-        pin: '111111', backupCode: '222222', name: 'ACE Test',
-      });
-      expect(r.alreadyRegistered).toBe(true);
-      expect(r.phone).toBe('+74260000001');
-      expect(avd.ensureAvdRunning).not.toHaveBeenCalled();
-      expect(maestro.runRecipe).not.toHaveBeenCalled();
-    } finally {
-      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
-      else process.env.ACE_MOBILE_BACKEND = prev;
-      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
-    }
-  });
-
-  it('cloud branch calls CloudBackend.registerTestUser when ACE_MOBILE_CLOUD_LIVE_REGISTER=true', async () => {
-    const prev = process.env.ACE_MOBILE_BACKEND;
-    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
-    try {
-      const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
-      const cloudRegister = vi.fn().mockResolvedValue({
+      const remoteRegister = vi.fn().mockResolvedValue({
         alreadyRegistered: false,
         phone: TEST_PHONE,
         backupCode: '222222',
       });
-      const cloud = { registerTestUser: cloudRegister } as any;
+      const remote = { registerTestUser: remoteRegister } as any;
       const client = new MobileClient({
         avd,
         maestro,
-        cloud,
+        lease: remote,
         // Use the real static recipes dir so prepareRecipeForMaestro
         // finds both register recipes and the rest of the palette.
         staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
@@ -313,8 +284,8 @@ describe('MobileClient.registerTestUser', () => {
       expect(maestro.runRecipe).not.toHaveBeenCalled();
       // Cloud register must be called exactly once with the camelCase
       // args + a non-empty paletteTarB64 + both recipe basenames.
-      expect(cloudRegister).toHaveBeenCalledTimes(1);
-      const callArgs = cloudRegister.mock.calls[0][0];
+      expect(remoteRegister).toHaveBeenCalledTimes(1);
+      const callArgs = remoteRegister.mock.calls[0][0];
       expect(callArgs.phone).toBe(TEST_PHONE);
       expect(callArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(callArgs.countryCode).toBe('+7');
@@ -332,42 +303,16 @@ describe('MobileClient.registerTestUser', () => {
     } finally {
       if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
       else process.env.ACE_MOBILE_BACKEND = prev;
-      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
-    }
-  });
-
-  it('cloud branch stays no-op when ACE_MOBILE_CLOUD_LIVE_REGISTER is anything other than "true"', async () => {
-    const prev = process.env.ACE_MOBILE_BACKEND;
-    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'false';  // explicit off
-    try {
-      const cloudRegister = vi.fn();
-      const cloud = { registerTestUser: cloudRegister } as any;
-      const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
-      const client = new MobileClient({ avd, maestro, cloud, staticRecipesDir: '/static' });
-      const r = await client.registerTestUser({
-        avdName: 'AVD', phone: TEST_PHONE, phoneLocal: TEST_PHONE_LOCAL, countryCode: '+7',
-        pin: '111111', backupCode: '222222', name: 'ACE Test',
-      });
-      expect(r.alreadyRegistered).toBe(true);  // legacy no-op success shape
-      expect(cloudRegister).not.toHaveBeenCalled();
-    } finally {
-      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
-      else process.env.ACE_MOBILE_BACKEND = prev;
-      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
     }
   });
 });
 
-describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
+describe('MobileClient.runRecipe (lease-path palette parity)', () => {
   let savedBackend: string | undefined;
   let tmpDir: string;
   beforeEach(async () => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'palette-it-'));
   });
@@ -381,7 +326,7 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
   it('resolves ${SELECTOR:...} and ships the resolved palette as paletteTarB64', async () => {
     // The pre-2026-05-16 bug: cloud branch bypassed
     // `prepareRecipeForMaestro`, so Maestro saw raw `${SELECTOR:...}`.
-    // This test pins the new contract: cloud.runRecipe gets a resolved
+    // This test pins the new contract: remote.runRecipe gets a resolved
     // top recipe (read from prep.resolvedPath) AND a paletteTarB64 of
     // the resolved temp dir, exactly mirroring what local's Maestro sees.
     const recipePath = path.join(tmpDir, 'use-selector.yaml');
@@ -391,7 +336,7 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
       'utf8',
     );
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
+    const remoteRunRecipe = vi.fn().mockResolvedValue({
       status: 'pass',
       exitCode: 0,
       stdout: '',
@@ -399,13 +344,13 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
       screenshotsDir: tmpDir,
       screenshots: [],
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await client.runRecipe(recipePath, {}, tmpDir);
 
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
-    const [resolvedPath, , , opts] = cloudRunRecipe.mock.calls[0];
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
+    const [resolvedPath, , , opts] = remoteRunRecipe.mock.calls[0];
 
     // The path handed to cloud is the prep'd file (different from
     // the caller's recipePath). Its content has the placeholder
@@ -431,16 +376,16 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
     const recipePath = path.join(tmpDir, 'plain.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
+    const remoteRunRecipe = vi.fn().mockResolvedValue({
       status: 'pass', exitCode: 0, stdout: '', stderr: '',
       screenshotsDir: tmpDir, screenshots: [],
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await client.runRecipe(recipePath, {}, tmpDir);
 
-    const opts = cloudRunRecipe.mock.calls[0][3];
+    const opts = remoteRunRecipe.mock.calls[0][3];
     expect(opts.paletteTarB64).toBeDefined();
     expect((opts.paletteTarB64 as string).length).toBeGreaterThan(0);
   });
@@ -485,7 +430,7 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const { avd, maestro } = fakeLocalBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     await client.runRecipe(recipePath, {}, tmpDir);
 
@@ -498,7 +443,7 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const { avd, maestro } = fakeLocalBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     await client.runRecipe(recipePath, {}, tmpDir, undefined, { captureAllBoundaries: true });
 
@@ -516,7 +461,7 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const { avd, maestro } = fakeLocalBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     await client.runRecipe(recipePath, {}, tmpDir);
 
@@ -530,7 +475,7 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const { avd, maestro } = fakeLocalBackends();
     avd.getAllocatedPorts = vi.fn().mockRejectedValue(new Error('boom'));
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
 
     const r = await client.runRecipe(recipePath, {}, tmpDir);
     expect(r.status).toBe('pass');
@@ -551,7 +496,7 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
   let tmpDir: string;
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'failshot-it-'));
   });
@@ -566,7 +511,7 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     const recipePath = path.join(tmpDir, 'will-fail.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
 
-    const cloudRunRecipe = vi
+    const remoteRunRecipe = vi
       .fn()
       // 1st call: the real recipe — fails.
       .mockResolvedValueOnce({
@@ -584,8 +529,8 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
       xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
       elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
     });
-    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const result = await client.runRecipe(recipePath, {}, tmpDir, 'AVD');
 
@@ -609,19 +554,19 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     const recipePath = path.join(tmpDir, 'will-pass.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp: org.commcare.dalvik\n', 'utf8');
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
+    const remoteRunRecipe = vi.fn().mockResolvedValue({
       status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [],
     });
     const captureUiDump = vi.fn();
-    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const result = await client.runRecipe(recipePath, {}, tmpDir, 'AVD');
 
     expect(result.status).toBe('pass');
     expect(result.failureForensics).toBeUndefined();
     expect(captureUiDump).not.toHaveBeenCalled();
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1); // no throwaway screenshot recipe
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1); // no throwaway screenshot recipe
   });
 
   it('captures forensics on a THROWN failure (driver death) and attaches them to the error', async () => {
@@ -634,7 +579,7 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     const recipePath = path.join(tmpDir, 'will-throw.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
 
-    const cloudRunRecipe = vi
+    const remoteRunRecipe = vi
       .fn()
       // 1st call: the real recipe — throws a transport/driver error.
       .mockRejectedValueOnce(new Error('UNAVAILABLE: driver gRPC broken pipe'))
@@ -648,8 +593,8 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
       xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
       elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
     });
-    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     // The ORIGINAL error must propagate — forensic capture never masks it.
     const err: any = await client.runRecipe(recipePath, {}, tmpDir, 'AVD').then(
@@ -683,7 +628,7 @@ describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
     savedApk = process.env.ACE_CONNECT_APK_VERSION;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freshness-test-'));
   });
@@ -714,14 +659,14 @@ describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
       'utf8',
     );
 
-    const cloudRunRecipe = vi.fn();
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remoteRunRecipe = vi.fn();
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await expect(client.runRecipe(recipePath, {}, tmpDir)).rejects.toMatchObject({
       code: 'RECIPE_STALE',
     });
-    expect(cloudRunRecipe).not.toHaveBeenCalled();
+    expect(remoteRunRecipe).not.toHaveBeenCalled();
   });
 
   it('passes a recipe with no provenance header (legacy / static palette)', async () => {
@@ -732,15 +677,15 @@ describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
       'utf8',
     );
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
+    const remoteRunRecipe = vi.fn().mockResolvedValue({
       status: 'pass', exitCode: 0, stdout: '', stderr: '',
       screenshotsDir: tmpDir, screenshots: [],
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await client.runRecipe(recipePath, {}, tmpDir);
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
   });
 
   it('passes a recipe whose stamped SHA matches the current map', async () => {
@@ -767,15 +712,15 @@ describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
     // Quiet the unused warning on computeSelectorMapSha import:
     expect(typeof computeSelectorMapSha).toBe('function');
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
+    const remoteRunRecipe = vi.fn().mockResolvedValue({
       status: 'pass', exitCode: 0, stdout: '', stderr: '',
       screenshotsDir: tmpDir, screenshots: [],
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await client.runRecipe(recipePath, {}, tmpDir);
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -789,7 +734,7 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
   let tmpDir: string;
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prov-test-'));
   });
@@ -812,7 +757,7 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
     // must write the PNG AT CALL TIME (post-wipe), as a real backend does.
     const shotsDir = path.join(tmpDir, 'shots');
     const pngPath = path.join(shotsDir, 'fake.png');
-    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
+    const remoteRunRecipe = vi.fn().mockImplementation(async () => {
       fs.writeFileSync(pngPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       return {
         status: 'pass',
@@ -825,8 +770,8 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
         ],
       };
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const result = await client.runRecipe(recipePath, {}, shotsDir);
 
@@ -858,7 +803,7 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
       return p;
     };
 
-    const cloudRunRecipe = vi
+    const remoteRunRecipe = vi
       .fn()
       .mockImplementationOnce(async () => ({
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
@@ -870,8 +815,8 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
         screenshotsDir: shotsDir,
         screenshots: [{ stepName: 'b', path: make('b.png'), takenAt: '', bytes: 1 }],
       }));
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const r1 = await client.runRecipe(recipePath, {}, shotsDir);
     const r2 = await client.runRecipe(recipePath, {}, shotsDir);
@@ -895,7 +840,7 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
     const shotsRoot = path.join(tmpDir, 'shots');
     const runDir = path.join(shotsRoot, 'r');
 
-    const cloudRunRecipe = vi.fn().mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
+    const remoteRunRecipe = vi.fn().mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
       const p = path.join(dir, 'leftover.png');
       fs.writeFileSync(p, Buffer.from([0x89]));
       return {
@@ -904,8 +849,8 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
         screenshots: [{ stepName: 'leftover', path: p, takenAt: '', bytes: 1 }],
       };
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const run1 = await client.runRecipe(recipePath, {}, shotsRoot);
     // Run 1's artifacts are on disk — exactly where run 2's would land.
@@ -917,7 +862,7 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
     // the bednet-spot-check 20260612-1220 shape. The dir must come out
     // EMPTY of run 1's PNGs: a failed run must not leave prior
     // artifacts masquerading as its output.
-    cloudRunRecipe.mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
+    remoteRunRecipe.mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
       status: 'fail', exitCode: 1, stdout: '', stderr: 'tile matcher failed',
       screenshotsDir: dir,
       screenshots: [],
@@ -935,7 +880,7 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
   let tmpDir: string;
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freshdir-test-'));
   });
@@ -958,7 +903,7 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
     fs.writeFileSync(path.join(runDir, 'journey-deliver-final.png.meta.json'), '{}');
     fs.writeFileSync(path.join(runDir, 'old-dump.xml'), '<hierarchy/>');
 
-    const cloudRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
+    const remoteRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
       // At backend-call time the dir must ALREADY be empty — the wipe
       // happens before the flow runs, not after.
       expect(dir).toBe(runDir);
@@ -973,13 +918,13 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
         screenshots: [{ stepName: 'fresh', path: fresh, takenAt: '', bytes: 1 }],
       };
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const result = await client.runRecipe(recipePath, {}, shotsRoot);
 
     expect(result.status).toBe('pass');
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
     const remaining = fs.readdirSync(runDir).sort();
     expect(remaining).toEqual(['dispatch-progress.json', 'fresh.png', 'fresh.png.meta.json']);
   });
@@ -989,7 +934,7 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const shotsRoot = path.join(tmpDir, 'brand', 'new-shots');
 
-    const cloudRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
+    const remoteRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
       expect(dir).toBe(path.join(shotsRoot, 'journey'));
       expect(fs.existsSync(dir)).toBe(true);
       return {
@@ -997,11 +942,11 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
         screenshotsDir: dir, screenshots: [],
       };
     });
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await client.runRecipe(recipePath, {}, shotsRoot);
-    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
   });
 
   it('a freshness-gate rejection (RECIPE_STALE) does NOT wipe prior artifacts', async () => {
@@ -1026,8 +971,8 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, 'prior.png'), 'PRIOR');
 
-    const cloud = { runRecipe: vi.fn() } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: vi.fn() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     await expect(client.runRecipe(recipePath, {}, shotsRoot)).rejects.toMatchObject({
       code: 'RECIPE_STALE',
@@ -1054,7 +999,7 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
   let tmpDir: string;
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     clearSessionBackend();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-scope-'));
   });
@@ -1087,8 +1032,8 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
     // The bug shape: ONE root handed to both legs.
     const shotsRoot = path.join(tmpDir, 'shots');
 
-    const cloud = { runRecipe: capturingBackend() } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: capturingBackend() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const learnRun = await client.runRecipe(learn, {}, shotsRoot);
     expect(learnRun.status).toBe('pass');
@@ -1117,8 +1062,8 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
     fs.writeFileSync(deliver, 'appId: x\n---\n- launchApp: x\n', 'utf8');
     const shotsRoot = path.join(tmpDir, 'shots');
 
-    const cloud = { runRecipe: capturingBackend() } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remote = { runRecipe: capturingBackend() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const first = await client.runRecipe(deliver, {}, shotsRoot);
     const stalePng = first.screenshots[0].path;
@@ -1128,7 +1073,7 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
     fs.writeFileSync(path.join(first.screenshotsDir, 'journey-deliver-FAILURE.png'), 'FORENSIC');
 
     // Attempt 2 of the SAME recipe: produces nothing (fails at step 1).
-    (cloud.runRecipe as any).mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
+    (remote.runRecipe as any).mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
       status: 'fail', exitCode: 1, stdout: '', stderr: 'tile matcher failed',
       screenshotsDir: dir, screenshots: [],
     }));
@@ -1149,9 +1094,9 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
   it('a shallow/protected root is still refused — namespacing cannot smuggle one past the guard (#1111 hygiene)', async () => {
     const recipePath = path.join(tmpDir, 'journey-learn.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const cloudRunRecipe = vi.fn();
-    const cloud = { runRecipe: cloudRunRecipe } as any;
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const remoteRunRecipe = vi.fn();
+    const remote = { runRecipe: remoteRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     // ace#1111 moved the first line of defence to CONTAINMENT, so `/tmp`
     // now trips "refusing to touch … must be under" before the shallow-path
@@ -1159,11 +1104,11 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
     await expect(client.runRecipe(recipePath, {}, '/tmp')).rejects.toThrow(
       /refusing to (wipe|touch)/,
     );
-    expect(cloudRunRecipe).not.toHaveBeenCalled();
+    expect(remoteRunRecipe).not.toHaveBeenCalled();
   });
 });
 
-describe('MobileClient.useCloud (dynamic resolution)', () => {
+describe('MobileClient.useLease (dynamic resolution)', () => {
   let savedEnv: string | undefined;
   beforeEach(() => {
     savedEnv = process.env.ACE_MOBILE_BACKEND;
@@ -1177,41 +1122,37 @@ describe('MobileClient.useCloud (dynamic resolution)', () => {
   });
 
   it('re-resolves between calls — toggling the session file flips routing', () => {
-    const avd = {} as any;
-    const maestro = {} as any;
-    const cloud = {} as any;
-    const client = new MobileClient({ avd, maestro, cloud });
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: {} as any });
 
-    expect(client.useCloud).toBe(false); // default
-    setSessionBackend('cloud');
-    expect(client.useCloud).toBe(true);  // session file flipped
+    expect(client.useLease).toBe(false); // default
+    setSessionBackend('lease');
+    expect(client.useLease).toBe(true);  // session file flipped
     setSessionBackend('local');
-    expect(client.useCloud).toBe(false); // back to local
+    expect(client.useLease).toBe(false); // back to local
   });
 
-  it('throws CLOUD_NOT_CONFIGURED when cloud is selected but client.cloud is null', async () => {
-    setSessionBackend('cloud');
-    // No cloud option passed → constructor catches the CLOUD_NOT_CONFIGURED
-    // error from CloudBackend (no ACE_WEB env) and sets this.cloud = null.
-    const prevBase = process.env.ACE_WEB_BASE_URL;
-    const prevTok = process.env.ACE_WEB_PAT_TOKEN;
-    delete process.env.ACE_WEB_BASE_URL;
-    delete process.env.ACE_WEB_PAT_TOKEN;
+  it('the deprecated cloud toggle routes to the lease', () => {
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: {} as any });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
     try {
-      const client = new MobileClient({ avd: {} as any, maestro: {} as any });
-      expect(client.cloud).toBeNull();
-      // requireCloud throws synchronously — listAvds() itself raises before
-      // returning a Promise. Either form (sync throw or Promise rejection)
-      // would be valid; this asserts the actual runtime behavior.
-      expect(() => client.listAvds()).toThrow(/cloud backend selected but not configured/);
+      expect(client.useLease).toBe(true);
     } finally {
-      if (prevBase !== undefined) process.env.ACE_WEB_BASE_URL = prevBase;
-      if (prevTok !== undefined) process.env.ACE_WEB_PAT_TOKEN = prevTok;
+      warn.mockRestore();
     }
+  });
+
+  it('throws LEASE_NOT_CONFIGURED when lease is selected but client.lease is null', () => {
+    setSessionBackend('lease');
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: null });
+    expect(client.lease).toBeNull();
+    // requireLease throws synchronously — listAvds() itself raises before
+    // returning a Promise.
+    expect(() => client.listAvds()).toThrow(/lease backend selected but not configured/);
   });
 });
 
-describe('MobileClient cloud-only diagnostic atoms', () => {
+describe('MobileClient.diagnose (dual-mode, #961)', () => {
   let savedEnv: string | undefined;
   beforeEach(() => {
     savedEnv = process.env.ACE_MOBILE_BACKEND;
@@ -1224,56 +1165,37 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
     clearSessionBackend();
   });
 
-  function fakeCloud() {
+  function fakeLease() {
     return {
-      diagnose: vi.fn().mockResolvedValue({ ssm_ok: true, adb_devices: [] }),
-      restartRunner: vi.fn().mockResolvedValue({ ssm_ok: true }),
+      diagnose: vi.fn().mockResolvedValue({ lease: null, adb_devices: [] }),
     } as any;
   }
 
-  it('routes diagnose / restartRunner to the cloud backend when cloud is active', async () => {
-    setSessionBackend('cloud');
-    const cloud = fakeCloud();
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
-
-    await client.diagnose();
-    expect(cloud.diagnose).toHaveBeenCalledTimes(1);
-
-    await client.restartRunner({ waitForReady: false });
-    expect(cloud.restartRunner).toHaveBeenCalledWith({ waitForReady: false });
+  it('routes diagnose to the lease and tags the envelope backend: lease', async () => {
+    setSessionBackend('lease');
+    const lease = fakeLease();
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease });
+    const d = await client.diagnose();
+    expect(lease.diagnose).toHaveBeenCalledTimes(1);
+    expect(d.backend).toBe('lease');
   });
 
-  it('throws CLOUD_ONLY_OPERATION for the admin atoms when active backend is local', async () => {
-    // Default is local (no session file, no env).
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud: fakeCloud() });
-    expect(client.useCloud).toBe(false);
-
-    // requireCloudOnly throws synchronously before returning a Promise,
-    // matching the pattern used by listAvds (see useCloud test above).
-    // `diagnose` is deliberately NOT in this list any more — see below.
-    expect(() => client.restartRunner()).toThrow(/only available on the cloud/);
-  });
-
-  it('routes diagnose to the LOCAL backend when cloud is inactive (#961)', async () => {
+  it('routes diagnose to the LOCAL backend when the lease is inactive (#961)', async () => {
     // Was CLOUD_ONLY_OPERATION until ace#961: that left the local backend
     // with no self-describing probe, so a raw `adb devices` on the default
     // 5037 (the MCP allocates its own, typically 5039) read as a dead
     // emulator with nothing in-session to contradict it.
     const avd = { diagnose: vi.fn().mockResolvedValue({ backend: 'local', adb_server_port: 5039 }) };
-    const client = new MobileClient({ avd: avd as any, maestro: {} as any, cloud: fakeCloud() });
-    expect(client.useCloud).toBe(false);
+    const client = new MobileClient({ avd: avd as any, maestro: {} as any, lease: fakeLease() });
+    expect(client.useLease).toBe(false);
 
     const d = await client.diagnose();
     expect(avd.diagnose).toHaveBeenCalledTimes(1);
     expect(d).toEqual({ backend: 'local', adb_server_port: 5039 });
   });
 
-  it('tags the cloud diagnose envelope with backend: cloud so callers can discriminate', async () => {
-    setSessionBackend('cloud');
-    const cloud = fakeCloud();
-    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
-    const d = await client.diagnose();
-    expect(d.backend).toBe('cloud');
+  it('restartRunner is gone with the retired cloud backend', () => {
+    expect((MobileClient.prototype as any).restartRunner).toBeUndefined();
   });
 });
 
@@ -1949,50 +1871,14 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     await expect(client.ensureAvdRunning('AVD')).resolves.toBeTruthy();
   });
 
-  it('cloud backend with LIVE_REGISTER unset returns the legacy stub', async () => {
-    setSessionBackend('cloud');
-    const savedFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    try {
-      const cloud = {
-        ensureAvdRunning: vi
-          .fn()
-          .mockResolvedValue({ name: 'cloud', serial: 'cloud:i-abc', status: 'booted' }),
-      } as any;
-      // No-op local backends — should not be touched on cloud routing.
-      const avd = { loadSnapshot: vi.fn() } as any;
-      const maestro = {} as any;
-      const client = new MobileClient({ avd, maestro, cloud });
-      const r = await client.ensureAvdRunning('cloud');
-      expect(cloud.ensureAvdRunning).toHaveBeenCalledWith('cloud');
-      // No local snapshot-load on cloud — local backends aren't touched.
-      expect(avd.loadSnapshot).not.toHaveBeenCalled();
-      expect(r.serial).toBe('cloud:i-abc');
-      // LIVE_REGISTER unset → `restoreDeviceUserState`'s cloud branch
-      // returns the legacy stub (the pre-Phase-D AMI's cold-boot path
-      // was the restore mechanism). Same shape callers got pre-2026-05-26.
-      expect(r.heal?.deviceUserState).toEqual({
-        classified_as: 'unknown',
-        attempted: false,
-      });
-    } finally {
-      if (savedFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = savedFlag;
-      clearSessionBackend();
-    }
-  });
-
-  it('cloud backend with LIVE_REGISTER=true dispatches cloudBootstrapHeal', async () => {
-    // Post-Phase-D AMI: cold-boot no longer pre-bakes the demo user, so
-    // the heal funnel must drive registration inline on every dispatch.
-    // Pre-2026-05-26 the cloud branch short-circuited regardless of
-    // LIVE_REGISTER and silently left the AVD unregistered, forcing
-    // operators to bail mid-`/ace:run` and run `/ace:mobile-bootstrap`
-    // by hand. Live observed in bednet-spot-check run 20260525-2013,
-    // Phase 6.
-    setSessionBackend('cloud');
+  it('lease backend dispatches leaseBootstrapHeal on every ensure', async () => {
+    // A leased machine is fresh from ACE's image with no user registered,
+    // so the heal funnel must drive registration inline on every dispatch.
+    // (The retired ace-web cloud backend once short-circuited here and
+    // silently left the AVD unregistered — bednet-spot-check run
+    // 20260525-2013, Phase 6.)
+    setSessionBackend('lease');
     const ENV_KEYS = [
-      'ACE_MOBILE_CLOUD_LIVE_REGISTER',
       'ACE_CONNECT_APK_VERSION',
       'ACE_E2E_PHONE',
       'ACE_E2E_PHONE_LOCAL',
@@ -2003,7 +1889,6 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     ] as const;
     const saved: Record<string, string | undefined> = {};
     for (const k of ENV_KEYS) saved[k] = process.env[k];
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
     process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
     process.env.ACE_E2E_PHONE = TEST_PHONE;
     process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
@@ -2012,29 +1897,29 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     process.env.ACE_E2E_BACKUP_CODE = '0000';
     process.env.ACE_E2E_NAME = 'ACE Test';
     try {
-      const cloudRegister = vi
+      const remoteRegister = vi
         .fn()
         .mockResolvedValue({ alreadyRegistered: false, phone: TEST_PHONE });
-      const cloud = {
+      const remote = {
         ensureAvdRunning: vi
           .fn()
           .mockResolvedValue({ name: 'cloud', serial: 'cloud:i-abc', status: 'booted' }),
         clearAppData: vi.fn().mockResolvedValue(true),
-        registerTestUser: cloudRegister,
+        registerTestUser: remoteRegister,
       } as any;
       const avd = { loadSnapshot: vi.fn() } as any;
       const maestro = {} as any;
-      const client = new MobileClient({ avd, maestro, cloud });
+      const client = new MobileClient({ avd, maestro, lease: remote });
 
       const r = await client.ensureAvdRunning('cloud');
 
-      expect(cloud.ensureAvdRunning).toHaveBeenCalledWith('cloud');
-      expect(cloud.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+      expect(remote.ensureAvdRunning).toHaveBeenCalledWith('cloud');
+      expect(remote.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
       // registerTestUser was called with credentials derived from the
       // ACE_E2E_* env — verifying the cloud heal actually drives
       // bootstrap (and consumes the same env vars the local heal does).
-      expect(cloudRegister).toHaveBeenCalledTimes(1);
-      const regArgs = cloudRegister.mock.calls[0][0];
+      expect(remoteRegister).toHaveBeenCalledTimes(1);
+      const regArgs = remoteRegister.mock.calls[0][0];
       expect(regArgs.phone).toBe(TEST_PHONE);
       expect(regArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(regArgs.pin).toBe('0000');
@@ -2043,7 +1928,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       // device, so `verified_as` is absent (ace#1067's cloud twin).
       expect(r.heal?.deviceUserState).toMatchObject({
         attempted: true,
-        healed_via: 'cloud-bootstrap',
+        healed_via: 'lease-bootstrap',
       });
       expect(r.heal?.deviceUserState?.verified_as).toBeUndefined();
     } finally {
@@ -2217,10 +2102,9 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
   });
 });
 
-describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
+describe('MobileClient.restoreDeviceUserState — lease branch', () => {
   let savedBackend: string | undefined;
-  let savedFlag: string | undefined;
-  const cloudAvd = { name: 'cloud', serial: 'cloud:i-test', status: 'booted' } as const;
+  const remoteAvd = { name: 'cloud', serial: 'cloud:i-test', status: 'booted' } as const;
   const ENV_KEYS = [
     'ACE_CONNECT_APK_VERSION',
     'ACE_E2E_PHONE',
@@ -2234,8 +2118,7 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
 
   beforeEach(() => {
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    savedFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
     savedEnv = {};
     for (const k of ENV_KEYS) {
       savedEnv[k] = process.env[k];
@@ -2245,15 +2128,13 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
   afterEach(() => {
     if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
     else process.env.ACE_MOBILE_BACKEND = savedBackend;
-    if (savedFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = savedFlag;
     for (const k of ENV_KEYS) {
       if (savedEnv[k] === undefined) delete process.env[k];
       else process.env[k] = savedEnv[k];
     }
   });
 
-  const cloudBootstrapConfig = {
+  const remoteBootstrapConfig = {
     apkVersion: '2.62.0',
     testUser: {
       phone: TEST_PHONE,
@@ -2265,32 +2146,10 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     },
   };
 
-  it('returns the legacy no-op stub when ACE_MOBILE_CLOUD_LIVE_REGISTER is unset', async () => {
-    // Pre-Phase-D rollout state: the AMI cold-boot path registers the
-    // user. The heal must continue to be a no-op stub so existing dispatches
-    // don't change behavior.
-    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    const cloud = {
-      clearAppData: vi.fn(),
-      registerTestUser: vi.fn(),
-    } as any;
-    const client = new MobileClient({
-      avd: {} as any,
-      maestro: {} as any,
-      cloud,
-      bootstrapConfig: cloudBootstrapConfig,
-    });
-    const heal = await client.restoreDeviceUserState(cloudAvd);
-    expect(heal).toEqual({ classified_as: 'unknown', attempted: false });
-    expect(cloud.clearAppData).not.toHaveBeenCalled();
-    expect(cloud.registerTestUser).not.toHaveBeenCalled();
-  });
-
-  it('runs cloud-bootstrap heal when ACE_MOBILE_CLOUD_LIVE_REGISTER=true', async () => {
+  it('runs the lease-bootstrap heal (pm clear + register)', async () => {
     // Post-Phase-D state: AMI no longer pre-bakes the user, so the heal
     // MUST run pm clear + registerTestUser via the cloud endpoints.
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
-    const cloud = {
+    const remote = {
       clearAppData: vi.fn().mockResolvedValue(true),
       registerTestUser: vi.fn().mockResolvedValue({
         alreadyRegistered: false,
@@ -2301,13 +2160,13 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     const client = new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      cloud,
-      bootstrapConfig: cloudBootstrapConfig,
+      lease: remote,
+      bootstrapConfig: remoteBootstrapConfig,
       staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
     });
-    const heal = await client.restoreDeviceUserState(cloudAvd);
-    expect(cloud.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
-    expect(cloud.registerTestUser).toHaveBeenCalledTimes(1);
+    const heal = await client.restoreDeviceUserState(remoteAvd);
+    expect(remote.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+    expect(remote.registerTestUser).toHaveBeenCalledTimes(1);
     // `classified_as: 'unknown'` and no `verified_as` — the cloud path runs
     // no verification probe, so it reports the call it made, not a device
     // state it never observed (ace#1067). Detailed coverage of the honesty
@@ -2315,7 +2174,7 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     expect(heal).toMatchObject({
       classified_as: 'unknown',
       attempted: true,
-      healed_via: 'cloud-bootstrap',
+      healed_via: 'lease-bootstrap',
     });
     expect(heal.verified_as).toBeUndefined();
     expect(heal.bootstrap_steps).toEqual(['app-data-cleared', 'registered-unverified']);
@@ -2326,8 +2185,7 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     // mechanism, so pm clear should succeed. But on a partially-broken
     // AVD it's possible for the package to be absent; the heal must
     // tolerate that and proceed to register (which itself reinstalls).
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
-    const cloud = {
+    const remote = {
       clearAppData: vi.fn().mockResolvedValue(false),
       registerTestUser: vi.fn().mockResolvedValue({
         alreadyRegistered: true,
@@ -2337,11 +2195,11 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     const client = new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      cloud,
-      bootstrapConfig: cloudBootstrapConfig,
+      lease: remote,
+      bootstrapConfig: remoteBootstrapConfig,
       staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
     });
-    const heal = await client.restoreDeviceUserState(cloudAvd);
+    const heal = await client.restoreDeviceUserState(remoteAvd);
     expect(heal.bootstrap_steps).toEqual([
       'app-data-clear-noop',
       'register-already-unverified',
@@ -2353,7 +2211,6 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     // without them we have nothing to register. The error must
     // enumerate the specific missing vars so the operator doesn't
     // have to diff against .env.tpl.
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
     process.env.ACE_E2E_PHONE = TEST_PHONE;
     process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
@@ -2361,14 +2218,14 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     process.env.ACE_E2E_PIN = '111111';
     process.env.ACE_E2E_BACKUP_CODE = '222222';
     // ACE_E2E_NAME intentionally omitted.
-    const cloud = { clearAppData: vi.fn(), registerTestUser: vi.fn() } as any;
+    const remote = { clearAppData: vi.fn(), registerTestUser: vi.fn() } as any;
     const client = new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      cloud,
+      lease: remote,
       // Default ctor reads env → bootstrapConfig will be null.
     });
-    await expect(client.restoreDeviceUserState(cloudAvd)).rejects.toThrow(
+    await expect(client.restoreDeviceUserState(remoteAvd)).rejects.toThrow(
       /missing env: ACE_E2E_NAME/,
     );
   });

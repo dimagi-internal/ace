@@ -121,7 +121,7 @@ appId: org.commcare.dalvik
 
 # Sync the jobs list BEFORE searching for the target tile (#628).
 #
-# A restored AVD snapshot (the cloud backend's AMI cold-boot, and any
+# A restored AVD snapshot (the retired cloud backend's AMI cold-boot, and any
 # local snapshot-load) carries the Connect jobs list as of snapshot
 # time — which predates THIS run's Phase-4 invite. So the fresh-run opp
 # is genuinely ABSENT from the list (not merely below the fold), and the

@@ -259,7 +259,7 @@ describe('client.runRecipe — a thrown dispatch still reports what it captured 
         findRunningAvd: vi.fn().mockResolvedValue(null),
         getAdbShell: () => vi.fn(),
       } as never,
-      cloud: null as never,
+      lease: null,
       bootstrapConfig: null,
     });
 

@@ -564,7 +564,7 @@ class SmallCommandTests(TmpPaths):
         for k in ("ssm_ok", "ssm_error", "adb_devices", "adb_visible_count", "emulator_pid", "emulator_cmdline",
                   "runner_service_state", "marker_present", "marker_age_seconds", "runner_log_tail",
                   "emulator_log_tail", "accel", "kvm_nested", "kvm_dev_present"):
-            self.assertIn(k, out)  # every CloudDiagnostics field
+            self.assertIn(k, out)  # every field of the retired ace-web Diagnostics shape
         self.assertEqual((out["adb_visible_count"], out["emulator_pid"], out["healthy"]), (1, 4242, True))
         self.assertEqual(out["active_state"], "cc-2.63.0")
         self.assertEqual(out["lease"], {"lease_id": "L1", "state": "cc-2.63.0"})

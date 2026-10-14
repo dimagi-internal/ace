@@ -1,7 +1,8 @@
 // LeaseBackend — drives ACE's `android-emulator` capability: an ephemeral EC2
 // machine canopy-web leases to this MCP process, launches from ACE's own image,
-// and terminates on release. Same public surface as `CloudBackend`, so
-// MobileClient routes to either without any skill-level change.
+// and terminates on release. Same public surface as the local backends, so
+// MobileClient routes to it without any skill-level change. It replaced
+// ace-web's retired cloud emulator (2026-10-14).
 //
 // The shape of the contract (canopy-web spec 2026-10-14-cloud-capabilities §4):
 //
@@ -12,8 +13,7 @@
 //   stopAvd                  DELETE the lease (the instance is terminated)
 //
 // Every route and every CLI subcommand/flag lives in `lease-contract.ts`.
-// Download, retry and artifact-name containment are shared with cloud.ts via
-// `remote-io.ts`.
+// Download, retry and artifact-name containment live in `remote-io.ts`.
 //
 // Auth is ACE's own canopy-web PAT (`CANOPY_WEB_PAT` in ACE's .env —
 // lib/ace-canopy-pat.ts), with `turn_id` from `CANOPY_TURN_ID` when the cloud
@@ -431,14 +431,6 @@ export class LeaseBackend {
     return { ...json, lease: leaseView };
   }
 
-  async restartRunner(_opts: { waitForReady?: boolean } = {}): Promise<never> {
-    throw new MobileError(
-      'LEASE_UNSUPPORTED',
-      'mobile_restart_runner has no meaning on a leased emulator — there is no long-lived runner to restart',
-      'Release and re-acquire instead: mobile_stop_avd, then mobile_ensure_avd_running (a fresh machine).',
-    );
-  }
-
   // ── APK ─────────────────────────────────────────────────────────
 
   /** Install an APK: a local path is uploaded first; an https:// or s3:// URI is passed through. */
@@ -470,7 +462,7 @@ export class LeaseBackend {
     );
   }
 
-  // ── Bootstrap helpers (same surface as CloudBackend) ────────────
+  // ── Bootstrap helpers ───────────────────────────────────────────
 
   async clearAppData(packageName: string = 'org.commcare.dalvik'): Promise<boolean> {
     const { json } = await this.runCli('clearAppData', { package: packageName });
@@ -597,7 +589,7 @@ export class LeaseBackend {
    * Run a Maestro recipe on the leased emulator. The recipe and the resolved
    * palette are uploaded, the CLI runs them with `--out` under this lease's
    * out prefix, and every artifact it wrote is downloaded into
-   * `screenshotDir` — the on-disk shape cloud.ts and MaestroBackend produce.
+   * `screenshotDir` — the on-disk shape MaestroBackend produces.
    * `opts.state` is accepted for surface parity and ignored: the state is
    * fixed when the lease is acquired.
    */
@@ -628,9 +620,8 @@ export class LeaseBackend {
     const stdout = typeof json.stdout === 'string' ? json.stdout : (exec.stdout_tail ?? '');
     const stderr = typeof json.stderr === 'string' ? json.stderr : '';
 
-    // Saved by BASENAME, as ace-web's `_presign_prefix` named them
-    // (`key.rsplit('/', 1)[-1]`) and so as cloud.ts wrote them: the same files
-    // land in the same places on both remote backends.
+    // Saved by BASENAME (`key.rsplit('/', 1)[-1]`), the layout the retired
+    // ace-web backend used, so callers find the same files in the same places.
     const rows = await this.listArtifacts(outRel);
     const screenshots = await materializeArtifacts(
       rows.map((r) => {
