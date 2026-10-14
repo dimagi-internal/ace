@@ -156,8 +156,9 @@ describe('CloudBackend.ensureAvdRunning', () => {
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
 
     await cb.ensureAvdRunning('cc-2.62.0');
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({ state: 'cc-2.62.0' });
+    const [url] = fetchImpl.mock.calls[0];
+    // ace-web reads `state` from the query string only (scalar ninja param).
+    expect(url).toBe(`${BASE}/api/mobile/ensure-running?state=cc-2.62.0`);
   });
 
   it('maps boot-timeout error code to AvdBootError', async () => {
@@ -262,7 +263,7 @@ describe('CloudBackend.installApk', () => {
     await expect(cb.installApk('cloud', '/tmp/local.apk')).rejects.toThrow(MobileError);
   });
 
-  it('POSTs install-apk with the URL and returns ApkInfo', async () => {
+  it('POSTs /apk/install with the URL as a query param and returns ApkInfo', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse(200, envelope({ package_name: 'org.commcare.dalvik', version: '2.62.0' })),
     );
@@ -271,8 +272,8 @@ describe('CloudBackend.installApk', () => {
     const info = await cb.installApk('cloud', 'https://s3/url.apk');
     expect(info.packageId).toBe('org.commcare.dalvik');
     expect(info.versionName).toBe('2.62.0');
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({ apk_url: 'https://s3/url.apk' });
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/apk/install?apk_url=${encodeURIComponent('https://s3/url.apk')}`);
   });
 
   it('surfaces version_code from ace-web when present', async () => {
@@ -547,6 +548,19 @@ describe('CloudBackend.snapshots / capture', () => {
     const r = await cb.saveSnapshot('cloud', 'snap1');
     expect(r.snapshotName).toBe('snap1');
     expect(r.saved).toBe(true);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/snapshots/save`);
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'snap1' });
+  });
+
+  it('loadSnapshot POSTs /snapshots/load', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({ name: 'snap1', loaded_at: '2026-05-10T00:00:00Z' })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    await cb.loadSnapshot('cloud', 'snap1');
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/snapshots/load`);
   });
 
   it('captureUiDump returns xml + parsed elements from ace-web', async () => {
@@ -631,20 +645,20 @@ describe('CloudBackend.runRecipe steps surfacing', () => {
 });
 
 describe('CloudBackend.stopAvd', () => {
-  it('sends an empty body by default', async () => {
+  it('sends no force param by default', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, envelope({})));
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
     await cb.stopAvd('cloud');
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({});
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/stop`);
   });
 
   it('forwards force=true when opt is set', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, envelope({})));
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
     await cb.stopAvd('cloud', { force: true });
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({ force: true });
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/stop?force=true`);
   });
 });
 
@@ -725,8 +739,7 @@ describe('CloudBackend.restartRunner', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe(`${BASE}/api/mobile/restart-runner`);
     expect(init.method).toBe('POST');
-    // Default omits wait_for_ready field — server applies default true.
-    expect(JSON.parse(init.body as string)).toEqual({});
+    // Default omits wait_for_ready — server applies default true.
   });
 
   it('forwards wait_for_ready=false when set', async () => {
@@ -742,8 +755,8 @@ describe('CloudBackend.restartRunner', () => {
     );
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
     await cb.restartRunner({ waitForReady: false });
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({ wait_for_ready: false });
+    const [url] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/restart-runner?wait_for_ready=false`);
   });
 });
 
