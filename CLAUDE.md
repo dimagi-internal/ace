@@ -244,7 +244,7 @@ Canonical implementation: the mobile heal funnel (`mobile_ensure_avd_running`) �
 
 The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run.
 
-**Cloud backend equivalent:** `/api/mobile/ensure-running` cold-boots from AMI and runs registration recipes — same contract, different mechanism. The AMI's baked registration scripts produce a fresh demo user on every cold-boot; ace-mobile MCP doesn't have a local snapshot-load that could go stale.
+**Remote backend equivalent:** the `lease` backend (default wherever no AVD is provisioned) gets a fresh EC2 machine from ACE's image per lease via canopy-web, and `mobile_ensure_avd_running` re-registers the demo user live on every call — same contract, different mechanism. Selection order and the lease contract: `playbook/integrations/mobile-integration.md § Backends and how one is chosen`. (The legacy `cloud` backend — ace-web's shared `/api/mobile` instance — is kept for one release.)
 
 Each phase's heal lives in one place and funnels through the matching `mobile_ensure_avd_running` / `connect_*_setup` / `ocs_*_setup` atom.
 

@@ -1,0 +1,58 @@
+{
+  "_doc": "canopy-web capability-broker routes, from canopy-web's openapi (api.get_openapi_schema()) @ 35482d1e. Regenerate with scripts/refresh-lease-contract-fixtures.ts --canopy-web <checkout>; test/mcp/mobile/backends/lease-contract.test.ts checks lease-contract.ts against it.",
+  "source": "openapi",
+  "routes": {
+    "DELETE /api/capabilities/grants/{grant_id}": {
+      "query": [],
+      "body": false
+    },
+    "DELETE /api/capabilities/leases/{lease_id}": {
+      "query": [],
+      "body": false
+    },
+    "GET /api/agents/{slug}/capabilities": {
+      "query": [],
+      "body": false
+    },
+    "GET /api/capabilities/grants": {
+      "query": [
+        "agent"
+      ],
+      "body": false
+    },
+    "GET /api/capabilities/leases/{lease_id}": {
+      "query": [],
+      "body": false
+    },
+    "GET /api/capabilities/leases/{lease_id}/artifacts": {
+      "query": [
+        "prefix"
+      ],
+      "body": false
+    },
+    "GET /api/capabilities/leases/{lease_id}/exec/{exec_id}": {
+      "query": [],
+      "body": false
+    },
+    "POST /api/capabilities/leases": {
+      "query": [],
+      "body": true
+    },
+    "POST /api/capabilities/leases/{lease_id}/exec": {
+      "query": [],
+      "body": true
+    },
+    "POST /api/capabilities/leases/{lease_id}/uploads": {
+      "query": [],
+      "body": true
+    },
+    "PUT /api/agents/{slug}/capabilities": {
+      "query": [],
+      "body": true
+    },
+    "PUT /api/capabilities/grants": {
+      "query": [],
+      "body": true
+    }
+  }
+}

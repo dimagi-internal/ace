@@ -22,6 +22,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PlaywrightSession } from '../mcp/connect/auth/playwright-session.js';
 import type { PreviewAuth } from '../lib/preview-capture.js';
+import { aceEnvFiles, canopyToken } from '../lib/ace-canopy-pat.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
 // Idempotent; a caller that already loaded it loses nothing (ace#1957).
@@ -103,30 +104,7 @@ export function restoreLabsSession(): void {
   log('labs session restored');
 }
 
-/** ACE's .env files, in the order bin/ace-canopy-web reads them. */
-export function aceEnvFiles(): string[] {
-  if (process.env.ACE_ENV_FILE) return [process.env.ACE_ENV_FILE];
-  return [path.join(os.homedir(), '.claude', 'plugins', 'data', 'ace-ace', '.env'), path.join(os.homedir(), '.ace', '.env')];
-}
-
-/**
- * ACE's own canopy-web PAT, from ACE's .env ONLY — the same source as bin/ace-canopy-web.
- * Deliberately ignores an inherited CANOPY_WEB_PAT and never falls back to
- * ~/.claude/canopy/workbench-token: either can be the machine owner's, and an agent reading
- * as a human is the identity substitution behind ace#2805.
- */
-export function canopyToken(): string | null {
-  for (const f of aceEnvFiles()) {
-    try {
-      for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
-        const t = line.trim();
-        if (t.startsWith('CANOPY_WEB_PAT=')) {
-          const v = t.slice('CANOPY_WEB_PAT='.length).trim().replace(/^["']|["']$/g, '');
-          if (v) return v;
-        }
-      }
-    } catch { /* next file */ }
-  }
-  return null;
-}
+// ACE's own canopy PAT (ACE's .env only, ace#2805) now lives in lib/ace-canopy-pat.ts so the
+// mobile lease backend reads the same identity. Re-exported for existing callers.
+export { aceEnvFiles, canopyToken } from '../lib/ace-canopy-pat.js';
 

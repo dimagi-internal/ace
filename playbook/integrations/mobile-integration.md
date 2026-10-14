@@ -2,7 +2,29 @@
 
 ## Overview
 
-The `ace-mobile` MCP server drives a CommCare Android emulator — either a local AVD on the operator's workstation, or a cloud emulator via ace-web — through a small set of atomic capabilities backed by Maestro + adb + Playwright.
+The `ace-mobile` MCP server drives a CommCare Android emulator — a local AVD on the operator's workstation, or a remote one — through a small set of atomic capabilities backed by Maestro + adb + Playwright.
+
+## Backends and how one is chosen
+
+| Backend | What it drives | Code |
+|---|---|---|
+| `local` | this machine's AVD | `backends/avd.ts` + `backends/maestro.ts` |
+| `lease` | ACE's own ephemeral `android-emulator` EC2 machine, leased from canopy-web's capability broker; one machine per MCP process, terminated on release | `backends/lease.ts` |
+| `cloud` | **legacy** — ace-web's one shared `/api/mobile` instance; kept for one release while `lease` is proven live | `backends/cloud.ts` |
+
+**Selection** (`mcp/mobile/backend-toggle.ts`, re-read on every call): `ACE_MOBILE_BACKEND` if set → the `/ace:mobile-backend` session file → default **`local` iff a provisioned AVD exists on this machine** (an `.ace-provisioned.json` marker under `$ANDROID_AVD_HOME`, written only after a real `registerTestUser` succeeded on it — `avd-provisioned-marker.ts`), **else `lease`**. So a fresh or KVM-less host (the cloud runner) leases; a workstation that has run Phase 6 stays local. `cloud` is never a default. A backend that is selected but not configured fails loud before any boot (`LEASE_NOT_CONFIGURED` / `CLOUD_NOT_CONFIGURED`) — never a silent fall-through to a local boot.
+
+**The lease backend** (contract: canopy-web `docs/superpowers/specs/2026-10-14-cloud-capabilities-design.md` § 4; ACE side `infra/capabilities/android-emulator/`):
+
+- **Auth:** ACE's own canopy-web PAT, `CANOPY_WEB_PAT` from ACE's .env (`lib/ace-canopy-pat.ts`, the same reader as `bin/ace-canopy-web`); base URL `CANOPY_WEB_API_URL` (default `https://canopy.dimagi.com`). `turn_id` = `CANOPY_TURN_ID` when the cloud runner exports it, so the broker releases the lease when the turn ends.
+- **`mobile_ensure_avd_running`** acquires `{agent: ace, capability: android-emulator, params: {state}}` (a `cc-*` AVD name becomes `state`; anything else takes the manifest default), or reuses this process's lease if it is still `ready` for the same state — a different state, or a lease no longer ready, is released and replaced, never nursed. It polls until `ready` (bounded by the manifest's `ready_timeout_s` + 60 s; queued time is bounded separately, 20 min), logs every status/queue-position change, and returns `timings` (`lease_queue_s`, `lease_provision_s`, plus `ready.json`'s own) and `accel`. Then the client registers the test user LIVE every time (`ace-mobile register-test-user`; no `ACE_MOBILE_CLOUD_LIVE_REGISTER` needed), honouring a per-run test-user override.
+- **Every other atom** is `upload inputs → exec ace-mobile <sub> … → poll → parse its one JSON line → download --out artifacts`. Artifacts land in the caller's screenshotDir by **basename**, exactly as ace-web named them, so the on-disk shape matches `cloud`. Recipe credentials for registration travel in an uploaded `--creds` JSON, never argv (SSM keeps command lines).
+- **New on this backend:** `mobile_set_location` works (`ace-mobile set-location`), and `mobile_install_apk` accepts a local path (uploaded first). Not supported: `mobile_uninstall_apk`, `mobile_restart_runner` (`LEASE_UNSUPPORTED` — release + re-acquire is the restore).
+- **`mobile_stop_avd` releases** (instance terminated). The process also releases synchronously on exit; the broker's turn binding, idle release and sweep cover a hard kill.
+- **No background heartbeat, on purpose.** The lease is heartbeat only while an op is in flight. A session quiet for longer than `idle_release_s` (900 s) loses its machine and the next atom fails `LEASE_LOST` naming the restore (`mobile_ensure_avd_running`) — a background timer would keep an abandoned session's machine alive for `max_lease_s` (4 h).
+- **Typed failures:** `LEASE_NO_GRANT` (403 — a workspace admin must grant `ace`/`android-emulator`), `LEASE_UNDECLARED` (422 — run `deploy.sh`, which publishes the manifest), `LEASE_INVALID_REQUEST` (422 with validation errors, e.g. an unknown state), `LEASE_QUEUE_TIMEOUT` (with the queue position), `LEASE_READINESS_FAILED` (with `ready.json`'s reason), `AvdBootError` past the readiness bound, `LEASE_LOST`, `LEASE_CLI_<CODE>` (the CLI's own `error`; `LEASE_CLI_USAGE` means the contract drifted).
+- **The contract is one file:** every broker route and every CLI subcommand/flag is in `mcp/mobile/backends/lease-contract.ts`. `test/mcp/mobile/backends/lease-contract.test.ts` pins it against canopy-web's openapi (`test/fixtures/canopy-web-capability-routes.json`) and the CLI's own argparse (`test/fixtures/ace-mobile-cli-contract.json`); regenerate both with `npx tsx scripts/refresh-lease-contract-fixtures.ts --canopy-web <checkout> --cli infra/capabilities/android-emulator/image/cli/ace_mobile.py`.
+- **`/ace:doctor` `capability_lease`** makes one read-only GET of `/api/agents/ace/capabilities` and reports declared / granted / live leases, with a remediation per failure. It never acquires. It is a WARN only where the lease is the default backend; elsewhere it is INFO.
 
 The only production consumer is Phase 6 `qa-and-training`, which captures screenshots of a deployed CommCare app for walkthroughs and training material. Phase 3's `app-test-cases` generates per-journey Maestro recipes that Phase 6 then runs.
 
@@ -29,7 +51,7 @@ Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is 
 **Diagnostic / debug:** `mobile_probe_maestro_driver`, `mobile_diagnose`, `mobile_restart_runner`.
 
 `mobile_diagnose` is **dual-mode** (ace#961) — discriminate its result on the
-`backend` field. On **cloud** it returns the in-VM `CloudDiagnostics` (SSM
+`backend` field. On **lease** it returns the in-VM `ace-mobile diagnose` snapshot (the same `CloudDiagnostics` field names) plus a `lease` block (`lease_id`, `status`, `instance_id`, `expires_at`); with no lease held it returns `lease: null` and never acquires one. On **cloud** it returns the in-VM `CloudDiagnostics` (SSM
 state, runner-ready marker, adb devices). On **local** it returns
 `LocalDiagnostics`: `adb_server_port` (the port this session actually
 allocated — typically 5039), `adb_env_hint` (the copy-pasteable
@@ -158,7 +180,7 @@ on a clean interrupt; SIGKILL leaves an unplayable file.
 (default `1M`), `ACE_MOBILE_RECORD_SIZE` (default `540x1140`) — roughly
 5–8 MB per journey-minute at the defaults.
 
-**Cloud backend does not record yet** (Phase 2 — see
+**The remote backends (cloud, lease) do not record yet** (Phase 2 — see
 `docs/superpowers/specs/2026-07-30-avd-session-recording-design.md`).
 
 ## Device-state heal: always cold-boot per dispatch
@@ -171,7 +193,9 @@ on a clean interrupt; SIGKILL leaves an unplayable file.
 
 Local AVD: kill emulator → cold-boot AVD with `-wipe-data -no-snapshot-load -no-snapshot-save` → install APK from host-side SHA256-validated cache → register demo-prefix test user via the two registration recipes → apply environment baseline (front camera, CAMERA permission, GMS toggle around the registration boundary) → reinstall Maestro driver → verify. Steady-state cost ~60–90s per dispatch. See `mcp/mobile/client.ts:restoreDeviceUserState` and `mcp/mobile/backends/avd.ts:ensureAvdRunning`.
 
-Cloud: ace-web drives ONE shared, long-lived EC2 instance (start/stop, never terminated; id pinned in ace-web's task definition). `/api/mobile/ensure-running` starts it if stopped and waits for the emulator's ready marker; a running instance is reused, not cold-booted. The test user is registered live via `/api/mobile/register-test-user`, not by baked AMI scripts. ace-web's lock covers one recipe, not a run, so two concurrent cloud runs share — and can disturb — one device. The route/param contract `cloud.ts` must match is pinned in `test/fixtures/ace-web-mobile-routes.json` (`test/mcp/mobile/backends/cloud-route-contract.test.ts`).
+Lease: a fresh EC2 instance from ACE's image per lease (canopy-web launches it, terminates it on release) — the precondition is restored by construction, and two runs get two machines. Within one MCP process the lease is reused while it stays `ready`; registration is re-run live on every `ensure`. See § Backends and how one is chosen.
+
+Cloud (legacy): ace-web drives ONE shared, long-lived EC2 instance (start/stop, never terminated; id pinned in ace-web's task definition). `/api/mobile/ensure-running` starts it if stopped and waits for the emulator's ready marker; a running instance is reused, not cold-booted. The test user is registered live via `/api/mobile/register-test-user`, not by baked AMI scripts. ace-web's lock covers one recipe, not a run, so two concurrent cloud runs share — and can disturb — one device. The route/param contract `cloud.ts` must match is pinned in `test/fixtures/ace-web-mobile-routes.json` (`test/mcp/mobile/backends/cloud-route-contract.test.ts`).
 
 Lease (replacing Cloud): canopy-web's `android-emulator` capability gives each lease its OWN fresh EC2 machine, booted from ACE's image with `-wipe-data` for the requested state and terminated on release — so concurrent runs never share a device, and the precondition is restored by construction rather than by a heal on a shared box. Ops are `ace-mobile <subcommand>` execs over the lease API. The whole infrastructure — manifest, stack params, image, boot hook, CLI reference, and the deploy/bake/teardown scripts from an empty account to a live lease — is documented in [`infra/capabilities/android-emulator/README.md`](../../infra/capabilities/android-emulator/README.md); start there for anything cloud-emulator.
 
@@ -330,7 +354,7 @@ A CommCare `geopoint` question is a **Capture-button widget** that reads the dev
 On an emulator the GPS provider never acquires a fix on its own, so the Capture button would hang. Two mechanisms make it work:
 
 - **Cold-boot baseline mock fix (automatic).** `AvdBackend.applyEnvironmentBaseline` seeds `DEFAULT_MOCK_LOCATION` (Kano, Nigeria — `adb emu geo fix <lon> <lat> <alt> <sats>`, **longitude FIRST**) on every cold-boot, so any geopoint Capture has a provider fix to read out of the box. Live-verified the emulator GPS provider then reports `hAcc≈5m` (well under a typical 50 m gate). It's part of the baseline fingerprint (`mock_location_fix`).
-- **`mobile_set_location` atom (per-opp override).** Pass `{longitude, latitude, altitude?, satellites?}` to set opp-specific coordinates for realistic screenshots. **Longitude is the first coordinate** (emulator console convention — the classic transposition footgun). Local-AVD only through the legacy cloud backend, which throws `CLOUD_MOCK_LOCATION_UNSUPPORTED`; a leased emulator supports it as `ace-mobile set-location --lon --lat [--alt] [--sats]` (same argument order).
+- **`mobile_set_location` atom (per-opp override).** Pass `{longitude, latitude, altitude?, satellites?}` to set opp-specific coordinates for realistic screenshots. **Longitude is the first coordinate** (emulator console convention — the classic transposition footgun). Local AVD and the lease backend (`ace-mobile set-location` runs beside the emulator); the legacy cloud backend throws `CLOUD_MOCK_LOCATION_UNSUPPORTED`.
 
 **Recipe authoring + the not-yet-calibrated selector (TODO).** The geopoint Capture-button *selector* is **not yet in the selector map** — it must be dumped live against a correct on-device build (we have not had one yet; this run's build was stale). When calibrating, also check whether `auto_gps_capture: true` (set at the app level) means CommCare auto-fills the fix in the background — if so the recipe may only need a `mobile_set_location` + a wait, with no explicit Capture tap. Until calibrated, `app-test-cases` Step 3 item 4.5 marks the geopoint step `deferred`; never `inputText` a coordinate string (the `recipe-sanity-probe` `inputtext-geopoint-as-string` rule flags that).
 

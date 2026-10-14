@@ -14,6 +14,7 @@ import {
 import { selectAvd, type AvdPoolEntry } from '../avd-allocator.js';
 import { classifyAdbEcho, REACHABILITY_TOKEN, type ReachabilityVerdict } from '../device-reachable.js';
 import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marker.js';
+import { parseUiHierarchy } from './remote-io.js';
 import { resolveActiveSelectorMapId } from '../recipe-resolver.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
@@ -2526,23 +2527,9 @@ export class AvdBackend {
   }
 
   private parseHierarchy(xml: string): UiDumpResult['elements'] {
-    const out: UiDumpResult['elements'] = [];
-    const nodeRe = /<node\s+([^>]*?)\/?>/g;
-    let m: RegExpExecArray | null;
-    while ((m = nodeRe.exec(xml)) !== null) {
-      const attrs = m[1];
-      const get = (k: string) => {
-        const am = attrs.match(new RegExp(`${k}="([^"]*)"`));
-        return am ? am[1] : undefined;
-      };
-      out.push({
-        id: get('resource-id') || undefined,
-        text: get('text') || undefined,
-        class: get('class') || undefined,
-        bounds: get('bounds') || undefined,
-      });
-    }
-    return out;
+    // Shared with the remote backends, which parse a dump read off a device
+    // they cannot reach directly (remote-io.ts).
+    return parseUiHierarchy(xml);
   }
 }
 

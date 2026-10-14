@@ -2,8 +2,9 @@
  * ACE Mobile MCP Server
  *
  * Exposes 19 atomic mobile capabilities backed by Maestro + adb +
- * Playwright + (when ACE_MOBILE_BACKEND=cloud) ace-web's cloud
- * emulator HTTP API. Routing → backend lives in
+ * Playwright, or — on a remote backend — a leased android-emulator machine
+ * driven through canopy-web's capability broker (`lease`, the default where
+ * no AVD is provisioned) or ace-web's legacy `/api/mobile` (`cloud`). Routing → backend lives in
  * `mcp/mobile/capability-map.ts`; the registration-coverage test pins
  * map ↔ server alignment.
  *
@@ -82,14 +83,16 @@ try {
 // NOT reach this process — the banner is how you confirm the restart
 // actually picked it up.
 {
-  const { backend, source, sessionFile, ppid } = resolveBackend();
+  const { backend, source, sessionFile, ppid, defaultReason } = resolveBackend();
   const cloudReady = client.cloud !== null;
+  const leaseReady = client.lease !== null;
   const paletteSource = isStaticRecipesDirOverride(client.staticRecipesDir)
     ? `override:${STATIC_RECIPES_DIR_ENV}`
     : 'install';
   process.stderr.write(
     `[ace-mobile] startup backend=${backend} source=${source} ppid=${ppid} ` +
-    `cloud_ready=${cloudReady} session_file=${sessionFile} ` +
+    `cloud_ready=${cloudReady} lease_ready=${leaseReady} session_file=${sessionFile} ` +
+    (defaultReason ? `default_reason="${defaultReason}" ` : '') +
     `palette_dir=${client.staticRecipesDir} palette_source=${paletteSource}\n`,
   );
   if (paletteSource !== 'install') {
@@ -395,6 +398,35 @@ server.tool(
             driverPackages: null,
             serial: diag.adb_devices[0]?.serial,
             backend: 'cloud',
+          }, null, 2),
+        }],
+      };
+    }
+    // Lease: the in-VM `ace-mobile diagnose` reports the same adb device list.
+    // There is no runner unit; a ready lease whose emulator adb can see is the
+    // equivalent signal. With no lease held, nothing is booted — say so.
+    if (diag && diag.backend === 'lease') {
+      const devices = (diag.adb_devices as Array<{ serial: string; state: string }> | undefined) ?? [];
+      const sawDevice = devices.some((d) => d.state === 'device');
+      const healthy = diag.lease?.status === 'ready' && sawDevice;
+      const reason = healthy
+        ? undefined
+        : !diag.lease
+          ? 'no lease held — mobile_ensure_avd_running acquires one'
+          : diag.lease.status !== 'ready'
+            ? `lease ${diag.lease.lease_id} is ${diag.lease.status} (expected ready)`
+            : 'leased emulator not visible to adb';
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            healthy,
+            reason,
+            adbPort: null,
+            portKind: null,
+            driverPackages: null,
+            serial: devices[0]?.serial,
+            backend: 'lease',
           }, null, 2),
         }],
       };

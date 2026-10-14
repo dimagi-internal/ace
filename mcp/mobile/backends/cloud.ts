@@ -27,7 +27,6 @@
 //   instance stop) — useful for within-run checkpoints, not for AMI bakes.
 
 import * as fs from 'node:fs/promises';
-import { isSafeArtifactName } from '../../../lib/contained-path.js';
 import * as path from 'node:path';
 import {
   MobileError,
@@ -39,12 +38,20 @@ import type {
   AvdInfo,
   ApkInfo,
   RecipeRunResult,
-  ScreenshotEntry,
-  StepResult,
   TestUserRegistrationResult,
   UiDumpResult,
   SnapshotResult,
 } from '../types.js';
+import {
+  downloadToFile,
+  fetchWithRetry,
+  formatDiagnostics,
+  materializeArtifacts,
+  normalizeRemoteStep,
+  resolveRetry,
+  type RetryConfig,
+  type RetryOpts,
+} from './remote-io.js';
 
 /**
  * Append scalar query params to an ace-web route. ace-web's django-ninja
@@ -89,12 +96,7 @@ export interface CloudBackendOpts {
    * responses and 4xx responses are never retried — they're deterministic
    * from the request.
    */
-  retry?: {
-    retries?: number;
-    backoffMs?: number;
-    /** Hook for tests; defaults to setTimeout-based sleep. */
-    sleepImpl?: (ms: number) => Promise<void>;
-  };
+  retry?: RetryOpts;
 }
 
 /** Shape of `/api/mobile/states`'s response data. */
@@ -184,7 +186,7 @@ export class CloudBackend {
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private readonly jobPollIntervalMs: number;
-  private readonly retryConfig: { retries: number; backoffMs: number; sleep: (ms: number) => Promise<void> };
+  private readonly retryConfig: RetryConfig;
   readonly defaultState: string;
 
   constructor(opts: CloudBackendOpts = {}) {
@@ -210,11 +212,7 @@ export class CloudBackend {
     this.defaultState = opts.defaultState ?? '';
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 600_000;
     this.jobPollIntervalMs = opts.jobPollIntervalMs ?? 2_000;
-    this.retryConfig = {
-      retries: opts.retry?.retries ?? 2,
-      backoffMs: opts.retry?.backoffMs ?? 250,
-      sleep: opts.retry?.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
-    };
+    this.retryConfig = resolveRetry(opts.retry);
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────
@@ -664,29 +662,14 @@ export class CloudBackend {
     );
     const result = await this.pollJob(submission.job_id);
 
-    await fs.mkdir(screenshotDir, { recursive: true });
-    const screenshots: ScreenshotEntry[] = [];
-    for (const art of result.artifacts) {
-      // Skip non-image artifacts — they go alongside but ScreenshotEntry
-      // is specifically images per the type.
-      // ace#1110: `art.name` comes from the REMOTE side, and path.join happily
-      // walks out of screenshotDir on `../`. No legitimate artifact name has a
-      // separator, so this needs no allowed-roots decision.
-      if (!isSafeArtifactName(art.name)) {
-        console.warn(`[ace-mobile] cloud: skipping artifact with unsafe name ${JSON.stringify(art.name)} (ace#1110)`);
-        continue;
-      }
-      const dest = path.join(screenshotDir, art.name);
-      const bytes = await this.downloadTo(art.presigned_url, dest);
-      if (art.content_type.startsWith('image/')) {
-        screenshots.push({
-          stepName: art.name.replace(/\.[a-z0-9]+$/i, ''),
-          path: dest,
-          takenAt: new Date().toISOString(),
-          bytes,
-        });
-      }
-    }
+    // Shared with the lease backend (remote-io.ts), including the ace#1110
+    // unsafe-name skip: `art.name` comes from the REMOTE side.
+    const screenshots = await materializeArtifacts(
+      result.artifacts.map((a) => ({ name: a.name, url: a.presigned_url, contentType: a.content_type })),
+      screenshotDir,
+      (url, dest) => this.downloadTo(url, dest),
+      'cloud',
+    );
 
     const status: RecipeRunResult['status'] =
       result.exit_code === 0 ? 'pass' : 'fail';
@@ -718,7 +701,7 @@ export class CloudBackend {
       stderr: result.stderr,
       screenshotsDir: screenshotDir,
       screenshots,
-      steps: result.steps ? result.steps.map(normalizeCloudStep) : undefined,
+      steps: result.steps ? result.steps.map(normalizeRemoteStep) : undefined,
       diagnostics,
       failure,
     };
@@ -834,36 +817,15 @@ export class CloudBackend {
     // 429 (rate limit) is intentionally NOT retried — ace-web doesn't
     // currently rate-limit ACE PATs, and a real rate-limit response
     // wants a longer back-off than this layer provides.
-    let response: Response | undefined;
-    let lastError: unknown;
-    const maxAttempts = this.retryConfig.retries + 1;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        response = await this.fetchImpl(url, { ...init, headers, signal });
-        // Retry transient gateway errors with backoff; fall through for
-        // 2xx + 4xx + non-retriable codes.
-        if (
-          attempt < maxAttempts &&
-          (response.status === 502 || response.status === 503 || response.status === 504)
-        ) {
-          lastError = new Error(`HTTP ${response.status} from ${url}`);
-          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
-          continue;
-        }
-        lastError = undefined;
-        break;
-      } catch (e: unknown) {
-        lastError = e;
-        // Don't retry on AbortError — the caller's own timeout fired,
-        // they want immediate feedback.
-        if ((e as Error).name === 'AbortError') break;
-        if (attempt < maxAttempts) {
-          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
-          continue;
-        }
-        break;
-      }
-    }
+    // Bounded retry on transient transport failures + gateway 5xx; never on
+    // 4xx or problem+json, which are deterministic from the request. Shared
+    // with the lease backend — see `fetchWithRetry` in remote-io.ts.
+    const { response, lastError, attempts: maxAttempts } = await fetchWithRetry(
+      this.fetchImpl,
+      url,
+      { ...init, headers, signal },
+      this.retryConfig,
+    );
     if (!response) {
       const err = lastError as Error | undefined;
       throw new MobileError(
@@ -933,137 +895,7 @@ export class CloudBackend {
   }
 
   private async downloadTo(url: string, dest: string): Promise<number> {
-    // Same retry contract as `request`: transient transport errors and
-    // gateway 5xx get a bounded second attempt. S3 presigned-URL
-    // downloads occasionally trip on transient network conditions; one
-    // flaky screenshot artifact shouldn't fail an entire recipe run.
-    let response: Response | undefined;
-    let lastError: unknown;
-    const maxAttempts = this.retryConfig.retries + 1;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        response = await this.fetchImpl(url);
-        if (
-          attempt < maxAttempts &&
-          (response.status === 502 || response.status === 503 || response.status === 504)
-        ) {
-          lastError = new Error(`HTTP ${response.status} from ${url}`);
-          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
-          continue;
-        }
-        lastError = undefined;
-        break;
-      } catch (e: unknown) {
-        lastError = e;
-        if ((e as Error).name === 'AbortError') break;
-        if (attempt < maxAttempts) {
-          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
-          continue;
-        }
-        break;
-      }
-    }
-    if (!response) {
-      const err = lastError as Error | undefined;
-      throw new MobileError(
-        'CLOUD_DOWNLOAD_FAILED',
-        `failed to fetch ${url} after ${maxAttempts} attempt(s): ${err?.message ?? 'unknown'}`,
-      );
-    }
-    if (!response.ok) {
-      throw new MobileError(
-        'CLOUD_DOWNLOAD_FAILED',
-        `S3 GET ${url} returned ${response.status}`,
-      );
-    }
-    const buf = Buffer.from(await response.arrayBuffer());
-    await fs.writeFile(dest, buf);
-    return buf.byteLength;
+    // Same retry contract as `request` (remote-io.ts).
+    return downloadToFile(this.fetchImpl, url, dest, this.retryConfig, 'CLOUD_DOWNLOAD_FAILED');
   }
-}
-
-
-// ── helpers ────────────────────────────────────────────────────────────
-
-
-/**
- * Format the in-VM diagnostic snapshot that ace-web attaches to its
- * /api/mobile/{ensure-running,diagnose} responses into a compact,
- * human-readable block suitable for an MCP tool_result message.
- *
- * Truncates the runner/emulator log tails so a 30-line tail doesn't
- * push the tool_result over the agent's line-wrap threshold; the
- * Python side already limits them to ~30 lines so a soft 1.5 KB cap
- * is fine.
- */
-function formatDiagnostics(diag: Record<string, unknown>): string {
-  const lines: string[] = [];
-  const adbDevices = diag.adb_devices as Array<{ serial: string; state: string }> | undefined;
-  const visible = diag.adb_visible_count as number | undefined;
-  lines.push(
-    `  adb devices: ${visible ?? 0} in 'device' state` +
-      (adbDevices?.length
-        ? ` (${adbDevices.map((d) => `${d.serial}=${d.state}`).join(', ')})`
-        : ' (none)'),
-  );
-  const pid = diag.emulator_pid as number | null | undefined;
-  lines.push(
-    `  emulator process: ${pid ? `pid ${pid}` : 'not running'}`,
-  );
-  const runnerState = diag.runner_service_state as string | undefined;
-  lines.push(`  ace-mobile-runner.service: ${runnerState ?? 'unknown'}`);
-  const markerPresent = diag.marker_present as boolean | undefined;
-  const markerAge = diag.marker_age_seconds as number | null | undefined;
-  lines.push(
-    `  ready marker: ${
-      markerPresent ? `present (age ${markerAge ?? '?'}s)` : 'absent'
-    }`,
-  );
-  const runnerLog = (diag.runner_log_tail as string | undefined)?.trim();
-  if (runnerLog) {
-    lines.push('  --- runner.log tail ---');
-    lines.push(...runnerLog.split('\n').map((l) => `    ${l}`));
-  }
-  const emuLog = (diag.emulator_log_tail as string | undefined)?.trim();
-  if (emuLog) {
-    lines.push('  --- emulator.log tail ---');
-    lines.push(...emuLog.split('\n').map((l) => `    ${l}`));
-  }
-  return lines.join('\n');
-}
-
-
-const VALID_STEP_STATUSES: ReadonlySet<StepResult['status']> = new Set([
-  'pass',
-  'fail',
-  'skipped',
-  'unknown',
-]);
-
-
-/**
- * Coerce a CloudStep (which has loose `string` status and `null`-able
- * optionals) into the typed StepResult. Unknown statuses fall through
- * to 'unknown' so a future ace-web version emitting a new value can't
- * crash the cloud backend.
- */
-function normalizeCloudStep(s: {
-  index: number;
-  name: string;
-  status: string;
-  screenshot?: string | null;
-  error?: string | null;
-  duration_ms?: number | null;
-}): StepResult {
-  const status: StepResult['status'] = VALID_STEP_STATUSES.has(s.status as StepResult['status'])
-    ? (s.status as StepResult['status'])
-    : 'unknown';
-  return {
-    index: s.index,
-    name: s.name,
-    status,
-    screenshot: s.screenshot ?? undefined,
-    error: s.error ?? undefined,
-    durationMs: s.duration_ms ?? undefined,
-  };
 }

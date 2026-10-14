@@ -1,14 +1,25 @@
 /**
  * Per-session mobile backend toggle.
  *
+ * Three backends:
+ *   - `local` — this machine's AVD (AvdBackend + MaestroBackend).
+ *   - `lease` — ACE's own ephemeral `android-emulator` machine, leased from
+ *     canopy-web's capability broker (backends/lease.ts). The default
+ *     wherever no AVD has been provisioned — notably the KVM-less cloud runner.
+ *   - `cloud` — LEGACY: ace-web's one shared `/api/mobile` instance
+ *     (backends/cloud.ts). Kept for one release while `lease` is proven live,
+ *     then removed with ace-web's `apps/mobile`. Never chosen by default.
+ *
  * Resolution order (highest priority first):
  *   1. `process.env.ACE_MOBILE_BACKEND` — set when launching Claude Code
- *      (e.g. `ACE_MOBILE_BACKEND=cloud claude`). Wins everything else.
+ *      (e.g. `ACE_MOBILE_BACKEND=lease claude`). Wins everything else.
  *   2. Per-session state file at `~/.ace/mobile-backend.<ppid>`. Keyed
  *      by the Claude Code parent process ID so two emdash workspaces
  *      (or two terminals) pick the same backend independently. Written
  *      by the `/ace:mobile-backend` slash command.
- *   3. Default: `local`.
+ *   3. Default: `local` when a provisioned AVD exists on this machine (an
+ *      `.ace-provisioned.json` marker — avd-provisioned-marker.ts, written
+ *      only after a real bootstrap succeeded), else `lease`.
  *
  * Why ppid keying: each Claude Code session is its own process; each
  * spawned MCP server inherits a unique parent pid. The slash command
@@ -19,13 +30,23 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { MARKER_FILENAME, readProvisionedMarker } from './avd-provisioned-marker.js';
 
-export type MobileBackend = 'cloud' | 'local';
+export type MobileBackend = 'cloud' | 'local' | 'lease';
 export type BackendSource = 'env' | 'session-file' | 'default';
+
+export const MOBILE_BACKENDS: readonly MobileBackend[] = ['local', 'lease', 'cloud'];
+
+function asBackend(raw: string): MobileBackend | null {
+  const v = raw.trim().toLowerCase();
+  return (MOBILE_BACKENDS as readonly string[]).includes(v) ? (v as MobileBackend) : null;
+}
 
 export interface ResolvedBackend {
   backend: MobileBackend;
   source: BackendSource;
+  /** Only on `source: 'default'`: why the default landed where it did. */
+  defaultReason?: string;
   /** Path of the per-session state file (whether it currently exists or not). */
   sessionFile: string;
   /** Parent pid the session file is keyed by. */
@@ -62,6 +83,45 @@ export function mobileStateDir(): string {
 }
 
 /**
+ * The AVD home the default-selection probe scans: `ANDROID_AVD_HOME`, else
+ * `~/.android/avd` — the same resolution AvdBackend uses.
+ * `ACE_MOBILE_SELECTION_AVD_HOME` overrides it for the probe alone; it is the
+ * test seam (test/setup/isolate-ace-home-state.ts points it at a fixture so a
+ * suite's default never depends on the developer's real AVDs).
+ */
+export function selectionAvdHome(): string {
+  const seam = process.env.ACE_MOBILE_SELECTION_AVD_HOME;
+  if (seam && seam.trim()) return seam;
+  return process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
+}
+
+/**
+ * The provisioned AVDs on this machine: every `<name>.avd/` carrying a
+ * readable provisioned marker. Evidence, not inference — the marker is
+ * written only after a real `registerTestUser` succeeded on that AVD, so an
+ * AVD that merely has disk images (or was created and never bootstrapped)
+ * does not count. Selector-map currency is deliberately NOT required here:
+ * the local backend re-bootstraps every dispatch, so an old map is a reason
+ * to re-run the bootstrap, not a reason to send the run to a cloud machine.
+ */
+export function provisionedAvds(avdHome: string = selectionAvdHome()): string[] {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(avdHome);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const e of entries) {
+    if (!e.endsWith('.avd')) continue;
+    const name = e.slice(0, -'.avd'.length);
+    if (!fs.existsSync(path.join(avdHome, e, MARKER_FILENAME))) continue;
+    if (readProvisionedMarker(avdHome, name)) out.push(name);
+  }
+  return out.sort();
+}
+
+/**
  * Resolve the active backend for *this* MCP-server process. Reads the
  * per-session file fresh on every call so a slash-command toggle takes
  * effect immediately without restarting the MCP server.
@@ -70,21 +130,38 @@ export function resolveBackend(): ResolvedBackend {
   const ppid = process.ppid;
   const sessionFile = path.join(mobileStateDir(), `mobile-backend.${ppid}`);
 
-  const envRaw = (process.env.ACE_MOBILE_BACKEND || '').trim().toLowerCase();
-  if (envRaw === 'cloud' || envRaw === 'local') {
-    return { backend: envRaw, source: 'env', sessionFile, ppid };
+  const fromEnv = asBackend(process.env.ACE_MOBILE_BACKEND || '');
+  if (fromEnv) {
+    return { backend: fromEnv, source: 'env', sessionFile, ppid };
   }
 
   try {
-    const fromFile = fs.readFileSync(sessionFile, 'utf8').trim().toLowerCase();
-    if (fromFile === 'cloud' || fromFile === 'local') {
+    const fromFile = asBackend(fs.readFileSync(sessionFile, 'utf8'));
+    if (fromFile) {
       return { backend: fromFile, source: 'session-file', sessionFile, ppid };
     }
   } catch {
     // file missing or unreadable — fall through
   }
 
-  return { backend: 'local', source: 'default', sessionFile, ppid };
+  const avdHome = selectionAvdHome();
+  const provisioned = provisionedAvds(avdHome);
+  if (provisioned.length > 0) {
+    return {
+      backend: 'local',
+      source: 'default',
+      defaultReason: `provisioned AVD on this machine (${provisioned.join(', ')} in ${avdHome})`,
+      sessionFile,
+      ppid,
+    };
+  }
+  return {
+    backend: 'lease',
+    source: 'default',
+    defaultReason: `no provisioned AVD in ${avdHome} — leasing ACE's android-emulator from canopy-web`,
+    sessionFile,
+    ppid,
+  };
 }
 
 /**
@@ -93,8 +170,8 @@ export function resolveBackend(): ResolvedBackend {
  * spawned by Claude Code, so `process.ppid` matches the MCP server's.
  */
 export function setSessionBackend(backend: MobileBackend, ppid: number = process.ppid): string {
-  if (backend !== 'cloud' && backend !== 'local') {
-    throw new Error(`invalid backend: ${backend} (expected 'cloud' or 'local')`);
+  if (!asBackend(backend)) {
+    throw new Error(`invalid backend: ${backend} (expected one of ${MOBILE_BACKENDS.join(', ')})`);
   }
   const dir = mobileStateDir();
   fs.mkdirSync(dir, { recursive: true });
@@ -113,6 +190,7 @@ export interface BackendPreflight {
   backend: MobileBackend;
   source: BackendSource;
   cloudConfigured: boolean;
+  leaseConfigured: boolean;
   /** Non-fatal advisory to log before proceeding. */
   note?: string;
   /** When set, the ensure-running path must throw instead of booting. */
@@ -140,9 +218,31 @@ export interface BackendPreflight {
 export function preflightMobileBackend(args: {
   resolved: ResolvedBackend;
   cloudConfigured: boolean;
+  /** Omitted = not configured. */
+  leaseConfigured?: boolean;
 }): BackendPreflight {
   const { resolved, cloudConfigured } = args;
-  const base = { backend: resolved.backend, source: resolved.source, cloudConfigured };
+  const leaseConfigured = args.leaseConfigured ?? false;
+  const base = { backend: resolved.backend, source: resolved.source, cloudConfigured, leaseConfigured };
+
+  if (resolved.backend === 'lease' && !leaseConfigured) {
+    const why =
+      resolved.source === 'default'
+        ? `the default resolved to lease (${resolved.defaultReason ?? 'no provisioned AVD'})`
+        : `the mobile backend is pinned to lease (${resolved.source})`;
+    return {
+      ...base,
+      fatal: {
+        code: 'LEASE_NOT_CONFIGURED',
+        message:
+          `${why}, but ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's .env) is missing — ` +
+          'refusing to fall through to a local AVD boot',
+        remediation:
+          'Run /ace:setup --force-env to inject CANOPY_WEB_PAT, or provision a local AVD with /ace:mobile-bootstrap, ' +
+          'or pin the local backend with /ace:mobile-backend local.',
+      },
+    };
+  }
 
   if (resolved.backend === 'cloud' && !cloudConfigured) {
     return {
