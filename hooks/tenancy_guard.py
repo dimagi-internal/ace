@@ -86,7 +86,8 @@ def plugin_env(key: str) -> str | None:
         for i in range(len(parts) - 4):
             if parts[i] == "plugins" and parts[i + 1] == "cache":
                 root = os.sep.join(parts[: i + 1])
-                candidates.append(os.path.join(root, "data", f"{parts[i+2]}-{parts[i+3]}", ".env"))
+                # <plugin>-<marketplace>, Claude Code's naming (lib/plugin-data-dir.ts)
+                candidates.append(os.path.join(root, "data", f"{parts[i+3]}-{parts[i+2]}", ".env"))
                 break
     # The canonical default, reached from a checkout as well as the install.
     candidates.append(
