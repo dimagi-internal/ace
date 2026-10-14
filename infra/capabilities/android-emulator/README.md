@@ -54,20 +54,20 @@ Run them from this directory.
   stack attaches its broker policy to that role and does not create it. In an
   account where canopy-web runs under another role, change the value.
 - **canopy's template is released at the pinned tag.** `stack.params.json`
-  `template.ref` (`dimagi-canopy-v0.8.0`) must be a published release of
+  `template.ref` (`dimagi-canopy-v0.8.1`) must be a published release of
   canopy-web that ships `Mode: ephemeral`:
 
   ```bash
-  gh release view dimagi-canopy-v0.8.0 -R dimagi-internal/canopy-web
+  gh release view dimagi-canopy-v0.8.1 -R dimagi-internal/canopy-web
   ```
 - **Publishing:** `canopy-runtime` from the same tag, and a canopy-web PAT of an
   admin of agent `ace` in `CANOPY_WEB_PAT` (or `CANOPY_TOKEN`):
 
   ```bash
-  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@dimagi-canopy-v0.8.0#subdirectory=packages/canopy_runtime"
+  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@dimagi-canopy-v0.8.1#subdirectory=packages/canopy_runtime"
   ```
 
-### 1. Bake the image (~25-40 min)
+### 1. Bake the image (~25-40 min; measured 2026-10-14: ~35 min, most of it the metal host stopping)
 
 ```bash
 ./bake.sh
@@ -140,7 +140,8 @@ LEASE=$(curl -fsS -X POST -H "$AUTH" -H 'content-type: application/json' \
   -d '{"agent":"ace","capability":"android-emulator","params":{"state":"cc-2.63.0"}}' \
   "$API" | jq -r .lease_id)
 
-# Heartbeat until ready: ~4 min to EC2 status ok, plus ~2 min of emulator cold boot.
+# Heartbeat until ready. Measured 2026-10-14 (5 leases, m8i.xlarge): ready in 213-224 s
+# from acquire; emulator boot_completed ~150 s, CommCare installed ~170 s, KVM accel.
 until curl -fsS -H "$AUTH" "$API/$LEASE" | jq -e '.ready == true' >/dev/null; do
   curl -fsS -H "$AUTH" "$API/$LEASE" | jq -c '{status, ready}'
   sleep 15
