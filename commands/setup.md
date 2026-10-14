@@ -48,14 +48,14 @@ fi
 if [ -z "$SCRIPT" ]; then
   REG="$HOME/.claude/plugins/installed_plugins.json"
   if [ -f "$REG" ]; then
-    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const p=(d&&d.plugins)||d||{}; const k=p[\"ace@ace\"]?\"ace@ace\":Object.keys(p).find(k=>/^ace@/.test(k)); const e=k&&p[k]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
     if [ -n "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH/bin/ace-setup" ]; then
       SCRIPT="$INSTALL_PATH/bin/ace-setup"
     fi
   fi
 fi
 if [ -z "$SCRIPT" ]; then
-  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
+  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
   if [ -n "$LATEST" ] && [ -x "$LATEST/bin/ace-setup" ]; then
     SCRIPT="$LATEST/bin/ace-setup"
   fi

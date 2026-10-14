@@ -9,7 +9,7 @@
 # Overrides:
 #   ACE_DIR=/path/to/ace      audit a specific plugin root
 #   --here                    walk up from $PWD to find an ACE checkout (dev mode)
-#   --installed               force use of the newest ~/.claude/plugins/cache/ace/ace/*
+#   --installed               force use of the installed ACE (registry, any ace@<marketplace>)
 #
 # Exit status: 0 always (check results go to stdout as PASS/WARN/FAIL lines).
 set +e
@@ -33,6 +33,8 @@ curl_auth() {
   printf '%s\n' "$_auth_hdr" | curl -H @- "$@"
 }
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Registry lookup + data-dir naming shared with bin/ace-setup (any ace@<marketplace>).
+. "$SELF_DIR/bin/_ace-plugin-paths.sh"
 MODE="self"
 ROOT=""
 SUBCOMMAND=""
@@ -117,10 +119,10 @@ elif [ "$MODE" = "installed" ]; then
   # newest directory under the cache if that file is missing or unreadable.
   REG="$HOME/.claude/plugins/installed_plugins.json"
   if [ -f "$REG" ]; then
-    ROOT="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$REG','utf8')); const e=d['ace@ace']; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    ROOT="$(ace_registry_field installPath)"
   fi
   if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
-    ROOT="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
+    ROOT="$(ace_newest_cache_root)"
   fi
 else
   # Default: self — audit the plugin copy this script lives in.
@@ -209,7 +211,7 @@ fi
 if [ "$PREFLIGHT" = "1" ]; then
   # env_file resolution (mirrors the runtime-readiness block ~line 484)
   ENV_FILE=""
-  DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ace-ace}"
+  DATA_DIR="$(ace_data_dir "$ROOT")"
   if [ -f "$DATA_DIR/.env" ]; then
     ENV_FILE="$DATA_DIR/.env"
   elif [ -f "$ROOT/.env" ]; then
@@ -861,10 +863,8 @@ fi
 # WARN with the actionable fix (`/reload-plugins` or restart the session).
 REG_VER=""
 REG_PATH=""
-if [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
-  REG_VER="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$HOME/.claude/plugins/installed_plugins.json','utf8')); const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']); const v=Array.isArray(e)?e[0]:e; console.log(v&&v.version||''); } catch(_) {}" 2>/dev/null)"
-  REG_PATH="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$HOME/.claude/plugins/installed_plugins.json','utf8')); const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']); const v=Array.isArray(e)?e[0]:e; console.log(v&&v.installPath||''); } catch(_) {}" 2>/dev/null)"
-fi
+REG_VER="$(ace_registry_field version)"
+REG_PATH="$(ace_registry_field installPath)"
 if [ -n "$REG_VER" ] && [ "$VER_FILE" != "missing" ]; then
   if [ "$REG_VER" = "$VER_FILE" ]; then
     pass "session_freshness: running v$VER_FILE matches registry"
@@ -985,7 +985,10 @@ fi
 # upgrade and does not purge old ones. Each cached version is ~150MB
 # (most of which is node_modules). Surface the cleanup so colleagues
 # don't accumulate gigabytes of stale cache silently.
+# The cache parent of whichever marketplace ACE is installed under
+# (cache/ace/ace, cache/canopy-agents/ace, ...).
 CACHE_PARENT="$HOME/.claude/plugins/cache/ace/ace"
+case "$ROOT" in */plugins/cache/*/*/*) CACHE_PARENT="$(dirname "$ROOT")" ;; esac
 if [ -d "$CACHE_PARENT" ]; then
   CACHE_COUNT="$(ls -1d "$CACHE_PARENT"/*/ 2>/dev/null | wc -l | tr -d '[:space:]')"
   if [ "${CACHE_COUNT:-0}" -gt 3 ]; then
@@ -1001,11 +1004,7 @@ fi
 # --- Google service-account key ---
 # Canonical: $CLAUDE_PLUGIN_DATA/gws-sa-key.json — survives plugin updates.
 # Legacy: $ROOT/.gws-sa-key.json — for pre-migration installs.
-if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-  DATA_DIR="$CLAUDE_PLUGIN_DATA"
-else
-  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
-fi
+DATA_DIR="$(ace_data_dir "$ROOT")"
 CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
 LEGACY_KEY="$ROOT/.gws-sa-key.json"
 
@@ -1231,7 +1230,7 @@ if [ -n "$ENV_FILE" ]; then
   if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
     pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA set to $CLAUDE_PLUGIN_DATA)"
   else
-    pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA unset; defaulted DATA_DIR to $DATA_DIR — agents that probe \${CLAUDE_PLUGIN_DATA}/.env directly will miss this path. Resolution order: \$CLAUDE_PLUGIN_DATA/.env → ~/.claude/plugins/data/ace-ace/.env → \$ROOT/.env)"
+    pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA unset; defaulted DATA_DIR to $DATA_DIR — agents that probe \${CLAUDE_PLUGIN_DATA}/.env directly will miss this path. Resolution order: \$CLAUDE_PLUGIN_DATA/.env → the installed ace@<marketplace> data dir (plugins/data/ace-<marketplace>) → \$ROOT/.env)"
   fi
 else
   warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "run /ace:setup (or: bash \"$ROOT/bin/ace-setup\") to fetch .env from 1Password"
@@ -3071,8 +3070,8 @@ if [ -n "${ACE_COMMCARE_CLI_JAR:-}" ]; then
   COMMCARE_CLI_JAR_PATH="$ACE_COMMCARE_CLI_JAR"
 elif [ -n "${ACE_PLUGIN_DATA_DIR:-}" ] && [ -f "$ACE_PLUGIN_DATA_DIR/commcare-cli.jar" ]; then
   COMMCARE_CLI_JAR_PATH="$ACE_PLUGIN_DATA_DIR/commcare-cli.jar"
-elif [ -f "$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar" ]; then
-  COMMCARE_CLI_JAR_PATH="$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar"
+elif [ -f "$(ace_data_dir "$ROOT")/commcare-cli.jar" ]; then
+  COMMCARE_CLI_JAR_PATH="$(ace_data_dir "$ROOT")/commcare-cli.jar"
 fi
 if [ -z "$COMMCARE_CLI_JAR_PATH" ]; then
   warn "commcare_cli_jar: not found at \$ACE_COMMCARE_CLI_JAR or \$CLAUDE_PLUGIN_DATA/commcare-cli.jar" "run /ace:setup — it auto-downloads the latest commcare-cli.jar from dimagi/commcare-core releases. Without this, Phase 3 app-release-smoke can't catch runtime-install defects (e.g. bednet-spot-check/20260525-1405 class)."

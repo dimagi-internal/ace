@@ -19,7 +19,12 @@
  *
  * The corresponding DATA dir is:
  *
- *   <claude-home>/plugins/data/<marketplace>-<plugin>
+ *   <claude-home>/plugins/data/<plugin>-<marketplace>
+ *
+ * PLUGIN FIRST — Claude Code's own naming (on disk: `context7-claude-plugins-official`).
+ * This used to compose `<marketplace>-<plugin>`, which only worked because `ace@ace`
+ * is symmetric; an `ace@canopy-agents` install read `canopy-agents-ace/.env` while
+ * Claude Code and /ace:setup used `ace-canopy-agents/`.
  *
  * We walk up from the caller's `import.meta.url`, look for the
  * `plugins/cache/...` segment, and compose the `data/...` sibling. When the
@@ -41,7 +46,7 @@ export interface DerivedPluginDataDir {
 
 /**
  * Walk the caller's module path looking for `plugins/cache/<mp>/<plugin>/<version>/`
- * and compose the sibling `plugins/data/<mp>-<plugin>` path.
+ * and compose the sibling `plugins/data/<plugin>-<mp>` path.
  */
 export function derivePluginDataDir(callerMetaUrl: string): DerivedPluginDataDir | null {
   const callerPath = fileURLToPath(callerMetaUrl);
@@ -55,7 +60,7 @@ export function derivePluginDataDir(callerMetaUrl: string): DerivedPluginDataDir
       const version = parts[i + 4];
       if (!marketplace || !plugin || !version) continue;
       const pluginsRoot = parts.slice(0, i + 1).join(path.sep);
-      const dataDir = path.join(pluginsRoot, 'data', `${marketplace}-${plugin}`);
+      const dataDir = path.join(pluginsRoot, 'data', `${plugin}-${marketplace}`);
       return { path: dataDir, marketplace, plugin, version };
     }
   }

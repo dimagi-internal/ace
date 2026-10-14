@@ -56,6 +56,12 @@ describe('labs-auth-headers: derivePluginDataDir (mirrors lib/plugin-data-dir.ts
     );
   });
 
+  it('derives plugins/data/ace-canopy-agents for an ace@canopy-agents install', () => {
+    expect(
+      derivePluginDataDir('/Users/x/.claude/plugins/cache/canopy-agents/ace/0.13.2000/scripts/labs-auth-headers.mjs'),
+    ).toBe('/Users/x/.claude/plugins/data/ace-canopy-agents');
+  });
+
   it('returns null for a dev-checkout path (not under plugins/cache)', () => {
     expect(
       derivePluginDataDir('/Users/x/emdash/worktrees/ace/scripts/labs-auth-headers.mjs'),
