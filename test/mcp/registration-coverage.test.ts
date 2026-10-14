@@ -61,7 +61,7 @@ interface ServerSpec {
 const SERVERS: Record<string, ServerSpec> = {
   connect: {
     file: 'mcp/connect-server.ts',
-    expectedCount: 64, // +1: commcare_get_subscription (Test-or-Demo read-back, ace#2552); +1: connect_remove_org_member (revoke interim shared-org grants); +1 before: commcare_create_api_key
+    expectedCount: 68, // +4: commcare_list_location_types / set_location_types / list_locations / assign_user_locations (location-based case sharing, skills/app-case-sharing); +1: commcare_get_subscription (Test-or-Demo read-back, ace#2552); +1: connect_remove_org_member (revoke interim shared-org grants); +1 before: commcare_create_api_key
     // `connect_*` are Connect atoms; `commcare_*` are CommCare HQ atoms
     // (build/release/upload-multimedia) registered alongside because they
     // close the LLO-deploy loop through the same MCP.

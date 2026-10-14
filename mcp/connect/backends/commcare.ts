@@ -28,6 +28,16 @@ import {
 // truncated error hid a real validation failure during Connect Interviews
 // live testing.
 import { parseFormErrors } from './html-scrape.js';
+import {
+  apiParentCode,
+  buildLocationAssignment,
+  classifyLevelReadback,
+  planLevelsPayload,
+  type ApiLevel,
+  type LevelsPlan,
+  type PageLevel,
+  type WantedLevel,
+} from '../../../lib/hq-location-types.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -518,6 +528,65 @@ export interface GetUserArgs {
   domain: string;
   /** User couch id (the `id` field in list responses). */
   user_id: string;
+}
+
+export interface ListLocationTypesArgs {
+  domain: string;
+}
+
+/** One Organization Level, parent resolved to a code. */
+export interface HqLocationTypeRow {
+  id: string;
+  name: string;
+  code: string;
+  parent_code: string | null;
+  shares_cases: boolean;
+  view_descendants: boolean;
+  administrative: boolean;
+}
+
+export interface SetLocationTypesArgs {
+  domain: string;
+  levels: WantedLevel[];
+  /** Plan only: read the page, return what would be created/amended/preserved, post nothing. */
+  dry_run?: boolean;
+}
+
+export interface SetLocationTypesResult {
+  dry_run: boolean;
+  created: string[];
+  updated: string[];
+  unchanged: string[];
+  preserved: string[];
+  /** Mismatches found by the post-save REST read; empty = proven. Always empty on a dry run. */
+  problems: string[];
+}
+
+function summarisePlan(plan: LevelsPlan) {
+  return { created: plan.created, updated: plan.updated, unchanged: plan.unchanged, preserved: plan.preserved };
+}
+
+export interface ListLocationsArgs {
+  domain: string;
+  location_type_code?: string;
+  parent_location_id?: string;
+}
+
+export interface HqLocationRow {
+  location_id: string;
+  name: string;
+  site_code: string;
+  location_type_code: string;
+  parent_location_id: string | null;
+}
+
+export interface AssignUserLocationsArgs {
+  domain: string;
+  user_id: string;
+  /** HQ location_id of the worker's primary place (the one commcare_primary_case_sharing_id comes from). */
+  primary_location_id: string;
+  /** Every place the worker is assigned to; the primary is added if missing. */
+  location_ids?: string[];
 }
 
 export interface UpdateUserFieldArgs {
@@ -1519,11 +1588,12 @@ export class CommCareBackend {
     request: APIRequestContext,
     path: string,
     label: string,
+    extraQuery = '',
   ): Promise<T[]> {
     const all: T[] = [];
     let offset = 0;
     for (let page = 0; page < 1000; page++) {
-      const url = `${this.opts.baseUrl}${path}?limit=0&offset=${offset}`;
+      const url = `${this.opts.baseUrl}${path}?limit=0&offset=${offset}${extraQuery ? `&${extraQuery}` : ''}`;
       const res = await request.get(url, {
         maxRedirects: 0,
         headers: { Authorization: this.apiKeyAuthHeader(label) },
@@ -1847,6 +1917,194 @@ export class CommCareBackend {
         );
       }
       return { user_id: args.user_id, field_slug: args.field_slug, value: args.value };
+    });
+  }
+
+  /**
+   * Read the project space's Organization Levels (LocationType).
+   * GET /a/<domain>/api/v0.5/location_type/ — the only API HQ offers for levels,
+   * and read-only. Needs the space's LOCATIONS + API_ACCESS privileges and the
+   * key owner's Edit Locations + Access APIs permissions; two of those four give
+   * an identical bodyless 403, so the error names all of them.
+   */
+  async listLocationTypes(args: ListLocationTypesArgs): Promise<{ levels: HqLocationTypeRow[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/location_type/`;
+      const objects = await this.listAllTastypie<any>(request, path, 'commcare_list_location_types').catch((e: Error) => {
+        if (/returned 40[13]/.test(e.message)) {
+          throw new Error(
+            `${e.message} — HQ answers levels with a bare 401/403 for ANY of: the space lacks the LOCATIONS privilege, ` +
+              `lacks API_ACCESS, or the API key's owner lacks Edit Locations or Access APIs. They cannot be told apart from the answer.`,
+          );
+        }
+        throw e;
+      });
+      const rows: ApiLevel[] = objects.map((o) => ({
+        id: o.id,
+        name: o.name,
+        code: o.code,
+        parent: o.parent || null,
+        shares_cases: o.shares_cases === true,
+        view_descendants: o.view_descendants === true,
+      }));
+      const levels = rows.map((r) => ({
+        id: String(r.id),
+        name: r.name,
+        code: r.code,
+        parent_code: apiParentCode(r, rows),
+        shares_cases: r.shares_cases,
+        view_descendants: r.view_descendants,
+        administrative: objects.find((o) => o.id === r.id)?.administrative === true,
+      }));
+      return { levels, total: levels.length };
+    });
+  }
+
+  /**
+   * Create / amend Organization Levels by posting the page's own form.
+   *
+   * HQ's POST (`LocationTypesView.post`) is a FULL REPLACE: a level missing
+   * from the payload is deleted. So this reads the levels the page currently
+   * renders, lets `planLevelsPayload` add/amend by `code` while round-tripping
+   * every other level verbatim, posts that, and then PROVES the result with a
+   * fresh REST read (a 200 is the form re-rendering with an error banner; a 302
+   * is only "no exception"). Needs domain-admin on the space.
+   *
+   * Live-validated: NOT YET (2026-10-14) — contract read from HQ source
+   * (`locations/views.py::LocationTypesView`, `static/locations/js/location_types.js`).
+   * The read-back is what makes an unvalidated first run safe: a wrong payload
+   * is reported, not assumed to have worked.
+   */
+  async setLocationTypes(args: SetLocationTypesArgs): Promise<SetLocationTypesResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/settings/locations/location_types/`;
+      const getRes = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (getRes.status() === 302) {
+        const location = getRes.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        throw new Error(
+          `commcare_set_location_types: ${path} redirected to ${location} — ace@ needs domain-admin on ${args.domain}, and the space needs the LOCATIONS privilege.`,
+        );
+      }
+      if (getRes.status() !== 200) {
+        throw new Error(`commcare_set_location_types GET ${path} returned ${getRes.status()}: ${(await getRes.text()).slice(0, 300)}`);
+      }
+      const html = await getRes.text();
+      const existing = initialPageData(html, 'location_types');
+      if (!Array.isArray(existing)) {
+        throw new Error(
+          'commcare_set_location_types: could not read `location_types` from the Organization Levels page — refusing to post a replace without knowing what exists.',
+        );
+      }
+      const plan = planLevelsPayload(existing as PageLevel[], args.levels);
+      if (args.dry_run) {
+        return { dry_run: true as const, ...summarisePlan(plan), problems: [] as string[] };
+      }
+      const csrf = csrfFromHtml(html) ?? (await this.csrfFromCookies(request));
+      const params = new URLSearchParams();
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('json', JSON.stringify(plan.payload));
+      const post = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (post.status() === 302) {
+        const location = post.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+      } else if (post.status() === 200) {
+        const body = await post.text();
+        const banner = [...body.matchAll(/alert[^>]*>\s*(?:<[^>]+>\s*)*([^<]{8,300})</g)].map((m) => m[1].trim()).slice(0, 3);
+        throw new Error(
+          `commcare_set_location_types: HQ re-rendered the levels page instead of saving` +
+            (banner.length ? ` — ${banner.join(' | ')}` : ' (no banner found)') +
+            `. Nothing was changed that the form's own check refused; run commcare_list_location_types to see the current state.`,
+        );
+      } else {
+        throw new Error(`commcare_set_location_types POST ${path} returned ${post.status()}: ${(await post.text()).slice(0, 300)}`);
+      }
+      const { levels } = await this.listLocationTypes({ domain: args.domain });
+      const problems = classifyLevelReadback(
+        args.levels,
+        levels.map((l) => ({
+          id: l.id,
+          name: l.name,
+          code: l.code,
+          parent: l.parent_code ? `/${levels.find((x) => x.code === l.parent_code)?.id}/` : null,
+          shares_cases: l.shares_cases,
+          view_descendants: l.view_descendants,
+        })),
+      );
+      return { dry_run: false as const, ...summarisePlan(plan), problems };
+    });
+  }
+
+  /**
+   * Read places on the space. GET /a/<domain>/api/v0.6/location/ (active only —
+   * archived places are invisible here, which matters for site-code reuse).
+   * Optional filters: location_type_code, parent_location_id.
+   */
+  async listLocations(args: ListLocationsArgs): Promise<{ locations: HqLocationRow[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.6/location/`;
+      const qs = new URLSearchParams();
+      if (args.location_type_code) qs.set('location_type_code', args.location_type_code);
+      if (args.parent_location_id) qs.set('parent_location_id', args.parent_location_id);
+      const objects = await this.listAllTastypie<any>(request, path, 'commcare_list_locations', qs.toString());
+      const locations = objects.map((o) => ({
+        location_id: o.location_id,
+        name: o.name,
+        site_code: o.site_code,
+        location_type_code: o.location_type_code,
+        parent_location_id: o.parent_location_id || null,
+      }));
+      return { locations, total: locations.length };
+    });
+  }
+
+  /**
+   * Assign a mobile worker to places. PUT /a/<domain>/api/v0.5/user/<id>/ with
+   * `primary_location` + `locations` TOGETHER (HQ refuses one without the other;
+   * `locations` must contain the primary). Proves the write with a fresh GET.
+   * The existing commcare_update_user_field leaves these untouched — HQ treats
+   * an omitted pair as a no-op — so the two compose.
+   */
+  async assignUserLocations(args: AssignUserLocationsArgs): Promise<{ user_id: string; primary_location: string; locations: string[] }> {
+    return this.runWithSessionRetry(async (request) => {
+      const want = buildLocationAssignment(args.primary_location_id, args.location_ids);
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/user/${encodeURIComponent(args.user_id)}/`;
+      const res = await request.fetch(`${this.opts.baseUrl}${path}`, {
+        method: 'PUT',
+        data: JSON.stringify(want),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: this.apiKeyAuthHeader('commcare_assign_user_locations'),
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() !== 200 && res.status() !== 202 && res.status() !== 204) {
+        throw new Error(
+          `commcare_assign_user_locations PUT ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      const back = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_assign_user_locations') },
+      });
+      const u = JSON.parse(await back.text()) as { primary_location?: string; locations?: string[] };
+      const gotPrimary = u.primary_location ?? '';
+      const gotAll = [...(u.locations ?? [])].sort();
+      if (gotPrimary !== want.primary_location || JSON.stringify(gotAll) !== JSON.stringify([...want.locations].sort())) {
+        throw new Error(
+          `commcare_assign_user_locations: read-back disagrees — wanted primary ${want.primary_location} + [${want.locations.join(', ')}], ` +
+            `HQ reports primary ${gotPrimary || 'none'} + [${gotAll.join(', ')}]. The PUT returned ${res.status()}.`,
+        );
+      }
+      return { user_id: args.user_id, primary_location: gotPrimary, locations: gotAll };
     });
   }
 
