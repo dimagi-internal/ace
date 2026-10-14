@@ -1,28 +1,6 @@
 #!/usr/bin/env bash
 # ace-setup — one-shot installer for the ACE plugin.
 #
-# TWO MODES (owner decision 2026-10-14). Who is this install for?
-#
-#   personal  Someone who installed ACE into THEIR OWN Claude Code to use it with
-#             THEIR OWN accounts. Never needs 1Password and never touches ACE's
-#             shared secrets: writes the non-secret shared config from .env.tpl,
-#             installs deps, then reports per capability area what works now,
-#             what needs a credential of their own (and how to get it), and what
-#             only ACE itself can do. See _personal_setup below.
-#   operator  Whoever HOSTS ACE: 1Password access to ACE's vault. The original
-#             path, unchanged — steps 1-9 below.
-#
-# Mode selection (first match wins; printed with its reason):
-#   --personal / --operator           explicit
-#   `op` not installed                -> personal
-#   `op` can read ACE's vault         -> operator
-#   `op` can't, but $DATA_DIR/.env already holds ACE's operator settings
-#                                     -> operator (fails fast asking you to sign in,
-#                                        as before — personal mode must not replace
-#                                        an operator's .env by accident)
-#   otherwise                         -> personal
-#
-# Operator steps:
 # Order is "cheap pre-flight checks first, slow state changes after,
 # verification last", so the user never waits through npm install just
 # to find out 1Password isn't signed in.
@@ -47,10 +25,6 @@
 #   --skip-env         skip .env injection entirely
 #   --skip-doctor      skip the trailing doctor pass
 #   --print-root       resolve the plugin root, print it, exit. No side effects.
-#   --personal         set up for YOUR OWN use (no 1Password, no ACE secrets)
-#   --operator         set up as the operator who hosts ACE (1Password)
-#   --print-mode       print the chosen mode + reason, exit. Never writes; with
-#                      --personal it never runs `op` either.
 #
 # Env overrides:
 #   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
@@ -73,8 +47,6 @@ SKIP_ENV=0
 SKIP_DOCTOR=0
 NO_SHELL_EDIT=0
 PRINT_ROOT=0
-PRINT_MODE=0
-WANT_MODE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -85,15 +57,8 @@ while [ $# -gt 0 ]; do
     --skip-doctor)   SKIP_DOCTOR=1 ;;
     --no-shell-edit) NO_SHELL_EDIT=1 ;;
     --print-root)    PRINT_ROOT=1 ;;
-    --print-mode)    PRINT_MODE=1 ;;
-    --personal|--operator)
-      _m="${1#--}"
-      if [ -n "$WANT_MODE" ] && [ "$WANT_MODE" != "$_m" ]; then
-        echo "ace-setup: --personal and --operator are mutually exclusive" >&2; exit 2
-      fi
-      WANT_MODE="$_m" ;;
     -h|--help)
-      sed -n '2,66p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "ace-setup: unknown arg: $1" >&2; exit 2 ;;
@@ -150,15 +115,14 @@ _is_ace_root() {
   [ -n "${1:-}" ] && [ -f "$1/.claude-plugin/plugin.json" ]
 }
 
-# installPath Claude Code recorded for ACE — `ace@ace`, else any `ace@<marketplace>`
-# (a person who installed from a canopy workspace has `ace@canopy-<ws>`). Empty when node is
+# installPath Claude Code recorded for ace@ace. Empty when node is
 # unavailable, the registry is missing, or the entry is absent — all
 # non-fatal; the next candidate takes over.
 _registry_install_path() {
   _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
   [ -f "$_REG" ] || return 0
   command -v node >/dev/null 2>&1 || return 0
-  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const p=d.plugins||d;const k=p['ace@ace']?'ace@ace':Object.keys(p).find(k=>/^ace@/.test(k));const e=k&&p[k];if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$_REG" 2>/dev/null
+  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$_REG" 2>/dev/null
 }
 
 # Version the registry records for ace@ace. NOT the same thing as the VERSION
@@ -168,7 +132,7 @@ _registry_version() {
   _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
   [ -f "$_REG" ] || return 0
   command -v node >/dev/null 2>&1 || return 0
-  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const p=d.plugins||d;const k=p['ace@ace']?'ace@ace':Object.keys(p).find(k=>/^ace@/.test(k));const e=k&&p[k];const v=Array.isArray(e)?e[0]:e;if(v&&v.version)console.log(v.version)}catch(_){}" "$_REG" 2>/dev/null
+  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);const v=Array.isArray(e)?e[0]:e;if(v&&v.version)console.log(v.version)}catch(_){}" "$_REG" 2>/dev/null
 }
 
 _version_at() {
@@ -198,7 +162,7 @@ if [ -z "$ROOT" ]; then
   if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="installed_plugins.json"; fi
 fi
 if [ -z "$ROOT" ]; then
-  CAND="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
+  CAND="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
   if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="plugin-cache-newest"; fi
 fi
 if [ -z "$ROOT" ] && _is_ace_root "$SELF_DIR"; then
@@ -258,82 +222,13 @@ if [ -n "$PWD_CHECKOUT" ] && [ "$PWD_CHECKOUT" != "$ROOT" ]; then
 fi
 
 # ---- data dir (per-machine, persistent across plugin updates)
-#
-# Without $CLAUDE_PLUGIN_DATA, derive it from the installed root exactly as the
-# MCP servers do (lib/plugin-data-dir.ts): plugins/cache/<mp>/<plugin>/<ver> ->
-# plugins/data/<plugin>-<mp>. For ace@ace that is the old ace-ace default; for
-# ace@canopy-<ws> it is ace-canopy-<ws>, which is where the servers will look.
-_derived_data_dir() {
-  case "$1" in
-    */plugins/cache/*/*/*)
-      _pre="${1%%/plugins/cache/*}"
-      _rest="${1#*/plugins/cache/}"
-      _mp="${_rest%%/*}"; _rest="${_rest#*/}"
-      _pl="${_rest%%/*}"
-      printf '%s/plugins/data/%s-%s\n' "$_pre" "$_pl" "$_mp"
-      ;;
-  esac
-}
-if [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ "$CLAUDE_PLUGIN_DATA" != '${CLAUDE_PLUGIN_DATA}' ]; then
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
   DATA_DIR="$CLAUDE_PLUGIN_DATA"
 else
-  DATA_DIR="$(_derived_data_dir "$ROOT")"
-  [ -n "$DATA_DIR" ] || DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
 fi
-
-# =====================================================================
-# Mode — personal or operator (see header). Decided BEFORE anything is
-# written, so `--print-mode` is side-effect free.
-# =====================================================================
-
-# True when $1 is an .env holding ACE's operator settings: one of ACE's shared
-# logins is present with a real (non-op://) value, and it is not marked personal.
-_env_is_operator() {
-  [ -f "$1" ] || return 1
-  grep -qE '^[[:space:]]*ACE_SETUP_MODE=personal' "$1" && return 1
-  awk -F= '
-    /^[[:space:]]*(ACE_HQ_PASSWORD|OCS_PASSWORD|OCS_API_TOKEN)=/ {
-      v = substr($0, index($0, "=") + 1); gsub(/"/, "", v)
-      if (length(v) > 2 && v !~ /op:\/\//) found = 1
-    }
-    END { exit found ? 0 : 1 }' "$1"
-}
-
-# Can this machine's 1Password read ACE's vault? Only called when `op` exists
-# and no mode was forced — so `--personal` never runs `op`.
-_op_can_read_vault() {
-  if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && op vault get "$OP_VAULT" >/dev/null 2>&1; then
-    return 0
-  fi
-  op vault get "$OP_VAULT" --account dimagi.1password.com >/dev/null 2>&1
-}
-
-SETUP_MODE=""
-MODE_REASON=""
-if [ "$WANT_MODE" = "personal" ]; then
-  SETUP_MODE=personal; MODE_REASON="you asked for it (--personal)"
-elif [ "$WANT_MODE" = "operator" ]; then
-  SETUP_MODE=operator; MODE_REASON="you asked for it (--operator)"
-elif ! command -v op >/dev/null 2>&1; then
-  SETUP_MODE=personal; MODE_REASON="the 1Password CLI (op) is not installed, so ACE's shared credentials cannot be read here"
-elif _op_can_read_vault; then
-  SETUP_MODE=operator; MODE_REASON="your 1Password can read ACE's vault \"$OP_VAULT\""
-elif _env_is_operator "$DATA_DIR/.env"; then
-  SETUP_MODE=operator; MODE_REASON="1Password can't read ACE's vault right now, but $DATA_DIR/.env already holds ACE's operator settings"
-else
-  SETUP_MODE=personal; MODE_REASON="1Password can't read ACE's vault \"$OP_VAULT\" (signed out, or no access)"
-fi
-
-if [ "$PRINT_MODE" = "1" ]; then
-  echo "mode=$SETUP_MODE"
-  echo "mode_reason=$MODE_REASON"
-  echo "data_dir=$DATA_DIR"
-  exit 0
-fi
-
 mkdir -p "$DATA_DIR"
 echo "INFO data_dir=$DATA_DIR"
-echo "MODE $SETUP_MODE — $MODE_REASON"
 
 # =====================================================================
 # Phase 1 — Cheap pre-flight checks (fast fail)
@@ -352,200 +247,6 @@ else
   fail "npm: not on PATH" "install Node.js v18+ (bundles npm)"
   exit 1
 fi
-
-
-# =====================================================================
-# PERSONAL MODE — your own Claude Code, your own accounts.
-#
-# Never runs `op`, never fetches ACE's service-account key, never renders a
-# 1Password reference. Writes only what it can verify: the literal (non-secret)
-# lines of .env.tpl, plus ACE_SETUP_MODE=personal, plus any value of your own you
-# already added (e.g. LABS_MCP_TOKEN) — kept across re-runs. Skips everything
-# that only makes sense AS ACE: the gog mailbox, ACE's ace-web token, ACE's Nova
-# key wiring, and the commcare-cli jar (HQ release QA runs in ACE's own space).
-#
-# Which op:// values stayed out (conservative, 2026-10-14): every one. The
-# credentials obviously (logins, API keys, tokens, the test user's PIN). The
-# config-shaped ones too — OCS team/template/provider/collection ids, the HQ
-# domain, the Drive template ids, GDRIVE_ROOT_FOLDER, CONTENT_GENERATOR_URL —
-# because each is only usable through a server that acts as ACE (ace-ocs,
-# ace-connect, ace-gdrive; see lib/agent-identity-gate.ts), so shipping them
-# buys a personal install nothing and exposes ACE's tenancy layout.
-# =====================================================================
-_personal_setup() {
-  printf '\n  Personal mode: ACE runs with YOUR accounts. ACE'"'"'s shared credentials stay with\n'
-  printf '  its operator — nothing here needs 1Password.'
-  [ "$WANT_MODE" = "personal" ] || printf ' (If you host ACE: sign in to 1Password, then /ace:setup --operator.)'
-  printf '\n\n'
-
-  # deps — the MCP servers run from $ROOT/node_modules
-  cd "$ROOT" || { fail "cd $ROOT failed"; exit 1; }
-  if [ "$FORCE_INSTALL" = "1" ] || [ ! -d node_modules ] || [ ! -x node_modules/.bin/tsx ]; then
-    echo "INFO running npm install (may take 30-60s)..."
-    npm install --silent 2>&1 | tail -10
-  fi
-  if [ -x node_modules/.bin/tsx ]; then
-    pass "deps: installed"
-  else
-    fail "deps: npm install did not produce tsx" "re-run /ace:setup --personal --force-install and read the npm output"
-    mark_fail
-  fi
-
-  ENV_OUT="$DATA_DIR/.env"
-  ENV_TPL="$ROOT/.env.tpl"
-  if [ -n "$REG_INSTALL_PATH" ] && [ "$ROOT" != "$REG_INSTALL_PATH" ] \
-     && [ "${ACE_SETUP_ALLOW_TEMPLATE_MISMATCH:-0}" != "1" ]; then
-    # Same guard as operator mode (ace#2091): .env belongs to the installed plugin.
-    fail "env: refusing to write .env from a non-installed plugin root (ace#2091)" \
-         "resolved $ROOT, installed $REG_INSTALL_PATH — re-run $REG_INSTALL_PATH/bin/ace-setup --personal"
-    mark_fail
-  elif [ "$SKIP_ENV" = "1" ]; then
-    warn "env: skipped (--skip-env)" "re-run without --skip-env to write $ENV_OUT"
-  elif [ ! -f "$ENV_TPL" ]; then
-    fail "env: .env.tpl not found at $ENV_TPL" "the plugin is corrupt; reinstall it"
-    mark_fail
-  else
-    _write_personal_env
-  fi
-
-  [ "$AUTO_UPDATE" = "1" ] && _register_auto_update
-
-  if [ "$SKIP_DOCTOR" = "0" ]; then
-    echo ""
-    if [ -x "$ROOT/bin/ace-doctor" ]; then
-      CLAUDE_PLUGIN_DATA="$DATA_DIR" "$ROOT/bin/ace-doctor" --root "$ROOT" --personal
-    else
-      warn "doctor: $ROOT/bin/ace-doctor not executable, skipping" "chmod +x $ROOT/bin/ace-doctor"
-    fi
-  fi
-  echo ""
-  echo "STATUS: COMPLETE (personal)"
-  exit $EXIT_CODE
-}
-
-_write_personal_env() {
-  BACKUP=""
-  if _env_is_operator "$ENV_OUT"; then
-    if [ "$FORCE_ENV" != "1" ]; then
-      fail "env: $ENV_OUT holds ACE's operator settings — personal mode will not replace them" \
-           "if you host ACE, run /ace:setup --operator. To switch this machine to personal anyway: /ace:setup --personal --force-env (the old file is backed up first)."
-      mark_fail
-      return
-    fi
-    BACKUP="$ENV_OUT.operator-backup-$(date +%Y%m%d-%H%M%S)"
-    cp -p "$ENV_OUT" "$BACKUP" && chmod 600 "$BACKUP"
-    info_line="backed up the operator .env to $BACKUP"
-    echo "INFO env: $info_line"
-  fi
-
-  # Literal KEY=value lines of the template (no op:// anywhere on the line).
-  LITERALS="$(awk '/^[[:space:]]*#/ { next } /^[[:space:]]*[A-Z_][A-Z0-9_]*=/ { if ($0 ~ /op:\/\//) next; sub(/^[[:space:]]+/, ""); print }' "$ENV_TPL")"
-  LITERAL_KEYS="$(printf '%s\n' "$LITERALS" | sed -E 's/=.*//' | sort -u)"
-
-  # Your own values from the previous file (not when replacing an operator .env):
-  # every key that is not a template literal and not the mode marker, with a
-  # real value. Last occurrence wins.
-  OWN=""
-  if [ -z "$BACKUP" ] && [ -f "$ENV_OUT" ]; then
-    OWN="$(awk -v lits="$(printf '%s ' $LITERAL_KEYS)" '
-      BEGIN { n = split(lits, a, " "); for (i = 1; i <= n; i++) skip[a[i]] = 1; skip["ACE_SETUP_MODE"] = 1 }
-      /^[[:space:]]*#/ { next }
-      /^[[:space:]]*(export[[:space:]]+)?[A-Z_][A-Z0-9_]*=/ {
-        line = $0; sub(/^[[:space:]]*(export[[:space:]]+)?/, "", line)
-        k = substr(line, 1, index(line, "=") - 1); v = substr(line, index(line, "=") + 1)
-        if (k in skip) next
-        if (v == "" || v ~ /op:\/\//) next
-        if (!(k in val)) order[++m] = k
-        val[k] = line
-      }
-      END { for (i = 1; i <= m; i++) print val[order[i]] }' "$ENV_OUT")"
-  fi
-  OWN_COUNT=0
-  [ -n "$OWN" ] && OWN_COUNT="$(printf '%s\n' "$OWN" | grep -c .)"
-
-  TMP_ENV="$(mktemp "$DATA_DIR/.env.XXXXXX")"
-  {
-    printf '# ACE settings — PERSONAL mode (written by /ace:setup --personal).\n'
-    printf '# Shared, non-secret config from .env.tpl. No ACE credentials live here.\n'
-    printf '# Add credentials of YOUR OWN at the bottom (e.g. LABS_MCP_TOKEN=...);\n'
-    printf '# re-running /ace:setup keeps them. /ace:doctor says what each area needs.\n\n'
-    printf '%s\n' "$LITERALS"
-    printf '\nACE_SETUP_MODE=personal\n'
-    printf '\n# --- your own credentials (kept across /ace:setup) ---\n'
-    [ -n "$OWN" ] && printf '%s\n' "$OWN"
-  } > "$TMP_ENV"
-  chmod 600 "$TMP_ENV"
-
-  # Verify before it replaces anything: every literal present, marked personal,
-  # and not one 1Password reference.
-  VERIFY_BAD=""
-  for k in $LITERAL_KEYS; do
-    grep -qE "^$k=" "$TMP_ENV" || VERIFY_BAD="$VERIFY_BAD $k"
-  done
-  grep -qE '^ACE_SETUP_MODE=personal$' "$TMP_ENV" || VERIFY_BAD="$VERIFY_BAD ACE_SETUP_MODE"
-  if grep -qE '^[^#]*op://' "$TMP_ENV"; then VERIFY_BAD="$VERIFY_BAD op-reference"; fi
-  if [ -n "$VERIFY_BAD" ]; then
-    rm -f "$TMP_ENV"
-    fail "env: refusing to write $ENV_OUT — check failed for:$VERIFY_BAD" "report this: the template's literal lines did not survive the write"
-    mark_fail
-    return
-  fi
-  mv "$TMP_ENV" "$ENV_OUT"
-  N_LIT="$(printf '%s\n' "$LITERAL_KEYS" | grep -c .)"
-  if [ "$OWN_COUNT" -gt 0 ]; then
-    pass "env: wrote $ENV_OUT ($N_LIT shared settings, kept $OWN_COUNT of your own, no ACE credentials)"
-  else
-    pass "env: wrote $ENV_OUT ($N_LIT shared settings, no credentials)"
-  fi
-}
-
-# ---- Auto-update hook (opt-in) — shared by both modes
-_register_auto_update() {
-  if [ "$AUTO_UPDATE" = "1" ]; then
-    HOOK_SCRIPT="$ROOT/bin/ace-update-check"
-    if [ ! -x "$HOOK_SCRIPT" ]; then
-      warn "auto_update: $HOOK_SCRIPT not executable" "chmod +x $HOOK_SCRIPT"
-    else
-      SETTINGS="$HOME/.claude/settings.json"
-      mkdir -p "$(dirname "$SETTINGS")"
-      [ -f "$SETTINGS" ] || echo "{}" > "$SETTINGS"
-      HOOK_RESULT="$(python3 - "$SETTINGS" "$HOOK_SCRIPT" <<'PY' 2>&1
-import json, sys
-path, hook_cmd = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except Exception as e:
-    print(f"ERROR: could not parse {path}: {e}")
-    sys.exit(1)
-hooks = data.setdefault("hooks", {})
-session_start = hooks.setdefault("SessionStart", [])
-session_start = [h for h in session_start if "ace-update-check" not in json.dumps(h)]
-session_start.append({
-    "matcher": "*",
-    "hooks": [{"type": "command", "command": hook_cmd, "async": True}],
-})
-hooks["SessionStart"] = session_start
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-print("OK")
-PY
-  )"
-      if [ "$HOOK_RESULT" = "OK" ]; then
-        pass "auto_update: SessionStart hook registered ($HOOK_SCRIPT)"
-      else
-        warn "auto_update: failed to register hook" "$HOOK_RESULT"
-      fi
-    fi
-  fi
-}
-
-[ "$SETUP_MODE" = "personal" ] && _personal_setup
-
-# =====================================================================
-# OPERATOR MODE — the path below is unchanged.
-# =====================================================================
 
 # ---- 1Password CLI installed?
 if ! command -v op >/dev/null 2>&1; then
@@ -827,9 +528,7 @@ $LINT_BAD"
       # in config/agent.json. The vault held gmail_client=ace against
       # agent.json's canopy, and no credentials-ace.json is ever provisioned
       # (ace#1147, #1338).
-      # ACE_SETUP_MODE: the personal-mode marker. An operator .env carries none, so
-      # switching a machine from personal to operator must not keep it.
-      RETIRED_KEYS="ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT ACE_SETUP_MODE"
+      RETIRED_KEYS="ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT"
       while IFS= read -r key; do
         [ -z "$key" ] && continue
         case " $RETIRED_KEYS " in
@@ -1226,7 +925,45 @@ else
   fi
 fi
 
-_register_auto_update
+# ---- Auto-update hook (opt-in)
+if [ "$AUTO_UPDATE" = "1" ]; then
+  HOOK_SCRIPT="$ROOT/bin/ace-update-check"
+  if [ ! -x "$HOOK_SCRIPT" ]; then
+    warn "auto_update: $HOOK_SCRIPT not executable" "chmod +x $HOOK_SCRIPT"
+  else
+    SETTINGS="$HOME/.claude/settings.json"
+    mkdir -p "$(dirname "$SETTINGS")"
+    [ -f "$SETTINGS" ] || echo "{}" > "$SETTINGS"
+    HOOK_RESULT="$(python3 - "$SETTINGS" "$HOOK_SCRIPT" <<'PY' 2>&1
+import json, sys
+path, hook_cmd = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERROR: could not parse {path}: {e}")
+    sys.exit(1)
+hooks = data.setdefault("hooks", {})
+session_start = hooks.setdefault("SessionStart", [])
+session_start = [h for h in session_start if "ace-update-check" not in json.dumps(h)]
+session_start.append({
+    "matcher": "*",
+    "hooks": [{"type": "command", "command": hook_cmd, "async": True}],
+})
+hooks["SessionStart"] = session_start
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+print("OK")
+PY
+)"
+    if [ "$HOOK_RESULT" = "OK" ]; then
+      pass "auto_update: SessionStart hook registered ($HOOK_SCRIPT)"
+    else
+      warn "auto_update: failed to register hook" "$HOOK_RESULT"
+    fi
+  fi
+fi
 
 # =====================================================================
 # Phase 3 — Verification (run doctor)

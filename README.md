@@ -4,39 +4,9 @@ Orchestrates the ACE lifecycle for Connect opportunities, from idea through app 
 
 ACE is a Claude Code plugin with the same architecture as canopy: agents orchestrate skills, skills are prompt-based capability definitions, and MCP servers provide programmatic access to external systems.
 
-## Getting started — use ACE from your own Claude Code
+## Prerequisites
 
-You use ACE in **your own** Claude Code, with **your own** accounts. ACE's shared
-credentials (its HQ, Connect, OCS and Google logins) stay with the operator who hosts it.
-
-```
-/plugin marketplace add dimagi-internal/canopy
-/plugin install canopy@canopy      # 1. install canopy
-/canopy:setup                      #    sign in and connect your canopy workspace
-/plugin install ace@canopy-<ws>    # 2. install ACE (canopy:setup usually does this for you)
-/ace:setup                         # 3. set ACE up for you: personal mode, no 1Password
-```
-
-`/ace:setup` picks **personal mode** on its own when you don't have 1Password access to
-ACE's vault (or pass `--personal`). It installs dependencies, writes ACE's non-secret shared
-settings to `$CLAUDE_PLUGIN_DATA/.env`, and ends with one line per area:
-
-| Area | Status | What you provide |
-|------|--------|------------------|
-| Reading & explaining (explain-ace, skills, docs, PDD guidance) | ready | nothing |
-| Connect Labs | needs you | your own Labs token: create one at https://labs.connect.dimagi.com/labs/mcp/tokens/ and add `LABS_MCP_TOKEN=<token>` to the `.env` the report names, then restart Claude Code |
-| Nova app building | needs you | the Nova plugin (`/plugin marketplace add voidcraft-labs/nova-marketplace`, `/plugin install nova@nova-marketplace`), signed in with your own commcare.app account |
-| CommCare HQ | needs you | your own HQ API key (https://www.commcarehq.org/account/api_keys/), used by `/nova:upload_to_hq` to put apps in **your** project space |
-| Connect, OCS chatbots, Google Drive / Docs | operator-only | nothing — these tools act as ACE's own accounts. Ask ACE to do it (Slack `@canopy ace`, or email ace@dimagi-ai.com) |
-| Mobile testing | ready once installed | Maestro and the Android SDK for the local emulator (`/ace:mobile-bootstrap` steps 1–3); ACE's Connect test user stays operator-only |
-
-Re-run `/ace:doctor` any time to see the same report. It never needs 1Password in personal mode.
-
-## Prerequisites (operator — whoever hosts ACE)
-
-Everything below is for the **operator** who hosts ACE and runs it as itself. You do not need
-any of it to use ACE from your own Claude Code (see above). Before `/ace:setup --operator`
-will succeed, you need:
+Before `/ace:setup` will succeed, you need:
 
 - **Node.js v18+** with `npm` (https://nodejs.org). Apple Silicon: `brew install node`.
 - **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
@@ -53,7 +23,7 @@ will succeed, you need:
 ```
 /plugin marketplace add dimagi-internal/ace     # Add the ACE marketplace
 /plugin install ace@ace                  # Install the plugin
-/ace:setup                               # Personal mode for most people; operator mode when 1Password can read ACE's vault
+/ace:setup                               # Install deps + verify the service-account key
 /ace:doctor                              # Sanity-check everything
 
 /ace:run                                 # Run full lifecycle (smart defaults)
@@ -67,10 +37,7 @@ will succeed, you need:
 /ace:update                              # Pull the latest release from GitHub
 ```
 
-## First-Run Walkthrough (operator)
-
-New to ACE and using it from your own Claude Code? Follow **Getting started** at the top
-instead — this walkthrough is for the operator who hosts ACE.
+## First-Run Walkthrough
 
 The commands above are only the happy path once everything is configured. For a
 fresh install (or a new machine), run through this checklist top-to-bottom.
@@ -79,8 +46,7 @@ Stop at any step that fails — the next step won't work.
 1. **Install the plugin** — `/plugin marketplace add dimagi-internal/ace` then
    `/plugin install ace@ace`.
 
-2. **Run `/ace:setup`** (operator: it picks operator mode when your 1Password can read
-   ACE's vault, or pass `--operator`) — does almost everything for you in one shot:
+2. **Run `/ace:setup`** — does almost everything for you in one shot:
    verifies Node + `op` + 1Password signin, fetches the GWS service-account
    key from the `AI-Agents` vault into `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`,
    runs `npm install`, injects `.env` from `1Password`, and finishes by
@@ -139,12 +105,8 @@ that forced it.)
 **One command sets everything up:**
 
 ```
-/ace:setup               # chooses the mode and says why
-/ace:setup --personal    # your own accounts, no 1Password (most people)
-/ace:setup --operator    # the operator who hosts ACE (1Password)
+/ace:setup
 ```
-
-The rest of this section describes **operator** mode.
 
 This detects the plugin root (whether you're in a marketplace install or a
 local dev checkout), runs `npm install` so `tsx` and the Google API client are
