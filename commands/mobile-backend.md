@@ -1,9 +1,9 @@
 ---
-description: Toggle which mobile backend (local AVD, leased cloud emulator, or legacy ace-web cloud) this Claude Code session uses, without touching shared .env
+description: Toggle which mobile backend (local AVD or leased cloud emulator) this Claude Code session uses, without touching shared .env
 allowed-tools: [Bash]
 ---
 
-# /ace:mobile-backend [local|lease|cloud|status]
+# /ace:mobile-backend [local|lease|status]
 
 Set or inspect the mobile backend for **this Claude Code session only**.
 
@@ -15,7 +15,7 @@ Resolution order in the MCP server (`mcp/mobile/backend-toggle.ts`): `process.en
 
 - `local` — route through this machine's AVD
 - `lease` — lease ACE's own ephemeral `android-emulator` machine from canopy-web's capability broker (one machine per session, terminated on release). Needs ACE's `CANOPY_WEB_PAT` and a capability grant — `/ace:doctor` reports both under `capability_lease`.
-- `cloud` — LEGACY: ace-web's one shared `/api/mobile` instance. Kept for one release while `lease` is proven live; prefer `lease`.
+- `cloud` — DEPRECATED alias for `lease`. It named ace-web's shared `/api/mobile` emulator, retired 2026-10-14; it is accepted and written as `lease`. An old `cloud` session file or `ACE_MOBILE_BACKEND=cloud` also resolves to `lease`, with a one-line deprecation log from the MCP.
 - `status` (or no arg) — print the current effective backend + where the value came from
 
 ## Step 1: Parse the arg and dispatch
@@ -37,8 +37,13 @@ default_backend() {
   fi
 }
 
+if [ "$ARG" = "cloud" ]; then
+  echo "DEPRECATED: the ace-web cloud emulator was retired; \"cloud\" now means \"lease\"."
+  ARG="lease"
+fi
+
 case "$ARG" in
-  cloud|local|lease)
+  local|lease)
     mkdir -p "$STATE_DIR"
     printf "%s\n" "$ARG" > "$FILE"
     echo "Set mobile backend to: $ARG"
@@ -46,23 +51,20 @@ case "$ARG" in
     echo "  Session file: $FILE"
     if [ "$ARG" = "lease" ]; then
       echo ""
-      echo "Lease routing needs ACE's CANOPY_WEB_PAT in .env and a canopy-web grant for ace/android-emulator."
+      echo "Lease routing needs the CANOPY_WEB_PAT in ACE .env and a canopy-web grant for ace/android-emulator."
       echo "Verify with: /ace:doctor  (capability_lease)"
-    fi
-    if [ "$ARG" = "cloud" ]; then
-      echo ""
-      echo "LEGACY backend (ace-web /api/mobile) — prefer: /ace:mobile-backend lease"
-      echo "Cloud routing requires ACE_WEB_BASE_URL + ACE_WEB_PAT_TOKEN in .env."
-      echo "Verify with: /ace:doctor"
     fi
     ;;
   status|"")
     if [ -n "${ACE_MOBILE_BACKEND:-}" ]; then
-      echo "Effective backend: $ACE_MOBILE_BACKEND"
+      EFF="$ACE_MOBILE_BACKEND"
+      [ "$(printf %s "$EFF" | tr "[:upper:]" "[:lower:]" | tr -d "[:space:]")" = "cloud" ] && EFF="lease (ACE_MOBILE_BACKEND=cloud is a deprecated alias)"
+      echo "Effective backend: $EFF"
       echo "  Source: process env (ACE_MOBILE_BACKEND set when launching claude)"
       echo "  Note: env wins over the session file — clear the env to use /ace:mobile-backend"
     elif [ -f "$FILE" ]; then
       VAL="$(tr -d "[:space:]" < "$FILE")"
+      [ "$VAL" = "cloud" ] && VAL="lease (session file says cloud, a deprecated alias)"
       echo "Effective backend: $VAL"
       echo "  Source: session file"
       echo "  Path:   $FILE"
@@ -74,11 +76,11 @@ case "$ARG" in
       else
         echo "  Source: default (no env, no session file; no provisioned AVD in $AVD_HOME)"
       fi
-      echo "  Set with: /ace:mobile-backend local | lease | cloud"
+      echo "  Set with: /ace:mobile-backend local | lease"
     fi
     ;;
   *)
-    echo "Usage: /ace:mobile-backend [local|lease|cloud|status]" >&2
+    echo "Usage: /ace:mobile-backend [local|lease|status]" >&2
     echo "  unknown arg: $ARG" >&2
     exit 1
     ;;
@@ -88,7 +90,7 @@ esac
 
 ## Step 2: Tell the user
 
-For a `local`, `lease` or `cloud` set: confirm the new backend and note that mobile MCP atoms will route accordingly on their **next** call (the resolver runs per-call; no MCP restart needed).
+For a `local` or `lease` set (a `cloud` arg is set as `lease` and prints a deprecation line — relay it): confirm the new backend and note that mobile MCP atoms will route accordingly on their **next** call (the resolver runs per-call; no MCP restart needed).
 
 For `status`: relay the effective backend and source verbatim.
 

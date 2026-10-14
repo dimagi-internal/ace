@@ -130,8 +130,8 @@ function resolveForCheck(p: string, resolveSymlinks: boolean): string {
 /**
  * Reject an artifact name that is anything other than a bare filename.
  *
- * `mcp/mobile/backends/cloud.ts` does `path.join(screenshotDir, art.name)` with
- * a name supplied by the REMOTE side, so a spoofed or MITM'd ace-web can write
+ * `mcp/mobile/backends/remote-io.ts` does `path.join(screenshotDir, art.name)` with
+ * a name supplied by the REMOTE side, so a spoofed or MITM'd remote can write
  * outside the screenshot dir with `../`. No legitimate artifact name contains a
  * separator, which makes this one of the few sinks where the safe rule is
  * unambiguous and needs no roots decision.

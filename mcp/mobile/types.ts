@@ -1,11 +1,11 @@
 /**
- * Local-AVD counterpart to the cloud backend's `CloudDiagnostics`
+ * Local-AVD counterpart to the lease backend's `LeaseDiagnostics`
  * (dimagi-internal/ace#961). Returned by `AvdBackend.diagnose()` and, via
  * `MobileClient.diagnose()`, by the `mobile_diagnose` atom when the active
  * backend is local.
  *
  * `backend` is the discriminant that lets one atom serve both backends:
- * `'local'` here, `'cloud'` on the cloud envelope.
+ * `'local'` here, `'lease'` on the lease envelope.
  *
  * The reason this type exists at all is `adb_server_port`. The local
  * backend probe-allocates its own adb server (5037 upward — typically 5039
@@ -35,7 +35,7 @@ export interface LocalDiagnostics {
   /** Set instead of throwing when the adb probe itself failed. */
   adb_error: string | null;
   /**
-   * Cross-session AVD contention (ace#1821). Null only on the cloud backend.
+   * Cross-session AVD contention (ace#1821). Null only on a remote backend.
    *
    * Every OTHER field above describes THIS session and can be entirely correct
    * while the device is being destroyed by a peer — that is exactly how
@@ -85,10 +85,10 @@ export interface AvdInfo {
     deviceUserState?: DeviceStateHealLog;
   };
   /**
-   * Cloud-backend cold-boot diagnostics, surfaced so a slow `ensure_avd_running`
+   * Lease-backend cold-boot diagnostics, surfaced so a slow `ensure_avd_running`
    * is attributable in the transcript instead of opaque. Populated only by the
-   * cloud backend (and only when ace-web returns them):
-   *  - `timings`: per-phase wall seconds (ec2_start_s / emulator_wait_s / …),
+   * lease backend (and only when the machine's ready marker carries them):
+   *  - `timings`: per-phase wall seconds (lease wait / emulator boot / …),
    *    so an EC2-provisioning-bound boot is distinguishable from an in-VM
    *    emulator-boot-bound one.
    *  - `accel`: 'kvm' (hardware-accelerated) vs 'tcg' (software fallback, ~10x
@@ -172,21 +172,21 @@ export interface DeviceProbeFailures {
 export interface DeviceStateHealLog {
   classified_as: DeviceUserStateClass;
   attempted: boolean;
-  healed_via?: 'snapshot-load' | 'local-bootstrap' | 'cloud-bootstrap' | 'none';
+  healed_via?: 'snapshot-load' | 'local-bootstrap' | 'lease-bootstrap' | 'none';
   verified_as?: DeviceUserStateClass;
   focused_activity?: string;
   ui_dump_signal?: string;
   /**
    * Itemized record of the bootstrap actions taken (`apk-installed`,
    * `environment-baseline-applied`, `registered`, ...) — populated on both
-   * `healed_via: 'local-bootstrap'` and `'cloud-bootstrap'`. Surfaces what
+   * `healed_via: 'local-bootstrap'` and `'lease-bootstrap'`. Surfaces what
    * the auto-bootstrap actually did so the operator can check it against
    * expectations.
    *
    * A step name is a claim, so unconfirmed claims are marked as such
    * (dimagi-internal/ace#1067): registration steps carry an `-unverified`
    * suffix (`registered-unverified`, `register-already-unverified`) whenever
-   * no probe confirmed the resulting device state — always on cloud, and on
+   * no probe confirmed the resulting device state — always on the lease, and on
    * local whenever the post-bootstrap probe didn't return `ready`. Callers
    * must not treat the unsuffixed and suffixed forms as equivalent; see
    * `markRegistrationUnverified` in `client.ts`.
@@ -256,10 +256,8 @@ export interface TestUserCredentials {
  * secrets in the demo range, so a per-run caller passes only
  * `{ phone, phoneLocal, countryCode, name }`.
  *
- * LOCAL BACKEND ONLY. The cloud backend registers inside the AMI and needs
- * `ACE_MOBILE_CLOUD_LIVE_REGISTER=true` plus an ace-web change to accept
- * caller-supplied credentials; passing overrides while routed to cloud throws
- * rather than silently registering the wrong user.
+ * Honoured on both backends: the lease registers from the client exactly as
+ * local does.
  */
 export interface EnsureAvdRunningOptions {
   testUser?: Partial<TestUserCredentials>;
@@ -327,7 +325,7 @@ export interface RecipeRunResult {
   screenshots: ScreenshotEntry[];
   /**
    * Screen recordings of this run, one per attempt. Local backend only —
-   * the cloud backend leaves this undefined until Phase 2 (see
+   * the lease backend leaves this undefined (see
    * `docs/superpowers/specs/2026-07-30-avd-session-recording-design.md`).
    * Always best-effort: a recording failure never changes `status`.
    */
@@ -357,22 +355,20 @@ export interface RecipeRunResult {
    * commands JSON. Optional — backends that can't surface it (or
    * Maestro versions that don't emit a commands JSON) leave this
    * undefined, and skills should fall back to `screenshots[]` ordering.
-   * Cloud backend populates this from `/api/mobile/run-recipe`'s
-   * `steps[]` envelope field (since ace-web v0.x).
+   * The lease backend populates this from the `ace-mobile run-recipe`
+   * result's `steps[]`.
    */
   steps?: StepResult[];
   /**
-   * Cloud backend only: post-failure in-VM diagnostic snapshot
-   * captured via `/api/mobile/diagnose`. Populated when `status:
+   * Lease backend only: post-failure in-VM diagnostic snapshot
+   * captured via `ace-mobile diagnose`. Populated when `status:
    * 'fail'` and the diagnose probe itself succeeded. Lets skills see
-   * the runner's state at the moment of failure (was the emulator
-   * still alive? did pm crash? did the marker disappear?) without
-   * making a separate round-trip. Undefined on `pass` or when
-   * diagnose itself failed. Shape mirrors ace-web's Diagnostics
-   * dataclass — see CloudDiagnostics in backends/cloud.ts.
+   * the machine's state at the moment of failure (was the emulator
+   * still alive? did pm crash?) without making a separate round-trip.
+   * Undefined on `pass` or when diagnose itself failed.
    */
-  // Untyped here to avoid pulling CloudDiagnostics into the
-  // backend-agnostic types module; the cloud backend casts on assign.
+  // Untyped here to keep the backend-agnostic types module free of the
+  // in-VM CLI's diagnose shape.
   diagnostics?: Record<string, unknown>;
   /**
    * Best-effort forensic capture of the device state at the moment a recipe
@@ -408,7 +404,7 @@ export interface RecipeRunResult {
      * the failure screen is a CONSEQUENCE of the crash (CommCare restarted
      * onto whatever screen it came back on), not a selector or navigation
      * defect. Local backend only; absent when nothing new crashed, the buffer
-     * was unreadable, or on the cloud backend. ace#2584.
+     * was unreadable, or on the lease backend. ace#2584.
      */
     appCrash?: string;
     /** Sibling `<recipeId>-FAILURE-crash.txt`: the new CommCare crash block(s) verbatim. */

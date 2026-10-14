@@ -1,13 +1,13 @@
 // LeaseBackend against a fake canopy-web broker (mocked fetch). Covers the
 // lease lifecycle (acquire → queued → provisioning → ready → release), reuse,
-// the typed failure codes, every CLI op's argv, and artifact download parity
-// with CloudBackend (same files, same ScreenshotEntry shape).
+// the typed failure codes, every CLI op's argv, and the on-disk artifact
+// layout (the same files and ScreenshotEntry shape the retired ace-web cloud
+// backend produced, pinned here now that there is no second backend to diff).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { LeaseBackend } from '../../../../mcp/mobile/backends/lease.js';
-import { CloudBackend } from '../../../../mcp/mobile/backends/cloud.js';
 import { MobileError, AvdBootError } from '../../../../mcp/mobile/errors.js';
 
 const BASE = 'https://canopy.test';
@@ -605,9 +605,8 @@ describe('LeaseBackend CLI ops', () => {
     expect(b.callsTo('POST', /leases$/)).toHaveLength(0);
   });
 
-  it('restartRunner and uninstallApk are typed LEASE_UNSUPPORTED', async () => {
+  it('uninstallApk is typed LEASE_UNSUPPORTED', async () => {
     const { lb } = await ready();
-    await expect(lb.restartRunner()).rejects.toMatchObject({ code: 'LEASE_UNSUPPORTED' });
     await expect(lb.uninstallApk('x', 'p')).rejects.toMatchObject({ code: 'LEASE_UNSUPPORTED' });
   });
 });
@@ -676,43 +675,22 @@ describe('LeaseBackend.runRecipe', () => {
     expect(fs.readdirSync(out)).toEqual(['commands-x.json']);
   });
 
-  it('artifact download shape matches CloudBackend for the same files', async () => {
-    // Lease side.
+  it('artifact download shape: files land by basename, images become ScreenshotEntry', async () => {
     const b = new FakeBroker();
     b.putArtifact('run-recipe', '01-home.png', PNG, 'image/png');
     b.putArtifact('run-recipe', '02-learn.png', PNG);
     b.putArtifact('run-recipe', 'maestro-stderr.log', Buffer.from(''));
     const { r: lease, out: leaseOut } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
 
-    // Cloud side: ace-web returns the same three files as presigned artifacts.
-    const cloudOut = path.join(tmp, 'cloud-shots');
-    const cloudFetch: typeof fetch = async (input) => {
-      const u = String(input);
-      if (u.endsWith('/api/mobile/run-recipe')) return json(202, { job_id: 'j', status: 'running' });
-      if (u.includes('/api/mobile/jobs/')) {
-        return json(200, {
-          status: 'completed',
-          result: {
-            exit_code: 0, stdout: '', stderr: '',
-            artifacts: [
-              { name: '01-home.png', presigned_url: 'https://s3.test/c/01-home.png', content_type: 'image/png' },
-              { name: '02-learn.png', presigned_url: 'https://s3.test/c/02-learn.png', content_type: 'image/png' },
-              { name: 'maestro-stderr.log', presigned_url: 'https://s3.test/c/maestro-stderr.log', content_type: 'text/plain' },
-            ],
-          },
-        });
-      }
-      return new Response(new Uint8Array(u.endsWith('.log') ? Buffer.from('') : PNG), { status: 200 });
-    };
-    const cloud = new CloudBackend({ baseUrl: 'https://ace.test', token: 't', fetchImpl: cloudFetch, jobPollIntervalMs: 0, retry: { retries: 0 } });
-    const recipe = path.join(tmp, 'learn-smoke.yaml');
-    const cr = await cloud.runRecipe(recipe, {}, cloudOut);
-
-    expect(fs.readdirSync(leaseOut).sort()).toEqual(fs.readdirSync(cloudOut).sort());
-    const shape = (s: typeof lease.screenshots, root: string) =>
-      s.map((x) => ({ stepName: x.stepName, rel: path.relative(root, x.path), bytes: x.bytes })).sort((a, z) => a.stepName.localeCompare(z.stepName));
-    expect(shape(lease.screenshots, leaseOut)).toEqual(shape(cr.screenshots, cloudOut));
-    expect(Object.keys(lease.screenshots[0]).sort()).toEqual(Object.keys(cr.screenshots[0]).sort());
+    expect(fs.readdirSync(leaseOut).sort()).toEqual(['01-home.png', '02-learn.png', 'maestro-stderr.log']);
+    const shape = lease.screenshots
+      .map((x) => ({ stepName: x.stepName, rel: path.relative(leaseOut, x.path), bytes: x.bytes }))
+      .sort((a, z) => a.stepName.localeCompare(z.stepName));
+    expect(shape).toEqual([
+      { stepName: '01-home', rel: '01-home.png', bytes: PNG.length },
+      { stepName: '02-learn', rel: '02-learn.png', bytes: PNG.length },
+    ]);
+    expect(Object.keys(lease.screenshots[0]).sort()).toEqual(['bytes', 'path', 'stepName', 'takenAt']);
   });
 
   it('reads result.json when the inline stdout line was truncated', async () => {

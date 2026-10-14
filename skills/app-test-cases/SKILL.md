@@ -1255,11 +1255,11 @@ tapOn:<app-name>` model, the live `tapOn` never found a target, and
 the recipes failed with selector-miss errors — even though the
 emulator + Maestro + cloud-stack were healthy.
 
-#### Maestro feature-compat — local vs cloud parity
+#### Maestro feature-compat — local vs lease parity
 
 As of 2026-05-19, **both backends run Maestro on the v2.x line**
-(local: v2.5.1 via the official installer; cloud AMI: v2.5.1 pinned
-in `infra/mobile-ami/scripts/30-maestro.sh`). The lag table below
+(local: v2.5.1 via the official installer; the leased image: v2.5.1 pinned
+in `infra/capabilities/android-emulator/image/scripts/30-maestro.sh`). The lag table below
 documents the historical drift class — it's NOT currently active.
 Re-baseline if the versions ever diverge again (track local via
 `maestro --version`, cloud via `ACE_MOBILE_AMI_VERSION`):
@@ -1688,8 +1688,7 @@ For each form-walk segment of a recipe:
    Capture widget.) The correct recipe sequence is: (a) ensure the
    emulator has a mock location — the cold-boot baseline already seeds a
    default fix, and `mobile_set_location` overrides it with opp-specific
-   coordinates (**longitude first**; AVD backend only — unsupported on
-   the cloud emulator backend); see
+   coordinates (**longitude first**; local AVD and lease backends); see
    `playbook/integrations/mobile-integration.md`, (b) tap
    `${SELECTOR:geopoint-record-location}` — the widget's button ships
    **TWO labels**, and the mapped selector is the alternation

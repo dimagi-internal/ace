@@ -688,8 +688,8 @@ def parse_env_pairs(pairs: list[str]) -> dict[str, str]:
 
 
 def cmd_diagnose(host: Host, args: argparse.Namespace) -> dict[str, Any]:
-    """Read-only snapshot. Field names are ace-web's ``Diagnostics`` dataclass
-    (cloud.ts ``CloudDiagnostics``), plus the lease/state facts the machine now
+    """Read-only snapshot. Field names are the retired ace-web ``Diagnostics``
+    dataclass (kept so diagnose readers did not change), plus the lease/state facts the machine now
     knows. ``ok`` reports that the probe ran; ``healthy`` is the verdict."""
     devices_p = adb(host, "devices", timeout=PROBE_TIMEOUT_S)
     devices = parse_adb_devices(devices_p.stdout) if devices_p.code == 0 else []
@@ -730,7 +730,7 @@ def cmd_diagnose(host: Host, args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "healthy": visible > 0 and marker_present,
-        # ssm_ok/ssm_error kept so the payload stays a CloudDiagnostics: the
+        # ssm_ok/ssm_error kept so the payload keeps the retired ace-web shape: the
         # probe itself is local now, so it is always "reachable".
         "ssm_ok": True,
         "ssm_error": None,

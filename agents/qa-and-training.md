@@ -140,7 +140,7 @@ twin gate: dimagi-internal/ace#1604.
           the ORDINARY post-bootstrap verdict on a healthy device and is
           not a fault; a `-unverified` suffix on a registration step
           (`registered-unverified`) means the call returned but nothing
-          confirmed the device state. On the CLOUD backend `verified_as`
+          confirmed the device state. On the LEASE backend `verified_as`
           is absent by contract — it runs no probe at all.
         - `mobile_ensure_avd_running` throws (`AvdBootError`,
           `MaestroDriverError`, `DeviceUserStateError`) → halt with
@@ -172,9 +172,10 @@ twin gate: dimagi-internal/ace#1604.
         `connect-opp-setup` already invited the test user, so the
         CONNECT-ID-3F precondition is satisfied automatically inside
         `/ace:run`.
-      - **Cloud:** each `/api/mobile/ensure-running` cold-boots the
-        AVD and runs the registration recipes (see
-        `backends/cloud.ts` header). ~3-4 min, same contract.
+      - **Lease:** each lease is a fresh EC2 machine from ACE's image
+        (`infra/capabilities/android-emulator/README.md`), and
+        `mobile_ensure_avd_running` registers the test user live on it
+        every call. Same contract, different mechanism.
       `AvdInfo.heal.deviceUserState` carries `{ classified_as,
       attempted, healed_via, verified_as, focused_activity,
       ui_dump_signal }` — surface that in your halt return on

@@ -1593,7 +1593,7 @@ Add a person to the OCS team so a linked chatbot page actually opens for them (d
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 18 atoms
+Source: `mcp/mobile-server.ts` — 17 atoms
 
 ### `mobile_ensure_avd_running`
 
@@ -1712,12 +1712,6 @@ _no parameters_
 ### `mobile_diagnose`
 
 _no parameters_
-
-### `mobile_restart_runner`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `waitForReady` | `z.boolean` | optional | Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately. |
 
 ## ace-decisions
 

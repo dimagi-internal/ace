@@ -1,7 +1,7 @@
-// MobileClient routes to the lease backend when ACE_MOBILE_BACKEND=lease —
-// and only the places the two remote backends differ behave differently:
-// the lease registers live every time (its machine is fresh from the image),
-// honours a per-run test-user override, and supports set_location.
+// MobileClient routes to the lease backend when ACE_MOBILE_BACKEND=lease (or
+// the deprecated `cloud` alias): the lease registers live every time (its
+// machine is fresh from the image), honours a per-run test-user override, and
+// supports set_location.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MobileClient } from '../../../mcp/mobile/client.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
@@ -24,20 +24,17 @@ function fakeLease() {
     diagnose: vi.fn().mockResolvedValue({ lease: null, note: 'none' }),
     stopAvd: vi.fn().mockResolvedValue(undefined),
     listAvds: vi.fn().mockResolvedValue(['cc-2.62.0', 'cc-2.63.0']),
-    restartRunner: vi.fn().mockRejectedValue(Object.assign(new Error('x'), { code: 'LEASE_UNSUPPORTED' })),
   };
 }
 
 function makeClient(lease: ReturnType<typeof fakeLease> | null = fakeLease()) {
   const avd: any = { ensureAvdRunning: vi.fn(), setLocation: vi.fn(), diagnose: vi.fn() };
-  const cloud: any = { ensureAvdRunning: vi.fn(), diagnose: vi.fn() };
   const client = new MobileClient({
     avd,
-    cloud,
     lease: lease as any,
     bootstrapConfig: { apkVersion: '2.63.2', testUser: ENV_TEST_USER } as any,
   });
-  return { client, avd, cloud, lease };
+  return { client, avd, lease };
 }
 
 describe('MobileClient on the lease backend', () => {
@@ -51,21 +48,17 @@ describe('MobileClient on the lease backend', () => {
     else process.env.ACE_MOBILE_BACKEND = prev;
   });
 
-  it('useCloud (remote) and useLease are both true; nothing reaches local or legacy cloud', async () => {
-    const { client, avd, cloud, lease } = makeClient();
-    expect(client.useCloud).toBe(true);
+  it('useLease is true; nothing reaches local', async () => {
+    const { client, avd, lease } = makeClient();
     expect(client.useLease).toBe(true);
     await client.stopAvd('x');
     expect(await client.listAvds()).toEqual(['cc-2.62.0', 'cc-2.63.0']);
     expect(lease!.stopAvd).toHaveBeenCalled();
     expect(avd.ensureAvdRunning).not.toHaveBeenCalled();
-    expect(cloud.ensureAvdRunning).not.toHaveBeenCalled();
   });
 
-  it('ensureAvdRunning acquires, then ALWAYS live-registers (no ACE_MOBILE_CLOUD_LIVE_REGISTER needed)', async () => {
-    const saved = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    try {
+  it('ensureAvdRunning acquires, then ALWAYS live-registers', async () => {
+    {
       const { client, lease } = makeClient();
       const info = await client.ensureAvdRunning('cc-2.63.0');
       expect(lease!.ensureAvdRunning).toHaveBeenCalledWith('cc-2.63.0');
@@ -76,16 +69,13 @@ describe('MobileClient on the lease backend', () => {
       expect(reg.toOtpRecipe).toBe('connect-register-to-otp.yaml');
       expect(reg.paletteTarB64.length).toBeGreaterThan(0);
       expect(info.heal?.deviceUserState).toMatchObject({
-        healed_via: 'cloud-bootstrap',
+        healed_via: 'lease-bootstrap',
         bootstrap_steps: ['app-data-cleared', 'registered-unverified'],
       });
-    } finally {
-      if (saved === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = saved;
     }
   });
 
-  it('honours a per-run test-user override (legacy cloud refuses one)', async () => {
+  it('honours a per-run test-user override', async () => {
     const { client, lease } = makeClient();
     await client.ensureAvdRunning('cc-2.63.0', { testUser: { phone: '+74269990001', name: 'Run User' } });
     const reg = lease!.registerTestUser.mock.calls[0][0];
@@ -94,7 +84,7 @@ describe('MobileClient on the lease backend', () => {
     expect(reg.pin).toBe(ENV_TEST_USER.pin);
   });
 
-  it('set_location routes to the lease instead of throwing CLOUD_MOCK_LOCATION_UNSUPPORTED', async () => {
+  it('set_location routes to the lease', async () => {
     const { client, lease } = makeClient();
     await client.setLocation('x', 36.8, -1.3);
     expect(lease!.setLocation).toHaveBeenCalledWith('x', 36.8, -1.3, undefined, undefined);
@@ -112,7 +102,7 @@ describe('MobileClient on the lease backend', () => {
   });
 });
 
-describe('MobileClient on legacy cloud still refuses set_location', () => {
+describe('MobileClient on the deprecated cloud alias routes to the lease', () => {
   let prev: string | undefined;
   beforeEach(() => {
     prev = process.env.ACE_MOBILE_BACKEND;
@@ -123,10 +113,15 @@ describe('MobileClient on legacy cloud still refuses set_location', () => {
     else process.env.ACE_MOBILE_BACKEND = prev;
   });
 
-  it('throws CLOUD_MOCK_LOCATION_UNSUPPORTED and useLease is false', () => {
-    const { client, lease } = makeClient();
-    expect(client.useLease).toBe(false);
-    expect(() => client.setLocation('x', 1, 2)).toThrow(expect.objectContaining({ code: 'CLOUD_MOCK_LOCATION_UNSUPPORTED' }));
-    expect(lease!.setLocation).not.toHaveBeenCalled();
+  it('useLease is true and set_location reaches the lease', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client, lease } = makeClient();
+      expect(client.useLease).toBe(true);
+      await client.setLocation('x', 1, 2);
+      expect(lease!.setLocation).toHaveBeenCalledWith('x', 1, 2, undefined, undefined);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

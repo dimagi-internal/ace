@@ -1,10 +1,10 @@
 /**
  * ACE Mobile MCP Server
  *
- * Exposes 19 atomic mobile capabilities backed by Maestro + adb +
- * Playwright, or — on a remote backend — a leased android-emulator machine
- * driven through canopy-web's capability broker (`lease`, the default where
- * no AVD is provisioned) or ace-web's legacy `/api/mobile` (`cloud`). Routing → backend lives in
+ * Exposes 17 atomic mobile capabilities backed by Maestro + adb +
+ * Playwright, or — on the `lease` backend (the default where no AVD is
+ * provisioned) — a leased android-emulator machine driven through
+ * canopy-web's capability broker. Routing → backend lives in
  * `mcp/mobile/capability-map.ts`; the registration-coverage test pins
  * map ↔ server alignment.
  *
@@ -84,14 +84,13 @@ try {
 // actually picked it up.
 {
   const { backend, source, sessionFile, ppid, defaultReason } = resolveBackend();
-  const cloudReady = client.cloud !== null;
   const leaseReady = client.lease !== null;
   const paletteSource = isStaticRecipesDirOverride(client.staticRecipesDir)
     ? `override:${STATIC_RECIPES_DIR_ENV}`
     : 'install';
   process.stderr.write(
     `[ace-mobile] startup backend=${backend} source=${source} ppid=${ppid} ` +
-    `cloud_ready=${cloudReady} lease_ready=${leaseReady} session_file=${sessionFile} ` +
+    `lease_ready=${leaseReady} session_file=${sessionFile} ` +
     (defaultReason ? `default_reason="${defaultReason}" ` : '') +
     `palette_dir=${client.staticRecipesDir} palette_source=${paletteSource}\n`,
   );
@@ -147,9 +146,7 @@ server.tool(
     // run (phone / phoneLocal / countryCode / name); pin + backupCode are not
     // per-user secrets in the demo range and still come from env.
     //
-    // LOCAL BACKEND ONLY — the cloud path throws
-    // CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED rather than silently registering
-    // the env user.
+    // Honoured on both backends: the lease registers from this client too.
     testUser: z
       .object({
         phone: z
@@ -367,41 +364,11 @@ server.tool(
     timeoutMs: z.number().int().positive().optional().describe('Probe timeout in ms (default 8000). On a healthy AVD `maestro hierarchy` returns ~2s; raise only if you suspect a slow first-time install of the driver app.'),
   },
   async ({ avdName, timeoutMs }) => {
-    // Cloud short-circuit: there is no local adb port to probe, and the
-    // cloud runner's launch script proves Maestro is installed by
-    // running two real registration recipes before touching the ready
-    // marker — so `runner_service_state === 'active' && adb sees a
-    // 'device'` is a tight equivalent to "Maestro driver healthy".
-    // Without this branch, the atom always returned `healthy: false`
-    // on cloud (the local `findRunningAvd` never finds a `cloud:i-...`
-    // serial), which made Phase 6 pre-flight spuriously fail.
-    const diag = client.useCloud ? await client.diagnose() : null;
-    // `diagnose()` is dual-mode since ace#961; narrow on the discriminant
-    // (inside `useCloud` it is always the cloud envelope).
-    if (diag && diag.backend === 'cloud') {
-      const sawDevice = diag.adb_devices.some((d) => d.state === 'device');
-      const runnerActive = diag.runner_service_state === 'active';
-      const healthy = runnerActive && sawDevice;
-      const reason = healthy
-        ? undefined
-        : !runnerActive
-          ? `cloud runner ${diag.runner_service_state ?? 'unknown'} (expected active)`
-          : 'cloud emulator not visible to adb';
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            healthy,
-            reason,
-            adbPort: null,
-            portKind: null,
-            driverPackages: null,
-            serial: diag.adb_devices[0]?.serial,
-            backend: 'cloud',
-          }, null, 2),
-        }],
-      };
-    }
+    // Lease short-circuit: there is no local adb port to probe. Without this
+    // branch the atom always returned `healthy: false` on a remote backend
+    // (the local `findRunningAvd` never finds a remote serial), which made
+    // Phase 6 pre-flight spuriously fail.
+    const diag = client.useLease ? await client.diagnose() : null;
     // Lease: the in-VM `ace-mobile diagnose` reports the same adb device list.
     // There is no runner unit; a ready lease whose emulator adb can see is the
     // equivalent signal. With no lease held, nothing is booted — say so.
@@ -608,14 +575,13 @@ server.tool(
   }),
 );
 
-// ── Diagnostics + cloud-only admin atoms ─────────────────────────────
+// ── Diagnostics ───────────────────────────────────────────────────
 //
 // `mobile_diagnose` works on BOTH backends (ace#961) — discriminate the
-// result on its `backend` field. `mobile_restart_runner` targets the
-// ace-web cloud backend specifically and throws
-// `MobileError(CLOUD_ONLY_OPERATION)` against the local AVD backend —
-// skills that need it should gate on the cloud toggle, OR catch the
-// error and skip.
+// result on its `backend` field. `mobile_restart_runner` was REMOVED
+// 2026-10-14 with ace-web's cloud emulator, the only backend that had a
+// long-lived runner to restart; on a lease, release + re-acquire
+// (`mobile_stop_avd` then `mobile_ensure_avd_running`) is the restore.
 //
 // `mobile_patch_launch_script` was REMOVED 2026-08-14 (ace#1113). It took a
 // full bash body and replaced /usr/local/bin/ace-emulator-launch on the
@@ -637,30 +603,6 @@ server.tool(
   async () => ({
     content: [
       { type: 'text', text: JSON.stringify(await client.diagnose(), null, 2) },
-    ],
-  }),
-);
-
-server.tool(
-  'mobile_restart_runner',
-  {
-    waitForReady: z
-      .boolean()
-      .optional()
-      .describe(
-        'Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately.',
-      ),
-  },
-  async ({ waitForReady }) => ({
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(
-          await client.restartRunner({ waitForReady }),
-          null,
-          2,
-        ),
-      },
     ],
   }),
 );

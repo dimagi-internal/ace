@@ -127,31 +127,26 @@ describe('bootstrap step honesty (#1067)', () => {
   });
 });
 
-// The cloud twin of the same overclaim. `cloudBootstrapHeal` hardcoded
-// `classified_as: 'ready'` AND `verified_as: 'ready'` while probing nothing
-// at all — strictly worse than the local defect #1085 fixed, because local at
-// least reported whatever its probe actually said. Flagged as still-open on
-// #1067 after #1085 merged.
-describe('cloud bootstrap step honesty (#1067, ask 1 cloud twin)', () => {
-  const CLOUD_AVD = { name: 'cloud', serial: 'cloud:i-test', status: 'booted' as const };
-  let savedFlag: string | undefined;
+// The remote twin of the same overclaim. The remote heal (now
+// `leaseBootstrapHeal`) once hardcoded `classified_as: 'ready'` AND
+// `verified_as: 'ready'` while probing nothing at all — strictly worse than
+// the local defect #1085 fixed, because local at least reported whatever its
+// probe actually said. Flagged as still-open on #1067 after #1085 merged.
+describe('lease bootstrap step honesty (#1067, ask 1 remote twin)', () => {
+  const REMOTE_AVD = { name: 'cc-2.63.0', serial: 'lease:i-test', status: 'booted' as const };
   let savedBackend: string | undefined;
 
   beforeEach(() => {
-    savedFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
     savedBackend = process.env.ACE_MOBILE_BACKEND;
-    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
-    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_BACKEND = 'lease';
   });
   afterEach(() => {
-    if (savedFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
-    else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = savedFlag;
     if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
     else process.env.ACE_MOBILE_BACKEND = savedBackend;
   });
 
-  function makeCloudClient(alreadyRegistered: boolean) {
-    const cloud = {
+  function makeLeaseClient(alreadyRegistered: boolean) {
+    const lease = {
       clearAppData: vi.fn().mockResolvedValue(true),
       registerTestUser: vi.fn().mockResolvedValue({
         alreadyRegistered,
@@ -162,7 +157,7 @@ describe('cloud bootstrap step honesty (#1067, ask 1 cloud twin)', () => {
     const client = new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      cloud,
+      lease,
       bootstrapConfig: {
         apkVersion: '2.63.0',
         testUser: {
@@ -174,23 +169,23 @@ describe('cloud bootstrap step honesty (#1067, ask 1 cloud twin)', () => {
     return client;
   }
 
-  it('never claims verified_as — the cloud heal runs no verification probe', async () => {
-    const log = await makeCloudClient(false).restoreDeviceUserState(CLOUD_AVD as any);
+  it('never claims verified_as — the lease heal runs no verification probe', async () => {
+    const log = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
     expect(log.verified_as).toBeUndefined();
   });
 
   it('does not classify the device as ready on the strength of an unprobed register call', async () => {
-    const log = await makeCloudClient(false).restoreDeviceUserState(CLOUD_AVD as any);
+    const log = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
     expect(log.classified_as).toBe('unknown');
     // Still a SUCCESS — same decision as the local path (ask 2 declined).
-    expect(log).toMatchObject({ attempted: true, healed_via: 'cloud-bootstrap' });
+    expect(log).toMatchObject({ attempted: true, healed_via: 'lease-bootstrap' });
   });
 
   it('reports the registration step as unverified in both register arms', async () => {
-    const fresh = await makeCloudClient(false).restoreDeviceUserState(CLOUD_AVD as any);
+    const fresh = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
     expect(fresh.bootstrap_steps).toEqual(['app-data-cleared', 'registered-unverified']);
 
-    const already = await makeCloudClient(true).restoreDeviceUserState(CLOUD_AVD as any);
+    const already = await makeLeaseClient(true).restoreDeviceUserState(REMOTE_AVD as any);
     expect(already.bootstrap_steps).toEqual(['app-data-cleared', 'register-already-unverified']);
   });
 });

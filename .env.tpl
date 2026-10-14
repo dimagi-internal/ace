@@ -341,16 +341,14 @@ CONTENT_GENERATOR_API_KEY=op://Agent-Ace/Content Generator API/credential
 # 1Password item ace-web's own .env.tpl uses.
 ELEVENLABS_API_KEY=op://Agent-Ace/ACE - ElevenLabs API Key/credential
 
-# ── ace-web base URL (cloud mobile backend + ace-web automation) ────
+# ── ace-web base URL (ace-web automation) ──────────────────────────
 #
 # Non-secret literal (not 1Password-backed) — the public base URL of the
-# ace-web deployment. Required by the CLOUD mobile backend
-# (`mcp/mobile/backends/cloud.ts`): without it, a `cloud`-toggled session
-# throws CLOUD_NOT_CONFIGURED. Also the base for any `/ace:run --ace-web-url`
-# automation. A fresh machine that omits this hits CLOUD_NOT_CONFIGURED the
-# first time Phase 6 dispatches against the cloud emulator (jjackson/ace#839).
-# Local-AVD-only operators can leave the default; it's harmless when the
-# session backend is `local`.
+# ace-web deployment: the base for bin/ace-bind, fork-run,
+# clone-to-new-workspace, release, share-run-access, the video skills,
+# upload-transcript, `/ace:run --ace-web-url` and every run-summary URL.
+# (It no longer drives any mobile backend: ace-web's cloud emulator was
+# retired 2026-10-14 for canopy-web capability leases.)
 ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace
 
 # ── ace-web workspace slug ─────────────────────────────────────────
@@ -401,7 +399,7 @@ ACE_WEB_WORKSPACE=dimagi-team
 # ACE's credential for ace-web's API: bin/ace-bind (opp tenancy), fork-run,
 # clone-to-new-workspace, /ace:validate-release-readiness, /ace:release,
 # share-run-access invites,
-# sweep-ace-web, the video skills, upload-transcript, the cloud mobile backend.
+# sweep-ace-web, the video skills, upload-transcript.
 #
 # NOT 1Password-backed, and nobody mints it by hand. ace-web's login is the
 # Connect login, which ACE already performs automatically as ace@dimagi-ai.com

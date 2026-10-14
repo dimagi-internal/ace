@@ -138,18 +138,17 @@ unconditionally:
   `/ace:mobile-bootstrap` is no longer required as an operator
   pre-step inside `/ace:run` — useful only for ad-hoc workstation
   setup outside the lifecycle.
-- **Cloud backend:** each `/api/mobile/ensure-running` cold-boots the
-  AVD and runs the registration recipes against it (see
-  `backends/cloud.ts` header). Same precondition contract, different
-  mechanism — and no explicit snapshot-load is needed because the AMI
-  ships the registration recipes built-in.
+- **Lease backend** (the default where no AVD is provisioned): each
+  lease is a fresh EC2 machine from ACE's image, leased through
+  canopy-web (`infra/capabilities/android-emulator/README.md`), and the
+  client registers the test user live on it every call. Same
+  precondition contract, different mechanism.
 
 After `mobile_ensure_avd_running` returns, `AvdInfo.heal.deviceUserState`
 carries the outcome: `{ classified_as, attempted, healed_via,
 verified_as, ui_dump_signal, bootstrap_steps }`. Local shows
-`attempted: true, healed_via: 'local-bootstrap'`; cloud shows
-`healed_via: 'cloud-bootstrap'` (or `attempted: false` on the legacy
-pre-Phase-D stub).
+`attempted: true, healed_via: 'local-bootstrap'`; the lease shows
+`healed_via: 'lease-bootstrap'`.
 
 **A successful return means the restore sequence ran, NOT that every step
 was independently confirmed** (ace#1067). Read the heal block, not
@@ -505,10 +504,8 @@ here, in this order, before any recipe:
    dispatch — the cold-boot funnel re-registers unconditionally, ~15-25s — so
    this changes WHICH number registers, not WHETHER one does.
 
-   Local AVD backend only. The cloud backend throws
-   `CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED`; making it work needs
-   `ACE_MOBILE_CLOUD_LIVE_REGISTER=true` plus an ace-web change to forward
-   caller-supplied credentials, and is out of scope.
+   Honoured on both the local AVD and the lease backend — the lease
+   registers from the client exactly as local does.
 
 3. **Re-invite, then GATE on the read-back.** The first invite (Phase 4) could
    not link an `OpportunityAccess`, because Connect creates that link only at
@@ -1193,7 +1190,7 @@ sources, in priority order:
    `screenshotPath` (`<recipe-id>-FAILURE.png` of the offending screen)
    — and returns them on the result. Both land in that dispatch's own
    output dir (`<screenshotDir>/<recipeId>/`, #1130), so they get
-   uploaded + provenance-stamped alongside the smoke PNGs. This works on the cloud backend too (Maestro's own
+   uploaded + provenance-stamped alongside the smoke PNGs. This works on the lease backend too (Maestro's own
    debug-bundle screenshot is local-only). **Read `failureForensics`
    first** — the ui-dump usually shows the exact screen + the
    resource-ids present, which resolves "wrong selector" vs "wrong

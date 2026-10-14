@@ -30,8 +30,8 @@
  * nothing that is sent to, or matched against, the device — no selector, no
  * recipe step, no wait. It is path handling upstream of any device
  * interaction, in the same class as "screenshot naming and collection". The
- * cloud backend downloads S3 artifacts into the SAME caller-supplied dir
- * (`backends/cloud.ts:645`), so there is no second root to reconcile — which
+ * lease backend downloads S3 artifacts into the SAME caller-supplied dir
+ * (`backends/remote-io.ts` `materializeArtifacts`), so there is no second root to reconcile — which
  * was the open question that had this filed-not-fixed.
  */
 import { describe, it, expect, afterEach } from 'vitest';

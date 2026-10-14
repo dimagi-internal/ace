@@ -88,7 +88,7 @@ function clientWithCrashBuffer(before: string, after: string) {
   const client = new MobileClient({
     avd: avd as never,
     maestro: maestro as never,
-    cloud: null as never,
+    lease: null,
     bootstrapConfig: null,
     recorder: { start: () => undefined as never, stop: async () => undefined },
     spool: { video: () => '', list: () => [], clear: () => {}, dir: () => '/x', count: () => 0 },

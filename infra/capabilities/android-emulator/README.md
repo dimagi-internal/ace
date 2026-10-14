@@ -2,8 +2,10 @@
 
 One EC2 machine per lease, booted from ACE's image, driven through canopy-web,
 terminated when the lease ends. Phase 6 device walks and `/ace:qa-deep` use it
-from any runner, including the KVM-less cloud runner. It replaces ace-web's
-`/api/mobile` (one shared, long-lived instance).
+from any runner, including the KVM-less cloud runner. It replaced ace-web's
+`/api/mobile` (one shared, long-lived instance), retired 2026-10-14 together
+with ACE's `cloud` mobile backend (`ACE_MOBILE_BACKEND=cloud` is now an alias
+for `lease`).
 
 The contract this directory implements is canopy-web's
 `docs/superpowers/specs/2026-10-14-cloud-capabilities-design.md` (§1 declaring,

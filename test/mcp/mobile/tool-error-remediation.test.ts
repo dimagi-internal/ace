@@ -143,7 +143,7 @@ function readServerSource(): ServerSource {
 describe('ace#2223 — mcp/mobile-server.ts must not let any atom reach the SDK’s message-only fallback', () => {
   it('finds the mobile atom registrations at all (guards the parser itself)', () => {
     const s = readServerSource();
-    expect(s.registeredNames.length).toBeGreaterThanOrEqual(18);
+    expect(s.registeredNames.length).toBeGreaterThanOrEqual(17);
     expect(s.registeredNames).toContain('mobile_ensure_avd_running');
     expect(s.registeredNames).toContain('mobile_run_recipe');
   });

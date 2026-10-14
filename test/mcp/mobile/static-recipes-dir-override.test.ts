@@ -97,7 +97,7 @@ function fakeBackends() {
       };
     }),
   } as any;
-  // `cloud: null` keeps the constructor off the CloudBackend env probe.
+  // `lease: null` keeps the constructor off the LeaseBackend env probe.
   return { avd, maestro, seenSiblings };
 }
 
@@ -156,7 +156,7 @@ describe(`${STATIC_RECIPES_DIR_ENV} — override honoured (a)`, () => {
     const { avd, maestro, seenSiblings } = fakeBackends();
     // NO `staticRecipesDir` opt — this is the bare-construction path that
     // `mcp/mobile-server.ts` uses, and the one that ignored the override.
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
     expect(path.resolve(client.staticRecipesDir)).toBe(path.resolve(staged));
 
     const result = await client.runRecipe(recipePath, {}, shotDir);
@@ -210,7 +210,7 @@ describe(`${STATIC_RECIPES_DIR_ENV} — unset keeps the install default (b)`, ()
     tempDirs.push(topDir, shotDir);
 
     const { avd, maestro } = fakeBackends();
-    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+    const client = new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null });
     expect(path.resolve(client.staticRecipesDir)).toBe(
       path.resolve(INSTALLED_STATIC_RECIPES_DIR),
     );
@@ -269,7 +269,7 @@ describe(`${STATIC_RECIPES_DIR_ENV} — broken override fails loud, never falls 
     process.env[STATIC_RECIPES_DIR_ENV] = path.join(os.tmpdir(), `ace-1062-nope-${Date.now()}`);
     const { avd, maestro } = fakeBackends();
     expect(
-      () => new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null }),
+      () => new MobileClient({ avd, maestro, lease: null, bootstrapConfig: null }),
     ).toThrow(/STATIC_RECIPES_DIR|not a usable palette dir/);
   });
 
@@ -279,7 +279,7 @@ describe(`${STATIC_RECIPES_DIR_ENV} — broken override fails loud, never falls 
     const client = new MobileClient({
       avd,
       maestro,
-      cloud: null as any,
+      lease: null,
       bootstrapConfig: null,
       staticRecipesDir: INSTALLED_STATIC_RECIPES_DIR,
     });

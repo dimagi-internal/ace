@@ -1,14 +1,18 @@
 /**
  * Per-session mobile backend toggle.
  *
- * Three backends:
+ * Two backends:
  *   - `local` — this machine's AVD (AvdBackend + MaestroBackend).
  *   - `lease` — ACE's own ephemeral `android-emulator` machine, leased from
  *     canopy-web's capability broker (backends/lease.ts). The default
  *     wherever no AVD has been provisioned — notably the KVM-less cloud runner.
- *   - `cloud` — LEGACY: ace-web's one shared `/api/mobile` instance
- *     (backends/cloud.ts). Kept for one release while `lease` is proven live,
- *     then removed with ace-web's `apps/mobile`. Never chosen by default.
+ *
+ * `cloud` is a DEPRECATED ALIAS for `lease`. It used to name ace-web's one
+ * shared `/api/mobile` instance; that backend and ace-web's `apps/mobile`
+ * were retired 2026-10-14 once canopy-web capability leases were proven live.
+ * An `ACE_MOBILE_BACKEND=cloud` env or a `cloud` session file still resolves
+ * (to `lease`), with a one-line deprecation log, so an old toggle keeps
+ * working instead of silently dropping to the default.
  *
  * Resolution order (highest priority first):
  *   1. `process.env.ACE_MOBILE_BACKEND` — set when launching Claude Code
@@ -32,14 +36,40 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { MARKER_FILENAME, readProvisionedMarker } from './avd-provisioned-marker.js';
 
-export type MobileBackend = 'cloud' | 'local' | 'lease';
+export type MobileBackend = 'local' | 'lease';
 export type BackendSource = 'env' | 'session-file' | 'default';
 
-export const MOBILE_BACKENDS: readonly MobileBackend[] = ['local', 'lease', 'cloud'];
+export const MOBILE_BACKENDS: readonly MobileBackend[] = ['local', 'lease'];
 
-function asBackend(raw: string): MobileBackend | null {
+/**
+ * Deprecated backend names and what they now resolve to. `cloud` was
+ * ace-web's retired `/api/mobile` emulator; its successor is the lease.
+ */
+export const DEPRECATED_BACKEND_ALIASES: Readonly<Record<string, MobileBackend>> = { cloud: 'lease' };
+
+let warnedAliases = new Set<string>();
+
+/** Test seam: forget which deprecation lines were already logged. */
+export function resetDeprecationWarnings(): void {
+  warnedAliases = new Set<string>();
+}
+
+function asBackend(raw: string, where?: string): MobileBackend | null {
   const v = raw.trim().toLowerCase();
-  return (MOBILE_BACKENDS as readonly string[]).includes(v) ? (v as MobileBackend) : null;
+  if ((MOBILE_BACKENDS as readonly string[]).includes(v)) return v as MobileBackend;
+  const aliased = DEPRECATED_BACKEND_ALIASES[v];
+  if (aliased) {
+    // Once per (name, source) per process — resolveBackend() runs on every routing decision.
+    const key = `${v}:${where ?? ''}`;
+    if (where && !warnedAliases.has(key)) {
+      warnedAliases.add(key);
+      console.warn(
+        `[ace-mobile] mobile backend '${v}' (${where}) is deprecated — the ace-web cloud emulator was retired; using '${aliased}'. Use /ace:mobile-backend ${aliased}.`,
+      );
+    }
+    return aliased;
+  }
+  return null;
 }
 
 export interface ResolvedBackend {
@@ -130,13 +160,13 @@ export function resolveBackend(): ResolvedBackend {
   const ppid = process.ppid;
   const sessionFile = path.join(mobileStateDir(), `mobile-backend.${ppid}`);
 
-  const fromEnv = asBackend(process.env.ACE_MOBILE_BACKEND || '');
+  const fromEnv = asBackend(process.env.ACE_MOBILE_BACKEND || '', 'ACE_MOBILE_BACKEND');
   if (fromEnv) {
     return { backend: fromEnv, source: 'env', sessionFile, ppid };
   }
 
   try {
-    const fromFile = asBackend(fs.readFileSync(sessionFile, 'utf8'));
+    const fromFile = asBackend(fs.readFileSync(sessionFile, 'utf8'), `session file ${sessionFile}`);
     if (fromFile) {
       return { backend: fromFile, source: 'session-file', sessionFile, ppid };
     }
@@ -169,61 +199,47 @@ export function resolveBackend(): ResolvedBackend {
  * process's parent pid). Used by the slash command, which is itself
  * spawned by Claude Code, so `process.ppid` matches the MCP server's.
  */
-export function setSessionBackend(backend: MobileBackend, ppid: number = process.ppid): string {
-  if (!asBackend(backend)) {
+export function setSessionBackend(backend: MobileBackend | 'cloud', ppid: number = process.ppid): string {
+  // A deprecated alias is written as what it resolves to, so the file never
+  // carries a retired name.
+  const resolved = asBackend(backend);
+  if (!resolved) {
     throw new Error(`invalid backend: ${backend} (expected one of ${MOBILE_BACKENDS.join(', ')})`);
   }
   const dir = mobileStateDir();
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `mobile-backend.${ppid}`);
-  fs.writeFileSync(file, `${backend}\n`, 'utf8');
+  fs.writeFileSync(file, `${resolved}\n`, 'utf8');
   return file;
 }
 
 /**
  * Result of the pre-boot backend preflight. `fatal` means the caller MUST
- * throw before doing any work (booting an AVD / hitting the cloud); `note`
- * is a non-fatal one-liner the caller should surface so a backend mismatch
- * is visible before a boot attempt rather than only after one fails.
+ * throw before doing any work (booting an AVD / acquiring a lease).
  */
 export interface BackendPreflight {
   backend: MobileBackend;
   source: BackendSource;
-  cloudConfigured: boolean;
   leaseConfigured: boolean;
-  /** Non-fatal advisory to log before proceeding. */
-  note?: string;
   /** When set, the ensure-running path must throw instead of booting. */
   fatal?: { code: string; message: string; remediation: string };
 }
 
 /**
- * Pure pre-boot check that turns two silent backend-config gaps
- * (jjackson/ace#839) into a loud, actionable signal BEFORE any AVD boot:
- *
- *   (a) resolved backend is `cloud` but the cloud env is missing
- *       (`ACE_WEB_BASE_URL` / `ACE_WEB_PAT_TOKEN`) — fail immediately with
- *       CLOUD_NOT_CONFIGURED instead of doing anything. (The client never
- *       falls through to local on a cloud toggle, but this makes the check
- *       explicit + early, ahead of any per-call work.)
- *   (b) resolved backend is `local` *by default* (no toggle) while the
- *       cloud backend IS configured — a likely dispatch/session mismatch.
- *       Surface a note naming `/ace:mobile-backend cloud` so the operator
- *       sees it before a local AVD boots (which on a shared host can squat
- *       a busy emulator port and waste a full boot attempt).
- *
- * Every other combination proceeds silently — notably `local` default with
- * cloud NOT configured (the ordinary single-machine dev case) must NOT nag.
+ * Pure pre-boot check that turns a silent backend-config gap
+ * (jjackson/ace#839) into a loud, actionable signal BEFORE any boot: the
+ * resolved backend is `lease` but ACE's canopy-web PAT is missing — fail
+ * immediately with LEASE_NOT_CONFIGURED instead of falling through to a
+ * local AVD boot. Every other combination proceeds silently.
  */
 export function preflightMobileBackend(args: {
   resolved: ResolvedBackend;
-  cloudConfigured: boolean;
   /** Omitted = not configured. */
   leaseConfigured?: boolean;
 }): BackendPreflight {
-  const { resolved, cloudConfigured } = args;
+  const { resolved } = args;
   const leaseConfigured = args.leaseConfigured ?? false;
-  const base = { backend: resolved.backend, source: resolved.source, cloudConfigured, leaseConfigured };
+  const base = { backend: resolved.backend, source: resolved.source, leaseConfigured };
 
   if (resolved.backend === 'lease' && !leaseConfigured) {
     const why =
@@ -241,31 +257,6 @@ export function preflightMobileBackend(args: {
           'Run /ace:setup --force-env to inject CANOPY_WEB_PAT, or provision a local AVD with /ace:mobile-bootstrap, ' +
           'or pin the local backend with /ace:mobile-backend local.',
       },
-    };
-  }
-
-  if (resolved.backend === 'cloud' && !cloudConfigured) {
-    return {
-      ...base,
-      fatal: {
-        code: 'CLOUD_NOT_CONFIGURED',
-        message:
-          'mobile backend resolved to cloud but the cloud emulator is not configured ' +
-          '(ACE_WEB_BASE_URL / ACE_WEB_PAT_TOKEN missing) — refusing to fall through to a local AVD boot',
-        remediation:
-          'Set ACE_WEB_BASE_URL (e.g. https://labs.connect.dimagi.com/ace) via /ace:setup --force-env and mint ' +
-          'ACE_WEB_PAT_TOKEN via /ace:ace-web-pat-mint, or switch to the local AVD with /ace:mobile-backend local.',
-      },
-    };
-  }
-
-  if (resolved.backend === 'local' && resolved.source === 'default' && cloudConfigured) {
-    return {
-      ...base,
-      note:
-        'mobile backend defaulted to LOCAL (no /ace:mobile-backend toggle set) while the cloud emulator IS ' +
-        'configured — booting a local AVD. If you intended the cloud emulator, run /ace:mobile-backend cloud ' +
-        'before dispatching (a wrong local boot can squat a busy emulator port on a shared host).',
     };
   }
 
