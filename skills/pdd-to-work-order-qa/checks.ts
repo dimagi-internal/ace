@@ -1292,6 +1292,93 @@ export function checkCommercialTermsMatchSolicitation(
   };
 }
 
+/**
+ * Internal-document tells, matched inside the § Annexures section only.
+ *
+ * Title-based, not just link-based: "Annexure A: Program Design Document"
+ * leaks what we annex even with the URL stripped, and a partner who is told
+ * a PDD exists will reasonably ask for it.
+ */
+const INTERNAL_ANNEXURE_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /\bprogram(?:me)?\s+design\s+document\b/i, label: 'the Program Design Document' },
+  { re: /\bPDD\b/, label: 'the PDD' },
+  { re: /\bdesign\s+document\b/i, label: 'an internal design document' },
+  { re: /\btechnical\s+(?:document|design|spec(?:ification)?)\b/i, label: 'an internal technical document' },
+  { re: /\brun_state(?:\.yaml)?\b/i, label: "the run's run_state.yaml" },
+  { re: /\bdecisions\.yaml\b/i, label: "the run's decisions log" },
+  { re: /\b(?:eval_verdict|qa_result)\b/i, label: 'an internal QA/eval verdict' },
+];
+
+/** A live Google Docs / Drive URL anywhere in the annexure list. */
+const DRIVE_URL_RE = /https?:\/\/(?:docs|drive)\.google\.com\/\S+/i;
+
+/**
+ * Check 17: the § Annexures section must not annex a Dimagi-internal document.
+ *
+ * The work order is the one artifact in the run that is SENT to the partner,
+ * so whatever the annexure list names, they get. Until 2026-10-14
+ * `templates/work-order-template.md` hardcoded
+ * `Annexure A: Program Design Document — see {{pdd_link}}`, which meant every
+ * work order ACE had ever rendered carried a live link to its own internal
+ * PDD. Caught on `tekzal/20261013-2314` by the operator in review, AFTER a
+ * work order had already been mailed to a real partner.
+ *
+ * Scope is deliberately the Annexures SECTION, not the whole document: a body
+ * sentence citing the design rationale is normal contract prose, whereas the
+ * annexure list is a promise to hand the document over.
+ *
+ * An absent § Annexures heading is NOT this check's failure — that belongs to
+ * `all_required_sections_present`, and double-reporting one defect as two
+ * blockers sends the producer chasing the wrong fix. `N/A` passes: it is the
+ * sanctioned way to render an empty annexure list without deleting the
+ * section (ace#2906).
+ */
+export function checkAnnexuresExcludeInternalDocuments(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+  const lines = wo.split('\n');
+  const headingRe =
+    /^\s*(?:#{2,3}\s+)?(?:\*\*)?(?:\d+(?:\.\d+)?\.?\s+)?(?:\*\*)?Annexures\b/i;
+  const start = lines.findIndex((l) => headingRe.test(l));
+  // No Annexures heading at all → all_required_sections_present owns it.
+  if (start === -1) return { pass: true };
+
+  // The template puts Annexures last, but don't assume it: stop at the next
+  // heading-looking line so a future reordering cannot silently widen scope.
+  const nextHeadingRe = /^\s*(?:#{2,3}\s+)(?:\*\*)?\S/;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (nextHeadingRe.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const section = lines.slice(start + 1, end).join('\n');
+
+  const hits: string[] = [];
+  for (const { re, label } of INTERNAL_ANNEXURE_PATTERNS) {
+    if (re.test(section)) hits.push(label);
+  }
+  const url = section.match(DRIVE_URL_RE);
+  if (url) hits.push(`a live Drive link (${url[0]})`);
+
+  if (hits.length === 0) return { pass: true };
+  const unique = [...new Set(hits)];
+  return {
+    pass: false,
+    detail:
+      `§ Annexures annexes Dimagi-internal material: ${unique.join(', ')}. ` +
+      `The work order is sent to the partner, so anything listed there is handed over.`,
+    auto_fix_hint:
+      `Remove the internal entries from § Annexures — do NOT delete the section itself ` +
+      `(all_required_sections_present requires all 11 headings). Annex only documents the ` +
+      `partner is a party to or must act on: their costed solicitation response, a sampling ` +
+      `protocol they follow, a data-sharing agreement. If nothing qualifies, render the ` +
+      `section as the single line "N/A". The PDD, internal design and technical documents, ` +
+      `run_state.yaml, decisions.yaml and QA/eval verdicts are never annexed, by link or by ` +
+      `title. See pdd-to-work-order § {{annexures_body}}.`,
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'rendered_from_template',
@@ -1409,5 +1496,13 @@ export const CHECKS: QACheck[] = [
       'Rate framing and device terms in the work order agree with the live sol-*/solicitation-* ' +
       'decision rows (spark-facilitator/20261001-2208)',
     run: (wo: string, ctx?: QACheckContext) => checkCommercialTermsMatchSolicitation(wo, ctx),
+  },
+  {
+    id: 'annexures_exclude_internal_documents',
+    type: 'static',
+    description:
+      '§ Annexures does not annex the PDD or any other Dimagi-internal document, by link ' +
+      'or by title (ace#2906; tekzal/20261013-2314)',
+    run: (wo: string) => checkAnnexuresExcludeInternalDocuments(wo),
   },
 ];

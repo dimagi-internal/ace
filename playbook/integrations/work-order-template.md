@@ -106,8 +106,7 @@ Each varying cell or bullet contains one `{{snake_case}}` token. Body-token repl
 | `{{ethics_body}}` | Ethics paragraph (prose; template defaults + PDD scope) |
 | `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}` | Per-field cells (templated defaults + PDD's data-subject treatment) |
 | `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` | Signature block left cell |
-| `{{pdd_link}}` | `phases.design.products.pdd.file_id` Drive URL |
-| `{{annexure_b_placeholder}}` | "To be provided" if no opp-specific annexure |
+| `{{annexures_body}}` | The annexure list, one `Annexure <letter>: <title>` per line — or the single line `N/A`, which is the common case. **Never a Dimagi-internal document** (the PDD, an internal design or technical document, `run_state.yaml`, `decisions.yaml`, a QA/eval verdict), by link or by title: this doc is sent to the partner. Gated by `pdd-to-work-order-qa § annexures_exclude_internal_documents` (ace#2906). |
 
 ★ Bulleted-region body tokens — value is a `\n`-separated list of bullet items; the skill must call `docs_finalize_bullets(documentId)` after `docs_copy_template` to apply real bullet styling and remove the `<<<BULLETS_*_START>>>` / `<<<BULLETS_*_END>>>` anchor paragraphs from the rendered doc.
 

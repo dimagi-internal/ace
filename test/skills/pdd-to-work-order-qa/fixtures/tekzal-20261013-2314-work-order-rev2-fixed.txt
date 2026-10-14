@@ -1,0 +1,278 @@
+Work Order Agreement #[Work Order number assigned at contract execution]
+Turmeric Market Survey — Ghana (Round 1)
+Work Order Number
+	[Work Order number assigned at contract execution]
+	Work Order Date
+	2026-10-13
+	Work Order Title
+	Turmeric Market Survey — Ghana (Round 1)
+	Period of Performance
+	2026-10-13 to 2026-11-13
+	1. Background
+Tekzal (henceforth, referred to as "partner") is the implementing partner for the work described in this Work Order.
+
+
+Turmeric is a daily-use cooking spice, and its bright yellow colour is prized. In some supply chains that colour is enhanced with additives, one of which is lead chromate, a bright industrial yellow pigment. Because turmeric is cooked with every day, colour additives in turmeric can become a household exposure route.
+
+
+What is missing is not a laboratory. It is a consistent, comparable picture of what turmeric is present in local markets and how it looks under standardised conditions. Photographs taken by different people, on different handsets, in different light are not comparable to one another, because every phone camera applies its own automatic white balance, exposure and colour processing. Without a fixed reference in the frame, a brighter photograph cannot be told apart from brighter turmeric.
+
+
+This Work Order covers a standardised market survey that addresses that gap and nothing beyond it. Frontline Workers (FLWs) visit turmeric sellers in Ghanaian local markets and complete one short survey per seller, recording the forms of turmeric sold, price, packaging and availability, together with photographs taken with a yellow MTN scratchcard laid flat beside the turmeric as a fixed colour and size reference. The survey makes no laboratory determination about any seller's product and produces no judgement, score or claim about any seller.
+
+
+Dimagi has no pre-committed downstream consumer of the resulting dataset, and this Work Order makes no claim about downstream analysis. The dataset is the deliverable.
+
+
+This is Round 1, a review and validation engagement. Its purpose is to put the training and survey applications in front of the partner, have them tested end to end against real market conditions, and refine them before any wider data collection. Dimagi will scope any wider rollout under a separate Work Order.
+2. Scope of Work
+This Work Order covers Round 1 only, in two phases. Phase A is committed under this Work Order. Phase B is contingent: field collection begins only on Dimagi's written authorisation, issued after Dimagi accepts the Phase A deliverables. Nothing in this Work Order obliges the partner to begin Phase B, or Dimagi to authorise it.
+
+
+For each engagement, the partner will:
+
+
+* Phase A — Review and validation (committed). Test the Learn and Survey applications end to end, on the partner's own devices and connectivity, including offline use and photograph upload.
+* Phase A — Written feedback. Provide written feedback covering whether the training content is clear, whether the MTN card photograph workflow is understood, whether the survey questions, answer options and units match how turmeric is actually sold in the partner's markets, and whether the vendor-approach script fits the local context and language.
+* Phase A — Markets to be covered. Tell Dimagi which Ghanaian markets the partner intends to cover, so that Dimagi can plan supervision and reporting. The survey application does not restrict FLWs to a set list — an FLW types the market name into the survey — so nothing in the application build waits on this.
+* Phase A — Card procurement. Procure MTN scratchcards as a single batch and distribute one to every FLW before activation. All cards must come from the same purchase, so that the printed yellow does not vary within the round.
+* Phase A — Recruitment and certification. Recruit up to five FLWs and ensure each completes the Learn modules and passes the certification assessment before any survey work.
+* Phase A — Practice photograph review. Review each FLW's practice photographs before that FLW begins survey work. This review is the partner's responsibility; the platform does not hold an FLW back pending it.
+* Phase B — Field collection (on written authorisation only). Conduct up to 100 verified vendor surveys across the markets the partner covers, within the per-FLW limits in § 6.
+* Phase B — Supervision. Supervise FLW activity, monitor submissions for quality and duplication, and spread coverage across the markets the partner covers.
+* Both phases — Risk flagging. Flag any timeline or delivery risk in writing to Dimagi within 24 hours of identification.
+
+
+The partner will not:
+
+
+* Take, buy, handle for removal, or transport any turmeric. This is a photograph-and-questions survey only, and nothing physical leaves the seller.
+* Conduct any laboratory testing, chemical testing, or on-site measurement of any kind.
+* Make any judgement, claim or statement to a seller about the safety or quality of their product.
+* Conduct follow-up or repeat visits to the same seller. Each seller is surveyed once.
+* Record a seller who declines, or who does not sell turmeric, on the paid vendor survey. These are recorded on the unpaid contact log and are not payable.
+* Begin Phase B field collection before Dimagi issues written authorisation.
+* Represent the survey to any seller, official or third party as an inspection, an enforcement activity, or a test of product safety.
+3. Geographic Coverage
+Local markets in Ghana. The partner selects the markets its teams visit and tells Dimagi which ones it intends to cover, as a Phase A deliverable. The specific markets are not fixed by this Work Order, and the survey application does not restrict FLWs to a set list: an FLW types the market name into the survey, so the application build does not wait on the partner's selection.
+
+
+There is no per-market limit on surveys. Spreading coverage across the markets the partner covers is a supervisory responsibility of the partner, not a limit the application enforces.
+4. Deliverables and Verification
+4.1 Primary Deliverable
+Phase A primary deliverable: written feedback from an end-to-end test of the Learn and Survey applications, sufficient for Dimagi to refine them, together with the markets the partner intends to cover and confirmation that cards have been procured as a single batch and distributed to every FLW.
+
+
+Phase B primary deliverable (if authorised): up to 100 verified vendor surveys, each a single structured record for one turmeric seller, containing the forms of turmeric sold, price with units, packaging, availability, any volunteered origin, the required photographs with the MTN card in frame, and automatically captured location, location accuracy, timestamps and duration.
+
+
+Dimagi suggests aiming for a median visit duration between six and fifteen minutes. Though this is not a hard requirement, a median sitting hard against the five-minute floor in § 4.2 suggests the floor is being waited out rather than met, and Dimagi will raise it with the partner if observed.
+4.2 Definition of a Verified Unit
+A unit qualifies as "verified" and is payable under this Work Order only when all of the following are met:
+
+
+* The survey was started between 07:00 and 19:00, Ghana local time.
+* The survey took at least five minutes from opening the form to submitting it.
+* The seller gave consent to take part.
+* The seller does sell turmeric in at least one form.
+* The survey was submitted within the per-FLW limits set out in § 6.
+
+
+Surveys that fail one or more of these criteria, or that exceed the per-FLW limits, are recorded but are not payable.
+
+
+Dimagi verifies these criteria automatically on each submitted record, through Connect's own verification settings. No other survey content affects whether a survey is paid — photograph quality, the number of turmeric forms, price, availability and all other recorded answers are captured for the dataset and have no bearing on payment. Dimagi addresses photograph quality through the training content and the certification assessment, not as a payment gate.
+
+
+Dimagi also reviews the collected records for duplicate sellers, photograph quality and reused or staged photographs. This review is carried out by people, informs refinement of the applications and the training, and does not reverse or withhold payment for a survey that met the criteria above.
+4.3 Reporting Deliverables
+* Weekly progress report covering surveys submitted, surveys verified, markets covered, FLW activity, and any refusals or access problems encountered.
+* Phase A feedback report (one-off), covering application usability, training clarity, the MTN card photograph workflow, question and unit fit, and the vendor-approach script.
+* Immediate written notice of any timeline or delivery risk, within 24 hours of identification.
+* Immediate written notice of any incident involving a seller, official or third party arising from the survey.
+5. Timeline and Milestones
+Week
+	Dates
+	Activities
+	1
+	2026-10-13 to 2026-10-19
+	Work Order execution. Dimagi provisions the Connect opportunity and shares the Learn and Survey applications with the partner. Partner onboarding.
+	2
+	2026-10-20 to 2026-10-26
+	Phase A: partner tests both applications end to end on its own devices and connectivity. Partner confirms which markets it intends to cover. Card procurement begins.
+	3
+	2026-10-27 to 2026-11-02
+	Phase A: partner submits written feedback. Dimagi refines the applications, training content and configuration. Cards distributed to FLWs.
+	4
+	2026-11-03 to 2026-11-09
+	Dimagi accepts or returns the Phase A deliverables. FLW recruitment, Learn completion and certification. Phase B written authorisation issued if Dimagi proceeds.
+	5
+	2026-11-10 to 2026-11-13
+	Phase B, if authorised: field collection of verified vendor surveys within the per-FLW limits. Weekly reporting. Reconciliation and closeout.
+	
+
+The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+6. Payment Terms
+6.1 Total Not-to-Exceed
+Dimagi's total financial commitment under this Work Order is GHS 1,100, not-to-exceed, inclusive of all field collection costs, FLW compensation, supervision, transport, and partner reporting time.
+6.2 Payment Schedule
+#
+	Milestone
+	% of Cap
+	Amount (GHS)
+	Trigger / Deliverable
+	Expected Timing
+	1
+	Mobilization advance
+	20%
+	GHS 220
+	Dimagi's acceptance of the Phase A deliverables in § 4.1, including written feedback, the markets the partner intends to cover, and written confirmation that MTN scratchcards have been procured as a single batch and distributed to every FLW. Recoverable against the partner's accrued per-survey earnings.
+	Within 30 days of acceptance
+	2
+	Final reconciliation
+	80%
+	GHS 880
+	Verified vendor surveys accruing at the per-survey rates in § 6.2, net of the mobilization advance. Payable only for surveys conducted after Dimagi's written authorisation of Phase B.
+	Monthly in arrears, within 30 days of acceptance
+	
+
+The payable unit under this Work Order is one verified vendor survey, as defined in § 4.2. Each verified survey is separately payable.
+
+
+Unlike Dimagi's solicitation-based engagements, the rates here are not negotiated in a response: they are fixed by this Work Order at GHS 7.00 per verified vendor survey paid to the FLW who conducted it, and GHS 4.00 per verified vendor survey paid to the partner, a combined GHS 11.00 per verified survey. FLW payments are disbursed through Connect directly to the FLW; the partner's share is disbursed to the partner.
+
+
+Per-FLW limits apply. No more than 15 verified surveys per FLW per day and no more than 20 verified surveys per FLW in total are payable under this Work Order. Surveys beyond either limit are recorded but are not payable. With five FLWs, these limits bound total delivery at 100 verified surveys, which is the full extent of Dimagi's commitment in § 6.1.
+
+
+Reconciliation of the two payment models. The mobilization advance in § 6.2 is recoverable: the partner's per-survey earnings accrue against the advance until it is fully drawn down, after which the partner's share is paid at the per-survey rate above. The advance is not additional to the per-survey rates, and the total paid under this Work Order will not exceed the cap in § 6.1 under any combination of the two. Where Dimagi does not authorise Phase B, the advance is not repayable: it is earned against the Phase A deliverables accepted under § 6.2, and the partner retains it in full.
+
+
+The per-survey rates are all-in. They are inclusive of devices, connectivity, transport, supervision, card procurement and reporting time. No cost item is separately funded or payable in addition to the not-to-exceed total.
+
+
+Acceptance. Dimagi will review each submission — the Phase A deliverables in § 4.1, and each monthly batch of verified vendor surveys — within 15 business days of submission. Dimagi accepts a submission by written notice, or rejects it by written notice identifying the specific deliverables or surveys that are deficient and the reason. Absent written rejection within that window, the submission is deemed accepted and the corresponding payment becomes due on the timing stated in § 6.2. Dimagi may reject a submission only against the Phase A deliverables listed in § 4.1 and the verified-unit criteria in § 4.2; no other ground for rejection is available. Where Dimagi rejects part of a submission, the remainder is accepted and paid, and the partner may resubmit the rejected part once within the period of performance.
+7. Roles and Responsibilities
+Responsibility
+	Dimagi
+	Partner
+	Programme and survey design
+	Lead
+	Reviews
+	Build and configure the Learn and Survey applications, including the time zone and verification settings
+	Lead
+	Reviews
+	End-to-end testing of both applications and written feedback
+	Supports
+	Lead
+	Select the markets to be covered and confirm them to Dimagi
+	Reviews
+	Lead
+	Procure MTN scratchcards as a single batch and distribute to every FLW
+	—
+	Lead
+	Recruit and onboard FLWs onto Connect
+	Supports
+	Lead
+	FLW completion of Learn modules and certification
+	—
+	Lead
+	Review FLW practice photographs before activation
+	Supports
+	Lead
+	Conduct verified vendor surveys and supervise field activity
+	—
+	Lead
+	Verify surveys and process payment
+	Lead
+	Supports
+	Review collected data for duplicates and photograph quality; manage and export the dataset
+	Lead
+	Supports
+	8. Permissions, Ethics, and Compliance
+8.1 Permissions
+The partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+
+
+* Permission to operate in each market covered, obtained from the relevant market authority where local practice requires it.
+* Verbal consent from each seller before any photograph is taken or any question is asked.
+* Permission for FLWs to carry and display the MTN scratchcard reference in the course of the survey.
+* Any approval required under Ghanaian law or local regulation for conducting a market survey of this kind.
+
+
+The partner will provide Dimagi with copies of all written permissions or notifications obtained.
+8.2 Ethics
+This survey records information about businesses and the goods they sell, not about individuals. No seller's name is recorded, no seller is identified in the dataset, and no seller is contacted again. The survey is observational only: FLWs make no claim, judgement or statement to a seller about the safety or quality of their product, and no physical sample is ever taken.
+
+
+Consent is obtained verbally from each seller before any photograph is taken or any question is asked, and is recorded on the survey. A seller who declines is thanked, and nothing about them beyond the fact of the approach is recorded. FLWs are trained to explain the survey in positive, simple terms and to respect a seller who declines.
+
+
+Photographs are of the turmeric and the reference card. The optional stall-context photograph must not be centred on any person, and FLWs are trained accordingly. Where a person is incidentally captured, the record carries no name and no means of contacting them.
+
+
+The partner will brief every FLW that the survey must never be represented to any seller, official or third party as an inspection, an enforcement activity, or a test of product safety.
+8.3 Security and Duty of Care
+The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy FLWs to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
+9. Data Handling
+Field
+	Value
+	Project overview
+	A standardised market survey of turmeric sellers in Ghanaian local markets. One structured record per seller, capturing the forms of turmeric sold, price, packaging, availability, standardised photographs with a fixed colour and size reference, and automatically captured location and visit metadata.
+	Data subjects
+	Turmeric sellers operating in local markets in Ghana — fixed shops, open stalls and mobile sellers. Sellers are recorded as businesses, not as named individuals.
+	Personal information processed
+	None recorded. No seller name, contact detail or identity document is collected. The record contains the market, the seller or stall type, a short locating description of the stall, and the stall's coordinates. Photographs are of the turmeric and the reference card; the optional stall-context photograph must not be centred on any person, and where a person is incidentally captured the record carries no name and no means of contacting them.
+	Purpose of processing
+	To produce a consistent, comparable dataset describing turmeric market presence, pricing and availability, captured consistently enough that records can be compared across sellers, markets and areas. The dataset is the deliverable; this Work Order makes no claim about downstream analysis and commits to none.
+	Technical and organizational security
+	Data is transmitted over encrypted connections and held in Dimagi's CommCare and Connect environments under Dimagi's standard access controls. Access is limited to Dimagi staff working on this programme and to the partner's supervisory staff for the records their own FLWs submit.
+	Measures by Partner
+	The partner will limit access to submitted records to named supervisory staff, will not copy or retain survey records or photographs outside the Connect platform, and will not share any record, photograph or seller detail with any third party without Dimagi's prior written agreement.
+	Data storage location
+	United States
+	Data protection
+	Records are retained for the duration of the programme and are managed by Dimagi. No seller-identifying information is collected, so no seller-level deletion or access request arises. The partner will notify Dimagi in writing within 24 hours of becoming aware of any loss, unauthorised access or unauthorised disclosure of survey data.
+	Signatures
+IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' Master Services Agreement (MSA) dated __________________.
+
+
+Subcontractor
+	Dimagi, Inc.
+	By: __________________________
+
+
+Name: [Partner signatory name]
+
+
+Title: [Partner signatory title]
+
+
+Date: ________________________
+
+
+Address for correspondence:
+
+
+[Partner registered address]
+	By: __________________________
+
+
+Name: Lucina Tse
+
+
+Title: COO Dimagi, Inc.
+
+
+Date: ________________________
+
+
+Address for correspondence:
+245 Main Street, 2nd Floor,
+Cambridge, MA 02142
+
+
+(617) 649-2214; legal@dimagi.com
+	
+
+Cambridge, Massachusetts, USA ｜ Cape Town, South Africa ｜ New Delhi, India ｜ www.dimagi.com

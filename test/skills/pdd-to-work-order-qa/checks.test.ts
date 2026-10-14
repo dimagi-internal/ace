@@ -30,6 +30,7 @@ import {
   resolveWorkOrderCurrency,
   normalizeDriveExport,
   CHECKS,
+  checkAnnexuresExcludeInternalDocuments,
 } from '../../../skills/pdd-to-work-order-qa/checks';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -485,8 +486,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports sixteen checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(16);
+  test('exports seventeen checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(17);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: "this is not a template render" explains every
@@ -507,6 +508,7 @@ describe('CHECKS array', () => {
       'acceptance_defined',
       'payment_unit_matches_entity_grain',
       'commercial_terms_match_solicitation',
+      'annexures_exclude_internal_documents',
     ]);
   });
 });
@@ -1616,5 +1618,144 @@ describe('a correct GHS work order clears the cap checks through the runner shap
       const c = CHECKS.find((x) => x.id === id)!;
       expect((await c.run(wo, ctx)).pass, `${id} failed on a correct GHS work order`).toBe(true);
     }
+  });
+});
+
+// ─── annexures_exclude_internal_documents (ace#2906) ────────────────
+// The work order is the ONE artifact in a run that is sent to the partner.
+// Until 2026-10-14 the template hardcoded
+// `Annexure A: Program Design Document — see {{pdd_link}}`, so every work
+// order ACE had ever rendered carried a live link to its own internal PDD.
+// Caught on tekzal/20261013-2314 — after one had been mailed to a real partner.
+describe('checkAnnexuresExcludeInternalDocuments', () => {
+  const withAnnexures = (body: string) =>
+    ['## Signatures', '', 'signed', '', '## Annexures', '', body, ''].join('\n');
+
+  test('passes on N/A — the sanctioned empty form', () => {
+    expect(checkAnnexuresExcludeInternalDocuments(withAnnexures('N/A')).pass).toBe(true);
+  });
+
+  test('passes on a legitimate partner-facing annexure', () => {
+    expect(
+      checkAnnexuresExcludeInternalDocuments(
+        withAnnexures("- Annexure A: The partner's costed solicitation response"),
+      ).pass,
+    ).toBe(true);
+  });
+
+  test('fails the exact line the old template hardcoded', () => {
+    const r = checkAnnexuresExcludeInternalDocuments(
+      withAnnexures(
+        '- Annexure A: Program Design Document — see https://docs.google.com/document/d/abc123/edit',
+      ),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/Program Design Document/);
+    // Must not tell the producer to delete the section — check 1 requires the heading.
+    expect(r.auto_fix_hint).toMatch(/do NOT delete the section/i);
+  });
+
+  test('fails on the TITLE alone, with no link', () => {
+    expect(
+      checkAnnexuresExcludeInternalDocuments(
+        withAnnexures('- Annexure A: Program Design Document (provided separately)'),
+      ).pass,
+    ).toBe(false);
+  });
+
+  test('fails on a bare Drive link under an innocuous title', () => {
+    const r = checkAnnexuresExcludeInternalDocuments(
+      withAnnexures('- Annexure A: Reference pack — https://drive.google.com/file/d/xyz/view'),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/live Drive link/);
+  });
+
+  test.each([
+    ['PDD acronym', '- Annexure A: PDD'],
+    ['design document', '- Annexure A: Internal design document'],
+    ['technical spec', '- Annexure A: Technical specification'],
+    ['run_state', '- Annexure A: run_state.yaml'],
+    ['decisions log', '- Annexure A: decisions.yaml'],
+    ['eval verdict', '- Annexure A: pdd-to-work-order-eval_verdict.yaml'],
+  ])('fails on %s', (_label, line) => {
+    expect(checkAnnexuresExcludeInternalDocuments(withAnnexures(line)).pass).toBe(false);
+  });
+
+  test('does NOT fire on body prose outside the Annexures section', () => {
+    // A contract may legitimately describe the design in its own words; what it
+    // must not do is PROMISE to hand the internal document over.
+    const wo = [
+      '## 1. Background',
+      '',
+      'The protocol follows the Program Design Document agreed by the parties.',
+      '',
+      '## Annexures',
+      '',
+      'N/A',
+    ].join('\n');
+    expect(checkAnnexuresExcludeInternalDocuments(wo).pass).toBe(true);
+  });
+
+  test('stays silent when the heading is absent — that is check 1, not this one', () => {
+    // Double-reporting one defect as two blockers sends the producer chasing
+    // the wrong fix.
+    expect(
+      checkAnnexuresExcludeInternalDocuments('## 1. Background\n\nNo annexures heading.').pass,
+    ).toBe(true);
+  });
+
+  test('scans the gdoc plain-text export shape too', () => {
+    const wo = [
+      '\tAnnexures',
+      '* Annexure A: Program Design Document — see https://docs.google.com/document/d/x/edit',
+    ].join('\n');
+    expect(checkAnnexuresExcludeInternalDocuments(wo).pass).toBe(false);
+  });
+
+  test('is registered in CHECKS', () => {
+    expect(CHECKS.map((c) => c.id)).toContain('annexures_exclude_internal_documents');
+  });
+
+  // ─── Negative control: the REAL document that caused this check ───
+  // Not a literal typed beside the assertion — these two files are the
+  // plain-text Drive exports of the two revisions of the work order on run
+  // `tekzal/20261013-2314`, captured 2026-10-14.
+  //
+  //   rev1 — rendered from the pre-fix template, MAILED to the partner at
+  //          hello@tekzal.com, carrying a live link to ACE's internal PDD.
+  //   rev2 — regenerated after the operator struck the line in review
+  //          ("this doesn't need to be shared with the implementing partner.
+  //          This is Dimagi internal only").
+  describe('against the real tekzal/20261013-2314 exports', () => {
+    const fixture = (n: string) => readFileSync(join(FIXTURES, n), 'utf8');
+
+    test('rev1 — the mailed document — is caught', () => {
+      const r = checkAnnexuresExcludeInternalDocuments(
+        fixture('tekzal-20261013-2314-work-order-rev1-leaked.txt'),
+      );
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(/Program Design Document/);
+      expect(r.detail).toMatch(/live Drive link/);
+    });
+
+    test('rev2 — section DELETED — is check 1’s failure, not this one', () => {
+      // rev2 removed the whole § Annexures section, which is why the run
+      // showed pdd-to-work-order-qa 15/16 "missing required section(s):
+      // § Annexures" on a document that was otherwise correct. That
+      // collision is the reason the sanctioned empty form is the single
+      // line `N/A` with the heading kept, rather than deletion.
+      const wo = fixture('tekzal-20261013-2314-work-order-rev2-fixed.txt');
+      expect(checkAnnexuresExcludeInternalDocuments(wo).pass).toBe(true);
+      expect(checkAllRequiredSectionsPresent(wo).pass).toBe(false);
+      expect(checkAllRequiredSectionsPresent(wo).detail).toMatch(/Annexures/);
+    });
+
+    test('the same document with the heading restored and N/A passes BOTH', () => {
+      const wo =
+        fixture('tekzal-20261013-2314-work-order-rev2-fixed.txt') + '\n\tAnnexures\nN/A\n';
+      expect(checkAnnexuresExcludeInternalDocuments(wo).pass).toBe(true);
+      expect(checkAllRequiredSectionsPresent(wo).pass).toBe(true);
+    });
   });
 });

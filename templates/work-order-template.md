@@ -154,5 +154,4 @@ IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be execute
 
 ## Annexures
 
-- Annexure A: Program Design Document — see {{pdd_link}}
-- Annexure B: {{annexure_b_placeholder}}
+{{annexures_body}}
