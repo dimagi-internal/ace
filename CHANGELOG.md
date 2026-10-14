@@ -5,21 +5,6 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.1846 — 2026-10-14
-
-**`/ace:setup` has a personal mode (owner decision, 2026-10-14).** A person who installs ACE uses it in
-their own Claude Code with their own accounts. `/ace:setup --personal` (auto-chosen when `op` is missing
-or cannot read `Agent-Ace`, unless the machine already holds an operator `.env`) never runs `op` and never
-touches ACE's shared secrets: it installs deps, writes the `.env.tpl` literals plus `ACE_SETUP_MODE=personal`,
-keeps credentials of the person's own across re-runs, and refuses to replace an operator `.env` without
-`--force-env`. It ends with `bin/ace-personal-status`, one line per area: READY / NEEDS YOU (with the one
-fix) / OPERATOR-ONLY. `/ace:doctor` shows that report on a personal `.env`. The operator path is unchanged.
-
-Also fixed for anyone installing ACE from a canopy workspace (`ace@canopy-<ws>`): the plugin data dir is
-`<plugin>-<marketplace>` (Claude Code's naming), not `<marketplace>-<plugin>`. `lib/plugin-data-dir.ts`,
-the Labs `headersHelper` and the tenancy guard derived it backwards, and `bin/ace-setup` plus the
-setup/doctor launchers only looked for `ace@ace`.
-
 ## 0.13.1655 — 2026-10-03
 
 **`release-check` is gone (owner instruction, 2026-10-03).** The deprecated `/ace:release-check` alias

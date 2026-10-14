@@ -1,21 +1,12 @@
 ---
-description: Set up ACE — personal mode (your own accounts, no 1Password) or operator mode (hosts ACE, 1Password) — then verify with doctor
-argument-hint: [--personal | --operator] [--auto-update] [--force-install] [--force-env] [--skip-env] [--skip-doctor]
+description: Install plugin deps, fetch GWS service-account key + .env from 1Password, verify with doctor
+argument-hint: [--auto-update] [--force-install] [--force-env] [--skip-env] [--skip-doctor]
 allowed-tools: [Bash, Read]
 ---
 
 # /ace:setup
 
-One-shot installer for the ACE plugin. It sets up for one of two people, and prints which one it chose and why (`MODE personal — …` / `MODE operator — …`):
-
-- **Personal** (most people): you installed ACE into your own Claude Code to use it with **your own** accounts. No 1Password, none of ACE's shared secrets. It installs deps, writes the non-secret shared config to `$CLAUDE_PLUGIN_DATA/.env` (marked `ACE_SETUP_MODE=personal`), and ends with a per-area report: what works now, what needs a credential of your own (one line each, with how to get it), and what only ACE itself can do.
-- **Operator**: you host ACE and have 1Password access to its vault. The original path below, unchanged.
-
-**How the mode is chosen:** `--personal` / `--operator` win. Otherwise: no `op` CLI → personal; `op` can read ACE's vault → operator; `op` can't, but this machine's `.env` already holds ACE's operator settings → operator (asks you to sign in, as before); else personal. `--print-mode` prints the choice and exits without writing anything. Personal mode never replaces an operator `.env` unless you pass `--force-env` (it backs the old file up first).
-
-## Operator mode
-
-Order is "cheap pre-flight checks first, slow state changes after, doctor last" so a missing 1Password signin fails in <1s instead of 60s. Drives:
+One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, slow state changes after, doctor last" so a missing 1Password signin fails in <1s instead of 60s. Drives:
 
 1. Verify Node/npm, then **1Password CLI is installed + authenticated (FAST FAIL)**
 2. **Fetches the Google service-account key from 1Password** (Document `ACE - Google Service Account` in vault `AI-Agents` by default; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
@@ -29,9 +20,6 @@ Order is "cheap pre-flight checks first, slow state changes after, doctor last" 
 
 ## Arguments
 
-- `--personal` — set up for your own use (no 1Password, no ACE secrets)
-- `--operator` — set up as the operator who hosts ACE (1Password)
-- `--print-mode` — print which mode would be chosen and why; no side effects
 - `--auto-update` — register the `SessionStart` auto-update hook
 - `--force-install` — re-run `npm install` even if `node_modules` is present
 - `--force-env` — re-run `op inject` even if `.env` already has every `.env.tpl` key
@@ -41,7 +29,7 @@ Order is "cheap pre-flight checks first, slow state changes after, doctor last" 
 
 Forward `$ARGUMENTS` to the script unchanged.
 
-## 1Password auth (operator mode only)
+## 1Password auth
 
 The script handles this — if you're not signed in, `/ace:setup` fails fast with the exact `! op signin --account dimagi.1password.com` command to type in the chat. Two supported auth paths:
 
@@ -60,14 +48,14 @@ fi
 if [ -z "$SCRIPT" ]; then
   REG="$HOME/.claude/plugins/installed_plugins.json"
   if [ -f "$REG" ]; then
-    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const p=d.plugins||d; const k=p[\"ace@ace\"]?\"ace@ace\":Object.keys(p).find(k=>/^ace@/.test(k)); const e=k&&p[k]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
     if [ -n "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH/bin/ace-setup" ]; then
       SCRIPT="$INSTALL_PATH/bin/ace-setup"
     fi
   fi
 fi
 if [ -z "$SCRIPT" ]; then
-  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
+  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
   if [ -n "$LATEST" ] && [ -x "$LATEST/bin/ace-setup" ]; then
     SCRIPT="$LATEST/bin/ace-setup"
   fi
@@ -101,7 +89,6 @@ exec "$SCRIPT" $ARGS
 
 Read the script output and tell the user:
 
-0. **Personal mode** (`STATUS: COMPLETE (personal)`): say "Set up in personal mode" with the `MODE` reason, then relay the per-area report as printed, one line per area, keeping each `NEEDS YOU` fix line verbatim (it names the exact page or command). `OPERATOR-ONLY` areas are not failures. They are what ACE does as itself, and the person can ask ACE to do them. Never ask the person to paste a token into the chat; the fix lines say which file it goes in. If they say they host ACE, point them at `/ace:setup --operator`. Skip items 1–6 below.
 1. **Headline:**
    - All `PASS` lines and `STATUS: COMPLETE` exit 0 → "Setup complete — ACE is ready."
    - Any `FAIL` line → "Setup blocked — N failure(s); see below."
