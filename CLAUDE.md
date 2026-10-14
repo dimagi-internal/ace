@@ -264,6 +264,8 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 
 ## Auth model: per-machine vs 1Password-backed
 
+**Everything in this section is the OPERATOR's install** (whoever hosts ACE). A person using ACE from their own Claude Code runs `/ace:setup --personal` (auto-chosen when `op` is missing or can't read `Agent-Ace`): no 1Password, only the `.env.tpl` literals plus `ACE_SETUP_MODE=personal`, and `/ace:doctor` then reports per area via `bin/ace-personal-status`. *Enforced:* `test/scripts/ace-setup-personal-mode.test.ts` (personal mode never runs `op`).
+
 ACE has two classes of credential state — confusing them is the #1 source of friction across workstations. Session cookies are bound to TLS fingerprints + CSRF rotation; copying them between machines is *worse* than re-login (intermittent, hard to debug). **Don't sync `~/.ace/` via 1Password or git.**
 
 **1Password-backed (set up once per machine, then static):**

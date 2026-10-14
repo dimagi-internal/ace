@@ -35,7 +35,8 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Walk an absolute file path looking for `plugins/cache/<mp>/<plugin>/<ver>/`
- * and compose the sibling `plugins/data/<mp>-<plugin>` dir. Returns null when
+ * and compose the sibling `plugins/data/<plugin>-<mp>` dir (plugin FIRST — Claude
+ * Code's own naming; see lib/plugin-data-dir.ts). Returns null when
  * the path isn't inside an installed plugin (e.g. a dev checkout). Mirrors
  * lib/plugin-data-dir.ts::derivePluginDataDir, but takes an already-resolved
  * filesystem path rather than an import.meta.url.
@@ -49,7 +50,7 @@ export function derivePluginDataDir(callerPath) {
       const version = parts[i + 4];
       if (!marketplace || !plugin || !version) continue;
       const pluginsRoot = parts.slice(0, i + 1).join(path.sep);
-      return path.join(pluginsRoot, 'data', `${marketplace}-${plugin}`);
+      return path.join(pluginsRoot, 'data', `${plugin}-${marketplace}`);
     }
   }
   return null;

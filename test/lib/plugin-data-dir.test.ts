@@ -27,15 +27,23 @@ describe('plugin-data-dir', () => {
       });
     });
 
-    it('handles a different marketplace + plugin naming correctly', () => {
+    it('names the data dir <plugin>-<marketplace> when they differ (Claude Code naming)', () => {
+      // Observed on disk: ~/.claude/plugins/data/context7-claude-plugins-official.
+      // The old <marketplace>-<plugin> order only worked because ace@ace is symmetric.
       const fakeUrl =
         'file:///Users/me/.claude/plugins/cache/claude-plugins-official/frontend-design/1.2.3/mcp/server.js';
       expect(derivePluginDataDir(fakeUrl)).toEqual({
-        path: '/Users/me/.claude/plugins/data/claude-plugins-official-frontend-design',
+        path: '/Users/me/.claude/plugins/data/frontend-design-claude-plugins-official',
         marketplace: 'claude-plugins-official',
         plugin: 'frontend-design',
         version: '1.2.3',
       });
+    });
+
+    it('derives ace-canopy-<ws> for ACE installed from a canopy workspace marketplace', () => {
+      const fakeUrl =
+        'file:///Users/me/.claude/plugins/cache/canopy-dimagi/ace/0.13.2000/mcp/google-drive-server.ts';
+      expect(derivePluginDataDir(fakeUrl)?.path).toBe('/Users/me/.claude/plugins/data/ace-canopy-dimagi');
     });
 
     it('returns null for a dev-checkout path with no plugins/cache segment', () => {

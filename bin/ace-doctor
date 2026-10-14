@@ -10,6 +10,11 @@
 #   ACE_DIR=/path/to/ace      audit a specific plugin root
 #   --here                    walk up from $PWD to find an ACE checkout (dev mode)
 #   --installed               force use of the newest ~/.claude/plugins/cache/ace/ace/*
+#   --personal                report for a PERSONAL install (bin/ace-personal-status):
+#                             per area READY / NEEDS YOU / OPERATOR-ONLY. Chosen
+#                             automatically when the .env says ACE_SETUP_MODE=personal,
+#                             so ACE's shared secrets missing there never read as failures.
+#   --operator                run the operator checks even on a personal .env
 #
 # Exit status: 0 always (check results go to stdout as PASS/WARN/FAIL lines).
 set +e
@@ -85,6 +90,7 @@ PREFLIGHT=0
 # --no-live suppresses the ONE live probe --preflight runs (ocs_generation,
 # ace#1516) so `/ace:doctor --preflight --no-live` stays instant.
 NO_LIVE=0
+DOCTOR_MODE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -93,6 +99,8 @@ while [ $# -gt 0 ]; do
     --root)       shift; ROOT="$1" ;;
     --preflight)  PREFLIGHT=1 ;;
     --no-live)    NO_LIVE=1 ;;
+    --personal)   DOCTOR_MODE="personal" ;;
+    --operator)   DOCTOR_MODE="operator" ;;
     *)            echo "ace-doctor: unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -131,6 +139,29 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
   echo "FAIL plugin_root_not_found: could not locate ACE plugin (mode=$MODE)"
   echo "  fix: run from an ACE checkout, or after /plugin install ace@ace, or pass --root /path"
   exit 0
+fi
+
+# Personal installs get the per-area report, not the operator checks (owner
+# decision 2026-10-14). A person using ACE with their own accounts has none of
+# ACE's shared secrets by design; the operator checks would print every one of
+# them as a failure. Data dir resolves like bin/ace-setup / lib/plugin-data-dir.ts.
+if [ -z "$SUBCOMMAND" ] && [ "$PREFLIGHT" != "1" ] && [ "$DOCTOR_MODE" != "operator" ]; then
+  if [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ "$CLAUDE_PLUGIN_DATA" != '${CLAUDE_PLUGIN_DATA}' ]; then
+    _P_DATA="$CLAUDE_PLUGIN_DATA"
+  else
+    case "$ROOT" in
+      */plugins/cache/*/*/*)
+        _p_rest="${ROOT#*/plugins/cache/}"; _p_mp="${_p_rest%%/*}"; _p_rest="${_p_rest#*/}"
+        _P_DATA="${ROOT%%/plugins/cache/*}/plugins/data/${_p_rest%%/*}-$_p_mp" ;;
+      *) _P_DATA="$HOME/.claude/plugins/data/ace-ace" ;;
+    esac
+  fi
+  if [ "$DOCTOR_MODE" = "personal" ] || grep -qE '^[[:space:]]*ACE_SETUP_MODE=personal' "$_P_DATA/.env" 2>/dev/null; then
+    if [ "$NO_LIVE" = "1" ]; then
+      exec bash "$ROOT/bin/ace-personal-status" --data-dir "$_P_DATA" --no-live
+    fi
+    exec bash "$ROOT/bin/ace-personal-status" --data-dir "$_P_DATA"
+  fi
 fi
 
 # node_modules/.bin/tsx is a symlink to ../tsx/dist/cli.mjs in a healthy install, but the

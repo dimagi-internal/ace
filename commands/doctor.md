@@ -10,6 +10,12 @@ Node dependencies, the Google service-account key, the `plugin.json` `mcpServers
 and the presence of related repos (ace-web, connect-labs). Prints each check
 as PASS/WARN/FAIL with a fix hint.
 
+**Personal installs** (`/ace:setup --personal`, so the `.env` says `ACE_SETUP_MODE=personal`)
+get a different report instead: one line per capability area, `READY` / `NEEDS YOU` (with the
+one fix) / `OPERATOR-ONLY` (ACE does it as itself). ACE's shared secrets are absent there by
+design, so they are not reported as failures. Run `bin/ace-doctor --operator` directly to force
+the operator checks, or `--personal` to force the personal report.
+
 **This is a rigid, scripted skill.** Run the bash block EXACTLY as written.
 Do not improvise. The real logic lives in `bin/ace-doctor`; this launcher just
 locates the script and execs it.
@@ -37,14 +43,14 @@ if [ -z "$SCRIPT" ]; then
     # any reasonably current install. Reproduced as a bug on 2026-05-01:
     # ace-web's container had v2 format and this script silently said
     # "FAIL launcher" until the parser was widened.
-    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]||(d.plugins&&d.plugins[\"ace@ace\"]); if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const p=d.plugins||d; const k=p[\"ace@ace\"]?\"ace@ace\":Object.keys(p).find(k=>/^ace@/.test(k)); const e=k&&p[k]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
     if [ -n "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH/bin/ace-doctor" ]; then
       SCRIPT="$INSTALL_PATH/bin/ace-doctor"
     fi
   fi
 fi
 if [ -z "$SCRIPT" ]; then
-  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
+  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
   if [ -n "$LATEST" ] && [ -x "$LATEST/bin/ace-doctor" ]; then
     SCRIPT="$LATEST/bin/ace-doctor"
   fi

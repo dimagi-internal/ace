@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# ace-personal-status — what ACE can do for YOU, per capability area.
+#
+# The readiness report for a PERSONAL install: someone who installed ACE into
+# their own Claude Code to use it with their own accounts, and who does not host
+# ACE (no 1Password access to ACE's vault, no ACE service-account key, none of
+# ACE's shared logins). `bin/ace-setup --personal` ends with it, and
+# `bin/ace-doctor` runs it instead of the operator checks when the .env says
+# ACE_SETUP_MODE=personal (or with `--personal`).
+#
+# One line per area, one of:
+#   READY          works now
+#   NEEDS YOU      works once you add a credential or tool of your own (the fix
+#                  line says exactly which, and how)
+#   OPERATOR-ONLY  ACE does this as ITSELF, with its own accounts; you can ask
+#                  ACE to do it, but it cannot run as you from this install yet
+#
+# Never invokes `op`, never reads ACE's shared secrets, never writes anything.
+# Pure bash + curl (+ node only to read the plugin registry), so it works before
+# `npm install`. Always exits 0.
+#
+# Flags:
+#   --data-dir DIR   the plugin data dir holding .env (default: $CLAUDE_PLUGIN_DATA,
+#                    else derived from this script's install path, else
+#                    ~/.claude/plugins/data/ace-ace)
+#   --no-live        skip the one live check (the Labs token round-trip)
+#
+# Env overrides (tests): ACE_PLUGIN_REGISTRY, LABS_MCP_URL, ACE_CLAUDE_JSON.
+set +e
+
+DATA_DIR_ARG=""
+NO_LIVE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --data-dir) shift; DATA_DIR_ARG="${1:-}" ;;
+    --no-live)  NO_LIVE=1 ;;
+    -h|--help)  sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "ace-personal-status: unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+SELF_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Same rule as lib/plugin-data-dir.ts: plugins/cache/<mp>/<plugin>/<ver> ->
+# plugins/data/<plugin>-<mp>. Empty when not running from an installed cache.
+_derived_data_dir() {
+  case "$1" in
+    */plugins/cache/*/*/*)
+      _pre="${1%%/plugins/cache/*}"
+      _rest="${1#*/plugins/cache/}"
+      _mp="${_rest%%/*}"; _rest="${_rest#*/}"
+      _pl="${_rest%%/*}"
+      printf '%s/plugins/data/%s-%s\n' "$_pre" "$_pl" "$_mp"
+      ;;
+  esac
+}
+
+if [ -n "$DATA_DIR_ARG" ]; then
+  DATA_DIR="$DATA_DIR_ARG"
+elif [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ "$CLAUDE_PLUGIN_DATA" != '${CLAUDE_PLUGIN_DATA}' ]; then
+  DATA_DIR="$CLAUDE_PLUGIN_DATA"
+else
+  DATA_DIR="$(_derived_data_dir "$SELF_ROOT")"
+  [ -n "$DATA_DIR" ] || DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+fi
+ENV_FILE="$DATA_DIR/.env"
+
+# A value from the .env, unquoted. Empty when absent or still an op:// reference
+# (an unresolved reference is not a credential you hold).
+env_val() {
+  [ -f "$ENV_FILE" ] || return 0
+  _v="$(grep -E "^[[:space:]]*(export[[:space:]]+)?$1=" "$ENV_FILE" | tail -1 | sed -E "s/^[[:space:]]*(export[[:space:]]+)?$1=//")"
+  _v="${_v%\"}"; _v="${_v#\"}"; _v="${_v%\'}"; _v="${_v#\'}"
+  case "$_v" in op://*) _v="" ;; esac
+  printf '%s' "$_v"
+}
+
+N_READY=0; N_NEEDS=0; N_OPER=0
+row() {
+  # row <STATUS> <area> <one-line detail>
+  case "$1" in
+    READY) N_READY=$((N_READY + 1)) ;;
+    "NEEDS YOU") N_NEEDS=$((N_NEEDS + 1)) ;;
+    OPERATOR-ONLY) N_OPER=$((N_OPER + 1)) ;;
+  esac
+  printf '  %-14s %-22s %s\n' "$1" "$2" "$3"
+}
+
+ASK_ACE="ask ACE to do it (Slack @canopy ace, or email ace@dimagi-ai.com)"
+
+echo "ACE — what works for you (personal mode)"
+if [ -f "$ENV_FILE" ]; then
+  echo "  settings: $ENV_FILE"
+else
+  echo "  settings: none yet at $ENV_FILE — run /ace:setup --personal"
+fi
+echo ""
+
+# 1. Reading and explaining — skills, docs, PDD guidance. Plain files in the
+#    plugin; no MCP server, no credential.
+row READY "Reading & explaining" "explain-ace, skills, docs and PDD guidance — no credentials needed"
+
+# 2. Connect Labs — the connect-labs HTTP MCP authenticates with a per-user
+#    Labs token (scripts/labs-auth-headers.mjs reads LABS_MCP_TOKEN from this
+#    .env). Labs runs every tool as the token's owner, so this one really is you.
+LABS_TOKENS_URL="https://labs.connect.dimagi.com/labs/mcp/tokens/"
+LABS_FIX="create a token at $LABS_TOKENS_URL (sign in with your own Connect account), add the line LABS_MCP_TOKEN=<token> to $ENV_FILE, then restart Claude Code"
+LABS_TOKEN="$(env_val LABS_MCP_TOKEN)"
+if [ -z "$LABS_TOKEN" ]; then
+  row "NEEDS YOU" "Connect Labs" "your own Labs token: $LABS_FIX"
+elif [ "$NO_LIVE" = "1" ]; then
+  row READY "Connect Labs" "your Labs token is set (not live-checked: --no-live)"
+else
+  LABS_URL="${LABS_MCP_URL:-https://labs.connect.dimagi.com/mcp/}"
+  # Header on stdin, never argv (ace#1114: argv is readable via ps).
+  LABS_CODE="$(printf 'Authorization: Bearer %s\n' "$LABS_TOKEN" | curl -H @- \
+    -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST \
+    -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-personal-status","version":"1"}}}' \
+    "$LABS_URL" 2>/dev/null)"
+  case "$LABS_CODE" in
+    2*)
+      LABS_BODY="$(printf 'Authorization: Bearer %s\n' "$LABS_TOKEN" | curl -H @- \
+        -sS --max-time 8 -X POST \
+        -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+        -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
+        "$LABS_URL" 2>/dev/null)"
+      if printf '%s' "$LABS_BODY" | grep -q 'PERMISSION_DENIED\|connect_oauth\|ConnectTokenError'; then
+        row "NEEDS YOU" "Connect Labs" "token works, but Labs has no Connect sign-in for you yet: open https://labs.connect.dimagi.com once and click Authorize with Connect"
+      else
+        row READY "Connect Labs" "your Labs token works (Labs acts as you)"
+      fi
+      ;;
+    401|403) row "NEEDS YOU" "Connect Labs" "Labs rejected your token (expired or revoked): $LABS_FIX" ;;
+    *)       row "NEEDS YOU" "Connect Labs" "token is set but Labs could not be reached to check it (HTTP ${LABS_CODE:-000}); re-run /ace:doctor when online" ;;
+  esac
+fi
+
+# 3. Nova app building — Nova is its own plugin. Its bundled connection signs in
+#    with the person's own commcare.app account (OAuth); an API key of their own
+#    (NOVA_API_KEY, or a user-scope `nova` MCP entry) also works. ACE's key is
+#    never involved.
+REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
+NOVA_INSTALLED=""
+if [ -f "$REG" ] && command -v node >/dev/null 2>&1; then
+  NOVA_INSTALLED="$(node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const p=d.plugins||d;const k=Object.keys(p).find(k=>/^nova@/.test(k));if(k)console.log(k)}catch(_){}" "$REG" 2>/dev/null)"
+fi
+CLAUDE_JSON="${ACE_CLAUDE_JSON:-$HOME/.claude.json}"
+NOVA_USER_ENTRY=""
+if [ -f "$CLAUDE_JSON" ] && command -v node >/dev/null 2>&1; then
+  NOVA_USER_ENTRY="$(node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(d.mcpServers&&d.mcpServers.nova)console.log('yes')}catch(_){}" "$CLAUDE_JSON" 2>/dev/null)"
+fi
+if [ -n "$NOVA_USER_ENTRY" ] || [ -n "$(env_val NOVA_API_KEY)" ]; then
+  row READY "Nova app building" "your own Nova API key is configured"
+elif [ -n "$NOVA_INSTALLED" ]; then
+  row READY "Nova app building" "the nova plugin ($NOVA_INSTALLED) signs in as you — if /mcp shows nova unauthenticated, pick it and Authenticate"
+else
+  row "NEEDS YOU" "Nova app building" "install Nova: /plugin marketplace add voidcraft-labs/nova-marketplace, then /plugin install nova@nova-marketplace, and sign in with your own commcare.app account when /mcp asks"
+fi
+
+# 4. CommCare HQ — ACE's own commcare_* tools (ace-connect) act as ACE's HQ
+#    account and are identity-gated (lib/agent-identity-gate.ts). What a person
+#    can do as themselves is put a Nova app into THEIR project space, with an
+#    HQ API key of their own saved in Nova. Nova holds that key, so it cannot be
+#    checked from here.
+row "NEEDS YOU" "CommCare HQ" "your own HQ API key: create one at https://www.commcarehq.org/account/api_keys/, then /nova:upload_to_hq puts your app in YOUR project space (ACE's own HQ tools are operator-only)"
+
+# 5. Connect — ace-connect's connect_* tools act as ACE's Connect account and
+#    refuse any session that is not ACE (canopy cred check --agent ace). There
+#    is no sign-in-as-you path in ace-connect yet; /ace:connect-login only feeds
+#    that same gated server.
+row OPERATOR-ONLY "Connect" "acts as ACE's own Connect account, not available as you yet — $ASK_ACE"
+
+# 6. OCS chatbots — ace-ocs acts as ACE's OCS login, same identity gate.
+row OPERATOR-ONLY "OCS chatbots" "acts as ACE's own OCS login, not available as you yet — $ASK_ACE"
+
+# 7. Google Drive / Docs — ace-gdrive and ace-decisions sign in with ACE's
+#    service account and refuse non-ACE sessions. canopy's `cred google-token`
+#    hands out an AGENT's own Google token, not the person's, and ace-gdrive has
+#    no user-OAuth path, so this cannot run as you yet.
+row OPERATOR-ONLY "Google Drive / Docs" "uses ACE's own Google service account; signing in as you is not available yet — $ASK_ACE"
+
+# 8. Mobile testing — ace-mobile is NOT identity-gated: the local emulator
+#    tools work for anyone with Maestro + the Android SDK. Registering ACE's
+#    Connect test user (ACE_E2E_*) and its Connect invite are ACE's own, so a
+#    full Connect app walk stays operator-only.
+_have() { command -v "$1" >/dev/null 2>&1; }
+MOBILE_MISSING=""
+{ _have maestro || [ -x "$HOME/.maestro/bin/maestro" ]; } || MOBILE_MISSING="$MOBILE_MISSING maestro"
+_have adb || MOBILE_MISSING="$MOBILE_MISSING adb"
+{ _have emulator || [ -x "${ANDROID_HOME:-$HOME/Library/Android/sdk}/emulator/emulator" ]; } || MOBILE_MISSING="$MOBILE_MISSING emulator"
+if [ -z "$MOBILE_MISSING" ]; then
+  row READY "Mobile testing" "local emulator tools found; walking an app as ACE's Connect test user is operator-only"
+else
+  row "NEEDS YOU" "Mobile testing" "missing:$MOBILE_MISSING — install Maestro and the Android SDK (/ace:mobile-bootstrap steps 1-3); ACE's Connect test user stays operator-only"
+fi
+
+echo ""
+echo "  $N_READY ready · $N_NEEDS need something from you · $N_OPER operator-only"
+echo "  Operator-only means ACE does it as itself. If you host ACE (1Password access to its vault), run /ace:setup --operator."
+exit 0
