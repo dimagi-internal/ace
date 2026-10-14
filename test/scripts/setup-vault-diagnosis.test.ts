@@ -26,7 +26,7 @@ const tpl = readFileSync(join(REPO, '.env.tpl'), 'utf8');
 describe('the vault-reachability preflight (ace#986)', () => {
   it('probes the vault before running the all-or-nothing inject', () => {
     const probeAt = setup.indexOf('op vault get "$OP_VAULT"');
-    const injectAt = setup.indexOf('op inject -i "$INJECT_TPL"');
+    const injectAt = setup.indexOf('canopy agent env --plugin ace --template "$INJECT_TPL"');
     expect(probeAt).toBeGreaterThan(-1);
     expect(probeAt).toBeLessThan(injectAt);
   });

@@ -4,6 +4,18 @@ Orchestrates the ACE lifecycle for Connect opportunities, from idea through app 
 
 ACE is a Claude Code plugin with the same architecture as canopy: agents orchestrate skills, skills are prompt-based capability definitions, and MCP servers provide programmatic access to external systems.
 
+## Set up
+
+1. Install canopy (the plugin and CLI, 0.2.681 or newer; `/canopy:setup` signs you in to canopy-web).
+2. `/plugin install ace@canopy-agents`
+3. `/ace:setup` — binds this install to ONE ACE instance on canopy-web and fills
+   `$CLAUDE_PLUGIN_DATA/.env` from that instance's 1Password vault
+   (`canopy agent env --plugin ace`), alongside the npm install, the
+   service-account key, the commcare-cli jar and a closing `/ace:doctor`.
+   Several instances visible → `/ace:setup --agent <instance>`.
+
+Reading ACE's docs and skills needs no setup.
+
 ## Prerequisites
 
 Before `/ace:setup` will succeed, you need:
@@ -11,7 +23,7 @@ Before `/ace:setup` will succeed, you need:
 - **Node.js v18+** with `npm` (https://nodejs.org). Apple Silicon: `brew install node`.
 - **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
   - On Mac, also enable 1Password.app → Settings → Developer → "Connect with 1Password CLI" for biometric unlock — that's the smoothest auth path. Alternative: `op signin --account dimagi.1password.com` interactively when `/ace:setup` prompts.
-- **1Password account** at `dimagi.1password.com`, with **read access to the `Agent-Ace` vault** (ACE's own vault; the legacy `AI-Agents` vault is no longer read). Ask ACE's owner, Jonathan Jackson, to grant access — without it, `op inject` will fail with cryptic permission errors. The full set of items ACE reads from `Agent-Ace`: `ACE - Google Service Account` (Document), `ACE - Open Chat Studio`, `ACE - CommCareHQ`, `ACE - Connect Labs`, `Content Generator API`, `connect-test-user`, plus two UUID-referenced API-key items (linked from `.env.tpl`).
+- **1Password account** at `dimagi.1password.com`, with **read access to your ACE instance's vault** — the one canopy-web records for it (`canopy agent env --plugin ace --print` names it; today `Agent-Ace`, and the legacy `AI-Agents` vault is no longer read). Ask ACE's owner, Jonathan Jackson, to grant access — `/ace:setup` names the vault and who grants it when access is missing. The full set of items ACE reads from that vault: `ACE - Google Service Account` (Document), `ACE - Open Chat Studio`, `ACE - CommCareHQ`, `ACE - Connect Labs`, `Content Generator API`, `connect-test-user`, plus two UUID-referenced API-key items (linked from `.env.tpl`).
 - **GitHub access to `dimagi-internal/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
 - **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
 - **Playwright Chromium** browser binary. Auto-installed on first use; if you hit "browser doesn't open" errors, run `npx playwright install chromium`.
@@ -47,16 +59,17 @@ Stop at any step that fails — the next step won't work.
    `/plugin install ace@ace`.
 
 2. **Run `/ace:setup`** — does almost everything for you in one shot:
-   verifies Node + `op` + 1Password signin, fetches the GWS service-account
-   key from the `Agent-Ace` vault into `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`,
-   runs `npm install`, injects `.env` from `1Password`, and finishes by
-   running `/ace:doctor`.
+   verifies Node + `op` + 1Password signin, resolves your ACE instance and
+   its vault (`canopy agent env --plugin ace --print`), fetches the GWS
+   service-account key from that vault into `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`,
+   runs `npm install`, fills `.env` via `canopy agent env --plugin ace`, and
+   finishes by running `/ace:doctor`.
    - If `op` isn't signed in, the script prints the exact
      `! op signin --account dimagi.1password.com` line — type it in the
      chat (the `!` prefix runs the command in this session), then re-run
      `/ace:setup`.
    - If 1Password can't find the SA-key Document, the script lists
-     candidate items in `Agent-Ace` so you can pick the right one with
+     candidate items in the vault so you can pick the right one with
      `ACE_GWS_KEY_OP_DOC=...`. Worst case, ask Jon for the JSON and drop
      it manually at the path the script printed.
 
