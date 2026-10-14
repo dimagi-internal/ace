@@ -147,11 +147,13 @@ describe('doctor line-probes always land in a bucket (ace#2855)', () => {
 });
 
 describe('the silent shape is gone from bin/ace-doctor (ace#2855)', () => {
-  it('routes all three line-probes through the helper', () => {
-    for (const probe of ['nova_header_readiness', 'nova_scopes', 'static_header_drift']) {
+  it('routes every line-probe through the helper', () => {
+    // capability_lease (the lease mobile backend's doctor probe) was the fourth.
+    const probes = ['nova_header_readiness', 'nova_scopes', 'static_header_drift', 'capability_lease'];
+    for (const probe of probes) {
       expect(doctorSrc).toMatch(new RegExp(`emit_line_probe ${probe}\\b`));
     }
-    expect((doctorSrc.match(/^run_line_probe scripts\//gm) ?? []).length).toBe(3);
+    expect((doctorSrc.match(/^run_line_probe scripts\//gm) ?? []).length).toBe(probes.length);
   });
 
   it('no probe is still printed by a bare `[ -n "$X" ] && printf`', () => {

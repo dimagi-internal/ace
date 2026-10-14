@@ -252,3 +252,120 @@ describe('backend-toggle: state dir is isolated from the real $HOME under test',
     }
   });
 });
+
+// ── Default selection: local iff a provisioned AVD exists, else lease ──────
+describe('backend-toggle: selection matrix (lease backend)', () => {
+  let saved: Record<string, string | undefined>;
+  let avdHome: string;
+
+  beforeEach(() => {
+    saved = {
+      ACE_MOBILE_BACKEND: process.env.ACE_MOBILE_BACKEND,
+      ACE_MOBILE_SELECTION_AVD_HOME: process.env.ACE_MOBILE_SELECTION_AVD_HOME,
+    };
+    delete process.env.ACE_MOBILE_BACKEND;
+    clearSessionBackend();
+    avdHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sel-avd-home-'));
+    process.env.ACE_MOBILE_SELECTION_AVD_HOME = avdHome;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    clearSessionBackend();
+    fs.rmSync(avdHome, { recursive: true, force: true });
+  });
+
+  function makeAvd(name: string, marker: string | null) {
+    const dir = path.join(avdHome, `${name}.avd`);
+    fs.mkdirSync(dir, { recursive: true });
+    if (marker !== null) fs.writeFileSync(path.join(dir, '.ace-provisioned.json'), marker);
+  }
+  const GOOD = JSON.stringify({ marked_at: '2026-10-01T00:00:00Z', selector_map: 'connect-2.63.0@abc' });
+
+  // [env, session file, AVD-home contents] → expected backend + source
+  const cases: Array<{
+    name: string;
+    env?: string;
+    file?: 'cloud' | 'local' | 'lease';
+    avd: 'provisioned' | 'unmarked' | 'bad-marker' | 'none';
+    want: string;
+    source: string;
+  }> = [
+    { name: 'nothing set, provisioned AVD → local', avd: 'provisioned', want: 'local', source: 'default' },
+    { name: 'nothing set, no AVD home contents → lease', avd: 'none', want: 'lease', source: 'default' },
+    { name: 'nothing set, AVD exists but never bootstrapped → lease', avd: 'unmarked', want: 'lease', source: 'default' },
+    { name: 'nothing set, unreadable marker → lease (fails closed)', avd: 'bad-marker', want: 'lease', source: 'default' },
+    { name: 'session file lease beats a provisioned AVD', file: 'lease', avd: 'provisioned', want: 'lease', source: 'session-file' },
+    { name: 'session file local beats no AVD', file: 'local', avd: 'none', want: 'local', source: 'session-file' },
+    { name: 'session file cloud (legacy) still honoured', file: 'cloud', avd: 'none', want: 'cloud', source: 'session-file' },
+    { name: 'env lease beats session file local', env: 'lease', file: 'local', avd: 'provisioned', want: 'lease', source: 'env' },
+    { name: 'env local beats no AVD', env: 'local', avd: 'none', want: 'local', source: 'env' },
+    { name: 'env cloud (legacy) beats everything', env: 'cloud', file: 'lease', avd: 'provisioned', want: 'cloud', source: 'env' },
+    { name: 'env is case/space-insensitive', env: '  LEASE ', avd: 'provisioned', want: 'lease', source: 'env' },
+    { name: 'an unknown env value falls through to the default', env: 'remote', avd: 'none', want: 'lease', source: 'default' },
+  ];
+
+  it.each(cases)('$name', ({ env, file, avd, want, source }) => {
+    if (avd === 'provisioned') makeAvd('ACE_Pixel_API_34', GOOD);
+    if (avd === 'unmarked') makeAvd('ACE_Pixel_API_34', null);
+    if (avd === 'bad-marker') makeAvd('ACE_Pixel_API_34', '{not json');
+    if (env !== undefined) process.env.ACE_MOBILE_BACKEND = env;
+    if (file) setSessionBackend(file);
+    const r = resolveBackend();
+    expect(r.backend).toBe(want);
+    expect(r.source).toBe(source);
+  });
+
+  it('a nonexistent AVD home defaults to lease with a reason naming it', () => {
+    process.env.ACE_MOBILE_SELECTION_AVD_HOME = path.join(avdHome, 'missing');
+    const r = resolveBackend();
+    expect(r.backend).toBe('lease');
+    expect(r.defaultReason).toContain('no provisioned AVD');
+  });
+
+  it('the default reason names the provisioned AVD it found', () => {
+    makeAvd('ACE_Pixel_API_34', GOOD);
+    expect(resolveBackend().defaultReason).toContain('ACE_Pixel_API_34');
+  });
+
+  it('setSessionBackend accepts lease and rejects junk', () => {
+    setSessionBackend('lease');
+    expect(resolveBackend().backend).toBe('lease');
+    expect(() => setSessionBackend('remote' as never)).toThrow(/invalid backend/);
+  });
+
+  it('the suite-wide default is pinned to local by the isolation setup', () => {
+    process.env.ACE_MOBILE_SELECTION_AVD_HOME = saved.ACE_MOBILE_SELECTION_AVD_HOME;
+    expect(resolveBackend().backend).toBe('local');
+  });
+});
+
+describe('backend-toggle: lease preflight', () => {
+  const resolved = (backend: 'lease' | 'local' | 'cloud', source: 'env' | 'session-file' | 'default' = 'default'): ResolvedBackend => ({
+    backend,
+    source,
+    sessionFile: '/tmp/x',
+    ppid: 1,
+    ...(source === 'default' && backend === 'lease' ? { defaultReason: 'no provisioned AVD in /x' } : {}),
+  });
+
+  it('lease without a PAT is fatal LEASE_NOT_CONFIGURED (never falls through to local)', () => {
+    const p = preflightMobileBackend({ resolved: resolved('lease'), cloudConfigured: false, leaseConfigured: false });
+    expect(p.fatal?.code).toBe('LEASE_NOT_CONFIGURED');
+    expect(p.fatal?.message).toContain('no provisioned AVD');
+    expect(p.fatal?.remediation).toContain('/ace:mobile-bootstrap');
+  });
+
+  it('a pinned lease names the pin, not the default', () => {
+    const p = preflightMobileBackend({ resolved: resolved('lease', 'env'), cloudConfigured: true, leaseConfigured: false });
+    expect(p.fatal?.message).toContain('pinned to lease (env)');
+  });
+
+  it('lease with a PAT proceeds silently', () => {
+    const p = preflightMobileBackend({ resolved: resolved('lease'), cloudConfigured: false, leaseConfigured: true });
+    expect(p.fatal).toBeUndefined();
+    expect(p.note).toBeUndefined();
+  });
+});

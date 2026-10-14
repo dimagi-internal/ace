@@ -1,0 +1,118 @@
+{
+  "_doc": "ace-mobile CLI argparse contract (build_parser()), from ace_mobile.py @ acd70128+uncommitted, cli_version 1.0.0. Regenerate with scripts/refresh-lease-contract-fixtures.ts --cli <ace_mobile.py>.",
+  "cli_version": "1.0.0",
+  "subcommands": {
+    "clear-app-data": {
+      "flags": [
+        "--package"
+      ],
+      "required": [],
+      "positionals": {}
+    },
+    "diagnose": {
+      "flags": [],
+      "required": [],
+      "positionals": {}
+    },
+    "install-apk": {
+      "flags": [
+        "--apk"
+      ],
+      "required": [
+        "--apk"
+      ],
+      "positionals": {}
+    },
+    "install-driver": {
+      "flags": [],
+      "required": [],
+      "positionals": {}
+    },
+    "register-test-user": {
+      "flags": [
+        "--backup-code",
+        "--country-code",
+        "--creds",
+        "--from-otp-recipe",
+        "--name",
+        "--out",
+        "--palette",
+        "--phone",
+        "--phone-local",
+        "--pin",
+        "--timeout-s",
+        "--to-otp-recipe"
+      ],
+      "required": [
+        "--from-otp-recipe",
+        "--palette",
+        "--to-otp-recipe"
+      ],
+      "positionals": {}
+    },
+    "repair-driver": {
+      "flags": [],
+      "required": [],
+      "positionals": {}
+    },
+    "run-recipe": {
+      "flags": [
+        "--env",
+        "--out",
+        "--palette",
+        "--recipe",
+        "--timeout-s"
+      ],
+      "required": [
+        "--out",
+        "--recipe"
+      ],
+      "positionals": {}
+    },
+    "screenshot": {
+      "flags": [
+        "--name",
+        "--out"
+      ],
+      "required": [
+        "--out"
+      ],
+      "positionals": {}
+    },
+    "set-location": {
+      "flags": [
+        "--alt",
+        "--lat",
+        "--lon",
+        "--sats"
+      ],
+      "required": [
+        "--lat",
+        "--lon"
+      ],
+      "positionals": {}
+    },
+    "snapshot": {
+      "flags": [
+        "--name"
+      ],
+      "required": [
+        "--name"
+      ],
+      "positionals": {
+        "action": [
+          "save",
+          "load"
+        ]
+      }
+    },
+    "ui-dump": {
+      "flags": [
+        "--name",
+        "--out"
+      ],
+      "required": [],
+      "positionals": {}
+    }
+  }
+}

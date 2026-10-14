@@ -3193,6 +3193,18 @@ else
   info "cloud_emu: skipped — ACE_WEB_BASE_URL or ACE_WEB_PAT_TOKEN not set (cloud backend disabled — see /ace:mobile-backend)"
 fi
 
+# 8c. capability_lease — the LEASE mobile backend (canopy-web capability broker;
+# mcp/mobile/backends/lease.ts). One read-only GET of
+# /api/agents/ace/capabilities as ACE's own canopy-web PAT: is ACE's
+# `android-emulator` declared, granted, and how many leases are live. NEVER
+# acquires (that would launch an EC2 machine per /ace:doctor). Also prints
+# which backend the default would pick on this machine — local iff a
+# provisioned AVD exists, else lease — since a lease WARN only blocks a run
+# that will use the lease. Logic: lib/capability-lease-probe.ts.
+run_line_probe scripts/doctor-capability-lease.ts --format=lines
+emit_line_probe capability_lease \
+  "re-install the plugin (/ace:update) or run \`npm ci\`; then re-run /ace:doctor"
+
 # mobile_infra (added 0.13.128): single-line gate that summarizes mobile
 # readiness so an operator scanning [Auth liveness] sees the gating
 # signal without having to read the verbose [Mobile] block. The detail

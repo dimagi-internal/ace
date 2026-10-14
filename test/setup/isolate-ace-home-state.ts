@@ -6,6 +6,8 @@
  *
  *   1. `~/.ace/sessions/`            — mobile session locks
  *   2. `~/.ace/mobile-backend.<pid>` — the /ace:mobile-backend toggle
+ *   3. `~/.android/avd/*.avd/.ace-provisioned.json` — read (never written)
+ *      to choose the DEFAULT mobile backend; see (3) below
  *
  * Tests that exercise either used to operate on the real thing.
  * `reapStaleSessions({ all: true })` deletes every lock in (1),
@@ -52,6 +54,22 @@ process.env.ACE_SESSION_LOCK_DIR = lockDir;
 
 // (2) the mobile backend toggle file — ace#1883 / ace#1797
 process.env.ACE_MOBILE_STATE_DIR = workerTmpDir;
+
+// (3) the DEFAULT mobile backend. With no env pin and no session file,
+// `resolveBackend()` picks `local` iff a provisioned AVD exists on this
+// machine, else `lease` — so an unpinned suite would route to `local` on a
+// developer laptop and `lease` in CI. Point the selection probe (and only the
+// probe — `ANDROID_AVD_HOME` is untouched) at a fixture holding one
+// provisioned AVD, so the suite-wide default is `local` everywhere, as it was
+// before the lease backend existed. Tests of the selection matrix re-point
+// `ACE_MOBILE_SELECTION_AVD_HOME` at their own tempdirs.
+const selectionAvdHome = path.join(workerTmpDir, 'selection-avd-home');
+fs.mkdirSync(path.join(selectionAvdHome, 'ACE_Test_Provisioned.avd'), { recursive: true });
+fs.writeFileSync(
+  path.join(selectionAvdHome, 'ACE_Test_Provisioned.avd', '.ace-provisioned.json'),
+  JSON.stringify({ marked_at: '2026-01-01T00:00:00.000Z', selector_map: 'connect-test@000000000000' }),
+);
+process.env.ACE_MOBILE_SELECTION_AVD_HOME = selectionAvdHome;
 
 afterAll(() => {
   try {
