@@ -90,6 +90,19 @@ Annexures sit at the end, listed under an `Annexures` heading without a section 
 - Annexure B: …
 ```
 
+The heading always renders. When there is nothing to annex — the common case — the
+section carries the single line `N/A`:
+
+```
+## Annexures
+N/A
+```
+
+**Never annex a Dimagi-internal document.** The work order is sent to the partner, so
+the PDD, internal design or technical documents, and the run's own state and verdict
+files are out of bounds by link and by title alike. Annex only what the partner is a
+party to or must act on.
+
 ---
 
 ## Lists vs. prose

@@ -11,7 +11,7 @@ Work Order Number
 	1. Background
 Dimagi is conducting an exploration-stage study to diagnose the specific mix of barriers to insecticide-treated net (ITN) use across sub-Saharan African contexts. Findings will anchor the barrier-diagnosis section of a Dimagi-led GiveWell Expression of Interest. The Partner organization participating in this Work Order will deploy Connect-trained Frontline Workers (FLWs) to recruited households for a single 30-45 minute visit per household, capturing net inventory, condition photographs, knowledge-attitudes-practices (KAP) responses, and structured caregiver reactions to brief behavior-change content. The visit is diagnostic, not therapeutic: it optimizes for learning fidelity over per-visit cost. This Work Order covers field collection only.
 2. Scope of Work
-The Partner will conduct household-level visits across selected wards/communities, following the 6-section protocol provided by Dimagi (Annexure A — PDD).
+The Partner will conduct household-level visits across selected wards/communities, following the 6-section protocol provided by Dimagi (protocol provided by Dimagi).
 
 
 For each engagement, the Partner will:
@@ -116,7 +116,7 @@ Dimagi will pay only for verified units at the per-visit (or per-session, per ar
 Responsibility
 	Dimagi
 	Partner
-	Visit protocol design (Annexure A — PDD)
+	Visit protocol design (protocol provided by Dimagi)
 	✓ Lead
 	Consulted
 	Connect mobile application configuration
@@ -224,7 +224,6 @@ Cambridge, MA 02142
 
 (617) 649-2214; legal@dimagi.com
 	Annexures
-* Annexure A: Program Design Document — see https://docs.google.com/document/d/1Pe2gSIxeo4MKVgbXlpmBhiaixDch7S7ccaPfNuWDJPc/edit
 * Annexure B: To be provided if the Partner requires opp-specific operational annexures.
 
 Dimagi will review each submission within 15 business days of submission; absent written rejection identifying the deficient units, the submission is deemed accepted.

@@ -184,6 +184,6 @@ IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be execute
 
 ## **Annexures**
 
-- Annexure A: Program Design Document — see https://docs.google.com/document/d/1aXXgCZgwcTP59yVyWBCNAaTDX4p3My09TIxGfFUVbgQ/edit  
-- Annexure B: To be provided
+N/A
+
 

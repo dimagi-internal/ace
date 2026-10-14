@@ -261,8 +261,18 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
        Then restate every other money figure in § 6 in the same code. **Do NOT apply an exchange rate.** The PDD's number is already denominated correctly, so this is a relabel: writing the GHS figure after the letters `USD` overstates a Ghana cap ~15x in a document that gets SIGNED. ACE does not pick exchange rates. If the cap genuinely must be capped in USD (a funder constraint, recorded in a decision row), keep `USD` and add the conversion rule to § 6 — the rate source and the date it is struck — naming the local code explicitly; `pdd-to-work-order-qa § total_nte_present` accepts that shape and rejects a bare USD cap beside local-currency rates. Verified live on `turmeric-market-study-ghana/20261012-1749`, where the hardcoded USD made the QA gate un-passable for a correct contract (14/16, both failures demanding a false figure).
        *Enforced:* `pdd-to-work-order-qa § total_nte_present`.
      - `{{ethics_body}}` — prose
-     - `{{pdd_link}}` (Drive URL of the PDD from `phases.idea-to-design.products.pdd.file_id`)
-     - `{{annexure_b_placeholder}}` ("To be provided" if no opp-specific annexure)
+     - `{{annexures_body}}` — the annexure list, one `Annexure <letter>: <title>` per line. **`N/A` when there is nothing to annex, which is the common case.**
+
+       **NEVER annex a Dimagi-internal document — the work order is sent to the partner (ace#2906).** The § Annexures heading always renders (`pdd-to-work-order-qa § all_required_sections_present` requires all 11 sections, and an absent heading fails the gate), so an empty annexure list is expressed as the single line `N/A`, never by deleting the section. What must never appear there — by link *or* by title:
+
+       - the **Program Design Document (PDD)** — ACE's internal design artifact
+       - internal **design documents**, **technical documents**, architecture or build notes
+       - `run_state.yaml`, `decisions.yaml`, eval/QA verdicts, phase summaries, the run's ace-web page
+
+       Annex only documents the partner is a party to or must act on: their own costed solicitation response, a sampling protocol they will follow, a data-sharing agreement. If in doubt, leave it out — `N/A` costs nothing, and a leaked internal link cannot be recalled once the mail is sent.
+
+       Until 2026-10-14 this template hardcoded an `Annexure A: Program Design Document` line carrying a `pdd_link` token, so **every work order ACE had ever produced carried a live link to its own internal PDD**. That token no longer exists in the template and must not be reintroduced. Caught on `tekzal/20261013-2314` when the operator struck the line in review: *"this doesn't need to be shared with the implementing partner. This is Dimagi internal only."*
+       *Enforced:* `pdd-to-work-order-qa § annexures_exclude_internal_documents`.
 
    **Bulleted-region tokens (newline-separated; bullet-styled via `docs_finalize_bullets` — the anchor pairs are live in the template, see Step 5):**
      - `{{scope_will_body}}` — the in-scope bullet lines ONLY, one item per line (no leading dashes, no intro paragraph, no "Will Do:" header — the template supplies the "For each engagement, the partner will:" lead-in above the token).

@@ -111,5 +111,5 @@ Cambridge, MA 02142
 
 ## Annexures
 
-- Annexure A: Program Design Document — see https://docs.google.com/document/d/example-pdd
-- Annexure B: Reserved for amendments
+N/A
+
