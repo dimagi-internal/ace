@@ -7,11 +7,13 @@
 #
 # Steps:
 #   1. Detect plugin root + data dir
-#   2. Verify Node/npm
+#   2. Verify Node/npm; resolve this install's ACE instance + 1Password vault
+#      via `canopy agent env --plugin ace --print` (canopy >= 0.2.681)
 #   3. Verify 1Password CLI is installed and authenticated (FAST FAIL)
-#   4. Fetch the Google service-account key from 1Password if missing
+#   4. Fetch the Google service-account key from that vault if missing
 #   5. npm install (skip if node_modules + tsx present)
-#   6. Inject .env from 1Password (skip if .env covers all .env.tpl keys)
+#   6. Fill .env via `canopy agent env --plugin ace` (binds the install to one
+#      instance; skip if .env covers all .env.tpl keys)
 #   7. Download commcare-cli.jar from dimagi/commcare-core's latest
 #      tagged release (skip if cached + not --force-install; WARN if gh
 #      missing). Gates Phase 3 app-release-smoke Step 4.5.
@@ -21,7 +23,9 @@
 # Flags:
 #   --auto-update      register SessionStart hook for /ace:update
 #   --force-install    re-run npm install even if node_modules is present
-#   --force-env        re-run `op inject` even if .env covers all keys
+#   --force-env        re-fill .env even if it covers all keys
+#   --agent <slug>     the ACE instance to bind to, when you can see several
+#   --rebind           re-bind this install to a different instance (canopy --force)
 #   --skip-env         skip .env injection entirely
 #   --skip-doctor      skip the trailing doctor pass
 #   --print-root       resolve the plugin root, print it, exit. No side effects.
@@ -29,7 +33,8 @@
 # Env overrides:
 #   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
 #                       key (default: "ACE - Google Service Account")
-#   ACE_OP_VAULT        1Password vault that holds ACE secrets (default: "Agent-Ace")
+#   ACE_OP_VAULT        1Password vault to use instead of the one canopy-web records
+#                       for the instance (passed to `canopy agent env --vault`)
 #   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
 #   ACE_PLUGIN_REGISTRY       override ~/.claude/plugins/installed_plugins.json
 #   ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1
@@ -47,6 +52,8 @@ SKIP_ENV=0
 SKIP_DOCTOR=0
 NO_SHELL_EDIT=0
 PRINT_ROOT=0
+BIND_AGENT=""
+REBIND=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -56,9 +63,12 @@ while [ $# -gt 0 ]; do
     --skip-env)      SKIP_ENV=1 ;;
     --skip-doctor)   SKIP_DOCTOR=1 ;;
     --no-shell-edit) NO_SHELL_EDIT=1 ;;
+    --agent)         BIND_AGENT="${2:-}"; shift ;;
+    --agent=*)       BIND_AGENT="${1#--agent=}" ;;
+    --rebind)        REBIND=1 ;;
     --print-root)    PRINT_ROOT=1 ;;
     -h|--help)
-      sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "ace-setup: unknown arg: $1" >&2; exit 2 ;;
@@ -79,20 +89,28 @@ mark_fail() { EXIT_CODE=1; }
 # (CLI missing, not signed in, vault unreadable, SA-key fetch failed) so the
 # answer never depends on which step tripped first. The owner is read from
 # plugin.json's author, so it can't go stale in prose.
+# The vault is the one canopy-web records for this install's ACE instance
+# (`canopy agent env --print`, resolved below); before that resolves, the note
+# names it by where to look rather than guessing a name.
 access_note() {
   _owner="$(node -e "try{const a=require(process.argv[1]).author||{};console.log(a.email?a.name+' ('+a.email+')':(a.name||''))}catch(_){}" "${ROOT:-$SELF_DIR}/.claude-plugin/plugin.json" 2>/dev/null)"
-  printf '  ACCESS: /ace:setup needs the 1Password CLI signed in to dimagi.1password.com, with read access to the "%s" vault.\n' "$OP_VAULT"
-  printf '          No access yet? Ask ACE'"'"'s owner%s to share the "%s" vault with you, then re-run /ace:setup.\n' "${_owner:+, $_owner,}" "$OP_VAULT"
+  if [ -n "$OP_VAULT" ]; then _vault_desc="the \"$OP_VAULT\" vault"; else _vault_desc="your ACE instance's vault (\`canopy agent env --plugin ace --print\` names it)"; fi
+  printf '  ACCESS: /ace:setup needs the 1Password CLI signed in to dimagi.1password.com, with read access to %s.\n' "$_vault_desc"
+  printf '          No access yet? Ask ACE'"'"'s owner%s to share %s with you, then re-run /ace:setup.\n' "${_owner:+, $_owner,}" "$_vault_desc"
 }
 
 # ---- defaults / config
-OP_VAULT="${ACE_OP_VAULT:-Agent-Ace}"
+# OP_VAULT is NOT defaulted: an install binds to ONE ACE instance on canopy-web
+# and its vault comes from that instance's record (canopy#899). ACE_OP_VAULT
+# still overrides, as `canopy agent env --vault`.
+OP_VAULT=""
 GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 
 # ---- plugin root detection
 #
 # ORDERING IS THE WHOLE BUG (ace#2091). This script's most consequential side
-# effect is `op inject -i $ROOT/.env.tpl -o $DATA_DIR/.env` — it writes the
+# effect is rendering $ROOT/.env.tpl into $DATA_DIR/.env (`canopy agent env`,
+# which runs op inject) — it writes the
 # INSTALLED plugin's runtime config, which every MCP subprocess reads once at
 # startup. So the template it renders MUST come from the installed plugin.
 #
@@ -257,6 +275,53 @@ else
   exit 1
 fi
 
+# ---- ACE instance + 1Password vault (canopy#899)
+#
+# A plugin is code; an INSTANCE is canopy-web's Agent record (identity,
+# workspace, vault). `canopy agent env` binds this install to ONE instance —
+# the only one you can see, the one already bound, or `--agent` — and takes the
+# vault from that instance's record. Resolved here with `--print` (no side
+# effects) so the SA-key fetch and the access notes use the right vault; the
+# env step below calls the same command for real. A failure here is recorded,
+# not fatal yet: the 1Password checks still run first so their messages are
+# not masked, and the stop comes right after them.
+CANOPY_MIN="0.2.681"
+CANOPY_ERR=""
+CANOPY_FIX=""
+BOUND_AGENT=""
+CANOPY_ARGS=""
+[ -n "$BIND_AGENT" ] && CANOPY_ARGS="$CANOPY_ARGS --agent $BIND_AGENT"
+[ -n "${ACE_OP_VAULT:-}" ] && CANOPY_ARGS="$CANOPY_ARGS --vault $ACE_OP_VAULT"
+[ "$REBIND" = "1" ] && CANOPY_ARGS="$CANOPY_ARGS --force"
+if ! command -v canopy >/dev/null 2>&1; then
+  CANOPY_ERR="canopy CLI not on PATH"
+  CANOPY_FIX="install canopy (its plugin + CLI), then re-run /ace:setup"
+else
+  CANOPY_VER="$(canopy --version 2>/dev/null | awk '{print $NF}')"
+  if [ -z "$CANOPY_VER" ] || [ "$(printf '%s\n%s\n' "$CANOPY_MIN" "$CANOPY_VER" | sort -V | head -1)" != "$CANOPY_MIN" ]; then
+    CANOPY_ERR="canopy ${CANOPY_VER:-(unknown version)} is older than $CANOPY_MIN, which added \`canopy agent env\`"
+    CANOPY_FIX="run /canopy:update, then re-run /ace:setup"
+  else
+    _cerr="$(mktemp)"
+    # shellcheck disable=SC2086  # CANOPY_ARGS is word-split on purpose (no spaces in slugs/vault flags)
+    BIND_JSON="$(canopy agent env --plugin ace --template "$ROOT/.env.tpl" --out "$DATA_DIR/.env" --print $CANOPY_ARGS 2>"$_cerr")"
+    _crc=$?
+    if [ "$_crc" -eq 0 ]; then
+      OP_VAULT="$(printf '%s' "$BIND_JSON" | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).vault||'')}catch(_){}" 2>/dev/null)"
+      BOUND_AGENT="$(printf '%s' "$BIND_JSON" | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).agent||'')}catch(_){}" 2>/dev/null)"
+    fi
+    if [ -z "$OP_VAULT" ]; then
+      # Relay canopy verbatim: it names the instances (with re-run lines), the
+      # missing vault, or the sign-in step — never guess past it.
+      CANOPY_ERR="canopy could not resolve this install's ACE instance and vault. canopy said:
+$(cat "$_cerr" 2>/dev/null; [ "$_crc" -eq 0 ] && printf '%s\n' "$BIND_JSON")"
+      CANOPY_FIX="several instances → re-run /ace:setup --agent <instance>; bound to another → /ace:setup --rebind --agent <instance>; no vault recorded → the instance's owner sets it on canopy-web (/agents/<slug> → Settings); not signed in → /canopy:setup"
+    fi
+    rm -f "$_cerr"
+  fi
+fi
+[ -n "$OP_VAULT" ] && echo "INFO instance=$BOUND_AGENT vault=$OP_VAULT (canopy agent env --print)"
+
 # ---- 1Password CLI installed?
 if ! command -v op >/dev/null 2>&1; then
   fail "op: 1Password CLI not installed" \
@@ -332,6 +397,13 @@ if [ "$AUTH_OK" = "0" ]; then
   exit 1
 fi
 pass "op: authenticated as $AUTH_MODE"
+
+# Every step below reads the instance's vault, so stop here without one.
+if [ -n "$CANOPY_ERR" ]; then
+  fail "instance: $CANOPY_ERR" "$CANOPY_FIX"
+  exit 1
+fi
+pass "instance: $BOUND_AGENT (vault $OP_VAULT, from canopy agent env)"
 
 # =====================================================================
 # Phase 2 — Slow state changes (only run if pre-flight passed)
@@ -590,15 +662,24 @@ EOF_KEYS
     if [ "${SKIP_INJECT:-0}" = "1" ]; then
       INJECT_OUT=""; INJECT_RC=1
     else
-    INJECT_OUT="$(op inject -i "$INJECT_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
+    # The fill goes through canopy's shared step (canopy#899), never a raw
+    # `op inject`: it records the instance binding beside the .env
+    # ($DATA_DIR/canopy-instance.json) and runs op inject with AGENT_VAULT /
+    # AGENT_SLUG exported, writing atomically (a failure leaves $ENV_OUT as it
+    # was). It gets the comment-neutralized copy of $ROOT/.env.tpl, since op
+    # resolves op-scheme tokens in comments too. --agent pins the instance
+    # resolved above.
+    # shellcheck disable=SC2086
+    INJECT_OUT="$(canopy agent env --plugin ace --template "$INJECT_TPL" --out "$ENV_OUT" --agent "$BOUND_AGENT" $CANOPY_ARGS 2>&1)"
     INJECT_RC=$?
+    [ "$INJECT_RC" -eq 0 ] && printf '%s\n' "$INJECT_OUT" | sed 's/^/  canopy: /'
     fi
     rm -f "$INJECT_TPL"
     if [ "$INJECT_RC" -ne 0 ]; then
       if [ "${SKIP_INJECT:-0}" != "1" ]; then
         # The vault IS readable (preflight passed), so this is a per-ITEM
         # problem — a missing item or field, not an ACL.
-        fail "env: op inject failed (exit $INJECT_RC)" "vault \"$OP_VAULT\" is readable, so this is a missing ITEM or FIELD rather than an access problem. Your existing $ENV_OUT (if any) is UNTOUCHED — op inject fails before it writes."
+        fail "env: canopy agent env failed (exit $INJECT_RC)" "vault \"$OP_VAULT\" is readable, so this is a missing ITEM or FIELD rather than an access problem. Your existing $ENV_OUT (if any) is UNTOUCHED — the fill writes atomically, only on success. canopy said:"
         printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
         mark_fail
       fi
@@ -614,9 +695,9 @@ EOF_KEYS
           printf '# bin/ace-setup auto-preserves them on re-inject. Edit values directly in this file.\n'
           printf '%s' "$LOCAL_SECRETS"
         } >> "$ENV_OUT"
-        pass "env: op inject wrote $ENV_OUT (preserved $LOCAL_SECRET_COUNT local-only secret(s))"
+        pass "env: canopy agent env wrote $ENV_OUT (preserved $LOCAL_SECRET_COUNT local-only secret(s))"
       else
-        pass "env: op inject wrote $ENV_OUT"
+        pass "env: canopy agent env wrote $ENV_OUT"
       fi
 
       # ace#880 — .env was just rewritten, so ANY MCP subprocess already
