@@ -110,7 +110,7 @@ GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 #
 # New order — installed first, and `$PWD` is NOT a candidate at all:
 #   1. $CLAUDE_PLUGIN_ROOT      — the harness told us; believe it
-#   2. installed_plugins.json   — authoritative installPath for ace@ace
+#   2. installed_plugins.json   — authoritative installPath for ace@<any marketplace>
 #   3. newest plugin cache dir  — registry missing or unreadable
 #   4. $SELF_DIR                — the plugin copy this script lives in
 #
@@ -121,29 +121,26 @@ GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 # used. `commands/setup.md` already resolves the SCRIPT through the registry;
 # before this change the script threw that away and re-resolved from `$PWD`.
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Registry lookup + data-dir naming shared with bin/ace-doctor (any ace@<marketplace>).
+. "$SELF_DIR/bin/_ace-plugin-paths.sh"
 
 _is_ace_root() {
   [ -n "${1:-}" ] && [ -f "$1/.claude-plugin/plugin.json" ]
 }
 
-# installPath Claude Code recorded for ace@ace. Empty when node is
+# installPath Claude Code recorded for ACE — ace@ace, else any ace@<marketplace>
+# (e.g. ace@canopy-agents). Empty when node is
 # unavailable, the registry is missing, or the entry is absent — all
 # non-fatal; the next candidate takes over.
 _registry_install_path() {
-  _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
-  [ -f "$_REG" ] || return 0
-  command -v node >/dev/null 2>&1 || return 0
-  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$_REG" 2>/dev/null
+  ace_registry_field installPath
 }
 
 # Version the registry records for ace@ace. NOT the same thing as the VERSION
 # file at that installPath — see CLAUDE.md § "that prints a DIRECTORY NAME,
 # which can lie". Used only for reporting and the template-root guard.
 _registry_version() {
-  _REG="${ACE_PLUGIN_REGISTRY:-$HOME/.claude/plugins/installed_plugins.json}"
-  [ -f "$_REG" ] || return 0
-  command -v node >/dev/null 2>&1 || return 0
-  node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);const v=Array.isArray(e)?e[0]:e;if(v&&v.version)console.log(v.version)}catch(_){}" "$_REG" 2>/dev/null
+  ace_registry_field version
 }
 
 _version_at() {
@@ -173,7 +170,7 @@ if [ -z "$ROOT" ]; then
   if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="installed_plugins.json"; fi
 fi
 if [ -z "$ROOT" ]; then
-  CAND="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
+  CAND="$(ace_newest_cache_root)"
   if _is_ace_root "$CAND"; then ROOT="$CAND"; ROOT_SOURCE="plugin-cache-newest"; fi
 fi
 if [ -z "$ROOT" ] && _is_ace_root "$SELF_DIR"; then
@@ -203,6 +200,8 @@ if [ "$PRINT_ROOT" = "1" ]; then
   echo "plugin_root_source=$ROOT_SOURCE"
   echo "plugin_root_version=$ROOT_VERSION"
   echo "registry_version=$REG_VERSION"
+  echo "registry_key=$(ace_registry_field key)"
+  echo "data_dir=$(ace_data_dir "$ROOT")"
   exit 0
 fi
 
@@ -233,11 +232,10 @@ if [ -n "$PWD_CHECKOUT" ] && [ "$PWD_CHECKOUT" != "$ROOT" ]; then
 fi
 
 # ---- data dir (per-machine, persistent across plugin updates)
-if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-  DATA_DIR="$CLAUDE_PLUGIN_DATA"
-else
-  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
-fi
+# $CLAUDE_PLUGIN_DATA, else the installed entry's plugins/data/<plugin>-<marketplace>
+# (ace-ace for ace@ace, ace-canopy-agents for ace@canopy-agents) — the same dir the
+# MCP servers derive (lib/plugin-data-dir.ts). See bin/_ace-plugin-paths.sh.
+DATA_DIR="$(ace_data_dir "$ROOT")"
 mkdir -p "$DATA_DIR"
 echo "INFO data_dir=$DATA_DIR"
 

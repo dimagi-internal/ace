@@ -22,7 +22,7 @@ set +e
 # Find the ace-doctor script. Priority:
 #   1. $CLAUDE_PLUGIN_ROOT (set by Claude Code when invoking plugin commands)
 #   2. Authoritative installPath from ~/.claude/plugins/installed_plugins.json
-#   3. Version-sorted newest directory under ~/.claude/plugins/cache/ace/ace/*
+#   3. Version-sorted newest directory under ~/.claude/plugins/cache/<any marketplace>/ace/*
 #   4. Walk up from $PWD to find a dev checkout (fallback)
 SCRIPT=""
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "$CLAUDE_PLUGIN_ROOT/bin/ace-doctor" ]; then
@@ -37,14 +37,14 @@ if [ -z "$SCRIPT" ]; then
     # any reasonably current install. Reproduced as a bug on 2026-05-01:
     # ace-web's container had v2 format and this script silently said
     # "FAIL launcher" until the parser was widened.
-    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]||(d.plugins&&d.plugins[\"ace@ace\"]); if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const p=(d&&d.plugins)||d||{}; const k=p[\"ace@ace\"]?\"ace@ace\":Object.keys(p).find(k=>/^ace@/.test(k)); const e=k&&p[k]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
     if [ -n "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH/bin/ace-doctor" ]; then
       SCRIPT="$INSTALL_PATH/bin/ace-doctor"
     fi
   fi
 fi
 if [ -z "$SCRIPT" ]; then
-  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
+  LATEST="$(ls -1d "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed "s:/\$::" | sort -V | tail -1)"
   if [ -n "$LATEST" ] && [ -x "$LATEST/bin/ace-doctor" ]; then
     SCRIPT="$LATEST/bin/ace-doctor"
   fi
