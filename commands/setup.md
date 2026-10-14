@@ -9,7 +9,7 @@ allowed-tools: [Bash, Read]
 One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, slow state changes after, doctor last" so a missing 1Password signin fails in <1s instead of 60s. Drives:
 
 1. Verify Node/npm, then **1Password CLI is installed + authenticated (FAST FAIL)**
-2. **Fetches the Google service-account key from 1Password** (Document `ACE - Google Service Account` in vault `AI-Agents` by default; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
+2. **Fetches the Google service-account key from 1Password** (Document `ACE - Google Service Account` in vault `Agent-Ace` by default; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
 3. `npm install` at the plugin root (skip if `node_modules` + `tsx` present)
 4. **Injects `.env` from 1Password** (`op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env`), skipping when the existing `.env` covers every key
 5. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-qa` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
@@ -96,6 +96,7 @@ Read the script output and tell the user:
 2. For each `FAIL`, quote the line verbatim and the `fix:` hint immediately after it.
 3. For each `WARN`, list briefly. These are non-blocking but worth resolving.
 4. **Special-case the most common first-run FAILs** with explicit hand-holding:
+   - **Any `ACCESS:` lines** (printed with every 1Password failure) → quote both lines verbatim: the person needs the 1Password CLI signed in to dimagi.1password.com with read access to the `Agent-Ace` vault, and the second line names who grants it. That vault access is how a person brings ACE's credentials; there is no setup path without it.
    - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
    - `FAIL env: refusing to render .env from a non-installed plugin root (ace#2091)` → the script resolved a plugin root that is NOT the one the registry records as installed, and `$CLAUDE_PLUGIN_DATA/.env` belongs to the installed plugin. Quote both paths from the `fix:` block and tell the user to re-run the installed copy directly: `bash <installed root>/bin/ace-setup --force-env`. Do NOT suggest `ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1` unless they explicitly say they mean to render the other root's template — that override reinstates the exact silent machine-wide downgrade the refusal exists to stop.
    - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."

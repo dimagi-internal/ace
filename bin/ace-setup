@@ -74,6 +74,17 @@ fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; 
 EXIT_CODE=0
 mark_fail() { EXIT_CODE=1; }
 
+# The two lines a first-time user needs when 1Password is the blocker: what
+# access setup requires and who grants it. Printed at every 1Password failure
+# (CLI missing, not signed in, vault unreadable, SA-key fetch failed) so the
+# answer never depends on which step tripped first. The owner is read from
+# plugin.json's author, so it can't go stale in prose.
+access_note() {
+  _owner="$(node -e "try{const a=require(process.argv[1]).author||{};console.log(a.email?a.name+' ('+a.email+')':(a.name||''))}catch(_){}" "${ROOT:-$SELF_DIR}/.claude-plugin/plugin.json" 2>/dev/null)"
+  printf '  ACCESS: /ace:setup needs the 1Password CLI signed in to dimagi.1password.com, with read access to the "%s" vault.\n' "$OP_VAULT"
+  printf '          No access yet? Ask ACE'"'"'s owner%s to share the "%s" vault with you, then re-run /ace:setup.\n' "${_owner:+, $_owner,}" "$OP_VAULT"
+}
+
 # ---- defaults / config
 OP_VAULT="${ACE_OP_VAULT:-Agent-Ace}"
 GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
@@ -252,6 +263,7 @@ fi
 if ! command -v op >/dev/null 2>&1; then
   fail "op: 1Password CLI not installed" \
        "install with: brew install 1password-cli (or https://developer.1password.com/docs/cli/get-started/)"
+  access_note
   exit 1
 fi
 pass "op: 1Password CLI v$(op --version 2>/dev/null)"
@@ -318,6 +330,7 @@ if [ "$AUTH_OK" = "0" ]; then
        (or set OP_SERVICE_ACCOUNT_TOKEN=ops_... in your shell rc and reopen the session)
        (Mac alt: open the 1Password.app, Settings → Developer → enable CLI integration)$GUI_HINT
      Then re-run /ace:setup."
+  access_note
   exit 1
 fi
 pass "op: authenticated as $AUTH_MODE"
@@ -374,6 +387,7 @@ if [ -z "$KEY" ]; then
 $([ -n "$CANDIDATES" ] && printf '%s\n' "$CANDIDATES" || echo "       (none matched 'google|gws|service account|sa key|gcp|drive')")
      1Password error from the attempted fetch:
 $(printf '%s\n' "$GET_OUT" | sed 's/^/       /')"
+    access_note
     mark_fail
   fi
 elif [ "$KEY_LOC" = "legacy" ]; then
@@ -570,6 +584,7 @@ EOF_KEYS
     read on \"$OP_VAULT\". For the deployed ace-web runner this is its service
     account, not your user. 1Password said:
     $VAULT_ERR"
+      access_note
       mark_fail
       printf '  (skipping op inject — it would abort on the first ref anyway)\n'
       SKIP_INJECT=1
