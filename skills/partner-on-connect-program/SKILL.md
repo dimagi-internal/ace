@@ -66,7 +66,7 @@ rewrites what someone else wrote.
 1. **Find the project.** `canopy agent projects --slug ace --active`, then read its tasks and
    the context doc. If the request doesn't map to a project, ask which program it is. Don't
    guess from an acronym.
-2. **Resolve which instance the question is about** (`skills/know-the-caller` § 2). "The coach",
+2. **Resolve which instance the question is about.** "The coach",
    "the app" or "the report" means one of the program's instances in the context doc. Name it before
    answering, or ask. Never answer for ACE's generic template as if it were the program's.
 3. **Re-read live only what the question needs.** Use the context doc's pointers:
