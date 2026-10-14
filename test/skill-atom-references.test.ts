@@ -79,6 +79,8 @@ const ATOM_PREFIXES = [
  * issue or fix the skill.
  */
 const ALLOWLIST = new Set([
+  // HQ user-data key Nova's forms read for the worker's primary case-sharing place — a field, not an atom.
+  'commcare_primary_case_sharing_id',
   // Per-opp tenancy field names (ace-web apps/opps/tenancy.py), read by clone-to-new-workspace.
   'connect_pm_org',
   'connect_holding_org',

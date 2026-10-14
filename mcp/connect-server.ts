@@ -1130,6 +1130,54 @@ server.tool('commcare_update_user_field',
   async (args) => runAtom(async () => (await commcareClient(args.server)).updateUserField(args))
 );
 
+server.tool('commcare_list_location_types',
+  'List the project space\'s Organization Levels (LocationType) — code, name, parent, and the two case-sharing flags (shares_cases = "owns cases", view_descendants = "view child data"). GET /a/<domain>/api/v0.5/location_type/ via Tastypie (API-key auth; read-only — HQ offers no write API for levels). Needs the space\'s LOCATIONS + API_ACCESS privileges and the key owner\'s Edit Locations + Access APIs permissions; a bare 401/403 can mean any of the four. Use before commcare_set_location_types and to verify it.',
+  { server: HQ_SERVER_FIELD, domain: z.string().describe('HQ project space') },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listLocationTypes(args))
+);
+
+server.tool('commcare_set_location_types',
+  'Create or amend Organization Levels (the part of location-based case sharing Nova and HQ\'s REST API cannot write) by posting the Organization Levels page form. HQ\'s POST is a FULL REPLACE — a level missing from the payload is deleted — so this reads the levels the page already renders, adds/amends only the ones you name (identity = `code`), round-trips every other level untouched, posts, then PROVES the result with a fresh REST read and returns any `problems`. Map from Nova\'s per-level caseFlow: ownsCases → owns_cases; descendantCases all|down-to → view_descendants (+ view_descendants_down_to_code). Needs domain-admin on the space and its LOCATIONS privilege. Use dry_run first on any shared space. Not yet live-validated (2026-10-14): the read-back is the safety net.',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string().describe('HQ project space'),
+    levels: z.array(z.object({
+      code: z.string().describe('Level code (slug). Identity — also what Nova pushes places under as location_type_code.'),
+      name: z.string(),
+      parent_code: z.union([z.string(), z.null()]).describe('Code of the level above, or null for a top level.'),
+      owns_cases: z.boolean().describe('HQ shares_cases ("Owns cases"): places of this level get a case-sharing group.'),
+      view_descendants: z.boolean().describe('HQ view_descendants ("view child data"): a worker at this level also gets cases owned by places below it.'),
+      view_descendants_down_to_code: z.union([z.string(), z.null()]).optional().describe('Bound for view_descendants: code of a strict descendant level. Omit for unbounded.'),
+      has_users: z.boolean().optional().describe('HQ "Has users". Defaults to true.'),
+    })).min(1).describe('Levels to add or amend, identified by code. Levels already on the space and not named here are left untouched.'),
+    dry_run: z.boolean().optional().describe('Read the page and return what would be created/amended/preserved without posting.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).setLocationTypes(args))
+);
+
+server.tool('commcare_list_locations',
+  'List active places on a project space. GET /a/<domain>/api/v0.6/location/ via Tastypie (API-key auth; archived places are not returned). Optional filters location_type_code and parent_location_id. Use to confirm Nova\'s upload_app_to_hq pushed the places, and to get the location_id values commcare_assign_user_locations needs.',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string().describe('HQ project space'),
+    location_type_code: z.string().optional(),
+    parent_location_id: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listLocations(args))
+);
+
+server.tool('commcare_assign_user_locations',
+  'Assign a mobile worker to places — what makes HQ hand the worker commcare_primary_case_sharing_id and deliver the cases those places own. PUT /a/<domain>/api/v0.5/user/<id>/ with primary_location + locations together (HQ rejects one without the other; the primary is added to the list if missing), then re-reads the user and throws if HQ disagrees. Nova\'s provision_workers already does this for the accounts IT creates; use this for workers it did not create (e.g. Connect-provisioned FLWs). commcare_update_user_field does not touch assignments, so the two compose.',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string(),
+    user_id: z.string().describe('CommCare user id (the `id` from commcare_list_users).'),
+    primary_location_id: z.string().describe('HQ location_id of the primary place.'),
+    location_ids: z.array(z.string()).optional().describe('All assigned places; the primary is included automatically.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).assignUserLocations(args))
+);
+
 server.tool('commcare_get_lookup_table_rows',
   'Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns rows for the whole domain in pages of 20 (no table filter); this atom reads every page and client-side filters by data_type_id resolved from the supplied tag or UUID (ace#2853: reading page one only made new tables look empty). Returns each row\'s fields as a flat map (column → first field_value).',
   {

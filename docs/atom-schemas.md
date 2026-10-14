@@ -485,7 +485,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 64 atoms
+Source: `mcp/connect-server.ts` — 68 atoms
 
 ### `connect_list_programs`
 
@@ -1033,6 +1033,49 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 | `user_id` | `z.string` | **required** | _—_ |
 | `field_slug` | `z.string` | **required** | User-data field slug (e.g. "cohort_id"). |
 | `value` | `z.union` | **required** | New value, or null to clear. |
+
+### `commcare_list_location_types`
+
+List the project space's Organization Levels (LocationType) — code, name, parent, and the two case-sharing flags (shares_cases = "owns cases", view_descendants = "view child data"). GET /a/<domain>/api/v0.5/location_type/ via Tastypie (API-key auth; read-only — HQ offers no write API for levels). Needs the space's LOCATIONS + API_ACCESS privileges and the key owner's Edit Locations + Access APIs permissions; a bare 401/403 can mean any of the four. Use before commcare_set_location_types and to verify it.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | HQ project space |
+
+### `commcare_set_location_types`
+
+Create or amend Organization Levels (the part of location-based case sharing Nova and HQ's REST API cannot write) by posting the Organization Levels page form. HQ's POST is a FULL REPLACE — a level missing from the payload is deleted — so this reads the levels the page already renders, adds/amends only the ones you name (identity = `code`), round-trips every other level untouched, posts, then PROVES the result with a fresh REST read and returns any `problems`. Map from Nova's per-level caseFlow: ownsCases → owns_cases; descendantCases all|down-to → view_descendants (+ view_descendants_down_to_code). Needs domain-admin on the space and its LOCATIONS privilege. Use dry_run first on any shared space. Not yet live-validated (2026-10-14): the read-back is the safety net.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | HQ project space |
+| `levels` | `z.array` | **required** | Levels to add or amend, identified by code. Levels already on the space and not named here are left untouched. |
+| `dry_run` | `z.boolean` | optional | Read the page and return what would be created/amended/preserved without posting. |
+
+### `commcare_list_locations`
+
+List active places on a project space. GET /a/<domain>/api/v0.6/location/ via Tastypie (API-key auth; archived places are not returned). Optional filters location_type_code and parent_location_id. Use to confirm Nova's upload_app_to_hq pushed the places, and to get the location_id values commcare_assign_user_locations needs.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | HQ project space |
+| `location_type_code` | `z.string` | optional | _—_ |
+| `parent_location_id` | `z.string` | optional | _—_ |
+
+### `commcare_assign_user_locations`
+
+Assign a mobile worker to places — what makes HQ hand the worker commcare_primary_case_sharing_id and deliver the cases those places own. PUT /a/<domain>/api/v0.5/user/<id>/ with primary_location + locations together (HQ rejects one without the other; the primary is added to the list if missing), then re-reads the user and throws if HQ disagrees. Nova's provision_workers already does this for the accounts IT creates; use this for workers it did not create (e.g. Connect-provisioned FLWs). commcare_update_user_field does not touch assignments, so the two compose.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | _—_ |
+| `user_id` | `z.string` | **required** | CommCare user id (the `id` from commcare_list_users). |
+| `primary_location_id` | `z.string` | **required** | HQ location_id of the primary place. |
+| `location_ids` | `z.array` | optional | All assigned places; the primary is included automatically. |
 
 ### `commcare_get_lookup_table_rows`
 
