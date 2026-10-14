@@ -46,6 +46,19 @@ import type {
   SnapshotResult,
 } from '../types.js';
 
+/**
+ * Append scalar query params to an ace-web route. ace-web's django-ninja
+ * handlers take scalar options (`state`, `force`, `wait_for_ready`,
+ * `apk_url`) from the QUERY string, never the JSON body; undefined values
+ * are dropped so an omitted option keeps the server default.
+ */
+export function withQuery(route: string, params: Record<string, string | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined) qs.set(k, v);
+  const q = qs.toString();
+  return q ? `${route}?${q}` : route;
+}
+
 export interface CloudBackendOpts {
   baseUrl?: string;
   token?: string;
@@ -208,9 +221,13 @@ export class CloudBackend {
 
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
     const stateName = this.resolveState(name);
-    const body: Record<string, string> = {};
-    if (stateName) body.state = stateName;
-    const result = await this.post<RunningState>('/api/mobile/ensure-running', body);
+    // ace-web reads `state` from the QUERY string (a scalar django-ninja
+    // param); a JSON-body `state` is silently ignored, so state selection
+    // never reached the server.
+    const result = await this.post<RunningState>(
+      withQuery('/api/mobile/ensure-running', { state: stateName || undefined }),
+      {},
+    );
     const info: AvdInfo = {
       name: stateName || name || 'cloud',
       // The cloud AVD is local to the EC2 instance; expose a synthetic
@@ -238,9 +255,10 @@ export class CloudBackend {
    * killing the holder's flow.
    */
   async stopAvd(_name: string, opts: { force?: boolean } = {}): Promise<void> {
-    const body: Record<string, unknown> = {};
-    if (opts.force) body.force = true;
-    await this.post<unknown>('/api/mobile/stop', body);
+    await this.post<unknown>(
+      withQuery('/api/mobile/stop', { force: opts.force ? 'true' : undefined }),
+      {},
+    );
   }
 
   /**
@@ -287,9 +305,12 @@ export class CloudBackend {
    * (returns a partial Diagnostics snapshot immediately).
    */
   async restartRunner(opts: { waitForReady?: boolean } = {}): Promise<CloudDiagnostics> {
-    const body: Record<string, unknown> = {};
-    if (opts.waitForReady === false) body.wait_for_ready = false;
-    return this.post<CloudDiagnostics>('/api/mobile/restart-runner', body);
+    return this.post<CloudDiagnostics>(
+      withQuery('/api/mobile/restart-runner', {
+        wait_for_ready: opts.waitForReady === false ? 'false' : undefined,
+      }),
+      {},
+    );
   }
 
   // ── APK ─────────────────────────────────────────────────────────
@@ -317,7 +338,7 @@ export class CloudBackend {
       package_name: string;
       version: string;
       version_code?: number;
-    }>('/api/mobile/install-apk', { apk_url: apk });
+    }>(withQuery('/api/mobile/apk/install', { apk_url: apk }), {});
     return {
       packageId: result.package_name,
       versionName: result.version,
@@ -539,7 +560,7 @@ export class CloudBackend {
 
   async saveSnapshot(_avdName: string, snapshotName: string): Promise<SnapshotResult> {
     const result = await this.post<{ name: string; saved_at: string }>(
-      '/api/mobile/save-snapshot',
+      '/api/mobile/snapshots/save',
       { name: snapshotName },
     );
     return {
@@ -552,7 +573,7 @@ export class CloudBackend {
 
   async loadSnapshot(_avdName: string, snapshotName: string): Promise<SnapshotResult> {
     const result = await this.post<{ name: string; loaded_at: string }>(
-      '/api/mobile/load-snapshot',
+      '/api/mobile/snapshots/load',
       { name: snapshotName },
     );
     return {
