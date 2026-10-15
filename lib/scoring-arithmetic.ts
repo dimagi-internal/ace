@@ -93,8 +93,14 @@ interface Bind {
   calculate: string;
 }
 
-function scoringBinds(xml: string): Bind[] {
-  const doc = new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document;
+const CONNECT_LEARN_NS = 'http://commcareconnect.com/data/v1/learn';
+const SCORE_REF = /\/data\/[\w/-]*?_score\b/g;
+
+function parse(xml: string): Document {
+  return new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document;
+}
+
+function scoringBinds(doc: Document): Bind[] {
   const out: Bind[] = [];
   for (const b of Array.from(doc.getElementsByTagName('bind'))) {
     const nodeset = b.getAttribute('nodeset');
@@ -104,10 +110,49 @@ function scoringBinds(xml: string): Bind[] {
   return out;
 }
 
+/** Does the form carry Connect's `<assessment xmlns=".../data/v1/learn">` block? */
+function isAssessmentForm(doc: Document): boolean {
+  return doc.getElementsByTagNameNS(CONNECT_LEARN_NS, 'assessment').length > 0;
+}
+
+/**
+ * The rollup on a form WITHOUT a Connect assessment block — an ungraded
+ * baseline/pre-test (dimagi-internal/ace#2958). Such a form must NOT carry
+ * `user_score`: Connect's `process_assessments` sets `passed` for every
+ * submitted block carrying one, with any-passed semantics, so a baseline with
+ * a `user_score` passes a worker who never opened a module (ace#1131). Its
+ * items roll up into a node of any other name (`baseline_score` on
+ * noora-health/20261015-1129), and that node gets the same term and
+ * denominator checks. Chosen as the non-item calculate referencing the most
+ * item scores.
+ */
+function ungradedRollup(binds: Bind[], itemScores: string[]): Bind | undefined {
+  let best: Bind | undefined;
+  let bestHits = 0;
+  for (const b of binds) {
+    if (itemScores.includes(b.nodeset)) continue;
+    const refs = new Set([...b.calculate.matchAll(SCORE_REF)].map((m) => m[0]));
+    const hits = itemScores.filter((s) => refs.has(s)).length;
+    if (hits > bestHits) {
+      best = b;
+      bestHits = hits;
+    }
+  }
+  return best;
+}
+
 export function checkScoringArithmetic(xml: string): ScoringReport {
-  const binds = scoringBinds(xml);
+  const doc = parse(xml);
+  const binds = scoringBinds(doc);
   const items = binds.filter((b) => ITEM_SCORE.test(b.nodeset));
-  const rollup = binds.find((b) => /\/user_score$/.test(b.nodeset));
+  const assessment = isAssessmentForm(doc);
+  const userScore = binds.find((b) => /\/user_score$/.test(b.nodeset));
+  // On an ungraded form a user_score is ace#1131's defect, not the rollup we
+  // want; look for its own rollup. An assessment form is read by Connect via
+  // user_score only, so nothing else can stand in for it there.
+  const rollup =
+    userScore ??
+    (assessment ? undefined : ungradedRollup(binds, items.map((i) => i.nodeset)));
 
   if (items.length === 0) {
     return unable(
@@ -150,16 +195,17 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
   if (!rollup) {
     findings.push({
       kind: 'no-rollup',
-      detail:
-        `${items.length} item score(s) are computed but no user_score rolls them up — Connect reads ` +
-        'user_score and would find nothing',
+      detail: assessment
+        ? `${items.length} item score(s) are computed but no user_score rolls them up — Connect reads ` +
+          'user_score and would find nothing'
+        : `${items.length} item score(s) are computed but no calculate rolls them up — the scoring is ` +
+          'dead weight. This form carries no Connect assessment block, so the rollup must NOT be ' +
+          'named user_score (ace#1131)',
     });
     return { ...checked(false, findings), itemScores };
   }
 
-  const referenced = new Set(
-    [...rollup.calculate.matchAll(/\/data\/[\w/-]*?_score\b/g)].map((m) => m[0]),
-  );
+  const referenced = new Set([...rollup.calculate.matchAll(SCORE_REF)].map((m) => m[0]));
   for (const item of items) {
     if (!referenced.has(item.nodeset)) {
       findings.push({

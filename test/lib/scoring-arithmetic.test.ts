@@ -250,6 +250,68 @@ describe('checkScoringArithmetic (#1035)', () => {
     expect(r.findings.map((f) => f.kind)).toContain('denominator-mismatch');
   });
 
+  // --- ace#2958: an UNGRADED baseline form rolls up into its own node -----
+  // Shape from noora-health/20261015-1129 Learn build
+  // c74ae6da729f45c7bdbf4784065f1bcf, modules-0/forms-0.xml: six item scores
+  // rolled into `baseline_score`, no `user_score`, and no Connect
+  // `<assessment>` block. A `user_score` here would BE the defect — ace#1131's
+  // cardinality rule exists because Connect sets `passed` on any submitted
+  // block carrying one, so a baseline with it passes a worker who opened no
+  // module. `no-rollup` used to demand exactly that.
+  const LEARN_NS = 'http://commcareconnect.com/data/v1/learn';
+  const baseline = (rollupCalc: string, assessment = false) =>
+    [
+      '<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms"><h:head><model>',
+      '<instance><data xmlns="http://openrosa.org/formdesigner/X">',
+      `<module xmlns="${LEARN_NS}" id="m1_families"/>`,
+      assessment ? `<assessment xmlns="${LEARN_NS}" id="a1"><user_score/></assessment>` : '',
+      '</data></instance>',
+      ...[1, 2, 3, 4, 5, 6].map(
+        (n) =>
+          `<bind nodeset="/data/s_baseline_result/bq${n}_score" type="xsd:string" ` +
+          `calculate="if(/data/s_baseline/bq${n} = 'a${n}', 1, 0)"/>`,
+      ),
+      `<bind nodeset="/data/s_baseline_result/baseline_score" type="xsd:string" calculate="${rollupCalc}"/>`,
+      '</model></h:head></h:html>',
+    ].join('');
+  const SIX = [1, 2, 3, 4, 5, 6].map((n) => `/data/s_baseline_result/bq${n}_score`).join(' + ');
+
+  it('does NOT demand user_score on an ungraded baseline that rolls up elsewhere (#2958)', () => {
+    const r = checkScoringArithmetic(baseline(`(${SIX}) * 100 div 6`));
+    assertChecked(r);
+    expect(r.findings.map((f) => f.kind)).not.toContain('no-rollup');
+    expect(r.ok).toBe(true);
+  });
+
+  it('still checks the ungraded rollup it found — terms and denominator (#2958)', () => {
+    const r = checkScoringArithmetic(
+      baseline(`(${SIX.replace(' + /data/s_baseline_result/bq6_score', '')}) * 100 div 5`),
+    );
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    const kinds = r.findings.map((f) => f.kind);
+    expect(kinds).toContain('missing-term');
+    expect(kinds).toContain('denominator-mismatch');
+    expect(r.findings.find((f) => f.kind === 'missing-term')!.detail).toMatch(/baseline_score/);
+  });
+
+  it('still flags no-rollup on an ASSESSMENT form rolled up into anything but user_score (#2958)', () => {
+    // Connect reads user_score off the assessment block; a differently named
+    // rollup on the gating form is invisible to it.
+    const r = checkScoringArithmetic(baseline(`(${SIX}) * 100 div 6`, true));
+    assertChecked(r);
+    expect(r.findings.map((f) => f.kind)).toContain('no-rollup');
+  });
+
+  it('still flags no-rollup on an ungraded form whose items roll up into NOTHING (#2958)', () => {
+    const r = checkScoringArithmetic(baseline("'n/a'"));
+    assertChecked(r);
+    const f = r.findings.find((x) => x.kind === 'no-rollup');
+    expect(f).toBeDefined();
+    // ...and does not tell the author to add the user_score #1131 forbids.
+    expect(f!.detail).not.toMatch(/Connect reads user_score/);
+  });
+
   it('names every finding in the formatted report', () => {
     const r = checkScoringArithmetic(withUserScore('(/data/q1_score) * 100 div 3'));
     assertChecked(r);
