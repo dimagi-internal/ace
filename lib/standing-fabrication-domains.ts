@@ -677,15 +677,18 @@ export function auditEscalationPlaceholder(prompt: string, label: string): Answe
 /**
  * The answer obligations with the escalation route re-pointed at a placeholder
  * label (ace#2949): `PRODUCT_SPECIFICS_OBLIGATION` routes to "supervisor + ACE
- * admin group", which a run forbidding any ACE contact cannot write. Every
- * other part of every obligation is unchanged.
+ * admin group", which a run forbidding any ACE contact cannot write. In
+ * placeholder mode the route may name "the ACE admin group", the exact label,
+ * or "the escalation contact" (the real run prompt's phrasing: "route the
+ * person to their supervisor and the escalation contact"). Every other part of
+ * every obligation is unchanged; default mode is untouched.
  */
 export function answerObligationsFor(escalationPlaceholder?: string): readonly AnswerObligation[] {
   if (escalationPlaceholder === undefined) return ANSWER_OBLIGATIONS;
   const esc = placeholderPattern(escalationPlaceholder);
   return ANSWER_OBLIGATIONS.map((o) => {
     if (o.id !== PRODUCT_SPECIFICS_OBLIGATION.id) return o;
-    const src = o.pattern.source.replace('\\bace admin group\\b', () => esc);
+    const src = o.pattern.source.replace('\\bace admin group\\b', () => `(?:\\bace admin group\\b|${esc}|\\bescalation contact\\b)`);
     if (src === o.pattern.source) throw new Error('product-specifics routing clause not found');
     return {
       ...o,
@@ -938,7 +941,11 @@ export function extractSafeguardingDisclosureSection(prompt: string): string | n
 /**
  * The safeguarding clauses, with clause 4 re-pointed at a placeholder label
  * when the run forbids any ACE contact (ace#2949): "escalate to <label>"
- * instead of "escalate to the ACE admin group". Every other clause unchanged.
+ * instead of "escalate to the ACE admin group". Accepts "escalat…" within 80
+ * characters of "the ACE admin group", the exact label, or "escalation
+ * contact" (the real run prompt: "4. Escalate to the programme's escalation
+ * contact, PLACEHOLDER — named Dimagi contact, to be set."). Every other
+ * clause unchanged; default mode is untouched.
  */
 export function safeguardingClausesFor(escalationPlaceholder?: string): readonly SafeguardingClause[] {
   if (escalationPlaceholder === undefined) return SAFEGUARDING_DISCLOSURE_CLAUSES;
@@ -949,7 +956,7 @@ export function safeguardingClausesFor(escalationPlaceholder?: string): readonly
       : {
           ...c,
           label: `Escalate to ${escalationPlaceholder.trim()}`,
-          pattern: new RegExp(`\\bescalat\\w*\\b[^.]{0,40}${esc}`),
+          pattern: new RegExp(`\\bescalat\\w*\\b[^.]{0,80}(?:\\bace admin group\\b|${esc}|\\bescalation contact\\b)`),
         },
   );
 }

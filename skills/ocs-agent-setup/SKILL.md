@@ -1006,8 +1006,9 @@ round-trip gate in Step 11.5 below.
    verbatim — instead of the default. It does not read `config/agent.json`;
    it asserts ONE block carries that exact label, an escalation clause,
    exactness wording and the "without retrieving it" scope
-   (`buildEscalationPlaceholderObligation`), and re-points the safeguarding
-   "escalate to" clause and the product-specifics routing at the label. A
+   (`buildEscalationPlaceholderObligation`), and lets the safeguarding
+   "escalate to" clause and the product-specifics routing name the label or
+   "the escalation contact" instead of the ACE admin group. A
    label without `PLACEHOLDER` or containing `@` is exit 2; passing both
    `--escalation-address` and `--escalation-placeholder` is exit 2.
 

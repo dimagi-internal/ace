@@ -1340,3 +1340,73 @@ describe('escalation placeholder mode — a run that forbids any ACE contact (ac
     expect(audit.ok).toBe(false);
   });
 });
+
+/**
+ * ace#2949 — the REAL run prompt's phrasings (smallholder-seasonal/20261014-0859,
+ * as reported from the composed prompt): an em-dash label, the label quoted,
+ * "the programme's escalation contact" in the safeguarding clause, and
+ * "their supervisor and the escalation contact" in the product-specifics
+ * routing. Built over v7 so every other gate half is the known-good text.
+ */
+describe('escalation placeholder mode — the run prompt shapes (ace#2949)', () => {
+  const RUN_LABEL = 'PLACEHOLDER — named Dimagi contact, to be set';
+  const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+  const runShaped = v7
+    .replace(
+      /\*\*The ACE admin group's escalation address is ace@dimagi-ai\.com\.\*\* Whenever you escalate to the ACE admin group, give this address exactly as written here — never vary its spelling, never shorten or change its domain\./,
+      `**This programme's escalation contact is "${RUN_LABEL}".** The programme has not yet named this person. ` +
+        'Whenever you escalate, give this escalation contact exactly as written here — never vary its spelling, ' +
+        'and never replace it with an email address, a name or an organisation.',
+    )
+    .replace(
+      '4. Escalate to the ACE admin group at ace@dimagi-ai.com.',
+      `4. Escalate to the programme's escalation contact, ${RUN_LABEL}.`,
+    )
+    .replace(
+      'route the person to their supervisor and the ACE admin group.',
+      'route the person to their supervisor and the escalation contact.',
+    )
+    .split('ace@dimagi-ai.com')
+    .join(RUN_LABEL)
+    .replace(/the ACE admin group(?: address)?/gi, 'the escalation contact');
+
+  it('the fixture carries the run phrasings and no ACE contact', () => {
+    expect(runShaped).toContain(`escalation contact is "${RUN_LABEL}"`);
+    expect(runShaped).toContain(`4. Escalate to the programme's escalation contact, ${RUN_LABEL}.`);
+    expect(runShaped).toContain('their supervisor and the escalation contact.');
+    expect(runShaped).not.toMatch(/ace admin group/i);
+    expect(runShaped).not.toContain('@');
+  });
+
+  it('POSITIVE CONTROL — passes the whole gate in placeholder mode with the em-dash label', () => {
+    const audit = auditComposedPrompt(runShaped, { escalationPlaceholder: RUN_LABEL });
+    expect(audit.escalationAddress?.ok).toBe(true);
+    expect(audit.safeguarding.ok).toBe(true);
+    expect(audit.answerObligations.ok).toBe(true);
+    expect(audit.ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — fails in default mode on all three halves', () => {
+    const audit = auditComposedPrompt(runShaped, { escalationAddress: 'ace@dimagi-ai.com' });
+    expect(audit.escalationAddress?.ok).toBe(false);
+    expect(audit.safeguarding.missing.map((c) => c.id)).toEqual(['escalate-ace-admin']);
+    expect(audit.answerObligations.missing.map((o) => o.id)).toEqual([PRODUCT_SPECIFICS_OBLIGATION.id]);
+    expect(audit.ok).toBe(false);
+  });
+
+  it('ABLATION — the product-specifics route with no escalation contact fails', () => {
+    const noRoute = runShaped.replace(
+      'route the person to their supervisor and the escalation contact.',
+      'route the person to their supervisor.',
+    );
+    expect(noRoute).not.toBe(runShaped);
+    const audit = auditComposedPrompt(noRoute, { escalationPlaceholder: RUN_LABEL });
+    expect(audit.answerObligations.missing.map((o) => o.id)).toEqual([PRODUCT_SPECIFICS_OBLIGATION.id]);
+  });
+
+  it('ABLATION — dropping the exactness wording fails', () => {
+    const weakened = runShaped.replace('exactly as written here — never vary its spelling', 'when asked');
+    expect(weakened).not.toBe(runShaped);
+    expect(auditComposedPrompt(weakened, { escalationPlaceholder: RUN_LABEL }).ok).toBe(false);
+  });
+});

@@ -549,6 +549,21 @@ describe('scripts/audit-composed-prompt.ts — --escalation-placeholder (ace#294
     expect(runOn(placeholderPrompt()).code).toBe(1);
   });
 
+  it('the run prompt shapes — em-dash label, "escalation contact" routing — exit 0', () => {
+    const RUN_LABEL = 'PLACEHOLDER — named Dimagi contact, to be set';
+    const runShaped = readFileSync(V7, 'utf8')
+      .replace(
+        "**The ACE admin group's escalation address is ace@dimagi-ai.com.** Whenever you escalate to the ACE admin group, give this address",
+        `**This programme's escalation contact is "${RUN_LABEL}".** Whenever you escalate, give this escalation contact`,
+      )
+      .replace('4. Escalate to the ACE admin group at ace@dimagi-ai.com.', `4. Escalate to the programme's escalation contact, ${RUN_LABEL}.`)
+      .split('ace@dimagi-ai.com')
+      .join(RUN_LABEL)
+      .replace(/the ACE admin group(?: address)?/gi, 'the escalation contact');
+    expect(runOn(runShaped, ['--escalation-placeholder', RUN_LABEL]).code).toBe(0);
+    expect(runOn(runShaped).code).toBe(1);
+  });
+
   it('ABLATION: dropping the exactness wording exits 1', () => {
     const weakened = placeholderPrompt().replace(
       'exactly as written here — never vary its spelling, never shorten or change its domain',
