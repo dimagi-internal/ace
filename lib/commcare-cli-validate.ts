@@ -443,6 +443,11 @@ export type CommCareCliPlayVerdict = 'pass' | 'fail' | 'skipped';
  *   `jr://fixture/item-list:<tag>` the CCZ declares, so this only fires for
  *   a fixture kind the seed does not cover (or a caller-supplied restore). A
  *   device receives the fixture on sync; form-init is UNEVALUATED, not failed.
+ *   Also (ace#2941): that seeded root is EMPTY, so a binding or case-list
+ *   column reading a row column fails with `Logic references instance(<id>)/…
+ *   which is not a valid question or value`. When EVERY unresolved ref in the
+ *   stream is an empty-seeded item-list instance (and the restore is ours),
+ *   that is this class too; `unresolved_xpath` names the read.
  */
 export type CommCareCliPlaySkipReason =
   | 'entry-path-unresolved'
@@ -637,16 +642,49 @@ export function extractItemListFixtureTags(...xmls: string[]): string[] {
   return Array.from(out);
 }
 
+/**
+ * The INSTANCE IDS bound to `jr://fixture/item-list:<tag>` srcs (ace#2941).
+ * javarosa names the instance id, not the src, when a ref fails to resolve
+ * (`Logic references instance(<id>)/…`), so the play classifier needs the
+ * id → item-list mapping to recognise a read from an empty-seeded fixture.
+ * Either attribute order; de-duplicated.
+ */
+export function extractItemListInstanceIds(...xmls: string[]): string[] {
+  const out = new Set<string>();
+  for (const xml of xmls) {
+    if (!xml) continue;
+    for (const m of xml.matchAll(/<instance\b[^>]*>/g)) {
+      const tag = m[0];
+      if (!/src\s*=\s*["']jr:\/\/fixture\/item-list:/.test(tag)) continue;
+      const id = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(tag);
+      const v = id ? (id[1] ?? id[2]) : undefined;
+      if (v) out.add(v);
+    }
+  }
+  return Array.from(out);
+}
+
+function readCczXmls(cczPath: string): string[] {
+  const files = unzipSync(new Uint8Array(fs.readFileSync(cczPath)));
+  return Object.keys(files)
+    .filter((k) => k.endsWith('.xml'))
+    .sort()
+    .map((k) => strFromU8(files[k]));
+}
+
 /** Every item-list fixture tag any XML file in a CCZ reads. [] on unreadable. */
 export function readCczItemListFixtureTags(cczPath: string): string[] {
   try {
-    const files = unzipSync(new Uint8Array(fs.readFileSync(cczPath)));
-    return extractItemListFixtureTags(
-      ...Object.keys(files)
-        .filter((k) => k.endsWith('.xml'))
-        .sort()
-        .map((k) => strFromU8(files[k])),
-    );
+    return extractItemListFixtureTags(...readCczXmls(cczPath));
+  } catch {
+    return [];
+  }
+}
+
+/** Every instance id a CCZ binds to an item-list fixture. [] on unreadable. */
+export function readCczItemListInstanceIds(cczPath: string): string[] {
+  try {
+    return extractItemListInstanceIds(...readCczXmls(cczPath));
   } catch {
     return [];
   }
@@ -944,6 +982,16 @@ export async function commcareCliPlayCcz(
   const seededCaseTypes = opts.seedCaseTypes ?? extractCaseTypesFromSuite(suiteXml);
   // Lookup tables the forms read must resolve at form-init (ace#2860).
   const seededFixtureTags = opts.seedFixtureTags ?? readCczItemListFixtureTags(opts.cczPath);
+  // Those roots are EMPTY, so a read of a row column cannot resolve (ace#2941).
+  const emptySeededFixtureInstanceIds =
+    seededFixtureTags.length === 0
+      ? []
+      : Array.from(
+          new Set([
+            ...readCczItemListInstanceIds(opts.cczPath),
+            ...seededFixtureTags.map((t) => `item-list:${t}`),
+          ]),
+        );
 
   // A path suite.xml says lands on no command cannot open a form. Running it
   // anyway made the CLI index past the menu (AIOOBE) and grade the CCZ `fail`
@@ -1022,6 +1070,11 @@ export async function commcareCliPlayCcz(
             timedOut,
             timeoutMs,
             entryPath,
+            // Only OUR restore seeds fixtures empty; a caller-supplied
+            // restore may carry real rows, so a failed read there is real.
+            ...(opts.restorePath
+              ? {}
+              : { emptySeededFixtureInstanceIds }),
           }),
           seeded_case_types: seededCaseTypes,
           seeded_fixture_tags: seededFixtureTags,
@@ -1043,6 +1096,14 @@ export interface ParsePlayOutputInput {
   timedOut: boolean;
   timeoutMs: number;
   entryPath: number[];
+  /**
+   * Instance ids (`instance(<id>)`) bound to item-list fixtures the play
+   * restore seeded EMPTY (ace#2941). A `Logic references instance(<id>)/...
+   * which is not a valid question or value` on one of these is the empty
+   * seed (the row path cannot exist without rows), not a CCZ defect.
+   * Omit for a caller-supplied restore, which may carry real rows.
+   */
+  emptySeededFixtureInstanceIds?: string[];
 }
 
 /**
@@ -1086,7 +1147,7 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
 
   // Read off the UNTRIMMED streams: the marker sits after every menu screen,
   // so on a large app it can fall past the 4KB log trim.
-  const classified = classifyPlayStream(combined);
+  const classified = classifyPlayStream(combined, input.emptySeededFixtureInstanceIds ?? []);
   const outcome: PlayStreamOutcome =
     classified === 'ok' && !reachedFormEntry(`${input.stdout}\n${input.stderr}`)
       ? 'form-entry-not-reached'
@@ -1146,8 +1207,18 @@ function reachedFormEntry(s: string): boolean {
  * fix — see rule 3's comment). This classifier keys on the frame that is
  * actually specific to case-list rendering.
  */
-function classifyPlayStream(s: string): PlayStreamOutcome {
+function classifyPlayStream(s: string, emptySeededFixtureIds: string[] = []): PlayStreamOutcome {
   if (!s) return 'ok';
+  // (0) ace#2941: the play restore seeds each item-list fixture as an EMPTY
+  // root (ace#2860), so a binding or case-list column reading a ROW column
+  // (`instance(<id>)/<tag>_list/<tag>/<col>`) cannot resolve and javarosa
+  // throws `Logic references <ref> which is not a valid question or value`.
+  // A device receives the rows on sync, so that is UNEVALUATED. Narrow on
+  // purpose: EVERY unresolved ref in the stream must be an empty-seeded
+  // fixture, and no parser-class defect may be present; otherwise rule (1).
+  if (emptySeededFixtureIds.length > 0 && onlyEmptyFixtureRefsUnresolved(s, emptySeededFixtureIds)) {
+    return 'cli-fixture-unseeded';
+  }
   // (1) Real form-init defects we care about. XPathTypeMismatchException is
   // the bednet class; XPathException is any other XPath-eval failure;
   // XFormParseException is a structural defect we'd catch in `validate`
@@ -1216,6 +1287,27 @@ function classifyPlayStream(s: string): PlayStreamOutcome {
     if (!benignEof) return 'form-init-error';
   }
   return 'ok';
+}
+
+function onlyEmptyFixtureRefsUnresolved(s: string, ids: string[]): boolean {
+  if (
+    /(XFormParseException|InvalidStructureException|InvalidResourceException|UnresolvedResourceException)/.test(
+      s,
+    )
+  ) {
+    return false;
+  }
+  const refs = Array.from(
+    s.matchAll(/Logic references\s+(.+?)\s+which is not a valid question or value/g),
+    (m) => m[1],
+  );
+  if (refs.length === 0) return false;
+  const idSet = new Set(ids);
+  return refs.every((ref) => {
+    const m = /^instance\(\s*(?:'([^']*)'|"([^"]*)"|([^)\s]*))\s*\)/.exec(ref);
+    const id = m ? (m[1] ?? m[2] ?? m[3]) : undefined;
+    return id !== undefined && idSet.has(id);
+  });
 }
 
 function extractFailingBinding(s: string): string | undefined {
