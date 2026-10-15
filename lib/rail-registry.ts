@@ -241,6 +241,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/kb-instrument-contamination.test.ts': { issues: ['ace#1018'] },
   'test/skills/large-artifact-localfilepath.test.ts': { issues: ['ace#1918', 'ace#1780', 'ace#1907', 'ace#2055'] },
   'test/skills/learn-suite-reentry-guarded.test.ts': { issues: ['ace#1633', 'ace#1071', 'ace#897'], observed: 'bednet-check-2-visit/20260825-1310' },
+  'test/skills/llo-directory-add-live-layout.test.ts': { issues: ['ace#2920'] },
   'test/skills/media-form-tile-revert-guard.test.ts': { issues: ['ace#2413', 'voidcraft-labs/commcare-nova#625'], observed: 'poverty-graduation/20260915-1518' },
   'test/skills/negative-control-ratchet.test.ts': { issues: ['ace#1693', 'ace#1695', 'ace#1701', 'ace#1679', 'ace#1026', 'ace#1688', 'ace#1689', 'ace#2422', 'ace#2396', 'ace#2398', 'ace#1946', 'ace#2429', 'ace#2426'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/no-hardcoded-connect-org.test.ts': { issues: [], observed: 'spark-facilitator/20260925-1536' },
