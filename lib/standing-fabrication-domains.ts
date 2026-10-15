@@ -893,6 +893,9 @@ export const SAFEGUARDING_DISCLOSURE_CLAUSES: readonly SafeguardingClause[] = [
   {
     id: 'do-not-record-in-app',
     label: 'Do not record the disclosure (or names/details) in the app\'s notes or any form field',
+    // Also satisfied by the escalation-form shape (ace#2951): "Do not write the
+    // disclosure in ordinary visit notes ... Record it only on the app's
+    // Escalation form" — pinned in test/lib/standing-fabrication-domains.test.ts.
     pattern: /\bdo not (?:record|write)\b[^.]{0,160}\b(?:notes?|form fields?)\b/,
   },
   {

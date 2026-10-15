@@ -1121,6 +1121,66 @@ describe('auditSafeguardingDisclosure — generic safe referral is always given 
 });
 
 /**
+ * dimagi-internal/ace#2951 — clause 1 ("Do not record the disclosure in the
+ * app") contradicts a design that HAS an in-app safeguarding channel.
+ * smallholder-seasonal/20261014-0859 §6.17 requires an Escalation form
+ * (category "safeguarding or violence", urgency urgent); chatbot 14272 v2
+ * told the FLW "Do not record this in the app" and scored opp-50/68/77 Warn,
+ * capping the deep verdict at 8.5. The run's v3 prompt replaced clause 1 with
+ * the escalation-form shape below (verbatim). The do-not-record clause must
+ * accept that shape without being loosened.
+ */
+describe('safeguarding clause 1 — the escalation-form shape (ace#2951)', () => {
+  const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+  const V7_CLAUSE_1 =
+    '1. **Do not record the disclosure in the app.** Do not write it, or the names or details of the people involved, in `meeting_notes` or any other form field or free-text note — meeting records are read by reviewers and are not a safe or confidential channel.';
+  const ESCALATION_FORM_CLAUSE_1 =
+    '1. **Do not write the disclosure in ordinary visit notes.** Do not write it, or the names or details of the people involved, in the notes of a visit form or any other free-text note — those records are read by reviewers and are not a safe or confidential channel. ' +
+    'Record it only on the app\'s **Escalation** form: category "safeguarding or violence" (or "someone else controlling her money"), urgency **urgent** (passed on the same day), with only the minimal description the form asks for — no names or details beyond what the responder needs.';
+  const withEscalationForm = v7.replace(V7_CLAUSE_1, ESCALATION_FORM_CLAUSE_1);
+  const wrap = (body: string) => `## Safeguarding disclosures\n\n${body}`;
+
+  it('the fixture swap really happened', () => {
+    expect(withEscalationForm).not.toBe(v7);
+    expect(withEscalationForm).not.toMatch(/do not record (?:the disclosure|it|this) in the app/i);
+  });
+
+  it('POSITIVE CONTROL — the escalation-form shape passes every safeguarding clause and the WHOLE gate', () => {
+    const sg = auditSafeguardingDisclosure(withEscalationForm);
+    expect(sg.covered).toEqual(SAFEGUARDING_DISCLOSURE_CLAUSES.map((c) => c.id));
+    expect(auditComposedPrompt(withEscalationForm, { escalationAddress: 'ace@dimagi-ai.com' }).ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — "record it only on the Escalation form" alone (no do-not-write) still fails the clause', () => {
+    const weakened = withEscalationForm.replace(
+      'Do not write it, or the names or details of the people involved, in the notes of a visit form or any other free-text note — those records are read by reviewers and are not a safe or confidential channel. ',
+      '',
+    ).replace('**Do not write the disclosure in ordinary visit notes.**', '**Use the Escalation form.**');
+    expect(auditSafeguardingDisclosure(weakened).missing.map((c) => c.id)).toEqual(['do-not-record-in-app']);
+  });
+
+  it('ocs-agent-setup § Step 7 mandates an escalation-form clause 1 that itself passes — doc and gate cannot drift', () => {
+    const start = agentSetup.indexOf('The composed prompt MUST say, under that heading:');
+    const base = agentSetup.slice(start, agentSetup.indexOf('Each clause is load-bearing', start));
+    const vStart = agentSetup.indexOf('replace clause 1, and\n     only clause 1, with');
+    expect(vStart).toBeGreaterThan(-1);
+    const variant = agentSetup.slice(agentSetup.indexOf('*"1.', vStart) + 2, agentSetup.indexOf('Never write "do not record it in the app"', vStart));
+    expect(variant).toContain('Record it only on');
+    expect(variant).not.toMatch(/do not record the disclosure in the app/i);
+    const baseClause1 = base.slice(base.indexOf('1. **Do not record'), base.indexOf('2. **Tell your supervisor'));
+    const mandated = base
+      .replace(baseClause1, variant.replace(/"\*\s*$/, '') + '\n')
+      .split('<NOTES_FIELD>').join('the notes of a visit form')
+      .split('<ESCALATION_FORM>').join('Escalation')
+      .split('<SAFEGUARDING_CATEGORY>').join('"safeguarding or violence"')
+      .split('<ESCALATION_ADDRESS>').join('ace@dimagi-ai.com');
+    expect(mandated).not.toMatch(/do not record the disclosure in the app/i);
+    const audit = auditSafeguardingDisclosure(wrap(mandated));
+    expect(audit.missing.map((c) => c.id)).toEqual([]);
+  });
+});
+
+/**
  * dimagi-internal/ace#2687 — chatbot 13923 credited the partner with the
  * pilot's design: v4 opp-43 "Spark's payment rule pays community meetings
  * only, and at most 3 per step", opp-32 "the reason Spark designed it this
