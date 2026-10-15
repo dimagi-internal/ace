@@ -147,6 +147,8 @@ export interface CaseListEnumColumn {
 export interface FormChoiceList {
   /** The form the select lives in, for the finding message. */
   formPath: string;
+  /** The select's full `ref`, e.g. `/data/outcome/new_status`. */
+  ref: string;
   /** Last segment of the select's `ref` — the QUESTION id, not the case property. */
   property: string;
   /**
@@ -185,6 +187,21 @@ export interface OpaqueCalculateWriter {
   expression: string;
   /** What about the expression defeated enumeration. */
   reason: string;
+}
+
+/**
+ * A case-write chain that ends at a node with no calculate of its own — a
+ * QUESTION (ace#2940). Its value set is a select's choice list when the node is
+ * a select, and unknowable when it is free text. Reported rather than dropped,
+ * so the gate can tell a complete writer set from one with a hole in it:
+ * comparing the readable writers alone produces false "never written" findings
+ * for every value only the unreadable writer stores.
+ */
+export interface QuestionCaseWriter {
+  formPath: string;
+  property: string;
+  /** The question node the case write copies, e.g. `/data/new_status`. */
+  node: string;
 }
 
 export interface CczEnumFidelityFinding extends EnumDriftFinding {
@@ -319,6 +336,19 @@ function parseItext(formXml: string): Record<string, string> {
 }
 
 /**
+ * A `<case>` transaction bind's nodeset, capturing the case property.
+ *
+ * Two shapes ship. The bare `/data/case/(create|update)/<prop>` (the ace#2188
+ * fixtures), and Nova's current one, which nests every case operation under
+ * `/data/__nova_operations/<op>/` (ace#2940) — recorded verbatim from released
+ * CCZ smallholder-seasonal/20261012-1549:
+ * `/data/__nova_operations/update_participant_plan/case/update/main_crop`.
+ * Accepting only the first made every write in a current Nova build invisible.
+ */
+const CASE_WRITE_NODESET =
+  /^\/data\/(?:__nova_operations\/[^/]+\/)?case\/(?:create|update)\/([^/]+)$/;
+
+/**
  * `question node path -> case properties that node's answer is written to`,
  * read off the form's own `<case>` transaction binds (ace#1808).
  *
@@ -349,7 +379,7 @@ export function extractCaseWriteMap(formXml: string): Record<string, string[]> {
     const nodeset = /\bnodeset="([^"]*)"/.exec(attrs)?.[1];
     const calculate = /\bcalculate="([^"]*)"/.exec(attrs)?.[1];
     if (!nodeset || !calculate) continue;
-    const prop = /^\/data\/case\/(?:create|update)\/([^/]+)$/.exec(nodeset)?.[1];
+    const prop = CASE_WRITE_NODESET.exec(nodeset)?.[1];
     if (!prop) continue;
     const source = unescapeXml(calculate).trim();
     if (!/^\/data\/[\w/-]+$/.test(source)) continue;
@@ -461,13 +491,18 @@ function enumerateCalculateLiterals(expr: string): { values: string[] } | { reas
 export function extractCalculateWrittenValues(
   formXml: string,
   formPath: string,
-): { writers: CalculateWriter[]; opaque: OpaqueCalculateWriter[] } {
+): {
+  writers: CalculateWriter[];
+  opaque: OpaqueCalculateWriter[];
+  questions: QuestionCaseWriter[];
+} {
   const calculates = bindCalculates(formXml);
   const writers: CalculateWriter[] = [];
   const opaque: OpaqueCalculateWriter[] = [];
+  const questions: QuestionCaseWriter[] = [];
 
   for (const [nodeset, calculate] of Object.entries(calculates)) {
-    const property = /^\/data\/case\/(?:create|update)\/([^/]+)$/.exec(nodeset)?.[1];
+    const property = CASE_WRITE_NODESET.exec(nodeset)?.[1];
     if (!property) continue;
 
     let expression = calculate;
@@ -479,8 +514,10 @@ export function extractCalculateWrittenValues(
       }
       visited.add(expression);
       const next = calculates[expression];
-      // Terminal node with no calculate = a question, not a taxonomy.
+      // Terminal node with no calculate = a question, not a taxonomy. Not
+      // claimed as a calculate writer, but reported (ace#2940).
       if (next === undefined) {
+        questions.push({ formPath, property, node: expression });
         expression = '';
         break;
       }
@@ -510,7 +547,7 @@ export function extractCalculateWrittenValues(
     writers.push({ formPath, property, expression, values });
   }
 
-  return { writers, opaque };
+  return { writers, opaque, questions };
 }
 
 /** Pull every `select` / `select1` choice list out of one form XML. */
@@ -528,14 +565,14 @@ export function extractFormChoiceLists(formXml: string, formPath: string): FormC
     for (const item of sel[3].matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/g)) {
       const value = /<value\s*>([\s\S]*?)<\/value>/.exec(item[1]);
       if (!value) continue;
-      const ref = /<label\s+ref="jr:itext\('([^']+)'\)"\s*\/>/.exec(item[1]);
+      const labelRef = /<label\s+ref="jr:itext\('([^']+)'\)"\s*\/>/.exec(item[1]);
       const inline = /<label\s*>([\s\S]*?)<\/label>/.exec(item[1]);
-      const label = ref ? itext[ref[1]] : inline ? unescapeXml(inline[1].trim()) : undefined;
+      const label = labelRef ? itext[labelRef[1]] : inline ? unescapeXml(inline[1].trim()) : undefined;
       if (label === undefined) continue;
       choices[unescapeXml(value[1].trim())] = label;
     }
     if (Object.keys(choices).length > 0)
-      lists.push({ formPath, property, caseProperties, choices });
+      lists.push({ formPath, ref, property, caseProperties, choices });
   }
   return lists;
 }
@@ -567,41 +604,74 @@ export function checkCczCaseListEnumFidelity(input: {
     );
   }
 
-  // Two passes, and the ORDER is the ace#1808 fix. The case-write binds are the
-  // form's own declaration of which case property a select writes, so they win;
-  // the question-id tail is a fallback for a select with no case write (or one
-  // whose write is an expression rather than a bare node path).
+  // Pairing reads the form's own `<case>` transaction binds (ace#1808), and it
+  // collects EVERY writer of a property across EVERY form (ace#2940): a select
+  // in one form and a calculate in another write one value set, so they are
+  // compared as one union. The question-id tail is a fallback ONLY for a
+  // property no case-write bind touches at all.
   const lists = input.forms.flatMap((f) => extractFormChoiceLists(f.xml, f.path));
-  const byProperty = new Map<string, FormChoiceList>();
+  const byQuestionId = new Map<string, FormChoiceList>();
   for (const list of lists) {
-    for (const prop of list.caseProperties) {
-      if (!byProperty.has(prop)) byProperty.set(prop, list);
-    }
-  }
-  for (const list of lists) {
-    if (!byProperty.has(list.property)) byProperty.set(list.property, list);
+    if (!byQuestionId.has(list.property)) byQuestionId.set(list.property, list);
   }
 
-  // ace#2188. A select wins where there is one — it carries labels, so it
-  // supports the full diff. Where there is none, the taxonomy is usually a
-  // hidden calculate, and its value set is the UNION across every form: on the
-  // repro build `declined` is written only by Register and `checked` only by
-  // Follow-Up, so a per-form comparison would false-fail both.
+  // ace#2188. A hidden calculate's value set is the UNION across every form:
+  // on the repro build `declined` is written only by Register and `checked`
+  // only by Follow-Up, so a per-form comparison would false-fail both.
   const calculateSides = input.forms.map((f) => extractCalculateWrittenValues(f.xml, f.path));
-  const calculateWriters = calculateSides.flatMap((s) => s.writers);
-  const opaqueWriters = calculateSides.flatMap((s) => s.opaque);
-  const calcByProperty = new Map<string, { values: Set<string>; formPaths: string[] }>();
-  for (const w of calculateWriters) {
-    const entry = calcByProperty.get(w.property) ?? { values: new Set<string>(), formPaths: [] };
-    for (const v of w.values) entry.values.add(v);
-    if (!entry.formPaths.includes(w.formPath)) entry.formPaths.push(w.formPath);
-    calcByProperty.set(w.property, entry);
+
+  interface WriterSet {
+    lists: FormChoiceList[];
+    calcValues: Set<string>;
+    calcFormPaths: string[];
+    /** Writers whose value set cannot be read — any one makes the set incomplete. */
+    unreadable: string[];
+    opaqueCalculate: boolean;
+  }
+  const writerSets = new Map<string, WriterSet>();
+  const setFor = (property: string): WriterSet => {
+    let ws = writerSets.get(property);
+    if (!ws) {
+      ws = { lists: [], calcValues: new Set(), calcFormPaths: [], unreadable: [], opaqueCalculate: false };
+      writerSets.set(property, ws);
+    }
+    return ws;
+  };
+  const addList = (ws: WriterSet, list: FormChoiceList) => {
+    if (!ws.lists.includes(list)) ws.lists.push(list);
+  };
+  for (const list of lists) {
+    for (const prop of list.caseProperties) addList(setFor(prop), list);
+  }
+  for (const side of calculateSides) {
+    for (const w of side.writers) {
+      const ws = setFor(w.property);
+      for (const v of w.values) ws.calcValues.add(v);
+      if (!ws.calcFormPaths.includes(w.formPath)) ws.calcFormPaths.push(w.formPath);
+    }
+    for (const o of side.opaque) {
+      const ws = setFor(o.property);
+      ws.opaqueCalculate = true;
+      ws.unreadable.push(`${o.formPath}: ${o.reason}`);
+    }
+    for (const q of side.questions) {
+      const ws = setFor(q.property);
+      const select = lists.find((l) => l.formPath === q.formPath && l.ref === q.node);
+      if (select) addList(ws, select);
+      else {
+        ws.unreadable.push(
+          `${q.formPath}: copies ${q.node}, a question with no choice list, so its ` +
+            'value set is free text',
+        );
+      }
+    }
   }
 
   const findings: CczEnumFidelityFinding[] = [];
   const seen = new Map<string, CczEnumFidelityFinding>();
   const unpaired: string[] = [];
   const unpairedWhy: string[] = [];
+  const incomplete: string[] = [];
   const unlabelledInCaseList: Record<string, string[]> = {};
   const calculateWritten: Record<string, string[]> = {};
   let columnsCompared = 0;
@@ -622,20 +692,44 @@ export function checkCczCaseListEnumFidelity(input: {
   };
 
   for (const column of columns) {
-    const list = byProperty.get(column.property);
-    if (!list) {
-      const calc = calcByProperty.get(column.property);
-      if (calc) {
+    const ws = writerSets.get(column.property);
+
+    // ace#2940. One unreadable writer makes the whole set unknowable: comparing
+    // the readable rest reports every value only that writer stores as "never
+    // written" — a false BLOCKER. The column is not compared; it is `unable`.
+    if (ws && ws.unreadable.length > 0) {
+      const key = `${column.detailId}.${column.property}`;
+      const why = ws.opaqueCalculate
+        ? `${key} is written by a calculate whose value set could not be enumerated`
+        : `${key} has a writer whose value set cannot be read`;
+      const reason = `${why} (${ws.unreadable.join('; ')})`;
+      unpaired.push(key);
+      incomplete.push(reason);
+      unpairedWhy.push(reason);
+      continue;
+    }
+
+    // Labelled writers: every select that writes the property, or — only when
+    // no case-write bind touches it at all — the question-id fallback.
+    const hasCaseWriters = ws !== undefined && (ws.lists.length > 0 || ws.calcValues.size > 0);
+    const fallback = hasCaseWriters ? undefined : byQuestionId.get(column.property);
+    const labelled = fallback ? [fallback] : (ws?.lists ?? []);
+    const calcValues = fallback ? new Set<string>() : (ws?.calcValues ?? new Set<string>());
+    const calcFormPaths = fallback ? [] : (ws?.calcFormPaths ?? []);
+
+    if (labelled.length === 0) {
+      if (calcValues.size > 0) {
         // VALUE-SET comparison only: a calculate carries no labels, so there is
         // no second labelled surface in the CCZ to disagree with. Label
         // fidelity for a state taxonomy is the PDD's authority and is gated at
         // build time (`pdd-to-deliver-app § Step 4l`).
         columnsCompared += 1;
         valuesCompared += Object.keys(column.enums).length;
-        const formPath = calc.formPaths.join(', ');
-        calculateWritten[column.property] = [...calc.values].sort();
+        const formPath = calcFormPaths.join(', ');
+        const written = [...calcValues].sort();
+        calculateWritten[column.property] = written;
         for (const value of Object.keys(column.enums).sort()) {
-          if (calc.values.has(value)) continue;
+          if (calcValues.has(value)) continue;
           record(column, {
             value,
             caseListLabel: column.enums[value],
@@ -644,7 +738,7 @@ export function checkCczCaseListEnumFidelity(input: {
             remediation:
               `The case list renders "${value}" as "${column.enums[value]}", but no ` +
               `calculate in this CCZ writes that value to "${column.property}" — the ` +
-              `writers store ${[...calc.values].sort().map((v) => `"${v}"`).join(', ')}, ` +
+              `writers store ${written.map((v) => `"${v}"`).join(', ')}, ` +
               `so no worker can ever produce it. Either the enum is stale or the ` +
               `calculate lost a branch; fix it at pdd-to-deliver-app, not at the enum.`,
             property: column.property,
@@ -653,29 +747,42 @@ export function checkCczCaseListEnumFidelity(input: {
             writer: 'calculate',
           });
         }
-        const unlabelled = [...calc.values].filter((v) => !(v in column.enums)).sort();
+        const unlabelled = written.filter((v) => !(v in column.enums));
         if (unlabelled.length > 0) unlabelledInCaseList[column.property] = unlabelled;
         continue;
       }
       unpaired.push(`${column.detailId}.${column.property}`);
-      const opaqueHere = opaqueWriters.filter((w) => w.property === column.property);
       unpairedWhy.push(
-        opaqueHere.length > 0
-          ? `${column.detailId}.${column.property} is written by a calculate whose value ` +
-            `set could not be enumerated (${opaqueHere
-              .map((w) => `${w.formPath}: ${w.reason}`)
-              .join('; ')})`
-          : `${column.detailId}.${column.property} matched no form choice list and no ` +
-            `enumerable case-write calculate in this CCZ`,
+        `${column.detailId}.${column.property} matched no form choice list and no ` +
+          `enumerable case-write calculate in this CCZ`,
       );
       continue;
     }
+
+    // Select writers, plus any calculate writers of the same property (ace#2940:
+    // Enrollment's calculate and Outcome's select write ONE value set). Labels
+    // come from the selects only; a calculate-only value takes the tile's own
+    // label, so it is checked for membership and never for a label it lacks.
+    const formChoices: Record<string, string> = {};
+    for (const list of labelled) {
+      for (const [value, label] of Object.entries(list.choices)) {
+        if (!(value in formChoices)) formChoices[value] = label;
+      }
+    }
+    for (const value of calcValues) {
+      if (!(value in formChoices)) formChoices[value] = column.enums[value] ?? value;
+    }
+    if (calcValues.size > 0) calculateWritten[column.property] = [...calcValues].sort();
+    const formPath = [...new Set([...labelled.map((l) => l.formPath), ...calcFormPaths])].join(
+      ', ',
+    );
+
     columnsCompared += 1;
     valuesCompared += Object.keys(column.enums).length;
     const drift = checkCaseListEnumDrift({
       property: column.property,
       caseListEnums: column.enums,
-      formChoices: list.choices,
+      formChoices,
     });
     if (drift.status !== 'checked') continue;
     if (drift.unlabelledInCaseList.length > 0) {
@@ -688,7 +795,7 @@ export function checkCczCaseListEnumFidelity(input: {
         ...f,
         property: column.property,
         detailIds: [column.detailId],
-        formPath: list.formPath,
+        formPath,
         writer: 'select',
       });
     }
@@ -701,14 +808,30 @@ export function checkCczCaseListEnumFidelity(input: {
     // surfaced it (ace#1808). Per-column, the two shapes are named apart
     // (ace#2188): "nothing writes it" and "a calculate writes it and I could
     // not enumerate the calculate" want different follow-ups.
+    const calcProps = [...writerSets.entries()]
+      .filter(([, ws]) => ws.calcValues.size > 0)
+      .map(([p]) => p);
     return unable(
       `pairing failed on all ${columns.length} id-mapping case-list column(s): ` +
         `${unpairedWhy.join('; ')}. Considered ${lists.length} form choice list(s) ` +
         `(question ids: ${lists.map((l) => l.property).join(', ') || 'none'}) and ` +
-        `${calcByProperty.size} calculate-written case propert(ies) ` +
-        `(${[...calcByProperty.keys()].join(', ') || 'none'}). Nothing was compared, so ` +
+        `${calcProps.length} calculate-written case propert(ies) ` +
+        `(${calcProps.join(', ') || 'none'}). Nothing was compared, so ` +
         'this is NOT a pass — if something does write one of these properties, the ' +
         'pairing is the bug',
+    );
+  }
+
+  if (incomplete.length > 0 && findings.length === 0) {
+    // Other columns compared clean, but at least one could not be compared
+    // because a writer's value set is unreadable. A clean result on the rest
+    // must not read as a pass for that column (ace#2940).
+    return unable(
+      `compared ${columnsCompared} column(s) without drift, but ` +
+        `${incomplete.length} column(s) have an incomplete writer set: ` +
+        `${incomplete.join('; ')}. Comparing only the readable writers would report ` +
+        "the unreadable writer's values as never written, so those columns were not " +
+        'compared — this is NOT a pass',
     );
   }
 

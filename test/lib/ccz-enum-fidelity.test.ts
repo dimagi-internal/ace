@@ -700,6 +700,191 @@ describe('the writer is a hidden calculate, not a select (ace#2188)', () => {
           <bind nodeset="/data/case/update/x" calculate="/data/x"/>
         </model></h:head>
       </h:html>`;
-    expect(extractCalculateWrittenValues(xml, 'm/f.xml')).toEqual({ writers: [], opaque: [] });
+    const res = extractCalculateWrittenValues(xml, 'm/f.xml');
+    expect(res.writers).toEqual([]);
+    expect(res.opaque).toEqual([]);
+    // ...but it IS reported as a question writer, so the gate can tell a
+    // complete writer set from one with a free-text hole in it (ace#2940).
+    expect(res.questions).toEqual([{ formPath: 'm/f.xml', property: 'x', node: '/data/x' }]);
+  });
+});
+
+/**
+ * ace#2940 — Nova writes its case transactions under
+ * `/data/__nova_operations/<op>/case/(create|update)/<prop>`, not
+ * `/data/case/...`. The extractor only accepted the bare `/data/case/` shape, so
+ * every write in a current Nova build was invisible to it. Recorded verbatim
+ * from released Nova CCZ smallholder-seasonal/20261012-1549
+ * (`test/fixtures/layer1/.../modules-10/forms-0.xml`):
+ *
+ *   <bind nodeset="/data/__nova_operations/update_participant_plan/case/update/main_crop"
+ *         calculate="/data/plan/main_crop"/>
+ *
+ * Second half of the defect: when one writer's value set could not be read, the
+ * gate dropped that writer and still compared the rest — reporting "never
+ * written" for values the dropped writer stores. An incomplete writer set is
+ * `unable`, never a comparison. Likewise a select writer in one form and a
+ * calculate writer in another must be compared as ONE union.
+ *
+ * The forms below are SYNTHETIC, shaped on the repro build
+ * `832f492b9c164622bccf5231a930aee5` (smallholder-seasonal/20261014-0859) as the
+ * issue quotes it: Enrollment writes `'enrolled'` by calculate, Outcome round
+ * writes `graduated` / `extended` from `new_status`. The bind shape is the
+ * recorded one above; that CCZ itself was not re-downloaded.
+ */
+describe('Nova __nova_operations case writes and complete writer sets (ace#2940)', () => {
+  const OPS = '/data/__nova_operations';
+  const enumLocale = (detail: string, v: string) => `${detail}.case_status_2.enum.k${v}`;
+  const detailXml = (detail: string) => `
+  <detail id="${detail}">
+    <field>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(current_status, 'enrolled'), $kenrolled, ''), if(selected(current_status, 'extended'), $kextended, ''), if(selected(current_status, 'graduated'), $kgraduated, '')), '\\s+', ' ')">
+            <variable name="kenrolled"><locale id="${enumLocale(detail, 'enrolled')}"/></variable>
+            <variable name="kextended"><locale id="${enumLocale(detail, 'extended')}"/></variable>
+            <variable name="kgraduated"><locale id="${enumLocale(detail, 'graduated')}"/></variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>`;
+  const suiteXml = `<suite>${detailXml('m4_case_short')}${detailXml('m4_case_long')}</suite>`;
+  const appStrings = ['m4_case_short', 'm4_case_long']
+    .flatMap((d) => [
+      `${enumLocale(d, 'enrolled')}=Enrolled`,
+      `${enumLocale(d, 'extended')}=Extended`,
+      `${enumLocale(d, 'graduated')}=Graduated`,
+    ])
+    .join('\n');
+
+  const form = (model: string, body = '') => `<?xml version='1.0'?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <itext><translation lang="en" default="">
+      <text id="new_status-graduated-label"><value>Graduated</value></text>
+      <text id="new_status-extended-label"><value>Extended</value></text>
+    </translation></itext>
+    ${model}
+  </model></h:head>
+  <h:body>${body}</h:body>
+</h:html>`;
+
+  const ENROLL = 'modules-4/forms-0.xml';
+  const OUTCOME = 'modules-13/forms-0.xml';
+  const enrollXml = form(
+    `<bind nodeset="${OPS}/create_participant/case/update/current_status" calculate="'enrolled'"/>`,
+  );
+  const outcomeSelectXml = form(
+    `<bind nodeset="/data/new_status" type="xsd:string"/>
+    <bind nodeset="${OPS}/update_participant/case/update/current_status" calculate="/data/new_status"/>`,
+    `<select1 ref="/data/new_status">
+      <item><label ref="jr:itext('new_status-graduated-label')"/><value>graduated</value></item>
+      <item><label ref="jr:itext('new_status-extended-label')"/><value>extended</value></item>
+    </select1>`,
+  );
+  const outcomeCalcXml = form(
+    `<bind nodeset="/data/new_status" type="xsd:string" calculate="if(/data/met_target = 'yes', 'graduated', 'extended')"/>
+    <bind nodeset="${OPS}/update_participant/case/update/current_status" calculate="/data/new_status"/>`,
+  );
+  const run = (outcomeXml: string) =>
+    checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        { path: ENROLL, xml: enrollXml },
+        { path: OUTCOME, xml: outcomeXml },
+      ],
+    });
+
+  it('reads the case property off a __nova_operations bind', () => {
+    expect(extractCaseWriteMap(outcomeSelectXml)).toEqual({
+      '/data/new_status': ['current_status'],
+    });
+    expect(extractCalculateWrittenValues(enrollXml, ENROLL).writers).toEqual([
+      {
+        formPath: ENROLL,
+        property: 'current_status',
+        expression: "'enrolled'",
+        values: ['enrolled'],
+      },
+    ]);
+  });
+
+  it('the RECORDED Nova form is no longer invisible to the extractor', () => {
+    const recorded = fs.readFileSync(
+      path.join(
+        FIXTURES,
+        '..',
+        'layer1',
+        'smallholder-seasonal-20261012-1549',
+        'modules-10',
+        'forms-0.xml',
+      ),
+      'utf8',
+    );
+    expect(extractCaseWriteMap(recorded)).toEqual({ '/data/plan/main_crop': ['main_crop'] });
+  });
+
+  it('PASSES when the writers are a calculate in one form and a select in another', () => {
+    // The repro: `enrolled` from Enrollment's calculate, `graduated`/`extended`
+    // from Outcome round's select. Comparing either writer alone reports the
+    // other's values as never written.
+    const res = run(outcomeSelectXml);
+    assertChecked(res);
+    expect(res.findings).toEqual([]);
+    expect(res.ok).toBe(true);
+    expect(res.columnsCompared).toBe(2);
+  });
+
+  it('PASSES when both writers are calculates', () => {
+    const res = run(outcomeCalcXml);
+    assertChecked(res);
+    expect(res.findings).toEqual([]);
+    expect(res.calculateWritten.current_status).toEqual(['enrolled', 'extended', 'graduated']);
+  });
+
+  it('NEGATIVE CONTROL: a value no writer stores still FAILS', () => {
+    const res = run(outcomeSelectXml.replace('<value>extended</value>', '<value>renewed</value>'));
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => [f.value, f.kind])).toEqual([
+      ['extended', 'missing-from-form'],
+    ]);
+  });
+
+  it('NEGATIVE CONTROL: a select label that disagrees with the tile still FAILS', () => {
+    const res = run(outcomeSelectXml.replace('<value>Graduated</value>', '<value>Completed</value>'));
+    assertChecked(res);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => [f.value, f.kind])).toEqual([
+      ['graduated', 'label-mismatch'],
+    ]);
+  });
+
+  it('an UNREADABLE writer makes the set incomplete: UNABLE, never "never written"', () => {
+    // Outcome writes current_status from an expression that cannot be
+    // enumerated. Dropping it and comparing Enrollment alone would report
+    // `extended` and `graduated` as never written — the false finding.
+    const opaqueOutcome = outcomeCalcXml.replace(
+      /calculate="if\(\/data\/met_target[^"]*"/,
+      'calculate="concat(/data/a, /data/b)"',
+    );
+    expect(opaqueOutcome).not.toBe(outcomeCalcXml);
+    const res = run(opaqueOutcome);
+    assertUnable(res);
+    expect(res.reason).toContain('current_status');
+    expect(res.reason).toContain('concat(/data/a, /data/b)');
+    expect(res.reason).toContain('NOT a pass');
+  });
+
+  it('a free-text question writer also makes the set incomplete', () => {
+    const freeText = form(
+      `<bind nodeset="/data/typed_status" type="xsd:string"/>
+      <bind nodeset="${OPS}/update_participant/case/update/current_status" calculate="/data/typed_status"/>`,
+      `<input ref="/data/typed_status"/>`,
+    );
+    const res = run(freeText);
+    assertUnable(res);
+    expect(res.reason).toContain('/data/typed_status');
   });
 });
