@@ -183,6 +183,18 @@ describe('android-emulator image: supply chain and bake host', () => {
     expect(vars).not.toMatch(/c5n\.metal"/)
   })
 
+  // A dual-WAN network egresses from either link per connection; Packer's own
+  // one-IP lookup then authorizes the wrong one half the time and the bake dies
+  // with "Timeout waiting for SSH" (three in a row on 2026-10-15).
+  it('opens bake SSH to every egress IP bake.sh detects, never 0.0.0.0/0', () => {
+    const bake = read('bake.sh')
+    expect(bake).toMatch(/packer validate [^\n]*-var "ssh_source_cidrs=\$SSH_CIDRS_JSON"/)
+    expect(bake).toMatch(/packer build [^\n]*-var "ssh_source_cidrs=\$SSH_CIDRS_JSON"/)
+    expect(pkr).toMatch(/temporary_security_group_source_cidrs\s+= length\(var\.ssh_source_cidrs\) > 0 \? var\.ssh_source_cidrs : null/)
+    expect(pkr).toMatch(/temporary_security_group_source_public_ip = length\(var\.ssh_source_cidrs\) == 0/)
+    expect(vars).toMatch(/c != "0\.0\.0\.0\/0"/)
+  })
+
   it('pins the source AMI by exact name, never a wildcard', () => {
     const name = /variable "source_ami_name"[\s\S]*?default\s+=\s+"([^"]+)"/.exec(vars)![1]
     expect(name).toMatch(/^ubuntu\/images\/hvm-ssd-gp3\/ubuntu-noble-24\.04-amd64-server-\d{8}(\.\d+)?$/)

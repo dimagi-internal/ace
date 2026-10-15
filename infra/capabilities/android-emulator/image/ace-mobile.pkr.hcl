@@ -66,8 +66,11 @@ source "amazon-ebs" "ace_mobile" {
   enable_nested_virtualization = true
 
   # Packer's temporary security group opens SSH for the provisioners. Scope it
-  # to the baker's own public IP instead of the default 0.0.0.0/0.
-  temporary_security_group_source_public_ip = true
+  # to the baker's own public IP(s) instead of the default 0.0.0.0/0: the list
+  # bake.sh detects (every egress IP — see its comment), else Packer's single
+  # lookup.
+  temporary_security_group_source_public_ip = length(var.ssh_source_cidrs) == 0
+  temporary_security_group_source_cidrs     = length(var.ssh_source_cidrs) > 0 ? var.ssh_source_cidrs : null
 
   # Generous waiter: an EBS snapshot of a 30 GB root can take longer than the
   # default 10 minutes, and timing out AFTER provisioning discards the work.
