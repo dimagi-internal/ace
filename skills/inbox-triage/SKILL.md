@@ -454,6 +454,8 @@ counts by class, and the open-thread age list. Feed this into the turn's combine
   get outcomes and next steps.
 - A newcomer, or a question about how ACE works, who reviews it or what it can see, is answered
   via `skills/explain-ace` (Canopy's explainer links + the live system, never a stored write-up).
+- A member asking ACE to add an org to the LLO Directory (typically a forwarded connect.dimagi.com
+  Contact Us lead) is handled by `skills/llo-directory-add`. Don't hand-run the sheet edit.
 
 ## Related skills
 - `turn` — the orchestrator; this is its Step 3
