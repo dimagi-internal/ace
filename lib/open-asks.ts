@@ -249,6 +249,13 @@ export function checkOpenAsksCarried(args: {
   return out;
 }
 
+/**
+ * The fixed lead-in of every carried-check residual. `decisions_enrich` strips
+ * it before deriving the synthesized row id — otherwise every carried residual
+ * slugs to the same id and only the first is raised (ace#2966).
+ */
+export const CARRIED_RESIDUAL_PREFIX = 'An open question from the previous run was dropped: ';
+
 export interface MissingAskResidual {
   what: string;
   where_to_apply: string;
@@ -265,7 +272,7 @@ export function missingAskResiduals(check: CarriedCheck): MissingAskResidual[] {
     const q = (ask.plain_question ?? ask.plain ?? ask.question).trim();
     const owner = ask.owner ?? 'the programme owner';
     return {
-      what: `An open question from the previous run was dropped: ${q}`,
+      what: `${CARRIED_RESIDUAL_PREFIX}${q}`,
       where_to_apply: `${ask.skill} should raise it again as a decision row, or record why it no longer applies; design decision for ${owner}.`,
     };
   });
