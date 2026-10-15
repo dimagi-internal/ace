@@ -77,3 +77,18 @@ variable "commcare_versions" {
   type        = list(string)
   default     = ["2.64.0", "2.62.0"]
 }
+
+variable "ssh_source_cidrs" {
+  type        = list(string)
+  default     = []
+  description = <<-EOT
+    IPv4 CIDRs the temporary security group opens SSH to. bake.sh passes
+    every public IP this machine egresses from (a dual-WAN network leaves from
+    either link per connection, so one IP is not enough). Empty: Packer's own
+    single public-IP lookup, as before. Never 0.0.0.0/0.
+  EOT
+  validation {
+    condition     = alltrue([for c in var.ssh_source_cidrs : can(cidrhost(c, 0)) && c != "0.0.0.0/0"])
+    error_message = "Each ssh_source_cidrs entry must be an IPv4 CIDR other than 0.0.0.0/0."
+  }
+}

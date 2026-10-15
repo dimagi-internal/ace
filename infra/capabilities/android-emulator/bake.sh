@@ -51,6 +51,19 @@ aws_auth
 PREVIOUS="$(current_ami)"
 [[ -n "$PREVIOUS" ]] && note "Current $AMI_PARAM = $PREVIOUS (roll back with: ./bake.sh --skip-build $PREVIOUS)"
 
+# Every public IPv4 this machine egresses from, as a JSON list of /32s
+# (see the call site). Empty list when no service answers.
+egress_cidrs_json() {
+  local ips=() ip svc round
+  for round in 1 2; do
+    for svc in https://checkip.amazonaws.com https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+      ip="$(curl -fsS -4 -m 5 "$svc" 2>/dev/null | tr -d '[:space:]')" || continue
+      [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && ips+=("$ip")
+    done
+  done
+  printf '%s\n' "${ips[@]}" | sort -u | jq -Rnc '[inputs | select(length > 0) | . + "/32"]'
+}
+
 if [[ -n "$SKIP_BUILD_AMI" ]]; then
   [[ "$SKIP_BUILD_AMI" =~ ^ami-[0-9a-f]{8,17}$ ]] || die "not an AMI id: $SKIP_BUILD_AMI"
   AMI_ID="$SKIP_BUILD_AMI"
@@ -61,13 +74,25 @@ else
     warn "image/ has uncommitted changes; the AMI's ace-sha tag ($SHA) will not describe it exactly"
     SHA="$SHA-dirty"
   fi
+  # Packer reaches the bake host over SSH from this machine, through a
+  # temporary security group scoped to this machine's public IP. Packer's own
+  # `temporary_security_group_source_public_ip` asks ONE service for that IP —
+  # but a network with two upstream links (a load-balancing dual-WAN router,
+  # seen 2026-10-15: checkip.amazonaws.com said 97.122.x while api.ipify.org
+  # said 73.181.x) leaves from either per connection, so whenever Packer's SSH
+  # left by the other link the group dropped it and the bake died with
+  # "Timeout waiting for SSH" (three bakes in a row). Ask several services,
+  # twice, and authorize every distinct IPv4 seen. Never widens to 0.0.0.0/0:
+  # with nothing detected the build falls back to Packer's single-IP lookup.
+  SSH_CIDRS_JSON="$(egress_cidrs_json)"
+  note "SSH source CIDRs for the bake host: ${SSH_CIDRS_JSON}"
   cd "$CAP_DIR/image"
   rm -f packer-manifest.json
   note "packer init"
   packer init .
-  packer validate -var "ace_git_sha=$SHA" -var "region=$REGION" .
+  packer validate -var "ace_git_sha=$SHA" -var "region=$REGION" -var "ssh_source_cidrs=$SSH_CIDRS_JSON" .
   note "packer build"
-  packer build -color=false -var "ace_git_sha=$SHA" -var "region=$REGION" .
+  packer build -color=false -var "ace_git_sha=$SHA" -var "region=$REGION" -var "ssh_source_cidrs=$SSH_CIDRS_JSON" .
   AMI_ID="$(jq -er '.last_run_uuid as $u | .builds[] | select(.packer_run_uuid == $u) | .artifact_id' packer-manifest.json \
     | tr ',' '\n' | awk -F: -v r="$REGION" '$1 == r {print $2; exit}')"
   [[ "$AMI_ID" =~ ^ami-[0-9a-f]{8,17}$ ]] || die "could not read the AMI id from image/packer-manifest.json"
