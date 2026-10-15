@@ -252,6 +252,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/nova-uuid-addressing.test.ts': { issues: ['ace#1132', 'ace#1151'] },
   'test/skills/ocs-deep-suite-contract.test.ts': { issues: ['ace#1956'] },
   'test/skills/ocs-kb-answer-key-redaction.test.ts': { issues: ['ace#2869', 'ace#1018'], observed: 'smallholder-seasonal/20261012-1549' },
+  'test/skills/ocs-prompt-payment-and-learn-structure.test.ts': { issues: ['ace#2968'], observed: 'noora-health/20261015-1129' },
   'test/skills/ocs-knowledge-refresh.test.ts': { issues: ['ace#2107'], note: 'cited inline at the assertion it justifies' },
   'test/skills/ocs-knowledge-sources-producer.test.ts': { issues: ['ace-web#740', 'ace#1715', 'ace#1755'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/ocs-public-chat-gate-docs.test.ts': { issues: ['ace#1812', 'ace#4275', 'ace#4230'] },
