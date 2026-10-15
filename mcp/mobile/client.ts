@@ -1116,7 +1116,7 @@ export class MobileClient {
    * by running the deterministic bootstrap path on every dispatch:
    * install the CommCare APK (the cold-booted AVD has none — see
    * `AvdBackend.ensureAvdRunning`), then a fresh `registerTestUser` walk
-   * (demo bypass — ~15-25s). Throws `DeviceUserStateError` on bootstrap
+   * (demo bypass — ~1.5-2 min, measured 2026-10-15). Throws `DeviceUserStateError` on bootstrap
    * failure OR post-bootstrap verification failure.
    *
    * **Design pattern: preconditions are restored, not adapted.** Every
@@ -1158,7 +1158,9 @@ export class MobileClient {
    * - Host-side APK cache at `<tmp>/ace-mobile-apk-cache/` (a host
    *   filesystem artifact, not on-device state — survives the wipe).
    *
-   * **What's torn down + rebuilt per dispatch (~60-90s):**
+   * **What's torn down + rebuilt per dispatch (~2.5 min on an M5 Mac,
+   * measured 2026-10-15: ~30 s cold boot, then registration — see the
+   * registration-cost note in connect-register-to-otp.yaml):**
    * - AVD emulator process (cold-booted; `-wipe-data` scrubs userdata.img).
    * - CommCare APK install (re-installed from host cache).
    * - Maestro driver APK install (re-installed by `assertMaestroDriverHealthy`).
@@ -1555,8 +1557,10 @@ export class MobileClient {
     await this.assertDeviceNetworkValidated(avd);
 
     // Step 3: register the test user. Demo users (+7426 prefix) skip
-    // OTP server-side — total walk-through cost is ~15-25s. See the
-    // demo-user-no-OTP learning for the breakdown.
+    // OTP server-side; the walk is still ~85 Maestro steps, ~110 s on an M5
+    // Mac (measured 2026-10-15; it was ~160 s before the recipes probed
+    // optional screens instead of paying Maestro's 7 s miss cost). See the
+    // demo-user-no-OTP learning for the OTP side.
     logInfo(`local_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
     const reg = await this.registerTestUser({
       avdName: avd.name,
@@ -2895,6 +2899,9 @@ export class MobileClient {
       // already passed its launch check above, and doesn't re-check GMS
       // mid-session.
       await this.avd.setGmsEnabled(args.avdName, false);
+      // Pre-set the device PIN so part B skips the Settings lock chooser.
+      // See `AvdBackend.presetScreenLockPin`.
+      await this.avd.presetScreenLockPin(args.avdName, args.pin);
 
       logInfo('register_test_user: part B (post-Continue → registered)');
       const partB = await this.maestro.runRecipe(fromContinue, {

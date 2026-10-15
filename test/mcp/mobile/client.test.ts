@@ -79,6 +79,7 @@ function fakeMaestroAndAvd(opts: {
     probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
     findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+    presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
@@ -128,6 +129,14 @@ describe('MobileClient.registerTestUser', () => {
     expect(r.phone).toBe('+74260000001');
     expect(avd.setGmsEnabled).toHaveBeenCalledWith('AVD', true);
     expect(avd.setGmsEnabled).toHaveBeenCalledWith('AVD', false);
+    // The device PIN is pre-set AFTER GMS goes off and BEFORE part B runs,
+    // so part B's Configure-PIN skips the Settings lock chooser.
+    expect(avd.presetScreenLockPin).toHaveBeenCalledWith('AVD', '111111');
+    const presetAt = avd.presetScreenLockPin.mock.invocationCallOrder[0];
+    const gmsOffAt = avd.setGmsEnabled.mock.invocationCallOrder[1];
+    const partBAt = maestro.runRecipe.mock.invocationCallOrder[1];
+    expect(gmsOffAt).toBeLessThan(presetAt);
+    expect(presetAt).toBeLessThan(partBAt);
   });
 
   // Regression guard for jjackson/ace#682: the heal-funnel / auto-bootstrap
@@ -154,6 +163,7 @@ describe('MobileClient.registerTestUser', () => {
         reachable: false, reason: 'adb reports the device offline',
       }),
       setGmsEnabled: vi.fn(),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
       grantRuntimePermissions: vi.fn(),
     } as any;
     const maestro = { runRecipe: vi.fn() } as any;
@@ -177,6 +187,7 @@ describe('MobileClient.registerTestUser', () => {
         reachable: false, reason: 'adb reports the device offline',
       }),
       setGmsEnabled: vi.fn(),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
       grantRuntimePermissions: vi.fn(),
     } as any;
     const client = new MobileClient({ avd, maestro: { runRecipe: vi.fn() } as any });
@@ -199,6 +210,7 @@ describe('MobileClient.registerTestUser', () => {
       probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
       grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
     } as any;
     // Capture the recipe BODY at call time — registerTestUser cleans up the
@@ -1405,6 +1417,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       readCrashLogcat: vi.fn().mockResolvedValue(''),
       saveSnapshot: vi.fn().mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
       grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
@@ -1730,6 +1743,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
         avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK',
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
       grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
@@ -2821,6 +2835,7 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
         output: 'OK',
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      presetScreenLockPin: vi.fn().mockResolvedValue(undefined),
       disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
       applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
       grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),

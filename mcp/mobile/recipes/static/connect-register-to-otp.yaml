@@ -26,7 +26,22 @@
 # Google Play Services phone-hint bottom sheet pops on focus of the
 # AutoCompleteTextView fields (countryCode, connect_primary_phone_input).
 # Dismiss by tapping com.google.android.gms:id/cancel — the sheet IS
-# visible to Maestro's view tree once shown, so runFlow.when works.
+# visible to Maestro's view tree once shown.
+#
+# OPTIONAL SCREENS ARE PROBED, NOT `runFlow: when: visible:`-GUARDED.
+# A `when: visible:` guard that does NOT match costs Maestro's fixed
+# optional-lookup timeout — 7000 ms minus the time since the last tap
+# (`Orchestra.optionalLookupTimeoutMs` / `adjustedToLatestInteraction`,
+# read from maestro-orchestra 2.10.0; no CLI flag or recipe key changes
+# it). Registration had ~10 such misses per walk, ~65-70 s of a ~3 min
+# sign-up on both the Mac and the leased emulator (measured 2026-10-15).
+# A probe is an `optional: true` runFlow around an `extendedWaitUntil`
+# with an EXPLICIT short timeout that sets a flag, then a
+# `when: true: ${output.<flag>}` branch, which evaluates in ~4 ms. A
+# probe follows either a tap (Maestro has already waited for the UI to
+# settle; a sheet that is coming was visible 70 ms after the tap
+# completed) or a union `extendedWaitUntil` on every screen that can come
+# next, so the short window never races a server round-trip.
 appId: org.commcare.dalvik
 ---
 - launchApp:
@@ -52,10 +67,23 @@ appId: org.commcare.dalvik
 # Phase 6 (2026-05-27) hit this; two consecutive agents misread the
 # resulting recipe timeout as "registration didn't advance past phone
 # entry." See `grantRuntimePermissions` docstring.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/str_setup_message|com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+    timeout: 30000
+    optional: true
+- evalScript: ${output.permDialog = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+          timeout: 1500
+      - evalScript: ${output.permDialog = true}
 - runFlow:
     when:
-      visible:
-        id: "com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+      true: ${output.permDialog}
     commands:
       - tapOn:
           id: "com.android.permissioncontroller:id/permission_allow_foreground_only_button"
@@ -96,10 +124,18 @@ appId: org.commcare.dalvik
     point: "73,209"
 - waitForAnimationToEnd:
     timeout: 3000
+- evalScript: ${output.drawerOpen = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:nav-drawer-sign-in}"
+          timeout: 3000
+      - evalScript: ${output.drawerOpen = true}
 - runFlow:
     when:
-      notVisible:
-        id: "${SELECTOR:nav-drawer-sign-in}"
+      true: ${!output.drawerOpen}
     commands:
       - tapOn:
           point: "73,209"
@@ -120,10 +156,18 @@ appId: org.commcare.dalvik
 # Country code: tap → dismiss any phone-hint sheet → tap again → type
 - tapOn:
     id: "${SELECTOR:personalid-country-code}"
+- evalScript: ${output.phoneHint = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "com.google.android.gms:id/cancel"
+          timeout: 2000
+      - evalScript: ${output.phoneHint = true}
 - runFlow:
     when:
-      visible:
-        id: "com.google.android.gms:id/cancel"
+      true: ${output.phoneHint}
     commands:
       - tapOn:
           id: "com.google.android.gms:id/cancel"
@@ -135,10 +179,18 @@ appId: org.commcare.dalvik
 # Phone: same dance — sheet WILL appear on first focus
 - tapOn:
     id: "${SELECTOR:personalid-phone-input}"
+- evalScript: ${output.phoneHint = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "com.google.android.gms:id/cancel"
+          timeout: 2000
+      - evalScript: ${output.phoneHint = true}
 - runFlow:
     when:
-      visible:
-        id: "com.google.android.gms:id/cancel"
+      true: ${output.phoneHint}
     commands:
       - tapOn:
           id: "com.google.android.gms:id/cancel"
@@ -152,10 +204,18 @@ appId: org.commcare.dalvik
     id: "${SELECTOR:personalid-consent-check}"
 
 # If the phone is already registered, surface a sentinel for the composite caller.
+- evalScript: ${output.alreadyRegistered = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: "already registered"
+          timeout: 2000
+      - evalScript: ${output.alreadyRegistered = true}
 - runFlow:
     when:
-      visible:
-        text: "already registered"
+      true: ${output.alreadyRegistered}
     commands:
       - evalScript: ${output.stdout = 'PHONE_ALREADY_REGISTERED'}
       - stopApp

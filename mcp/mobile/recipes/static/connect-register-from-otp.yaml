@@ -44,10 +44,23 @@ appId: org.commcare.dalvik
 # Demo-user snackbar ("I see you're a demo user, so we'll skip the OTP").
 # Auto-fades after ~5s, so this is best-effort: dismiss if still up,
 # otherwise the App Lock screen wait below will catch us up.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/snackbar_action|org.commcare.dalvik:id/connect_verify_pin_button|com.android.settings:id/lock_pin|com.android.systemui:id/lockPassword|org.commcare.dalvik:id/nameTextValue|org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 30000
+    optional: true
+- evalScript: ${output.snackbar = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:demo-snackbar-action}"
+          timeout: 1500
+      - evalScript: ${output.snackbar = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:demo-snackbar-action}"
+      true: ${output.snackbar}
     commands:
       - tapOn:
           id: "${SELECTOR:demo-snackbar-action}"
@@ -63,10 +76,18 @@ appId: org.commcare.dalvik
 # completing fine on the device. The terminal-state assertion at the end
 # of this recipe + `MobileClient.registerTestUser`'s post-failure
 # device-state probe both close the same gap from different angles.
+- evalScript: ${output.pinVerify = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-pin-verify}"
+          timeout: 2000
+      - evalScript: ${output.pinVerify = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-pin-verify}"
+      true: ${output.pinVerify}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-pin-verify}"
@@ -81,10 +102,23 @@ appId: org.commcare.dalvik
 #      PIN globally) → Configure-PIN immediately surfaces the system unlock
 #      prompt without going through the chooser. Skip A, go straight to the
 #      unlock step further down.
+- extendedWaitUntil:
+    visible:
+      id: "com.android.settings:id/lock_pin|com.android.systemui:id/lockPassword|org.commcare.dalvik:id/nameTextValue|org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 15000
+    optional: true
+- evalScript: ${output.chooseLock = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.settings:id/lock_pin"
+          timeout: 1500
+      - evalScript: ${output.chooseLock = true}
 - runFlow:
     when:
-      visible:
-        id: "com.android.settings:id/lock_pin"
+      true: ${output.chooseLock}
     commands:
       - tapOn:
           id: "com.android.settings:id/lock_pin"
@@ -113,10 +147,23 @@ appId: org.commcare.dalvik
 # Enter the PIN we just set. Conditional — on re-registrations where the
 # system lock is already set up, this prompt may not appear at all (Connect
 # auto-advances past it).
+- extendedWaitUntil:
+    visible:
+      id: "com.android.systemui:id/lockPassword|org.commcare.dalvik:id/snackbar_action|org.commcare.dalvik:id/nameTextValue|org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 15000
+    optional: true
+- evalScript: ${output.unlockPrompt = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.systemui:id/lockPassword"
+          timeout: 1500
+      - evalScript: ${output.unlockPrompt = true}
 - runFlow:
     when:
-      visible:
-        id: "com.android.systemui:id/lockPassword"
+      true: ${output.unlockPrompt}
     commands:
       - tapOn:
           id: "com.android.systemui:id/lockPassword"
@@ -126,10 +173,23 @@ appId: org.commcare.dalvik
 # Second snackbar after successful unlock (same demo-user message). Some
 # CommCare builds re-show it post-unlock; runFlow.when keeps the recipe
 # working whether it appears or not.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/snackbar_action|org.commcare.dalvik:id/nameTextValue|org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.snackbar = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:demo-snackbar-action}"
+          timeout: 1500
+      - evalScript: ${output.snackbar = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:demo-snackbar-action}"
+      true: ${output.snackbar}
     commands:
       - tapOn:
           id: "${SELECTOR:demo-snackbar-action}"
@@ -178,10 +238,23 @@ appId: org.commcare.dalvik
 # see docs/learnings/2026-05-27-demo-user-rotation.md.
 
 # Optional Name screen (skipped on snapshot-reload + already-registered).
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nameTextValue|org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.nameScreen = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-name-input}"
+          timeout: 1500
+      - evalScript: ${output.nameScreen = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-name-input}"
+      true: ${output.nameScreen}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-name-input}"
@@ -200,10 +273,23 @@ appId: org.commcare.dalvik
 # Fresh signup additionally has a Confirm Code widget (`confirm_code_view`)
 # that must match before CONTINUE enables; the recovery/welcome-back path
 # has only `backup_code_view`. Fill Code always, Confirm conditionally.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/backup_code_view|org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.backupCodeView = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-backup-code-view}"
+          timeout: 1500
+      - evalScript: ${output.backupCodeView = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-backup-code-view}"
+      true: ${output.backupCodeView}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-backup-code-view}"
@@ -239,10 +325,18 @@ appId: org.commcare.dalvik
       # field, no Confirm), so the photo-wait MUST be gated to fresh only —
       # otherwise recovery (which goes to "Account Recovered", never photo)
       # strands on it. Live-debugged 2026-05-28.
+      - evalScript: ${output.confirmCode = false}
+      - runFlow:
+          optional: true
+          commands:
+            - extendedWaitUntil:
+                visible:
+                  id: "${SELECTOR:personalid-confirm-code-view}"
+                timeout: 1500
+            - evalScript: ${output.confirmCode = true}
       - runFlow:
           when:
-            visible:
-              id: "${SELECTOR:personalid-confirm-code-view}"
+            true: ${output.confirmCode}
           commands:
             - tapOn:
                 point: "254,1410"
@@ -262,10 +356,23 @@ appId: org.commcare.dalvik
             # after which the photo block's own `when: visible` gate fires.
             - waitForAnimationToEnd:
                 timeout: 5000
+            - extendedWaitUntil:
+                visible:
+                  id: "org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/take_photo_button"
+                timeout: 25000
+                optional: true
+            - evalScript: ${output.freshEmail = false}
+            - runFlow:
+                optional: true
+                commands:
+                  - extendedWaitUntil:
+                      visible:
+                        id: "org.commcare.dalvik:id/personalid_email_skip_button"
+                      timeout: 1500
+                  - evalScript: ${output.freshEmail = true}
             - runFlow:
                 when:
-                  notVisible:
-                    id: "org.commcare.dalvik:id/personalid_email_skip_button"
+                  true: ${!output.freshEmail}
                 commands:
                   - extendedWaitUntil:
                       visible:
@@ -276,18 +383,30 @@ appId: org.commcare.dalvik
       # below), not photo.
       - runFlow:
           when:
-            notVisible:
-              id: "${SELECTOR:personalid-confirm-code-view}"
+            true: ${!output.confirmCode}
           commands:
             - tapOn:
                 id: "${SELECTOR:personalid-backup-code-button}"
 
 # 2.62.0 path: single-field initial entry. erase a generous 12 chars so a
 # pre-filled value doesn't get concatenated.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.backupCodeInput = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-backup-code-input}"
+          timeout: 1500
+      - evalScript: ${output.backupCodeInput = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-backup-code-input}"
+      true: ${output.backupCodeInput}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-backup-code-input}"
@@ -302,10 +421,23 @@ appId: org.commcare.dalvik
 # initial + confirm in the combined 6-cell branch above.)
 - waitForAnimationToEnd:
     timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_backup_code_input|org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.backupCodeInput = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-backup-code-input}"
+          timeout: 1500
+      - evalScript: ${output.backupCodeInput = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-backup-code-input}"
+      true: ${output.backupCodeInput}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-backup-code-input}"
@@ -368,10 +500,23 @@ appId: org.commcare.dalvik
 # 33-after-skip-confirm.xml ("Account Recovered").
 - waitForAnimationToEnd:
     timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/personalid_email_skip_button|org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.emailScreen = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/personalid_email_skip_button"
+          timeout: 1500
+      - evalScript: ${output.emailScreen = true}
 - runFlow:
     when:
-      visible:
-        id: "org.commcare.dalvik:id/personalid_email_skip_button"
+      true: ${output.emailScreen}
     commands:
       - tapOn:
           id: "org.commcare.dalvik:id/personalid_email_skip_button"
@@ -387,10 +532,23 @@ appId: org.commcare.dalvik
 # "Account Recovered" success dialog (every recovery path lands here).
 - waitForAnimationToEnd:
     timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_message_button|org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.accountRecovered = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-message-button}"
+          timeout: 1500
+      - evalScript: ${output.accountRecovered = true}
 - runFlow:
     when:
-      visible:
-        id: "${SELECTOR:personalid-message-button}"
+      true: ${output.accountRecovered}
     commands:
       - tapOn:
           id: "${SELECTOR:personalid-message-button}"
@@ -410,10 +568,23 @@ appId: org.commcare.dalvik
 # enabled before part A so CommCare's launch check passes, disabled
 # between parts so face-capture in part B picks ManualMode. See the
 # Face-capture gotcha in playbook/integrations/mobile-integration.md.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/take_photo_button|org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.photoScreen = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/take_photo_button"
+          timeout: 1500
+      - evalScript: ${output.photoScreen = true}
 - runFlow:
     when:
-      visible:
-        id: "org.commcare.dalvik:id/take_photo_button"
+      true: ${output.photoScreen}
     commands:
       - tapOn:
           id: "org.commcare.dalvik:id/take_photo_button"
@@ -469,19 +640,45 @@ appId: org.commcare.dalvik
 # PersonalID" PIN prompt if it appears. Both conditional (some flows skip
 # straight through). Live-verified 2026-05-28: this sequence reaches
 # ConnectActivity / connect_fragment_jobs_list / rvJobList.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/str_setup_message|org.commcare.dalvik:id/rvJobList"
+    timeout: 20000
+    optional: true
+- evalScript: ${output.setupScreen = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: "GO TO CONNECT MENU"
+          timeout: 1500
+      - evalScript: ${output.setupScreen = true}
 - runFlow:
     when:
-      visible:
-        text: "GO TO CONNECT MENU"
+      true: ${output.setupScreen}
     commands:
       - tapOn:
           text: "GO TO CONNECT MENU"
       - waitForAnimationToEnd:
           timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "com.android.systemui:id/lockPassword|org.commcare.dalvik:id/rvJobList"
+    timeout: 15000
+    optional: true
+- evalScript: ${output.unlockPersonalId = false}
+- runFlow:
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: "Unlock PersonalID"
+          timeout: 1500
+      - evalScript: ${output.unlockPersonalId = true}
 - runFlow:
     when:
-      visible:
-        text: "Unlock PersonalID"
+      true: ${output.unlockPersonalId}
     commands:
       - inputText: ${PIN}
       - pressKey: Enter

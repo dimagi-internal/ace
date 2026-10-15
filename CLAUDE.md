@@ -239,7 +239,7 @@ The pattern:
 3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated. That's the only path a classifier is the right tool.
 4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
 
-Canonical implementation: the mobile heal funnel (`mobile_ensure_avd_running`) — **always full cold-boot per dispatch**, never warm-state reuse, ~60-90s steady-state. Full step-by-step (cold-boot sequence, the failure classes it eliminates, the verify-only classifier) + debug-arc context in `playbook/integrations/mobile-integration.md` and `docs/learnings/2026-05-14-phase6-validation-arc.md` (+ `2026-05-14-demo-user-no-otp.md` for the `+7426` demo-user OTP-skip).
+Canonical implementation: the mobile heal funnel (`mobile_ensure_avd_running`) — **always full cold-boot per dispatch**, never warm-state reuse, ~2.5 min steady-state on a Mac (test-user registration is most of it; measured 2026-10-15). Full step-by-step (cold-boot sequence, the failure classes it eliminates, the verify-only classifier) + debug-arc context in `playbook/integrations/mobile-integration.md` and `docs/learnings/2026-05-14-phase6-validation-arc.md` (+ `2026-05-14-demo-user-no-otp.md` for the `+7426` demo-user OTP-skip).
 
 The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run.
 
