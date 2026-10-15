@@ -16,6 +16,7 @@ import {
   CrossOrgCreateUnsupportedError,
   VerificationPagePmOnlyError,
   VerificationRuleDeliverUnitChangedError,
+  VerificationDurationNotPersistedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
@@ -29,6 +30,8 @@ import {
   extractFormFieldValueLists,
   parseFormJsonRules,
   type PersistedFormFieldRule,
+  parseDeliverUnitChecks,
+  type PersistedDeliverUnitCheck,
   isCheckboxChecked,
   parseOpportunityDashboard,
   classifyDashboardRead,
@@ -402,6 +405,31 @@ export function findUnsupportedVerificationFlags(
   }
   if (flags.form_field_rules?.length && !has(/name=["']form_json-/)) {
     out.push({ flag: 'form_field_rules', expected_input: 'form_json-<i>-*' });
+  }
+  return out;
+}
+
+/**
+ * Requested `deliver_unit_checks[].duration_minutes` that do NOT read back on
+ * their deliver unit (dimagi-internal/ace#2945). `persisted_minutes: null`
+ * means no row for that unit was on the page at all.
+ */
+export function durationMismatches(
+  requested: Array<{ deliver_unit_id: number; duration_minutes?: number }>,
+  persisted: PersistedDeliverUnitCheck[],
+): Array<{ deliver_unit_id: number; requested_minutes: number; persisted_minutes: number | null }> {
+  const out: Array<{ deliver_unit_id: number; requested_minutes: number; persisted_minutes: number | null }> = [];
+  for (const c of requested) {
+    if (c.duration_minutes == null) continue;
+    const row = persisted.find((p) => p.deliver_unit_id === Number(c.deliver_unit_id));
+    const got = row ? row.duration_minutes : null;
+    if (got !== Number(c.duration_minutes)) {
+      out.push({
+        deliver_unit_id: Number(c.deliver_unit_id),
+        requested_minutes: Number(c.duration_minutes),
+        persisted_minutes: got,
+      });
+    }
   }
   return out;
 }
@@ -1322,6 +1350,7 @@ export class PlaywrightBackend implements ConnectClient {
       // after the POST is a direct measure of what was actually persisted.
       let form_field_rules_saved: number | undefined;
       let persistedAfter: PersistedFormFieldRule[] | undefined;
+      let deliverUnitChecksAfter: PersistedDeliverUnitCheck[] | undefined;
       try {
         const afterRes = await this.request.get(path);
         if (afterRes.status() === 200) {
@@ -1330,6 +1359,7 @@ export class PlaywrightBackend implements ConnectClient {
           const initial = Number(after['form_json-INITIAL_FORMS']);
           if (Number.isFinite(initial)) form_field_rules_saved = initial;
           persistedAfter = parseFormJsonRules(afterHtml);
+          deliverUnitChecksAfter = parseDeliverUnitChecks(afterHtml);
         }
       } catch {
         // A read-back that cannot RUN is diagnostic only — never fail a
@@ -1341,7 +1371,18 @@ export class PlaywrightBackend implements ConnectClient {
         const moved = deliverUnitMoves(persistedBefore, persistedAfter);
         if (moved.length) throw new VerificationRuleDeliverUnitChangedError(path, 'post_write', moved);
       }
-      return { ok: true, form_field_rules_saved, form_field_rules: persistedAfter };
+      // Same for a requested duration floor (ace#2945): a read-back that ran
+      // and does not show it on its deliver unit is a failed write, not ok.
+      if (deliverUnitChecksAfter) {
+        const mismatches = durationMismatches(flags.deliver_unit_checks ?? [], deliverUnitChecksAfter);
+        if (mismatches.length) throw new VerificationDurationNotPersistedError(path, mismatches);
+      }
+      return {
+        ok: true,
+        form_field_rules_saved,
+        form_field_rules: persistedAfter,
+        deliver_unit_checks: deliverUnitChecksAfter,
+      };
     }
     throw await httpErrorFor(postRes, path, 'POST');
   };

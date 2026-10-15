@@ -165,8 +165,10 @@ describe('form scrape respects input semantics (ace#2863)', () => {
 describe('setVerificationFlags second call leaves existing rules on their units (ace#2863)', () => {
   it('a duration-only second call replays every rule on its own deliver unit', async () => {
     const page = verificationPage(ELEVEN);
+    // The read-back shows the 6-minute floor persisted (ace#2945 checks it).
+    const after = page.replace('name="deliver_unit-0-duration" value="0"', 'name="deliver_unit-0-duration" value="6"');
     const captured: Captured[] = [];
-    const req = makeRequest([{ status: 200, body: page }, { status: 302, body: '' }, { status: 200, body: page }], captured);
+    const req = makeRequest([{ status: 200, body: page }, { status: 302, body: '' }, { status: 200, body: after }], captured);
     const res = await backend(req).setVerificationFlags({
       organization_slug: ORG, opportunity_id: OPP,
       flags: { deliver_unit_checks: [{ deliver_unit_id: 7194, duration_minutes: 6 }] },

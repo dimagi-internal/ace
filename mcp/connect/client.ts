@@ -230,6 +230,15 @@ export interface ConnectClient {
       question_value: string;
       deliver_unit_ids: string[];
     }>;
+    /**
+     * The `deliver_unit` formset as Connect PERSISTED it, read back from the
+     * same fresh GET: one entry per row (deliver unit PK from the row's
+     * selected option, duration floor in minutes). Undefined when the
+     * read-back could not run. A requested `duration_minutes` that does not
+     * read back on its unit throws `verification_duration_not_persisted`
+     * rather than returning ok (dimagi-internal/ace#2945).
+     */
+    deliver_unit_checks?: Array<{ deliver_unit_id: number; duration_minutes: number }>;
   }>;
   listDeliverUnits(args: {
     organization_slug: string;

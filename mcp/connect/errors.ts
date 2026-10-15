@@ -460,3 +460,42 @@ export class VerificationRuleDeliverUnitChangedError extends ConnectError {
     };
   }
 }
+
+/**
+ * dimagi-internal/ace#2945 — `connect_set_verification_flags` wrote
+ * `deliver_unit_checks[].duration_minutes` and returned `ok: true` with no
+ * evidence the floor persisted. The atom now reads the deliver_unit formset
+ * back after the POST; a requested duration that does not read back on its
+ * deliver unit (a different value, or no row for that unit at all — the write
+ * loop only touches rows already on the page) throws this instead of `ok`.
+ */
+export class VerificationDurationNotPersistedError extends ConnectError {
+  retryable = false;
+  constructor(
+    public path: string,
+    public mismatches: Array<{ deliver_unit_id: number; requested_minutes: number; persisted_minutes: number | null }>,
+  ) {
+    super(
+      `connect_set_verification_flags POSTed but the read-back of ${path} does not show ` +
+        `${mismatches.length} requested deliver-unit duration(s): ` +
+        mismatches
+          .map((m) =>
+            `deliver unit ${m.deliver_unit_id} requested ${m.requested_minutes} min, read back ` +
+            (m.persisted_minutes == null ? 'NO ROW for that unit' : `${m.persisted_minutes} min`),
+          )
+          .join('; ') +
+        '. A duration with no row means the deliver unit is not on this opportunity\'s verification page ' +
+        '(check the id against connect_list_deliver_units `server_id`) (dimagi-internal/ace#2945).',
+    );
+  }
+
+  toJSON() {
+    return {
+      error: 'verification_duration_not_persisted' as const,
+      message: this.message,
+      path: this.path,
+      mismatches: this.mismatches,
+      retryable: false as const,
+    };
+  }
+}
