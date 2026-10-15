@@ -49,18 +49,18 @@ Run them from this directory.
   `m8i.xlarge`, unless `VpcId`/`SubnetId` are set in `stack.params.json`. In an
   account without one: `aws ec2 create-default-vpc --region us-east-1`.
 - **The broker role exists.** `BrokerRoleName` in `stack.params.json` is
-  canopy-web's ECS task role (`labs-jj-ecs-task-role` in the labs account). The
+  canopy-web's own ECS task role (`canopy-web-task-role` in the labs account, since 2026-10-15). The
   stack attaches its broker policy to that role and does not create it.
 - **canopy's template is released at the pinned tag** (`stack.params.json`
   `template.ref`):
 
   ```bash
-  gh release view dimagi-canopy-v0.8.1 -R dimagi-internal/canopy-web
+  gh release view dimagi-canopy-v0.9.0 -R dimagi-internal/canopy-web
   ```
 - **Publishing:** `canopy-runtime` from the same tag:
 
   ```bash
-  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@dimagi-canopy-v0.8.1#subdirectory=packages/canopy_runtime"
+  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@dimagi-canopy-v0.9.0#subdirectory=packages/canopy_runtime"
   ```
 - **ACE's canopy-web PAT** for the lease calls in step 4: `CANOPY_WEB_PAT` in
   ACE's `.env` (`~/.claude/plugins/data/ace-ace/.env`, written by `/ace:setup`
