@@ -6,8 +6,10 @@
 #                                                         # its snapshots, and the
 #                                                         # SSM AMI parameter
 #   AWS_PROFILE=labs ./teardown.sh --yes --images-only    # prune images, keep the
-#                                                         # stack (keeps the AMI the
-#                                                         # parameter points at)
+#                                                         # stack: keeps the newest
+#                                                         # --keep N (default 3) and
+#                                                         # the AMI the parameter
+#                                                         # points at
 #
 # Idempotent: every step skips what is already gone, so a partial run can be
 # re-run. Order matters and is fixed:
@@ -16,6 +18,9 @@
 #   2. empty the artifacts bucket (CloudFormation cannot delete a non-empty one);
 #   3. delete the stack, then delete the bucket if the template retained it;
 #   4. with --images: deregister the baked AMIs and delete their snapshots.
+# Image deletion only ever touches ids shaped ami-/snap-, and refuses to run
+# when it cannot tell which AMI the parameter points at (an unreadable
+# parameter is never read as "none").
 #
 # Do this FIRST, so canopy-web stops leasing: remove the capability from
 # runtime.yaml `capabilities:` and run
@@ -26,46 +31,29 @@ set -euo pipefail
 # shellcheck source=_common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
-YES="" IMAGES="" IMAGES_ONLY=""
+YES="" IMAGES="" IMAGES_ONLY="" KEEP=3
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes) YES=1; shift ;;
     --images) IMAGES=1; shift ;;
     --images-only) IMAGES=1; IMAGES_ONLY=1; shift ;;
-    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --keep) KEEP="${2:?--keep needs a number}"; shift 2 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 [[ -n "$YES" ]] || die "refusing to run without --yes (this terminates machines and deletes the stack)"
+[[ "$KEEP" =~ ^[0-9]+$ ]] || die "--keep must be a number (got '$KEEP')"
 
 load_config
 need aws jq
 aws_auth
 
-prune_images() {
-  local keep="$1" ami snaps snap
-  while read -r ami; do
-    [[ -n "$ami" && "$ami" != None ]] || continue
-    if [[ "$ami" == "$keep" ]]; then note "  keeping $ami (the SSM parameter points at it)"; continue; fi
-    snaps="$(aws ec2 describe-images --region "$REGION" --image-ids "$ami" \
-      --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text)"
-    note "  deregistering $ami"
-    aws ec2 deregister-image --region "$REGION" --image-id "$ami"
-    for snap in $snaps; do
-      [[ "$snap" == snap-* ]] || continue
-      aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snap" || warn "could not delete $snap"
-    done
-  done < <(aws ec2 describe-images --region "$REGION" --owners self \
-    --filters "Name=tag:agent,Values=$OWNER" "Name=tag:capability,Values=$CAPABILITY" \
-    --query 'Images[].ImageId' --output text | tr '\t' '\n')
-}
-
-CURRENT_AMI="$(aws ssm get-parameter --region "$REGION" --name "$AMI_PARAM" \
-  --query Parameter.Value --output text 2>/dev/null || true)"
+# prune_images (in _common.sh) keeps the newest N and any pinned id.
+CURRENT_AMI="$(current_ami)"
 
 if [[ -n "$IMAGES_ONLY" ]]; then
-  note "Pruning images for $OWNER/$CAPABILITY"
-  prune_images "$CURRENT_AMI"
+  prune_images "$KEEP" ${CURRENT_AMI:+"$CURRENT_AMI"}
   exit 0
 fi
 
@@ -122,7 +110,7 @@ fi
 # ── 4. Images ──────────────────────────────────────────────────────────────
 if [[ -n "$IMAGES" ]]; then
   note "Deleting every image for $OWNER/$CAPABILITY and $AMI_PARAM"
-  prune_images ""
+  prune_images 0
   aws ssm delete-parameter --region "$REGION" --name "$AMI_PARAM" 2>/dev/null || true
 fi
 note "Teardown complete."

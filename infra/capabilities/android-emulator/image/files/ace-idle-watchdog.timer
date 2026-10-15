@@ -1,0 +1,11 @@
+[Unit]
+Description=ACE android-emulator: check for an idle lease machine every minute
+Documentation=https://github.com/dimagi-internal/ace/tree/main/infra/capabilities/android-emulator
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

@@ -84,8 +84,16 @@ EXEC_DIR = f"{RUN_DIR}/exec"
 # ready.json so the client can assert parity with the local backend.
 BASELINE_PATH = f"{RUN_DIR}/baseline.json"
 # ace-emulator-launch records which boot path ran (snapshot | cold |
-# cold-fallback) and why, for ready.json.
+# cold-fallback) and why, for ready.json: {"path", "detail", "state"}.
 BOOT_PATH_PATH = f"{RUN_DIR}/boot-path"
+# `record start` writes the in-flight recording here; `record stop` reads it.
+RECORD_STATE_PATH = f"{RUN_DIR}/record.json"
+# The transient systemd unit holding the host-side `adb shell screenrecord`.
+# One at a time: `record stop` interrupts the device's screenrecord by name.
+RECORD_UNIT = "ace-record"
+# Set by the image when it calls its own CLI (ace-emulator-launch →
+# apply-baseline): not a lease exec, so it must not move the idle clock.
+INTERNAL_ENV = "ACE_MOBILE_INTERNAL"
 RUNNER_UNIT = "ace-mobile-runner.service"
 RUNNER_LOG = "/var/log/ace-mobile/runner.log"
 EMULATOR_LOG = "/var/log/ace-mobile/emulator.log"
@@ -413,6 +421,9 @@ def list_artifacts(local_dir: str, out_uri: str) -> list[dict[str, Any]]:
 # file, and every string the CLI prints, passes through a Redactor first.
 
 UPLOAD_EXTS = (".png", ".jpg", ".jpeg", ".mp4", ".xml")
+# Maestro's own failure/step screenshots in a --debug-output dir
+# ("screenshot-❌-<ts>-(<flow>).png"): debug output, not recipe screenshots.
+MAESTRO_DEBUG_SHOT_PREFIXES = ("screenshot-\u274c", "screenshot-\u2705", "screenshot-\u26a0")
 UPLOAD_TEXT_NAMES = ("maestro.log", "maestro-stdout.log", "maestro-stderr.log", "result.json", "register-parts.json")
 DEBUG_DIR = "debug"
 REDACTED = "<redacted>"
@@ -483,7 +494,7 @@ def stage_artifacts(run_dir: str, stage_dir: str, redactor: Redactor) -> None:
         rel = p.relative_to(src_root)
         parts = rel.parts
         is_debug = (len(parts) >= 3 and parts[0] == ".maestro" and parts[1] == "tests") or (
-            len(parts) == 1 and (p.name == "maestro.log" or p.name.startswith("commands-")))
+            len(parts) == 1 and (p.name == "maestro.log" or p.name.startswith(("commands-", *MAESTRO_DEBUG_SHOT_PREFIXES))))
         if is_debug:
             ts = parts[2] if len(parts) >= 3 else ""
             dest = dst_root / DEBUG_DIR / Path(*parts[3:]) if len(parts) > 3 else dst_root / DEBUG_DIR / p.name
@@ -966,6 +977,7 @@ def cmd_diagnose(host: Host, args: argparse.Namespace) -> dict[str, Any]:
         "crash": crash,
         "baseline": _read_json(BASELINE_PATH),
         "boot_path": _read_json(BOOT_PATH_PATH),
+        "recording": _read_json(RECORD_STATE_PATH),
         "cli_version": CLI_VERSION,
     }
     if crash is not None:
@@ -1441,6 +1453,167 @@ def _num(x: float) -> str:
     return str(int(x)) if float(x).is_integer() else repr(float(x))
 
 
+# ── Screen recording (record start | record stop) ────────────────────────────
+#
+# The lease twin of the local backend's mcp/mobile/screen-recorder.ts, with the
+# same mechanics, because the same reasons hold here:
+#   * on-device `screenrecord`, not the emulator console's recorder;
+#   * `--time-limit 0` (screenrecord's default stops at 180 s, recipes run 10+ min);
+#   * stopped with SIGINT, never SIGKILL (SIGKILL leaves no moov atom: an
+#     unplayable file), then the file is polled until its size is stable;
+#   * the device file is removed on every stop path, success or not.
+# The client wraps a whole recipe (all its chunked execs) in one start/stop, as
+# the local backend wraps a whole run. Container normalisation (ffmpeg -c copy
+# +faststart) is the client's: the image ships no ffmpeg.
+#
+# The host-side `adb shell screenrecord` must outlive the `record start` exec,
+# so it runs as a transient systemd unit (RECORD_UNIT), outside SSM's process
+# tree, where an exec's teardown cannot reach it.
+
+RECORD_DEFAULT_BITRATE = "1M"
+RECORD_DEFAULT_SIZE = "540x1140"
+BITRATE_RE = re.compile(r"^[1-9][0-9]*[KkMm]?$")
+SIZE_RE = re.compile(r"^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$")
+RECORD_START_WAIT_S = 10
+RECORD_STABLE_TIMEOUT_S = 10
+RECORD_PULL_TIMEOUT_S = 180
+
+
+def record_file_name(name: str) -> str:
+    """``name`` as the mp4's file name: ``journey`` and ``journey.mp4`` are the same recording."""
+    return name if name.lower().endswith(".mp4") else f"{name}.mp4"
+
+
+def record_device_path(name: str) -> str:
+    return f"/sdcard/ace-rec-{record_file_name(name)}"
+
+
+def _screenrecord_running(host: Host) -> bool:
+    p = adb(host, "shell", "pidof", "screenrecord", timeout=PROBE_TIMEOUT_S)
+    return p.code == 0 and bool((p.stdout or "").strip())
+
+
+def _device_file_size(host: Host, path: str) -> int:
+    p = adb(host, "shell", "stat", "-c", "%s", path, timeout=PROBE_TIMEOUT_S)
+    try:
+        return int((p.stdout or "").strip()) if p.code == 0 else -1
+    except ValueError:
+        return -1
+
+
+def _record_cleanup(host: Host, device_path: str | None) -> None:
+    """Best-effort, every path: the device file, the host unit, the state file."""
+    if device_path:
+        adb(host, "shell", "rm", "-f", device_path, timeout=PROBE_TIMEOUT_S)
+    host.run(["systemctl", "stop", f"{RECORD_UNIT}.service"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    host.run(["systemctl", "reset-failed", f"{RECORD_UNIT}.service"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    try:
+        os.unlink(RECORD_STATE_PATH)
+    except OSError:
+        pass
+
+
+def cmd_record(host: Host, args: argparse.Namespace) -> dict[str, Any]:
+    if args.action == "start":
+        if not args.name:
+            args.name = _dt.datetime.fromtimestamp(host.now(), tz=_dt.timezone.utc).strftime(
+                "rec-%Y%m%dT%H%M%SZ") + ".mp4"
+        return record_start(host, args)
+    if not args.out:
+        raise UsageError("record stop needs --out s3://...")
+    return record_stop(host, args)
+
+
+def record_start(host: Host, args: argparse.Namespace) -> dict[str, Any]:
+    if not NAME_RE.match(args.name):
+        raise UsageError(f"--name must match {NAME_RE.pattern}")
+    if not BITRATE_RE.match(args.bit_rate):
+        raise UsageError(f"--bit-rate must look like 1M, 800K or 2000000 (got {args.bit_rate!r})")
+    if not SIZE_RE.match(args.size):
+        raise UsageError(f"--size must be WIDTHxHEIGHT (got {args.size!r})")
+    require_device(host)
+    current = _read_json(RECORD_STATE_PATH)
+    if isinstance(current, dict) and current.get("name"):
+        raise CliError("record-busy", f"recording {current['name']!r} is already running; "
+                       "`ace-mobile record stop` it first (one recording at a time)", recording=current)
+    device_path = record_device_path(args.name)
+    adb(host, "shell", "rm", "-f", device_path, timeout=PROBE_TIMEOUT_S)
+    # A unit left `failed` by an earlier recording would refuse the name.
+    host.run(["systemctl", "reset-failed", f"{RECORD_UNIT}.service"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    argv = ["systemd-run", f"--unit={RECORD_UNIT}", "--collect", "--quiet",
+            "--description=ACE screen recording " + args.name]
+    if os.geteuid() == 0 and _user_exists(DEVICE_USER):
+        argv += [f"--uid={DEVICE_USER}", f"--gid={DEVICE_USER}"]
+    argv += [f"--setenv=ANDROID_SDK_ROOT={ANDROID_SDK_ROOT}", f"--setenv=HOME=/home/{DEVICE_USER}",
+             ADB, "shell", "screenrecord", "--time-limit", "0", "--bit-rate", args.bit_rate,
+             "--size", args.size, device_path]
+    p = host.run(argv, as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    if p.code != 0:
+        raise CliError("record-start-failed", f"systemd-run failed (exit {p.code}): {_tail(p.stderr, 300)}")
+    # Proof it is recording: the device process exists. Without this a bad
+    # --size (screenrecord exits at once) would only surface at stop.
+    deadline = host.monotonic() + RECORD_START_WAIT_S
+    while not _screenrecord_running(host):
+        if host.monotonic() >= deadline:
+            _record_cleanup(host, device_path)
+            raise CliError("record-start-failed",
+                           f"screenrecord was not running on the device within {RECORD_START_WAIT_S}s")
+        host.sleep(0.5)
+    started = host.now()
+    state = {"name": args.name, "device_path": device_path, "bit_rate": args.bit_rate, "size": args.size,
+             "started_at": _dt.datetime.fromtimestamp(started, tz=_dt.timezone.utc).isoformat(),
+             "started_epoch": started}
+    Path(RECORD_STATE_PATH).write_text(json.dumps(state), encoding="utf-8")
+    return {"ok": True, "name": args.name, "device_path": device_path, "started_at": state["started_at"],
+            "bit_rate": args.bit_rate, "size": args.size}
+
+
+def record_stop(host: Host, args: argparse.Namespace) -> dict[str, Any]:
+    parse_s3_uri(args.out)
+    state = _read_json(RECORD_STATE_PATH)
+    if not isinstance(state, dict) or not state.get("name"):
+        # Nothing to stop, but a stray device recorder must not keep writing.
+        adb(host, "shell", "pkill", "-INT", "screenrecord", timeout=PROBE_TIMEOUT_S)
+        raise CliError("no-recording", "no recording is in flight (`ace-mobile record start` first)")
+    name = state["name"]
+    if args.name and record_file_name(args.name) != record_file_name(name):
+        raise CliError("no-recording", f"the recording in flight is {name!r}, not {args.name!r}",
+                       recording=state)
+    device_path = state.get("device_path") or record_device_path(name)
+    require_device(host)
+    d = make_work_dir(host, "record")
+    try:
+        # SIGINT so screenrecord finalises the mp4.
+        adb(host, "shell", "pkill", "-INT", "screenrecord", timeout=PROBE_TIMEOUT_S)
+        previous, deadline = -1, host.monotonic() + RECORD_STABLE_TIMEOUT_S
+        while host.monotonic() < deadline:
+            size = _device_file_size(host, device_path)
+            if size > 0 and size == previous:
+                break
+            previous = size
+            host.sleep(0.5)
+        local = os.path.join(d, record_file_name(name))
+        p = adb(host, "pull", device_path, local, timeout=RECORD_PULL_TIMEOUT_S)
+        if p.code != 0 or not os.path.isfile(local) or os.path.getsize(local) == 0:
+            raise CliError("record-pull-failed",
+                           f"adb pull {device_path} failed (exit {p.code}): {_tail(p.stdout + p.stderr, 300)}")
+        nbytes = os.path.getsize(local)
+        key = record_file_name(name)
+        uri = join_s3(args.out, key)
+        result: dict[str, Any] = {
+            "ok": True, "name": name, "key": key, "uri": uri, "content_type": "video/mp4", "bytes": nbytes,
+            "duration_s": round(host.now() - float(state.get("started_epoch") or host.now()), 1),
+        }
+        try:
+            s3_put_file(host, local, uri)
+        except CliError as e:
+            result.update(ok=False, error="s3-upload-failed", message=e.message, upload_error=e.message)
+        return result
+    finally:
+        _record_cleanup(host, device_path)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 # ── argparse that answers in JSON ────────────────────────────────────────────
 
 
@@ -1502,6 +1675,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("apply-baseline",
                    help="apply the local backend's environment baseline + sync the clock (idempotent)")
+
+    rc = sub.add_parser("record", help="on-device screen recording: start, then stop (uploads the mp4 to --out)")
+    rc.add_argument("action", choices=["start", "stop"])
+    rc.add_argument("--name", help="recording name, [A-Za-z0-9._-], e.g. journey.mp4 (start: default rec-<utc>.mp4; "
+                    "stop: optional check that it is the one in flight)")
+    rc.add_argument("--out", help="stop: s3:// prefix the mp4 is uploaded under, as <name>.mp4")
+    rc.add_argument("--bit-rate", default=RECORD_DEFAULT_BITRATE, help="start: screenrecord --bit-rate (default 1M)")
+    rc.add_argument("--size", default=RECORD_DEFAULT_SIZE, help="start: screenrecord --size (default 540x1140)")
     return ap
 
 
@@ -1518,6 +1699,7 @@ COMMANDS: dict[str, Callable[[Host, argparse.Namespace], dict[str, Any]]] = {
     "snapshot": cmd_snapshot,
     "set-location": cmd_set_location,
     "apply-baseline": cmd_apply_baseline,
+    "record": cmd_record,
 }
 
 # Subcommands that still run on a machine whose emulator crashed after ready.
@@ -1538,8 +1720,11 @@ def run_cli(argv: list[str], host: Host | None = None) -> tuple[int, dict[str, A
             crash = read_crash_marker()
             if crash is not None:
                 raise CliError("emulator-crashed", crash_message(crash), crash=crash)
-        with exec_activity():
+        if os.environ.get(INTERNAL_ENV) == "1":
             result = COMMANDS[args.cmd](host, args)
+        else:
+            with exec_activity():
+                result = COMMANDS[args.cmd](host, args)
     except UsageError as e:
         return 2, {"ok": False, "error": "usage", "message": str(e), "cli_version": CLI_VERSION}
     except CliError as e:
@@ -1798,11 +1983,15 @@ class _Boot:
     def publish(self, ok: bool, reason: str | None, detail: str | None = None) -> int:
         self.published = True
         self.timings.setdefault("hook_s", round(self.host.monotonic() - self.t_hook, 1))
-        extra: dict[str, Any] = {}
+        extra: dict[str, Any] = {"accel": "kvm" if os.path.exists(KVM_DEV) else "tcg"}
         for k, path in (("baseline", BASELINE_PATH), ("boot_path", BOOT_PATH_PATH)):
             v = _read_json(path)
             if v is not None:
                 extra[k] = v
+        baseline = extra.get("baseline")
+        if isinstance(baseline, dict) and isinstance(baseline.get("fingerprint"), str):
+            # Top-level too: lease-contract.ts readyBaseline() reads this first.
+            extra["baseline_fingerprint"] = baseline["fingerprint"]
         payload = ready_payload(ok, reason, self.timings, self.ctx, self.plan.get("state"), detail, **extra)
         _log(f"ready.json: {json.dumps(payload)[:800]}")
         # The idle watchdog counts from here: a lease nobody drives (or a failed
@@ -1886,8 +2075,11 @@ class _Boot:
         Path(REQUESTED_STATE_PATH).write_text(self.plan["state"] + "\n")
         t_start = host.monotonic()
         host.run(["systemctl", "reset-failed", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
-        start = host.run(["systemctl", "start", "--no-block", RUNNER_UNIT], as_device_user=False,
-                         timeout=PROBE_TIMEOUT_S)
+        # Blocking: for a Type=simple unit `systemctl start` returns once the
+        # launcher is forked, so the first ActiveState read below is already
+        # `active`. (--no-block raced: the job could still be queued, reading
+        # `inactive`, which the loop reports as emulator-boot-failed.)
+        start = host.run(["systemctl", "start", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
         if start.code != 0:
             return self.publish(False, "runner-start-failed", start.stderr)
         budget = max(60.0, READY_TIMEOUT_S - self.ctx.uptime_s - READY_MARGIN_S)
@@ -1905,7 +2097,11 @@ class _Boot:
             # lease, never a second -wipe-data boot.
             restarts = unit_prop(host, RUNNER_UNIT, "NRestarts")
             active = unit_prop(host, RUNNER_UNIT, "ActiveState")
-            if restarts not in ("", "0") or active in ("failed", "inactive"):
+            # `inactive` means "exited" only once the launcher has actually run
+            # (it exits 0 only after ready, which the marker check above saw).
+            exited = active == "inactive" and unit_prop(
+                host, RUNNER_UNIT, "ExecMainExitTimestampMonotonic") not in ("", "0")
+            if restarts not in ("", "0") or active == "failed" or exited:
                 self.timings.update(_launch_timings())
                 return self.publish(False, "emulator-boot-failed",
                                     f"runner {active}, NRestarts={restarts or '?'}\n" + tail_lines(RUNNER_LOG, 40))

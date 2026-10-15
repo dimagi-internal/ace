@@ -1,11 +1,11 @@
 #!/bin/bash
-# Cold-boot the Android emulator for ONE state and stage CommCare on it.
+# Boot the Android emulator for ONE state and stage CommCare on it.
 #
-# Moved from ace-web infra/mobile-ami/files/ace-emulator-launch. Started by
-# ace-mobile-runner.service, which the boot hook (ace-capability-boot) starts
-# once per machine with the lease's `params.state` in
-# /run/ace-mobile/requested-state. A capability machine lives for one lease, so
-# the state never changes after boot: a different state is a different lease.
+# Started by ace-mobile-runner.service (Restart=no), which the boot hook
+# (ace-capability-boot) starts once per machine with the lease's
+# `params.state` in /run/ace-mobile/requested-state. A capability machine lives
+# for one lease, so the state never changes after boot: a different state is a
+# different lease.
 #
 # The AVD comes up UNREGISTERED. The Connect test user is registered on demand
 # by `ace-mobile register-test-user`.
@@ -14,152 +14,265 @@
 #   $1 (optional): state name. Otherwise /run/ace-mobile/requested-state, then
 #      states.yaml's `default`.
 #
-# Per-boot flow (idempotent):
+# Flow:
 #   1. Resolve the state to its APK via /opt/ace/states.yaml.
-#   2. Cold-boot the AVD (-no-snapshot -wipe-data): a fully fresh /data.
-#   3. Wait for sys.boot_completed.
-#   4. adb install the state's CommCare APK; grant CAMERA.
-#   5. Wait for `pm` to be stable (the post-install race Maestro's driver
-#      push otherwise hits).
-#   6. Write per-phase timings to /run/ace-mobile/launch-timings and touch
-#      /run/ace-mobile/ready, the signal the boot hook turns into ready.json.
-#   7. Wait on the emulator, so systemd sees the unit alive while it runs.
+#   2. Ask `ace-launch-plan <state>` for the boot path: `snapshot <name>` (the
+#      image baked a quick-boot snapshot for this state) or `cold <why>`.
+#   3. Boot: snapshot load, or a cold boot with -wipe-data (a fully fresh /data).
+#      A snapshot that does not come up, or comes up without CommCare, is
+#      killed and replaced by a cold boot (boot path `cold-fallback`).
+#   4. Cold path: adb install the state's APK.
+#   5. Grant CommCare the local backend's runtime-permission set.
+#   6. Wait until `pm` answers twice in a row (the post-install race Maestro's
+#      driver push otherwise hits).
+#   7. `ace-mobile apply-baseline`: the local backend's environment baseline
+#      (mcp/mobile/backends/avd.ts) + a device clock sync. Recorded, not fatal,
+#      exactly as the local backend treats it.
+#   8. Write /run/ace-mobile/{boot-path,launch-timings}, then touch
+#      /run/ace-mobile/ready: the signal the boot hook turns into ready.json.
+#   9. Wait on the emulator. If it ever exits, write /run/ace-mobile/crashed
+#      and exit 0. The runner is Restart=no and nothing reboots the emulator:
+#      every ace-mobile subcommand except diagnose then refuses with
+#      `emulator-crashed`, and the lease is released, not repaired.
 #
-# Runs AS the ubuntu user (the systemd unit sets that).
+# Any failure BEFORE ready kills the emulator and exits 1; the boot hook sees
+# the runner `failed` and reports ready.json {ok:false, reason:
+# "emulator-boot-failed"}.
+#
+# Every polling loop ticks at 1 s. Timings (seconds since this script started,
+# 0.1 s resolution) go to /run/ace-mobile/launch-timings as key=value lines;
+# the boot hook copies them into ready.json as launch_<key>.
+#
+# Runs AS the ubuntu user (the systemd unit sets that). Every path is
+# overridable from the environment so the unit tests can run this exact script
+# against fake adb/emulator binaries.
 
-set -e
+# -E: the ERR trap below must fire inside functions too.
+set -Eeuo pipefail
 
-STATES_YAML=/opt/ace/states.yaml
+STATES_YAML=${STATES_YAML:-/opt/ace/states.yaml}
 ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/opt/android-sdk}
-ADB="$ANDROID_SDK_ROOT/platform-tools/adb"
-EMU="$ANDROID_SDK_ROOT/emulator/emulator"
-AVD_NAME=ACE_Pixel_API_34
-RUNDIR=/run/ace-mobile
+ADB=${ADB:-$ANDROID_SDK_ROOT/platform-tools/adb}
+EMU=${EMU:-$ANDROID_SDK_ROOT/emulator/emulator}
+LAUNCH_PLAN=${LAUNCH_PLAN:-/usr/local/sbin/ace-launch-plan}
+ACE_MOBILE=${ACE_MOBILE:-/usr/local/bin/ace-mobile}
+AVD_NAME=${AVD_NAME:-ACE_Pixel_API_34}
+RUNDIR=${RUNDIR:-/run/ace-mobile}
+LOG_FILE=${LOG_FILE:-/var/log/ace-mobile/emulator.log}
+BOOT_TIMEOUT_S=${BOOT_TIMEOUT_S:-300}
+PM_TIMEOUT_S=${PM_TIMEOUT_S:-30}
+POLL_S=${POLL_S:-1}
+PACKAGE=org.commcare.dalvik
+
 READY_MARKER="$RUNDIR/ready"
-LOG_FILE=/var/log/ace-mobile/emulator.log
 TIMINGS_FILE="$RUNDIR/launch-timings"
+BOOT_PATH_FILE="$RUNDIR/boot-path"
+CRASHED_MARKER="$RUNDIR/crashed"
 
-# Elapsed-seconds since launch start, for per-phase cold-boot timing. The
-# milestone logs below carry [t=+Ns] so a slow boot can be decomposed
-# (emulator boot vs adb vs CommCare install vs registration) from runner.log
-# rather than read as one opaque ensure_running number.
-LAUNCH_T0=$(date +%s)
-el() { echo "+$(( $(date +%s) - LAUNCH_T0 ))s"; }
+# The local backend's runtime-permission set (avd.ts grantRuntimePermissions);
+# test/infra/android-emulator-capability.test.ts holds the two lists equal.
+PERMISSIONS=(
+  android.permission.ACCESS_FINE_LOCATION
+  android.permission.ACCESS_COARSE_LOCATION
+  android.permission.CAMERA
+  android.permission.RECORD_AUDIO
+  android.permission.READ_PHONE_STATE
+  android.permission.CALL_PHONE
+  android.permission.READ_MEDIA_AUDIO
+  android.permission.POST_NOTIFICATIONS
+  android.permission.NEARBY_WIFI_DEVICES
+)
 
-timing() { echo "$1=$(( $(date +%s) - LAUNCH_T0 ))" >> "$TIMINGS_FILE" 2>/dev/null || true; }
-rm -f "$READY_MARKER" "$TIMINGS_FILE" 2>/dev/null || true
+T0=$EPOCHREALTIME
+# Seconds since start, one decimal.
+elapsed() { awk -v a="$T0" -v b="$EPOCHREALTIME" 'BEGIN { printf "%.1f", b - a }'; }
+log() { echo "[ace-emulator-launch] [t=+$(elapsed)s] $*"; }
+timing() { echo "$1=$(elapsed)" >>"$TIMINGS_FILE"; }
 
-REQUESTED_STATE="${1:-}"
-if [[ -z "$REQUESTED_STATE" && -s "$RUNDIR/requested-state" ]]; then
-  REQUESTED_STATE=$(tr -d '[:space:]' < "$RUNDIR/requested-state")
+EMULATOR_PID=""
+kill_emulator() {
+  [[ -n "$EMULATOR_PID" ]] || return 0
+  kill "$EMULATOR_PID" 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    kill -0 "$EMULATOR_PID" 2>/dev/null || break
+    sleep "$POLL_S"
+  done
+  kill -9 "$EMULATOR_PID" 2>/dev/null || true
+  wait "$EMULATOR_PID" 2>/dev/null || true
+  EMULATOR_PID=""
+}
+fail() {
+  log "ERROR: $*" >&2
+  tail -40 "$LOG_FILE" >&2 2>/dev/null || true
+  kill_emulator
+  rm -f "$READY_MARKER"
+  exit 1
+}
+# A command that fails under set -e before ready (anything not guarded) lands
+# here too, so no failure path leaves a half-booted emulator running.
+trap 'fail "unexpected failure at line $LINENO"' ERR
+
+rm -f "$READY_MARKER" "$TIMINGS_FILE" "$BOOT_PATH_FILE" "$CRASHED_MARKER"
+
+# ── 1. State → APK ──────────────────────────────────────────────────────────
+STATE="${1:-}"
+if [[ -z "$STATE" && -s "$RUNDIR/requested-state" ]]; then
+  STATE=$(tr -d '[:space:]' <"$RUNDIR/requested-state")
 fi
-if [[ -z "$REQUESTED_STATE" ]]; then
-  REQUESTED_STATE=$(awk '/^default:/ {print $2; exit}' "$STATES_YAML")
+if [[ -z "$STATE" ]]; then
+  STATE=$(awk '/^default:/ {print $2; exit}' "$STATES_YAML")
 fi
-echo "[ace-emulator-launch] state=$REQUESTED_STATE"
-echo "$REQUESTED_STATE" > "$RUNDIR/active-state" 2>/dev/null || true
+echo "$STATE" >"$RUNDIR/active-state"
 
-# Resolve state → APK path + version.
-read -r _SNAPSHOT_NAME COMMCARE_VERSION APK_PATH < <(
-  awk -v target="$REQUESTED_STATE" '
-    $1 == "-" && $2 == "name:" && $3 == target { found = 1; next }
-    found && $1 == "snapshot:" { snap = $2 }
+read -r COMMCARE_VERSION APK_PATH < <(
+  awk -v target="$STATE" '
+    $1 == "-" && $2 == "name:" { found = ($3 == target); next }
     found && $1 == "commcare_version:" { gsub(/"/, "", $2); ver = $2 }
     found && $1 == "apk_path:" { apk = $2 }
-    found && $1 == "-" { exit }
-    END { print snap, ver, apk }
+    END { print ver, apk }
   ' "$STATES_YAML"
-)
-if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
-  echo "[ace-emulator-launch] ERROR: APK missing for state $REQUESTED_STATE (path=$APK_PATH)" >&2
-  exit 1
+) || true
+if [[ -z "${APK_PATH:-}" || ! -f "$APK_PATH" ]]; then
+  fail "state $STATE has no APK in $STATES_YAML (path=${APK_PATH:-})"
 fi
-echo "[ace-emulator-launch] commcare_version=$COMMCARE_VERSION apk=$APK_PATH"
+log "state=$STATE commcare_version=$COMMCARE_VERSION apk=$APK_PATH"
 
-# ── Cold-boot the emulator ───────────────────────────────────────────
-echo "[ace-emulator-launch] [t=$(el)] booting emulator (cold, -wipe-data)..."
-mkdir -p "$(dirname "$LOG_FILE")"
-nohup "$EMU" -avd "$AVD_NAME" \
-  -no-window -no-audio -no-metrics \
-  -gpu swiftshader_indirect \
-  -no-snapshot \
-  -no-boot-anim \
-  -wipe-data \
-  > "$LOG_FILE" 2>&1 &
-EMULATOR_PID=$!
-echo "[ace-emulator-launch] emulator pid=$EMULATOR_PID, log=$LOG_FILE"
+# ── 2. Boot path ────────────────────────────────────────────────────────────
+PLAN=$("$LAUNCH_PLAN" "$STATE" 2>/dev/null || echo "cold launch-plan-failed")
+read -r BOOT_PATH BOOT_DETAIL <<<"$PLAN"
+[[ "$BOOT_PATH" == snapshot ]] || { BOOT_DETAIL="${BOOT_DETAIL:-$BOOT_PATH}"; BOOT_PATH=cold; }
+log "boot path: $BOOT_PATH ($BOOT_DETAIL)"
 
-# Self-cleanup if anything below errors out.
-trap 'echo "[ace-emulator-launch] startup failed — killing emulator pid=$EMULATOR_PID" >&2; kill -9 $EMULATOR_PID 2>/dev/null || true; rm -f "$READY_MARKER" 2>/dev/null || true' ERR
+write_boot_path() {
+  jq -cn --arg path "$1" --arg detail "$2" --arg state "$STATE" \
+    '{path: $path, detail: $detail, state: $state}' >"$BOOT_PATH_FILE"
+}
 
-# Verify emulator process is alive after a few seconds.
-sleep 5
-if ! kill -0 $EMULATOR_PID 2>/dev/null; then
-  echo "[ace-emulator-launch] ERROR: emulator died before adb saw it. Log tail:" >&2
-  tail -40 "$LOG_FILE" >&2 || true
-  exit 1
-fi
-
-# Wait for adb device + boot complete.
-echo "[ace-emulator-launch] waiting for adb (max 180s)..."
-if ! timeout 180 "$ADB" wait-for-device; then
-  echo "[ace-emulator-launch] ERROR: adb wait-for-device timed out" >&2
-  tail -60 "$LOG_FILE" >&2 || true
-  exit 1
-fi
-
-echo "[ace-emulator-launch] waiting for sys.boot_completed (max 5 min)..."
-boot_complete=""
-for i in $(seq 1 60); do
-  boot_complete=$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
-  [[ "$boot_complete" == "1" ]] && break
-  sleep 5
-done
-if [[ "$boot_complete" != "1" ]]; then
-  echo "[ace-emulator-launch] ERROR: boot timed out" >&2
-  exit 1
-fi
-echo "[ace-emulator-launch] [t=$(el)] boot complete"
-timing boot_completed_s
-
-# ── Install CommCare ─────────────────────────────────────────────────
-#
-# Install the state's CommCare APK so the AVD is staged for the on-demand
-# registration (`ace-mobile register-test-user`). The install is cheap (~10s);
-# skipping it would push it into the first recipe.
-
-echo "[ace-emulator-launch] [t=$(el)] installing CommCare $COMMCARE_VERSION..."
-"$ADB" install -r "$APK_PATH"
-
-echo "[ace-emulator-launch] granting CAMERA to org.commcare.dalvik..."
-"$ADB" shell pm grant org.commcare.dalvik android.permission.CAMERA || true
-
-# Wait for pm to be stable BEFORE signalling ready. Maestro's first
-# invocation (usually register-test-user) does a dadb-based
-# install of `dev.mobile.maestro.apk` that hits "cmd: Failure
-# calling service package: Broken pipe (32)" if pm is still warming
-# up from boot + CommCare install. Probe `pm path` of an installed
-# package — it exercises the same `cmd package` code path Maestro's
-# installer uses, so success here strongly predicts success at the
-# Maestro layer.
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  if "$ADB" shell pm path org.commcare.dalvik 2>/dev/null | grep -q "^package:"; then
-    echo "[ace-emulator-launch] pm responsive after $i tries"
-    break
+# ── 3. Boot ─────────────────────────────────────────────────────────────────
+start_emulator() { # $1 = snapshot name, or empty for a cold boot
+  local mode_args what
+  if [[ -n "$1" ]]; then
+    mode_args=(-snapshot "$1" -no-snapshot-save)
+    what="snapshot $1"
+  else
+    mode_args=(-no-snapshot -wipe-data)
+    what="cold, -wipe-data"
   fi
-  sleep 1
+  mkdir -p "$(dirname "$LOG_FILE")"
+  "$EMU" -avd "$AVD_NAME" -no-window -no-audio -no-metrics -no-boot-anim \
+    -gpu swiftshader_indirect "${mode_args[@]}" >>"$LOG_FILE" 2>&1 &
+  EMULATOR_PID=$!
+  log "emulator pid=$EMULATOR_PID ($what)"
+  timing emulator_started_s
+}
+
+# 0 = booted; 1 = emulator exited; 2 = timed out.
+wait_for_boot() {
+  local deadline=$((SECONDS + BOOT_TIMEOUT_S)) seen_adb=""
+  while ((SECONDS < deadline)); do
+    if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+      log "emulator exited during boot"
+      return 1
+    fi
+    if [[ -z "$seen_adb" && "$("$ADB" get-state 2>/dev/null || true)" == device ]]; then
+      seen_adb=1
+      timing adb_visible_s
+      log "adb sees the device"
+    fi
+    if [[ -n "$seen_adb" && "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" == 1 ]]; then
+      timing boot_completed_s
+      log "boot complete"
+      return 0
+    fi
+    sleep "$POLL_S"
+  done
+  log "no sys.boot_completed within ${BOOT_TIMEOUT_S}s"
+  return 2
+}
+
+commcare_present() {
+  "$ADB" shell pm path "$PACKAGE" 2>/dev/null | grep -q '^package:'
+}
+
+booted=""
+if [[ "$BOOT_PATH" == snapshot ]]; then
+  start_emulator "$BOOT_DETAIL"
+  if wait_for_boot && commcare_present; then
+    booted=snapshot
+  else
+    log "snapshot $BOOT_DETAIL did not come up with CommCare; falling back to a cold boot"
+    kill_emulator
+    BOOT_DETAIL="snapshot $BOOT_DETAIL failed to boot"
+    BOOT_PATH=cold-fallback
+  fi
+fi
+if [[ -z "$booted" ]]; then
+  start_emulator ""
+  rc=0
+  wait_for_boot || rc=$?
+  ((rc == 0)) || fail "cold boot failed ($([[ $rc == 1 ]] && echo 'emulator exited' || echo "no boot within ${BOOT_TIMEOUT_S}s"))"
+  booted=cold
+fi
+
+# ── 4. CommCare (cold path) ─────────────────────────────────────────────────
+if [[ "$booted" == cold ]]; then
+  log "installing CommCare $COMMCARE_VERSION"
+  out=$("$ADB" install -r "$APK_PATH" 2>&1) || fail "adb install failed: $out"
+  grep -q Success <<<"$out" || fail "adb install did not report Success: $out"
+fi
+
+# ── 5. Runtime permissions ──────────────────────────────────────────────────
+denied=()
+for perm in "${PERMISSIONS[@]}"; do
+  "$ADB" shell pm grant "$PACKAGE" "$perm" >/dev/null 2>&1 || denied+=("$perm")
 done
-sleep 3  # extra cushion — broken-pipe race is timing-sensitive
+log "granted ${#PERMISSIONS[@]} runtime permissions${denied[*]:+ (refused: ${denied[*]})}"
+
+# ── 6. pm stable ────────────────────────────────────────────────────────────
+# Maestro's first invocation (usually register-test-user) pushes its driver
+# APK through `cmd package`; on a pm still warming up from boot + install that
+# fails with "Broken pipe (32)". `pm path` exercises the same code path, and two
+# consecutive answers (1 s apart) replace the old fixed 3 s cushion.
+ok_in_row=0
+deadline=$((SECONDS + PM_TIMEOUT_S))
+while ((ok_in_row < 2)); do
+  ((SECONDS < deadline)) || fail "pm did not answer twice in a row within ${PM_TIMEOUT_S}s"
+  if commcare_present; then ok_in_row=$((ok_in_row + 1)); else ok_in_row=0; fi
+  ((ok_in_row >= 2)) || sleep "$POLL_S"
+done
 timing commcare_installed_s
 
-trap - ERR  # CommCare staged; from here on, errors don't kill the emulator
+# ── 7. Environment baseline ─────────────────────────────────────────────────
+# ACE_MOBILE_INTERNAL=1: this is the image talking to itself, not a lease
+# exec, so it must not start the idle watchdog's clock.
+if ACE_MOBILE_INTERNAL=1 "$ACE_MOBILE" apply-baseline; then
+  log "baseline applied"
+else
+  log "baseline incomplete (recorded in $RUNDIR/baseline.json; not fatal, as on the local backend)"
+fi
+timing baseline_s
 
-echo "[ace-emulator-launch] [t=$(el)] AVD ready (CommCare installed, unregistered); signaling ready"
+# ── 8. Ready ────────────────────────────────────────────────────────────────
+# snapshot | cold | cold-fallback (a snapshot was planned and did not boot).
+if [[ "$BOOT_PATH" == cold-fallback ]]; then
+  write_boot_path cold-fallback "$BOOT_DETAIL"
+else
+  write_boot_path "$booted" "$BOOT_DETAIL"
+fi
 timing ready_s
+trap - ERR
 touch "$READY_MARKER"
+log "AVD ready (CommCare installed, unregistered)"
 
-# Wait on the emulator; systemd treats the unit as alive while it runs. The
-# machine ends with its lease (release, max-lifetime halt, or idle alarm), so
-# nothing here stops it.
-echo "[ace-emulator-launch] emulator running"
-wait $EMULATOR_PID
+# ── 9. Watch ────────────────────────────────────────────────────────────────
+rc=0
+wait "$EMULATOR_PID" || rc=$?
+log "emulator exited (status $rc) after ready"
+{
+  echo "emulator_exit=$rc"
+  echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "state=$STATE"
+  echo "boot_path=$booted"
+} >"$CRASHED_MARKER"
+rm -f "$READY_MARKER"
+exit 0

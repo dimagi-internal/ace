@@ -3,7 +3,7 @@
 # (canopy-web docs/superpowers/specs/2026-10-14-cloud-capabilities-design.md §2):
 # a boot hook that reads the lease's user-data, arms the max-lifetime halt,
 # cold-boots the AVD for params.state and writes ready.json; the ace-mobile CLI
-# on PATH; no idle-shutdown timer and nothing ace-web-specific.
+# on PATH; an in-VM idle backstop; nothing ace-web-specific.
 #
 # Built by ../bake.sh, which also writes the resulting AMI id to the SSM
 # parameter the stack's launch template resolves. Run that, not this directly.
@@ -12,14 +12,23 @@ packer {
 
   required_plugins {
     amazon = {
-      source  = "github.com/hashicorp/amazon"
-      version = "~> 1.3"
+      source = "github.com/hashicorp/amazon"
+      # Exact pin. 1.8.3 is the first release whose amazon-ebs builder can
+      # request nested virtualization (`enable_nested_virtualization`,
+      # hashicorp/packer-plugin-amazon#679); a floating constraint would let a
+      # later release change the bake under an unchanged commit.
+      version = "= 1.8.3"
     }
   }
 }
 
 locals {
   ami_name = "${var.ami_name_prefix}-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  # The states this image bakes, as capability.yaml names them. Tagged on the
+  # AMI as `ace:states` (comma-separated, in bake order) so bake.sh and
+  # deploy.sh can refuse to point the stack at, or publish a manifest over, an
+  # image that lacks a state the manifest offers.
+  states = join(",", [for v in var.commcare_versions : "cc-${v}"])
   # Tag keys deliberately avoid the `canopy:` prefix. canopy-web's sweep
   # terminates every INSTANCE tagged `canopy:capability` that has no live lease;
   # the bake host carries these tags too, and a sweep must never kill a bake.
@@ -34,11 +43,13 @@ locals {
 
 data "amazon-ami" "ubuntu_noble" {
   filters = {
-    name                = var.source_ami_filter_name
+    name                = var.source_ami_name
     root-device-type    = "ebs"
     virtualization-type = "hvm"
     architecture        = "x86_64"
   }
+  # The name is exact, so this matches one image; most_recent only breaks a tie
+  # Canonical never creates.
   most_recent = true
   owners      = [var.source_ami_owner]
   region      = var.region
@@ -46,17 +57,21 @@ data "amazon-ami" "ubuntu_noble" {
 
 source "amazon-ebs" "ace_mobile" {
   region        = var.region
-  source_ami    = data.amazon-ami.ubuntu_noble.id
+  source_ami    = var.source_ami_id != "" ? var.source_ami_id : data.amazon-ami.ubuntu_noble.id
   instance_type = var.instance_type
   ssh_username  = "ubuntu"
+
+  # Same machine shape as a lease: KVM on the bake host, so a broken nested-virt
+  # family shows up in 00-base.sh's kvm-ok line rather than at the first lease.
+  enable_nested_virtualization = true
 
   # Packer's temporary security group opens SSH for the provisioners. Scope it
   # to the baker's own public IP instead of the default 0.0.0.0/0.
   temporary_security_group_source_public_ip = true
 
-  # Bare-metal bake hosts stop slowly (12-15 min observed on c5n.metal, past the
-  # default 10-minute waiter); without this Packer times out AFTER provisioning
-  # succeeded and discards the work. 30s x 60 = 30 min.
+  # Generous waiter: an EBS snapshot of a 30 GB root can take longer than the
+  # default 10 minutes, and timing out AFTER provisioning discards the work.
+  # 30s x 60 = 30 min.
   aws_polling {
     delay_seconds = 30
     max_attempts  = 60
@@ -72,9 +87,15 @@ source "amazon-ebs" "ace_mobile" {
   }
 
   ami_name        = local.ami_name
-  ami_description = "ACE android-emulator capability (Android 34 / Pixel 7 AVD, Maestro 2.5.1, CommCare ${join(" + ", var.commcare_versions)}, ace-mobile CLI ${var.ace_git_sha})."
+  ami_description = "ACE android-emulator capability (Android 34 / Pixel 7 AVD, Maestro 2.5.1, states ${local.states}, ace ${var.ace_git_sha})."
 
-  tags            = merge(local.common_tags, { Name = local.ami_name, base-os = "ubuntu-24.04" })
+  tags = merge(local.common_tags, {
+    Name            = local.ami_name
+    base-os         = "ubuntu-24.04"
+    "ace:states"    = local.states
+    source-ami      = "{{ .SourceAMI }}"
+    source-ami-name = "{{ .SourceAMIName }}"
+  })
   run_tags        = merge(local.common_tags, { Name = "${local.ami_name}-bake" })
   run_volume_tags = merge(local.common_tags, { Name = "${local.ami_name}-bake-root" })
 }
@@ -84,31 +105,57 @@ build {
 
   sources = ["source.amazon-ebs.ace_mobile"]
 
-  # 00 — apt + KVM packages + JDK + awscli + base utils.
+  # Stage everything the scripts read FIRST: 00-base.sh verifies the AWS CLI
+  # against keys/aws-cli-team.asc, and 60-systemd.sh installs files/ and the
+  # CLI. Copying files starts nothing. The trailing slash copies a directory's
+  # contents (Packer's file-provisioner rule).
+  provisioner "shell" {
+    inline = ["mkdir -p /tmp/ace-files /tmp/ace-cli /tmp/ace-keys"]
+  }
+
+  provisioner "file" {
+    source      = "files/"
+    destination = "/tmp/ace-files"
+  }
+
+  provisioner "file" {
+    source      = "keys/"
+    destination = "/tmp/ace-keys"
+  }
+
+  provisioner "file" {
+    source      = "cli/ace_mobile.py"
+    destination = "/tmp/ace-cli/ace_mobile.py"
+  }
+
+  # 00 — base packages + JDK + pinned/verified awscli; no apt upgrade; apt and
+  # snap background updates off.
   provisioner "shell" {
     script          = "scripts/00-base.sh"
     execute_command = "sudo -E bash '{{ .Path }}'"
   }
 
-  # 10 — Android SDK cmdline-tools, platform-tools, emulator, build-tools (aapt), system image.
+  # 10 — Android SDK cmdline-tools (pinned + sha256), platform-tools, emulator,
+  # build-tools (aapt, apksigner), system image.
   provisioner "shell" {
     script          = "scripts/10-android-sdk.sh"
     execute_command = "sudo -E bash '{{ .Path }}'"
   }
 
-  # 20 — the ACE_Pixel_API_34 AVD (same name as the laptop path) + camera fix-up.
+  # 20 — the ACE_Pixel_API_34 AVD (same name as the laptop path).
   provisioner "shell" {
     script          = "scripts/20-avd.sh"
     execute_command = "sudo -E bash '{{ .Path }}'"
   }
 
-  # 30 — Maestro CLI to /opt/maestro.
+  # 30 — Maestro CLI to /opt/maestro (pinned + sha256).
   provisioner "shell" {
     script          = "scripts/30-maestro.sh"
     execute_command = "sudo -E bash '{{ .Path }}'"
   }
 
-  # 40 — CommCare APKs, one per state, to /opt/ace/apks/<ver>/.
+  # 40 — CommCare APKs, one per state, to /opt/ace/apks/<ver>/ (pinned URL +
+  # sha256 + Dimagi signing certificate).
   provisioner "shell" {
     script          = "scripts/40-commcare-apk.sh"
     execute_command = "{{ .Vars }} sudo -E bash '{{ .Path }}'"
@@ -126,24 +173,8 @@ build {
     ]
   }
 
-  # Stage the runtime files. The trailing slash copies the directory's
-  # contents (Packer's file-provisioner rule).
-  provisioner "shell" {
-    inline = ["mkdir -p /tmp/ace-files /tmp/ace-cli"]
-  }
-
-  provisioner "file" {
-    source      = "files/"
-    destination = "/tmp/ace-files"
-  }
-
-  provisioner "file" {
-    source      = "cli/ace_mobile.py"
-    destination = "/tmp/ace-cli/ace_mobile.py"
-  }
-
-  # 60 — boot hook + runner units + the ace-mobile CLI. Last, so nothing
-  # starts during provisioning.
+  # 60 — boot hook, runner, idle watchdog, the ace-mobile CLI; then
+  # `systemd-analyze verify`. Last, so nothing starts during provisioning.
   provisioner "shell" {
     script          = "scripts/60-systemd.sh"
     execute_command = "{{ .Vars }} sudo -E bash '{{ .Path }}'"

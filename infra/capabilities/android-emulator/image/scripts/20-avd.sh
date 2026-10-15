@@ -41,6 +41,10 @@ fi
 #     ManualMode after GMS is disabled)
 #   - hw.ramSize=4096           (4 GB RAM — emulator is tight on 2 GB)
 #   - disk.dataPartition.size=6G
+#   - hw.cpu.ncore=4            (every vCPU of the m8i.xlarge lease machine;
+#     avdmanager's pixel_7 default is fewer, and the cold boot is CPU-bound —
+#     dex2oat and package scanning run in parallel when the guest has cores.
+#     The host side (adb, Maestro's JVM) is idle while the guest boots.)
 patch_kv () {
   local key=$1 value=$2
   if grep -q "^${key}=" "$CONFIG"; then
@@ -53,6 +57,7 @@ patch_kv () {
 patch_kv "hw.camera.front"        "emulated"
 patch_kv "hw.camera.back"         "emulated"
 patch_kv "hw.ramSize"             "4096"
+patch_kv "hw.cpu.ncore"           "4"
 patch_kv "disk.dataPartition.size" "6G"
 patch_kv "hw.gpu.enabled"         "yes"
 patch_kv "hw.gpu.mode"            "swiftshader_indirect"
