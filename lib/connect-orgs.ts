@@ -128,6 +128,86 @@ export function resolveConnectOrgs(env: Record<string, string | undefined>): Con
  * `ConnectOrgConfigError` when the tenancy names no PM org — a partner run
  * must never fall back to the instance's (shared) orgs.
  */
+/**
+ * Extra orgs this INSTANCE controls, beyond the configured PM/NM pair.
+ * Comma-separated slugs. Machine config only — see `aceControlledOrgs`.
+ */
+export const CONTROLLED_ORGS_ENV = 'ACE_CONNECT_CONTROLLED_ORGS';
+
+/** Raised when ACE is about to take an action that belongs to another organisation. */
+export class ActingForAnotherOrgError extends Error {
+  constructor(
+    readonly org: string | null,
+    readonly controlled: string[],
+  ) {
+    super(
+      org === null
+        ? 'Refusing to accept a program application: ACE could not determine WHICH organisation ' +
+          'the application belongs to, and accepting is that organisation\'s action to take. ' +
+          'Resolve the application first (connect_list_invites), or wait for the partner to accept.'
+        : `Refusing to accept the program application for organisation ${JSON.stringify(org)}: ` +
+          `ACE does not control it (controlled orgs: ${controlled.length ? controlled.join(', ') : 'none configured'}). ` +
+          'Accepting an invitation is the INVITED organisation\'s action, not the programme owner\'s. ' +
+          'Connect\'s API permits it — ProgramApplicationAcceptView only checks that the caller is an admin ' +
+          'of the PROGRAMME\'s org, and accepts from status INVITED — which is exactly why ACE refuses here. ' +
+          'Wait for the partner to accept; the opportunity cannot be created until they do, and Connect ' +
+          'enforces that itself. See dimagi-internal/ace#2954.',
+    );
+    this.name = 'ActingForAnotherOrgError';
+  }
+}
+
+/**
+ * The orgs ACE may ACT AS — not merely the orgs an opportunity may touch.
+ *
+ * Deliberately derived from the ENVIRONMENT ONLY (`ACE_CONNECT_PM_ORG`,
+ * `ACE_CONNECT_NM_ORG`, `ACE_CONNECT_CONTROLLED_ORGS`) and never from a
+ * run-scoped override such as `run_state.run_connect_orgs`. That asymmetry IS
+ * the control: on tekzal/20261013-2314 an operator override legitimately named
+ * a real partner org as the network manager, and because nothing distinguished
+ * "this opp may involve tekzal" from "ACE may act as tekzal", ACE accepted a
+ * programme invitation on that partner's behalf. A run must be able to widen
+ * the first and must never be able to widen the second.
+ *
+ * Note this is a different question from the tenancy guard's. Tenancy asks
+ * WHICH ORGS THIS OPP MAY TOUCH (scope); this asks WHOSE ACTION THIS IS
+ * (authority). A partner is legitimately in tenancy and still must act for
+ * itself, so a scope guard structurally cannot enforce this.
+ */
+export function aceControlledOrgs(env: Record<string, string | undefined>): string[] {
+  const out = new Set<string>();
+  const pm = read(env, PM_ORG_ENV);
+  out.add(pm ?? LEGACY_DEFAULT_PM_ORG);
+  const nm = read(env, NM_ORG_ENV);
+  if (nm) out.add(nm);
+  const extra = env[CONTROLLED_ORGS_ENV];
+  if (extra) {
+    for (const part of extra.split(',')) {
+      const v = part.trim().replace(/^['"]|['"]$/g, '');
+      if (v && SLUG.test(v)) out.add(v);
+    }
+  }
+  return [...out].sort();
+}
+
+/**
+ * Throw unless `applicationOrg` is an org ACE controls.
+ *
+ * FAILS CLOSED: a null/unknown org refuses rather than proceeding, because the
+ * action is irreversible — `ProgramApplicationAcceptView` has no transition out
+ * of ACCEPTED, so a wrong accept cannot be undone through the API.
+ */
+export function assertAcceptingForSelf(
+  applicationOrg: string | null | undefined,
+  env: Record<string, string | undefined>,
+): void {
+  const controlled = aceControlledOrgs(env);
+  const org = applicationOrg?.trim() || null;
+  if (org === null || !controlled.includes(org)) {
+    throw new ActingForAnotherOrgError(org, controlled);
+  }
+}
+
 export function connectOrgsFromTenancy(tenancy: {
   connect_pm_org?: string | null;
   connect_holding_org?: string | null;

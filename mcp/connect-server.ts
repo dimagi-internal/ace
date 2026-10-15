@@ -12,6 +12,7 @@
  */
 import { config as dotenvConfig } from 'dotenv';
 import { assertAceOwnedHqDomain } from '../lib/destructive-guards.js';
+import { assertAcceptingForSelf } from '../lib/connect-orgs.js';
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-connect', import.meta.url);
@@ -732,7 +733,24 @@ server.tool('connect_accept_program_application',
     program_id: z.string(),
     application_id: z.string().describe('ProgramApplication UUID returned by `connect_send_llo_invite`.'),
   },
-  async (args) => runAtom(async () => (await client()).acceptProgramApplication(args))
+  // AUTHORITY GATE (ace#2954). Accepting an invitation is the INVITED org's
+  // action. Connect's API does not enforce that — ProgramApplicationAcceptView
+  // only checks the caller is an admin of the PROGRAMME's org, and it accepts
+  // straight from INVITED — so ACE can skip the partner entirely, and once did:
+  // on tekzal/20261013-2314 it enrolled a real partner in Ghana with no consent,
+  // two minutes after inviting them. There is NO undo (the view has no
+  // transition out of ACCEPTED), so this resolves whose application it is and
+  // FAILS CLOSED when it cannot tell.
+  async (args) => runAtom(async () => {
+    const c = await client();
+    const { invites } = await c.listInvites({
+      organization_slug: args.organization_slug,
+      program_id: args.program_id,
+    });
+    const app = invites.find((i) => i.id === args.application_id);
+    assertAcceptingForSelf(app?.organization, process.env);
+    return c.acceptProgramApplication(args);
+  })
 );
 
 server.tool('connect_list_invites',

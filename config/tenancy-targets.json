@@ -4,7 +4,11 @@
     {
       "name": "connect-org-writes",
       "tool_pattern": "(?:^|__)connect_(?:create_program|update_program|update_opportunity|set_learn_passing_score|set_verification_flags|create_payment_units?|activate_opportunity|send_llo_invite|accept_program_application|send_flw_invite|delete_unaccepted_flw_invites|add_org_member|remove_org_member)$",
-      "args": {"organization_slug": ["connect_pm_org", "connect_holding_org"]}
+      "args": {
+        "organization_slug": ["connect_pm_org", "connect_holding_org"],
+        "organization": ["connect_holding_org"]
+      },
+      "_args_doc": "`organization_slug` is the CALLER's org; `organization` is the org being acted ON (connect_send_llo_invite's invitee) and is present on that atom only — absent args are not checked, so this mapping is inert for the rest of the pattern. Both are needed for the same reason connect_create_opportunity maps target_organization_slug as well as organization_slug: checking only the caller leaves the subject unchecked. NOTE this is a SCOPE check (which orgs may this opp touch), NOT an authority check (whose action is this). A partner org is legitimately in tenancy and must still accept its own invitation — that rule cannot live here and is enforced by assertAcceptingForSelf in lib/connect-orgs.ts (ace#2954)."
     },
     {
       "name": "connect-create-opportunity",
