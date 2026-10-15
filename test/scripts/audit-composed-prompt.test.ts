@@ -520,3 +520,64 @@ describe('scripts/audit-composed-prompt.ts — the safeguarding-disclosure secti
     expect(parsed.safeguarding_disclosures.missing.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * dimagi-internal/ace#2949 — a run whose run_constraints forbid any ACE
+ * contact (smallholder-seasonal/20261014-0859) audits with
+ * --escalation-placeholder "<label>" instead of the config/agent.json address.
+ */
+describe('scripts/audit-composed-prompt.ts — --escalation-placeholder (ace#2949)', () => {
+  const V7 = join(REPO_ROOT, 'test/fixtures/composed-prompts/spark-facilitator-13923-v7.md');
+  const LABEL = 'PLACEHOLDER: named Dimagi contact, to be set';
+  const placeholderPrompt = () =>
+    readFileSync(V7, 'utf8')
+      .replace(
+        "**The ACE admin group's escalation address is ace@dimagi-ai.com.** Whenever you escalate to the ACE admin group, give this address",
+        `**The escalation contact for this programme is ${LABEL}.** Whenever you escalate, give this contact`,
+      )
+      .split('ace@dimagi-ai.com')
+      .join(LABEL)
+      .replace(/the ACE admin group(?: address)?/gi, LABEL);
+
+  it('POSITIVE CONTROL: the placeholder prompt exits 0 in placeholder mode', () => {
+    const { code, stdout } = runOn(placeholderPrompt(), ['--escalation-placeholder', LABEL]);
+    expect(code).toBe(0);
+    expect(stdout).toContain(LABEL);
+  });
+
+  it('NEGATIVE CONTROL: the same prompt exits 1 in default mode', () => {
+    expect(runOn(placeholderPrompt()).code).toBe(1);
+  });
+
+  it('ABLATION: dropping the exactness wording exits 1', () => {
+    const weakened = placeholderPrompt().replace(
+      'exactly as written here — never vary its spelling, never shorten or change its domain',
+      'when asked',
+    );
+    expect(runOn(weakened, ['--escalation-placeholder', LABEL]).code).toBe(1);
+  });
+
+  it('a label without PLACEHOLDER, or with @, is a harness error (exit 2)', () => {
+    expect(runOn(placeholderPrompt(), ['--escalation-placeholder', 'named Dimagi contact']).code).toBe(2);
+    expect(runOn(placeholderPrompt(), ['--escalation-placeholder', 'PLACEHOLDER: x@example.org']).code).toBe(2);
+    expect(run([V7, '--escalation-placeholder']).code).toBe(2);
+  });
+
+  it('both flags at once is a usage error (exit 2)', () => {
+    const { code, stderr } = run([V7, '--escalation-address', ADMIN_EMAIL, '--escalation-placeholder', LABEL]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('mutually exclusive');
+  });
+
+  it('--json reports the placeholder and no address', () => {
+    const { stdout } = runOn(placeholderPrompt(), ['--escalation-placeholder', LABEL, '--json']);
+    const parsed = JSON.parse(stdout) as {
+      ok: boolean;
+      escalation_address: { address: string | null; placeholder: string | null; ok: boolean };
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.escalation_address.placeholder).toBe(LABEL);
+    expect(parsed.escalation_address.address).toBeNull();
+    expect(parsed.escalation_address.ok).toBe(true);
+  });
+});

@@ -55,8 +55,8 @@ import {
 } from '../lib/standing-fabrication-domains.js';
 
 const USAGE = `Usage:
-  npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json] [--escalation-address <email>]
-  npx tsx scripts/audit-composed-prompt.ts --stdin [--json] [--escalation-address <email>]
+  npx tsx scripts/audit-composed-prompt.ts <prompt-file> [--json] [--escalation-address <email> | --escalation-placeholder "<label>"]
+  npx tsx scripts/audit-composed-prompt.ts --stdin [--json] [--escalation-address <email> | --escalation-placeholder "<label>"]
 
 Audits a composed OCS system prompt for four things:
   - the STANDING half of its "## ${ANTI_FABRICATION_HEADING}"
@@ -70,7 +70,12 @@ Audits a composed OCS system prompt for four things:
     number that was not retrieved verbatim for THIS answer, and
   - the escalation address (dimagi-internal/ace#2675): the ACE admin group
     address from config/agent.json \`email\` (or --escalation-address) must be
-    stated verbatim, as the one address the bot may give without retrieving it, and
+    stated verbatim, as the one address the bot may give without retrieving it —
+    OR, when the run's run_constraints forbid any ACE contact,
+    --escalation-placeholder "<label>" (dimagi-internal/ace#2949): the label must
+    contain PLACEHOLDER and no "@", is held to the same verbatim rule, and also
+    replaces "the ACE admin group" in the safeguarding and product-specifics
+    routing; config/agent.json is not read. The two flags are mutually exclusive, and
   - the "## Safeguarding disclosures" section (dimagi-internal/ace#2682): generic
     safe-referral guidance the bot must always give (do not record it in the app,
     tell the supervisor immediately, police / child-protection in immediate
@@ -90,6 +95,8 @@ export interface AuditCliArgs {
   json: boolean;
   /** Override for the canonical escalation address; default config/agent.json. */
   escalationAddress: string | null;
+  /** Run-mandated placeholder escalation contact (ace#2949); excludes escalationAddress. */
+  escalationPlaceholder: string | null;
 }
 
 /**
@@ -118,6 +125,7 @@ export function parseArgs(argv: string[]): AuditCliArgs | { error: string } {
   let stdin = false;
   let json = false;
   let escalationAddress: string | null = null;
+  let escalationPlaceholder: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -128,15 +136,23 @@ export function parseArgs(argv: string[]): AuditCliArgs | { error: string } {
       if (v === undefined || v.startsWith('-')) return { error: '--escalation-address needs a value' };
       escalationAddress = v;
     }
+    else if (arg === '--escalation-placeholder') {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('-')) return { error: '--escalation-placeholder needs a value' };
+      escalationPlaceholder = v;
+    }
     else if (arg === '-h' || arg === '--help') return { error: USAGE };
     else if (arg.startsWith('-')) return { error: `unknown flag: ${arg}\n\n${USAGE}` };
     else if (file !== null) return { error: `more than one prompt file given: ${file}, ${arg}` };
     else file = arg;
   }
 
+  if (escalationAddress !== null && escalationPlaceholder !== null) {
+    return { error: '--escalation-address and --escalation-placeholder are mutually exclusive' };
+  }
   if (stdin && file !== null) return { error: '--stdin takes no file argument' };
   if (!stdin && file === null) return { error: `no prompt given\n\n${USAGE}` };
-  return { file: stdin ? null : file, json, escalationAddress };
+  return { file: stdin ? null : file, json, escalationAddress, escalationPlaceholder };
 }
 
 function main(argv: string[]): number {
@@ -165,17 +181,26 @@ function main(argv: string[]): number {
     return 2;
   }
 
-  let escalationAddress: string;
-  try {
-    escalationAddress = parsed.escalationAddress ?? readCanonicalEscalationAddress();
-  } catch (err) {
-    process.stderr.write(`cannot resolve the escalation address: ${(err as Error).message}\n`);
-    return 2;
+  // Placeholder mode (ace#2949) never reads config/agent.json: the run forbids
+  // an ACE contact, so the configured mailbox is not the value being asserted.
+  const escalationPlaceholder = parsed.escalationPlaceholder;
+  let escalationAddress: string | null = null;
+  if (escalationPlaceholder === null) {
+    try {
+      escalationAddress = parsed.escalationAddress ?? readCanonicalEscalationAddress();
+    } catch (err) {
+      process.stderr.write(`cannot resolve the escalation address: ${(err as Error).message}\n`);
+      return 2;
+    }
   }
+  const escalationContact = escalationPlaceholder ?? (escalationAddress as string);
 
   let audit;
   try {
-    audit = auditComposedPrompt(prompt, { escalationAddress });
+    audit = auditComposedPrompt(
+      prompt,
+      escalationPlaceholder !== null ? { escalationPlaceholder } : { escalationAddress: escalationAddress as string },
+    );
   } catch (err) {
     process.stderr.write(`${(err as Error).message}\n`);
     return 2;
@@ -223,6 +248,7 @@ function main(argv: string[]): number {
           },
           escalation_address: {
             address: escalationAddress,
+            placeholder: escalationPlaceholder,
             ok: audit.escalationAddress?.ok ?? false,
             missing: (audit.escalationAddress?.missing ?? []).map((o) => ({
               id: o.id,
@@ -257,7 +283,7 @@ function main(argv: string[]): number {
           `"## ${SAFEGUARDING_DISCLOSURE_HEADING}" section carries all ` +
           `${SAFEGUARDING_DISCLOSURE_CLAUSES.length} clauses, the partner-vs-pilot ` +
           `attribution section carries all ${ATTRIBUTION_CLAUSES.length} clauses, and the ` +
-          `escalation address ${escalationAddress} is stated verbatim.\n`,
+          `escalation ${escalationPlaceholder !== null ? 'placeholder' : 'address'} ${escalationContact} is stated verbatim.\n`,
       );
     }
     return 0;

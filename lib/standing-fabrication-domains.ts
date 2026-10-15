@@ -611,6 +611,91 @@ export function auditEscalationAddress(prompt: string, address: string): AnswerO
 }
 
 /**
+ * The run-mandated PLACEHOLDER escalation contact (dimagi-internal/ace#2949).
+ *
+ * A run whose binding `run_constraints` forbid any ACE contact
+ * (smallholder-seasonal/20261014-0859: "NO contact in app/guides/training may
+ * be ACE or an ACE address") must name a clearly labelled placeholder — e.g.
+ * `PLACEHOLDER: named Dimagi contact, to be set` — where the ACE admin group
+ * address would otherwise go. `buildEscalationAddressObligation` only accepts
+ * an email, so a run-correct prompt exited 1 at Step 7.5 and a gate-correct
+ * prompt broke the run constraint.
+ *
+ * Same shape as the email obligation — the exact label, escalation, the
+ * exactness wording and the without-retrieving scope, all in ONE block — so
+ * the placeholder is held to the same verbatim discipline the address is. The
+ * label must contain the word `PLACEHOLDER` (case-sensitive: the label has to
+ * read as a placeholder to a human, not as a real contact) and must not
+ * contain `@` (a real-looking address is exactly what the run forbids).
+ */
+export const ESCALATION_PLACEHOLDER_OBLIGATION_ID = 'escalation-placeholder-verbatim';
+
+/** Validate a placeholder label; returns it trimmed. Throws on a non-placeholder. */
+export function validateEscalationPlaceholder(label: string): string {
+  const l = label.trim();
+  if (!l.includes('PLACEHOLDER')) {
+    throw new Error(`escalation placeholder must contain the word PLACEHOLDER: ${JSON.stringify(label)}`);
+  }
+  if (l.includes('@')) {
+    throw new Error(`escalation placeholder must not contain "@" (it is not an address): ${JSON.stringify(label)}`);
+  }
+  return l;
+}
+
+/** The normalized, regex-escaped label — matched against normalized blocks. */
+function placeholderPattern(label: string): string {
+  return normalize(validateEscalationPlaceholder(label)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function buildEscalationPlaceholderObligation(label: string): AnswerObligation {
+  const l = validateEscalationPlaceholder(label);
+  const esc = placeholderPattern(l);
+  return {
+    id: ESCALATION_PLACEHOLDER_OBLIGATION_ID,
+    label:
+      `State the run's placeholder escalation contact (${l}) verbatim, as the one contact the bot may give without retrieving it, with exactness wording`,
+    pattern: new RegExp(
+      `(?=.*${esc})` +
+        '(?=.*\\bescalat\\w*)' +
+        '(?=.*\\b(?:exactly as written|vary (?:its|the) spelling|change its domain|exact spelling)\\b)' +
+        '(?=.*\\bwithout retriev\\w*)',
+      'i',
+    ),
+    why:
+      'The run\'s binding run_constraints forbid any ACE contact, so the escalation ' +
+      'contact is a labelled placeholder; it must still be carried verbatim under ' +
+      'exactness wording, or the bot paraphrases it or substitutes a recalled ' +
+      'address (dimagi-internal/ace#2949, smallholder-seasonal/20261014-0859).',
+  };
+}
+
+/** Audit one composed prompt for the placeholder escalation obligation. Pure. */
+export function auditEscalationPlaceholder(prompt: string, label: string): AnswerObligationAudit {
+  return auditAnswerObligations(prompt, [buildEscalationPlaceholderObligation(label)]);
+}
+
+/**
+ * The answer obligations with the escalation route re-pointed at a placeholder
+ * label (ace#2949): `PRODUCT_SPECIFICS_OBLIGATION` routes to "supervisor + ACE
+ * admin group", which a run forbidding any ACE contact cannot write. Every
+ * other part of every obligation is unchanged.
+ */
+export function answerObligationsFor(escalationPlaceholder?: string): readonly AnswerObligation[] {
+  if (escalationPlaceholder === undefined) return ANSWER_OBLIGATIONS;
+  const esc = placeholderPattern(escalationPlaceholder);
+  return ANSWER_OBLIGATIONS.map((o) => {
+    if (o.id !== PRODUCT_SPECIFICS_OBLIGATION.id) return o;
+    const src = o.pattern.source.replace('\\bace admin group\\b', () => esc);
+    if (src === o.pattern.source) throw new Error('product-specifics routing clause not found');
+    return {
+      ...o,
+      label: o.label.replace('ACE admin group', () => escalationPlaceholder.trim()),
+      pattern: new RegExp(src, o.pattern.flags),
+    };
+  });
+}
+
+/**
  * Never narrate retrieval (same run). The withheld answers also leaked the
  * check's mechanics to the reader: "I need to retrieve the contact address
  * before quoting it... The search returned...", "I was not able to retrieve a
@@ -850,16 +935,39 @@ export function extractSafeguardingDisclosureSection(prompt: string): string | n
   return body.join('\n');
 }
 
+/**
+ * The safeguarding clauses, with clause 4 re-pointed at a placeholder label
+ * when the run forbids any ACE contact (ace#2949): "escalate to <label>"
+ * instead of "escalate to the ACE admin group". Every other clause unchanged.
+ */
+export function safeguardingClausesFor(escalationPlaceholder?: string): readonly SafeguardingClause[] {
+  if (escalationPlaceholder === undefined) return SAFEGUARDING_DISCLOSURE_CLAUSES;
+  const esc = placeholderPattern(escalationPlaceholder);
+  return SAFEGUARDING_DISCLOSURE_CLAUSES.map((c) =>
+    c.id !== 'escalate-ace-admin'
+      ? c
+      : {
+          ...c,
+          label: `Escalate to ${escalationPlaceholder.trim()}`,
+          pattern: new RegExp(`\\bescalat\\w*\\b[^.]{0,40}${esc}`),
+        },
+  );
+}
+
 /** Audit a composed prompt for the safeguarding-disclosure section (ace#2682). Pure. */
-export function auditSafeguardingDisclosure(prompt: string): SafeguardingDisclosureAudit {
+export function auditSafeguardingDisclosure(
+  prompt: string,
+  escalationPlaceholder?: string,
+): SafeguardingDisclosureAudit {
+  const clauses = safeguardingClausesFor(escalationPlaceholder);
   const section = extractSafeguardingDisclosureSection(prompt);
   if (section === null) {
-    return { sectionPresent: false, covered: [], missing: [...SAFEGUARDING_DISCLOSURE_CLAUSES], ok: false };
+    return { sectionPresent: false, covered: [], missing: [...clauses], ok: false };
   }
   const haystack = normalize(section);
   const covered: string[] = [];
   const missing: SafeguardingClause[] = [];
-  for (const c of SAFEGUARDING_DISCLOSURE_CLAUSES) {
+  for (const c of clauses) {
     if (c.pattern.test(haystack)) covered.push(c.id);
     else missing.push(c);
   }
@@ -1000,21 +1108,35 @@ export interface ComposedPromptAuditOptions {
    * `email`). When given, the prompt must carry it verbatim (ace#2675).
    */
   escalationAddress?: string;
+  /**
+   * The run's labelled placeholder escalation contact, used INSTEAD of the
+   * address when the run's `run_constraints` forbid any ACE contact
+   * (ace#2949). Must contain `PLACEHOLDER` and no `@`. Mutually exclusive
+   * with `escalationAddress`; it also re-points the safeguarding clause and
+   * the product-specifics routing from "the ACE admin group" to the label.
+   */
+  escalationPlaceholder?: string;
 }
 
 export function auditComposedPrompt(
   prompt: string,
   options: ComposedPromptAuditOptions = {},
 ): StandingDomainAudit {
+  const { escalationPlaceholder } = options;
+  if (options.escalationAddress !== undefined && escalationPlaceholder !== undefined) {
+    throw new Error('pass escalationAddress OR escalationPlaceholder, not both');
+  }
   const escalationAddress =
-    options.escalationAddress === undefined
-      ? null
-      : auditEscalationAddress(prompt, options.escalationAddress);
+    escalationPlaceholder !== undefined
+      ? auditEscalationPlaceholder(prompt, escalationPlaceholder)
+      : options.escalationAddress === undefined
+        ? null
+        : auditEscalationAddress(prompt, options.escalationAddress);
   const contactExactness = auditContactExactness(prompt);
-  const safeguarding = auditSafeguardingDisclosure(prompt);
+  const safeguarding = auditSafeguardingDisclosure(prompt, escalationPlaceholder);
   const attribution = auditAttribution(prompt);
   const retrievalFallback = auditRetrievalFallback(prompt);
-  const answerObligations = auditAnswerObligations(prompt);
+  const answerObligations = auditAnswerObligations(prompt, answerObligationsFor(escalationPlaceholder));
   const section = extractAntiFabricationSection(prompt);
   if (section === null) {
     return {

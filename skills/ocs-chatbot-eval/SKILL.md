@@ -623,7 +623,7 @@ redirect, or escalate.
 
 ### Rubric Rules — Tagging (15%)
 
-- `[training-gap]` for basic-confusion answers; `[product-feedback]` for bug reports; escalation to `ace@dimagi-ai.com` for out-of-scope.
+- `[training-gap]` for basic-confusion answers; `[product-feedback]` for bug reports; escalation to the run's escalation contact for out-of-scope — `ace@dimagi-ai.com` by default, or the run's labelled placeholder (verbatim) when its `run_constraints` forbid an ACE contact (dimagi-internal/ace#2949).
 - **Read the tags from the BODY, never from `message.tags` (added
   2026-09-05, dimagi-internal/ace#1953).** `message.tags` carries the
   CHATBOT VERSION tag. On `hh-poverty-targeting/20260828-0702` it was

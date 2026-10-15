@@ -37,6 +37,9 @@ import {
   ESCALATION_ADDRESS_OBLIGATION_ID,
   buildEscalationAddressObligation,
   auditEscalationAddress,
+  ESCALATION_PLACEHOLDER_OBLIGATION_ID,
+  buildEscalationPlaceholderObligation,
+  auditEscalationPlaceholder,
   NO_RETRIEVAL_NARRATION_OBLIGATION,
   SAFEGUARDING_DISCLOSURE_CLAUSES,
   auditSafeguardingDisclosure,
@@ -1245,5 +1248,95 @@ describe('PRODUCT_SPECIFICS_OBLIGATION — product/process specifics only when r
       .join('Spark')
       .replace(/\n\s+/g, ' ');
     expect(one(mandated)).toBe(true);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2949 — smallholder-seasonal/20261014-0859: the run's
+ * binding run_constraints forbid any ACE contact, so the escalation contact is
+ * the labelled placeholder `PLACEHOLDER: named Dimagi contact, to be set`. The
+ * email-only gate could not pass a run-correct prompt. The placeholder mode
+ * holds the label to the same verbatim discipline as the address.
+ */
+describe('escalation placeholder mode — a run that forbids any ACE contact (ace#2949)', () => {
+  const LABEL = 'PLACEHOLDER: named Dimagi contact, to be set';
+  const v7 = readFileSync(`${ROOT}test/fixtures/composed-prompts/spark-facilitator-13923-v7.md`, 'utf8');
+  /** v7 with every ACE contact replaced by the run's placeholder label. */
+  const placeholderPrompt = v7
+    .replace(
+      "**The ACE admin group's escalation address is ace@dimagi-ai.com.** Whenever you escalate to the ACE admin group, give this address",
+      `**The escalation contact for this programme is ${LABEL}.** Whenever you escalate, give this contact`,
+    )
+    .split('ace@dimagi-ai.com')
+    .join(LABEL)
+    .replace(/the ACE admin group(?: address)?/gi, LABEL);
+
+  it('the fixture really carries no ACE contact and no address', () => {
+    expect(placeholderPrompt).not.toMatch(/ace admin group/i);
+    expect(placeholderPrompt).not.toContain('@');
+    expect(placeholderPrompt).toContain(`escalation contact for this programme is ${LABEL}`);
+  });
+
+  it('POSITIVE CONTROL — the placeholder prompt passes the WHOLE gate in placeholder mode', () => {
+    expect(auditEscalationPlaceholder(placeholderPrompt, LABEL).ok).toBe(true);
+    const audit = auditComposedPrompt(placeholderPrompt, { escalationPlaceholder: LABEL });
+    expect(audit.escalationAddress?.covered).toEqual([ESCALATION_PLACEHOLDER_OBLIGATION_ID]);
+    expect(audit.safeguarding.ok).toBe(true);
+    expect(audit.answerObligations.ok).toBe(true);
+    expect(audit.ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL — the same prompt fails in default (address) mode', () => {
+    const audit = auditComposedPrompt(placeholderPrompt, { escalationAddress: 'ace@dimagi-ai.com' });
+    expect(audit.ok).toBe(false);
+    expect(audit.escalationAddress?.ok).toBe(false);
+  });
+
+  it('NEGATIVE CONTROL — the ACE-address v7 prompt fails in placeholder mode', () => {
+    expect(auditComposedPrompt(v7, { escalationPlaceholder: LABEL }).ok).toBe(false);
+  });
+
+  it('a label without the word PLACEHOLDER (case-sensitive) is rejected', () => {
+    expect(() => buildEscalationPlaceholderObligation('named Dimagi contact, to be set')).toThrow(/PLACEHOLDER/);
+    expect(() => buildEscalationPlaceholderObligation('placeholder: named Dimagi contact')).toThrow(/PLACEHOLDER/);
+    expect(() => auditComposedPrompt(placeholderPrompt, { escalationPlaceholder: 'Dimagi contact' })).toThrow();
+  });
+
+  it('a label containing @ is rejected — it is not an address', () => {
+    expect(() => buildEscalationPlaceholderObligation('PLACEHOLDER: ace@dimagi-ai.com')).toThrow(/@/);
+  });
+
+  it('address and placeholder are mutually exclusive', () => {
+    expect(() =>
+      auditComposedPrompt(placeholderPrompt, { escalationAddress: 'ace@dimagi-ai.com', escalationPlaceholder: LABEL }),
+    ).toThrow(/not both/);
+  });
+
+  it('ABLATION — dropping the exactness wording fails', () => {
+    const weakened = placeholderPrompt.replace(
+      'exactly as written here — never vary its spelling, never shorten or change its domain',
+      'when asked',
+    );
+    expect(weakened).not.toBe(placeholderPrompt);
+    expect(auditEscalationPlaceholder(weakened, LABEL).ok).toBe(false);
+    expect(auditComposedPrompt(weakened, { escalationPlaceholder: LABEL }).ok).toBe(false);
+  });
+
+  it('ABLATION — dropping the without-retrieving scope fails', () => {
+    const weakened = placeholderPrompt.replace('It is the one contact you may give without retrieving it, and when', 'When');
+    expect(weakened).not.toBe(placeholderPrompt);
+    expect(auditEscalationPlaceholder(weakened, LABEL).ok).toBe(false);
+  });
+
+  it('a different label than the one stated fails — the label is a PARAMETER', () => {
+    expect(auditEscalationPlaceholder(placeholderPrompt, 'PLACEHOLDER: someone else').ok).toBe(false);
+  });
+
+  it('the safeguarding clause is re-pointed at the label, not dropped', () => {
+    const noEscalate = placeholderPrompt.replace(`4. Escalate to ${LABEL} at ${LABEL}.`, '4. Tell someone.');
+    expect(noEscalate).not.toBe(placeholderPrompt);
+    const audit = auditComposedPrompt(noEscalate, { escalationPlaceholder: LABEL });
+    expect(audit.safeguarding.missing.map((c) => c.id)).toEqual(['escalate-ace-admin']);
+    expect(audit.ok).toBe(false);
   });
 });

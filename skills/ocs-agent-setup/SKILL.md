@@ -561,6 +561,23 @@ round-trip gate in Step 11.5 below.
      shipped in ace#2677 (`ESCALATE_WITH_ADDRESS_OBLIGATION`) is RETIRED: the
      v4 run is the live evidence it made the withholding worse.
 
+     **When the run forbids any ACE contact (dimagi-internal/ace#2949).** If
+     the run's `run_state.yaml` → `run_constraints` forbid an ACE contact or
+     an ACE address (e.g. `smallholder-seasonal/20261014-0859`: escalation
+     contacts are `PLACEHOLDER: named Dimagi contact, to be set`), use the
+     run's labelled placeholder escalation contact everywhere this step and
+     Step 5 would use `config/agent.json` → `email` / "the ACE admin group":
+     in the composed prompt's escalation obligations above (same exactness
+     and "without retrieving it" wording, with the label in place of the
+     address), in the `## Safeguarding disclosures` clause ("Escalate to
+     <label>"), in the product-specifics routing ("their supervisor and
+     <label>"), and in the escalation row of `00-program-contacts.md`. Copy
+     the label verbatim from the run's constraints; it must contain the word
+     `PLACEHOLDER` and no `@`. Never fall back to the ACE address on such a
+     run — that breaks a binding run constraint. Step 7.5 then runs with
+     `--escalation-placeholder "<label>"` instead of reading
+     `config/agent.json`.
+
      **Why the per-answer retrieval check still exists, narrowed
      (dimagi-internal/ace#2422).** `poverty-graduation/20260915-1518`
      published a composed prompt carrying all three ace#2216 exactness
@@ -983,6 +1000,17 @@ round-trip gate in Step 11.5 below.
    near-miss domain (`ace@dimagi.com`) exits 1; an unreadable config is
    exit 2, never a verdict.
 
+   **Placeholder mode (dimagi-internal/ace#2949).** When the run's
+   `run_constraints` forbid an ACE contact (Step 7), run the gate with
+   `--escalation-placeholder "<label>"` — the run's labelled placeholder,
+   verbatim — instead of the default. It does not read `config/agent.json`;
+   it asserts ONE block carries that exact label, an escalation clause,
+   exactness wording and the "without retrieving it" scope
+   (`buildEscalationPlaceholderObligation`), and re-points the safeguarding
+   "escalate to" clause and the product-specifics routing at the label. A
+   label without `PLACEHOLDER` or containing `@` is exit 2; passing both
+   `--escalation-address` and `--escalation-placeholder` is exit 2.
+
    **Why here and not after the publish.** Step 8 is the only write that
    puts a prompt on the bot, and BOTH entry paths reach it through Step 7 —
    a fresh setup and a `--prompt-patch` re-run (Step 0). A check placed after
@@ -1293,6 +1321,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-15 | **Step 7.5 gains a placeholder escalation mode for runs that forbid any ACE contact (closes dimagi-internal/ace#2949).** On `smallholder-seasonal/20261014-0859` (Phase 5) the binding `run_constraints` forbid any ACE contact or ACE address, so the escalation contact is the labelled placeholder `PLACEHOLDER: named Dimagi contact, to be set`; `buildEscalationAddressObligation` only accepted an email and the gate defaulted to `config/agent.json` → `email`, so a run-correct prompt exited 1 and a gate-correct prompt broke the run constraint. `lib/standing-fabrication-domains.ts` adds `buildEscalationPlaceholderObligation(label)` (label must contain `PLACEHOLDER`, no `@`; same exact-label + escalation + exactness + "without retrieving" shape), threaded as `auditComposedPrompt(prompt, { escalationPlaceholder })` (exclusive with `escalationAddress`), which also re-points the safeguarding "escalate to" clause and the product-specifics routing at the label. `scripts/audit-composed-prompt.ts` adds `--escalation-placeholder "<label>"` (mutually exclusive with `--escalation-address`; does not read `config/agent.json`). Step 7 says when to use it. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts` (placeholder prompt passes in placeholder mode and fails in default mode, label without `PLACEHOLDER` / with `@` rejected, exactness ablation fails). | ACE team |
 | 2026-10-05 | **Step 7 now requires a standalone "Product and process specifics — a hard rule" paragraph, and Step 7.5 checks it as `PRODUCT_SPECIFICS_OBLIGATION` (closes dimagi-internal/ace#2689).** The prompt's only grounding line, "Ground answers in what you retrieve", was a description rather than a rule, and the four standing domains do not cover product mechanics, resources or programme structure. On chatbot 13923 v6 (`spark-facilitator/20261004-1706`) the bot invented a "payment-received notification in Connect" (opp-40), pointed a reader to "the Connect Confluence space" (cg-4), and misstated FCAP's phase structure (opp-29). None of these is a URL, address or number, so no deterministic pass caught them. The new paragraph allows a feature, notification, document, documentation space or resource to be named, or a process or programme structure to be described, only when it was retrieved for this answer. It forbids filling gaps from how such systems usually work and pointing to resources the KB does not name, and it routes the reader to their supervisor and the ACE admin group. Step 7 also says recurring misstatements may be corrected in the opportunity brief, verbatim from the KB. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (the v5 fixture, published as v6, fails; the v7 fixture passes; removing any one part fails the check; the doc wording is checked against the gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
 | 2026-10-05 | **Step 7 requires a `## <PARTNER>'s rules vs the pilot's design` section, and Step 7.5 checks its five clauses (closes dimagi-internal/ace#2687).** On chatbot 13923 (`spark-facilitator/20261004-1706`) the bot credited the partner with the pilot's design. In v4 it called the 3-per-step cap "Spark's payment rule" (opp-43) and per-meeting payment "the reason Spark designed it this way" (opp-32); the inflation guard fired and capped the score at 8.5. In v6 it said the cap "comes from Spark's own programme design" and that no Connect configuration change could alter it (opp-43). The cap is the pilot's design (PDD §3.2), enforced by a Connect form-field rule. `lib/standing-fabrication-domains.ts` adds `ATTRIBUTION_CLAUSES` + `auditAttribution`, scoped to that heading only. The clauses: credit the partner only with what the KB says is its own; name the pilot's design, including caps, limits and rates; that design is not the partner's existing practice; it is enforced by Connect rules configured for this pilot; never say a pilot rule comes from the partner. The result is folded into `auditComposedPrompt`'s `ok`, and the gate reports `[PARTNER-ATTRIBUTION]` / `partner_attribution`. *Enforced:* the v5 fixture (published as v6) fails, the v7 fixture passes, plus per-clause removal tests and a doc-vs-gate test. | ACE team |
 | 2026-10-05 | **Step 7 mandates a `## Safeguarding disclosures` section; Step 7.5 asserts its six clauses (closes dimagi-internal/ace#2682).** On `spark-facilitator/20261004-1706` (chatbot 13923 v4) the bot was asked whether a child-abuse disclosure made at a meeting goes in `meeting_notes` and never said no and gave no child-protection referral — the deep judge (verdict Drive `1ejgaS7kscFVHE_e04zuxhv_cx6w4gbTYXlqRlpHjfNs` rev 19) scored opp-54 Warn 6.5, flagged safety-critical: it *"over-applies 'do not invent procedure' and defers it to the supervisor."* The standing domain `Safeguarding and emergency escalation` forbids an invented chain; nothing said generic safe referral is always allowed. `lib/standing-fabrication-domains.ts` adds `SAFEGUARDING_DISCLOSURE_CLAUSES` + `auditSafeguardingDisclosure` (heading-scoped: always give the referral; do not record it in the app's notes or form fields; tell the supervisor immediately, outside the app; police or child-protection / social-welfare services in immediate danger; escalate to the ACE admin group; still never invent a chain, officer, form or phone number), folded into `auditComposedPrompt`'s `ok`; the gate reports `[SAFEGUARDING-DISCLOSURES]` / `safeguarding_disclosures` in `--json`. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (v4 fixture fails, v5 fixture passes, per-clause ablations, doc-vs-gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
