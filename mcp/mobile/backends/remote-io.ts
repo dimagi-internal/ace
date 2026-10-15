@@ -121,41 +121,80 @@ export interface RemoteArtifact {
   name: string;
   url: string;
   contentType: string;
+  /**
+   * Relative directory under `screenshotDir` to write into (`debug`,
+   * `chunks/03`, …). Every segment is checked like `name` is; omitted = the
+   * dir itself.
+   */
+  subdir?: string;
+  /** False keeps an image out of `screenshots[]` (debug captures are evidence, not journey frames). */
+  screenshot?: boolean;
+}
+
+/** Run `fn` over `items` with at most `limit` in flight; results keep input order. */
+export async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, worker));
+  return out;
 }
 
 /**
  * Download every artifact into `screenshotDir` and return the image ones as
  * ScreenshotEntry — the on-disk shape MaestroBackend leaves behind.
+ * Downloads run `concurrency` at a time (presigned S3 GETs are independent).
  *
  * ace#1110: `name` comes from the REMOTE side and `path.join` happily walks
  * out of screenshotDir on `../`. No legitimate artifact name carries a
  * separator, so an unsafe one is skipped with a warning rather than written.
+ * `subdir` is checked segment by segment the same way.
  */
 export async function materializeArtifacts(
   artifacts: RemoteArtifact[],
   screenshotDir: string,
   download: (url: string, dest: string) => Promise<number>,
   logTag = 'remote',
+  concurrency = 1,
 ): Promise<ScreenshotEntry[]> {
   await fs.mkdir(screenshotDir, { recursive: true });
-  const screenshots: ScreenshotEntry[] = [];
-  for (const art of artifacts) {
-    if (!isSafeArtifactName(art.name)) {
-      console.warn(`[ace-mobile] ${logTag}: skipping artifact with unsafe name ${JSON.stringify(art.name)} (ace#1110)`);
-      continue;
+  const safe = artifacts.filter((art) => {
+    const segs = art.subdir ? art.subdir.split('/') : [];
+    if (!isSafeArtifactName(art.name) || !segs.every(isSafeArtifactName)) {
+      console.warn(
+        `[ace-mobile] ${logTag}: skipping artifact with unsafe name ${JSON.stringify(art.subdir ? `${art.subdir}/${art.name}` : art.name)} (ace#1110)`,
+      );
+      return false;
     }
-    const dest = path.join(screenshotDir, art.name);
+    return true;
+  });
+  const entries = await mapBounded(safe, concurrency, async (art) => {
+    const dir = art.subdir ? path.join(screenshotDir, ...art.subdir.split('/')) : screenshotDir;
+    if (art.subdir) await fs.mkdir(dir, { recursive: true });
+    const dest = path.join(dir, art.name);
     const bytes = await download(art.url, dest);
-    if (art.contentType.startsWith('image/')) {
-      screenshots.push({
+    if (art.contentType.startsWith('image/') && art.screenshot !== false) {
+      return {
         stepName: art.name.replace(/\.[a-z0-9]+$/i, ''),
         path: dest,
         takenAt: new Date().toISOString(),
         bytes,
-      });
+      } satisfies ScreenshotEntry;
     }
-  }
-  return screenshots;
+    return null;
+  });
+  return entries.filter((e): e is ScreenshotEntry => e !== null);
 }
 
 const CONTENT_TYPES: Record<string, string> = {

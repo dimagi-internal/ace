@@ -1,26 +1,35 @@
 // LeaseBackend against a fake canopy-web broker (mocked fetch). Covers the
 // lease lifecycle (acquire → queued → provisioning → ready → release), reuse,
-// the typed failure codes, every CLI op's argv, and the on-disk artifact
-// layout (the same files and ScreenshotEntry shape the retired ace-web cloud
-// backend produced, pinned here now that there is no second backend to diff).
+// state ↔ selector-map parity, the typed failure codes, every CLI op's argv,
+// recipe chunking + per-chunk timeouts, exec-POST single-shot, the 404 grace,
+// long-poll vs short-poll fallback, poll backoff timing, network-outage
+// tolerance, idle loss + recovery, and the on-disk artifact layout.
+//
+// The fake broker hands out PER-INSTANCE S3 prefixes
+// (`leases/<id>/<instance>/out/`), so any test that passes is a test that the
+// client used the URIs the broker returned and never built a path itself.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { LeaseBackend } from '../../../../mcp/mobile/backends/lease.js';
+import { LEASE_RESTORE_HINT, LeaseBackend } from '../../../../mcp/mobile/backends/lease.js';
 import { MobileError, AvdBootError } from '../../../../mcp/mobile/errors.js';
+import { ENVIRONMENT_BASELINE_FINGERPRINT } from '../../../../mcp/mobile/environment-baseline.js';
 
 const BASE = 'https://canopy.test';
 const TOKEN = 'ace-canopy-pat';
 const BUCKET = 'cap-bucket';
+const INSTANCE = 'i-0abc';
 
 type Json = Record<string, unknown>;
 interface Call {
   method: string;
   url: string;
   path: string;
+  query: Record<string, string>;
   body?: unknown;
   auth?: string | null;
+  at: number;
 }
 
 function json(status: number, body: unknown): Response {
@@ -30,26 +39,55 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+/** A fake clock: `sleep` advances it, and the broker can advance it to simulate a held GET. */
+class Clock {
+  t = 1_000_000;
+  sleeps: number[] = [];
+  now = () => this.t;
+  sleep = async (ms: number) => {
+    this.sleeps.push(ms);
+    this.t += ms;
+  };
+}
+
+/** Per-instance S3 layout, as the broker states it. */
+const outPrefix = (id: string) => `s3://${BUCKET}/leases/${id}/${INSTANCE}/out/`;
+const inUri = (id: string, n: string) => `s3://${BUCKET}/leases/${id}/${INSTANCE}/in/${n}`;
+
 /**
  * A scriptable fake broker. `leaseStates` is the sequence of lease statuses
  * successive GETs return (the last one repeats). `cli` maps a subcommand to
- * the JSON line the in-VM CLI prints.
+ * the JSON line the in-VM CLI prints; `execPlan` to the non-terminal statuses
+ * (or `404`) successive status GETs return before the terminal one.
  */
 class FakeBroker {
   calls: Call[] = [];
+  clock = new Clock();
   leaseStates: Json[] = [{ status: 'ready' }];
   acquireResponse: { status: number; body: unknown } | null = null;
   onAcquire: (() => void) | null = null;
-  cli: Record<string, Json> = {};
-  execStatus = 'Success';
-  artifactKeys: Record<string, Array<{ key: string; content_type?: string }>> = {};
-  objects = new Map<string, Buffer>();
+  cli: Record<string, Json | ((argv: string[]) => Json)> = {};
+  execPlan: Record<string, Array<string | 404>> = {};
+  /** Simulate the broker holding a long-poll GET (advances the clock by min(wait_s, holdS)). */
+  honorWait = false;
+  holdS = 20;
+  /** Respond to the exec POST with this instead of an exec id. */
+  execPost: ((n: number) => Response | Promise<Response>) | null = null;
+  states = ['cc-2.62.0', 'cc-2.63.0', 'cc-2.64.0'];
+  readyInfo: Json = { ok: true, cli_version: '1.1.0' };
+  artifactKeys: Record<string, Array<{ key: string }>> = {};
+  objectsByKey = new Map<string, Buffer>();
   puts = new Map<string, Buffer>();
+  released: string[] = [];
   private leaseSeq = 0;
   private getCount = 0;
   private execSeq = 0;
-  private execs = new Map<string, string[]>();
-  released: string[] = [];
+  execs = new Map<string, { argv: string[]; polls: number; sub: string }>();
+  posts = 0;
+
+  currentLeaseStatus(): string {
+    return String(this.leaseStates[Math.min(Math.max(this.getCount - 1, 0), this.leaseStates.length - 1)].status);
+  }
 
   fetch: typeof fetch = async (input, init) => {
     const url = String(input);
@@ -59,7 +97,10 @@ class FakeBroker {
     let body: unknown;
     if (typeof init?.body === 'string') body = JSON.parse(init.body);
     else if (init?.body) body = init.body;
-    this.calls.push({ method, url, path: u.pathname, body, auth: headers.get('authorization') });
+    this.calls.push({
+      method, url, path: u.pathname, query: Object.fromEntries(u.searchParams), body,
+      auth: headers.get('authorization'), at: this.clock.t,
+    });
 
     // Presigned S3 traffic.
     if (u.host === 's3.test') {
@@ -67,25 +108,34 @@ class FakeBroker {
         this.puts.set(u.pathname, Buffer.from(init!.body as Uint8Array));
         return new Response('', { status: 200 });
       }
-      const b = this.objects.get(u.pathname);
-      return b ? new Response(new Uint8Array(b), { status: 200 }) : new Response('nope', { status: 404 });
+      const rest = u.pathname.replace(/^\/out\//, '');
+      const bytes = this.objectsByKey.get(rest);
+      return bytes ? new Response(new Uint8Array(bytes), { status: 200 }) : new Response('missing', { status: 404 });
     }
 
     const p = u.pathname;
+    const wait = Number(u.searchParams.get('wait_s') ?? 0);
     if (method === 'POST' && p === '/api/capabilities/leases') {
       if (this.acquireResponse) return json(this.acquireResponse.status, this.acquireResponse.body);
       const id = `lease-${++this.leaseSeq}`;
       this.getCount = 0;
       this.onAcquire?.();
-      return json(200, { lease_id: id, status: 'provisioning', ready: false, position: null, reason: '', ready_info: {} });
+      return json(200, {
+        lease_id: id, status: 'provisioning', ready: false, position: null, reason: '', ready_info: {},
+        out_prefix: outPrefix(id), idle_release_s: 900, expires_at: '2026-10-14T20:00:00Z',
+      });
     }
     let m = p.match(/^\/api\/capabilities\/leases\/([^/]+)$/);
     if (m && method === 'GET') {
       const st = this.leaseStates[Math.min(this.getCount++, this.leaseStates.length - 1)];
+      if (st.status === 404) return json(404, { title: 'not found', status: 404 });
+      if (this.honorWait && wait && st.status !== 'ready') this.clock.t += Math.min(wait, this.holdS) * 1000;
       // canopy-web CapabilityLeaseOut: `ready` is a bool, ready.json is `ready_info`.
       return json(200, {
-        lease_id: m[1], instance_id: 'i-0abc', expires_at: '2026-10-14T20:00:00Z', position: null,
-        reason: '', ready_info: {}, idle_release_s: 900, ...st, ready: st.status === 'ready',
+        lease_id: m[1], instance_id: INSTANCE, expires_at: '2026-10-14T20:00:00Z', position: null,
+        reason: '', idle_release_s: 900, out_prefix: outPrefix(m[1]),
+        ready_info: st.status === 'ready' ? this.readyInfo : {},
+        ...st, ready: st.status === 'ready',
       });
     }
     if (m && method === 'DELETE') {
@@ -98,27 +148,37 @@ class FakeBroker {
       return json(200, {
         lease_id: m[1],
         expires_in_s: 3600,
-        uploads: names.map((n) => ({
-          name: n,
-          put_url: `https://s3.test/in/${n}`,
-          s3_uri: `s3://${BUCKET}/leases/${m![1]}/in/${n}`,
-        })),
+        uploads: names.map((n) => ({ name: n, put_url: `https://s3.test/in/${n}`, s3_uri: inUri(m![1], n) })),
       });
     }
     m = p.match(/^\/api\/capabilities\/leases\/([^/]+)\/exec$/);
     if (m && method === 'POST') {
+      this.posts++;
+      if (this.execPost) return this.execPost(this.posts);
+      if (this.currentLeaseStatus() !== 'ready') {
+        const t = `lease ${m[1]} is ${this.currentLeaseStatus()}; exec needs a ready lease`;
+        return json(409, { title: t, detail: t, status: 409 });
+      }
       const id = `cmd-${++this.execSeq}`;
-      this.execs.set(id, (body as { argv: string[] }).argv);
+      const argv = (body as { argv: string[] }).argv;
+      this.execs.set(id, { argv, polls: 0, sub: argv[1] });
       return json(200, { lease_id: m[1], exec_id: id, timeout_s: (body as { timeout_s: number }).timeout_s });
     }
     m = p.match(/^\/api\/capabilities\/leases\/([^/]+)\/exec\/([^/]+)$/);
     if (m && method === 'GET') {
-      const argv = this.execs.get(m[2])!;
-      const sub = argv[1];
-      const line = this.cli[sub] ?? { ok: true };
+      const ex = this.execs.get(m[2])!;
+      const plan = this.execPlan[ex.sub] ?? [];
+      const step = plan[ex.polls++];
+      if (step === 404) return json(404, { title: `no exec ${m[2]} on lease ${m[1]}`, status: 404 });
+      if (typeof step === 'string') {
+        if (this.honorWait && wait) this.clock.t += Math.min(wait, this.holdS) * 1000;
+        return json(200, { exec_id: m[2], status: step, done: false, exit_code: null, stdout_tail: '', stderr_tail: '' });
+      }
+      const spec = this.cli[ex.sub];
+      const line = typeof spec === 'function' ? spec(ex.argv) : (spec ?? { ok: true });
       return json(200, {
         exec_id: m[2],
-        status: line.ok === false ? 'Failed' : this.execStatus,
+        status: line.ok === false ? 'Failed' : 'Success',
         done: true,
         exit_code: line.ok === false ? 1 : 0,
         stdout_tail: JSON.stringify(line) + '\n',
@@ -132,9 +192,9 @@ class FakeBroker {
       const prefix = u.searchParams.get('prefix') ?? '';
       const sub = prefix.replace(/-[a-z0-9]+\/$/, '');
       const rows = (this.artifactKeys[sub] ?? []).map((a) => {
-        const s3path = `/out/${prefix}${a.key}`;
-        // canopy-web CapabilityArtifactOut: `path` is relative to leases/<id>/out/; no content type.
-        return { path: `${prefix}${a.key}`, size: 1, url: `https://s3.test${s3path}` };
+        // canopy-web CapabilityArtifactOut: `path` is relative to the out prefix; no content type.
+        this.objectsByKey.set(`${prefix}${a.key}`, this.objectsByKey.get(`${sub}|${a.key}`) ?? Buffer.from(''));
+        return { path: `${prefix}${a.key}`, size: 1, url: `https://s3.test/out/${prefix}${a.key}` };
       });
       return json(200, { lease_id: m[1], prefix, artifacts: rows, expires_in_s: 3600 });
     }
@@ -146,7 +206,7 @@ class FakeBroker {
             manifest: {
               name: 'android-emulator',
               limits: { ready_timeout_s: 900, max_concurrent: 4 },
-              params: { state: { type: 'string', default: 'cc-2.63.0', enum: ['cc-2.62.0', 'cc-2.63.0'] } },
+              params: { state: { type: 'string', default: this.states[0], enum: this.states } },
             },
             grant: { max_concurrent: 2 },
             live_leases: [{ lease_id: 'x' }],
@@ -158,46 +218,38 @@ class FakeBroker {
   };
 
   execArgv(sub: string): string[] {
-    const argvs = [...this.execs.values()].filter((a) => a[1] === sub);
+    const argvs = [...this.execs.values()].filter((a) => a.sub === sub).map((a) => a.argv);
     return argvs[argvs.length - 1];
+  }
+  allExecArgv(sub: string): string[][] {
+    return [...this.execs.values()].filter((a) => a.sub === sub).map((a) => a.argv);
+  }
+  execBodies(): Array<{ argv: string[]; timeout_s: number }> {
+    return this.calls.filter((c) => c.method === 'POST' && /\/exec$/.test(c.path)).map((c) => c.body as never);
   }
   callsTo(method: string, re: RegExp): Call[] {
     return this.calls.filter((c) => c.method === method && re.test(c.path));
   }
-  /** Serve an object at the presigned URL the artifacts route will hand out. */
-  putArtifact(sub: string, key: string, bytes: Buffer, contentType?: string) {
-    (this.artifactKeys[sub] ??= []).push({ key, content_type: contentType });
+  /** Serve an object at the presigned URL the artifacts route will hand out for `<sub>-<slug>/key`. */
+  putArtifact(sub: string, key: string, bytes: Buffer) {
+    (this.artifactKeys[sub] ??= []).push({ key });
     this.objectsByKey.set(`${sub}|${key}`, bytes);
   }
-  objectsByKey = new Map<string, Buffer>();
-}
-
-/** Route artifact GETs (whose prefix carries a random slug) back to putArtifact bytes. */
-function withArtifactBytes(b: FakeBroker): typeof fetch {
-  return async (input, init) => {
-    const u = new URL(String(input));
-    if (u.host === 's3.test' && u.pathname.startsWith('/out/') && (init?.method ?? 'GET') === 'GET') {
-      const rest = u.pathname.slice('/out/'.length);
-      const slash = rest.indexOf('/');
-      const sub = rest.slice(0, slash).replace(/-[a-z0-9]+$/, '');
-      const key = rest.slice(slash + 1);
-      const bytes = b.objectsByKey.get(`${sub}|${key}`);
-      b.calls.push({ method: 'GET', url: String(input), path: u.pathname });
-      return bytes ? new Response(new Uint8Array(bytes), { status: 200 }) : new Response('missing', { status: 404 });
-    }
-    return b.fetch(input, init);
-  };
 }
 
 function backend(b: FakeBroker, extra: Partial<ConstructorParameters<typeof LeaseBackend>[0]> = {}) {
   return new LeaseBackend({
     baseUrl: BASE,
     token: TOKEN,
-    fetchImpl: withArtifactBytes(b),
+    fetchImpl: b.fetch,
+    apkVersion: () => '',
     pollIntervalMs: 0,
+    longPollS: 0,
+    pollOutageMs: 0,
     retry: { retries: 0 },
     releaseOnExit: false,
-    sleepImpl: async () => {},
+    sleepImpl: b.clock.sleep,
+    now: b.clock.now,
     ...extra,
   });
 }
@@ -236,7 +288,10 @@ describe('LeaseBackend construction', () => {
     process.env.CANOPY_WEB_PAT = 'inherited-human';
     try {
       const b = new FakeBroker();
-      const lb = new LeaseBackend({ baseUrl: BASE, fetchImpl: b.fetch, pollIntervalMs: 0, releaseOnExit: false, sleepImpl: async () => {} });
+      const lb = new LeaseBackend({
+        baseUrl: BASE, fetchImpl: b.fetch, apkVersion: () => '', pollIntervalMs: 0, releaseOnExit: false,
+        sleepImpl: async () => {},
+      });
       await lb.ensureAvdRunning('cc-2.63.0');
       expect(b.calls[0].auth).toBe('Bearer from-ace-env');
     } finally {
@@ -252,11 +307,8 @@ describe('LeaseBackend lifecycle', () => {
   it('acquires with agent/capability/params/turn_id, polls to ready, reports timings', async () => {
     process.env.CANOPY_TURN_ID = 'turn-42';
     const b = new FakeBroker();
-    b.leaseStates = [
-      { status: 'provisioning' },
-      { status: 'provisioning' },
-      { status: 'ready', ready_info: { ok: true, timings: { emulator_boot_s: 70 }, accel: 'kvm', cli_version: '1.0.0' } },
-    ];
+    b.readyInfo = { ok: true, timings: { emulator_boot_s: 70 }, accel: 'kvm', cli_version: '1.0.0' };
+    b.leaseStates = [{ status: 'provisioning' }, { status: 'provisioning' }, { status: 'ready' }];
     const lb = backend(b);
     const info = await lb.ensureAvdRunning('cc-2.62.0');
 
@@ -269,26 +321,55 @@ describe('LeaseBackend lifecycle', () => {
     });
     expect(acquire.auth).toBe(`Bearer ${TOKEN}`);
     expect(info.status).toBe('booted');
-    expect(info.serial).toBe('lease:i-0abc');
+    expect(info.serial).toBe(`lease:${INSTANCE}`);
     expect(info.name).toBe('cc-2.62.0');
     expect(info.accel).toBe('kvm');
     expect(info.timings).toMatchObject({ emulator_boot_s: 70, lease_queue_s: 0 });
     expect(lb.leaseId).toBe('lease-1');
   });
 
-  it('omits params when the AVD name is not a cc-* state (manifest default applies)', async () => {
+  it('the ensure result carries the lease facts a caller needs to keep the machine', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: true, cli_version: '1.1.0', state: 'cc-2.63.0', baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT };
+    const info = await backend(b).ensureAvdRunning('cc-2.63.0');
+    expect(info.lease).toEqual({
+      lease_id: 'lease-1',
+      instance_id: INSTANCE,
+      expires_at: '2026-10-14T20:00:00Z',
+      idle_release_s: 900,
+      state: 'cc-2.63.0',
+      selector_map_version: null,
+      reused: false,
+      cli_version: '1.1.0',
+      image_baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT,
+      expected_baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT,
+      baseline_parity: 'match',
+      long_poll: 'unknown',
+    });
+  });
+
+  it('baseline parity: a different fingerprint is mismatch, none is unreported', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: true, baseline: { fingerprint: 'deadbeef0000' } };
+    expect((await backend(b).ensureAvdRunning('cc-2.63.0')).lease?.baseline_parity).toBe('mismatch');
+    const b2 = new FakeBroker();
+    expect((await backend(b2).ensureAvdRunning('cc-2.63.0')).lease?.baseline_parity).toBe('unreported');
+  });
+
+  it('omits params when no selector-map version is configured (manifest default applies)', async () => {
     const b = new FakeBroker();
     await backend(b).ensureAvdRunning('ACE_Pixel_API_34');
     expect(b.callsTo('POST', /leases$/)[0].body).toEqual({ agent: 'ace', capability: 'android-emulator' });
   });
 
-  it('reuses a live ready lease for the same state', async () => {
+  it('reuses a live ready lease for the same state, and says so', async () => {
     const b = new FakeBroker();
     const lb = backend(b);
     await lb.ensureAvdRunning('cc-2.63.0');
-    await lb.ensureAvdRunning('cc-2.63.0');
+    const again = await lb.ensureAvdRunning('cc-2.63.0');
     expect(b.callsTo('POST', /leases$/)).toHaveLength(1);
     expect(b.released).toEqual([]);
+    expect(again.lease?.reused).toBe(true);
   });
 
   it('replaces the lease when the state changes (restore, never adapt)', async () => {
@@ -344,16 +425,62 @@ describe('LeaseBackend lifecycle', () => {
   });
 });
 
+describe('LeaseBackend state ↔ selector-map parity', () => {
+  it('a non-cc-* AVD name leases cc-<the configured selector-map version>', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b, { apkVersion: () => '2.64.0' });
+    expect(lb.resolveState('ACE_Pixel_API_34')).toBe('cc-2.64.0');
+    const info = await lb.ensureAvdRunning('ACE_Pixel_API_34');
+    expect(b.callsTo('POST', /leases$/)[0].body).toMatchObject({ params: { state: 'cc-2.64.0' } });
+    expect(info.lease).toMatchObject({ state: 'cc-2.64.0', selector_map_version: '2.64.0' });
+  });
+
+  it('LEASE_STATE_UNAVAILABLE, naming the bake, when the manifest does not bake that state — and no machine is acquired', async () => {
+    const b = new FakeBroker();
+    b.states = ['cc-2.62.0', 'cc-2.63.0'];
+    const err = await backend(b, { apkVersion: () => '2.64.0' }).ensureAvdRunning('ACE_Pixel_API_34').catch((e) => e);
+    expect(err).toBeInstanceOf(MobileError);
+    expect(err.code).toBe('LEASE_STATE_UNAVAILABLE');
+    expect(err.message).toContain('cc-2.64.0');
+    expect(err.message).toContain('cc-2.62.0, cc-2.63.0');
+    expect(err.remediation).toContain('variables.pkr.hcl');
+    expect(err.remediation).toContain('bake.sh');
+    expect(b.callsTo('POST', /leases$/)).toHaveLength(0);
+  });
+
+  it('an explicit cc-* that differs from the selector map is refused before any acquire', async () => {
+    const b = new FakeBroker();
+    await expect(backend(b, { apkVersion: () => '2.64.0' }).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({
+      code: 'LEASE_STATE_SELECTOR_MISMATCH',
+    });
+    expect(b.callsTo('POST', /leases$/)).toHaveLength(0);
+  });
+
+  it('a machine that booted a different state than requested is released, never used', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: true, state: 'cc-2.63.0' };
+    const lb = backend(b, { apkVersion: () => '2.64.0' });
+    await expect(lb.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toMatchObject({ code: 'LEASE_STATE_MISMATCH' });
+    expect(b.released).toEqual(['lease-1']);
+    expect(lb.leaseId).toBeNull();
+  });
+
+  it('an unreadable manifest is not a refusal (the acquire itself would 422)', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b, {
+      apkVersion: () => '2.64.0',
+      fetchImpl: async (input, init) =>
+        new URL(String(input)).pathname === '/api/agents/ace/capabilities' ? json(500, { title: 'boom' }) : b.fetch(input, init),
+    });
+    await expect(lb.ensureAvdRunning('ACE_Pixel_API_34')).resolves.toMatchObject({ status: 'booted' });
+  });
+});
+
 describe('LeaseBackend queueing and failure codes', () => {
   it('waits while queued, logging the position, then proceeds', async () => {
     const b = new FakeBroker();
-    b.acquireResponse = { status: 200, body: { lease_id: 'lease-q', status: 'queued', position: 3, ready: false, ready_info: {} } };
-    b.leaseStates = [
-      { status: 'queued', position: 2 },
-      { status: 'queued', position: 1 },
-      { status: 'provisioning' },
-      { status: 'ready', ready_info: { ok: true } },
-    ];
+    b.acquireResponse = { status: 200, body: { lease_id: 'lease-q', status: 'queued', position: 3, ready: false, ready_info: {}, out_prefix: outPrefix('lease-q') } };
+    b.leaseStates = [{ status: 'queued', position: 2 }, { status: 'queued', position: 1 }, { status: 'provisioning' }, { status: 'ready' }];
     const info = await backend(b).ensureAvdRunning('cc-2.63.0');
     expect(info.status).toBe('booted');
   });
@@ -389,7 +516,7 @@ describe('LeaseBackend queueing and failure codes', () => {
     b.acquireResponse = { status: 422, body: { title: und, detail: und, status: 422 } };
     await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_UNDECLARED' });
     b.acquireResponse = { status: 422, body: { title: 'Request validation failed', status: 422, extras: { errors: [{ loc: ['params', 'state'] }] } } };
-    await expect(backend(b).ensureAvdRunning('cc-9.9.9')).rejects.toMatchObject({ code: 'LEASE_INVALID_REQUEST' });
+    await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_INVALID_REQUEST' });
   });
 
   it('maps 401 to LEASE_AUTH', async () => {
@@ -417,10 +544,10 @@ describe('LeaseBackend queueing and failure codes', () => {
 
   it('treats status ready with ready_info.ok=false as a readiness failure', async () => {
     const b = new FakeBroker();
-    b.leaseStates = [{ status: 'ready', ready_info: { ok: false, reason: 'register-part-a-failed' } }];
+    b.readyInfo = { ok: false, reason: 'emulator-crashed' };
     await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({
       code: 'LEASE_READINESS_FAILED',
-      message: expect.stringContaining('register-part-a-failed'),
+      message: expect.stringContaining('emulator-crashed'),
     });
   });
 
@@ -435,10 +562,12 @@ describe('LeaseBackend queueing and failure codes', () => {
     expect(b.released).toEqual(['lease-1']);
   });
 
-  it('LEASE_LOST when the lease expires before ready', async () => {
+  it('LEASE_LOST when the lease expires before ready, with the full restore', async () => {
     const b = new FakeBroker();
     b.leaseStates = [{ status: 'expired', reason: 'swept' }];
-    await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_LOST' });
+    const err = await backend(b).ensureAvdRunning('cc-2.63.0').catch((e) => e);
+    expect(err.code).toBe('LEASE_LOST');
+    expect(err.remediation).toBe(LEASE_RESTORE_HINT);
   });
 
   it('every op before ensure throws LEASE_NOT_ACQUIRED', async () => {
@@ -456,6 +585,19 @@ describe('LeaseBackend queueing and failure codes', () => {
       code: 'LEASE_CLI_MAESTRO_JAR_MISSING',
       message: expect.stringContaining('no Maestro client jar'),
     });
+  });
+
+  it('emulator-crashed is LEASE_EMULATOR_CRASHED, and the next ensure replaces the sick machine', async () => {
+    const b = new FakeBroker();
+    b.cli['clear-app-data'] = { ok: false, error: 'emulator-crashed', message: 'qemu exited' };
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    const err = await lb.clearAppData().catch((e) => e);
+    expect(err.code).toBe('LEASE_EMULATOR_CRASHED');
+    expect(err.remediation).toContain('connect-login');
+    await lb.ensureAvdRunning('cc-2.63.0');
+    expect(b.released).toEqual(['lease-1']);
+    expect(lb.leaseId).toBe('lease-2');
   });
 
   it('a CLI usage error names contract drift', async () => {
@@ -485,20 +627,191 @@ describe('LeaseBackend queueing and failure codes', () => {
 
   it('LEASE_LOST mid-exec when the heartbeat finds the lease gone', async () => {
     const b = new FakeBroker();
-    let t = 0;
+    b.execPlan['repair-driver'] = Array(50).fill('InProgress');
+    const lb = backend(b, { heartbeatMs: 1, pollIntervalMs: 1_000 });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.leaseStates = [{ status: 'ready' }, { status: 'expired', reason: 'idle: no heartbeat for 900s' }];
+    (b as unknown as { getCount: number }).getCount = 0;
+    const err = await lb.repairDriver().catch((e) => e);
+    expect(err.code).toBe('LEASE_LOST');
+    expect(err.message).toContain('idle release');
+  });
+});
+
+describe('LeaseBackend idle loss and recovery', () => {
+  it('a gap past idle_release_s loses the machine: the next op fails LEASE_LOST naming the full restore, ensure gets a fresh one', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    // The session goes quiet for 16 minutes; the broker idles the lease out.
+    b.clock.t += 16 * 60_000;
+    b.leaseStates = [{ status: 'released', reason: 'idle: no heartbeat for 900s' }];
+    (b as unknown as { getCount: number }).getCount = 0;
+    await lb.diagnose().catch(() => {}); // a GET sees it released
+    const err = await lb.clearAppData().catch((e) => e);
+    expect(err.code).toBe('LEASE_LOST');
+    expect(err.remediation).toContain('mobile_ensure_avd_running');
+    expect(err.remediation).toContain('connect-login');
+    expect(err.remediation).toContain('connect-claim-opp');
+    expect(err.remediation).toContain('900 s');
+
+    b.onAcquire = () => { b.leaseStates = [{ status: 'ready' }]; };
+    const info = await lb.ensureAvdRunning('cc-2.63.0');
+    expect(lb.leaseId).toBe('lease-2');
+    expect(info.lease?.reused).toBe(false);
+  });
+
+  it('a lease the broker forgot (404) reads as LEASE_LOST with the restore, not a bare not-found', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.leaseStates = [{ status: 404 }];
+    (b as unknown as { getCount: number }).getCount = 0;
+    const err = await lb.diagnose().catch((e) => e);
+    expect(err.code).toBe('LEASE_LOST');
+    expect(err.remediation).toBe(LEASE_RESTORE_HINT);
+  });
+});
+
+describe('LeaseBackend exec POST is never retried', () => {
+  async function ready(b: FakeBroker, extra = {}) {
+    const lb = backend(b, { retry: { retries: 2, sleepImpl: async () => {} }, ...extra });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    return lb;
+  }
+
+  it('a gateway 504 after the POST is LEASE_EXEC_AMBIGUOUS, sent exactly once', async () => {
+    const b = new FakeBroker();
+    b.execPost = () => new Response('<html>504 Gateway Time-out</html>', { status: 504 });
+    const lb = await ready(b);
+    const err = await lb.repairDriver().catch((e) => e);
+    expect(err.code).toBe('LEASE_EXEC_AMBIGUOUS');
+    expect(err.remediation).toMatch(/NOT retried/);
+    expect(err.remediation).toContain('connect_get_learn_progress');
+    expect(b.posts).toBe(1);
+  });
+
+  it('a transport failure on the POST is ambiguous too, and sent once', async () => {
+    const b = new FakeBroker();
+    b.execPost = () => {
+      throw new TypeError('fetch failed');
+    };
+    const lb = await ready(b);
+    await expect(lb.repairDriver()).rejects.toMatchObject({ code: 'LEASE_EXEC_AMBIGUOUS' });
+    expect(b.posts).toBe(1);
+  });
+
+  it("canopy-web's own 502 (SendCommand failed) is not ambiguous — nothing was sent", async () => {
+    const b = new FakeBroker();
+    const t = 'could not send the command: InvalidInstanceId';
+    b.execPost = () => json(502, { title: t, detail: t, status: 502 });
+    const lb = await ready(b);
+    await expect(lb.repairDriver()).rejects.toMatchObject({ code: 'LEASE_HTTP_502' });
+    expect(b.posts).toBe(1);
+  });
+
+  it('idempotent reads still retry a gateway 5xx', async () => {
+    const b = new FakeBroker();
+    let failed = 0;
+    const lb = await ready(b, {
+      fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (/\/exec\/[^/]+$/.test(new URL(String(input)).pathname) && failed++ === 0) return new Response('', { status: 503 });
+        return b.fetch(input, init);
+      },
+    });
+    await expect(lb.repairDriver()).resolves.toEqual([]);
+  });
+});
+
+describe('LeaseBackend exec polling', () => {
+  it('a 404 on the first polls after send is SSM lag, read as pending', async () => {
+    const b = new FakeBroker();
+    b.execPlan['repair-driver'] = [404, 404, 'Pending'];
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    await expect(lb.repairDriver()).resolves.toEqual([]);
+  });
+
+  it('a 404 past the grace is LEASE_EXEC_LOST (the lease is fine; the exec is unknown)', async () => {
+    const b = new FakeBroker();
+    b.execPlan['repair-driver'] = Array(100).fill(404);
+    const lb = backend(b, { pollIntervalMs: 5_000 });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    const err = await lb.repairDriver().catch((e) => e);
+    expect(err.code).toBe('LEASE_EXEC_LOST');
+    expect(err.remediation).toContain('before repeating a one-way step');
+  });
+
+  it('backs off 1 s for the first 10 s, 2 s to 30 s, then the ceiling, against a slow SSM — and times each phase', async () => {
+    const b = new FakeBroker();
+    // 12 Pending polls, then 30 InProgress, then done.
+    b.execPlan['repair-driver'] = [...Array(12).fill('Pending'), ...Array(30).fill('InProgress')];
+    const lb = backend(b, { pollIntervalMs: 5_000, heartbeatMs: 10 * 60_000 });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.clock.sleeps = [];
+    await lb.repairDriver();
+    const s = b.clock.sleeps;
+    expect(s.slice(0, 10)).toEqual(Array(10).fill(1_000));
+    expect(s[10]).toBe(2_000);
+    expect(s.filter((x) => x === 5_000).length).toBeGreaterThan(20);
+    expect(Math.max(...s)).toBe(5_000);
+  });
+
+  it('long-poll: a broker that holds the GET is detected, and the client stops sleeping', async () => {
+    const b = new FakeBroker();
+    b.honorWait = true;
+    b.holdS = 20;
+    b.execPlan['repair-driver'] = ['InProgress', 'InProgress', 'InProgress'];
+    const lb = backend(b, { longPollS: 20, pollIntervalMs: 5_000 });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.clock.sleeps = [];
+    await lb.repairDriver();
+    const gets = b.callsTo('GET', /\/exec\/[^/]+$/);
+    expect(gets.every((c) => c.query.wait_s === '20')).toBe(true);
+    expect(b.clock.sleeps).toEqual([]);
+    expect(lb.longPoll).toBe('yes');
+  });
+
+  it('long-poll fallback: a broker that ignores wait_s is detected, wait_s is dropped, and the client short-polls', async () => {
+    const b = new FakeBroker();
+    b.honorWait = false;
+    b.execPlan['repair-driver'] = Array(6).fill('InProgress');
+    const lb = backend(b, { longPollS: 20, pollIntervalMs: 5_000 });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.clock.sleeps = [];
+    await lb.repairDriver();
+    const gets = b.callsTo('GET', /\/exec\/[^/]+$/);
+    expect(gets[0].query.wait_s).toBe('20');
+    expect(gets[gets.length - 1].query.wait_s).toBeUndefined();
+    expect(lb.longPoll).toBe('no');
+    expect(b.clock.sleeps.length).toBeGreaterThan(0);
+  });
+
+  it('rides out a network outage during the poll instead of losing the result', async () => {
+    const b = new FakeBroker();
+    let fails = 3;
     const lb = backend(b, {
-      heartbeatMs: 1,
-      now: () => (t += 10),
+      pollOutageMs: 120_000,
       fetchImpl: async (input, init) => {
-        const u = new URL(String(input));
-        if (/\/exec\/[^/]+$/.test(u.pathname)) return json(200, { exec_id: 'c', status: 'InProgress', done: false });
+        if (/\/exec\/[^/]+$/.test(new URL(String(input)).pathname) && fails-- > 0) throw new TypeError('fetch failed');
         return b.fetch(input, init);
       },
     });
     await lb.ensureAvdRunning('cc-2.63.0');
-    b.leaseStates = [{ status: 'expired', reason: 'idle' }];
-    (b as unknown as { getCount: number }).getCount = 0;
-    await expect(lb.repairDriver()).rejects.toMatchObject({ code: 'LEASE_LOST' });
+    await expect(lb.repairDriver()).resolves.toEqual([]);
+  });
+
+  it('gives up on an outage longer than the tolerance', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b, {
+      pollOutageMs: 10_000,
+      fetchImpl: async (input, init) => {
+        if (/\/exec\/[^/]+$/.test(new URL(String(input)).pathname)) throw new TypeError('fetch failed');
+        return b.fetch(input, init);
+      },
+    });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    await expect(lb.repairDriver()).rejects.toMatchObject({ code: 'LEASE_FETCH_FAILED' });
   });
 });
 
@@ -523,16 +836,22 @@ describe('LeaseBackend CLI ops', () => {
     expect((await lb.setLocation('x', 1, 2)).applied).toBe(false);
   });
 
-  it('installApk uploads a local path and passes the s3 URI', async () => {
+  it('installApk uploads a local path to the URI the broker names, and is a no-op on a repeat', async () => {
     const { b, lb } = await ready();
     const apk = path.join(tmp, 'commcare-2.63.0.apk');
     fs.writeFileSync(apk, Buffer.from('PK\x03\x04apk-bytes'));
     b.cli['install-apk'] = { ok: true, package_name: 'org.commcare.dalvik', version: '2.63.0', version_code: 263 };
     const info = await lb.installApk('x', apk);
-    expect(b.callsTo('POST', /\/uploads$/)[0].body).toEqual({ names: ['commcare-2.63.0.apk'] });
-    expect(b.puts.get('/in/commcare-2.63.0.apk')?.toString()).toBe('PK\x03\x04apk-bytes');
-    expect(b.execArgv('install-apk')).toEqual(['ace-mobile', 'install-apk', '--apk', `s3://${BUCKET}/leases/lease-1/in/commcare-2.63.0.apk`]);
+    const names = (b.callsTo('POST', /\/uploads$/)[0].body as { names: string[] }).names;
+    expect(names).toHaveLength(1);
+    expect(names[0]).toMatch(/^apk-[0-9a-f]{16}\.apk$/);
+    expect(b.puts.get(`/in/${names[0]}`)?.toString()).toBe('PK\x03\x04apk-bytes');
+    expect(b.execArgv('install-apk')).toEqual(['ace-mobile', 'install-apk', '--apk', inUri('lease-1', names[0])]);
     expect(info).toEqual({ packageId: 'org.commcare.dalvik', versionName: '2.63.0', versionCode: 263, path: apk });
+
+    await lb.installApk('x', apk);
+    expect(b.callsTo('POST', /\/uploads$/)).toHaveLength(1);
+    expect(b.allExecArgv('install-apk')).toHaveLength(1);
   });
 
   it('installApk passes an https URL straight through (no upload)', async () => {
@@ -557,7 +876,7 @@ describe('LeaseBackend CLI ops', () => {
     expect(b.execArgv('install-driver')).toEqual(['ace-mobile', 'install-driver']);
   });
 
-  it('registerTestUser ships creds in an uploaded --creds JSON, never argv', async () => {
+  it('registerTestUser ships creds in an uploaded --creds JSON, never argv; --out is the broker prefix', async () => {
     const { b, lb } = await ready();
     b.cli['register-test-user'] = { ok: true, already_registered: false, phone: '+74260000001', backup_code: '12345678' };
     const r = await lb.registerTestUser({
@@ -567,11 +886,22 @@ describe('LeaseBackend CLI ops', () => {
     const argv = b.execArgv('register-test-user');
     expect(argv.join(' ')).not.toContain('135790');
     expect(argv).toEqual(expect.arrayContaining(['--to-otp-recipe', 'connect-register-to-otp.yaml', '--from-otp-recipe', 'connect-register-from-otp.yaml', '--creds', '--palette', '--out']));
+    expect(argv[argv.indexOf('--out') + 1].startsWith(outPrefix('lease-1'))).toBe(true);
     const credsPut = [...b.puts.entries()].find(([k]) => k.endsWith('--creds.json'))!;
     expect(JSON.parse(credsPut[1].toString())).toEqual({
       phone: '+74260000001', phone_local: '4260000001', country_code: '+7', pin: '135790', backup_code: '12345678', name: 'ACE Test',
     });
     expect(r).toEqual({ alreadyRegistered: false, phone: '+74260000001', backupCode: '12345678' });
+  });
+
+  it('registerTestUser reads the redacted backup_code_set, reporting the code it set (as local does)', async () => {
+    const { b, lb } = await ready();
+    b.cli['register-test-user'] = { ok: true, already_registered: false, phone: '+74260000001', backup_code_set: true };
+    const r = await lb.registerTestUser({
+      phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7', pin: '1', backupCode: '87654321', name: 'n',
+      paletteTarB64: '', toOtpRecipe: 'a.yaml', fromOtpRecipe: 'b.yaml',
+    });
+    expect(r.backupCode).toBe('87654321');
   });
 
   it('captureUiDump returns the inline xml + elements; a failed dump is data', async () => {
@@ -584,6 +914,33 @@ describe('LeaseBackend CLI ops', () => {
     expect((await lb.captureUiDump('x')).failed).toBe(true);
   });
 
+  it('screenshot writes under its own forensics/ prefix and downloads just the PNG', async () => {
+    const { b, lb } = await ready();
+    b.cli['screenshot'] = (argv) => ({ ok: true, name: argv[argv.indexOf('--name') + 1], content_type: 'image/png' });
+    b.putArtifact('forensics/shot', 'r-FAILURE.png', Buffer.from('\x89PNG'));
+    const p = await lb.screenshot(tmp, 'r-FAILURE.png', 'forensics/shot-abc123/');
+    const argv = b.execArgv('screenshot');
+    expect(argv[argv.indexOf('--out') + 1]).toBe(`${outPrefix('lease-1')}forensics/shot-abc123/`);
+    expect(p).toBe(path.join(tmp, 'r-FAILURE.png'));
+    expect(fs.readFileSync(p).toString()).toBe('\x89PNG');
+  });
+
+  it('failureEvidence runs diagnose, ui-dump and screenshot concurrently and survives one failing', async () => {
+    const { b, lb } = await ready();
+    b.cli['diagnose'] = { ok: true, healthy: true };
+    b.cli['ui-dump'] = { ok: true, xml: '<hierarchy/>', elements: [] };
+    b.cli['screenshot'] = { ok: false, error: 'screenshot-failed', message: 'screencap died' };
+    const ev = await lb.failureEvidence({ destDir: tmp, screenshotName: 'r-FAILURE.png' });
+    expect(ev.diagnostics).toMatchObject({ healthy: true });
+    expect(ev.dump?.xml).toBe('<hierarchy/>');
+    expect(ev.screenshotPath).toBeUndefined();
+    // All three were POSTed before any was polled to completion.
+    const posts = b.calls.filter((c) => c.method === 'POST' && /\/exec$/.test(c.path)).map((c) => b.calls.indexOf(c));
+    const firstPoll = b.calls.findIndex((c) => c.method === 'GET' && /\/exec\/[^/]+$/.test(c.path));
+    expect(posts).toHaveLength(3);
+    expect(Math.max(...posts)).toBeLessThan(firstPoll + 3);
+  });
+
   it('diagnose never acquires: no lease → a note, not a machine', async () => {
     const b = new FakeBroker();
     const d = await backend(b).diagnose();
@@ -591,17 +948,17 @@ describe('LeaseBackend CLI ops', () => {
     expect(b.callsTo('POST', /leases$/)).toHaveLength(0);
   });
 
-  it('diagnose with a lease returns the CLI snapshot plus the lease view', async () => {
+  it('diagnose with a lease returns the CLI snapshot plus the lease view (incl. idle_release_s)', async () => {
     const { b, lb } = await ready();
     b.cli['diagnose'] = { ok: true, healthy: true, adb_devices: [{ serial: 'emulator-5554', state: 'device' }], adb_visible_count: 1 };
     const d = await lb.diagnose();
-    expect(d).toMatchObject({ healthy: true, adb_visible_count: 1, lease: { lease_id: 'lease-1', status: 'ready', instance_id: 'i-0abc' } });
+    expect(d).toMatchObject({ healthy: true, adb_visible_count: 1, lease: { lease_id: 'lease-1', status: 'ready', instance_id: INSTANCE, idle_release_s: 900 } });
     expect(b.execArgv('diagnose')).toEqual(['ace-mobile', 'diagnose']);
   });
 
   it('listAvds reads the manifest state enum (read-only)', async () => {
     const b = new FakeBroker();
-    expect(await backend(b).listAvds()).toEqual(['cc-2.62.0', 'cc-2.63.0']);
+    expect(await backend(b).listAvds()).toEqual(['cc-2.62.0', 'cc-2.63.0', 'cc-2.64.0']);
     expect(b.callsTo('POST', /leases$/)).toHaveLength(0);
   });
 
@@ -611,25 +968,67 @@ describe('LeaseBackend CLI ops', () => {
   });
 });
 
+describe('LeaseBackend per-instance prefixes come only from the broker', () => {
+  it('--out is exactly the broker out_prefix + a relative dir; inputs are the s3_uri it returned', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['run-recipe'] = { ok: true, exit_code: 0, stdout: '', stderr: '' };
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    await lb.runRecipe(recipe, {}, path.join(tmp, 'o'), { paletteTarB64: Buffer.from('p').toString('base64') });
+    const argv = b.execArgv('run-recipe');
+    expect(argv[argv.indexOf('--out') + 1]).toMatch(new RegExp(`^${outPrefix('lease-1').replace(/[/.]/g, '\\$&')}run-recipe-[a-z0-9]+/$`));
+    for (const flag of ['--recipe', '--palette']) {
+      expect(argv[argv.indexOf(flag) + 1].startsWith(`s3://${BUCKET}/leases/lease-1/${INSTANCE}/in/`)).toBe(true);
+    }
+  });
+
+  it('refuses to invent an --out when the broker states no out_prefix', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b, {
+      fetchImpl: async (input, init) => {
+        const r = await b.fetch(input, init);
+        if (/\/api\/capabilities\/leases(\/[^/]+)?$/.test(new URL(String(input)).pathname) && r.ok) {
+          const body = (await r.json()) as Json;
+          delete body.out_prefix;
+          return json(200, body);
+        }
+        return r;
+      },
+    });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    await expect(
+      lb.registerTestUser({ phone: '+7426', phoneLocal: '1', countryCode: '+7', pin: '1', backupCode: '2', name: 'n', paletteTarB64: '', toOtpRecipe: 'a.yaml', fromOtpRecipe: 'b.yaml' }),
+    ).rejects.toMatchObject({ code: 'LEASE_BAD_RESPONSE', message: expect.stringContaining('out_prefix') });
+  });
+
+  it('no client code builds a leases/<id>/ S3 path', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../../../mcp/mobile/backends/lease.ts'), 'utf8');
+    expect(src).not.toMatch(/`s3:\/\/\$\{[^}]+\}\/leases\//);
+    expect(src).not.toMatch(/\/leases\/\[\^\/\]\+\/\)in\//);
+  });
+});
+
 describe('LeaseBackend.runRecipe', () => {
   const PNG = Buffer.from('\x89PNG fake');
 
-  async function run(b: FakeBroker, recipeLine: Json) {
-    const lb = backend(b);
+  async function run(b: FakeBroker, recipeLine: Json | ((argv: string[]) => Json), body = 'appId: org.commcare.dalvik\n---\n- launchApp\n', extra = {}) {
+    const lb = backend(b, extra);
     await lb.ensureAvdRunning('cc-2.63.0');
     b.cli['run-recipe'] = recipeLine;
     const recipe = path.join(tmp, 'learn-smoke.yaml');
-    fs.writeFileSync(recipe, 'appId: org.commcare.dalvik\n---\n- launchApp\n');
+    fs.writeFileSync(recipe, body);
     const out = path.join(tmp, 'shots');
     const r = await lb.runRecipe(recipe, { PIN: '1234', NAME: 'A B' }, out, {
       paletteTarB64: Buffer.from('palette-tar').toString('base64'),
     });
-    return { lb, r, out };
+    return { lb, r, out, recipe };
   }
 
-  it('uploads recipe + palette, execs run-recipe with --env and --out, downloads artifacts', async () => {
+  it('uploads recipe + palette in one presign, execs run-recipe with --env, --out and a sized --timeout-s, downloads artifacts', async () => {
     const b = new FakeBroker();
-    b.putArtifact('run-recipe', '01-home.png', PNG, 'image/png');
+    b.putArtifact('run-recipe', '01-home.png', PNG);
     b.putArtifact('run-recipe', 'maestro-stdout.log', Buffer.from('log'));
     b.putArtifact('run-recipe', 'result.json', Buffer.from('{}'));
     const { r, out } = await run(b, {
@@ -638,17 +1037,18 @@ describe('LeaseBackend.runRecipe', () => {
     });
 
     const uploads = b.callsTo('POST', /\/uploads$/);
-    const names = (uploads[uploads.length - 1].body as { names: string[] }).names;
+    expect(uploads).toHaveLength(1);
+    const names = (uploads[0].body as { names: string[] }).names;
     expect(names).toHaveLength(2);
-    expect(names[0]).toMatch(/--learn-smoke\.yaml$/);
-    expect(names[1]).toMatch(/--palette\.tar\.gz$/);
+    expect(names[0]).toMatch(/^palette-[0-9a-f]{16}\.tar\.gz$/);
+    expect(names[1]).toMatch(/--learn-smoke\.yaml$/);
     expect([...b.puts.values()].map((v) => v.toString())).toContain('palette-tar');
 
     const argv = b.execArgv('run-recipe');
     expect(argv.slice(0, 2)).toEqual(['ace-mobile', 'run-recipe']);
-    expect(argv[argv.indexOf('--recipe') + 1]).toMatch(new RegExp(`^s3://${BUCKET}/leases/lease-1/in/.*learn-smoke\\.yaml$`));
     expect(argv.filter((a, i) => argv[i - 1] === '--env')).toEqual(['PIN=1234', 'NAME=A B']);
-    expect(argv[argv.indexOf('--out') + 1]).toMatch(new RegExp(`^s3://${BUCKET}/leases/lease-1/out/run-recipe-[a-z0-9]+/$`));
+    expect(argv[argv.indexOf('--timeout-s') + 1]).toBe('600'); // the 10-min floor, as local
+    expect(b.execBodies().find((e) => e.argv[1] === 'run-recipe')!.timeout_s).toBe(600 + 180);
 
     expect(r.status).toBe('pass');
     expect(r.stdout).toBe('Flow passed');
@@ -656,28 +1056,102 @@ describe('LeaseBackend.runRecipe', () => {
     expect(fs.readdirSync(out).sort()).toEqual(['01-home.png', 'maestro-stdout.log', 'result.json']);
     expect(r.screenshots).toHaveLength(1);
     expect(r.screenshots[0]).toMatchObject({ stepName: '01-home', path: path.join(out, '01-home.png'), bytes: PNG.length });
+    expect(r.remoteTimings?.[0]).toMatchObject({ op: 'run-recipe', polls: 1 });
+    expect(r.remoteTimings?.[0].download_ms).toBeTypeOf('number');
+    expect(r.remoteTimings?.[0].upload_ms).toBeTypeOf('number');
   });
 
-  it('a Maestro failure (ok:false, error recipe-failed) is a fail RESULT with diagnostics, not a throw', async () => {
+  it('the palette uploads once per lease (cached by content), not once per recipe', async () => {
     const b = new FakeBroker();
-    b.cli['diagnose'] = { ok: true, healthy: true, adb_visible_count: 1 };
+    const { lb, recipe } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
+    await lb.runRecipe(recipe, {}, path.join(tmp, 'two'), { paletteTarB64: Buffer.from('palette-tar').toString('base64') });
+    const allNames = b.callsTo('POST', /\/uploads$/).flatMap((c) => (c.body as { names: string[] }).names);
+    expect(allNames.filter((n) => n.startsWith('palette-'))).toHaveLength(1);
+    const palettes = b.allExecArgv('run-recipe').map((a) => a[a.indexOf('--palette') + 1]);
+    expect(new Set(palettes).size).toBe(1);
+  });
+
+  it('chunks at screenshots like local: one exec per chunk, each with its own sized timeout, a UI dump after each screenshot', async () => {
+    const b = new FakeBroker();
+    b.cli['ui-dump'] = { ok: true, xml: '<hierarchy><node text="x"/></hierarchy>', elements: [] };
+    b.putArtifact('run-recipe', 'maestro-stdout.log', Buffer.from('log'));
+    const long = Array.from({ length: 40 }, () => '- tapOn: "Next"').join('\n');
+    const body = `appId: org.commcare.dalvik\n---\n- launchApp\n- takeScreenshot: a\n${long}\n- takeScreenshot: b\n- back\n`;
+    const progress: string[] = [];
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['run-recipe'] = { ok: true, exit_code: 0, stdout: 'ok', stderr: '' };
+    const recipe = path.join(tmp, 'journey-learn.yaml');
+    fs.writeFileSync(recipe, body);
+    const out = path.join(tmp, 'shots');
+    const r = await lb.runRecipe(recipe, {}, out, { onProgress: (e) => progress.push(e.kind) });
+
+    const runs = b.allExecArgv('run-recipe');
+    expect(runs).toHaveLength(3);
+    const timeouts = runs.map((a) => Number(a[a.indexOf('--timeout-s') + 1]));
+    expect(timeouts[0]).toBe(600); // 2 steps → floor
+    expect(timeouts[1]).toBe(Math.ceil((41 * 20_000) / 1000)); // 41 steps × 20 s
+    const execTimeouts = b.execBodies().filter((e) => e.argv[1] === 'run-recipe').map((e) => e.timeout_s);
+    expect(execTimeouts).toEqual(timeouts.map((t) => t + 180));
+    // One dump per screenshot-ending chunk, written beside the PNG it pairs with.
+    expect(b.allExecArgv('ui-dump')).toHaveLength(2);
+    expect(fs.existsSync(path.join(out, 'a.xml'))).toBe(true);
+    expect(fs.existsSync(path.join(out, 'b.xml'))).toBe(true);
+    // Each chunk's logs survive the next chunk's.
+    expect(fs.readdirSync(path.join(out, 'chunks')).sort()).toEqual(['01', '02', '03']);
+    expect(progress.filter((k) => k === 'chunk-done')).toHaveLength(3);
+    expect(r.status).toBe('pass');
+  });
+
+  it('a failing chunk stops the walk: later chunks never run, and the verdict is fail', async () => {
+    const b = new FakeBroker();
+    let n = 0;
+    const body = 'appId: x\n---\n- launchApp\n- takeScreenshot: a\n- tapOn: "Go"\n- takeScreenshot: b\n- back\n';
+    const { r } = await run(b, () => (++n === 2
+      ? { ok: false, exit_code: 1, error: 'recipe-failed', message: 'maestro exited 1', stdout: '', stderr: 'Element not found: Text matching regex: Go' }
+      : { ok: true, exit_code: 0, stdout: '', stderr: '' }), body);
+    expect(b.allExecArgv('run-recipe')).toHaveLength(2);
+    expect(r.status).toBe('fail');
+    expect(r.failure?.failureClass).toBe('selector-not-found');
+  });
+
+  it('a recipe-timeout is MAESTRO_STALL, as local raises it, after downloading what the chunk wrote', async () => {
+    const b = new FakeBroker();
+    b.putArtifact('run-recipe', 'q1.png', PNG);
+    const err = await run(b, { ok: false, exit_code: 124, error: 'recipe-timeout', message: 'maestro exceeded --timeout-s 600' }).catch((e) => e);
+    expect(err.code).toBe('MAESTRO_STALL');
+    expect(err.diagnostics).toMatchObject({ chunks_completed: 0, chunks_total: 1, timeout_ms: 600_000 });
+    expect(fs.existsSync(path.join(tmp, 'shots', 'q1.png'))).toBe(true);
+  });
+
+  it('a Maestro failure (ok:false, error recipe-failed) is a fail RESULT, not a throw', async () => {
+    const b = new FakeBroker();
     const { r } = await run(b, { ok: false, exit_code: 1, error: 'recipe-failed', message: 'maestro exited 1', stdout: '', stderr: 'Element not found: Id matching regex: next' });
     expect(r.status).toBe('fail');
     expect(r.exitCode).toBe(1);
     expect(r.failure?.failureClass).toBe('selector-not-found');
-    expect(r.diagnostics).toMatchObject({ healthy: true });
   });
 
-  it('flattens nested keys to basenames, as ace-web named them', async () => {
+  it("surfaces the machine's upload_error as a warning", async () => {
+    const b = new FakeBroker();
+    const { r } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '', upload_error: 'AccessDenied on debug/' });
+    expect(r.warnings?.join(' ')).toContain('AccessDenied on debug/');
+  });
+
+  it('flattens nested keys to basenames, and keeps debug/ captures out of screenshots[]', async () => {
     const b = new FakeBroker();
     b.putArtifact('run-recipe', '.maestro/tests/2026/commands-x.json', Buffer.from('[]'));
-    const { out } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
-    expect(fs.readdirSync(out)).toEqual(['commands-x.json']);
+    b.putArtifact('run-recipe', 'debug/screenshot-fail.png', PNG);
+    b.putArtifact('run-recipe', 'ok.png', PNG);
+    const { out, r } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
+    expect(fs.readdirSync(out).sort()).toEqual(['commands-x.json', 'debug', 'ok.png']);
+    expect(fs.readdirSync(path.join(out, 'debug'))).toEqual(['screenshot-fail.png']);
+    expect(r.screenshots.map((s) => s.stepName)).toEqual(['ok']);
   });
 
   it('artifact download shape: files land by basename, images become ScreenshotEntry', async () => {
     const b = new FakeBroker();
-    b.putArtifact('run-recipe', '01-home.png', PNG, 'image/png');
+    b.putArtifact('run-recipe', '01-home.png', PNG);
     b.putArtifact('run-recipe', '02-learn.png', PNG);
     b.putArtifact('run-recipe', 'maestro-stderr.log', Buffer.from(''));
     const { r: lease, out: leaseOut } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
@@ -693,7 +1167,47 @@ describe('LeaseBackend.runRecipe', () => {
     expect(Object.keys(lease.screenshots[0]).sort()).toEqual(['bytes', 'path', 'stepName', 'takenAt']);
   });
 
-  it('reads result.json when the inline stdout line was truncated', async () => {
+  it('downloads artifacts in parallel, bounded', async () => {
+    const b = new FakeBroker();
+    for (let i = 0; i < 20; i++) b.putArtifact('run-recipe', `s${String(i).padStart(2, '0')}.png`, PNG);
+    let inFlight = 0;
+    let peak = 0;
+    const slowFetch: typeof fetch = async (input, init) => {
+      if (new URL(String(input)).host === 's3.test' && (init?.method ?? 'GET') === 'GET') {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+      }
+      return b.fetch(input, init);
+    };
+    const { r } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' }, undefined, { fetchImpl: slowFetch, downloadConcurrency: 6 });
+    expect(r.screenshots).toHaveLength(20);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(6);
+  });
+
+  it('reads the full stdout when the inline tail was cut (the broker keeps only the last 4,000 chars)', async () => {
+    const b = new FakeBroker();
+    const full = { ok: true, exit_code: 0, stdout: 'from stdout_url', stderr: '' };
+    const lb = backend(b, {
+      fetchImpl: async (input, init) => {
+        const u = new URL(String(input));
+        if (/\/exec\/[^/]+$/.test(u.pathname)) {
+          return json(200, { exec_id: 'c', status: 'Success', done: true, exit_code: 0, stdout_tail: 'cut","stderr":""}', stderr_tail: '', stdout_url: 'https://s3.test/stdout' });
+        }
+        if (u.host === 's3.test' && u.pathname === '/stdout') return new Response(JSON.stringify(full) + '\n');
+        return b.fetch(input, init);
+      },
+    });
+    await lb.ensureAvdRunning('cc-2.63.0');
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const r = await lb.runRecipe(recipe, {}, path.join(tmp, 'o'));
+    expect(r.stdout).toBe('from stdout_url');
+  });
+
+  it('reads result.json when the inline stdout line was truncated and there is no stdout_url', async () => {
     const b = new FakeBroker();
     const full = { ok: true, exit_code: 0, stdout: 'from result.json', stderr: '' };
     b.putArtifact('run-recipe', 'result.json', Buffer.from(JSON.stringify(full)));
@@ -703,7 +1217,7 @@ describe('LeaseBackend.runRecipe', () => {
         if (/\/exec\/[^/]+$/.test(u.pathname)) {
           return json(200, { exec_id: 'c', status: 'Success', done: true, exit_code: 0, stdout_tail: '{"ok":true,"exit_code":0,"stdout":"cut', stderr_tail: '', stdout_url: null });
         }
-        return withArtifactBytes(b)(input, init);
+        return b.fetch(input, init);
       },
     });
     await lb.ensureAvdRunning('cc-2.63.0');
@@ -716,7 +1230,7 @@ describe('LeaseBackend.runRecipe', () => {
   it('an unsafe artifact name is skipped, never written outside screenshotDir (ace#1110)', async () => {
     const b = new FakeBroker();
     b.putArtifact('run-recipe', '..', Buffer.from('x'));
-    b.putArtifact('run-recipe', 'ok.png', PNG, 'image/png');
+    b.putArtifact('run-recipe', 'ok.png', PNG);
     const { out } = await run(b, { ok: true, exit_code: 0, stdout: '', stderr: '' });
     expect(fs.readdirSync(out)).toEqual(['ok.png']);
   });
@@ -740,39 +1254,20 @@ describe('LeaseBackend against canopy-web refusal texts', () => {
     });
   });
 
-  it('404 on the agent route is LEASE_AGENT_NOT_VISIBLE; 404 on a lease is LEASE_NOT_FOUND', async () => {
+  it('404 on the agent route is LEASE_AGENT_NOT_VISIBLE', async () => {
     const b = new FakeBroker();
     b.acquireResponse = { status: 404, body: { title: "agent 'ace' not found", detail: "agent 'ace' not found", status: 404 } };
     await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_AGENT_NOT_VISIBLE' });
   });
 
-  it('409 (exec on a lease that is no longer ready) is LEASE_LOST', async () => {
-    const b = new FakeBroker();
-    const lb = backend(b, {
-      fetchImpl: async (input, init) => {
-        if (/\/exec$/.test(new URL(String(input)).pathname)) {
-          const t = 'lease x is expired; exec needs a ready lease';
-          return json(409, { title: t, detail: t, status: 409 });
-        }
-        return b.fetch(input, init);
-      },
-    });
-    await lb.ensureAvdRunning('cc-2.63.0');
-    await expect(lb.repairDriver()).rejects.toMatchObject({ code: 'LEASE_LOST' });
-  });
-
-  it('derives the --out prefix from the upload s3_uri (the lease JSON carries none)', async () => {
+  it('409 (exec on a lease that is no longer ready) is LEASE_LOST with the full restore', async () => {
     const b = new FakeBroker();
     const lb = backend(b);
     await lb.ensureAvdRunning('cc-2.63.0');
-    b.cli['register-test-user'] = { ok: true, already_registered: true, phone: '+7426', backup_code: null };
-    await lb.registerTestUser({
-      phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7', pin: '1', backupCode: '2', name: 'n',
-      paletteTarB64: '', toOtpRecipe: 'a.yaml', fromOtpRecipe: 'b.yaml',
-    });
-    const argv = b.execArgv('register-test-user');
-    expect(argv[argv.indexOf('--out') + 1]).toMatch(new RegExp(`^s3://${BUCKET}/leases/lease-1/out/register-test-user-`));
-    // No probe upload was needed: the real uploads supplied the prefix.
-    expect(b.callsTo('POST', /\/uploads$/)).toHaveLength(1);
+    b.leaseStates = [{ status: 'expired' }];
+    (b as unknown as { getCount: number }).getCount = 1;
+    const err = await lb.repairDriver().catch((e) => e);
+    expect(err.code).toBe('LEASE_LOST');
+    expect(err.remediation).toBe(LEASE_RESTORE_HINT);
   });
 });

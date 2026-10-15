@@ -26,14 +26,18 @@ export function aceEnvFiles(): string[] {
   ];
 }
 
-/** ACE's own canopy-web PAT from ACE's .env, or null when none is set. */
-export function canopyToken(): string | null {
+/**
+ * A key's value from ACE's .env files (first file that sets it), or null.
+ * An unresolved 1Password reference (`op://…`) counts as unset.
+ */
+export function aceEnvValue(key: string): string | null {
+  const prefix = `${key}=`;
   for (const f of aceEnvFiles()) {
     try {
       for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
         const t = line.trim();
-        if (t.startsWith('CANOPY_WEB_PAT=')) {
-          const v = t.slice('CANOPY_WEB_PAT='.length).trim().replace(/^["']|["']$/g, '');
+        if (t.startsWith(prefix)) {
+          const v = t.slice(prefix.length).trim().replace(/^["']|["']$/g, '');
           if (v && !v.startsWith('op://')) return v;
         }
       }
@@ -42,6 +46,11 @@ export function canopyToken(): string | null {
     }
   }
   return null;
+}
+
+/** ACE's own canopy-web PAT from ACE's .env, or null when none is set. */
+export function canopyToken(): string | null {
+  return aceEnvValue('CANOPY_WEB_PAT');
 }
 
 /** canopy-web API base URL, without a trailing slash. */

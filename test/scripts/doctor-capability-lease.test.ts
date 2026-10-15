@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { classifyCapabilityLease, probeCapabilityLease } from '../../lib/capability-lease-probe.js';
+import { classifyCapabilityLease, classifyLongPoll, probeCapabilityLease } from '../../lib/capability-lease-probe.js';
 
 const URL_ = 'https://canopy.test/api/agents/ace/capabilities';
 const declared = (grant: unknown, live: unknown = []) => ({
@@ -34,23 +34,57 @@ describe('classifyCapabilityLease', () => {
   });
 });
 
+describe('classifyCapabilityLease — the state for the configured APK version', () => {
+  it('WARN naming the bake when cc-<apk version> is not in the manifest enum', () => {
+    const v = classifyCapabilityLease({ url: URL_, status: 200, body: declared({}), hasToken: true, apkVersion: '2.64.0' });
+    expect(v).toMatchObject({ status: 'warn', wantedState: 'cc-2.64.0', stateBaked: false });
+    expect(v.summary).toMatch(/does not bake cc-2\.64\.0/);
+    expect(v.remediation).toMatch(/variables\.pkr\.hcl/);
+    expect(v.remediation).toMatch(/bake\.sh/);
+  });
+
+  it('PASS naming the baked state, the complete stack Outputs and long-poll support', () => {
+    const body = { capabilities: [{ ...declared({}).capabilities[0], stack: 's', stack_outputs: { LaunchTemplateId: 'l', ArtifactsBucketName: 'b', InstanceRoleArn: 'r', Capability: 'c' } }] };
+    const v = classifyCapabilityLease({ url: URL_, status: 200, body, hasToken: true, apkVersion: '2.63.0', longPoll: true });
+    expect(v).toMatchObject({ status: 'pass', stateBaked: true, longPoll: true });
+    expect(v.summary).toMatch(/cc-2\.63\.0 baked/);
+    expect(v.summary).toMatch(/stack Outputs complete/);
+    expect(v.summary).toMatch(/long-poll yes/);
+  });
+});
+
+describe('classifyLongPoll', () => {
+  it('422 naming wait_s → supported; 404 → an older broker that ignores it; anything else → unknown', () => {
+    expect(classifyLongPoll({ status: 422, body: { title: 'Request validation failed', extras: { errors: [{ loc: ['query', 'wait_s'] }] } } })).toBe(true);
+    expect(classifyLongPoll({ status: 404, body: { title: "lease '0' not found" } })).toBe(false);
+    expect(classifyLongPoll({ status: 500 })).toBeNull();
+  });
+});
+
 describe('probeCapabilityLease', () => {
-  it('makes exactly one GET and never a write', async () => {
+  it('makes only GETs (capabilities, then the long-poll check) and never a write', async () => {
     const env = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'clp-')), 'ace.env');
     fs.writeFileSync(env, 'CANOPY_WEB_PAT=ace-pat\n');
-    const saved = { f: process.env.ACE_ENV_FILE, u: process.env.CANOPY_WEB_API_URL };
+    const saved = { f: process.env.ACE_ENV_FILE, u: process.env.CANOPY_WEB_API_URL, a: process.env.ACE_CONNECT_APK_VERSION };
     process.env.ACE_ENV_FILE = env;
     process.env.CANOPY_WEB_API_URL = 'https://canopy.test';
     const calls: Array<{ url: string; method: string; auth: string | null }> = [];
     try {
+      process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
       const v = await probeCapabilityLease(async (input, init) => {
         calls.push({ url: String(input), method: init?.method ?? 'GET', auth: new Headers(init?.headers).get('authorization') });
+        if (String(input).includes('/leases/')) {
+          return new Response(JSON.stringify({ title: 'Request validation failed', extras: { errors: [{ loc: ['query', 'wait_s'] }] } }), { status: 422 });
+        }
         return new Response(JSON.stringify(declared({})), { status: 200 });
       });
-      expect(v.status).toBe('pass');
-      expect(calls).toEqual([{ url: URL_, method: 'GET', auth: 'Bearer ace-pat' }]);
+      expect(v).toMatchObject({ status: 'pass', stateBaked: true, longPoll: true });
+      expect(calls).toEqual([
+        { url: URL_, method: 'GET', auth: 'Bearer ace-pat' },
+        { url: 'https://canopy.test/api/capabilities/leases/00000000-0000-0000-0000-000000000000?wait_s=99', method: 'GET', auth: 'Bearer ace-pat' },
+      ]);
     } finally {
-      for (const [k, val] of [['ACE_ENV_FILE', saved.f], ['CANOPY_WEB_API_URL', saved.u]] as const) {
+      for (const [k, val] of [['ACE_ENV_FILE', saved.f], ['CANOPY_WEB_API_URL', saved.u], ['ACE_CONNECT_APK_VERSION', saved.a]] as const) {
         if (val === undefined) delete process.env[k];
         else process.env[k] = val;
       }

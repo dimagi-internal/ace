@@ -30,10 +30,13 @@ export interface LeaseRoute {
 
 export const LEASE_ROUTES = {
   acquire: { method: 'POST', path: '/api/capabilities/leases' },
-  get: { method: 'GET', path: '/api/capabilities/leases/{lease_id}' },
+  // `wait_s` long-polls (the broker holds the GET up to that many seconds,
+  // ≤ 20, returning early on a change). A broker that predates it ignores
+  // the param and answers at once; lease.ts polls adaptively, so both work.
+  get: { method: 'GET', path: '/api/capabilities/leases/{lease_id}', query: ['wait_s'] },
   release: { method: 'DELETE', path: '/api/capabilities/leases/{lease_id}' },
   exec: { method: 'POST', path: '/api/capabilities/leases/{lease_id}/exec' },
-  execStatus: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/exec/{exec_id}' },
+  execStatus: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/exec/{exec_id}', query: ['wait_s'] },
   uploads: { method: 'POST', path: '/api/capabilities/leases/{lease_id}/uploads' },
   artifacts: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/artifacts', query: ['prefix'] },
   agentCapabilities: { method: 'GET', path: '/api/agents/{slug}/capabilities' },
@@ -75,6 +78,25 @@ export interface ReadyMarker {
   timings?: Record<string, number>;
   cli_version?: string;
   accel?: string;
+  /** The state the machine actually booted (`cc-<version>`). Asserted against the request. */
+  state?: string;
+  instance_id?: string;
+  /**
+   * Fingerprint of the environment baseline the image applied at boot
+   * (`mcp/mobile/environment-baseline.ts` computes the same function), or
+   * absent from an image that applies none. Read through `readyBaseline`.
+   */
+  baseline_fingerprint?: string;
+  baseline?: { fingerprint?: string; keys?: string[] } | null;
+}
+
+/** The baseline fingerprint a ready marker reports, whichever shape the image used. */
+export function readyBaseline(marker: Partial<ReadyMarker> | null | undefined): string | null {
+  if (!marker) return null;
+  if (typeof marker.baseline_fingerprint === 'string' && marker.baseline_fingerprint) return marker.baseline_fingerprint;
+  const b = marker.baseline;
+  if (b && typeof b === 'object' && typeof b.fingerprint === 'string' && b.fingerprint) return b.fingerprint;
+  return null;
 }
 
 /** canopy-web `CapabilityLeaseOut` (apps/capabilities/schemas.py), the fields this client reads. */
@@ -94,12 +116,13 @@ export interface LeaseOut {
   /** The machine's ready.json once read: {ok, reason?, timings?, cli_version?}; {} before. */
   ready_info?: Partial<ReadyMarker> | null;
   /**
-   * NOT returned by canopy-web today: the lease's `s3://…/leases/<id>/out/`.
-   * Read if a later broker adds it; otherwise lease.ts derives it from an
-   * upload's `s3_uri` (`…/in/<name>` → `…/out/`).
+   * Where the machine writes artifacts (`CANOPY_LEASE_OUT`), as the broker
+   * states it. The ONLY source of the `--out` prefix: the broker owns the S3
+   * layout (it moved to per-instance prefixes), so a client that builds
+   * `leases/<id>/…` paths itself writes where the machine may not.
    */
   out_prefix?: string | null;
-  bucket?: string | null;
+  params?: Record<string, unknown> | null;
 }
 
 /** The ready marker once the broker has read it, else null. */
@@ -120,6 +143,9 @@ export interface ExecOut {
  */
 export interface ExecStatusOut {
   status: string;
+  // NB: the broker keeps only the LAST 4,000 chars of each stream inline
+  // (`STDOUT_TAIL`), so a long JSON line arrives with its head cut off and
+  // the full stream must be read from `stdout_url`.
   /** The broker's own terminal flag. */
   done?: boolean | null;
   exit_code?: number | null;
@@ -306,6 +332,8 @@ export const CLI = {
   runRecipe: {
     sub: ['run-recipe'],
     flags: { recipe: '--recipe', palette: '--palette', env: '--env', out: '--out', timeoutS: '--timeout-s' },
+    // Fallback only: lease.ts sizes BOTH `--timeout-s` and the exec timeout
+    // per chunk from lib/maestro-chunk-timeout.ts, as MaestroBackend does.
     timeoutS: 1900,
     sendsOut: true,
     dataErrors: ['recipe-failed', 'recipe-timeout'],
@@ -320,6 +348,10 @@ export const CLI = {
     sendsOut: true,
   },
   uiDump: { sub: ['ui-dump'], flags: { out: '--out', name: '--name' }, timeoutS: 120, dataErrors: ['ui-dump-failed'] },
+  // screencap → `--out`. Failure forensics use it instead of a one-step
+  // Maestro recipe: one PNG under its own prefix, no Maestro logs to clobber
+  // the failed run's.
+  screenshot: { sub: ['screenshot'], flags: { out: '--out', name: '--name' }, timeoutS: 90, sendsOut: true },
   installApk: { sub: ['install-apk'], flags: { apk: '--apk' }, timeoutS: 600 },
   clearAppData: { sub: ['clear-app-data'], flags: { package: '--package' }, timeoutS: 120 },
   repairDriver: { sub: ['repair-driver'], flags: {}, timeoutS: 300 },

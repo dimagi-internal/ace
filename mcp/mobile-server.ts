@@ -129,7 +129,14 @@ installToolErrorGuard(server);
 server.tool(
   'mobile_ensure_avd_running',
   {
-    avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
+    avdName: z
+      .string()
+      .default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34')
+      .describe(
+        'Local: the AVD to cold-boot. Lease: a non-cc-* name leases cc-<ACE_CONNECT_APK_VERSION>, the CommCare the ' +
+          'selector map is for (a cc-* name must match it). The lease result carries `lease` (lease_id, expires_at, ' +
+          'idle_release_s, state, baseline parity) — a lease idle for idle_release_s (900 s) with no call is released.',
+      ),
     // OPTIONAL per-run test-user override (dimagi-internal/ace#1289).
     //
     // Omit it — the production default while ACE_PER_RUN_TEST_USER is off —
@@ -165,7 +172,7 @@ server.tool(
       .optional()
       .describe(
         'Optional per-run test-user credential override (ace#1289). Omit for the env-derived ' +
-          'ACE_E2E_* user (the default). Local AVD backend only.',
+          'ACE_E2E_* user (the default). Honoured on both backends (local AVD and lease).',
       ),
     oppSlug: z.string().optional().describe('Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG.'),
     runId: z.string().optional().describe('Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID.'),
@@ -204,7 +211,15 @@ server.tool(
 
 server.tool(
   'mobile_install_apk',
-  { avdName: z.string(), apkPath: z.string() },
+  {
+    avdName: z.string(),
+    apkPath: z
+      .string()
+      .describe(
+        'Local APK path, or an https:// / s3:// URI. On the lease a local APK is uploaded and installed once per ' +
+          'machine (cached by content hash), so a repeat call is a no-op; a new machine installs it again.',
+      ),
+  },
   async ({ avdName, apkPath }) => ({
     content: [{ type: 'text', text: JSON.stringify(await client.installApk(avdName, apkPath), null, 2) }],
   }),

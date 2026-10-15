@@ -96,6 +96,67 @@ export interface AvdInfo {
    */
   timings?: Record<string, number> | null;
   accel?: string | null;
+  /**
+   * Lease backend only: the machine this session now holds, and the facts a
+   * caller needs to keep it. The machine is RELEASED after `idle_release_s`
+   * with no lease call — so a caller that knows the window can keep LLM-heavy
+   * work out of the gap between device ops (or make a cheap call to bridge
+   * it), and a caller that loses it knows login/claim/Learn state went with it.
+   */
+  lease?: LeaseFacts;
+}
+
+/** What `mobile_ensure_avd_running` reports about the lease it holds. */
+export interface LeaseFacts {
+  lease_id: string;
+  instance_id: string | null;
+  /** The broker's hard end of the lease (`max_lease_s`), ISO. */
+  expires_at: string | null;
+  /** Seconds with no lease call before the broker releases the machine. */
+  idle_release_s: number | null;
+  /** The baked state this machine booted (`cc-<version>`). */
+  state: string;
+  /** The selector-map version the client resolves recipes against. Equals `state`'s version, or the ensure refused. */
+  selector_map_version: string | null;
+  /** True when this ensure kept a machine it already held; false = a fresh machine. */
+  reused: boolean;
+  cli_version: string | null;
+  /** Baseline fingerprint the image reported in ready.json (null = it reported none). */
+  image_baseline_fingerprint: string | null;
+  /** The fingerprint this ACE version's baseline has (`mcp/mobile/environment-baseline.ts`). */
+  expected_baseline_fingerprint: string;
+  /** `match`; `mismatch` (surfaced as a warning); `unreported` (an image that applies no baseline). */
+  baseline_parity: 'match' | 'mismatch' | 'unreported';
+  /** What the client did about a non-`match` parity (e.g. `mock-location-set`). */
+  baseline_actions?: string[];
+  /** Whether the broker long-polls (`wait_s`): `yes`, `no` (ignored it), or `unknown` (not yet observed). */
+  long_poll: 'yes' | 'no' | 'unknown';
+}
+
+/**
+ * Wall-clock breakdown of one remote (lease) operation, in ms, so a slow
+ * device op is attributable from the result instead of opaque.
+ */
+export interface RemoteOpTiming {
+  /** The CLI subcommand (or `upload`/`download` for a transfer-only phase). */
+  op: string;
+  exec_id?: string;
+  /** PUTs of this op's inputs to S3 (0 when every input was cached on the lease). */
+  upload_ms?: number;
+  /** The POST /exec round trip. */
+  post_ms?: number;
+  /** POST answered → first status past Pending/Delayed (SSM delivery). Null when never observed. */
+  queue_ms?: number | null;
+  /** First InProgress seen → terminal seen. Null when the command finished before a poll saw it running. */
+  run_ms?: number | null;
+  /** Total time inside exec-status GETs (long-poll waits included). */
+  poll_ms?: number;
+  polls?: number;
+  /** Reading the CLI's result line when it was not inline (stdout_url / result.json). */
+  result_ms?: number;
+  /** Artifact listing + downloads. */
+  download_ms?: number;
+  total_ms: number;
 }
 
 /**
@@ -207,6 +268,8 @@ export interface DeviceStateHealLog {
    * an older baseline version.
    */
   environment_baseline_fingerprint?: string;
+  /** Wall seconds the heal (restore + verify) took, so a slow ensure is attributable. */
+  duration_s?: number;
 }
 
 /**
@@ -371,6 +434,12 @@ export interface RecipeRunResult {
   // in-VM CLI's diagnose shape.
   diagnostics?: Record<string, unknown>;
   /**
+   * Lease backend only: per-op wall-clock timings (upload, exec queue, run,
+   * poll, download) for every remote op this dispatch made — one row per
+   * chunk exec, plus the between-chunk UI dumps.
+   */
+  remoteTimings?: RemoteOpTiming[];
+  /**
    * Best-effort forensic capture of the device state at the moment a recipe
    * FAILED — captured automatically by `client.runRecipe` whenever
    * `status: 'fail'`, as a debug assist (jjackson/ace screenshot-on-error).
@@ -409,6 +478,8 @@ export interface RecipeRunResult {
     appCrash?: string;
     /** Sibling `<recipeId>-FAILURE-crash.txt`: the new CommCare crash block(s) verbatim. */
     crashLogPath?: string;
+    /** Lease only: the in-VM `ace-mobile diagnose` snapshot, read concurrently with the dump + screenshot. */
+    diagnostics?: Record<string, unknown>;
   };
   /**
    * The static palette dir this run actually resolved `runFlow: file:`

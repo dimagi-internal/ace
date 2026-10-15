@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { CONNECT_HOME_XML, REGISTERED_XML, UNREGISTERED_XML, fakeLeaseForHeal } from '../../fixtures/lease-screens.js';
 import { MobileClient } from '../../../mcp/mobile/client.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
 
@@ -129,11 +130,12 @@ describe('bootstrap step honesty (#1067)', () => {
 
 // The remote twin of the same overclaim. The remote heal (now
 // `leaseBootstrapHeal`) once hardcoded `classified_as: 'ready'` AND
-// `verified_as: 'ready'` while probing nothing at all — strictly worse than
-// the local defect #1085 fixed, because local at least reported whatever its
-// probe actually said. Flagged as still-open on #1067 after #1085 merged.
+// `verified_as: 'ready'` while probing nothing at all. The honest fix was
+// first to stop claiming (classified_as 'unknown', -unverified steps); it is
+// now to VERIFY — one ui-dump of the settled first screen through
+// `classifyDeviceUserState` — and to claim exactly what that dump shows.
 describe('lease bootstrap step honesty (#1067, ask 1 remote twin)', () => {
-  const REMOTE_AVD = { name: 'cc-2.63.0', serial: 'lease:i-test', status: 'booted' as const };
+  const REMOTE_AVD = { name: 'cc-2.64.0', serial: 'lease:i-test', status: 'booted' as const };
   let savedBackend: string | undefined;
 
   beforeEach(() => {
@@ -145,21 +147,14 @@ describe('lease bootstrap step honesty (#1067, ask 1 remote twin)', () => {
     else process.env.ACE_MOBILE_BACKEND = savedBackend;
   });
 
-  function makeLeaseClient(alreadyRegistered: boolean) {
-    const lease = {
-      clearAppData: vi.fn().mockResolvedValue(true),
-      registerTestUser: vi.fn().mockResolvedValue({
-        alreadyRegistered,
-        phone: TEST_PHONE,
-        backupCode: '123456789012',
-      }),
-    } as any;
+  function makeLeaseClient(alreadyRegistered: boolean, screen: string) {
+    const lease = fakeLeaseForHeal({ alreadyRegistered, screens: [screen] });
     const client = new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      lease,
+      lease: lease as any,
       bootstrapConfig: {
-        apkVersion: '2.63.0',
+        apkVersion: '2.64.0',
         testUser: {
           phone: TEST_PHONE, phoneLocal: TEST_PHONE_LOCAL, countryCode: '+7',
           pin: '1234', backupCode: '123456789012', name: 'ACE Test',
@@ -169,23 +164,25 @@ describe('lease bootstrap step honesty (#1067, ask 1 remote twin)', () => {
     return client;
   }
 
-  it('never claims verified_as — the lease heal runs no verification probe', async () => {
-    const log = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
-    expect(log.verified_as).toBeUndefined();
+  it('claims verified_as only from a dump that shows the registered user', async () => {
+    const log = await makeLeaseClient(false, REGISTERED_XML).restoreDeviceUserState(REMOTE_AVD as any);
+    expect(log).toMatchObject({ classified_as: 'ready', verified_as: 'ready', attempted: true, healed_via: 'lease-bootstrap' });
   });
 
-  it('does not classify the device as ready on the strength of an unprobed register call', async () => {
-    const log = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
-    expect(log.classified_as).toBe('unknown');
-    // Still a SUCCESS — same decision as the local path (ask 2 declined).
-    expect(log).toMatchObject({ attempted: true, healed_via: 'lease-bootstrap' });
+  it('a register call that returned is not a registered device: an unregistered screen throws', async () => {
+    await expect(makeLeaseClient(false, UNREGISTERED_XML).restoreDeviceUserState(REMOTE_AVD as any)).rejects.toMatchObject({
+      code: 'DEVICE_USER_STATE_WIPED',
+    });
   });
 
-  it('reports the registration step as unverified in both register arms', async () => {
-    const fresh = await makeLeaseClient(false).restoreDeviceUserState(REMOTE_AVD as any);
-    expect(fresh.bootstrap_steps).toEqual(['app-data-cleared', 'registered-unverified']);
+  it('drops the -unverified suffix only on confirmation, in both register arms', async () => {
+    const fresh = await makeLeaseClient(false, REGISTERED_XML).restoreDeviceUserState(REMOTE_AVD as any);
+    expect(fresh.bootstrap_steps).toEqual(['app-data-clear-skipped-fresh-machine', 'registered', 'first-screen-settled']);
 
-    const already = await makeLeaseClient(true).restoreDeviceUserState(REMOTE_AVD as any);
-    expect(already.bootstrap_steps).toEqual(['app-data-cleared', 'register-already-unverified']);
+    const already = await makeLeaseClient(true, CONNECT_HOME_XML).restoreDeviceUserState(REMOTE_AVD as any);
+    expect(already.bootstrap_steps).toEqual(['app-data-clear-skipped-fresh-machine', 'register-already', 'first-screen-settled']);
+
+    const err = await makeLeaseClient(true, UNREGISTERED_XML).restoreDeviceUserState(REMOTE_AVD as any).catch((e) => e);
+    expect(String(err.message)).toContain('register-already-unverified');
   });
 });
