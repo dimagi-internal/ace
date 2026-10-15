@@ -15,6 +15,7 @@ import {
   buildPlayRestoreXml,
   extractItemListFixtureTags,
   readCczItemListFixtureTags,
+  extractItemListInstanceIds,
   parsePlayOutput,
 } from '../../lib/commcare-cli-validate.js';
 
@@ -97,6 +98,98 @@ org.commcare.core.process.CommCareInstanceInitializer$FixtureInitializationExcep
     const r = parsePlayOutput({
       ...base,
       stdout: `${FIXTURE_CRASH}\norg.javarosa.xpath.XPathTypeMismatchException: Calculation Error`,
+    });
+    expect(r.verdict).toBe('fail');
+  });
+});
+
+/**
+ * ace#2941 — ace#2860 seeds an EMPTY item-list root, so form-init no longer
+ * throws FixtureInitializationException. But a binding (or case-list column)
+ * that reads a ROW column then dies with javarosa's
+ * `Logic references <ref> which is not a valid question or value.` — the path
+ * does not exist in a row-less instance. That is the empty seed, not the CCZ:
+ * a device gets the rows on sync. It must be UNEVALUATED, not `fail`.
+ *
+ * javarosa names the INSTANCE ID in the ref (`instance(commcaresession)/…`, see
+ * the bednet verbatim in commcare-cli-validate.test.ts), not the src — so the
+ * classifier maps ids back to their `jr://fixture/item-list:` srcs.
+ */
+describe('unseeded fixture ROW reads are a harness skip (ace#2941)', () => {
+  const base = { exitCode: 0, stderr: '', timedOut: false, timeoutMs: 30000, entryPath: [0, 0] };
+  const rowRead = (ref: string, binding = '/data/farm_plan/grant_window_date') =>
+    `Starting form entry with the following stack frame
+Unhandled Fatal Error executing CommCare app
+org.javarosa.xpath.XPathTypeMismatchException: Calculation Error: Error in calculation for ${binding}
+Logic references ${ref} which is not a valid question or value.
+    at org.javarosa.xpath.XPathNodeset.getInvalidNodesetException(XPathNodeset.java:146)
+    at org.javarosa.core.model.FormDef.initAllTriggerables(FormDef.java:1004)`;
+
+  it('extractItemListInstanceIds maps instance ids to item-list srcs, either attribute order', () => {
+    const xml = `<instance id="ss1014_seasonal_calendar" src="jr://fixture/item-list:ss1014_seasonal_calendar"/>
+      <instance src='jr://fixture/item-list:ss1014_areas' id='item-list:ss1014_areas'/>
+      <instance id="casedb" src="jr://instance/casedb"/>`;
+    expect(extractItemListInstanceIds(xml).sort()).toEqual([
+      'item-list:ss1014_areas',
+      'ss1014_seasonal_calendar',
+    ]);
+  });
+
+  it('a row read from an empty-seeded fixture (form binding) is skipped/cli-fixture-unseeded', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: rowRead(
+        'instance(ss1014_seasonal_calendar)/ss1014_seasonal_calendar_list/ss1014_seasonal_calendar/grant_window_date',
+      ),
+      emptySeededFixtureInstanceIds: ['ss1014_seasonal_calendar'],
+    });
+    expect(r.verdict).toBe('skipped');
+    expect(r.skip_reason).toBe('cli-fixture-unseeded');
+    // The diagnostics still name what was unevaluated.
+    expect(r.unresolved_xpath).toMatch(/^instance\(ss1014_seasonal_calendar\)/);
+  });
+
+  it('a quoted item-list:<tag> instance id (case-list column) is also skipped', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: rowRead("instance('item-list:ss1014_areas')/ss1014_areas_list/ss1014_areas/area_name"),
+      emptySeededFixtureInstanceIds: ['item-list:ss1014_areas'],
+    });
+    expect(r.verdict).toBe('skipped');
+    expect(r.skip_reason).toBe('cli-fixture-unseeded');
+  });
+
+  it('NEGATIVE CONTROL: the bednet class (session ref) still fails', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: rowRead('instance(commcaresession)/session/data/case_id'),
+      emptySeededFixtureInstanceIds: ['ss1014_seasonal_calendar'],
+    });
+    expect(r.verdict).toBe('fail');
+  });
+
+  it('NEGATIVE CONTROL: without the empty-seed set (caller restore) it still fails', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: rowRead('instance(ss1014_seasonal_calendar)/ss1014_seasonal_calendar_list/x/y'),
+    });
+    expect(r.verdict).toBe('fail');
+  });
+
+  it('NEGATIVE CONTROL: a parser-class defect alongside the fixture ref still fails', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: `${rowRead('instance(ss1014_seasonal_calendar)/a/b/c')}\norg.javarosa.xform.parse.XFormParseException: bad tag`,
+      emptySeededFixtureInstanceIds: ['ss1014_seasonal_calendar'],
+    });
+    expect(r.verdict).toBe('fail');
+  });
+
+  it('NEGATIVE CONTROL: a second, non-fixture unresolved ref in the stream still fails', () => {
+    const r = parsePlayOutput({
+      ...base,
+      stdout: `${rowRead('instance(ss1014_seasonal_calendar)/a/b/c')}\nLogic references /data/missing which is not a valid question or value.`,
+      emptySeededFixtureInstanceIds: ['ss1014_seasonal_calendar'],
     });
     expect(r.verdict).toBe('fail');
   });
