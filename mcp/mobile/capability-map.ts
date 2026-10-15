@@ -20,7 +20,9 @@ export type Capability =
   | 'probe_maestro_driver'
   | 'list_session_videos'
   | 'clear_session_videos'
-  | 'diagnose';
+  | 'diagnose'
+  | 'checkout_test_workers'
+  | 'release_test_workers';
 
 export interface CapabilityRoute {
   backend: Backend;
@@ -33,7 +35,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_avds: { backend: 'AVD', description: 'List AVDs known to avdmanager' },
   install_apk: { backend: 'AVD', description: 'adb install -r' },
   uninstall_apk: { backend: 'AVD', description: 'adb uninstall' },
-  register_test_user: { backend: 'COMPOSITE', description: 'Two-part Maestro registration via +7426 demo-bypass prefix (no OTP)' },
+  register_test_user: { backend: 'COMPOSITE', description: 'Two-part Maestro registration via +7426 demo-bypass prefix (no OTP). Signs in as a held pool worker (`slot`), the session\'s own worker, or an explicit unlocked identity (ace#2955)' },
   run_recipe: { backend: 'MAESTRO', description: 'maestro test <recipe>' },
   validate_recipe: { backend: 'MAESTRO', description: 'Lint a Maestro YAML body (step-key allowlist + structural checks) without running it' },
   resolve_selectors: { backend: 'MAESTRO', description: 'Substitute ${SELECTOR:name} placeholders in a Maestro YAML body from mcp/mobile/selectors/connect-<apkVersion>.yaml' },
@@ -45,6 +47,8 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_session_videos: { backend: 'AVD', description: "Host-side: list the mp4s this session's local recipe runs spooled to ~/.ace/mobile-videos/<ppid>/, plus the spool dir. The ppid keys the spool and belongs to the MCP process, so skills cannot resolve it themselves." },
   clear_session_videos: { backend: 'AVD', description: "Host-side: clear THIS session's video spool (scoped to the MCP's own ppid, so it cannot touch a concurrent session's spool). Returns the number of files removed." },
   diagnose: { backend: 'COMPOSITE', description: 'Dual-mode read-only probe (ace#961). Lease: the `ace-mobile diagnose` snapshot from the leased machine (adb devices, emulator state) plus the lease (id, status, instance, expiry). Local: the adb server port this session actually allocated (raw `adb` defaults to 5037 and sees nothing), plus emulator ports, visible devices on THAT port, and the running AVD. Discriminate on the `backend` field.' },
+  checkout_test_workers: { backend: 'COMPOSITE', description: "Hold N Connect test workers exclusively through canopy-web's `test-worker` pool capability (ace#2955) — for multi-worker tests. Waits for queued slots, fails loud naming holders, never shares a worker." },
+  release_test_workers: { backend: 'COMPOSITE', description: 'Release Connect test workers this session holds (default: all but the signed-in one). mobile_stop_avd releases every one.' },
 };
 
 // Note: `mobile_generate_recipes_from_app_summary` is intentionally NOT

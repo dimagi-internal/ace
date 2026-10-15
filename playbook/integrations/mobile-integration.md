@@ -33,6 +33,21 @@ The only production consumer is Phase 6 `qa-and-training`, which captures screen
 
 See the design spec: `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md`.
 
+## Test workers: a named pool, one device session each (ace#2955)
+
+Every device session signs in as a Connect test worker, and a PersonalID sign-in
+moves the account to the newest device. Two sessions on one worker therefore sign
+each other out (ace#2934). The workers are a small named pool. Each device session
+checks one out exclusively through canopy-web's `test-worker` pool capability
+(`infra/capabilities/test-worker/capability.yaml`). This works the same on the
+local AVD, the lease and a phone. `mobile_ensure_avd_running` does it on its own;
+multi-worker tests use `mobile_checkout_test_workers`, then
+`mobile_register_test_user({slot})`, then `mobile_release_test_workers`. Until the
+capability is published and granted, a single-worker session runs unlocked as
+worker-1 and warns loudly (`/ace:doctor` shows `test_worker_pool` WARN). Adding or
+retiring a worker, including the one-time fresh-signup walk that calibrates
+`connect-register-from-otp.yaml`'s camera ids, is in `skills/test-worker-pool`.
+
 ## Running the MCP server
 
 ```bash

@@ -27,6 +27,17 @@
  * The one hard constraint is E.164 shape: connect-id runs
  * `PhoneNumber.from_string` and a parse failure 503s.
  *
+ * ## SUPERSEDED BY THE TEST-WORKER POOL (ace#2955) — THE SWITCH STAYS OFF
+ *
+ * The owner ruled per-run minting out on 2026-10-15 ("I don't want to
+ * proliferate users on every run") and chose a small named pool of Connect
+ * test workers with exclusive checkout instead (`lib/test-worker-pool.ts`,
+ * `lib/test-worker-lease.ts`, `skills/test-worker-pool`). The tile-scroll
+ * class this module was written for is now answered by retiring a pool
+ * worker whose invite list has grown long. The flag stays off even if the
+ * precondition below comes to hold; the module stays for its arithmetic
+ * (`assertDemoE164`, `TEST_NUMBER_PREFIX`), which the pool reuses.
+ *
  * ## THE SWITCH IS OFF BY DEFAULT AND MUST STAY OFF UNTIL THE PRECONDITION HOLDS
  *
  * See {@link PER_RUN_TEST_USER_FLIP_PRECONDITION}. Nothing in this module reads

@@ -1,7 +1,7 @@
 /**
  * ACE Mobile MCP Server
  *
- * Exposes 17 atomic mobile capabilities backed by Maestro + adb +
+ * Exposes 19 atomic mobile capabilities backed by Maestro + adb +
  * Playwright, or — on the `lease` backend (the default where no AVD is
  * provisioned) — a leased android-emulator machine driven through
  * canopy-web's capability broker. Routing → backend lives in
@@ -171,8 +171,10 @@ server.tool(
       })
       .optional()
       .describe(
-        'Optional per-run test-user credential override (ace#1289). Omit for the env-derived ' +
-          'ACE_E2E_* user (the default). Honoured on both backends (local AVD and lease).',
+        'Optional per-run test-user credential override (ace#1289). Omit (the default) and the device signs in as ' +
+          'a Connect test worker this session checks out from the pool (ace#2955; `test_worker` in the result names ' +
+          'the slot and the lock). Passed, that identity is used UNLOCKED — no pool slot describes it. ' +
+          'Honoured on both backends (local AVD and lease).',
       ),
     oppSlug: z.string().optional().describe('Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG.'),
     runId: z.string().optional().describe('Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID.'),
@@ -207,6 +209,7 @@ server.tool(
   'mobile_stop_avd',
   { avdName: z.string() },
   async ({ avdName }) => {
+    // Also releases every Connect test worker this session held (ace#2955).
     await client.stopAvd(avdName);
     return { content: [{ type: 'text', text: `stopped ${avdName}` }] };
   },
@@ -246,49 +249,72 @@ server.tool(
   'mobile_register_test_user',
   {
     avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
-    // All credential fields are optional and fall back to ACE_E2E_* env
-    // vars in the handler — same env conventions used by
-    // bootstrapConfigFromEnv() and the recipe-resolver placeholder map.
-    // Caller args still win when present; this just lets skill callers
-    // (qa-and-training) invoke the tool without re-plumbing every
-    // credential through the orchestrator, and avoids server-side
-    // "Request validation failed" responses from empty-string passes.
-    phone: z.string().optional(),
+    slot: z
+      .string()
+      .optional()
+      .describe(
+        'Sign the device in as this Connect test worker (e.g. "worker-3"). It MUST be a slot this session holds — ' +
+          'check workers out first with mobile_checkout_test_workers. Takes precedence over the credential fields. ' +
+          'Omit slot AND phone to sign in as the session\'s own worker (checked out from the pool if none is held, ace#2955).',
+      ),
+    // Explicit credential fields: an identity outside the pool, used UNLOCKED
+    // (e.g. the add-worker walk registering a new number before it is stored
+    // in 1Password). Missing fields fall back to ACE_E2E_*; caller args win
+    // when present, and a blank pass never blanks a working credential.
+    phone: z.string().optional().describe('Explicit identity (unlocked). Must keep the +7426 demo prefix.'),
     phoneLocal: z.string().optional(),
     countryCode: z.string().optional(),
     pin: z.string().optional(),
     backupCode: z.string().optional(),
     name: z.string().optional(),
   },
-  async (args) => {
-    const resolved = {
-      avdName: args.avdName,
-      phone: args.phone || process.env.ACE_E2E_PHONE || '',
-      phoneLocal: args.phoneLocal || process.env.ACE_E2E_PHONE_LOCAL || '',
-      countryCode: args.countryCode || process.env.ACE_E2E_COUNTRY_CODE || '',
-      pin: args.pin || process.env.ACE_E2E_PIN || '',
-      backupCode: args.backupCode || process.env.ACE_E2E_BACKUP_CODE || '',
-      name: args.name || process.env.ACE_E2E_NAME || 'ACE Test',
-    };
-    // Surface the named missing field(s) here rather than punting to
-    // ace-web's Pydantic validator, which returns a generic
-    // "Request validation failed" with no field-level detail.
-    const missing = (
-      ['phone', 'phoneLocal', 'countryCode', 'pin', 'backupCode'] as const
-    ).filter((k) => !resolved[k]);
-    if (missing.length > 0) {
-      const envHints = missing
-        .map((k) => `ACE_E2E_${k === 'phoneLocal' ? 'PHONE_LOCAL' : k === 'countryCode' ? 'COUNTRY_CODE' : k === 'backupCode' ? 'BACKUP_CODE' : k.toUpperCase()}`)
-        .join(', ');
-      throw new Error(
-        `mobile_register_test_user: required field(s) missing — ${missing.join(', ')}. ` +
-          `Pass them as args, or set ${envHints} in the environment.`,
-      );
-    }
-    return {
-      content: [{ type: 'text', text: JSON.stringify(await client.registerTestUser(resolved), null, 2) }],
-    };
+  async (args) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.registerTestUserForAtom(args), null, 2) }],
+  }),
+);
+
+// ── Connect test-worker pool (ace#2955) ───────────────────────────
+//
+// Each device session signs in as ONE Connect test worker, checked out
+// exclusively through canopy-web's `test-worker` pool capability, so two
+// sessions on any two machines never share a worker (the ace#2934 failure).
+// mobile_ensure_avd_running checks one out on its own; these two atoms are for
+// multi-worker tests (e.g. case sharing: four workers on one opportunity).
+
+server.tool(
+  'mobile_checkout_test_workers',
+  {
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .max(16)
+      .describe(
+        'Total workers this session should hold, INCLUDING the one the device is signed in as. Waits up to 10 min ' +
+          'for queued slots, then fails TEST_WORKER_POOL_EXHAUSTED naming who holds each slot — it never shares one. ' +
+          'More than 1 requires the pool lock to be live (TEST_WORKER_POOL_UNAVAILABLE names the publish step).',
+      ),
   },
+  async ({ count }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.checkoutTestWorkers(count), null, 2) }],
+  }),
+);
+
+server.tool(
+  'mobile_release_test_workers',
+  {
+    slots: z
+      .array(z.string())
+      .optional()
+      .describe('Slots to release. Omitted: every held worker the device is NOT signed in as.'),
+    all: z
+      .boolean()
+      .optional()
+      .describe('true = release the signed-in worker too (only when this device is done with it). mobile_stop_avd releases everything.'),
+  },
+  async ({ slots, all }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.releaseTestWorkers({ slots, all }), null, 2) }],
+  }),
 );
 
 server.tool(

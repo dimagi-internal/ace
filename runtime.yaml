@@ -33,6 +33,10 @@ engine: any
 # (`canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`).
 capabilities:
   - manifest: infra/capabilities/android-emulator/capability.yaml
+  # The Connect test-worker pool (ace#2955): a `kind: pool` capability, one
+  # lease per device session's test worker. Needs canopy-web's pool kind —
+  # publish only once that is deployed, or the publish refuses this entry.
+  - manifest: infra/capabilities/test-worker/capability.yaml
 
 plugins:
   - name: canopy
@@ -279,6 +283,15 @@ secrets:
     env: ACE_E2E_BACKUP_CODE
     optional: true
     op: op://${AGENT_VAULT}/connect-test-user/backup-code
+  # The rest of the test-worker pool (ace#2955): a JSON object keyed by slot
+  # ("worker-2": {phone, phoneLocal, pin, backupCode, name}, …); worker-1 is
+  # the connect-test-user item above. Commented out until the 1Password item
+  # connect-test-workers exists — a ref to a missing item aborts the whole
+  # render. Uncomment together with the .env.tpl line (skills/test-worker-pool).
+  # - name: ace-e2e-workers
+  #   env: ACE_E2E_WORKERS
+  #   optional: true
+  #   op: op://${AGENT_VAULT}/connect-test-workers/pool-json
 
 # Deliberately NOT here, and not a gap:
 #   - ~/.ace/*.json (OCS + Connect Playwright session cookies). Per-machine by

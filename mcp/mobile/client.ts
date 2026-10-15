@@ -10,6 +10,8 @@ import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { AvdBackend, defaultShell, pinAdbServerPort } from './backends/avd.js';
 import { LeaseBackend, type LeaseDiagnostics } from './backends/lease.js';
+import { TestWorkerCheckout, type HeldWorker, type TestWorkerStatus } from '../../lib/test-worker-lease.js';
+import { workerRecipeEnv } from '../../lib/test-worker-pool.js';
 import { MaestroBackend, collectScreenshotsFromDir } from './backends/maestro.js';
 import {
   AvdBootError,
@@ -90,9 +92,27 @@ import { clearSpool, listSpooled, spoolDir,
  * The union lives here rather than in `types.ts` because `types.ts` is
  * deliberately backend-agnostic and does not import `LeaseDiagnostics`.
  */
-export type MobileDiagnostics =
+export type MobileDiagnostics = (
   | LocalDiagnostics
-  | ({ backend: 'lease' } & LeaseDiagnostics);
+  | ({ backend: 'lease' } & LeaseDiagnostics)
+) & {
+  /**
+   * The Connect test-worker pool lock (ace#2955): which workers this session
+   * holds and whether the lock is live (`locked`) or the rollout fallback
+   * (`unlocked-fallback`, with the warning naming the publish step).
+   */
+  test_workers?: TestWorkerStatus | null;
+};
+
+/** What `mobile_checkout_test_workers` / `mobile_release_test_workers` report. */
+export interface TestWorkerCheckoutReport {
+  lock: TestWorkerStatus['mode'];
+  /** The slot the device is signed in as, if any. */
+  signed_in: string | null;
+  held: Array<{ slot: string; phone: string; name: string; lease_id: string | null; signed_in: boolean }>;
+  released?: string[];
+  warning: string | null;
+}
 
 /**
  * Screen-recorder seam. Injected only by tests; production binds the real
@@ -133,6 +153,15 @@ export interface MobileClientOpts {
    * omitted = constructed from ACE's canopy-web PAT when one is present.
    */
   lease?: LeaseBackend | null;
+  /**
+   * The Connect test-worker pool lock (ace#2955). `null` = no lock: the
+   * device registers as `bootstrapConfig.testUser` exactly as before.
+   * Omitted = a real `TestWorkerCheckout` — but ONLY when `bootstrapConfig`
+   * is also omitted (the production path, where identity comes from env). A
+   * caller that hands in its own `bootstrapConfig` has chosen the identity
+   * itself (tests, tooling), so it gets no lock unless it passes one here.
+   */
+  workers?: TestWorkerCheckout | null;
   /**
    * Static palette dir. When omitted, resolved via
    * `resolveStaticRecipesDir()` — which honours
@@ -251,6 +280,20 @@ export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
  * pass there produced a server-side "Request validation failed" with no
  * field-level detail).
  */
+/**
+ * The recipe env with the device's signed-in identity filled in (ace#2955):
+ * `${PHONE}` / `${PIN}` / … come from whoever the device is signed in as, so a
+ * session holding worker-3 never types worker-1's number. Caller values still
+ * win; with no identity this returns `env` itself, and `injectAceEnvVars`
+ * fills the rest from `ACE_E2E_*` as before.
+ */
+export function withDeviceIdentity(
+  identity: TestUserCredentials | null,
+  env: Record<string, string>,
+): Record<string, string> {
+  return identity ? { ...workerRecipeEnv(identity), ...env } : env;
+}
+
 export function mergeTestUserOverride(
   base: TestUserCredentials,
   override?: Partial<TestUserCredentials>,
@@ -844,6 +887,15 @@ export class MobileClient {
    * defaults.
    */
   readonly bootstrapConfig: LocalBootstrapConfig | null;
+  /** The test-worker pool lock (ace#2955); null = none (see MobileClientOpts.workers). */
+  readonly workers: TestWorkerCheckout | null;
+  /**
+   * Who the device is signed in as, once a registration ran: a pool worker
+   * (`slot` set) or an explicit identity (`slot` null). Recipes get THIS
+   * identity's `${PHONE}` / `${PIN}` / … rather than `ACE_E2E_*`, so a session
+   * signed in as worker-3 never types worker-1's number.
+   */
+  private deviceIdentity: { slot: string | null; user: TestUserCredentials } | null = null;
   private readonly fetchImpl: typeof fetch;
   private readonly recorder: RecorderHooks;
   private readonly spool: SpoolHooks;
@@ -874,6 +926,10 @@ export class MobileClient {
     // `undefined` (omitted) reads from env; non-null override wins.
     this.bootstrapConfig =
       opts.bootstrapConfig === undefined ? bootstrapConfigFromEnv() : opts.bootstrapConfig;
+    // Constructing the checkout does no I/O; it acquires only when a device
+    // session first needs a worker.
+    this.workers =
+      opts.workers !== undefined ? opts.workers : opts.bootstrapConfig === undefined ? new TestWorkerCheckout() : null;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.recorder = opts.recorder ?? { start: startRecording, stop: stopRecording };
     this.spool = opts.spool ?? {
@@ -1064,7 +1120,7 @@ export class MobileClient {
       const healStarted = Date.now();
       const deviceUserState = await this.restoreDeviceUserState(info, opts);
       deviceUserState.duration_s = Math.round((Date.now() - healStarted) / 100) / 10;
-      return { ...info, heal: { deviceUserState } };
+      return { ...info, heal: { deviceUserState }, ...this.testWorkerFacts() };
     }
     // Bounded retry over the WHOLE idempotent funnel (cold-boot → driver
     // assert → restore/register). The driver readiness probe
@@ -1094,7 +1150,7 @@ export class MobileClient {
         updateSessionLockContext(process.pid, { ...oppCtx, avd_name: info.name });
         await this.assertMaestroDriverHealthy(info.serial);
         const deviceUserState = await this.restoreDeviceUserState(info, opts);
-        return { ...info, heal: { deviceUserState } };
+        return { ...info, heal: { deviceUserState }, ...this.testWorkerFacts() };
       } catch (e) {
         lastErr = e;
         if (attempt < MAX_FUNNEL_ATTEMPTS && isTransientBootRaceError(e)) {
@@ -1434,10 +1490,10 @@ export class MobileClient {
       );
     }
     const { apkVersion } = this.bootstrapConfig;
-    // Per-call credential override (dimagi-internal/ace#1289). With no `opts`
-    // — the production default while ACE_PER_RUN_TEST_USER is off — this
-    // returns the env-derived object ITSELF, unchanged and not even copied.
-    const testUser = mergeTestUserOverride(this.bootstrapConfig.testUser, opts?.testUser);
+    // Which worker to sign in as: a pool worker this session checks out
+    // (ace#2955), or — with an explicit per-call override (ace#1289) — that
+    // identity, unlocked. See `sessionTestUser`.
+    const { user: testUser, slot: workerSlot } = await this.sessionTestUser(opts);
     const steps: string[] = [];
 
     // Step 1: ensure CommCare APK installed.
@@ -1562,7 +1618,9 @@ export class MobileClient {
     // Mac (measured 2026-10-15; it was ~160 s before the recipes probed
     // optional screens instead of paying Maestro's 7 s miss cost). See the
     // demo-user-no-OTP learning for the OTP side.
-    logInfo(`local_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
+    logInfo(
+      `local_bootstrap: registering test user ${testUser.phone}${workerSlot ? ` (${workerSlot})` : ''} on ${avd.serial}`,
+    );
     const reg = await this.registerTestUser({
       avdName: avd.name,
       phone: testUser.phone,
@@ -1893,10 +1951,183 @@ export class MobileClient {
     }
     return { ...r, adbPort, portKind, driverPackages: packages };
   }
-  stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
-    if (this.useLease) return this.requireLease().stopAvd(name, opts);
-    // The local AVD backend has no busy guard — opts is ignored there.
-    return this.avd.stopAvd(name);
+  async stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
+    try {
+      if (this.useLease) await this.requireLease().stopAvd(name, opts);
+      // The local AVD backend has no busy guard — opts is ignored there.
+      else await this.avd.stopAvd(name);
+    } finally {
+      // The device session is over, so every test worker it held is free for
+      // the next one (ace#2955) — even when the stop itself failed.
+      this.deviceIdentity = null;
+      if (this.workers) await this.workers.release();
+    }
+  }
+
+  // ---- Connect test-worker pool (ace#2955) ----
+
+  /**
+   * The identity a bootstrap signs the device in as.
+   *
+   *  - An explicit per-call `testUser` override (ace#1289) wins and takes NO
+   *    lock. That identity is the caller's — a per-run minted number, or the
+   *    add-worker walk registering a number that is not in the pool yet — so
+   *    no pool slot describes it, and locking one would block a worker for
+   *    nothing.
+   *  - Otherwise, with a pool lock configured: the worker this session already
+   *    signed in as if it still holds it, else the first held, else one newly
+   *    checked out (which may wait for a free slot, or fall back UNLOCKED to
+   *    worker-1 while the capability is not live — see lib/test-worker-lease.ts).
+   *  - With no lock (`workers: null`): `bootstrapConfig.testUser`, as before.
+   */
+  private async sessionTestUser(
+    opts?: EnsureAvdRunningOptions,
+  ): Promise<{ user: TestUserCredentials; slot: string | null }> {
+    const base = this.bootstrapConfig!.testUser;
+    const override = opts?.testUser;
+    const hasOverride = !!override && Object.values(override).some((v) => typeof v === 'string' && v.length > 0);
+    if (hasOverride || !this.workers) {
+      const user = mergeTestUserOverride(base, override);
+      return { user, slot: null };
+    }
+    const current = this.deviceIdentity?.slot ? this.workers.get(this.deviceIdentity.slot) : undefined;
+    const held = current ?? (await this.workers.ensure(1))[0];
+    const { slot: _s, ...user } = held.worker;
+    this.deviceIdentity = { slot: held.slot, user };
+    return { user, slot: held.slot };
+  }
+
+  /** The held slot whose phone this is, or null (an identity outside the pool). */
+  private heldSlotForPhone(phone: string): string | null {
+    return this.workers?.heldWorkers().find((h) => h.worker.phone === phone)?.slot ?? null;
+  }
+
+  private requireWorkers(): TestWorkerCheckout {
+    if (!this.workers) {
+      throw new MobileError(
+        'TEST_WORKER_POOL_UNAVAILABLE',
+        'this MobileClient was built without a test-worker pool lock',
+        'The MCP server always builds one; only a caller that passes its own bootstrapConfig has none.',
+      );
+    }
+    return this.workers;
+  }
+
+  /** `test_worker` for an ensure result; omitted when no lock is configured. */
+  private testWorkerFacts(): { test_worker?: TestWorkerCheckoutReport } {
+    return this.workers ? { test_worker: this.testWorkerReport() } : {};
+  }
+
+  /** The current lock state, in the shape the worker atoms return. */
+  testWorkerReport(released?: string[]): TestWorkerCheckoutReport {
+    const status = this.workers?.status() ?? null;
+    const signedIn = this.deviceIdentity?.slot ?? null;
+    return {
+      lock: status?.mode ?? null,
+      signed_in: signedIn,
+      held: (this.workers?.heldWorkers() ?? []).map((h: HeldWorker) => ({
+        slot: h.slot,
+        phone: h.worker.phone,
+        name: h.worker.name,
+        lease_id: h.leaseId,
+        signed_in: h.slot === signedIn,
+      })),
+      ...(released ? { released } : {}),
+      warning: status?.warning ?? null,
+    };
+  }
+
+  /**
+   * Hold `count` workers in total (the one the device is signed in as
+   * counts). Waits for queued slots; fails loud naming the holders when the
+   * pool stays full, and never falls back to sharing one.
+   */
+  async checkoutTestWorkers(count: number): Promise<TestWorkerCheckoutReport> {
+    await this.requireWorkers().ensure(count);
+    return this.testWorkerReport();
+  }
+
+  /**
+   * Release held workers. Default: every held worker the device is NOT
+   * signed in as (the extras a multi-worker test checked out). `all: true`
+   * releases the signed-in one too — after which another session may sign
+   * it in, so only do that when this device is done with it.
+   */
+  async releaseTestWorkers(opts: { slots?: string[]; all?: boolean } = {}): Promise<TestWorkerCheckoutReport> {
+    const workers = this.requireWorkers();
+    const signedIn = this.deviceIdentity?.slot ?? null;
+    let targets = opts.slots ?? workers.heldWorkers().map((h) => h.slot);
+    if (!opts.all && !opts.slots) targets = targets.filter((s) => s !== signedIn);
+    const notHeld = targets.filter((s) => !workers.holds(s));
+    if (notHeld.length) {
+      throw new MobileError(
+        'TEST_WORKER_NOT_HELD',
+        `this session does not hold ${notHeld.join(', ')} (held: ${workers.heldWorkers().map((h) => h.slot).join(', ') || 'none'})`,
+      );
+    }
+    const released = await workers.release(targets);
+    if (signedIn && released.includes(signedIn)) this.deviceIdentity = null;
+    return this.testWorkerReport(released);
+  }
+
+  /**
+   * `mobile_register_test_user`'s resolution:
+   *  - `slot`: sign the device in as that held worker (multi-worker tests);
+   *    refused unless this session holds it.
+   *  - explicit `phone`: that identity, unlocked (the add-worker walk).
+   *  - neither: the session's worker, checked out if none is held — the same
+   *    identity a bootstrap would use.
+   * Credential fields not given fall back to `ACE_E2E_*`, as they always have.
+   */
+  async registerTestUserForAtom(args: {
+    avdName: string;
+    slot?: string;
+    phone?: string;
+    phoneLocal?: string;
+    countryCode?: string;
+    pin?: string;
+    backupCode?: string;
+    name?: string;
+  }): Promise<TestUserRegistrationResult & { test_worker: TestWorkerCheckoutReport }> {
+    const env = process.env;
+    let user: TestUserCredentials;
+    if (args.slot) {
+      const held = this.requireWorkers().get(args.slot);
+      if (!held) {
+        throw new MobileError(
+          'TEST_WORKER_NOT_HELD',
+          `this session does not hold ${args.slot} (held: ${this.requireWorkers().heldWorkers().map((h) => h.slot).join(', ') || 'none'})`,
+          'Check it out first with mobile_checkout_test_workers({count}) — never sign in as a worker another session may hold.',
+        );
+      }
+      const { slot: _s, ...w } = held.worker;
+      user = w;
+    } else if (args.phone || !this.workers || !this.bootstrapConfig) {
+      user = {
+        phone: args.phone || env.ACE_E2E_PHONE || '',
+        phoneLocal: args.phoneLocal || env.ACE_E2E_PHONE_LOCAL || '',
+        countryCode: args.countryCode || env.ACE_E2E_COUNTRY_CODE || '',
+        pin: args.pin || env.ACE_E2E_PIN || '',
+        backupCode: args.backupCode || env.ACE_E2E_BACKUP_CODE || '',
+        name: args.name || env.ACE_E2E_NAME || 'ACE Test',
+      };
+    } else {
+      user = (await this.sessionTestUser()).user;
+    }
+    // Surface the named missing field(s) here rather than punting to the
+    // server's validator, which answers a generic "Request validation failed".
+    const missing = (['phone', 'phoneLocal', 'countryCode', 'pin', 'backupCode'] as const).filter((k) => !user[k]);
+    if (missing.length > 0) {
+      const envHints = missing
+        .map((k) => `ACE_E2E_${k === 'phoneLocal' ? 'PHONE_LOCAL' : k === 'countryCode' ? 'COUNTRY_CODE' : k === 'backupCode' ? 'BACKUP_CODE' : k.toUpperCase()}`)
+        .join(', ');
+      throw new Error(
+        `mobile_register_test_user: required field(s) missing — ${missing.join(', ')}. ` +
+          `Pass them as args, or set ${envHints} in the environment.`,
+      );
+    }
+    const reg = await this.registerTestUser({ avdName: args.avdName, ...user });
+    return { ...reg, test_worker: this.testWorkerReport() };
   }
   listAvds(): Promise<string[]> {
     if (this.useLease) return this.requireLease().listAvds();
@@ -1967,10 +2198,13 @@ export class MobileClient {
    * nothing, and reads as a dead emulator.
    */
   async diagnose(): Promise<MobileDiagnostics> {
+    // The pool lock's state rides on every diagnose, so the unlocked rollout
+    // fallback can never persist without showing up here (ace#2955).
+    const test_workers = this.workers?.status() ?? null;
     if (this.useLease) {
-      return { backend: 'lease', ...(await this.requireLease().diagnose()) };
+      return { backend: 'lease', ...(await this.requireLease().diagnose()), test_workers };
     }
-    return this.avd.diagnose();
+    return { ...(await this.avd.diagnose()), test_workers };
   }
 
   /**
@@ -2094,7 +2328,11 @@ export class MobileClient {
     // BACKUP_CODE, etc.) — caller-provided values win on conflict.
     // See `mcp/mobile/recipe-resolver.ts § injectAceEnvVars` for the
     // mapping. Closes harness-gap-1 from turmeric retry #5.
-    const enrichedEnv = injectAceEnvVars(env);
+    //
+    // The device's own identity comes first (ace#2955): a session signed in
+    // as a pool worker other than worker-1 must type THAT worker's number and
+    // PIN, which ACE_E2E_* (worker-1) is not.
+    const enrichedEnv = injectAceEnvVars(withDeviceIdentity(this.deviceIdentity?.user ?? null, env));
 
     // Resolve `${SELECTOR:...}` placeholders in the top-level recipe AND
     // every file in the static palette before invoking Maestro. The
@@ -2786,6 +3024,10 @@ export class MobileClient {
     backupCode: string;
     name: string;
   }): Promise<TestUserRegistrationResult> {
+    // Whatever happens next, this is who the device is (being) signed in as —
+    // recipes must type this identity, not ACE_E2E_* (ace#2955).
+    const { avdName: _avdName, ...user } = args;
+    this.deviceIdentity = { slot: this.heldSlotForPhone(args.phone), user };
     if (this.useLease) {
       // The leased machine runs the same two-recipe walkthrough the local
       // backend runs here (`ace-mobile register-test-user`), so both
@@ -3165,8 +3407,8 @@ export class MobileClient {
       throw new DeviceUserStateError('unknown', [detail]);
     }
     // A per-run override is honoured here exactly as on local; omitted, this
-    // is the env user itself.
-    const testUser = mergeTestUserOverride(this.bootstrapConfig.testUser, opts?.testUser);
+    // is the pool worker this session holds (ace#2955).
+    const { user: testUser, slot: workerSlot } = await this.sessionTestUser(opts);
     const lease = this.requireLease();
     const reused = avd.lease?.reused === true;
     const steps: string[] = [];
@@ -3200,7 +3442,9 @@ export class MobileClient {
       steps.push('app-data-clear-skipped-fresh-machine');
     }
 
-    logInfo(`lease_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
+    logInfo(
+      `lease_bootstrap: registering test user ${testUser.phone}${workerSlot ? ` (${workerSlot})` : ''} on ${avd.serial}`,
+    );
     const reg = await this.leaseRegisterTestUser({
       avdName: avd.name,
       phone: testUser.phone,

@@ -43,7 +43,14 @@ describe('lease-contract.ts ↔ canopy-web capability routes', () => {
   });
 
   it('no route string lives outside lease-contract.ts', () => {
-    for (const f of ['mcp/mobile/backends/lease.ts', 'lib/capability-lease-probe.ts', 'scripts/doctor-capability-lease.ts']) {
+    for (const f of [
+      'mcp/mobile/backends/lease.ts',
+      'mcp/mobile/backends/broker-http.ts',
+      'lib/capability-lease-probe.ts',
+      'lib/test-worker-lease.ts',
+      'lib/test-worker-pool-probe.ts',
+      'scripts/doctor-capability-lease.ts',
+    ]) {
       const src = fs.readFileSync(path.join(root, f), 'utf8');
       expect(src, f).not.toMatch(/['"`]\/api\//);
     }

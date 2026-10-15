@@ -240,7 +240,29 @@ ACE_E2E_BACKUP_CODE=op://${AGENT_VAULT}/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
-# ── Per-run demo test user (ace#1289) — DEFAULT OFF. DO NOT FLIP YET. ──
+# ── Connect test-worker pool (ace#2955) ──────────────────────────────
+# The ACE_E2E_* worker above is pool slot worker-1. The rest of the pool is one
+# JSON object keyed by slot, from the 1Password item connect-test-workers
+# (field pool-json):
+#   {"worker-2": {"phone": "+7426…", "phoneLocal": "426…", "pin": "…",
+#                 "backupCode": "…", "name": "ACE Test 2"}, …}
+# Each device session checks one worker out through canopy-web's `test-worker`
+# capability (infra/capabilities/test-worker/capability.yaml), so two sessions
+# never share one. COMMENTED OUT until that item exists: `op inject` is
+# all-or-nothing, so a ref to a missing item would break /ace:setup for
+# everyone, and a literal reference cannot sit in a comment either (op inject
+# scans comments). When the item exists, add the uncommented line exactly as
+# skills/test-worker-pool § Add a worker step 3 spells it: key ACE_E2E_WORKERS,
+# vault AGENT_VAULT, item connect-test-workers, field pool-json.
+
+# ── Per-run demo test user (ace#1289) — DEFAULT OFF, AND STAYS OFF. ──
+#
+# SUPERSEDED (owner, 2026-10-15, ace#2955): "I don't want to proliferate users
+# on every run." The owner chose a small named pool of test workers with
+# exclusive checkout (above) over minting a worker per run, so this flag stays
+# off even once the precondition below holds. Rotating a pool worker whose
+# invite list has grown long (skills/test-worker-pool § Retire a worker) is
+# now the answer to the tile-scroll class. Kept, not deleted, in this change.
 #
 # OFF (unset, or anything other than true/1/yes/on): every run registers the
 # fixed ACE_E2E_PHONE above. That is today's behaviour, unchanged.

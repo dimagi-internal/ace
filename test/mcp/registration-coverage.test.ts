@@ -79,7 +79,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   mobile: {
     file: 'mcp/mobile-server.ts',
-    expectedCount: 17, // -1: mobile_patch_launch_script deleted (ace#1113); -1: mobile_restart_runner retired with ace-web's cloud emulator
+    expectedCount: 19, // -1: mobile_patch_launch_script deleted (ace#1113); -1: mobile_restart_runner retired with ace-web's cloud emulator; +2: test-worker checkout/release (ace#2955)
     allowedPrefixes: ['mobile_'],
     // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
     // with the server registrations. The previously-extra

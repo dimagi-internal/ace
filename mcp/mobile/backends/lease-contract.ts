@@ -17,6 +17,13 @@
 
 export const LEASE_AGENT = 'ace';
 export const LEASE_CAPABILITY = 'android-emulator';
+/**
+ * The Connect test-worker pool (ace#2955): a `kind: pool` capability whose
+ * slots are named workers, not machines. A lease is an exclusive checkout of
+ * one worker; `ready_info.slot` (or `params.slot`) names which. Manifest:
+ * infra/capabilities/test-worker/capability.yaml.
+ */
+export const TEST_WORKER_CAPABILITY = 'test-worker';
 
 // ── canopy-web broker routes ─────────────────────────────────────────
 
@@ -30,6 +37,9 @@ export interface LeaseRoute {
 
 export const LEASE_ROUTES = {
   acquire: { method: 'POST', path: '/api/capabilities/leases' },
+  // Leases in ACE's workspaces, newest first. A read: no heartbeat. Used to
+  // name who holds the test-worker slots when the pool is exhausted.
+  list: { method: 'GET', path: '/api/capabilities/leases', query: ['agent', 'capability', 'status', 'limit'] },
   // `wait_s` long-polls (the broker holds the GET up to that many seconds,
   // ≤ 20, returning early on a change). A broker that predates it ignores
   // the param and answers at once; lease.ts polls adaptively, so both work.
@@ -190,6 +200,62 @@ export interface LeaseOut {
   params?: Record<string, unknown> | null;
 }
 
+/**
+ * The pool slot a test-worker lease holds: `ready_info.slot`, else
+ * `params.slot` (the broker writes both once a slot is assigned). Null while
+ * queued, or for a non-pool lease.
+ */
+export function leaseSlot(lease: Pick<LeaseOut, 'ready_info' | 'params'> | null | undefined): string | null {
+  const info = lease?.ready_info as Record<string, unknown> | null | undefined;
+  if (info && typeof info === 'object' && typeof info.slot === 'string' && info.slot) return info.slot;
+  const params = lease?.params;
+  if (params && typeof params === 'object' && typeof params.slot === 'string' && params.slot) return params.slot;
+  return null;
+}
+
+/** One row of `GET /api/capabilities/leases`, the fields a holder report needs. */
+export interface LeaseListRow {
+  lease_id: string;
+  status: string;
+  slot: string | null;
+  /** Who holds it, as the broker states it (turn, session, runner, creator…); null when it says nothing. */
+  holder: string | null;
+  created_at: string | null;
+}
+
+/** Accepts `{leases:[…]}`, `{items:[…]}` or a bare list. Holder fields are read tolerantly. */
+export function normalizeLeaseList(body: unknown): LeaseListRow[] {
+  const rows: unknown[] = Array.isArray(body)
+    ? body
+    : body && typeof body === 'object'
+      ? ((body as { leases?: unknown[] }).leases ?? (body as { items?: unknown[] }).items ?? [])
+      : [];
+  const out: LeaseListRow[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const id = String(o.lease_id ?? o.id ?? '');
+    if (!id) continue;
+    const parts: string[] = [];
+    for (const k of ['holder', 'requested_by', 'created_by', 'user', 'turn_id', 'session_id', 'runner']) {
+      const v = o[k];
+      if (typeof v === 'string' && v) parts.push(`${k}=${v}`);
+      else if (v && typeof v === 'object') {
+        const n = (v as Record<string, unknown>).email ?? (v as Record<string, unknown>).name ?? (v as Record<string, unknown>).slug;
+        if (typeof n === 'string' && n) parts.push(`${k}=${n}`);
+      }
+    }
+    out.push({
+      lease_id: id,
+      status: String(o.status ?? ''),
+      slot: leaseSlot(o as Pick<LeaseOut, 'ready_info' | 'params'>),
+      holder: parts.length ? parts.join(' ') : null,
+      created_at: typeof o.created_at === 'string' ? o.created_at : null,
+    });
+  }
+  return out;
+}
+
 /** The ready marker once the broker has read it, else null. */
 export function readyMarker(lease: LeaseOut): ReadyMarker | null {
   const info = lease.ready_info;
@@ -303,6 +369,10 @@ export interface DeclaredCapability {
   maxConcurrent?: number;
   /** `params.state.enum` from the manifest. */
   states: string[];
+  /** `kind` from the manifest (`ec2-ephemeral`, `pool`, …). */
+  kind?: string;
+  /** A `pool` manifest's `slots` (the test-worker names); empty otherwise. */
+  slots: string[];
   defaultState?: string;
   /** The grant's own text when not granted (who to ask). */
   grantHint?: string;
@@ -351,6 +421,8 @@ export function normalizeCapabilities(body: unknown): DeclaredCapability[] {
       readyTimeoutS: typeof limits.ready_timeout_s === 'number' ? limits.ready_timeout_s : undefined,
       maxConcurrent: typeof limits.max_concurrent === 'number' ? limits.max_concurrent : undefined,
       states: Array.isArray(stateParam.enum) ? stateParam.enum.map(String) : [],
+      kind: typeof manifest.kind === 'string' ? manifest.kind : undefined,
+      slots: Array.isArray(manifest.slots) ? manifest.slots.map(String) : [],
       defaultState: typeof stateParam.default === 'string' ? stateParam.default : undefined,
       grantHint: typeof o.grant_hint === 'string' ? o.grant_hint : undefined,
       stack: typeof o.stack === 'string' ? o.stack : undefined,

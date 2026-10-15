@@ -104,6 +104,17 @@ export interface AvdInfo {
    * it), and a caller that loses it knows login/claim/Learn state went with it.
    */
   lease?: LeaseFacts;
+  /**
+   * The Connect test worker the device was signed in as and the pool lock
+   * holding it (ace#2955): `lock` is `locked`, or `unlocked-fallback` with a
+   * `warning` naming the publish step while the pool capability is not live.
+   */
+  test_worker?: {
+    lock: string | null;
+    signed_in: string | null;
+    held: Array<{ slot: string; phone: string; name: string; lease_id: string | null; signed_in: boolean }>;
+    warning: string | null;
+  };
 }
 
 /** What `mobile_ensure_avd_running` reports about the lease it holds. */
