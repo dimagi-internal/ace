@@ -233,6 +233,46 @@ describe('nothing dropped between runs', () => {
     for (const s of synthesized) expect(s['ai-default']).not.toBe('Malawi only');
   });
 
+  it('several dropped asks each come back as their OWN ask — the shared carried prefix does not collapse them (ace#2966)', () => {
+    // Live repro: smallholder-seasonal/20261015-1402 carried 5 residuals and
+    // decisions_enrich raised ONE, because every residual starts with the same
+    // "An open question from the previous run was dropped: " prefix and the
+    // id slug kept only its first 6 non-stop words.
+    const check = checkOpenAsksCarried({ prior, log: withRows() });
+    expect(check.missing.length).toBe(2);
+    const residuals = missingAskResiduals(check);
+    const rs = { phases: { 'idea-to-design': { residuals } } };
+    const { log, report } = enrichDecisionsLog({ ...SPARK, decisions: [] }, { runState: rs });
+    const ids = log.decisions.filter((d) => d.id.startsWith('open-question-')).map((d) => d.id);
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).not.toContain('previous-run-was');
+    expect(new Set(report.asked.filter((a) => a.startsWith('open-question-'))).size).toBe(2);
+  });
+
+  it('two residuals whose first six words match still get distinct, stable ids (ace#2966)', () => {
+    const residuals = [
+      {
+        what: 'Group size threshold savings meeting unset: who chairs the meeting when the facilitator is absent and attendance falls below quorum',
+        where_to_apply: 'design decision for the programme owner.',
+      },
+      {
+        what: 'Group size threshold savings meeting unset: whether members who migrate seasonally may keep their balance',
+        where_to_apply: 'design decision for the programme owner.',
+      },
+    ];
+    const rs = { phases: { 'idea-to-design': { residuals } } };
+    const ids = () =>
+      enrichDecisionsLog({ ...SPARK, decisions: [] }, { runState: rs })
+        .log.decisions.filter((d) => d.id.startsWith('open-question-'))
+        .map((d) => d.id);
+    const first = ids();
+    expect(new Set(first).size).toBe(2);
+    // The first keeps its plain slug id (no churn for non-colliding residuals).
+    expect(first[0]).toBe('open-question-group-size-threshold-savings-meeting-unset');
+    expect(ids()).toEqual(first);
+  });
+
   it('an answered ask counts as carried and closed', () => {
     const check = checkOpenAsksCarried({
       prior,

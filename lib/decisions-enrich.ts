@@ -33,6 +33,8 @@
  * `scripts/backfill-decisions-contract.ts`.
  */
 
+import { createHash } from 'node:crypto';
+
 import { PHASE_DEFS } from './artifact-manifest.js';
 import {
   spotCheckPlaceFromReasoning,
@@ -55,6 +57,7 @@ import {
   type DecisionRow,
   type DecisionsLog,
 } from './decisions-schema.js';
+import { CARRIED_RESIDUAL_PREFIX } from './open-asks.js';
 
 type Rec = Record<string, unknown>;
 
@@ -270,6 +273,31 @@ function slug(text: string, words = 6): string {
   );
 }
 
+/** A residual's own text, without the carried-check prefix every carried residual shares. */
+function residualBody(what: string): string {
+  return what.startsWith(CARRIED_RESIDUAL_PREFIX) ? what.slice(CARRIED_RESIDUAL_PREFIX.length) : what;
+}
+
+/**
+ * A stable id per residual, unique within one enrich pass (ace#2966). The
+ * carried-check prefix is stripped first — every carried residual shares it,
+ * so slugging it kept only the prefix and collapsed them all into one ask. A
+ * residual whose slug is already claimed by DIFFERENT text gets a short hash
+ * of its full text appended, so non-colliding residuals keep their plain slug
+ * id. Returns null for an exact repeat of a residual already seen.
+ */
+function residualId(what: string, seen: Map<string, string>): string | null {
+  let id = `open-question-${slug(residualBody(what))}`;
+  const claimedBy = seen.get(id);
+  if (claimedBy === what) return null;
+  if (claimedBy !== undefined) {
+    id = `${id}-${createHash('sha256').update(what).digest('hex').slice(0, 8)}`;
+    if (seen.get(id) === what) return null;
+  }
+  seen.set(id, what);
+  return id;
+}
+
 const STOP = new Set(['a', 'an', 'the', 'of', 'to', 'in', 'on', 'for', 'and', 'or', 'is', 'are', 'no', 'when', 'with', 'by', 'it', 'its', 'be']);
 
 function tokens(text: string): Set<string> {
@@ -329,8 +357,10 @@ export function openResiduals(runState: unknown): OpenResidual[] {
     for (const it of items) {
       if (!it.what) continue;
       if (!HUMAN_DECISION.test(`${it.what} ${it.where}`)) continue;
-      if (resolved.some((r) => overlap(r, it.what) >= 0.6)) continue;
-      const dup = out.find((o) => overlap(o.what, it.what) >= 0.6);
+      // Compare bodies, not the shared carried-check prefix: its 7 tokens
+      // alone pushed short carried questions over the 0.6 bar (ace#2966).
+      if (resolved.some((r) => overlap(residualBody(r), residualBody(it.what)) >= 0.6)) continue;
+      const dup = out.find((o) => overlap(residualBody(o.what), residualBody(it.what)) >= 0.6);
       if (dup) {
         if (!dup.whereToApply && it.where) dup.whereToApply = it.where;
         continue;
@@ -581,13 +611,15 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
   }
 
   // (5) Open residuals a person must settle.
+  const residualIds = new Map<string, string>(); // id → the `what` that claimed it
   for (const res of openResiduals(runState)) {
     const text = `${res.what} ${res.whereToApply}`;
     if (TRANSLATION.test(text) && asks.some((a) => /working_language/.test(a.basis))) continue;
     const tag = phaseTagFor(res.phaseKey) ?? '3-commcare';
     const what = plainText(res.what);
     const where = plainText(res.whereToApply);
-    const id = `open-question-${slug(what)}`;
+    const id = residualId(what, residualIds);
+    if (id === null) continue; // the same residual recorded twice — one ask
     const existing = rows.find((r) => r.id === id);
     if (existing && humanRuled(existing)) continue;
     const owner = /\bdesign decision for ([^;.]+?)(?:[;.]|$)/i.exec(where)?.[1]?.trim();
