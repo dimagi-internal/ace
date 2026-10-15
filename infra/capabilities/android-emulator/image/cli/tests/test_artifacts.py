@@ -26,12 +26,13 @@ class RedactorTests(unittest.TestCase):
     def test_define_variables_env_redacted_whatever_the_key(self):
         data = json.loads((FIX / "maestro-commands-passed-2.5.1.json").read_text())
         out = am.Redactor().obj(data)
-        defs = [c for c in out if "defineVariablesCommand" in json.dumps(c)]
+        defs = [c for c in out if "defineVariablesCommand" in c.get("command", {})]
         self.assertTrue(defs)
         for c in defs:
-            self.assertEqual(c["command"]["defineVariablesCommand"]["env"], {"SCREENSHOT_NAME": "<redacted>"})
-            self.assertEqual(c["metadata"]["evaluatedCommand"]["defineVariablesCommand"]["env"],
-                             {"SCREENSHOT_NAME": "<redacted>"})
+            for env in (c["command"]["defineVariablesCommand"]["env"],
+                        c["metadata"]["evaluatedCommand"]["defineVariablesCommand"]["env"]):
+                self.assertTrue(env)
+                self.assertEqual(set(env.values()), {"<redacted>"}, env)
 
     def test_typed_secret_redacted_everywhere(self):
         data = [{"command": {"inputTextCommand": {"text": "4321"}}, "metadata": {"status": "COMPLETED"}}]
@@ -121,8 +122,8 @@ class UploadFailureTests(TmpPaths):
                 return super().run(argv, **kw)
 
         host = FailingUploads(handler)
-        host.s3 = {"s3://b/in/r.yaml": b"- launchApp"}
-        code, out = cli(["run-recipe", "--recipe", "s3://b/in/r.yaml", "--out", "s3://b/out/x"], host)
+        host.s3 = {"s3://bkt/in/r.yaml": b"- launchApp"}
+        code, out = cli(["run-recipe", "--recipe", "s3://bkt/in/r.yaml", "--out", "s3://bkt/out/x"], host)
         self.assertEqual(code, 1)
         self.assertEqual((out["exit_code"], out["error"]), (0, "s3-upload-failed"))
         self.assertIn("AccessDenied", out["upload_error"])

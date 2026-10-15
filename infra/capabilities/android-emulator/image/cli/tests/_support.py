@@ -35,7 +35,13 @@ class FakeHost(am.Host):
         self.kw.append(kw)
         # Default S3 behaviour: record uploads, serve downloads from self.s3.
         if argv[:3] == ["aws", "s3", "cp"]:
-            args = [a for a in argv[3:] if not a.startswith("--")]
+            args, rest = [], list(argv[3:])
+            while rest:
+                a = rest.pop(0)
+                if a in ("--content-type",):
+                    rest.pop(0)  # an option that takes a value
+                elif not a.startswith("--"):
+                    args.append(a)
             src, dst = args[0], args[1]
             if "--recursive" in argv:
                 for p in Path(src).rglob("*"):

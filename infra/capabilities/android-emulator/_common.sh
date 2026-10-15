@@ -130,8 +130,8 @@ prune_images() {
   note "Pruning $OWNER/$CAPABILITY images: $total found, keeping the newest $keep_n${keep_ids[*]:+ and ${keep_ids[*]}}"
   while read -r ami; do
     [[ -n "$ami" ]] || continue
-    i=$((i + 1))
     if [[ ! "$ami" =~ ^ami-[0-9a-f]{8,17}$ ]]; then warn "  skipping '$ami' (not an AMI id)"; continue; fi
+    i=$((i + 1))
     if ((i <= keep_n)); then note "  keeping $ami (newest $i of $keep_n)"; continue; fi
     for k in "${keep_ids[@]}"; do
       if [[ "$ami" == "$k" ]]; then note "  keeping $ami (pinned)"; continue 2; fi
