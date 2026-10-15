@@ -383,8 +383,8 @@ export interface ExtractionFailure {
 export interface ExtractionVerdict {
   trusted: boolean;
   failures: ExtractionFailure[];
-  /** Direction the monotonicity assertion was run in. */
-  direction: 'ascending' | 'descending';
+  /** Direction the monotonicity assertion was run in; `'none'` = not run (points column). */
+  direction: 'ascending' | 'descending' | 'none';
 }
 
 export interface ExtractionExpectations {
@@ -396,8 +396,14 @@ export interface ExtractionExpectations {
   expectedRowCount: number;
   /** Absolute tolerance on the endpoint comparison. Default 1e-9. */
   tolerance?: number;
-  /** Override the direction inferred from the endpoints. */
-  direction?: 'ascending' | 'descending';
+  /**
+   * Override the direction inferred from the endpoints. Pass `'none'` for a
+   * series that is NOT monotonic by design — a scorecard POINTS column, whose
+   * values restart at 0 for each indicator (ace#2932). Row count, endpoints and
+   * the non-numeric (header-leak) scan still run; only monotonicity is skipped.
+   * Keep the default for a poverty-likelihood lookup column, which IS monotonic.
+   */
+  direction?: 'ascending' | 'descending' | 'none';
 }
 
 /**
@@ -458,6 +464,8 @@ export function assertExtractionTrusted(
   }
 
   // (3) Strict monotonicity, plus the non-numeric scan it depends on.
+  // `direction: 'none'` (a points column) keeps the non-numeric scan and skips
+  // only the monotonicity assertion (ace#2932).
   let previous: number | null = null;
   for (let i = 0; i < series.length; i++) {
     const value = series[i];
@@ -467,6 +475,10 @@ export function assertExtractionTrusted(
         index: i,
         detail: `row ${i} is ${JSON.stringify(value)}, not a number`,
       });
+      if (direction === 'none') {
+        previous = null;
+        continue;
+      }
       failures.push({
         kind: 'monotonicity',
         index: i,
@@ -477,7 +489,7 @@ export function assertExtractionTrusted(
       previous = null;
       continue;
     }
-    if (previous !== null) {
+    if (previous !== null && direction !== 'none') {
       const ok = direction === 'descending' ? value < previous : value > previous;
       if (!ok) {
         failures.push({

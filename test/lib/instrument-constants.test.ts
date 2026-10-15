@@ -248,6 +248,47 @@ describe('assertExtractionTrusted', () => {
     expect(verdict.direction).toBe('ascending');
     expect(verdict.trusted).toBe(true);
   });
+
+  // ace#2932: a scorecard POINTS column restarts at 0 for each indicator, so
+  // it is never monotonic. Verbatim head of Nigeria 2018 PPI Scorecard!E10:E34.
+  const POINTS_HEAD = [10, 0, 2, 0, 10, 16, 31, 10, 0, 9, 0];
+
+  it('cannot trust a points column under the default (monotonic) mode — the defect', () => {
+    const verdict = assertExtractionTrusted(POINTS_HEAD, {
+      expectedFirst: 10,
+      expectedLast: 0,
+      expectedRowCount: POINTS_HEAD.length,
+    });
+    expect(verdict.trusted).toBe(false);
+    expect(new Set(verdict.failures.map((f) => f.kind))).toEqual(new Set(['monotonicity']));
+  });
+
+  it("trusts a clean points column with direction 'none'", () => {
+    const verdict = assertExtractionTrusted(POINTS_HEAD, {
+      expectedFirst: 10,
+      expectedLast: 0,
+      expectedRowCount: POINTS_HEAD.length,
+      direction: 'none',
+    });
+    expect(verdict.failures).toEqual([]);
+    expect(verdict.trusted).toBe(true);
+    expect(verdict.direction).toBe('none');
+  });
+
+  it("still catches the header-leak, endpoint and row-count shapes with direction 'none'", () => {
+    const verdict = assertExtractionTrusted(['Points', 0, 2, 7], {
+      expectedFirst: 10,
+      expectedLast: 0,
+      expectedRowCount: 5,
+      direction: 'none',
+    });
+    const kinds = verdict.failures.map((f) => f.kind);
+    expect(kinds).toContain('non-numeric');
+    expect(kinds).toContain('endpoint');
+    expect(kinds).toContain('row-count');
+    expect(kinds).not.toContain('monotonicity');
+    expect(verdict.trusted).toBe(false);
+  });
 });
 
 describe('diffScoringConstants', () => {

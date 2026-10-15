@@ -1871,6 +1871,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        });
        const trust = assertExtractionTrusted(extracted.values, {
          expectedFirst, expectedLast, expectedRowCount,
+         // 'none' for a scorecard POINTS column — it restarts at 0 for each
+         // indicator, so it is never monotonic (ace#2932). Omit it for a
+         // poverty-likelihood column, which is strictly monotonic.
+         direction,
        });
        ```
 

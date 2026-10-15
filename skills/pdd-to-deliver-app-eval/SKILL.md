@@ -313,7 +313,10 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      `file_id` from the manifest via `drive_download_binary` + `writeToPath`, and
      (b) the built literals read from the Nova blueprint. In order:
      `assertExtractionTrusted` on the extracted series FIRST, then
-     `diffScoringConstants`, then `compareMaxScore`.
+     `diffScoringConstants`, then `compareMaxScore`. Pass `direction: 'none'`
+     for a scorecard POINTS column (it restarts at 0 per indicator, so it is
+     never monotonic); keep the default for a poverty-likelihood column, which
+     is (ace#2932).
 
      Verdicts:
      - `trusted: false` on the extraction → `[BLOCKER]` → `fail`, reported as an
