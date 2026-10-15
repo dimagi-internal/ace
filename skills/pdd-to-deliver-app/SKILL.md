@@ -634,7 +634,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        carry REAL deviations (dimagi-internal/ace#1640; same defect as ace#1632, which
        hit `grid-menu-display` on bednet-check-2-visit/20260825-1310).
      - `no-section-module-language` — always. No user-facing "section" or
-       "module" wording anywhere.
+       "module" wording anywhere — including lookup-table rows, which render
+       as choices or displayed text when a field is bound to the table
+       (ace#2976).
      - `connect-supported-capabilities-only` — always. Use only capabilities
        that work WITHOUT an HQ feature flag; `commcare_connect` is the sole
        exception. **Most concretely: do NOT add case-search inputs** — a case
