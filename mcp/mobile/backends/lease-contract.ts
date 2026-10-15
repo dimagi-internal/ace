@@ -396,9 +396,10 @@ export interface CliOp {
 }
 
 // Pinned against infra/capabilities/android-emulator/image/cli/ace_mobile.py
-// `build_parser()`. Only run-recipe, register-test-user and ui-dump take
-// `--out`; argparse rejects an undeclared flag as a usage error, so a flag
-// here that the CLI lacks fails every call (lease-contract.test.ts).
+// `build_parser()` (CLI 1.1.0). Only run-recipe, register-test-user, ui-dump,
+// screenshot and record take `--out`; argparse rejects an undeclared flag as a
+// usage error, so a flag here that the CLI lacks fails every call
+// (lease-contract.test.ts).
 export const CLI = {
   diagnose: { sub: ['diagnose'], flags: {}, timeoutS: 120 },
   runRecipe: {
@@ -454,16 +455,21 @@ export const CLI = {
   // with SIGINT so the moov atom is written). `record start` returns at once
   // with the recorder running detached on the machine; `record stop` stops it,
   // waits for the file to settle, and uploads `<name>` under `--out`.
-  // ASSUMED contract (reconciled against the image's CLI when it lands):
-  //   record start [--name N.mp4] [--bit-rate 1M] [--size 540x1140]
-  //     → {ok, name, device_path?, started_at?}   error `record-busy` = one already running
-  //   record stop --out s3://… [--name N.mp4]
-  //     → {ok, name, bytes?, duration_s?, artifacts?[]}   error `no-recording` = none running
+  // CLI 1.1.0 (infra/capabilities/android-emulator/README.md § CLI contract):
+  //   record start [--name N] [--bit-rate 1M] [--size 540x1140]
+  //     → {ok, name, device_path, started_at, bit_rate, size}
+  //     errors: record-busy (+recording{name,…}: one at a time), record-start-failed
+  //   record stop --out s3://… [--name N]   (--name only CHECKS the one in flight)
+  //     → {ok, name, key (N.mp4), uri, content_type, bytes, duration_s, upload_error?}
+  //     errors: no-recording, record-pull-failed, s3-upload-failed
+  // The image has no ffmpeg: the client remuxes the download (`-c copy +faststart`).
+  // `record` is ONE argparse subcommand (positional action start|stop), so
+  // both ops share its flag set; each sends only its own.
   recordStart: {
     sub: ['record', 'start'],
     flags: { name: '--name', bitRate: '--bit-rate', size: '--size' },
     timeoutS: 60,
-    dataErrors: ['record-busy'],
+    dataErrors: ['record-busy', 'record-start-failed'],
     optional: true,
   },
   recordStop: {
@@ -472,7 +478,7 @@ export const CLI = {
     // Stop + settle + upload of up to ~80 MB from the machine to S3.
     timeoutS: 600,
     sendsOut: true,
-    dataErrors: ['no-recording'],
+    dataErrors: ['no-recording', 'record-pull-failed', 's3-upload-failed'],
     optional: true,
   },
 } as const satisfies Record<string, CliOp>;

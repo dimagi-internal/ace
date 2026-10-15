@@ -253,6 +253,51 @@ const SSM_PENDING = new Set(['pending', 'delayed']);
 /** Recipe chunk run-names are `<tag>--chunk-NN.yaml`. */
 const UPLOAD_BATCH = 50;
 
+/**
+ * The boot hook's own failure codes (ready.json `reason`, written by the
+ * image's `ace-capability-boot`), each with what it means and the one fix.
+ * Anything else (free text, a future code) is LEASE_READINESS_FAILED.
+ */
+const RETRY_FRESH = 'Re-run mobile_ensure_avd_running for a fresh machine; if it repeats, ';
+export const READINESS_REASONS: Record<string, { what: string; fix: string }> = {
+  'bad-user-data': {
+    what: 'the machine could not read the user-data canopy-web launched it with',
+    fix: 'This is a broker/launch-template defect, not a device one: check the dimagi-canopy stack version and the lease params on canopy-web.',
+  },
+  'unknown-state': {
+    what: 'the requested state is not baked into this image',
+    fix: 'The published manifest and the baked image disagree: rebake (infra/capabilities/android-emulator/bake.sh) and redeploy (deploy.sh), or lease a state the image has (mobile_list_avds).',
+  },
+  'no-states': {
+    what: 'the image lists no baked states — the image is broken',
+    fix: 'Rebake the image (infra/capabilities/android-emulator/bake.sh) and redeploy. Until then use the local AVD (/ace:mobile-backend local).',
+  },
+  'no-kvm': {
+    what: '/dev/kvm is absent, so the emulator cannot run accelerated',
+    fix: 'The launch template must enable nested virtualization (or use a metal/KVM-capable instance type) — a stack fix in infra/capabilities/android-emulator/, not a retry.',
+  },
+  'halt-not-armed': {
+    what: 'the machine could not arm its own max-lifetime power-off, so it refused to serve',
+    fix: RETRY_FRESH + 'the image\'s systemd-run/halt timer is broken — see the boot log and rebake.',
+  },
+  'runner-start-failed': {
+    what: 'the emulator runner service did not start',
+    fix: RETRY_FRESH + 'the image is the defect — read the boot log (diagnose → runner_log_tail) and rebake.',
+  },
+  'emulator-boot-failed': {
+    what: 'the emulator exited during boot',
+    fix: RETRY_FRESH + 'check accel (tcg means no KVM) and the emulator log; the baked AVD/snapshot may be corrupt — rebake.',
+  },
+  'emulator-ready-timeout': {
+    what: 'the emulator did not reach ready within the boot hook\'s bound',
+    fix: RETRY_FRESH + 'the instance type may be too slow or running without KVM (accel=tcg) — check the timings and rebake/resize.',
+  },
+  'hook-crashed': {
+    what: 'the boot hook itself crashed (a bug in ace_mobile.py)',
+    fix: RETRY_FRESH + 'it is an image bug: the detail carries the traceback — fix infra/capabilities/android-emulator/image/cli/ace_mobile.py and rebake.',
+  },
+};
+
 /** sha256 hex of some bytes — the upload cache key. */
 export function contentKey(bytes: Buffer | string): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -673,12 +718,17 @@ export class LeaseBackend {
   }
 
   private readinessFailed(id: string, lease: LeaseOut, reason?: string): MobileError {
+    const marker = lease.ready_info && typeof lease.ready_info === 'object' ? (lease.ready_info as Record<string, unknown>) : {};
     const why = reason || lease.reason || 'no reason given';
+    const known = READINESS_REASONS[why];
+    const detail = typeof marker.detail === 'string' && marker.detail ? marker.detail : null;
     return new MobileError(
-      'LEASE_READINESS_FAILED',
-      `lease ${id} failed readiness on instance ${lease.instance_id ?? '?'}: ${why}`,
-      'The machine is released. Re-run mobile_ensure_avd_running for a fresh one; if it fails the same way, ' +
-        'the image is the defect — see infra/capabilities/android-emulator/README.md (bake.sh).',
+      known ? `LEASE_READINESS_${why.toUpperCase().replace(/-/g, '_')}` : 'LEASE_READINESS_FAILED',
+      `lease ${id} failed readiness on instance ${lease.instance_id ?? '?'}: ${why}` +
+        (known ? ` — ${known.what}` : '') +
+        (detail ? `\n${detail.slice(-1500)}` : ''),
+      `The machine is released. ${known?.fix ?? 'Re-run mobile_ensure_avd_running for a fresh one; if it fails the same way, the image is the defect — see infra/capabilities/android-emulator/README.md (bake.sh).'}`,
+      { readiness_reason: why, ...(detail ? { detail } : {}), ...(lease.instance_id ? { instance_id: lease.instance_id } : {}) },
     );
   }
 
@@ -1322,7 +1372,11 @@ export class LeaseBackend {
    * recording off for the rest of this machine's life — asking once is
    * enough. Same file name as local: `<recipeId>.mp4`.
    */
-  private async startRecording(rec: LeaseRecordOpts, timings: RemoteOpTiming[]): Promise<{ rec: LeaseRecordOpts; name: string } | null> {
+  private async startRecording(
+    rec: LeaseRecordOpts,
+    timings: RemoteOpTiming[],
+    retried = false,
+  ): Promise<{ rec: LeaseRecordOpts; name: string } | null> {
     const held = this.held;
     if (!held || held.recordUnsupported) return null;
     const name = `${rec.recipeId}.mp4`;
@@ -1333,6 +1387,17 @@ export class LeaseBackend {
         ...(rec.size ? { size: rec.size } : {}),
       });
       timings.push(timing);
+      if (json.ok === false && json.error === 'record-busy' && !retried) {
+        // A recording a previous walk never stopped (its stop was lost with a
+        // dropped exec). One at a time on the machine: stop and discard it,
+        // then start ours.
+        const stale = json.recording && typeof json.recording === 'object' ? (json.recording as Record<string, unknown>) : {};
+        logInfo(`lease: a stale recording (${String(stale.name ?? '?')}) is still running on ${held.id} — stopping and discarding it`);
+        await this.runCli('recordStop', typeof stale.name === 'string' ? { name: stale.name } : {}, {
+          outRel: `forensics/${slug('stale-recording')}/`,
+        }).catch(() => {});
+        return this.startRecording(rec, timings, true);
+      }
       if (json.ok === false) {
         logInfo(`lease: record start for ${rec.recipeId} declined (${String(json.error)}: ${String(json.message ?? '')}) — walking unrecorded`);
         return null;
@@ -1510,7 +1575,16 @@ export class LeaseBackend {
       code === 'usage'
         ? `The CLI baked into the image${json.cli_version ? ` (${json.cli_version})` : ''} rejected argv ` +
             'that mcp/mobile/backends/lease-contract.ts produced — the contract has drifted; rebake or update it.'
-        : undefined,
+        : code === 's3-download-failed'
+          ? 'The machine could not read an input the client uploaded (presign expired, or the instance role lost read on ' +
+            'the lease prefix). Repeat the step; if it persists, check the stack\'s LeaseObjectScope / instance role.'
+          : code === 's3-upload-failed'
+            ? 'The machine ran the step but could not upload its output (instance role lost write on the lease out prefix). ' +
+              'Check the device state before repeating a one-way step.'
+            : code === 'internal'
+              ? 'A bug in the image\'s ace-mobile CLI (the JSON contract held). The message names the exception; fix ' +
+                'infra/capabilities/android-emulator/image/cli/ace_mobile.py and rebake.'
+              : undefined,
       diagnostics,
     );
   }

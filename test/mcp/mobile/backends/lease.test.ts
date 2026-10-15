@@ -74,6 +74,9 @@ class FakeBroker {
   /** Respond to the exec POST with this instead of an exec id. */
   execPost: ((n: number) => Response | Promise<Response>) | null = null;
   states = ['cc-2.62.0', 'cc-2.63.0', 'cc-2.64.0'];
+  /** The S3 layout the broker states (override for the dimagi-canopy v0.9.0 shape). */
+  prefixFor: (id: string) => string = outPrefix;
+  inFor: (id: string, n: string) => string = inUri;
   readyInfo: Json = { ok: true, cli_version: '1.1.0' };
   artifactKeys: Record<string, Array<{ key: string }>> = {};
   objectsByKey = new Map<string, Buffer>();
@@ -122,7 +125,7 @@ class FakeBroker {
       this.onAcquire?.();
       return json(200, {
         lease_id: id, status: 'provisioning', ready: false, position: null, reason: '', ready_info: {},
-        out_prefix: outPrefix(id), idle_release_s: 900, expires_at: '2026-10-14T20:00:00Z',
+        out_prefix: this.prefixFor(id), idle_release_s: 900, expires_at: '2026-10-14T20:00:00Z',
       });
     }
     let m = p.match(/^\/api\/capabilities\/leases\/([^/]+)$/);
@@ -133,7 +136,7 @@ class FakeBroker {
       // canopy-web CapabilityLeaseOut: `ready` is a bool, ready.json is `ready_info`.
       return json(200, {
         lease_id: m[1], instance_id: INSTANCE, expires_at: '2026-10-14T20:00:00Z', position: null,
-        reason: '', idle_release_s: 900, out_prefix: outPrefix(m[1]),
+        reason: '', idle_release_s: 900, out_prefix: this.prefixFor(m[1]),
         ready_info: st.status === 'ready' ? this.readyInfo : {},
         ...st, ready: st.status === 'ready',
       });
@@ -148,7 +151,7 @@ class FakeBroker {
       return json(200, {
         lease_id: m[1],
         expires_in_s: 3600,
-        uploads: names.map((n) => ({ name: n, put_url: `https://s3.test/in/${n}`, s3_uri: inUri(m![1], n) })),
+        uploads: names.map((n) => ({ name: n, put_url: `https://s3.test/in/${n}`, s3_uri: this.inFor(m![1], n) })),
       });
     }
     m = p.match(/^\/api\/capabilities\/leases\/([^/]+)\/exec$/);
@@ -1500,5 +1503,99 @@ describe('LeaseBackend recording', () => {
     fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
     await lb.runRecipe(recipe, {}, path.join(tmp, 'o'));
     expect(b.allExecArgv('record')).toHaveLength(0);
+  });
+});
+
+describe('LeaseBackend against CLI 1.1.0 / dimagi-canopy v0.9.0', () => {
+  it('a known boot-hook reason is a typed readiness error with its fix; detail is carried', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: false, reason: 'no-kvm', detail: '/dev/kvm is absent' };
+    const err = await backend(b).ensureAvdRunning('cc-2.63.0').catch((e) => e);
+    expect(err.code).toBe('LEASE_READINESS_NO_KVM');
+    expect(err.message).toMatch(/nested virtualization|accelerated/);
+    expect(err.remediation).toMatch(/launch template/);
+    expect(err.diagnostics).toMatchObject({ readiness_reason: 'no-kvm', detail: '/dev/kvm is absent' });
+    expect(b.released).toEqual(['lease-1']);
+  });
+
+  it.each([
+    'bad-user-data', 'unknown-state', 'no-states', 'no-kvm', 'halt-not-armed',
+    'runner-start-failed', 'emulator-boot-failed', 'emulator-ready-timeout', 'hook-crashed',
+  ])('%s has its own code', async (reason) => {
+    const b = new FakeBroker();
+    b.leaseStates = [{ status: 'failed', reason: `the machine reported it is not ready: ${reason}`, ready_info: { ok: false, reason } }];
+    const err = await backend(b).ensureAvdRunning('cc-2.63.0').catch((e) => e);
+    expect(err.code).toBe(`LEASE_READINESS_${reason.toUpperCase().replace(/-/g, '_')}`);
+  });
+
+  it('only broker-stated prefixes and URIs are used under the v0.9.0 per-instance layout', async () => {
+    const b = new FakeBroker();
+    b.prefixFor = (id) => `s3://cap-bucket/vm/AROAEXAMPLE:i-0abc/lease/${id}/out/`;
+    b.inFor = (id, n) => `s3://cap-bucket/vm/AROAEXAMPLE:i-0abc/lease/${id}/in/${n}`;
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['run-recipe'] = { ok: true, exit_code: 0 };
+    b.putArtifact('run-recipe', '01-home.png', Buffer.from('png'));
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const out = path.join(tmp, 'o');
+    const r = await lb.runRecipe(recipe, {}, out, { paletteTarB64: Buffer.from('p').toString('base64') });
+    const argv = b.execArgv('run-recipe');
+    expect(argv[0]).toBe('ace-mobile');
+    expect(argv[argv.indexOf('--out') + 1]).toMatch(/^s3:\/\/cap-bucket\/vm\/AROAEXAMPLE:i-0abc\/lease\/lease-1\/out\/run-recipe-/);
+    expect(argv[argv.indexOf('--recipe') + 1]).toMatch(/^s3:\/\/cap-bucket\/vm\/AROAEXAMPLE:i-0abc\/lease\/lease-1\/in\//);
+    expect(argv[argv.indexOf('--palette') + 1]).toMatch(/^s3:\/\/cap-bucket\/vm\/AROAEXAMPLE:i-0abc\/lease\/lease-1\/in\/palette-/);
+    expect(fs.existsSync(path.join(out, '01-home.png'))).toBe(true);
+    expect(r.status).toBe('pass');
+    // Every exec is argv[0] = the one allow-listed binary.
+    for (const e of b.execs.values()) expect(e.argv[0]).toBe('ace-mobile');
+  });
+
+  it('record-busy (a stale recording left by a lost walk) is stopped and discarded, then ours starts', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    let starts = 0;
+    b.cli.record = (argv) =>
+      argv[2] === 'start'
+        ? ++starts === 1
+          ? { ok: false, error: 'record-busy', message: 'busy', recording: { name: 'old.mp4' } }
+          : { ok: true, name: 'r.mp4', device_path: '/sdcard/r.mp4', started_at: 'x', bit_rate: '1M', size: '540x1140' }
+        : { ok: true, name: argv[argv.indexOf('--name') + 1] ?? 'x', key: 'x.mp4', uri: 's3://x', content_type: 'video/mp4', bytes: 3, duration_s: 1 };
+    b.cli['run-recipe'] = { ok: true, exit_code: 0 };
+    b.putArtifact('record-r', 'r.mp4', Buffer.from('MP4'));
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const sink: import('../../../../mcp/mobile/types.js').VideoArtifact[] = [];
+    await lb.runRecipe(recipe, {}, path.join(tmp, 'o'), { record: { recipeId: 'r', dispatchId: 'd' }, videoSink: sink });
+    const rec = b.allExecArgv('record').map((a) => `${a[2]} ${a[a.indexOf('--name') + 1]}`);
+    expect(rec).toEqual(['start r.mp4', 'stop old.mp4', 'start r.mp4', 'stop r.mp4']);
+    expect(sink).toHaveLength(1);
+  });
+
+  it('record stop reporting s3-upload-failed is no video, not a throw', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli.record = (argv) => (argv[2] === 'start'
+      ? { ok: true, name: 'r.mp4' }
+      : { ok: false, error: 's3-upload-failed', message: 'AccessDenied', upload_error: 'AccessDenied', name: 'r.mp4', key: 'r.mp4' });
+    b.cli['run-recipe'] = { ok: true, exit_code: 0 };
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const sink: import('../../../../mcp/mobile/types.js').VideoArtifact[] = [];
+    const r = await lb.runRecipe(recipe, {}, path.join(tmp, 'o'), { record: { recipeId: 'r', dispatchId: 'd' }, videoSink: sink });
+    expect(r.status).toBe('pass');
+    expect(sink).toEqual([]);
+  });
+
+  it('s3-download-failed names the instance-role / LeaseObjectScope cause', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['install-apk'] = { ok: false, error: 's3-download-failed', message: 'AccessDenied' };
+    const err = await lb.installApk('x', 's3://cap-bucket/x.apk').catch((e) => e);
+    expect(err.code).toBe('LEASE_CLI_S3_DOWNLOAD_FAILED');
+    expect(err.remediation).toMatch(/LeaseObjectScope/);
   });
 });
