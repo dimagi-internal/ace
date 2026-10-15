@@ -208,8 +208,9 @@ Required top-level fields:
 - `mode: deep`
 - `ran_at` — ISO timestamp with timezone
 - `artifact_refs: { learn_build_id, deliver_build_id }` — read from
-  `3-commcare/app-deploy_summary.md` so the Phase 9 gate can
-  timestamp-compare against the currently released builds
+  `3-commcare/app-release_summary.md` `apps.<app>.build_id` (the owner of
+  release state, ace#1636/ace#2938) so the Phase 9 gate can compare against
+  the currently released builds
 - `dimensions` — per-dimension scores + reasons (6 dimensions, weights
   per the rubric above)
 - `per_item` — per-journey verdicts (canonical key per
