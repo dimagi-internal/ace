@@ -243,17 +243,13 @@ ACE_AVD_NAME=ACE_Pixel_API_34
 # ── Connect test-worker pool (ace#2955) ──────────────────────────────
 # The ACE_E2E_* worker above is pool slot worker-1. The rest of the pool is one
 # JSON object keyed by slot, from the 1Password item connect-test-workers
-# (field pool-json):
-#   {"worker-2": {"phone": "+7426…", "phoneLocal": "426…", "pin": "…",
-#                 "backupCode": "…", "name": "ACE Test 2"}, …}
-# Each device session checks one worker out through canopy-web's `test-worker`
-# capability (infra/capabilities/test-worker/capability.yaml), so two sessions
-# never share one. COMMENTED OUT until that item exists: `op inject` is
-# all-or-nothing, so a ref to a missing item would break /ace:setup for
-# everyone, and a literal reference cannot sit in a comment either (op inject
-# scans comments). When the item exists, add the uncommented line exactly as
-# skills/test-worker-pool § Add a worker step 3 spells it: key ACE_E2E_WORKERS,
-# vault AGENT_VAULT, item connect-test-workers, field pool-json.
+# (vault AGENT_VAULT, item connect-test-workers, field pool-json); pin and
+# backupCode left out fall back to ACE_E2E_PIN /
+# ACE_E2E_BACKUP_CODE. Each device session checks one worker out through
+# canopy-web's `test-worker` capability (infra/capabilities/test-worker/
+# capability.yaml), so two sessions never share one. Adding or retiring a
+# worker: skills/test-worker-pool.
+ACE_E2E_WORKERS=op://${AGENT_VAULT}/connect-test-workers/pool-json
 
 # ── Per-run demo test user (ace#1289) — DEFAULT OFF, AND STAYS OFF. ──
 #
