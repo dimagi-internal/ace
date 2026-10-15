@@ -178,7 +178,11 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      hints, choice labels). Scan names + labels via
      `get_form({app_id, moduleUuid, formUuid})`. API structural keys — uuids,
      `moduleUuid`/`formUuid`, "Module 0" — are metadata, never rendered;
-     ignore those. Any user-facing occurrence → `[BLOCKER]` → `fail`.
+     ignore those. Lookup-table rows are user-facing too whenever a select is
+     bound to the table (`optionsSource`) or a one-option list displays its
+     text — those strings never appear in `get_form`, so also scan every bound
+     table's rows via `get_lookup_table_rows` (ace#2976).
+     Any user-facing occurrence → `[BLOCKER]` → `fail`.
 
    **Addressing note (ace#1132).** Nova is uuid-addressed since 2026-07-31 —
    no tool accepts `moduleIndex` / `formIndex` / `fieldId`. Get the uuids
