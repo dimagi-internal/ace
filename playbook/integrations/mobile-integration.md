@@ -181,8 +181,12 @@ on a clean interrupt; SIGKILL leaves an unplayable file.
 (default `1M`), `ACE_MOBILE_RECORD_SIZE` (default `540x1140`) — roughly
 5–8 MB per journey-minute at the defaults.
 
-**The lease backend does not record yet** (Phase 2 — see
-`docs/superpowers/specs/2026-07-30-avd-session-recording-design.md`).
+**Lease backend:** the image's CLI records the same way
+(`ace-mobile record start|stop`: on-device `screenrecord --time-limit 0`, SIGINT,
+stable-size wait, mp4 uploaded under `--out`; contract in
+`infra/capabilities/android-emulator/README.md` § CLI contract). The lease
+client wraps a whole recipe in one start/stop and remuxes locally, since the
+image ships no ffmpeg.
 
 ## Device-state heal: always cold-boot per dispatch
 
