@@ -86,13 +86,14 @@ Read the output and tell the user:
 conversation without running `/ace:doctor` at all.** Do the whole investigation silently, then
 present ONE block. Never think out loud across several messages, never post a hypothesis you then
 revise, and never leave the human to work out which of `.env.tpl`, the installed `.env`, and the
-1Password `Agent-Ace` vault is actually wrong — that is the question, and answering it is the
+ACE instance's 1Password vault is actually wrong — that is the question, and answering it is the
 deliverable.
 
 ```
 CONFIG VERDICT
-Source of truth: <which surface is authoritative for the key(s) in question — 1Password vault
-                 `Agent-Ace` for every key declared in `.env.tpl`; `.env.tpl` for WHICH keys must
+Source of truth: <which surface is authoritative for the key(s) in question — the instance's
+                 1Password vault (`AGENT_VAULT`, named by `canopy agent env --plugin ace --print`)
+                 for every key declared in `.env.tpl`; `.env.tpl` for WHICH keys must
                  exist; the installed `${CLAUDE_PLUGIN_DATA}/.env` for what this machine actually
                  has; local-only keys (`ACE_WEB_PAT_TOKEN`) are authoritative on the machine.>
 What drifted:    <the specific key(s), and which surface disagrees with which — "X is declared in

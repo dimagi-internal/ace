@@ -14,7 +14,9 @@
  * `test/lib/nova-hq-refresh.test.ts` fails CI if one appears.
  *
  * Credentials: Google username + password are read at runtime with `op read`
- * from `op://Agent-Ace/Ace - gmail/{username,password}` — never from `.env`,
+ * from the `Ace - gmail` item (fields username, password) in the vault of the ACE
+ * instance this install is bound to — AGENT_VAULT, else `canopy agent env --plugin
+ * ace --print` (canopy#899; no vault name lives in this repo) — never from `.env`,
  * never logged, never echoed into the JSON. The persistent profile at
  * `~/.ace/nova-google-profile` (outside the repo) reuses the session, so most
  * runs never reach the Google form at all.
@@ -59,8 +61,26 @@ import {
 
 loadPluginEnv(import.meta.url);
 
-const OP_USER_REF = 'op://Agent-Ace/Ace - gmail/username';
-const OP_PASS_REF = 'op://Agent-Ace/Ace - gmail/password';
+const LOGIN_ITEM = 'Ace - gmail';
+
+/** The 1Password vault of the ACE instance this install is bound to. `op read` does not
+ *  expand `${AGENT_VAULT}` in a reference (only `op inject` / `op run` do), so resolve it:
+ *  the session's AGENT_VAULT, else canopy-web's record via canopy. Throws when neither
+ *  names one — never a guessed vault. */
+function instanceVault(): string {
+  const fromEnv = (process.env.AGENT_VAULT ?? '').trim();
+  if (fromEnv) return fromEnv;
+  const out = execFileSync('canopy', ['agent', 'env', '--plugin', 'ace', '--print'], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000,
+  });
+  const vault = String((JSON.parse(out) as { vault?: unknown }).vault ?? '').trim();
+  if (!vault) throw new Error('canopy-web records no vault for the ACE instance');
+  return vault;
+}
+
+function loginRef(vault: string, field: 'username' | 'password'): string {
+  return `op://${vault}/${LOGIN_ITEM}/${field}`;
+}
 const PROFILE_DIR = join(homedir(), '.ace', 'nova-google-profile');
 
 function opRead(ref: string): string {
@@ -83,10 +103,15 @@ async function browserRefresh(): Promise<BrowserRefreshResult> {
   let user: string;
   let pass: string;
   try {
-    user = opRead(OP_USER_REF);
-    pass = opRead(OP_PASS_REF);
+    const vault = instanceVault();
+    user = opRead(loginRef(vault, 'username'));
+    pass = opRead(loginRef(vault, 'password'));
   } catch {
-    return { ok: false, stopped_reason: 'credentials-unavailable', detail: `op read failed for ${OP_USER_REF} / password (is 1Password signed in?)` };
+    return {
+      ok: false,
+      stopped_reason: 'credentials-unavailable',
+      detail: `op read failed for the "${LOGIN_ITEM}" item in ACE's instance vault (is 1Password signed in, and has /ace:setup bound this install?)`,
+    };
   }
   if (!user || !pass) return { ok: false, stopped_reason: 'credentials-unavailable', detail: 'op read returned empty' };
 

@@ -153,15 +153,15 @@ export function remediationFor(cls: GenerationProbeClass, ctx: RemediationContex
       return (
         `the team's GENERATION provider is capped (this is NOT the embeddings provider ` +
         `OCS_LLM_PROVIDER_ID names). Raise the limit or swap the key on ` +
-        `${providerUrl ?? '<ocs>/a/<team>/service_providers/llm/<pk>/'}; the key itself lives in ` +
-        `1Password vault Agent-Ace. Then re-run /ace:run — no Claude restart needed.` +
+        `${providerUrl ?? '<ocs>/a/<team>/service_providers/llm/<pk>/'}; the key itself lives in the ` +
+        `ACE instance's 1Password vault (\`canopy agent env --plugin ace --print\` names it). Then re-run /ace:run — no Claude restart needed.` +
         traceHint
       );
     case 'provider_auth':
       return (
         `the team's GENERATION provider key is rejected (revoked/rotated). Replace it at ` +
-        `${providerUrl ?? '<ocs>/a/<team>/service_providers/llm/<pk>/'} from the 1Password vault ` +
-        `Agent-Ace item, then re-run /ace:run — no Claude restart needed.` +
+        `${providerUrl ?? '<ocs>/a/<team>/service_providers/llm/<pk>/'} from its item in the ` +
+        `ACE instance's 1Password vault, then re-run /ace:run — no Claude restart needed.` +
         traceHint
       );
     case 'no_channel':

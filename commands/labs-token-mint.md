@@ -29,11 +29,12 @@ in your local `.env`.
 
 - `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` resolved in
   `${CLAUDE_PLUGIN_DATA}/.env` (the standard ACE service-account creds
-  for `ace@dimagi-ai.com`). Run `op inject -i .env.tpl -o
-  $CLAUDE_PLUGIN_DATA/.env --account dimagi.1password.com` if missing.
-- A 1Password item `ACE - Connect Labs` in the **`Agent-Ace`** vault —
-  this is what `.env.tpl` actually reads
-  (`op://Agent-Ace/ACE - Connect Labs/mcp_token`). The legacy shared
+  for `ace@dimagi-ai.com`). Run `/ace:setup --force-env` if missing.
+- A 1Password item `ACE - Connect Labs` in the **ACE instance's vault** —
+  the one canopy-web records for the instance this install is bound to
+  (`canopy agent env --plugin ace --print` names it), which is what
+  `.env.tpl` actually reads (`LABS_MCP_TOKEN`, item `ACE - Connect Labs`,
+  field `mcp_token`, vault `${AGENT_VAULT}`). The legacy shared
   `AI-Agents` vault still holds a same-titled copy that nothing reads;
   writing there looks like it succeeded and leaves `.env` stale. See
   `CLAUDE.md § Auth model` for the per-agent vault split.
@@ -62,15 +63,18 @@ ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(o
 RAW=$(node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" ACE-plugin 365)
 
 # Update 1Password (creates item if missing, otherwise updates field).
-# Vault MUST be Agent-Ace — that's what .env.tpl reads. AI-Agents is the
-# legacy copy and writing there silently leaves .env stale.
-if op item get "ACE - Connect Labs" --vault Agent-Ace \
+# Vault MUST be the ACE instance's vault — that's what .env.tpl reads
+# (op://${AGENT_VAULT}/…). AI-Agents is the legacy copy and writing there
+# silently leaves .env stale. Never type a vault name: resolve it.
+VAULT="${AGENT_VAULT:-$(canopy agent env --plugin ace --print | python3 -c 'import json,sys; print(json.load(sys.stdin).get("vault") or "")')}"
+[ -n "$VAULT" ] || { echo "no ACE instance vault resolved — run /ace:setup first"; exit 1; }
+if op item get "ACE - Connect Labs" --vault "$VAULT" \
     --account dimagi.1password.com >/dev/null 2>&1; then
   op item edit "ACE - Connect Labs" \
-    --vault Agent-Ace --account dimagi.1password.com \
+    --vault "$VAULT" --account dimagi.1password.com \
     "mcp_token=$RAW"
 else
-  op item create --vault Agent-Ace --account dimagi.1password.com \
+  op item create --vault "$VAULT" --account dimagi.1password.com \
     --category "API Credential" --title "ACE - Connect Labs" \
     "mcp_token=$RAW" \
     "user[text]=ace@dimagi-ai.com" \
@@ -79,7 +83,7 @@ fi
 
 # Verify the store round-trips before trusting it
 [ "$(op read --account dimagi.1password.com \
-     "op://Agent-Ace/ACE - Connect Labs/mcp_token")" = "$RAW" ] \
+     "op://$VAULT/ACE - Connect Labs/mcp_token")" = "$RAW" ] \
   && echo "1Password OK" || echo "MISMATCH — wrong vault or field"
 
 # Re-inject .env from 1Password (preserves local-only secrets like
@@ -201,9 +205,10 @@ form's markup if that space is not offered (seen 2026-10-08).
     conclude the token UI is gone.
 - **`HTTP 401` / `invalid_token` after storing** — in order of
   likelihood: (1) you wrote to the **`AI-Agents`** vault instead of
-  **`Agent-Ace`**, so `.env` still holds the old token — verify with
-  `op read --account dimagi.1password.com
-  "op://Agent-Ace/ACE - Connect Labs/mcp_token"`; (2) you have a
+  the **ACE instance's vault**, so `.env` still holds the old token —
+  verify with `op read --account dimagi.1password.com
+  "op://$VAULT/ACE - Connect Labs/mcp_token"` (`$VAULT` resolved as in
+  § Usage); (2) you have a
   hand-added user-scope `connect_labs` MCP entry with a hardcoded
   header (see § above); (3) you haven't fully restarted Claude Code, so
   the MCP subprocess still holds the old header; (4) wrong field name
@@ -223,8 +228,8 @@ form's markup if that space is not offered (seen 2026-10-08).
   `LABS_MCP_TOKEN` and injects `Authorization: Bearer <token>` for the
   native `connect-labs` HTTP entry in `.claude-plugin/plugin.json`
 - `bin/ace-doctor` — `[Connect Labs]` section verifies the token
-- `.env.tpl` — `LABS_MCP_TOKEN` points at
-  `op://Agent-Ace/ACE - Connect Labs/mcp_token`
+- `.env.tpl` — `LABS_MCP_TOKEN` points at item `ACE - Connect Labs`,
+  field `mcp_token`, in the instance vault (`${AGENT_VAULT}`)
 - `playbook/integrations/connect-labs.md` — full integration reference
 - `CLAUDE.md § Auth model` — the per-agent vault split
-  (`Agent-Ace` authoritative, `AI-Agents` legacy)
+  (the instance's vault authoritative, `AI-Agents` legacy)

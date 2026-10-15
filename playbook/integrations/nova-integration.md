@@ -54,7 +54,8 @@ Setup, once per machine:
    identity (`ACE_GMAIL_ACCOUNT` in `.env`).
 2. Mint a key with Read+Write floor + the HQ scopes
    `/nova:upload_to_hq` needs.
-3. Save to 1Password vault `Agent-Ace`, item `ACE - Nova`, field
+3. Save to the ACE instance's 1Password vault (`canopy agent env --plugin ace --print`
+   names it), item `ACE - Nova`, field
    `api_key`.
 4. Run `/ace:setup --force-env`. It re-injects `.env` from 1Password,
    writes `~/.ace/env.sh` (`export NOVA_API_KEY=…`, for Bash-invoked
@@ -109,7 +110,7 @@ absent from Nova's list, which otherwise matched it exactly.
 its own Google login and must never pop a window on the operator's machine):
 `scripts/nova-refresh-hq-domains.ts --domain <space>` reads `get_hq_connection`,
 and only if the space is missing signs in to `https://commcare.app` as ace@
-(Google username/password via `op read op://Agent-Ace/Ace - gmail/…` at runtime,
+(Google username/password via `op read` of the `Ace - gmail` item in the instance's vault at runtime,
 persistent profile `~/.ace/nova-google-profile`), presses Refresh, and re-reads.
 Exit 0 = listed; 3 = still missing (the HQ key's user is not a member — a
 refresh cannot fix that); 2 = stopped on a named Google challenge (`google-2fa`,

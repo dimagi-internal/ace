@@ -18,7 +18,7 @@ e.g. a demo's scripts doc that people edit together.
 
 - **Author:** `config/agent.json` (`ace@dimagi-ai.com`, client `canopy`); run from an ACE
   checkout or pass `--repo <ACE root>`.
-- **Root:** `$GDRIVE_ROOT_FOLDER`, from `.env.tpl` (Agent-Ace vault), materialised into the
+- **Root:** `$GDRIVE_ROOT_FOLDER`, from `.env.tpl` (the bound instance's vault), materialised into the
   installed plugin's `.env` by `/ace:setup --force-env`. It is NOT in the shell
   environment, so **source the `.env` in the same Bash call as the publish**, because shell
   state does not persist between calls:
