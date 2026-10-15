@@ -600,6 +600,33 @@ appId: org.commcare.dalvik
           timeout: 15000
       - tapOn:
           id: "org.commcare.dalvik:id/save_photo_button"
+      # Saving the photo opens an "Account Created" dialog whose OK must be
+      # tapped before CommCare moves on (2.64.0, ace#2955: the first live
+      # fresh signup, worker-2, sat on this dialog until the terminal
+      # rvJobList assert timed out). Same bottom-sheet as "Account
+      # Recovered" above, so the same button selector.
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-message-button}"
+          timeout: 20000
+          optional: true
+- evalScript: ${output.accountCreated = false}
+- runFlow:
+    when:
+      true: ${output.photoScreen}
+    optional: true
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:personalid-message-button}"
+          timeout: 1500
+      - evalScript: ${output.accountCreated = true}
+- runFlow:
+    when:
+      true: ${output.accountCreated}
+    commands:
+      - tapOn:
+          id: "${SELECTOR:personalid-message-button}"
 
 # Terminal-state assertion (added 2026-05-25 after the
 # bednet-spot-check/20260525-1405 phantom blocker). All upstream steps in
