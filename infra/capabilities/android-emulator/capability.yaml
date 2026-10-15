@@ -10,7 +10,12 @@
 # per entry of `commcare_versions` in image/variables.pkr.hcl, written to
 # /opt/ace/states.yaml by image/scripts/50-states.sh, and the default is that
 # list's first entry. test/infra/android-emulator-capability.test.ts fails CI
-# when the two drift.
+# when the two drift; bake.sh and deploy.sh also refuse an AMI whose `ace:states`
+# tag differs from this enum.
+#
+# `limits` are mirrored as constants in image/cli/ace_mobile.py (the boot hook's
+# max-lifetime halt, ready budget and idle backstop); the same test holds them
+# equal.
 version: 1
 name: android-emulator
 kind: ec2-ephemeral
@@ -24,6 +29,6 @@ limits:
   idle_release_s: 900
   ready_timeout_s: 900
 params:
-  state: {type: string, default: cc-2.63.0, enum: [cc-2.62.0, cc-2.63.0]}
+  state: {type: string, default: cc-2.64.0, enum: [cc-2.64.0, cc-2.62.0]}
 exec:
   allow: [ace-mobile]

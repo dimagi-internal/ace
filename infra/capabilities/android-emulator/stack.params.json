@@ -2,7 +2,7 @@
   "_doc": "Parameters for canopy's shared capability template, instantiated as ACE's android-emulator stack. deploy.sh fetches `template.path` from `template.repo` at `template.ref` (a dimagi-canopy release tag, never a branch), refuses any key here the template does not declare and any required parameter left out, then runs `aws cloudformation deploy`. An empty VpcId/SubnetId means: the account's default VPC, and its first default subnet (by AZ name) whose AZ offers InstanceType. No AmiId: in Mode=ephemeral the launch template resolves /canopy/capabilities/<Owner>/<Capability>/ami from SSM at launch, and bake.sh writes it.",
   "template": {
     "repo": "dimagi-internal/canopy-web",
-    "ref": "dimagi-canopy-v0.8.1",
+    "ref": "dimagi-canopy-v0.9.0",
     "path": "sdk/python/src/canopy_sdk/ondemand/assets/ondemand-capability.cfn.yaml"
   },
   "stack_name": "canopy-cap-ace-android-emulator",
@@ -12,11 +12,15 @@
     "Owner": "ace",
     "OwnerTag": "ace",
     "Capability": "android-emulator",
-    "BrokerRoleName": "labs-jj-ecs-task-role",
+    "BrokerRoleName": "canopy-web-task-role",
     "NestedVirtualization": "true",
     "InstanceType": "m8i.xlarge",
     "RootVolumeGb": "30",
+    "RootVolumeIops": "6000",
+    "RootVolumeThroughput": "500",
+    "RootVolumeInitializationRate": "300",
     "VpcId": "",
-    "SubnetId": ""
+    "SubnetId": "",
+    "ExecAllow": "ace-mobile"
   }
 }

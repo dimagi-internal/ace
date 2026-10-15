@@ -62,3 +62,87 @@ stack_output() {
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text 2>/dev/null
 }
+
+# ── States: capability.yaml ↔ the AMI's `ace:states` tag ───────────────────
+# capability.yaml's params.state enum, sorted, comma-joined ("cc-2.62.0,cc-2.64.0").
+manifest_states() {
+  sed -n 's/^ *state: *{.*enum: *\[\([^]]*\)\].*/\1/p' "$MANIFEST_FILE" \
+    | tr ',' '\n' | tr -d ' ' | sed '/^$/d' | sort | paste -sd, -
+}
+
+# An AMI's `ace:states` tag (bake order), or empty when the AMI has none.
+ami_states() {
+  aws ec2 describe-images --region "$REGION" --image-ids "$1" \
+    --query "Images[0].Tags[?Key=='ace:states'].Value | [0]" --output text 2>/dev/null \
+    | sed 's/^None$//'
+}
+
+# Refuse an AMI that does not bake exactly the states capability.yaml offers.
+# A state the manifest offers and the image lacks passes canopy-web's
+# validation and then fails minutes into a lease (ready.json unknown-state).
+require_ami_states() {
+  local ami="$1" have want
+  want="$(manifest_states)"
+  [[ -n "$want" ]] || die "could not read params.state.enum from $MANIFEST_FILE"
+  have="$(ami_states "$ami" | tr ',' '\n' | sed '/^$/d' | sort | paste -sd, -)"
+  [[ -n "$have" ]] || die "$ami has no ace:states tag (baked before the tag existed?); it cannot be checked against capability.yaml ($want). Rebake: ./bake.sh"
+  [[ "$have" == "$want" ]] || die "$ami bakes states [$have] but capability.yaml offers [$want]. Make image/variables.pkr.hcl commcare_versions and capability.yaml agree, then rebake."
+  note "$ami bakes exactly the manifest's states: $have"
+}
+
+# The SSM AMI parameter's value; empty ONLY when the parameter does not exist.
+# Any other failure (auth, throttling, network) is fatal: callers prune images
+# relative to this value, and "unknown" must never read as "none".
+current_ami() {
+  local out err
+  err="$(mktemp)"
+  if out="$(aws ssm get-parameter --region "$REGION" --name "$AMI_PARAM" \
+      --query Parameter.Value --output text 2>"$err")"; then
+    rm -f "$err"
+    [[ "$out" =~ ^ami-[0-9a-f]{8,17}$ ]] || die "$AMI_PARAM holds '$out', not an AMI id"
+    printf '%s\n' "$out"
+    return 0
+  fi
+  if grep -q ParameterNotFound "$err"; then rm -f "$err"; return 0; fi
+  local msg; msg="$(cat "$err")"; rm -f "$err"
+  die "could not read $AMI_PARAM: $msg"
+}
+
+# ── Image pruning, shared by bake.sh (after a bake) and teardown.sh ─────────
+# prune_images KEEP_NEWEST [KEEP_ID...]
+# Deregisters every image tagged agent=<OWNER>, capability=<CAPABILITY> except
+# the KEEP_NEWEST most recently created and every KEEP_ID, and deletes their
+# snapshots. Only ever touches ids that look like ami-/snap- ids; a KEEP_ID that
+# does not look like an AMI id aborts before anything is deleted.
+prune_images() {
+  local keep_n="$1"; shift
+  local keep_ids=("$@") k ami snap snaps i=0 total
+  [[ "$keep_n" =~ ^[0-9]+$ ]] || die "prune_images: keep count '$keep_n' is not a number"
+  for k in "${keep_ids[@]}"; do
+    [[ -z "$k" || "$k" =~ ^ami-[0-9a-f]{8,17}$ ]] || die "prune_images: refusing to prune around '$k' (not an AMI id)"
+  done
+  local images
+  images="$(aws ec2 describe-images --region "$REGION" --owners self \
+    --filters "Name=tag:agent,Values=$OWNER" "Name=tag:capability,Values=$CAPABILITY" \
+    --query 'reverse(sort_by(Images,&CreationDate))[].ImageId' --output text | tr '\t' '\n' | sed '/^$/d')" \
+    || die "could not list $OWNER/$CAPABILITY images"
+  total="$(printf '%s\n' "$images" | sed '/^$/d' | wc -l | tr -d ' ')"
+  note "Pruning $OWNER/$CAPABILITY images: $total found, keeping the newest $keep_n${keep_ids[*]:+ and ${keep_ids[*]}}"
+  while read -r ami; do
+    [[ -n "$ami" ]] || continue
+    if [[ ! "$ami" =~ ^ami-[0-9a-f]{8,17}$ ]]; then warn "  skipping '$ami' (not an AMI id)"; continue; fi
+    i=$((i + 1))
+    if ((i <= keep_n)); then note "  keeping $ami (newest $i of $keep_n)"; continue; fi
+    for k in "${keep_ids[@]}"; do
+      if [[ "$ami" == "$k" ]]; then note "  keeping $ami (pinned)"; continue 2; fi
+    done
+    snaps="$(aws ec2 describe-images --region "$REGION" --image-ids "$ami" \
+      --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text)"
+    note "  deregistering $ami"
+    aws ec2 deregister-image --region "$REGION" --image-id "$ami"
+    for snap in $snaps; do
+      [[ "$snap" =~ ^snap-[0-9a-f]{8,17}$ ]] || continue
+      aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snap" || warn "could not delete $snap"
+    done
+  done <<<"$images"
+}

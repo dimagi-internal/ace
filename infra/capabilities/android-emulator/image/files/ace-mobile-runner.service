@@ -3,6 +3,11 @@ Description=ACE android-emulator: the AVD for this lease
 Documentation=https://github.com/dimagi-internal/ace/tree/main/infra/capabilities/android-emulator
 After=network-online.target
 Wants=network-online.target
+# The unit is never restarted (Restart=no below), so these only bound repeated
+# MANUAL starts. StartLimit* are [Unit] settings; systemd ignores them, with a
+# warning, under [Service].
+StartLimitIntervalSec=120
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -18,14 +23,15 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin:/opt/android-sdk/platform-tools:/o
 # states later by restarting it; a lease machine boots exactly one state.)
 ExecStart=/usr/local/bin/ace-emulator-launch
 
-# A launch-script crash (qemu died, adb wedge) gets a bounded number of clean
-# restarts. After 3 failed starts in 120s the unit stays `failed`, which the
-# boot hook reports as ready.json {ok:false, reason:"emulator-boot-failed"}.
-# The lease is then released, not repaired: restore, don't adapt.
-Restart=on-failure
-RestartSec=10
-StartLimitBurst=3
-StartLimitIntervalSec=120
+# One start, one boot. A failure before ready exits 1 (the unit goes `failed`,
+# which the boot hook reports as ready.json {ok:false,
+# reason:"emulator-boot-failed"}); an emulator that dies AFTER ready makes the
+# launcher write /run/ace-mobile/crashed and exit 0, and every ace-mobile
+# subcommand but diagnose then refuses with `emulator-crashed`. Never
+# Restart=: a restart is a second -wipe-data boot that silently discards the
+# registered user and everything a recipe set up. Restore, don't adapt: the
+# lease is released.
+Restart=no
 
 StandardOutput=append:/var/log/ace-mobile/runner.log
 StandardError=append:/var/log/ace-mobile/runner.log

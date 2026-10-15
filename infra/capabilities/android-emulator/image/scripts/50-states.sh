@@ -44,13 +44,13 @@ for VERSION in "${VERSIONS[@]}"; do
     echo "ERROR: missing APK for $VERSION at $APK_PATH" >&2
     exit 1
   fi
-  CC_MD5="$(cat "$APK_PATH.md5")"
+  CC_SHA256="$(cat "$APK_PATH.sha256")"
 
   cat >> "$STATES_YAML" <<YAML
   - name: ${STATE_NAME}
     snapshot: cold-boot-stage
     commcare_version: "${VERSION}"
-    commcare_apk_md5: ${CC_MD5}
+    commcare_apk_sha256: ${CC_SHA256}
     apk_path: ${APK_PATH}
     description: "CommCare ${VERSION}: cold boot (-wipe-data) + APK install; test user registered on demand."
 YAML

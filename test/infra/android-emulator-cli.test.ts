@@ -17,14 +17,16 @@ describe('ace-mobile CLI (python unittest)', () => {
     const r = spawnSync(
       'python3',
       ['-m', 'unittest', 'discover', '-s', join(CAP, 'image', 'cli', 'tests'), '-t', join(CAP, 'image', 'cli', 'tests')],
-      { encoding: 'utf8', timeout: 120_000 },
+      { encoding: 'utf8', timeout: 170_000 },
     )
     if (r.status !== 0) console.error(r.stdout, r.stderr)
     expect(r.error).toBeUndefined()
     expect(r.status).toBe(0)
     // unittest reports on stderr; make sure tests actually ran.
     expect(r.stderr).toMatch(/Ran [1-9]\d* tests/)
-  })
+    // The suite runs the real launcher and bake scripts against fakes (~25 s
+    // alone, more on a loaded shard), past vitest's 30 s default.
+  }, 180_000)
 })
 
 describe('capability scripts pass shellcheck', () => {

@@ -1,7 +1,12 @@
 {
-  "_doc": "ace-mobile CLI argparse contract (build_parser()), from ace_mobile.py @ acd70128+uncommitted, cli_version 1.0.0. Regenerate with scripts/refresh-lease-contract-fixtures.ts --cli <ace_mobile.py>.",
-  "cli_version": "1.0.0",
+  "_doc": "ace-mobile CLI argparse contract (build_parser()), from ace_mobile.py @ fa93aa15, cli_version 1.1.0. Regenerate with scripts/refresh-lease-contract-fixtures.ts --cli <ace_mobile.py>.",
+  "cli_version": "1.1.0",
   "subcommands": {
+    "apply-baseline": {
+      "flags": [],
+      "required": [],
+      "positionals": {}
+    },
     "clear-app-data": {
       "flags": [
         "--package"
@@ -27,6 +32,21 @@
       "flags": [],
       "required": [],
       "positionals": {}
+    },
+    "record": {
+      "flags": [
+        "--bit-rate",
+        "--name",
+        "--out",
+        "--size"
+      ],
+      "required": [],
+      "positionals": {
+        "action": [
+          "start",
+          "stop"
+        ]
+      }
     },
     "register-test-user": {
       "flags": [

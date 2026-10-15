@@ -29,121 +29,7 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
-HERE = Path(__file__).resolve().parent
-CLI_DIR = HERE.parent
-IMAGE_DIR = CLI_DIR.parent
-FIX = HERE / "fixtures"
-sys.path.insert(0, str(CLI_DIR))
-
-import ace_mobile as am  # noqa: E402
-
-BOOTED_DEVICES = "List of devices attached\nemulator-5554\tdevice\n\n"
-
-
-class FakeHost(am.Host):
-    """Scripted host: each call is matched by a handler; records argv."""
-
-    def __init__(self, handler: Callable[["FakeHost", list[str], dict], am.Proc]) -> None:
-        self.handler = handler
-        self.calls: list[list[str]] = []
-        self.kw: list[dict] = []
-        self.t = 1_800_000_000.0
-        self.uploads: dict[str, bytes] = {}
-
-    def run(self, argv, **kw):  # type: ignore[override]
-        self.calls.append(list(argv))
-        self.kw.append(kw)
-        # Default S3 behaviour: record uploads, serve downloads from self.s3.
-        if argv[:3] == ["aws", "s3", "cp"]:
-            args = [a for a in argv[3:] if not a.startswith("--")]
-            src, dst = args[0], args[1]
-            if "--recursive" in argv:
-                for p in Path(src).rglob("*"):
-                    if p.is_file():
-                        self.uploads[dst.rstrip("/") + "/" + p.relative_to(src).as_posix()] = p.read_bytes()
-                return am.Proc(0, "", "")
-            if src.startswith("s3://"):
-                body = getattr(self, "s3", {}).get(src)
-                if body is None:
-                    return am.Proc(1, "", f"fatal error: An error occurred (404) when calling HeadObject: {src}")
-                Path(dst).write_bytes(body)
-                return am.Proc(0, "", "")
-            self.uploads[dst] = Path(src).read_bytes()
-            return am.Proc(0, "", "")
-        return self.handler(self, argv, kw)
-
-    def now(self):
-        return self.t
-
-    def monotonic(self):
-        self.t += 0.5
-        return self.t
-
-    def sleep(self, s):
-        self.t += s
-
-    def chown_tree(self, path):
-        pass
-
-    def http_get(self, url, dest, timeout=0):
-        Path(dest).write_bytes(getattr(self, "https", {})[url])
-
-
-def adb_only(responses: dict[tuple, am.Proc] | None = None, default: am.Proc | None = None):
-    """Handler answering adb argv by prefix match on the args after `adb`."""
-    responses = responses or {}
-
-    def h(host, argv, kw):
-        if argv[0] == am.ADB:
-            rest = tuple(argv[1:])
-            for k, v in responses.items():
-                if rest[: len(k)] == k:
-                    return v(host, argv, kw) if callable(v) else v
-            if rest[:1] == ("devices",):
-                return am.Proc(0, BOOTED_DEVICES, "")
-        if default is not None:
-            return default
-        raise AssertionError(f"unexpected call: {argv}")
-
-    return h
-
-
-class TmpPaths(unittest.TestCase):
-    """Point every in-VM path at a temp dir."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        self._saved = {}
-        for name, val in {
-            "WORK_ROOT": root / "work",
-            "RUN_DIR": root / "run",
-            "READY_MARKER": root / "run/ready",
-            "ACTIVE_STATE_PATH": root / "run/active-state",
-            "LEASE_PATH": root / "run/lease.json",
-            "STATES_YAML_PATH": root / "states.yaml",
-            "RUNNER_LOG": root / "runner.log",
-            "EMULATOR_LOG": root / "emulator.log",
-            "MAESTRO_DRIVER_CACHE_ROOT": root / "driver-cache",
-            "MAESTRO_JAR_PATH": root / "maestro/lib/maestro-client.jar",
-            "MAESTRO_LIB_DIR": root / "maestro/lib",
-        }.items():
-            self._saved[name] = getattr(am, name)
-            setattr(am, name, str(val))
-        (root / "run").mkdir()
-        self.root = root
-
-    def tearDown(self):
-        for k, v in self._saved.items():
-            setattr(am, k, v)
-        self.tmp.cleanup()
-
-
-def cli(argv, host):
-    code, payload = am.run_cli(argv, host)
-    json.dumps(payload)  # must always serialize
-    return code, payload
-
+from _support import BOOTED_DEVICES, CLI_DIR, FIX, IMAGE_DIR, FakeHost, TmpPaths, adb_only, am, cli  # noqa: E402
 
 # ── Parsers ──────────────────────────────────────────────────────────────────
 
@@ -239,21 +125,23 @@ class ParserTests(unittest.TestCase):
     def test_states_yaml_from_the_real_bake_script(self):
         """Run image/scripts/50-states.sh against fake APKs and parse its output."""
         with tempfile.TemporaryDirectory() as d:
-            for v in ("2.63.0", "2.62.0"):
+            for v in ("2.64.0", "2.62.0"):
                 p = Path(d, "apks", v)
                 p.mkdir(parents=True)
                 (p / "commcare.apk").write_bytes(b"x")
-                (p / "commcare.apk.md5").write_text("abc\n")
+                (p / "commcare.apk.sha256").write_text("ab" * 32 + "\n")
             out = Path(d, "states.yaml")
-            env = {**os.environ, "COMMCARE_VERSIONS": "2.63.0,2.62.0", "APK_ROOT": str(Path(d, "apks")),
+            env = {**os.environ, "COMMCARE_VERSIONS": "2.64.0,2.62.0", "APK_ROOT": str(Path(d, "apks")),
                    "STATES_YAML": str(out), "STATES_OWNER": ""}
             r = subprocess.run(["bash", str(IMAGE_DIR / "scripts/50-states.sh")], env=env,
                                capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
-            cat = am.parse_states_yaml(out.read_text())
-        self.assertEqual(cat["default"], "cc-2.63.0")
-        self.assertEqual([s["name"] for s in cat["states"]], ["cc-2.63.0", "cc-2.62.0"])
-        self.assertTrue(cat["states"][0]["apk_path"].endswith("2.63.0/commcare.apk"))
+            out_text = out.read_text()
+            cat = am.parse_states_yaml(out_text)
+        self.assertEqual(cat["default"], "cc-2.64.0")
+        self.assertEqual([s["name"] for s in cat["states"]], ["cc-2.64.0", "cc-2.62.0"])
+        self.assertTrue(cat["states"][0]["apk_path"].endswith("2.64.0/commcare.apk"))
+        self.assertIn("commcare_apk_sha256: " + "ab" * 32, out_text)
 
 
 # ── Subcommands ──────────────────────────────────────────────────────────────
@@ -322,7 +210,9 @@ class RunRecipeTests(TmpPaths):
         self.assertLessEqual(len(out["stdout"]), am.LOG_TAIL_CHARS)
         names = {a["name"] for a in out["artifacts"]}
         self.assertIn("journey-deliver-attendance-done.png", names)
-        self.assertIn("form-advance.yaml", names)  # the palette was extracted beside the recipe
+        # The palette was extracted beside the recipe, but recipes are never
+        # uploaded: the caller already has them.
+        self.assertFalse(any(n.endswith((".yaml", ".yml")) for n in names), names)
         png = next(a for a in out["artifacts"] if a["name"].endswith(".png"))
         self.assertEqual(png["content_type"], "image/png")
         self.assertEqual(png["uri"], "s3://bkt/leases/L/out/smoke/journey-deliver-attendance-done.png")
@@ -406,7 +296,10 @@ class RegisterTests(TmpPaths):
         code, out = cli(self.ARGV, host)
         self.assertEqual(code, 0, out)
         self.assertEqual(out["already_registered"], False)
-        self.assertEqual(out["backup_code"], "2222")  # from --creds
+        # The code itself is never echoed (stdout lands in SSM history).
+        self.assertEqual(out["backup_code_set"], True)
+        self.assertNotIn("backup_code", out)
+        self.assertNotIn("2222", json.dumps(out))
         self.assertEqual(host.seen, ["gms:enable", "to.yaml", "gms:disable-user", "from.yaml"])
         maestro_calls = [c for c in host.calls if c[0] == am.MAESTRO]
         self.assertIn("PIN=1111", maestro_calls[0])
@@ -415,7 +308,7 @@ class RegisterTests(TmpPaths):
     def test_already_registered_short_circuits(self):
         host = self._host(part_a=(1, "... PHONE_ALREADY_REGISTERED ..."))
         code, out = cli(self.ARGV, host)
-        self.assertEqual((code, out["already_registered"], out["backup_code"]), (0, True, None))
+        self.assertEqual((code, out["already_registered"], out["backup_code_set"]), (0, True, False))
         self.assertNotIn("from.yaml", host.seen)
 
     def test_part_b_failure(self):
@@ -573,7 +466,7 @@ class SmallCommandTests(TmpPaths):
 
 # ── Boot hook planning ───────────────────────────────────────────────────────
 
-STATES = {"default": "cc-2.63.0", "states": [{"name": "cc-2.63.0"}, {"name": "cc-2.62.0"}]}
+STATES = {"default": "cc-2.64.0", "states": [{"name": "cc-2.64.0"}, {"name": "cc-2.62.0"}]}
 
 
 class BootPlanTests(unittest.TestCase):
@@ -589,7 +482,7 @@ class BootPlanTests(unittest.TestCase):
 
     def test_default_state_when_params_omit_it(self):
         plan = am.plan_boot(self.ctx({"bucket": "b", "params": {}}), STATES, True)
-        self.assertEqual(plan["state"], "cc-2.63.0")
+        self.assertEqual(plan["state"], "cc-2.64.0")
         self.assertEqual(plan["halt_in_s"], am.DEFAULT_MAX_LIFETIME_S - 40)
 
     def test_failures(self):

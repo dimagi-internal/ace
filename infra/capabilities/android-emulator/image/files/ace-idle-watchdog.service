@@ -1,0 +1,16 @@
+[Unit]
+Description=ACE android-emulator: power off a lease machine nobody has driven for too long
+Documentation=https://github.com/dimagi-internal/ace/tree/main/infra/capabilities/android-emulator
+# A backstop for a broker that stopped releasing, not the release path:
+# canopy-web releases idle leases itself (manifest limits.idle_release_s).
+# Thresholds: /run/ace-mobile/idle.json, written by the boot hook
+# (idle_release_s from user-data + 600 s, else 1800 s). Never before the boot
+# hook has published ready.json, never while an `ace-mobile` exec runs
+# (/run/ace-mobile/exec/<pid>). Poweroff IS termination (the launch template's
+# shutdown behaviour).
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ace-idle-watchdog
+StandardOutput=append:/var/log/ace-mobile/idle.log
+StandardError=append:/var/log/ace-mobile/idle.log

@@ -16,7 +16,9 @@
 #   2. every key in stack.params.json is a parameter that template declares,
 #      and every parameter it requires (no default) is given;
 #   3. the AMI parameter bake.sh writes already exists (a launch template that
-#      resolves a missing parameter cannot launch anything).
+#      resolves a missing parameter cannot launch anything), and that AMI's
+#      `ace:states` tag equals capability.yaml's params.state enum (publishing
+#      a manifest that offers a state the image lacks fails every such lease).
 # Then the deploy, then a check that the stack exposes the contract's outputs.
 set -euo pipefail
 
@@ -29,7 +31,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-publish) SKIP_PUBLISH=1; shift ;;
     --template-file) TEMPLATE_OVERRIDE="${2:?--template-file needs a path}"; shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -95,11 +97,11 @@ if [[ -z "$SUBNET_ID" ]]; then
   note "SubnetId (first default subnet offering $INSTANCE_TYPE): $SUBNET_ID"
 fi
 
-# ── 3. The image pointer exists ────────────────────────────────────────────
-AMI_ID="$(aws ssm get-parameter --region "$REGION" --name "$AMI_PARAM" \
-  --query Parameter.Value --output text 2>/dev/null || true)"
-[[ "$AMI_ID" == ami-* ]] || die "SSM parameter $AMI_PARAM is not set. Bake the image first: ./bake.sh"
+# ── 3. The image pointer exists, and bakes the manifest's states ───────────
+AMI_ID="$(current_ami)"
+[[ -n "$AMI_ID" ]] || die "SSM parameter $AMI_PARAM is not set. Bake the image first: ./bake.sh"
 note "Image: $AMI_PARAM = $AMI_ID"
+require_ami_states "$AMI_ID"
 
 # ── Deploy ─────────────────────────────────────────────────────────────────
 OVERRIDES=()
