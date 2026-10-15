@@ -403,6 +403,15 @@ device, no Connect.
    column as UNEVALUATED. `res.calculateWritten` reports the value set that was
    compared, per property, so the memo can show it.
 
+   **Every writer, or none** (ace#2940). Case writes are read in both shapes —
+   bare `/data/case/(create|update)/<prop>` and Nova's
+   `/data/__nova_operations/<op>/case/(create|update)/<prop>` — and a column's
+   value set is the union of EVERY writer across every form, selects and
+   calculates together. If any one writer's values cannot be read, the column
+   is `unable`, never compared on the rest: comparing a partial set reports the
+   missing writer's values as "never written", a false BLOCKER. Do not discount
+   such a finding by hand — if one appears, the writer set is the bug.
+
 **Why `play` cannot substitute for either.** `play verdict: 'skipped'` /
 `empty-case-list` only fires when a case-list screen is actually *pushed*.
 With no entity datum, `play` walks straight to form entry and returns a clean
