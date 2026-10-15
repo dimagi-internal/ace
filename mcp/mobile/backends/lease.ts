@@ -149,7 +149,7 @@ export class LeaseBackend {
       throw new MobileError(
         'LEASE_NOT_CONFIGURED',
         "the lease mobile backend needs ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's .env)",
-        'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from 1Password Agent-Ace/canopy-pat), ' +
+        'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from the canopy-pat item in the ACE instance\'s 1Password vault), ' +
           'or use the local AVD with /ace:mobile-backend local.',
       );
     }
@@ -905,7 +905,7 @@ export function leaseHttpError(status: number, problem: Problem, method: string,
       return new MobileError(
         'LEASE_AUTH',
         `canopy-web rejected ACE's PAT on ${where}${said ? `: ${said}` : ''}`,
-        "Re-mint ACE's canopy-web PAT (1Password Agent-Ace/canopy-pat) and run /ace:setup --force-env.",
+        "Re-mint ACE's canopy-web PAT (canopy-pat in the ACE instance's 1Password vault) and run /ace:setup --force-env.",
       );
     case 403:
       // canopy-web answers 403 for two different things: no CapabilityGrant

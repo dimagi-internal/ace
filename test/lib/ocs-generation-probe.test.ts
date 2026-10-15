@@ -104,7 +104,7 @@ describe('remediationFor', () => {
     expect(out).toContain('https://chatbots.dimagi.com/a/connect-ace/service_providers/llm/377/');
     expect(out).not.toContain('/378/');
     expect(out).toMatch(/1Password/);
-    expect(out).toMatch(/Agent-Ace/);
+    expect(out).toMatch(/instance's 1Password vault/);
     expect(out).toContain('862138');
   });
 
@@ -115,7 +115,7 @@ describe('remediationFor', () => {
       providerId: 377,
     });
     expect(out).toContain('service_providers/llm/377/');
-    expect(out).toMatch(/Agent-Ace/);
+    expect(out).toMatch(/instance's 1Password vault/);
   });
 
   it('degrades to a placeholder path rather than a wrong one when the id is unknown', () => {

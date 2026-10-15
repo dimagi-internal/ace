@@ -49,7 +49,7 @@ describe('/ace:doctor config-drift presentation contract', () => {
 
   it('names the three disagreeing surfaces so the verdict cannot hand the question back', () => {
     const body = src();
-    expect(body).toMatch(/Agent-Ace/);
+    expect(body).toMatch(/instance's\s+1Password vault/);
     expect(body).toMatch(/\.env\.tpl/);
     expect(body).toMatch(/CLAUDE_PLUGIN_DATA/);
   });

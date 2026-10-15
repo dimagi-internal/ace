@@ -1639,7 +1639,20 @@ if [ -n "$ENV_FILE" ]; then
     # and surface the failing ref by name. Gated on `op` being present; an
     # auth/session/account error is skipped silently (CI / fresh machine), only
     # a genuine ref-resolution failure FAILs.
-    if command -v op >/dev/null 2>&1; then
+    # The template's refs read op://${AGENT_VAULT}/… (canopy#899), so the probe needs
+    # the vault of the instance this install is bound to: AGENT_VAULT from the session,
+    # else the binding /ace:setup recorded beside the plugin .env, else canopy-web's
+    # record (`canopy agent env --plugin ace --print`). Never a guessed name.
+    RENDER_VAULT="${AGENT_VAULT:-}"
+    if [ -z "$RENDER_VAULT" ] && [ -f "$DATA_DIR/canopy-instance.json" ]; then
+      RENDER_VAULT="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).vault||'')}catch(_){}" "$DATA_DIR/canopy-instance.json" 2>/dev/null)"
+    fi
+    if [ -z "$RENDER_VAULT" ] && command -v canopy >/dev/null 2>&1; then
+      RENDER_VAULT="$(canopy agent env --plugin ace --print 2>/dev/null | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).vault||'')}catch(_){}" 2>/dev/null)"
+    fi
+    if command -v op >/dev/null 2>&1 && [ -z "$RENDER_VAULT" ]; then
+      warn "env_tpl_render: skipped — no ACE instance vault resolved (AGENT_VAULT unset, no binding in $DATA_DIR, canopy named none)" "run /ace:setup — it binds this install to one ACE instance and records its vault"
+    elif command -v op >/dev/null 2>&1; then
       # `op inject` scans the whole file, comments included, so a bare op-scheme
       # token in a `#` line (e.g. an author-contract note) would FAIL this probe
       # for a reason that has nothing to do with a real unresolvable field.
@@ -1656,12 +1669,12 @@ if [ -n "$ENV_FILE" ]; then
       # run's verdict: this is the only FAIL most machines can produce here, so one
       # transient flips the summary to "BROKEN — ACE will not function" on a healthy
       # box (ace#1613).
-      RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
+      RENDER_ERR="$(AGENT_VAULT="$RENDER_VAULT" op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
       RENDER_RC=$?
       RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
       if [ "$RENDER_CLASS" = "unknown" ]; then
         sleep 2
-        RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
+        RENDER_ERR="$(AGENT_VAULT="$RENDER_VAULT" op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
         RENDER_RC=$?
         RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
       fi
@@ -1674,7 +1687,7 @@ if [ -n "$ENV_FILE" ]; then
           : # op not signed in / account not configured on this machine — informational skip, not a config defect
           ;;
         unresolvable)
-          fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
+          fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault $RENDER_VAULT), or comment the ref out of .env.tpl until the field exists:
 $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
           ;;
         *)
@@ -2703,7 +2716,7 @@ for _k in ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT; do
   fi
 done
 if [ -n "$GMAIL_ENV_RESIDUAL" ]; then
-  warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client fields from the 1Password Agent-Ace item"
+  warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client fields from the ACE item in the instance's 1Password vault"
 elif [ -n "$GMAIL_CLIENT_VAL" ]; then
   pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL (resolved by canopy email client from config/agent.json)"
 fi

@@ -109,8 +109,15 @@ describe('scripts/nova-refresh-hq-domains.ts contract (owner directive 2026-10-0
   });
 
   it('reads Google credentials from 1Password at runtime, never from .env', () => {
-    expect(src).toContain("'op://Agent-Ace/Ace - gmail/username'");
-    expect(src).toContain("'op://Agent-Ace/Ace - gmail/password'");
+    expect(src).toContain("const LOGIN_ITEM = 'Ace - gmail';");
+    expect(src).toMatch(/opRead\(loginRef\(vault, 'username'\)\)/);
+    expect(src).toMatch(/opRead\(loginRef\(vault, 'password'\)\)/);
+  });
+
+  it('reads them from the bound instance\'s vault, never a hardcoded one (canopy#899)', () => {
+    expect(src).toContain('process.env.AGENT_VAULT');
+    expect(src).toContain("['agent', 'env', '--plugin', 'ace', '--print']");
+    expect(src).not.toMatch(/op:\/\/Agent-/);
     expect(src).not.toMatch(/process\.env\.[A-Z_]*(GOOGLE|GMAIL)[A-Z_]*/);
   });
 

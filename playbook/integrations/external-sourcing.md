@@ -88,9 +88,10 @@ avoids (a stale artifact at a guessable path read back as if fresh).
 ACE has a povertyindex.org account for future PPI pulls. The original issue
 recorded it in 1Password vault `AI-Agents`, item
 `6ikom2wiawzgymc2ms5evm4qku` — **that pointer is stale**: per CLAUDE.md
-§ Auth model, ACE's vault is now `Agent-Ace` and the legacy shared `AI-Agents`
-vault "still holds copies but is no longer read". Verify the item exists in
-`Agent-Ace` (and move it if not) before relying on it.
+§ Auth model, ACE reads the vault of the instance it is bound to (`canopy agent env
+--plugin ace --print` names it) and the legacy shared `AI-Agents` vault "still holds
+copies but is no longer read". Verify the item exists in the instance's vault (and
+move it if not) before relying on it.
 
 ### Where the file goes
 
