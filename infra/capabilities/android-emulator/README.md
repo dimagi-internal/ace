@@ -186,9 +186,16 @@ Healthy: `ready_info.ok` true with the requested `state`, `accel: "kvm"` and a
 **Measured** 2026-10-14 on the image *before* this audit (5 leases, m8i.xlarge;
 cold boot, 1 grant, fixed sleeps, apt-daily running): ready 213-224 s from
 acquire; `boot_completed` ~150 s and CommCare installed ~170 s after the runner
-started. Not re-measured since (4 emulator cores, 1 s polling, no fixed sleeps,
-updaters off, plus the 9 grants and the baseline). Every lease now reports its
-own breakdown in `ready_info.timings` (below).
+started. Earlier on 2026-10-14 the then-current image measured ~117 s from
+acquire (`boot_completed` 68-77 s).
+
+**Re-measured** 2026-10-15 on `ami-0fc30c7b289416d7c` (this image; m8i.xlarge
+baked with nested virtualization; gp3 root at 6000 IOPS / 500 MiB/s /
+initialization rate 300 via dimagi-canopy v0.9.0's `RootVolume*` params): **ready
+92 s from acquire**. From `ready_info.timings`: instance uptime at hook 19.5 s,
+emulator started 0.3 s, adb visible 27.9 s, `boot_completed` 48.4 s, CommCare
+installed 58.8 s, baseline applied and ready 59.8 s after the runner started.
+Every lease reports its own breakdown in `ready_info.timings` (below).
 
 ### 5. A Phase 6 smoke on the lease backend
 
