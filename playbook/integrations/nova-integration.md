@@ -853,7 +853,7 @@ is now the whole point of this section.
 |---|---|
 | `create_lookup_table` | name + tag + columns **+ up to 5000 rows in one atomic write**; returns durable table/column/row UUIDs in input order |
 | `edit_lookup_columns` | add / rename / move / remove / retype columns; destructive ops keep reference guards |
-| `edit_lookup_rows` | add / update / move / remove rows, UUID-addressed cells |
+| `edit_lookup_rows` | add / update / move / remove rows, UUID-addressed cells. **`update` REPLACES the row: every cell you omit is cleared** ("An omitted cell is missing; an empty string is a value"). Send the whole row and read the whole row back — observed live on smallholder-seasonal/20261015-1402, where a one-cell title update wiped 8 rows' other cells and made the Deliver app un-uploadable until restored |
 | `replace_lookup_rows` | swap the whole row set atomically; an empty list clears the table |
 | `update_lookup_table` | rename, or retag — **a tag change needs delete capability, because HQ treats a new tag as a different remote table** |
 | `remove_lookup_table` | refuses while any app or accepted design still references it |
