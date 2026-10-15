@@ -19,6 +19,7 @@ import {
   VerificationDurationNotPersistedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
+import { assertAcceptingForSelf } from '../../../lib/connect-orgs.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, parsePendingInviteTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
@@ -2647,6 +2648,15 @@ export class PlaywrightBackend implements ConnectClient {
       );
     }
     const lloSlug = app.organization;
+
+    // AUTHORITY GATE (ace#2954). This path POSTs at the LLO's OWN url with the
+    // LLO's page as Referer — i.e. it performs the invited organisation's
+    // action for them. "If the caller can supply the LLO org slug we POST it"
+    // is not an authorisation model. Refuse unless ACE actually controls that
+    // org; the REST path carries the same gate, so neither backend can be used
+    // to act as a third party. The accept is irreversible: Connect's
+    // ProgramApplicationAcceptView has no transition out of ACCEPTED.
+    assertAcceptingForSelf(lloSlug, process.env);
 
     const path = `/a/${lloSlug}/program/${args.program_id}/application/${args.application_id}/accept/`;
     // Need a CSRF token from a same-origin GET — ANY page works for the cookie.

@@ -13,7 +13,7 @@
  * captures what the backend posted so we can assert on URL, body, and
  * headers.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1061,10 +1061,15 @@ describe('PlaywrightBackend.sendLloInvite', () => {
 // ─── acceptProgramApplication ──────────────────────────────────────────────
 
 describe('PlaywrightBackend.acceptProgramApplication', () => {
+  const invitesListHtml =
+    '<tr data-invite-id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" data-org="llo-org" data-status="invited"><td data-org>llo-org</td></tr>';
+
   it('looks up the LLO org slug from the application list, then POSTs to /a/<llo>/program/.../accept/', async () => {
+    // This path POSTs at the INVITED org's own url, so since ace#2954 it is
+    // gated on ACE actually controlling that org. Declare it controlled here —
+    // the refusal case is the next test.
+    vi.stubEnv('ACE_CONNECT_NM_ORG', 'llo-org');
     const captured: CapturedRequest[] = [];
-    const invitesListHtml =
-      '<tr data-invite-id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" data-org="llo-org" data-status="invited"><td data-org>llo-org</td></tr>';
     const request = makeRequestContext(
       [
         // 1) listInvites → GET /a/<pm_org>/program/
@@ -1090,6 +1095,33 @@ describe('PlaywrightBackend.acceptProgramApplication', () => {
     expect(acceptPost.url).toBe(
       '/a/llo-org/program/prog-uuid/application/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/accept/',
     );
+    vi.unstubAllEnvs();
+  });
+
+  it('REFUSES to accept for an org ACE does not control, and sends no accept POST (ace#2954)', async () => {
+    // The ace#2954 case: ACE accepted a programme invitation on behalf of a
+    // real external partner it does not control. Connect's API allows it —
+    // ProgramApplicationAcceptView only checks the caller is an admin of the
+    // PROGRAMME's org — and there is no undo, so the refusal lives here.
+    vi.stubEnv('ACE_CONNECT_PM_ORG', 'ace-pm-org');
+    vi.stubEnv('ACE_CONNECT_NM_ORG', 'ace-nm-org');
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{ status: 200, body: invitesListHtml }],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.acceptProgramApplication({
+        organization_slug: 'ace-pm-org',
+        program_id: 'prog-uuid',
+        application_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      }),
+    ).rejects.toThrow(/does not control it/);
+    // The partner's url must never be touched — not even the CSRF seed GET.
+    expect(captured.some((c) => c.url.includes('/accept/'))).toBe(false);
+    expect(captured.some((c) => c.method === 'POST')).toBe(false);
+    vi.unstubAllEnvs();
   });
 
   it('throws when the application_id is not found', async () => {
