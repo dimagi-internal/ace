@@ -59,6 +59,7 @@ import type {
   StepResult,
   TestUserRegistrationResult,
   UiDumpResult,
+  VideoArtifact,
 } from '../types.js';
 import {
   CLI,
@@ -71,7 +72,11 @@ import {
   normalizeUploads,
   parseCliJson,
   readyBaseline,
+  readyBaselineComplete,
+  readyBaselineFailed,
+  readyBootPath,
   readyMarker,
+  readyTimings,
   routePath,
   type ArtifactRow,
   type CliOp,
@@ -185,6 +190,37 @@ interface HeldLease {
   installed: Map<string, ApkInfo>;
   /** Set when an op proved the machine sick (emulator gone); ensure replaces it. */
   sick: boolean;
+  /**
+   * True once an ensure has HANDED this machine to a caller. A machine a
+   * prewarm acquired is fresh until then: the first blocking ensure reports
+   * `reused: false`, so the heal skips the `pm clear` a fresh machine never
+   * needs.
+   */
+  delivered: boolean;
+  /** The fingerprint `apply-baseline` reported on this machine (null = not re-applied by the client). */
+  baselineApplied: string | null;
+  /** The baked CLI answered `usage` to `record start`: no recording on this machine. */
+  recordUnsupported: boolean;
+}
+
+/** Recording options for one `runRecipe` (the lease twin of `screen-recorder.ts`). */
+export interface LeaseRecordOpts {
+  recipeId: string;
+  dispatchId: string;
+  /** `ACE_MOBILE_RECORD_BITRATE` (default 1M). */
+  bitRate?: string;
+  /** `ACE_MOBILE_RECORD_SIZE` (default 540x1140). */
+  size?: string;
+}
+
+/** What `applyBaseline` did on the leased machine. */
+export interface LeaseBaselineResult {
+  /** False when the baked CLI has no `apply-baseline` (it answered `usage`). */
+  supported: boolean;
+  ok: boolean;
+  fingerprint: string | null;
+  failed: string[];
+  clockSynced: boolean | null;
 }
 
 /** A file to stage on the lease. `key` (a content hash) makes it reusable for the lease's life. */
@@ -309,6 +345,45 @@ export class LeaseBackend {
    * nursed.
    */
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
+    const info = await this.ensureShared(name);
+    const held = this.held;
+    if (!held) return info;
+    // A machine is "reused" only once an ensure has handed it out before —
+    // not when a prewarm acquired it moments ago (that one is fresh).
+    const reused = held.delivered;
+    held.delivered = true;
+    held.info = { ...held.info, lease: this.facts(held, reused) };
+    return held.info;
+  }
+
+  /**
+   * Start acquiring (or confirm) this process's lease WITHOUT waiting for it
+   * to be ready, so the machine boots while the caller does other prep. The
+   * next `ensureAvdRunning` joins the in-flight acquire instead of starting
+   * a second one. State/selector-map refusals are thrown here, at once;
+   * anything that fails later is logged and the blocking ensure re-acquires.
+   *
+   * Mind the idle window: a machine that becomes ready and then sees no
+   * lease call for `idle_release_s` (900 s) is released, so the blocking
+   * ensure must follow within that — it recovers either way (a lost machine
+   * is replaced), at the cost of a second boot.
+   */
+  async prewarm(name: string): Promise<{ prewarm: 'started' | 'joined' | 'held'; state: string; lease_id: string | null }> {
+    const state = this.resolveState(name);
+    await this.assertStateBaked(state);
+    if (this.acquiring) return { prewarm: 'joined', state, lease_id: this.held?.id ?? null };
+    if (this.held && this.held.state === state && !this.held.sick && this.held.info.status === 'booted') {
+      return { prewarm: 'held', state, lease_id: this.held.id };
+    }
+    this.ensureShared(name).catch((e: unknown) => {
+      logInfo(`lease: prewarm for ${state || 'default'} failed (the next ensure re-acquires): ${(e as Error)?.message ?? e}`);
+    });
+    // Let the acquire POST go out before reporting, so the id is known.
+    await Promise.resolve();
+    return { prewarm: 'started', state, lease_id: this.held?.id ?? null };
+  }
+
+  private ensureShared(name: string): Promise<AvdInfo> {
     if (this.acquiring) return this.acquiring;
     this.acquiring = this.ensureInner(name).finally(() => {
       this.acquiring = null;
@@ -327,7 +402,6 @@ export class LeaseBackend {
           if (lease.status === 'ready') {
             this.absorb(held, lease);
             logInfo(`lease: reusing ${held.id} (${held.instanceId ?? 'instance ?'}) for state=${state || 'default'}`);
-            held.info = { ...held.info, lease: this.facts(held, true) };
             return held.info;
           }
           logInfo(`lease: held ${held.id} is ${lease.status}, not ready — replacing it`);
@@ -428,6 +502,9 @@ export class LeaseBackend {
       uploaded: new Map(),
       installed: new Map(),
       sick: false,
+      delivered: false,
+      baselineApplied: null,
+      recordUnsupported: false,
     };
     this.held = held;
     logInfo(
@@ -438,7 +515,6 @@ export class LeaseBackend {
     try {
       const lease = await this.waitReady(id, created, startedAt);
       this.assertBootedState(held, lease);
-      held.info = { ...held.info, lease: this.facts(held, false) };
       return held.info;
     } catch (e) {
       // Never leave a machine (or a queue slot) behind a failed acquire.
@@ -472,6 +548,15 @@ export class LeaseBackend {
 
   private facts(held: HeldLease, reused: boolean): LeaseFacts {
     const image = readyBaseline(held.readyInfo);
+    const complete = readyBaselineComplete(held.readyInfo);
+    const parity: LeaseFacts['baseline_parity'] =
+      image === null
+        ? 'unreported'
+        : image !== ENVIRONMENT_BASELINE_FINGERPRINT
+          ? 'mismatch'
+          : complete === false
+            ? 'incomplete'
+            : 'match';
     return {
       lease_id: held.id,
       instance_id: held.instanceId,
@@ -483,7 +568,9 @@ export class LeaseBackend {
       cli_version: typeof held.readyInfo?.cli_version === 'string' ? held.readyInfo.cli_version : null,
       image_baseline_fingerprint: image,
       expected_baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT,
-      baseline_parity: image === null ? 'unreported' : image === ENVIRONMENT_BASELINE_FINGERPRINT ? 'match' : 'mismatch',
+      baseline_parity: parity,
+      baseline_failed: readyBaselineFailed(held.readyInfo),
+      boot_path: readyBootPath(held.readyInfo),
       long_poll: this.longPoll,
     };
   }
@@ -523,7 +610,7 @@ export class LeaseBackend {
           lease_queue_s: queuedS,
           lease_provision_s: provisioningSince === null ? 0 : Math.round((this.now() - provisioningSince) / 1000),
           lease_total_s: totalS,
-          ...(marker?.timings ?? {}),
+          ...readyTimings(marker),
         };
         held.info = {
           name: held.state || String(marker?.state ?? 'lease'),
@@ -678,7 +765,68 @@ export class LeaseBackend {
     };
     if (lease.status !== 'ready') return { lease: leaseView };
     const { json } = await this.runCli('diagnose', {});
+    this.noteCrash(held, json);
     return { ...json, lease: leaseView };
+  }
+
+  /**
+   * diagnose still runs on a machine whose emulator died after ready, and
+   * reports it as data (`crashed: true` / `error: emulator-crashed`, with
+   * `ok: true` because the probe itself ran). Mark the machine sick so the
+   * next ensure replaces it rather than handing it out again.
+   */
+  private noteCrash(held: HeldLease, json: CliResult): void {
+    if (json.crashed === true || json.error === 'emulator-crashed') {
+      if (!held.sick) logInfo(`lease: ${held.id} reports its emulator crashed — the next ensure replaces the machine`);
+      held.sick = true;
+    }
+  }
+
+  // ── Environment baseline ────────────────────────────────────────
+
+  /**
+   * Re-apply the environment baseline on the leased machine
+   * (`ace-mobile apply-baseline`): the same keys the local funnel applies,
+   * computed by the same fingerprint function. Used when ready.json's
+   * fingerprint does not match this ACE's, or reports a failed step.
+   *
+   * A CLI that predates the subcommand answers `usage`; that is reported as
+   * `supported: false` (the caller falls back to the one item it can apply
+   * another way, the GPS fix), never thrown. Any other failure throws.
+   */
+  async applyBaseline(): Promise<LeaseBaselineResult> {
+    const held = this.requireLease('apply-baseline');
+    let json: CliResult;
+    try {
+      ({ json } = await this.runCli('applyBaseline', {}));
+    } catch (e) {
+      if (e instanceof MobileError && e.code === 'LEASE_CLI_USAGE') {
+        logInfo(`lease: the CLI on ${held.id} has no apply-baseline (${e.message.split('\n')[0]})`);
+        return { supported: false, ok: false, fingerprint: null, failed: [], clockSynced: null };
+      }
+      throw e;
+    }
+    const fingerprint =
+      typeof json.fingerprint === 'string' && json.fingerprint
+        ? json.fingerprint
+        : typeof json.baseline_fingerprint === 'string' && json.baseline_fingerprint
+          ? json.baseline_fingerprint
+          : null;
+    const failed = Array.isArray(json.failed) ? json.failed.map(String) : [];
+    const ok = json.ok !== false && failed.length === 0;
+    if (fingerprint) held.baselineApplied = fingerprint;
+    return {
+      supported: true,
+      ok,
+      fingerprint,
+      failed,
+      clockSynced: typeof json.clock_synced === 'boolean' ? json.clock_synced : null,
+    };
+  }
+
+  /** The fingerprint the client already re-applied on the held machine, if any. */
+  get baselineAppliedFingerprint(): string | null {
+    return this.held?.baselineApplied ?? null;
   }
 
   // ── APK ─────────────────────────────────────────────────────────
@@ -782,6 +930,9 @@ export class LeaseBackend {
       fromOtpRecipe: args.fromOtpRecipe,
       creds: credsUri,
     });
+    if (typeof json.upload_error === 'string' && json.upload_error) {
+      logInfo(`lease: register-test-user could not upload its debug output (${json.upload_error}) — registration itself is unaffected`);
+    }
     const alreadyRegistered = Boolean(json.already_registered);
     // The CLI used to echo the backup code; it now redacts it to
     // `backup_code_set`. Report what local reports: the code it set.
@@ -869,7 +1020,10 @@ export class LeaseBackend {
   }> {
     if (!this.held) return {};
     const [diag, dump, shot] = await Promise.allSettled([
-      this.runCli('diagnose', {}).then((c) => c.json as Record<string, unknown>),
+      this.runCli('diagnose', {}).then((c) => {
+        if (this.held) this.noteCrash(this.held, c.json);
+        return c.json as Record<string, unknown>;
+      }),
       this.captureUiDump('lease'),
       this.screenshot(args.destDir, args.screenshotName),
     ]);
@@ -945,6 +1099,15 @@ export class LeaseBackend {
       paletteKey?: string;
       captureAllBoundaries?: boolean;
       onProgress?: RecipeProgressListener;
+      /**
+       * Record the walk (`ace-mobile record start|stop`), as the local backend
+       * does around every attempt. Absent = no recording (the client omits it
+       * when `ACE_MOBILE_RECORD=off`). Best-effort: a recording failure never
+       * changes the verdict.
+       */
+      record?: LeaseRecordOpts;
+      /** Where a recorded video is pushed — on success AND when the walk throws. */
+      videoSink?: VideoArtifact[];
     } = {},
   ): Promise<RecipeRunResult> {
     let body: string;
@@ -986,137 +1149,148 @@ export class LeaseBackend {
     const chunkUris = opts.paletteTarB64 ? uris.slice(1) : uris;
 
     const timings: RemoteOpTiming[] = [];
-    const screenshots: ScreenshotEntry[] = [];
-    const steps: StepResult[] = [];
-    const warnings: string[] = [];
-    const stdoutParts: string[] = [];
-    const stderrParts: string[] = [];
-    let failingStdout = '';
-    let failingStderr = '';
-    let lastExit = 0;
-    let completed = 0;
-    let lastCompletedScreenshot: string | null = null;
-    let pendingDownload: Promise<void> | null = null;
-    const envArgs = Object.entries(env ?? {}).map(([k, v]) => `${k}=${v}`);
+    // Recording starts after the inputs are staged (upload time is not walk
+    // time) and stops in `finally`, so a stalled or thrown walk — the case a
+    // video is worth most — still yields its footage.
+    const recording = opts.record ? await this.startRecording(opts.record, timings) : null;
+    try {
+      const screenshots: ScreenshotEntry[] = [];
+      const steps: StepResult[] = [];
+      const warnings: string[] = [];
+      const stdoutParts: string[] = [];
+      const stderrParts: string[] = [];
+      let failingStdout = '';
+      let failingStderr = '';
+      let lastExit = 0;
+      let completed = 0;
+      let lastCompletedScreenshot: string | null = null;
+      let pendingDownload: Promise<void> | null = null;
+      const envArgs = Object.entries(env ?? {}).map(([k, v]) => `${k}=${v}`);
 
-    for (const [i, chunk] of chunks.entries()) {
-      const budget = resolveChunkTimeout({ stepCount: countRecipeSteps(chunk.yaml) });
-      const cliTimeoutS = Math.ceil(budget.timeoutMs / 1000);
-      emitProgress(opts.onProgress, {
-        kind: 'chunk-start',
-        chunkIndex: i + 1,
-        chunksTotal: chunks.length,
-        screenshotName: chunk.screenshotName ?? null,
-      });
-      const call = await this.runCli(
-        'runRecipe',
-        { recipe: chunkUris[i], palette, env: envArgs, timeoutS: cliTimeoutS },
-        { timeoutS: cliTimeoutS + EXEC_OVERHEAD_S },
-      );
-      const { json, exec } = call;
-      if (i === 0) call.timing.upload_ms = uploadMs;
-      timings.push(call.timing);
+      for (const [i, chunk] of chunks.entries()) {
+        const budget = resolveChunkTimeout({ stepCount: countRecipeSteps(chunk.yaml) });
+        const cliTimeoutS = Math.ceil(budget.timeoutMs / 1000);
+        emitProgress(opts.onProgress, {
+          kind: 'chunk-start',
+          chunkIndex: i + 1,
+          chunksTotal: chunks.length,
+          screenshotName: chunk.screenshotName ?? null,
+        });
+        const call = await this.runCli(
+          'runRecipe',
+          { recipe: chunkUris[i], palette, env: envArgs, timeoutS: cliTimeoutS },
+          { timeoutS: cliTimeoutS + EXEC_OVERHEAD_S },
+        );
+        const { json, exec } = call;
+        if (i === 0) call.timing.upload_ms = uploadMs;
+        timings.push(call.timing);
 
-      const exitCode = typeof json.exit_code === 'number' ? json.exit_code : (exec.exit_code ?? 1);
-      const label = multi ? `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n` : '';
-      const stdout = typeof json.stdout === 'string' ? json.stdout : (exec.stdout_tail ?? '');
-      const stderr = typeof json.stderr === 'string' ? json.stderr : '';
-      stdoutParts.push(label + stdout);
-      stderrParts.push(label + stderr);
-      if (typeof json.upload_error === 'string' && json.upload_error) {
-        warnings.push(`chunk ${i + 1}/${chunks.length}: the machine could not upload every artifact (${json.upload_error}) — some files may be missing`);
-      }
-      if (Array.isArray(json.steps)) {
-        for (const st of json.steps as Parameters<typeof normalizeRemoteStep>[0][]) {
-          steps.push({ ...normalizeRemoteStep(st), index: steps.length });
+        const exitCode = typeof json.exit_code === 'number' ? json.exit_code : (exec.exit_code ?? 1);
+        const label = multi ? `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n` : '';
+        const stdout = typeof json.stdout === 'string' ? json.stdout : (exec.stdout_tail ?? '');
+        const stderr = typeof json.stderr === 'string' ? json.stderr : '';
+        stdoutParts.push(label + stdout);
+        stderrParts.push(label + stderr);
+        if (typeof json.upload_error === 'string' && json.upload_error) {
+          warnings.push(`chunk ${i + 1}/${chunks.length}: the machine could not upload every artifact (${json.upload_error}) — some files may be missing`);
         }
-      }
-      emitProgress(opts.onProgress, {
-        kind: 'chunk-done',
-        chunkIndex: i + 1,
-        chunksTotal: chunks.length,
-        screenshotName: chunk.screenshotName ?? null,
-        exitCode,
-      });
-
-      // This chunk's artifacts download while the dump window (if any) runs.
-      if (pendingDownload) await pendingDownload;
-      const download = this.downloadChunk(call.outRel, screenshotDir, multi ? `chunks/${pad(i + 1)}` : undefined, call.timing)
-        .then((shots) => {
-          screenshots.push(...shots);
+        if (Array.isArray(json.steps)) {
+          for (const st of json.steps as Parameters<typeof normalizeRemoteStep>[0][]) {
+            steps.push({ ...normalizeRemoteStep(st), index: steps.length });
+          }
+        }
+        emitProgress(opts.onProgress, {
+          kind: 'chunk-done',
+          chunkIndex: i + 1,
+          chunksTotal: chunks.length,
+          screenshotName: chunk.screenshotName ?? null,
+          exitCode,
         });
 
-      if (json.error === 'recipe-timeout') {
-        await download.catch(() => {});
-        throw new MobileError(
-          'MAESTRO_STALL',
-          `maestro wedged on the lease (no exit within ${cliTimeoutS}s, budget basis ${budget.basis}` +
-            `${budget.stepCount === null ? '' : ` over ${budget.stepCount} step(s)`}) on chunk ${i + 1}/${chunks.length} ` +
-            `of ${path.basename(recipePath)}` +
-            (lastCompletedScreenshot
-              ? ` — last completed step ended at screenshot "${lastCompletedScreenshot}"`
-              : ' — no chunk had completed yet'),
-          'Do NOT assume the walk failed: on-device progress up to the stall is real (verify server-side, ' +
-            'e.g. connect_get_learn_progress) — a stalled dispatch after the productive work has completed is ' +
-            `the ace#1164 signature. The chunk's own artifacts were downloaded into ${screenshotDir}.`,
-          {
-            recipe: recipePath,
-            chunks_completed: completed,
-            chunks_total: chunks.length,
-            last_completed_screenshot: lastCompletedScreenshot,
-            timeout_ms: cliTimeoutS * 1000,
-            timeout_basis: budget.basis,
-            step_count: budget.stepCount,
-            screenshot_dir: screenshotDir,
-          },
-        );
-      }
+        // This chunk's artifacts download while the dump window (if any) runs.
+        if (pendingDownload) await pendingDownload;
+        const download = this.downloadChunk(call.outRel, screenshotDir, multi ? `chunks/${pad(i + 1)}` : undefined, call.timing)
+          .then((shots) => {
+            screenshots.push(...shots);
+          });
 
-      lastExit = exitCode;
-      if (exitCode !== 0) {
-        failingStdout = label + stdout;
-        failingStderr = label + stderr;
-        pendingDownload = download;
-        break;
+        if (json.error === 'recipe-timeout') {
+          await download.catch(() => {});
+          throw new MobileError(
+            'MAESTRO_STALL',
+            `maestro wedged on the lease (no exit within ${cliTimeoutS}s, budget basis ${budget.basis}` +
+              `${budget.stepCount === null ? '' : ` over ${budget.stepCount} step(s)`}) on chunk ${i + 1}/${chunks.length} ` +
+              `of ${path.basename(recipePath)}` +
+              (lastCompletedScreenshot
+                ? ` — last completed step ended at screenshot "${lastCompletedScreenshot}"`
+                : ' — no chunk had completed yet'),
+            'Do NOT assume the walk failed: on-device progress up to the stall is real (verify server-side, ' +
+              'e.g. connect_get_learn_progress) — a stalled dispatch after the productive work has completed is ' +
+              `the ace#1164 signature. The chunk's own artifacts were downloaded into ${screenshotDir}.`,
+            {
+              recipe: recipePath,
+              chunks_completed: completed,
+              chunks_total: chunks.length,
+              last_completed_screenshot: lastCompletedScreenshot,
+              timeout_ms: cliTimeoutS * 1000,
+              timeout_basis: budget.basis,
+              step_count: budget.stepCount,
+              screenshot_dir: screenshotDir,
+            },
+          );
+        }
+
+        lastExit = exitCode;
+        if (exitCode !== 0) {
+          failingStdout = label + stdout;
+          failingStderr = label + stderr;
+          pendingDownload = download;
+          break;
+        }
+        completed++;
+        if (chunk.screenshotName) {
+          lastCompletedScreenshot = chunk.screenshotName;
+          // The quiet window between Maestro processes — the only time
+          // uiautomator is free (docs/learnings/2026-05-14-atlas-side-channel-capture.md).
+          const name = chunk.screenshotName;
+          const dumpP = this.uiDumpTimed()
+            .then(async ({ dump, timing }) => {
+              timings.push(timing);
+              if (dump.xml) await fs.writeFile(path.join(screenshotDir, `${name}.xml`), dump.xml, 'utf8');
+            })
+            .catch((e) => logInfo(`lease: ui-dump after chunk ${i + 1} (${name}) failed: ${(e as Error).message}`));
+          pendingDownload = Promise.all([download, dumpP]).then(() => {});
+        } else {
+          pendingDownload = download;
+        }
+        // Don't start the next chunk until the dump window has closed.
+        if (chunk.screenshotName && pendingDownload) await pendingDownload.catch(() => {});
       }
-      completed++;
-      if (chunk.screenshotName) {
-        lastCompletedScreenshot = chunk.screenshotName;
-        // The quiet window between Maestro processes — the only time
-        // uiautomator is free (docs/learnings/2026-05-14-atlas-side-channel-capture.md).
-        const name = chunk.screenshotName;
-        const dumpP = this.uiDumpTimed()
-          .then(async ({ dump, timing }) => {
-            timings.push(timing);
-            if (dump.xml) await fs.writeFile(path.join(screenshotDir, `${name}.xml`), dump.xml, 'utf8');
-          })
-          .catch((e) => logInfo(`lease: ui-dump after chunk ${i + 1} (${name}) failed: ${(e as Error).message}`));
-        pendingDownload = Promise.all([download, dumpP]).then(() => {});
-      } else {
-        pendingDownload = download;
+      if (pendingDownload) await pendingDownload;
+
+      const aggStdout = stdoutParts.join('\n');
+      const aggStderr = stderrParts.join('\n');
+      const result = finalizeRecipeResult({
+        exitCode: lastExit,
+        stdout: aggStdout,
+        stderr: aggStderr,
+        screenshotsDir: screenshotDir,
+        screenshots: screenshots.sort((a, b) => a.path.localeCompare(b.path)),
+        classifyStdout: lastExit === 0 ? aggStdout : failingStdout,
+        classifyStderr: lastExit === 0 ? aggStderr : failingStderr,
+        walkCompleted: completed >= chunks.length,
+      });
+      if (warnings.length) result.warnings = [...(result.warnings ?? []), ...warnings];
+      if (steps.length) result.steps = steps;
+      result.remoteTimings = timings;
+      if (!result.failure) result.failure = classifyMaestroFailure({ stderr: aggStderr, stdout: aggStdout, exitCode: lastExit });
+      return result;
+    } finally {
+      if (recording) {
+        const video = await this.stopRecording(recording, screenshotDir, timings);
+        if (video) opts.videoSink?.push(video);
       }
-      // Don't start the next chunk until the dump window has closed.
-      if (chunk.screenshotName && pendingDownload) await pendingDownload.catch(() => {});
     }
-    if (pendingDownload) await pendingDownload;
-
-    const aggStdout = stdoutParts.join('\n');
-    const aggStderr = stderrParts.join('\n');
-    const result = finalizeRecipeResult({
-      exitCode: lastExit,
-      stdout: aggStdout,
-      stderr: aggStderr,
-      screenshotsDir: screenshotDir,
-      screenshots: screenshots.sort((a, b) => a.path.localeCompare(b.path)),
-      classifyStdout: lastExit === 0 ? aggStdout : failingStdout,
-      classifyStderr: lastExit === 0 ? aggStderr : failingStderr,
-      walkCompleted: completed >= chunks.length,
-    });
-    if (warnings.length) result.warnings = [...(result.warnings ?? []), ...warnings];
-    if (steps.length) result.steps = steps;
-    result.remoteTimings = timings;
-    if (!result.failure) result.failure = classifyMaestroFailure({ stderr: aggStderr, stdout: aggStdout, exitCode: lastExit });
-    return result;
   }
 
   /** List one exec's `--out` and download it: images to the root by basename, the rest under `subdir`. */
@@ -1138,6 +1312,94 @@ export class LeaseBackend {
     timing.download_ms = this.now() - t;
     timing.total_ms += timing.download_ms;
     return shots;
+  }
+
+  // ── Recording (the lease twin of screen-recorder.ts) ────────────
+
+  /**
+   * `ace-mobile record start`. Best-effort: any failure is logged and the
+   * walk runs unrecorded. A CLI without the subcommand (`usage`) turns
+   * recording off for the rest of this machine's life — asking once is
+   * enough. Same file name as local: `<recipeId>.mp4`.
+   */
+  private async startRecording(rec: LeaseRecordOpts, timings: RemoteOpTiming[]): Promise<{ rec: LeaseRecordOpts; name: string } | null> {
+    const held = this.held;
+    if (!held || held.recordUnsupported) return null;
+    const name = `${rec.recipeId}.mp4`;
+    try {
+      const { json, timing } = await this.runCli('recordStart', {
+        name,
+        ...(rec.bitRate ? { bitRate: rec.bitRate } : {}),
+        ...(rec.size ? { size: rec.size } : {}),
+      });
+      timings.push(timing);
+      if (json.ok === false) {
+        logInfo(`lease: record start for ${rec.recipeId} declined (${String(json.error)}: ${String(json.message ?? '')}) — walking unrecorded`);
+        return null;
+      }
+      return { rec, name: typeof json.name === 'string' && json.name ? json.name : name };
+    } catch (e) {
+      if (e instanceof MobileError && e.code === 'LEASE_CLI_USAGE') {
+        held.recordUnsupported = true;
+        logInfo(`lease: the CLI on ${held.id} cannot record (no \`record\` subcommand) — walks on this machine are unrecorded`);
+      } else {
+        logInfo(`lease: record start for ${rec.recipeId} failed: ${(e as Error).message.split('\n')[0]} — walking unrecorded`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * `ace-mobile record stop --out …`, then download the mp4 into
+   * `screenshotDir` as `<recipeId>.mp4` — the path, name and VideoArtifact
+   * shape the local recorder produces. Never throws; an empty or missing
+   * file is no video.
+   */
+  private async stopRecording(
+    started: { rec: LeaseRecordOpts; name: string },
+    screenshotDir: string,
+    timings: RemoteOpTiming[],
+  ): Promise<VideoArtifact | undefined> {
+    if (!this.held) return undefined;
+    const { rec, name } = started;
+    const outRel = `record-${slug(rec.recipeId)}/`;
+    try {
+      const { json, timing } = await this.runCli('recordStop', { name }, { outRel });
+      timings.push(timing);
+      if (json.ok === false) {
+        logInfo(`lease: record stop for ${rec.recipeId}: ${String(json.error)} — no video`);
+        return undefined;
+      }
+      if (typeof json.upload_error === 'string' && json.upload_error) {
+        logInfo(`lease: record stop for ${rec.recipeId} could not upload the video (${json.upload_error})`);
+      }
+      const rows = await this.listArtifacts(outRel);
+      const wanted = typeof json.name === 'string' && json.name ? json.name : name;
+      const row =
+        rows.find((r) => r.relPath === wanted) ??
+        rows.find((r) => r.relPath.split('/').pop() === wanted) ??
+        rows.find((r) => r.relPath.endsWith('.mp4'));
+      if (!row) {
+        logInfo(`lease: record stop for ${rec.recipeId} uploaded no mp4 under ${outRel}`);
+        return undefined;
+      }
+      await fs.mkdir(screenshotDir, { recursive: true });
+      const dest = path.join(screenshotDir, `${rec.recipeId}.mp4`);
+      const t = this.now();
+      await downloadToFile(this.fetchImpl, row.url, dest, this.retryConfig, 'LEASE_DOWNLOAD_FAILED');
+      timing.download_ms = this.now() - t;
+      timing.total_ms += timing.download_ms;
+      const bytes = (await fs.stat(dest)).size;
+      if (bytes === 0) {
+        await fs.rm(dest, { force: true });
+        logInfo(`lease: the recording of ${rec.recipeId} is empty — discarded`);
+        return undefined;
+      }
+      return { path: dest, bytes, recipeId: rec.recipeId, dispatchId: rec.dispatchId, attempt: 1 };
+    } catch (e) {
+      logInfo(`lease: record stop for ${rec.recipeId} failed: ${(e as Error).message.split('\n')[0]} — no video`);
+      return undefined;
+    }
   }
 
   // ── CLI exec plumbing ───────────────────────────────────────────
@@ -1189,9 +1451,17 @@ export class LeaseBackend {
     // line arrives with its head cut off: read the full stdout, then
     // (run-recipe) its result.json.
     if (!json && exec.stdout_url) json = parseCliJson(await this.fetchText(exec.stdout_url).catch(() => ''));
-    if (!json && outRel) {
+    // The CLI sheds detail from its inline line to fit SSM's limit and says
+    // what it cut (`inline_truncated`: steps, artifacts, stdout, stderr);
+    // result.json under --out keeps everything. A truncated line is a
+    // complete answer for every field it did not name, so it stays the
+    // fallback if result.json cannot be read.
+    const truncated = json && Array.isArray(json.inline_truncated) && json.inline_truncated.length > 0;
+    if ((!json || truncated) && outRel) {
       const hit = (await this.listArtifacts(outRel).catch(() => [])).find((r) => r.relPath === 'result.json');
-      if (hit) json = parseCliJson((await this.fetchText(hit.url).catch(() => '')).replace(/\n/g, ' '));
+      const full = hit ? parseCliJson((await this.fetchText(hit.url).catch(() => '')).replace(/\n/g, ' ')) : null;
+      if (full) json = full;
+      else if (truncated) logInfo(`lease: ${cmd} inline result was truncated (${(json!.inline_truncated as unknown[]).join(', ')}) and result.json is unreadable — using the inline copy`);
     }
     timing.result_ms = this.now() - tRes;
     timing.total_ms = this.now() - t0;

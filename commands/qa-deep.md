@@ -1,7 +1,7 @@
 ---
 description: Run deep QA (OCS + apps) against an existing opportunity. Manual gate, not part of /ace:run.
 argument-hint: [<ws>/]<opp-name> [--ocs-only | --apps-only]
-allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__nova__get_form, mcp__plugin_nova_nova__get_app, mcp__nova__get_app]
+allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_ensure_avd_running, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_stop_avd, mcp__plugin_ace_ace-mobile__mobile_diagnose, mcp__plugin_ace_ace-mobile__mobile_capture_ui_dump, mcp__plugin_ace_ace-mobile__mobile_list_session_videos, mcp__plugin_ace_ace-mobile__mobile_clear_session_videos, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__nova__get_form, mcp__plugin_nova_nova__get_app, mcp__nova__get_app]
 ---
 
 # /ace:qa-deep — Manual Deep QA
@@ -163,14 +163,32 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
       -generated deep recipes are reused, not regenerated).
    (Smoke journeys already have authored recipe files from Phase 3 — leave
    them as-is.)
-3. For each journey: call `mobile_run_recipe` against a fresh AVD,
-   capture screenshots into
+3. **Restore the device precondition, then walk.** Call
+   `mobile_ensure_avd_running` (with `prewarm: true` as early as this
+   command allows — before step 2's recipe composition — so a lease's boot
+   overlaps it; then the normal blocking call right before the first
+   journey). It restores the precondition on whichever backend is active —
+   a cold-booted local AVD or a freshly leased emulator machine — with the
+   test user registered and verified, so every journey starts from the same
+   known state rather than whatever a previous session left. Then run the
+   static prerequisite recipes (login, claim/resume — as
+   `app-screenshot-capture` Step 4) and, for each journey, call
+   `mobile_run_recipe`, capturing screenshots into
    `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/`, appending
    entries to `6-qa-and-training/app-screenshot-capture_manifest.yaml`.
    The deep set is authoritative for GRADING when both exist. It does NOT
    write `3-commcare/previews/` — the app previews folder has exactly one
    writer, `app-screenshot-capture` (output previews contract v1, its
    § Step 4.9), so a deep run never replaces or mixes into the apps' previews.
+
+   **Lease idle window.** On the lease backend the machine is released
+   after `idle_release_s` (900 s) with no mobile call. Run the journeys back
+   to back; do the Drive writes and grading (steps 4–5) after the last one,
+   and bridge any unavoidable gap with `mobile_diagnose`. A `LEASE_LOST`
+   means a new machine: `mobile_ensure_avd_running`, then the prerequisite
+   recipes, then repeat the journey. When the last journey is done, call
+   `mobile_stop_avd` to release the machine (on local it stops the AVD,
+   which the next `mobile_ensure_avd_running` cold-boots anyway).
 4. **Record every unreached criterion. Never fake one (dimagi-internal/ace#2670).**
    A criterion carrying `reachability: multi-day` (see
    `skills/app-test-cases/SKILL.md` § Step 5, "Multi-day criteria") needs

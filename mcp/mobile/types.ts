@@ -125,10 +125,26 @@ export interface LeaseFacts {
   image_baseline_fingerprint: string | null;
   /** The fingerprint this ACE version's baseline has (`mcp/mobile/environment-baseline.ts`). */
   expected_baseline_fingerprint: string;
-  /** `match`; `mismatch` (surfaced as a warning); `unreported` (an image that applies no baseline). */
-  baseline_parity: 'match' | 'mismatch' | 'unreported';
-  /** What the client did about a non-`match` parity (e.g. `mock-location-set`). */
+  /**
+   * `match`; `mismatch` (a different fingerprint); `incomplete` (the right
+   * fingerprint, but a baseline step failed at boot — `baseline_failed`
+   * names it); `unreported` (an image that applies no baseline). Anything but
+   * `match` makes the client re-apply it (`baseline_actions`).
+   */
+  baseline_parity: 'match' | 'mismatch' | 'incomplete' | 'unreported';
+  /** Baseline keys the image reported as failed at boot (empty when none). */
+  baseline_failed?: string[];
+  /**
+   * What the client did about a non-`match` parity, in order: `baseline-<parity>`,
+   * then `baseline-applied` / `baseline-partial:<keys>` / `baseline-apply-failed`
+   * (via `ace-mobile apply-baseline`), or — on an image whose CLI predates
+   * apply-baseline — `apply-baseline-unsupported` then `mock-location-set` /
+   * `mock-location-refused` / `mock-location-failed`. `baseline-already-applied`
+   * on a reused lease the client already re-applied it to.
+   */
   baseline_actions?: string[];
+  /** Which boot path the machine took (`snapshot` | `cold` | `cold-fallback`), from ready.json; null if unreported. */
+  boot_path?: string | null;
   /** Whether the broker long-polls (`wait_s`): `yes`, `no` (ignored it), or `unknown` (not yet observed). */
   long_poll: 'yes' | 'no' | 'unknown';
 }

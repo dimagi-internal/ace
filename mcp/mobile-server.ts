@@ -176,13 +176,22 @@ server.tool(
       ),
     oppSlug: z.string().optional().describe('Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG.'),
     runId: z.string().optional().describe('Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID.'),
+    prewarm: z
+      .boolean()
+      .optional()
+      .describe(
+        'true = start the device booting and return AT ONCE, without waiting, registering or verifying. Lease: starts ' +
+          '(or joins) the acquire so the multi-minute boot overlaps your other prep; the next normal call joins it and ' +
+          'heals as usual — make that call within idle_release_s (900 s) of the machine becoming ready. Local: a no-op. ' +
+          'Phase 6 calls this first (qa-and-training Step 0). If a pre-flight gate then halts, call mobile_stop_avd.',
+      ),
   },
-  async ({ avdName, testUser, oppSlug, runId }) => ({
+  async ({ avdName, testUser, oppSlug, runId, prewarm }) => ({
     content: [
       {
         type: 'text',
         text: JSON.stringify(
-          await client.ensureAvdRunning(
+          prewarm ? await client.prewarmAvd(avdName) : await client.ensureAvdRunning(
             avdName,
             testUser || oppSlug || runId ? { testUser, oppSlug, runId } : undefined,
           ),

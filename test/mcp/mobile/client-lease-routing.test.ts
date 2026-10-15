@@ -92,19 +92,131 @@ describe('MobileClient on the lease backend', () => {
     expect(mine?.adb_port).toBeUndefined();
   });
 
-  it('a baseline mismatch is surfaced and the default mock GPS fix applied over the CLI', async () => {
+  function withParity(lease: ReturnType<typeof fakeLease>, extra: Record<string, unknown>) {
+    const base = { name: 'cc-2.64.0', serial: 'lease:i-1', status: 'booted' };
+    return lease.ensureAvdRunning.mockResolvedValue({
+      ...base,
+      lease: {
+        lease_id: 'lease-1', instance_id: 'i-1', expires_at: null, idle_release_s: 900, state: 'cc-2.64.0',
+        selector_map_version: '2.64.0', reused: false, cli_version: '1.1.0', image_baseline_fingerprint: null,
+        expected_baseline_fingerprint: 'x', baseline_parity: 'unreported', long_poll: 'unknown', ...extra,
+      },
+    });
+  }
+
+  it('a baseline that is not `match` is re-applied over ace-mobile apply-baseline (no GPS fallback needed)', async () => {
     const lease = fakeLease();
-    const base = await lease.ensureAvdRunning.getMockImplementation()?.('x');
-    lease.ensureAvdRunning.mockResolvedValue({ ...(base as object), lease: { ...(base as any).lease, baseline_parity: 'unreported' } });
+    withParity(lease, { baseline_parity: 'mismatch', image_baseline_fingerprint: 'deadbeef0000' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client } = makeClient(lease);
+      const info = await client.ensureAvdRunning('cc-2.64.0');
+      expect(lease.applyBaseline).toHaveBeenCalledTimes(1);
+      expect(lease.setLocation).not.toHaveBeenCalled();
+      expect(info.lease?.baseline_actions).toEqual(['baseline-mismatch', 'baseline-applied']);
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/baseline mismatch.*deadbeef0000/);
+      // Applied BEFORE registration, as the local funnel orders it.
+      expect(lease.applyBaseline.mock.invocationCallOrder[0]).toBeLessThan(lease.registerTestUser.mock.invocationCallOrder[0]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a CLI without apply-baseline falls back to the default mock GPS fix', async () => {
+    const lease = fakeLease();
+    withParity(lease, { baseline_parity: 'unreported' });
+    lease.applyBaseline.mockResolvedValue({ supported: false, ok: false, fingerprint: null, failed: [], clockSynced: null });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const { client } = makeClient(lease);
       const info = await client.ensureAvdRunning('cc-2.64.0');
       expect(lease.setLocation).toHaveBeenCalledWith('cc-2.64.0', 8.5167, 12.0022, 480, 12);
-      expect(info.lease?.baseline_actions).toEqual(['baseline-unreported', 'mock-location-set']);
-      expect(warn.mock.calls.flat().join(' ')).toMatch(/baseline unreported/);
+      expect(info.lease?.baseline_actions).toEqual(['baseline-unreported', 'apply-baseline-unsupported', 'mock-location-set']);
     } finally {
       warn.mockRestore();
+    }
+  });
+
+  it('a partial re-apply names the failed keys, and a failed GPS step still gets the GPS fallback', async () => {
+    const lease = fakeLease();
+    withParity(lease, { baseline_parity: 'incomplete', image_baseline_fingerprint: 'x', baseline_failed: ['mock_location_fix'] });
+    lease.applyBaseline.mockResolvedValue({ supported: true, ok: false, fingerprint: 'x', failed: ['mock_location_fix'], clockSynced: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client } = makeClient(lease);
+      const info = await client.ensureAvdRunning('cc-2.64.0');
+      expect(info.lease?.baseline_actions).toEqual(['baseline-incomplete', 'baseline-partial:mock_location_fix', 'mock-location-set']);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a reused machine the client already re-applied the baseline to is not re-applied', async () => {
+    const lease = fakeLease({ reused: true });
+    withParity(lease, { baseline_parity: 'mismatch', reused: true });
+    lease.baselineAppliedFingerprint = 'x';
+    const { client } = makeClient(lease);
+    const info = await client.ensureAvdRunning('cc-2.64.0');
+    expect(lease.applyBaseline).not.toHaveBeenCalled();
+    expect(info.lease?.baseline_actions).toEqual(['baseline-mismatch', 'baseline-already-applied']);
+  });
+
+  it('prewarm starts the lease acquire and returns at once — no heal, no registration', async () => {
+    const { client, lease } = makeClient();
+    const r = await client.prewarmAvd('ACE_Pixel_API_34');
+    expect(r).toMatchObject({ backend: 'lease', prewarm: 'started' });
+    expect(r.note).toMatch(/900 s/);
+    expect(lease!.prewarm).toHaveBeenCalledWith('ACE_Pixel_API_34');
+    expect(lease!.ensureAvdRunning).not.toHaveBeenCalled();
+    expect(lease!.registerTestUser).not.toHaveBeenCalled();
+  });
+
+  it('records the lease walk: record opts go to the lease, the video is normalized, returned and spooled', async () => {
+    const lease = fakeLease();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lease-rec-'));
+    const recipe = path.join(dir, 'journey-learn.yaml');
+    fs.writeFileSync(recipe, 'appId: org.commcare.dalvik\n---\n- launchApp\n');
+    lease.runRecipe.mockImplementation(async (_p: string, _e: unknown, outDir: string, o: any) => {
+      if (!o.record) return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: outDir, screenshots: [] };
+      const mp4 = path.join(outDir, `${o.record.recipeId}.mp4`);
+      fs.writeFileSync(mp4, 'MP4');
+      o.videoSink.push({ path: mp4, bytes: 3, recipeId: o.record.recipeId, dispatchId: o.record.dispatchId, attempt: 1 });
+      return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: outDir, screenshots: [] };
+    });
+    const spooled: string[] = [];
+    const normalize = vi.fn().mockResolvedValue(false);
+    const client = new MobileClient({
+      avd: {} as any,
+      lease: lease as any,
+      bootstrapConfig: null,
+      recorder: { start: vi.fn(), stop: vi.fn(), normalize } as any,
+      spool: { video: (v: any) => { spooled.push(v.path); }, list: () => [], dir: () => dir, clear: () => 0, count: () => 0 } as any,
+    } as any);
+    const saved = process.env.ACE_MOBILE_RECORD;
+    const savedRoot = process.env.ACE_SCREENSHOT_ROOT;
+    process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
+    delete process.env.ACE_MOBILE_RECORD;
+    try {
+      const r = await client.runRecipe(recipe, {}, path.join(dir, 'out'), 'cc-2.64.0');
+      const o = lease.runRecipe.mock.calls[0][3];
+      expect(o.record).toMatchObject({ recipeId: 'journey-learn', bitRate: '1M', size: '540x1140' });
+      expect(o.record.dispatchId).toBeTruthy();
+      expect(normalize).toHaveBeenCalledTimes(1);
+      expect(r.videos).toHaveLength(1);
+      expect(r.videos![0]).toMatchObject({ recipeId: 'journey-learn', attempt: 1 });
+      expect(r.videos![0].path).toBe(path.join(dir, 'out', 'journey-learn', 'journey-learn.mp4'));
+      expect(r.videos![0].provenance?.recipe_id).toBe('journey-learn');
+      expect(spooled).toEqual([r.videos![0].path]);
+
+      process.env.ACE_MOBILE_RECORD = 'off';
+      await client.runRecipe(recipe, {}, path.join(dir, 'out2'), 'cc-2.64.0');
+      expect(lease.runRecipe.mock.calls[1][3].record).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.ACE_MOBILE_RECORD;
+      else process.env.ACE_MOBILE_RECORD = saved;
+      if (savedRoot === undefined) delete process.env.ACE_SCREENSHOT_ROOT;
+      else process.env.ACE_SCREENSHOT_ROOT = savedRoot;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 

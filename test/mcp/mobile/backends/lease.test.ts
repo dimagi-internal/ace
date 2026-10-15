@@ -344,6 +344,8 @@ describe('LeaseBackend lifecycle', () => {
       image_baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT,
       expected_baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT,
       baseline_parity: 'match',
+      baseline_failed: [],
+      boot_path: null,
       long_poll: 'unknown',
     });
   });
@@ -1269,5 +1271,234 @@ describe('LeaseBackend against canopy-web refusal texts', () => {
     const err = await lb.repairDriver().catch((e) => e);
     expect(err.code).toBe('LEASE_LOST');
     expect(err.remediation).toBe(LEASE_RESTORE_HINT);
+  });
+});
+
+describe('LeaseBackend prewarm', () => {
+  it('starts the acquire and returns at once; the blocking ensure joins it and reports a FRESH machine', async () => {
+    const b = new FakeBroker();
+    b.leaseStates = [{ status: 'provisioning' }, { status: 'provisioning' }, { status: 'ready' }];
+    b.readyInfo = { ok: true, state: 'cc-2.63.0' };
+    const lb = backend(b);
+    const p = await lb.prewarm('cc-2.63.0');
+    expect(p).toMatchObject({ prewarm: 'started', state: 'cc-2.63.0' });
+    const info = await lb.ensureAvdRunning('cc-2.63.0');
+    expect(b.callsTo('POST', /^\/api\/capabilities\/leases$/)).toHaveLength(1);
+    expect(info.lease?.reused).toBe(false);
+    // Handed out once: the next ensure is a reuse.
+    expect((await lb.ensureAvdRunning('cc-2.63.0')).lease?.reused).toBe(true);
+    expect(await lb.prewarm('cc-2.63.0')).toMatchObject({ prewarm: 'held', lease_id: 'lease-1' });
+  });
+
+  it('a prewarm that completed before the blocking ensure still reports the machine fresh (no wasted pm clear)', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: true, state: 'cc-2.63.0' };
+    const lb = backend(b);
+    await lb.prewarm('cc-2.63.0');
+    for (let i = 0; i < 20 && lb.leaseId === null; i++) await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 10));
+    expect((await lb.ensureAvdRunning('cc-2.63.0')).lease?.reused).toBe(false);
+    expect(b.callsTo('POST', /^\/api\/capabilities\/leases$/)).toHaveLength(1);
+  });
+
+  it('refuses a state/selector-map mismatch at once, before any machine is acquired', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b, { apkVersion: () => '2.64.0' });
+    await expect(lb.prewarm('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_STATE_SELECTOR_MISMATCH' });
+    expect(b.callsTo('POST', /^\/api\/capabilities\/leases$/)).toHaveLength(0);
+  });
+
+  it('a background failure is not thrown from prewarm; the blocking ensure surfaces it typed', async () => {
+    const b = new FakeBroker();
+    b.leaseStates = [{ status: 'failed', reason: 'boot hook died' }];
+    const lb = backend(b);
+    expect((await lb.prewarm('cc-2.63.0')).prewarm).toBe('started');
+    await expect(lb.ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_READINESS_FAILED' });
+  });
+});
+
+describe('LeaseBackend ready.json readers', () => {
+  it('a matching fingerprint whose boot step failed is `incomplete`, naming the key; boot_path and loose timings are read', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = {
+      ok: true, state: 'cc-2.63.0', boot_path: { path: 'snapshot', detail: 'cc-2.63.0 quickboot' }, hook_s: 41.5,
+      baseline: { fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT, complete: false, failed: ['mock_location_fix'] },
+      timings: { emulator_boot_s: 30 },
+    };
+    const info = await backend(b).ensureAvdRunning('cc-2.63.0');
+    expect(info.lease).toMatchObject({ baseline_parity: 'incomplete', baseline_failed: ['mock_location_fix'], boot_path: 'snapshot' });
+    expect(info.timings).toMatchObject({ emulator_boot_s: 30, hook_s: 41.5 });
+  });
+
+  it('accepts a top-level baseline_fingerprint and a bare-string boot_path', async () => {
+    const b = new FakeBroker();
+    b.readyInfo = { ok: true, baseline_fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT, boot_path: 'cold-fallback' };
+    const info = await backend(b).ensureAvdRunning('cc-2.63.0');
+    expect(info.lease).toMatchObject({ baseline_parity: 'match', boot_path: 'cold-fallback' });
+  });
+});
+
+describe('LeaseBackend apply-baseline', () => {
+  it('execs ace-mobile apply-baseline and reports the fingerprint it applied', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['apply-baseline'] = { ok: true, fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT, complete: true, failed: [], clock_synced: true };
+    expect(await lb.applyBaseline()).toEqual({
+      supported: true, ok: true, fingerprint: ENVIRONMENT_BASELINE_FINGERPRINT, failed: [], clockSynced: true,
+    });
+    expect(b.execArgv('apply-baseline')).toEqual(['ace-mobile', 'apply-baseline']);
+    expect(lb.baselineAppliedFingerprint).toBe(ENVIRONMENT_BASELINE_FINGERPRINT);
+  });
+
+  it('a failed step is data (baseline-failed), naming the keys', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['apply-baseline'] = { ok: false, error: 'baseline-failed', message: 'x', fingerprint: 'abc', failed: ['screen_off_timeout'] };
+    expect(await lb.applyBaseline()).toMatchObject({ supported: true, ok: false, failed: ['screen_off_timeout'] });
+  });
+
+  it('a CLI without the subcommand (usage) is supported:false, not a throw', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['apply-baseline'] = { ok: false, error: 'usage', message: "argument cmd: invalid choice: 'apply-baseline'" };
+    expect(await lb.applyBaseline()).toMatchObject({ supported: false, ok: false });
+  });
+});
+
+describe('LeaseBackend crash detection through diagnose', () => {
+  it('diagnose reporting emulator-crashed marks the machine sick: the next ensure replaces it', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli.diagnose = { ok: true, healthy: false, crashed: true, error: 'emulator-crashed', message: 'the emulator died after ready' };
+    const d = await lb.diagnose();
+    expect(d.crashed).toBe(true);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    expect(b.released).toEqual(['lease-1']);
+    expect(lb.leaseId).toBe('lease-2');
+  });
+});
+
+describe('LeaseBackend result.json when the inline line was shortened', () => {
+  it('inline_truncated → the full result.json under --out wins', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    const steps = [0, 1, 2].map((i) => ({ index: i, name: `s${i}`, status: 'pass' }));
+    b.cli['run-recipe'] = { ok: true, exit_code: 0, stdout: 'cut', steps: [], inline_truncated: ['steps', 'stdout'] };
+    b.putArtifact('run-recipe', 'result.json', Buffer.from(JSON.stringify({ ok: true, exit_code: 0, stdout: 'Flow passed', steps })));
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const r = await lb.runRecipe(recipe, {}, path.join(tmp, 'o'));
+    expect(r.steps).toHaveLength(3);
+    expect(r.stdout).toBe('Flow passed');
+  });
+
+  it('an unreadable result.json leaves the inline copy in force', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    b.cli['run-recipe'] = { ok: true, exit_code: 0, stdout: 'inline', steps: [], inline_truncated: ['steps'] };
+    const recipe = path.join(tmp, 'r.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    const r = await lb.runRecipe(recipe, {}, path.join(tmp, 'o'));
+    expect(r.status).toBe('pass');
+    expect(r.stdout).toBe('inline');
+  });
+});
+
+describe('LeaseBackend recording', () => {
+  const MP4 = Buffer.from('\0\0\0\x18ftypisom fake mp4');
+  const rec = { recipeId: 'learn-smoke', dispatchId: 'd-1', bitRate: '2M', size: '720x1520' };
+
+  function recordCli(b: FakeBroker, start: Json = { ok: true, name: 'learn-smoke.mp4' }, stop: Json = { ok: true, name: 'learn-smoke.mp4', bytes: MP4.length }) {
+    b.cli.record = (argv) => (argv[2] === 'start' ? start : stop);
+  }
+  async function walk(b: FakeBroker, lb: LeaseBackend, line: Json = { ok: true, exit_code: 0, stdout: '', stderr: '' }) {
+    b.cli['run-recipe'] = line;
+    const recipe = path.join(tmp, 'learn-smoke.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n- takeScreenshot: a\n- back\n');
+    const sink: import('../../../../mcp/mobile/types.js').VideoArtifact[] = [];
+    const out = path.join(tmp, 'shots');
+    const r = await lb.runRecipe(recipe, {}, out, { record: rec, videoSink: sink }).catch((e) => e);
+    return { r, sink, out };
+  }
+
+  it('record start before the first chunk, record stop after the last; the mp4 lands as <recipeId>.mp4', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    recordCli(b);
+    b.putArtifact('record-learn-smoke', 'learn-smoke.mp4', MP4);
+    const { r, sink, out } = await walk(b, lb);
+    const order = [...b.execs.values()].map((e) => e.argv.slice(1, 3).join(' ').replace(/ --.*/, ''));
+    expect(order[0]).toBe('record start');
+    expect(order[order.length - 1]).toBe('record stop');
+    expect(order.filter((o) => o.startsWith('run-recipe'))).toHaveLength(2);
+    const start = b.allExecArgv('record').find((a) => a[2] === 'start')!;
+    expect(start).toEqual(['ace-mobile', 'record', 'start', '--name', 'learn-smoke.mp4', '--bit-rate', '2M', '--size', '720x1520']);
+    const stop = b.allExecArgv('record').find((a) => a[2] === 'stop')!;
+    expect(stop[stop.indexOf('--out') + 1]).toMatch(/^s3:\/\/cap-bucket\/leases\/lease-1\/i-0abc\/out\/record-learn-smoke-/);
+    expect(sink).toEqual([{ path: path.join(out, 'learn-smoke.mp4'), bytes: MP4.length, recipeId: 'learn-smoke', dispatchId: 'd-1', attempt: 1 }]);
+    expect(fs.readFileSync(path.join(out, 'learn-smoke.mp4'))).toEqual(MP4);
+    expect(r.screenshots.map((s: { path: string }) => path.basename(s.path))).not.toContain('learn-smoke.mp4');
+    expect(r.remoteTimings.map((t: { op: string }) => t.op)).toEqual(expect.arrayContaining(['record start', 'record stop']));
+  });
+
+  it('a stalled walk still stops the recording and yields its footage', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    recordCli(b);
+    b.putArtifact('record-learn-smoke', 'learn-smoke.mp4', MP4);
+    const { r, sink } = await walk(b, lb, { ok: false, exit_code: 124, error: 'recipe-timeout', message: 'x' });
+    expect(r.code).toBe('MAESTRO_STALL');
+    expect(sink).toHaveLength(1);
+  });
+
+  it('a CLI without `record` (usage) walks unrecorded, and is asked only once per machine', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    recordCli(b, { ok: false, error: 'usage', message: "argument cmd: invalid choice: 'record'" });
+    const first = await walk(b, lb);
+    expect(first.r.status).toBe('pass');
+    expect(first.sink).toEqual([]);
+    await walk(b, lb);
+    expect(b.allExecArgv('record')).toHaveLength(1);
+  });
+
+  it('a failing stop, or an empty file, is no video — never a changed verdict', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    recordCli(b, undefined, { ok: false, error: 'no-recording', message: 'none running' });
+    const a = await walk(b, lb);
+    expect(a.r.status).toBe('pass');
+    expect(a.sink).toEqual([]);
+
+    const b2 = new FakeBroker();
+    const lb2 = backend(b2);
+    await lb2.ensureAvdRunning('cc-2.63.0');
+    recordCli(b2);
+    b2.putArtifact('record-learn-smoke', 'learn-smoke.mp4', Buffer.alloc(0));
+    const c = await walk(b2, lb2);
+    expect(c.sink).toEqual([]);
+    expect(fs.existsSync(path.join(c.out, 'learn-smoke.mp4'))).toBe(false);
+  });
+
+  it('no record opts → no record exec at all', async () => {
+    const b = new FakeBroker();
+    const lb = backend(b);
+    await lb.ensureAvdRunning('cc-2.63.0');
+    recordCli(b);
+    b.cli['run-recipe'] = { ok: true, exit_code: 0 };
+    const recipe = path.join(tmp, 'x.yaml');
+    fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
+    await lb.runRecipe(recipe, {}, path.join(tmp, 'o'));
+    expect(b.allExecArgv('record')).toHaveLength(0);
   });
 });

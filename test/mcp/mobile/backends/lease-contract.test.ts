@@ -68,7 +68,12 @@ describe('lease-contract.ts ↔ the in-VM ace-mobile CLI', () => {
     if (fs.existsSync(manifest)) expect(fs.readFileSync(manifest, 'utf8')).toMatch(/allow:\s*\[\s*ace-mobile\s*\]/);
   });
 
-  it.each(Object.entries(CLI))('%s: subcommand and every flag exist on the CLI', (_name, op) => {
+  // An `optional` op is newer than some baked images: the client falls back
+  // on its absence (LEASE_CLI_USAGE), so it is pinned only once the CLI
+  // declares it — and then exactly like every other op.
+  const required = Object.entries(CLI).filter(([, op]) => !('optional' in op && op.optional) || cli.subcommands[op.sub[0]]);
+
+  it.each(required)('%s: subcommand and every flag exist on the CLI', (_name, op) => {
     const sub = cli.subcommands[op.sub[0]];
     expect(sub, `the CLI has no subcommand ${op.sub[0]}`).toBeDefined();
     // Positional words after the subcommand (snapshot save|load) must be choices.
@@ -82,6 +87,12 @@ describe('lease-contract.ts ↔ the in-VM ace-mobile CLI', () => {
     for (const req of sub.required) {
       expect(Object.values(op.flags), `${op.sub[0]} requires ${req}; the contract never sends it`).toContain(req);
     }
+  });
+
+  it('only ops a fallback exists for may be optional', () => {
+    const optional = Object.entries(CLI).filter(([, op]) => 'optional' in op && op.optional).map(([n]) => n).sort();
+    // applyBaseline falls back to the GPS fix; recording is best-effort by contract.
+    expect(optional).toEqual(['applyBaseline', 'recordStart', 'recordStop']);
   });
 
   it('cliArgv repeats list flags and drops undefined ones', () => {

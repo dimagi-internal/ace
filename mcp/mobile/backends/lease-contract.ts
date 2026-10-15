@@ -87,7 +87,16 @@ export interface ReadyMarker {
    * absent from an image that applies none. Read through `readyBaseline`.
    */
   baseline_fingerprint?: string;
-  baseline?: { fingerprint?: string; keys?: string[] } | null;
+  baseline?: {
+    fingerprint?: string;
+    keys?: string[];
+    /** False when a baseline step failed at boot (`failed` names the keys). */
+    complete?: boolean;
+    failed?: string[];
+    clock_synced?: boolean;
+  } | null;
+  /** Which boot path ran (`snapshot` | `cold` | `cold-fallback`), as a string or `{path, detail}`. */
+  boot_path?: unknown;
 }
 
 /** The baseline fingerprint a ready marker reports, whichever shape the image used. */
@@ -97,6 +106,62 @@ export function readyBaseline(marker: Partial<ReadyMarker> | null | undefined): 
   const b = marker.baseline;
   if (b && typeof b === 'object' && typeof b.fingerprint === 'string' && b.fingerprint) return b.fingerprint;
   return null;
+}
+
+/**
+ * Whether the boot-time baseline completed. `false` only when the image says
+ * a step failed (`baseline.complete === false`, or a non-empty `failed`);
+ * null when it reports no baseline object at all.
+ */
+export function readyBaselineComplete(marker: Partial<ReadyMarker> | null | undefined): boolean | null {
+  const b = marker?.baseline;
+  if (!b || typeof b !== 'object') return null;
+  if (b.complete === false) return false;
+  if (Array.isArray(b.failed) && b.failed.length > 0) return false;
+  return true;
+}
+
+/** The keys a ready marker says failed at boot (empty when none / unreported). */
+export function readyBaselineFailed(marker: Partial<ReadyMarker> | null | undefined): string[] {
+  const b = marker?.baseline;
+  return b && typeof b === 'object' && Array.isArray(b.failed) ? b.failed.map(String) : [];
+}
+
+/**
+ * The boot path ready.json names — `snapshot`, `cold`, `cold-fallback` — read
+ * tolerantly: a bare string, `{path}`, `{boot_path}`, `{mode}`, or the CLI's
+ * `{raw: "path=…"}` for an unparseable file. Null when absent.
+ */
+export function readyBootPath(marker: Partial<ReadyMarker> | null | undefined): string | null {
+  const v = marker?.boot_path;
+  if (typeof v === 'string') return v.trim() || null;
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  for (const k of ['path', 'boot_path', 'mode']) {
+    if (typeof o[k] === 'string' && o[k]) return o[k] as string;
+  }
+  if (typeof o.raw === 'string') {
+    const m = o.raw.match(/(?:^|\s)(?:path|boot_path)=(\S+)/);
+    return m ? m[1] : o.raw.trim().split(/\s+/)[0] || null;
+  }
+  return null;
+}
+
+/**
+ * Boot timings from a ready marker: its `timings` object, plus any numeric
+ * top-level `*_s` field an image reports outside it. Non-numbers are dropped.
+ */
+export function readyTimings(marker: Partial<ReadyMarker> | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!marker) return out;
+  for (const [k, v] of Object.entries(marker as Record<string, unknown>)) {
+    if (/_s$/.test(k) && typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  }
+  const t = marker.timings;
+  if (t && typeof t === 'object') {
+    for (const [k, v] of Object.entries(t)) if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
 }
 
 /** canopy-web `CapabilityLeaseOut` (apps/capabilities/schemas.py), the fields this client reads. */
@@ -321,6 +386,13 @@ export interface CliOp {
    * dump that could not be taken). Everything else with `ok: false` throws.
    */
   dataErrors?: readonly string[];
+  /**
+   * A subcommand newer than some baked images. The client tolerates its
+   * absence — an older CLI answers `error: usage` (argparse: invalid choice),
+   * and the caller falls back — and the contract test pins its flags only
+   * once the CLI fixture declares it.
+   */
+  optional?: boolean;
 }
 
 // Pinned against infra/capabilities/android-emulator/image/cli/ace_mobile.py
@@ -363,6 +435,45 @@ export const CLI = {
     flags: { longitude: '--lon', latitude: '--lat', altitude: '--alt', satellites: '--sats' },
     timeoutS: 60,
     dataErrors: ['geo-fix-failed'],
+  },
+  // The environment baseline the local funnel applies every dispatch
+  // (`mcp/mobile/environment-baseline.ts`): the image applies it at boot and
+  // reports its fingerprint in ready.json; the client re-applies it over this
+  // when the fingerprint does not match. Prints `{ok, fingerprint, keys,
+  // complete, failed[], clock_synced, steps[]}`; a step that failed is data
+  // (`baseline-failed`), not a throw.
+  applyBaseline: {
+    sub: ['apply-baseline'],
+    flags: {},
+    timeoutS: 180,
+    dataErrors: ['baseline-failed'],
+    optional: true,
+  },
+  // On-device screen recording around a recipe — the lease twin of
+  // `mcp/mobile/screen-recorder.ts` (`screenrecord --time-limit 0`, stopped
+  // with SIGINT so the moov atom is written). `record start` returns at once
+  // with the recorder running detached on the machine; `record stop` stops it,
+  // waits for the file to settle, and uploads `<name>` under `--out`.
+  // ASSUMED contract (reconciled against the image's CLI when it lands):
+  //   record start [--name N.mp4] [--bit-rate 1M] [--size 540x1140]
+  //     → {ok, name, device_path?, started_at?}   error `record-busy` = one already running
+  //   record stop --out s3://… [--name N.mp4]
+  //     → {ok, name, bytes?, duration_s?, artifacts?[]}   error `no-recording` = none running
+  recordStart: {
+    sub: ['record', 'start'],
+    flags: { name: '--name', bitRate: '--bit-rate', size: '--size' },
+    timeoutS: 60,
+    dataErrors: ['record-busy'],
+    optional: true,
+  },
+  recordStop: {
+    sub: ['record', 'stop'],
+    flags: { out: '--out', name: '--name' },
+    // Stop + settle + upload of up to ~80 MB from the machine to S3.
+    timeoutS: 600,
+    sendsOut: true,
+    dataErrors: ['no-recording'],
+    optional: true,
   },
 } as const satisfies Record<string, CliOp>;
 

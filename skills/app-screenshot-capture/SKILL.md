@@ -46,6 +46,60 @@ dispatch).
 
 ## Process
 
+### Step 0: Prewarm the device FIRST (the lease boots while you prep)
+
+Before reading anything, call:
+
+```
+mobile_ensure_avd_running({ avdName: '${ACE_AVD_NAME}', prewarm: true })
+```
+
+It returns at once. On the **lease** backend it starts acquiring ACE's
+emulator machine (a multi-minute EC2 boot) in the background, so the boot
+overlaps Steps 1–2.8 instead of following them; on the **local** backend it
+is a no-op (`prewarm: "skipped"` — the AVD cold-boots inside Step 3's
+blocking call). It is idempotent: if `qa-and-training` already prewarmed in
+its Step 0, this joins that acquire (`prewarm: "joined"` / `"held"`).
+
+- Step 3's normal (blocking) `mobile_ensure_avd_running` joins the
+  in-flight acquire, then registers the test user and verifies — nothing
+  else changes.
+- **If a gate below halts before Step 3** (Step 2's input pre-flight,
+  Step 2.6's recipe-sanity probe, Step 2.8's `fully-consumed`), call
+  `mobile_stop_avd` before returning, so the prewarmed machine is released
+  rather than left to idle out.
+- A prewarm refusal is immediate and typed (`LEASE_STATE_SELECTOR_MISMATCH`,
+  `LEASE_STATE_UNAVAILABLE`, `LEASE_NOT_CONFIGURED`): halt on it exactly as
+  you would on Step 3's call. A failure later in the background boot is
+  logged, not thrown — Step 3's call re-acquires and surfaces it typed.
+
+### Lease idle window — keep the device steps flowing
+
+A lease is released after **`idle_release_s` (900 s) with no lease call**
+(`mobile_ensure_avd_running`'s `lease.idle_release_s`). Every mobile atom is
+a lease call and an atom in flight never idles out — but the gaps BETWEEN
+atoms count. So, from the moment the machine is ready (Step 3 returns, or a
+prewarm finishes booting) until the last device step:
+
+- **Keep device steps back to back.** Do the LLM-heavy work — Drive uploads
+  (Steps 5.7/5.8), the manifest (Step 6), judging (Steps 7–8), anything that
+  writes a PR — AFTER the last device step, not between legs.
+- **Bridging an unavoidable long gap** (e.g. a long read of Learn progress
+  between legs): call `mobile_diagnose` — a cheap read that resets the idle
+  clock — at least every ~10 minutes.
+- **After a prewarm, reach Step 3 within 900 s of the machine becoming
+  ready.** Steps 1–2.8 are reads and normally take a few minutes; if they
+  ran long, Step 3 still works (it replaces a lost machine) — it just pays
+  a second boot.
+- **`LEASE_LOST` mid-skill means the machine is gone, with everything on
+  it.** Re-run `mobile_ensure_avd_running`, then Step 4's prerequisite
+  recipes (login, claim/resume) before repeating the step — login, claim and
+  Learn state do not survive onto a new machine. A Learn leg that was
+  already walked to completion on Connect is NOT re-walkable (Step 2.7):
+  the new machine proceeds to the Deliver leg.
+
+The local backend has no idle window; these rules are harmless there.
+
 ### Step 1: Read upstream artifacts
 
 Read `2-scenarios/pdd-to-app-journeys.md` and
@@ -140,15 +194,22 @@ unconditionally:
   setup outside the lifecycle.
 - **Lease backend** (the default where no AVD is provisioned): each
   lease is a fresh EC2 machine from ACE's image, leased through
-  canopy-web (`infra/capabilities/android-emulator/README.md`), and the
-  client registers the test user live on it every call. Same
-  precondition contract, different mechanism.
+  canopy-web (`infra/capabilities/android-emulator/README.md`), booted with
+  the CommCare version the selector map is for (`cc-<ACE_CONNECT_APK_VERSION>`).
+  The image applies the environment baseline at boot; the client checks its
+  fingerprint (`lease.baseline_parity`) and re-applies it when it differs
+  (`lease.baseline_actions`), then registers the test user live and
+  verifies the first screen. Same precondition contract, different
+  mechanism. A machine this session already holds is reused only if its
+  screen classifies `ready`; anything else is restored in full.
 
 After `mobile_ensure_avd_running` returns, `AvdInfo.heal.deviceUserState`
 carries the outcome: `{ classified_as, attempted, healed_via,
 verified_as, ui_dump_signal, bootstrap_steps }`. Local shows
 `attempted: true, healed_via: 'local-bootstrap'`; the lease shows
-`healed_via: 'lease-bootstrap'`.
+`healed_via: 'lease-bootstrap'` (or `'none'` with
+`bootstrap_steps: ['verified-ready-reused-lease']` when a reused machine was
+already ready).
 
 **A successful return means the restore sequence ran, NOT that every step
 was independently confirmed** (ace#1067). Read the heal block, not
@@ -164,9 +225,11 @@ was independently confirmed** (ace#1067). Read the heal block, not
   `registered` next to `verified_as: "unknown"` — the exact overclaim
   that made a caller trust a device that wasn't registered and burn a
   full recipe cycle.
-- On the **cloud** backend `verified_as` is absent by contract (it runs
-  no verification probe) and `classified_as` is `unknown`. Absence is
-  the contract, not a defect.
+- On the **lease** backend the heal ends with a launch + UI-dump probe,
+  so `verified_as` is `ready` on success — and a lease heal that cannot
+  show `ready` throws `DeviceUserStateError` instead of returning. (The
+  retired `cloud` backend ran no probe and left `verified_as` absent; a
+  run log from before 2026-10-14 may still show that.)
 
 What SHOULD stop you is a thrown typed error — see below.
 
@@ -422,7 +485,7 @@ rather than ~10 minutes in.
 
 Both preconditions Phase 6 needs are one-way per `(test user, opportunity)`,
 and a retry on this run reuses the same opp — so when both are spent there is
-nothing left to walk and the AVD boot is pure waste. Connect can answer that
+nothing left to walk and the AVD boot (or the prewarmed lease) is pure waste. Connect can answer that
 server-side:
 
 1. Read `domain` and `opportunity_id` from
@@ -438,7 +501,7 @@ Branch on the returned `verdict`:
 |---|---|
 | `fresh` | proceed — both legs walkable |
 | `learn-consumed` | proceed — Deliver leg only; Step 2.7 will record `satisfied-by-prior-completion` |
-| `fully-consumed` | **halt before booting the AVD.** `verdict: incomplete`, reason `precondition-consumed`, remediation = the classifier's `reason` string (which names the fresh-`/ace:run` restore and warns off an opp re-mint per #573) |
+| `fully-consumed` | **halt before Step 3's boot** — and if Step 0 prewarmed a lease, `mobile_stop_avd` to release it. `verdict: incomplete`, reason `precondition-consumed`, remediation = the classifier's `reason` string (which names the fresh-`/ace:run` restore and warns off an opp re-mint per #573) |
 | `worker-not-found` | proceed — the roster could not answer; the on-device branches stay authoritative |
 
 **If either atom errors, proceed.** This is a **cost-skip, not a
@@ -449,8 +512,19 @@ construction — see the fail-open cases in `test/lib/opp-consumption.test.ts`.
 
 ### Step 3: Boot AVD + ensure apps installed
 
-Boot the AVD via `mobile_ensure_avd_running` and install the Connect
-APK via `mobile_install_apk` (no-op if cached).
+Call `mobile_ensure_avd_running` (blocking — no `prewarm`). It joins
+Step 0's prewarm on the lease, or cold-boots the local AVD, then restores the
+test-user precondition.
+
+**Do not call `mobile_install_apk` in the normal path.** CommCare is already
+on the device when this returns: the local funnel installs the pinned
+`ACE_CONNECT_APK_VERSION` APK from its SHA256-validated cache when missing,
+and a lease machine boots with that version BAKED into its image (the state
+is chosen from the same variable). `mobile_install_apk` is only for
+deliberately testing a different build: on the lease it uploads the APK and
+`adb install -r`s it over the baked one, once per machine (a repeat with the
+same bytes is a no-op), and recipes then run against an APK the selector map
+was not calibrated for — so record that you did it.
 
 `mobile_ensure_avd_running` is the single source of truth for "AVD is
 ready for Maestro" — since 0.13.165 it also probes the on-device
@@ -1357,9 +1431,14 @@ promote a nearby frame into the role. The fix for the case above is a
 
 ### Step 5.7: Upload session videos + sweep the device-video spool
 
-Since 0.13.700 every local `mobile_run_recipe` call records an mp4 of the
-run (on-device `screenrecord`, see
-`playbook/integrations/mobile-integration.md § Recording`).
+Every `mobile_run_recipe` call records an mp4 of the run (on-device
+`screenrecord`), on BOTH backends: locally since 0.13.700 (around each
+attempt), and on the lease via the image's `ace-mobile record start|stop`
+around the whole chunked walk — downloaded into the same
+`<screenshotsDir>/<recipeId>.mp4`, returned in the same `result.videos[]`,
+spooled the same way. A lease machine whose CLI predates `record` walks
+unrecorded (logged once) — that is the "absent is not a failure" case below.
+See `playbook/integrations/mobile-integration.md § Recording`.
 
 **The client spools EVERY video it records — including the ones it also
 returns in `result.videos[]`.** So the spool and `result.videos[]`

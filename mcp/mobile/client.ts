@@ -70,6 +70,7 @@ import {
 } from '../../lib/session-opp-collision.js';
 import { listLiveSessionLocks, recordLeaseSessionLock, updateSessionLockContext } from './session-lock.js';
 import {
+  normalizeContainer,
   recorderConfigFromEnv,
   startRecording,
   stopRecording,
@@ -99,6 +100,8 @@ export type MobileDiagnostics =
 export interface RecorderHooks {
   start: typeof startRecording;
   stop: typeof stopRecording;
+  /** Container fix-up for a lease recording (the local `stop` does its own). Default `normalizeContainer`. */
+  normalize?: (mp4Path: string) => Promise<boolean>;
 }
 
 /**
@@ -948,6 +951,46 @@ export class MobileClient {
    * The lease backend skips the local driver check — the leased machine
    * manages Maestro state on its side (`ace-mobile` beside the emulator).
    */
+  /**
+   * Start the device booting WITHOUT waiting for it, so Phase 6 can overlap
+   * a lease's multi-minute boot with its own prep (Drive reads, Connect
+   * probes). Lease: starts (or joins) the acquire and returns at once; the
+   * next blocking `ensureAvdRunning` joins it, then heals as usual. Local:
+   * a no-op — the AVD cold-boots inside the blocking call, whose port
+   * allocation and contention checks must not run detached.
+   */
+  async prewarmAvd(name: string): Promise<{
+    backend: 'lease' | 'local';
+    prewarm: 'started' | 'joined' | 'held' | 'skipped';
+    state?: string;
+    lease_id?: string | null;
+    note: string;
+  }> {
+    const preflight = preflightMobileBackend({
+      resolved: resolveBackend(),
+      leaseConfigured: this.lease !== null,
+    });
+    if (preflight.fatal) {
+      throw new MobileError(preflight.fatal.code, preflight.fatal.message, preflight.fatal.remediation);
+    }
+    if (!this.useLease) {
+      return {
+        backend: 'local',
+        prewarm: 'skipped',
+        note: 'the local AVD boots inside the blocking mobile_ensure_avd_running call — nothing to prewarm',
+      };
+    }
+    const r = await this.requireLease().prewarm(name);
+    return {
+      backend: 'lease',
+      ...r,
+      note:
+        'the machine boots in the background; call mobile_ensure_avd_running (blocking) within idle_release_s ' +
+        '(900 s) of it becoming ready — it joins this acquire, registers the test user and verifies. If a ' +
+        'pre-flight gate halts instead, call mobile_stop_avd to release the machine.',
+    };
+  }
+
   async ensureAvdRunning(name: string, opts?: EnsureAvdRunningOptions): Promise<AvdInfo> {
     // Pre-boot backend preflight (jjackson/ace#839): fail loud on an
     // unconfigured lease toggle BEFORE booting any local AVD. Purely a check
@@ -2132,8 +2175,9 @@ export class MobileClient {
     };
     onProgress({ kind: 'dispatch-start', recipeId, screenshotsDir: runDir });
 
-    // Screen recording (local backend only). Best-effort
-    // throughout: a recording failure must never change the recipe verdict.
+    // Screen recording — local (`screen-recorder.ts`, per attempt) and lease
+    // (`ace-mobile record start|stop`, around the whole chunked walk). Best-
+    // effort throughout: a recording failure must never change the verdict.
     const recorderConfig = recorderConfigFromEnv();
     const videos: VideoArtifact[] = [];
     let recordAttempt = 0;
@@ -2150,18 +2194,41 @@ export class MobileClient {
         // exec per chunk, each with its own sized timeout); the palette goes
         // up once per lease, keyed by its content.
         const paletteTarB64 = tarDirAsBase64(prep.tempDir);
-        result = await this.requireLease().runRecipe(
-          prep.resolvedPath,
-          enrichedEnv,
-          runDir,
-          {
-            state: avdName,
-            paletteTarB64,
-            paletteKey: paletteContentKey(prep.tempDir),
-            captureAllBoundaries: opts?.captureAllBoundaries,
-            onProgress,
-          },
-        );
+        const lease = this.requireLease();
+        // Provenance (ace#1396): the machine this ran on.
+        lastDeviceSerial = lease.leaseId ? `lease:${lease.leaseId}` : lastDeviceSerial;
+        recordAttempt = 1;
+        const leaseVideos: VideoArtifact[] = [];
+        try {
+          result = await lease.runRecipe(
+            prep.resolvedPath,
+            enrichedEnv,
+            runDir,
+            {
+              state: avdName,
+              paletteTarB64,
+              paletteKey: paletteContentKey(prep.tempDir),
+              captureAllBoundaries: opts?.captureAllBoundaries,
+              onProgress,
+              ...(recorderConfig.enabled
+                ? { record: { recipeId, dispatchId, bitRate: recorderConfig.bitRate, size: recorderConfig.size } }
+                : {}),
+              videoSink: leaseVideos,
+            },
+          );
+        } finally {
+          // Same container fix-up the local recorder applies after its pull
+          // (moov atom up front, real duration) — then the shared stamp/spool
+          // below treats lease videos exactly like local ones.
+          for (const v of leaseVideos) {
+            try {
+              if (await (this.recorder.normalize ?? normalizeContainer)(v.path)) v.bytes = fs.statSync(v.path).size;
+            } catch (e) {
+              logInfo(`runRecipe: could not normalize lease recording ${v.path}: ${String(e)}`);
+            }
+            videos.push(v);
+          }
+        }
       } else {
         // Bounded driver-death heal-and-retry envelope (jjackson/ace#592 item
         // 5). A Maestro driver / gRPC transport crash ("Broken pipe",
@@ -2983,36 +3050,76 @@ export class MobileClient {
   }
 
   /**
-   * Environment-baseline parity on a lease (finding: the local funnel applies
+   * Environment-baseline parity on a lease. The local funnel applies
    * `applyEnvironmentBaseline` every dispatch; a lease's image applies the
-   * baseline at boot and reports its fingerprint in ready.json). Compared, not
-   * trusted: a `match` needs nothing; anything else is surfaced, and the one
-   * baseline item a client CAN apply over the CLI — the default mock GPS fix
-   * geopoint capture depends on — is applied, so a lease from an image that
-   * predates (or diverges from) the baseline still has a provider fix.
-   * Returns what it did, for `info.lease.baseline_actions`.
+   * SAME keys at boot (`ace-mobile apply-baseline`) and reports the
+   * fingerprint — and any failed step — in ready.json. Compared, not
+   * trusted: `match` needs nothing. Anything else (`mismatch`, `incomplete`,
+   * `unreported`) re-applies the baseline over the CLI, once per machine.
+   *
+   * A CLI that predates `apply-baseline` answers `usage`; then the one item
+   * the client CAN apply another way — the default mock GPS fix geopoint
+   * capture depends on — is applied via `set-location`, as before. A
+   * re-apply that leaves `mock_location_fix` failed gets the same fallback.
+   * Returns what it did, for `info.lease.baseline_actions`. Never throws: a
+   * baseline problem is surfaced, and the walk's own failure (if any) is the
+   * verdict.
    */
   private async leaseBaselineParity(facts: LeaseFacts): Promise<string[]> {
     if (facts.baseline_parity === 'match') return [];
-    const actions: string[] = [];
+    const lease = this.requireLease();
+    const expected = facts.expected_baseline_fingerprint;
+    const actions: string[] = [`baseline-${facts.baseline_parity}`];
+    if (facts.reused && lease.baselineAppliedFingerprint === expected) {
+      actions.push('baseline-already-applied');
+      return actions;
+    }
     console.warn(
       `[ace-mobile] ensure_avd_running: lease ${facts.lease_id} baseline ${facts.baseline_parity} — image reported ` +
-        `${facts.image_baseline_fingerprint ?? 'none'}, this ACE applies ${facts.expected_baseline_fingerprint} ` +
-        '(mcp/mobile/environment-baseline.ts). Notification / screen-timeout / location-provider settings may differ from local.',
+        `${facts.image_baseline_fingerprint ?? 'none'}` +
+        (facts.baseline_failed?.length ? ` with failed step(s) ${facts.baseline_failed.join(', ')}` : '') +
+        `, this ACE applies ${expected} (mcp/mobile/environment-baseline.ts) — re-applying it on the machine.`,
     );
-    actions.push(`baseline-${facts.baseline_parity}`);
+    let gpsFallback = false;
     try {
-      const r = await this.requireLease().setLocation(
-        facts.state,
-        DEFAULT_MOCK_LOCATION.longitude,
-        DEFAULT_MOCK_LOCATION.latitude,
-        DEFAULT_MOCK_LOCATION.altitude,
-        DEFAULT_MOCK_LOCATION.satellites,
-      );
-      actions.push(r.applied ? 'mock-location-set' : 'mock-location-refused');
+      const r = await lease.applyBaseline();
+      if (!r.supported) {
+        actions.push('apply-baseline-unsupported');
+        gpsFallback = true;
+      } else if (r.ok) {
+        actions.push('baseline-applied');
+        if (r.fingerprint && r.fingerprint !== expected) {
+          // The image's baseline is a different version than this ACE's:
+          // applied, but not the same set. Say so; don't pretend parity.
+          actions.push(`baseline-fingerprint-${r.fingerprint}`);
+          console.warn(
+            `[ace-mobile] ensure_avd_running: lease ${facts.lease_id} applied baseline ${r.fingerprint}, ` +
+              `this ACE expects ${expected} — the image and ACE disagree on the baseline keys.`,
+          );
+        }
+      } else {
+        actions.push(r.failed.length ? `baseline-partial:${r.failed.join(',')}` : 'baseline-partial');
+        gpsFallback = r.failed.includes('mock_location_fix');
+      }
     } catch (e) {
-      logInfo(`lease_bootstrap: default mock location failed: ${(e as Error).message}`);
-      actions.push('mock-location-failed');
+      logInfo(`lease_bootstrap: apply-baseline failed: ${(e as Error).message}`);
+      actions.push('baseline-apply-failed');
+      gpsFallback = true;
+    }
+    if (gpsFallback) {
+      try {
+        const r = await lease.setLocation(
+          facts.state,
+          DEFAULT_MOCK_LOCATION.longitude,
+          DEFAULT_MOCK_LOCATION.latitude,
+          DEFAULT_MOCK_LOCATION.altitude,
+          DEFAULT_MOCK_LOCATION.satellites,
+        );
+        actions.push(r.applied ? 'mock-location-set' : 'mock-location-refused');
+      } catch (e) {
+        logInfo(`lease_bootstrap: default mock location failed: ${(e as Error).message}`);
+        actions.push('mock-location-failed');
+      }
     }
     return actions;
   }

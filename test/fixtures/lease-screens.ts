@@ -60,6 +60,10 @@ export function fakeLeaseForHeal(opts: {
       return { xml, elements: [] };
     }),
     setLocation: vi.fn().mockResolvedValue({ applied: true }),
+    applyBaseline: vi.fn().mockResolvedValue({ supported: true, ok: true, fingerprint: 'x', failed: [], clockSynced: true }),
+    baselineAppliedFingerprint: null as string | null,
+    leaseId: 'lease-1',
+    prewarm: vi.fn().mockResolvedValue({ prewarm: 'started', state: 'cc-2.64.0', lease_id: null }),
     diagnose: vi.fn().mockResolvedValue({ lease: null }),
     stopAvd: vi.fn().mockResolvedValue(undefined),
     listAvds: vi.fn().mockResolvedValue(['cc-2.64.0']),
