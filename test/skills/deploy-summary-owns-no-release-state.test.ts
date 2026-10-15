@@ -37,6 +37,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SKILLS_DIR = join(__dirname, '..', '..', 'skills');
+const AGENTS_DIR = join(__dirname, '..', '..', 'agents');
 
 /** The artifact that does NOT own release state. */
 const NON_OWNER = 'app-deploy_summary.md';
@@ -164,5 +165,53 @@ describe('release state is owned by app-release_summary.md alone (ace#1636)', ()
       gate[0].includes(NON_OWNER) && !RETIREMENT_MARKERS.some((re) => re.test(gate[0])),
       'The freshness gate must not read the deploy summary for release state.',
     ).toBe(false);
+  });
+});
+
+/**
+ * ace#2938: the sweep above only saw `skills/` and only the `releases:` shape,
+ * so `agents/commcare-setup.md` kept telling the Phase 3->4 transition to read
+ * `app-deploy_summary.md.released_at` — and a run following it wrote release
+ * keys into app-deploy's artifact. Any block in `agents/` or `skills/` that
+ * pairs the deploy summary with a released-build key, without naming the
+ * owner or a retirement marker, is an instruction to read the wrong file.
+ */
+function releaseStateViolations(text: string): string[] {
+  const out: string[] = [];
+  for (const b of blocks(text)) {
+    if (!b.includes(NON_OWNER)) continue;
+    if (!/released[_ ](at|build)/i.test(b)) continue;
+    if (b.includes(OWNER)) continue;
+    if (RETIREMENT_MARKERS.some((re) => re.test(b))) continue;
+    out.push(b.replace(/\s+/g, ' ').slice(0, 160));
+  }
+  return out;
+}
+
+describe('agents/ and skills/ read release state from its owner (ace#2938)', () => {
+  it('flags the pre-ace#2938 commcare-setup instruction (control)', () => {
+    const old =
+      "  iterates. The orchestrator's Phase 3→4 transition MUST\n" +
+      '  verify `3-commcare/app-deploy_summary.md.released_at >= 3-commcare/app-deploy_summary.md.uploaded_at`\n' +
+      '  AND that no subsequent re-upload happened, before dispatching Phase 4.\n';
+    expect(releaseStateViolations(old)).toHaveLength(1);
+  });
+
+  it('no agent or skill pairs the deploy summary with released-build state', () => {
+    const docs: { name: string; text: string }[] = [
+      ...readdirSync(AGENTS_DIR)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => ({ name: `agents/${f}`, text: readFileSync(join(AGENTS_DIR, f), 'utf8') })),
+      ...allSkillDocs().map((d) => ({ name: `skills/${d.name}`, text: d.text })),
+    ];
+    expect(docs.some((d) => d.name === 'agents/commcare-setup.md')).toBe(true);
+    const violations = docs.flatMap((d) =>
+      releaseStateViolations(d.text).map((v) => `${d.name}: ${v}`),
+    );
+    expect(
+      violations,
+      `Release state is owned by \`${OWNER}\` (ace#1636); read released_at / ` +
+        `build ids there, not from \`${NON_OWNER}\`.`,
+    ).toEqual([]);
   });
 });

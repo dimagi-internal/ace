@@ -770,8 +770,12 @@ Invoke the `app-deploy` skill.
   the routine cost of a re-upload: it is now only reachable when an id
   actually moved (`remote_app_missing` → recreate), not every time Phase 3
   iterates. The orchestrator's Phase 3→4 transition MUST
-  verify `3-commcare/app-deploy_summary.md.released_at >= 3-commcare/app-deploy_summary.md.uploaded_at`
-  AND that no subsequent re-upload happened, before dispatching Phase 4.
+  verify, per app, that `3-commcare/app-release_summary.md` `apps.<app>.released_at`
+  (the owner of release state — ace#1636) is at or after that app's LATEST upload
+  in `3-commcare/app-deploy_summary.md` (its `uploaded_at`, or the newest
+  re-upload entry when the app was re-uploaded — `uploaded_at` alone is the FIRST
+  upload, so a release cut before a re-upload would pass it), before dispatching
+  Phase 4 (ace#2938).
 
   **What delete-and-recreate of the Connect opportunity does NOT touch:**
   any labs solicitation already published for this opp. Per
@@ -936,7 +940,7 @@ Sync Deliver Units or Phase 6's `app-screenshot-capture`. Full AVD
 smoke stays in Phase 6 where Connect state is available.
 
 - Inputs:
-  - `3-commcare/app-deploy_summary.md` (HQ app ids + released build ids)
+  - `3-commcare/app-deploy_summary.md` (HQ app ids) and `3-commcare/app-release_summary.md` (released build ids — the owner of release state, ace#1636)
   - Nova `get_app({app_id})` blueprints for each app (for the structural cross-reference)
 - Outputs:
   - `3-commcare/app-release-qa_result.yaml` — structural verdict

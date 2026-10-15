@@ -454,7 +454,8 @@ from `<app>_superseded_hq_app_id` before mutating. See
 At the Phase 3→4 Pause Point, the orchestrator composes the
 pause-time summary from this skill's eval verdict
 (`app-release-eval`) + downstream `app-connect-coverage` verdict +
-the deploy/release status fields in `app-deploy_summary.md`. The
+the deploy status fields in `app-deploy_summary.md` + the release
+fields in `app-release_summary.md` (the owner of release state, ace#1636). The
 producer no longer authors a separate gate-brief artifact. -->
 
 ## MCP Tools Used
