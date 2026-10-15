@@ -1118,10 +1118,39 @@ alone makes the artifact land outside `4-connect` and fail
      `name: null` is the NORMAL pre-claim state (acceptance happens on-device
      when Phase 6's `connect-claim-opp` claims the tile), so pending is a
      pass here. Record `invited_at` and proceed.
-   - **`match === null`** (no row at all for that phone) → **WARN loudly**:
-     the send reported success but Connect has no invite. That is the #824
-     silent failure; name it in the phase summary rather than letting Phase 6
-     discover it on AVD wall-clock.
+   - **`match === null`** (no row at all for that phone) → **recover before
+     you warn — wait, re-read, then re-send ONCE (ace#2946).** A `queued` send
+     fired right after `/activate/` can create nothing at all, and one
+     identical re-send fixes it. Do this, in order:
+     1. **Wait ~60 s and re-read** with the same `connect_list_flw_invites`
+        call (wait via a Monitor/until-loop or the next tool call, never a
+        foreground `sleep`). A row now → treat as `match !== null` below.
+     2. **Still null → re-send the SAME `connect_send_flw_invite` call ONCE**
+        (same `organization_slug`, `opportunity_id`, `phone_numbers`). The
+        invite endpoint is idempotent per phone, so a second send cannot
+        double-invite. Then re-read.
+     3. **Only if the row is STILL absent** record `invite_row_present: false`
+        and **WARN loudly**: the send reported success twice but Connect has
+        no invite. That is the #824 silent failure; name it in the phase
+        summary rather than letting Phase 6 discover it on AVD wall-clock.
+
+     Record BOTH sends (timestamps + each read-back result) in the run's
+     `comms-log/observations.md`, so a reader can tell "recovered on re-send"
+     from "landed first time". Do not re-send more than once — a second
+     failure is the signal, not something to loop on.
+
+     *Live evidence:* `smallholder-seasonal/20261014-0859` Phase 4, opp
+     `30605010-4be8-49e3-954c-deeb0b4ad8d6` (held by the NM org).
+     `connect_activate_opportunity` at ~07:00:50Z, then the invite →
+     `{invited_count: 2, status: "queued"}`; three reads at ~07:01, ~07:02 and
+     ~07:03:50 (both PM- and NM-org URLs) returned `invites: []`, while the
+     same atom returned rows on a sibling opp, so the reader worked. One
+     identical re-send at ~07:03 → both rows present, `status: pending`, and
+     the requester row's `invited_date` was `15-Oct-2026 07:03` — the RE-SEND
+     time, not ~07:00. The first queued send created nothing; it was not lag
+     that later caught up. (Suspected, not proven: the async
+     `add_connect_users` task ran before the just-activated state was visible
+     to the worker.)
 
    Do NOT gate on `match.claimed` — it reports whether the worker has already
    CLAIMED the opp, so requiring it would fail every legitimate fresh run.
@@ -1869,3 +1898,4 @@ decisions_append_rows({
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
 | 2026-09-16 | **Phase 4 creates ACE's build/QA opportunity, never the LLO's — the network-manager / program-manager model (operator decision 2026-09-16).** Step 3a's third branch said of a distinct `target_organization_slug`: *"Phase 9 already handled the round-trip; skip this sub-step."* **That precondition is impossible** — `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so no invite has been sent and none accepted when this skill runs; the create it waved through could only reject with `Organization must have an accepted application for this program`. Worse, had it succeeded the opportunity would be stranded: `target_organization_slug` is create-time only and `connect_update_opportunity` carries no org field, so it could never be handed to the LLO. That branch now HALTs with the remedy. Step 3 states the model: PM creates the program → invites the NM → **NM accepts** → PM creates the NM's opportunity (`llo-onboarding` § 2b, on freshly-copied `cc_app_id`s). Two opportunities is structural, not a workaround — it falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint. | ACE team |
 | 2026-09-26 | **Phase 4 runs the real PM→NM flow when `connect_orgs.nm_org` is configured (operator decision, Jon).** Step 3 was rewritten: 3.0 resolves `pm_org` / `holding_org` via `phase4Orgs()` (`lib/connect-orgs.ts`); 3a invites + accepts the HOLDING org (the NM org in `pm-nm` mode) and captures `program_application_id` from the invite POST; Step 4 passes `target_organization_slug = holding_org` and asserts the echo; Step 5 sets verification rules at `pm_org`, which Connect now serves because request org ≠ holding org (ace#2419 — a self-managed opp can never carry them; observed spark-facilitator/20260925-1536). Proved live 2026-09-26 on program `777f9060-8f26-43bb-aad1-b8f1d7df22db` / opportunity `7bfcb845-015c-416a-a200-9795c68dfc55` (NM-held; rule saved at the PM-org URL, refused at the NM-org URL). Step 10 records `pm_org_slug` + `holding_org_slug` (+ legacy `organization_slug`). The partner LLO's opportunity is still created in Phase 9. Self-managed behaviour is unchanged when `nm_org` is unset. | ACE team |
+| 2026-10-15 | **Step 7: a `match === null` read-back now waits, re-reads and re-sends ONCE before it WARNs (dimagi-internal/ace#2946).** On `smallholder-seasonal/20261014-0859` (opp `30605010-4be8-49e3-954c-deeb0b4ad8d6`) the invite sent right after `/activate/` returned `queued` but created no row across three reads; one identical re-send produced both rows, and the requester row's `invited_date` equalled the re-send time — so the first send created nothing, it was not lag. The step previously went straight to WARN, so a run following it recorded `invite_row_present: false` and a Phase 6 blocker that one idempotent re-send would have cleared. Now: wait ~60 s → re-read → re-send once → re-read → only then `invite_row_present: false` + WARN; both sends are logged to `comms-log/observations.md`. *Enforced:* `test/skills/connect-opp-setup-invite-resend.test.ts`. | ACE team |
