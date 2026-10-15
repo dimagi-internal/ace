@@ -590,6 +590,44 @@ export function parseFormJsonRules(html: string): PersistedFormFieldRule[] {
   return rules;
 }
 
+/** One `deliver_unit` formset row as Connect has it PERSISTED. */
+export interface PersistedDeliverUnitCheck {
+  /** The deliver unit's server PK — the `selected` option of the (disabled) row select. */
+  deliver_unit_id: number;
+  /** "Minimum time to complete form (minutes)"; a blank input reads as 0, Connect's default. */
+  duration_minutes: number;
+}
+
+/**
+ * Parse the `deliver_unit` formset off a `verification_flags_config` page: one
+ * entry per row, the deliver unit from the `selected` `<option>` of
+ * `deliver_unit-<i>-deliver_unit` (Connect renders that select `disabled`) and
+ * the floor from `deliver_unit-<i>-duration`. Rows with no selected unit, and
+ * the Django `__prefix__` template row, are skipped (dimagi-internal/ace#2945).
+ */
+export function parseDeliverUnitChecks(html: string): PersistedDeliverUnitCheck[] {
+  const lists = extractFormFieldValueLists(html);
+  const one = (k: string) => {
+    const v = lists[k];
+    return v && v.length ? v[v.length - 1] : '';
+  };
+  const indices = new Set<number>();
+  for (const k of Object.keys(lists)) {
+    const m = k.match(/^deliver_unit-(\d+)-deliver_unit$/);
+    if (m) indices.add(Number(m[1]));
+  }
+  const out: PersistedDeliverUnitCheck[] = [];
+  for (const i of [...indices].sort((a, b) => a - b)) {
+    const du = one(`deliver_unit-${i}-deliver_unit`).trim();
+    if (du === '' || !Number.isFinite(Number(du))) continue;
+    const raw = one(`deliver_unit-${i}-duration`).trim();
+    const duration = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(duration)) continue;
+    out.push({ deliver_unit_id: Number(du), duration_minutes: duration });
+  }
+  return out;
+}
+
 /**
  * Names of form controls Django rendered as `disabled`.
  *

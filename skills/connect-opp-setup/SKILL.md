@@ -701,7 +701,12 @@ alone makes the artifact land outside `4-connect` and fail
      form's own help text. Set only if the PDD states a minimum delivery
      duration. (The old `duration_seconds` spelling is now REFUSED with a
      typed error rather than silently writing a 60x-too-long floor —
-     ace#1013.)
+     ace#1013.) **Verify via `deliver_unit_checks` in the response** — the
+     deliver_unit formset read back after the write, one
+     `{deliver_unit_id, duration_minutes}` per row. A requested floor that
+     does not read back on its unit throws
+     `verification_duration_not_persisted` (ace#2945); record the read-back
+     value, not the value you sent.
    - **Any other flag is refused, not dropped.** `gps`, `duplicate`,
      `catchment_areas`, `gps_radius_meters` and `check_attachments` have no
      input on the live form, so a truthy value now raises

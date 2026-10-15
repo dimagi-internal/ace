@@ -402,10 +402,15 @@ describe('setVerificationFlags — duration is MINUTES (ace#1013)', () => {
   it('writes duration_minutes verbatim into deliver_unit-<i>-duration', async () => {
     const captured: CapturedRequest[] = [];
     const req = makeRequestContext(
-      [{ status: 200, body: configPage() }, { status: 302, body: '' }, { status: 200, body: configPage() }],
+      [
+        { status: 200, body: configPage() },
+        { status: 302, body: '' },
+        // Read-back shows the floor persisted (ace#2945 verifies it).
+        { status: 200, body: configPage().replace('name="deliver_unit-0-duration" value="0"', 'name="deliver_unit-0-duration" value="6"') },
+      ],
       captured,
     );
-    await backendFor(req).setVerificationFlags({
+    const res = await backendFor(req).setVerificationFlags({
       organization_slug: ORG,
       opportunity_id: OPP,
       flags: { deliver_unit_checks: [{ deliver_unit_id: 6455, duration_minutes: 6 }] },
@@ -414,6 +419,7 @@ describe('setVerificationFlags — duration is MINUTES (ace#1013)', () => {
     // The form label is "Minimum time to complete form (minutes)" — a PDD's
     // 6-minute floor must land as 6, not 360.
     expect(body['deliver_unit-0-duration']).toBe('6');
+    expect(res.deliver_unit_checks).toEqual([{ deliver_unit_id: 6455, duration_minutes: 6 }]);
   });
 
   it('rejects the legacy duration_seconds name loudly instead of writing a 60x-wrong floor', async () => {
