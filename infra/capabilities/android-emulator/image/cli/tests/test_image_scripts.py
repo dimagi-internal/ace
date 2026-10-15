@@ -16,6 +16,7 @@ import configparser
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -43,6 +44,22 @@ def bash() -> str | None:
 BASH = bash()
 
 
+# The fake emulator exits on its own after this long, whatever happens to the
+# test that started it. Every launcher test finishes well inside it.
+STUB_MAX_LIFE_S = 90
+
+
+def stub_processes(d: Path) -> list[str]:
+    """Live processes whose command line names something under `d`."""
+    deadline = time.time() + 2  # a SIGKILLed group can take a moment to go
+    while True:
+        r = subprocess.run(["pgrep", "-fl", f"{d}/"], capture_output=True, text=True)
+        left = [ln for ln in r.stdout.splitlines() if ln.strip()]
+        if not left or time.time() > deadline:
+            return left
+        time.sleep(0.05)
+
+
 def write_exec(path: Path, body: str) -> None:
     path.write_text("#!/usr/bin/env bash\n" + body)
     path.chmod(0o755)
@@ -66,13 +83,21 @@ class LauncherTests(unittest.TestCase):
         # emulator: a snapshot boot exits at once when FAIL_SNAPSHOT is set; a
         # cold boot exits at once when FAIL_COLD is set; otherwise it runs
         # until $D/die exists, then exits 139 (a crash).
+        #
+        # It must never outlive its test. The launcher backgrounds it (`&`), so
+        # killing the launcher alone orphans it, and once the temp dir is gone
+        # `$D/die` can never appear: it used to spin forever as
+        # `bin/emulator -avd ACE_Pixel_API_34`, which the Mac's local mobile
+        # backend reads as a live holder of the real AVD (38 found on one
+        # machine). So it also exits when $D vanishes and after a hard bound.
         write_exec(d / "bin/emulator", f"""
 echo "$*" >> {d}/emulator.argv
 D={d}
 if [[ " $* " == *" -snapshot "* && -e $D/FAIL_SNAPSHOT ]]; then exit 1; fi
 if [[ " $* " == *" -wipe-data "* && -e $D/FAIL_COLD ]]; then exit 1; fi
 touch $D/emu-up
-while [[ ! -e $D/die ]]; do sleep 0.05; done
+end=$((SECONDS + {STUB_MAX_LIFE_S}))
+while [[ ! -e $D/die && -d $D ]] && ((SECONDS < end)); do sleep 0.05; done
 rm -f $D/emu-up
 exit 139
 """)
@@ -106,14 +131,26 @@ if [[ -e {d}/PLAN_SNAPSHOT ]]; then echo "snapshot snap1"; else echo "cold image
 
     def tearDown(self):
         (self.d / "die").touch()
-        if self.proc and self.proc.poll() is None:
-            self.proc.kill()
+        if self.proc:
+            # The launcher runs in its own process group (start_new_session),
+            # and its backgrounded emulator stays in it: kill the GROUP, not
+            # just the launcher, or the stub is orphaned to ppid 1.
+            try:
+                os.killpg(self.proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             self.proc.wait()
+            if self.proc.stdout:
+                self.proc.stdout.close()
         self.tmp.cleanup()
+        # Regression check: nothing this test started may still be running.
+        left = stub_processes(self.d)
+        self.assertEqual(left, [], f"test left processes running from {self.d}: {left}")
 
     def launch(self, *args):
         self.proc = subprocess.Popen([BASH, str(FILES / "ace-emulator-launch"), *args], env=self.env,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                     start_new_session=True)
         return self.proc
 
     def wait_ready(self, timeout=60):

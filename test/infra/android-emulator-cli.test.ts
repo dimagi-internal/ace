@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // The ace-mobile CLI and boot hook (infra/capabilities/android-emulator/image/cli)
@@ -14,11 +16,25 @@ const CAP = join(ROOT, 'infra', 'capabilities', 'android-emulator')
 
 describe('ace-mobile CLI (python unittest)', () => {
   it('passes', () => {
-    const r = spawnSync(
-      'python3',
-      ['-m', 'unittest', 'discover', '-s', join(CAP, 'image', 'cli', 'tests'), '-t', join(CAP, 'image', 'cli', 'tests')],
-      { encoding: 'utf8', timeout: 170_000 },
-    )
+    // The suite gets its own TMPDIR so we can prove afterwards that nothing it
+    // started is still running. The launcher tests spawn a fake
+    // `bin/emulator -avd ACE_Pixel_API_34` from a temp dir; a leaked one sat at
+    // ppid 1 forever and made the Mac's local mobile backend refuse the real
+    // AVD as "held by live pid N" (38 were found on one machine).
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'ace-emu-cli-tests-')))
+    let r
+    try {
+      r = spawnSync(
+        'python3',
+        ['-m', 'unittest', 'discover', '-s', join(CAP, 'image', 'cli', 'tests'), '-t', join(CAP, 'image', 'cli', 'tests')],
+        { encoding: 'utf8', timeout: 170_000, env: { ...process.env, TMPDIR: tmp } },
+      )
+      const left = spawnSync('pgrep', ['-fl', `${tmp}/`], { encoding: 'utf8' })
+      expect(left.error, 'pgrep is needed for the leak check').toBeUndefined()
+      expect(left.stdout.trim(), 'the python suite left processes running from its temp dir').toBe('')
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
     if (r.status !== 0) console.error(r.stdout, r.stderr)
     expect(r.error).toBeUndefined()
     expect(r.status).toBe(0)
