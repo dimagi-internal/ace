@@ -102,7 +102,19 @@ worker per run: `ACE_PER_RUN_TEST_USER` stays off.
    the highest pool number. Pass `--avoid <phone,…>` to skip numbers you know are
    taken, such as retired workers, whose Connect accounts still exist and must
    never be reissued. The script is read-only.
-2. **Register it once on a device, using the fresh-signup path.** With a device up,
+2. **Invite the number to a Connect opportunity first.** PersonalID refuses a
+   sign-up from a device that fails Google Play Integrity ("this device did not
+   pass the security checks required to sign up for PersonalID"), and ACE's
+   emulators fail it. The one exception is a number Connect already holds an
+   invite for: `dimagi/connect-id` `utils/app_integrity/decorators.py`
+   `require_app_integrity` lets the request through when
+   `check_number_for_existing_invites` is true, and Connect answers that from
+   `UserInvite.objects.filter(phone_number=…).exists()`. So call
+   `connect_send_flw_invite` for the new number on any active ACE test
+   opportunity (not a partner's, and never Smallholder Seasonal), then confirm
+   the row exists with `connect_list_flw_invites`. Observed 2026-10-15
+   (ace#2955): worker-2 was refused with no invite and signed up once invited.
+3. **Register it once on a device, using the fresh-signup path.** With a device up,
    call `mobile_register_test_user` with the new identity: `phone`, `phoneLocal`,
    `countryCode: "+7"`, and `name`. Leave `pin` and `backupCode` unset so the
    demo-range values from `ACE_E2E_*` are used. An explicit phone takes no lock,
@@ -118,28 +130,28 @@ worker per run: `ACE_PER_RUN_TEST_USER` stays off.
      account, so you see "enter your backup code" rather than "create"), stop.
      Someone else owns that number. Re-plan with `--avoid <that number>`.
    - Confirm the device reaches the Connect home with `mobile_capture_ui_dump`.
-3. **Store it. Owner approval required.** Add the slot to the `pool-json` field of
+4. **Store it. Owner approval required.** Add the slot to the `pool-json` field of
    the 1Password item `connect-test-workers` in the ACE instance vault. The value is
    one JSON object for the whole pool:
    `{"worker-2": {"phone": "+7426…", "phoneLocal": "426…", "pin": "…", "backupCode": "…", "name": "ACE Test 2"}, …}`.
    - The **first time** (when the item does not exist yet), create it. Then, in the
-     same PR as step 4, add this line to `.env.tpl` under the test-worker block
+     same PR as step 5, add this line to `.env.tpl` under the test-worker block
      and uncomment the `ace-e2e-workers` entry in `runtime.yaml`:
      `ACE_E2E_WORKERS=op://${AGENT_VAULT}/connect-test-workers/pool-json`.
      Neither is live before the item exists, because `op inject` is
      all-or-nothing: a reference to a missing item would break `/ace:setup` for
      everyone.
-4. **Declare the slot.** If `scripts/test-worker-add.ts` said the slot is new, add it
+5. **Declare the slot.** If `scripts/test-worker-add.ts` said the slot is new, add it
    to `slots:` in `infra/capabilities/test-worker/capability.yaml`. Ship the PR with
    `skills/shipping`.
-5. **Publish. Owner approval required.**
+6. **Publish. Owner approval required.**
    `canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`. The first
    publish also needs a workspace admin to grant `test-worker` to agent `ace` in
    ACE's canopy-web workspace.
-6. **Load it.** Run `/ace:setup --force-env`, then **restart Claude Code**: MCP
+7. **Load it.** Run `/ace:setup --force-env`, then **restart Claude Code**: MCP
    servers read `.env` only at start. Then `/ace:doctor` must show
    `PASS test_worker_pool`.
-7. **Verify it.** Run `mobile_checkout_test_workers({count: <pool size>})`, then
+8. **Verify it.** Run `mobile_checkout_test_workers({count: <pool size>})`, then
    `mobile_register_test_user({slot: "<new slot>"})`. Confirm it reaches the
    Connect home, then `mobile_release_test_workers({all: true})`.
 
@@ -173,7 +185,7 @@ credentials exist: a checkout handed such a slot fails `TEST_WORKER_NO_CREDENTIA
 ## Mode Behavior
 
 - **Auto:** checking workers out and releasing them is routine and needs no
-  approval. Adding or retiring a worker stops before steps 3 and 5 (the 1Password
+  approval. Adding or retiring a worker stops before steps 4 and 6 (the 1Password
   write and the publish). Those steps change shared credentials and shared
   infrastructure, so the exact command goes to the operator.
 - **Review:** the same, and the plan from step 1 is shown before any device walk.

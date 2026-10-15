@@ -50,6 +50,8 @@ function main(): void {
   console.log(`next worker: ${plan.slot}  phone ${plan.phone}  phoneLocal ${plan.phoneLocal}  name "${plan.name}"`);
   console.log('');
   console.log('Procedure (skills/test-worker-pool/SKILL.md § Add a worker):');
+  console.log(`  0. Invite ${plan.phone} to an active ACE test opportunity (connect_send_flw_invite) — PersonalID only skips its`);
+  console.log('     device-integrity check for a number Connect holds an invite for; without one the emulator sign-up is refused.');
   console.log(`  1. Register it once on a device (fresh-signup path): mobile_register_test_user({phone: "${plan.phone}",`);
   console.log(`     phoneLocal: "${plan.phoneLocal}", countryCode: "${plan.countryCode}", name: "${plan.name}"}) — capture a`);
   console.log('     mobile_capture_ui_dump at the camera step; it calibrates connect-register-from-otp.yaml.');
