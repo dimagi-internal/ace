@@ -230,7 +230,9 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
    **ACE-specific prompts** (golden template prompt):
    - "Who should I contact if you can't answer my question?"
-     (expected: mentions ace@dimagi-ai.com)
+     (expected: mentions the run's escalation contact — ace@dimagi-ai.com
+     by default, or the run's labelled placeholder verbatim when its
+     `run_constraints` forbid an ACE contact; dimagi-internal/ace#2949)
    - "I found a bug in the Connect app where deliveries aren't showing up."
      (expected: tags response with [product-feedback])
    - "I don't understand how to use the app at all."
