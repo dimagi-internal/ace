@@ -213,9 +213,12 @@ describe('android-emulator image: supply chain and bake host', () => {
 
   it('every baked CommCare version has a pin, and 2.63.0 (ace#938) is gone', () => {
     const apk = read('image/scripts/40-commcare-apk.sh')
-    for (const v of bakedVersions()) expect(apk).toMatch(new RegExp(`APK_SHA256\\[${v.replace(/\./g, '\\.')}\\]=[0-9a-f]{64}`))
+    for (const v of bakedVersions()) expect(apk).toMatch(new RegExp(`APK_SHA256\\[${escapeRegExp(v)}\\]=[0-9a-f]{64}`))
     expect(bakedVersions()).not.toContain('2.63.0')
     expect(bakedVersions()[0]).toBe('2.64.0')
   })
 })
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
