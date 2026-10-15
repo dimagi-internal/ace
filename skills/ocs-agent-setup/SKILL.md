@@ -895,6 +895,36 @@ round-trip gate in Step 11.5 below.
      prompt should also say: *never state a review trigger, flag or
      consequence that is not listed in the knowledge base* (not audited —
      whether a design HAS a flag list is per-opportunity).
+   - **State the payment rule and the Learn structure from the BUILT apps,
+     not from the PDD's summary sentences (dimagi-internal/ace#2968).** On
+     `dimagi-team/noora-health/20261015-1129` (experiment 14288) the composed
+     prompt got all three of the following wrong, and the bot repeated them in
+     the quick eval until a `--prompt-patch` fixed it:
+     - **Payable rule: copy it from the Deliver app's computed payable
+       field, every condition included.** Read the payable calculation in
+       `pdd-to-deliver-app_summary.md` (e.g. `` `payable_class` = yes when
+       consent yes AND at least 3 caregiver rows AND danger signs ticked ``),
+       then check it against the PDD. State EVERY condition, including
+       **gating conditions** such as consent. A gating condition is one
+       where the rest of the form appears only after a yes, and the PDD's
+       requirement sentence often leaves it out. On that run the PDD's line
+       ("at least 3 caregivers … and the danger signs were covered") gave two
+       conditions, while the built app computed three. If the summary and the
+       PDD disagree, the built app is what Connect pays on: state the built
+       rule and do not merge the two.
+     - **Connect verification flags are review flags, NOT payment rules.**
+       Duration checks (e.g. "open for less than 20 minutes"),
+       submission-hour windows (e.g. "outside 06:00–20:00") and similar
+       checks mark a record for review. They do not decide payment. The
+       prompt must say so, and must never list a flag under "what is not
+       paid" or describe a flagged record as unpaid.
+     - **Count Learn modules from the Learn app summary, and name the
+       assessment separately.** Take the number of `learn_module` forms from
+       `pdd-to-learn-app_summary.md` (e.g. "five learning_module forms;
+       exactly one assessment form"). Then say "N modules plus a final
+       assessment". Never fold the assessment into the module count: "six
+       modules: … 6 Final assessment" made the bot say "all six training
+       modules" plus the assessment.
    - **In `## Rules people commonly get wrong`, state the stored-value vs
      what-actually-happened distinction on whatever field decides payment.**
      The verification predicate reads the **stored value**, so a
@@ -1347,6 +1377,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-15 | **Step 7 states the payment rule and Learn structure from the BUILT apps (closes dimagi-internal/ace#2968).** On `dimagi-team/noora-health/20261015-1129` (experiment 14288) the composed prompt made three mistakes. It took the payable rule from the PDD requirement sentence, which gave two conditions, while the built app computes `payable_class` = consent yes AND >=3 caregiver rows AND danger signs ticked. It listed Connect's duration and submission-hour flags under "not paid". It folded the final assessment into a count of "six modules" when there are five `learn_module` forms plus one assessment. The bot repeated all three in the quick eval, and an operator `--prompt-patch` fixed them. Step 7 now has a bullet with three parts. Copy the payable predicate from the Deliver summary's computed field, gating conditions included, and check it against the PDD. Describe verification flags as review flags, never as payment rules. Count Learn modules from the Learn summary and name the assessment separately. *Enforced:* `test/skills/ocs-prompt-payment-and-learn-structure.test.ts` pins that the bullet carries all three parts, placed before Step 7.5. The composed prompt is authored at run time, so the behavioural proof is the next run's quick/deep eval. | ACE team |
 | 2026-10-15 | **Step 7 safeguarding clause 1 has an escalation-form shape (closes dimagi-internal/ace#2951).** The mandated clause 1 ("Do not record the disclosure in the app") was written for spark-facilitator, whose app had no safeguarding channel (ace#2682), but shipped universally. On `smallholder-seasonal/20261014-0859` the design (§6.17) requires an in-app Escalation form (category "safeguarding or violence", urgency urgent); chatbot 14272 v2 carried the clause verbatim (Step 7.5 exit 0) and told the FLW "Do not record this in the app" — the independent deep verdict scored opp-50 (5.57), opp-68 (6.75) and opp-77 (6.75) Warn, and the repeated defect tripped the inflation guard, capping the overall at 8.5 (8.99 before the cap). Step 7 now gives the exact replacement clause 1 for an app with an escalation or safeguarding form (do not write it in ordinary visit notes or free text; record it ONLY on that form, its safeguarding category, urgency urgent, minimal description) and forbids "do not record it in the app" there; with no such form the existing wording stands. The gate is unchanged: `lib/standing-fabrication-domains.ts`'s do-not-record pattern already accepts the run's v3 wording. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (13923 v7 fixture with clause 1 swapped for the v3 wording passes the full gate; dropping its do-not-write sentence fails exactly `do-not-record-in-app`; doc-vs-gate over the Step 7 escalation-form clause). | ACE team |
 | 2026-10-15 | **Step 7.5 gains a placeholder escalation mode for runs that forbid any ACE contact (closes dimagi-internal/ace#2949).** On `smallholder-seasonal/20261014-0859` (Phase 5) the binding `run_constraints` forbid any ACE contact or ACE address, so the escalation contact is the labelled placeholder `PLACEHOLDER: named Dimagi contact, to be set`; `buildEscalationAddressObligation` only accepted an email and the gate defaulted to `config/agent.json` → `email`, so a run-correct prompt exited 1 and a gate-correct prompt broke the run constraint. `lib/standing-fabrication-domains.ts` adds `buildEscalationPlaceholderObligation(label)` (label must contain `PLACEHOLDER`, no `@`; same exact-label + escalation + exactness + "without retrieving" shape), threaded as `auditComposedPrompt(prompt, { escalationPlaceholder })` (exclusive with `escalationAddress`), which also re-points the safeguarding "escalate to" clause and the product-specifics routing at the label. `scripts/audit-composed-prompt.ts` adds `--escalation-placeholder "<label>"` (mutually exclusive with `--escalation-address`; does not read `config/agent.json`). Step 7 says when to use it. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` + `test/scripts/audit-composed-prompt.test.ts` (placeholder prompt passes in placeholder mode and fails in default mode, label without `PLACEHOLDER` / with `@` rejected, exactness ablation fails). | ACE team |
 | 2026-10-05 | **Step 7 now requires a standalone "Product and process specifics — a hard rule" paragraph, and Step 7.5 checks it as `PRODUCT_SPECIFICS_OBLIGATION` (closes dimagi-internal/ace#2689).** The prompt's only grounding line, "Ground answers in what you retrieve", was a description rather than a rule, and the four standing domains do not cover product mechanics, resources or programme structure. On chatbot 13923 v6 (`spark-facilitator/20261004-1706`) the bot invented a "payment-received notification in Connect" (opp-40), pointed a reader to "the Connect Confluence space" (cg-4), and misstated FCAP's phase structure (opp-29). None of these is a URL, address or number, so no deterministic pass caught them. The new paragraph allows a feature, notification, document, documentation space or resource to be named, or a process or programme structure to be described, only when it was retrieved for this answer. It forbids filling gaps from how such systems usually work and pointing to resources the KB does not name, and it routes the reader to their supervisor and the ACE admin group. Step 7 also says recurring misstatements may be corrected in the opportunity brief, verbatim from the KB. *Enforced:* `test/lib/standing-fabrication-domains.test.ts` (the v5 fixture, published as v6, fails; the v7 fixture passes; removing any one part fails the check; the doc wording is checked against the gate) and `test/scripts/audit-composed-prompt.test.ts`. | ACE team |
