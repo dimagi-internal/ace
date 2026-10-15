@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-CLI_VERSION = "1.0.0"
+CLI_VERSION = "1.1.0"
 
 # ── In-VM paths. Must agree with image/scripts/* and image/files/*. ──────────
 ANDROID_SDK_ROOT = "/opt/android-sdk"
@@ -69,6 +69,23 @@ ACTIVE_STATE_PATH = f"{RUN_DIR}/active-state"
 REQUESTED_STATE_PATH = f"{RUN_DIR}/requested-state"
 LAUNCH_TIMINGS_PATH = f"{RUN_DIR}/launch-timings"
 LEASE_PATH = f"{RUN_DIR}/lease.json"
+# Written by ace-emulator-launch when the emulator dies AFTER ready. Its
+# presence makes every subcommand but diagnose refuse with emulator-crashed:
+# the runner unit does not restart (Restart=no), so a crash mid-lease is never
+# silently papered over by a fresh -wipe-data boot.
+CRASHED_MARKER = f"{RUN_DIR}/crashed"
+# The idle watchdog's clock: every exec touches it; ace-idle-watchdog powers the
+# machine off when it is older than the threshold the boot hook wrote to
+# IDLE_CONFIG_PATH and no exec is in flight (EXEC_DIR holds one file per pid).
+LAST_ACTIVITY_PATH = f"{RUN_DIR}/last-activity"
+IDLE_CONFIG_PATH = f"{RUN_DIR}/idle.json"
+EXEC_DIR = f"{RUN_DIR}/exec"
+# apply-baseline records what it applied here; the boot hook copies it into
+# ready.json so the client can assert parity with the local backend.
+BASELINE_PATH = f"{RUN_DIR}/baseline.json"
+# ace-emulator-launch records which boot path ran (snapshot | cold |
+# cold-fallback) and why, for ready.json.
+BOOT_PATH_PATH = f"{RUN_DIR}/boot-path"
 RUNNER_UNIT = "ace-mobile-runner.service"
 RUNNER_LOG = "/var/log/ace-mobile/runner.log"
 EMULATOR_LOG = "/var/log/ace-mobile/emulator.log"
@@ -89,9 +106,38 @@ RECIPE_TIMEOUT_S = 1800
 # its `stdout_url`, and run-recipe also writes result.json under --out.
 LOG_TAIL_CHARS = 8000
 
-# Defaults mirror mcp/mobile/backends/avd.ts DEFAULT_MOCK_LOCATION.
+# Defaults mirror mcp/mobile/backends/avd.ts DEFAULT_MOCK_LOCATION
+# (test/infra/android-emulator-capability.test.ts holds them equal).
+DEFAULT_LONGITUDE = 8.5167
+DEFAULT_LATITUDE = 12.0022
 DEFAULT_ALTITUDE = 480.0
 DEFAULT_SATELLITES = 12
+
+# ── The environment baseline: the ONE place the image defines it ─────────────
+#
+# The local backend's AvdBackend.applyEnvironmentBaseline
+# (mcp/mobile/backends/avd.ts) applies these to every AVD it heals; a lease
+# machine applies the identical set, from here, in ace-emulator-launch before
+# ready (`ace-mobile apply-baseline`). Each step is (fingerprint key, adb args).
+# The fingerprint is avd.ts's own: sha1 of the sorted keys joined by "|", first
+# 12 hex chars, so the client asserts parity by comparing two strings. The
+# capability test fails CI when the keys, values or fingerprint drift from avd.ts.
+BASELINE_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("heads_up_notifications_enabled", ("shell", "settings", "put", "global", "heads_up_notifications_enabled", "0")),
+    ("notification_disallow_dnd_gms", ("shell", "cmd", "notification", "disallow_dnd", "com.google.android.gms")),
+    ("screen_off_timeout", ("shell", "settings", "put", "system", "screen_off_timeout", "1800000")),
+    ("location_providers_allowed", ("shell", "settings", "put", "secure", "location_mode", "3")),
+    ("location_providers_allowed", ("shell", "settings", "put", "secure", "location_providers_allowed", "+gps,+network")),
+    ("mock_location_fix", ("emu", "geo", "fix", "8.5167", "12.0022", "480", "12")),
+)
+
+
+def baseline_fingerprint(keys: list[str] | None = None) -> str:
+    """avd.ts: sha1(sorted(settingsApplied).join('|')).slice(0, 12)."""
+    import hashlib
+
+    ks = sorted(set(keys if keys is not None else [k for k, _ in BASELINE_STEPS]))
+    return hashlib.sha1("|".join(ks).encode("utf-8")).hexdigest()[:12]
 
 PACKAGE_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.]*$")
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
@@ -339,6 +385,169 @@ def list_artifacts(local_dir: str, out_uri: str) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+# ── What a run uploads, and what it never uploads in the clear ───────────────
+#
+# A Maestro run dir holds far more than a reader needs: the extracted palette
+# (~20 sibling recipes), the recipe copy, and Maestro's `.maestro/tests/<ts>/`
+# debug tree. Uploading all of it put ~25 files per run in the bucket and blew
+# one exec's stdout to 34 KB (past SSM's 24,000-character inline limit). The
+# layout under --out is now exactly:
+#
+#   <out>/<path>.png|.jpg|.jpeg   screenshots, at the path the recipe wrote them
+#   <out>/<path>.mp4              screen recordings
+#   <out>/<path>.xml              UI dumps
+#   <out>/maestro-stdout.log, maestro-stderr.log
+#   <out>/result.json             the full result (run-recipe)
+#   <out>/register-parts.json     (register-test-user)
+#   <out>/debug/                  Maestro's debug output, flattened: commands-*.json,
+#                                 maestro.log, failure screenshots. Names that two
+#                                 debug dirs share get a "<ts>-" prefix.
+#
+# Recipes (.yaml) and the palette are never uploaded: the caller already has them.
+#
+# Secrets: Maestro writes every `--env` value into commands-*.json
+# (`defineVariablesCommand.env`) and every value it typed into the evaluated
+# commands, so a PIN or backup code reached S3 in plaintext. Every uploaded text
+# file, and every string the CLI prints, passes through a Redactor first.
+
+UPLOAD_EXTS = (".png", ".jpg", ".jpeg", ".mp4", ".xml")
+UPLOAD_TEXT_NAMES = ("maestro.log", "maestro-stdout.log", "maestro-stderr.log", "result.json", "register-parts.json")
+DEBUG_DIR = "debug"
+REDACTED = "<redacted>"
+# An --env value is treated as a secret when its KEY looks like one. Every
+# value of a register-test-user credential except `name` is a secret.
+SECRET_ENV_KEY_RE = re.compile(r"PIN|CODE|PASS|SECRET|TOKEN|OTP|PHONE|KEY|CRED", re.I)
+MIN_SECRET_LEN = 3  # shorter values would redact half the log by accident
+
+
+class Redactor:
+    """Replaces known secret values, and every Maestro env value, with <redacted>."""
+
+    def __init__(self, secrets: list[str] | None = None) -> None:
+        uniq = {s for s in (secrets or []) if isinstance(s, str) and len(s) >= MIN_SECRET_LEN}
+        # Longest first, so a secret that contains another is replaced whole.
+        self.secrets = sorted(uniq, key=len, reverse=True)
+
+    @classmethod
+    def for_env(cls, env: dict[str, str]) -> "Redactor":
+        return cls([v for k, v in env.items() if SECRET_ENV_KEY_RE.search(k)])
+
+    def text(self, text: str) -> str:
+        for s in self.secrets:
+            text = text.replace(s, REDACTED)
+        return text
+
+    def obj(self, obj: Any, *, _in_define: bool = False) -> Any:
+        """Redact a parsed Maestro report: ALL ``defineVariablesCommand.env``
+        values whatever their key, then every known secret in every string."""
+        if isinstance(obj, dict):
+            out: dict[str, Any] = {}
+            for k, v in obj.items():
+                if _in_define and k == "env" and isinstance(v, dict):
+                    out[k] = {ek: REDACTED for ek in v}
+                else:
+                    out[k] = self.obj(v, _in_define=_in_define or k == "defineVariablesCommand")
+            return out
+        if isinstance(obj, list):
+            return [self.obj(v, _in_define=_in_define) for v in obj]
+        if isinstance(obj, str):
+            return self.text(obj)
+        return obj
+
+    def json_bytes(self, raw: bytes) -> bytes:
+        try:
+            data = json.loads(raw.decode("utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            return self.text(raw.decode("utf-8", errors="replace")).encode("utf-8")
+        return json.dumps(self.obj(data), indent=1).encode("utf-8")
+
+
+def _is_uploadable(name: str) -> bool:
+    low = name.lower()
+    return (
+        name in UPLOAD_TEXT_NAMES
+        or (name.startswith("commands-") and low.endswith(".json"))
+        or low.endswith(UPLOAD_EXTS)
+    )
+
+
+def stage_artifacts(run_dir: str, stage_dir: str, redactor: Redactor) -> None:
+    """Copy what a run uploads from ``run_dir`` into ``stage_dir`` (layout above),
+    redacting every text file on the way."""
+    src_root, dst_root = Path(run_dir), Path(stage_dir)
+    for p in sorted(src_root.rglob("*")):
+        if not p.is_file() or p.is_symlink() or not _is_uploadable(p.name):
+            continue
+        rel = p.relative_to(src_root)
+        parts = rel.parts
+        is_debug = (len(parts) >= 3 and parts[0] == ".maestro" and parts[1] == "tests") or (
+            len(parts) == 1 and (p.name == "maestro.log" or p.name.startswith("commands-")))
+        if is_debug:
+            ts = parts[2] if len(parts) >= 3 else ""
+            dest = dst_root / DEBUG_DIR / Path(*parts[3:]) if len(parts) > 3 else dst_root / DEBUG_DIR / p.name
+            if dest.exists() and ts:
+                dest = dest.with_name(f"{ts}-{dest.name}")
+        elif parts[0].startswith("."):
+            continue  # some other dot-tree (Maestro caches): not an artifact
+        else:
+            dest = dst_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        raw = p.read_bytes()
+        low = p.name.lower()
+        if low.endswith(".json"):
+            raw = redactor.json_bytes(raw)
+        elif low.endswith((".log", ".xml")):
+            raw = redactor.text(raw.decode("utf-8", errors="replace")).encode("utf-8")
+        dest.write_bytes(raw)
+
+
+# The budget a result line may spend on stdout before SSM cuts it (24,000
+# characters inline). Over budget, the inline copy sheds detail in a fixed
+# order; result.json under --out always holds the full result.
+INLINE_BUDGET_CHARS = 20000
+ARTIFACTS_INLINE_MAX = 25
+
+
+def fit_inline(result: dict[str, Any], budget: int = INLINE_BUDGET_CHARS) -> dict[str, Any]:
+    """The inline (stdout) copy of a result, shrunk to ``budget`` characters.
+
+    Order: cap ``artifacts`` at ARTIFACTS_INLINE_MAX (``artifacts_total`` keeps
+    the count), cut stdout/stderr tails to 2,000 characters, keep only the
+    failing and last 20 ``steps``, then drop ``artifacts`` and ``steps`` entirely.
+    Every field it shortened is listed in ``inline_truncated``."""
+    out = dict(result)
+    cut: list[str] = []
+    arts = out.get("artifacts")
+    if isinstance(arts, list):
+        out["artifacts_total"] = len(arts)
+        if len(arts) > ARTIFACTS_INLINE_MAX:
+            out["artifacts"] = arts[:ARTIFACTS_INLINE_MAX]
+            cut.append("artifacts")
+
+    def size() -> int:
+        return len(json.dumps({**out, "inline_truncated": cut}, separators=(",", ":"), default=str))
+
+    if size() > budget:
+        for k in ("stdout", "stderr"):
+            if isinstance(out.get(k), str) and len(out[k]) > 2000:
+                out[k] = out[k][-2000:]
+                cut.append(k)
+    steps = out.get("steps")
+    if size() > budget and isinstance(steps, list) and len(steps) > 20:
+        keep = [s for s in steps[:-20] if isinstance(s, dict) and s.get("status") == "fail"] + steps[-20:]
+        out["steps"] = keep
+        out["steps_total"] = len(steps)
+        cut.append("steps")
+    for k in ("artifacts", "steps"):
+        if size() > budget and k in out:
+            out[k] = []
+            if k not in cut:
+                cut.append(k)
+    if cut:
+        out["inline_truncated"] = cut
+    return out
 
 
 # ── Parsers (ported from controller.py; pure, unit-tested) ──────────────────
@@ -592,12 +801,15 @@ def find_commands_json(run_dir: str) -> Path | None:
     return nested[0] if nested else None
 
 
-def parse_steps_from_dir(run_dir: str) -> list[dict[str, Any]]:
+def parse_steps_from_dir(run_dir: str, redactor: Redactor | None = None) -> list[dict[str, Any]]:
+    """Steps from the run's commands-*.json, read through ``redactor`` so a
+    step named after a typed value (``inputTextCommand: <pin>``) is redacted."""
     p = find_commands_json(run_dir)
     if p is None:
         return []
     try:
-        return lift_maestro_steps(json.loads(p.read_text(encoding="utf-8", errors="replace")))
+        data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+        return lift_maestro_steps((redactor or Redactor()).obj(data))
     except (OSError, json.JSONDecodeError):
         return []
 
@@ -727,9 +939,10 @@ def cmd_diagnose(host: Host, args: argparse.Namespace) -> dict[str, Any]:
             lease = {"lease_id": raw.get("lease_id"), "state": raw.get("state")}
         except json.JSONDecodeError:
             lease = None
-    return {
+    crash = read_crash_marker()
+    result: dict[str, Any] = {
         "ok": True,
-        "healthy": visible > 0 and marker_present,
+        "healthy": visible > 0 and marker_present and crash is None,
         # ssm_ok/ssm_error kept so the payload keeps the retired ace-web shape: the
         # probe itself is local now, so it is always "reachable".
         "ssm_ok": True,
@@ -749,14 +962,118 @@ def cmd_diagnose(host: Host, args: argparse.Namespace) -> dict[str, Any]:
         "active_state": (read_file(ACTIVE_STATE_PATH) or "").strip() or None,
         "states": states,
         "lease": lease,
+        "crashed": crash is not None,
+        "crash": crash,
+        "baseline": _read_json(BASELINE_PATH),
+        "boot_path": _read_json(BOOT_PATH_PATH),
         "cli_version": CLI_VERSION,
     }
+    if crash is not None:
+        # ok stays true (the probe ran) and the exit code 0; `error` names the
+        # verdict so a reader that only checks `error` still sees it.
+        result.update(error="emulator-crashed", message=crash_message(crash))
+    return result
+
+
+def _read_json(path: str) -> Any:
+    text = read_file(path)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"raw": text.strip()[:500]}
+
+
+def read_crash_marker() -> dict[str, Any] | None:
+    """The crash record ace-emulator-launch wrote (``key=value`` lines), or None."""
+    text = read_file(CRASHED_MARKER)
+    if text is None:
+        return None
+    rec: dict[str, Any] = {}
+    for line in text.splitlines():
+        k, sep, v = line.partition("=")
+        if sep:
+            rec[k.strip()] = v.strip()
+    return rec
+
+
+def crash_message(crash: dict[str, Any]) -> str:
+    return ("the emulator died after ready (exit {exit}, at {at}); this machine will not "
+            "reboot it. Release the lease and acquire a new one.").format(
+        exit=crash.get("emulator_exit", "?"), at=crash.get("at", "?"))
+
+
+def cmd_apply_baseline(host: Host, args: argparse.Namespace) -> dict[str, Any]:
+    """Apply BASELINE_STEPS (the local backend's environment baseline) and sync
+    the device clock to the host's. Idempotent. Writes BASELINE_PATH.
+
+    Every step runs even when one fails; ``ok`` is true only when all did, and
+    ``failed`` names the keys that did not. The clock sync is not part of the
+    fingerprint (avd.ts does it separately, after a snapshot load)."""
+    require_device(host)
+    applied: list[dict[str, Any]] = []
+    for key, argv in BASELINE_STEPS:
+        p = adb(host, *argv, timeout=PROBE_TIMEOUT_S)
+        out = f"{p.stdout}{p.stderr}".strip()
+        ok = console_ok(p.code, out) if argv[0] == "emu" else p.code == 0 and not re.search(
+            r"Exception|Error|not found|Unknown", out)
+        applied.append({"key": key, "ok": ok, **({} if ok else {"output": _tail(out, 300)})})
+    clock = sync_clock(host)
+    failed = sorted({a["key"] for a in applied if not a["ok"]})
+    record = {
+        "fingerprint": baseline_fingerprint(),
+        "keys": sorted({k for k, _ in BASELINE_STEPS}),
+        "complete": not failed,
+        "failed": failed,
+        "clock_synced": clock,
+        "applied_at": _iso_now(host),
+    }
+    try:
+        os.makedirs(os.path.dirname(BASELINE_PATH), exist_ok=True)
+        Path(BASELINE_PATH).write_text(json.dumps(record), encoding="utf-8")
+    except OSError as e:
+        _log(f"could not write {BASELINE_PATH}: {e}")
+    result: dict[str, Any] = {"ok": not failed, **record, "steps": applied}
+    if failed:
+        result.update(error="baseline-failed", message="baseline steps failed: " + ", ".join(failed))
+    return result
+
+
+def sync_clock(host: Host) -> bool:
+    """Set the device wall clock to the host's (UTC). A snapshot resumes with
+    the clock it was saved with; a stale clock is what made a cached Connect
+    token pass the device-side expiry check and 401 server-side
+    (docs/learnings/2026-05-14-demo-user-no-otp.md). google_apis images ship
+    `su`, so no `adb root` (which would restart adbd under Maestro)."""
+    stamp = _dt.datetime.fromtimestamp(host.now(), tz=_dt.timezone.utc).strftime("%m%d%H%M%Y.%S")
+    p = adb(host, "shell", "su", "0", "date", "-u", stamp, timeout=PROBE_TIMEOUT_S)
+    return p.code == 0
+
+
+def upload_run(host: Host, run_dir: str, scratch: str, out_uri: str, redactor: Redactor,
+               extra: dict[str, bytes] | None = None) -> tuple[list[dict[str, Any]], str | None]:
+    """Stage (filter + flatten + redact) and upload a run dir. Returns the
+    artifact rows and, if the upload failed, its message (never raises: a
+    failed upload must not discard the run's exit code and steps)."""
+    stage = os.path.join(scratch, "stage")
+    os.makedirs(stage, exist_ok=True)
+    stage_artifacts(run_dir, stage, redactor)
+    for name, body in (extra or {}).items():
+        Path(stage, name).write_bytes(body)
+    artifacts = list_artifacts(stage, out_uri)
+    try:
+        s3_put_dir(host, stage, out_uri)
+    except CliError as e:
+        return artifacts, e.message
+    return artifacts, None
 
 
 def cmd_run_recipe(host: Host, args: argparse.Namespace) -> dict[str, Any]:
     out_uri = args.out
     parse_s3_uri(out_uri)
     env = parse_env_pairs(args.env)
+    redactor = Redactor.for_env(env)
     require_device(host)
     run_dir = make_work_dir(host, "run")
     scratch = _mkdtemp("scratch")
@@ -773,17 +1090,17 @@ def cmd_run_recipe(host: Host, args: argparse.Namespace) -> dict[str, Any]:
         host.chown_tree(run_dir)
 
         proc = maestro_test(host, run_dir, recipe_path, env, args.timeout_s)
-        steps = parse_steps_from_dir(run_dir)
-        Path(run_dir, "maestro-stdout.log").write_text(proc.stdout or "", encoding="utf-8")
-        Path(run_dir, "maestro-stderr.log").write_text(proc.stderr or "", encoding="utf-8")
-        artifacts = list_artifacts(run_dir, out_uri)
-        s3_put_dir(host, run_dir, out_uri)
+        stdout, stderr = redactor.text(proc.stdout or ""), redactor.text(proc.stderr or "")
+        steps = parse_steps_from_dir(run_dir, redactor)
+        Path(run_dir, "maestro-stdout.log").write_text(stdout, encoding="utf-8")
+        Path(run_dir, "maestro-stderr.log").write_text(stderr, encoding="utf-8")
+        artifacts, upload_error = upload_run(host, run_dir, scratch, out_uri, redactor)
         exit_code = proc.code
         result: dict[str, Any] = {
             "ok": exit_code == 0,
             "exit_code": exit_code,
-            "stdout": _tail(proc.stdout),
-            "stderr": _tail(proc.stderr),
+            "stdout": _tail(stdout),
+            "stderr": _tail(stderr),
             "steps": steps,
             "artifacts": artifacts,
             "out": out_uri,
@@ -795,9 +1112,19 @@ def cmd_run_recipe(host: Host, args: argparse.Namespace) -> dict[str, Any]:
         elif exit_code != 0:
             result.update(error="recipe-failed", message=f"maestro exited {exit_code}")
         res_file = os.path.join(scratch, "result.json")
-        Path(res_file).write_text(json.dumps(result), encoding="utf-8")
-        s3_put_file(host, res_file, result["result_uri"])
-        return result
+        if upload_error is None:
+            Path(res_file).write_text(json.dumps(result), encoding="utf-8")
+            try:
+                s3_put_file(host, res_file, result["result_uri"])
+            except CliError as e:
+                upload_error = e.message
+        if upload_error is not None:
+            # The run's own outcome (exit_code, steps) is kept; only the upload failed.
+            result["upload_error"] = upload_error
+            result["ok"] = False
+            if "error" not in result:
+                result.update(error="s3-upload-failed", message=upload_error)
+        return fit_inline(result)
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
         shutil.rmtree(scratch, ignore_errors=True)
@@ -854,6 +1181,7 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
     if args.out:
         parse_s3_uri(args.out)
     creds = _register_creds(host, args)
+    redactor = Redactor([v for k, v in creds.items() if k != "name"])
     require_device(host)
     run_dir = make_work_dir(host, "register")
     scratch = _mkdtemp("scratch")
@@ -870,15 +1198,18 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
         def part(label: str, recipe: str, env: dict[str, str]) -> Proc:
             p = maestro_test(host, run_dir, os.path.join(run_dir, recipe), env, args.timeout_s)
             parts.append({"part": label, "recipe": recipe, "exit_code": p.code,
-                          "stdout": _tail(p.stdout, 2000), "stderr": _tail(p.stderr, 2000)})
+                          "stdout": _tail(redactor.text(p.stdout or ""), 2000),
+                          "stderr": _tail(redactor.text(p.stderr or ""), 2000)})
             return p
 
         def finish(result: dict[str, Any]) -> dict[str, Any]:
             result["parts"] = parts
             if args.out:
-                Path(run_dir, "register-parts.json").write_text(json.dumps(parts), encoding="utf-8")
-                s3_put_dir(host, run_dir, args.out)
+                _, upload_error = upload_run(host, run_dir, scratch, args.out, redactor,
+                                             {"register-parts.json": json.dumps(parts).encode("utf-8")})
                 result["out"] = args.out
+                if upload_error is not None:
+                    result["upload_error"] = upload_error
             return result
 
         _set_gms_enabled(host, True)
@@ -886,7 +1217,8 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
             "PHONE_LOCAL": creds["phone_local"], "COUNTRY_CODE": creds["country_code"], "PIN": creds["pin"],
         })
         if "PHONE_ALREADY_REGISTERED" in (a.stdout or ""):
-            return finish({"ok": True, "already_registered": True, "phone": creds["phone"], "backup_code": None})
+            return finish({"ok": True, "already_registered": True, "phone": creds["phone"],
+                           "backup_code_set": False})
         if a.code != 0:
             raise CliError("register-part-a-failed",
                            f"register part A failed (exit {a.code}): {_tail(a.stderr or a.stdout, 500)}",
@@ -896,13 +1228,16 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
             "NAME": creds["name"], "BACKUP_CODE": creds["backup_code"], "PIN": creds["pin"],
         })
         if "PHONE_ALREADY_REGISTERED" in (b.stdout or ""):
-            return finish({"ok": True, "already_registered": True, "phone": creds["phone"], "backup_code": None})
+            return finish({"ok": True, "already_registered": True, "phone": creds["phone"],
+                           "backup_code_set": False})
         if b.code != 0:
             raise CliError("register-part-b-failed",
                            f"register part B failed (exit {b.code}): {_tail(b.stderr or b.stdout, 500)}",
                            **finish({}))
+        # The backup code is never echoed: the caller supplied it, and stdout
+        # lands in canopy-web's exec record and SSM's invocation history.
         return finish({"ok": True, "already_registered": False, "phone": creds["phone"],
-                       "backup_code": creds["backup_code"]})
+                       "backup_code_set": True})
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
         shutil.rmtree(scratch, ignore_errors=True)
@@ -1164,6 +1499,9 @@ def build_parser() -> argparse.ArgumentParser:
     sl.add_argument("--lat", type=float, required=True)
     sl.add_argument("--alt", type=float, default=DEFAULT_ALTITUDE)
     sl.add_argument("--sats", type=int, default=DEFAULT_SATELLITES)
+
+    sub.add_parser("apply-baseline",
+                   help="apply the local backend's environment baseline + sync the clock (idempotent)")
     return ap
 
 
@@ -1179,7 +1517,13 @@ COMMANDS: dict[str, Callable[[Host, argparse.Namespace], dict[str, Any]]] = {
     "install-driver": cmd_install_driver,
     "snapshot": cmd_snapshot,
     "set-location": cmd_set_location,
+    "apply-baseline": cmd_apply_baseline,
 }
+
+# Subcommands that still run on a machine whose emulator crashed after ready.
+# Everything else refuses with emulator-crashed (exit 1): the device it would
+# drive is gone, and this machine never reboots it.
+RUNS_AFTER_CRASH = frozenset({"diagnose"})
 
 
 def run_cli(argv: list[str], host: Host | None = None) -> tuple[int, dict[str, Any]]:
@@ -1190,7 +1534,12 @@ def run_cli(argv: list[str], host: Host | None = None) -> tuple[int, dict[str, A
             return 0, {"ok": True, "cli_version": CLI_VERSION}
         if not args.cmd:
             raise UsageError("a subcommand is required: " + ", ".join(COMMANDS))
-        result = COMMANDS[args.cmd](host, args)
+        if args.cmd not in RUNS_AFTER_CRASH:
+            crash = read_crash_marker()
+            if crash is not None:
+                raise CliError("emulator-crashed", crash_message(crash), crash=crash)
+        with exec_activity():
+            result = COMMANDS[args.cmd](host, args)
     except UsageError as e:
         return 2, {"ok": False, "error": "usage", "message": str(e), "cli_version": CLI_VERSION}
     except CliError as e:
@@ -1198,6 +1547,36 @@ def run_cli(argv: list[str], host: Host | None = None) -> tuple[int, dict[str, A
     except Exception as e:  # noqa: BLE001 — the one-JSON-line contract holds even for a bug
         return 1, {"ok": False, "error": "internal", "message": f"{type(e).__name__}: {e}"}
     return (0 if result.get("ok") else 1), result
+
+
+class exec_activity:
+    """Mark an exec in flight for the idle watchdog: touch LAST_ACTIVITY_PATH on
+    entry and exit, and hold EXEC_DIR/<pid> while running, so a 30-minute
+    recipe is never mistaken for idleness. Best-effort: it must never fail an exec."""
+
+    def __enter__(self) -> "exec_activity":
+        self.pid_file = os.path.join(EXEC_DIR, str(os.getpid()))
+        touch_activity()
+        try:
+            os.makedirs(EXEC_DIR, exist_ok=True)
+            Path(self.pid_file).write_text(str(int(time.time())))
+        except OSError:
+            pass
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        try:
+            os.unlink(self.pid_file)
+        except OSError:
+            pass
+        touch_activity()
+
+
+def touch_activity() -> None:
+    try:
+        Path(LAST_ACTIVITY_PATH).touch()
+    except OSError:
+        pass
 
 
 def _default_region_from_lease() -> None:
@@ -1223,9 +1602,25 @@ def main(argv: list[str] | None = None) -> int:
 # ── Boot hook ────────────────────────────────────────────────────────────────
 
 IMDS = "http://169.254.169.254"
-DEFAULT_MAX_LIFETIME_S = 14400  # the manifest's max_lease_s, if user-data omits it
-READY_TIMEOUT_S = 900  # the manifest's ready_timeout_s, counted from instance boot
+# These three mirror capability.yaml `limits` (max_lease_s, ready_timeout_s,
+# idle_release_s); test/infra/android-emulator-capability.test.ts fails CI when
+# they drift. DEFAULT_MAX_LIFETIME_S is also the halt armed BEFORE user-data is
+# read, so it must never be shorter than a real lease may live.
+DEFAULT_MAX_LIFETIME_S = 14400
+READY_TIMEOUT_S = 900  # counted from instance boot
+MANIFEST_IDLE_RELEASE_S = 900
 READY_MARGIN_S = 30
+# The in-VM idle watchdog powers off after (user-data idle_release_s + IDLE_GRACE_S)
+# without an exec, or DEFAULT_IDLE_POWEROFF_S when user-data carries no idle
+# value (canopy-web passes max_lifetime_s, not idle_release_s, today). It is a
+# backstop for a broker that stopped releasing, not the release path.
+IDLE_GRACE_S = 600
+DEFAULT_IDLE_POWEROFF_S = 1800
+DEFAULT_HALT_UNIT = "ace-max-lifetime-default"
+LEASE_HALT_UNIT = "ace-max-lifetime"
+PROC_UPTIME = "/proc/uptime"
+KVM_DEV = "/dev/kvm"
+IMDS_ATTEMPTS = 30
 
 
 class Imds:
@@ -1284,6 +1679,20 @@ def parse_user_data(raw: str | None) -> tuple[dict[str, Any], str | None]:
     return data, None
 
 
+def halt_in_s(max_lifetime_s: float, uptime_s: float) -> int:
+    """max_lifetime_s is the lease's whole life; the hook starts after boot, so
+    arm only what is left of it (never less than a minute)."""
+    return max(60, int(max_lifetime_s - uptime_s))
+
+
+def idle_poweroff_s(user_data: dict[str, Any]) -> int:
+    try:
+        idle = int(user_data.get("idle_release_s") or 0)
+    except (TypeError, ValueError):
+        idle = 0
+    return idle + IDLE_GRACE_S if idle > 0 else DEFAULT_IDLE_POWEROFF_S
+
+
 def plan_boot(ctx: BootContext, states: dict[str, Any], kvm_present: bool) -> dict[str, Any]:
     """Pure decision for the boot hook: what to halt at, what to boot, or why not."""
     ud = ctx.user_data
@@ -1291,10 +1700,8 @@ def plan_boot(ctx: BootContext, states: dict[str, Any], kvm_present: bool) -> di
         max_lifetime = int(ud.get("max_lifetime_s") or DEFAULT_MAX_LIFETIME_S)
     except (TypeError, ValueError):
         max_lifetime = DEFAULT_MAX_LIFETIME_S
-    # max_lifetime_s is the lease's whole life; the hook starts after boot, so
-    # arm only what is left of it (never less than a minute).
-    halt_in = max(60, int(max_lifetime - ctx.uptime_s))
-    plan: dict[str, Any] = {"halt_in_s": halt_in, "bucket": ud.get("bucket"), "lease_id": ud.get("lease_id")}
+    plan: dict[str, Any] = {"halt_in_s": halt_in_s(max_lifetime, ctx.uptime_s), "bucket": ud.get("bucket"),
+                            "lease_id": ud.get("lease_id"), "idle_poweroff_s": idle_poweroff_s(ud)}
     if ctx.user_data_error:
         plan["fail"] = ("bad-user-data", ctx.user_data_error)
         return plan
@@ -1334,10 +1741,10 @@ def ready_key(userid: str | None, instance_id: str) -> str:
     return f"vm/{userid or instance_id}/ready.json"
 
 
-def ready_payload(ok: bool, reason: str | None, timings: dict[str, float], ctx: BootContext,
-                  state: str | None, detail: str | None = None) -> dict[str, Any]:
+def ready_payload(ok: bool, reason: str | None, timings: dict[str, Any], ctx: BootContext,
+                  state: str | None, detail: str | None = None, **extra: Any) -> dict[str, Any]:
     p: dict[str, Any] = {"ok": ok, "timings": timings, "cli_version": CLI_VERSION,
-                         "instance_id": ctx.instance_id, "state": state}
+                         "instance_id": ctx.instance_id, "state": state, **extra}
     if reason:
         p["reason"] = reason
     if detail:
@@ -1350,104 +1757,288 @@ def _log(msg: str) -> None:
     sys.stderr.flush()
 
 
-def boot_main() -> int:  # pragma: no cover — exercised on the machine; plan_boot is unit-tested
-    host = Host()
-    t_hook = time.monotonic()
-    imds = Imds()
-    instance_id, region = "unknown", "us-east-1"
-    for attempt in range(30):
-        try:
-            instance_id = imds.get("meta-data/instance-id") or "unknown"
-            region = imds.get("meta-data/placement/region") or region
-            break
-        except Exception as e:  # noqa: BLE001
-            _log(f"IMDS not ready ({e}); retry {attempt + 1}")
-            time.sleep(2)
-    os.environ["AWS_DEFAULT_REGION"] = region
+def read_uptime() -> float:
     try:
-        raw_ud = imds.get("user-data")
-    except Exception as e:  # noqa: BLE001
-        _log(f"could not read user-data: {e}")
-        raw_ud = None
-    ud, ud_err = parse_user_data(raw_ud)
-    uptime = float((read_file("/proc/uptime") or "0").split()[0])
-    ctx = BootContext(instance_id=instance_id, region=region, user_data=ud, user_data_error=ud_err, uptime_s=uptime)
-    states = parse_states_yaml(read_file(STATES_YAML_PATH) or "")
-    plan = plan_boot(ctx, states, os.path.exists("/dev/kvm"))
+        return float((read_file(PROC_UPTIME) or "0").split()[0])
+    except (ValueError, IndexError):
+        return 0.0
 
-    # 1. The halt is armed before anything that can fail. With the launch
-    #    template's InstanceInitiatedShutdownBehavior=terminate, poweroff IS
-    #    termination: this machine ends on its own even if canopy-web is down.
-    arm = host.run(["systemd-run", f"--on-active={plan['halt_in_s']}s", "--unit=ace-max-lifetime",
-                    "--description=ACE capability max lifetime", "/bin/systemctl", "poweroff"],
-                   as_device_user=False, timeout=PROBE_TIMEOUT_S)
-    _log(f"max-lifetime halt in {plan['halt_in_s']}s (systemd-run exit {arm.code})")
 
-    os.makedirs(RUN_DIR, exist_ok=True)
-    Path(LEASE_PATH).write_text(json.dumps({"lease_id": plan.get("lease_id"), "state": plan.get("state"),
-                                            "bucket": plan.get("bucket"), "instance_id": instance_id,
-                                            "region": region}))
-    timings: dict[str, float] = {"uptime_at_hook_s": round(uptime, 1)}
+def arm_halt(host: Host, unit: str, seconds: int) -> Proc:
+    """``systemd-run --on-active``: a transient timer that powers off. With the
+    launch template's InstanceInitiatedShutdownBehavior=terminate, poweroff IS
+    termination, so the machine ends on its own even if canopy-web is down."""
+    return host.run(["systemd-run", f"--on-active={seconds}s", f"--unit={unit}",
+                     "--description=ACE capability max lifetime", "/bin/systemctl", "poweroff"],
+                    as_device_user=False, timeout=PROBE_TIMEOUT_S)
 
-    def publish(ok: bool, reason: str | None, detail: str | None = None) -> int:
-        payload = ready_payload(ok, reason, timings, ctx, plan.get("state"), detail)
-        _log(f"ready.json: {json.dumps(payload)[:500]}")
-        bucket = plan.get("bucket")
+
+def unit_prop(host: Host, unit: str, prop: str) -> str:
+    p = host.run(["systemctl", "show", "-p", prop, "--value", unit], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    return (p.stdout or "").strip()
+
+
+class _Boot:
+    """One run of the boot hook. Every exit goes through ``publish``."""
+
+    def __init__(self, host: Host, imds: Any) -> None:
+        self.host, self.imds = host, imds
+        self.t_hook = host.monotonic()
+        self.ctx = BootContext(instance_id="unknown", region="us-east-1")
+        self.plan: dict[str, Any] = {}
+        self.timings: dict[str, Any] = {}
+        self.published = False
+
+    # -- exits --------------------------------------------------------------
+
+    def poweroff(self, why: str) -> None:
+        _log(f"powering off: {why}")
+        self.host.run(["systemctl", "poweroff"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+
+    def publish(self, ok: bool, reason: str | None, detail: str | None = None) -> int:
+        self.published = True
+        self.timings.setdefault("hook_s", round(self.host.monotonic() - self.t_hook, 1))
+        extra: dict[str, Any] = {}
+        for k, path in (("baseline", BASELINE_PATH), ("boot_path", BOOT_PATH_PATH)):
+            v = _read_json(path)
+            if v is not None:
+                extra[k] = v
+        payload = ready_payload(ok, reason, self.timings, self.ctx, self.plan.get("state"), detail, **extra)
+        _log(f"ready.json: {json.dumps(payload)[:800]}")
+        # The idle watchdog counts from here: a lease nobody drives (or a failed
+        # one the broker never releases) still ends.
+        touch_activity()
+        bucket = self.plan.get("bucket")
         if not bucket:
-            _log("no bucket in user-data; cannot publish ready.json")
+            self.poweroff("no bucket in user-data, so no lease can ever read or release this machine")
             return 1
         f = os.path.join(RUN_DIR, "ready.json")
         Path(f).write_text(json.dumps(payload))
-        key = ready_key(caller_userid(host), instance_id)
+        key = ready_key(caller_userid(self.host), self.ctx.instance_id)
         for attempt in range(5):
-            p = host.run(["aws", "s3", "cp", "--only-show-errors", "--content-type", "application/json", f,
-                          f"s3://{bucket}/{key}"], as_device_user=False, timeout=60)
+            p = self.host.run(["aws", "s3", "cp", "--only-show-errors", "--content-type", "application/json", f,
+                               f"s3://{bucket}/{key}"], as_device_user=False, timeout=60)
             if p.code == 0:
                 return 0 if ok else 1
-            _log(f"ready.json upload failed ({p.stderr.strip()[:200]}); retry {attempt + 1}")
-            time.sleep(3)
+            _log(f"ready.json upload failed ({(p.stderr or '').strip()[:200]}); retry {attempt + 1}")
+            self.host.sleep(3)
         return 1
 
-    if arm.code != 0:
-        return publish(False, "halt-not-armed", arm.stderr)
-    if "fail" in plan:
-        code, msg = plan["fail"]
-        return publish(False, code, msg)
+    # -- the hook -----------------------------------------------------------
 
-    # 2. Cold-boot the AVD for the lease's state (ace-emulator-launch reads
-    #    requested-state; it boots -wipe-data and installs that state's APK).
-    Path(REQUESTED_STATE_PATH).write_text(plan["state"] + "\n")
-    t_start = time.monotonic()
-    host.run(["systemctl", "reset-failed", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
-    start = host.run(["systemctl", "start", "--no-block", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
-    if start.code != 0:
-        return publish(False, "runner-start-failed", start.stderr)
-    budget = max(60.0, READY_TIMEOUT_S - uptime - READY_MARGIN_S)
-    deadline = t_start + budget
-    while time.monotonic() < deadline:
-        if os.path.exists(READY_MARKER):
-            timings["runner_to_ready_s"] = round(time.monotonic() - t_start, 1)
-            timings["hook_s"] = round(time.monotonic() - t_hook, 1)
-            timings["boot_to_ready_s"] = round(uptime + (time.monotonic() - t_hook), 1)
-            timings.update(_launch_timings())
-            return publish(True, None)
-        failed = host.run(["systemctl", "is-failed", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
-        if (failed.stdout or "").strip() == "failed":
-            return publish(False, "emulator-boot-failed", tail_lines(RUNNER_LOG, 40))
-        time.sleep(2)
-    return publish(False, "emulator-ready-timeout",
-                   f"no {READY_MARKER} after {int(budget)}s\n" + tail_lines(RUNNER_LOG, 40))
+    def run(self) -> int:
+        host = self.host
+        os.makedirs(RUN_DIR, exist_ok=True)
+        uptime = read_uptime()
+        self.timings["uptime_at_hook_s"] = round(uptime, 1)
+        # 1. A halt, armed before ANYTHING that can fail or wait (IMDS included),
+        #    from the conservative default: the longest a lease may live.
+        default_arm = arm_halt(host, DEFAULT_HALT_UNIT, halt_in_s(DEFAULT_MAX_LIFETIME_S, uptime))
+        _log(f"default halt in {halt_in_s(DEFAULT_MAX_LIFETIME_S, uptime)}s (systemd-run exit {default_arm.code})")
+
+        # 2. Who and where am I, and what lease is this?
+        for attempt in range(IMDS_ATTEMPTS):
+            try:
+                self.ctx.instance_id = self.imds.get("meta-data/instance-id") or "unknown"
+                self.ctx.region = self.imds.get("meta-data/placement/region") or self.ctx.region
+                break
+            except Exception as e:  # noqa: BLE001
+                _log(f"IMDS not ready ({e}); retry {attempt + 1}")
+                host.sleep(2)
+        os.environ["AWS_DEFAULT_REGION"] = self.ctx.region
+        try:
+            raw_ud = self.imds.get("user-data")
+        except Exception as e:  # noqa: BLE001
+            _log(f"could not read user-data: {e}")
+            raw_ud = None
+        ud, ud_err = parse_user_data(raw_ud)
+        self.ctx.user_data, self.ctx.user_data_error = ud, ud_err
+        self.ctx.uptime_s = read_uptime()
+        states = parse_states_yaml(read_file(STATES_YAML_PATH) or "")
+        self.plan = plan_boot(self.ctx, states, os.path.exists(KVM_DEV))
+        self.timings["imds_s"] = round(host.monotonic() - self.t_hook, 1)
+
+        if default_arm.code != 0:
+            code = self.publish(False, "halt-not-armed",
+                                f"default halt: systemd-run exit {default_arm.code}: {default_arm.stderr}")
+            self.poweroff("the max-lifetime halt could not be armed")
+            return code
+
+        # 3. Re-arm with the lease's own lifetime, then drop the default.
+        lease_arm = arm_halt(host, LEASE_HALT_UNIT, self.plan["halt_in_s"])
+        _log(f"lease halt in {self.plan['halt_in_s']}s (systemd-run exit {lease_arm.code})")
+        if lease_arm.code != 0:
+            code = self.publish(False, "halt-not-armed", f"lease halt: {lease_arm.stderr}")
+            self.poweroff("the lease's max-lifetime halt could not be armed")
+            return code
+        host.run(["systemctl", "stop", f"{DEFAULT_HALT_UNIT}.timer"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+
+        Path(LEASE_PATH).write_text(json.dumps({
+            "lease_id": self.plan.get("lease_id"), "state": self.plan.get("state"), "bucket": self.plan.get("bucket"),
+            "instance_id": self.ctx.instance_id, "region": self.ctx.region}))
+        Path(IDLE_CONFIG_PATH).write_text(json.dumps({"idle_poweroff_s": self.plan["idle_poweroff_s"]}))
+        if "fail" in self.plan:
+            code, msg = self.plan["fail"]
+            return self.publish(False, code, msg)
+
+        # 4. Boot the AVD for the lease's state (ace-emulator-launch reads
+        #    requested-state: snapshot load, or cold boot + install).
+        Path(REQUESTED_STATE_PATH).write_text(self.plan["state"] + "\n")
+        t_start = host.monotonic()
+        host.run(["systemctl", "reset-failed", RUNNER_UNIT], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+        start = host.run(["systemctl", "start", "--no-block", RUNNER_UNIT], as_device_user=False,
+                         timeout=PROBE_TIMEOUT_S)
+        if start.code != 0:
+            return self.publish(False, "runner-start-failed", start.stderr)
+        budget = max(60.0, READY_TIMEOUT_S - self.ctx.uptime_s - READY_MARGIN_S)
+        deadline = t_start + budget
+        while host.monotonic() < deadline:
+            if os.path.exists(READY_MARKER):
+                now = host.monotonic()
+                self.timings["runner_to_ready_s"] = round(now - t_start, 1)
+                self.timings["hook_s"] = round(now - self.t_hook, 1)
+                self.timings["boot_to_ready_s"] = round(uptime + (now - self.t_hook), 1)
+                self.timings.update(_launch_timings())
+                return self.publish(True, None)
+            # The runner unit is Restart=no: one start, one boot. A restart
+            # (someone re-added Restart=) or an exit before ready is a failed
+            # lease, never a second -wipe-data boot.
+            restarts = unit_prop(host, RUNNER_UNIT, "NRestarts")
+            active = unit_prop(host, RUNNER_UNIT, "ActiveState")
+            if restarts not in ("", "0") or active in ("failed", "inactive"):
+                self.timings.update(_launch_timings())
+                return self.publish(False, "emulator-boot-failed",
+                                    f"runner {active}, NRestarts={restarts or '?'}\n" + tail_lines(RUNNER_LOG, 40))
+            host.sleep(1)
+        self.timings.update(_launch_timings())
+        return self.publish(False, "emulator-ready-timeout",
+                            f"no {READY_MARKER} after {int(budget)}s\n" + tail_lines(RUNNER_LOG, 40))
 
 
-def _launch_timings() -> dict[str, float]:
-    out: dict[str, float] = {}
+def boot_main(host: Host | None = None, imds: Any = None) -> int:
+    """The image's boot hook (/usr/local/sbin/ace-capability-boot). Never
+    leaves without a ready.json when a bucket is known: an exception becomes
+    ``{ok:false, reason:"hook-crashed"}`` instead of a broker waiting out
+    ready_timeout_s."""
+    boot = _Boot(host or Host(), imds or Imds())
+    try:
+        return boot.run()
+    except Exception as e:  # noqa: BLE001
+        import traceback
+
+        detail = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+        _log(f"hook crashed: {detail}")
+        if boot.published:
+            return 1
+        try:
+            return boot.publish(False, "hook-crashed", detail)
+        except Exception as e2:  # noqa: BLE001
+            _log(f"could not publish hook-crashed: {e2}")
+            boot.poweroff("the boot hook crashed and could not report it")
+            return 1
+
+
+def _launch_timings() -> dict[str, Any]:
+    """/run/ace-mobile/launch-timings (``key=value`` lines from ace-emulator-launch)."""
+    out: dict[str, Any] = {}
     for line in (read_file(LAUNCH_TIMINGS_PATH) or "").splitlines():
         k, _, v = line.partition("=")
         try:
             out[f"launch_{k.strip()}"] = float(v)
         except ValueError:
-            pass
+            if k.strip():
+                out[f"launch_{k.strip()}"] = v.strip()
     return out
+
+
+# ── Idle watchdog (ace-idle-watchdog.timer → /usr/local/sbin/ace-idle-watchdog) ──
+
+
+def idle_decision(now: float, last_activity: float | None, threshold_s: int, live_execs: int) -> tuple[bool, str]:
+    """Pure: power off? Never before the boot hook has published (no
+    last-activity yet), never while an exec runs."""
+    if last_activity is None:
+        return False, "no activity clock yet (the boot hook has not published)"
+    if live_execs > 0:
+        return False, f"{live_execs} exec(s) in flight"
+    idle = now - last_activity
+    if idle >= threshold_s:
+        return True, f"idle {int(idle)}s >= {threshold_s}s"
+    return False, f"idle {int(idle)}s < {threshold_s}s"
+
+
+def live_exec_count() -> int:
+    n = 0
+    try:
+        names = os.listdir(EXEC_DIR)
+    except OSError:
+        return 0
+    for name in names:
+        try:
+            os.kill(int(name), 0)
+            n += 1
+        except (ValueError, ProcessLookupError):
+            try:
+                os.unlink(os.path.join(EXEC_DIR, name))  # a stale pid file from a killed exec
+            except OSError:
+                pass
+        except PermissionError:
+            n += 1  # alive, owned by someone else
+    return n
+
+
+def idle_main(host: Host | None = None) -> int:
+    host = host or Host()
+    try:
+        threshold = int(json.loads(read_file(IDLE_CONFIG_PATH) or "{}").get("idle_poweroff_s") or DEFAULT_IDLE_POWEROFF_S)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        threshold = DEFAULT_IDLE_POWEROFF_S
+    try:
+        last = os.stat(LAST_ACTIVITY_PATH).st_mtime
+    except OSError:
+        last = None
+    off, why = idle_decision(host.now(), last, threshold, live_exec_count())
+    sys.stderr.write(f"[ace-idle-watchdog] {why}\n")
+    if off:
+        host.run(["systemctl", "poweroff"], as_device_user=False, timeout=PROBE_TIMEOUT_S)
+    return 0
+
+
+# ── Boot-path selection (ace-emulator-launch asks `ace-launch-plan <state>`) ──
+
+BOOT_MODE_PATH = "/opt/ace/boot-mode"
+AVD_DIR = "/home/ubuntu/.android/avd/ACE_Pixel_API_34.avd"
+
+
+def choose_boot_path(state: dict[str, str] | None, boot_mode: str, avd_dir: str) -> tuple[str, str]:
+    """Pure: ``("snapshot", name)`` or ``("cold", why)``.
+
+    The image bakes one quick-boot snapshot per state (CommCare installed, no
+    user registered) only when built with boot_mode=snapshot; a snapshot is
+    used only when that mode is on AND its files are present. Everything else
+    cold-boots (-wipe-data + install), which is always available."""
+    if not state:
+        return "cold", "unknown state"
+    if boot_mode.strip() != "snapshot":
+        return "cold", f"image boot mode is {boot_mode.strip() or 'cold'!r}"
+    snap = (state.get("snapshot") or "").strip()
+    if not snap or snap in ("none", "cold-boot-stage"):
+        return "cold", "no snapshot baked for this state"
+    snap_dir = os.path.join(avd_dir, "snapshots", snap)
+    for f in ("ram.bin", "snapshot.pb"):
+        if not os.path.isfile(os.path.join(snap_dir, f)):
+            return "cold", f"snapshot {snap} is missing {f}"
+    return "snapshot", snap
+
+
+def launch_plan_main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    name = argv[0] if argv else ""
+    states = parse_states_yaml(read_file(STATES_YAML_PATH) or "")
+    entry = next((s for s in states["states"] if s["name"] == name), None)
+    path, detail = choose_boot_path(entry, read_file(BOOT_MODE_PATH) or "cold", AVD_DIR)
+    sys.stdout.write(f"{path} {detail}\n")
+    return 0
 
 
 if __name__ == "__main__":
