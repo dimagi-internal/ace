@@ -279,6 +279,20 @@ interface SelectorMap {
 }
 
 /**
+ * Quote a selector value as a YAML double-quoted scalar.
+ *
+ * A JSON string literal is a valid YAML double-quoted scalar, so
+ * `JSON.stringify` escapes backslashes and double quotes correctly.
+ * Splicing the raw value between quotes broke on any value carrying a
+ * backslash — the 2.64.0 `geopoint-captured-readout` row is the regex
+ * `[\s\S]*Accuracy: [\s\S]*`, and `\s` is not a legal YAML escape, so
+ * Maestro rejected the whole chunk with "Parsing Failed" (ace#2963).
+ */
+export function yamlQuote(value: string): string {
+  return JSON.stringify(value);
+}
+
+/**
  * Resolve `${SELECTOR:logical-name}` placeholders in a YAML body.
  * Pure function — no filesystem writes, no side effects.
  *
@@ -332,7 +346,7 @@ export function resolveSelectorsInYaml(
     }
     if (entry.unverified) unverified.push(name);
     if (entry.type === 'id' || entry.type === 'text' || entry.type === 'point') {
-      return `"${entry.value}"`;
+      return yamlQuote(entry.value);
     }
     unresolved.push(name);
     return `"# UNRESOLVED-TYPE ${name}"`;
@@ -346,9 +360,9 @@ export function resolveSelectorsInYaml(
     }
     if (entry.unverified) unverified.push(name);
     switch (entry.type) {
-      case 'id':    return `id: "${entry.value}"`;
-      case 'text':  return `text: "${entry.value}"`;
-      case 'point': return `point: "${entry.value}"`;
+      case 'id':    return `id: ${yamlQuote(entry.value)}`;
+      case 'text':  return `text: ${yamlQuote(entry.value)}`;
+      case 'point': return `point: ${yamlQuote(entry.value)}`;
       default:
         unresolved.push(name);
         return `# UNRESOLVED-TYPE ${name}`;
