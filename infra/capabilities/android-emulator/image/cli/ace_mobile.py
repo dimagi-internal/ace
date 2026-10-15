@@ -1142,6 +1142,26 @@ def cmd_run_recipe(host: Host, args: argparse.Namespace) -> dict[str, Any]:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+_MAESTRO_BANNER_RE = re.compile(r"^[\u256d\u2502\u2570]")
+_MAESTRO_HARD_ERROR_RE = re.compile(r"^(Assertion is false|Element not found|Unable to |Exception|Error: |java\.|maestro\.)")
+
+
+def maestro_failure_summary(stdout: str, stderr: str = "", limit: int = 500) -> str:
+    """The one-line reason a failed ``maestro test`` gives. Maestro ends every
+    run's stdout with a boxed "Maestro Cloud" advert, so a plain tail of the
+    output was only the advert (ace#2934). Picks the last top-level ``FAILED``
+    step and the last hard error line; indented FAILED lines and ``Warning:``
+    lines belong to optional probes. Twin of mcp/mobile/maestro-failure-summary.ts
+    (a vitest runs both on the same recorded output)."""
+    lines = [ln for ln in f"{stdout or ''}\n{stderr or ''}".split("\n")
+             if ln.strip() and not _MAESTRO_BANNER_RE.match(ln.strip())]
+    failed = [ln.strip() for ln in lines if not ln[:1].isspace() and ln.rstrip().endswith("FAILED")]
+    errors = [ln.strip() for ln in lines if _MAESTRO_HARD_ERROR_RE.match(ln.strip())]
+    parts = failed[-1:] + errors[-1:]
+    out = " | ".join(parts) if parts else "\n".join(lines)
+    return out[-limit:] if len(out) > limit else out
+
+
 def _register_creds(host: Host, args: argparse.Namespace) -> dict[str, str]:
     creds: dict[str, str] = {}
     if args.creds:
@@ -1243,7 +1263,8 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
                            "backup_code_set": False})
         if a.code != 0:
             raise CliError("register-part-a-failed",
-                           f"register part A failed (exit {a.code}): {_tail(a.stderr or a.stdout, 500)}",
+                           f"register part A failed (exit {a.code}): "
+                           f"{redactor.text(maestro_failure_summary(a.stdout or '', a.stderr or ''))}",
                            **finish({}))
         _set_gms_enabled(host, False)
         _preset_lock_pin(host, creds["pin"])
@@ -1255,7 +1276,8 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
                            "backup_code_set": False})
         if b.code != 0:
             raise CliError("register-part-b-failed",
-                           f"register part B failed (exit {b.code}): {_tail(b.stderr or b.stdout, 500)}",
+                           f"register part B failed (exit {b.code}): "
+                           f"{redactor.text(maestro_failure_summary(b.stdout or '', b.stderr or ''))}",
                            **finish({}))
         # The backup code is never echoed: the caller supplied it, and stdout
         # lands in canopy-web's exec record and SSM's invocation history.

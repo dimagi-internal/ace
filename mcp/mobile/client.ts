@@ -1,4 +1,5 @@
 // mcp/mobile/client.ts
+import { maestroFailureSummary } from './maestro-failure-summary.js';
 import * as path from 'node:path';
 import { writeProvisionedMarker } from './avd-provisioned-marker.js';
 import { buildUnreachableMessage } from './device-reachable.js';
@@ -2892,7 +2893,7 @@ export class MobileClient {
             partA.stderr || partA.stdout,
           );
         }
-        throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
+        throw new Error(`register_test_user part A failed: ${maestroFailureSummary(partA.stdout, partA.stderr)}`);
       }
 
       // Disable GMS so face-capture in part B picks ManualMode. CommCare
@@ -2942,7 +2943,7 @@ export class MobileClient {
           return { alreadyRegistered: true, phone: args.phone };
         }
         throw new Error(
-          `register_test_user part B failed: ${partB.stderr || partB.stdout}\n` +
+          `register_test_user part B failed: ${maestroFailureSummary(partB.stdout, partB.stderr)}\n` +
             postFailureProbeVerdict(verify.classified_as, verify.ui_dump_signal),
         );
       }
