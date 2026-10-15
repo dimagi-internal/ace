@@ -54,8 +54,8 @@ PREVIOUS="$(current_ami)"
 # Every public IPv4 this machine egresses from, as a JSON list of /32s
 # (see the call site). Empty list when no service answers.
 egress_cidrs_json() {
-  local ips=() ip svc round
-  for round in 1 2; do
+  local ips=() ip svc _
+  for _ in 1 2; do
     for svc in https://checkip.amazonaws.com https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
       ip="$(curl -fsS -4 -m 5 "$svc" 2>/dev/null | tr -d '[:space:]')" || continue
       [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && ips+=("$ip")
