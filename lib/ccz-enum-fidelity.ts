@@ -344,9 +344,14 @@ function parseItext(formXml: string): Record<string, string> {
  * CCZ smallholder-seasonal/20261012-1549:
  * `/data/__nova_operations/update_participant_plan/case/update/main_crop`.
  * Accepting only the first made every write in a current Nova build invisible.
+ *
+ * Either shape may sit inside a repeat (ace#2980): a per-member update from a
+ * roster compiles to `/data/<repeat>/item/__nova_operations/<op>/case/...` —
+ * recorded verbatim from released CCZ smallholder-seasonal/20261015-1402:
+ * `/data/roster/item/__nova_operations/update_participants/case/update/trigger_open`.
  */
 const CASE_WRITE_NODESET =
-  /^\/data\/(?:__nova_operations\/[^/]+\/)?case\/(?:create|update)\/([^/]+)$/;
+  /^\/data\/(?:[\w-]+\/)*?(?:__nova_operations\/[^/]+\/)?case\/(?:create|update)\/([^/]+)$/;
 
 /**
  * `question node path -> case properties that node's answer is written to`,

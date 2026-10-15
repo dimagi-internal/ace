@@ -888,3 +888,83 @@ describe('Nova __nova_operations case writes and complete writer sets (ace#2940)
     expect(res.reason).toContain('/data/typed_status');
   });
 });
+
+/**
+ * ace#2980 — a case update made from INSIDE a repeat (Nova's multi-record
+ * per-member operation) compiles to
+ * `/data/<repeat>/item/__nova_operations/<op>/case/update/<prop>`. The ace#2940
+ * pattern only allowed `__nova_operations` directly under `/data/`, so the
+ * repeat-nested write was invisible and the gate reported its value as never
+ * written: a false `case-list-enum-drift` BLOCKER. The bind below is verbatim
+ * (relevant shortened) from released Deliver CCZ
+ * smallholder-seasonal/20261015-1402, HQ app 654b1da7c35b4293b8ccc5ab9fc7723b,
+ * build 98571910a19140a7a265f2a15210242d, modules-9/forms-0.xml:
+ *
+ *   <bind nodeset="/data/roster/item/__nova_operations/update_participants/case/update/trigger_open"
+ *         relevant="..." calculate="'yes'"/>
+ *
+ * The suite and other forms are SYNTHETIC, shaped on that build as the issue
+ * quotes it (modules-4 writes `'no'` at create; tile labels `yes` "Home visit due").
+ */
+describe('case writes nested in a repeat (ace#2980)', () => {
+  const enumLocale = (detail: string, v: string) => `${detail}.trigger_open.enum.k${v}`;
+  const detailXml = (detail: string) => `
+  <detail id="${detail}">
+    <field>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(trigger_open, 'yes'), $kyes, ''), if(selected(trigger_open, 'no'), $kno, '')), '\\s+', ' ')">
+            <variable name="kyes"><locale id="${enumLocale(detail, 'yes')}"/></variable>
+            <variable name="kno"><locale id="${enumLocale(detail, 'no')}"/></variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>`;
+  const suiteXml = `<suite>${detailXml('m6_case_short')}${detailXml('m6_case_long')}</suite>`;
+  const appStrings = ['m6_case_short', 'm6_case_long']
+    .flatMap((d) => [`${enumLocale(d, 'yes')}=Home visit due`, `${enumLocale(d, 'no')}=On track`])
+    .join('\n');
+  const form = (model: string) => `<?xml version='1.0'?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>${model}</model></h:head>
+  <h:body/>
+</h:html>`;
+
+  const CREATE = 'modules-4/forms-0.xml';
+  const SESSION = 'modules-9/forms-0.xml';
+  const REPEAT_BIND =
+    '/data/roster/item/__nova_operations/update_participants/case/update/trigger_open';
+  const createXml = form(
+    `<bind nodeset="/data/__nova_operations/create_participant/case/update/trigger_open" calculate="'no'"/>`,
+  );
+  const sessionXml = form(
+    `<bind nodeset="${REPEAT_BIND}" relevant="/data/roster/item/m_new_missed &gt;= 2" calculate="'yes'"/>`,
+  );
+  const run = (forms: { path: string; xml: string }[]) =>
+    checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+
+  it('reads the case property off a repeat-nested __nova_operations bind', () => {
+    expect(extractCalculateWrittenValues(sessionXml, SESSION).writers).toEqual([
+      { formPath: SESSION, property: 'trigger_open', expression: "'yes'", values: ['yes'] },
+    ]);
+  });
+
+  it('PASSES when `yes` is written only from inside the roster repeat', () => {
+    const res = run([
+      { path: CREATE, xml: createXml },
+      { path: SESSION, xml: sessionXml },
+    ]);
+    assertChecked(res);
+    expect(res.findings).toEqual([]);
+    expect(res.ok).toBe(true);
+    expect(res.calculateWritten.trigger_open).toEqual(['no', 'yes']);
+  });
+
+  it('NEGATIVE CONTROL: without the repeat writer, `yes` is still reported unwritten', () => {
+    const res = run([{ path: CREATE, xml: createXml }]);
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => f.value)).toEqual(['yes']);
+  });
+});
