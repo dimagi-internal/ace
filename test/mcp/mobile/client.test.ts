@@ -1204,7 +1204,12 @@ describe('MobileClient.diagnose (dual-mode, #961)', () => {
 
     const d = await client.diagnose();
     expect(avd.diagnose).toHaveBeenCalledTimes(1);
-    expect(d).toEqual({ backend: 'local', adb_server_port: 5039 });
+    // Plus the test-worker lock state, which rides on every diagnose (ace#2955).
+    expect(d).toEqual({
+      backend: 'local',
+      adb_server_port: 5039,
+      test_workers: { capability: 'test-worker', mode: null, held: [], warning: null },
+    });
   });
 
   it('restartRunner is gone with the retired cloud backend', () => {

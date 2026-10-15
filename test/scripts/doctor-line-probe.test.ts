@@ -149,7 +149,8 @@ describe('doctor line-probes always land in a bucket (ace#2855)', () => {
 describe('the silent shape is gone from bin/ace-doctor (ace#2855)', () => {
   it('routes every line-probe through the helper', () => {
     // capability_lease (the lease mobile backend's doctor probe) was the fourth.
-    const probes = ['nova_header_readiness', 'nova_scopes', 'static_header_drift', 'capability_lease'];
+    // test_worker_pool (the Connect test-worker pool lock, ace#2955) the fifth.
+    const probes = ['nova_header_readiness', 'nova_scopes', 'static_header_drift', 'capability_lease', 'test_worker_pool'];
     for (const probe of probes) {
       expect(doctorSrc).toMatch(new RegExp(`emit_line_probe ${probe}\\b`));
     }

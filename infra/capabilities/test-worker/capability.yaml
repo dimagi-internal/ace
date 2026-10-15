@@ -1,0 +1,29 @@
+# ACE's `test-worker` capability: the Connect test-worker pool (ace#2955).
+#
+# Not a machine. Each slot is one named Connect test worker (a +7426 demo
+# PersonalID account); a lease is an exclusive checkout of one worker by one
+# device session — local AVD, leased emulator or phone — for as long as the
+# device is signed in as it. Every PersonalID sign-in is a recovery that
+# rotates the account to the newest device, so two sessions on one worker
+# sign each other out ("Account in use on another device", ace#2934).
+#
+# Schema: canopy_runtime.schema.CapabilityManifest, version 1, `kind: pool`
+# (canopy-web's pool capability kind). Declared in runtime.yaml `capabilities:`
+# and published by `canopy-runtime publish-capabilities --spec runtime.yaml
+# --agent ace` (owner-approved step).
+#
+# The slots MUST match the workers the 1Password item `connect-test-workers`
+# (field pool-json → ACE_E2E_WORKERS) holds credentials for, plus worker-1
+# (the legacy `connect-test-user` item / ACE_E2E_*). A slot handed out with no
+# credentials behind it fails TEST_WORKER_NO_CREDENTIALS; /ace:doctor
+# test_worker_pool flags the drift. Adding or retiring a worker:
+# skills/test-worker-pool/SKILL.md.
+#
+# Client: lib/test-worker-lease.ts (checkout/heartbeat/release) via
+# mcp/mobile (mobile_ensure_avd_running, mobile_checkout_test_workers).
+version: 1
+name: test-worker
+kind: pool
+description: Connect test workers, one device session each.
+slots: [worker-1, worker-2, worker-3, worker-4]
+limits: {max_lease_s: 14400, idle_release_s: 900}

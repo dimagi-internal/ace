@@ -1593,14 +1593,14 @@ Add a person to the OCS team so a linked chatbot page actually opens for them (d
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 17 atoms
+Source: `mcp/mobile-server.ts` — 19 atoms
 
 ### `mobile_ensure_avd_running`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | Local: the AVD to cold-boot. Lease: a non-cc-* name leases cc-<ACE_CONNECT_APK_VERSION>, the CommCare the selector map is for (a cc-* name must match it). The lease result carries `lease` (lease_id, expires_at, idle_release_s, state, baseline parity) — a lease idle for idle_release_s (900 s) with no call is released. |
-| `testUser` | `z.object` | optional | Optional per-run test-user credential override (ace#1289). Omit for the env-derived ACE_E2E_* user (the default). Honoured on both backends (local AVD and lease). |
+| `testUser` | `z.object` | optional | Optional per-run test-user credential override (ace#1289). Omit (the default) and the device signs in as a Connect test worker this session checks out from the pool (ace#2955; `test_worker` in the result names the slot and the lock). Passed, that identity is used UNLOCKED — no pool slot describes it. Honoured on both backends (local AVD and lease). |
 | `oppSlug` | `z.string` | optional | Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG. |
 | `runId` | `z.string` | optional | Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID. |
 | `prewarm` | `z.boolean` | optional | true = start the device booting and return AT ONCE, without waiting, registering or verifying. Lease: starts (or joins) the acquire so the multi-minute boot overlaps your other prep; the next normal call joins it and heals as usual — make that call within idle_release_s (900 s) of the machine becoming ready. Local: a no-op. Phase 6 calls this first (qa-and-training Step 0). If a pre-flight gate then halts, call mobile_stop_avd. |
@@ -1634,12 +1634,26 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | _—_ |
-| `phone` | `z.string` | optional | _—_ |
+| `slot` | `z.string` | optional | Sign the device in as this Connect test worker (e.g. "worker-3"). It MUST be a slot this session holds — check workers out first with mobile_checkout_test_workers. Takes precedence over the credential fields. Omit slot AND phone to sign in as the session's own worker (checked out from the pool if none is held, ace#2955). |
+| `phone` | `z.string` | optional | Explicit identity (unlocked). Must keep the +7426 demo prefix. |
 | `phoneLocal` | `z.string` | optional | _—_ |
 | `countryCode` | `z.string` | optional | _—_ |
 | `pin` | `z.string` | optional | _—_ |
 | `backupCode` | `z.string` | optional | _—_ |
 | `name` | `z.string` | optional | _—_ |
+
+### `mobile_checkout_test_workers`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `count` | `z.number` | **required** | Total workers this session should hold, INCLUDING the one the device is signed in as. Waits up to 10 min for queued slots, then fails TEST_WORKER_POOL_EXHAUSTED naming who holds each slot — it never shares one. More than 1 requires the pool lock to be live (TEST_WORKER_POOL_UNAVAILABLE names the publish step). |
+
+### `mobile_release_test_workers`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `slots` | `z.array` | optional | Slots to release. Omitted: every held worker the device is NOT signed in as. |
+| `all` | `z.boolean` | optional | true = release the signed-in worker too (only when this device is done with it). mobile_stop_avd releases everything. |
 
 ### `mobile_run_recipe`
 

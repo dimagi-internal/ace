@@ -3145,6 +3145,16 @@ run_line_probe scripts/doctor-capability-lease.ts --format=lines
 emit_line_probe capability_lease \
   "re-install the plugin (/ace:update) or run \`npm ci\`; then re-run /ace:doctor"
 
+# 8c. test_worker_pool — the Connect test-worker pool lock (ace#2955). While
+# canopy-web's `test-worker` capability is unpublished/ungranted, every device
+# session signs in UNLOCKED as worker-1 (the rollout fallback), which lets two
+# sessions sign each other out (ace#2934). WARN until it is live, so the
+# fallback cannot persist silently. Read-only; never checks a worker out.
+# Logic: lib/test-worker-pool-probe.ts.
+run_line_probe scripts/doctor-test-worker-pool.ts --format=lines
+emit_line_probe test_worker_pool \
+  "re-install the plugin (/ace:update) or run \`npm ci\`; then re-run /ace:doctor"
+
 # mobile_infra (added 0.13.128): single-line gate that summarizes mobile
 # readiness so an operator scanning [Auth liveness] sees the gating
 # signal without having to read the verbose [Mobile] block. The detail
