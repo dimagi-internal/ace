@@ -38,9 +38,11 @@
 #   ${FORM_NAME}   — OPTIONAL. Visible label of the FORM row inside that
 #                    module, when it DIFFERS from ${MODULE_NAME}.
 #   ${WALK_LABEL}  — REQUIRED at every call site (ace#1668). Per-INVOCATION
-#                    screenshot discriminator; bind "" on a single-invocation
-#                    call. See below — an unbound one is NOT empty, it is the
-#                    literal string `undefined`.
+#                    screenshot discriminator; bind a NON-EMPTY slug (e.g.
+#                    "-walk") even on a single-invocation call — the linter
+#                    rejects an empty binding (ace#2981). See below — an
+#                    unbound one is NOT empty, it is the literal string
+#                    `undefined`.
 #
 # ── ${WALK_LABEL}: why the fixed captures need a discriminator (ace#1651) ───
 #
@@ -90,8 +92,10 @@
 # `runFlow-unbound-screenshot-name` rule fails any call site that omits it.
 #
 # CALLER CONTRACT. Bind a short slug INCLUDING the leading separator —
-# `WALK_LABEL: "-register"` / `"-followup"`. A SINGLE-invocation caller binds
-# `WALK_LABEL: ""` explicitly, which reproduces the pre-#1651 names exactly.
+# `WALK_LABEL: "-register"` / `"-followup"`. A SINGLE-invocation caller STILL
+# binds a non-empty slug, e.g. `WALK_LABEL: "-walk"` — `lintRecipeText`'s
+# `runFlow-unbound-screenshot-name` rule rejects `WALK_LABEL: ""` the same as
+# an omitted one (ace#2981), matching `skills/app-test-cases/SKILL.md`.
 # Keep it `[a-z0-9-]`: `takeScreenshot` resolves its name as a file path, so a
 # `/` becomes a DIRECTORY (ace#1236 — the collector flattens nested frames back
 # into a unique `stepName`, so nothing is lost, but a slug is what you want in
