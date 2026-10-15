@@ -895,7 +895,11 @@ mechanical classes: `missing-term` (rollup omits an item), `extra-term`
 (rollup names a phantom), `denominator-mismatch` (`* 100 div N` where N is not
 the item count), `self-reference-missing` (an item scores a different
 question), `unreachable-max` (an item awards 0 on every branch), plus
-`no-rollup`.
+`no-rollup`. On a form WITHOUT a Connect `<assessment>` block (an ungraded
+baseline) the rollup is whatever non-item calculate sums the items — e.g.
+`baseline_score` — and gets the same checks; `no-rollup` there means nothing
+sums them, never "add a `user_score`", which #1131 forbids on such a form
+(dimagi-internal/ace#2958).
 
 It deliberately does NOT judge whether the correct answer is correct — that is
 content, and `assessment_rule_coverage` owns it.
