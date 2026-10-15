@@ -143,11 +143,11 @@ worker per run: `ACE_PER_RUN_TEST_USER` stays off.
    `mobile_register_test_user({slot: "<new slot>"})`. Confirm it reaches the
    Connect home, then `mobile_release_test_workers({all: true})`.
 
-**Initial bootstrap.** The manifest ships with `worker-1..4`, but only worker-1 has
-credentials. Run "Add a worker" three times (worker-2, worker-3, worker-4) and do
-the steps 3, 5 and 6 once at the end. Do not publish before then: a checkout that
-is handed a slot with no credentials fails `TEST_WORKER_NO_CREDENTIALS`, loudly
-and on purpose.
+**Initial bootstrap.** The manifest ships with `worker-1` only, the one worker that has
+credentials, so it can be published straight away: that alone makes worker-1 an
+exclusive checkout and ends the two-sessions-one-worker lockout (ace#2934). Grow the
+pool with "Add a worker", once per new slot. Never declare a slot before its
+credentials exist: a checkout handed such a slot fails `TEST_WORKER_NO_CREDENTIALS`.
 
 ### Retire a worker
 

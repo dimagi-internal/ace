@@ -19,11 +19,14 @@
 # test_worker_pool flags the drift. Adding or retiring a worker:
 # skills/test-worker-pool/SKILL.md.
 #
+# Declare ONLY slots that have credentials: publishing worker-1 alone already
+# gives the lock that ace#2934 needed, and each added worker brings its slot.
+#
 # Client: lib/test-worker-lease.ts (checkout/heartbeat/release) via
 # mcp/mobile (mobile_ensure_avd_running, mobile_checkout_test_workers).
 version: 1
 name: test-worker
 kind: pool
 description: Connect test workers, one device session each.
-slots: [worker-1, worker-2, worker-3, worker-4]
+slots: [worker-1]
 limits: {max_lease_s: 14400, idle_release_s: 900}
