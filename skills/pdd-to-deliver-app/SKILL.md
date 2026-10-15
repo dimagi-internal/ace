@@ -578,6 +578,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        does happen must be recorded as a decision row (§ Decisions Log).
        Verified ACE-direct by
        Step 4f (ace#1136).
+       Table values can be read ONLY via choice-list binds and values saved
+       at submit (case writes) — never inside a calculation or label (Nova
+       refuses `lookup()` there); a build-time setting used mid-form becomes a
+       constant with a hint and a decision row
+       (`nova-integration.md § Where a table value can be READ`, ace#2974).
      - `section-timestamps` — PDD success metrics reference visit-time / a
        cost model.
      - `embedded-bc-script` — PDD specifies a verbatim behavior-change

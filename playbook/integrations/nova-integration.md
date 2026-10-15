@@ -953,6 +953,25 @@ is now the whole point of this section.
   fail in a way that reads exactly like an upstream regression. (It did, here,
   for about ten minutes.)
 
+### Where a table value can be READ — and where Nova refuses it
+
+Observed live 2026-10-15 on `smallholder-seasonal/20261015-1402` (Deliver app
+`199d63dc-0556-4ade-8216-ca887b7a8692`, saved rev 16), ace#2974. A PDD that
+asks for values "read from the table at use time" can only get them on the
+WORKS rows; anything mid-form becomes a built-in constant.
+
+| Read site | Result |
+|---|---|
+| Choice list bound to a table (`optionsSource` / `set_field_options_source`), incl. a one-option list used to DISPLAY text (a script, a session guide) when the form opens | WORKS |
+| Value saved at submit — case-operation writes and write conditions, e.g. `number(lookup('SS3 Program settings', 'value', (#row/setting_key = 'missed_sessions_trigger')))` | WORKS |
+| A form field calculate or label | REFUSED — `Unknown function "lookup()"`; a direct instance read is refused with `XPATH_INSTANCE_UNAVAILABLE ... references a secondary instance that this app does not declare` |
+| A lookup whose filter contains another lookup | REFUSED — `A lookup-table filter cannot contain another table lookup.` |
+| A lookup write on a record created in the same (registration) form | REFUSED — `CASE_OPERATION_SESSION_UNAVAILABLE` |
+
+So running totals, unit conversions and program-settings numbers used while
+the form is being filled cannot read the table: build them as constants with a
+hint naming the table row they mirror, and record a decision row.
+
 ### What this means for ACE, exactly
 
 1. **ACE builds, populates AND binds a partner's register itself.** There is no
