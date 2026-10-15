@@ -82,6 +82,11 @@ import {
  *
  * `ACE_SESSION_LOCK_DIR` is the isolation seam tests use.
  */
+/** A real TCP port number (a lease lock has none; a corrupt one may hold null). */
+function isPort(p: unknown): p is number {
+  return typeof p === 'number' && Number.isInteger(p) && p > 0;
+}
+
 export function sessionLockDir(): string {
   const override = process.env.ACE_SESSION_LOCK_DIR;
   if (override && override.trim()) return override;
@@ -91,8 +96,16 @@ export function sessionLockDir(): string {
 export interface SessionLock {
   mcp_pid: number;
   started_at: string;
-  adb_port: number;
-  emulator_port: number;
+  /**
+   * The local adb server / emulator console ports this session spawned
+   * daemons on. ABSENT on a lease session's lock (`recordLeaseSessionLock`):
+   * a leased emulator runs on someone else's machine, so there is nothing on
+   * this host to reap, and every port reader skips a lock without them.
+   */
+  adb_port?: number;
+  emulator_port?: number;
+  /** `lease` for a lease session's port-less lock; absent (= local) otherwise. */
+  backend?: 'lease';
   avd_name?: string;
   /** The opportunity this session is driving, when it has been told. */
   opp_slug?: string;
@@ -117,6 +130,24 @@ export function lockPathForPid(mcpPid: number): string {
 export function acquireSessionLock(lock: SessionLock): void {
   fs.mkdirSync(sessionLockDir(), { recursive: true });
   fs.writeFileSync(lockPathForPid(lock.mcp_pid), JSON.stringify(lock, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * A lease session's lock: no ports (the emulator is on a leased machine, not
+ * this host), just enough for the opp-collision warning (ace#1821) to SEE a
+ * lease session — before this, only local sessions wrote a lock, so a lease
+ * session on the same opp was invisible to it. Merges into an existing lock
+ * when one exists (a session that also allocated local ports keeps them).
+ */
+export function recordLeaseSessionLock(ctx: { opp_slug?: string; run_id?: string; avd_name?: string }): void {
+  if (updateSessionLockContext(process.pid, ctx)) return;
+  const lock: SessionLock = {
+    mcp_pid: process.pid,
+    started_at: new Date().toISOString(),
+    backend: 'lease',
+    ...Object.fromEntries(Object.entries(ctx).filter(([, v]) => v !== undefined && v !== '')),
+  };
+  acquireSessionLock(lock);
 }
 
 /**
@@ -509,8 +540,8 @@ function liveLockedPorts(): { adb: Set<number>; emulator: Set<number> } {
         fs.readFileSync(path.join(sessionLockDir(), entry), 'utf8'),
       ) as SessionLock;
       if (!isPidAlive(lock.mcp_pid)) continue;
-      if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
-      if (Number.isFinite(lock.emulator_port)) {
+      if (isPort(lock.adb_port)) adb.add(lock.adb_port);
+      if (isPort(lock.emulator_port)) {
         emulator.add(lock.emulator_port);
         emulator.add(lock.emulator_port + 1); // the adb bridge
       }
@@ -830,8 +861,8 @@ export function getReservedPorts(): { adb: Set<number>; emulator: Set<number> } 
     if (!entry.endsWith('.lock.json')) continue;
     try {
       const lock = JSON.parse(fs.readFileSync(path.join(sessionLockDir(), entry), 'utf8')) as SessionLock;
-      if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
-      if (Number.isFinite(lock.emulator_port)) {
+      if (isPort(lock.adb_port)) adb.add(lock.adb_port);
+      if (isPort(lock.emulator_port)) {
         emulator.add(lock.emulator_port);
         // Reserve the adb-bridge port too (always emulator_port + 1)
         emulator.add(lock.emulator_port + 1);
@@ -879,8 +910,8 @@ export function cleanupSessionDaemons(mcpPid: number): {
   try {
     const raw = fs.readFileSync(lockPathForPid(mcpPid), 'utf8');
     const lock = JSON.parse(raw) as SessionLock;
-    if (Number.isFinite(lock?.adb_port)) adb_port = lock.adb_port;
-    if (Number.isFinite(lock?.emulator_port)) emulator_port = lock.emulator_port;
+    if (isPort(lock?.adb_port)) adb_port = lock.adb_port;
+    if (isPort(lock?.emulator_port)) emulator_port = lock.emulator_port;
   } catch {
     /* no lock or corrupt — nothing to clean up beyond unlinking */
   }
@@ -1088,8 +1119,9 @@ export function reapStaleSessions(
 
     // Kill anything still on our allocated ports. Empty list = nothing
     // to clean (the daemons died on their own, e.g. host reboot).
-    const adbPids = findPidsOnPort(lock.adb_port);
-    const emuPids = findPidsOnPort(lock.emulator_port);
+    // A lease session's lock names no ports: nothing on this host to kill.
+    const adbPids = isPort(lock.adb_port) ? findPidsOnPort(lock.adb_port) : [];
+    const emuPids = isPort(lock.emulator_port) ? findPidsOnPort(lock.emulator_port) : [];
     for (const pid of [...adbPids, ...emuPids]) {
       const wasOwn = pid === lock.mcp_pid;
       if (wasOwn) continue; // the lock's own MCP pid (shouldn't happen since stale=true) — defensive

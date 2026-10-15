@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -15,6 +14,11 @@ import { selectAvd, type AvdPoolEntry } from '../avd-allocator.js';
 import { classifyAdbEcho, REACHABILITY_TOKEN, type ReachabilityVerdict } from '../device-reachable.js';
 import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marker.js';
 import { parseUiHierarchy } from './remote-io.js';
+import {
+  DEFAULT_MOCK_LOCATION,
+  ENVIRONMENT_BASELINE_KEYS,
+  environmentBaselineFingerprint,
+} from '../environment-baseline.js';
 import { resolveActiveSelectorMapId } from '../recipe-resolver.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
@@ -401,26 +405,9 @@ export interface AllocatedPorts {
   autoAllocated: boolean;
 }
 
-/**
- * Default mock GPS fix applied to the AVD as part of the cold-boot
- * environment baseline, so that any CommCare `geopoint` Capture widget
- * always has a usable provider fix to read (otherwise the emulator's GPS
- * never acquires and the Capture button spins forever). Kano, Nigeria —
- * matches ACE's dominant malaria-opp field geography. Coordinates are
- * functionally irrelevant to the form (the malaria-rdt GPS question has
- * no hard accuracy/region constraint, verified live 2026-06-03); they
- * only affect screenshot realism. A recipe that wants opp-specific coords
- * overrides this per-run via the `mobile_set_location` atom.
- *
- * NOTE the argument order of `adb emu geo fix`: LONGITUDE first, then
- * latitude (a classic footgun).
- */
-export const DEFAULT_MOCK_LOCATION = {
-  longitude: 8.5167,
-  latitude: 12.0022,
-  altitude: 480,
-  satellites: 12,
-} as const;
+// DEFAULT_MOCK_LOCATION lives in ../environment-baseline.ts (shared with the
+// lease parity check); re-exported here for existing importers.
+export { DEFAULT_MOCK_LOCATION } from '../environment-baseline.js';
 
 export class AvdBackend {
   /** The injected/wrapped shell used by all adb/emulator/aapt invocations. */
@@ -1326,9 +1313,9 @@ export class AvdBackend {
           // sparing it while still reaping the true orphan). This half only
           // collects and kills.
           const psRows = await this.readPsRows();
-          const liveClaims = listLiveSessionLocks().map((l) => ({
+          const liveClaims = listLiveSessionLocks().filter((l) => typeof l.emulator_port === 'number').map((l) => ({
             mcpPid: l.mcp_pid,
-            consolePort: l.emulator_port,
+            consolePort: l.emulator_port as number,
             avdName: l.avd_name,
             oppSlug: l.opp_slug,
           }));
@@ -1494,9 +1481,9 @@ export class AvdBackend {
           listeningPids: sameUserPids,
           probedConsolePort: consolePort,
           processes: parseEmulatorProcesses(rescuePsRows),
-          liveClaims: listLiveSessionLocks().map((l) => ({
+          liveClaims: listLiveSessionLocks().filter((l) => typeof l.emulator_port === 'number').map((l) => ({
             mcpPid: l.mcp_pid,
-            consolePort: l.emulator_port,
+            consolePort: l.emulator_port as number,
             avdName: l.avd_name,
             oppSlug: l.opp_slug,
           })),
@@ -2370,13 +2357,10 @@ export class AvdBackend {
     // Settings applied. Add to this list whenever a new environment-class
     // failure surfaces; the fingerprint will change automatically so
     // telemetry can detect when AVDs are running an older baseline.
-    const settingsApplied = [
-      'heads_up_notifications_enabled',
-      'notification_disallow_dnd_gms',
-      'screen_off_timeout',
-      'mock_location_fix',
-      'location_providers_allowed',
-    ];
+    // The key list (and so the fingerprint) is ENVIRONMENT_BASELINE_KEYS in
+    // ../environment-baseline.ts — one definition shared with the lease's
+    // baseline-parity check. Add a key there when a new environment-class
+    // failure surfaces.
 
     // 1. Heads-up notifications off (PR #328 / 0.13.252).
     await this.shell('adb', [
@@ -2444,11 +2428,7 @@ export class AvdBackend {
       String(DEFAULT_MOCK_LOCATION.satellites),
     ]).catch(() => {});
 
-    // Fingerprint = sha1(sorted-list-of-keys). Stable across runs;
-    // changes only when the baseline itself changes.
-    const sorted = [...settingsApplied].sort();
-    const hash = crypto.createHash('sha1').update(sorted.join('|')).digest('hex');
-    return hash.slice(0, 12); // short hash; full sha1 is overkill for drift detection
+    return environmentBaselineFingerprint(ENVIRONMENT_BASELINE_KEYS);
   }
 
   async loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {

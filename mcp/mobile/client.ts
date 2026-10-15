@@ -40,8 +40,9 @@ import type {
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
   TestUserCredentials, EnsureAvdRunningOptions,
   VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
-  MaestroDriverProbeResult, ThrownRecipePartial,
+  MaestroDriverProbeResult, ThrownRecipePartial, LeaseFacts,
 } from './types.js';
+import { DEFAULT_MOCK_LOCATION } from './environment-baseline.js';
 import { logInfo } from './logging.js';
 import {
   dispatchOutputDir,
@@ -67,8 +68,9 @@ import {
   detectOppCollisions,
   resolveSessionOppContext,
 } from '../../lib/session-opp-collision.js';
-import { listLiveSessionLocks, updateSessionLockContext } from './session-lock.js';
+import { listLiveSessionLocks, recordLeaseSessionLock, updateSessionLockContext } from './session-lock.js';
 import {
+  normalizeContainer,
   recorderConfigFromEnv,
   startRecording,
   stopRecording,
@@ -98,6 +100,8 @@ export type MobileDiagnostics =
 export interface RecorderHooks {
   start: typeof startRecording;
   stop: typeof stopRecording;
+  /** Container fix-up for a lease recording (the local `stop` does its own). Default `normalizeContainer`. */
+  normalize?: (mp4Path: string) => Promise<boolean>;
 }
 
 /**
@@ -647,6 +651,19 @@ export function classifyDeviceUserState(
   if (/\bWork History\b|\bOpportunities\b|\bMessaging\b|\bCommCare Apps\b/i.test(uiDumpXml)) {
     return 'ready';
   }
+  // The post-registration setup screen. A PersonalID-registered user who
+  // relaunches CommCare (no app installed yet) lands on CommCareSetupActivity
+  // with `connect_login_button` reading "GO TO CONNECT MENU" above the two
+  // install tiles — the ONLY route from there to the jobs list (selector map
+  // connect-2.64.0 `personalid-login-button`). An UNREGISTERED first start
+  // renders the same screen WITHOUT that button: observed live on a fresh
+  // lease (cc-2.63.0, 2026-10-14) — "Welcome to CommCare!", "Please choose an
+  // installation method below", "Scan Application Barcode", "Enter Code" and
+  // nothing else. So the button is the registration signal, and it must be
+  // read BEFORE the first-start markers below, which this screen also carries.
+  if (/(?:text|content-desc)="GO TO CONNECT MENU"/i.test(uiDumpXml)) {
+    return 'ready';
+  }
   if (/OpportunitiesActivity|VendorVisitActivity|DispatchActivity|HomeActivity/i.test(focusedActivity)) {
     return 'ready';
   }
@@ -756,6 +773,31 @@ function tarDirAsBase64(dir: string): string {
 }
 
 /**
+ * Content key of a resolved palette dir: sha256 over every file's relative
+ * path and bytes, sorted. The tarball's own bytes are not stable (fresh
+ * temp-dir mtimes on every prep), so this — not a hash of the tar — is what
+ * lets the lease upload one palette once per machine.
+ */
+export function paletteContentKey(dir: string): string {
+  const h = crypto.createHash('sha256');
+  const walk = (rel: string) => {
+    const abs = path.join(dir, rel);
+    for (const name of fs.readdirSync(abs).sort()) {
+      const r = rel ? `${rel}/${name}` : name;
+      const st = fs.statSync(path.join(dir, r));
+      if (st.isDirectory()) walk(r);
+      else if (st.isFile()) {
+        h.update(`${r}\0`);
+        h.update(fs.readFileSync(path.join(dir, r)));
+        h.update('\0');
+      }
+    }
+  };
+  walk('');
+  return h.digest('hex');
+}
+
+/**
  * Pick a short human-readable signal string from the probe data — used
  * in the heal log so the subagent's return surfaces "what was on screen"
  * without dumping the full XML. First non-empty match wins.
@@ -847,7 +889,9 @@ export class MobileClient {
       this.lease = opts.lease;
     } else {
       try {
-        this.lease = new LeaseBackend();
+        // The selector map the recipes resolve against picks the leased
+        // CommCare (`cc-<version>`), so the two can never disagree.
+        this.lease = new LeaseBackend({ apkVersion: getConfiguredApkVersion });
       } catch (e) {
         if (e instanceof MobileError && e.code === 'LEASE_NOT_CONFIGURED') {
           this.lease = null;
@@ -907,6 +951,46 @@ export class MobileClient {
    * The lease backend skips the local driver check — the leased machine
    * manages Maestro state on its side (`ace-mobile` beside the emulator).
    */
+  /**
+   * Start the device booting WITHOUT waiting for it, so Phase 6 can overlap
+   * a lease's multi-minute boot with its own prep (Drive reads, Connect
+   * probes). Lease: starts (or joins) the acquire and returns at once; the
+   * next blocking `ensureAvdRunning` joins it, then heals as usual. Local:
+   * a no-op — the AVD cold-boots inside the blocking call, whose port
+   * allocation and contention checks must not run detached.
+   */
+  async prewarmAvd(name: string): Promise<{
+    backend: 'lease' | 'local';
+    prewarm: 'started' | 'joined' | 'held' | 'skipped';
+    state?: string;
+    lease_id?: string | null;
+    note: string;
+  }> {
+    const preflight = preflightMobileBackend({
+      resolved: resolveBackend(),
+      leaseConfigured: this.lease !== null,
+    });
+    if (preflight.fatal) {
+      throw new MobileError(preflight.fatal.code, preflight.fatal.message, preflight.fatal.remediation);
+    }
+    if (!this.useLease) {
+      return {
+        backend: 'local',
+        prewarm: 'skipped',
+        note: 'the local AVD boots inside the blocking mobile_ensure_avd_running call — nothing to prewarm',
+      };
+    }
+    const r = await this.requireLease().prewarm(name);
+    return {
+      backend: 'lease',
+      ...r,
+      note:
+        'the machine boots in the background; call mobile_ensure_avd_running (blocking) within idle_release_s ' +
+        '(900 s) of it becoming ready — it joins this acquire, registers the test user and verifies. If a ' +
+        'pre-flight gate halts instead, call mobile_stop_avd to release the machine.',
+    };
+  }
+
   async ensureAvdRunning(name: string, opts?: EnsureAvdRunningOptions): Promise<AvdInfo> {
     // Pre-boot backend preflight (jjackson/ace#839): fail loud on an
     // unconfigured lease toggle BEFORE booting any local AVD. Purely a check
@@ -958,14 +1042,27 @@ export class MobileClient {
     }
 
     if (this.useLease) {
-      const info = await this.requireLease().ensureAvdRunning(name);
+      const lease = this.requireLease();
+      const info = await lease.ensureAvdRunning(name);
+      // The lease has no adb ports, so no lock was written at allocation time;
+      // record one now so the two-sessions-on-one-opp warning above can see
+      // lease sessions too (ace#1821). Port-less by construction: the reaper
+      // and the port reservation skip a lock that names no ports.
+      try {
+        recordLeaseSessionLock({ ...oppCtx, avd_name: info.lease ? `lease:${info.lease.lease_id}` : info.name });
+      } catch {
+        /* best-effort, like every lock write */
+      }
+      if (info.lease) info.lease.baseline_actions = await this.leaseBaselineParity(info.lease);
       // Symmetric with the local branch — drive registration through
       // `restoreDeviceUserState` so the same contract holds across
       // backends: *after this method returns, the device is at the
       // Connect home, signed in as the test user*. The lease registers from
       // this client (`leaseBootstrapHeal`), so a per-run testUser override
       // is honoured here exactly as on local (dimagi-internal/ace#1289).
+      const healStarted = Date.now();
       const deviceUserState = await this.restoreDeviceUserState(info, opts);
+      deviceUserState.duration_s = Math.round((Date.now() - healStarted) / 100) / 10;
       return { ...info, heal: { deviceUserState } };
     }
     // Bounded retry over the WHOLE idempotent funnel (cold-boot → driver
@@ -2078,8 +2175,9 @@ export class MobileClient {
     };
     onProgress({ kind: 'dispatch-start', recipeId, screenshotsDir: runDir });
 
-    // Screen recording (local backend only). Best-effort
-    // throughout: a recording failure must never change the recipe verdict.
+    // Screen recording — local (`screen-recorder.ts`, per attempt) and lease
+    // (`ace-mobile record start|stop`, around the whole chunked walk). Best-
+    // effort throughout: a recording failure must never change the verdict.
     const recorderConfig = recorderConfigFromEnv();
     const videos: VideoArtifact[] = [];
     let recordAttempt = 0;
@@ -2092,13 +2190,45 @@ export class MobileClient {
     let result: RecipeRunResult;
     try {
       if (this.useLease) {
+        // Chunked on the lease exactly as MaestroBackend chunks locally (one
+        // exec per chunk, each with its own sized timeout); the palette goes
+        // up once per lease, keyed by its content.
         const paletteTarB64 = tarDirAsBase64(prep.tempDir);
-        result = await this.requireLease().runRecipe(
-          prep.resolvedPath,
-          enrichedEnv,
-          runDir,
-          { state: avdName, paletteTarB64 },
-        );
+        const lease = this.requireLease();
+        // Provenance (ace#1396): the machine this ran on.
+        lastDeviceSerial = lease.leaseId ? `lease:${lease.leaseId}` : lastDeviceSerial;
+        recordAttempt = 1;
+        const leaseVideos: VideoArtifact[] = [];
+        try {
+          result = await lease.runRecipe(
+            prep.resolvedPath,
+            enrichedEnv,
+            runDir,
+            {
+              state: avdName,
+              paletteTarB64,
+              paletteKey: paletteContentKey(prep.tempDir),
+              captureAllBoundaries: opts?.captureAllBoundaries,
+              onProgress,
+              ...(recorderConfig.enabled
+                ? { record: { recipeId, dispatchId, bitRate: recorderConfig.bitRate, size: recorderConfig.size } }
+                : {}),
+              videoSink: leaseVideos,
+            },
+          );
+        } finally {
+          // Same container fix-up the local recorder applies after its pull
+          // (moov atom up front, real duration) — then the shared stamp/spool
+          // below treats lease videos exactly like local ones.
+          for (const v of leaseVideos) {
+            try {
+              if (await (this.recorder.normalize ?? normalizeContainer)(v.path)) v.bytes = fs.statSync(v.path).size;
+            } catch (e) {
+              logInfo(`runRecipe: could not normalize lease recording ${v.path}: ${String(e)}`);
+            }
+            videos.push(v);
+          }
+        }
       } else {
         // Bounded driver-death heal-and-retry envelope (jjackson/ace#592 item
         // 5). A Maestro driver / gRPC transport crash ("Broken pipe",
@@ -2324,6 +2454,10 @@ export class MobileClient {
           result.failure?.stderrExcerpt,
           crashBaseline,
         );
+        // The lease reads its in-VM diagnostics as part of the evidence trio.
+        if (!result.diagnostics && result.failureForensics?.diagnostics) {
+          result.diagnostics = result.failureForensics.diagnostics;
+        }
         if (result.failureForensics?.appCrash) {
           logInfo(
             `runRecipe: ${recipeId} failed AFTER CommCare crashed — the failure screen is a ` +
@@ -2482,8 +2616,28 @@ export class MobileClient {
       /* ignore */
     }
 
+    // Lease: the three reads are independent, so they run concurrently, and
+    // the screenshot is `ace-mobile screenshot` (one PNG under its own S3
+    // prefix) — not a one-step Maestro recipe, whose download would land a
+    // fresh maestro-stdout.log / result.json over the failed run's own.
+    if (this.useLease) {
+      try {
+        const ev = await this.requireLease().failureEvidence({ destDir: screenshotDir, screenshotName: `${base}.png` });
+        if (ev.dump) {
+          const xmlPath = path.join(screenshotDir, `${base}.xml`);
+          fs.writeFileSync(xmlPath, ev.dump.xml, 'utf8');
+          out.uiDumpPath = xmlPath;
+          out.elements = ev.dump.elements;
+        }
+        if (ev.screenshotPath) out.screenshotPath = ev.screenshotPath;
+        if (ev.diagnostics) out.diagnostics = ev.diagnostics;
+      } catch (e) {
+        logInfo(`captureFailureForensics: lease evidence failed for ${recipeId}: ${String(e)}`);
+      }
+    }
+
     // 1. UI dump — the element tree of the failure screen.
-    if (avdName) {
+    if (avdName && !this.useLease) {
       try {
         const dump = await this.captureUiDump(avdName);
         const xmlPath = path.join(screenshotDir, `${base}.xml`);
@@ -2495,8 +2649,8 @@ export class MobileClient {
       }
     }
 
-    // 2. Screenshot of the failure screen via a throwaway 1-step recipe.
-    try {
+    // 2. Screenshot of the failure screen via a throwaway 1-step recipe (local).
+    if (!this.useLease) try {
       const tmpRecipe = path.join(os.tmpdir(), `ace-failshot-${base}-${process.pid}.yaml`);
       fs.writeFileSync(
         tmpRecipe,
@@ -2504,10 +2658,7 @@ export class MobileClient {
       );
       try {
         if (this.useLease) {
-          await this.requireLease().runRecipe(tmpRecipe, {}, screenshotDir, {
-            state: avdName,
-            screenshotPrefix: base,
-          });
+          /* captured above, concurrently */
         } else if (avdName) {
           const avd = await this.resolveAvdInfo(avdName);
           if (avd) {
@@ -2878,6 +3029,7 @@ export class MobileClient {
         `register_test_user: lease backend — live register for ${args.phone} (palette ${paletteTarB64.length}b)`,
       );
       return await this.requireLease().registerTestUser({
+        paletteKey: paletteContentKey(prep.tempDir),
         phone: args.phone,
         phoneLocal: args.phoneLocal,
         countryCode: args.countryCode,
@@ -2898,31 +3050,99 @@ export class MobileClient {
   }
 
   /**
-   * Lease-side heal flow — mirrors ``runLocalBootstrap``'s
-   * ``clearConnectAppData + registerTestUser`` sequence against the
-   * leased emulator. Called from ``restoreDeviceUserState``'s lease branch.
+   * Environment-baseline parity on a lease. The local funnel applies
+   * `applyEnvironmentBaseline` every dispatch; a lease's image applies the
+   * SAME keys at boot (`ace-mobile apply-baseline`) and reports the
+   * fingerprint — and any failed step — in ready.json. Compared, not
+   * trusted: `match` needs nothing. Anything else (`mismatch`, `incomplete`,
+   * `unreported`) re-applies the baseline over the CLI, once per machine.
    *
-   * Returns a ``DeviceStateHealLog`` shaped identically to the
-   * local-bootstrap variant so downstream telemetry doesn't have to
-   * branch — only the ``healed_via`` field shifts to
-   * ``'lease-bootstrap'`` so the operator can distinguish the path.
+   * A CLI that predates `apply-baseline` answers `usage`; then the one item
+   * the client CAN apply another way — the default mock GPS fix geopoint
+   * capture depends on — is applied via `set-location`, as before. A
+   * re-apply that leaves `mock_location_fix` failed gets the same fallback.
+   * Returns what it did, for `info.lease.baseline_actions`. Never throws: a
+   * baseline problem is surfaced, and the walk's own failure (if any) is the
+   * verdict.
+   */
+  private async leaseBaselineParity(facts: LeaseFacts): Promise<string[]> {
+    if (facts.baseline_parity === 'match') return [];
+    const lease = this.requireLease();
+    const expected = facts.expected_baseline_fingerprint;
+    const actions: string[] = [`baseline-${facts.baseline_parity}`];
+    if (facts.reused && lease.baselineAppliedFingerprint === expected) {
+      actions.push('baseline-already-applied');
+      return actions;
+    }
+    console.warn(
+      `[ace-mobile] ensure_avd_running: lease ${facts.lease_id} baseline ${facts.baseline_parity} — image reported ` +
+        `${facts.image_baseline_fingerprint ?? 'none'}` +
+        (facts.baseline_failed?.length ? ` with failed step(s) ${facts.baseline_failed.join(', ')}` : '') +
+        `, this ACE applies ${expected} (mcp/mobile/environment-baseline.ts) — re-applying it on the machine.`,
+    );
+    let gpsFallback = false;
+    try {
+      const r = await lease.applyBaseline();
+      if (!r.supported) {
+        actions.push('apply-baseline-unsupported');
+        gpsFallback = true;
+      } else if (r.ok) {
+        actions.push('baseline-applied');
+        if (r.fingerprint && r.fingerprint !== expected) {
+          // The image's baseline is a different version than this ACE's:
+          // applied, but not the same set. Say so; don't pretend parity.
+          actions.push(`baseline-fingerprint-${r.fingerprint}`);
+          console.warn(
+            `[ace-mobile] ensure_avd_running: lease ${facts.lease_id} applied baseline ${r.fingerprint}, ` +
+              `this ACE expects ${expected} — the image and ACE disagree on the baseline keys.`,
+          );
+        }
+      } else {
+        actions.push(r.failed.length ? `baseline-partial:${r.failed.join(',')}` : 'baseline-partial');
+        gpsFallback = r.failed.includes('mock_location_fix');
+      }
+    } catch (e) {
+      logInfo(`lease_bootstrap: apply-baseline failed: ${(e as Error).message}`);
+      actions.push('baseline-apply-failed');
+      gpsFallback = true;
+    }
+    if (gpsFallback) {
+      try {
+        const r = await lease.setLocation(
+          facts.state,
+          DEFAULT_MOCK_LOCATION.longitude,
+          DEFAULT_MOCK_LOCATION.latitude,
+          DEFAULT_MOCK_LOCATION.altitude,
+          DEFAULT_MOCK_LOCATION.satellites,
+        );
+        actions.push(r.applied ? 'mock-location-set' : 'mock-location-refused');
+      } catch (e) {
+        logInfo(`lease_bootstrap: default mock location failed: ${(e as Error).message}`);
+        actions.push('mock-location-failed');
+      }
+    }
+    return actions;
+  }
+
+  /**
+   * Lease-side heal — the lease twin of `runLocalBootstrap` + its
+   * post-bootstrap probe. Same contract: on return the device is registered
+   * as the test user, VERIFIED, and settled on CommCare's first screen.
    *
-   * Defends against missing ``bootstrapConfig`` the same way the local
-   * branch does: env vars (``ACE_E2E_*``) must be present, otherwise
-   * we have no credentials to register with and the heal can't proceed.
-   *
-   * Verification step (``probeDeviceUserState``) is NOT called here:
-   * unlike the local backend, the lease backend has no lightweight UI dump
-   * probe that doesn't go through a full remote round-trip.
-   *
-   * Because of that, this path does not claim a verified state
-   * (dimagi-internal/ace#1067). It returns ``classified_as: 'unknown'``, omits
-   * ``verified_as`` entirely, and suffixes its registration step
-   * ``-unverified``. The previous docstring reasoned that "if the
-   * registration succeeds the device IS ready" — true of the happy path, but
-   * it made the return a claim about the DEVICE when the only evidence held
-   * was a claim about the CALL, and the whole point of #1067 is that callers
-   * act on the difference.
+   *   - **Reused machine** (this process already held a ready lease): classify
+   *     FIRST with one ui-dump. `ready` → done, no heal (`healed_via: 'none'`).
+   *     Anything else → restore fully: `pm clear`, then register (whose
+   *     `launchApp` re-grants the runtime permissions `pm clear` revoked).
+   *   - **Fresh machine** (acquired by this ensure): CommCare was installed by
+   *     the image at boot and never launched, CAMERA already granted — and
+   *     registration opens with `launchApp clearState: true` anyway — so a
+   *     separate `pm clear` is a wasted exec and is skipped.
+   *   - **Verify**: launch CommCare and wait until its first screen renders
+   *     (a cold start right after registration is slow: a post-heal launch +
+   *     5 s screenshot came back black, live), then one ui-dump through
+   *     `classifyDeviceUserState`. `ready` drops the `-unverified` suffix and
+   *     sets `verified_as`. Anything else fails loud — a heal that cannot show
+   *     the device is registered is not a heal.
    */
   private async leaseBootstrapHeal(
     avd: AvdInfo,
@@ -2940,19 +3160,38 @@ export class MobileClient {
     // is the env user itself.
     const testUser = mergeTestUserOverride(this.bootstrapConfig.testUser, opts?.testUser);
     const lease = this.requireLease();
+    const reused = avd.lease?.reused === true;
+    const steps: string[] = [];
 
-    // Step 1: wipe Connect's per-app data. Idempotent — if the package
-    // isn't installed (a fresh machine) the remote reports cleared=false
-    // and we still proceed.
-    logInfo(`lease_bootstrap: pm clear org.commcare.dalvik on ${avd.serial}`);
-    const cleared = await lease.clearAppData('org.commcare.dalvik').catch(() => false);
-    const steps: string[] = [cleared ? 'app-data-cleared' : 'app-data-clear-noop'];
+    if (reused) {
+      // Restore-not-adapt still holds: this only decides WHETHER to restore.
+      // A ready device is the precondition already; anything else is restored
+      // in full below, never patched.
+      const before = await this.classifyLeaseScreen();
+      if (before.classified_as === 'ready') {
+        logInfo(`lease_bootstrap: reused lease already ready on ${avd.serial} (${before.ui_dump_signal ?? 'no signal'}) — no heal`);
+        return {
+          classified_as: 'ready',
+          attempted: false,
+          healed_via: 'none',
+          verified_as: 'ready',
+          ui_dump_signal: before.ui_dump_signal,
+          bootstrap_steps: ['verified-ready-reused-lease'],
+        };
+      }
+      logInfo(`lease_bootstrap: reused lease classified ${before.classified_as} — restoring`);
+      const cleared = await lease.clearAppData('org.commcare.dalvik').catch(() => false);
+      steps.push(cleared ? 'app-data-cleared' : 'app-data-clear-noop');
+      // `pm clear` resets runtime permissions (CAMERA included). They come
+      // back on the next `launchApp`, which registration's first step is:
+      // Maestro grants every runtime permission at launch unless a recipe
+      // says otherwise (`command.permissions ?: mapOf("all" to "allow")` in
+      // Orchestra.launchAppCommand, read from maestro-orchestra 2.5.1 — the
+      // version both the image and local install). No CLI grant is needed.
+    } else {
+      steps.push('app-data-clear-skipped-fresh-machine');
+    }
 
-    // Step 2: register the test user on the leased machine. Uses the
-    // same path that ``MobileClient.registerTestUser``'s lease branch
-    // takes — but called directly here to keep the heal
-    // log shape clean (the public method's return is the
-    // ``TestUserRegistrationResult``, not a ``DeviceStateHealLog``).
     logInfo(`lease_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
     const reg = await this.leaseRegisterTestUser({
       avdName: avd.name,
@@ -2965,35 +3204,90 @@ export class MobileClient {
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
 
-    // Report what we actually know, which on this path is "the remote
-    // calls returned without error" — nothing more
-    // (dimagi-internal/ace#1067, the remote twin of the local overclaim).
-    //
-    // This used to return `classified_as: 'ready'` AND `verified_as: 'ready'`
-    // with `bootstrap_steps: [..., 'registered']`, having probed nothing at
-    // all — strictly a bigger claim than the local funnel's, which at least
-    // reported whatever its own probe said. `verified_as` is now OMITTED
-    // because no verification ran (the field is optional precisely so an
-    // unverified path can decline to answer), `classified_as` is `unknown`
-    // because that is the truth, and the registration step carries the
-    // `-unverified` suffix from the shared vocabulary.
-    //
-    // Still a SUCCESS, deliberately. `unknown` is not a fault — see the
-    // local path's note on #1067's ask 2, declined with evidence from two
-    // passing runs. The fix for an overclaim is to stop overclaiming, not to
-    // start failing runs that work.
-    //
-    // The honest ceiling here is a *reporting* fix: a real remote
-    // verification needs a cheap probe the lease backend does not have (its
-    // only UI-dump route is a full remote round-trip). If one is added, feed its
-    // verdict into `classified_as`/`verified_as` and drop the suffix on
-    // confirmation, exactly as the local path does.
-    return {
-      classified_as: 'unknown',
-      attempted: true,
-      healed_via: 'lease-bootstrap',
-      bootstrap_steps: markRegistrationUnverified(steps),
-    };
+    const verify = await this.settleAndClassifyLease(avd);
+    if (verify.classified_as === 'ready') {
+      logInfo(`lease_bootstrap: verified ready on ${avd.serial} (${verify.ui_dump_signal ?? 'no signal'})`);
+      return {
+        classified_as: 'ready',
+        attempted: true,
+        healed_via: 'lease-bootstrap',
+        verified_as: 'ready',
+        ui_dump_signal: verify.ui_dump_signal,
+        bootstrap_steps: [...steps, 'first-screen-settled'],
+      };
+    }
+    throw new DeviceUserStateError(
+      verify.classified_as,
+      [
+        `lease-bootstrap:pass(${markRegistrationUnverified(steps).join(',')})`,
+        `verify:${verify.classified_as}`,
+        `signal:${verify.ui_dump_signal ?? 'none'}`,
+      ],
+      'The leased device did not come up registered after the heal. Re-run mobile_ensure_avd_running (a ' +
+        'reused machine is restored in full; mobile_stop_avd first for a fresh one). If it repeats on a fresh ' +
+        'machine, the registration recipes have drifted on this CommCare version: read the registration ' +
+        'artifacts and the selector map for ACE_CONNECT_APK_VERSION.',
+    );
+  }
+
+  /**
+   * One ui-dump of the leased device through `classifyDeviceUserState`. The
+   * lease has no `dumpsys` or `pm list` atom, so the screen is the only
+   * signal: CommCare is passed as installed when the dump shows CommCare's
+   * own UI (the image installs it at boot), and a failed dump is reported as
+   * the probe failure it is.
+   */
+  private async classifyLeaseScreen(): Promise<{ classified_as: DeviceUserStateClass; ui_dump_signal?: string }> {
+    const dump = await this.requireLease()
+      .captureUiDump('lease')
+      .catch(() => ({ xml: '', elements: [], failed: true }) as UiDumpResult);
+    if (dump.failed) return { classified_as: 'uiautomation-unavailable', ui_dump_signal: 'probe:ui-dump-failed' };
+    const commcare = /package="org\.commcare\.dalvik"/.test(dump.xml) ? ['org.commcare.dalvik'] : null;
+    const cls = classifyDeviceUserState('', dump.xml, commcare, undefined, commcare ? {} : { packageQueryFailed: true });
+    return { classified_as: cls, ui_dump_signal: pickStateSignal('', dump.xml) ?? (commcare ? undefined : 'screen:not-commcare') };
+  }
+
+  /**
+   * Launch CommCare and wait until its first screen has rendered, then
+   * classify it. One retry of the wait on an unreadable screen: CommCare's
+   * first cold start after registration can outlast a single wait.
+   */
+  private async settleAndClassifyLease(
+    avd: AvdInfo,
+  ): Promise<{ classified_as: DeviceUserStateClass; ui_dump_signal?: string }> {
+    const recipe = path.join(os.tmpdir(), `ace-lease-settle-${process.pid}-${Date.now()}.yaml`);
+    const settleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-lease-settle-'));
+    fs.writeFileSync(
+      recipe,
+      'appId: org.commcare.dalvik\n---\n' +
+        '- launchApp:\n    appId: org.commcare.dalvik\n' +
+        // The registered-user surfaces (Connect home, or the setup screen's
+        // GO TO CONNECT MENU) and the unregistered one, so the wait ends on
+        // whichever is true and the classifier decides which.
+        '- extendedWaitUntil:\n    visible: "GO TO CONNECT MENU|Opportunities|Welcome to CommCare!.*"\n    timeout: 90000\n    optional: true\n' +
+        '- waitForAnimationToEnd:\n    timeout: 5000\n',
+    );
+    try {
+      let last: { classified_as: DeviceUserStateClass; ui_dump_signal?: string } = { classified_as: 'unknown' };
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await this.requireLease().runRecipe(recipe, {}, settleDir, { state: avd.name });
+        } catch (e) {
+          logInfo(`lease_bootstrap: settle launch failed (attempt ${attempt}): ${(e as Error).message}`);
+        }
+        last = await this.classifyLeaseScreen();
+        if (last.classified_as === 'ready') return last;
+        if (last.classified_as !== 'unknown' && last.classified_as !== 'uiautomation-unavailable') return last;
+      }
+      return last;
+    } finally {
+      try {
+        fs.unlinkSync(recipe);
+        fs.rmSync(settleDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   async generateRecipesFromAppSummary(args: {

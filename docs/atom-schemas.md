@@ -1599,10 +1599,11 @@ Source: `mcp/mobile-server.ts` — 17 atoms
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `avdName` | `z.string` | optional | _—_ |
-| `testUser` | `z.object` | optional | Optional per-run test-user credential override (ace#1289). Omit for the env-derived ACE_E2E_* user (the default). Local AVD backend only. |
+| `avdName` | `z.string` | optional | Local: the AVD to cold-boot. Lease: a non-cc-* name leases cc-<ACE_CONNECT_APK_VERSION>, the CommCare the selector map is for (a cc-* name must match it). The lease result carries `lease` (lease_id, expires_at, idle_release_s, state, baseline parity) — a lease idle for idle_release_s (900 s) with no call is released. |
+| `testUser` | `z.object` | optional | Optional per-run test-user credential override (ace#1289). Omit for the env-derived ACE_E2E_* user (the default). Honoured on both backends (local AVD and lease). |
 | `oppSlug` | `z.string` | optional | Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG. |
 | `runId` | `z.string` | optional | Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID. |
+| `prewarm` | `z.boolean` | optional | true = start the device booting and return AT ONCE, without waiting, registering or verifying. Lease: starts (or joins) the acquire so the multi-minute boot overlaps your other prep; the next normal call joins it and heals as usual — make that call within idle_release_s (900 s) of the machine becoming ready. Local: a no-op. Phase 6 calls this first (qa-and-training Step 0). If a pre-flight gate then halts, call mobile_stop_avd. |
 
 ### `mobile_stop_avd`
 
@@ -1619,7 +1620,7 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | **required** | _—_ |
-| `apkPath` | `z.string` | **required** | _—_ |
+| `apkPath` | `z.string` | **required** | Local APK path, or an https:// / s3:// URI. On the lease a local APK is uploaded and installed once per machine (cached by content hash), so a repeat call is a no-op; a new machine installs it again. |
 
 ### `mobile_uninstall_apk`
 

@@ -14,6 +14,7 @@ import {
   DEFAULT_APK_VERSION,
 } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
+import { CONNECT_HOME_XML, REGISTERED_XML, UNREGISTERED_XML, fakeLeaseForHeal } from '../../fixtures/lease-screens.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
 
 /**
@@ -507,29 +508,29 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
-  it('captures ui-dump + screenshot of the failure screen on a failed recipe', async () => {
+  it('captures ui-dump + screenshot of the failure screen on a failed recipe — via the concurrent evidence trio, never a second recipe', async () => {
     const recipePath = path.join(tmpDir, 'will-fail.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
 
-    const remoteRunRecipe = vi
-      .fn()
-      // 1st call: the real recipe — fails.
-      .mockResolvedValueOnce({
-        status: 'fail', exitCode: 1, stdout: '', stderr: 'assertion failed', screenshotsDir: tmpDir, screenshots: [],
-      })
-      // 2nd call: the throwaway 1-step screenshot recipe — writes the PNG
-      // the backend would have produced, then resolves pass.
-      // (writes into the dir it is HANDED — this dispatch's own output
-      // dir since #1130, not the root the caller passed.)
-      .mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
-        fs.writeFileSync(path.join(dir, 'will-fail-FAILURE.png'), 'PNGDATA');
-        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: dir, screenshots: [] };
-      });
-    const captureUiDump = vi.fn().mockResolvedValue({
-      xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
-      elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+    // The real recipe fails and leaves its own maestro log in the dispatch dir.
+    const remoteRunRecipe = vi.fn().mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
+      fs.writeFileSync(path.join(dir, 'maestro-stdout.log'), 'THE FAILED RUN');
+      return { status: 'fail', exitCode: 1, stdout: '', stderr: 'assertion failed', screenshotsDir: dir, screenshots: [] };
     });
-    const remote = { runRecipe: remoteRunRecipe, captureUiDump } as any;
+    // The lease's evidence: diagnostics + dump + a screencap PNG, nothing else.
+    const failureEvidence = vi.fn(async ({ destDir, screenshotName }: { destDir: string; screenshotName: string }) => {
+      const shot = path.join(destDir, screenshotName);
+      fs.writeFileSync(shot, 'PNGDATA');
+      return {
+        diagnostics: { healthy: true, adb_visible_count: 1 },
+        dump: {
+          xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
+          elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+        },
+        screenshotPath: shot,
+      };
+    });
+    const remote = { runRecipe: remoteRunRecipe, failureEvidence } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     const result = await client.runRecipe(recipePath, {}, tmpDir, 'AVD');
@@ -543,11 +544,15 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     );
     expect(fs.existsSync(result.failureForensics!.uiDumpPath!)).toBe(true);
     expect(result.failureForensics?.elements?.[0]?.id).toContain('nsv_home_screen');
-    // screenshot of the failure screen, resolved from the backend's PNG.
     expect(result.failureForensics?.screenshotPath).toBe(
       path.join(tmpDir, 'will-fail', 'will-fail-FAILURE.png'),
     );
-    expect(captureUiDump).toHaveBeenCalledWith('AVD');
+    // The in-VM diagnostics ride along as the result's diagnostics.
+    expect(result.diagnostics).toMatchObject({ healthy: true });
+    // No throwaway Maestro recipe: the failed run's own log is untouched.
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
+    expect(fs.readFileSync(path.join(tmpDir, 'will-fail', 'maestro-stdout.log'), 'utf8')).toBe('THE FAILED RUN');
+    expect(failureEvidence).toHaveBeenCalledWith({ destDir: path.join(tmpDir, 'will-fail'), screenshotName: 'will-fail-FAILURE.png' });
   });
 
   it('captures nothing on a passing recipe (no wasted round-trips)', async () => {
@@ -573,27 +578,24 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     // The highest-signal failures — driver death that exhausts the heal-and-
     // retry envelope, transport crashes — THROW rather than returning a
     // {status:'fail'} result, so the status-gated capture can't fire. The
-    // throw arm must capture the failure screen too (the ui-dump is adb-based,
-    // so it usually still works on a dead gRPC driver), attach it to the
+    // throw arm must capture the failure screen too, attach it to the
     // error, and rethrow the ORIGINAL error untouched.
     const recipePath = path.join(tmpDir, 'will-throw.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
 
-    const remoteRunRecipe = vi
-      .fn()
-      // 1st call: the real recipe — throws a transport/driver error.
-      .mockRejectedValueOnce(new Error('UNAVAILABLE: driver gRPC broken pipe'))
-      // 2nd call: the throwaway 1-step screenshot recipe fired from the catch
-      // arm — writes the failure-screen PNG, then resolves pass.
-      .mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
-        fs.writeFileSync(path.join(dir, 'will-throw-FAILURE.png'), 'PNGDATA');
-        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: dir, screenshots: [] };
-      });
-    const captureUiDump = vi.fn().mockResolvedValue({
-      xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
-      elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+    const remoteRunRecipe = vi.fn().mockRejectedValueOnce(new Error('UNAVAILABLE: driver gRPC broken pipe'));
+    const failureEvidence = vi.fn(async ({ destDir, screenshotName }: { destDir: string; screenshotName: string }) => {
+      const shot = path.join(destDir, screenshotName);
+      fs.writeFileSync(shot, 'PNGDATA');
+      return {
+        dump: {
+          xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
+          elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+        },
+        screenshotPath: shot,
+      };
     });
-    const remote = { runRecipe: remoteRunRecipe, captureUiDump } as any;
+    const remote = { runRecipe: remoteRunRecipe, failureEvidence } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, lease: remote });
 
     // The ORIGINAL error must propagate — forensic capture never masks it.
@@ -603,7 +605,6 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     );
     expect(err).toBeInstanceOf(Error);
     expect(String(err.message)).toContain('UNAVAILABLE');
-    // ...with the failure-screen forensics attached to it.
     expect(err.failureForensics).toBeDefined();
     expect(err.failureForensics.uiDumpPath).toBe(
       path.join(tmpDir, 'will-throw', 'will-throw-FAILURE.xml'),
@@ -613,7 +614,7 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     expect(err.failureForensics.screenshotPath).toBe(
       path.join(tmpDir, 'will-throw', 'will-throw-FAILURE.png'),
     );
-    expect(captureUiDump).toHaveBeenCalledWith('AVD');
+    expect(remoteRunRecipe).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1900,13 +1901,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       const remoteRegister = vi
         .fn()
         .mockResolvedValue({ alreadyRegistered: false, phone: TEST_PHONE });
-      const remote = {
-        ensureAvdRunning: vi
-          .fn()
-          .mockResolvedValue({ name: 'cloud', serial: 'cloud:i-abc', status: 'booted' }),
-        clearAppData: vi.fn().mockResolvedValue(true),
-        registerTestUser: remoteRegister,
-      } as any;
+      const remote = { ...fakeLeaseForHeal(), registerTestUser: remoteRegister } as any;
       const avd = { loadSnapshot: vi.fn() } as any;
       const maestro = {} as any;
       const client = new MobileClient({ avd, maestro, lease: remote });
@@ -1914,7 +1909,8 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       const r = await client.ensureAvdRunning('cloud');
 
       expect(remote.ensureAvdRunning).toHaveBeenCalledWith('cloud');
-      expect(remote.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+      // A fresh machine: CommCare never launched, so no redundant pm clear.
+      expect(remote.clearAppData).not.toHaveBeenCalled();
       // registerTestUser was called with credentials derived from the
       // ACE_E2E_* env — verifying the cloud heal actually drives
       // bootstrap (and consumes the same env vars the local heal does).
@@ -1923,14 +1919,14 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       expect(regArgs.phone).toBe(TEST_PHONE);
       expect(regArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(regArgs.pin).toBe('0000');
-      // The post-heal log reflects an actual attempt — not the stub. It
-      // does NOT claim a verified state: nothing on this path probes the
-      // device, so `verified_as` is absent (ace#1067's cloud twin).
+      // The heal VERIFIES: the settled first screen shows the registered
+      // user, so `verified_as` is set and the step carries no -unverified.
       expect(r.heal?.deviceUserState).toMatchObject({
         attempted: true,
         healed_via: 'lease-bootstrap',
+        verified_as: 'ready',
       });
-      expect(r.heal?.deviceUserState?.verified_as).toBeUndefined();
+      expect(r.heal?.deviceUserState?.duration_s).toBeTypeOf('number');
     } finally {
       for (const k of ENV_KEYS) {
         if (saved[k] === undefined) delete process.env[k];
@@ -2146,64 +2142,53 @@ describe('MobileClient.restoreDeviceUserState — lease branch', () => {
     },
   };
 
-  it('runs the lease-bootstrap heal (pm clear + register)', async () => {
-    // Post-Phase-D state: AMI no longer pre-bakes the user, so the heal
-    // MUST run pm clear + registerTestUser via the cloud endpoints.
-    const remote = {
-      clearAppData: vi.fn().mockResolvedValue(true),
-      registerTestUser: vi.fn().mockResolvedValue({
-        alreadyRegistered: false,
-        phone: TEST_PHONE,
-        backupCode: '222222',
-      }),
-    } as any;
-    const client = new MobileClient({
+  const staticDir = new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname;
+  function healClient(remote: unknown) {
+    return new MobileClient({
       avd: {} as any,
       maestro: {} as any,
-      lease: remote,
+      lease: remote as any,
       bootstrapConfig: remoteBootstrapConfig,
-      staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
+      staticRecipesDir: staticDir,
     });
-    const heal = await client.restoreDeviceUserState(remoteAvd);
-    expect(remote.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+  }
+
+  it('fresh machine: skips pm clear, registers, settles CommCare, and VERIFIES the registered screen', async () => {
+    const remote = fakeLeaseForHeal({ screens: [REGISTERED_XML] });
+    const heal = await healClient(remote).restoreDeviceUserState({ ...remoteAvd, lease: { reused: false } } as any);
+    expect(remote.clearAppData).not.toHaveBeenCalled();
     expect(remote.registerTestUser).toHaveBeenCalledTimes(1);
-    // `classified_as: 'unknown'` and no `verified_as` — the cloud path runs
-    // no verification probe, so it reports the call it made, not a device
-    // state it never observed (ace#1067). Detailed coverage of the honesty
-    // contract lives in test/mcp/mobile/bootstrap-honesty.test.ts.
-    expect(heal).toMatchObject({
-      classified_as: 'unknown',
-      attempted: true,
-      healed_via: 'lease-bootstrap',
-    });
-    expect(heal.verified_as).toBeUndefined();
-    expect(heal.bootstrap_steps).toEqual(['app-data-cleared', 'registered-unverified']);
+    // The settle recipe launched CommCare and waited for its first screen.
+    expect(remote.runRecipe).toHaveBeenCalledTimes(1);
+    expect(heal).toMatchObject({ classified_as: 'ready', verified_as: 'ready', attempted: true, healed_via: 'lease-bootstrap' });
+    expect(heal.bootstrap_steps).toEqual(['app-data-clear-skipped-fresh-machine', 'registered', 'first-screen-settled']);
   });
 
-  it('emits app-data-clear-noop step when pm clear surfaces cleared=false (APK not installed)', async () => {
-    // Post-Phase-D AMI ships CommCare installed via the same state
-    // mechanism, so pm clear should succeed. But on a partially-broken
-    // AVD it's possible for the package to be absent; the heal must
-    // tolerate that and proceed to register (which itself reinstalls).
-    const remote = {
-      clearAppData: vi.fn().mockResolvedValue(false),
-      registerTestUser: vi.fn().mockResolvedValue({
-        alreadyRegistered: true,
-        phone: TEST_PHONE,
-      }),
-    } as any;
-    const client = new MobileClient({
-      avd: {} as any,
-      maestro: {} as any,
-      lease: remote,
-      bootstrapConfig: remoteBootstrapConfig,
-      staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
-    });
-    const heal = await client.restoreDeviceUserState(remoteAvd);
-    expect(heal.bootstrap_steps).toEqual([
-      'app-data-clear-noop',
-      'register-already-unverified',
-    ]);
+  it('fails loud when the settled screen shows an UNREGISTERED device', async () => {
+    const remote = fakeLeaseForHeal({ screens: [UNREGISTERED_XML] });
+    const err = await healClient(remote).restoreDeviceUserState(remoteAvd as any).catch((e) => e);
+    expect(err.code).toBe('DEVICE_USER_STATE_WIPED');
+    expect(err.remediation).toContain('mobile_ensure_avd_running');
+    expect(String(err.message)).toMatch(/needs-app-config/);
+    expect(String(err.message)).toMatch(/registered-unverified/);
+  });
+
+  it('reused machine already ready: one classifying dump, no heal at all', async () => {
+    const remote = fakeLeaseForHeal({ screens: [CONNECT_HOME_XML] });
+    const heal = await healClient(remote).restoreDeviceUserState({ ...remoteAvd, lease: { reused: true } } as any);
+    expect(heal).toMatchObject({ classified_as: 'ready', verified_as: 'ready', attempted: false, healed_via: 'none' });
+    expect(remote.registerTestUser).not.toHaveBeenCalled();
+    expect(remote.clearAppData).not.toHaveBeenCalled();
+    expect(remote.captureUiDump).toHaveBeenCalledTimes(1);
+  });
+
+  it('reused machine not ready: restores in full (pm clear + register + verify)', async () => {
+    const remote = fakeLeaseForHeal({ screens: [UNREGISTERED_XML, REGISTERED_XML], cleared: false, alreadyRegistered: true });
+    const heal = await healClient(remote).restoreDeviceUserState({ ...remoteAvd, lease: { reused: true } } as any);
+    expect(remote.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+    expect(remote.registerTestUser).toHaveBeenCalledTimes(1);
+    expect(heal.bootstrap_steps).toEqual(['app-data-clear-noop', 'register-already', 'first-screen-settled']);
+    expect(heal.verified_as).toBe('ready');
   });
 
   it('throws DeviceUserStateError naming the missing env var when bootstrapConfig is absent', async () => {

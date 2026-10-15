@@ -140,8 +140,9 @@ twin gate: dimagi-internal/ace#1604.
           the ORDINARY post-bootstrap verdict on a healthy device and is
           not a fault; a `-unverified` suffix on a registration step
           (`registered-unverified`) means the call returned but nothing
-          confirmed the device state. On the LEASE backend `verified_as`
-          is absent by contract — it runs no probe at all.
+          confirmed the device state. On the LEASE backend the heal ends
+          in a launch + UI-dump probe: it returns `verified_as: "ready"` or
+          throws `DeviceUserStateError` — it never returns unverified.
         - `mobile_ensure_avd_running` throws (`AvdBootError`,
           `MaestroDriverError`, `DeviceUserStateError`) → halt with
           the typed error class + heal-attempt log in the halt return.
@@ -173,9 +174,14 @@ twin gate: dimagi-internal/ace#1604.
         CONNECT-ID-3F precondition is satisfied automatically inside
         `/ace:run`.
       - **Lease:** each lease is a fresh EC2 machine from ACE's image
-        (`infra/capabilities/android-emulator/README.md`), and
-        `mobile_ensure_avd_running` registers the test user live on it
-        every call. Same contract, different mechanism.
+        (`infra/capabilities/android-emulator/README.md`), booted with the
+        CommCare the selector map is for; `mobile_ensure_avd_running`
+        checks the image's environment-baseline fingerprint (re-applying it
+        on a mismatch), registers the test user live and verifies the first
+        screen. A machine this session already holds is reused only when it
+        classifies `ready`. Same contract, different mechanism. **A lease
+        dies after `idle_release_s` (900 s) with no lease call** — see
+        § Workflow Step 0.
       `AvdInfo.heal.deviceUserState` carries `{ classified_as,
       attempted, healed_via, verified_as, focused_activity,
       ui_dump_signal }` — surface that in your halt return on
@@ -470,7 +476,39 @@ only Step 2 is short-circuited.
 
 ## Workflow
 
-### Step 0: Phase folder setup (do this FIRST)
+### Step 0: Prewarm the device, then set up the phase folder (do this FIRST)
+
+**0a — prewarm.** Once the pre-flight's `ace-mobile` binding check has
+passed, and before the rest of the pre-flight and the folder setup, call
+`mobile_ensure_avd_running({ avdName: '${ACE_AVD_NAME}', prewarm: true })`.
+It returns at once. On the **lease** backend it starts acquiring the
+emulator machine — a multi-minute EC2 boot — in the background, so the boot
+overlaps the remaining pre-flight reads, the folder setup and
+`app-screenshot-capture`'s Steps 1–2.8; the skill's blocking
+`mobile_ensure_avd_running` (its Step 3) joins that acquire rather than
+starting another. On the **local** backend it is a no-op (`prewarm:
+"skipped"`). A prewarm refusal is immediate and typed
+(`LEASE_STATE_SELECTOR_MISMATCH`, `LEASE_STATE_UNAVAILABLE`,
+`LEASE_NOT_CONFIGURED`) — halt on it as on any `mobile_ensure_avd_running`
+error. **If any pre-flight gate then halts the phase, call
+`mobile_stop_avd` before returning** so the machine is released, not left to
+idle out.
+
+**The 900 s idle rule (lease).** A lease is released after
+`idle_release_s` (900 s) without a lease call. An atom in flight never idles
+out, but the gaps between atoms count, from the moment the machine is ready
+until the last device step:
+- keep device steps back to back — run the per-artifact training skills
+  (Step 2), Drive uploads and anything that opens a PR AFTER the last device
+  step of Step 1, never between its legs;
+- bridge an unavoidable long gap with `mobile_diagnose` (a cheap read that
+  resets the idle clock) at least every ~10 minutes;
+- on `LEASE_LOST`, the machine and everything on it is gone: re-run
+  `mobile_ensure_avd_running`, then the prerequisite recipes (login,
+  claim/resume) before repeating the step — the error's remediation names
+  this sequence.
+
+**0b — phase folder.**
 
 Resolve-or-create this phase's artifact subfolder before any producer
 skill runs (per `agents/orchestrator-reference.md` § Per-Phase Folder

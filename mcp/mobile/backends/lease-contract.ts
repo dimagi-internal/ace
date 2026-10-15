@@ -30,10 +30,13 @@ export interface LeaseRoute {
 
 export const LEASE_ROUTES = {
   acquire: { method: 'POST', path: '/api/capabilities/leases' },
-  get: { method: 'GET', path: '/api/capabilities/leases/{lease_id}' },
+  // `wait_s` long-polls (the broker holds the GET up to that many seconds,
+  // ≤ 20, returning early on a change). A broker that predates it ignores
+  // the param and answers at once; lease.ts polls adaptively, so both work.
+  get: { method: 'GET', path: '/api/capabilities/leases/{lease_id}', query: ['wait_s'] },
   release: { method: 'DELETE', path: '/api/capabilities/leases/{lease_id}' },
   exec: { method: 'POST', path: '/api/capabilities/leases/{lease_id}/exec' },
-  execStatus: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/exec/{exec_id}' },
+  execStatus: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/exec/{exec_id}', query: ['wait_s'] },
   uploads: { method: 'POST', path: '/api/capabilities/leases/{lease_id}/uploads' },
   artifacts: { method: 'GET', path: '/api/capabilities/leases/{lease_id}/artifacts', query: ['prefix'] },
   agentCapabilities: { method: 'GET', path: '/api/agents/{slug}/capabilities' },
@@ -75,6 +78,90 @@ export interface ReadyMarker {
   timings?: Record<string, number>;
   cli_version?: string;
   accel?: string;
+  /** The state the machine actually booted (`cc-<version>`). Asserted against the request. */
+  state?: string;
+  instance_id?: string;
+  /**
+   * Fingerprint of the environment baseline the image applied at boot
+   * (`mcp/mobile/environment-baseline.ts` computes the same function), or
+   * absent from an image that applies none. Read through `readyBaseline`.
+   */
+  baseline_fingerprint?: string;
+  baseline?: {
+    fingerprint?: string;
+    keys?: string[];
+    /** False when a baseline step failed at boot (`failed` names the keys). */
+    complete?: boolean;
+    failed?: string[];
+    clock_synced?: boolean;
+  } | null;
+  /** Which boot path ran (`snapshot` | `cold` | `cold-fallback`), as a string or `{path, detail}`. */
+  boot_path?: unknown;
+}
+
+/** The baseline fingerprint a ready marker reports, whichever shape the image used. */
+export function readyBaseline(marker: Partial<ReadyMarker> | null | undefined): string | null {
+  if (!marker) return null;
+  if (typeof marker.baseline_fingerprint === 'string' && marker.baseline_fingerprint) return marker.baseline_fingerprint;
+  const b = marker.baseline;
+  if (b && typeof b === 'object' && typeof b.fingerprint === 'string' && b.fingerprint) return b.fingerprint;
+  return null;
+}
+
+/**
+ * Whether the boot-time baseline completed. `false` only when the image says
+ * a step failed (`baseline.complete === false`, or a non-empty `failed`);
+ * null when it reports no baseline object at all.
+ */
+export function readyBaselineComplete(marker: Partial<ReadyMarker> | null | undefined): boolean | null {
+  const b = marker?.baseline;
+  if (!b || typeof b !== 'object') return null;
+  if (b.complete === false) return false;
+  if (Array.isArray(b.failed) && b.failed.length > 0) return false;
+  return true;
+}
+
+/** The keys a ready marker says failed at boot (empty when none / unreported). */
+export function readyBaselineFailed(marker: Partial<ReadyMarker> | null | undefined): string[] {
+  const b = marker?.baseline;
+  return b && typeof b === 'object' && Array.isArray(b.failed) ? b.failed.map(String) : [];
+}
+
+/**
+ * The boot path ready.json names — `snapshot`, `cold`, `cold-fallback` — read
+ * tolerantly: a bare string, `{path}`, `{boot_path}`, `{mode}`, or the CLI's
+ * `{raw: "path=…"}` for an unparseable file. Null when absent.
+ */
+export function readyBootPath(marker: Partial<ReadyMarker> | null | undefined): string | null {
+  const v = marker?.boot_path;
+  if (typeof v === 'string') return v.trim() || null;
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  for (const k of ['path', 'boot_path', 'mode']) {
+    if (typeof o[k] === 'string' && o[k]) return o[k] as string;
+  }
+  if (typeof o.raw === 'string') {
+    const m = o.raw.match(/(?:^|\s)(?:path|boot_path)=(\S+)/);
+    return m ? m[1] : o.raw.trim().split(/\s+/)[0] || null;
+  }
+  return null;
+}
+
+/**
+ * Boot timings from a ready marker: its `timings` object, plus any numeric
+ * top-level `*_s` field an image reports outside it. Non-numbers are dropped.
+ */
+export function readyTimings(marker: Partial<ReadyMarker> | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!marker) return out;
+  for (const [k, v] of Object.entries(marker as Record<string, unknown>)) {
+    if (/_s$/.test(k) && typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  }
+  const t = marker.timings;
+  if (t && typeof t === 'object') {
+    for (const [k, v] of Object.entries(t)) if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
 }
 
 /** canopy-web `CapabilityLeaseOut` (apps/capabilities/schemas.py), the fields this client reads. */
@@ -94,12 +181,13 @@ export interface LeaseOut {
   /** The machine's ready.json once read: {ok, reason?, timings?, cli_version?}; {} before. */
   ready_info?: Partial<ReadyMarker> | null;
   /**
-   * NOT returned by canopy-web today: the lease's `s3://…/leases/<id>/out/`.
-   * Read if a later broker adds it; otherwise lease.ts derives it from an
-   * upload's `s3_uri` (`…/in/<name>` → `…/out/`).
+   * Where the machine writes artifacts (`CANOPY_LEASE_OUT`), as the broker
+   * states it. The ONLY source of the `--out` prefix: the broker owns the S3
+   * layout (it moved to per-instance prefixes), so a client that builds
+   * `leases/<id>/…` paths itself writes where the machine may not.
    */
   out_prefix?: string | null;
-  bucket?: string | null;
+  params?: Record<string, unknown> | null;
 }
 
 /** The ready marker once the broker has read it, else null. */
@@ -120,6 +208,9 @@ export interface ExecOut {
  */
 export interface ExecStatusOut {
   status: string;
+  // NB: the broker keeps only the LAST 4,000 chars of each stream inline
+  // (`STDOUT_TAIL`), so a long JSON line arrives with its head cut off and
+  // the full stream must be read from `stdout_url`.
   /** The broker's own terminal flag. */
   done?: boolean | null;
   exit_code?: number | null;
@@ -295,17 +386,27 @@ export interface CliOp {
    * dump that could not be taken). Everything else with `ok: false` throws.
    */
   dataErrors?: readonly string[];
+  /**
+   * A subcommand newer than some baked images. The client tolerates its
+   * absence — an older CLI answers `error: usage` (argparse: invalid choice),
+   * and the caller falls back — and the contract test pins its flags only
+   * once the CLI fixture declares it.
+   */
+  optional?: boolean;
 }
 
 // Pinned against infra/capabilities/android-emulator/image/cli/ace_mobile.py
-// `build_parser()`. Only run-recipe, register-test-user and ui-dump take
-// `--out`; argparse rejects an undeclared flag as a usage error, so a flag
-// here that the CLI lacks fails every call (lease-contract.test.ts).
+// `build_parser()` (CLI 1.1.0). Only run-recipe, register-test-user, ui-dump,
+// screenshot and record take `--out`; argparse rejects an undeclared flag as a
+// usage error, so a flag here that the CLI lacks fails every call
+// (lease-contract.test.ts).
 export const CLI = {
   diagnose: { sub: ['diagnose'], flags: {}, timeoutS: 120 },
   runRecipe: {
     sub: ['run-recipe'],
     flags: { recipe: '--recipe', palette: '--palette', env: '--env', out: '--out', timeoutS: '--timeout-s' },
+    // Fallback only: lease.ts sizes BOTH `--timeout-s` and the exec timeout
+    // per chunk from lib/maestro-chunk-timeout.ts, as MaestroBackend does.
     timeoutS: 1900,
     sendsOut: true,
     dataErrors: ['recipe-failed', 'recipe-timeout'],
@@ -320,6 +421,10 @@ export const CLI = {
     sendsOut: true,
   },
   uiDump: { sub: ['ui-dump'], flags: { out: '--out', name: '--name' }, timeoutS: 120, dataErrors: ['ui-dump-failed'] },
+  // screencap → `--out`. Failure forensics use it instead of a one-step
+  // Maestro recipe: one PNG under its own prefix, no Maestro logs to clobber
+  // the failed run's.
+  screenshot: { sub: ['screenshot'], flags: { out: '--out', name: '--name' }, timeoutS: 90, sendsOut: true },
   installApk: { sub: ['install-apk'], flags: { apk: '--apk' }, timeoutS: 600 },
   clearAppData: { sub: ['clear-app-data'], flags: { package: '--package' }, timeoutS: 120 },
   repairDriver: { sub: ['repair-driver'], flags: {}, timeoutS: 300 },
@@ -331,6 +436,50 @@ export const CLI = {
     flags: { longitude: '--lon', latitude: '--lat', altitude: '--alt', satellites: '--sats' },
     timeoutS: 60,
     dataErrors: ['geo-fix-failed'],
+  },
+  // The environment baseline the local funnel applies every dispatch
+  // (`mcp/mobile/environment-baseline.ts`): the image applies it at boot and
+  // reports its fingerprint in ready.json; the client re-applies it over this
+  // when the fingerprint does not match. Prints `{ok, fingerprint, keys,
+  // complete, failed[], clock_synced, steps[]}`; a step that failed is data
+  // (`baseline-failed`), not a throw.
+  applyBaseline: {
+    sub: ['apply-baseline'],
+    flags: {},
+    timeoutS: 180,
+    dataErrors: ['baseline-failed'],
+    optional: true,
+  },
+  // On-device screen recording around a recipe — the lease twin of
+  // `mcp/mobile/screen-recorder.ts` (`screenrecord --time-limit 0`, stopped
+  // with SIGINT so the moov atom is written). `record start` returns at once
+  // with the recorder running detached on the machine; `record stop` stops it,
+  // waits for the file to settle, and uploads `<name>` under `--out`.
+  // CLI 1.1.0 (infra/capabilities/android-emulator/README.md § CLI contract):
+  //   record start [--name N] [--bit-rate 1M] [--size 540x1140]
+  //     → {ok, name, device_path, started_at, bit_rate, size}
+  //     errors: record-busy (+recording{name,…}: one at a time), record-start-failed
+  //   record stop --out s3://… [--name N]   (--name only CHECKS the one in flight)
+  //     → {ok, name, key (N.mp4), uri, content_type, bytes, duration_s, upload_error?}
+  //     errors: no-recording, record-pull-failed, s3-upload-failed
+  // The image has no ffmpeg: the client remuxes the download (`-c copy +faststart`).
+  // `record` is ONE argparse subcommand (positional action start|stop), so
+  // both ops share its flag set; each sends only its own.
+  recordStart: {
+    sub: ['record', 'start'],
+    flags: { name: '--name', bitRate: '--bit-rate', size: '--size' },
+    timeoutS: 60,
+    dataErrors: ['record-busy', 'record-start-failed'],
+    optional: true,
+  },
+  recordStop: {
+    sub: ['record', 'stop'],
+    flags: { out: '--out', name: '--name' },
+    // Stop + settle + upload of up to ~80 MB from the machine to S3.
+    timeoutS: 600,
+    sendsOut: true,
+    dataErrors: ['no-recording', 'record-pull-failed', 's3-upload-failed'],
+    optional: true,
   },
 } as const satisfies Record<string, CliOp>;
 

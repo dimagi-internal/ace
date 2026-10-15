@@ -265,11 +265,14 @@ export class MaestroDriverError extends MobileError {
 // classifier (`classifyDeviceUserState`) was added to make this class
 // structurally impossible to mislabel.
 export class DeviceUserStateError extends MobileError {
-  constructor(stateClass: string, attempts: string[]) {
+  constructor(stateClass: string, attempts: string[], remediation?: string) {
     super(
       'DEVICE_USER_STATE_WIPED',
       `AVD per-user state is unhealthy (${stateClass}) after recovery: ${attempts.join('; ')}`,
-      'Run /ace:mobile-bootstrap to re-register the ACE test user, configure the CommCare app, and save a fresh `registered-test-user` snapshot. The auto-heal only does snapshot-load; full registration + server-side invite verification require the bootstrap flow.',
+      remediation ??
+        'The heal (cold boot + test-user registration) ran and the device still did not verify. Run ' +
+          '/ace:mobile-bootstrap to re-register the ACE test user and check the server-side invite; the ' +
+          'attempts above name which step and screen it stopped on.',
     );
   }
 }
