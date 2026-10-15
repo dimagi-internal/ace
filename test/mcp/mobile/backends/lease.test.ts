@@ -983,7 +983,7 @@ describe('LeaseBackend per-instance prefixes come only from the broker', () => {
     fs.writeFileSync(recipe, 'appId: x\n---\n- launchApp\n');
     await lb.runRecipe(recipe, {}, path.join(tmp, 'o'), { paletteTarB64: Buffer.from('p').toString('base64') });
     const argv = b.execArgv('run-recipe');
-    expect(argv[argv.indexOf('--out') + 1]).toMatch(new RegExp(`^${outPrefix('lease-1').replace(/[/.]/g, '\\$&')}run-recipe-[a-z0-9]+/$`));
+    expect(argv[argv.indexOf('--out') + 1]).toMatch(new RegExp(`^${outPrefix('lease-1').replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}run-recipe-[a-z0-9]+/$`));
     for (const flag of ['--recipe', '--palette']) {
       expect(argv[argv.indexOf(flag) + 1].startsWith(`s3://${BUCKET}/leases/lease-1/${INSTANCE}/in/`)).toBe(true);
     }
