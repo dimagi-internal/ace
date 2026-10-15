@@ -1,5 +1,5 @@
 {
-  "_doc": "canopy-web capability-broker routes, from canopy-web's openapi (api.get_openapi_schema()) @ 3b393f80+uncommitted. Regenerate with scripts/refresh-lease-contract-fixtures.ts --canopy-web <checkout>; test/mcp/mobile/backends/lease-contract.test.ts checks lease-contract.ts against it.",
+  "_doc": "canopy-web capability-broker routes, from canopy-web's openapi (api.get_openapi_schema()) @ 330de238. Regenerate with scripts/refresh-lease-contract-fixtures.ts --canopy-web <checkout>; test/mcp/mobile/backends/lease-contract.test.ts checks lease-contract.ts against it.",
   "source": "openapi",
   "routes": {
     "DELETE /api/capabilities/grants/{grant_id}": {

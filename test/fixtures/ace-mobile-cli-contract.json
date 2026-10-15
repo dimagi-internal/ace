@@ -1,5 +1,5 @@
 {
-  "_doc": "ace-mobile CLI argparse contract (build_parser()), from ace_mobile.py @ fa93aa15, cli_version 1.1.0. Regenerate with scripts/refresh-lease-contract-fixtures.ts --cli <ace_mobile.py>.",
+  "_doc": "ace-mobile CLI argparse contract (build_parser()), from ace_mobile.py @ c40a9b9e+uncommitted, cli_version 1.1.0. Regenerate with scripts/refresh-lease-contract-fixtures.ts --cli <ace_mobile.py>.",
   "cli_version": "1.1.0",
   "subcommands": {
     "apply-baseline": {

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { parse } from 'yaml'
+import { ENVIRONMENT_BASELINE_KEYS } from '../../mcp/mobile/environment-baseline.js'
 
 // The android-emulator capability is declared in four places that must agree,
 // and none of them can see the others at runtime:
@@ -131,7 +132,7 @@ describe('android-emulator: the CLI and scripts agree with what owns each value'
 
   it('applies the local backend\'s baseline keys, values and fingerprint', () => {
     const src = body('applyEnvironmentBaseline')
-    const keys = [...(/settingsApplied = \[([\s\S]*?)\]/.exec(src)![1].matchAll(/'([^']+)'/g))].map((m) => m[1])
+    const keys = [...ENVIRONMENT_BASELINE_KEYS]
     const steps = c.steps as [string, string[]][]
     expect([...new Set(steps.map(([k]) => k))].sort()).toEqual([...keys].sort())
     expect(c.fingerprint).toBe(createHash('sha1').update([...keys].sort().join('|')).digest('hex').slice(0, 12))
