@@ -1830,6 +1830,28 @@ export class AvdBackend {
     await this.shell('adb', args).catch(() => {});
   }
 
+  /**
+   * Set the device screen-lock PIN before registration part B, so
+   * PersonalID's Configure-PIN goes straight to the system unlock prompt
+   * instead of handing off to Settings' ChooseLockPassword chooser (the
+   * `com.android.settings:id/lock_pin` branch of
+   * connect-register-from-otp.yaml — ~15-20 s of taps per sign-up). The end
+   * state is the one that branch produces anyway: a device PIN equal to the
+   * test user's PIN. Measured 2026-10-15 on ACE_Pixel_API_34: part B 76-83 s
+   * without, 61 s with.
+   *
+   * Best-effort, like `setGmsEnabled`: on a device that already has a lock
+   * `locksettings set-pin` refuses without `--old`, which is fine — the
+   * recipe's unlock branch handles an existing lock, and its Settings branch
+   * still handles a device where this did not take.
+   */
+  async presetScreenLockPin(avdName: string, pin: string): Promise<void> {
+    if (!/^\d{4,16}$/.test(pin)) return;
+    const found = await this.findRunningAvd(avdName);
+    if (!found) return;
+    await this.shell('adb', ['-s', found.serial, 'shell', 'locksettings', 'set-pin', pin]).catch(() => {});
+  }
+
   async stopAvd(avdName: string): Promise<void> {
     const found = await this.findRunningAvd(avdName);
     if (!found) return;

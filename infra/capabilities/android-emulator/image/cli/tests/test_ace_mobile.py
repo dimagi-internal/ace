@@ -273,6 +273,9 @@ class RegisterTests(TmpPaths):
             if argv[0] == am.ADB and argv[1:3] == ["shell", "pm"] and "gms" in argv[-1]:
                 seen.append("gms:" + argv[3])
                 return am.Proc(0, "", "")
+            if argv[0] == am.ADB and argv[1:4] == ["shell", "locksettings", "set-pin"]:
+                seen.append("lock-pin:" + argv[4])
+                return am.Proc(0, "", "")
             return adb_only()(host, argv, kw)
 
         host = FakeHost(handler)
@@ -300,7 +303,9 @@ class RegisterTests(TmpPaths):
         self.assertEqual(out["backup_code_set"], True)
         self.assertNotIn("backup_code", out)
         self.assertNotIn("2222", json.dumps(out))
-        self.assertEqual(host.seen, ["gms:enable", "to.yaml", "gms:disable-user", "from.yaml"])
+        # The device PIN is pre-set between the parts, so part B skips the
+        # Settings lock chooser.
+        self.assertEqual(host.seen, ["gms:enable", "to.yaml", "gms:disable-user", "lock-pin:1111", "from.yaml"])
         maestro_calls = [c for c in host.calls if c[0] == am.MAESTRO]
         self.assertIn("PIN=1111", maestro_calls[0])
         self.assertIn("BACKUP_CODE=2222", maestro_calls[1])

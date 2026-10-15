@@ -1183,6 +1183,16 @@ def _set_gms_enabled(host: Host, enabled: bool) -> None:
         adb(host, "shell", "pm", "disable-user", "--user", "0", "com.google.android.gms", timeout=PROBE_TIMEOUT_S)
 
 
+def _preset_lock_pin(host: Host, pin: str) -> None:
+    # Mirrors AvdBackend.presetScreenLockPin (mcp/mobile/backends/avd.ts):
+    # with a device PIN already set, part B's Configure-PIN goes straight to
+    # the system unlock prompt instead of the Settings lock chooser (~15-20 s
+    # of taps). Best-effort: a device that already has a lock refuses without
+    # --old, and the recipe handles both an existing lock and a missing one.
+    if DIGITS_RE.match(pin):
+        adb(host, "shell", "locksettings", "set-pin", pin, timeout=PROBE_TIMEOUT_S)
+
+
 def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, Any]:
     """Port of controller.py ``register_test_user``: Part A with GMS enabled,
     Part B with GMS disabled (face capture then falls back to ManualMode).
@@ -1236,6 +1246,7 @@ def cmd_register_test_user(host: Host, args: argparse.Namespace) -> dict[str, An
                            f"register part A failed (exit {a.code}): {_tail(a.stderr or a.stdout, 500)}",
                            **finish({}))
         _set_gms_enabled(host, False)
+        _preset_lock_pin(host, creds["pin"])
         b = part("b", args.from_otp_recipe, {
             "NAME": creds["name"], "BACKUP_CODE": creds["backup_code"], "PIN": creds["pin"],
         })
