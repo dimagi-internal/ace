@@ -91,6 +91,7 @@ import {
   type RenderReport,
   visiblePhaseLabels,
 } from '../lib/run-surface-audit.js';
+import { fetchPublishedDocExport } from '../lib/published-doc-render-check.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -224,61 +225,6 @@ async function readBounded(resp: Response, max: number): Promise<string | null> 
     off += c.byteLength;
   }
   return new TextDecoder('utf-8', { fatal: false }).decode(merged.slice(0, max));
-}
-
-/**
- * Plain-text (and image-count) export of a Google Doc, ANONYMOUSLY.
- *
- * Sequential and retried, not parallel. A first cut fired the txt and html
- * exports concurrently across every deliverable and Google throttled one of
- * them, which surfaced as "could not read this document" — a transient network
- * condition wearing the costume of a real finding. An auditor that cries wolf
- * gets ignored, so a read failure is retried once and reports the status it
- * actually saw.
- *
- * Returns `text: null` when the document genuinely could not be read.
- */
-async function fetchDocText(
-  url: string,
-): Promise<{ text: string | null; images: number | null; html: string | null; why: string }> {
-  const m = url.match(/\/d\/([A-Za-z0-9_-]{10,})/);
-  if (!m) return { text: null, images: null, html: null, why: 'not a Drive document URL' };
-  const id = m[1];
-  // Slides and Sheets have no plain-text export; they are judged by the link
-  // probe only, and this says so rather than reporting them unread.
-  if (!url.includes('/document/')) return { text: null, images: null, html: null, why: 'not a Google Doc (no text export)' };
-
-  async function get(fmt: 'txt' | 'html'): Promise<{ ok: boolean; body: string; status: number }> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const r = await fetch(`https://docs.google.com/document/d/${id}/export?format=${fmt}`, {
-          redirect: 'follow',
-          credentials: 'omit',
-        });
-        if (r.ok && !r.url.includes('accounts.google.com')) return { ok: true, body: await r.text(), status: r.status };
-        if (attempt === 0) {
-          await new Promise((res) => setTimeout(res, 1500));
-          continue;
-        }
-        return { ok: false, body: '', status: r.status };
-      } catch {
-        if (attempt === 0) await new Promise((res) => setTimeout(res, 1500));
-      }
-    }
-    return { ok: false, body: '', status: 0 };
-  }
-
-  const txt = await get('txt');
-  if (!txt.ok) return { text: null, images: null, html: null, why: `text export answered HTTP ${txt.status || 'nothing'} anonymously` };
-  const html = await get('html');
-  return {
-    text: txt.body,
-    images: html.ok ? (html.body.match(/<img\b/gi) ?? []).length : null,
-    // Handed to the literal-markdown check so a code span the txt export
-    // unwrapped is not reported as a raw `##` heading (ace#2499).
-    html: html.ok ? html.body : null,
-    why: '',
-  };
 }
 
 /** Minimal YAML subset reader — reuse the repo's yaml dep. */
@@ -417,7 +363,7 @@ async function main(): Promise<number> {
   for (const l of probed) {
     if (!isAceDeliverable(l.url)) continue;
     if (l.cls !== 'OK') continue; // a private doc is already a `broken` finding
-    const { text, images, html, why } = await fetchDocText(l.url);
+    const { text, images, html, why } = await fetchPublishedDocExport(l.url);
     if (text === null && why.startsWith('not a Google Doc')) continue; // Slides/Sheets
     const src = resolveDocSource(docSources, l.url);
     docProbes.push({ label: l.label, url: l.url, text, html, imageCount: images, sourceMarkdown: src, unreadableReason: why || undefined });
