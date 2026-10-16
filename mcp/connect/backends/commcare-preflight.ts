@@ -37,12 +37,25 @@
  *      `would_reuse_existing` cleanly, or surface the conflict with
  *      enough state to debug without touching Phase 6.
  *
+ *   1b. HQ's `COMMCARE_CONNECT` feature flag for THIS domain
+ *      (dimagi-internal/ace#3040). `create_hq_user_and_link` POSTs
+ *      `{username, connect_username}`, and HQ's
+ *      `CommCareUserResource.obj_create` (corehq/apps/api/resources/v0_5.py)
+ *      refuses `connect_username` with "You don't have permission to use
+ *      connect_username field" unless the flag is on — so with the flag
+ *      off every worker's Start ends in "Failed to start learning". The
+ *      probe POSTs the same shape plus a `commcare_profile` that cannot
+ *      exist: HQ runs the flag check, then `validate_profile_id`, and only
+ *      then `CommCareUser.create`, so a flag-ON domain answers 400
+ *      "Profile with id … not found" and a flag-OFF domain answers the
+ *      permission error — neither creates a user. Reproduced 2026-10-16:
+ *      ace-case-sharing-test → permission error; connect-ace-prod →
+ *      profile error. A fresh HQ space (a partner workspace's, a throwaway
+ *      test's) starts with the flag OFF and only an HQ superuser can turn
+ *      it on. The old note here said this needed cookies; it does not.
+ *
  * What this probe deliberately does NOT check:
  *
- *   - COMMCARE_CONNECT feature flag state — that's covered by the
- *     `cchq_connect_features` doctor probe (cookies-based, can't be
- *     done with just an API key). Operators get steered there by the
- *     warning message when the flag is off but the API key works.
  *   - OAuth-connection-to-Connect — same scope; doctor-probe-only.
  *   - The actual `start_learn_app` POST — that's Phase 6's job, and a
  *     dry-run would mutate the server's invite/link state which we
@@ -133,6 +146,7 @@ export interface PreflightLearnAppUserResult {
     | 'would_reuse_existing'
     | 'conflict_existing_user'
     | 'auth_failed'
+    | 'connect_flag_off'
     | 'domain_unreachable'
     | 'cchq_error'
     | 'skipped';
@@ -141,6 +155,13 @@ export interface PreflightLearnAppUserResult {
    * the exact remediation step (rotate key, fix domain, etc.).
    */
   reason: string;
+  /**
+   * HQ's COMMCARE_CONNECT flag for the domain, as step 1b observed it.
+   * `unknown` means HQ answered in a shape the probe does not recognise
+   * (e.g. it changed its validation order); the probe then does not block,
+   * but the caller should not read the space as Connect-ready either.
+   */
+  connect_flag?: 'on' | 'off' | 'unknown';
   /**
    * Raw HTTP details for the worst-case branch (`auth_failed`,
    * `domain_unreachable`, `cchq_error`). Surfaced verbatim so the
@@ -284,6 +305,27 @@ export async function preflightLearnAppUser(
     };
   }
 
+  // Step 1b: the COMMCARE_CONNECT flag (ace#3040). See module doc.
+  const flag = await probeConnectFlag(baseUrl, args.hq_domain, authHeader, fetchImpl);
+  if (flag.state === 'off' || flag.created) {
+    return {
+      ok: false,
+      action: flag.created ? 'cchq_error' : 'connect_flag_off',
+      connect_flag: flag.state,
+      reason: flag.created
+        ? `The COMMCARE_CONNECT flag probe CREATED a mobile worker "${flag.username}" in ` +
+          `"${args.hq_domain}" (HQ answered ${flag.status}) — HQ no longer validates the profile ` +
+          'before creating, so this probe is unsafe as written. Retire that user in HQ ' +
+          '(Users → Mobile Workers) and fix probeConnectFlag before running it again.'
+        : `CommCare HQ's COMMCARE_CONNECT feature flag is OFF for "${args.hq_domain}", so HQ ` +
+          'refuses the connect_username field and Connect cannot create any worker\'s HQ ' +
+          'account: every worker who taps Start sees "Failed to start learning". ' +
+          'Only an HQ superuser can enable it: https://www.commcarehq.org/hq/flags/edit/commcare_connect/ ' +
+          `→ add the domain "${args.hq_domain}". No retry or ACE-side change helps until then.`,
+      cchq: { status: flag.status, body_excerpt: flag.body.slice(0, 300), path: flag.path },
+    };
+  }
+
   // Step 2: check existence of the connect_username. Skipped if no
   // username was supplied — the auth/domain probe alone is still useful
   // for the lighter operator-driven pre-flight.
@@ -291,10 +333,14 @@ export async function preflightLearnAppUser(
     return {
       ok: true,
       action: 'skipped',
+      connect_flag: flag.state,
       reason:
         `CCHQ API key + domain "${args.hq_domain}" verified reachable. ` +
         'No connect_username supplied → user-conflict branch skipped. ' +
-        'Phase 6 `start_learn_app` is clear of the auth/domain failure modes.',
+        (flag.state === 'on'
+          ? 'Phase 6 `start_learn_app` is clear of the auth/domain/COMMCARE_CONNECT-flag failure modes.'
+          : 'Auth/domain are clear; the COMMCARE_CONNECT flag answer was unrecognised (connect_flag: unknown), ' +
+            'so a "Failed to start learning" on device may still be the flag.'),
     };
   }
 
@@ -353,6 +399,7 @@ export async function preflightLearnAppUser(
     return {
       ok: true,
       action: 'would_create',
+      connect_flag: flag.state,
       reason:
         `No existing CCHQ user named "${args.connect_username}" in domain "${args.hq_domain}". ` +
         '`create_hq_user_and_link` will mint a fresh mobile worker on the Phase 6 ' +
@@ -412,6 +459,7 @@ export async function preflightLearnAppUser(
   return {
     ok: true,
     action: 'would_reuse_existing',
+    connect_flag: flag.state,
     reason:
       `CCHQ user "${exact.username}" already exists in "${args.hq_domain}" and is compatible ` +
       '(active, no conflicting connect_username link). `create_hq_user_and_link` will reuse ' +
@@ -422,6 +470,53 @@ export async function preflightLearnAppUser(
       is_active: exact.is_active,
     },
   };
+}
+
+/** Outcome of the step-1b COMMCARE_CONNECT flag probe. */
+interface ConnectFlagProbe {
+  state: 'on' | 'off' | 'unknown';
+  /** True only if HQ created the probe user — the probe's own safety alarm. */
+  created: boolean;
+  username: string;
+  status: number;
+  body: string;
+  path: string;
+}
+
+/**
+ * Read HQ's COMMCARE_CONNECT flag for `domain` with the API key alone, without
+ * creating a user (ace#3040). Sends the `connect_username` field Connect's
+ * `_create_hq_user` sends, plus a `commcare_profile` that cannot exist, so HQ
+ * stops at the flag check (flag off) or at the profile check (flag on) — both
+ * of which run before `CommCareUser.create` in `CommCareUserResource.obj_create`.
+ */
+export async function probeConnectFlag(
+  baseUrl: string,
+  domain: string,
+  authHeader: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ConnectFlagProbe> {
+  const path = `/a/${domain}/api/v0.5/user/`;
+  const username = `ace-flag-probe-${Date.now().toString(36)}`;
+  const res = await fetchImpl(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { Authorization: authHeader, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username,
+      connect_username: username,
+      user_data: { commcare_profile: 'ace-flag-probe-no-such-profile' },
+    }),
+  }).catch(() => null);
+  if (!res) return { state: 'unknown', created: false, username, status: 0, body: '(network error)', path };
+  const body = await safeText(res);
+  if (res.status === 201) return { state: 'on', created: true, username, status: 201, body, path };
+  if (res.status === 400 && /permission to use connect_username/i.test(body)) {
+    return { state: 'off', created: false, username, status: 400, body, path };
+  }
+  if (res.status === 400 && /profile with id .* not found/i.test(body)) {
+    return { state: 'on', created: false, username, status: 400, body, path };
+  }
+  return { state: 'unknown', created: false, username, status: res.status, body, path };
 }
 
 async function safeText(res: Response): Promise<string> {

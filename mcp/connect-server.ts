@@ -1649,7 +1649,9 @@ server.tool('commcare_set_app_menu_display',
 // otherwise surface only at recipe runtime, when the FLW client has
 // already started navigating.
 //
-// What it checks: API key + domain reachability on CCHQ, and (if a
+// What it checks: API key + domain reachability on CCHQ, HQ's
+// COMMCARE_CONNECT feature flag for that domain (off → every worker's
+// Start fails with "Failed to start learning"; ace#3040), and (if a
 // `connect_username` is supplied) whether the mobile worker already
 // exists with a conflicting link. Recommended caller:
 // `connect-opp-setup` Step 7 (just before `connect_send_flw_invite`).
