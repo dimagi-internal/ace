@@ -378,6 +378,26 @@ normally; it answers about a different account's apps. A resolvability check
 is structurally blind to that. So, for a `pending`/`in_progress`
 `commcare-setup`, run one addressed check:
 
+- **First, on a resume, reconcile the ids from the declared artifacts
+  (ace#2412).** An interrupted Phase 3 can leave built apps with
+  `products: null` (`poverty-graduation/20260915-1518`: two `complete` Nova
+  apps, nothing in run_state), and "no ids recorded" must not be read as
+  "built nothing" — that reading re-dispatches the build and mints a second
+  pair. Fetch ONLY the files the helper names, then reconcile:
+
+  ```bash
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/recover-product-ids.ts" commcare-setup --list
+  # drive_read_file each listed path that exists (raw markdown) to a local file, then:
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/recover-product-ids.ts" commcare-setup \
+    --run-state <local run_state.yaml> --artifact <run-path>=<local-file> [--artifact …]
+  ```
+
+  Exit 0 → `update_yaml_file({merge: 'deep'})` the printed `patch` into
+  `phases.commcare-setup.products` (skip when empty), then continue to the
+  bullets below with the recovered ids. Exit 1 (`halt`) → a declared source
+  exists but cannot answer or contradicts run_state: stop and surface the
+  `problems[]` verbatim — never guess an id from anything else in the folder,
+  and never re-dispatch the build over it. Exit 2 is UNABLE, not a pass.
 - If the run records
   `phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id` → call
   Nova `list_apps` and assert **both ids are in the result**.
@@ -1416,11 +1436,31 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `pending` phase → `in_progress`.
 
      **Structural precondition check (before dispatching each `pending`
-     phase).** Confirm the phase's required input artifacts (per
-     `lib/artifact-manifest.ts` `artifactsConsumedBy`) are present — produced
-     by a `done`/`seeded` phase or an earlier `pending` phase in this run. If a
-     required input is missing AND its producer is `skipped` (or absent), halt
-     loud — a seeded run was shaped wrong:
+     phase).** Confirm the phase's required input artifacts are present —
+     produced by a `done`/`seeded` phase or an earlier `pending` phase in this
+     run. The input list is the union of what the phase's skills consume
+     (agent frontmatter `skills` / `recurring_skills` / `manual_skills` + each
+     `eval_skill`), restricted to required artifacts an EARLIER phase produces —
+     `lib/phase-inputs.ts`. Do **not** call `artifactsConsumedBy(<phase>)`:
+     `consumedBy` holds SKILL names, so a phase-keyed lookup returns `[]` and
+     the fence passes vacuously (ace#2134). Run:
+
+     ```bash
+     # present.json: run-folder paths that exist (verify_phase_artifacts found
+     # lists / drive_list_folder); statuses.json: {"<phase>": "<status>"} from
+     # run_state phases.*.status
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/phase-inputs.ts" <phase> \
+       [--mode=<phases.<phase>.mode>] \
+       --present=present.json --statuses=statuses.json
+     ```
+
+     Exit 0 = every input present (or its producer still `pending` — it runs
+     first). Exit 1 lists each missing input with `producerStatus` and
+     `remedy`. Exit 2 is **UNABLE TO CHECK** (unknown phase, or the agent's
+     frontmatter yielded no skills) — that is NOT a pass; halt and fix the
+     lookup rather than dispatching. If a required input is missing AND its
+     producer is `skipped` (or absent) — `remedy: reshape` — halt loud, a
+     seeded run was shaped wrong:
 
      > resume `<opp>/<run-id>`: phase <N> needs `<artifact>` produced by phase
      > <M>, which is `skipped`/absent in this run's run_state. The run was
