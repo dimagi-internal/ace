@@ -597,6 +597,48 @@ paraphrase the schema here — read the model / schema and validate.
 5. **Write back** `narrative` refs + `steps.demo-narrative.status: done` via
    `mcp__plugin_ace_ace-gdrive__update_yaml_file` (`merge: 'deep'`).
 
+6. **Publishing a set of demos (decision rows, not brief lists).** When the
+   demos are shared as one storyboard set on canopy-web, publish the board with
+   canopy's `scripts.ddd.demo_set publish`. canopy-web takes the set's open
+   questions as **`decisions[]` rows** (live since canopy-web#1516); the old
+   brief lists are retired and `demo_set` refuses them, so never put assumptions,
+   divergences or open questions in the brief.
+   - Write `<path>/board.json` as a StoryboardIn: `slug`, `title`, `lede`,
+     `brief` (only `audience`, `purpose`, `data_disclosure`, `short_version`),
+     `decisions[]`, `acts[]`, `capability` (`"comment"` or `"suggest"`) and
+     `agent_project` (the ACE project for the work).
+   - One `decisions[]` row per default the set is built on, in plain language.
+     Row fields (canopy-web `DecisionIn`): `id`, `question`, `plain_question`,
+     `options` (each at most 8 words), `recommended`, `review_ask`, `needed_by`,
+     `evidence_basis`, `conflict_signals`, `reasoning`. The `review_ask`,
+     `evidence_basis` and `conflict_signals` vocabulary is ACE's shared
+     decision-row vocabulary in `lib/decisions-schema.ts` (`REVIEW_ASKS`,
+     `evidence_basis` stated | inferred | conflicting) - cite it, do not invent
+     values. `needed_by` here takes canopy-web's storyboard values
+     (`external-share` | `next-run`), not the run-lifecycle `NEEDED_BY` gates in
+     that file.
+     - What a reviewer must answer before the set is shared externally:
+       `review_ask: required-before`, `needed_by: external-share`.
+     - What a reviewer should confirm: `review_ask: recommended-confirmation`.
+     - Where the script and the data disagree: `evidence_basis: conflicting`,
+       with both readings in `conflict_signals` (at least two) and the
+       resolution in `reasoning`.
+   - Publish through the pinned wrapper (never a bare canopy call):
+     ```bash
+     (cd "$CANOPY_RT" && $ACE_ROOT/bin/ace-canopy-web --workspace <ws> -- uv run python -m scripts.ddd.demo_set publish <path>/board.json)
+     ```
+     (`CANOPY_RT` as in step 4; `ACE_ROOT` is the ACE checkout/plugin root; the
+     form is `bin/ace-canopy-web --workspace <ws> -- <command>`.)
+     `demo_set` POSTs the board and PATCHes on a 409, so re-running updates it.
+   - **Verify before citing the link:**
+     `bin/ace-canopy-web --workspace <ws> verify storyboard <slug>` - exit 0 only
+     when the board is readable in `<ws>`; cite the `url` it prints
+     (`https://canopy.dimagi.com/w/<ws>/storyboard/<slug>`), never a flat link.
+   - Publishing or sharing the board is an outbound act: it follows the turn
+     mode's approval rule like any other publish or share (see
+     `skills/_terminology.md` for wording - "Connect", never the retired long
+     form).
+
 ## Gotchas
 
 - **`concept_claim` is falsifiability-gated** by `ddd-spec-qa`: ≥5 words, no

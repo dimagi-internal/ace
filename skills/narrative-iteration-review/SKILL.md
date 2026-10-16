@@ -52,6 +52,28 @@ path — that is the DRY violation this skill exists to avoid.
 5. **Read submitted edits from canopy** — the review's `response_json` (via `GET /reviews/<id>/`),
    fold them into the proposed version, iterate. Do not parse a side-channel document.
 
+## Feedback from a storyboard round
+
+A set of demos can also be reviewed as a canopy-web **storyboard** with a closed feedback round.
+When the turn's task says `Run ddd-feedback-round for storyboard <slug> round <n>`, follow canopy's
+`ddd-feedback-round` skill rather than the review-response path above. Both of its scripts run through
+the pinned wrapper (`playbook/integrations/canopy-web.md`):
+
+```
+(cd "$CANOPY_RT" && "$ACE_ROOT/bin/ace-canopy-web" --workspace <ws> -- uv run python -m scripts.ddd.feedback_round read  <slug> <n> --out <file>)
+(cd "$CANOPY_RT" && "$ACE_ROOT/bin/ace-canopy-web" --workspace <ws> -- uv run python -m scripts.ddd.feedback_round apply <slug> <n> --dispositions <f.json> --version <N> --run-id <R>)
+```
+
+- **Every note gets a disposition** - none is dropped silently; a note ACE will not act on is
+  recorded as declined with a reason, not omitted.
+- **Stamp each change** made in response with
+  `Feedback-Ref: storyboard:<slug>/round-<n>/<note id>` per the `feedback-ledger` rule
+  (`skills/feedback-ledger/SKILL.md`), so the reviewer's ledger shows where their note went.
+- Narration changes still become a new version in the lineage, and product changes still go through
+  the full `canopy:ddd` loop below. Verify the board with
+  `bin/ace-canopy-web --workspace <ws> verify storyboard <slug>` before citing its link, and
+  publishing or sharing anything follows the turn mode's approval rule.
+
 ## Producing the video = fire the FULL `canopy:ddd` loop (it BUILDS the product)
 
 Once a new version is agreed, **making its video is the full `canopy:ddd` loop, not a render of the

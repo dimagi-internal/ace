@@ -58,6 +58,7 @@ beforeAll(async () => {
     if (req.url === '/api/workspaces/connect/members/') return json(200, [{ email: 'ace@dimagi-ai.com', role: 'editor' }]);
     if (req.url === '/api/workspaces/other/members/') return json(200, [{ email: 'jjackson@dimagi.com', role: 'owner' }]);
     if (req.url === '/api/w/connect/ddd/narratives/n1/') return json(200, { slug: 'n1' });
+    if (req.url === '/api/w/connect/storyboards/s1/') return json(200, { slug: 's1' });
     return json(404, {});
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
@@ -131,6 +132,16 @@ describe('bin/ace-canopy-web (behaviour)', () => {
   it('verify prints the workspace-addressed URL to cite (canopy-web#1337)', async () => {
     const ok = await run(['--workspace', 'connect', 'verify', 'narrative', 'n1'], 'CANOPY_WEB_PAT=ace-pat\n');
     expect(JSON.parse(ok.stdout).url).toBe('https://canopy.dimagi.com/w/connect/ddd/n1');
+  });
+
+  it('verify storyboard reads back SCOPED and prints the workspace-addressed URL', async () => {
+    const ok = await run(['--workspace', 'connect', 'verify', 'storyboard', 's1'], 'CANOPY_WEB_PAT=ace-pat\n');
+    expect(ok.status, ok.stderr).toBe(0);
+    expect(JSON.parse(ok.stdout).url).toBe('https://canopy.dimagi.com/w/connect/storyboard/s1');
+    const miss = await run(['--workspace', 'dimagi', 'verify', 'storyboard', 's1'], 'CANOPY_WEB_PAT=ace-pat\n');
+    expect(miss.status).toBe(1);
+    expect(miss.stderr).toMatch(/storyboard 's1' is NOT readable in workspace 'dimagi'/);
+    expect(seen.some((s) => s.startsWith('/api/w/dimagi/storyboards/s1/'))).toBe(true);
   });
 
   it('rewrites every flat canopy link the wrapped command prints, on stdout and stderr, and says so', async () => {
