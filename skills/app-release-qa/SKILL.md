@@ -268,6 +268,37 @@ absolute plausibility bounds. The helper flags, per module:
 continue. Record per-app (Learn only) under `time_estimates` in the
 verdict: `pass | { modules_checked, violations: [...] }`.
 
+**Every `learn_module` form reachable by every worker (dimagi-internal/ace#3036).**
+Connect computes Learn completion over EVERY `learn_module` in the app. A
+marked form behind a display condition the worker fails can never be
+finalized, so that worker's Learn tops out below 100% and Deliver never
+unlocks. Live on `kaduna-graduation/20261015-1411`: 14 marked modules, 9
+gated to `kgrad_role = 'FLW'` and 5 to `'enumerator'`; an FLW finished her 9,
+passed the assessment, and Connect read `modules_completed_pct: 64.3` (9/14),
+`learn_complete: false`. This skill reported 31/31 green on that build,
+because every check above reads the form and only `suite.xml` says who can
+open it. Nova compiles a module display condition onto the suite `<menu>`
+(`relevant="instance('commcaresession')/session/user/data/<prop> = '…'"`)
+and a form display condition onto its `<command>`.
+
+```ts
+import { checkLearnModuleDisplayGating, formatLearnModuleDisplayGating }
+  from '../../lib/learn-module-display-gating';
+const gating = checkLearnModuleDisplayGating({
+  suiteXml,                                   // the Learn CCZ's suite.xml (Step 3)
+  learnModules: projected.learn_modules.map((m) => ({ slug: m.slug, firstSeenIn: m.first_seen_in })),
+});
+```
+
+Narrow on `status` first — `unable` (no markers, no menus, or a marker's form
+not found in the suite) is NOT a pass; halt and say why. A finding with
+`severity: 'blocker'` (the condition reads a user property — role gating) →
+halt with `[BLOCKER]` `learn-module-display-gated` (include
+`formatLearnModuleDisplayGating(gating)`). `warn` findings (some other
+condition) → record and continue. Record under `learn_module_display_gating`
+in the Learn verdict block in every branch. Run over the kaduna CCZ above, the
+helper reports 14 of 14 marked forms as blockers.
+
 **Deliver-specific (only for the Deliver app):**
 
 - Each Nova form whose blueprint declares `connect.deliver_unit` MUST
@@ -1789,6 +1820,13 @@ defects.
   fix: re-run `pdd-to-learn-app` (its brief carries the resolved hours
   instruction with source citations), re-release, then re-run
   `app-release-qa`.
+- `learn-module-display-gated` — a `connect.learn_module` form in the
+  released Learn CCZ sits behind a display condition on a user property, so
+  workers who fail it can never complete Learn (Connect counts every marked
+  module; ace#3036). Operator fix: rebuild per `pdd-to-learn-app § Step 2a`
+  (every marked module visible to every worker; the restructuring choice is
+  the `learn-gap-multi-role-learn-completion` decision row), re-release, then
+  re-run `app-release-qa`.
 - `learn-marker-missing` / `deliver-marker-missing` — released CCZ
   doesn't carry the Connect-marker wrappers Connect's sync requires.
   Halt; investigate Nova-side OR check if any post-build patcher

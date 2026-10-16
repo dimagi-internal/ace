@@ -99,6 +99,65 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 2. **Extract the Learn app spec** from the PDD. The spec drives the Nova
    brief; what to extract depends on `archetype:` (see `## Archetypes` below).
 
+2a. **More than one worker role in one opportunity? Never role-gate a
+    `connect.learn_module` form (ace#3036).** Connect computes Learn
+    completion over **every** `learn_module` in the app, whoever can see it.
+    Observed on `kaduna-graduation/20261015-1411` (real device + Connect,
+    2026-10-16): the Learn app held 14 `learn_module` markers, 9
+    display-gated to `#user/kgrad_role = 'FLW'` and 5 to `'enumerator'`. An
+    FLW finished all 9 of hers and passed the assessment, then
+    `connect_get_learn_progress` read `modules_completed_pct: 64.3` (9/14),
+    `learn_complete: false`, and Deliver stayed locked. A role-gated Learn
+    app cannot be completed by **any** single role.
+
+    When the PDD names more than one worker role who will claim this one
+    opportunity (FLW + enumerator, worker + supervisor, …):
+
+    1. **No display condition on any `learn_module`-bearing form or on the
+       module that holds it** — not on a user property (`#user/<role>`),
+       and not on anything else. This also covers the assessment form:
+       every worker must be able to reach it.
+    2. **How the programme restructures its training is the owner's
+       decision, not this skill's.** The ways out are: one opportunity
+       (and Learn app) per role; every role completes every module; or
+       `learn_module` markers only on a shared core, with role-specific
+       teaching in unmarked forms. Do not pick one as the answer. Record
+       the choice as a decision row (§ Decisions Log), id
+       `learn-gap-multi-role-learn-completion`, with
+       `review_ask: required-before`, `needed_by: go-live`,
+       `owner: dimagi` (or the design owner as the reader knows them),
+       `answer_channel: review`, and a `confirm_reason` that cites the
+       9/14 evidence in plain words.
+    3. **Build on the safe default until it is answered: every module is
+       visible to every worker, and every worker completes every marked
+       module.** It is the only shape this skill can build that Connect can
+       complete, and the other options start from it. Role-specific
+       modules may say who they are mainly for in their title ("For
+       enumerators: …") but stay visible and marked. Put this paragraph
+       **verbatim** into the brief, prefixed `REQUIRED:`:
+
+       > REQUIRED: This programme has more than one worker role, but every
+       > worker completes the SAME Learn app. Do NOT give any module or
+       > form a display condition, including on a user property such as
+       > `#user/<role>`. CommCare Connect counts every form carrying
+       > `connect.learn_module` toward Learn completion, so a module a
+       > worker cannot see means that worker can never complete Learn and
+       > never unlocks Deliver. A module mainly for one role may say so in
+       > its title, but it must stay visible to everyone.
+
+    4. **The assessment's pass label must never promise the work app
+       opens** ("You may now open your work app", "you can start
+       delivery") unless every `learn_module` in the app is reachable by
+       the worker reading it. Kaduna's label promised exactly that to an
+       FLW who could reach 9 of 14 modules. Under the safe default the
+       pass label should say what is true: the assessment is passed, and
+       the work app opens once every module is complete.
+
+    *Enforced:* `pdd-to-learn-app-eval § 5b learn_module_display_gating`
+    (blueprint, hard deduction) and `app-release-qa § Step 4`
+    `learn-module-display-gated` (released CCZ, `lib/learn-module-display-gating.ts`).
+    A single-role PDD skips this step.
+
 3. **Compose a Nova brief** — a single natural-language description that
    `/nova:autobuild` consumes as its sole argument. Nova does not accept
    file paths or markdown attachments; whatever Nova needs to build the
@@ -1282,7 +1341,7 @@ Build each row from one entry —
 | `reasoning` | why; an ambiguity left OPEN begins `OPEN —`; it ends `Spot-check: <where>.` |
 | `plain` | REQUIRED — one plain-language line for a programme partner (no §-refs, field ids or ACE tags) |
 | `check_at` + `correct_looks_like` | where in the Learn app a reviewer sees the choice, and what they see there when it is right (the atom fills `check_at` from the `Spot-check:` sentence if omitted) |
-| `review_ask` + `confirm_reason` | framework gap (and an unsatisfiable `repairs[]` entry) that only the design owner or operator can close → `recommended-confirmation` + one plain sentence naming who closes it and how. `OPEN` rows get their ask derived by `decisions_enrich`; do not duplicate it |
+| `review_ask` + `confirm_reason` | framework gap (and an unsatisfiable `repairs[]` entry) that only the design owner or operator can close → `recommended-confirmation` + one plain sentence naming who closes it and how. `OPEN` rows get their ask derived by `decisions_enrich`; do not duplicate it. **Exception:** `learn-gap-multi-role-learn-completion` (Step 2a) is `required-before` + `needed_by: go-live` + `owner` + `answer_channel`, because no default is safe past go-live without the owner's restructuring choice |
 
 **Keep the `Spot-check:` sentence at the end of `reasoning`** even when you
 set `check_at`: `reasoning` renders as the row's note, and the write boundary
@@ -1372,6 +1431,7 @@ write semantics` (top-level `decisions:`, not `rows:`).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 2a: never role-gate a `connect.learn_module` form when one opportunity carries more than one worker role (ace#3036).** Connect computes Learn completion over every `learn_module`; `kaduna-graduation/20261015-1411` gated 9 modules to FLWs and 5 to enumerators, so an FLW who passed read 9/14 = 64.3%, `learn_complete: false`, Deliver locked, under a pass label promising the work app opens. The build now keeps every marked module visible to every worker, puts the restructuring choice to the owner as `learn-gap-multi-role-learn-completion` (`required-before`, `needed_by: go-live`), and the pass label may not promise the work app opens unless every marked module is reachable. *Enforced:* `pdd-to-learn-app-eval § 5b learn_module_display_gating`, `app-release-qa` `learn-module-display-gated` (`lib/learn-module-display-gating.ts`), `test/skills/learn-module-role-gating-rule.test.ts`. | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 7a no longer writes `3-commcare/pdd-to-learn-app_build-memo.md`: `[ACE]` latitudes, `[FIXED]` ambiguities and every framework gap (`learn-gap-<slug>`, with `review_ask` + `confirm_reason` when only the design owner can close it) are decision rows only, and the language layer, repairs applied and assessment self-check move to a `## Build notes` section of the summary; the Phase 3 boundary now fails a summary with zero rows under `skill: pdd-to-learn-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-28 | **ACE-direct edits move to Nova private work (`voidcraft-labs/commcare-nova#693`).** Nova's 2026-09-27 deploy removed `create_app` and made every mutation staged: `work_id` + `request_id`, no `app_id`, nothing lands until `save_work`, and a refused save answers `saved: false` as data. §§ 4b / 4c / 4e and § Repair mode now open work, stage, save (requiring `saved: true`) and read back with `app_id` after the save; Step 4 treats an architect report naming unsaved work as an unfinished build; `no-starter-module` is re-framed as a regression guard (new apps are unseeded). Contract: `playbook/integrations/nova-integration.md § The private-work authoring contract`. | ACE team |
 | 2026-09-11 | **Added § Decisions Log: every build-memo `[ACE]` latitude and `[FIXED]` ambiguity is also a `decisions.yaml` row (ace#2384, regression of #399).** The skill had no Decisions Log section, so the Learn build contributed zero rows to the register a reviewer comments on and answers — 61 and 66 rows on the two poverty-graduation runs, none from Phase 3. Rows derive from the same entry list as Step 7a's tables, with the spot-check location in `reasoning` because ace-web drops unknown keys. The Phase 3 boundary now fails a memo with entries and no rows. *Enforced:* `lib/build-phase-decisions.ts` via `verify_phase_artifacts`, `test/lib/build-phase-decisions.test.ts`, `test/skills/build-phase-decision-rows.test.ts`. | ACE team |
