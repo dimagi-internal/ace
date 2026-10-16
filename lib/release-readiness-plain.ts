@@ -136,6 +136,7 @@ export function plainFinding(f: ReleaseFinding, ctx: PlainContext): { summary: s
     };
   }
   if (/^preview-bad-frame:/.test(id)) return { summary: 'A preview on the review page shows the wrong thing.', action: 'Capture that preview again and look at it.' };
+  if (/^link-admin-only:/.test(id)) return { summary: 'A chatbot admin page on the review page only opens for its OCS team, not for reviewers; they use the public chat link instead.', action: 'Nothing to fix before release; give reviewers the public chat link.' };
   if (/^link:/.test(id)) return { summary: `A link on the review page does not open for the people it is meant for.`, action: 'Fix the link, or stop presenting it to them.' };
   if (/^chatbot-/.test(id)) return { summary: 'The support chatbot has not been shown to answer a question recently.', action: 'Ask it a test question and record the answer.' };
   if (/^app-unreleased:/.test(id)) return { summary: `The ${id.split(':')[1]} app has no released version.`, action: 'Release the app.' };
