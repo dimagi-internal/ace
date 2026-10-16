@@ -1,0 +1,306 @@
+Program Design Document (PDD): Household Poverty Targeting Survey
+Version: 1.1 · Status: Build input — Component 2 of the graduation program · Component: 2 of the graduation component set · Author: Neal Lesh (v1) · Maintained by: Sophie Feintuch · Intended compiler: ACE · Intended reviewers: Graduation SME (TBD), 1–2 LLOs, Dimagi delivery team 
+
+
+ACE framing note (added 2026-07-02). This is Neal's PDD, captured verbatim into the graduation-models research set. It is deliberately different from the three full-program PDDs (Raising The Village, Trickle Up, Village Enterprise): those describe entire multi-stage, multi-year graduation programs; this describes a single, atomic-visit component — the household poverty-targeting survey that every one of those models runs as its first step (their shared "participatory / scorecard targeting" component).  It is the natural first buildable slice for LIF Objective 1 ("show graduation programs can be configured on Connect") because it is the one piece that is a clean fit for Connect's FLW-piecework model — one verified survey = one paid deliver unit — with none of the continuity/coaching/beneficiary-transfer complications the full models carry. It also introduces the [FIXED] / [ACE] authoring convention, which is a cross-cutting idea worth adopting for all ACE PDDs (see the distillation doc). Content below is Neal's; the ACE-latitude and fixed-constraint tags are his. Superseded in part (2026-09-11). Targeting is now Component 2 inside the graduation program, not a standalone atomic-visit build. The archetype is longitudinal-visits over a shared household case. The description of this as a separate first buildable slice is historical.
+
+
+
+
+________________
+
+
+0. How to read this document
+Every element in this PDD is tagged one of two ways:
+
+
+* [FIXED] — a hard constraint. ACE must implement exactly as written and must not modify, reorder, rephrase, or omit. If a FIXED element is ambiguous or infeasible, ACE flags it back to a human rather than resolving it itself.
+* [ACE] — ACE latitude. ACE may design, phrase, order, and iterate on these elements using its own judgment and Connect best practices. Humans review output but do not pre-specify it.
+
+
+This split is the core idea of the PDD. The RDT workflow doc showed the failure mode of not having it: humans end up specifying every form field, which is nearly as much work as building the app. The PDD aims to fix only what must be fixed — the instrument, the money, the verification — and delegate the rest.
+1. Program summary
+[FIXED] LLO frontline workers (FLWs) visit households in assigned areas and administer a standardized poverty scorecard survey. Each completed, verified survey is a paid deliver unit. The output is a scored household list used to determine eligibility for enrollment into the graduation program. This component is targeting only: it administers and scores the survey and does nothing else. Enrollment, asset transfer and coaching are separate components of the same program, running as separate modules over the same household case. Enrollment reads the targeting record from that case. 
+
+
+[ACE] Program naming, FLW-facing descriptions, and all user-facing copy.
+2. Roles and delivery model
+[FIXED]
+
+
+* FLW: administers surveys at households. Sees Learn app, then Deliver app.
+* Network Manager (NM): LLO staff; monitors submissions, handles flagged visits, manages FLW roster. Does not administer surveys.
+* Program manager (Dimagi): sets payment terms, reviews verification flags, approves payment batches.
+* One deliver unit = one completed household survey (see §5).
+
+
+[ACE] Supervision workflows for the NM beyond flag review; any NM-facing dashboards or summary views.
+3. Instrument
+[FIXED]
+
+
+* Instrument: a standardized poverty scorecard (the national PPI — Poverty Probability Index) for the deployment country — attached as Annex A (canonical question text, response options, and point values). (This example uses the Nigeria 2018 PPI as the worked instance; swapping Annex A retargets the program to another country.)
+* ACE must implement the Annex A questions verbatim — exact wording, exact response options, exact order, exact scoring weights. No paraphrasing, no added or dropped options.[a][b]
+* Scoring is computed in-app from Annex A weights, but the score is not shown to the FLW or the household (prevents coaching/gaming of responses).
+* Languages: set at deployment (Annex B). Instrument translations come from Annex A if provided; otherwise translation is produced by ACE and must be human-verified before deployment (instrument translation is FIXED-by-review, not ACE-final).
+* The read-aloud consent script must state, in addition to purpose, voluntariness, the right to stop and confidentiality: where the data goes, that it leaves the interviewer and reaches Dimagi and the graduation program owner who will act on it; and that participation does not guarantee selection, since eligibility is decided outside this app and most surveyed households will not be enrolled. 
+[ACE]
+
+
+* Screen layout, question grouping, and progress indicators.
+* Help text and FLW guidance around instrument questions (as long as it does not lead the respondent).
+* Non-instrument contextual questions ACE thinks useful (e.g., respondent role in household), provided they are clearly separated from the instrument and add ≤ 5 questions.
+4. Target population and coverage
+[FIXED]
+
+
+* Geography: assigned administrative areas, set at deployment (Annex B).
+* Unit: household. Respondent must be the household head or an adult member (18+) able to answer on the household's behalf.
+* Coverage model for v1: census-style saturation of assigned settlement areas — every household in the assigned area, no sampling frame, no rooftop/satellite sampling, no microplanning. FLWs are assigned areas by the NM.
+* Each household surveyed at most once. Consent required; refusals are recorded (see §5) but unpaid.
+
+
+[ACE] How area assignment is represented in the app; how FLWs track which households in their area remain.
+5. Visit definition (the deliver unit)
+[FIXED] A payable visit requires all of:
+
+
+1. FLW physically at the household (GPS auto-captured; see §6).[c][d]
+2. Recorded consent from an eligible respondent.
+3. All 10 instrument questions answered (no partial surveys are payable).
+4. Photo of the dwelling exterior (live capture only — no gallery selection).
+5. A household identifier sufficient for de-duplication and later re-finding: respondent name, household head name, and a phone number if available.
+
+
+
+
+[FIXED] Non-payable outcomes that must still be recordable and submittable: household refused; no eligible respondent present; dwelling vacant. These submissions are unpaid but required for coverage accounting.[e][f] Where a household consents to the survey but declines the dwelling photograph, that refusal is recorded explicitly and the visit remains payable, flagged for review. The photograph is not an optional field: the only route past it is a recorded refusal. GPS is captured on every submitted outcome, payable or not. Location is not gated behind the visit outcome or consent. The dwelling photograph and the instrument itself remain gated. 
+
+
+[FIXED] No question may require information the FLW does not have at that point in the visit. Every constraint sits on the field that produces the data it tests, not on a later question. visit_outcome is derived from answers already given and is never asked. 
+
+
+[ACE] Visit flow[g][h][i][j], screen order, and how the non-payable outcomes are presented; anything else in the form beyond the FIXED requirements.
+6. Verification and fraud rules
+[FIXED] Automated flags (visit is flagged for NM/PM review, payment withheld pending resolution):
+
+
+* Duration floor: total form time < 6 minutes.
+* GPS: location missing, spoofed, or > 200m from the FLW's other visits in an implausible pattern (impossible travel speed between consecutive visits).
+* Duplicates:: same household identifiers, or same GPS point (< 15m) where both readings have accuracy better than 15m. Where either reading is less accurate than the radius, duplicate detection relies on identifiers alone. [k][l][m]
+* Photo: missing, or duplicated across visits (perceptual-hash match).
+* Response patterns: flagged (not auto-rejected) if an FLW's score distribution is a statistical outlier vs. peers — e.g., implausibly uniform answers or a spike just below/above an eligibility threshold.
+
+
+[FIXED] Threshold values above are v1 defaults and may be tuned by the PM during the pilot; tuning is a config change, not an ACE decision.
+
+
+[ACE] Flag-review UX for the NM; how flag reasons are explained; any additional fraud heuristics ACE proposes (proposals go in §12, not silently into the build).
+7. Payment terms
+[FIXED]
+
+
+* Rate: [local currency] [X] per verified completed survey (set in contract / Annex B).
+* Non-payable outcomes (§5) pay 0.
+* Max payable visits per FLW per day: 25 (anti-skimming cap).
+* Payment accrues on verification (auto-pass or flag resolution), displayed to FLW as accrued pay, disbursed on the standard Connect payment cycle.
+
+
+[ACE] How accrued pay and visit status are displayed to the FLW.
+8. Outputs and data use
+[FIXED]
+
+
+* Primary output: household-level dataset — identifiers, GPS, instrument responses, computed PPI score, verification status.
+* Eligibility determination (score threshold or ranking) happens outside this program, by the graduation program owner. This app computes scores; it does not label households eligible/ineligible, and FLWs never see eligibility.
+* Data access: Dimagi PM and program owner get full dataset; LLO/NM gets coverage and verification views but not household scores.
+
+
+[ACE] Format and delivery of coverage/monitoring views.
+9. Training requirements (input to the Learn PDD) 
+[FIXED]
+
+
+* Training for this component sits in the program-level Learn app as this component's module, not in a separate app. The program-level post-assessment at 80% is the gate into Deliver; see the Learn PDD.
+* Required training content: (a) how to administer a scorecard neutrally without leading or coaching respondents; (b) consent [n][o]and refusal handling; (c) the §5 visit requirements; (d) household identification and avoiding duplicates.
+* Teaching examples must be drawn from the Nigeria PPI's actual items, preferring the self-reported consumption indicators (bread, eggs, milk, sachet water) where the coaching risk is highest. Roof material and number of rooms are not in this instrument and must not appear as teaching content. 
+
+
+[ACE] All module content[p][q], structure, examples, and assessment questions[r][s], within the required topics above.
+10. Assumptions and known platform gaps
+[FIXED — for human confirmation, not ACE resolution]
+
+
+* Assumes standard Connect deliver-unit, GPS, photo, and payment primitives suffice; no new platform features expected for v1.
+* Household de-duplication across FLWs is assumed to be handled by flags (§6) rather than a shared household registry. A registry is a candidate v2 feature.
+11. What ACE should produce from this PDD
+[FIXED] The compilation target is: (1) Learn app, (2) Deliver app, (3) opportunity configuration (deliver unit, payment terms, caps), (4) verification flag configuration, (5) a build memo listing every place ACE exercised [ACE] latitude and every ambiguity it hit in [FIXED] material.
+
+
+The build memo is the review artifact: humans review the memo and spot-check the apps, rather than reviewing every screen.
+12. Open questions (for SME / LLO / iteration)
+1. Is a PPI-style scorecard the right instrument, or does the graduation program owner require their own PMT? (Instrument choice is the biggest FIXED element — it must come from the program owner.)
+2. Census saturation vs. some listing/sampling step — is saturation realistic for the pilot areas?
+3. Should respondent phone numbers be required (enables back-check calls — a strong verification layer) or optional?
+4. Do we add a back-check protocol (NM or call center re-verifies a random 5% of surveys) in v1 or v2?
+5. Do validated instrument translations already exist for the deployment languages?
+Annex A — Instrument: Nigeria 2018 PPI (canonical)
+Source: Nigeria 2018 PPI® Scorecards & Look-Up Tables (Updated), IPA, based on the Nigeria Living Standards Survey 2018 (NLSS 2018–2019), National Bureau of Statistics. The workbook (attached alongside Neal's original doc) is the canonical artifact; it states: do not change any questions, response options, points, or poverty likelihood values — doing so invalidates the tool's results. Compilation implications ACE must honor: score is computed from the roster count plus the nine asked questions; score and likelihood are never shown to FLW or respondent (§3); the zone question may be pre-filled from deployment config only if the deployment sits entirely in one zone — flag either way in the build memo.
+Annex B — Deployment parameters (placeholder; set per deployment, never hard-coded in the body)
+Parameter
+	Value
+	Country / instrument version
+	TBD
+	Geography (admin areas)
+	TBD
+	Languages
+	TBD
+	Currency and rate per verified survey
+	TBD
+	Eligibility rule owner (who consumes scores)
+	TBD
+	13. Change log
+Version
+	Date
+	Change
+	Author
+	1.0
+	2026-07-02
+	Initial example for Neal/Jon discussion
+	NL
+	1.1
+	2026-09-11
+	Reframed as Component 2 of the graduation program: §1 rewritten, §9 changed from a standalone Learn app to training requirements feeding the program Learn app, §5 photograph refusal made explicit. Ownership transferred from NL 
+	SF
+	
+
+[a]Fields for the survey questions, in addition to the photo, GPS, consent, and both name fields must be required rather than optional
+[b]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `required-fields`, in ACE/poverty-graduation/feedback/.
+
+
+Disposition: already carried in your own body at §5 — "Every element listed above is a required field in the form. The only optional field on a completed visit is the phone number." The build reads the rule from §5 rather than from a second copy in the programme overview, so it cannot drift from yours. Recorded in this run's programme overview (1-design/idea-to-pdd.md) § Deliver App Specification → Required fields, as a pointer to your §5.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[c]A constraint's message has to be actionable on the screen where it appears. If satisfying it requires going back to a different question, it is attached to the wrong question. Example: 1. FLW captures GPS. No complaint. Advances.
+2. Answers "yes, I was standing at the dwelling." Tries to advance.
+3. Blocked, with an error caused by the accuracy of the reading taken on the previous screen. Must navigate backward to a question that gave no indication of a problem, and re-capture.
+[d]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `constraint-actionability`.
+
+
+Applied in this run's programme overview (1-design/idea-to-pdd.md) § Deliver App Specification → "Requirement — constraint locality", generalised to every constraint in every module, not just this one: a constraint's message must be satisfiable on the screen where it appears, and one whose remedy lives on an earlier screen belongs on that earlier screen.
+
+
+One honest note on your specific example. The GPS-accuracy block you describe cannot arise in this build, because there is no accuracy gate to block on: Connect's verification-flags form no longer renders `gps` / `gps_radius_meters`, and the app builder rejects validation on a geopoint. What the design delivers instead is a stated 50 m target in the question hint, the accuracy value captured and submitted on every visit, an on-screen advisory when a reading is worse, and down-weighting of poor readings in de-duplication — observability, not enforcement. The overview says that in those terms rather than implying a control we cannot build. Your requirement still stands as a general rule.
+
+
+Also raised as open-questions.md row `targeting-ace-latitude-asks-not-in-body`, since §5 delegates this area to [ACE] latitude and a component-level reader would not see it.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[e]These still need to capture GPS
+[f]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `non-payable-gps`.
+
+
+Disposition: already carried in your own body at §5 — "GPS is captured on every submitted outcome, payable or not. Location is not gated behind the visit outcome or consent. The dwelling photograph and the instrument itself remain gated." Carried into this run's programme overview (1-design/idea-to-pdd.md) § Deliver App Specification as a binding requirement on the Phase 3 form build, and into § Evidence Model, where GPS accuracy is captured on every submission including the non-payable ones.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[g]visit_outcome is the first question in the form, which is impossible for an FLW to answer at that point. Ask only what the FLW knows at each point in the actual sequence of a doorstep visit:
+1. Is the dwelling occupied? (observation)
+2. If occupied: is an eligible adult respondent available? (observation)
+3. If yes: read the consent script, record consent yes or no
+4. If consent yes: the roster, the ten indicators, photo, GPS
+
+
+Then:
+visit_outcome = if(occupied = 'no', 'vacant',
+if(eligible_respondent = 'no', 'no_eligible_respondent',
+if(consent = 'no', 'refused', 'completed')))
+[h]Same problem with count(/data/roster) >= 1 on i1_zone. The FLW is blocked on "In which zone does the household live?" because of something wrong with the roster several screens earlier.
+[i]ACE (run poverty-graduation/20260915-1518). Both asks on this thread captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments — the root comment as item `visit-outcome-ordering`, and your reply about `count(/data/roster) >= 1` on `i1_zone` as item `roster-constraint-placement`. We read this thread as two asks, which is why our count is nine against Drive's eight threads.
+
+
+The roster half is already in your body at §5 — "The roster's minimum-one-member rule belongs on the roster itself, not on a later question."
+
+
+The ordering half is not, and could not be: §5 hands visit flow and screen order to [ACE] latitude, so the fix belongs in our design rather than in yours. Applied in this run's programme overview (1-design/idea-to-pdd.md) § Deliver App Specification → Screen order. The four-step doorstep sequence (occupied → eligible respondent → consent → roster, indicators, photo, GPS) is written as a binding requirement; your `if(occupied='no','vacant', ...)` derivation is carried as an advisory mechanism so Phase 3 may express it differently, but what is binding is that `visit_outcome` is derived from answers already given and is never a question. The § Stress Test Results appendix walks the form screen by screen to show no field depends on a later screen's answer.
+
+
+One question back to you, raised as open-questions.md row `targeting-ace-latitude-asks-not-in-body`: downstream phases read Component 2 from this PDD, so a rule living only in our overview is one a component-level reader can miss. Would you like §5's [ACE] line to note the ordering constraint, or is the overview the right home for it?
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[j]Answered in the body rather than either option you gave. §5 now carries this as [FIXED], replacing the roster sentence:
+
+
+"No question may require information the FLW does not have at that point in the visit. Every constraint sits on the field that produces the data it tests, not on a later question. visit_outcome is derived from answers already given and is never asked."
+
+
+The four-step sequence stays [ACE]. I am not specifying screen order, only that the form cannot depend forward.
+
+
+Two back to you:
+
+
+Do you have standing build rules that apply across all components? This constraint is generic and I would rather not restate it in every PDD.
+Is the screen-by-screen stress test run on every build, or written once for this thread?
+[k]I think this doesn't work when the accuracy tolerance is 50m
+[l]Resolving this: the GPS duplicate test applies only where both readings have accuracy better than the radius. Where accuracy is worse, duplicate detection relies on identifiers alone. A 15m radius cannot function against a 50m accuracy tolerance, and widening the radius past 50m would flag genuine neighbours in dense settlements.
+[m]ACE (run poverty-graduation/20260915-1518). Captured verbatim — the root comment and your 11 September resolving reply together — as feedback record 20260727-sophie-feintuch-targeting-comments / item `gps-duplicate-accuracy`.
+
+
+Disposition: already carried in your own body at §6, by your own reply. Your rule is transcribed exactly, not paraphrased and not "corrected":
+
+
+- Same household identifiers, always.
+- Plus same GPS point within 15 m, applied only where BOTH readings report accuracy better than 15 m.
+- Where either reading is less accurate than the radius, duplicate detection relies on identifiers alone.
+
+
+Recorded in this run's programme overview § Evidence Model (Layer B), and as the Program Parameters row `duplicate_gps_rule = radius_m=15; applies_when=both_accuracies_below_radius; fallback=identifiers`. We record the WHOLE rule rather than a bare radius on purpose: a later reader seeing only "15 m" beside a 50 m accuracy tolerance reads it as incoherent and is tempted to widen or tie it — which is exactly what your condition exists to prevent. With the condition recorded, the coherence classifier reads it as coherent by construction.
+
+
+Also stamped on this run's decision row `duplicate-detection-key` so it is traceable to this comment.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[n]Add to the consent script where the data goes and that selection is not guaranteed.
+[o]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `consent-script-scope`.
+
+
+Disposition: already carried in your own body at §3 — the read-aloud consent script must state, in addition to purpose, voluntariness, the right to stop and confidentiality, where the data goes (that it leaves the interviewer and reaches Dimagi and the graduation program owner who will act on it) and that participation does not guarantee selection, since eligibility is decided outside this app and most surveyed households will not be enrolled.
+
+
+The build reads it from your §3. This run's programme overview repeats it once, in § Target Population, because the consent script is a programme-level obligation that a reader working only from a component PDD could miss — the wording there points at your §3 rather than restating it as an independent rule.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[p]Make the examples align with the actual survey (i.e. in module 1 when talking about leading questions, swap examples about roof quality with those on eggs: ""You haven't had eggs this week, have you?" where the FLW's tone signals which answer to help the household qualify)
+[q]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `teaching-examples-actual-survey`.
+
+
+Disposition: already carried in your own body at §9 — "Teaching examples must be drawn from the Nigeria PPI's actual items, preferring the self-reported consumption indicators (bread, eggs, milk, sachet water) where the coaching risk is highest. Roof material and number of rooms are not in this instrument and must not appear as teaching content."
+
+
+The Phase 3 Learn build reads that requirement from your §9. This run's programme overview § Learn App Specification → Teaching content points at it and quotes your egg example as the illustration of the failure the module must teach against, rather than restating the rule as a second copy that could drift from yours.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.
+[r]Rewrite the assessment item bank so it discriminates. Every current item has one virtuous answer and three absurd distractors.
+[s]ACE (run poverty-graduation/20260915-1518). Captured verbatim as feedback record 20260727-sophie-feintuch-targeting-comments / item `assessment-item-discrimination`.
+
+
+This one is not in your body and could not be: §9 hands module content and assessment questions to [ACE] latitude, so it is ours to fix. Applied in this run's programme overview (1-design/idea-to-pdd.md) § Learn App Specification → Assessment blueprint, as a binding requirement on the Phase 3 build:
+
+
+"Every item must discriminate. An item whose correct answer is obvious to a worker who has not learned the point — one virtuous answer and three absurd distractors — tests nothing and must be rewritten. Distractors must be answers a worker could plausibly give: the wrong-but-tempting reading of a rule, the common field shortcut, the thing that looks compliant and is not."
+
+
+Two related notes. First, the PDD deliberately emits no worked items — an item written at design time is never cold-read-tested and anchors the tone of the whole bank, so the blueprint is design and the items are build content. Second, on the bank itself: this build ships one fixed bank, not the per-attempt draw your Learn §4 asks for where the build can support it. Per-attempt rotation is expressible in XForms and Connect scores a fixed-size draw normally; what is missing is an authoring primitive in our app builder. So it is a toolchain gap, not a platform limit, and Phase 4's build memo will carry it as a limitation with rotation named as the intent — including the point that unlimited retakes against a fixed bank let a worker pass by memorising the key.
+
+
+Also raised as open-questions.md row `targeting-ace-latitude-asks-not-in-body`.
+
+
+Leaving this thread open — it is your document and closing it is yours to do.

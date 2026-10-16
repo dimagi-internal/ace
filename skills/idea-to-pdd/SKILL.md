@@ -206,6 +206,38 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
       `inventory-unavailable` decision row from the Learn build is the correct outcome
       until the author declares it.
 
+   7. **`[FIXED]`-survival and conflict pass — run it on the overview you just
+      authored, before the stress-test (ace#2365).** Every component PDD's own
+      § 0 says a `[FIXED]` element is implemented exactly and that an ambiguity
+      is flagged to a human, never resolved. Composition breaks both quietly:
+      on `poverty-graduation/20260908-0510` the overview restated Targeting
+      § 6's GPS rule without its `> 200m` threshold, and stated Consumption
+      Support § 8's conditional reading of the delivered-and-verified gate as
+      fact over Productive Asset § 8's unconditional one.
+
+      ```ts
+      import { checkFixedClauseSurvival } from '../../lib/fixed-clause-survival';
+      const survival = checkFixedClauseSurvival({
+        components,   // [{ component, text, citeAs: ['C5', 'Productive Asset'] }] — every carried component PDD, plain-text export
+        composed,     // the overview you just wrote
+        stateTerms,   // the shared case-and-state model's state names, when it has them
+      });
+      ```
+
+      Every `survival.findings` entry is an **open question**, never something
+      you resolve: write it as a decision row (`evidence_basis: conflicting`,
+      `review_ask: recommended-confirmation`, `conflict_signals` = the clause
+      ids and texts the finding quotes) and list it in the phase summary with
+      the link to where the author answers it. For `quantity-dropped`, the
+      repair you MAY make without asking is to carry the `[FIXED]` clause
+      verbatim (or cite it by component and section) — never to pick a value.
+      For `possible-conflict`, the overview must name both readings and say
+      which one the build follows pending the answer; it must not state either
+      as settled. Clauses reported `uncarried` are not findings: the overview
+      composes, and the component PDD stays the authority. *Enforced:*
+      `test/lib/fixed-clause-survival.test.ts` (the real component PDDs and
+      composed overview of that run).
+
    Design: `docs/superpowers/specs/2026-09-05-multi-component-programmes.md`.
 
 1. **Read source material** for the PDD.
