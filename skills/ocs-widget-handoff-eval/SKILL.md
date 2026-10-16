@@ -40,6 +40,31 @@ CCC-301).
 
 ## Process
 
+**This rubric is graded in CODE (2026-10-16).** URL shape + live probe,
+opportunity binding, credential hygiene and the three instruction elements
+are all checks on text and one HTTP response, so
+`lib/ocs-widget-handoff-check.ts` computes them — including the anonymous
+probe of the public link and a scan for every configured secret VALUE in the
+plugin `.env`, which no reader can do by eye. The ONLY judgment left is an
+optional readability deduction (0–2 points, with a reason) on
+`operator_instructions_clarity`. The steps after this block are the spec the
+code implements; do not re-grade them by hand.
+
+1. `drive_read_file` → `5-ocs/ocs-setup_widget-handoff.md` and the run's
+   `run_state.yaml`; save both locally.
+2. Run (add `--no-probe` under `--dry-run`):
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/fact-check-eval.ts" ocs-widget-handoff \
+     --handoff <handoff.md> --run-state <run_state.yaml> --target <opp>/<run-id> --out <local verdict.yaml>
+   ```
+3. Optional: if the handoff would confuse a non-technical reader in a way the
+   element checks cannot see, re-run with `--clarity-residue <json>`
+   (`{"deduction": 0..2, "note": "<why>"}`).
+4. `drive_create_file` the `--out` file to
+   `5-ocs/ocs-widget-handoff-eval_verdict.yaml`.
+
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Detect missing artifacts.** If `5-ocs/ocs-setup_widget-handoff.md` is missing,
@@ -189,6 +214,7 @@ ace#2312).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Graded in code: `lib/ocs-widget-handoff-check.ts` via `scripts/fact-check-eval.ts ocs-widget-handoff`.** Every dimension is a check on the handoff text plus one anonymous HTTP response, so an Opus judge added minutes and variance and no judgment (ACE run-efficiency audit, 2026-10-16). The code holds the hard-won rules as tests: public-by-construction values never a hygiene finding (ace#1680), 503 maintenance is PLATFORM (ace#1812), phantom paste-in auto-fails (ace#1811), legacy `/start/` ≤ 6 (OCS #4209), `public_id` as the run check (ace#2488). Credential hygiene now also matches configured secret VALUES verbatim, not just secret-shaped strings. The only judgment left is an optional ≤ 2-point readability deduction. | ACE team |
 | 2026-09-26 | **Element (b) now separates the opportunity check from the run check (ace#2488).** The phase contract said the opportunity reference lets a reader "tell which run's bot they hold", and (b) asked only for an opp-specific chat-test prompt. Neither discriminates runs: every run of an opp builds its own bot from the same PDD (spark-facilitator carried 7 prior-run bots at 20260925-1536), so they all answer the prompt identically, and the public chat page renders neither the bot name nor the opportunity. The `public_id` in the link is the only run-level check the reader can see; (b) now asks the handoff to name it. Raised as a WARN by the independent grader on `spark-facilitator/20260925-1536`. | ACE team |
 | 2026-08-29 | **The rubric required an operator instruction that does not exist, and thereby caused the defect it should have caught (ace#1811).** `operator_instructions_clarity` (30%) mandated telling the LLO "where to paste (Connect opp config tab, specific field name)", and the "Connect opp link" dimension called the opportunity URL the one the LLO "needs to paste INTO". There is no such field: `connect_update_opportunity` carries no widget parameter and `mcp/connect/` contains no widget or embed surface at all, while four sibling skills state "Connect has no per-opp widget field" verbatim. A handoff that told the truth therefore LOST points, and the one that shipped on `hh-poverty-targeting/20260828-0702` sent an operator hunting for a UI element three files in the same repo say is absent. Same shape as the #1680 and #1021 rows below — a rubric demanding something the platform does not have — except this one propagated into an LLO-facing artifact. The dimension now grades what the reader can actually do today (share the public chat URL, verify the bot, hold the credentials for CCC-301) and makes requiring a paste-in an auto-fail. *Enforced:* `test/skills/widget-handoff-no-phantom-paste-target.test.ts`. | ACE team |
 | 2026-08-29 | **`widget_url_resolves` can now fail for a reason that is not the handoff's fault (ace#1812).** OCS #4230 added a team-wide admin kill-switch: if the team's `platform=WEB` `ExperimentChannel` is disabled, `start_session_public` returns a **503** maintenance page for EVERY bot on the team. The rubric required a 200 and had no vocabulary for this, so a correct handoff would have been scored as a broken one during any OCS maintenance window — the same shape as the #1680 and #1021 rows below. The dimension now names a 503 maintenance page as `[PLATFORM]` (which does not count against the score) rather than a handoff defect. Weights unchanged. | ACE team |

@@ -44,6 +44,38 @@ other per-step eval does.
 
 ## Process
 
+**This rubric is graded in CODE, not by an LLM judge (2026-10-16).** Every
+dimension below reads a fact an artifact or API already states, so
+`lib/app-release-check.ts` computes it and writes the verdict — no subagent,
+no judgment, no run-to-run variance. The steps after this block are the SPEC
+that code implements; do not re-grade them by hand. Your whole job is to
+gather the inputs and run the script:
+
+1. `drive_read_file` → `3-commcare/app-release_summary.md`; save it locally.
+2. `commcare_download_ccz` with `?latest=release` for each app (Learn and
+   Deliver, `write_to_path` set so the bytes stay out of context); save each
+   JSON response. A download that errors → pass `FAILED` for that app.
+3. The PDD-payable deliver-unit slugs — `app-connect-coverage`'s role
+   decisions (`3-commcare/app-connect-coverage_deliver.md`). Omit
+   `--payable-slugs` if you cannot name them; the script then grades only
+   "at least one unit" and says so.
+4. Only when Phase 4 already ran: `connect_list_deliver_units` → JSON.
+5. Run it, then `drive_create_file` the `--out` file to
+   `3-commcare/app-release-eval_verdict.yaml`:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/fact-check-eval.ts" app-release \
+     --summary <summary.md> --learn-ccz <learn.json|FAILED> --deliver-ccz <deliver.json|FAILED> \
+     [--payable-slugs <slug,slug>] [--connect-deliver-units <du.json|FAILED>] \
+     --target <opp>/<run-id> --out <local verdict.yaml>
+   ```
+
+The verdict carries `method: deterministic` and a `checks[]` entry per input
+(an absent input is `unable`, never a silent pass). If a result looks wrong,
+the fix is a code change with a test in `test/lib/fact-check-evals.test.ts`,
+never a hand-edited verdict.
+
 **Precedence — the owned artifact is the grading anchor (ace#1567).**
 `app-release` owns exactly one artifact: `3-commcare/app-release_summary.md`
 (its `§ Products` frontmatter contract). Everything else this rubric reads is
@@ -225,6 +257,7 @@ as effectful).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Graded in code: `lib/app-release-check.ts` via `scripts/fact-check-eval.ts app-release`.** Every dimension was a fact read off the owned summary and the `?latest=release` CCZ projection, so an Opus judge re-reading those payloads added minutes and variance and no judgment (ACE run-efficiency audit, 2026-10-16, three runs). The rubric text is unchanged and is now the spec the code implements; owned-artifact precedence (ace#1567), never-read-run_state (ace#1010) and units ≠ forms (ace#1331) are pinned in `test/lib/fact-check-evals.test.ts`. One tightening: any `[BLOCKER]` now forces `fail` — a weighted mean can no longer average away an unreleased app or a zero-unit Deliver CCZ. | ACE team |
 | 2026-08-26 | **The `releases:` corroboration leg is gone with the block it read (ace#1636 — fourth instance of the ace#1010/#1439/#1567 class, and the one that retires the artifact).** ace#1567 demoted `app-deploy_summary.md`'s `releases:` block from a required leg to a corroborating one but did not check whether anything ELSE read it. `llo-launch § Step 4`'s app-verdict-freshness gate did — as a hard `[BLOCKER]` input — so on the 2 of 2 observed runs where `app-release` Step 7 was skipped, the Phase 9 launch gate either halted falsely or silently skipped the staleness check and let a stale deep app-UX verdict authorize a go-live. `llo-launch` now reads `3-commcare/app-release_summary.md`'s `apps.<app>.build_id`, the owned contract (ace#1439); `app-release` Step 7 is deleted (steps renumbered 8→7, 9→8; no external citation indexed above 6); and this rubric's corroborating leg goes with it, along with the `[WARN]` it emitted on every clean run. A legacy `releases:` block that disagrees is now a `[DRIFT]` note, never a deduction. *Enforced:* `test/skills/deploy-summary-owns-no-release-state.test.ts`. | ACE team |
 | 2026-04-29 | Initial version. 4 dimensions: both_apps_released (0.35), ccz_marker_integrity (0.25), build_id_traceability (0.20), deliver_units_enumerable (0.20). Provisional calibration. Authored to absorb turmeric run_time_followups item 2 (CCZ regex false-positive in app-release Step 6) — the eval has an explicit step 4 to distinguish "regex bug" from "real missing markers." | ACE team (0.10.29) |
 | 2026-08-23 | **The `incomplete` gate re-pointed at the owned artifact, and the precedence stated once (ace#1567 — third instance of the ace#1010/#1439 class).** Step 2 gated `verdict: incomplete` on `app-deploy_summary.md` having a `releases:` block. That file belongs to `app-deploy`; the block is a cross-reference `app-release` appends at its Step 7. On bednet-check-2-visit/20260820-0832 both apps were live-released (`is_released: true`, `version: 5`, confirmed against the HQ application API) and `app-release_summary.md` carried the full declared frontmatter — but Step 7 had not run, so a literal grader had to call a perfect release ungradable with the factually false message "skill did not run". In `opp-eval` that is worse than a deduction: `incomplete` counts as "not gradable" in the coverage cap, so the run got neither its pass nor the (minor, real) finding. Now: the gate keys on `3-commcare/app-release_summary.md` / its `apps.*` frontmatter; `both_apps_released` and `build_id_traceability` demote the `releases:` block from a required cross-check leg to a corroborating one (disagreeing = one 4-point traceability deduction, scored once, not in both dimensions; absent = one bounded `[WARN]`); and the precedence — **owned artifact anchors, everything else corroborates** — is stated at the top of `## Process` rather than re-derived per dimension. *Enforced:* `test/skills/eval-gate-artifact-ownership.test.ts`, which asserts the rule generically across every `-eval` whose producer declares a `## Products` contract. | ACE team |
