@@ -979,6 +979,44 @@ export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): 
 // The verdict
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// One readiness pass — what is left for the agent (`release-readiness.ts run`)
+// ---------------------------------------------------------------------------
+//
+// Everything a validation needs is deterministic EXCEPT two judgements: a gate
+// whose artifact really changed (or that never ran) must be re-graded by its
+// own skill, and preview frames must be LOOKED at. `run` does the rest itself;
+// this says, from the inventory, exactly which of those two remain — so the
+// agent does repairs first and the validation runs once.
+
+export interface ReadinessAgentWork {
+  /** Gate skills to re-run, each with the finding that asked for it. */
+  regrade: Array<{ skill: string; finding: string; detail: string }>;
+  /** Preview frames to look at: one per phase that has previews, plus every frame written today. */
+  look: string[];
+}
+
+const REGRADE_FINDING = /^(qa-stale|qa-missing|qa-malformed|eval-stale|eval-missing|eval-unreadable):/;
+
+export function readinessAgentWork(files: readonly RunFile[], runState: unknown, catalog: GateCatalog, now: string): ReadinessAgentWork {
+  const regrade = assessGates(files, runState, catalog)
+    .filter((f) => REGRADE_FINDING.test(f.id))
+    // Every one of these ids is `<kind>:<gate skill>` (e.g. `eval-stale:build-memo-eval`).
+    .map((f) => ({ skill: f.id.slice(f.id.indexOf(':') + 1), finding: f.id, detail: f.detail }));
+  const today = now.slice(0, 10);
+  const frames = files.filter((f) => /(^|\/)previews\/[^/]+\/[^/]+\.(png|jpe?g|webp)$/i.test(f.path) && !isArchived(f.path));
+  const look = new Set<string>();
+  const byPhase = new Map<string, RunFile>();
+  for (const f of frames) {
+    const phase = f.path.split('/')[0];
+    const cur = byPhase.get(phase);
+    if (!cur || t(f.modifiedTime) > t(cur.modifiedTime)) byPhase.set(phase, f);
+    if (f.modifiedTime.slice(0, 10) === today) look.add(f.path);
+  }
+  for (const f of byPhase.values()) look.add(f.path);
+  return { regrade, look: [...look].sort() };
+}
+
 /** The release plan's problems (lib/release-plan.ts) as findings. */
 export function assessPlan(problems: readonly PlanProblem[]): ReleaseFinding[] {
   return problems.map((p) => ({

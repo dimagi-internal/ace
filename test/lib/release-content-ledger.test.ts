@@ -24,6 +24,7 @@ import {
   extendIdMap,
   isPureMappedRewrite,
   parseContentLedger,
+  readinessAgentWork,
   recordMappedRewrite,
   releaseGate,
   runLastWrite,
@@ -142,6 +143,30 @@ describe('assessGates — a clone\'s pure rewrite keeps the eval fresh', () => {
     const out = stale([evalFile, { path: '4-connect/build-memo.md', modifiedTime: '2026-10-16T10:45:00Z' }, { path: '4-connect/build-memo.source.md', modifiedTime: '2026-10-16T10:20:00Z' }, ledgerFile(l)]);
     expect(out).toHaveLength(1);
     expect(out[0].detail).toMatch(/build-memo\.source\.md/);
+  });
+});
+
+describe('readinessAgentWork — what `release-readiness.ts run` leaves to the agent', () => {
+  const catalog = { qaSkills: new Set<string>(), evalSkills: new Set(['build-memo', 'idea-to-pdd']) };
+  const rs = { phases: { 'idea-to-design': { steps: { 'idea-to-pdd': { status: 'done' } } } } };
+  const now = '2026-10-16T12:00:00Z';
+  const files: RunFile[] = [
+    { path: '4-connect/build-memo-eval_verdict.yaml', modifiedTime: '2026-10-16T10:00:00Z', text: 'verdict: pass\n' },
+    { path: '4-connect/build-memo.md', modifiedTime: '2026-10-16T11:00:00Z' },
+    { path: '3-commcare/previews/apps-learn/01.png', modifiedTime: '2026-10-10T00:00:00Z' },
+    { path: '3-commcare/previews/apps-learn/02.png', modifiedTime: '2026-10-11T00:00:00Z' },
+    { path: '6-qa-and-training/previews/deck/01.png', modifiedTime: '2026-10-16T09:00:00Z' },
+    { path: '6-qa-and-training/previews/deck/02.png', modifiedTime: '2026-10-16T09:01:00Z' },
+  ];
+  it('re-grades only the gates that are stale or missing, and names each frame to look at', () => {
+    const w = readinessAgentWork(files, rs, catalog, now);
+    expect(w.regrade.map((r) => r.skill).sort()).toEqual(['build-memo-eval', 'idea-to-pdd-eval']);
+    expect(w.look).toEqual(['3-commcare/previews/apps-learn/02.png', '6-qa-and-training/previews/deck/01.png', '6-qa-and-training/previews/deck/02.png']);
+  });
+  it('a clone\'s pure rewrite asks for no re-grade', () => {
+    const l = recordMappedRewrite(ledgerWith(), '4-connect/build-memo.md', { modifiedTime: '2026-10-16T10:00:00Z', text: ORIGINAL }, { modifiedTime: '2026-10-16T11:00:00Z', text: REWRITTEN });
+    const w = readinessAgentWork([...files, ledgerFile(l)], { phases: {} }, catalog, now);
+    expect(w.regrade).toEqual([]);
   });
 });
 
