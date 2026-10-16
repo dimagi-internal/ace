@@ -320,7 +320,83 @@ export function parseOpportunitiesList(html: string): OpportunityListRow[] {
  * `data-membership-id`, the LLO org slug in a `data-org` cell, and a
  * status badge. Status values map to `ProgramApplicationStatus`.
  */
+/**
+ * Scope `html` (the PM org's `/a/<org>/program/` page) to ONE programme's card.
+ *
+ * Card layout, read off the live page 2026-10-15:
+ *   title → description → invite <form> → status counters → application rows
+ * so a card runs from its OWN invite-form action forward to the NEXT card's.
+ * (Slicing the other way — previous form to this one — is off by one and
+ * attributes each card's rows to its neighbour, which is how the reissued
+ * programme first read as `Accepted 1`.)
+ *
+ * Returns null when the programme has no card on this page.
+ */
+export function sliceProgramCard(html: string, programId: string): string | null {
+  const anchors = [...html.matchAll(/action="\/a\/[^"]+\/program\/([0-9a-f-]{36})\/invite"/g)]
+    .map((m) => ({ id: m[1], at: m.index as number }))
+    .sort((a, b) => a.at - b.at);
+  const i = anchors.findIndex((a) => a.id === programId);
+  if (i === -1) return null;
+  return html.slice(anchors[i].at, i + 1 < anchors.length ? anchors[i + 1].at : html.length);
+}
+
+/**
+ * The `Invited → Applied → Accepted` funnel counters on a programme card.
+ * Absent keys mean the card did not render that counter.
+ */
+export function parseProgramApplicationCounters(
+  html: string,
+  programId: string,
+): Partial<Record<'invited' | 'applied' | 'accepted', number>> {
+  const card = sliceProgramCard(html, programId);
+  const out: Partial<Record<'invited' | 'applied' | 'accepted', number>> = {};
+  if (!card) return out;
+  for (const m of card.matchAll(/<h6>(Invited|Applied|Accepted)<\/h6>\s*<p>(\d+)<\/p>/g)) {
+    out[m[1].toLowerCase() as 'invited'] = Number(m[2]);
+  }
+  return out;
+}
+
 export function parseInvitesList(html: string, programId: string): Invite[] {
+  // ── Live markup (2026-10-15) ──────────────────────────────────────
+  // The rows carry NO `data-invite-id` and NO org slug. Each is an org
+  // display name in `<p class="card_title">` paired with a status badge, and
+  // — only while the application is actionable — Reject/Accept buttons whose
+  // `hx-post` carries the application's INTEGER id:
+  //   <p class="card_title">Tekzal</p> … <span class="badge …">Applied</span>
+  //   <button … hx-post="/a/<org>/program/application/488/accept">Accept</button>
+  // The pre-2026-10 regex below matched ZERO rows against this page, which is
+  // why `connect_list_invites` returned [] for every programme — including
+  // ones with a live, accepted application (ace#2954).
+  const card = sliceProgramCard(html, programId);
+  if (card) {
+    const live: Invite[] = [];
+    // `card_title` is reused for the NEXT programme's title, so pair each
+    // title with the badge that follows it inside a bounded window and keep
+    // only rows that actually carry a status.
+    const rowRe =
+      /<p class="card_title">\s*([^<]+?)\s*<\/p>([\s\S]{0,1200}?)<span class="badge[^"]*">\s*([^<]+?)\s*<\/span>/g;
+    for (const m of card.matchAll(rowRe)) {
+      const raw = m[3].trim().toLowerCase();
+      if (!(['invited', 'applied', 'accepted', 'declined'] as const).includes(raw as 'invited')) continue;
+      // The Reject/Accept controls follow the badge and carry the application's
+      // integer id — present only while the application is still actionable.
+      const at = (m.index as number) + m[0].length;
+      const idMatch = (m[2] + card.slice(at, at + 1200)).match(
+        /\/program\/application\/(\d+)\/(?:accept|reject)/,
+      );
+      live.push({
+        id: idMatch?.[1] ?? '',
+        program_id: programId,
+        organization: m[1].trim(),
+        status: raw as Invite['status'],
+      });
+    }
+    if (live.length) return live;
+  }
+
+  // ── Legacy / synthetic markup ─────────────────────────────────────
   const out: Invite[] = [];
   const rowRegex = /<tr[^>]*data-(?:invite|membership)-id="([a-f0-9-]{36})"[^>]*>([\s\S]*?)<\/tr>/g;
   for (const m of html.matchAll(rowRegex)) {

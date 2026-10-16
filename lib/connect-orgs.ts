@@ -310,6 +310,139 @@ export async function resolveControlledApplicationOrg(
   );
 }
 
+/** One application row as the PM org's programme page lists it (`parseInvitesList`). */
+export interface ProgramApplicationRow {
+  organization: string;
+  status: string;
+  id?: string;
+}
+
+/**
+ * Raised when the application belongs to an org ACE does not control and the
+ * PM page shows the partner has NOT yet accepted their invitation (no row is
+ * APPLIED) — the tekzal/20261013-2314 case.
+ */
+export class PartnerHasNotAppliedError extends Error {
+  constructor(
+    readonly observed: ProgramApplicationRow[],
+    readonly controlled: string[],
+  ) {
+    const seen = observed.map((o) => `${o.organization}=${o.status}`).join(', ');
+    super(
+      'Refusing to accept the program application: it is not on the programme page of any org ACE ' +
+        `controls (${controlled.length ? controlled.join(', ') : 'none configured'}), so it is a partner's, ` +
+        `and no application on the programme is APPLIED (observed: ${seen}). ` +
+        'Connect models this in two steps — the PM invites an org (INVITED), the ORG accepts the ' +
+        'invitation themselves (APPLIED), and only then does the PM accept the application ' +
+        '(ACCEPTED). ProgramApplicationAcceptView also accepts straight from INVITED, which would skip ' +
+        "the partner's step — what happened on tekzal/20261013-2314, with no undo. " +
+        'Remedy: wait for the partner to accept the invitation in Connect, then retry; the PM accept ' +
+        'is legitimate once their row reads APPLIED. See dimagi-internal/ace#2954.',
+    );
+    this.name = 'PartnerHasNotAppliedError';
+  }
+}
+
+/**
+ * Raised when NEITHER check can be established: the application is not found
+ * on a controlled org's page and the PM page yields no readable application
+ * rows. Fails closed because the accept is irreversible.
+ */
+export class ApplicationAcceptUnverifiableError extends Error {
+  constructor(
+    readonly controlled: string[],
+    readonly detail: string[],
+  ) {
+    super(
+      'Refusing to accept the program application: ACE could establish neither that it belongs to an ' +
+        `org ACE controls (${controlled.length ? controlled.join(', ') : 'none configured'}; looked for it on ` +
+        "each one's own /a/<org>/program/ page) nor that the partner has accepted their invitation (the PM " +
+        "org's programme page yielded no readable application rows). The accept is irreversible, so this " +
+        'fails closed. Remedy: if the application is a partner\'s, wait for the partner to accept the ' +
+        'invitation in Connect, then retry; otherwise check the Connect session and that program_id is right.' +
+        (detail.length ? ` Detail: ${detail.join('; ')}.` : '') +
+        ' See dimagi-internal/ace#2954, #3009.',
+    );
+    this.name = 'ApplicationAcceptUnverifiableError';
+  }
+}
+
+/**
+ * The status half of the gate: throw unless some row is APPLIED.
+ *
+ * Residual, stated rather than hidden: this asks whether SOME application on
+ * the programme is acceptable, not whether the SPECIFIC one being accepted is —
+ * the PM page's rows carry integer ids while the atom takes a UUID, and the
+ * live markup offers no join between them. ACE's flow is one partner per
+ * programme, so the two coincide; on a multi-partner programme where org A has
+ * applied and org B is still invited, an accept aimed at B would not be caught.
+ */
+export function assertApplicationIsAcceptable(
+  rows: ProgramApplicationRow[],
+  controlled: string[] = [],
+): void {
+  if (!rows.some((r) => r.status === 'applied')) {
+    throw new PartnerHasNotAppliedError(rows, controlled);
+  }
+}
+
+export type AcceptBasis =
+  | { basis: 'ace-controlled-org'; organization: string }
+  | { basis: 'partner-applied'; organization: string };
+
+/**
+ * The gate on `connect_accept_program_application` (ace#2954, operator rule
+ * 2026-10-16). It must serve BOTH internal testing and real partners, and
+ * refuse only the one harmful case:
+ *
+ *   ALLOW  the application belongs to an ACE-controlled org (internal testing:
+ *          ACE's own NM org). ACE has no "apply" step, so this application sits
+ *          at INVITED and the PM accepts from INVITED. Established by
+ *          `resolveControlledApplicationOrg` — found on a controlled org's own
+ *          programme page.
+ *   ALLOW  the partner has already acted: a row on the PM page is APPLIED. The
+ *          PM accept is then the programme manager's legitimate final step.
+ *   REFUSE a non-controlled org whose application is still INVITED — the
+ *          tekzal/20261013-2314 incident, where ACE accepted on a real
+ *          partner's behalf and skipped them (`PartnerHasNotAppliedError`).
+ *   REFUSE when neither check can be established (`ApplicationAcceptUnverifiableError`).
+ *          Fails closed: `ProgramApplicationAcceptView` has no transition out of
+ *          ACCEPTED.
+ *
+ * Neither check alone is right. Status-only refuses every internal-testing run
+ * (ACE's own org never applies); ownership-only refuses the PM's legitimate
+ * accept after a real partner applied. Residual: the status half asks about
+ * SOME application, not the specific one — see `assertApplicationIsAcceptable`.
+ */
+export async function assertProgramApplicationAcceptable(
+  args: { program_id: string; application_id: string },
+  env: Record<string, string | undefined>,
+  reads: {
+    listReceived: (org: string) => Promise<ReceivedInvitation[]>;
+    listProgramApplications: () => Promise<ProgramApplicationRow[]>;
+  },
+): Promise<AcceptBasis> {
+  const controlled = aceControlledOrgs(env);
+  const detail: string[] = [];
+  try {
+    const org = await resolveControlledApplicationOrg(args, env, reads.listReceived);
+    return { basis: 'ace-controlled-org', organization: org };
+  } catch (e) {
+    if (!(e instanceof ActingForAnotherOrgError)) throw e;
+    detail.push('not found on any controlled org\'s programme page');
+  }
+  let rows: ProgramApplicationRow[] = [];
+  try {
+    rows = await reads.listProgramApplications();
+  } catch (e) {
+    detail.push(`PM programme page read failed: ${(e as Error).message}`);
+  }
+  if (rows.length === 0) throw new ApplicationAcceptUnverifiableError(controlled, detail);
+  assertApplicationIsAcceptable(rows, controlled);
+  const applied = rows.find((r) => r.status === 'applied')!;
+  return { basis: 'partner-applied', organization: applied.organization };
+}
+
 export function connectOrgsFromTenancy(tenancy: {
   connect_pm_org?: string | null;
   connect_holding_org?: string | null;

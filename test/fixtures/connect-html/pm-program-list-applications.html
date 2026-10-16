@@ -1,0 +1,375 @@
+<!-- Faithful trim of /a/ai-demo-space/program/ captured 2026-10-15.
+     <option> elements stripped (a ~1.2MB org dropdown); everything the
+     application parser reads is preserved verbatim. -->
+<div id="programs">
+action="/a/ai-demo-space/program/024bbe5d-fb26-4414-9839-16ec5622627d/invite"
+                          method="post">
+                      <input type="hidden" name="csrfmiddlewaretoken" value="dwfznBxaQi3ukFWn2UeVTzBeQieLBwNNh0pBeYcayPslyxBBUdKuiihRtbzOdHx7">
+                      <div class="flex flex-col gap-2 py-4">
+                        <label for="organization" class="title-sm">Organization</label>
+                        <select id="organization"
+                                name="organization"
+                                required
+                                data-tomselect
+                                data-tomselect:no-remove-button>
+                          
+                        </select>
+                        <span class="hint">Select the organization you want to invite.</span>
+                      </div>
+                      <div class="footer">
+                        <button type="button"
+                                @click="showInviteModal = false"
+                                class="button button-md outline-style">Close</button>
+                        <button type="submit" class="button button-md primary-dark">Invite</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              
+            </div>
+          </div>
+          
+            <div class="infocard-dark">
+              <i class="fa-solid fa-file-circle-check"></i>
+              <div>
+                <h6>Delivery Type</h6>
+                <p>Turmeric Market Study</p>
+              </div>
+            </div>
+            <div class="flex xl:items-center items-start xl:flex-row flex-col lg:gap-6 gap-3">
+              <div class="flex flex-row items-center lg:gap-6 gap-3">
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-calendar-check"></i>
+                  <div>
+                    <h6>Start Date</h6>
+                    <p>Oct. 13, 2026</p>
+                  </div>
+                </div>
+                <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+                <div class="infocard-dark">
+                  <div>
+                    <h6>End Date</h6>
+                    <p>Nov. 13, 2026</p>
+                  </div>
+                </div>
+              </div>
+              <div class="line my-2 h-8 w-0.5 bg-gray-200 lg:block hidden"></div>
+              <div class="flex flex-row gap-8">
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-money-bill-wave"></i>
+                  <div>
+                    <h6>Budget</h6>
+                    <p>11,000 GHS</p>
+                  </div>
+                </div>
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-hand-holding-dollar"></i>
+                  <div>
+                    <h6 class="whitespace-nowrap">Allocated Budget</h6>
+                    <p>1,100 GHS</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- progress -->
+            <div class="bg-neutral-100 rounded-lg w-full h-20 flex items-center px-5 justify-evenly gap-6">
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-envelope"></i>
+                <div>
+                  <h6>Invited</h6>
+                  <p>1</p>
+                </div>
+              </div>
+              <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-file-lines"></i>
+                <div>
+                  <h6>Applied</h6>
+                  <p>1</p>
+                </div>
+              </div>
+              <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-circle-check"></i>
+                <div>
+                  <h6>Accepted</h6>
+                  <p>1</p>
+                </div>
+              </div>
+            </div>
+            
+              <button class="button button-sm outline-style" @click="showOpp = !showOpp">
+                <span class="relative z-20"
+                      x-text="showOpp ? 'Hide Status' : 'View Status'"></span>
+                <i class="fa-solid text-xs"
+                   :class="showOpp ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              </button>
+            
+            <div class="flex flex-col gap-y-4" x-cloak x-show="showOpp">
+              
+                <div class="relative flex flex-col gap-5 p-6 bg-white rounded-xl border border-gray-200">
+                  <div class="flex justify-between w-full">
+                    <div class="flex justify-between w-full">
+                      <div class="flex flex-col font-normal">
+                        <p class="hint">Oct. 15, 2026</p>
+                        <div class="flex flex-col gap-2">
+                          <p class="card_title">Tekzal</p>
+                          <p class="hint">
+                            Current Budget:
+                            1,100 GHS
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-start">
+                        
+                          <span class="badge badge-md positive-dark">Accepted</span>
+                        
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end">
+                    
+                      
+                        <a class="button button-md button-outline-rounded me-1"
+                           href="/a/ai-demo-space/program/024bbe5d-fb26-4414-9839-16ec5622627d/opportunity-init">
+                          <div class="flex items-center justify-between gap-4">
+                            <p class="text-sm">Create Opportunity</p>
+                            <i class="fa-solid fa-arrow-right"></i>
+                          </div>
+                        </a>
+                      
+                      <a class="button button-md button-outline-rounded"
+                         href="/a/ai-demo-space/opportunity/?program=turmeric-market-survey-ghana-r1-15-oct-2026">
+                        <div class="flex items-center justify-between gap-4">
+                          <p class="text-sm">View Opportunities</p>
+                          <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                      </a>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+        </div>
+      
+        <div class="flex flex-col p-6 rounded-xl shadow-sm bg-white gap-5 relative"
+             x-data="{showOpp: false, showInviteModal: false}">
+          <div class="absolute w-8 bg-brand-mango h-2 top-0 -translate-y-1/2 left-6 rounded-full"></div>
+          <div class="flex w-full justify-between">
+            <div class="w-full">
+              <p class="card_title">Turmeric Market Survey — Ghana R1 — reissued 15 Oct</p>
+              <p class="card_description w-full max-w-1/2">Frontline workers in Ghana visit turmeric sellers in local markets and complete one short survey for each seller — what kinds of turmeric they sell, the price, how much is in stock, and photographs taken with a yellow MTN scratchcard laid beside the turmeric so that colour and size can be compared fairly across different markets, phones and lighting. The card is the fixed reference that makes photographs from different handsets and different light comparable to each other; without one, a brighter photograph cannot be told from a brighter turmeric.
+
+No physical samples are ever collected. Workers observe, photograph with the card in frame, and ask questions. Nothing physical leaves the seller, no laboratory or chemical testing is done, and the programme makes no judgement, score or claim about any seller&#x27;s product.
+
+Archetype: atomic-visit. One short, self-contained survey per seller, with no follow-up and no repeat visit to the same seller. Workers first complete an eight-menu Learn app and must pass a certification quiz at 80% before any survey work is unlocked. A separate unpaid Contact Log records approaches that are not turmeric-seller surveys (a refusal, a closed stall, a seller who does not sell turmeric) so those do not consume a worker&#x27;s paid survey allocation.
+
+A survey is paid when it was started between 07:00 and 19:00 Ghana time, took at least five minutes from opening to sending, recorded consent, and recorded that the seller does sell turmeric. Nothing else affects payment — not photograph quality, not price, not any other survey content. Duplicate-seller review and photograph-quality review are human review activities and never gate or reverse a payment.
+
+Round 1 of 2. This round is a review build: the implementing organisation (tekzal) works through the training and survey apps end to end and returns feedback before any wider collection. The deployment round is designed after this round&#x27;s feedback and runs as a separate engagement.</p>
+            </div>
+            <div class="flex items-start justify-end gap-6">
+              
+                <button class="button-icon"
+                        hx-get="/a/ai-demo-space/program/9b186f39-912a-4d3b-88d2-d868f74e9f15/edit"
+                        hx-target="#program-edit-form"
+                        @htmx:after-request="showProgramEditModal = true">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+                <button class="button button-sm outline-style"
+                        @click="showInviteModal = true">Invite</button>
+                <div x-cloak
+                     x-show="showInviteModal"
+                     x-transition.opacity
+                     class="modal-backdrop">
+                  <div @click.away="showInviteModal = false" x-transition class="modal">
+                    <div class="header">
+                      <h2 class="title">Invite Organization</h2>
+                      <button @click="showInviteModal = false"
+                              class="button-icon"
+                              aria-label="Close">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                      </button>
+                    </div>
+                    <form 
+action="/a/ai-demo-space/program/9b186f39-912a-4d3b-88d2-d868f74e9f15/invite"
+                          method="post">
+                      <input type="hidden" name="csrfmiddlewaretoken" value="dwfznBxaQi3ukFWn2UeVTzBeQieLBwNNh0pBeYcayPslyxBBUdKuiihRtbzOdHx7">
+                      <div class="flex flex-col gap-2 py-4">
+                        <label for="organization" class="title-sm">Organization</label>
+                        <select id="organization"
+                                name="organization"
+                                required
+                                data-tomselect
+                                data-tomselect:no-remove-button>
+                          
+                        </select>
+                        <span class="hint">Select the organization you want to invite.</span>
+                      </div>
+                      <div class="footer">
+                        <button type="button"
+                                @click="showInviteModal = false"
+                                class="button button-md outline-style">Close</button>
+                        <button type="submit" class="button button-md primary-dark">Invite</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              
+            </div>
+          </div>
+          
+            <div class="infocard-dark">
+              <i class="fa-solid fa-file-circle-check"></i>
+              <div>
+                <h6>Delivery Type</h6>
+                <p>Turmeric Market Study</p>
+              </div>
+            </div>
+            <div class="flex xl:items-center items-start xl:flex-row flex-col lg:gap-6 gap-3">
+              <div class="flex flex-row items-center lg:gap-6 gap-3">
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-calendar-check"></i>
+                  <div>
+                    <h6>Start Date</h6>
+                    <p>Oct. 13, 2026</p>
+                  </div>
+                </div>
+                <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+                <div class="infocard-dark">
+                  <div>
+                    <h6>End Date</h6>
+                    <p>Nov. 13, 2026</p>
+                  </div>
+                </div>
+              </div>
+              <div class="line my-2 h-8 w-0.5 bg-gray-200 lg:block hidden"></div>
+              <div class="flex flex-row gap-8">
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-money-bill-wave"></i>
+                  <div>
+                    <h6>Budget</h6>
+                    <p>11,000 GHS</p>
+                  </div>
+                </div>
+                <div class="infocard-dark">
+                  <i class="fa-solid fa-hand-holding-dollar"></i>
+                  <div>
+                    <h6 class="whitespace-nowrap">Allocated Budget</h6>
+                    <p>0 GHS</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- progress -->
+            <div class="bg-neutral-100 rounded-lg w-full h-20 flex items-center px-5 justify-evenly gap-6">
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-envelope"></i>
+                <div>
+                  <h6>Invited</h6>
+                  <p>1</p>
+                </div>
+              </div>
+              <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-file-lines"></i>
+                <div>
+                  <h6>Applied</h6>
+                  <p>1</p>
+                </div>
+              </div>
+              <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+              <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-circle-check"></i>
+                <div>
+                  <h6>Accepted</h6>
+                  <p>0</p>
+                </div>
+              </div>
+            </div>
+            
+              <button class="button button-sm outline-style" @click="showOpp = !showOpp">
+                <span class="relative z-20"
+                      x-text="showOpp ? 'Hide Status' : 'View Status'"></span>
+                <i class="fa-solid text-xs"
+                   :class="showOpp ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              </button>
+            
+            <div class="flex flex-col gap-y-4" x-cloak x-show="showOpp">
+              
+                <div class="relative flex flex-col gap-5 p-6 bg-white rounded-xl border border-gray-200">
+                  <div class="flex justify-between w-full">
+                    <div class="flex justify-between w-full">
+                      <div class="flex flex-col font-normal">
+                        <p class="hint">Oct. 15, 2026</p>
+                        <div class="flex flex-col gap-2">
+                          <p class="card_title">Tekzal</p>
+                          <p class="hint">
+                            Current Budget:
+                            0 GHS
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-start">
+                        
+                          <span class="badge badge-md primary-dark">Applied</span>
+                        
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end">
+                    
+                      <div class="flex gap-2">
+                        <button class="button button-md outline-style"
+                                value="reject"
+                                hx-post="/a/ai-demo-space/program/application/488/reject"
+                                hx-swap="outerHTML"
+                                hx-target="body">Reject</button>
+                        <button class="button button-md primary-dark"
+                                value="accept"
+                                hx-post="/a/ai-demo-space/program/application/488/accept"
+                                hx-swap="outerHTML"
+                                hx-target="body">Accept</button>
+                      </div>
+                    
+                  </div>
+                </div>
+              
+            </div>
+          
+        </div>
+      
+        <div class="flex flex-col p-6 rounded-xl shadow-sm bg-white gap-5 relative"
+             x-data="{showOpp: false, showInviteModal: false}">
+          <div class="absolute w-8 bg-brand-mango h-2 top-0 -translate-y-1/2 left-6 rounded-full"></div>
+          <div class="flex w-full justify-between">
+            <div class="w-full">
+              <p class="card_title">Turmeric Market Survey (Atomic Visit) — Ghana 2026</p>
+              <p class="card_description w-full max-w-1/2">Atomic-visit market survey in Ghana. Certified frontline workers visit turmeric sellers in local markets and complete one standardized survey per seller, recording the forms of turmeric on sale, price and availability, packaging and any volunteered origin, alongside reference-calibrated photographs taken with a yellow MTN scratchcard laid flat in frame as a fixed colour and size reference. Location, timestamps and duration attach automatically. The output is a consistent, comparable, geo-tagged picture of turmeric market presence across sellers and markets. The programme addresses the comparability problem, not the chemistry problem: it makes no laboratory determination and no safety or quality claim about any seller&#x27;s product, and no physical samples are collected. Single-stage, one record per seller, no follow-up visits. Payment is per verified seller survey on automatic criteria — consent given and the seller sells turmeric — within caps of 15 paid surveys per worker per day and 100 per worker in total. Rates are GHS 7 to the worker and GHS 4 to the implementing organisation per verified survey, against a campaign target of 1,000 surveys across up to 10 workers.</p>
+            </div>
+            <div class="flex items-start justify-end gap-6">
+              
+                <button class="button-icon"
+                        hx-get="/a/ai-demo-space/program/f22679e0-55c3-4642-9429-1cad6fb14e35/edit"
+                        hx-target="#program-edit-form"
+                        @htmx:after-request="showProgramEditModal = true">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+                <button class="button button-sm outline-style"
+                        @click="showInviteModal = true">Invite</button>
+                <div x-cloak
+                     x-show="showInviteModal"
+                     x-transition.opacity
+                     class="modal-backdrop">
+                  <div @click.away="showInviteModal = false" x-transition class="modal">
+                    <div class="header">
+                      <h2 class="title">Invite Organization</h2>
+                      <button @click="showInviteModal = false"
+                              class="button-icon"
+                              aria-label="Close">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                      </button>
+                    </div>
+                    <form 
+</div>

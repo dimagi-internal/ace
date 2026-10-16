@@ -116,10 +116,22 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
    whole-phase-block clobber (#572/#587). Single org, single call — no
    roster iteration.
 
-   **2a. (Optional, ACE-driven dogfood runs only.)** If the target org
-   is an ACE-controlled fixture and there's no real LLO who will accept
-   manually, call `connect_accept_program_application` to flip the
-   application from `INVITED` → `ACCEPTED`:
+   **2a. PM accept — when the atom's gate allows it.** Connect's flow is
+   PM invites (`INVITED`) → the ORG accepts the invitation itself
+   (`APPLIED`) → the PM accepts the application (`ACCEPTED`).
+   `connect_accept_program_application` performs that last, PM step and
+   is gated (ace#2954, operator rule 2026-10-16). It is allowed when:
+   - the target org is ACE-controlled (an internal-testing fixture — ACE
+     has no "apply" step, so it is accepted straight from `INVITED`); or
+   - a real partner has already accepted their invitation in Connect, so
+     their row on the PM programme page reads `APPLIED`
+     (`connect_list_invites` shows it).
+
+   It refuses a real partner still at `INVITED`
+   (`PartnerHasNotAppliedError`). That is the tekzal/20261013-2314
+   incident: accepting then would enrol the partner without their consent,
+   and it cannot be undone. When this refusal comes back, tell the partner
+   to accept the invitation in Connect, and retry later. Call it as:
    ```
    connect_accept_program_application({
      organization_slug: <PM-side org>,
@@ -128,8 +140,9 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
    })
    ```
    This is required before `connect_create_opportunity` will accept the
-   org as the managed-opportunity owner. For real-LLO runs, skip this
-   step — the LLO accepts via the Connect UI.
+   org as the managed-opportunity owner. For a real LLO, the partner's
+   accepting the invite only takes it to `APPLIED`. The PM accept is still
+   needed after that, and ACE can now do it through this step.
 
    **2b. Create the LLO's delivery opportunity — ONLY once the
    application is `ACCEPTED`.** This is the step that completes the
@@ -160,11 +173,11 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
       = `selected_llo.org_slug`, the fresh app ids, and the PDD's
       dates/budget. **Treat the rejection *"Organization must have an
       accepted application for this program"* as the acceptance
-      check** — no readable application-status surface exists, and
-      `connect_list_invites` returns `[]` regardless, so the create
-      itself is the only reliable test. If it rejects, the NM has not
-      accepted yet: say so and stop. Do not accept on their behalf
-      unless step 2a's dogfood carve-out applies.
+      check** — it is Connect's own verdict. `connect_list_invites` now
+      reads the PM page's real rows (since #3017), so check it first. If a
+      row reads `APPLIED`, run 2a before the create. If it reads
+      `INVITED`, the partner has not accepted yet: say so and stop. Never
+      accept on their behalf at `INVITED`; the 2a gate refuses it anyway.
    3. **HALT and ask rather than silently clamping** if the PDD's
       `start_date` would fall outside the program's window — no
       opportunity may begin before its program, and quietly moving a
@@ -276,8 +289,7 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
 
    **Why this is a write and not a "read it back later".** Two of these
    cannot be re-derived: `program_application_id` because
-   `connect_list_invites` is a blind read that returns `[]` even for an
-   accepted invite, and the mail ids because nothing else records which
+   `connect_list_invites` shows only an integer row id, never the UUID, and the mail ids because nothing else records which
    thread carried the round-trip. The other two are cheap to re-read but
    belong with them — the point of the block is that one place answers
    *"what did we do with this LLO?"*.
@@ -387,7 +399,7 @@ criteria explicitly so the recipient knows what finishes Stage 1.
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_send_llo_invite` — REST `POST /api/programs/<id>/applications/`
   - `connect_accept_program_application` — REST `POST .../accept/`
-    (ACE-driven dogfood only; skip for real-LLO runs)
+    (gated: ACE-controlled org, or a partner whose row reads `APPLIED`)
   - `connect_list_invites` — verify status / detect already-invited (HTML)
 - Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 

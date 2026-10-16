@@ -19,11 +19,7 @@ import {
   VerificationDurationNotPersistedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
-import {
-  assertAcceptingForSelf,
-  parseReceivedInvitations,
-  resolveControlledApplicationOrg,
-} from '../../../lib/connect-orgs.js';
+import { parseReceivedInvitations } from '../../../lib/connect-orgs.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, parsePendingInviteTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
@@ -2655,63 +2651,32 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   /**
-   * Connect's PM-side UI exposes no "accept" button — acceptance happens
-   * on the LLO side via `POST /a/<llo_org>/program/<uuid>/application/<app>/accept/`.
-   * The atom signature gives us the PM org slug (`organization_slug`) but
-   * not the LLO slug; we need to resolve it.
+   * RETIRED — always throws, sends nothing (ace#2954, ace#3011).
    *
-   * Resolution: list program applications for the program (via the
-   * Playwright reads), find the matching application_id, and read its
-   * `organization` field. We then POST to `/a/<llo>/program/.../accept/`.
-   * If the authenticated session does not have membership in that LLO
-   * org, the POST will return 403 — which is the correct failure mode.
+   * This fallback resolved an LLO slug and POSTed to
+   * `/a/<llo>/program/<program>/application/<app>/accept/` with the LLO's own
+   * page as Referer: the invited organisation's action, performed for them.
+   * It was also a no-op that reported success: upstream routes that url to
+   * `apply_or_decline_application`, whose `action_map` has only `apply` and
+   * `decline`, so `accept` returns 200 with no save and this path returned
+   * `status: 'accepted'` for an application still INVITED (ace#3011).
+   *
+   * The PM-side accept in the web UI is `manage_application` at
+   * `/a/<pm>/program/application/<int id>/accept`; the REST route
+   * (`POST /api/programs/{id}/applications/{id}/accept/`) is the PM's own,
+   * and the atom in connect-server.ts carries the accept gate before it.
+   * Failing loud here is strictly better than a fallback that acts as
+   * someone else or reports a write that never happened.
    */
   acceptProgramApplication: ConnectClient['acceptProgramApplication'] = async (args) => {
-    // AUTHORITY GATE (ace#2954, resolved non-blind since ace#3009). This path
-    // POSTs at the LLO's OWN url with the LLO's page as Referer — i.e. it
-    // performs the invited organisation's action for them. The owning org is
-    // resolved ONLY among orgs ACE controls (environment), each read on its
-    // own programme page, which Connect scopes to invitations addressed to
-    // it. A partner's application is therefore never found and nothing is
-    // requested at the partner's url. (It used to resolve via `listInvites`,
-    // which is blind and returned [] for live invites, so every accept
-    // failed closed — ace#3009.) The accept is irreversible: Connect's
-    // ProgramApplicationAcceptView has no transition out of ACCEPTED.
-    const lloSlug = await resolveControlledApplicationOrg(args, process.env, async (org) =>
-      (await this.listReceivedInvitations({ organization_slug: org })).invitations,
+    void args;
+    throw new ConnectError(
+      'acceptProgramApplication is not available on the Playwright backend (ace#2954, ace#3011). ' +
+        "It previously POSTed at the invited organisation's own URL — performing their action for them — " +
+        "and that URL has no 'accept' action upstream, so it reported 'accepted' for a write that never " +
+        "happened. Use the REST path, which is the programme manager's own route and is gated in " +
+        'connect-server.ts. If REST is failing, fix that rather than falling back.',
     );
-    assertAcceptingForSelf(lloSlug, process.env);
-
-    const path = `/a/${lloSlug}/program/${args.program_id}/application/${args.application_id}/accept/`;
-    // Need a CSRF token from a same-origin GET — ANY page works for the cookie.
-    const seedRes = await this.request.get(`/a/${lloSlug}/opportunity/`);
-    const seedHtml = seedRes.status() === 200 ? await seedRes.text() : '';
-    const csrf = extractFormCsrfToken(seedHtml) ?? this.opts.csrfToken;
-
-    const postRes = await this.request.post(path, {
-      form: { csrfmiddlewaretoken: csrf },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}/a/${lloSlug}/opportunity/`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    if (postRes.status() === 302 || postRes.status() === 200) {
-      if (postRes.status() === 200) {
-        const respHtml = await postRes.text();
-        if (parseFormErrors(respHtml).length) {
-          throw validationErrorFromHtml(respHtml, 'acceptProgramApplication rejected');
-        }
-      }
-      return {
-        program_application_id: args.application_id,
-        program: args.program_id,
-        organization: lloSlug,
-        status: 'accepted' as const,
-      };
-    }
-    throw await httpErrorFor(postRes, path, 'POST');
   };
 
   // ── FLW invites ───────────────────────────────────────────────────
