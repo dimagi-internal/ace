@@ -24,7 +24,9 @@ Manual trigger only. **NOT** part of `/ace:run`. Run when:
 
 - Connect app has a UI update (new APK version)
 - PersonalID signup flow changes
-- Common screenshots are missing or stale
+- Common screenshots are missing or stale. `bin/ace-doctor`'s
+  `common_screenshot_pool` probe WARNs when the pinned APK has no usable pool
+  (ace#3060)
 - First-time setup for a new Connect app version
 - A new common training-deck module adds a Connect surface not previously
   covered
