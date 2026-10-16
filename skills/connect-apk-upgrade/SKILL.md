@@ -41,6 +41,7 @@ pin-flip + activation + verification they all omit.
 - `docs/mobile-calibration/connect-<new>-<date>.md` — the calibration report.
 - `docs/mobile-atlas/connect-<new>.md` — the surface atlas for the new version.
 - Every pin site flipped in ONE commit (§ Step 5).
+- `ACE/_common/connect-screenshots/<new>/` (Drive) — the common training screenshot pool for the new version, produced by `common-screenshot-capture` (§ Step 7b).
 - `docs/mobile-calibration/connect-<new>-upgrade-verification.md` — the § Verification checklist, filled in.
 
 ## Preconditions (restore, don't adapt)
@@ -413,11 +414,21 @@ npx vitest run test/lib/apk-pin-sites.test.ts   # the enumeration, machine-check
 **`doc-example` — review, may legitimately lag** (illustrative manifest
 snippets whose real value is read from the device at capture time):
 `skills/connect-baseline-screenshots/SKILL.md`,
-`skills/common-screenshot-capture/SKILL.md`.
+`skills/common-screenshot-capture/SKILL.md`. Only the *prose snippets* in those
+two files may lag. The *pool they produce* may not: it is a family member,
+listed in the next paragraph.
 
 **Version-keyed artifact FAMILIES — an upgrade ADDS a member, never rewrites
 one:** `mcp/mobile/selectors/` (`connect-<v>.yaml`, each declaring its own
-`apk_version:`), `docs/mobile-atlas/` (`connect-<v>.md`).
+`apk_version:`), `docs/mobile-atlas/` (`connect-<v>.md`), and the **Drive**
+common screenshot pool `ACE/_common/connect-screenshots/<v>/` (`manifest.yaml`
++ PNGs). Training decks and FLW guides resolve that pool by the pinned version,
+so a pin flip without a matching pool leaves every `ref: _common/platform-setup`
+slide and every common-navigation guide step with nothing to show. The pool is
+not in git, so the pin-site test cannot see it. § Step 7b produces it, and
+`bin/ace-doctor`'s `common_screenshot_pool` probe fails while it is missing.
+That is how 2.64.0 shipped with no pool for six weeks: the pool was listed only
+as a `doc-example` (dimagi-internal/ace#3060).
 
 **Also declared, and deliberately valueless:** `runtime.yaml` declares
 `ace-connect-apk-version` → `ACE_CONNECT_APK_VERSION` as `optional: true` and
@@ -470,6 +481,27 @@ The order is the whole point, and reversing it fails silently.
    LAUNCHED from**, not the newest on disk. Patching the newest cache dir after
    an update does nothing, with no symptom. Measured: a device walk ran against
    recipes 15 versions stale, five of them changed (ace#1500).
+
+### Step 7b — Produce `<new>`'s common screenshot pool
+
+Run `common-screenshot-capture` against the device that now runs `<new>`. It
+writes `ACE/_common/connect-screenshots/<new>/`. This step is required. The
+previous version's pool is not a substitute: a deck that reads it shows the old
+UI captioned as the current one, and a deck that finds no pool at all degrades to
+prose without saying so.
+
+- **Bar:** every alias that was `source: live` in `<old>`'s manifest is `source:
+  live` in `<new>`'s, or has a named reason in the manifest `note`. Quarantined
+  aliases (`sync-button`, ace#1832) and template assets (the PersonalID
+  completion screens, ace#873) stay as they are.
+- **Distinctness:** Step 5.5 of that skill (`classifyPoolDistinctness`) must pass
+  before anything is published as `live`.
+- **Opp-agnostic frames:** `connect-home` and `claim-opp` show an opportunity
+  tile, so capture them against a generically named opp, or they leak one
+  program's name into every deck (the 2026-05-26 audit of the 2.63.0 pool).
+- If the device leg cannot run this session, say so in the verification
+  checklist (row C6) and leave the upgrade's tracking issue open. Do not mark the
+  upgrade done.
 
 ### Step 8 — Verify (§ Verification checklist)
 
@@ -553,6 +585,7 @@ must be read against them:
 | C3 | The atlas for `<new>` exists (the palette-health ratchet keys on it) | `docs/mobile-atlas/connect-<new>.md` |
 | C4 | **`app-release-qa`'s CCZ min-version check changed disposition** — see below | re-read `lib/ccz-min-version.ts`'s severity table |
 | C5 | The calibration report's residual gaps are carried forward, not dropped | `docs/mobile-calibration/connect-<new>-<date>.md` |
+| C6 | The common screenshot pool for `<new>` exists in Drive, and every alias that was live in `<old>` is live (or has a named reason) and distinct | `bin/ace-doctor` `common_screenshot_pool` is `pass`, plus the pool's `verdict.yaml` from § Step 7b |
 
 **C4 in full, because completing this skill CHANGES another check's behaviour.**
 `lib/ccz-min-version.ts` compares a released CCZ's `profile.ccpr` minimum
@@ -642,5 +675,6 @@ The upgrade is designed to be reversible because the old map is never deleted.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **The Drive common screenshot pool is now a version-keyed family member (dimagi-internal/ace#3060).** 2.64.0 shipped with no `ACE/_common/connect-screenshots/2.64.0/`. The skill listed the two screenshot skills only as `doc-example` ("may legitimately lag"), and the families list named only the git-side families. Nothing failed, so `_common/platform-setup` decks could not render and the tekzal/20261013-2314 FLW guide fell back to prose. Added the pool to Products and Families, a new § Step 7b that produces it, and checklist row C6, which is gated by doctor's `common_screenshot_pool`. | ACE team |
 | 2026-09-06 | First execution (2.64.0), and everything it produced. **Premise errors the skill would have propagated:** the asset-convention table implied newest-wins (2.64.0 REVERTED to the 2.62.0 name — measured, now a 4th row + `test/mcp/mobile/apk-asset-conventions.test.ts`); Step 1 gated on `isDraft` (2.63.3 is published with an `.aab`-only asset, so the real test is "has an `.apk` asset"); Step 2b prescribed TAPPING `do_later_button` (changed to recognise-and-fail — the button's existence is recorded evidence, what dismissing permits is not, and a dismissed gate risks false-green Phase 6 artifacts), and the `...issue629` capture was split so both causes cannot be reachable on one screen. **Steps the first execution found MISSING:** **Step 1b** (resource-table `comm` diff — the only step that can see an ADDED screen, which is what 2.64.0 actually shipped: zero id drift, one new registration surface, ace#2029) and **Step 2.0** (install the new APK on the device + verify, before calibrating — nothing else did, and `mobile_ensure_avd_running` installs whatever the INSTALLED `.env` says; includes the `pm enable` GMS note, since `pm enable-user` does not exist). **Checklist rows reframed:** **A2** (`rows_unverified: 0` is unreachable in one pass and not required by doctor — the named residual is the bar) and **B6** (structurally unverifiable during the upgrade that removes the version skew; capture it in the NEXT upgrade's Step 0). Recorded that the `selector-map-calibrate` delegation is still unexercised. Full review: `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`; filled-in checklist: `docs/mobile-calibration/connect-2.64.0-upgrade-verification.md`. | ACE team |
 | 2026-09-05 | Initial version. Authored because the previous APK upgrade had no explicit update-version step, so pin sites were missed and nothing verified the new version end-to-end. Orchestrates `selector-map-calibrate`; adds the pin flip, the ace#1998 version-prompt coverage, the activation ORDER, the verification checklist, and rollback. Pin-site enumeration is machine-discovered by `lib/apk-pin-sites.ts` + `test/lib/apk-pin-sites.test.ts`, so this checklist cannot silently rot. | ACE team |
