@@ -5,7 +5,7 @@
  *   npx tsx scripts/demo-data-setup-qa.ts \
  *     --run-state <local run_state.yaml> --realized <local realized.json> \
  *     [--story <local cascade-story.yaml>] [--history <workflow_history_runs JSON>] \
- *     [--visits <JSON: pipeline_preview response(s) of the cascade visits pipeline, one per partner opp>] \
+ *     [--visits <JSON: pipeline_preview response(s) of the cascade visits pipeline (home opp, sample_size 200; ace#2973)>] \
  *     [--real-people <text file: one real person's name per line, from the opp's inputs>] \
  *     [--registry <7-synthetic/semantic-registry-author_registry.json, or a semantic_registry_get response>] \
  *     [--outcomes <JSON: [{check, result:{pass,detail,auto_fix_hint}} | {check, not_judged}]>] \
@@ -49,7 +49,7 @@ import {
   type SyntheticProducts,
 } from '../skills/demo-data-setup-qa/checks.js';
 import type { CascadeStoryPlan } from '../lib/cascade-story.js';
-import { latestSnapshotFromHistoryRuns } from '../lib/cascade-build-qa.js';
+import { latestSnapshotFromHistoryRuns, visitSampleScope } from '../lib/cascade-build-qa.js';
 
 /** `--visits`: one pipeline_preview response, an array of them, or bare rows (ace#2735). */
 function visitRowsFrom(text: string | null): Array<Record<string, unknown>> {
@@ -125,7 +125,10 @@ if (provider === 'ace-run') {
     computed.set('cascade_story_landed', checkCascadeStory(plan, synthetic?.cascade?.registry?.indicators ?? [], periods, realPeople));
     // ace#2735: the build output itself — review routing, binary worker rates,
     // constant columns, one-child drill levels — before any render.
-    const build = cascadeBuildOutcomes(plan, latestSnapshotFromHistoryRuns(JSON.parse(historyText)), visitRowsFrom(readText(arg('visits'))));
+    // ace#2973: state what the visit rows cover (pipeline_preview caps at 200 and a home-scoped pipeline returns the home partner).
+    const visitsText = readText(arg('visits'));
+    const visitPreviews = visitsText ? ([] as unknown[]).concat(JSON.parse(visitsText)) : [];
+    const build = cascadeBuildOutcomes(plan, latestSnapshotFromHistoryRuns(JSON.parse(historyText)), visitRowsFrom(visitsText), visitSampleScope(visitPreviews));
     for (const [id, r] of Object.entries(build)) computed.set(id, r);
   }
 }

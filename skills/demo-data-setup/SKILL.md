@@ -1630,15 +1630,21 @@ re-described to match what came out. `demo-data-setup-qa` re-runs this check.
 
 Then judge the BUILD OUTPUT the judges would otherwise judge after a render
 (ace#2735): `cascadeBuildOutcomes(plan, latestSnapshotFromHistoryRuns(<same
-response>), <every partner's visit rows>)` — the visit rows from
-`pipeline_preview` of the cascade visits pipeline per partner opp, `sample_size`
-≥ `row_count_before_sample`. Four checks, each failing the build:
+response>), <visit rows>)` — the visit rows from `pipeline_preview` of the
+cascade visits pipeline under its HOME opp, `sample_size: 200`. That is a sample,
+not every partner (ace#2973): the cap is 200, and the default cascade's visits
+pipeline is home-scoped, so it does not resolve under another partner's opp and
+an `opportunity_ids` fan-out samples the home rows first. Pass the scope with
+`visitSampleScope(<responses>)`; checks 1 and 3 then say what they judged. Four
+checks, each failing the build:
 1. **review routing** — every record raising a declared flag carries its
    `review_routing` route (`checkReviewRouting`); a raised flag with no route fails;
 2. **worker rates not binary** — no worker-table rate (`display.indicators[].scorecard`)
    has a graded denominator (`cell.n`) ≤ 1 for most workers (`checkWorkerRateDenominators`);
-3. **displayed columns vary** — no worker-table column (the entity-count column
-   included), case field or visit field/flag is the same on every row
+3. **displayed columns vary** — no worker-table scorecard column, case field or
+   visit field/flag is the same on every row (the entity-count column is not
+   judged: labs moves a uniform count into the table title, "1 facility each",
+   so a PDD fixing one entity per worker never draws it — ace#2972)
    (`checkConstantDisplayedColumns`; a column constant only inside one partner's
    table is reported — keep the narrative off it);
 4. **drill levels branch** — no level has exactly one child under every parent
