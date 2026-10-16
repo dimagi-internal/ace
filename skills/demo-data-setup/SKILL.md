@@ -1481,13 +1481,15 @@ demote it. C6 re-checks the spread against what labs graded.
 
 **C1. Create the synthetic programme.** One labs-only opportunity per partner:
 the first `synthetic_create_labs_only({label, gdrive_folder_id: 'pending-generate',
-org_name, program_name, allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com']})`
+org_name, program_name, notes, allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com']})`
 leaves `program_id` unset, which makes its own id the program id; every later
 partner passes `program_id: <that id>`. `@dimagi-associate.com` is Dimagi (owner, 2026-10-16:
 associate designers review these dashboards). Include ACE's own domain in
 `allowed_domains` or the ACE identity cannot read what it just created. Write each
 `{label, opportunity_id}` to `products.synthetic.cascade.partners` and
-`program_id` immediately (ace#2412).
+`program_id` immediately (ace#2412). The `label` is the opportunity's NAME and
+is filmed (page title, scope picker), so it carries no sweep handle — the handle
+goes in `notes`; `org_name` keeps it (§ C7 "Sweep handles", ace#2733).
 
 **C2. Registry.** Invoke `semantic-registry-author` with the partners and
 program id; it validates, runs `semantic-registry-author-qa`, and creates the
@@ -1613,7 +1615,11 @@ shows it (`demo-narrative` step 3b's on-screen rule).
 1. `workflow_create_from_template({template_key: 'indicator_programme_report',
    program_id, opportunity_ids: [all partners], registry_source: {registry_id},
    name: '<Programme> programme report (synthetic)'})` — one call also creates the
-   companion worker review and its run (`companions.worker_review`). Bind WITHOUT
+   companion worker review and its run (`companions.worker_review`). The name is
+   the page breadcrumb, so it carries NO sweep handle; put the handle in the
+   workflow's `description` straight after create (`workflow_update_definition({
+   patch: {description: '(synthetic, ace <opp>/<run-id>)'}})`) — § C7 "Sweep
+   handles", ace#2733. Bind WITHOUT
    a home-scope key (see `semantic-registry-author` § 4 binding gotcha).
 2. The template's `visits` pipeline carries only Connect's base columns. Replace
    its schema with the registry's Layer-1 fields (`pipeline_update_schema`,
@@ -1664,8 +1670,10 @@ handed-down run (`workflow_history_runs(..., generated_only: false)`) is its
 a regenerated pool) replaces every period's run with a new id** — record the
 listings before and after and relink every artifact per
 `semantic-registry-author` § After a registry edit (`scripts/relink-rebuilt-history.ts`,
-ace#2700); otherwise realized.json and every summary link point at runs that
-no longer exist.
+ace#2700) — for run_state.yaml that is `--run-state` over the WHOLE Phase 7
+products block, `source.dashboards[].par_url` included, never a hand list of
+fields (ace#2739); otherwise realized.json, the dashboard links and every
+summary link point at runs that no longer exist.
 
 **C6. Verify the story LANDED — against the saved runs, not the manifest.**
 `workflow_history_runs({definition_id, program_id, generated_only: false,
@@ -1764,8 +1772,24 @@ indicator label is a column header; the definitions popup is at point of use).
 
 **Sweep handles.** Registries have no delete atom and synthetic opps are only
 disabled (`synthetic_disable`), so the ids in `products.synthetic.cascade` are the
-only way to find these objects again. Name every labs object with
-`(synthetic, ace <opp>/<run-id>)`.
+only way to find these objects again. Every labs object carries the handle
+`(synthetic, ace <opp>/<run-id>)` — but **only in a field no frame renders**
+(ace#2733):
+
+| Object | Rendered? | Where the handle goes |
+|---|---|---|
+| programme report workflow | yes — its `name` is the breadcrumb on every frame | `description` |
+| opp reports (`benchmarks_create_opp_reports`) | yes — page title | `description` |
+| synthetic opportunity (`synthetic_create_labs_only` `label`) | yes — page title and scope picker | `notes` |
+| registry | no | `name` (`semantic-registry-author` § 4) |
+| benchmark cohort | no | `name` |
+| synthetic org (`org_name`) | no | `name` — § C5 finds the org's slug by searching the run id |
+
+*Why:* the DDD user-artifact judge scored the run id in the programme report's
+title as a trust defect (spark-facilitator/20261004-1706, smallholder-seasonal/20261012-1549),
+and on `noora-health/20261015-1129` the opp slug put a real organisation's name on
+a page framed as "illustrative — not Noora Health's programme". `/ace:sweep`'s
+labs leg (`sweep-labs`) matches the handle in `name`, `description` OR `notes`.
 
 **Known residuals (labs, 2026-09-26).** An opportunity renders as
 "Opportunity <id>" where a label map would help; the drilled partner header
@@ -2142,6 +2166,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **§ C7 "Sweep handles": the handle lives only in a field no frame renders (ace#2733).** Programme report and opp reports carry it in `description`, the synthetic opportunity in `notes`; registry, cohort and org keep it in `name`. The run id in the programme report's breadcrumb was scored a trust defect by the DDD user-artifact judge on three runs, and on noora-health/20261015-1129 put a real organisation's name on an illustrative page. `sweep-labs` matches name, description or notes (`sweepHandleField`). | ACE team |
 | 2026-10-16 | **Step 3c no longer runs `checkGapCopy`; `demo-narrative` § 3d does (ace#2244).** The check needs the why-brief's `gaps[]`, which `demo-narrative` authors one step later, so at this position it could never run. 3c now records each dashboard's `workflow_id` + scope for 3d to read the uploaded render back, and keeps the authoring rules. | ACE team |
 | 2026-10-15 | **§ C3 names the labs request-size ceiling (ace#3007).** HTTP 413 at a 3.9 MB manifest (2.44 MB accepted) on `smallholder-seasonal/20261015-1402`; the mechanics now say how to slim a programme-length pool safely (dedupe only paths whose absence reads as their value; `_time_varying_paths` are not re-stamped), filter per-form values by form name, and send multi-MB manifests over direct JSON-RPC. | ACE team |
 | 2026-10-06 | **§ C3 `review_routing` names the write path (ace#2740).** Each flagged pool visit carries `review: {flagged: true, status, review_status, flag_reason}` (connect-labs #2264 — before it, a mirror pool had no way to file a record as sent to review; status/flagged were always drawn from the persona's `flag_rate`), and every persona sets `flag_rate: 0` so nothing un-flagged is sent to review. Found on `spark-facilitator/20261004-1706` Phase 7 attempt 3. | ACE team |

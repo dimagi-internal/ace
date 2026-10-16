@@ -311,6 +311,13 @@ export interface PlanContext {
   product?: Record<string, unknown> | null;
   /** From `pickChatQuestion(test prompts)` — required for a chatbot. */
   chatQuestion?: string | null;
+  /**
+   * The two orgs the run recorded — `runConnectOrgs(productNodeAt(runState,
+   * gap.phase, 'connect'))`. Under `pm-nm` the opportunity is HELD by the NM
+   * org, which ace@ is not a member of, so the gap's holder-facing url 404s;
+   * the PM org reads the same opportunity (ace#2893).
+   */
+  connectOrgs?: { pm_org_slug: string | null; holding_org_slug: string | null } | null;
 }
 
 /**
@@ -405,7 +412,7 @@ export function planCapture(gap: PreviewGap, ctx: PlanContext = {}): CapturePlan
       return {
         ...base,
         strategy: 'page',
-        url: gap.url,
+        url: connectOpportunityReadUrl(gap.url, ctx.connectOrgs),
         shots: [
           { step: 'overview', mode: 'viewport', caption: `Connect opportunity "${t}" — apps, payment units, dates and budget` },
           { step: 'verification', mode: 'scroll-to-text', text: 'Verification', caption: `Connect opportunity "${t}" — verification and worker payments` },
@@ -527,6 +534,26 @@ export function connectProgramId(url: string | null | undefined): string | null 
 export function connectProgramListUrl(url: string): string | null {
   const m = /^(https?:\/\/[^/]+\/a\/[^/]+\/program\/)/.exec(url);
   return m ? m[1] : null;
+}
+
+/**
+ * The url ACE's own session can open for a Connect opportunity (ace#2893).
+ * The gap carries the HOLDER's deep link (`/a/<holding_org>/opportunity/…`) —
+ * right for the holder, but under `pm-nm` ace@ is not a member of the holding
+ * org and that page 404s by design. The PM org reads the same opportunity, so
+ * swap the org segment to the PM org when the run recorded two different
+ * orgs. Self-managed (or nothing recorded) → the url is returned unchanged.
+ */
+export function connectOpportunityReadUrl(
+  url: string,
+  orgs: { pm_org_slug: string | null; holding_org_slug: string | null } | null | undefined,
+): string {
+  const pm = orgs?.pm_org_slug;
+  const holder = orgs?.holding_org_slug;
+  if (!pm || !holder || pm === holder) return url;
+  const m = /^(https?:\/\/[^/]+\/a\/)([^/]+)(\/opportunity\/.*)$/.exec(url);
+  if (!m || m[2] !== holder) return url;
+  return `${m[1]}${pm}${m[3]}`;
 }
 
 /** HQ app url → its Form Summary (`…/apps/view/<id>/summary/`). */

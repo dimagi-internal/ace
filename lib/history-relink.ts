@@ -177,3 +177,46 @@ export function relinkValue<T>(value: T, map: RunIdMap): T {
   };
   return walk(value, null, false) as T;
 }
+
+/** The run_state phase whose products a Phase 7 rebuild invalidates. */
+export const SYNTHETIC_PHASE = 'synthetic-data-and-workflows';
+
+export interface RunStateRelink {
+  /**
+   * An `update_yaml_file` patch (`merge: 'deep'`, via `localFilePath`) carrying
+   * the WHOLE relinked products block — arrays such as `opp_reports[]` and
+   * `source.dashboards[]` are replaced wholesale under every merge mode, so the
+   * patch resends them complete.
+   */
+  patch: { phases: Record<string, { products: Record<string, unknown> }> };
+  leftovers: number[];
+  mentions: number[];
+  /** True when anything in the block changed. */
+  changed: boolean;
+}
+
+/**
+ * Relink EVERY run id inside `phases.synthetic-data-and-workflows.products` of a
+ * parsed run_state (ace#2739). The skill used to keep a hand list of fields to
+ * relink, and the list missed `source.dashboards[].par_url` — so a rebuild left
+ * seven dashboard links on dead ids. Walking the whole block means no list has
+ * to be remembered: every `run_id=` / `source_run=` param, `run_id` field and
+ * `run_ids` list is mapped wherever it sits, and anything still left in a
+ * run-id position is reported as a leftover.
+ */
+export function relinkRunStateProducts(runState: unknown, map: RunIdMap, phase = SYNTHETIC_PHASE): RunStateRelink {
+  const phases = (runState as { phases?: Record<string, { products?: unknown }> } | null)?.phases;
+  const products = phases?.[phase]?.products;
+  if (!products || typeof products !== 'object' || Array.isArray(products)) {
+    throw new Error(`relinkRunStateProducts: run_state has no phases.${phase}.products block`);
+  }
+  const relinked = relinkValue(products as Record<string, unknown>, map);
+  const text = JSON.stringify(relinked);
+  const scan = relinkText(text, map);
+  return {
+    patch: { phases: { [phase]: { products: relinked } } },
+    leftovers: scan.leftovers,
+    mentions: scan.mentions,
+    changed: text !== JSON.stringify(products),
+  };
+}

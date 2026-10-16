@@ -264,12 +264,28 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/relink-rebuilt
   --before before.json --after after.json --map-out map.json [--in FILE --out FILE [--bare]]
 ```
 
-and rewrite every place the run names an old id: `realized.json`,
-`run_state.yaml` `products.synthetic.cascade` (`programme_report`,
-`opp_reports[]` — arrays are replaced whole — `history.run_ids`) and
-`products.synthetic.workflows.*.run_url` (`update_yaml_file`, `merge: deep`),
-the Phase 7 summaries, `why_brief.yaml` and the narrative spec (Docs:
-`replaceAllText`), in every workspace the run was cloned into. `--in` exits 1
+and rewrite every place the run names an old id, in every workspace the run was
+cloned into:
+
+- **`run_state.yaml` — the whole Phase 7 products block, never a hand list of
+  fields** (a hand list missed `source.dashboards[].par_url`, ace#2739). Read the
+  file (`drive_read_file writeToPath`), then
+
+  ```bash
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/relink-rebuilt-history.ts" \
+    --before before.json --after after.json --run-state run_state.yaml --out products-patch.json
+  ```
+
+  walks every `run_id=` param, `run_id` field and `run_ids` list anywhere under
+  `phases.synthetic-data-and-workflows.products` and writes the whole relinked
+  block as a patch. Apply it with `update_yaml_file({localFilePath:
+  products-patch.json, merge: 'deep'})` — arrays are replaced whole, so the patch
+  resends them complete.
+- `realized.json` (`--in`/`--out`).
+- The Phase 7 summaries, `why_brief.yaml` and the narrative spec (Docs:
+  `replaceAllText`).
+
+`--in` and `--run-state` exit 1
 while any old id is left in a run-id position (`run_id`/`source_run` param or
 field, `run_ids` list) — `leftovers`. Old ids elsewhere print as `mentions` and
 do not fail: labs mints run, workflow and program/opportunity ids from one
@@ -312,6 +328,7 @@ around the refusal by another route, and never record the step as done.
 
 | Date | Change |
 |---|---|
+| 2026-10-16 | § After a registry edit: the run_state relink is the WHOLE Phase 7 products block via `relink-rebuilt-history --run-state` (`relinkRunStateProducts`), not a hand list of fields — the list missed `source.dashboards[].par_url` and left seven dead dashboard links on spark-facilitator/20261004-1706 (ace#2739). | ACE team |
 | 2026-10-13 | § 1: the entity key's path is the one the RELEASED app writes — Nova operation forms put it under `form.__nova_operations.<op>.case.@case_id` — declared as `paths` with the generator's `form.case.@case_id` last; new product `semantic-registry-author_layer1.json`. Enforced by `entity-key` / `layer1-paths` in QA (`lib/layer1-path-check.ts`). Found on smallholder-seasonal/20261012-1549, registry 8527 (ace#2883). | ACE team |
 | 2026-10-06 | § 3: reader-facing registry text is plain language for a programme manager (no PDD/§/section numbers, indicator codes, `≥`/`≤`, or column names); the Spark `targets_note` before/after. Enforced by `lib/registry-display-text.ts` in both QA gates (ace#2748). The worked example's `targets_note` is rewritten to match. | ACE team |
 | 2026-10-05 | § After a registry edit: re-publish the benchmark per rebuilt run, oldest first, planned by `lib/benchmark-republish.ts`; verify the Benchmarks tab's as-of is the latest week; a classifier refusal is surfaced, never worked around (ace#2717). | ACE team |

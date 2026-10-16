@@ -19,6 +19,7 @@ import {
   pickChatQuestion,
   programCardCaption,
   planCapture,
+  connectOpportunityReadUrl,
   previewGapsUrl,
   productNodeAt,
   screenPage,
@@ -28,6 +29,7 @@ import {
   type PreviewGap,
 } from '../../lib/preview-capture';
 import { assertPreviewsIndexReadable, serializePreviewsIndex } from '../../lib/output-previews';
+import { runConnectOrgs } from '../../lib/connect-orgs';
 
 function gap(over: Partial<PreviewGap> = {}): PreviewGap {
   return {
@@ -195,6 +197,38 @@ describe('shot plan', () => {
       ['overview', 'viewport'],
       ['verification', 'scroll-to-text'],
     ]);
+  });
+
+  describe('a pm-nm opportunity is opened at the PM org (ace#2893)', () => {
+    // turmeric-market-study-ghana/20261012-1749: the gap carried the HOLDER's
+    // url; ace@ is not a member of the NM org, so both attempts 404'd.
+    const holderUrl = 'https://connect.dimagi.com/a/stewari/opportunity/6ecb8b4c-0b64-4745-8080-2825a55b1646/';
+    const runState = {
+      phases: {
+        'connect-setup': {
+          products: { connect: { org_mode: 'pm-nm', pm_org_slug: 'ai-demo-space', holding_org_slug: 'stewari', opportunity: { id: '6ecb8b4c-0b64-4745-8080-2825a55b1646' } } },
+        },
+      },
+    };
+
+    it('swaps the holding org for the PM org when they differ', () => {
+      const g = gap({ url: holderUrl });
+      const p = planCapture(g, { connectOrgs: runConnectOrgs(productNodeAt(runState, g.phase, 'connect')) });
+      expect(p.url).toBe('https://connect.dimagi.com/a/ai-demo-space/opportunity/6ecb8b4c-0b64-4745-8080-2825a55b1646/');
+      expect(p.skip).toBeUndefined();
+    });
+
+    it('leaves a self-managed (or legacy organization_slug) url unchanged', () => {
+      const self = { pm_org_slug: 'ace-pm-org', holding_org_slug: 'ace-pm-org' };
+      expect(planCapture(gap(), { connectOrgs: self }).url).toBe(gap().url);
+      const legacy = runConnectOrgs({ organization_slug: 'ace-pm-org' });
+      expect(planCapture(gap(), { connectOrgs: legacy }).url).toBe(gap().url);
+      expect(planCapture(gap(), {}).url).toBe(gap().url);
+    });
+
+    it('does not rewrite a url whose org is not the recorded holder', () => {
+      expect(connectOpportunityReadUrl(holderUrl, { pm_org_slug: 'pm', holding_org_slug: 'someone-else' })).toBe(holderUrl);
+    });
   });
 
   it('never photographs the OCS admin page for a chatbot', () => {
