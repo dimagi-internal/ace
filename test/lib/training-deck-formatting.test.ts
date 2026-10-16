@@ -5,6 +5,7 @@ import {
   lintDeckFormatting,
   FORMATTING_BUDGETS,
   TrainingDeckSpecSchema,
+  statsUnitMismatches,
 } from '../../lib/training-deck-spec';
 
 /**
@@ -190,3 +191,45 @@ ${items}`,
 function parseTrainingSpecLenient(slidesYaml: string) {
   return TrainingDeckSpecSchema.parse(yamlLib.load(specYaml(slidesYaml)));
 }
+
+/**
+ * ace#2205: `USD 3 / USD 3 / 0` on poverty-graduation/20260905-1345 slide 6 —
+ * the bare `0` read as a footnote beside two unit-carrying peers. A spec rule
+ * (the stencil cannot know `0` means `USD 0`), so a `warn`, not a parse error.
+ */
+describe('statsUnits — sibling stat values share their unit (ace#2205)', () => {
+  const statsSlide = (bigs: string[]) => `${COVER}
+      - id: pay
+        layout: stats
+        title: Pay
+        stats:
+${bigs.map((b, i) => `          - big: "${b}"\n            label: "label ${i}"`).join('\n')}`;
+
+  it('flags a bare numeral beside unit-carrying siblings, suggesting the unit', () => {
+    const findings = lintDeckFormatting(parseTrainingSpec(specYaml(statsSlide(['USD 3', 'USD 3', '0']))))
+      .filter((f) => f.rule === 'statsUnits');
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ slideId: 'pay', severity: 'warn' });
+    expect(findings[0].detail).toContain('"USD 0"');
+  });
+
+  it('passes the fixed row', () => {
+    const findings = lintDeckFormatting(parseTrainingSpec(specYaml(statsSlide(['USD 3', 'USD 3', 'USD 0']))));
+    expect(findings.filter((f) => f.rule === 'statsUnits')).toEqual([]);
+  });
+
+  it('does not flag siblings with different units, or an all-bare row', () => {
+    for (const row of [['USD 3', '300 visits', '25%'], ['3', '10', '0']]) {
+      const findings = lintDeckFormatting(parseTrainingSpec(specYaml(statsSlide(row))));
+      expect(findings.filter((f) => f.rule === 'statsUnits'), row.join(' / ')).toEqual([]);
+    }
+  });
+
+  it('carries a suffix unit over too', () => {
+    expect(statsUnitMismatches([{ big: '25%' }, { big: '0' }])[0].suggestion).toBe('0%');
+  });
+
+  it('is a warn, so parseTrainingSpec does not refuse the spec', () => {
+    expect(() => parseTrainingSpec(specYaml(statsSlide(['USD 3', '0'])))).not.toThrow();
+  });
+});
