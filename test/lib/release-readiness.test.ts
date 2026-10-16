@@ -190,6 +190,42 @@ describe('the other evidence on the real Spark run', () => {
     expect(assessLinks(null)[0].id).toBe('links-unchecked');
   });
 
+  it('links: an OCS admin page landing on the OCS login warns (admin-only); real failures still block (ace#2887)', () => {
+    const base = { status: 200, owner: 'synthetic-data-workflows', ok: false };
+    const coach = {
+      ...base, label: 'synthetic-data-and-workflows:ocs_coach', audience: 'member' as const, session: 'ocs',
+      url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/14293/',
+      final_url: 'https://www.openchatstudio.com/accounts/login/?next=/a/connect-ace/chatbots/14293/',
+      detail: 'login: landed on a login page: https://www.openchatstudio.com/accounts/login/?next=/a/connect-ace/chatbots/14293/',
+    };
+    const publicChat = {
+      ...base, label: 'ocs-setup:ocs_chatbot (public chat)', audience: 'public' as const, session: 'public',
+      url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/9cedf5ee/start/',
+      final_url: 'https://www.openchatstudio.com/accounts/login/?next=/a/connect-ace/chatbots/9cedf5ee/start/',
+      detail: 'login: landed on a login page',
+    };
+    const labs404 = {
+      ...base, label: 'synthetic-data-and-workflows:workflow', audience: 'member' as const, session: 'labs', status: 404,
+      url: 'https://labs.connect.dimagi.com/labs/workflow/999/', final_url: 'https://labs.connect.dimagi.com/labs/workflow/999/',
+      detail: 'not-found: HTTP 404',
+    };
+    const connectLogin = {
+      ...base, label: 'connect-setup:opportunity', audience: 'member' as const, session: 'connect',
+      url: 'https://connect.dimagi.com/a/org/opportunity/1/', final_url: 'https://connect.dimagi.com/accounts/login/',
+      detail: 'login: landed on a login page',
+    };
+    const ocs500 = { ...coach, status: 500, final_url: coach.url, detail: 'error: HTTP 500' };
+    const f = assessLinks([coach, publicChat, labs404, connectLogin, ocs500]);
+    expect(f.map((x) => [x.id, x.severity])).toEqual([
+      ['link-admin-only:synthetic-data-and-workflows:ocs_coach', 'warning'],
+      ['link:ocs-setup:ocs_chatbot (public chat)', 'blocker'],
+      ['link:synthetic-data-and-workflows:workflow', 'blocker'],
+      ['link:connect-setup:opportunity', 'blocker'],
+      ['link:synthetic-data-and-workflows:ocs_coach', 'blocker'],
+    ]);
+    expect(f[0].detail).toContain('public chat link');
+  });
+
   it('public summary: misleading findings warn, broken ones block, no audit blocks', () => {
     const audit = json<{ findings: never[] }>('surface.json');
     expect(assessSurfaceAudit(audit).every((f) => f.severity === 'warning')).toBe(true);

@@ -457,11 +457,32 @@ export interface LinkProbe {
   owner: string;
 }
 
+/**
+ * An OCS admin page (a member-audience link on an OCS host) probed with the
+ * anonymous `ocs` session (scripts/browser-sessions.ts) can only ever land on the
+ * OCS login page. That is not a broken link: reviewers are not OCS team members
+ * and reach the bot through its public chat link. The run-surface audit calls the
+ * same class ADMIN-LINK-NOT-MEMBER (improvement). Anything else — a 404, a 5xx, a
+ * blank page, a login wall on a PUBLIC link or on a non-OCS member link — is real.
+ * ace#2887 (noora-health/20261015-1129: `ocs_coach` admin URL → unwaivable blocker).
+ */
+export function isOcsAdminOnlyLogin(p: LinkProbe): boolean {
+  if (p.ok || p.audience !== 'member' || p.session !== 'ocs') return false;
+  const landedOnLogin = /^login\b/.test(p.detail) || /\/accounts\/login\b/.test(p.final_url);
+  let ocsHost = false;
+  try { ocsHost = /(^|\.)openchatstudio\.com$/.test(new URL(p.final_url || p.url).hostname); } catch { /* unparseable → not ours */ }
+  return landedOnLogin && ocsHost;
+}
+
 export function assessLinks(probes: readonly LinkProbe[] | null): ReleaseFinding[] {
   if (probes === null) return [{ id: 'links-unchecked', area: 'links', severity: 'blocker', owner: 'validate-release-readiness', detail: 'output links were not probed', fix: 'scripts/release-readiness.ts links' }];
   return probes
     .filter((p) => !p.ok)
-    .map((p) => ({
+    .map((p): ReleaseFinding => isOcsAdminOnlyLogin(p) ? ({
+      id: `link-admin-only:${p.label}`, area: 'links', severity: 'warning', owner: p.owner,
+      detail: `${p.label} is an OCS admin page (${p.url}); reviewers are not OCS team members and cannot open it — the bot's public chat link is the reviewer route`,
+      fix: 'none needed to release; do not present the admin URL to reviewers (give them the public chat link)',
+    }) : ({
       id: `link:${p.label}`, area: 'links' as const, severity: 'blocker' as const, owner: p.owner,
       detail: `${p.label} (${p.audience}, probed as ${p.session}): ${p.detail} — ${p.url}`,
       fix: p.audience === 'public' ? 'make it publicly reachable or stop calling it public on the summary' : 'fix the URL its producer recorded (scope params, ids)',
