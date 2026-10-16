@@ -58,7 +58,8 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 
 What stays ACE's job: the target workspace, its Drive root, the HQ space, the
 two Connect orgs and its default tenancy (Step 0), verifying every checklist
-item (Step 0.7), and every rebuild (Step 4).
+item (Step 0.7), and every rebuild — one script, `scripts/clone-run.ts`
+(Steps 1–4), so the model's part after Step 0 is: run it, read it back, report.
 
 ## Inputs
 
@@ -76,7 +77,7 @@ item (Step 0.7), and every rebuild (Step 4).
   ACE creates itself (0.6b). Pass them only to reuse orgs that already exist.
 - `--keep-shared connect` — **escape hatch only, not the default.** Keeps the
   source's Connect program + opportunity in the shared orgs instead of
-  rebuilding them (4b skipped), drops the Connect items from the checklist, and
+  rebuilding them (stage `connect` skipped), drops the Connect items from the checklist, and
   takes the shared orgs as the target's Connect tenancy (Step 1.3 then accepts
   them). Use it only when the operator explicitly asks for it, e.g. a review
   that cannot wait for org setup. `release` then needs `--allow-shared connect`
@@ -232,403 +233,137 @@ Skip any part that already holds.
    already names a different HQ space or org, stop and report both. Read it
    back and print it.
 
-## Step 1 — Preflight (creates nothing)
+## Steps 1–4 — run the clone script (one command, ~10 minutes)
 
-Collect every problem, then stop and print them all if there are any. Do not
-start Step 2 with a failed preflight.
-
-1. **Source run.** `GET ${ACE_WEB_BASE_URL}/api/w/<from>/opps/<opp>/runs` must
-   list `<run-id>`. Read the source `run_state.yaml`
-   (`resolve_opp_path` → `drive_read_file`) and keep its
-   `phases.commcare-setup.products.apps`, `phases.connect-setup.products.connect`,
-   `phases.ocs-setup.products.ocs_chatbot` (its `public_url` is reported),
-   `phases.synthetic-data-and-workflows.products.synthetic`. A run without
-   `products.apps.learn.hq_app_id` / `deliver.hq_app_id` cannot be cloned past
-   the ace-web step — say so.
-2. **Target tenancy.** `GET ${ACE_WEB_BASE_URL}/api/workspaces/<to>` →
-   `default_tenancy`. Every field the source run has products for must be set:
-   `hq_domain` (apps), `connect_pm_org` + `connect_holding_org` (Connect).
-   `ocs_team` is not needed (see 4d); Labs needs nothing (see 4c). A missing field is a setup
-   item: "workspace owner: set default_tenancy.<field>".
-3. **Not a shared tenancy.** Compare with the SOURCE opp's tenancy
-   (`GET …/api/w/<from>/opps/<opp>/tenancy`). A target field equal to the
-   source's (e.g. `hq_domain: connect-ace-prod` in both) defeats the purpose —
-   refuse it and name the field. **Exception:** with `--keep-shared connect`,
-   equal `connect_pm_org` / `connect_holding_org` are accepted (say so in the
-   report); every other field still must differ.
-4. **Per system, one-time setup the target needs:**
-   - **HQ and Connect:** Step 0.7 verified them (space exists with ace@ as
-     Admin, paid plan, API open; both orgs with ace@ as Admin, Program Manager
-     on). On a resume, rerun `clone-setup-checklist.ts verify --live` and the
-     four MCP read-backs rather than trusting an earlier pass; a failure sends
-     the operator back to the named checklist item. (Existence is read from
-     `my_role`, not `commcare_list_apps`: HQ answers the same
-     `HQ_API_NOT_IN_PLAN` 401 for a space on Free and for one that does not
-     exist — ace#2551.) No program application is needed up front: Phase 4
-     creates the program, then sends and accepts the holding org's application
-     itself (4b). With `--keep-shared connect` the Connect checks are skipped:
-     the shared orgs are the ones every run already writes to.
-   - **OCS: nothing.** The bot is not rebuilt (see 4d).
-5. **Already cloned?** `GET …/api/w/<from>/opps/<opp>/runs/<run-id>/clones` —
-   a `done` clone into `<to>` means resume (Step 3 onward, skipping finished
-   `clone.<system>` entries in the TARGET run_state), not a second copy.
-
-## Step 2 — Copy the run into the target workspace (ace-web)
+Everything after Step 0 is ONE deterministic, idempotent, resumable script
+(ace#3021). Do not drive these steps by hand, and do not dispatch the Phase 4
+agent: the source run_state already records every value the rebuild needs,
+so a clone needs no judgement — only the operator toggles of Step 0 do.
 
 ```bash
-curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"to_workspace\": \"<to>\"}" \
-  "${ACE_WEB_BASE_URL%/}/api/w/<from>/opps/<opp>/runs/<run-id>/clone"
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/clone-run.ts" \
+  --from <from> --to <to> <opp>/<run-id> [--keep-shared connect]
 ```
 
-`202` → the copy has started on ace-web's side (ace-web#824): poll `GET
-…/api/w/<from>/opps/<opp>/runs/<run-id>/clones` every ~30 s until that
-record's `status` is `done` (the run now exists at `<to>`'s Drive root as
-`<opp>/runs/<run-id>/` and the target opp has the target's default tenancy)
-or `error` (report it; re-POST replaces the partial run). Budget ~2.4 s per
-file — the first real clone, 347 files, took ~14 min. `files_copied` rising
-means it is alive. `409` → already copied, or a copy still in progress: go to
-Step 3 (resume) once `…/clones` says `done`. Never re-POST while a record is
-`copying` and still progressing. Comms-logs are not copied (internal; ACE
-routes inbound mail by them). An older ace-web answers `201` after copying
-in-request — then treat a 504 as "still copying" and poll the same way.
+(`$ACE_ROOT` = `$CLAUDE_PLUGIN_ROOT`, the installed plugin.) Add `--plan` first
+to print which stages will run without touching anything. It prints one JSON
+report on stdout (progress on stderr) and exits **0** when every stage is
+final, **3** when it finished with stages not done (`not_done[]`, each with its
+`reason`), **2** on a usage or precondition error (nothing written).
 
-Steps 3–4 do not depend on the Drive copy finishing except where they write
-the TARGET `run_state.yaml`; wait for `done` before 4's first write.
+**Resume = run the same command again.** Every stage records its result in the
+TARGET run_state's root `clone:` block (`clone.<stage>.status`), and a stage
+whose status is final is skipped; a stage that stopped part-way resumes from
+the ids it recorded. `--only <stage,…>` runs just those, `--redo <stage,…>`
+forces them (e.g. `--redo asset_refs` after a re-capture). Code:
+`scripts/clone-run.ts` (I/O) over `lib/clone-run.ts` (every decision, unit
+tested in `test/lib/clone-run.test.ts`).
 
-**Drive links are ace-web's job, and you verify them.** Once `done`, ace-web
-has rewritten every source Drive id in every YAML file of the target run
-(`run_state.yaml`, `decisions.yaml`, each `previews/<output>/_previews.yaml`,
-the Phase 6 capture manifest, verdicts, …) to its copy, and given each copy
-its original's anyone-with-link role (ace-web#829, ace-web#851) — and, since
-its ace#2607 fix, every other TEXT copy too: markdown and plain files keep their
-own type, and Google Docs are retargeted in place through the Docs API (link
-targets and visible ids; formatting untouched). Read-back before Step 4. It
-checks every text copy and every Doc's hyperlink TARGETS, not only YAML — the
-YAML-only check passed a clone whose partner-facing onboarding email linked
-the source's FAQ, deck and quick-reference card, and whose FLW guide hid 23
-source screenshot links behind its link text (ace#2607):
+What it does, stage by stage — the rules each one keeps:
 
-```bash
-npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-drive-readback.ts" \
-  --source <source-run-folder-id> --target <target-run-folder-id>
-```
+1. **Preflight** (before any write). The source run must exist and record
+   `products.apps.{learn,deliver}.hq_app_id` and a RELEASED build for each; the
+   target's `default_tenancy` must name `hq_domain` (+ both Connect orgs unless
+   `--keep-shared connect`), and **no field may equal the source opp's tenancy**
+   (the Connect pair excepted under `--keep-shared connect`). Any gap exits 2.
+2. **`ace_web`** — `POST …/runs/<run-id>/clone {to_workspace}`, then poll
+   `…/clones` until `done`. An existing `done` record into `<to>` is reused, a
+   record still `copying` is never re-POSTed, and `error` is reported (a rerun
+   re-POSTs, which replaces the partial run). Comms-logs are not copied.
+3. **Bind.** Once the copy exists the script binds THIS session to `<to>/<opp>`
+   (`bin/ace-bind`, enforce) and stops if the session is already bound to any
+   other opp — never clear or rebind to get a write through. Every write the
+   script makes outside MCP goes through the same rules the hook applies to
+   MCP calls: tenant arguments (`config/tenancy-targets.json`'s mapping,
+   `checkTenantWrite`) and Drive targets (`lib/drive-tenancy-guard.ts`
+   `checkDriveWrite`, inside the opp's folder). Reads FROM the source are
+   never checked.
+4. **`summary_url`** — the copied run_state's `ace_web_summary_url` becomes
+   `${ACE_WEB_BASE_URL}/opps/<to>/<opp>/runs/<run-id>/summary` (the source's
+   would send a reviewer to a workspace they cannot open).
+5. **Drive ids** (`clone.drive_ids`) — `scripts/clone-drive-readback.ts`; on hits it applies its
+   `--plan` (plain files rewritten keeping their type, Docs retargeted with
+   link-only `docs` requests — never flattened to text) and reads back again.
+   Records `clone.drive_ids.source_ids_remaining`; `left_behind` (comms-logs)
+   and `provenance` (decisions log, eval records) are not failures.
+6. **`hq`** (was § 4a). Requires `commcare_get_subscription(<hq>)` →
+   `is_paid_edition: true` (demo mode, checklist item 1a — else not-done with
+   `scripts/release-readiness.ts hq-flip-steps --domain <hq>`). For learn and
+   deliver: `linked_app_copy` (unlinked) **from the source's RELEASED build id**
+   — `3-commcare/app-release_summary.md` frontmatter first, run_state
+   `released_build_id` only as the fallback (ace#2702), never "latest saved" —
+   then `make_build` and `release_build`. **A timeout is not a failure:** every
+   create is look-then-create (`lookThenCreate`) — it looks first
+   (`commcare_list_apps` by name, or the recorded id), and a create that
+   times out is recorded `ambiguous` and looked for again; if it still isn't
+   there the stage stops WITHOUT retrying, and the next run looks before it
+   does anything. Only after checking by hand: `--retry-ambiguous hq.learn`
+   (or `hq.deliver`, `connect.program`, `connect.application`,
+   `connect.opportunity`, `connect.payment_units`). Then **3b**: mints the
+   opportunity's key **restricted to this space** (`ace-clone-<hq>`, stored
+   owner-only, only `hq-key:` travels; skipped under `--keep-shared connect`;
+   never rotated once the clone's opportunity uses it). Rewrites
+   `phases.commcare-setup.products.apps` (domain, `hq_app_id`, `hq_url`,
+   released build; Nova ids kept). HQ mobile workers are still a manual step.
+7. **`release_summary`** — re-records the clone's
+   `3-commcare/app-release_summary.md` frontmatter `apps.learn_app` /
+   `deliver_app` from THIS clone's builds (`rewriteReleaseSummary`; never a
+   value copied from the source's file). § 4e rewrites its prose.
+8. **`connect`** (was § 4b) — Connect is re-built in the target's orgs with
+   the SAME values the source was built with, transcribed, not re-derived
+   (`connectBuildSpec`, each value's provenance in the report): run_state
+   `products.connect` (opportunity name, payment units, verification rules,
+   test-user phone), then the PDD numbers the run recorded
+   (`products.pdd.program_parameters`: delivery type id, currency, country,
+   dates, budget, passing score, submission window, duration), then read-only
+   reads of the source's own program and opportunity (name, descriptions,
+   the post-headroom program budget, the Learn description). Then: program in
+   `connect_pm_org` → invite `connect_holding_org` → accept (the ace#2954
+   authority gate: only an org ACE controls accepts for itself — an org ACE
+   created in 0.6b must be in `ACE_CONNECT_CONTROLLED_ORGS`) → opportunity
+   **HELD by the NM org** (`target_organization_slug`, create-time only; a
+   create that lands in another org stops, there is no repair) reading the
+   apps of stage `hq` through the space-restricted `hq-key:` → payment units
+   (deliver units mapped by slug onto the target's, `total_budget` passed) →
+   verification rules **at the PM org URL** (`form_field_rules_saved` must read
+   back) → Learn passing score read back and repaired if the create discarded
+   it (ace#1350) → activate → ACE test user invited and read back
+   (`connect_list_flw_invites`) → `connect_get_opportunity` at the holding org
+   must show both apps in `<hq>`. Writes `opp.yaml connect.program` and
+   `phases.connect-setup.products.connect` (Phase 4's shape). A target whose
+   `products.connect` an earlier attempt already built **in the target's
+   orgs** is adopted after the same read-backs, never built twice. The copied
+   Phase 4 decision rows stay valid: the values are the source's, verbatim.
+   **`--keep-shared connect`** (escape hatch, only on the operator's explicit
+   ask): records `clone.connect: kept-shared`; the copied products keep naming
+   the source program/opportunity in the shared orgs (which read the SOURCE HQ
+   apps) and `release` needs `--allow-shared connect` — report that loudly.
+9. **`labs`** (§ 4c) — `rebuildLabs` in `lib/clone-run.ts`. ace#3020 is
+   redesigning it (rebuild the run's reports in the new program from
+   templates, copy the synthetic data, share them with the reviewers); until it
+   lands the stage records `not-done: awaiting ace#3020`, and the old
+   "Labs stays Dimagi-only" skip is no longer final. Do NOT call
+   `synthetic_set_allowed_domains` by hand (it REPLACES the list, ace#2713).
+10. **`ocs`** (§ 4d) — kept on ACE's team; reviewers use its `public_url`
+    (no OCS accounts — team-wide permissions). Recorded `kept`.
+11. **`asset_refs`** (§ 4e) — `scripts/clone-asset-rewrite.ts` over the copied
+    prose (HQ space, app/build ids and versions, Connect program/opportunity/
+    org slugs, frames re-pointed — ace#2606, ace#2697), then the script applies
+    `plan.json`: `update` keeps a plain file's type, `render` re-imports a
+    styled Doc from markdown (never written back as text — that flattens it)
+    and re-embeds its screenshots (`embed-doc-screenshots.ts`, the target's
+    `previews/` folders), and the run_state patch merges deep. The read-back
+    re-runs the rewrite: `changes: 0` and exit 0, else not-done (exit 3 =
+    `frames.foreign`: a cited image with no counterpart in the target run;
+    re-capture it). Left on the source on purpose and reported: the decisions
+    log, eval/QA records (note only), and Phase 8's solicitation.
+12. **`readme`** — the run README re-rendered from the rewritten run_state.
 
-Exit 0 means clean. Exit 1 means `hits[]` lists each copied file that still names a
-source file, with that file's path. `left_behind[]` lists comms-log ids, which
-are expected: those files are deliberately not cloned. `provenance[]` lists ids
-in the decisions log and eval/QA records — history, left as is, never a
-failure. On exit 1, the rewrite did not run or did not reach those files (an
-ace-web without its ace#2607 fix rewrote YAML only). Repair through the guarded atoms,
-never by hand-patching text: add `--plan <scratch-dir>` and apply `plan.json` —
-`action: update` → `drive_update_file(fileId, localFilePath)` (keeps a plain
-file's type on an MCP ≥ ace#2215; re-check the type after on an older one),
-`action: docs` → `docs_batch_update(fileId, requests)` from `requestsPath`
-(link-only `updateTextStyle` + `replaceAllText`; a formatted Doc is never
-written back as text) — then re-run without `--plan`. Record the hit count as
-`clone.drive_ids.source_ids_remaining`. History: the first Spark clone, before
-#829, had 99 ids / 125 occurrences in run_state and 26 copies without their
-sharing, all fixed by hand. The second passed a run_state-only grep while
-every `_previews.yaml` still named the source's frames, so ace-web showed 12
-outputs with no screenshots (ace#2603). Logic: `lib/clone-readback.ts`.
-
-## Step 3 — Bind this session to the NEW opp
-
-```bash
-"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <to>/<opp>
-```
-
-From here the tenancy guard refuses any write outside the target's tenancy —
-so a mistake cannot rebuild into the shared tenants. Reading FROM the source
-(`upstream_domain`, the source products) is allowed. **Never** clear or rebind
-to the source to get a write through; a refusal here means a wrong argument.
-
-## Step 4 — Rebuild, one system at a time
-
-Each step writes its result to the TARGET run's `run_state.yaml` under a root
-`clone:` block (`update_yaml_file`), so a rerun skips finished steps:
-
-```yaml
-clone:
-  from: {workspace: <from>, opp: <opp>, run: <run-id>}
-  hq: {status: done, domain: <hq_domain>, learn_app_id: …, deliver_app_id: …}
-  connect: {status: not-done, reason: …}
-```
-
-Then rewrite the matching `phases.<phase>.products` in the TARGET run_state so
-the Workbench and every later skill see the new assets, not the shared ones.
-
-Before the first system step, also point the TARGET run at its own page: the
-copied `run_state.yaml` still carries the SOURCE's top-level
-`ace_web_summary_url` (ace-web copies files verbatim). `update_yaml_file(merge:
-"two-level", patch: {ace_web_summary_url:
-"${ACE_WEB_BASE_URL}/opps/<to>/<opp>/runs/<run-id>/summary"})` — every reply,
-README and `release` email leads with that link, and the source's would send a
-reviewer to a workspace they cannot open.
-
-### 4a. HQ
-
-1. **ACE created the space in Step 0.6a; its demo mode is the operator's**
-   (checklist item 1a). Re-read it here, because 3b and 4b depend on it:
-   `commcare_get_subscription(domain: <hq_domain>)` must read
-   `is_paid_edition: true` (Test or Demo Project puts it on Enterprise, not
-   invoiced — sanctioned by accounts, Gillian Javetski, 2026-10-02), and
-   `commcare_list_apps(domain: <hq_domain>)` must answer 200. Record
-   `clone.hq.plan: {edition, is_paid_edition}` and `clone.hq.api: enabled`
-   from the reads, never from the operator's "done". Either read failing means
-   Step 0.7 was skipped or the space changed: **stop** and send the operator
-   checklist item 1a — the demo-mode step, verbatim: `npx tsx
-   "$CLAUDE_PLUGIN_ROOT/scripts/release-readiness.ts" hq-flip-steps --domain
-   <hq_domain>`. Mechanism and what NOT to do instead:
-   `playbook/integrations/commcare-api.md § New project spaces`. On a space
-   that reads paid, `HQ_API_NOT_IN_PLAN` is a defect to report, not a setup
-   item. The copy, build and release below are web views either way.
-2. For `learn` and `deliver`: `commcare_linked_app_copy(upstream_domain:
-   <source products.apps.<k>.domain>, upstream_app_id: <source hq_app_id>,
-   downstream_domain: <hq_domain>, name: <source app name>, linked: false,
-   build_id: <the source's released build id>)`. Read that id from the
-   source's `3-commcare/app-release_summary.md` frontmatter
-   `apps.<k>_app.build_id` — app-release's contracted record — and from run_state
-   `products.apps.<k>` only when the summary has none (ace#2702). Copy the
-   RELEASED build the source run was reviewed on, not "latest saved", which may
-   carry later edits.
-   Unlinked: no Pro Edition needed; the copy keeps camera-only and grid-menu
-   settings. The atom reads the new id from HQ's redirect, so it works on a
-   `not-in-plan` space. **A timeout does not mean it failed** — before any
-   retry, look: `commcare_list_apps` on an `enabled` space, else the HQ project
-   dashboard (`/a/<hq_domain>/dashboard/project/`, session auth) lists every
-   app id. A blind retry makes a duplicate.
-3. `commcare_make_build` then `commcare_release_build` for each new app. Then
-   **re-record the clone's release in `3-commcare/app-release_summary.md`** —
-   the copied file still describes the SOURCE's builds, and it is the one
-   record of release state that `validate-release-readiness` and § 4e read
-   (ace#2698, ace#2702). Rewrite its frontmatter `apps.learn_app` /
-   `apps.deliver_app` from THIS step's reads: `{hq_app_id: <new app id>,
-   build_id: <make_build's id>, version: <its version>, is_released: true,
-   released_at: <release time>}`. Never copy a value from the source's file;
-   the source builds stay recorded in run_state's `clone:` block, which § 4e
-   leaves alone.
-3b. **Mint the opportunity's HQ key, restricted to this space** — skip it, and
-   record `clone.hq.key: {status: skipped, reason}`, only with `--keep-shared
-   connect` (no opportunity will use it). Otherwise (the default):
-   `commcare_create_api_key(domain: <hq_domain>, name: "ace-clone-<hq_domain>")`
-   → `{key_ref: "hq-key:ace-clone-<hq_domain>", key_last4, id}`. The partner's
-   Connect opportunity will hold THIS key, not ACE's all-spaces
-   `ACE_HQ_API_KEY` — a Connect org admin can attach any stored key id to
-   their own opportunity, so the partner's must reach only the partner's
-   space. The plaintext is stored owner-only on this machine and never
-   returned; only the reference travels. On a RESUME where Step 4b has not run
-   yet and the local key file is missing, pass `replace_existing: true`
-   (rotation is safe: nothing uses the key yet). Record `clone.hq.key: {ref,
-   id, last4}` — never the key.
-4. Rewrite `phases.commcare-setup.products.apps` in the target run_state:
-   `domain`, and per app `hq_app_id`, `hq_url`, `domain`, `build_status`.
-   Keep `nova_app_id` / `nova_url` (same Nova source).
-5. Cross-space unlinked copy is live-verified (connect-ace-prod →
-   connect-ace-spark, 2026-09-29: Learn at latest, Deliver at its released
-   build, both then built and released).
-
-**Not in v1:** HQ mobile workers — no tool creates them. Report it as a manual
-step.
-
-### 4b. Connect — re-run Phase 4 in the target's orgs
-
-**This runs by default.** With the operator's orgs verified in Step 0.7, the
-clone rebuilds Connect for real: the program in the partner's program org, the
-opportunity held by the partner's org, reading the apps 4a copied through the
-space-restricted `hq-key:` from 4a.3b. Needs `clone.hq.api: enabled` (4a.1).
-No clone has yet run 4b end to end on a Test or Demo space. Record what
-Connect returns on the first one, so the next clone knows.
-
-**Escape hatch — `--keep-shared connect`: skip this step.** Only when the
-operator explicitly asked for it. Keep the target run's copied
-`products.connect` and `opp.yaml` `connect:` block as they are (they name the
-source program and opportunity in the shared orgs), and record
-`clone.connect: {status: kept-shared, pm_org, holding_org, opportunity_id}`.
-Report it loudly: the Connect opportunity still points at the SOURCE HQ apps
-(`connect-ace-prod`), while the partner's HQ access is to the copies in
-`<hq_domain>` — identical content, different project space. To end the
-exception later, rerun the clone without the flag (the checklist then asks for
-the two orgs, and 3b + 4b run). `release`
-treats `kept-shared` as a shared tenant (only `--allow-shared connect` grants
-it).
-
-Otherwise (the normal path):
-
-Connect cannot move an opportunity (its holding org is fixed at creation), so
-the clone gets its own program and opportunity, built by the SAME Phase 4 skills
-that built the source — not a hand-rolled copy of them. Requires 4a (the
-opportunity must point at the rebuilt HQ apps).
-
-1. **Step 0.7 already proved** both orgs exist with ace@ as Admin, the
-   program org has Program manager on, and the holding org answers
-   `connect_list_opportunities`. ACE created them in 0.6b — a missing one means
-   rerun 0.6b, never a guess.
-2. **Clear the copied Connect state in the TARGET only.**
-   - Target `opp.yaml`: `update_yaml_file(merge: "two-level", patch:
-     {connect: null})`. It names the SOURCE program, and
-     `connect-program-setup` reuses whatever program is recorded there — which
-     would put the clone's opportunity back in the shared org. (The session is
-     bound in enforce mode, so the guard would refuse those writes anyway;
-     clearing it avoids the detour.) `update_yaml_file` has no delete; `null`
-     is the clear.
-   - Target `run_state.yaml`: `update_yaml_file(merge: "two-level", patch:
-     {phases: {connect-setup: {status: pending, products: {}}}})`.
-     **Not `deep`**: a deep merge of `products: {}` changes nothing and the
-     source's Connect products survive in the clone. `two-level` replaces the
-     `connect-setup` child wholesale and leaves the other phases alone.
-     Read it back and confirm `products` is empty.
-   - Target `decisions.yaml`: **retire the copied Phase 4 rows before Phase 4
-     re-runs** (`docs/decisions-contract.md § Re-runs`). `decisions_append_rows`
-     skips an id the log already holds, so a copied row silently beats the
-     rebuild's own answer — or sits live next to a reworded one. The first
-     Spark clone hand-minted `-spark` ids to get around it and still left
-     `program-delivery-type` and `program-currency-usd-vs-mwk` live from the
-     source build. Read the file with `drive_read_file writeToPath`, then:
-
-     ```bash
-     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/decisions-retire-for-rerun.ts" \
-       --decisions <local decisions.yaml> --phase-tags 4-connect \
-       --label <from-workspace> --inherited-from <from-workspace>/<run-id> --out <local out>
-     ```
-
-     and write it back with `drive_update_file localFilePath`. Each live
-     `4-connect` row moves to `<id>-<from-workspace>`, marked `superseded_by:
-     <id>` + `inherited_from_run`; the Phase 4 re-run then appends under the
-     canonical ids. Human rulings stay live.
-3. **Dispatch the Phase 4 agent** (`Agent(connect-setup)`) against
-   `<to>/<opp>/<run-id>`, passing this `connect_orgs` block instead of the
-   preflight's:
-
-   ```yaml
-   connect_orgs:
-     status: ok
-     pm_org: <tenancy.connect_pm_org>
-     nm_org: <tenancy.connect_holding_org>
-     source: tenancy
-   ```
-
-   and tell it to use `api_key: hq-key:ace-clone-<hq_domain>` (from 4a step
-   3b) for BOTH `learn_app` and `deliver_app` in `connect_create_opportunity`
-   (and in `connect_preflight_learn_app_user`) instead of `${ACE_HQ_API_KEY}`.
-
-   With `nm_org ≠ pm_org` this is the normal PM→NM shape: the program is
-   created in the partner's PM org, the holding org is invited and accepted,
-   and the opportunity — payment units, verification rules, dates, the ACE
-   test user — is created HELD by the partner's org, pointing at the apps 4a
-   rebuilt. Its `connect-opp-setup` re-emits the Phase 4 decision rows
-   (verification-rule, latitude and ambiguity rows) against the clone's own
-   products.
-4. Read back `connect_get_opportunity(holding_org, <new id>)`: its
-   `learn_app` / `deliver_app` `cc_domain` must be `tenancy.hq_domain`. Record
-   `clone.connect: {status: done, program_id, opportunity_id, pm_org,
-   holding_org}`. A Phase 4 halt is `NOT DONE` with its reason — never fall
-   back to the source opportunity.
-
-### 4c. Labs — not widened (Dimagi-only)
-
-ace-web dropped the per-opp `labs_allowed_domains` setting (Jonathan,
-2026-10-08: "I don't think it clearly means anything"), so a clone no longer
-opens the run's labs-only opps to the partner. Do NOT call
-`synthetic_set_allowed_domains`: the tenancy guard refuses any domain except the
-operator ones (`config/tenancy-targets.json`), and that call REPLACES the list
-(ace#2713).
-
-1. Leave `products.synthetic` unchanged in the target run (same assets).
-2. Record `clone.labs: {status: skipped, reason: "Labs stays Dimagi-only"}`.
-3. Tell the operator: the run's Labs dashboards are visible to Dimagi only, and
-   the run summary marks them `admin only`.
-
-### 4d. OCS — deliberately not rebuilt
-
-The bot stays on ACE's OCS team and the copied `products.ocs_chatbot` is kept
-as is. Reviewers chat with it through its public link (`public_url`), which
-needs no OCS account and exposes nothing else on the team (Jon, 2026-09-28:
-no OCS accounts for reviewers). OCS permissions are team-wide — there is no way
-to let someone into OCS and see only one bot — so a per-partner OCS team is
-only worth it when a partner takes the bot over, which is a handover step, not
-a clone step. Record `clone.ocs: {status: kept, reason: public-link}` and
-report the `public_url`.
-
-### 4e. Rewrite the copied run's references to the source's assets
-
-4a/4b rewrite `products.*`; nothing above rewrites the PROSE. Every copied
-Phase 3/5/6/7 document still names the source's HQ space, app and build ids
-and versions, and its Connect program, opportunity and orgs — the partner's
-LLO guide pointed at `connect-ace-prod` and an `ace-nm-org` opportunity URL
-on the first Spark clone (ace#2606). Run this after 4a and 4b (and again if
-either is redone); it is idempotent:
-
-```bash
-npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-asset-rewrite.ts" \
-  --source <source-run-folder-id> --target <target-run-folder-id> --out <scratch-dir>
-```
-
-It reads both run_states and both `3-commcare/app-release_summary.md` files
-(released build ids/versions come from the summary — run_state is only the
-fallback, ace#2702), pairs every asset that moved, and writes rewritten
-files plus `plan.json` — it writes nothing to Drive. What it does per file
-(`lib/clone-asset-refs.ts`):
-
-- **rewrite** — ids, 8-char prefixes, the HQ space, Connect URLs/org slugs,
-  the opportunity int id in context, and build versions next to their build
-  or app; plus one "Copied into the `<to>` workspace for review from …" note
-  at the top naming each source → copy pair.
-- **note** — eval/QA records (`*_verdict*.yaml`, `*_result.yaml`) describe
-  what a judge saw on the SOURCE assets, so they get the note only, never a
-  rewrite.
-- **left on source** (listed, untouched) — the decisions log (the source's
-  Phase 4 rows are superseded by 4b's own), `4-connect/` after 4b re-authored
-  it, the `clone:` block, and `phases.solicitation-management` + its folder:
-  a Phase 8 solicitation on the source program is an operator decision, not a
-  rewrite. Report each in Step 6.
-
-Apply `plan.json`, then re-run the command — `changes: 0` is the read-back:
-
-- `action: update` → `drive_update_file(fileId, localFilePath)`. It keeps a
-  plain file's own type (`text/markdown`, `text/yaml`) since ace#2215 — on an
-  MCP older than that fix, a `text/yaml` / `text/markdown` file comes back
-  `text/plain`.
-- `action: render` → `drive_create_doc_from_markdown(name, parentFolderId,
-  localFilePath)` (find-or-update in place). A styled Doc (headings, bullets,
-  tables) must never be written back as plain text — that flattens it. A
-  render drops the Doc's inline images, so every entry with
-  `reembed_screenshots: true` must have its screenshots re-embedded next:
-  `scripts/embed-doc-screenshots.ts <fileId> --screenshots <id>` once per
-  `plan.frames.preview_folders` entry, plus the folders
-  `app-screenshot-capture_manifest.yaml` names (`drive_folders.screenshots`).
-- `run_state` → `update_yaml_file(fileId, localFilePath, merge: "deep")`;
-  each changed phase key is sent whole, arrays included.
-
-**Frames are re-pointed too (ace#2697).** 4b re-runs Phase 4, and Phase 4
-re-captures `4-connect/previews/<slug>/` in the partner's holding org. A
-re-capture replaces the frames, so they get new ids. The guides still link and
-embed the earlier frames, which show the SOURCE org's header. On
-spark/spark-facilitator/20261004-1706 the LLO guide named the clone's
-opportunity, but both of its Connect frames read `ace-nm-org`. The script reads
-every Drive id a rewrite-class file cites, including a Doc's link targets and
-the images it embeds. Each id that is no longer a live file in the target run
-is paired with the live file at the same run path (`plan.frames.repointed`,
-`lib/clone-frame-repoint.ts`). The links are rewritten in the plan's files.
-Any Doc that embeds a stale frame becomes a `render` entry, so the re-embed
-step puts the target's frames in. This only works after 4b's capture, so run
-4e after 4b, as above.
-
-- `plan.frames.foreign` lists cited images with no live counterpart in the
-  target run. Cross-opp baselines under `ACE/_common/` are exempt. The script
-  exits **3** and the clone is NOT DONE until each one is re-captured in the
-  target, or its citation is removed by the producing skill.
-- **The read-back.** Re-run the script after applying the plan. It must show
-  `changes: 0` and an empty `frames.embedded_outside_run`. A Doc that still
-  embeds an image outside the target run with nothing left to apply also
-  exits 3.
-
-Never hand-edit a Doc's `text/plain` export and write it back: the export
-turns n newlines into 2n−1 CRLFs, so every round trip doubles the blank
-lines. The script reads Docs through `docTextFromExport`, which inverts it.
-Record `clone.asset_refs: {status: done, files, left_on_source,
-frames_repointed}`.
+Then the report's `products_check` must be empty (every rewritten product
+names the target tenancy), and `clone.completed_at` is set once every stage is
+final. On exit 3, read each `not_done` stage's `reason`: a setup item goes to
+the operator (quoted from the Step 0 checklist), a refused ambiguous create
+waits a few minutes and reruns, anything else is a defect to file.
 
 ## Step 5 — Validate the clone's release readiness (report, do not block)
 
@@ -643,13 +378,16 @@ fail the clone; its blockers go into the report below under "Before
 
 ## Step 6 — Report
 
-One line per system: `created` (with ids / URLs read back — `commcare_list_apps`
-on the new domain; not the call's own return value) and the HQ space's plan
-(`commcare_get_subscription`: edition), or `NOT DONE` + reason, plus the Drive-link read-back
-(source ids remaining in the target run_state: expected 0 outside comms-logs),
-plus 4e's rewrite (files changed, and every place left on the source on
-purpose — e.g. the Phase 8 solicitation), plus every manual setup item, plus Step 5's release-readiness verdict and its
-blockers. End with: "Nothing was shared with anyone. Next:
+From the script's JSON report (re-read the TARGET run_state's `clone:` block
+rather than trusting memory): one line per stage — `done` with the ids / URLs
+it read back (HQ apps + builds and the space's edition; Connect program,
+opportunity and holding org), `kept` / `kept-shared`, or `NOT DONE` + its
+`reason` (Labs reads `not-done: awaiting ace#3020` until that lands); the
+Drive-link read-back (`source_ids_remaining`, expected 0 outside comms-logs);
+§ 4e's rewrite (files changed, and every place left on the source on purpose —
+e.g. the Phase 8 solicitation); `products_check` (expected empty); the run's
+wall-clock `seconds`; every manual setup item (HQ mobile workers); the OCS
+`public_url`; and Step 5's release-readiness verdict and its blockers. End with: "Nothing was shared with anyone. Next:
 `/ace:validate-release-readiness <to>/<opp>/<run-id> --reviewers <email[:role]>,…`
 — it checks and fixes everything and, when READY, shows you exactly what will
 be shared and every email. Then `/ace:release <to>/<opp>/<run-id> --reviewers …`
