@@ -124,6 +124,7 @@ const SUSPECT_RE = /(DEFAULT_APK|APK_VERSION|apkVersion|apk_version)[\s\S]{0,60}
 export const VERSION_KEYED_ARTIFACT_DIRS: readonly string[] = [
   'mcp/mobile/selectors', // connect-<v>.yaml — the selector map
   'docs/mobile-atlas', // connect-<v>.md — the surface atlas
+  'templates/training-deck/_common/composites', // connect-<v>.yaml — composited pool frames (ace#3060)
 ];
 
 /** Roots the scan walks. `docs/` and `test/` are deliberately excluded. */

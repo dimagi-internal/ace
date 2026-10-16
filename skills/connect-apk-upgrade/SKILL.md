@@ -420,7 +420,9 @@ listed in the next paragraph.
 
 **Version-keyed artifact FAMILIES — an upgrade ADDS a member, never rewrites
 one:** `mcp/mobile/selectors/` (`connect-<v>.yaml`, each declaring its own
-`apk_version:`), `docs/mobile-atlas/` (`connect-<v>.md`), and the **Drive**
+`apk_version:`), `docs/mobile-atlas/` (`connect-<v>.md`),
+`templates/training-deck/_common/composites/` (`connect-<v>.yaml`, the composited
+pool frames' spec, § Step 7b), and the **Drive**
 common screenshot pool `ACE/_common/connect-screenshots/<v>/` (`manifest.yaml`
 + PNGs). Training decks and FLW guides resolve that pool by the pinned version,
 so a pin flip without a matching pool leaves every `ref: _common/platform-setup`
@@ -496,9 +498,12 @@ prose without saying so.
   completion screens, ace#873) stay as they are.
 - **Distinctness:** Step 5.5 of that skill (`classifyPoolDistinctness`) must pass
   before anything is published as `live`.
-- **Opp-agnostic frames:** `connect-home` and `claim-opp` show an opportunity
-  tile, so capture them against a generically named opp, or they leak one
-  program's name into every deck (the 2026-05-26 audit of the 2.63.0 pool).
+- **Opp-agnostic frames:** `connect-home` and `claim-opp` always show a real
+  program, so they are published **composited**: the new version's real capture
+  with only the opp strings replaced (`common-screenshot-capture` § Step 5.4).
+  Add `templates/training-deck/_common/composites/connect-<new>.yaml`. Its
+  coverage check refuses any string the new APK added until a rule accounts for
+  it.
 - If the device leg cannot run this session, say so in the verification
   checklist (row C6) and leave the upgrade's tracking issue open. Do not mark the
   upgrade done.

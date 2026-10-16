@@ -18,7 +18,8 @@
 //
 // What "usable" means
 // -------------------
-// Every alias in REQUIRED_LIVE_ALIASES is `source: live` with a Drive id, and no
+// Every alias in REQUIRED_LIVE_ALIASES is `source: live` (or `composited`, a
+// real same-version capture with opp-specific strings replaced) with a Drive id, and no
 // two of them share an id. Those seven aliases are the ones the live recipes can
 // produce. They are not the full 16-alias roster:
 //   - `sync-button` stays QUARANTINED: its recipe captures a byte-identical copy
@@ -93,8 +94,21 @@ export function parsePoolManifest(text: string): Record<string, PoolManifestEntr
   return out;
 }
 
+/**
+ * Usable on a deck: a real capture (`live`) or a composited illustration
+ * (`composited`, lib/screenshot-composite.ts): a real same-version capture with
+ * only opp-specific strings replaced. Both are this version's UI, and both are
+ * fine for illustration. Composited frames are refused in evidence manifests
+ * instead (`collectCaptureEntries`).
+ */
 function isLive(e: PoolManifestEntry | undefined): boolean {
-  return !!e && e.source === 'live' && e.placeholder !== true && typeof e.drive === 'string' && e.drive.length > 0;
+  return (
+    !!e &&
+    (e.source === 'live' || e.source === 'composited') &&
+    e.placeholder !== true &&
+    typeof e.drive === 'string' &&
+    e.drive.length > 0
+  );
 }
 
 export function classifyCommonPool(input: CommonPoolInput): CommonPoolVerdict {
