@@ -256,6 +256,16 @@ describe('visit sample scope is stated, never implied (ace#2973)', () => {
     expect(out.cascade_drill_levels_branch.detail).not.toContain('visit rows judged');
   });
 
+  it('no hint or contract asks for an impossible sample_size ≥ row_count_before_sample (ace#2742)', () => {
+    const out = checkReviewRouting([], ['f'], []);
+    expect(out.auto_fix_hint).not.toMatch(/sample_size\s*(≥|>=)\s*row_count_before_sample/);
+    expect(out.auto_fix_hint).toMatch(/200/);
+    expect(out.auto_fix_hint).toMatch(/user_visits\.json/);
+    const qa = readFileSync(join(__dirname, '../../skills/demo-data-setup-qa/SKILL.md'), 'utf8');
+    expect(qa).toMatch(/user_visits\.json/);
+    expect(qa).not.toMatch(/needs a labs-side preview path/);
+  });
+
   it('the skill contracts no longer demand sample_size ≥ row_count_before_sample', () => {
     for (const f of ['../../skills/demo-data-setup/SKILL.md', '../../skills/demo-data-setup-qa/SKILL.md']) {
       expect(readFileSync(join(__dirname, f), 'utf8')).not.toMatch(/`sample_size`\s*≥\s*`row_count_before_sample`/);

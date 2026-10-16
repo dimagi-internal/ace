@@ -1648,7 +1648,11 @@ cascade visits pipeline under its HOME opp, `sample_size: 200`. That is a sample
 not every partner (ace#2973): the cap is 200, and the default cascade's visits
 pipeline is home-scoped, so it does not resolve under another partner's opp and
 an `opportunity_ids` fan-out samples the home rows first. Pass the scope with
-`visitSampleScope(<responses>)`; checks 1 and 3 then say what they judged. Four
+`visitSampleScope(<responses>)`; checks 1 and 3 then say what they judged. To judge
+EVERY partner instead, build the full rows from each partner's generator fixture
+(`user_visits.json`) mapped through the visits pipeline's schema paths, and
+cross-check the mapping against the 200-row home preview (0 field mismatches)
+before trusting it — `demo-data-setup-qa` step 3 has the recipe (ace#2742). Four
 checks, each failing the build:
 1. **review routing** — every record raising a declared flag carries its
    `review_routing` route (`checkReviewRouting`); a raised flag with no route fails;

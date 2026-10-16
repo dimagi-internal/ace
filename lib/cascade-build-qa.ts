@@ -110,8 +110,10 @@ function matchesAllowed(v: unknown, allowed: Array<string | number | boolean>): 
 /**
  * Every visit row carrying a declared review flag follows the PDD's review route.
  *
- * @param rows the generated visit rows (`pipeline_preview` of the cascade's visits
- *   pipeline per partner opp — `sample_size` ≥ the row count, so none is sampled away)
+ * @param rows the generated visit rows — either the home-partner sample (`pipeline_preview`
+ *   of the cascade's visits pipeline under its HOME opp, `sample_size: 200`, the labs cap), or
+ *   every partner's full rows built from the generator's `user_visits.json` fixtures mapped
+ *   through the pipeline schema and cross-checked against that preview (ace#2742)
  * @param visitFlags the registry's `display.visit_flags[].column` — the flags a viewer sees
  * @param routes the plan's `review_routing`
  *
@@ -129,7 +131,7 @@ export function checkReviewRouting(
     return {
       pass: false,
       detail: 'no visit rows supplied — review routing was not judged',
-      auto_fix_hint: 'pass every partner\'s visit rows (pipeline_preview of the visits pipeline, sample_size ≥ row_count_before_sample)',
+      auto_fix_hint: 'pass the visit rows: pipeline_preview of the visits pipeline under its HOME opp at sample_size 200 (labs caps it there — a sample), or every partner\'s full rows from the generator\'s user_visits.json fixtures mapped through the pipeline schema and cross-checked against that preview (ace#2742)',
     };
   }
   const byFlag = new Map(routes.map((r) => [r.flag, r]));
