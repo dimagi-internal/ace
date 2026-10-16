@@ -346,21 +346,115 @@ installIdentityGate(server as never, createIdentityGate({ hint: DRIVE_REFUSAL_HI
 // folder. Must run before the first registration.
 installDriveTenancyGuard(server as never, googleDriveLookup(drive as never));
 
+/**
+ * Sheets / Docs / Slides / Forms read handlers, exported for unit testing
+ * with mocked clients. None of those APIs follows a Drive shortcut — handed a
+ * shortcut id they answer "Requested entity was not found", which reads as
+ * "the file is gone" — and every componentized input under
+ * `ACE/<opp>/inputs/` is a shortcut (`idea-to-pdd` routes Sheets and Forms
+ * inputs to exactly these atoms). So each read resolves the id through
+ * `resolveShortcutTarget` first, the way `drive_read_file` has since #106 and
+ * the comments pair has since ace#2375, and echoes which file it actually
+ * read. ace#2462. Write atoms deliberately do NOT resolve: following a
+ * shortcut on a mutation is a semantic decision, not a mechanical one.
+ */
+type ShortcutEcho = { requested_file_id: string; shortcut_resolved: boolean };
+type ResolveOpts = { sleep?: (ms: number) => Promise<void> };
+
+function shortcutEcho(r: { requestedFileId: string; wasShortcut: boolean }): ShortcutEcho {
+  return { requested_file_id: r.requestedFileId, shortcut_resolved: r.wasShortcut };
+}
+
+export async function handleSheetsListTabs(
+  args: { spreadsheetId: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({
+    spreadsheetId: resolved.fileId,
+    fields: 'sheets.properties',
+  });
+  const tabs = resp.data.sheets?.map(s => ({
+    sheetId: s.properties?.sheetId,
+    title: s.properties?.title,
+    rowCount: s.properties?.gridProperties?.rowCount,
+    columnCount: s.properties?.gridProperties?.columnCount,
+  }));
+  return { spreadsheet_id: resolved.fileId, ...shortcutEcho(resolved), tabs };
+}
+
+export async function handleSheetsRead(
+  args: { spreadsheetId: string; range: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.values.get({
+    spreadsheetId: resolved.fileId,
+    range: args.range,
+  });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    range: resp.data.range,
+    values: resp.data.values,
+  };
+}
+
+export async function handleSheetsInfo(
+  args: { spreadsheetId: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({ spreadsheetId: resolved.fileId });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    title: resp.data.properties?.title,
+    locale: resp.data.properties?.locale,
+    sheets: resp.data.sheets?.map(s => ({
+      title: s.properties?.title,
+      sheetId: s.properties?.sheetId,
+      rowCount: s.properties?.gridProperties?.rowCount,
+      columnCount: s.properties?.gridProperties?.columnCount,
+    })),
+  };
+}
+
+export async function handleSheetsBatchRead(
+  args: { spreadsheetId: string; ranges: string[] },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.values.batchGet({
+    spreadsheetId: resolved.fileId,
+    ranges: args.ranges,
+  });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    valueRanges: (resp.data.valueRanges ?? []).map(vr => ({ range: vr.range, values: vr.values })),
+  };
+}
+
+const SHORTCUT_READ_NOTE =
+  ' A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.';
+
 // 1. List sheets (tabs) in a spreadsheet
 server.tool(
   'sheets_list_tabs',
-  'List all sheet tabs in a Google Spreadsheet',
-  { spreadsheetId: z.string().describe('The spreadsheet ID from the URL') },
+  'List all sheet tabs in a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, tabs: [{sheetId, title, rowCount, columnCount}]}`.' + SHORTCUT_READ_NOTE,
+  { spreadsheetId: z.string().describe('The spreadsheet ID from the URL (a shortcut id is resolved to its target)') },
   async ({ spreadsheetId }) => {
     try {
-      const resp = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
-      const tabs = resp.data.sheets?.map(s => ({
-        sheetId: s.properties?.sheetId,
-        title: s.properties?.title,
-        rowCount: s.properties?.gridProperties?.rowCount,
-        columnCount: s.properties?.gridProperties?.columnCount,
-      }));
-      return result(tabs);
+      return result(await handleSheetsListTabs({ spreadsheetId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -370,15 +464,14 @@ server.tool(
 // 2. Read a range
 server.tool(
   'sheets_read',
-  'Read a range of cells from a Google Spreadsheet. Returns rows as arrays.',
+  'Read a range of cells from a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, values}` with rows as arrays.' + SHORTCUT_READ_NOTE,
   {
-    spreadsheetId: z.string().describe('The spreadsheet ID'),
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
     range: z.string().describe('A1 notation range, e.g. "Sheet1!A1:D10" or just "Sheet1"'),
   },
   async ({ spreadsheetId, range }) => {
     try {
-      const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-      return result({ range: resp.data.range, values: resp.data.values });
+      return result(await handleSheetsRead({ spreadsheetId, range }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -436,21 +529,11 @@ server.tool(
 // 5. Get spreadsheet metadata
 server.tool(
   'sheets_info',
-  'Get metadata about a Google Spreadsheet (title, locale, sheets)',
-  { spreadsheetId: z.string().describe('The spreadsheet ID') },
+  'Get metadata about a Google Spreadsheet (title, locale, sheets).' + SHORTCUT_READ_NOTE,
+  { spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)') },
   async ({ spreadsheetId }) => {
     try {
-      const resp = await sheets.spreadsheets.get({ spreadsheetId });
-      return result({
-        title: resp.data.properties?.title,
-        locale: resp.data.properties?.locale,
-        sheets: resp.data.sheets?.map(s => ({
-          title: s.properties?.title,
-          sheetId: s.properties?.sheetId,
-          rowCount: s.properties?.gridProperties?.rowCount,
-          columnCount: s.properties?.gridProperties?.columnCount,
-        })),
-      });
+      return result(await handleSheetsInfo({ spreadsheetId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -460,19 +543,14 @@ server.tool(
 // 6. Batch read multiple ranges
 server.tool(
   'sheets_batch_read',
-  'Read multiple ranges from a spreadsheet in one call',
+  'Read multiple ranges from a spreadsheet in one call. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, valueRanges: [{range, values}]}`.' + SHORTCUT_READ_NOTE,
   {
-    spreadsheetId: z.string().describe('The spreadsheet ID'),
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
     ranges: z.array(z.string()).describe('Array of A1 notation ranges'),
   },
   async ({ spreadsheetId, ranges }) => {
     try {
-      const resp = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges });
-      const results = resp.data.valueRanges?.map(vr => ({
-        range: vr.range,
-        values: vr.values,
-      }));
-      return result(results);
+      return result(await handleSheetsBatchRead({ spreadsheetId, ranges }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3028,44 +3106,55 @@ server.tool(
 // ============================================================================
 
 // 16. Get full document structure
+export async function handleDocsGet(
+  args: { documentId: string; tabId?: string },
+  docsClient: typeof docs = docs,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+): Promise<Record<string, unknown>> {
+  const { tabId } = args;
+  const resolved = await resolveShortcutTarget(args.documentId, driveClient, opts);
+  // `includeTabsContent: true` is required for the Docs API to populate
+  // `resp.data.tabs`. Without it the API returns the document body (first
+  // tab only) for backward-compat and `tabs` is undefined — which made
+  // every multi-tab read here silently return the wrong tab's content
+  // while ignoring the `tabId` argument.
+  const resp = await docsClient.documents.get({
+    documentId: resolved.fileId,
+    includeTabsContent: true,
+  } as any);
+  if (tabId && resp.data.tabs) {
+    // Walk tabs depth-first so a child-tab id matches too.
+    const findTab = (tabs: any[]): any => {
+      for (const t of tabs || []) {
+        if (t.tabProperties?.tabId === tabId) return t;
+        const child = findTab(t.childTabs || []);
+        if (child) return child;
+      }
+      return null;
+    };
+    const tab = findTab(resp.data.tabs);
+    if (!tab) {
+      const ids = (resp.data.tabs || [])
+        .map((t: any) => t.tabProperties?.tabId)
+        .join(', ');
+      throw new Error(`Tab "${tabId}" not found. Available tabs: ${ids}`);
+    }
+    return { title: resp.data.title, documentId: resp.data.documentId, ...shortcutEcho(resolved), tab };
+  }
+  return { ...(resp.data as Record<string, unknown>), ...shortcutEcho(resolved) };
+}
+
 server.tool(
   'docs_get',
-  'Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.',
+  'Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.' + SHORTCUT_READ_NOTE + ' Edit with the returned `documentId` (the target), not the shortcut id — `docs_batch_update` does not resolve shortcuts.',
   {
-    documentId: z.string().describe('The Google Doc ID from the URL'),
+    documentId: z.string().describe('The Google Doc ID from the URL (a shortcut id is resolved to its target)'),
     tabId: z.string().optional().describe('Specific tab ID (omit for first tab)'),
   },
   async ({ documentId, tabId }) => {
     try {
-      // `includeTabsContent: true` is required for the Docs API to populate
-      // `resp.data.tabs`. Without it the API returns the document body (first
-      // tab only) for backward-compat and `tabs` is undefined — which made
-      // every multi-tab read here silently return the wrong tab's content
-      // while ignoring the `tabId` argument.
-      const resp = await docs.documents.get({
-        documentId,
-        includeTabsContent: true,
-      } as any);
-      if (tabId && resp.data.tabs) {
-        // Walk tabs depth-first so a child-tab id matches too.
-        const findTab = (tabs: any[]): any => {
-          for (const t of tabs || []) {
-            if (t.tabProperties?.tabId === tabId) return t;
-            const child = findTab(t.childTabs || []);
-            if (child) return child;
-          }
-          return null;
-        };
-        const tab = findTab(resp.data.tabs);
-        if (!tab) {
-          const ids = (resp.data.tabs || [])
-            .map((t: any) => t.tabProperties?.tabId)
-            .join(', ');
-          return error(`Tab "${tabId}" not found. Available tabs: ${ids}`);
-        }
-        return result({ title: resp.data.title, documentId: resp.data.documentId, tab });
-      }
-      return result(resp.data);
+      return result(await handleDocsGet({ documentId, tabId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3518,16 +3607,26 @@ server.tool(
 // (`assertParentOnSharedDrive`) the docs atoms use.
 
 // 19. Get full slides structure
+export async function handleSlidesGet(
+  args: { presentationId: string },
+  slidesClient: typeof slides = slides,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.presentationId, driveClient, opts);
+  const resp = await slidesClient.presentations.get({ presentationId: resolved.fileId });
+  return { ...(resp.data as Record<string, unknown>), ...shortcutEcho(resolved) };
+}
+
 server.tool(
   'slides_get',
-  'Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.',
+  'Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.' + SHORTCUT_READ_NOTE + ' Edit with the returned `presentationId` (the target) — `slides_batch_update` does not resolve shortcuts.',
   {
-    presentationId: z.string().describe('The Google Slides presentation ID from the URL'),
+    presentationId: z.string().describe('The Google Slides presentation ID from the URL (a shortcut id is resolved to its target)'),
   },
   async ({ presentationId }) => {
     try {
-      const resp = await slides.presentations.get({ presentationId });
-      return result(resp.data);
+      return result(await handleSlidesGet({ presentationId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3942,6 +4041,8 @@ export interface FormQuestion {
 
 export interface FormDefinition {
   form_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
   title: string;
   description?: string;
   items: FormQuestion[];
@@ -3983,8 +4084,12 @@ function extractFormOptions(q: any): string[] | undefined {
 export async function handleGetGoogleFormDefinition(
   args: { formId: string },
   formsClient: typeof forms,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
 ): Promise<FormDefinition> {
-  const { formId } = args;
+  // The Forms API does not follow Drive shortcuts either (ace#2462).
+  const resolved = await resolveShortcutTarget(args.formId, driveClient, opts);
+  const formId = resolved.fileId;
   const resp = await formsClient.forms.get({ formId });
   const form: any = resp.data ?? {};
   const info: any = form.info ?? {};
@@ -4003,6 +4108,7 @@ export async function handleGetGoogleFormDefinition(
   }
   return {
     form_id: formId,
+    ...shortcutEcho(resolved),
     title: info.title ?? '',
     description: info.description ?? undefined,
     items,
@@ -4011,11 +4117,11 @@ export async function handleGetGoogleFormDefinition(
 
 server.tool(
   'get_google_form_definition',
-  'Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.',
+  'Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.' + SHORTCUT_READ_NOTE,
   {
     formId: z
       .string()
-      .describe('The Google Forms form ID (from the form URL or generate_inputs_manifest output).'),
+      .describe('The Google Forms form ID (from the form URL or generate_inputs_manifest output). A shortcut id is resolved to its target.'),
   },
   async ({ formId }) => {
     try {

@@ -16,19 +16,19 @@ Source: `mcp/google-drive-server.ts` — 49 atoms
 
 ### `sheets_list_tabs`
 
-List all sheet tabs in a Google Spreadsheet
+List all sheet tabs in a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, tabs: [{sheetId, title, rowCount, columnCount}]}`. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID from the URL |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID from the URL (a shortcut id is resolved to its target) |
 
 ### `sheets_read`
 
-Read a range of cells from a Google Spreadsheet. Returns rows as arrays.
+Read a range of cells from a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, values}` with rows as arrays. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 | `range` | `z.string` | **required** | A1 notation range, e.g. "Sheet1!A1:D10" or just "Sheet1" |
 
 ### `sheets_write`
@@ -53,19 +53,19 @@ Append rows to the end of a sheet
 
 ### `sheets_info`
 
-Get metadata about a Google Spreadsheet (title, locale, sheets)
+Get metadata about a Google Spreadsheet (title, locale, sheets). A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 
 ### `sheets_batch_read`
 
-Read multiple ranges from a spreadsheet in one call
+Read multiple ranges from a spreadsheet in one call. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, valueRanges: [{range, values}]}`. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 | `ranges` | `z.array` | **required** | Array of A1 notation ranges |
 
 ### `sheets_create_tab`
@@ -296,11 +296,11 @@ Test Drive API access - checks scopes, lists recent files the SA can see, and te
 
 ### `docs_get`
 
-Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.
+Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`. Edit with the returned `documentId` (the target), not the shortcut id — `docs_batch_update` does not resolve shortcuts.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `documentId` | `z.string` | **required** | The Google Doc ID from the URL |
+| `documentId` | `z.string` | **required** | The Google Doc ID from the URL (a shortcut id is resolved to its target) |
 | `tabId` | `z.string` | optional | Specific tab ID (omit for first tab) |
 
 ### `docs_batch_update`
@@ -358,11 +358,11 @@ Finalize a template-rendered Google Doc by converting literal `**markdown bold**
 
 ### `slides_get`
 
-Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.
+Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`. Edit with the returned `presentationId` (the target) — `slides_batch_update` does not resolve shortcuts.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `presentationId` | `z.string` | **required** | The Google Slides presentation ID from the URL |
+| `presentationId` | `z.string` | **required** | The Google Slides presentation ID from the URL (a shortcut id is resolved to its target) |
 
 ### `slides_batch_update`
 
@@ -412,11 +412,11 @@ Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive f
 
 ### `get_google_form_definition`
 
-Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.
+Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). |
+| `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). A shortcut id is resolved to its target. |
 
 ### `validate_run_state`
 
