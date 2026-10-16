@@ -48,6 +48,44 @@ sibling, `skills/_eval-template.md` for shared contracts, and
 
 ## Process
 
+**Four of the six dimensions are graded in CODE; you grade only the two that
+need judgment (2026-10-16).** `verification_flag_fidelity`,
+`payment_unit_fit`, `deliver_unit_wiring` and `active_window_status` are
+diffs of the PDD's `## Program Parameters` and the run's own records against
+Connect's API state, so `lib/connect-opp-config-check.ts` computes them.
+`deployability` and `archetype_config_coherence` (which also owns "did every
+PDD Layer A predicate find a home — a `form_field_rules` row, the CCZ, or a
+named `[PLATFORM]` gap") stay yours. The table below remains the spec for all
+six; do not re-grade the four fact dimensions by hand.
+
+1. Gather, save locally: the PDD markdown export, `run_state.yaml`, and one
+   JSON file `{archetype, opportunity, paymentUnits, createdPaymentUnits,
+   deliverUnits, testUserInvite, payableDeliverSlugs, expectedHqDeliverAppId}` —
+   `connect_get_opportunity`, `connect_list_payment_units` and
+   `connect_list_deliver_units` at the PM org, `connect_list_flw_invites` for
+   the ACE test phone, the `connect_create_payment_units` response if the
+   opp-setup artifacts recorded it (the list read cannot see amounts, caps or
+   DU wiring — ace#1026), and the payable slugs from
+   `3-commcare/app-connect-coverage_deliver.md`. A failed read is `null`.
+2. Run the fact half and read its findings:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/fact-check-eval.ts" connect-opp \
+     --input <live.json> --pdd <pdd.md> --run-state <run_state.yaml> --target <opp>/<run-id>
+   ```
+3. Grade ONLY `deployability` and `archetype_config_coherence` per the table
+   below; write `{deployability: {score, note}, archetype_config_coherence:
+   {score, note}}` to a residue JSON (a note is required — say why).
+4. Re-run with `--residue <residue.json> --out <local verdict.yaml>` and
+   `drive_create_file` the result to
+   `4-connect/connect-opp-setup-eval_verdict.yaml`. The script applies every
+   deduction rule, the deployability hard-gate and the tiers; the verdict
+   records `method: deterministic+judgment-residue`.
+
+The numbered steps below are the spec the code (steps 2, 4–7) and your
+judgment (deployability, coherence) implement.
+
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
    Additional sources read on demand:
    - Connect opp summary: `runs/<run-id>/4-connect/connect-opp-setup_summary.md`
@@ -236,5 +274,6 @@ treated as offline-unsafe under `--dry-run`).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **The four fact dimensions are graded in code (`lib/connect-opp-config-check.ts`, `scripts/fact-check-eval.ts connect-opp`); the LLM grades only `deployability` + `archetype_config_coherence`.** Verification fidelity is now what Connect can actually hold — decided `form_field_rules` vs `form_field_rules_saved`, JSONPath not XPath (ace#1301), string predicate (ace#2296), live DU id — because `gps`/`duplicate`/`gps_radius_meters` have no Connect form input and are refused (ace#1013); a PDD rule needing them is a coherence question, not a fidelity miss. Payment-unit fit diffs the create response against `payment_rate_*`, `daily_cap_per_flw`, `total_cap_per_flw`, `opportunity_currency`, with the longitudinal one-PU shape (ace#2294); activation uses `checkOppPostcondition` (invite-row proof, ace#617). Evidence: an Opus judge re-reading these payloads to grade comparisons (ACE run-efficiency audit, 2026-10-16). | ACE team |
 | 2026-05-09 | Initial version. 5 dimensions: verification_flag_fidelity (0.25), payment_unit_fit (0.20), deliver_unit_wiring (0.20), active_window_status (0.20), archetype_config_coherence (0.15). Sibling of `connect-program-setup-eval`; together they cover Phase 4. Inflation guard at 8.5; same severity tier set ([BLOCKER]/[WARN]/[DRIFT]/[PLATFORM]/[INFO]/[INFO-SKIPPED]). Explicit `incomplete` verdict for degraded-mode artifacts. Live-state-drift check via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`. Ships at provisional calibration until a non-degraded run produces ground truth. Closes the "not yet migrated" registry row for `connect-opp-setup`. | ACE team |
 | 2026-05-29 | Add out-of-chain fitness dimension per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. New `deployability` (0.22) grades payment-rate affordability against a *real regional day-rate benchmark* (not a PDD-declared one) and verification-threshold runtime-survivability for real FLWs — with a hard-gate (≤3 → suite `fail`) so a faithful-but-undeployable opp can't clear `pass`. Conformance dims reweighted down: verification_flag_fidelity 0.25→0.20, payment_unit_fit 0.20→0.16, deliver_unit_wiring 0.20→0.16, active_window_status 0.20→0.16, archetype_config_coherence 0.15→0.10. Weights sum to 1.00. The old `[INFO-SKIPPED]` "never deduct" payment-rate sanity sub-check (which conferred no deduction power) is retired — affordability now has teeth inside `deployability`. | ACE team |

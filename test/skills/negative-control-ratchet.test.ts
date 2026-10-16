@@ -158,6 +158,27 @@ const LEDGER: Record<string, LedgerEntry> = {
       'passing case as a negative control. Hand-verified: three `expect(r.fresh).toBe(false)` ' +
       'controls. Pay down by renaming `fresh` -> `ok`.',
   },
+  // The deterministic fact-check evals (2026-10-16) return the canonical EVAL
+  // verdict (`lib/verdict-schema.ts` `Verdict`) — the uniform shape opp-eval
+  // aggregates, with `verdict: pass|warn|fail|partial|incomplete` and
+  // `checks[]` carrying checked/unable. Re-wrapping it in CheckOutcome would
+  // break every verdict reader. Negative controls: test/lib/fact-check-evals.test.ts.
+  'lib/app-release-check.ts::checkAppRelease': {
+    reason: ['bespoke-verdict'],
+    note: 'Returns the eval `Verdict` (verdict-schema). Negative controls: unreleased app, zero-unit Deliver CCZ → `fail`; missing summary → `incomplete`.',
+  },
+  'lib/connect-opp-config-check.ts::checkConnectOppSetup': {
+    reason: ['bespoke-verdict'],
+    note: 'Returns the eval `Verdict`. Negative controls: empty required_deliver_units, deployability ≤ 3 → `fail`; TBD-MANUAL → `incomplete`.',
+  },
+  'lib/connect-opp-config-check.ts::checkOppConfigFacts': {
+    reason: ['bespoke-verdict'],
+    note: 'Returns the fact half of that Verdict (scored dimensions + auto_surfaced + checks[]) for the skill to read before grading the residue. Negative controls: XPath rule, is_test false, wrong HQ app → dimension ≤ 3.',
+  },
+  'lib/ocs-widget-handoff-check.ts::checkWidgetHandoff': {
+    reason: ['bespoke-verdict'],
+    note: 'Returns the eval `Verdict`. Negative controls: credential leak, phantom paste-in, missing opportunity → `fail`.',
+  },
 };
 
 /**
