@@ -1,0 +1,8 @@
+{
+  "source": "labs workflow_run_context(run_id 5487 / 5488, opportunity_id 10057) — spark-facilitator/20260907-1120, read 2026-10-16; the `run` block of each response verbatim. manifest_timeline_start_date is the run's manifest pin as quoted in ace#2246.",
+  "manifest_timeline_start_date": "2026-06-01",
+  "runs": [
+    { "id": 5487, "name": "", "status": "completed", "period_start": "2026-06-01", "period_end": "2026-09-01", "completed_at": "2026-09-08T12:57:29.579905+00:00" },
+    { "id": 5488, "name": "", "status": "in_progress", "period_start": "2026-06-01", "period_end": "2026-09-01", "completed_at": null }
+  ]
+}

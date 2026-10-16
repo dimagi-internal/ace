@@ -1056,3 +1056,65 @@ describe('checkDatasetObeysPddConstraints declared omissions (#2225)', () => {
     expect(r.detail).not.toMatch(/\[conditional-missing\] 2232 of 2742 — member_name/);
   });
 });
+
+/**
+ * ace#2246: check 4's second clause ("equals the par_url opportunity's env anchor") named no
+ * readable value, so gates judged half the check and reported a pass. It now reads each minted
+ * run's `instance.period_start` off the par_url payload. Verified live on spark-facilitator/
+ * 20260907-1120 (labs opp 10057): runs 5487 and 5488 both period_start=2026-06-01, the
+ * manifest's pinned Monday.
+ */
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { checkTimelinePinned } from '../../../skills/demo-data-setup-qa/checks';
+
+describe('checkTimelinePinned (ace#2246)', () => {
+  // Captured live: both runs' windows exactly as labs returns them.
+  const CAPTURED = JSON.parse(
+    readFileSync(join(__dirname, '../../fixtures/timeline-pinned/spark-facilitator-20260907-1120-runs.json'), 'utf8'),
+  ) as { manifest_timeline_start_date: string; runs: Array<{ id: number; period_start?: string; [k: string]: unknown }> };
+  const PIN = CAPTURED.manifest_timeline_start_date;
+  const payloads = (runs = CAPTURED.runs) => runs.map((r) => ({ key: `run ${r.id}`, payload: { instance: { ...r } } }));
+  const withStart = (id: number, period_start: string | undefined) =>
+    payloads(CAPTURED.runs.map((r) => (r.id === id ? { ...r, period_start } : r)));
+
+  it('passes the pinned Monday that both minted runs carry', () => {
+    const r = checkTimelinePinned(PIN, payloads());
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/equals period_start on 2 minted run\(s\)/);
+  });
+
+  it('CONTROL: a run minted on a different window fails, naming it', () => {
+    const r = checkTimelinePinned(PIN, withStart(5488, '2026-06-08'));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/run 5488 period_start=2026-06-08/);
+  });
+
+  it('CONTROL: no payload is anchor-not-judged and fails, never a pass', () => {
+    for (const p of [[], payloads(CAPTURED.runs.map((r) => ({ ...r, period_start: undefined })))]) {
+      const r = checkTimelinePinned(PIN, p);
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(/anchor-not-judged/);
+    }
+  });
+
+  it('a payload without period_start is listed as not judged beside one that is', () => {
+    const r = checkTimelinePinned(PIN, withStart(5488, undefined));
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not judged \(no period_start\): run 5488/);
+  });
+
+  it('CONTROL: a non-Monday or a relative expression fails the first clause', () => {
+    expect(checkTimelinePinned('2026-06-02', payloads()).detail).toMatch(/is a Tuesday/);
+    expect(checkTimelinePinned('today - 12 weeks', payloads()).pass).toBe(false);
+    expect(checkTimelinePinned('2026-02-30', payloads()).pass).toBe(false);
+  });
+
+  it('the SKILL row names the readable anchor, not the env anchor', () => {
+    const skill = readFileSync(join(__dirname, '../../../skills/demo-data-setup-qa/SKILL.md'), 'utf8');
+    const row = skill.split('\n').find((l) => l.startsWith('| 4 | `timeline_pinned`'))!;
+    expect(row).toMatch(/instance\.period_start/);
+    expect(row).toMatch(/anchor-not-judged/);
+    expect(row).not.toMatch(/equals the `par_url` opportunity's env anchor \|/);
+  });
+});

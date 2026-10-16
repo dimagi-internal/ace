@@ -853,6 +853,79 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
   };
 }
 
+// ── #2246: check 4's anchor clause names a value the gate can read ──
+
+/**
+ * Check 4 (`timeline_pinned`) as a pure function (ace#2246).
+ *
+ * Two clauses: the manifest `timeline.start_date` is a fixed ISO Monday (a
+ * relative or sliding expression breaks idempotency), and it equals every
+ * minted run's `instance.period_start` — the `par_url` payloads check 7
+ * already fetched. The second clause used to read "equals the `par_url`
+ * opportunity's env anchor", which names no atom: `synthetic_env_get` is keyed
+ * by an ENV TEMPLATE, not an opportunity, so a gate could evaluate only the
+ * first clause and still report a full pass.
+ *
+ * A clause that cannot be judged is named (`anchor-not-judged`) and FAILS the
+ * check, because an applicable check that was not evaluated is a failure,
+ * never a skip. A payload whose run declares no `period_start` is listed as
+ * not judged; if no payload declares one, the clause was not judged.
+ */
+export function checkTimelinePinned(
+  startDate: unknown,
+  payloads: Array<{ key: string; payload: WorkflowPayload | null | undefined }>,
+): QACheckResult {
+  const raw = typeof startDate === 'string' ? startDate.trim() : '';
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00Z`) : null;
+  if (!iso || Number.isNaN(iso.getTime()) || iso.toISOString().slice(0, 10) !== raw) {
+    return {
+      pass: false,
+      detail: `timeline.start_date ${JSON.stringify(startDate ?? null)} is not a fixed ISO date (YYYY-MM-DD)`,
+      auto_fix_hint: 'set --pin-monday to a fixed Monday; a relative or sliding window breaks idempotency',
+    };
+  }
+  if (iso.getUTCDay() !== 1) {
+    const day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][iso.getUTCDay()];
+    return {
+      pass: false,
+      detail: `timeline.start_date ${raw} is a ${day}, not a Monday`,
+      auto_fix_hint: 'set --pin-monday to a fixed Monday; a relative or sliding window breaks idempotency',
+    };
+  }
+  const judged = payloads.filter((p) => typeof p.payload?.instance?.period_start === 'string' && p.payload.instance.period_start.trim());
+  const unjudged = payloads.filter((p) => !judged.includes(p)).map((p) => p.key);
+  if (judged.length === 0) {
+    return {
+      pass: false,
+      detail:
+        `timeline.start_date ${raw} is a fixed Monday; anchor-not-judged: ` +
+        (payloads.length
+          ? `no par_url payload declares instance.period_start (${unjudged.join(', ')})`
+          : 'no par_url payload was supplied'),
+      auto_fix_hint:
+        'pass the par_url payloads check 7 fetched (#workflow-data); the anchor is each minted run\'s instance.period_start',
+    };
+  }
+  const off = judged.filter((p) => String(p.payload!.instance!.period_start).trim().slice(0, 10) !== raw);
+  const notJudgedTxt = unjudged.length ? `; not judged (no period_start): ${unjudged.join(', ')}` : '';
+  if (off.length) {
+    return {
+      pass: false,
+      detail:
+        `timeline.start_date ${raw} disagrees with the minted run(s): ` +
+        off.map((p) => `${p.key} period_start=${p.payload!.instance!.period_start}`).join('; ') +
+        notJudgedTxt,
+      auto_fix_hint:
+        're-mint the run(s) with period_start = timeline.start_date, or correct the manifest pin; the dashboards ' +
+        'and the manifest must describe one window',
+    };
+  }
+  return {
+    pass: true,
+    detail: `timeline.start_date ${raw} is a fixed Monday and equals period_start on ${judged.length} minted run(s)${notJudgedTxt}`,
+  };
+}
+
 // ── #1683: two dashboards over ONE dataset must report the same total ──
 
 /**
