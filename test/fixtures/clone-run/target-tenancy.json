@@ -1,0 +1,11 @@
+{
+  "_source": "ace-web GET /api/w/noora-health/opps/noora-health/tenancy, read 2026-10-16 (verbatim)",
+  "slug": "noora-health",
+  "tenancy": {
+    "hq_domain": "connect-ace-noora-health",
+    "connect_pm_org": "noora-health-pm-test",
+    "connect_holding_org": "noora-health-nm-test"
+  },
+  "drive_root_folder_id": "1drFAAPS-EnC0Ip2340M9MUJXOFuXdJMZ",
+  "source": "opp"
+}

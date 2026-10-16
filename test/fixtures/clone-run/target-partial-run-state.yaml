@@ -1,0 +1,122 @@
+# Trimmed copy of the PARTIAL clone noora-health/noora-health/20261015-1129 run_state.yaml, read 2026-10-16:
+# HQ done; Connect rebuilt by the old agent-driven Phase 4 re-dispatch, but clone.connect still not-done.
+opportunity: noora-health
+run_id: 20261015-1129
+ace_web_summary_url: https://labs.connect.dimagi.com/ace/opps/noora-health/noora-health/runs/20261015-1129/summary
+clone:
+  from:
+    workspace: dimagi-team
+    opp: noora-health
+    run: 20261015-1129
+  drive_ids:
+    source_ids_remaining: 0
+  hq:
+    status: done
+    domain: connect-ace-noora-health
+    plan:
+      edition: Enterprise
+      is_paid_edition: true
+    api: enabled
+    learn_app_id: c86aa3fc820143cc8646084cf5c03796
+    deliver_app_id: b5f2dbbd038345ed8c3b2a60a125b2e3
+    learn_build_id: 48262aac94a74c42a3ecea8c06ff6f81
+    deliver_build_id: 95d30af3fae0483b80fe8843f3599f07
+    source:
+      domain: connect-ace-prod
+      learn_app_id: f8b8c340d7a1405e8e11645c71227a9d
+      learn_build_id: c74ae6da729f45c7bdbf4784065f1bcf
+      learn_version: 9
+      deliver_app_id: c4f71cdc67a0480890b1cb0940919380
+      deliver_build_id: ea89cb02a9174881bced1e64a7056cc0
+      deliver_version: 7
+    key:
+      ref: hq-key:ace-clone-connect-ace-noora-health
+      id: 17562
+      last4: aa4f
+  labs:
+    status: skipped
+    reason: Labs stays Dimagi-only
+  ocs:
+    status: kept
+    reason: public-link
+    public_url: https://www.openchatstudio.com/a/connect-ace/chatbots/15cfc336-3aa0-4815-847e-81ec536903d3/start/
+  connect:
+    status: not-done
+    reason: in progress
+phases:
+  commcare-setup:
+    status: done
+    products:
+      apps:
+        learn:
+          name: Newborn Care Classes Learn app
+          nova_app_id: 5442b0a4-8e05-418e-9be2-08fbd18106bf
+          nova_url: https://commcare.app/build/5442b0a4-8e05-418e-9be2-08fbd18106bf
+          hq_app_id: c86aa3fc820143cc8646084cf5c03796
+          hq_url: https://www.commcarehq.org/a/connect-ace-noora-health/apps/view/c86aa3fc820143cc8646084cf5c03796/
+          build_status: success
+          released_build_id: 48262aac94a74c42a3ecea8c06ff6f81
+          released_version: 1
+          domain: connect-ace-noora-health
+        deliver:
+          name: Newborn Care Classes Deliver app
+          nova_app_id: 7378db27-fc89-4751-adc0-1080b976c530
+          nova_url: https://commcare.app/build/7378db27-fc89-4751-adc0-1080b976c530
+          hq_app_id: b5f2dbbd038345ed8c3b2a60a125b2e3
+          hq_url: https://www.commcarehq.org/a/connect-ace-noora-health/apps/view/b5f2dbbd038345ed8c3b2a60a125b2e3/
+          build_status: success
+          released_build_id: 95d30af3fae0483b80fe8843f3599f07
+          released_version: 1
+          domain: connect-ace-noora-health
+        domain: connect-ace-noora-health
+  connect-setup:
+    status: done
+    products:
+      connect:
+        domain: connect-ace-noora-health
+        organization_slug: noora-health-pm-test
+        pm_org_slug: noora-health-pm-test
+        holding_org_slug: noora-health-nm-test
+        org_mode: pm-nm
+        program:
+          id: b58121f3-9599-4949-ae3f-c951ce8241e4
+          url: https://connect.dimagi.com/a/noora-health-pm-test/program/b58121f3-9599-4949-ae3f-c951ce8241e4/
+        program_application_id: 10f5054d-988b-40b9-a61c-a4c7a35de9ee
+        opportunity:
+          id: 42121823-40a2-4ab1-95e4-ca209dba1be1
+          name: 20261015-1129 · Newborn Care Companion Classes
+          url: https://connect.dimagi.com/a/noora-health-nm-test/opportunity/42121823-40a2-4ab1-95e4-ca209dba1be1/
+          connect_int_id: 2352
+        payment_units:
+        - payment_unit_id: 0008d5f7-9ede-4fae-b30c-1f270093bb21
+          server_id: 2700
+          name: Verified caregiver class
+          amount: 5000
+          org_amount: 3000
+          max_total: 90
+          max_daily: 2
+          required_deliver_units:
+          - 7295
+        verification:
+          form_field_rules:
+          - name: payable_class=yes
+            question_path: form.payable_class
+            question_value: 'yes'
+            deliver_unit_id: 7295
+          form_field_rules_saved: 1
+          form_submission_start: 06:00:00
+          form_submission_end: '20:00:00'
+          deliver_unit_checks:
+          - deliver_unit_id: 7295
+            duration_minutes: 20
+        ace_test_user:
+          phone: '+74260000101'
+          invite_row_present: true
+          connect_user_id: null
+          status: pending
+          checked_at: '2026-10-16T05:48:40Z'
+        postcondition:
+          ok: true
+          checked_at: '2026-10-16T05:48:52Z'
+          failed: []
+          phase6_blockers: []

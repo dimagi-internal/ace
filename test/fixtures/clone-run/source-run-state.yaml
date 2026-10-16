@@ -1,0 +1,147 @@
+# Trimmed copy of dimagi-team/noora-health/20261015-1129 run_state.yaml
+# (Drive 17oz2Ph_SoW4kJ0GnFr5yh8MYUDiCk5L3wMBFYAcfASY), read 2026-10-16.
+# Only the blocks scripts/clone-run.ts reads are kept; values are verbatim.
+opportunity: noora-health
+run_id: 20261015-1129
+workspace: dimagi-team
+ace_web_summary_url: https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health/runs/20261015-1129/summary
+phases:
+  idea-to-design:
+    status: done
+    products:
+      pdd:
+        title: Newborn Care Companion Classes in Kano State, Nigeria
+        description: An illustrative design, built only from public information, for
+          running newborn care classes for families in Kano State, Nigeria through
+          Connect, modeled on Noora Health's Care Companion Program. Trained caregiver
+          educators run short group classes in hospital postnatal wards that teach
+          mothers, fathers and grandmothers breastfeeding, skin-to-skin care, cord
+          care and the newborn danger signs. Connect pays for each class an educator
+          records with at least three family caregivers present and the danger signs
+          covered.
+        program_parameters:
+          learn_passing_score: 80
+          assessment_items: 12
+          payment_rate_band:
+            currency: NGN
+            min: 4000
+            max: 6000
+            unit: verified caregiver education class
+          flw_payment_per_visit: 5000
+          llo_payment_per_visit: 3000
+          daily_cap: 2
+          total_cap: 90
+          campaign_target_visits: 1600
+          flw_count_min: 16
+          flw_count_max: 20
+          expected_reach_min: 4800
+          expected_reach_max: 16000
+          total_budget: 14400000
+          opportunity_start_date: '2027-01-11'
+          opportunity_end_date: '2027-05-02'
+          verification_flags:
+            form_field_rules:
+            - name: payable_class_yes
+              question_path: payable_class
+              question_value: 'yes'
+            duration_minutes: 20
+            form_submission_start: 06:00
+            form_submission_end: '20:00'
+          entity_id_grain: worker username + class record instance id (one payment
+            entity per class)
+          connect_delivery_type:
+            id: 9
+            name: Mother Baby Wellness
+          opportunity_country: NGA
+          opportunity_currency: NGN
+          working_language: hau
+          proposed_unapproved:
+          - payment_rate_band
+          - flw_payment_per_visit
+          - llo_payment_per_visit
+          - total_budget
+          - opportunity_start_date
+          - opportunity_end_date
+          llo_startup_payment: 1600000
+          total_commitment_ceiling: 16000000
+  commcare-setup:
+    status: done
+    products:
+      apps:
+        learn:
+          name: Newborn Care Classes Learn app
+          nova_app_id: 5442b0a4-8e05-418e-9be2-08fbd18106bf
+          nova_url: https://commcare.app/build/5442b0a4-8e05-418e-9be2-08fbd18106bf
+          hq_app_id: f8b8c340d7a1405e8e11645c71227a9d
+          hq_url: https://www.commcarehq.org/a/connect-ace-prod/apps/view/f8b8c340d7a1405e8e11645c71227a9d/
+          build_status: success
+          released_build_id: c74ae6da729f45c7bdbf4784065f1bcf
+          released_version: 9
+        deliver:
+          name: Newborn Care Classes Deliver app
+          nova_app_id: 7378db27-fc89-4751-adc0-1080b976c530
+          nova_url: https://commcare.app/build/7378db27-fc89-4751-adc0-1080b976c530
+          hq_app_id: c4f71cdc67a0480890b1cb0940919380
+          hq_url: https://www.commcarehq.org/a/connect-ace-prod/apps/view/c4f71cdc67a0480890b1cb0940919380/
+          build_status: success
+          released_build_id: ea89cb02a9174881bced1e64a7056cc0
+          released_version: 7
+  connect-setup:
+    status: done
+    products:
+      connect:
+        domain: connect-ace-prod
+        organization_slug: ace-pm-org
+        pm_org_slug: ace-pm-org
+        holding_org_slug: ace-nm-org
+        org_mode: pm-nm
+        program:
+          id: bbae9eee-32b8-406c-889b-541ddfd8da9c
+          url: https://connect.dimagi.com/a/ace-pm-org/program/bbae9eee-32b8-406c-889b-541ddfd8da9c/
+        program_application_id: 55b75246-c6c7-46ee-b0d3-0533eab41e46
+        opportunity:
+          id: 99b9bf42-602e-4ee0-819f-1bfe1530ba77
+          name: 20261015-1129 · Newborn Care Companion Classes
+          url: https://connect.dimagi.com/a/ace-nm-org/opportunity/99b9bf42-602e-4ee0-819f-1bfe1530ba77/
+          connect_int_id: 2349
+        verification:
+          form_field_rules:
+          - name: payable_class=yes
+            question_path: form.payable_class
+            question_value: 'yes'
+            deliver_unit_id: 7270
+          form_field_rules_saved: 1
+        payment_units:
+        - payment_unit_id: 3ff266b2-aed7-4314-ac7f-51997f7c2776
+          id: 2675
+          name: Verified caregiver class
+          amount: 5000
+          org_amount: 3000
+          max_total: 90
+          max_daily: 2
+          required_deliver_units:
+          - 7270
+        ace_test_user:
+          phone: '+74260000101'
+          invite_row_present: true
+          connect_user_id: null
+          status: pending
+          checked_at: '2026-10-15T19:20:50Z'
+        postcondition:
+          ok: true
+          checked_at: '2026-10-15T19:20:59Z'
+          failed: []
+          phase6_blockers: []
+  ocs-setup:
+    status: done
+    products:
+      ocs_chatbot:
+        experiment_id: 14288
+        team_slug: connect-ace
+        public_url: https://www.openchatstudio.com/a/connect-ace/chatbots/15cfc336-3aa0-4815-847e-81ec536903d3/start/
+  synthetic-data-and-workflows:
+    status: done
+    products:
+      synthetic:
+        provider: ace-run
+        labs_opp_id: 10137
