@@ -696,6 +696,14 @@ server.tool(
   };
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.on(sig, () => {
+      // Test-worker leases FIRST and synchronously: a parent that follows
+      // SIGTERM with SIGKILL during the async cleanup below would otherwise
+      // pin each held slot for idle_release_s (ace#3033).
+      try {
+        client?.workers?.releaseHeldSync(sig);
+      } catch {
+        /* best-effort — the exit hook and idle release cover the rest */
+      }
       void release().finally(() => process.exit(0));
     });
   }

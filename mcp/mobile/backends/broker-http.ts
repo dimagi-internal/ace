@@ -34,6 +34,11 @@ export interface BrokerHttpConfig {
   capability?: string;
   /** Called whenever the broker answered at all — every answered call resets its idle clock. */
   onAnswered?: () => void;
+  /**
+   * Extra request headers (e.g. the test-worker lock's `x-ace-lease-holder`,
+   * ace#3033). Never `authorization` — the token is set from `token`.
+   */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -50,7 +55,7 @@ export async function brokerRequest<T>(
   opts: { retry?: boolean; ambiguous?: string } = {},
 ): Promise<T> {
   const url = `${cfg.baseUrl}${routePathStr}`;
-      const headers = new Headers({ authorization: `Bearer ${cfg.token}`, accept: 'application/json' });
+      const headers = new Headers({ ...cfg.headers, authorization: `Bearer ${cfg.token}`, accept: 'application/json' });
       const init: RequestInit = { method, headers, signal: AbortSignal.timeout(cfg.requestTimeoutMs) };
       if (body !== undefined) {
         headers.set('content-type', 'application/json');
