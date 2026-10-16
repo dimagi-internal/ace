@@ -179,6 +179,54 @@ describe('summarizeOpportunitiesByProgram — connect-program-setup Step 4a', ()
     expect(s.sigma_known).toBe(false);
   });
 
+  describe('create-path narrowing (ace#2083)', () => {
+    // poverty-graduation/20260905-1345 Phase 4: a program created ~40 s
+    // earlier, 71 rows, 60 ok (none in it), 11 setup_incomplete — Σ was forced
+    // unknown and the ceiling raised 126,000 → 176,400 for a program whose
+    // consumption was provably 0.
+    const created = { listingComplete: true, programName: 'Poverty Graduation', programCreatedThisInvocation: true };
+    const orgRows = [
+      ...Array.from({ length: 60 }, (_v, i) => ({
+        id: `ok-${i}`, program_name: 'Other', total_budget: 1_000, dashboard_read: 'ok',
+      })),
+      ...Array.from({ length: 11 }, (_v, i) => ({ id: `si-${i}`, dashboard_read: 'setup_incomplete' })),
+    ];
+
+    it('rules the unreadable rows out when the program was just created and nothing names it', () => {
+      const s = summarizeOpportunitiesByProgram(orgRows, created);
+      expect(s.matched_rows).toBe(0);
+      expect(s.sigma_total_budget).toBe(0);
+      expect(s.sigma_known).toBe(true);
+      expect(s.sigma_unknown_reasons).toEqual([]);
+      expect(s.unreadable_rows_ruled_out).toBe(true);
+      // still reported, never hidden
+      expect(s.unreadable_rows).toBe(11);
+      expect(s.setup_incomplete_rows).toBe(11);
+    });
+
+    it('control: the same rows on the reuse path keep Σ unknown', () => {
+      const s = summarizeOpportunitiesByProgram(orgRows, { ...created, programCreatedThisInvocation: false });
+      expect(s.sigma_known).toBe(false);
+      expect(s.unreadable_rows_ruled_out).toBe(false);
+      const omitted = summarizeOpportunitiesByProgram(orgRows, { listingComplete: true, programName: 'Poverty Graduation' });
+      expect(omitted.sigma_known).toBe(false);
+    });
+
+    it('a readable row already naming the program contradicts the claim — Σ stays unknown, and says why', () => {
+      const rows = [...orgRows, { id: 'mine', program_name: 'Poverty Graduation', total_budget: 500, dashboard_read: 'ok' }];
+      const s = summarizeOpportunitiesByProgram(rows, created);
+      expect(s.matched_rows).toBe(1);
+      expect(s.sigma_known).toBe(false);
+      expect(s.unreadable_rows_ruled_out).toBe(false);
+      expect(s.sigma_unknown_reasons.join(' ')).toMatch(/program_created_this_invocation contradicted/);
+    });
+
+    it('does not override the other UNKNOWN conditions', () => {
+      expect(summarizeOpportunitiesByProgram(orgRows, { ...created, listingComplete: false }).sigma_known).toBe(false);
+      expect(summarizeOpportunitiesByProgram(orgRows, { ...created, duplicateProgramName: true }).sigma_known).toBe(false);
+    });
+  });
+
   it('treats a row with no dashboard_read at all as not_fetched, never as ok', () => {
     const s = summarizeOpportunitiesByProgram([{ id: '1', program_name: 'Bednet', total_budget: 5 }], base);
     expect(s.unreadable_rows).toBe(1);
