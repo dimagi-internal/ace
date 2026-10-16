@@ -1963,6 +1963,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     **HALT**, never a skip (ace#1648). A skip is a legitimate outcome only in
     the first case; a SILENT skip is never one.)
 
+    **No added options on a `[FIXED]` instrument (ace#2366).** A "Declined",
+    "Don't know" or "Refused" option on a `[FIXED]` instrument question is NOT
+    `[ACE]` latitude unless the instrument itself carries that option — it is an
+    added option on a verbatim-only tool, even when it scores 0. Record refusal
+    at the visit level (the PDD's non-payable outcomes), never as an extra
+    answer. `app-release-qa § Step 4.8` diffs the released form against the
+    instrument file and blocks on it.
+
 4l. **Entity state-taxonomy fidelity (ace#1564) — runs ACE-DIRECT.** When the
     followed entity carries states the app must NAME, those names are the
     partner's own process vocabulary and ACE only transcribes them. Step 3
