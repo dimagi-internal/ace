@@ -291,8 +291,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports twelve checks in stable order', () => {
-    expect(CHECKS).toHaveLength(12);
+  test('exports thirteen checks in stable order', () => {
+    expect(CHECKS).toHaveLength(13);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: a PDD missing its launch parameters cannot be
@@ -306,6 +306,7 @@ describe('CHECKS array', () => {
       'success_metrics_table_populated',
       'evidence_model_layered',
       'program_parameters_coherent',
+      'program_parameters_provenance',
       'payment_unit_matches_entity_grain',
       'entity_state_taxonomy_declared_for_longitudinal',
       'reviewer_comment_table_if_referenced',

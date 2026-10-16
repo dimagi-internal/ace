@@ -233,6 +233,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/idea-to-pdd-input-doc-comments.test.ts': { issues: ['ace#2372'] },
   'test/skills/idea-to-pdd-qa-longitudinal-taxonomy.test.ts': { issues: ['ace#1783', 'ace#1564'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/idea-to-pdd-qa/required-sections-producible.test.ts': { issues: ['ace#1770', 'ace#1286'], observed: 'bednet-check-2-visit/20260828-0629' },
+  'test/skills/idea-to-pdd-qa/program-parameters-provenance.test.ts': { issues: ['ace#2364'], observed: 'poverty-graduation/20260908-0510' },
   'test/skills/idea-to-pdd/decisions-fixture.test.ts': { issues: ['ace#144'] },
   'test/skills/in-app-control-existence-claims.test.ts': { issues: ['ace#2106', 'ace#1884', 'ace#1026'], observed: 'bednet-check-2-visit/20260902-1555' },
   'test/skills/inbox-triage-aging-reachable.test.ts': { issues: ['ace#818', 'ace#1931'] },
