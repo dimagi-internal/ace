@@ -115,8 +115,8 @@ describe('infra/capabilities/test-worker/capability.yaml', () => {
     ]);
   });
 
-  it('declares worker-1..4 — the four workers signed up in PersonalID (+74260000101..104)', () => {
-    expect(manifest.slots).toEqual(['worker-1', 'worker-2', 'worker-3', 'worker-4']);
+  it('declares worker-1..10 — the ten workers signed up in PersonalID (+74260000101..110)', () => {
+    expect(manifest.slots).toEqual(Array.from({ length: 10 }, (_, i) => `worker-${i + 1}`));
   });
 
   it('pool credentials are canopy-web slot data, not env: no ACE_E2E_WORKERS / connect-test-workers anywhere', () => {

@@ -179,10 +179,10 @@ TSX="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs"
    Connect home, then `mobile_release_test_workers({all: true})`. No restart is
    needed: the data arrives with each lease.
 
-**Seeding worker-1..4.** The manifest declares `worker-1`..`worker-4`
-(`+74260000101`..`104`, all signed up in PersonalID on 2026-10-15 with the legacy
-PIN and backup code). worker-1 is the legacy worker itself:
-`$TSX "$ACE_ROOT/scripts/test-worker-set.ts" --from-legacy-env`. worker-2..4: step 4
+**Seeding worker-1..10.** The manifest declares `worker-1`..`worker-10`
+(`+74260000101`..`110`, all signed up in PersonalID with the legacy PIN and backup
+code: 1-4 on 2026-10-15, 5-10 on 2026-10-16). worker-1 is the legacy worker itself:
+`$TSX "$ACE_ROOT/scripts/test-worker-set.ts" --from-legacy-env`. worker-2..10: step 4
 with `--secrets-from-legacy-env`. Until a slot has data, a checkout handed it fails
 `TEST_WORKER_NO_CREDENTIALS`, so seed every declared slot before the capability is
 granted.
@@ -223,3 +223,4 @@ granted.
 |------|--------|--------|
 | 2026-10-15 | Initial version: named pool + exclusive checkout via canopy-web `test-worker`, add/retire procedure (ace#2955) | ACE team |
 | 2026-10-15 | Credentials move to canopy-web per-slot data delivered with the lease; `test-worker-set.ts`; the env/1Password pool path is dropped; manifest declares worker-1..4 (ace#2955) | ACE team |
+| 2026-10-16 | Pool extended to 10 workers (worker-5..10 = +74260000105..110) on the owner's request | ACE team |
