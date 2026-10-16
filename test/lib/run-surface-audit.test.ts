@@ -32,6 +32,7 @@ import {
   auditWalkthroughParity,
   auditSyntheticLabelling,
   auditBuildStatusParity,
+  auditCarriedParity,
   auditDeepQaParity,
   auditConfidentiality,
   auditContract,
@@ -2192,5 +2193,62 @@ describe('visiblePhaseLabels — what the provenance probe looks for', () => {
   it('no decisions → no labels', () => {
     expect(visiblePhaseLabels({})).toEqual([]);
     expect(visiblePhaseLabels(null)).toEqual([]);
+  });
+});
+
+describe('auditCarriedParity — a carried blocker or residual must reach the page (ace#2346)', () => {
+  const residualRun = {
+    run_notes: {
+      carried_residuals_needing_a_human: [
+        'PAYMENT GATE UNPROVEN END-TO-END. Phase 6 Deliver leg never ran.',
+      ],
+    },
+  };
+  const blockerRun = {
+    blocker_dispositions: {
+      'deliver-eval-entity-state': { phase: 'commcare-setup', gate: 'entity_state_fidelity', disposition: 'carried' },
+    },
+  };
+
+  it('BLOCKS when run_state carries residuals and the page field is null or absent', () => {
+    for (const payload of [{ carried_residuals: null }, {}, { carried_residuals: [] }]) {
+      const f = auditCarriedParity(payload, residualRun);
+      expect(codes(f)).toEqual(['CARRIED-RESIDUAL-HIDDEN']);
+      expect(f.every(isBlocking)).toBe(true);
+    }
+  });
+
+  it('BLOCKS when a Phase 3 blocker disposition is carried and build.carried_blockers is missing', () => {
+    for (const payload of [{ build: null }, { build: { status: 'partial' } }, { build: { carried_blockers: [] } }]) {
+      const f = auditCarriedParity(payload, blockerRun);
+      expect(codes(f)).toEqual(['CARRIED-BLOCKER-HIDDEN']);
+      expect(f[0].detail).toContain('deliver-eval-entity-state');
+    }
+  });
+
+  it('is silent once the page carries both', () => {
+    const payload = {
+      carried_residuals: ['PAYMENT GATE UNPROVEN END-TO-END. Phase 6 Deliver leg never ran.'],
+      build: { carried_blockers: [{ id: 'deliver-eval-entity-state' }] },
+    };
+    expect(auditCarriedParity(payload, { ...residualRun, ...blockerRun })).toEqual([]);
+  });
+
+  it('says nothing about a clean run that carried nothing', () => {
+    const payload = { carried_residuals: null, build: null };
+    expect(auditCarriedParity(payload, {})).toEqual([]);
+    expect(auditCarriedParity(payload, { run_notes: { carried_residuals_needing_a_human: [] } })).toEqual([]);
+    expect(auditCarriedParity(payload, { run_notes: { carried_residuals_needing_a_human: ['  '] } })).toEqual([]);
+    expect(auditCarriedParity(payload, { blocker_dispositions: {} })).toEqual([]);
+  });
+
+  it('ignores blocker dispositions on phases the page has no field for', () => {
+    expect(auditCarriedParity({ build: null }, {
+      blocker_dispositions: { x: { phase: 'connect-setup' } },
+    })).toEqual([]);
+  });
+
+  it('runs inside auditCompleteness', () => {
+    expect(codes(auditCompleteness({ carried_residuals: null }, residualRun))).toContain('CARRIED-RESIDUAL-HIDDEN');
   });
 });

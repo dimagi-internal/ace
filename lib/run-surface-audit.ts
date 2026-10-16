@@ -253,9 +253,9 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
   stage: { kind: 'scalar', keys: ['label', 'pending_sections'] },
   // What the run itself says is still unproven and needs a human — a list of
   // STRINGS read from `run_notes.carried_residuals_needing_a_human`
-  // (ace-web#744 / #763). `null` when the run carried nothing. Registered so
-  // the section stops reading as unaudited; the check that a carried residual
-  // actually REACHES the page is ace#2346, still open.
+  // (ace-web#744 / #763). `null` when the run carried nothing. The check that
+  // a carried residual actually REACHES the page is `auditCarriedParity`
+  // (ace#2346).
   carried_residuals: { kind: 'list', keys: [] },
   feedback: {
     kind: 'list',
@@ -1504,6 +1504,77 @@ export function auditBuildStatusParity(payload: unknown, phases: unknown): Findi
   ];
 }
 
+/**
+ * Did the run CARRY something unfinished, and does the page SAY so? (ace#2346)
+ *
+ * ace-web publishes both halves (ace-web#744 / #763): run_state
+ * `blocker_dispositions` entries for Phase 3 reach the page as
+ * `build.carried_blockers`, and `run_notes.carried_residuals_needing_a_human`
+ * reaches it as `carried_residuals`. Making the data available did not make
+ * OMITTING it detectable, and the original incident was exactly an omission:
+ * `bednet-check-2-visit/20260828-0629` carried "PAYMENT GATE UNPROVEN
+ * END-TO-END" through phases 1-8 and its summary page rendered identically to
+ * a clean run.
+ *
+ * A presence comparison, never a text match. A run that carried nothing gets
+ * no finding: the negative case is the one that keeps this check trusted.
+ *
+ * Blockers are compared only for `phase: commcare-setup`, the one phase
+ * ace-web's `_read_build` publishes; a disposition on another phase has no
+ * page field to be absent from yet.
+ */
+export function auditCarriedParity(payload: unknown, runState: unknown): Finding[] {
+  const out: Finding[] = [];
+
+  const rawResiduals = getPath(runState, 'run_notes.carried_residuals_needing_a_human');
+  const residuals = Array.isArray(rawResiduals)
+    ? rawResiduals.filter((r) => typeof r === 'string' && r.trim() !== '')
+    : [];
+  const pageResiduals = getPath(payload, 'carried_residuals');
+  if (residuals.length > 0 && !(Array.isArray(pageResiduals) && pageResiduals.length > 0)) {
+    out.push({
+      code: 'CARRIED-RESIDUAL-HIDDEN',
+      severity: 'misleading',
+      where: 'carried_residuals',
+      detail:
+        `the run carried ${residuals.length} residual(s) it says still need a human ` +
+        '(`run_notes.carried_residuals_needing_a_human`), and the page carries no `carried_residuals`, ' +
+        'so a partial run reads as a finished one',
+      fix:
+        'surface `run_notes.carried_residuals_needing_a_human` through ace-web `_read_carried_residuals` ' +
+        '(and render it), then re-audit',
+      defect: '(ace#2346 / ace-web#744) a run carrying an unproven payment gate rendered like a clean run',
+      summary: 'The page leaves out problems the run itself says still need a person to look at.',
+      action: 'Get the carried residuals shown on the run page before sharing it.',
+    });
+  }
+
+  const dispositions = getPath(runState, 'blocker_dispositions');
+  const phase3Blockers = dispositions && typeof dispositions === 'object' && !Array.isArray(dispositions)
+    ? Object.entries(dispositions as Record<string, unknown>)
+        .filter(([, e]) => String(getPath(e, 'phase') ?? '').trim() === 'commcare-setup')
+        .map(([id]) => id)
+    : [];
+  const pageBlockers = getPath(payload, 'build.carried_blockers');
+  if (phase3Blockers.length > 0 && !(Array.isArray(pageBlockers) && pageBlockers.length > 0)) {
+    out.push({
+      code: 'CARRIED-BLOCKER-HIDDEN',
+      severity: 'misleading',
+      where: 'build.carried_blockers',
+      detail:
+        `the run waved through Phase 3 blocker(s) ${phase3Blockers.map((b) => `\`${b}\``).join(', ')} ` +
+        '(`blocker_dispositions`), and the page carries no `build.carried_blockers`, so the apps ' +
+        'render as if every gate had passed',
+      fix:
+        'surface `blocker_dispositions` through ace-web `_read_build` as `build.carried_blockers`, then re-audit',
+      defect: '(ace#2346 / ace-web#744) a carried blocker the page never admitted',
+      summary: 'The page leaves out app-build checks the run accepted as failing.',
+      action: 'Get the carried blockers shown on the run page before sharing it.',
+    });
+  }
+  return out;
+}
+
 /** `gaps` as the memo block carries it: the non-blank strings, trimmed. */
 function memoGaps(memo: unknown): string[] {
   const raw = getPath(memo, 'gaps');
@@ -1842,6 +1913,7 @@ export function auditCompleteness(payload: unknown, runState: unknown | null): F
   out.push(...auditWalkthroughParity(payload, phases));
   out.push(...auditSyntheticLabelling(payload, phases));
   out.push(...auditBuildStatusParity(payload, phases));
+  out.push(...auditCarriedParity(payload, runState));
   const onPage = new Set(
     collectUrls(payload, 'https://labs.connect.dimagi.com/ace/')
       .map((u) => canonicalDocUrl(u.url)),
