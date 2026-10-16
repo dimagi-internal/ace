@@ -44,6 +44,7 @@ export const DRIVE_WRITE_TARGETS: Record<string, readonly string[]> = {
   drive_trash_file: ['fileId'],
   drive_set_anyone_with_link: ['fileId'],
   drive_share_with_person: ['fileId'],
+  drive_revoke_access: ['fileId'],
   drive_transfer_ownership: ['fileId'],
   drive_reply_to_comment: ['fileId'],
   sheets_write: ['spreadsheetId'],

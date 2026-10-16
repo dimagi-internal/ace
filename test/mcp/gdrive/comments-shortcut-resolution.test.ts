@@ -2,8 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  handleDocsGet,
+  handleGetGoogleFormDefinition,
   handleListComments,
   handleReplyToComment,
+  handleSheetsBatchRead,
+  handleSheetsInfo,
+  handleSheetsListTabs,
+  handleSheetsRead,
+  handleSlidesGet,
   resolveShortcutTarget,
 } from '../../../mcp/google-drive-server.js';
 
@@ -269,5 +276,139 @@ describe('the class: every comment/reply call resolves shortcuts first', () => {
       const body = SRC.slice(start, SRC.indexOf('server.tool(', start + 1));
       expect(body.toLowerCase(), `${atom} does not mention shortcuts`).toContain('shortcut');
     }
+  });
+});
+
+/**
+ * ace#2462 — the same gap on the OTHER API clients. Sheets, Docs, Slides and
+ * Forms take a file id and hand it to an API that does not follow Drive
+ * shortcuts, and `idea-to-pdd` routes Sheets / Forms inputs (all shortcuts
+ * under `inputs/`) to exactly these atoms. Each read must resolve first.
+ */
+describe('read atoms on the Sheets/Docs/Slides/Forms clients resolve shortcuts (ace#2462)', () => {
+  const sheetsApi = {
+    spreadsheets: {
+      get: vi.fn(),
+      values: { get: vi.fn(), batchGet: vi.fn() },
+    },
+  };
+  const docsApi = { documents: { get: vi.fn() } };
+  const slidesApi = { presentations: { get: vi.fn() } };
+  const formsApi = { forms: { get: vi.fn() } };
+
+  beforeEach(() => {
+    sheetsApi.spreadsheets.get.mockReset().mockResolvedValue({
+      data: { properties: { title: 'T' }, sheets: [{ properties: { title: 'Tab1', sheetId: 0 } }] },
+    });
+    sheetsApi.spreadsheets.values.get.mockReset().mockResolvedValue({
+      data: { range: 'Tab1!A1:B2', values: [['a']] },
+    });
+    sheetsApi.spreadsheets.values.batchGet.mockReset().mockResolvedValue({
+      data: { valueRanges: [{ range: 'Tab1!A1', values: [['a']] }] },
+    });
+    docsApi.documents.get.mockReset().mockResolvedValue({
+      data: { documentId: 'target-1', title: 'Doc' },
+    });
+    slidesApi.presentations.get.mockReset().mockResolvedValue({
+      data: { presentationId: 'target-1', slides: [] },
+    });
+    formsApi.forms.get.mockReset().mockResolvedValue({ data: { info: { title: 'F' }, items: [] } });
+  });
+
+  const d = () => fakeDrive as any;
+  const cases: Array<[string, () => Promise<any>, () => string]> = [
+    [
+      'sheets_list_tabs',
+      () => handleSheetsListTabs({ spreadsheetId: 'sc-1' }, sheetsApi as any, d(), opts),
+      () => sheetsApi.spreadsheets.get.mock.calls[0][0].spreadsheetId,
+    ],
+    [
+      'sheets_read',
+      () => handleSheetsRead({ spreadsheetId: 'sc-1', range: 'Tab1' }, sheetsApi as any, d(), opts),
+      () => sheetsApi.spreadsheets.values.get.mock.calls[0][0].spreadsheetId,
+    ],
+    [
+      'sheets_info',
+      () => handleSheetsInfo({ spreadsheetId: 'sc-1' }, sheetsApi as any, d(), opts),
+      () => sheetsApi.spreadsheets.get.mock.calls[0][0].spreadsheetId,
+    ],
+    [
+      'sheets_batch_read',
+      () => handleSheetsBatchRead({ spreadsheetId: 'sc-1', ranges: ['Tab1!A1'] }, sheetsApi as any, d(), opts),
+      () => sheetsApi.spreadsheets.values.batchGet.mock.calls[0][0].spreadsheetId,
+    ],
+    [
+      'docs_get',
+      () => handleDocsGet({ documentId: 'sc-1' }, docsApi as any, d(), opts),
+      () => docsApi.documents.get.mock.calls[0][0].documentId,
+    ],
+    [
+      'slides_get',
+      () => handleSlidesGet({ presentationId: 'sc-1' }, slidesApi as any, d(), opts),
+      () => slidesApi.presentations.get.mock.calls[0][0].presentationId,
+    ],
+    [
+      'get_google_form_definition',
+      () => handleGetGoogleFormDefinition({ formId: 'sc-1' }, formsApi as any, d(), opts),
+      () => formsApi.forms.get.mock.calls[0][0].formId,
+    ],
+  ];
+
+  for (const [atom, call, calledWith] of cases) {
+    it(`${atom} reads the TARGET when handed a shortcut id, and echoes it`, async () => {
+      fakeDrive.files.get.mockResolvedValueOnce(metaShortcut('sc-1', 'target-1'));
+      const r = await call();
+      expect(calledWith()).toBe('target-1');
+      expect(r.requested_file_id).toBe('sc-1');
+      expect(r.shortcut_resolved).toBe(true);
+    });
+
+    it(`${atom} passes a plain id through`, async () => {
+      fakeDrive.files.get.mockResolvedValueOnce(metaDoc('sc-1'));
+      const r = await call();
+      expect(calledWith()).toBe('sc-1');
+      expect(r.shortcut_resolved).toBe(false);
+    });
+  }
+
+  it('sheets_read keeps range + values in the result', async () => {
+    fakeDrive.files.get.mockResolvedValueOnce(metaDoc('s'));
+    const r = await handleSheetsRead({ spreadsheetId: 's', range: 'Tab1' }, sheetsApi as any, d(), opts);
+    expect(r.range).toBe('Tab1!A1:B2');
+    expect(r.values).toEqual([['a']]);
+  });
+});
+
+describe('the class: every Sheets/Docs/Slides/Forms READ call resolves shortcuts first (ace#2462)', () => {
+  const SRC = readFileSync(
+    join(__dirname, '..', '..', '..', 'mcp', 'google-drive-server.ts'),
+    'utf8',
+  );
+  const chunks = SRC.split(/\n(?=(?:export )?(?:async )?function |server\.tool\()/);
+  // Read-only calls against the non-Drive clients, as made by the read ATOMS.
+  // Writes (batchUpdate, values.update/append, create) are deliberately
+  // excluded — following a shortcut on a mutation is a semantic decision
+  // (ace#2462 § Scope).
+  const READ_RE =
+    /\b(?:sheets|sheetsClient)\.spreadsheets\.(?:get|values\.get|values\.batchGet)\(|\b(?:docs|docsClient)\.documents\.get\(|\b(?:slides|slidesClient)\.presentations\.get\(|\bformsClient\.forms\.get\(/;
+
+  // A unit that also MUTATES (a write atom reading back before/after its edit,
+  // e.g. docs_finalize_bullets) is out of scope by the same decision.
+  const WRITE_RE = /\.(?:batchUpdate|update|append|create|copy)\(/;
+  const readers = chunks.filter((c) => READ_RE.test(c) && !WRITE_RE.test(c));
+
+  it('finds the read call sites at all (guards against a dead scan)', () => {
+    expect(readers.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('every read caller also calls resolveShortcutTarget', () => {
+    const offenders = readers
+      .filter((c) => !c.includes('resolveShortcutTarget('))
+      .map((c) => c.split('\n')[0].trim().slice(0, 90));
+    expect(
+      offenders,
+      'a Sheets/Docs/Slides/Forms read that does not resolve Drive shortcuts first — ' +
+        'a shortcut id answers "not found" (ace#2462)',
+    ).toEqual([]);
   });
 });

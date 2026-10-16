@@ -12,23 +12,23 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 49 atoms
+Source: `mcp/google-drive-server.ts` — 52 atoms
 
 ### `sheets_list_tabs`
 
-List all sheet tabs in a Google Spreadsheet
+List all sheet tabs in a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, tabs: [{sheetId, title, rowCount, columnCount}]}`. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID from the URL |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID from the URL (a shortcut id is resolved to its target) |
 
 ### `sheets_read`
 
-Read a range of cells from a Google Spreadsheet. Returns rows as arrays.
+Read a range of cells from a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, values}` with rows as arrays. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 | `range` | `z.string` | **required** | A1 notation range, e.g. "Sheet1!A1:D10" or just "Sheet1" |
 
 ### `sheets_write`
@@ -53,20 +53,29 @@ Append rows to the end of a sheet
 
 ### `sheets_info`
 
-Get metadata about a Google Spreadsheet (title, locale, sheets)
+Get metadata about a Google Spreadsheet (title, locale, sheets). A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 
 ### `sheets_batch_read`
 
-Read multiple ranges from a spreadsheet in one call
+Read multiple ranges from a spreadsheet in one call. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, valueRanges: [{range, values}]}`. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID |
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 | `ranges` | `z.array` | **required** | Array of A1 notation ranges |
+
+### `sheets_read_hyperlinks`
+
+Read the hyperlink TARGETS behind cells in a range — what `sheets_read` cannot see, since it returns only the displayed text. Use when a human-maintained sheet carries meaning in the link rather than the label (the Connect LLO Directory joins an org to its EOI on the link behind the text). Read-only. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, total, links: [{a1, displayText, url, kind}]}`; cells with no link are omitted. `kind` says where the link came from: `cell` (a whole-cell rich-text link), `run` (a link on PART of the cell's text — one entry per linked span, `displayText` is that span), or `formula` (`=HYPERLINK(...)`). All three are covered — `--render FORMULA` and the xlsx-export workaround each see only some of them, and a plain-looking cell can hide a rich-text link. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
+| `range` | `z.string` | **required** | A1 notation range, e.g. "'EOI/RFP'!J1:J50" or just a sheet name |
 
 ### `sheets_create_tab`
 
@@ -230,6 +239,26 @@ Share a Drive file with a NAMED person (`type: user`) at `role: writer` (default
 | `role` | `z.enum` | optional | Permission role. Default 'writer' — the co-creation grant, which lets the person edit the document. Use 'commenter' for read-and-react, 'reader' for view-only. |
 | `sendNotificationEmail` | `z.boolean` | optional | Whether Drive should email the grantee that the file was shared. **Defaults to false.** ACE never silently emails an external party as a side effect of a permission change — outbound email goes through bin/ace-email, which is hook-gated. Pass true ONLY when a human has explicitly approved a Drive-sent notification. |
 
+### `drive_list_permissions`
+
+List who can access a Drive file — every permission (`permissions.list`, all pages, Shared Drives included). Read-only. Returns `{file_id, requested_file_id, shortcut_resolved, anyone_with_link, total, permissions: [{id, type, role, email, domain, display_name, inherited, inherited_from}]}`. `anyone_with_link: true` means the file is exposed to anyone holding the URL. `inherited` permissions come from a parent folder or the Shared Drive's membership. Use it to answer "who can see this?", to check that a document is NOT exposed before it is referenced from something partner-facing, and to find the `id` that `drive_revoke_access` takes. A Drive shortcut id is resolved to its target (a shortcut's own permissions are not what anyone means by "who can see this doc").
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Drive file ID. A shortcut id is resolved to its target. |
+
+### `drive_revoke_access`
+
+Withdraw a Drive grant — the inverse of `drive_set_anyone_with_link` / `drive_share_with_person` (`permissions.delete`). Select the grant by `permissionId` (from `drive_list_permissions`), or by `type`: `anyone` removes the anyone-with-link grant, `user`/`group` + `email` removes that person's or group's access, `domain` + `domain` removes a domain grant. Returns `{file_id, removed, remaining, anyone_with_link}` after READING BACK the permissions — a grant still present after the delete is an error (`revoke_not_confirmed`), not a success. Rails (ace#1112 shape): the file must be on ACE's own Shared Drive; owner / organizer / fileOrganizer, ACE's own access, and inherited permissions (revoke those on the folder named in the refusal) are refused; a selector that matches no grant is a typed refusal (`no_matching_permission`) listing what IS present — nothing is changed. A shortcut id is refused (`shortcut_not_revocable`): pass the target's id, which `drive_list_permissions` returns as `file_id`. Revoking removes access immediately and does not notify anyone.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Drive file ID (not a shortcut). Must be on ACE's Shared Drive. |
+| `permissionId` | `z.string` | optional | The permission id to remove, from drive_list_permissions. Pass this OR `type`. |
+| `type` | `z.enum` | optional | Select the grant by kind instead of id. 'anyone' = the anyone-with-link grant; 'user'/'group' need `email`; 'domain' needs `domain`. |
+| `email` | `z.string` | optional | The grantee's email, for type 'user' or 'group'. Matched case-insensitively. |
+| `domain` | `z.string` | optional | The domain, for type 'domain'. |
+
 ### `drive_create_folder`
 
 Create a new folder in Google Drive, inside the given parent folder. By default, find-or-create: if a same-named folder already exists under the parent, that folder is returned instead of creating a duplicate (closes the duplicate-`verdicts/` class of bug from parallel skill writes). Pass findOrCreate:false to force a new sibling. The parent MUST be a folder on a Shared Drive — when the parent is in My Drive (or unset), the new folder lands in the SA's My Drive root and every subsequent file write into it fails with a "user storage quota exceeded" error. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).
@@ -296,11 +325,11 @@ Test Drive API access - checks scopes, lists recent files the SA can see, and te
 
 ### `docs_get`
 
-Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.
+Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`. Edit with the returned `documentId` (the target), not the shortcut id — `docs_batch_update` does not resolve shortcuts.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `documentId` | `z.string` | **required** | The Google Doc ID from the URL |
+| `documentId` | `z.string` | **required** | The Google Doc ID from the URL (a shortcut id is resolved to its target) |
 | `tabId` | `z.string` | optional | Specific tab ID (omit for first tab) |
 
 ### `docs_batch_update`
@@ -358,11 +387,11 @@ Finalize a template-rendered Google Doc by converting literal `**markdown bold**
 
 ### `slides_get`
 
-Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.
+Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`. Edit with the returned `presentationId` (the target) — `slides_batch_update` does not resolve shortcuts.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `presentationId` | `z.string` | **required** | The Google Slides presentation ID from the URL |
+| `presentationId` | `z.string` | **required** | The Google Slides presentation ID from the URL (a shortcut id is resolved to its target) |
 
 ### `slides_batch_update`
 
@@ -412,11 +441,11 @@ Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive f
 
 ### `get_google_form_definition`
 
-Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.
+Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). |
+| `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). A shortcut id is resolved to its target. |
 
 ### `validate_run_state`
 

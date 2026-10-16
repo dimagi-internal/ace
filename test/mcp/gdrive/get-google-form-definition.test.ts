@@ -22,6 +22,13 @@ function fakeForms(formPayload: any) {
   } as any;
 }
 
+/** A Drive client whose metadata lookup says "not a shortcut" (ace#2462). */
+const plainDrive = {
+  files: {
+    get: vi.fn().mockResolvedValue({ data: { mimeType: 'application/vnd.google-apps.form' } }),
+  },
+} as any;
+
 describe('handleGetGoogleFormDefinition', () => {
   it('classifies a radio choice question with options and required', async () => {
     const forms = fakeForms({
@@ -43,7 +50,7 @@ describe('handleGetGoogleFormDefinition', () => {
         },
       ],
     });
-    const r = await handleGetGoogleFormDefinition({ formId: 'form-1' }, forms);
+    const r = await handleGetGoogleFormDefinition({ formId: 'form-1' }, forms, plainDrive);
     expect(r.title).toBe('My survey');
     expect(r.description).toBe('desc');
     expect(r.items).toHaveLength(1);
@@ -64,7 +71,7 @@ describe('handleGetGoogleFormDefinition', () => {
         { itemId: 'b', title: 'long',  questionItem: { question: { textQuestion: { paragraph: true } } } },
       ],
     });
-    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms);
+    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms, plainDrive);
     expect(r.items.map((i) => i.kind)).toEqual(['short_answer', 'paragraph']);
     expect(r.items[0].required).toBe(false);
   });
@@ -80,7 +87,7 @@ describe('handleGetGoogleFormDefinition', () => {
         },
       ],
     });
-    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms);
+    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms, plainDrive);
     expect(r.items[0]).toMatchObject({
       kind: 'scale',
       options: ['1', '2', '3', '4', '5'],
@@ -96,7 +103,7 @@ describe('handleGetGoogleFormDefinition', () => {
         { itemId: 'q', title: 'q', questionItem: { question: { textQuestion: {} } } },
       ],
     });
-    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms);
+    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms, plainDrive);
     expect(r.items).toHaveLength(1);
     expect(r.items[0].item_id).toBe('q');
   });
@@ -111,13 +118,13 @@ describe('handleGetGoogleFormDefinition', () => {
         { itemId: '?', title: '?', questionItem: { question: { /* nothing recognized */ } } },
       ],
     });
-    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms);
+    const r = await handleGetGoogleFormDefinition({ formId: 'f' }, forms, plainDrive);
     expect(r.items.map((i) => i.kind)).toEqual(['date', 'time', 'file_upload', 'unknown']);
   });
 
   it('passes formId to forms.forms.get', async () => {
     const forms = fakeForms({ info: {}, items: [] });
-    await handleGetGoogleFormDefinition({ formId: 'specific-form-id' }, forms);
+    await handleGetGoogleFormDefinition({ formId: 'specific-form-id' }, forms, plainDrive);
     expect(forms.forms.get).toHaveBeenCalledWith({ formId: 'specific-form-id' });
   });
 });
