@@ -159,7 +159,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
    `fail` trigger: the `language_conformance` anchors (b1)/(c)/(d)/(e)/(f),
    the `assessment_gating` and `instructional_depth` hard-gates (each drives
    its own dimension to ≤3), and the § 5b `naming_convention` /
-   `form_navigation` / `single_gating_assessment` `[BLOCKER]`s. The thin ITN
+   `form_navigation` / `single_gating_assessment` /
+   `learn_module_display_gating` `[BLOCKER]`s. The thin ITN
    Learn build this rubric is anchored on still fails on `assessment_gating`,
    the depth cap, and `language_conformance` independently.
 
@@ -209,6 +210,30 @@ methodology, different dimensions tuned to Learn-app concerns. See
      the complete participant set), staged in Nova private work and then
      saved with `save_work` (`voidcraft-labs/commcare-nova#693`). Pure blueprint read, no LLM
      judgment.
+   - **`learn_module_display_gating`** (added 2026-10-16, ace#3036) — for every
+     form carrying a `connect.learn_module` block, read its own display
+     condition (`get_form` → `displayCondition`) and its module's display
+     condition (`get_module`). **Any display condition that reads a user or
+     role property (`#user/<prop>`, e.g. `#user/kgrad_role = 'FLW'`) →
+     `[BLOCKER]` → `fail`**, whatever the PDD says about roles. Connect
+     computes Learn completion over EVERY `learn_module` in the app, so a
+     worker who cannot see a marked form can never reach 100% and Deliver
+     never unlocks. Live case: `kaduna-graduation/20261015-1411` gated 9
+     modules to FLWs and 5 to enumerators; an FLW finished her 9 and passed
+     the assessment, and Connect read `modules_completed_pct: 64.3` (9/14),
+     `learn_complete: false`. This eval passed that build. Any OTHER display
+     condition on a marked form → `[WARN]` naming it (Learn apps hold no
+     cases, so it is almost always a mistake). The same rule applies to the
+     `connect.assessment` form: a role-gated assessment → `[BLOCKER]`.
+     **Also fail the pass label** when the app has a gated marked form and
+     the assessment's pass text promises the work app opens ("You may now
+     open your work app") — it is false for every worker. A multi-role PDD
+     is not an excuse: the producer builds every module visible and records
+     the restructuring choice as `learn-gap-multi-role-learn-completion`
+     (`pdd-to-learn-app § Step 2a`); an absent row on a multi-role PDD is a
+     `[WARN]`. Released-CCZ backstop: `app-release-qa`
+     `learn-module-display-gated` (`lib/learn-module-display-gating.ts`).
+     Pure blueprint read, no LLM judgment.
 
    **Addressing note (ace#1132).** Nova is uuid-addressed since
    2026-07-31 — no tool accepts `moduleIndex` / `formIndex` / `fieldId`.
@@ -567,7 +592,10 @@ methodology, different dimensions tuned to Learn-app concerns. See
      leaking into a build.
    - `[BLOCKER]` for each standing-instruction hard-gate that fired
      (`naming_convention`: display name lacks "Learn app"; `form_navigation`:
-     a form's post-submit navigation is not "Previous Screen").
+     a form's post-submit navigation is not "Previous Screen";
+     `learn_module_display_gating`: a `connect.learn_module` or
+     `connect.assessment` form, or its module, is display-gated on a user
+     property — ace#3036).
    - `[WARN]` for each module that names its topic without teaching it,
      and for an Assessment Score that Connect can read but the app never
      enforces internally.
@@ -661,6 +689,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Added § 5b `learn_module_display_gating` (ace#3036).** Connect computes Learn completion over every `learn_module` in the app, so a `learn_module` (or assessment) form display-gated on a user/role property cannot be completed by any worker who cannot see it. `kaduna-graduation/20261015-1411` gated 9 modules to FLWs and 5 to enumerators; an FLW passed and Connect read 9/14 = 64.3%, `learn_complete: false`, Deliver locked — and this eval passed the build. Now a `[BLOCKER]` → `fail`; other display conditions on marked forms are `[WARN]`; a pass label promising the work app opens on such an app also fails. Released-CCZ backstop in `app-release-qa` (`lib/learn-module-display-gating.ts`). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Everything this rubric read from the Learn build memo (the displaced-topic trade in `assessment_gating`, the language-layer counts, the taught-vs-collectable result) now comes from the producer's live decision rows (`phase: 3-commcare`, `skill: pdd-to-learn-app` / `pdd-to-deliver-app`) and the summaries' `## Build notes`; both are listed in § Inputs. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-28 | **Reads grade SAVED state; the marker fix is a private-work edit (`voidcraft-labs/commcare-nova#693`).** Nova now stages every mutation in private work and only `save_work` changes the app. The rubric's `get_app` / `get_form` reads take `app_id` and so see exactly what ships; the `configure_connect` remedy is named as staged-then-saved. | ACE team |
 | 2026-08-23 | **Terminal verdict bands added — § 5 stated no `pass` band and no `warn` band at all, only the `fail` trigger (ace#1578).** The four `Deduction rules` bullets were one terminal rule (`fail`), one N/A rule, one inflation cap and one reporting rule; § 5b added two more `fail` triggers. Nothing in the file said what makes a Learn build `pass` or `warn`, so the entire NON-FAIL half of the score space matched no rule and the LLM judge legislated the terminal verdict at grade time — two runs with identical scores could disagree with nothing to say either was wrong, and `opp-eval` rolled up a verdict whose derivation was unreproducible. Same class as ace#1568 (PR #1577) in the sibling `pdd-to-deliver-app-eval` and strictly larger: #1568 left two reachable classes homeless, this left half the space. Operator decision (Jon): **mirror the sibling bands exactly** — an ORDERED cascade, first match wins: (1) any scored dimension ≤3 or any § 5b `[BLOCKER]` → `fail`; (2) any scored dimension **< 7** or overall < 7.5 → `warn`; (3) otherwise → `pass`. Rule 2's trigger is `< 7`, the exact complement of rule 3, NOT a 4–6 *range* and NOT a count of mid-range dimensions: dimension anchors are stated at the half-point, so a range strands 3 < s < 4 and 6 < s < 7 and a count strands the count-minus-one case (the trap ace#1568 documented). Every existing Learn `fail` trigger is preserved and fires through rule 1 — the `language_conformance` anchors (b1)/(c)/(d)/(e)/(f), the `assessment_gating` and `instructional_depth` hard-gates, and the § 5b `naming_convention` / `form_navigation` / `single_gating_assessment` `[BLOCKER]`s — so no previously-failing build now passes; the cascade only adds the two bands that were missing. Encoded as data in `lib/eval-verdict-bands.ts` (`LEARN_APP_BANDS`, built by the shared `standardOrderedCascade()` the Deliver rubric also uses — no hand-rolled second copy). *Enforced:* `test/lib/eval-verdict-bands.test.ts` audits the cascade for totality + severity ordering over this rubric's real 9-dimension weight set (incl. the `assessment_rule_coverage` / `language_conformance` N/A redistribution), and keeps `LEARN_APP_BANDS_PRE_1578` as a live regression witness so the auditor cannot pass vacuously. | ACE team |
