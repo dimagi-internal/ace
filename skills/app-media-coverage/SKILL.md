@@ -34,9 +34,11 @@ form XML after the fact.
 
 - `3-commcare/app-media-coverage_plan-<app>.yaml` — the full plan, one row per
   attachment, each with an `operator_override` slot
-- `3-commcare/app-media-coverage_report-<YYYY-MM-DD>.md` — what was attached,
-  from where, and why
-- `3-commcare/app-media-coverage_generated/` — cached generated images
+- `3-commcare/app-media-coverage_report-<app>.md` — what was attached,
+  from where, and why; one report per app (`_report-learn.md`,
+  `_report-deliver.md`), so two per-app runs never write the same file
+- `3-commcare/app-media-coverage_generated/` — cached generated images, one
+  `<app>/` subfolder per app
 
 ## Position: before `app-deploy`, after the app is finished being written
 
@@ -62,6 +64,21 @@ Inputs:
 - `--dry-run` — plan only; no generation, no upload, no attachment
 - `--replan` — rebuild the plan even when one exists (operator edits are lost)
 
+**Per-app working directory — every transient file lives under it.** Before
+step 1, make `WORK="<scratch>/app-media-coverage/<opp>/<app>"` (`<scratch>` is
+the session scratchpad, or `$TMPDIR` when there is none; `<app>` is `learn` or
+`deliver`) and keep **every** working file for that app inside it: the folder
+listing and classification (step 2), downloaded assets, the Content Generator
+input JSON and its raw output (step 6), and the prepared upload files (step 7).
+`--app=both` processes the apps one after another, each in its own `WORK`.
+Never write a working file to a bare scratch path: Phase 3 may run this skill
+once per app as two concurrent invocations in one session, and two runs that
+pick the same "obvious" path rewrite each other's generation inputs mid-flight
+— the run still completes and still writes a clean-looking report, on prompts
+its sibling wrote (ace#2142, `spark-facilitator/20260906-2233`). The durable
+cache (step 6) and the plan and report (steps 4, 10) are already per-app; this
+makes the scratch match.
+
 ### 1. Resolve the apps and their addressable parts
 
 Read `nova_app_id` per app from the Step 1 summaries. For each app call
@@ -78,19 +95,20 @@ Resolve the folder via `resolve_opp_path` → `inputs` → child folder named
 `media` (case-insensitive). **A missing folder is normal** — skip to step 3
 with no supplied assets.
 
-List it with `drive_list_folder`, write the listing to a scratch file, and
-classify:
+List it with `drive_list_folder`, write the listing to `$WORK/listing.json`,
+and classify:
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-classify.ts" <listing.json> --out <classification.json>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-classify.ts" "$WORK/listing.json" --out "$WORK/classification.json"
 ```
 
 You get `{assets, guidance, unsupported, ignored}`. Report `unsupported` and
 `ignored` in the final report — an operator who dropped in a `.m4a` deserves
 to be told why it never reached the app, rather than wondering.
 
-Download each asset with `drive_download_binary` using `writeToPath`.
+Download each asset with `drive_download_binary` using `writeToPath` under
+`$WORK/supplied/`.
 
 ### 3. Read the guidance documents
 
@@ -190,10 +208,11 @@ For each `generated` row, compute `prompt_hash` over the trimmed
 `3-commcare/app-media-coverage_generated/<app>/<prompt_hash>.png`; on a miss:
 
 ```bash
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-content-generator.ts" <input.json> <output.png>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-content-generator.ts" "$WORK/gen/<prompt_hash>.json" "$WORK/gen/<prompt_hash>.png"
 ```
 
-Input JSON is `{applicationContext, formText, imageDirectives, upscale:false}`.
+Input JSON — written to `$WORK/gen/<prompt_hash>.json`, never a shared path —
+is `{applicationContext, formText, imageDirectives, upscale:false}`.
 The directive should be specific about subject, action, environment, lighting,
 and any modesty or representation cues the Application Context or the guidance
 carries. Serial execution; ~30–60s each.
@@ -220,7 +239,7 @@ and a badge reading `FLW-UG045`.
 Two commands per asset. First bound its size for the device:
 
 ```bash
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-prepare.ts" <file> --out-dir <dir>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-media-prepare.ts" <file> --out-dir "$WORK/prepared"
 ```
 
 It downscales to 800px longest edge and falls back to JPEG when a photograph
@@ -326,7 +345,11 @@ Media reaching the released CCZ is verified downstream by `app-release-qa`.
 
 ### 10. Report and write back
 
-Write the report with frontmatter:
+Write the report to `3-commcare/app-media-coverage_report-<app>.md` — one file
+per app, the name the manifest registers. A dated or app-less name collides:
+two per-app runs on the same day write the same file and `drive_create_file`'s
+find-or-update lets the second silently replace the first (ace#2142,
+`smallholder-seasonal/20261014-0859`). Frontmatter:
 
 ```yaml
 ---
@@ -392,6 +415,7 @@ with status and the counts above.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-10-16 | **Generated imagery is pinned to the programme's locale (ace#2895).** Step 6's directive had no country constraint, so a Ghana (`GHS`) programme (`turmeric-market-study-ghana/20261012-1749`) shipped a guidance photo of a Ugandan `UGX 1000` MTN card and a `FLW-UG045` badge — the one image a new worker studies to learn the procedure. Every directive now carries `opportunity_country` / `opportunity_currency` read from the PDD § Program Parameters (not Phase 4's run_state block, which does not exist yet): depicted currency, badges, documents and identifiers match that country, or the image depicts none. *Enforced:* `test/skills/media-locale-constraint.test.ts`. | ACE team |
+| 2026-10-16 | **Per-app scratch root and per-app report name (ace#2142).** Every transient file (listing, classification, downloads, Content Generator input/output, prepared uploads) now lives under `<scratch>/app-media-coverage/<opp>/<app>/`, because two concurrent per-app runs in one session rewrote each other's generation inputs (`spark-facilitator/20260906-2233`). The report is `_report-<app>.md` instead of `_report-<YYYY-MM-DD>.md`, which collided on same-day per-app runs (`smallholder-seasonal/20261014-0859`) and never matched the manifest's `_report.md`. *Enforced:* `test/skills/app-media-coverage-per-app-paths.test.ts`. | ACE team |
 | 2026-09-28 | **Attaches are private-work edits, saved in two checkpoints (voidcraft-labs/commcare-nova#693).** Every attach tool now takes `work_id` + `request_id` (no `app_id`) and stages until `save_work`. Step 8 opens one work, saves field/option/module-tile/logo media as checkpoint 1, then stages the form tiles alone; step 9 reads the CANDIDATE with `get_form({work_id})` to catch the #625 icon defect before saving checkpoint 2, and the final read-back uses `app_id` (saved state). Uploads stay immediate Project-library writes. | ACE team |
 | 2026-09-16 | **Form-tile icons are guarded, not trusted (ace#2413).** Step 4(b) promised built-in menu icons were free and side-effect-free; that holds for module tiles but not form tiles — `set_menu_media` accepts a form-tile slug from its own published enum and every subsequent `get_form` on the app then fails `invalid_input` "Choose one valid value at icon" (`voidcraft-labs/commcare-nova#625`, reproduced live on both apps of `poverty-graduation/20260915-1518`). That took out `app-deploy`'s XML-escape lint, `app-test-cases`, `app-release-qa` and both `pdd-to-*-app-eval` skills four steps later, surfacing as "Nova broke" in a skill that never touched media. Step 8 now sends module and form tiles as separate batches so a form-tile problem cannot cost the module tiles; step 9 does a `get_form` read-back straight after the form-tile batch and, on that rejection, re-sends the batch with `icon: null`, records `form_tiles: reverted-upstream-defect`, and continues rather than halting. *Enforced:* `test/skills/media-form-tile-revert-guard.test.ts`. | ACE team |
 | 2026-08-27 | Initial version, replacing `app-multimedia-coverage`. Nova shipped a first-class media channel (`voidcraft-labs/nova-plugin#8`, closed 2026-06-03) — asset library, per-slot field media, option media, menu icons, app logo — and `compile_app`/`upload_app_to_hq` carry it to HQ. Verified live end-to-end 2026-08-27: attached image reached the released CCZ at `commcare/<sha256>.png` with matching `<value form="image">` itext, and built-in icon slugs materialised as real bundled assets. That retires the whole post-release XML-patch pipeline, its orphan-pruning ordering hazard, and its loss-on-every-rebuild. Adds two capabilities the old skill had no way to reach: supplied files from `inputs/media/` with free-form operator guidance, and picture-choice select options. Upload goes through a server-side proxy script because base64 through a tool call costs ~1 token/char. | ACE team |
