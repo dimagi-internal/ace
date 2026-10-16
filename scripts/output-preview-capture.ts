@@ -7,6 +7,8 @@
  *                                                     [--phase P] [--run-end] [--workspace W]
  *                                                     [--run-state FILE] [--test-prompts FILE]
  *                                                     [--gaps-json FILE] [--only <gap-id>]
+ *   npx tsx scripts/output-preview-capture.ts clear-plan --listing FILE [--index FILE]
+ *                                                     --cited <run-path>=<local file> [--cited …]
  *   npx tsx scripts/output-preview-capture.ts index   --plan DIR/plan.json --gap <gap-id> --uploaded FILE
  *   npx tsx scripts/output-preview-capture.ts verify  --plan DIR/plan.json --gap <gap-id> --readback FILE --count N
  *
@@ -19,6 +21,11 @@
  * captions and a deterministic screen verdict (login page / 404 / blank /
  * loading), or why nothing was captured. It never writes to Drive: the skill
  * LOOKS at every frame, uploads the good ones, then calls `index`.
+ *
+ * `clear-plan` decides what a re-capture may trash from a previews folder
+ * (`planPreviewFolderClear`, ace#3044): given the folder's `drive_list_folder`
+ * JSON, its old `_previews.yaml` and every artifact that may cite its files,
+ * it prints `{write, trash[], keep[]}`. A child any citer names by id is KEPT.
  *
  * `index` turns the uploaded frames (`[{name, file_id}]`, JSON) into
  * DIR/<slug>/_previews.yaml; `verify` asserts the copy read back from Drive.
@@ -52,6 +59,7 @@ import {
   parsePreviewGaps,
   pickChatQuestion,
   planCapture,
+  planPreviewFolderClear,
   previewGapsUrl,
   productNodeAt,
   screenPage,
@@ -534,6 +542,39 @@ function runVerify(): void {
   if (!r.ok) process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// clear-plan (ace#3044) — the ONLY source of ids the skill may trash
+// ---------------------------------------------------------------------------
+
+function args(name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < rest.length - 1; i++) if (rest[i] === `--${name}`) out.push(rest[i + 1]);
+  return out;
+}
+
+function runClearPlan(): void {
+  const raw = JSON.parse(fs.readFileSync(need('listing'), 'utf8')) as unknown;
+  const list = Array.isArray(raw) ? raw : ((raw as { files?: unknown[] })?.files ?? []);
+  const children = (list as Array<{ id?: unknown; name?: unknown; mimeType?: unknown }>)
+    .filter((c) => typeof c?.id === 'string')
+    .map((c) => ({ id: c.id as string, name: String(c.name ?? ''), mimeType: typeof c.mimeType === 'string' ? c.mimeType : undefined }));
+  // `--cited <run-relative path>=<local file>` (or just <local file>), repeatable.
+  const citers = args('cited').map((spec) => {
+    const eq = spec.indexOf('=');
+    const [label, file] = eq > 0 ? [spec.slice(0, eq), spec.slice(eq + 1)] : [spec, spec];
+    if (!fs.existsSync(file)) die(`--cited ${file} does not exist`);
+    return { path: label, text: fs.readFileSync(file, 'utf8') };
+  });
+  if (citers.length === 0) die('missing --cited (run_state.yaml at least, plus the capture manifest when it exists — ace#3044)');
+  const indexFile = arg('index');
+  const plan = planPreviewFolderClear({
+    children,
+    indexText: indexFile ? fs.readFileSync(indexFile, 'utf8') : null,
+    citers,
+  });
+  process.stdout.write(JSON.stringify(plan) + '\n');
+}
+
 async function runGaps(): Promise<void> {
   const list = await fetchGaps(need('opp'), need('run'), flag('refresh'));
   const phase = arg('phase');
@@ -546,7 +587,8 @@ async function main(): Promise<void> {
   if (cmd === 'capture') return runCapture();
   if (cmd === 'index') return runIndex();
   if (cmd === 'verify') return runVerify();
-  die('usage: output-preview-capture.ts gaps|capture|index|verify … (see the header)');
+  if (cmd === 'clear-plan') return runClearPlan();
+  die('usage: output-preview-capture.ts gaps|capture|clear-plan|index|verify … (see the header)');
 }
 
 main().catch((err) => {

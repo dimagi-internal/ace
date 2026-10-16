@@ -138,14 +138,34 @@ reads any mapping there with a `file_id` as an output.
    1. **Folder.** `plan.json`'s `folder` is `<N>-<phase>/previews/<slug>`.
       Find the `<N>-<phase>` folder in the run folder (`drive_list_folder`), then
       `drive_create_folder` (find-or-create) `previews`, then `<slug>` inside it.
-   2. **Ownership check, then clear.** `drive_list_folder` the slug folder. If it
-      holds a `_previews.yaml` whose `captured_by` is NOT `output-preview-capture`
-      and that lists ≥1 item, another skill owns this output's previews and the
-      gap list is stale — write nothing, note it. Otherwise (empty, ours, or an
-      `items: []` index from a failed Phase 6 leg) `drive_trash_file` every child:
-      a re-capture REPLACES, frames of two captures never mix. Never touch any
-      other folder — Phase 6's app folders and Phase 7's dashboard folders are
-      only ever written here when the gap list says that output has NO previews.
+   2. **Plan the clear — then trash ONLY what the plan names.** A folder can
+      hold files that are not stale previews: a Phase 6 Learn leg that walked
+      on the device and then failed the Connect gate leaves its real frames
+      here under an `items: []` index, and the capture manifest, FLW guide and
+      deck cite every one by `file_id`. Trashing "every child" put 198 such
+      frames in the bin on kaduna-graduation/20261015-1411 (ace#3044). So:
+      - `drive_list_folder` the slug folder and write its JSON to a local file.
+        If it has a `_previews.yaml`, `drive_read_file` it to a local file too.
+      - Read every citing artifact to a local file: always `run_state.yaml`
+        (step 1's copy), plus `6-qa-and-training/app-screenshot-capture_manifest.yaml`
+        when it exists (it does once Phase 6 has run).
+      - Run:
+        ```bash
+        node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/output-preview-capture.ts" clear-plan \
+          --listing <listing.json> [--index <old _previews.yaml>] \
+          --cited run_state.yaml=<local run_state.yaml> \
+          [--cited 6-qa-and-training/app-screenshot-capture_manifest.yaml=<local manifest>]
+        ```
+      - `write: false` → another skill owns this output's previews with ≥1 item
+        and the gap list is stale: write nothing, note `reason`.
+      - Otherwise `drive_trash_file` exactly the ids in `trash` — nothing else.
+        Every `keep` child is cited by an artifact (`cited_by`): leave it where
+        it is, neither trashed nor moved, so its `file_id` and recorded drive
+        path stay valid. The new index is authoritative, so a kept frame
+        it does not list is shown to no one. Name the kept count in the report.
+      Never touch any other folder — Phase 6's app folders and Phase 7's
+      dashboard folders are only ever written here when the gap list says that
+      output has NO previews.
    3. **Upload** each accepted PNG under its `plan.json` name —
       `drive_upload_binary({name, localFilePath, mimeType: 'image/png', parentFolderId, shareAnyoneWithLink: true})`.
    4. **Index.** Write the uploads as `[{name, file_id}]` to a local JSON file
@@ -207,7 +227,7 @@ reported; it is not a blocker.
   `drive_create_folder`, `drive_trash_file`, `drive_upload_binary`.
 
 Scripts (Bash): `scripts/output-preview-capture.ts` (`gaps`, `capture`,
-`index`, `verify`), which calls `bin/labs-walkthrough-login.ts` for the labs
+`clear-plan`, `index`, `verify`), which calls `bin/labs-walkthrough-login.ts` for the labs
 restore.
 
 ## Mode Behavior
@@ -227,6 +247,7 @@ restore.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **A cited frame is never trashed (ace#3044).** Step 4.2's "trash every child" put 198 manifest-cited Learn frames in the bin on kaduna-graduation/20261015-1411 (a failed leg's `items: []` folder). The clear is now planned by `clear-plan` (`planPreviewFolderClear`, pinned in `test/lib/preview-capture.test.ts`): a child any citing artifact names by id is kept in place; only the plan's `trash` ids are removed; no plan without a citer. | ACE team |
 | 2026-09-30 | **Program card is a landscape frame (0.13.1618).** The card's half-width, PDD-length description made a 891×1570 strip; it is now clamped to 3 full-width lines (891×410 live). | ACE team |
 | 2026-09-30 | **Nameless program caption (0.13.1614).** A program matched by UUID with no recorded name is captioned from its card's own heading, never `Connect program this program — …`; with no name at all the caption names nothing. | ACE team |
 | 2026-09-30 | **First real run fixes (spark-facilitator/20260926-1800).** (1) The program card matched the WRONG program: run_state recorded the program with no name, the plan fell back to the gap title "Connect program", and the card shot took the first card on the page (a probe program). The card is now found by the program's UUID, else its exact recorded name, and otherwise SKIPPED — never a wrong-thing fallback. (2) The chatbot frame showed the tail of a long answer without the question: prefer the shortest-expected-answer prompt, put the question at the top, grow the viewport to fit, hide `[no tag]`. (3) Step 5 re-fetches with `--refresh` (ace-web#832). Gap `public_url` (ace-web#831) is used directly; zsh-safe loop pattern in Step 4.4. | ACE team |

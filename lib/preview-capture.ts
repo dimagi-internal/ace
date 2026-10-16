@@ -17,6 +17,7 @@
 // Reuses `lib/output-previews.ts` for the contract itself (slug, folder, file
 // name, index) — one writer of the rules, many callers.
 
+import { parse as parseYaml } from 'yaml';
 import { normalizePhaseKey, phaseFolder, PHASE_DEFS, type Phase } from './artifact-manifest.js';
 import { buildOcsPublicChatUrl } from './ocs-public-chat-url.js';
 import { normalizeDriveExport } from './drive-export.js';
@@ -682,6 +683,102 @@ export function buildCaptureIndex(
     capturedAt,
     frames: inputs,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Clearing a previews folder before a re-capture (ace#3044)
+// ---------------------------------------------------------------------------
+//
+// A re-capture replaces the folder's previous PREVIEWS — but a folder can also
+// hold files that are not ours to remove. On kaduna-graduation/20261015-1411 a
+// Learn leg walked on the device, failed the Connect gate, and left 198 real
+// frames in `3-commcare/previews/apps-learn/` under an `items: []` index. The
+// capture manifest, the FLW guide and the deck cited every one by file_id; a
+// "trash every child" clear put all 198 in the bin.
+//
+// The rule, in one place: a child whose Drive id appears in ANY citing artifact
+// is evidence, not a stale preview — it is KEPT, in place (not moved, so both
+// its file_id and every recorded drive_path stay valid). The index is
+// authoritative (ace-web output-previews spec: "a reader shows exactly
+// `items`"), so a kept frame the new index does not list is shown to no one.
+
+export interface FolderChild {
+  id: string;
+  name: string;
+  mimeType?: string;
+}
+
+/** An artifact that may cite Drive ids — its run-relative path and its text. */
+export interface CitingArtifact {
+  path: string;
+  text: string;
+}
+
+export interface FolderClearInput {
+  /** `drive_list_folder` of the slug folder. */
+  children: readonly FolderChild[];
+  /** Text of the folder's existing `_previews.yaml`, if it has one. */
+  indexText?: string | null;
+  /** Every artifact that may cite a child by id. At least one is required. */
+  citers: readonly CitingArtifact[];
+}
+
+export interface FolderClearPlan {
+  /** false → another skill owns this output's previews; write NOTHING. */
+  write: boolean;
+  reason?: string;
+  /** The ONLY children the skill may `drive_trash_file`. */
+  trash: FolderChild[];
+  /** Cited children — never trashed, never moved. */
+  keep: Array<FolderChild & { cited_by: string[] }>;
+}
+
+function citesId(text: string, id: string): boolean {
+  if (!id) return false;
+  let from = 0;
+  for (;;) {
+    const i = text.indexOf(id, from);
+    if (i < 0) return false;
+    const before = i > 0 ? text[i - 1] : '';
+    const after = text[i + id.length] ?? '';
+    if (!/[A-Za-z0-9_-]/.test(before) && !/[A-Za-z0-9_-]/.test(after)) return true;
+    from = i + 1;
+  }
+}
+
+/**
+ * Decide what a re-capture may remove from a previews folder. Refuses (throws)
+ * with no citing artifact: a clear that has not checked what cites the folder
+ * is exactly the clear that trashed 198 cited frames.
+ */
+export function planPreviewFolderClear(input: FolderClearInput): FolderClearPlan {
+  if (!input.citers || input.citers.length === 0) {
+    throw new Error(
+      'planPreviewFolderClear: no citing artifact given — pass at least run_state.yaml and, when it exists, ' +
+        '6-qa-and-training/app-screenshot-capture_manifest.yaml (ace#3044)',
+    );
+  }
+  if (input.indexText && input.indexText.trim()) {
+    let idx: unknown = null;
+    try {
+      idx = parseYaml(normalizeDriveExport(input.indexText));
+    } catch {
+      idx = null;
+    }
+    const by = str(rec(idx).captured_by);
+    const items = rec(idx).items;
+    if (by && by !== CAPTURED_BY && Array.isArray(items) && items.length > 0) {
+      return { write: false, reason: `previews owned by ${by} (${items.length} item(s)); the gap list is stale`, trash: [], keep: [] };
+    }
+  }
+  const trash: FolderChild[] = [];
+  const keep: Array<FolderChild & { cited_by: string[] }> = [];
+  for (const c of input.children) {
+    const citedBy = input.citers.filter((a) => citesId(a.text ?? '', c.id)).map((a) => a.path);
+    if (citedBy.length > 0) keep.push({ ...c, cited_by: citedBy });
+    else trash.push(c);
+  }
+  return { write: true, trash, keep };
 }
 
 // ---------------------------------------------------------------------------

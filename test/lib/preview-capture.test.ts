@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
   CAPTURED_BY,
@@ -22,6 +24,7 @@ import {
   screenPage,
   selectGaps,
   withLabsProgramContext,
+  planPreviewFolderClear,
   type PreviewGap,
 } from '../../lib/preview-capture';
 import { assertPreviewsIndexReadable, serializePreviewsIndex } from '../../lib/output-previews';
@@ -441,5 +444,87 @@ describe('index', () => {
       expectedCount: 2,
     });
     expect(r.findings).toEqual([]);
+  });
+});
+
+// ace#3044 — kaduna-graduation/20261015-1411: a failed Learn leg left 198 real
+// frames in 3-commcare/previews/apps-learn/ under an `items: []` index; the
+// capture manifest, FLW guide and deck cited every one by file_id. The run-end
+// preview pass trashed them all. A frame any artifact cites is evidence, never
+// a stale preview: it is KEPT in place (ids and drive_paths stay valid), and the
+// new index — authoritative — is what decides what a reader shows.
+describe('planPreviewFolderClear (ace#3044)', () => {
+  const MANIFEST = '6-qa-and-training/app-screenshot-capture_manifest.yaml';
+  const manifest = [
+    'captures:',
+    '  - step: journey-learn-module-1',
+    '    drive_path: 3-commcare/previews/apps-learn/01-journey-learn-module-1.png',
+    '    file_id: 1AbCdEfGhIjKlMnOpQrStUvWxYz012345',
+    '  - step: journey-learn-posttest-result',
+    '    drive_path: 3-commcare/previews/apps-learn/07-journey-learn-posttest-result.png',
+    '    file_id: 1ZyXwVuTsRqPoNmLkJiHgFeDcBa543210',
+  ].join('\n');
+  const emptyForeignIndex = 'schema_version: 1\ncaptured_by: app-screenshot-capture\nitems: []\n';
+  const CITED_A = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+  const CITED_B = '1ZyXwVuTsRqPoNmLkJiHgFeDcBa543210';
+  const STALE = '1StaleUncitedFrame000000000000000';
+  const OLD_INDEX = '1OldIndexFile0000000000000000000';
+  const children = [
+    { id: CITED_A, name: '01-journey-learn-module-1.png' },
+    { id: CITED_B, name: '07-journey-learn-posttest-result.png' },
+    { id: STALE, name: '02-stale.png' },
+    { id: OLD_INDEX, name: '_previews.yaml' },
+  ];
+
+  it('never trashes a frame the capture manifest cites by file_id', () => {
+    const plan = planPreviewFolderClear({ children, indexText: emptyForeignIndex, citers: [{ path: MANIFEST, text: manifest }] });
+    expect(plan.write).toBe(true);
+    const trashed = plan.trash.map((c) => c.id);
+    expect(trashed).not.toContain(CITED_A);
+    expect(trashed).not.toContain(CITED_B);
+    expect([...trashed].sort()).toEqual([OLD_INDEX, STALE]);
+    expect(plan.keep.map((k) => k.id).sort()).toEqual([CITED_A, CITED_B]);
+    expect(plan.keep[0].cited_by).toEqual([MANIFEST]);
+  });
+
+  it('a frame cited by ANY artifact survives — not just the manifest', () => {
+    const guide = `![step 1](https://drive.google.com/uc?id=${STALE})`;
+    const plan = planPreviewFolderClear({
+      children,
+      indexText: emptyForeignIndex,
+      citers: [{ path: MANIFEST, text: manifest }, { path: '6-qa-and-training/training-flw-guide.md', text: guide }],
+    });
+    expect(plan.trash.map((c) => c.id)).toEqual([OLD_INDEX]);
+  });
+
+  it('matches whole ids only — a longer cited id does not protect its prefix', () => {
+    const plan = planPreviewFolderClear({ children: [{ id: 'abc123', name: 'x.png' }], citers: [{ path: 'm.yaml', text: 'file_id: abc1234' }] });
+    expect(plan.trash.map((c) => c.id)).toEqual(['abc123']);
+  });
+
+  it('refuses to plan a clear with no citing artifact to check against', () => {
+    expect(() => planPreviewFolderClear({ children, citers: [] })).toThrow(/citing artifact/);
+  });
+
+  it('writes nothing into a folder another skill owns with ≥1 item', () => {
+    const owned = 'schema_version: 1\ncaptured_by: app-screenshot-capture\nitems:\n  - file_id: x\n    name: a.png\n';
+    const plan = planPreviewFolderClear({ children, indexText: owned, citers: [{ path: 'run_state.yaml', text: '' }] });
+    expect(plan.write).toBe(false);
+    expect(plan.trash).toEqual([]);
+  });
+
+  it('the skill trashes only what clear-plan names — the "trash every child" prose is gone', () => {
+    const skill = readFileSync(join(__dirname, '../../skills/output-preview-capture/SKILL.md'), 'utf8');
+    expect(skill).not.toMatch(/drive_trash_file`?\s+every child/);
+    expect(skill).toMatch(/output-preview-capture\.ts" clear-plan/);
+    expect(skill).toMatch(/app-screenshot-capture_manifest\.yaml=/);
+  });
+
+  it('replaces its own previous capture when nothing else cites it', () => {
+    const ours = `schema_version: 1\ncaptured_by: output-preview-capture\nitems:\n  - file_id: ${STALE}\n`;
+    const plan = planPreviewFolderClear({ children: children.slice(2), indexText: ours, citers: [{ path: 'run_state.yaml', text: 'phases: {}' }] });
+    expect(plan.write).toBe(true);
+    expect(plan.trash.map((c) => c.id).sort()).toEqual([OLD_INDEX, STALE]);
+    expect(plan.keep).toEqual([]);
   });
 });
