@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import {
+  aceWebRunFromRunState,
   buildAssetMap,
   classifyClonePath,
   docTextFromExport,
@@ -378,5 +379,71 @@ describe('build pairs come from app-release_summary.md (ace#2702)', () => {
       released_build_id: '7876e5bca74f4e21adda296c6478af25',
       released_version: '22',
     });
+  });
+});
+
+describe("the source run's ace-web page URLs (ace#3032)", () => {
+  // The live repro: dimagi-team/noora-health/20261015-1129 → noora-health,
+  // 6-qa-and-training/training-llo-guide.md line 110.
+  const GUIDE_LINE =
+    '- **Run page:** https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health/runs/20261015-1129/summary';
+  const src = {
+    ...structuredClone(SOURCE_RS),
+    ace_web_summary_url: 'https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health/runs/20261015-1129/summary',
+  };
+  const dst = {
+    ...structuredClone(TARGET_RS),
+    ace_web_summary_url: 'https://labs.connect.dimagi.com/ace/opps/noora-health/noora-health/runs/20261015-1129/summary',
+  };
+  const m = buildAssetMap(runAssetsFromRunState(src), runAssetsFromRunState(dst));
+
+  it('reads each run page from ace_web_summary_url, else from workspace/opportunity/run_id', () => {
+    expect(runAssetsFromRunState(src).ace_web).toEqual({ workspace: 'dimagi-team', opp: 'noora-health', run: '20261015-1129' });
+    expect(aceWebRunFromRunState({ workspace: 'dimagi-team', opportunity: 'noora-health', run_id: '20261015-1129' })).toEqual({
+      workspace: 'dimagi-team',
+      opp: 'noora-health',
+      run: '20261015-1129',
+    });
+    expect(aceWebRunFromRunState({})).toBeUndefined();
+  });
+
+  it("rewrites the guide's run-page line to the clone's page", () => {
+    expect(findSourceRefs(GUIDE_LINE, m)).toEqual(['ace-web dimagi-team/noora-health/20261015-1129']);
+    const out = rewriteAssetRefs(GUIDE_LINE, m).text;
+    expect(out).toBe(
+      '- **Run page:** https://labs.connect.dimagi.com/ace/opps/noora-health/noora-health/runs/20261015-1129/summary',
+    );
+    expect(findSourceRefs(out, m)).toEqual([]);
+  });
+
+  it('rewrites the workbench URL and a markdown link target too', () => {
+    const md =
+      'See [the run page](https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health/runs/20261015-1129/summary) ' +
+      'or the workbench https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/noora-health/runs/20261015-1129.';
+    const out = rewriteAssetRefs(md, m).text;
+    expect(out).toContain('(https://labs.connect.dimagi.com/ace/opps/noora-health/noora-health/runs/20261015-1129/summary)');
+    expect(out).toContain('https://labs.connect.dimagi.com/ace/w/noora-health/opps/noora-health/runs/20261015-1129.');
+    expect(out).not.toContain('dimagi-team');
+  });
+
+  it('a file whose only source ref is the run page is still rewritten, with a note', () => {
+    const r = processCloneFile('6-qa-and-training/training-llo-guide.source.md', `# LLO guide\n\n${GUIDE_LINE}\n`, m, LABEL);
+    expect(r.kind).toBe('rewrite');
+    expect(r.changed).toBe(true);
+    expect(r.text).toContain('/ace/opps/noora-health/noora-health/runs/20261015-1129/summary');
+    expect(r.text).toContain('run page dimagi-team → noora-health');
+  });
+
+  it('controls: another run, another opp, or an unmoved page are left alone', () => {
+    const other =
+      'https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health/runs/20261015-11290/summary ' +
+      'https://labs.connect.dimagi.com/ace/opps/dimagi-team/noora-health-2/runs/20261015-1129/summary';
+    expect(rewriteAssetRefs(other, m).text).toBe(other);
+    const same = buildAssetMap(runAssetsFromRunState(src), runAssetsFromRunState(src));
+    expect(rewriteAssetRefs(GUIDE_LINE, same).text).toBe(GUIDE_LINE);
+  });
+
+  it('skips a comms-log by its stem, extension or not (ace#3027)', () => {
+    expect(classifyClonePath('10-closeout/run-closeout_comms-log.md')).toBe('skip');
   });
 });

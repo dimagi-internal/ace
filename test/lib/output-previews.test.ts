@@ -24,7 +24,10 @@ import {
   resolveTemplate,
   labsWorkflowId,
   PREVIEWS_SCHEMA_VERSION,
+  PREVIEWS_INDEX_PATH,
+  withoutOtherOpportunityFrames,
 } from '../../lib/output-previews.js';
+import { showsOtherOpportunities } from '../../lib/opp-title-frames.js';
 import { PHASE_DEFS } from '../../lib/artifact-manifest.js';
 
 const BASE = {
@@ -110,6 +113,50 @@ describe('buildPreviewsIndex', () => {
   });
   it('an empty frame list is a valid, authoritative "show nothing"', () => {
     expect(buildPreviewsIndex({ ...BASE, frames: [] }).items).toEqual([]);
+  });
+});
+
+// ace#3030: the three frames indexed on noora-health/noora-health/20261015-1129,
+// each showing Spark Facilitator / Bednet Check / Poverty Graduation cards.
+describe('opportunity-list frames are never previews (ace#3030)', () => {
+  const NOORA_LEARN = [
+    { step: 'claim-opp-detail', file_id: 'f2', name: '02-claim-opp-detail.png' },
+    { step: 'claim-opp-list', file_id: 'f3', name: '03-claim-opp-list.png' },
+    { step: 'claim-opp-list-synced', file_id: 'f4', name: '04-claim-opp-list-synced.png' },
+    { step: 'journey-learn-home', file_id: 'f5', name: '05-journey-learn-home.png' },
+  ];
+
+  it('buildPreviewsIndex drops them, keeping the detail and app frames', () => {
+    const idx = buildPreviewsIndex({ ...BASE, frames: NOORA_LEARN });
+    expect(idx.items.map((i) => i.name)).toEqual(['02-claim-opp-detail.png', '05-journey-learn-home.png']);
+  });
+
+  it('recognises them by file name alone, as an index item carries no step', () => {
+    expect(showsOtherOpportunities({ name: '01-connect-resume-opp-list-synced.png' })).toBe(true);
+    expect(showsOtherOpportunities({ name: '07-claim-opp-new-tile.png' })).toBe(true);
+    expect(showsOtherOpportunities({ step: 'connect-resume-opp-tile' })).toBe(true);
+    // controls: this opportunity's own screens, and app frames
+    expect(showsOtherOpportunities({ name: '02-claim-opp-detail.png' })).toBe(false);
+    expect(showsOtherOpportunities({ step: 'connect-resume-opp-landed' })).toBe(false);
+    expect(showsOtherOpportunities({ name: '05-journey-learn-home.png' })).toBe(false);
+    expect(showsOtherOpportunities({})).toBe(false);
+  });
+
+  it('withoutOtherOpportunityFrames cleans an index written before this rule (or copied by a clone)', () => {
+    const old = { ...buildPreviewsIndex({ ...BASE, frames: [] }), items: NOORA_LEARN.map(({ file_id, name }) => ({ file_id, name })) };
+    const text = `# clone-provenance\n# Copied into the noora-health workspace\n# /clone-provenance\n${serializePreviewsIndex(old)}`;
+    const r = withoutOtherOpportunityFrames(text);
+    expect(r.removed).toEqual(['03-claim-opp-list.png', '04-claim-opp-list-synced.png']);
+    expect(r.text.startsWith('# clone-provenance\n')).toBe(true);
+    expect(parseYaml(r.text).items.map((i: any) => i.file_id)).toEqual(['f2', 'f5']);
+    // idempotent, and untouched when clean
+    expect(withoutOtherOpportunityFrames(r.text)).toEqual({ text: r.text, removed: [] });
+    expect(withoutOtherOpportunityFrames('not: [valid')).toEqual({ text: 'not: [valid', removed: [] });
+  });
+
+  it('PREVIEWS_INDEX_PATH matches an index by its run path', () => {
+    expect(PREVIEWS_INDEX_PATH.test('3-commcare/previews/apps-learn/_previews.yaml')).toBe(true);
+    expect(PREVIEWS_INDEX_PATH.test('3-commcare/previews/apps-learn/03-claim-opp-list.png')).toBe(false);
   });
 });
 

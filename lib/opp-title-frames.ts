@@ -110,6 +110,41 @@ export function showsOppTitle(frame: { step: string; shows?: string }): boolean 
   return oppTitleExposure(frame) !== 'none';
 }
 
+/**
+ * Steps whose frame is the test worker's opportunity LIST — one card per
+ * opportunity that worker was ever invited to. The +7426 worker is a shared
+ * POOL and `OpportunityAccess` rows cannot be pruned (ace#1289), so these
+ * frames name OTHER programs, other partners' included (ace#3030: a Noora
+ * Health clone's previews showed Spark Facilitator, Bednet Check and Poverty
+ * Graduation cards). A subset of `TITLE_REPEATED_STEP`: the detail / landed
+ * frames repeat THIS opportunity's title but name no other program.
+ */
+const OPP_LIST_STEP = /^(claim-opp-list.*|claim-opp-new-tile|connect-resume-opp-list.*|connect-resume-opp-tile)$/;
+
+/** `<NN>-<step>.<ext>` (`previewFileName`) → `<step>`; '' when the name is not that shape. */
+function stepFromPreviewName(name: string): string {
+  const m = /^\d+-(.+)\.[A-Za-z0-9]+$/.exec(name.split('/').pop() ?? '');
+  return m ? m[1] : '';
+}
+
+/**
+ * Does this frame show the shared test worker's opportunity list — and so the
+ * names of other programs? Read from the recipe step, else from the preview
+ * file name (`03-claim-opp-list.png`). Such a frame is never a preview of THIS
+ * run's app: `buildPreviewsIndex` leaves it out, and release-readiness blocks
+ * on one still indexed.
+ */
+export function showsOtherOpportunities(frame: { step?: unknown; step_name?: unknown; name?: unknown }): boolean {
+  const steps = [frame.step, frame.step_name]
+    .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+    .map((x) => x.trim());
+  if (typeof frame.name === 'string') {
+    const fromName = stepFromPreviewName(frame.name.trim());
+    if (fromName) steps.push(fromName);
+  }
+  return steps.some((s) => OPP_LIST_STEP.test(s));
+}
+
 /** The alias a below-the-title crop of `alias` is cited by. */
 export function belowTitleAlias(alias: string): string {
   return `${alias}--below-title`;

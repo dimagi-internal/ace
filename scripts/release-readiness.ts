@@ -105,6 +105,7 @@ import {
   assessGates,
   assessLinks,
   assessPostcondition,
+  assessPreviewIndexes,
   assessPreviews,
   assessSurfaceAudit,
   buildReleaseVerdict,
@@ -387,6 +388,7 @@ async function assess(): Promise<void> {
   findings.push(...assessPostcondition(pc?.read ?? null, pc?.decided ?? null));
   const gaps = readJson<{ outputs?: unknown[] }>(arg('gaps'));
   findings.push(...assessPreviews(gaps ? ((gaps.outputs ?? []) as never[]) : null, readJson(arg('looks')) ?? []));
+  findings.push(...assessPreviewIndexes(files));
   findings.push(...assessLinks(readJson<LinkProbe[]>(arg('links'))));
   // The release plan: who gets what, every Drive share, every email.
   const reviewers = parseReviewers(arg('reviewers'));
