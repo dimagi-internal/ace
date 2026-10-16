@@ -291,8 +291,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports thirteen checks in stable order', () => {
-    expect(CHECKS).toHaveLength(13);
+  test('exports fourteen checks in stable order', () => {
+    expect(CHECKS).toHaveLength(14);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: a PDD missing its launch parameters cannot be
