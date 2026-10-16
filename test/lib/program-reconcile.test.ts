@@ -52,9 +52,9 @@ describe('reconcileProgramWithPdd — stale fixture', () => {
     expect(result.inSync).toBe(false);
   });
 
-  it('diffs description and both dates', () => {
+  it('diffs description only — the live window (07-28..2027-01-31) CONTAINS the PDD window (ace#2985)', () => {
     const fields = result.diffs.map((d) => d.field).sort();
-    expect(fields).toEqual(['description', 'end_date', 'start_date']);
+    expect(fields).toEqual(['description']);
   });
 
   it('does NOT flag budget when the live ceiling exceeds the PDD budget (Step 4a headroom)', () => {
@@ -67,8 +67,6 @@ describe('reconcileProgramWithPdd — stale fixture', () => {
   it('produces connect_update_program args for exactly the diverging fields', () => {
     expect(result.updateArgs).toEqual({
       description: CURRENT_PDD.description,
-      start_date: '2026-08-03',
-      end_date: '2026-10-26',
     });
   });
 
@@ -95,6 +93,70 @@ describe('reconcileProgramWithPdd — matching fixture', () => {
     expect(result.diffs).toEqual([]);
     expect(result.updateArgs).toEqual({});
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe('reconcileProgramWithPdd — date containment (ace#2985)', () => {
+  const base: LiveProgramFields = {
+    name: 'Spark Community Facilitator Programme',
+    description: CURRENT_PDD.description!,
+    budget: 12000,
+    start_date: '2026-08-03',
+    end_date: '2026-10-26',
+  };
+
+  it('treats a live window WIDER on both ends as in sync — no diff, no updateArgs, no [WARN]', () => {
+    const r = reconcileProgramWithPdd(
+      { ...base, start_date: '2026-01-01', end_date: '2030-12-31' },
+      CURRENT_PDD,
+    );
+    expect(r.inSync).toBe(true);
+    expect(r.diffs).toEqual([]);
+    expect(r.updateArgs).toEqual({});
+    expect(r.warnings.filter((w) => /start_date|end_date/.test(w))).toEqual([]);
+  });
+
+  it('diverges on start_date when the live start is LATER than the PDD start', () => {
+    const r = reconcileProgramWithPdd({ ...base, start_date: '2026-09-01' }, CURRENT_PDD);
+    expect(r.inSync).toBe(false);
+    expect(r.diffs).toEqual([{ field: 'start_date', live: '2026-09-01', pdd: '2026-08-03' }]);
+    expect(r.updateArgs).toEqual({ start_date: '2026-08-03' });
+  });
+
+  it('diverges on end_date when the live end is EARLIER than the PDD end', () => {
+    const r = reconcileProgramWithPdd({ ...base, end_date: '2026-09-30' }, CURRENT_PDD);
+    expect(r.inSync).toBe(false);
+    expect(r.diffs).toEqual([{ field: 'end_date', live: '2026-09-30', pdd: '2026-10-26' }]);
+    expect(r.updateArgs).toEqual({ end_date: '2026-10-26' });
+  });
+
+  it('live repro (smallholder-seasonal/20261015-1402): never narrows end_date below existing opps', () => {
+    // Program 09b74c39-…, two opportunities already ending 2030-02-28.
+    const r = reconcileProgramWithPdd(
+      { ...base, start_date: '2026-10-15', end_date: '2030-02-28' },
+      { start_date: '2026-10-15', end_date: '2030-01-31' },
+    );
+    expect(r.updateArgs).not.toHaveProperty('end_date');
+    expect(r.updateArgs).not.toHaveProperty('start_date');
+    expect(r.diffs).toEqual([]);
+    expect(r.inSync).toBe(true);
+  });
+
+  it('treats an empty or missing live date as diverging', () => {
+    const r = reconcileProgramWithPdd(
+      { ...base, start_date: '  ', end_date: undefined as unknown as string },
+      CURRENT_PDD,
+    );
+    expect(r.diffs.map((d) => d.field).sort()).toEqual(['end_date', 'start_date']);
+    expect(r.updateArgs).toEqual({ start_date: '2026-08-03', end_date: '2026-10-26' });
+  });
+
+  it('trims whitespace before comparing', () => {
+    const r = reconcileProgramWithPdd(
+      { ...base, start_date: ' 2026-08-03 ', end_date: '2026-10-26\n' },
+      CURRENT_PDD,
+    );
+    expect(r.inSync).toBe(true);
   });
 });
 

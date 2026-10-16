@@ -77,6 +77,16 @@
  * (jjackson/ace#588). `live.budget > pdd.budget` is therefore expected and
  * NOT a divergence; only `live.budget < pdd.budget` diverges (the ceiling
  * cannot fund the current PDD's intent). `updateArgs` never lowers budget.
+ *
+ * Date nuance (ace#2985): the same containment logic applies to the program
+ * window. It CONTAINS every opportunity ever created on the durable program,
+ * so a live window wider than this PDD's is expected and NOT a divergence.
+ * `start_date` diverges only when the live start is LATER than the PDD start,
+ * `end_date` only when the live end is EARLIER than the PDD end (YYYY-MM-DD,
+ * trimmed, compared lexicographically); an empty live date diverges.
+ * `updateArgs` never narrows the window — doing so would cut it below
+ * opportunities already on the program (live repro: smallholder-seasonal/
+ * 20261015-1402, two opps ending 2030-02-28 vs a PDD end of 2030-01-31).
  */
 
 import { checked, unable, formatUnable, type CheckOutcome } from './check-outcome';
@@ -315,11 +325,24 @@ export function reconcileProgramWithPdd(
     }
   }
 
+  // Containment semantics (ace#2985): the program window is a CONTAINER for
+  // every opportunity on the durable program, so a live window WIDER than
+  // this PDD's is healthy — narrowing it would cut below opportunities that
+  // already exist. Only a live window that fails to cover the PDD diverges:
+  // start_date when live starts LATER, end_date when live ends EARLIER. An
+  // empty/missing live date cannot contain anything, so it diverges.
+  // YYYY-MM-DD strings order lexicographically, so trimmed string compare is
+  // a date compare.
+  const fails = {
+    start_date: (liveV: string, pddV: string) => liveV > pddV,
+    end_date: (liveV: string, pddV: string) => liveV < pddV,
+  } as const;
   for (const field of ['start_date', 'end_date'] as const) {
     const pddValue = pdd[field];
     if (typeof pddValue === 'string' && pddValue.trim() !== '') {
-      if (norm(live[field]) !== norm(pddValue)) {
-        diffs.push({ field, live: live[field], pdd: pddValue });
+      const liveValue = typeof live[field] === 'string' ? live[field].trim() : '';
+      if (liveValue === '' || fails[field](liveValue, pddValue.trim())) {
+        diffs.push({ field, live: live[field] ?? '', pdd: pddValue });
         updateArgs[field] = pddValue;
       }
     }
