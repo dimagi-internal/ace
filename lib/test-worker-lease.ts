@@ -42,7 +42,25 @@
  * never falls back: sharing a worker is the failure the pool exists to stop.
  * `/ace:doctor` (test_worker_pool) and `mobile_diagnose` keep the fallback
  * from persisting silently.
+ *
+ * Who holds a lease (ace#3033). canopy-web's lease rows name only the PAT's
+ * user and `turn_id`, and every ACE process shares one PAT — so an abandoned
+ * lease with no turn could not be traced to the process that took it (~18
+ * one-shot leases pinned the pool for 15 min each on 2026-10-16). The holder
+ * cannot ride in the acquire body: canopy-web's pool `resolve_params` takes
+ * ONLY `slot` and answers anything else 422 (canopy_runtime/schema.py), so a
+ * `params.holder` would fail EVERY checkout. Instead each process (a) sends
+ * its identity as the `x-ace-lease-holder` header on every broker call, for
+ * canopy-web to record once it does, and (b) appends every acquire / hold /
+ * release / loss to a local ledger, `~/.ace/test-worker-leases.jsonl`
+ * (`ACE_TEST_WORKER_LEDGER` overrides, `off` disables), with host, pid, ppid,
+ * Claude session, turn and caller. `grep <lease-id>` that file on each
+ * machine names the leaker; an `acquire` with no `release` / `exit-release`
+ * line is a process that died hard.
  */
+import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { canopyApiBase, canopyToken } from './ace-canopy-pat.js';
 import { LEGACY_SLOT, legacyTestWorker, maskSecretsDeep, workerFromSlotData, type TestWorker } from './test-worker-pool.js';
 import { fetchSlotDataReport, type SlotDataReport } from './test-worker-slots.js';
@@ -103,7 +121,52 @@ export interface TestWorkerCheckoutOpts {
   warn?: (msg: string) => void;
   /** Start the background heartbeat (default true; tests drive `heartbeatNow`). */
   backgroundHeartbeat?: boolean;
+  /** The local lease ledger (ace#3033); omitted → `defaultLedgerPath(env)`, null → none. */
+  ledgerPath?: string | null;
 }
+
+/** Who this process is, for the lease ledger and the holder header (ace#3033). */
+export interface LeaseHolder {
+  host: string;
+  pid: number;
+  ppid: number;
+  /** CLAUDE_CODE_SESSION_ID — the Claude session whose MCP child holds it. */
+  session_id: string | null;
+  /** CANOPY_TURN_ID — also sent as the lease's `turn_id`. */
+  turn_id: string | null;
+  /** The script or server the process runs (argv[1]'s basename), e.g. `mobile-server.ts`. */
+  caller: string;
+}
+
+export function leaseHolder(env: NodeJS.ProcessEnv = process.env): LeaseHolder {
+  return {
+    host: os.hostname(),
+    pid: process.pid,
+    ppid: process.ppid,
+    session_id: env.CLAUDE_CODE_SESSION_ID || null,
+    turn_id: env.CANOPY_TURN_ID || null,
+    caller: process.argv[1] ? path.basename(process.argv[1]) : process.argv0,
+  };
+}
+
+export const HOLDER_HEADER = 'x-ace-lease-holder';
+
+/** `host=… pid=… ppid=… session=… turn=… caller=…`, header-safe (printable ASCII only). */
+export function holderHeader(h: LeaseHolder): string {
+  const v =
+    `host=${h.host} pid=${h.pid} ppid=${h.ppid} session=${h.session_id ?? '-'} ` +
+    `turn=${h.turn_id ?? '-'} caller=${h.caller}`;
+  return v.replace(/[^\x20-\x7e]/g, '?').slice(0, 512);
+}
+
+/** The local lease ledger's path; `ACE_TEST_WORKER_LEDGER` overrides, `off` disables. */
+export function defaultLedgerPath(env: NodeJS.ProcessEnv = process.env): string | null {
+  const v = env.ACE_TEST_WORKER_LEDGER;
+  if (v === 'off') return null;
+  return v || path.join(os.homedir(), '.ace', 'test-worker-leases.jsonl');
+}
+
+const LEDGER_MAX_BYTES = 5 * 1024 * 1024;
 
 /** Codes that mean "the pool capability is not live yet" — the rollout fallback. */
 const NOT_LIVE = new Set(['LEASE_UNDECLARED', 'LEASE_NO_GRANT', 'LEASE_AGENT_NOT_VISIBLE']);
@@ -120,6 +183,8 @@ export class TestWorkerCheckout {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly warnImpl: (msg: string) => void;
   private readonly backgroundHeartbeat: boolean;
+  private readonly holder: LeaseHolder;
+  private readonly ledgerPath: string | null;
 
   private held: HeldWorker[] = [];
   private modeValue: WorkerLockMode | null = null;
@@ -130,6 +195,9 @@ export class TestWorkerCheckout {
 
   constructor(opts: TestWorkerCheckoutOpts = {}) {
     const token = opts.token === undefined ? canopyToken() : opts.token;
+    this.env = opts.env ?? process.env;
+    this.holder = leaseHolder(this.env);
+    this.ledgerPath = opts.ledgerPath !== undefined ? opts.ledgerPath : defaultLedgerPath();
     this.http = token
       ? {
           baseUrl: (opts.baseUrl ?? canopyApiBase()).replace(/\/+$/, ''),
@@ -138,9 +206,9 @@ export class TestWorkerCheckout {
           requestTimeoutMs: opts.requestTimeoutMs ?? 30_000,
           retry: resolveRetry(opts.retry),
           capability: TEST_WORKER_CAPABILITY,
+          headers: { [HOLDER_HEADER]: holderHeader(this.holder) },
         }
       : null;
-    this.env = opts.env ?? process.env;
     this.waitMs = opts.waitMs ?? 10 * 60_000;
     this.pollIntervalMs = opts.pollIntervalMs ?? 5_000;
     this.heartbeatMs = opts.heartbeatMs ?? 4 * 60_000;
@@ -258,16 +326,33 @@ export class TestWorkerCheckout {
       this.held.push(...fresh);
       this.modeValue = 'locked';
       this.startHeartbeat();
-      for (const h of fresh) logInfo(`test-worker: checked out ${h.slot} (${h.worker.phone}) lease ${h.leaseId}`);
+      for (const h of fresh) {
+        logInfo(`test-worker: checked out ${h.slot} (${h.worker.phone}) lease ${h.leaseId} [${holderHeader(this.holder)}]`);
+        this.record('held', h.leaseId, { slot: h.slot });
+      }
       return this.heldWorkers();
     } catch (e) {
-      // Never leave a slot (or a queue position) behind a failed checkout.
-      await Promise.all(acquired.map((l) => this.deleteLease(l.lease_id).catch(() => {})));
+      // Never leave a slot (or a queue position) behind a failed checkout. A
+      // DELETE that fails here pins the slot until idle release (900 s), so it
+      // is logged and ledgered, never swallowed silently (ace#3033).
+      await Promise.all(
+        acquired.map((l) =>
+          this.deleteLease(l.lease_id).then(
+            () => this.record('release', l.lease_id, { why: `checkout failed: ${(e as Error).message}` }),
+            (de) => {
+              logInfo(`test-worker: could NOT release lease ${l.lease_id} after a failed checkout: ${(de as Error).message}`);
+              this.record('release-failed', l.lease_id, { error: (de as Error).message });
+            },
+          ),
+        ),
+      );
       throw e;
     }
   }
 
   private async acquireOne(): Promise<LeaseOut> {
+    // Exactly these keys: canopy-web's pool acquire refuses any param but
+    // `slot` (422), so the holder rides in a header + the ledger instead.
     const body: Record<string, unknown> = { agent: LEASE_AGENT, capability: TEST_WORKER_CAPABILITY };
     const turnId = this.env.CANOPY_TURN_ID;
     if (turnId) body.turn_id = turnId;
@@ -276,9 +361,11 @@ export class TestWorkerCheckout {
       throw new MobileError('TEST_WORKER_BAD_RESPONSE', `acquire returned no lease_id: ${JSON.stringify(maskSecretsDeep(created))}`);
     }
     this.installExitHook();
+    this.record('acquire', created.lease_id, { status: String(created.status), slot: leaseSlot(created) });
     logInfo(
       `test-worker: lease ${created.lease_id} ${created.status}` +
-        (created.position != null ? ` (queue position ${created.position})` : ''),
+        (created.position != null ? ` (queue position ${created.position})` : '') +
+        ` [${holderHeader(this.holder)}]`,
     );
     return created;
   }
@@ -381,8 +468,10 @@ export class TestWorkerCheckout {
         try {
           await this.deleteLease(h.leaseId);
           logInfo(`test-worker: released ${h.slot} lease ${h.leaseId}`);
+          this.record('release', h.leaseId, { slot: h.slot });
         } catch (e) {
           errors.push(`${h.slot}: ${(e as Error).message}`);
+          this.record('release-failed', h.leaseId, { slot: h.slot, error: (e as Error).message });
         }
       }),
     );
@@ -425,6 +514,7 @@ export class TestWorkerCheckout {
       if (status !== 'ready') {
         lost.push(h.slot);
         this.held = this.held.filter((x) => x !== h);
+        this.record('lost', h.leaseId, { slot: h.slot, status });
         const msg =
           `test-worker ${h.slot} lease ${h.leaseId} is ${status} — this session no longer holds the worker. ` +
           'Another session may sign it in; re-run mobile_ensure_avd_running to check out a worker again.';
@@ -452,17 +542,48 @@ export class TestWorkerCheckout {
   private installExitHook(): void {
     if (!this.releaseOnExit || this.exitHookInstalled || !this.http) return;
     this.exitHookInstalled = true;
+    process.once('exit', () => this.releaseHeldSync('exit'));
+  }
+
+  /**
+   * Release every held lease SYNCHRONOUSLY and forget it. The exit hook runs
+   * this; so does mobile-server's SIGINT/SIGTERM/SIGHUP handler, FIRST,
+   * before its async daemon cleanup — a parent that follows SIGTERM with
+   * SIGKILL during that cleanup otherwise leaves the slot pinned for
+   * idle_release_s (ace#3033). Idempotent; never throws.
+   */
+  releaseHeldSync(why = 'exit'): string[] {
     const http = this.http;
-    process.once('exit', () => {
-      for (const h of this.held) {
-        if (!h.leaseId) continue;
-        try {
-          this.syncReleaseImpl(`${http.baseUrl}${routePath('release', { lease_id: h.leaseId })}`, http.token);
-        } catch {
-          /* best-effort: idle release covers the rest */
-        }
+    const targets = this.held.filter((h) => h.leaseId);
+    this.held = [];
+    this.stopHeartbeat();
+    if (!http) return [];
+    for (const h of targets) {
+      try {
+        this.syncReleaseImpl(`${http.baseUrl}${routePath('release', { lease_id: h.leaseId! })}`, http.token);
+        this.record('exit-release', h.leaseId, { slot: h.slot, why });
+      } catch {
+        /* best-effort: idle release covers the rest */
       }
-    });
+    }
+    return targets.map((h) => h.slot);
+  }
+
+  /** Append one ledger line (ace#3033). Best-effort: a ledger failure never fails a checkout. */
+  private record(event: string, leaseId: string | null, extra: Record<string, unknown> = {}): void {
+    if (!this.ledgerPath || !leaseId) return;
+    try {
+      mkdirSync(path.dirname(this.ledgerPath), { recursive: true });
+      try {
+        if (statSync(this.ledgerPath).size > LEDGER_MAX_BYTES) renameSync(this.ledgerPath, `${this.ledgerPath}.1`);
+      } catch {
+        /* no ledger yet */
+      }
+      const line = { ts: new Date(this.now()).toISOString(), event, lease_id: leaseId, ...extra, holder: this.holder };
+      appendFileSync(this.ledgerPath, `${JSON.stringify(line)}\n`);
+    } catch {
+      /* best-effort */
+    }
   }
 
   private call<T>(method: string, route: string, body?: unknown, opts: { retry?: boolean } = {}): Promise<T> {

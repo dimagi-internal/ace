@@ -321,3 +321,80 @@ describe('checkScoringArithmetic (#1035)', () => {
     expect(out).toMatch(/1035/);
   });
 });
+
+/**
+ * dimagi-internal/ace#2990 — a role-partitioned rollup. Two 10-item banks, a
+ * worker answers only her own, and `user_score` picks the bank by role. The
+ * whole-form check compared each `div 10` against all 20 items and raised a
+ * false BLOCKER on kaduna-graduation/20261015-1411 (Learn build
+ * b7a5e1dcc83f482aabdf99858cdc97c0, modules-15/forms-0.xml).
+ */
+describe('checkScoringArithmetic — if()-partitioned rollup (#2990)', () => {
+  const ROLE =
+    "instance('casedb')/casedb/case[@case_type='commcare-user'][hq_user_id=instance('commcaresession')/session/context/userid]/kgrad_role = 'FLW'";
+  const sum = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, i) => `/data/q${from + i}_score`).join(' + ');
+  const form = (rollup: string, items = 20) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+${Array.from({ length: items }, (_, i) => `    <bind nodeset="/data/q${i + 1}_score" calculate="if(/data/q${i + 1} = 'a', 1, 0)"/>`).join('\n')}
+    <bind nodeset="/data/user_score" type="xsd:string" calculate="${rollup.replace(/'/g, '&apos;')}"/>
+  </model></h:head>
+</h:html>`;
+
+  it('passes the kaduna bind — each branch sums 10 items and divides by 10', () => {
+    const r = checkScoringArithmetic(
+      form(`if(${ROLE}, (${sum(1, 10)}) * 100 div 10, (${sum(11, 20)}) * 100 div 10)`),
+    );
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('still CATCHES a branch whose div disagrees with its own term count', () => {
+    const r = checkScoringArithmetic(
+      form(`if(${ROLE}, (${sum(1, 9)}) * 100 div 10, (${sum(10, 20)}) * 100 div 11)`, 20),
+    );
+    assertChecked(r);
+    const f = r.findings.filter((x) => x.kind === 'denominator-mismatch');
+    expect(f).toHaveLength(1);
+    expect(f[0].detail).toMatch(/branch 1 .* divides by 10 but sums 9/);
+  });
+
+  it('still CATCHES an item no branch covers (union check)', () => {
+    const r = checkScoringArithmetic(
+      form(`if(${ROLE}, (${sum(1, 10)}) * 100 div 10, (${sum(11, 19)}) * 100 div 9)`),
+    );
+    assertChecked(r);
+    expect(r.findings.map((f) => f.kind)).toEqual(['missing-term']);
+    expect(r.findings[0].detail).toMatch(/q20_score/);
+  });
+
+  it('flattens a nested if() — three banks', () => {
+    const r = checkScoringArithmetic(
+      form(
+        `if(${ROLE}, (${sum(1, 5)}) * 100 div 5, if(/data/role = 'sup', (${sum(6, 10)}) * 100 div 5, (${sum(11, 15)}) * 100 div 4))`,
+        15,
+      ),
+    );
+    assertChecked(r);
+    const f = r.findings.filter((x) => x.kind === 'denominator-mismatch');
+    expect(f).toHaveLength(1);
+    expect(f[0].detail).toMatch(/branch 3 .* divides by 4 but sums 5/);
+  });
+
+  it('still CATCHES a non-partitioned 20-item rollup that divides by 10', () => {
+    const r = checkScoringArithmetic(form(`(${sum(1, 20)}) * 100 div 10`));
+    assertChecked(r);
+    expect(r.findings.map((f) => f.kind)).toContain('denominator-mismatch');
+    expect(r.findings.find((f) => f.kind === 'denominator-mismatch')!.detail).toMatch(/20 scored item/);
+  });
+
+  it('does not treat if(...) + x as a partition', () => {
+    const r = checkScoringArithmetic(
+      form(`if(${ROLE}, 0, 0) + (${sum(1, 20)}) * 100 div 10`),
+    );
+    assertChecked(r);
+    expect(r.findings.find((f) => f.kind === 'denominator-mismatch')!.detail).toMatch(/20 scored item/);
+  });
+});

@@ -56,6 +56,10 @@ export class FakeCanopyPool {
   slotRoutes = true;
   /** Every PUT body received, verbatim (tests assert what was SENT). */
   readonly puts: Array<{ slot: string; body: unknown }> = [];
+  /** Every lease-acquire POST body received, verbatim (ace#3033). */
+  readonly acquires: Array<Record<string, unknown>> = [];
+  /** The `x-ace-lease-holder` header on every request, in order ('' when absent). */
+  readonly holderHeaders: string[] = [];
   /** Slot → lease id, for slots held outside this client (other sessions). */
   readonly calls: string[] = [];
   private seq = 0;
@@ -129,6 +133,7 @@ export class FakeCanopyPool {
     const url = new URL(String(input));
     const method = (init?.method ?? 'GET').toUpperCase();
     this.calls.push(`${method} ${url.pathname}${url.search}`);
+    this.holderHeaders.push(new Headers(init?.headers).get('x-ace-lease-holder') ?? '');
     const json = (status: number, body: unknown) =>
       new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     const sm = /^\/api\/agents\/ace\/capabilities\/test-worker\/slots(?:\/([^/]+))?$/.exec(url.pathname);
@@ -166,6 +171,18 @@ export class FakeCanopyPool {
       }
       if (this.mode === 'ungranted') {
         return json(403, { title: 'no grant', detail: 'workspace connect has no grant for capability test-worker' });
+      }
+      const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      this.acquires.push(sent);
+      // canopy-web's pool acquire (canopy_runtime/schema.py resolve_params)
+      // takes ONLY an optional `slot` param, and the body is a StrictModel.
+      const unknownParams = Object.keys((sent.params as Record<string, unknown>) ?? {}).filter((k) => k !== 'slot');
+      const unknownKeys = Object.keys(sent).filter((k) => !['agent', 'capability', 'params', 'turn_id'].includes(k));
+      if (unknownParams.length || unknownKeys.length) {
+        const said = unknownParams.length
+          ? `test-worker: a pool acquire takes only 'slot'; unknown param(s) ${unknownParams.map((k) => `'${k}'`).join(', ')}`
+          : `extra fields not permitted: ${unknownKeys.join(', ')}`;
+        return json(422, { title: said, detail: said });
       }
       const lease_id = `L${++this.seq}`;
       const slot = this.freeSlot();

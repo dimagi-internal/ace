@@ -31,6 +31,7 @@ import {
 } from '../../lib/interactive-live-load.js';
 import type {
   ConstraintReport,
+  DatasetSpec,
   ScrubReport,
   UnparsedExpression,
 } from '../../lib/dataset-constraints';
@@ -627,6 +628,22 @@ export interface DatasetConstraintCheckInput {
    * deleting the list.
    */
   unparsedResolutions?: UnparsedResolution[];
+  /**
+   * The spec `auditDataset` actually ran over: `mergeDatasetSpecs(derived.spec, additions)`
+   * (ace#2245). A `spec-addition` resolution clears its unparsed gate only when this spec
+   * carries a rule on that field that audits the expression: a conditional entry for the
+   * field that does not still list the expression in `unparsedGates`, an integer entry with
+   * a bound, or a cross-field rule naming it. Without it, a `spec-addition` is an author
+   * assertion nothing checked, and it clears nothing.
+   */
+  mergedSpec?: DatasetSpec;
+  /**
+   * `countFieldPresence(records, <fields the merged spec's rules read>)` over the records
+   * as they now stand. A spec-addition rule whose gate field is carried by 0 records is
+   * REPORTED as declared but never firing. It does not fail: the gate is declared, but it
+   * audits nothing (ace#2245, `enrol_gps_accuracy_band` in 0 of 182 records).
+   */
+  fieldPresence?: Record<string, number>;
 }
 
 /** One entry of the producer's `derivation.unparsed_resolutions[]` (ace#2497). */
@@ -699,6 +716,31 @@ const OMISSION_HINT =
   'only: an off-branch value, an integrality violation and an unparsed gate are never exempt, because each ' +
   'of those is a dataset defect the scrub or an added spec entry can actually fix (dimagi-internal/ace#2225).';
 
+/**
+ * The merged-spec rules that audit one unparsed expression, each with the fields it must
+ * read to fire (ace#2245). A `relevant` gate is audited by a conditional entry for the field
+ * that no longer lists the expression in `unparsedGates`, or a cross-field rule naming the
+ * field; a `constraint` by an integer entry with a bound or a cross-field rule.
+ */
+function additionRulesFor(spec: DatasetSpec | undefined, u: UnparsedExpression): Array<{ gateFields: string[] }> {
+  if (!spec) return [];
+  const expr = String(u.expression).trim();
+  const rules: Array<{ gateFields: string[] }> = [];
+  if (u.kind === 'relevant') {
+    for (const c of spec.conditionalFields ?? []) {
+      if (c.field === u.field && !(c.unparsedGates ?? []).some((g) => g.trim() === expr)) rules.push({ gateFields: [c.requiredWhen.field] });
+    }
+  } else {
+    for (const f of spec.integerFields ?? []) {
+      if (f.field === u.field && (f.min !== undefined || f.max !== undefined)) rules.push({ gateFields: [f.field] });
+    }
+  }
+  for (const r of spec.crossFieldRules ?? []) {
+    if (r.lhs === u.field || r.rhs === u.field) rules.push({ gateFields: [r.lhs, r.rhs] });
+  }
+  return rules;
+}
+
 export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInput): QACheckResult {
   const problems: string[] = [];
   const hints: string[] = [];
@@ -741,14 +783,42 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
   );
   const resolvedKey = new Set(resolutions.map((r) => `${r.field}\u0000${r.expression.trim()}`));
   const resolvedNote: string[] = [];
+  // ace#2245: a spec-addition is checked against the merged spec, not taken on the author's word.
+  const unbacked: string[] = [];
+  const neverFires: string[] = [];
   const unparsed = rawUnparsed.filter((u) => {
     if (resolvedKey.has(`${u.field}\u0000${String(u.expression).trim()}`)) {
       const r = resolutions.find((x) => x.field === u.field && x.expression.trim() === String(u.expression).trim());
+      if (r && r.resolution.trim() === 'spec-addition') {
+        const rules = additionRulesFor(input.mergedSpec, u);
+        if (rules.length === 0) {
+          unbacked.push(`${u.field} [${u.kind}] ${u.expression}`);
+          return true;
+        }
+        if (input.fieldPresence) {
+          const dead = rules.flatMap((g) => g.gateFields).filter((f) => input.fieldPresence![f] === 0);
+          if (dead.length && rules.every((g) => g.gateFields.some((f) => input.fieldPresence![f] === 0))) {
+            neverFires.push(`${u.field} (gate field ${[...new Set(dead)].join(', ')} carried by 0 of ${input.report.total} records)`);
+          }
+        }
+      }
       if (r) resolvedNote.push(`${u.field}: ${r.resolution}`);
       return false;
     }
     return true;
   });
+  if (unbacked.length) {
+    problems.push(
+      `${unbacked.length} spec-addition resolution(s) name a gate the merged spec carries no rule for, so the ` +
+        `addition was asserted, not audited: ${unbacked.join('; ')}` +
+        (input.mergedSpec ? '' : ' (no mergedSpec supplied)'),
+    );
+    hints.push(
+      'pass mergedSpec = mergeDatasetSpecs(derived.spec, additions), the spec auditDataset ran over; a ' +
+        'spec-addition must put a rule on the unparsed field there (a conditional entry not still listing the ' +
+        'expression in unparsedGates, an integer bound, or a cross-field rule) (ace#2245).',
+    );
+  }
   if (unparsed.length > 0) {
     problems.push(
       `${unparsed.length} expression(s) could not be derived into the spec, so those gates were NOT audited: ` +
@@ -830,6 +900,9 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
   const resolvedTxt = resolvedNote.length
     ? `; ${resolvedNote.length} unparsed gate(s) resolved — ${resolvedNote.join('; ')}`
     : '';
+  const neverFiresTxt = neverFires.length
+    ? `; REPORTED, declared but never firing (ace#2245): ${neverFires.join('; ')}`
+    : '';
 
   if (problems.length === 0) {
     const derivedNote = input.derivation
@@ -842,14 +915,87 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
       pass: true,
       detail:
         `0 unexempted violations across ${input.report.total} records (measured) — ` +
-        `${derivedNote}${scrubNote}${resolvedTxt}${exemptNote}`,
+        `${derivedNote}${scrubNote}${resolvedTxt}${neverFiresTxt}${exemptNote}`,
     };
   }
 
   return {
     pass: false,
-    detail: problems.join('; ') + resolvedTxt + exemptNote,
+    detail: problems.join('; ') + resolvedTxt + neverFiresTxt + exemptNote,
     auto_fix_hint: hints.join(' '),
+  };
+}
+
+// ── #2246: check 4's anchor clause names a value the gate can read ──
+
+/**
+ * Check 4 (`timeline_pinned`) as a pure function (ace#2246).
+ *
+ * Two clauses: the manifest `timeline.start_date` is a fixed ISO Monday (a
+ * relative or sliding expression breaks idempotency), and it equals every
+ * minted run's `instance.period_start` — the `par_url` payloads check 7
+ * already fetched. The second clause used to read "equals the `par_url`
+ * opportunity's env anchor", which names no atom: `synthetic_env_get` is keyed
+ * by an ENV TEMPLATE, not an opportunity, so a gate could evaluate only the
+ * first clause and still report a full pass.
+ *
+ * A clause that cannot be judged is named (`anchor-not-judged`) and FAILS the
+ * check, because an applicable check that was not evaluated is a failure,
+ * never a skip. A payload whose run declares no `period_start` is listed as
+ * not judged; if no payload declares one, the clause was not judged.
+ */
+export function checkTimelinePinned(
+  startDate: unknown,
+  payloads: Array<{ key: string; payload: WorkflowPayload | null | undefined }>,
+): QACheckResult {
+  const raw = typeof startDate === 'string' ? startDate.trim() : '';
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00Z`) : null;
+  if (!iso || Number.isNaN(iso.getTime()) || iso.toISOString().slice(0, 10) !== raw) {
+    return {
+      pass: false,
+      detail: `timeline.start_date ${JSON.stringify(startDate ?? null)} is not a fixed ISO date (YYYY-MM-DD)`,
+      auto_fix_hint: 'set --pin-monday to a fixed Monday; a relative or sliding window breaks idempotency',
+    };
+  }
+  if (iso.getUTCDay() !== 1) {
+    const day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][iso.getUTCDay()];
+    return {
+      pass: false,
+      detail: `timeline.start_date ${raw} is a ${day}, not a Monday`,
+      auto_fix_hint: 'set --pin-monday to a fixed Monday; a relative or sliding window breaks idempotency',
+    };
+  }
+  const judged = payloads.filter((p) => typeof p.payload?.instance?.period_start === 'string' && p.payload.instance.period_start.trim());
+  const unjudged = payloads.filter((p) => !judged.includes(p)).map((p) => p.key);
+  if (judged.length === 0) {
+    return {
+      pass: false,
+      detail:
+        `timeline.start_date ${raw} is a fixed Monday; anchor-not-judged: ` +
+        (payloads.length
+          ? `no par_url payload declares instance.period_start (${unjudged.join(', ')})`
+          : 'no par_url payload was supplied'),
+      auto_fix_hint:
+        'pass the par_url payloads check 7 fetched (#workflow-data); the anchor is each minted run\'s instance.period_start',
+    };
+  }
+  const off = judged.filter((p) => String(p.payload!.instance!.period_start).trim().slice(0, 10) !== raw);
+  const notJudgedTxt = unjudged.length ? `; not judged (no period_start): ${unjudged.join(', ')}` : '';
+  if (off.length) {
+    return {
+      pass: false,
+      detail:
+        `timeline.start_date ${raw} disagrees with the minted run(s): ` +
+        off.map((p) => `${p.key} period_start=${p.payload!.instance!.period_start}`).join('; ') +
+        notJudgedTxt,
+      auto_fix_hint:
+        're-mint the run(s) with period_start = timeline.start_date, or correct the manifest pin; the dashboards ' +
+        'and the manifest must describe one window',
+    };
+  }
+  return {
+    pass: true,
+    detail: `timeline.start_date ${raw} is a fixed Monday and equals period_start on ${judged.length} minted run(s)${notJudgedTxt}`,
   };
 }
 

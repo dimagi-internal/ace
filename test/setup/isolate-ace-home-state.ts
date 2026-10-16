@@ -71,6 +71,22 @@ fs.writeFileSync(
 );
 process.env.ACE_MOBILE_SELECTION_AVD_HOME = selectionAvdHome;
 
+// (4) the test-worker lease ledger (`~/.ace/test-worker-leases.jsonl`,
+// ace#3033) — the file an operator greps to name who held a lease, so a
+// test's fake leases must never land in the real one.
+process.env.ACE_TEST_WORKER_LEDGER = path.join(workerTmpDir, 'test-worker-leases.jsonl');
+
+// (5) ACE's REAL canopy-web PAT — ace#3033. Any `new MobileClient({...})`
+// that passes neither `workers` nor `bootstrapConfig` builds a real
+// TestWorkerCheckout, which read the machine's PAT from ACE's .env and took
+// REAL test-worker leases on canopy-web: one acquire per test, never called
+// again (the worker is killed, not exited), each pinning a pool slot for
+// idle_release_s (900 s). Seen live 2026-10-16: one `npx vitest run
+// test/mcp/mobile/` filled all 10 slots and queued three more. Point the PAT
+// reader at a file that does not exist; a test that needs a PAT writes its
+// own ACE_ENV_FILE (client-lease-routing.test.ts does).
+process.env.ACE_ENV_FILE = path.join(workerTmpDir, 'no-ace.env');
+
 afterAll(() => {
   try {
     fs.rmSync(workerTmpDir, { recursive: true, force: true });

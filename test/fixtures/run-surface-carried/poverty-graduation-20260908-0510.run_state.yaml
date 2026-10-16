@@ -1,0 +1,30 @@
+# Captured 2026-10-16 from Drive: ACE/poverty-graduation/runs/20260908-0510/run_state.yaml
+# (file 1SBQTSOuKWkf0x3CvmuYt2OE2WrsYHkw-, revision 53). Trimmed to top-level identity keys and
+# per-phase status; every other key omitted unchanged. The live file carries NO run_notes and NO
+# blocker_dispositions, which is the fact this fixture exists for (ace#2346 clean control).
+opportunity: poverty-graduation
+run_id: 20260908-0510
+mode: default
+current_phase: solicitation-management
+ace_web_summary_url: https://labs.connect.dimagi.com/ace/opps/dimagi-team/poverty-graduation/runs/20260908-0510/summary
+phases:
+  idea-to-design:
+    status: done
+  scenarios-and-acceptance:
+    status: done
+  commcare-setup:
+    status: done
+  connect-setup:
+    status: done
+  ocs-setup:
+    status: done
+  qa-and-training:
+    status: done
+  synthetic-data-and-workflows:
+    status: done
+  solicitation-management:
+    status: done
+  execution-management:
+    status: pending
+  closeout:
+    status: pending

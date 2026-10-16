@@ -520,12 +520,45 @@ appId: org.commcare.dalvik
     commands:
       - tapOn:
           id: "org.commcare.dalvik:id/personalid_email_skip_button"
+      # The confirm dialog's dismiss button differs by APK (ace#2821):
+      #   2.64.0 — "Skip email?"            buttons NO (negative) / YES (positive)
+      #   2.66   — "Protect your account"   buttons SKIP (negative) / ADD EMAIL (positive)
+      # Wait for EITHER, then probe for the 2.66 shape and tap the matching
+      # one. The 2.66 tap is matched by id AND text together: on 2.64.0
+      # `negative_button` is NO, the recorded ANTI-TARGET above, so an
+      # id-only matcher would strand the 2.64.0 walk on the email form.
+      # 2.66 evidence: commcare-android PR #3946 CI build (artifact
+      # 11382515841), emulator-5558 2026-10-08 — the UI dump at the failed
+      # `"YES"` assert showed dialog_title_text "Protect your account" with
+      # SKIP / ADD EMAIL, and a hand tap on SKIP reached "Account Recovered".
+      # RESIDUAL: this branch has not been re-run end-to-end on 2.66.
       - extendedWaitUntil:
           visible:
-            text: "YES"
+            text: "YES|SKIP"
           timeout: 10000
-      - tapOn:
-          text: "YES"
+      - evalScript: ${output.emailSkipConfirm266 = false}
+      - runFlow:
+          optional: true
+          commands:
+            - extendedWaitUntil:
+                visible:
+                  id: "org.commcare.dalvik:id/negative_button"
+                  text: "SKIP"
+                timeout: 1500
+            - evalScript: ${output.emailSkipConfirm266 = true}
+      - runFlow:
+          when:
+            true: ${output.emailSkipConfirm266}
+          commands:
+            - tapOn:
+                id: "org.commcare.dalvik:id/negative_button"
+                text: "SKIP"
+      - runFlow:
+          when:
+            true: ${!output.emailSkipConfirm266}
+          commands:
+            - tapOn:
+                text: "YES"
       - waitForAnimationToEnd:
           timeout: 3000
 

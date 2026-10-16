@@ -70,14 +70,17 @@ export const JAVA_CANDIDATE_PATHS: readonly string[] = [
  * AND emits the wrong banner; a real JRE exits 0 AND emits the
  * version banner. Either alone leaves a false-positive class.
  *
- * Bounded by a 4-second timeout so a wedged JVM doesn't hang the
- * resolver. JDK 17+ cold-start is <2s on every machine we've measured.
+ * Bounded by a 4-second timeout (default) so a wedged JVM doesn't hang
+ * the resolver. JDK 17+ cold-start is <2s on every machine we've measured.
+ * `timeoutMs` is a parameter so a test's fake binary can run under
+ * full-suite load without the 4s kill turning a pass into a flake
+ * (ace#2926); production callers keep the default.
  */
-export function javaProbeWorks(binary: string): boolean {
+export function javaProbeWorks(binary: string, timeoutMs = 4_000): boolean {
   try {
     const res = spawnSync(binary, ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 4_000,
+      timeout: timeoutMs,
       encoding: 'utf8',
     });
     if (res.error || res.status !== 0) return false;
@@ -182,6 +185,8 @@ export interface CommCareCliValidateOptions {
   javaPath?: string;
   /** Spawn timeout in ms. Default 60000. Bednet-scale CCZs validate in <2s; long timeouts surface a stuck JVM. */
   timeoutMs?: number;
+  /** Test seam: replaces `child_process.spawn` (ace#2988). */
+  spawnImpl?: CliSpawn;
 }
 
 export type CommCareCliValidateVerdict = 'pass' | 'fail';
@@ -201,6 +206,8 @@ export interface CommCareCliValidateResult {
   timeout_ms: number;
   /** True when the spawn timed out before clean exit. */
   timed_out: boolean;
+  /** Set when the helper killed the JVM for runaway output (ace#2988). */
+  killed_reason?: CliKillReason;
 }
 
 export type CommCareCliInputErrorKind =
@@ -214,6 +221,158 @@ export class CommCareCliInputError extends Error {
     super(`commcare-cli input error: ${kind} (${path})`);
     this.name = 'CommCareCliInputError';
   }
+}
+
+// ============================================================================
+// Bounded output capture (dimagi-internal/ace#2988)
+// ============================================================================
+
+/**
+ * Chars of each stream kept from its START. The first exception and the
+ * `Starting form entry` marker both sit near the start; 1M chars covers every
+ * menu screen of a large app with room to spare.
+ */
+export const CLI_LOG_HEAD_CHARS = 1_000_000;
+/** Chars of each stream kept from its END (how the run finished). */
+export const CLI_LOG_TAIL_CHARS = 64_000;
+/**
+ * Total chars (stdout + stderr) after which the JVM is killed. A clean play
+ * prints well under 1 MB; a restart loop printed ~2 GB of stderr per minute
+ * (ace#2988), which overflowed V8's max string length and took the whole
+ * ace-connect MCP down with `RangeError: Invalid string length`.
+ */
+export const CLI_OUTPUT_CEILING_CHARS = 64_000_000;
+/**
+ * What `commcare-cli play` prints when a session step throws: it reports the
+ * error, waits for return, and restarts. stdin is already closed, so it
+ * re-runs (and re-prints the full stack trace) until something kills it.
+ */
+export const PLAY_RESTART_LOOP_MARKER = 'Press return to restart the session';
+/** How long to keep reading after the marker, so the first pass's stack
+ *  trace (which may be on the OTHER pipe) lands before the kill. */
+const PLAY_RESTART_LOOP_GRACE_MS = 500;
+
+/** Why the helper killed the JVM itself (not the spawn timeout). */
+export type CliKillReason = 'restart-loop' | 'output-ceiling';
+
+/**
+ * A stream buffer with a fixed memory ceiling: the first `headMax` chars, the
+ * last `tailMax` chars, and a count of everything in between. Appending is
+ * O(chunk) no matter how much has been seen, so a runaway child can never
+ * build a string V8 refuses to allocate.
+ */
+export class BoundedLog {
+  private head = '';
+  private tail = '';
+  /** Total chars ever pushed. */
+  total = 0;
+
+  constructor(
+    private readonly headMax: number = CLI_LOG_HEAD_CHARS,
+    private readonly tailMax: number = CLI_LOG_TAIL_CHARS,
+  ) {}
+
+  push(chunk: string): void {
+    this.total += chunk.length;
+    if (this.head.length < this.headMax) {
+      const room = this.headMax - this.head.length;
+      this.head += chunk.slice(0, room);
+      chunk = chunk.slice(room);
+      if (!chunk) return;
+    }
+    if (chunk.length >= this.tailMax) {
+      this.tail = chunk.slice(chunk.length - this.tailMax);
+    } else {
+      const joined = this.tail + chunk;
+      this.tail = joined.length > this.tailMax ? joined.slice(joined.length - this.tailMax) : joined;
+    }
+  }
+
+  toString(): string {
+    const elided = this.total - this.head.length - this.tail.length;
+    if (elided <= 0) return this.head + this.tail;
+    return `${this.head}\n... [${elided} chars elided] ...\n${this.tail}`;
+  }
+}
+
+/** The process surface the spawners use — `ChildProcess` satisfies it; tests pass a fake. */
+export interface CliChildProcess {
+  stdout: NodeJS.EventEmitter | null;
+  stderr: NodeJS.EventEmitter | null;
+  stdin?: { write(s: string): unknown; end(): unknown } | null;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  on(event: 'error', cb: (err: Error) => void): unknown;
+  on(event: 'close', cb: (code: number | null) => void): unknown;
+}
+
+/** Injectable spawn, for tests. Defaults to `node:child_process` `spawn`. */
+export type CliSpawn = (cmd: string, args: string[], opts: { stdio: any }) => CliChildProcess;
+
+interface CaptureOptions {
+  /** Kill once this marker appears in either stream (after a short grace). */
+  restartLoopMarker?: string;
+  graceMs?: number;
+  ceilingChars?: number;
+}
+
+/**
+ * Wire bounded capture onto a child. Kills it (SIGKILL) on the output ceiling,
+ * or shortly after the restart-loop marker, and records which.
+ */
+function captureBounded(proc: CliChildProcess, opts: CaptureOptions) {
+  const stdout = new BoundedLog();
+  const stderr = new BoundedLog();
+  const ceiling = opts.ceilingChars ?? CLI_OUTPUT_CEILING_CHARS;
+  const marker = opts.restartLoopMarker;
+  const state: {
+    killedReason?: CliKillReason;
+    loopSeen?: boolean;
+    graceTimer?: ReturnType<typeof setTimeout>;
+  } = {};
+  const kill = () => {
+    if (state.killedReason) return;
+    if (state.graceTimer) clearTimeout(state.graceTimer);
+    // A loop that hit the ceiling during its grace is still a restart loop.
+    state.killedReason = state.loopSeen ? 'restart-loop' : 'output-ceiling';
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // already gone
+    }
+  };
+  const onData = (log: BoundedLog) => {
+    let carry = '';
+    return (d: Buffer | string) => {
+      if (state.killedReason) return;
+      const s = d.toString();
+      log.push(s);
+      if (stdout.total + stderr.total > ceiling) {
+        kill();
+        return;
+      }
+      if (marker && !state.loopSeen) {
+        // Keep a marker-length carry so a marker split across chunks still matches.
+        const window = carry + s;
+        if (window.includes(marker)) {
+          state.loopSeen = true;
+          state.graceTimer = setTimeout(kill, opts.graceMs ?? PLAY_RESTART_LOOP_GRACE_MS);
+        }
+        carry = window.slice(-(marker.length - 1));
+      }
+    };
+  };
+  proc.stdout?.on('data', onData(stdout));
+  proc.stderr?.on('data', onData(stderr));
+  return {
+    stdout,
+    stderr,
+    get killedReason() {
+      return state.killedReason;
+    },
+    dispose() {
+      if (state.graceTimer) clearTimeout(state.graceTimer);
+    },
+  };
 }
 
 /**
@@ -250,19 +409,14 @@ export async function commcareCliValidateCcz(
   }
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(javaPath, ['-jar', opts.jarPath, 'validate', opts.cczPath], {
+    const spawnFn: CliSpawn = opts.spawnImpl ?? (spawn as unknown as CliSpawn);
+    const proc = spawnFn(javaPath, ['-jar', opts.jarPath, 'validate', opts.cczPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    let stdout = '';
-    let stderr = '';
+    // Bounded: never accumulate unbounded child output (ace#2988).
+    const cap = captureBounded(proc, {});
     let timedOut = false;
     let settled = false;
-    proc.stdout.on('data', (d) => {
-      stdout += d.toString();
-    });
-    proc.stderr.on('data', (d) => {
-      stderr += d.toString();
-    });
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -273,14 +427,25 @@ export async function commcareCliValidateCcz(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      cap.dispose();
       reject(err);
     });
     proc.on('close', (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      cap.dispose();
       const exitCode = code === null ? -1 : code;
-      resolve(parseValidatorOutput({ exitCode, stdout, stderr, timedOut, timeoutMs }));
+      resolve(
+        parseValidatorOutput({
+          exitCode,
+          stdout: cap.stdout.toString(),
+          stderr: cap.stderr.toString(),
+          timedOut,
+          timeoutMs,
+          killedReason: cap.killedReason,
+        }),
+      );
     });
   });
 }
@@ -291,6 +456,8 @@ export interface ParseValidatorOutputInput {
   stderr: string;
   timedOut: boolean;
   timeoutMs: number;
+  /** Set when the helper killed the JVM for runaway output (ace#2988). */
+  killedReason?: CliKillReason;
 }
 
 const MAX_LOG_CHARS = 4000;
@@ -313,6 +480,7 @@ export function parseValidatorOutput(input: ParseValidatorOutputInput): CommCare
 
   const passed =
     !input.timedOut &&
+    !input.killedReason &&
     input.exitCode === 0 &&
     !streamIndicatesFailure(stderr) &&
     !streamIndicatesFailure(stdout);
@@ -326,6 +494,7 @@ export function parseValidatorOutput(input: ParseValidatorOutputInput): CommCare
     stderr,
     timeout_ms: input.timeoutMs,
     timed_out: input.timedOut,
+    ...(input.killedReason ? { killed_reason: input.killedReason } : {}),
   };
 }
 
@@ -414,6 +583,18 @@ export interface CommCareCliPlayOptions {
    * `restorePath` is supplied (ace#2860).
    */
   seedFixtureTags?: string[];
+  /**
+   * Custom user data (`#user/<key>`, i.e. `session/user/data/<key>`) for the
+   * restore user (ace#2989). Every key the CCZ's XML references is seeded
+   * with `''` by default; entries here override or add. A menu or form gated
+   * on a role (`#user/role = 'FLW'`) is only visible under that value, so walk
+   * each role branch with its own call. Ignored when `restorePath` is supplied.
+   */
+  userData?: Record<string, string>;
+  /** Test seam: replaces `child_process.spawn` (ace#2988). */
+  spawnImpl?: CliSpawn;
+  /** Test seam: ms to keep reading after the restart-loop marker. */
+  restartLoopGraceMs?: number;
 }
 
 /**
@@ -448,13 +629,20 @@ export type CommCareCliPlayVerdict = 'pass' | 'fail' | 'skipped';
  *   which is not a valid question or value`. When EVERY unresolved ref in the
  *   stream is an empty-seeded item-list instance (and the restore is ours),
  *   that is this class too; `unresolved_xpath` names the read.
+ * - `cli-user-data-unseeded` (ace#2989): something (often a menu `relevant=`,
+ *   evaluated by `MenuLoader.menuIsRelevant` while the ROOT menu renders) read
+ *   `session/user/data/<key>` and the restore carries no such key. The play
+ *   restore seeds every key the CCZ's XML names, so this fires for a caller-
+ *   supplied restore or a key the scan cannot see. HQ sends custom user data
+ *   on sync; form-init is UNEVALUATED, not failed.
  */
 export type CommCareCliPlaySkipReason =
   | 'entry-path-unresolved'
   | 'empty-case-list'
   | 'form-entry-not-reached'
   | 'cli-case-index-unsupported'
-  | 'cli-fixture-unseeded';
+  | 'cli-fixture-unseeded'
+  | 'cli-user-data-unseeded';
 
 export interface CommCareCliPlayResult {
   verdict: CommCareCliPlayVerdict;
@@ -464,6 +652,16 @@ export interface CommCareCliPlayResult {
   seeded_case_types?: string[];
   /** Item-list fixture tags seeded (empty) into the restore (ace#2860). */
   seeded_fixture_tags?: string[];
+  /** Custom user data the restore carried (ace#2989). */
+  seeded_user_data?: Record<string, string>;
+  /**
+   * Set when the helper killed the JVM itself (ace#2988): `restart-loop` —
+   * the CLI printed `Press return to restart the session` (a session step
+   * threw and it would re-run forever on closed stdin); `output-ceiling` —
+   * output passed `CLI_OUTPUT_CEILING_CHARS`. The verdict reads the FIRST
+   * pass's exception; with none recognised, it is `fail`.
+   */
+  killed_reason?: CliKillReason;
   /**
    * The suite command (`m3-f0`) the entry path resolved to, when suite.xml
    * declares its menus. Absent when the path could not be resolved — in
@@ -509,6 +707,13 @@ export interface BuildPlayRestoreOptions {
    * (ace#2860). Derived from the CCZ's XML by `commcareCliPlayCcz`.
    */
   fixtureTags?: string[];
+  /**
+   * Custom user data written into `<user_data>` (ace#2989), after the
+   * `commcare_first_name` / `commcare_last_name` defaults (which a key here
+   * overrides). `commcareCliPlayCcz` fills it from every
+   * `session/user/data/<key>` the CCZ references.
+   */
+  userData?: Record<string, string>;
   /** Override the restore user's uuid (also the seeded cases' owner). */
   userId?: string;
 }
@@ -552,6 +757,16 @@ export interface BuildPlayRestoreOptions {
  * all three reached `Form Start:`. We seed EMPTY roots, not HQ's rows: the
  * gate exercises form-init, which only needs the instance to resolve, and
  * fetching rows would couple an offline CCZ check to live HQ credentials.
+ *
+ * **Why user data seeding exists (dimagi-internal/ace#2989).** HQ custom user
+ * data reaches the app as `instance('commcaresession')/session/user/data/<key>`.
+ * A key the restore lacks does not read as empty — javarosa throws
+ * `XPathTypeMismatchException: Logic references … which is not a valid
+ * question or value`. On kaduna-graduation/20261015-1411 every `<menu>` was
+ * gated on `…/user/data/kgrad_role`, so `MenuLoader.menuIsRelevant` threw
+ * while the ROOT menu rendered and all 33 forms graded `fail` before any form
+ * opened. Re-run with the key present (`FLW`, `enumerator`, and `''`), all 16
+ * Learn forms reached `Starting form entry`.
  */
 export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string {
   const userId = opts.userId ?? PLAY_USER_UUID;
@@ -577,6 +792,14 @@ export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string 
 `,
     )
     .join('');
+  const userData: Record<string, string> = {
+    commcare_first_name: 'Demo',
+    commcare_last_name: 'User',
+    ...(opts.userData ?? {}),
+  };
+  const userDataXml = Object.entries(userData)
+    .map(([k, v]) => `      <data key="${xmlEscape(k)}">${xmlEscape(v)}</data>\n`)
+    .join('');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <OpenRosaResponse xmlns="http://openrosa.org/http/response">
   <message nature="ota_restore_success">Successful</message>
@@ -586,9 +809,7 @@ export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string 
     <uuid>${userId}</uuid>
     <date>${PLAY_RESTORE_DATE}</date>
     <user_data>
-      <data key="commcare_first_name">Demo</data>
-      <data key="commcare_last_name">User</data>
-    </user_data>
+${userDataXml}    </user_data>
   </Registration>
 ${cases}${fixtures}</OpenRosaResponse>
 `;
@@ -618,6 +839,41 @@ export function extractCaseTypesFromSuite(suiteXml: string): string[] {
     if (t) out.add(t);
   }
   return Array.from(out);
+}
+
+function xmlEscape(v: string): string {
+  return v
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Every custom user data key an XML document reads, from its
+ * `session/user/data/<key>` refs (ace#2989) — suite.xml menu/command
+ * `relevant=`, detail and filter XPath, and form binds alike. Order of first
+ * appearance, de-duplicated.
+ */
+export function extractUserDataKeys(...xmls: string[]): string[] {
+  const out = new Set<string>();
+  for (const xml of xmls) {
+    if (!xml) continue;
+    for (const m of xml.matchAll(/session\/user\/data\/([A-Za-z_][A-Za-z0-9_.-]*)/g)) {
+      out.add(m[1]);
+    }
+  }
+  return Array.from(out);
+}
+
+/** Every user data key any XML file in a CCZ reads. [] on unreadable. */
+export function readCczUserDataKeys(cczPath: string): string[] {
+  try {
+    return extractUserDataKeys(...readCczXmls(cczPath));
+  } catch {
+    return [];
+  }
 }
 
 /** A lookup-table tag must be a legal XML element name to become `<tag_list>`. */
@@ -744,6 +1000,19 @@ export interface SuiteMenu {
   /** Parent menu id; CommCare defaults an absent `root` to `root`. */
   root: string;
   commands: string[];
+  /** The menu's `relevant=` XPath (entity-decoded), when it has one. */
+  relevant?: string;
+  /** Per-command `relevant=` XPath (entity-decoded), keyed by command id. */
+  commandRelevant?: Record<string, string>;
+}
+
+function decodeXmlAttr(v: string): string {
+  return v
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
 }
 
 /** Every `<menu>` in suite order, with its `root` and its own commands. */
@@ -755,8 +1024,21 @@ export function parseSuiteMenus(suiteXml: string): SuiteMenu[] {
     const id = attrs.match(/\bid\s*=\s*"([^"]+)"/)?.[1];
     if (!id) continue;
     const root = attrs.match(/\broot\s*=\s*"([^"]+)"/)?.[1] ?? 'root';
-    const commands = [...m[2].matchAll(/<command\s+id\s*=\s*"([^"]+)"/g)].map((c) => c[1]);
-    out.push({ id, root, commands });
+    const commands: string[] = [];
+    const commandRelevant: Record<string, string> = {};
+    for (const c of m[2].matchAll(/<command\s+id\s*=\s*"([^"]+)"([^>]*)>/g)) {
+      commands.push(c[1]);
+      const rel = c[2].match(/\brelevant\s*=\s*"([^"]*)"/)?.[1];
+      if (rel !== undefined) commandRelevant[c[1]] = decodeXmlAttr(rel);
+    }
+    const relevant = attrs.match(/\brelevant\s*=\s*"([^"]*)"/)?.[1];
+    out.push({
+      id,
+      root,
+      commands,
+      ...(relevant !== undefined ? { relevant: decodeXmlAttr(relevant) } : {}),
+      ...(Object.keys(commandRelevant).length > 0 ? { commandRelevant } : {}),
+    });
   }
   return out;
 }
@@ -773,21 +1055,112 @@ type MenuItem = { kind: 'command' | 'menu'; id: string };
  * is listed inside `m0`, not at the root, so from the first nested module on
  * a root display position is no longer the HQ module index. Live on the
  * group-payment-test Deliver CCZ the root shows `m0 / m3 / m4` as `0 / 1 / 2`.
- * Relevancy (`relevant=` XPath on a menu or command) is not evaluated — an
- * app hiding an item that way would shift positions.
+ *
+ * Relevancy: the CLI DOES evaluate `relevant=` on menus and commands
+ * (`MenuLoader.menuIsRelevant`, ace#2989), so an item hidden that way shifts
+ * every later position. When `userData` is given, a `relevant=` that reads
+ * only custom user data and string literals (`#user/role = 'FLW'`, joined by
+ * `and` / `or`) is evaluated and a false item is dropped, as the CLI would.
+ * Any other `relevant=` is assumed true — `command_id` is how a caller sees
+ * that the walk landed somewhere else.
  */
-function menuDisplayItems(menus: SuiteMenu[], menuId: string): MenuItem[] {
+function menuDisplayItems(
+  menus: SuiteMenu[],
+  menuId: string,
+  userData?: Record<string, string>,
+): MenuItem[] {
   const items: MenuItem[] = [];
   const listedMenus = new Set<string>();
+  const hidden = (rel: string | undefined) =>
+    userData !== undefined && rel !== undefined && evalUserDataRelevance(rel, userData) === false;
   for (const m of menus) {
     if (m.id === menuId) {
-      for (const c of m.commands) items.push({ kind: 'command', id: c });
+      for (const c of m.commands) {
+        if (hidden(m.commandRelevant?.[c])) continue;
+        items.push({ kind: 'command', id: c });
+      }
     } else if (m.root === menuId && !listedMenus.has(m.id)) {
       listedMenus.add(m.id);
+      if (hidden(m.relevant)) continue;
       items.push({ kind: 'menu', id: m.id });
     }
   }
   return items;
+}
+
+/**
+ * Evaluate a `relevant=` XPath that reads ONLY custom user data, against the
+ * seeded values (ace#2989). Grammar: comparisons `<operand> (=|!=) <operand>`,
+ * where an operand is `instance('commcaresession')/session/user/data/<key>`
+ * or a quoted string literal, combined with `and` / `or` / parentheses. An
+ * absent key reads as `''`. Returns `undefined` for anything outside that
+ * grammar — the caller must then not guess.
+ */
+export function evalUserDataRelevance(
+  expr: string,
+  userData: Record<string, string>,
+): boolean | undefined {
+  const tokens: Array<{ t: 'lp' | 'rp' | 'and' | 'or' | 'eq' | 'ne' | 'val'; v?: string }> = [];
+  const re =
+    /\s*(?:(\()|(\))|(!=)|(=)|'([^']*)'|"([^"]*)"|instance\(\s*['"]commcaresession['"]\s*\)\/session\/user\/data\/([A-Za-z_][A-Za-z0-9_.-]*)|\b(and|or)\b)/y;
+  let pos = 0;
+  const src = expr.trim();
+  while (pos < src.length) {
+    re.lastIndex = pos;
+    const m = re.exec(src);
+    if (!m || m[0].length === 0) return undefined;
+    pos = re.lastIndex;
+    if (m[1]) tokens.push({ t: 'lp' });
+    else if (m[2]) tokens.push({ t: 'rp' });
+    else if (m[3]) tokens.push({ t: 'ne' });
+    else if (m[4]) tokens.push({ t: 'eq' });
+    else if (m[5] !== undefined) tokens.push({ t: 'val', v: m[5] });
+    else if (m[6] !== undefined) tokens.push({ t: 'val', v: m[6] });
+    else if (m[7]) tokens.push({ t: 'val', v: userData[m[7]] ?? '' });
+    else if (m[8]) tokens.push({ t: m[8] as 'and' | 'or' });
+    else return undefined;
+    while (pos < src.length && /\s/.test(src[pos])) pos++;
+  }
+  let i = 0;
+  const parseOr = (): boolean | undefined => {
+    let left = parseAnd();
+    while (left !== undefined && tokens[i]?.t === 'or') {
+      i++;
+      const right = parseAnd();
+      if (right === undefined) return undefined;
+      left = left || right;
+    }
+    return left;
+  };
+  const parseAnd = (): boolean | undefined => {
+    let left = parseTerm();
+    while (left !== undefined && tokens[i]?.t === 'and') {
+      i++;
+      const right = parseTerm();
+      if (right === undefined) return undefined;
+      left = left && right;
+    }
+    return left;
+  };
+  const parseTerm = (): boolean | undefined => {
+    const tok = tokens[i];
+    if (!tok) return undefined;
+    if (tok.t === 'lp') {
+      i++;
+      const v = parseOr();
+      if (tokens[i]?.t !== 'rp') return undefined;
+      i++;
+      return v;
+    }
+    const a = tokens[i];
+    const op = tokens[i + 1];
+    const b = tokens[i + 2];
+    if (a?.t !== 'val' || b?.t !== 'val' || (op?.t !== 'eq' && op?.t !== 'ne')) return undefined;
+    i += 3;
+    return op.t === 'eq' ? a.v === b.v : a.v !== b.v;
+  };
+  const result = parseOr();
+  return i === tokens.length ? result : undefined;
 }
 
 interface SuiteDatum {
@@ -837,7 +1210,11 @@ function datumSteps(d: SuiteDatum): string[] {
  * Suites with no `<menu>` declarations (bare fixtures) fall back to the
  * legacy `m<first>-f<last>` assumption.
  */
-export function resolveEntryPath(entryPath: number[], suiteXml?: string): ResolvedEntryPath {
+export function resolveEntryPath(
+  entryPath: number[],
+  suiteXml?: string,
+  userData?: Record<string, string>,
+): ResolvedEntryPath {
   const menus = suiteXml ? parseSuiteMenus(suiteXml) : [];
   if (!suiteXml || menus.length === 0) return legacyResolve(entryPath, suiteXml);
 
@@ -846,7 +1223,7 @@ export function resolveEntryPath(entryPath: number[], suiteXml?: string): Resolv
   let current = 'root';
   for (let i = 0; i < entryPath.length; i++) {
     const idx = entryPath[i];
-    const items = menuDisplayItems(menus, current);
+    const items = menuDisplayItems(menus, current, userData);
     const item = items[idx];
     if (!item) {
       return {
@@ -993,11 +1370,21 @@ export async function commcareCliPlayCcz(
           ]),
         );
 
+  // Custom user data the CCZ reads must be PRESENT in the restore, or the
+  // first `relevant=` that reads it throws (ace#2989). Seed every referenced
+  // key with '' and let the caller pick a role branch.
+  const seededUserData: Record<string, string> = {
+    ...Object.fromEntries(readCczUserDataKeys(opts.cczPath).map((k) => [k, ''])),
+    ...(opts.userData ?? {}),
+  };
+  // Relevance is only decidable against a restore WE wrote.
+  const navUserData = opts.restorePath ? undefined : seededUserData;
+
   // A path suite.xml says lands on no command cannot open a form. Running it
   // anyway made the CLI index past the menu (AIOOBE) and grade the CCZ `fail`
   // for the caller's mistake — e.g. an HQ module index passed as a display
   // position (ace#2784). Say so instead.
-  const nav = resolveEntryPath(entryPath, suiteXml);
+  const nav = resolveEntryPath(entryPath, suiteXml, navUserData);
   if (nav.unresolved) {
     return {
       verdict: 'skipped',
@@ -1005,6 +1392,7 @@ export async function commcareCliPlayCcz(
       nav_unresolved: nav.unresolved,
       seeded_case_types: seededCaseTypes,
       seeded_fixture_tags: seededFixtureTags,
+      ...(navUserData ? { seeded_user_data: navUserData } : {}),
       exit_code: -1,
       entry_path: entryPath,
       stdout: '',
@@ -1022,7 +1410,11 @@ export async function commcareCliPlayCcz(
     restorePath = path.join(restoreTempDir, 'restore.xml');
     await fs.promises.writeFile(
       restorePath,
-      buildPlayRestoreXml({ caseTypes: seededCaseTypes, fixtureTags: seededFixtureTags }),
+      buildPlayRestoreXml({
+        caseTypes: seededCaseTypes,
+        fixtureTags: seededFixtureTags,
+        userData: seededUserData,
+      }),
     );
   }
 
@@ -1030,23 +1422,22 @@ export async function commcareCliPlayCcz(
 
   try {
     return await new Promise<CommCareCliPlayResult>((resolve, reject) => {
-      const proc = spawn(
+      const spawnFn: CliSpawn = opts.spawnImpl ?? (spawn as unknown as CliSpawn);
+      const proc = spawnFn(
         javaPath,
         ['-jar', opts.jarPath, 'play', opts.cczPath, '-r', restorePath!],
         { stdio: ['pipe', 'pipe', 'pipe'] },
       );
-      let stdout = '';
-      let stderr = '';
+      // Bounded, and killed on the restart loop or the ceiling (ace#2988):
+      // unbounded `+=` here took the whole ace-connect MCP down.
+      const cap = captureBounded(proc, {
+        restartLoopMarker: PLAY_RESTART_LOOP_MARKER,
+        graceMs: opts.restartLoopGraceMs,
+      });
       let timedOut = false;
       let settled = false;
-      proc.stdout.on('data', (d) => {
-        stdout += d.toString();
-      });
-      proc.stderr.on('data', (d) => {
-        stderr += d.toString();
-      });
-      proc.stdin.write(navInput);
-      proc.stdin.end();
+      proc.stdin?.write(navInput);
+      proc.stdin?.end();
       const timer = setTimeout(() => {
         timedOut = true;
         proc.kill('SIGKILL');
@@ -1055,21 +1446,24 @@ export async function commcareCliPlayCcz(
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        cap.dispose();
         reject(err);
       });
       proc.on('close', (code) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        cap.dispose();
         const exitCode = code === null ? -1 : code;
         resolve({
           ...parsePlayOutput({
             exitCode,
-            stdout,
-            stderr,
+            stdout: cap.stdout.toString(),
+            stderr: cap.stderr.toString(),
             timedOut,
             timeoutMs,
             entryPath,
+            killedReason: cap.killedReason,
             // Only OUR restore seeds fixtures empty; a caller-supplied
             // restore may carry real rows, so a failed read there is real.
             ...(opts.restorePath
@@ -1078,6 +1472,7 @@ export async function commcareCliPlayCcz(
           }),
           seeded_case_types: seededCaseTypes,
           seeded_fixture_tags: seededFixtureTags,
+          ...(navUserData ? { seeded_user_data: navUserData } : {}),
           ...(nav.commandId ? { command_id: nav.commandId } : {}),
         });
       });
@@ -1104,6 +1499,17 @@ export interface ParsePlayOutputInput {
    * Omit for a caller-supplied restore, which may carry real rows.
    */
   emptySeededFixtureInstanceIds?: string[];
+  /** Set when the helper killed the JVM for runaway output (ace#2988). */
+  killedReason?: CliKillReason;
+}
+
+/**
+ * The stream up to its first restart-loop marker (ace#2988). Every later pass
+ * repeats the same failure; the first is the one that names the cause.
+ */
+function firstPlayPass(s: string): string {
+  const i = s.indexOf(PLAY_RESTART_LOOP_MARKER);
+  return i < 0 ? s : s.slice(0, i + PLAY_RESTART_LOOP_MARKER.length);
 }
 
 /**
@@ -1137,8 +1543,10 @@ export interface ParsePlayOutputInput {
  *     nothing.
  */
 export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayResult {
-  const stdout = trimLog(input.stdout);
-  const stderr = trimLog(input.stderr);
+  const rawStdout = firstPlayPass(input.stdout);
+  const rawStderr = firstPlayPass(input.stderr);
+  const stdout = trimLog(rawStdout);
+  const stderr = trimLog(rawStderr);
   const combined = `${stdout}\n${stderr}`;
 
   const failingBinding = extractFailingBinding(combined);
@@ -1149,13 +1557,19 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
   // so on a large app it can fall past the 4KB log trim.
   const classified = classifyPlayStream(combined, input.emptySeededFixtureInstanceIds ?? []);
   const outcome: PlayStreamOutcome =
-    classified === 'ok' && !reachedFormEntry(`${input.stdout}\n${input.stderr}`)
+    classified === 'ok' && !reachedFormEntry(`${rawStdout}\n${rawStderr}`)
       ? 'form-entry-not-reached'
       : classified;
 
+  // A run WE killed (restart loop / ceiling) errored somewhere. A recognised
+  // harness class still grades `skipped`; anything else is `fail` — what the
+  // timeout graded it before the kill existed (ace#2988).
+  const killedUnexplained =
+    input.killedReason !== undefined && (outcome === 'ok' || outcome === 'form-entry-not-reached');
+
   let verdict: CommCareCliPlayVerdict;
   let skipReason: CommCareCliPlaySkipReason | undefined;
-  if (input.timedOut || outcome === 'form-init-error') {
+  if (input.timedOut || outcome === 'form-init-error' || killedUnexplained) {
     verdict = 'fail';
   } else if (outcome === 'ok') {
     verdict = 'pass';
@@ -1171,11 +1585,18 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
     entry_path: input.entryPath,
     failing_binding: failingBinding,
     unresolved_xpath: unresolvedXpath,
-    parser_message: parserMessage,
+    parser_message:
+      parserMessage ??
+      (input.killedReason === 'restart-loop'
+        ? `commcare-cli restart loop: "${PLAY_RESTART_LOOP_MARKER}" (session step threw; no known exception class in the first pass)`
+        : input.killedReason === 'output-ceiling'
+          ? `commcare-cli output passed ${CLI_OUTPUT_CEILING_CHARS} chars; killed`
+          : undefined),
     stdout,
     stderr,
     timeout_ms: input.timeoutMs,
     timed_out: input.timedOut,
+    ...(input.killedReason ? { killed_reason: input.killedReason } : {}),
   };
 }
 
@@ -1216,9 +1637,13 @@ function classifyPlayStream(s: string, emptySeededFixtureIds: string[] = []): Pl
   // A device receives the rows on sync, so that is UNEVALUATED. Narrow on
   // purpose: EVERY unresolved ref in the stream must be an empty-seeded
   // fixture, and no parser-class defect may be present; otherwise rule (1).
-  if (emptySeededFixtureIds.length > 0 && onlyEmptyFixtureRefsUnresolved(s, emptySeededFixtureIds)) {
-    return 'cli-fixture-unseeded';
-  }
+  // (0b) ace#2989: a read of custom user data the restore does not carry
+  // (`instance(commcaresession)/session/user/data/<key>`) — typically a menu
+  // `relevant=` thrown from `MenuLoader.menuIsRelevant` before any form opens.
+  // Same narrowness: every unresolved ref must be unseeded user data or an
+  // empty-seeded fixture, with no parser-class defect.
+  const harnessRefs = classifyHarnessOnlyRefs(s, emptySeededFixtureIds);
+  if (harnessRefs) return harnessRefs;
   // (1) Real form-init defects we care about. XPathTypeMismatchException is
   // the bednet class; XPathException is any other XPath-eval failure;
   // XFormParseException is a structural defect we'd catch in `validate`
@@ -1289,25 +1714,43 @@ function classifyPlayStream(s: string, emptySeededFixtureIds: string[] = []): Pl
   return 'ok';
 }
 
-function onlyEmptyFixtureRefsUnresolved(s: string, ids: string[]): boolean {
+/**
+ * When EVERY `Logic references <ref> which is not a valid question or value`
+ * in the stream is a read the harness cannot satisfy, name the class; else
+ * undefined. A ref is harness-only when it is custom user data
+ * (`instance(commcaresession)/session/user/data/…`, ace#2989) or an
+ * empty-seeded item-list instance (ace#2941). Any parser-class defect, or any
+ * other unresolved ref, leaves the stream to rule (1).
+ */
+function classifyHarnessOnlyRefs(
+  s: string,
+  emptyFixtureIds: string[],
+): 'cli-user-data-unseeded' | 'cli-fixture-unseeded' | undefined {
   if (
     /(XFormParseException|InvalidStructureException|InvalidResourceException|UnresolvedResourceException)/.test(
       s,
     )
   ) {
-    return false;
+    return undefined;
   }
   const refs = Array.from(
     s.matchAll(/Logic references\s+(.+?)\s+which is not a valid question or value/g),
     (m) => m[1],
   );
-  if (refs.length === 0) return false;
-  const idSet = new Set(ids);
-  return refs.every((ref) => {
-    const m = /^instance\(\s*(?:'([^']*)'|"([^"]*)"|([^)\s]*))\s*\)/.exec(ref);
+  if (refs.length === 0) return undefined;
+  const idSet = new Set(emptyFixtureIds);
+  let userData = false;
+  for (const ref of refs) {
+    const m = /^instance\(\s*(?:'([^']*)'|"([^"]*)"|([^)\s]*))\s*\)(\S*)/.exec(ref);
     const id = m ? (m[1] ?? m[2] ?? m[3]) : undefined;
-    return id !== undefined && idSet.has(id);
-  });
+    if (id === 'commcaresession' && /^\/session\/user\/data\/[^/\s]+$/.test(m![4])) {
+      userData = true;
+      continue;
+    }
+    if (id !== undefined && idSet.has(id)) continue;
+    return undefined;
+  }
+  return userData ? 'cli-user-data-unseeded' : 'cli-fixture-unseeded';
 }
 
 function extractFailingBinding(s: string): string | undefined {

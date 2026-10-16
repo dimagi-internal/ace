@@ -218,3 +218,60 @@ export async function assertNotGoldenTemplatePipeline(
     );
   }
 }
+
+/** The subset of a Drive `Permission` the revoke rail reads. */
+export interface DrivePermissionLike {
+  id?: string | null;
+  type?: string | null;
+  role?: string | null;
+  emailAddress?: string | null;
+  permissionDetails?: Array<{ inherited?: boolean | null; inheritedFrom?: string | null }> | null;
+}
+
+/** Roles `drive_revoke_access` never removes: they are custody, not sharing. */
+export const UNREVOCABLE_DRIVE_ROLES = ['owner', 'organizer', 'fileOrganizer'] as const;
+
+/**
+ * Rail for `drive_revoke_access` (ace#2918), in the ace#1112 shape: a
+ * one-line, in-process comparison that bounds the accidental blast radius of
+ * a destructive atom, not an approval gate.
+ *
+ * Revocation exists to withdraw SHARING — an anyone-with-link grant, a
+ * reviewer's access. Three permissions are not sharing and are refused:
+ *
+ * - **owner / organizer / fileOrganizer** — custody of the file or the
+ *   Shared Drive. Removing one is an ownership or drive-membership change,
+ *   which belongs in the Drive admin UI, not in an atom a run can call.
+ * - **ACE's own access** (`selfEmail`, the service account) — revoking it
+ *   locks ACE out of its own artifact with no way back.
+ * - **an inherited permission** — it comes from a parent folder, so removing
+ *   it is a decision about the whole folder, not this file. The refusal names
+ *   the folder to revoke on instead.
+ */
+export function assertRevocablePermission(
+  perm: DrivePermissionLike,
+  selfEmail?: string | null,
+): void {
+  const role = perm.role ?? '';
+  if ((UNREVOCABLE_DRIVE_ROLES as readonly string[]).includes(role)) {
+    throw new DestructiveGuardError(
+      `Refusing to revoke permission ${perm.id} (role: ${role}): ${role} is custody of the ` +
+        `file or Shared Drive, not a share. Change ownership or drive membership in the Drive UI.`,
+    );
+  }
+  const email = (perm.emailAddress ?? '').trim().toLowerCase();
+  if (selfEmail && email && email === selfEmail.trim().toLowerCase()) {
+    throw new DestructiveGuardError(
+      `Refusing to revoke permission ${perm.id}: it is ACE's own access (${perm.emailAddress}). ` +
+        `Removing it would lock ACE out of the file.`,
+    );
+  }
+  const details = perm.permissionDetails ?? [];
+  if (details.length > 0 && details.every((d) => d?.inherited)) {
+    const from = details.map((d) => d?.inheritedFrom).filter(Boolean).join(', ') || 'a parent folder';
+    throw new DestructiveGuardError(
+      `Refusing to revoke permission ${perm.id}: it is inherited from ${from}, so removing it ` +
+        `is a decision about that folder, not this file. Revoke it on ${from} instead.`,
+    );
+  }
+}

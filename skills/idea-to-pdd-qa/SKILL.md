@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 # Idea-to-PDD QA
 
-Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 12 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the PDD artifact written by `idea-to-pdd`. Binary verdict: pass / fail / incomplete. 13 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 This is the canonical first migration to the QA/Eval split (PR #146). The companion `idea-to-pdd-eval` was slimmed to quality-only dimensions in this same PR; structural completeness now lives here.
 
@@ -20,6 +20,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 |---|---|---|
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under structural check |
 | Phase 1 producer | `run_state.yaml` `phases.idea-to-design.products.pdd.description` | check 11 — passed as `--pdd-description` (it lives in run_state, not in the PDD body) |
+| Phase 1 producer | `decisions.yaml` | check 12 — passed as `--decisions`, to resolve each `derived:` provenance |
 
 ## Products
 
@@ -41,6 +42,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 9 | `payment_unit_matches_entity_grain` | static | The declared `payment_rate_unit` is not FINER than the `entity_id_grain` that actually resolves payable units — a per-visit rate against a per-worker-per-day grain collapses N visits into ONE payment entity and multiplies every money number in the PDD, the Work Order and the Phase 4 payment unit (ace#1420). Skips silently unless both rows are present. | quote the rate per the GRAIN, or narrow `entity_id_grain` so each event is its own entity — then re-derive `payment_rate_min`/`max`, `daily_cap_per_flw`, `total_cap_per_flw` and the worker-economics prose |
 | 10 | `entity_state_taxonomy_declared_for_longitudinal` | static | **When `archetype: longitudinal-visits`** (and only then — an `atomic-visit` PDD has no followed entity to have states), § Program Parameters carries an `entity_state_taxonomy` row that `parseStateTaxonomy` (`lib/entity-state-taxonomy.ts`) reads as `declared: true` with no `problems`. Uses the SAME parser Phase 3 halts on, so any value that would HALT `pdd-to-learn-app` / `pdd-to-deliver-app` fails here instead — where it is a one-line author fix rather than a `[BLOCKER]` after two clean phases (ace#1564 added the halt, ace#1783 added this gate). Defers to `program_parameters_coherent` when the section is absent. | transcribe the states the PDD already describes in § Entity Lifecycle into the one-line grammar `<value>=<label> (steps <a>-<b>); ... [source: <doc>]` |
 | 11 | `pdd_description_plain_language` | static | `products.pdd.description` — the opening paragraph ace-web renders on the PUBLIC run-summary page, the first thing an outside partner reads — carries no snake_case identifiers, `=`/`==` expressions, upper-case `AND`/`OR`/`NOT`, run ids, code spans or `{{template}}` markers (`lib/pdd-description-plain-language.ts`). Reads `ctx.pddDescription` (`--pdd-description`); a MISSING description fails rather than passes. Reproducer: spark-facilitator/20261001-2208 opened its summary with *"meeting_conducted = yes AND meeting_type = community_meeting"* and failed its outsider review. | rewrite ONLY the description in plain words for an outside partner (what the programme does, for whom, what Connect pays for); the PDD body keeps its identifiers. If the description was simply not passed, fix the QA invocation instead |
+| 12 | `program_parameters_provenance` | static | § Program Parameters has a `Provenance` column and EVERY row's cell is `read: <author doc § ref>`, `derived: <ref>[, <ref>…]` or `borrowed: <source about a different programme>`; every identifier a `derived:` cell names is a `decisions.yaml` row id or another key of the same table (a purely mechanical derivation). A value ACE chose must name the decision row that records the choice — on poverty-graduation/20260908-0510 the assessment counts 30/20 sat in the table like author values, were attributed to the author by email, and no row recorded where they came from (ace#2364). A decision ref with no `--decisions` supplied FAILS as an invocation gap. Defers to `program_parameters_coherent` when the section is absent. | add the column; mark each row; for each ACE-chosen value write the decision row first, then name it |
 
 The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
 
@@ -97,8 +99,12 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 3. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md" --artifact-mime-type "<mimeType from step 1>" --pdd-description "<run_state.yaml phases.idea-to-design.products.pdd.description>"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md" --artifact-mime-type "<mimeType from step 1>" --pdd-description "<run_state.yaml phases.idea-to-design.products.pdd.description>" --decisions "<local copy of the run's decisions.yaml>"
    ```
+
+   **`--decisions` is REQUIRED** whenever § Program Parameters has a
+   `derived: <decision-id>` row. Check 12 resolves each named id against it;
+   without it that check fails with a hint to fix the invocation.
 
    **`--pdd-description` is REQUIRED** too. Check 11 judges the run-summary
    page's opening paragraph, which lives in `run_state.yaml`, not in the PDD
@@ -176,3 +182,4 @@ ace-gdrive write guard turns a `*-qa_result.yaml` in any other shape into an
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-08 | Initial skill. First migration of the QA/Eval split principle (PR #146). Six static checks: required sections, archetype declaration, stress-test appendix, success-metrics table, evidence-model layers, reviewer-comment table-if-referenced. Companion `idea-to-pdd-eval` slimmed to quality-only dimensions in the same PR. | ACE team (0.13.88) |
+| 2026-10-16 | **Check 12 `program_parameters_provenance` (ace#2364).** Every § Program Parameters row now carries `read:` / `derived:` / `borrowed:` provenance, and a `derived:` row must name an existing `decisions.yaml` row (or, for a mechanical value, the table keys it is computed from). The QA invocation gains `--decisions`. Reproducer: poverty-graduation/20260908-0510, where ACE-chosen assessment counts read like author values and no decision row recorded them. | ACE team |

@@ -14,17 +14,38 @@
 //   spec hints ~10s low-res and ~30s upscaled but live latency is higher.
 //
 // Run:
-//   export CONTENT_GENERATOR_URL=<gateway base from 1Password>
-//   export CONTENT_GENERATOR_API_KEY=<key from 1Password>
-//   npx tsx scripts/probe-content-generator.ts
+//   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" scripts/probe-content-generator.ts
+//
+// Credentials come from the plugin-data .env via loadPluginEnv — no manual
+// `export` needed (an exported shell value still wins). The old header told
+// you to export both keys by hand, so on a machine where they were provisioned
+// the probe refused and read as "generation unavailable" (ace#2141).
+//
+// Exit codes — each names a different remedy, so they are never conflated:
+//   0 — success (200 + a PNG came back)
+//   2 — CREDENTIALS MISSING: a key is absent from the env AND the .env it read
+//   3 — SERVICE UNREACHABLE: the request never got a response (DNS, TLS, timeout)
+//   4 — SERVICE ERROR: the gateway answered non-200 (auth, validation, 5xx)
 
 import { writeFileSync } from 'node:fs';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
-const URL = process.env.CONTENT_GENERATOR_URL!;
-const KEY = process.env.CONTENT_GENERATOR_API_KEY!;
-if (!URL || !KEY) {
-  console.error('Set CONTENT_GENERATOR_URL and CONTENT_GENERATOR_API_KEY');
-  process.exit(1);
+// Before the first credential read (ace#1957, ace#2141).
+const ENV = loadPluginEnv(import.meta.url);
+
+const URL = process.env.CONTENT_GENERATOR_URL ?? '';
+const KEY = process.env.CONTENT_GENERATOR_API_KEY ?? '';
+const missing = [
+  !URL && 'CONTENT_GENERATOR_URL',
+  !KEY && 'CONTENT_GENERATOR_API_KEY',
+].filter(Boolean);
+if (missing.length) {
+  console.error(
+    `CREDENTIALS MISSING: ${missing.join(', ')} not set in the env or in ${ENV.path}` +
+      ` (${ENV.loaded ? `${ENV.keys} keys read` : 'file not loaded'}).` +
+      ' This says nothing about whether the service is up. Refresh the .env with /ace:setup --force-env.',
+  );
+  process.exit(2);
 }
 
 const endpoint = URL.replace(/\/$/, '') + '/v1/form-image';
@@ -38,11 +59,22 @@ const body = {
 };
 
 const t0 = Date.now();
-const res = await fetch(endpoint, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'x-api-key': KEY },
-  body: JSON.stringify(body),
-});
+let res: Response;
+try {
+  res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': KEY },
+    body: JSON.stringify(body),
+  });
+} catch (e) {
+  const cause = (e as { cause?: { code?: string; message?: string } }).cause;
+  console.error(
+    `SERVICE UNREACHABLE: no response from ${new globalThis.URL(endpoint).host}` +
+      ` after ${Date.now() - t0}ms — ${cause?.code ?? cause?.message ?? (e as Error).message}.` +
+      ' Credentials were present; this is the network or the gateway.',
+  );
+  process.exit(3);
+}
 const elapsed = Date.now() - t0;
 
 console.log({
@@ -56,8 +88,8 @@ const buf = Buffer.from(await res.arrayBuffer());
 writeFileSync('/tmp/content-gen-probe-response.bin', buf);
 
 if (res.status !== 200) {
-  console.error('Probe failed. Body slice:', buf.slice(0, 1000).toString('utf-8'));
-  process.exit(1);
+  console.error(`SERVICE ERROR: HTTP ${res.status}. Body slice:`, buf.slice(0, 1000).toString('utf-8'));
+  process.exit(4);
 }
 
 const json = JSON.parse(buf.toString('utf-8'));

@@ -415,17 +415,13 @@ may sit above/below the fold. Read `nova_get_form` and check for
 walk**:
 
 1. `takeScreenshot` on entering the screen.
-2. Per select child: `scrollUntilVisible` the question, then `tapOn` its
-   option anchored `below:` that question label. **`centerElement` is
-   chosen BY POSITION, not set uniformly** (ace#1814):
-
-   | Position in the group | `centerElement` | Why |
-   |---|---|---|
-   | Any question except the last | `false` | It is already on screen when its turn comes. Centering it displaces the NEXT question below the fold, so that question's lookup enters a *search* phase — and one search step clears the remaining (short) group content, landing past the target. `scrollUntilVisible` only scrolls DOWN, so it can never recover. |
-   | The **last** question | `true` | Nothing follows it to overshoot past, and centering is what lifts its answer options above the fold. Left `false`, the label stops flush at the pane bottom with its options below it and the `tapOn` dies `selector-not-found`. |
+2. Per select child: **scroll to the OPTION, scoped below the question
+   label, then tap it with the same anchor** (ace#2186). The scroll target
+   is the element you are about to tap — never only its question label.
 
    ```yaml
-   # every question EXCEPT the last one in the group
+   # every select question in the group, whatever its position
+   # (a) bring the question into view — never centred
    - scrollUntilVisible:
        element:
          text: "[\\s\\S]*<question label>[\\s\\S]*"
@@ -434,40 +430,83 @@ walk**:
        timeout: 20000
        visibilityPercentage: 30
        centerElement: false
+   # (b) THE GUARD: scroll to the option itself, scoped below that label
+   - scrollUntilVisible:
+       element:
+         text: "<literal option label>"
+         below:
+           text: "[\\s\\S]*<question label>[\\s\\S]*"
+       direction: DOWN
+       speed: 15
+       timeout: 20000
+       visibilityPercentage: 100
+       centerElement: false
    - tapOn:
        text: "<literal option label>"
        below:
          text: "[\\s\\S]*<same question label>[\\s\\S]*"
-
-   # the LAST question in the group — centerElement flips to true
-   - scrollUntilVisible:
-       element:
-         text: "[\\s\\S]*<last question label>[\\s\\S]*"
-       direction: DOWN
-       speed: 15
-       timeout: 20000
-       visibilityPercentage: 30
-       centerElement: true
-   - tapOn:
-       text: "<literal option label>"
-       below:
-         text: "[\\s\\S]*<same last question label>[\\s\\S]*"
    ```
 
-   **Uniformly `true` breaks at question 2; uniformly `false` breaks at
-   the last one.** Both halves are device-proven on
-   `hh-poverty-targeting/20260828-0702` (2026-08-29, `emulator-5554`,
-   dispatch `1788015366397-zbmkn0`), on TWO independent field-list groups
-   in the same passing walk: `consumption` (BREAD / EGGS / MILK `false`,
-   SACHET WATER `true`) and `assets` (sofa / FAN `false`, IRON `true`).
-   The walk completed all 29 chunks, submitted, and synced a registered
-   visit.
+   - **(a) is positioning, (b) is the guard.** (a) alone reports COMPLETED
+     with the label flush at the pane bottom and its options below the
+     fold — that is this whole defect. (b) is what the tap needs.
+   - **`below:` the question label** keeps a shared option label (`Yes`,
+     `A. Yes`) on THIS question rather than the first match on screen —
+     the scroll and the tap address the same region (scope parity, below).
+   - **`visibilityPercentage: 100`** stops the scroll only once the whole
+     radio row is on screen, not a sliver of it at the pane edge.
+   - **`centerElement: false`** — centring is what evicts things. Centre the
+     label and its options fall off the bottom; centre the option and, on a
+     long option list, its label falls off the top and the `below:` anchor
+     resolves to nothing.
 
-   **`speed` and `visibilityPercentage` are NOT the lever here** — that
-   was the first hypothesis on ace#1814 and it was disproved on-device:
-   re-running the overshoot at `speed: 15` / `visibilityPercentage: 30`
-   with `centerElement: true` throughout failed at the identical step
-   with an identical dump. Do not re-propose tuning them for this class.
+   **Why not "scroll to the label, choose `centerElement` by position"
+   (the retired ace#1814 rule).** Whether a question's options are on
+   screen when its turn comes is a function of cumulative pixel layout —
+   label wrap length, the group header, how much the earlier questions
+   consumed — not of the question's ordinal position. A label scroll
+   reports COMPLETED as soon as the label is visible, which can be flush at
+   the pane bottom with every option below the fold; `tapOn ... below:`
+   then dies `selector-not-found`. The by-position table was generalised
+   from one run's layout (`hh-poverty-targeting/20260828-0702`) and failed
+   on the near-identical PPI group of a sibling programme:
+   `poverty-graduation/20260905-1345` (dispatch `1788809949430-fyk66c`)
+   died at MILK — question **3 of 4**, `centerElement: false` exactly as
+   the table said — with the MILK label clipped to 39px at the bottom edge
+   and no option in the hierarchy. The same shape recurred on
+   `smallholder-seasonal/20261012-1549` ("Is there a dry-season cropping
+   cycle…", a middle question of a 6-question group).
+
+   **Device evidence for the option scroll.** Both runs passed once each
+   option tap was preceded by a scroll to the option itself, scoped below
+   its label: `poverty-graduation` (dispatch `1788810583478-glxovg`, 7
+   label/option pairs rewritten, full Deliver leg passed) and
+   `smallholder-seasonal/20261012-1549` (all 21 `below:`-scoped option
+   taps rewritten; Community walk, Dwelling screening and Census and PPI
+   survey walked to `status: pass`). In both, the option scroll was
+   ADDED after a `centerElement: false` label scroll — exactly the (a)+(b)
+   pair above. Dropping (a) and keeping only (b) has not been separately
+   re-run on a device, so keep both.
+
+   **Do not stack the § Quiz option-centring guard (ace#1070,
+   `centerElement: true`) on a `below:`-anchored tap.** Each is sanctioned
+   on its own, but together they are self-defeating for any option list
+   long enough that the option cannot be centred without evicting its
+   question label: live, centring `Chikwawa` (option 7 of 28) pushed
+   "District" off the top and `Tap on "Chikwawa", Below "…District…"`
+   failed with `Chikwawa` on screen. The option scroll above, with
+   `centerElement: false`, is the field-list form.
+
+   **`speed` is NOT the lever here** — re-running the original overshoot
+   at `speed: 15` with the label-centring rule failed at the identical
+   step with an identical dump (ace#1814). Do not re-propose tuning it for
+   this class.
+
+   *Enforced:* `unguarded-option-tap-below-long-label` in
+   `mcp/mobile/recipe-sanity-probe.ts` accepts only a preceding
+   `scrollUntilVisible` whose matchers reach the OPTION — a label-only
+   scroll does not clear it (pinned in
+   `test/mcp/mobile/recipe-sanity-probe.test.ts`, ace#2186).
 
    **A guard must carry the same scope as the tap it protects
    (ace#2426).** If you emit a `when: notVisible` pre-scroll in front of an
@@ -607,9 +646,9 @@ walk**:
      scroll on an option that already fits reads as backward form
      navigation and walks the flow out of the form.
    - **Anchor is a DIFFERENT element from the tap target** (an `EditText`
-     reached via the hint above it; a field-list option addressed via its
-     question label) → **unconditional** centring scroll, as in the
-     snippet above. The failure mode there is "anchor visible, its
+     reached via the hint above it) → **unconditional** centring scroll, as
+     in the snippet above. (A field-list OPTION is not this case: scroll to
+     the option itself, scoped below its label — item 2, ace#2186.) The failure mode there is "anchor visible, its
      `EditText` still below the fold", which `notVisible: <anchor>` is
      structurally blind to — so the guard suppresses the one scroll that
      was needed. That half affected all 14 inputs, not just the 3 with
@@ -834,7 +873,7 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-launch.yaml` — post-claim StandardHomeActivity (Start tile) → MenuActivity suite root
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7). **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME`** — see § Screenshot names are caller-bound.
-- `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — see § Screenshot names are caller-bound. There are NO palette-side fallbacks: the `env:` defaults added for ace#852 turned out to SHADOW the caller's names and were removed in ace#1033.
+- `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-finalized`) — see § Screenshot names are caller-bound. **Never name the POST_SUBMIT frame `*-confirmation`**: on a plain Deliver form it is the form list (no toast — finalize writes to the local outbox, ace#1066), and captions trust the name (ace#2894). The submission evidence is `deliver-sync.yaml`'s post-sync `Daily Visits N/M` counter. There are NO palette-side fallbacks: the `env:` defaults added for ace#852 turned out to SHADOW the caller's names and were removed in ace#1033.
 - `content-form-finish.yaml` — **the Learn CONTENT-form finalize, home-grid variant.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Correct ONLY on a multi-module Learn app whose forms are `post_submit: module`; on `post_submit: previous` (Nova's default) the finalize lands on the module form list and this recipe's terminal home assert cannot fire (dimagi-internal/ace#1566). Use it for label-only content/lesson forms — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
 - `learn-suite-reentry.yaml` — **the between-modules suite re-entry, home-grid variant.** Tap the home Start tile → wait `screen_suite_menu_list`. Correct ONLY when the form is `post_submit: module`, which finalizes to StandardHomeActivity. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site.
 - `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**) AND the form's own module renders a form list to come back to. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071); firing this one from the suite root instead — which is where `previous` lands for a module CommCare auto-skipped — walks back out of the suite (dimagi-internal/ace#1633), so **always call it guarded on the next module's row**. Both are per-FORM decisions: see § Suite re-entry between modules.
@@ -960,6 +999,8 @@ Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 # before the next module (see § Suite re-entry between modules).
 - runFlow:
     file: learn-suite-reentry.yaml
+    env:
+      REENTRY_LABEL: "-m1"        # distinct per module boundary (ace#2182)
 ```
 
 ```yaml
@@ -985,6 +1026,8 @@ Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
     commands:
       - runFlow:
           file: learn-suite-reentry-from-module.yaml
+          env:
+            REENTRY_LABEL: "-m1"  # distinct per module boundary (ace#2182)
 ```
 
 Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
@@ -1149,6 +1192,8 @@ the root:
     commands:
       - runFlow:
           file: learn-suite-reentry-from-module.yaml
+          env:
+            REENTRY_LABEL: "-m<N>"  # distinct per call site — e.g. the module index (ace#2182)
 ```
 
 Guard on the row you WANT (`notVisible` the next module row ⇒ we are not at
@@ -1496,6 +1541,42 @@ refused with the constraint message rather than a wrong date being filed.
 Never emit the ace#1081 relational tap for 2.64.0 — `recipe-lint`'s
 `date-picker-next-cell-tap-noop` rule rejects it at `mobile_validate_recipe`
 and at dispatch.
+
+**Flinging AFTER a constraint refusal: settle first, then guard a retry
+(ace#2693).** When the recipe deliberately trips the date constraint first
+(tap next/FINISH → `assertVisible` the refusal) and only then flings, the
+fling issued straight after the refusal was a **silent no-op** — Maestro
+`COMPLETED`, day still `05`, banner still up, FINISH refused again. The same
+swipe a minute later on the same open form moved `05 → 06`. Insert a settle
+before the fling and one refusal-guarded retry after it:
+
+```yaml
+- assertVisible:
+    text: ".*<refusal message, verbatim from the form's constraint>.*"
+- waitForAnimationToEnd:
+    timeout: 3000            # let the refusal's scroll/banner animation finish
+# ...the dayStepFlingYaml() swipe...
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:                   # one retry, only if the refusal is still up
+    when:
+      visible:
+        text: ".*<same refusal message>.*"
+    commands:
+      # ...the same dayStepFlingYaml() swipe...
+      - waitForAnimationToEnd:
+          timeout: 2000
+```
+
+Evidence (spark-facilitator/20261004-1706, `reschedule_date` `. > today()`,
+2.64.0, 1080x2400): no-op dispatch `1791201121968-7qzewb`; passing dispatch
+`1791202061636-24lmor` with this exact shape — the first fling moved `05 →
+06` and the guarded retry was SKIPPED. The mechanism (the refusal's
+animation absorbing the gesture) is a hypothesis from one observation each
+way, which is why the retry stays: it costs nothing when the first fling
+lands. `dayStepFlingYaml()`'s emitted swipe is unchanged — this is
+composition around it, not a different gesture. On a recipe that does NOT
+trip the refusal first, no settle is needed.
 
 Residuals (not yet observed on-device): the derivation for a picker at a
 different screen position, more than one fling in a row, and month/year
@@ -2186,4 +2267,5 @@ already maps the producer to `3-commcare/` (see
 | 2026-08-20 | **Sanction the hint-anchored focus tap ace#1299 actually validated (closes ace#1547).** PR #1397 closed ace#1299 COMPLETED but left § Step 3 item 3 declaring both replacement idioms un-emittable until proven on a live device, 14 hours after that issue's own follow-up comment proved the hint-anchored one on-device (isolated probe, `spark-facilitator/20260813-2126`: `cbf_name` and `phone_number` landed in their OWN fields). Read literally, that made any Deliver field-list with more than one text input unauthorable — Step 2.6 halts `[BLOCKER]` and Phase 6 gets zero Deliver screenshots (observed on `hh-poverty-targeting/20260819-1435`). Item 3 now carries the validated rule (**the focus anchor is the element immediately above the `EditText` — the field's `hint` when it has one, the question label when it does not**), the validated idiom, and the guarded-vs-unconditional discriminator: guarded when the anchor IS the tap target (ace#1070 stands for option taps), unconditional when the anchor is a DIFFERENT element from the tap target, because there `when: notVisible: <anchor>` is structurally blind to the real failure ("anchor visible, its EditText still below the fold"). `speed: 30` replaces `speed: 80` in the option snippet — at 80 the centring scroll overshot a ~300px radio band and halted the leg (ace#1299). Index-based anchoring stays uncalibrated. Same reconciliation applied to `docs/mobile-atlas/connect-2.63.2.md` § 1, `mcp/mobile/selectors/connect-2.63.2.yaml` (`form-question-input*` prose), and the `group-field-list-per-question-walk` remediation string in `mcp/mobile/recipe-sanity-probe.ts`, which still taught the inert bare `below:` tap. Pinned by `test/mcp/mobile/static-recipe-invariants.test.ts § app-test-cases field-list input focus contract`. | ACE team |
 | 2026-08-23 | **Both halves of the § group-field-list item-3 input rule are now STATICALLY ENFORCED (closes ace#1554).** ace#1299 § 4 specified two checks and called them explicitly unit-testable; neither had landed, because `NovaFieldSlice` carried no `hint` — `grep -n "hint" mcp/mobile/recipe-sanity-probe.ts` returned exactly one hit, prose inside a remediation string. So the probe returned a clean `ok: true` with `field_data_supplied: true` on the very recipe that produced `cbf_name = "Thandiwe Banda0991234567"` with a required `phone_number` empty. `recipe-sanity-probe` gains `input-anchor-skips-hint` (a focus tap anchored on the QUESTION LABEL of a hint-carrying field — the anchor resolves to the hint TextView and the tap moves no focus) and `input-focus-scroll-is-guarded` (a `when: notVisible: <anchor>` wrapper around the centring scroll, structurally blind to "anchor visible, its EditText still below the fold" — ace#1299's "more important half"), plus `hint?: string` on `NovaFieldSlice` and `observed.hint_data_supplied`. Filed un-bundled from ace#1547/PR #1553 precisely because a false positive here halts Phase 3 in an `incomplete` re-author loop, so both checks default to SILENCE under uncertainty: the hint check reads only fields that positively carry a `hint` (missing hints ⇒ no-op, never an assumed "no hint"), an ambiguous anchor attributes to nothing (the ace#1548 rule), a hint-less field anchored on its label is CORRECT and never flagged, and the guard check fires only on the `tapOn: below:` + `inputText` shape, never on an option tap where ace#1070 keeps the guard right. Step 2.6's caller must now pass `hint` alongside `label` (omit the key when there is none). Pinned by 22 cases in `test/mcp/mobile/recipe-sanity-probe.test.ts`, half of them "does NOT flag". | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-10-16 | **Field-list option taps scroll to the OPTION, not by position (dimagi-internal/ace#2186).** § Step 3 item 2's ace#1814 rule — scroll to the question label, `centerElement` `false` for every question but the last — was generalised from one run's layout and stranded a MIDDLE question's options below the fold (`poverty-graduation/20260905-1345`, MILK, question 3 of 4; again on `smallholder-seasonal/20261012-1549`). Item 2 now emits a `centerElement: false` label scroll followed by a scroll to the option itself, scoped `below:` the label, `visibilityPercentage: 100`, `centerElement: false` — the form both runs passed with (dispatch `1788810583478-glxovg`, 7 pairs; `20261012-1549`, 21 taps). Also documents that the ace#1070 option-centring guard stacked on a `below:`-anchored tap evicts the label on a long option list (`Chikwawa`, option 7 of 28), and fixes the `unguarded-option-tap-below-long-label` remediation string, which taught a label scroll its own check rejects. | ACE team |
 | 2026-10-05 | **Multi-day criteria are declared (dimagi-internal/ace#2670).** Step 5 now requires `{name, reachability: multi-day, reason}` on any deep-journey criterion that needs N > 1 dated records on one case under a strictly-increasing, `<= today()` date `validate`. One `/ace:qa-deep` session cannot reach such a criterion, and the 2.64.0 picker has no calibrated backward drive. `/ace:qa-deep` records it NOT REACHED and `app-ux-eval` lists it under `not_reached`. Earned by `spark-facilitator/20261004-1706` (`fourth_meeting_labelled_not_paid`, `savings_shown_only_from_step_5`). | ACE team |

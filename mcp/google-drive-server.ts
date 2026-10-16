@@ -74,8 +74,9 @@ import {
   summarizeBatchReplacementCoverage,
   type ReplacementCoverage,
 } from '../lib/replacement-coverage.js';
-import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
+import { assertDimagiOwnerRecipient, assertRevocablePermission, DestructiveGuardError } from '../lib/destructive-guards.js';
 import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
+import { extractSheetHyperlinks } from '../lib/sheets-hyperlinks.js';
 import { createIdentityGate, installIdentityGate, DRIVE_REFUSAL_HINT } from '../lib/agent-identity-gate.js';
 import {
   runDecisionsRender,
@@ -346,21 +347,115 @@ installIdentityGate(server as never, createIdentityGate({ hint: DRIVE_REFUSAL_HI
 // folder. Must run before the first registration.
 installDriveTenancyGuard(server as never, googleDriveLookup(drive as never));
 
+/**
+ * Sheets / Docs / Slides / Forms read handlers, exported for unit testing
+ * with mocked clients. None of those APIs follows a Drive shortcut — handed a
+ * shortcut id they answer "Requested entity was not found", which reads as
+ * "the file is gone" — and every componentized input under
+ * `ACE/<opp>/inputs/` is a shortcut (`idea-to-pdd` routes Sheets and Forms
+ * inputs to exactly these atoms). So each read resolves the id through
+ * `resolveShortcutTarget` first, the way `drive_read_file` has since #106 and
+ * the comments pair has since ace#2375, and echoes which file it actually
+ * read. ace#2462. Write atoms deliberately do NOT resolve: following a
+ * shortcut on a mutation is a semantic decision, not a mechanical one.
+ */
+type ShortcutEcho = { requested_file_id: string; shortcut_resolved: boolean };
+type ResolveOpts = { sleep?: (ms: number) => Promise<void> };
+
+function shortcutEcho(r: { requestedFileId: string; wasShortcut: boolean }): ShortcutEcho {
+  return { requested_file_id: r.requestedFileId, shortcut_resolved: r.wasShortcut };
+}
+
+export async function handleSheetsListTabs(
+  args: { spreadsheetId: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({
+    spreadsheetId: resolved.fileId,
+    fields: 'sheets.properties',
+  });
+  const tabs = resp.data.sheets?.map(s => ({
+    sheetId: s.properties?.sheetId,
+    title: s.properties?.title,
+    rowCount: s.properties?.gridProperties?.rowCount,
+    columnCount: s.properties?.gridProperties?.columnCount,
+  }));
+  return { spreadsheet_id: resolved.fileId, ...shortcutEcho(resolved), tabs };
+}
+
+export async function handleSheetsRead(
+  args: { spreadsheetId: string; range: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.values.get({
+    spreadsheetId: resolved.fileId,
+    range: args.range,
+  });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    range: resp.data.range,
+    values: resp.data.values,
+  };
+}
+
+export async function handleSheetsInfo(
+  args: { spreadsheetId: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({ spreadsheetId: resolved.fileId });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    title: resp.data.properties?.title,
+    locale: resp.data.properties?.locale,
+    sheets: resp.data.sheets?.map(s => ({
+      title: s.properties?.title,
+      sheetId: s.properties?.sheetId,
+      rowCount: s.properties?.gridProperties?.rowCount,
+      columnCount: s.properties?.gridProperties?.columnCount,
+    })),
+  };
+}
+
+export async function handleSheetsBatchRead(
+  args: { spreadsheetId: string; ranges: string[] },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.values.batchGet({
+    spreadsheetId: resolved.fileId,
+    ranges: args.ranges,
+  });
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    valueRanges: (resp.data.valueRanges ?? []).map(vr => ({ range: vr.range, values: vr.values })),
+  };
+}
+
+const SHORTCUT_READ_NOTE =
+  ' A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.';
+
 // 1. List sheets (tabs) in a spreadsheet
 server.tool(
   'sheets_list_tabs',
-  'List all sheet tabs in a Google Spreadsheet',
-  { spreadsheetId: z.string().describe('The spreadsheet ID from the URL') },
+  'List all sheet tabs in a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, tabs: [{sheetId, title, rowCount, columnCount}]}`.' + SHORTCUT_READ_NOTE,
+  { spreadsheetId: z.string().describe('The spreadsheet ID from the URL (a shortcut id is resolved to its target)') },
   async ({ spreadsheetId }) => {
     try {
-      const resp = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
-      const tabs = resp.data.sheets?.map(s => ({
-        sheetId: s.properties?.sheetId,
-        title: s.properties?.title,
-        rowCount: s.properties?.gridProperties?.rowCount,
-        columnCount: s.properties?.gridProperties?.columnCount,
-      }));
-      return result(tabs);
+      return result(await handleSheetsListTabs({ spreadsheetId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -370,15 +465,14 @@ server.tool(
 // 2. Read a range
 server.tool(
   'sheets_read',
-  'Read a range of cells from a Google Spreadsheet. Returns rows as arrays.',
+  'Read a range of cells from a Google Spreadsheet. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, values}` with rows as arrays.' + SHORTCUT_READ_NOTE,
   {
-    spreadsheetId: z.string().describe('The spreadsheet ID'),
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
     range: z.string().describe('A1 notation range, e.g. "Sheet1!A1:D10" or just "Sheet1"'),
   },
   async ({ spreadsheetId, range }) => {
     try {
-      const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-      return result({ range: resp.data.range, values: resp.data.values });
+      return result(await handleSheetsRead({ spreadsheetId, range }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -436,21 +530,11 @@ server.tool(
 // 5. Get spreadsheet metadata
 server.tool(
   'sheets_info',
-  'Get metadata about a Google Spreadsheet (title, locale, sheets)',
-  { spreadsheetId: z.string().describe('The spreadsheet ID') },
+  'Get metadata about a Google Spreadsheet (title, locale, sheets).' + SHORTCUT_READ_NOTE,
+  { spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)') },
   async ({ spreadsheetId }) => {
     try {
-      const resp = await sheets.spreadsheets.get({ spreadsheetId });
-      return result({
-        title: resp.data.properties?.title,
-        locale: resp.data.properties?.locale,
-        sheets: resp.data.sheets?.map(s => ({
-          title: s.properties?.title,
-          sheetId: s.properties?.sheetId,
-          rowCount: s.properties?.gridProperties?.rowCount,
-          columnCount: s.properties?.gridProperties?.columnCount,
-        })),
-      });
+      return result(await handleSheetsInfo({ spreadsheetId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -460,19 +544,61 @@ server.tool(
 // 6. Batch read multiple ranges
 server.tool(
   'sheets_batch_read',
-  'Read multiple ranges from a spreadsheet in one call',
+  'Read multiple ranges from a spreadsheet in one call. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, valueRanges: [{range, values}]}`.' + SHORTCUT_READ_NOTE,
   {
-    spreadsheetId: z.string().describe('The spreadsheet ID'),
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
     ranges: z.array(z.string()).describe('Array of A1 notation ranges'),
   },
   async ({ spreadsheetId, ranges }) => {
     try {
-      const resp = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges });
-      const results = resp.data.valueRanges?.map(vr => ({
-        range: vr.range,
-        values: vr.values,
-      }));
-      return result(results);
+      return result(await handleSheetsBatchRead({ spreadsheetId, ranges }));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+/**
+ * `sheets_read_hyperlinks` handler, exported for unit testing with mocked
+ * clients. Read-only: one `spreadsheets.get` with grid data narrowed to the
+ * three fields a link can live in (ace#2390). Extraction is the pure
+ * `extractSheetHyperlinks` in `lib/sheets-hyperlinks.ts`.
+ */
+export async function handleSheetsReadHyperlinks(
+  args: { spreadsheetId: string; range: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({
+    spreadsheetId: resolved.fileId,
+    ranges: [args.range],
+    includeGridData: true,
+    fields:
+      'sheets(properties(title),data(startRow,startColumn,rowData(values(hyperlink,formattedValue,textFormatRuns,userEnteredValue,userEnteredFormat/textFormat/link))))',
+  });
+  const links = extractSheetHyperlinks(resp.data);
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    range: args.range,
+    total: links.length,
+    links,
+  };
+}
+
+// 6b. Read hyperlink TARGETS in a range
+server.tool(
+  'sheets_read_hyperlinks',
+  "Read the hyperlink TARGETS behind cells in a range — what `sheets_read` cannot see, since it returns only the displayed text. Use when a human-maintained sheet carries meaning in the link rather than the label (the Connect LLO Directory joins an org to its EOI on the link behind the text). Read-only.\n\nReturns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, total, links: [{a1, displayText, url, kind}]}`; cells with no link are omitted. `kind` says where the link came from: `cell` (a whole-cell rich-text link), `run` (a link on PART of the cell's text — one entry per linked span, `displayText` is that span), or `formula` (`=HYPERLINK(...)`). All three are covered — `--render FORMULA` and the xlsx-export workaround each see only some of them, and a plain-looking cell can hide a rich-text link." + SHORTCUT_READ_NOTE,
+  {
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
+    range: z.string().describe('A1 notation range, e.g. "\'EOI/RFP\'!J1:J50" or just a sheet name'),
+  },
+  async ({ spreadsheetId, range }) => {
+    try {
+      return result(await handleSheetsReadHyperlinks({ spreadsheetId, range }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -1319,6 +1445,230 @@ server.tool(
   async ({ fileId, email, role, sendNotificationEmail }) => {
     try {
       return result(await handleShareWithPerson({ fileId, email, role, sendNotificationEmail }, drive));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11f. List who can access a Drive file / 11g. Revoke a grant
+/**
+ * `drive_list_permissions` + `drive_revoke_access` (ace#2918).
+ *
+ * Until these, the server could GRANT (`permissions.create`, four call sites)
+ * but never list or withdraw: an anyone-with-link grant was a one-way door. On
+ * `tekzal/20261013-2314` a superseded Work Order that linked a Dimagi-internal
+ * PDD was shared anyone-with-link; the only available move was rename +
+ * trash, which leaves the grant intact and the file restorable for 30 days.
+ * Without a list, nothing could assert a document is NOT exposed either.
+ *
+ * Revocation is destructive, so it carries the ace#1112 rails:
+ * - containment — the file must be on ACE's own Shared Drive, the same check
+ *   (`resolveAceDriveId`) `drive_set_anyone_with_link` uses before publishing;
+ * - `assertRevocablePermission` — never owner/organizer, never ACE's own
+ *   access, never an inherited permission;
+ * - a selector that matches NOTHING is a typed refusal
+ *   (`no_matching_permission`), not a silent success — "revoke access for X"
+ *   that quietly did nothing is the failure this atom exists to end;
+ * - read-back: the permissions are listed again after the delete and the call
+ *   throws `revoke_not_confirmed` if a removed id is still present.
+ *
+ * A shortcut id is REFUSED for revoke rather than followed: the tenancy guard
+ * checks the id it is handed, and following a shortcut that sits in the opp
+ * folder to a target outside it would mutate a file the guard never saw.
+ */
+const PERMISSION_FIELDS =
+  'nextPageToken, permissions(id, type, role, emailAddress, domain, displayName, deleted, allowFileDiscovery, permissionDetails(inherited, inheritedFrom, permissionType, role))';
+
+export interface PermissionSummary {
+  id: string;
+  type: string;
+  role: string;
+  email: string | null;
+  domain: string | null;
+  display_name: string | null;
+  inherited: boolean;
+  inherited_from: string | null;
+}
+
+function summarizePermission(p: any): PermissionSummary {
+  const details: any[] = p.permissionDetails ?? [];
+  const inherited = details.length > 0 && details.every((d) => d?.inherited);
+  return {
+    id: p.id,
+    type: p.type,
+    role: p.role,
+    email: p.emailAddress ?? null,
+    domain: p.domain ?? null,
+    display_name: p.displayName ?? null,
+    inherited,
+    inherited_from: inherited ? details.find((d) => d?.inheritedFrom)?.inheritedFrom ?? null : null,
+  };
+}
+
+async function listAllPermissions(fileId: string, driveClient: typeof drive): Promise<any[]> {
+  const out: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const resp: any = await driveClient.permissions.list({
+      fileId,
+      supportsAllDrives: true,
+      fields: PERMISSION_FIELDS,
+      pageSize: 100,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    out.push(...(resp.data.permissions ?? []));
+    pageToken = resp.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
+
+export async function handleListPermissions(
+  args: { fileId: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  file_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
+  anyone_with_link: boolean;
+  total: number;
+  permissions: PermissionSummary[];
+}> {
+  const resolved = await resolveShortcutTarget(args.fileId, driveClient, opts);
+  const perms = (await listAllPermissions(resolved.fileId, driveClient)).map(summarizePermission);
+  return {
+    file_id: resolved.fileId,
+    requested_file_id: resolved.requestedFileId,
+    shortcut_resolved: resolved.wasShortcut,
+    anyone_with_link: perms.some((p) => p.type === 'anyone'),
+    total: perms.length,
+    permissions: perms,
+  };
+}
+
+server.tool(
+  'drive_list_permissions',
+  "List who can access a Drive file — every permission (`permissions.list`, all pages, Shared Drives included). Read-only. Returns `{file_id, requested_file_id, shortcut_resolved, anyone_with_link, total, permissions: [{id, type, role, email, domain, display_name, inherited, inherited_from}]}`. `anyone_with_link: true` means the file is exposed to anyone holding the URL. `inherited` permissions come from a parent folder or the Shared Drive's membership. Use it to answer \"who can see this?\", to check that a document is NOT exposed before it is referenced from something partner-facing, and to find the `id` that `drive_revoke_access` takes. A Drive shortcut id is resolved to its target (a shortcut's own permissions are not what anyone means by \"who can see this doc\").",
+  {
+    fileId: z.string().min(1).describe('The Drive file ID. A shortcut id is resolved to its target.'),
+  },
+  async ({ fileId }) => {
+    try {
+      return result(await handleListPermissions({ fileId }, drive));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+export type RevokeSelector =
+  | { permissionId: string }
+  | { type: 'anyone' }
+  | { type: 'user' | 'group'; email: string }
+  | { type: 'domain'; domain: string };
+
+export async function handleRevokeAccess(
+  args: { fileId: string; permissionId?: string; type?: 'anyone' | 'user' | 'group' | 'domain'; email?: string; domain?: string },
+  driveClient: typeof drive = drive,
+): Promise<{ file_id: string; removed: PermissionSummary[]; remaining: PermissionSummary[]; anyone_with_link: boolean }> {
+  const { fileId, permissionId, type, email, domain } = args;
+  if (!permissionId === !type) {
+    throw new Error('invalid_selector: pass exactly one of `permissionId` or `type` (with `email` for user/group, `domain` for domain).');
+  }
+  if ((type === 'user' || type === 'group') && !email) {
+    throw new Error(`invalid_selector: type '${type}' needs \`email\`.`);
+  }
+  if (type === 'domain' && !domain) throw new Error("invalid_selector: type 'domain' needs `domain`.");
+
+  const meta = await driveClient.files.get({
+    fileId,
+    fields: 'id, name, mimeType, driveId',
+    supportsAllDrives: true,
+  });
+  if (meta.data.mimeType === DRIVE_SHORTCUT_MIME) {
+    throw new Error(
+      `shortcut_not_revocable: ${fileId} is a Drive shortcut. Revoke on the file it points at ` +
+        `(drive_list_permissions resolves it and returns that id as \`file_id\`).`,
+    );
+  }
+  const fileDriveId = meta.data.driveId ?? null;
+  const expected = await resolveAceDriveId(driveClient);
+  if (!fileDriveId || (expected && fileDriveId !== expected)) {
+    throw new DestructiveGuardError(
+      `Refusing to revoke access on ${fileId} ("${meta.data.name ?? '?'}"): it is not on ACE's ` +
+        `Shared Drive${fileDriveId ? ` (it is on ${fileDriveId})` : ''}, so it is not an ACE artifact (ace#1112).`,
+    );
+  }
+
+  const before = await listAllPermissions(fileId, driveClient);
+  const norm = (s?: string | null) => (s ?? '').trim().toLowerCase();
+  const matches = before.filter((p) => {
+    if (permissionId) return p.id === permissionId;
+    if (p.type !== type) return false;
+    if (type === 'user' || type === 'group') return norm(p.emailAddress) === norm(email);
+    if (type === 'domain') return norm(p.domain) === norm(domain);
+    return true; // anyone
+  });
+  if (matches.length === 0) {
+    const what = permissionId ? `permission ${permissionId}` : `${type}${email ? `:${email}` : domain ? `:${domain}` : ''}`;
+    const present = before.map((p) => `${p.type}:${p.emailAddress ?? p.domain ?? p.id}(${p.role})`).join(', ') || 'none';
+    throw new Error(
+      `no_matching_permission: ${fileId} has no ${what} grant to revoke. Present: ${present}. ` +
+        `Nothing was changed.`,
+    );
+  }
+
+  // ACE's own identity, so the rail can refuse a self-lockout. Only needed
+  // when a matched grant names a person.
+  let selfEmail: string | null = null;
+  if (matches.some((p) => p.emailAddress)) {
+    try {
+      const about: any = await driveClient.about.get({ fields: 'user(emailAddress)' });
+      selfEmail = about.data.user?.emailAddress ?? null;
+    } catch {
+      selfEmail = null;
+    }
+  }
+  // Check EVERY match before deleting ANY, so a refusal changes nothing.
+  for (const p of matches) assertRevocablePermission(p, selfEmail);
+
+  for (const p of matches) {
+    await driveClient.permissions.delete({ fileId, permissionId: p.id, supportsAllDrives: true });
+  }
+
+  const after = await listAllPermissions(fileId, driveClient);
+  const stillThere = matches.filter((m) => after.some((a) => a.id === m.id));
+  if (stillThere.length > 0) {
+    throw new Error(
+      `revoke_not_confirmed: ${stillThere.map((p) => p.id).join(', ')} still present on ${fileId} after delete.`,
+    );
+  }
+  const remaining = after.map(summarizePermission);
+  return {
+    file_id: fileId,
+    removed: matches.map(summarizePermission),
+    remaining,
+    anyone_with_link: remaining.some((p) => p.type === 'anyone'),
+  };
+}
+
+server.tool(
+  'drive_revoke_access',
+  "Withdraw a Drive grant — the inverse of `drive_set_anyone_with_link` / `drive_share_with_person` (`permissions.delete`). Select the grant by `permissionId` (from `drive_list_permissions`), or by `type`: `anyone` removes the anyone-with-link grant, `user`/`group` + `email` removes that person's or group's access, `domain` + `domain` removes a domain grant. Returns `{file_id, removed, remaining, anyone_with_link}` after READING BACK the permissions — a grant still present after the delete is an error (`revoke_not_confirmed`), not a success.\n\nRails (ace#1112 shape): the file must be on ACE's own Shared Drive; owner / organizer / fileOrganizer, ACE's own access, and inherited permissions (revoke those on the folder named in the refusal) are refused; a selector that matches no grant is a typed refusal (`no_matching_permission`) listing what IS present — nothing is changed. A shortcut id is refused (`shortcut_not_revocable`): pass the target's id, which `drive_list_permissions` returns as `file_id`. Revoking removes access immediately and does not notify anyone.",
+  {
+    fileId: z.string().min(1).describe('The Drive file ID (not a shortcut). Must be on ACE\'s Shared Drive.'),
+    permissionId: z.string().min(1).optional().describe('The permission id to remove, from drive_list_permissions. Pass this OR `type`.'),
+    type: z
+      .enum(['anyone', 'user', 'group', 'domain'])
+      .optional()
+      .describe("Select the grant by kind instead of id. 'anyone' = the anyone-with-link grant; 'user'/'group' need `email`; 'domain' needs `domain`."),
+    email: z.string().min(3).optional().describe("The grantee's email, for type 'user' or 'group'. Matched case-insensitively."),
+    domain: z.string().min(1).optional().describe("The domain, for type 'domain'."),
+  },
+  async ({ fileId, permissionId, type, email, domain }) => {
+    try {
+      return result(await handleRevokeAccess({ fileId, permissionId, type, email, domain }, drive));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3028,44 +3378,55 @@ server.tool(
 // ============================================================================
 
 // 16. Get full document structure
+export async function handleDocsGet(
+  args: { documentId: string; tabId?: string },
+  docsClient: typeof docs = docs,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+): Promise<Record<string, unknown>> {
+  const { tabId } = args;
+  const resolved = await resolveShortcutTarget(args.documentId, driveClient, opts);
+  // `includeTabsContent: true` is required for the Docs API to populate
+  // `resp.data.tabs`. Without it the API returns the document body (first
+  // tab only) for backward-compat and `tabs` is undefined — which made
+  // every multi-tab read here silently return the wrong tab's content
+  // while ignoring the `tabId` argument.
+  const resp = await docsClient.documents.get({
+    documentId: resolved.fileId,
+    includeTabsContent: true,
+  } as any);
+  if (tabId && resp.data.tabs) {
+    // Walk tabs depth-first so a child-tab id matches too.
+    const findTab = (tabs: any[]): any => {
+      for (const t of tabs || []) {
+        if (t.tabProperties?.tabId === tabId) return t;
+        const child = findTab(t.childTabs || []);
+        if (child) return child;
+      }
+      return null;
+    };
+    const tab = findTab(resp.data.tabs);
+    if (!tab) {
+      const ids = (resp.data.tabs || [])
+        .map((t: any) => t.tabProperties?.tabId)
+        .join(', ');
+      throw new Error(`Tab "${tabId}" not found. Available tabs: ${ids}`);
+    }
+    return { title: resp.data.title, documentId: resp.data.documentId, ...shortcutEcho(resolved), tab };
+  }
+  return { ...(resp.data as Record<string, unknown>), ...shortcutEcho(resolved) };
+}
+
 server.tool(
   'docs_get',
-  'Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.',
+  'Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.' + SHORTCUT_READ_NOTE + ' Edit with the returned `documentId` (the target), not the shortcut id — `docs_batch_update` does not resolve shortcuts.',
   {
-    documentId: z.string().describe('The Google Doc ID from the URL'),
+    documentId: z.string().describe('The Google Doc ID from the URL (a shortcut id is resolved to its target)'),
     tabId: z.string().optional().describe('Specific tab ID (omit for first tab)'),
   },
   async ({ documentId, tabId }) => {
     try {
-      // `includeTabsContent: true` is required for the Docs API to populate
-      // `resp.data.tabs`. Without it the API returns the document body (first
-      // tab only) for backward-compat and `tabs` is undefined — which made
-      // every multi-tab read here silently return the wrong tab's content
-      // while ignoring the `tabId` argument.
-      const resp = await docs.documents.get({
-        documentId,
-        includeTabsContent: true,
-      } as any);
-      if (tabId && resp.data.tabs) {
-        // Walk tabs depth-first so a child-tab id matches too.
-        const findTab = (tabs: any[]): any => {
-          for (const t of tabs || []) {
-            if (t.tabProperties?.tabId === tabId) return t;
-            const child = findTab(t.childTabs || []);
-            if (child) return child;
-          }
-          return null;
-        };
-        const tab = findTab(resp.data.tabs);
-        if (!tab) {
-          const ids = (resp.data.tabs || [])
-            .map((t: any) => t.tabProperties?.tabId)
-            .join(', ');
-          return error(`Tab "${tabId}" not found. Available tabs: ${ids}`);
-        }
-        return result({ title: resp.data.title, documentId: resp.data.documentId, tab });
-      }
-      return result(resp.data);
+      return result(await handleDocsGet({ documentId, tabId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3518,16 +3879,26 @@ server.tool(
 // (`assertParentOnSharedDrive`) the docs atoms use.
 
 // 19. Get full slides structure
+export async function handleSlidesGet(
+  args: { presentationId: string },
+  slidesClient: typeof slides = slides,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.presentationId, driveClient, opts);
+  const resp = await slidesClient.presentations.get({ presentationId: resolved.fileId });
+  return { ...(resp.data as Record<string, unknown>), ...shortcutEcho(resolved) };
+}
+
 server.tool(
   'slides_get',
-  'Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.',
+  'Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.' + SHORTCUT_READ_NOTE + ' Edit with the returned `presentationId` (the target) — `slides_batch_update` does not resolve shortcuts.',
   {
-    presentationId: z.string().describe('The Google Slides presentation ID from the URL'),
+    presentationId: z.string().describe('The Google Slides presentation ID from the URL (a shortcut id is resolved to its target)'),
   },
   async ({ presentationId }) => {
     try {
-      const resp = await slides.presentations.get({ presentationId });
-      return result(resp.data);
+      return result(await handleSlidesGet({ presentationId }));
     } catch (e: any) {
       return error(e.message);
     }
@@ -3942,6 +4313,8 @@ export interface FormQuestion {
 
 export interface FormDefinition {
   form_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
   title: string;
   description?: string;
   items: FormQuestion[];
@@ -3983,8 +4356,12 @@ function extractFormOptions(q: any): string[] | undefined {
 export async function handleGetGoogleFormDefinition(
   args: { formId: string },
   formsClient: typeof forms,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
 ): Promise<FormDefinition> {
-  const { formId } = args;
+  // The Forms API does not follow Drive shortcuts either (ace#2462).
+  const resolved = await resolveShortcutTarget(args.formId, driveClient, opts);
+  const formId = resolved.fileId;
   const resp = await formsClient.forms.get({ formId });
   const form: any = resp.data ?? {};
   const info: any = form.info ?? {};
@@ -4003,6 +4380,7 @@ export async function handleGetGoogleFormDefinition(
   }
   return {
     form_id: formId,
+    ...shortcutEcho(resolved),
     title: info.title ?? '',
     description: info.description ?? undefined,
     items,
@@ -4011,11 +4389,11 @@ export async function handleGetGoogleFormDefinition(
 
 server.tool(
   'get_google_form_definition',
-  'Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.',
+  'Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.' + SHORTCUT_READ_NOTE,
   {
     formId: z
       .string()
-      .describe('The Google Forms form ID (from the form URL or generate_inputs_manifest output).'),
+      .describe('The Google Forms form ID (from the form URL or generate_inputs_manifest output). A shortcut id is resolved to its target.'),
   },
   async ({ formId }) => {
     try {
@@ -4125,7 +4503,7 @@ server.tool(
 
 server.tool(
   'verify_caption_backing',
-  "Boundary fence: does a PUBLISHED artifact only assert over screenshots someone actually looked at? Reads the published document (Doc or text) AND the capture manifest from Drive, extracts every Drive fileId the document cites, and returns `{ok, cited_total, cited_distinct, backed, findings, manifest_frames, manifest_readability?}`. A finding is `no-shows` (the frame is cited but no one recorded what it shows), `duplicate-cited` (an alias frame presented as its own moment), or `unknown-id` (an id the manifest does not contain). READ `manifest_frames` BEFORE `findings`: zero there means the MANIFEST is unreadable rather than the citations being wrong, and `manifest_readability` names the container the capture producer wrote to. That is an `app-screenshot-capture` defect, and it fails this fence on its own — even for a document citing no frames at all. On spark-facilitator/20260907-1120 the manifest held 60 uploaded frames under a top-level `screenshots:` key, the shared reader saw zero, and every caption guard reported clean over nothing (ace#2236). WHY THIS EXISTS AND WHAT IT CATCHES THAT NOTHING ELSE DOES: every other screenshot check answers \"which file is this?\" — alias detection, duplicate citation, fileId resolution. None answers \"what is IN the picture?\", and that is the only question a caption can get wrong. On turmeric-market-study/20260828-1108 an FLW guide and a 50-slide deck passed schema validation, 100% fileId resolution, zero duplicate citations, visual coverage 1.00 and 49 anonymously-verified inline images, and BOTH captioned a frame as the certification result that is actually the lesson menu with a \"1 form sent to server!\" toast — no score on it, and no frame of the score existed at all. It takes the PUBLISHED document rather than a caller-supplied list of citations precisely so there is nothing to curate: whatever a reader can see is what gets checked. A TRAINING-DECK SPEC is the one artifact that also carries an INVENTORY — `manifest.opp`, the alias -> URL resolution map, holding every frame the deck COULD place — and an inventory is not a citation: on a document that parses as a deck spec the citations are the SLIDES' image refs resolved through that map (plus any Drive link elsewhere in the spec), so keep the full pool in the map. Reading the map as citations made the gate unpassable by construction on a correctly-authored spec: spark-facilitator/20260907-1120 reported 91 cited and 66 no-shows over a deck that places 10 images (ace#2238). Pass `poolFileIds` for shared `_common/connect-screenshots` frames and committed deck artwork, which are not the run's work product and legitimately have no `shows`. A document citing NO frames is `ok` — text-only asserts nothing over a screen, and failing it would push producers toward decorative citations. Populate `shows:` in `app-screenshot-capture` § Step 5.6.",
+  "Boundary fence: does a PUBLISHED artifact only assert over screenshots someone actually looked at? Reads the published document (Doc or text) AND the capture manifest from Drive, extracts every Drive fileId the document cites, and returns `{ok, cited_total, cited_distinct, backed, findings, manifest_frames, manifest_readability?}`. A finding is `no-shows` (the frame is cited but no one recorded what it shows), `duplicate-cited` (an alias frame presented as its own moment), or `unknown-id` (an id the manifest does not contain). READ `manifest_frames` BEFORE `findings`: zero there means the MANIFEST is unreadable rather than the citations being wrong, and `manifest_readability` names the container the capture producer wrote to. That is an `app-screenshot-capture` defect, and it fails this fence on its own — even for a document citing no frames at all. On spark-facilitator/20260907-1120 the manifest held 60 uploaded frames under a top-level `screenshots:` key, the shared reader saw zero, and every caption guard reported clean over nothing (ace#2236). WHY THIS EXISTS AND WHAT IT CATCHES THAT NOTHING ELSE DOES: every other screenshot check answers \"which file is this?\" — alias detection, duplicate citation, fileId resolution. None answers \"what is IN the picture?\", and that is the only question a caption can get wrong. On turmeric-market-study/20260828-1108 an FLW guide and a 50-slide deck passed schema validation, 100% fileId resolution, zero duplicate citations, visual coverage 1.00 and 49 anonymously-verified inline images, and BOTH captioned a frame as the certification result that is actually the lesson menu with a \"1 form sent to server!\" toast — no score on it, and no frame of the score existed at all. It takes the PUBLISHED document rather than a caller-supplied list of citations precisely so there is nothing to curate: whatever a reader can see is what gets checked. A TRAINING-DECK SPEC is the one artifact that also carries an INVENTORY — `manifest.opp`, the alias -> URL resolution map, holding every frame the deck COULD place — and an inventory is not a citation: on a document that parses as a deck spec the citations are the SLIDES' image refs resolved through that map (plus any Drive link elsewhere in the spec), so keep the full pool in the map. Reading the map as citations made the gate unpassable by construction on a correctly-authored spec: spark-facilitator/20260907-1120 reported 91 cited and 66 no-shows over a deck that places 10 images (ace#2238). Pass `poolFileIds` for shared `_common/connect-screenshots` frames and committed deck artwork, which are not the run's work product and legitimately have no `shows`. A document citing NO frames is `ok` — text-only asserts nothing over a screen, and failing it would push producers toward decorative citations. Populate `shows:` in `app-screenshot-capture` § Step 5.6; a CONSUMER that opens a `no-shows` frame itself records the line in the run's shows addendum and passes it as `showsAddendumFileIds`, never by overwriting the producer's manifest (ace#2902).",
   {
     publishedFileId: z
       .string()
@@ -4141,18 +4519,31 @@ server.tool(
       .describe(
         'fileIds legitimately outside the per-opp manifest (shared common-pool frames, committed deck-template artwork). These are counted as backed.',
       ),
+    showsAddendumFileIds: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Drive fileIds of shows addenda (e.g. 6-qa-and-training/app-screenshot-capture_shows-addendum.yaml): `shows:` lines a CONSUMER recorded after opening frames the capture producer did not describe (ace#2902). Shape: `shows: [{step?, file_id?, shows}]` or `shows: {<step-or-file_id>: <text>}`. Each entry fills a MISSING manifest `shows:`, matched by file_id or step. The manifest wins, an alias stays duplicate-cited, and an entry matching no manifest frame is returned in `addendum_unmatched`.',
+      ),
   },
-  async ({ publishedFileId, manifestFileId, poolFileIds }) => {
+  async ({ publishedFileId, manifestFileId, poolFileIds, showsAddendumFileIds }) => {
     try {
       const publishedText = await readPublishedForCaptionBacking(publishedFileId, drive);
       const man = await handleReadFile({ fileId: manifestFileId }, drive);
       const manifestText = man.content ?? '';
       const manifest = manifestText.trim() ? YAML.parse(manifestText) : null;
+      const showsAddenda: unknown[] = [];
+      for (const id of showsAddendumFileIds ?? []) {
+        const add = await handleReadFile({ fileId: id }, drive);
+        const text = add.content ?? '';
+        showsAddenda.push(text.trim() ? YAML.parse(text) : null);
+      }
       return result(
         classifyCaptionBacking({
           published: publishedText,
           manifest,
           poolFileIds,
+          showsAddenda,
         }),
       );
     } catch (e: any) {

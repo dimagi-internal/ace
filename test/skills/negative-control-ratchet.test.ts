@@ -246,7 +246,6 @@ const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
   'lib/run-surface-audit.ts::auditConfidentiality',
   'lib/run-surface-audit.ts::auditContract',
   'lib/run-surface-audit.ts::auditDecisionRows',
-  'lib/run-surface-audit.ts::auditDeepQaParity',
   'lib/run-surface-audit.ts::auditDocFidelity',
   'lib/run-surface-audit.ts::auditGuideScreenshots',
   'lib/run-surface-audit.ts::auditLinks',

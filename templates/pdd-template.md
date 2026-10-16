@@ -228,31 +228,51 @@ tuple, out-of-band.
 > notice it, and when it does not the value silently falls back to a skill
 > default. Keys are snake_case; omit a row only when this PDD genuinely does not
 > decide it. Unknown keys are allowed.
+>
+> **Every row carries a Provenance cell** (`idea-to-pdd-qa §
+> program_parameters_provenance`; ace#2364). Downstream phases read this table,
+> not the prose, so a value ACE worked out must not look like one an author
+> wrote. Exactly one of:
+>
+> - `read: <document § ref>` — an author document for THIS programme states the
+>   value; cite where (`read: Learn annex §2`).
+> - `derived: <decision-id>` — ACE chose or computed it. Name the
+>   `decisions.yaml` row that records the choice, so a reviewer can find where
+>   the number came from. A purely mechanical value worked out from other rows
+>   of this table may name those keys instead (`derived: daily_cap_per_flw,
+>   flw_count_max`) and needs no decision row of its own.
+> - `borrowed: <source>` — taken from reference material about a DIFFERENT
+>   programme (a model-comparison column, another country's rollout). Never
+>   `read`. When it drives a live value, record a decision row so it reaches a
+>   reviewer as a question.
+>
+> Only `read` values may be attributed to the author in correspondence, the
+> Work Order or a solicitation; `derived` and `borrowed` values are provisional.
 
-| Key | Value |
-|---|---|
-| learn_passing_score | [0–100. The Learn gate as a PERCENTAGE. **Not settable on the app** — Nova's `connect.assessment` exposes only `{id, user_score}` — so this reaches Connect via Phase 4's `connect_create_opportunity.learn_app.passing_score` and nowhere else.] |
-| assessment_items | [number of scored items in the gating assessment. Checked against the threshold: with N items the attainable scores are `k*100/N`, so e.g. 90 over 6 items is only reachable by scoring all six and is really a 100% gate.] |
-| payment_rate_min | [lower bound of the proposed band] |
-| payment_rate_max | [upper bound] |
-| payment_rate_currency | [e.g. USD] |
-| payment_rate_unit | [what one payment buys — must be the SAME grain as `entity_id_grain` below, because Connect resolves payable units by `entity_id`. If the grain keys on a date, the unit is a worker-DAY (e.g. "verified follow-up day"), not a visit, however the Deliver app describes it. ace#1420.] |
-| daily_cap_per_flw | [max payable units per FLW per day] |
-| total_cap_per_flw | [max payable units per FLW over the opportunity] |
-| flw_count_min | [cohort size lower bound] |
-| flw_count_max | [upper bound] |
-| expected_reach_min | [beneficiaries/entities lower bound] |
-| expected_reach_max | [upper bound] |
-| entity_id_grain | [the payment dedup grain in words, e.g. "worker username + encounter date" — note this example groups several same-day events by one worker onto ONE payment entity, so `payment_rate_unit` above must be quoted per DAY — and since Connect still pays each approved visit on that entity (ace#2512), the per-day rate holds only with `max_daily` = 1 or a verification rule rejecting same-day repeats; name which. For a per-event unit, the grain needs a per-event key (e.g. "worker username + visit uuid").] |
-| entity_state_taxonomy | [REQUIRED when the followed entity carries states the app must name (always for `archetype: longitudinal-visits`). The entity's phase/stage/status vocabulary, in the PARTNER's own words, one line: `<value>=<Label> (steps <a>-<b>); <value>=<Label> (steps <c>-<d>) [source: <the document that fixes this vocabulary, as named in inputs/>]`. Omit the `(steps …)` clause when the lifecycle numbers no activities; keep `[source: …]` whenever a partner document — not this PDD — is the authority. Prose in § Entity Lifecycle is NOT a handoff: it is exactly where this got lost on `spark-facilitator/20260820-0817`, and the Deliver app shipped four invented phase names for the partner's own published process (ace#1564). Leaving this row unfilled HALTS the build rather than licensing an invented vocabulary.] |
-| duplicate_gps_rule | [ONLY when the PDD de-duplicates entities by GPS proximity. The WHOLE rule, not just the radius, one line: `radius_m=<n>; applies_when=both_accuracies_below_radius; fallback=identifiers`. Drop `applies_when` only when the GPS test runs whatever the readings' accuracy; drop `fallback` only when nothing else decides duplicates. **Do not emit a bare `duplicate_gps_radius_m` scalar** — it cannot say whether the radius is conditioned, so the condition is lost to every later reader, and `threshold-coherence-flag` then reads an accuracy-conditioned rule (coherent by construction) as an unconditioned radius under the tolerance (incoherent). ace#2373; classifier `lib/gps-dedup-coherence.ts`. Record the rule as the author wrote it — never raise or tie the radius to satisfy a coherence check.] |
-| cap_rationale | [REQUIRED only when a cap cannot bind — i.e. `flw_count_min × total_cap_per_flw` exceeds `expected_reach_max`. Say why it is deliberately non-binding, or correct the numbers. Picking the value is a program decision; noticing the incoherence is not optional.] |
-| connect_delivery_type | [REQUIRED. The Connect delivery-type **slug** this programme runs under, taken from `connect_list_delivery_types` on the PM org — never invented. Pick the type that describes the WORK (`nutrition`, `malaria`, `interview`, …); if none fits, say so in this row and raise it with the Connect team rather than settling for the nearest label. It is a design-time decision because `connect_update_program` CANNOT change it after create — the only correction is a replacement program. Undeclared, Phase 4 guesses: measured on `ai-demo-space` 2026-09-16, seven of eleven live turmeric programs run as `Interview` for a market survey.] |
-| opportunity_country | [REQUIRED. The country the work happens in. ISO 3166-1 alpha-3 preferred (`IND`, `NGA`); a plain country name is accepted and normalized. Create-time-only on the program.] |
-| llo_org_slug | [OPTIONAL — set it whenever the LLO is already known, which makes Phase 8's solicitation unnecessary and lets it be `skipped`. **The Connect SLUG, not the organisation's name.** It is visible only in the org's Connect URL: `https://connect.dimagi.com/a/stewari/opportunity/` → `stewari`. A display name is refused — `connect_send_llo_invite` rejected the PDD-recorded `stewari_nm_sandbox` with *"Object with slug=… does not exist"* and accepted `stewari` first try (turmeric-market-study/20260914-1742). Note `/a/<slug>/opportunity/` 404s for an org `ace@` cannot see, so a 404 means "no access", not "no org".] |
-| llo_contact_email | [OPTIONAL, but REQUIRED whenever `llo_org_slug` is set — without it no outbound LLO contact can be automated, and the work-order round-trip cannot start.] |
-| llo_contact_name | [OPTIONAL — the human's name, for `{{LLO_FIRST_NAME}}` substitution in outbound email.] |
-| opportunity_currency | [REQUIRED, and it must be the LOCAL currency of `opportunity_country` — a Nigeria deployment is `NGN`, an India deployment is `INR`. Every payment figure in this PDD is denominated in it, and `connect_create_payment_unit`'s `amount` / `org_amount` are WHOLE-currency-unit integers, so the wrong currency misprices every payment rather than merely mislabelling it. **Never default to USD.** Machine-checked against the country by `idea-to-pdd-qa § launch_parameters_present` (`lib/program-locale.ts`); create-time-only on the program.] |
+| Key | Value | Provenance |
+|---|---|---|
+| learn_passing_score | [0–100. The Learn gate as a PERCENTAGE. **Not settable on the app** — Nova's `connect.assessment` exposes only `{id, user_score}` — so this reaches Connect via Phase 4's `connect_create_opportunity.learn_app.passing_score` and nowhere else.] | [read / derived / borrowed — see above] |
+| assessment_items | [number of scored items in the gating assessment. Checked against the threshold: with N items the attainable scores are `k*100/N`, so e.g. 90 over 6 items is only reachable by scoring all six and is really a 100% gate.] | [read / derived / borrowed — see above] |
+| payment_rate_min | [lower bound of the proposed band] | [read / derived / borrowed — see above] |
+| payment_rate_max | [upper bound] | [read / derived / borrowed — see above] |
+| payment_rate_currency | [e.g. USD] | [read / derived / borrowed — see above] |
+| payment_rate_unit | [what one payment buys — must be the SAME grain as `entity_id_grain` below, because Connect resolves payable units by `entity_id`. If the grain keys on a date, the unit is a worker-DAY (e.g. "verified follow-up day"), not a visit, however the Deliver app describes it. ace#1420.] | [read / derived / borrowed — see above] |
+| daily_cap_per_flw | [max payable units per FLW per day] | [read / derived / borrowed — see above] |
+| total_cap_per_flw | [max payable units per FLW over the opportunity] | [read / derived / borrowed — see above] |
+| flw_count_min | [cohort size lower bound] | [read / derived / borrowed — see above] |
+| flw_count_max | [upper bound] | [read / derived / borrowed — see above] |
+| expected_reach_min | [beneficiaries/entities lower bound] | [read / derived / borrowed — see above] |
+| expected_reach_max | [upper bound] | [read / derived / borrowed — see above] |
+| entity_id_grain | [the payment dedup grain in words, e.g. "worker username + encounter date" — note this example groups several same-day events by one worker onto ONE payment entity, so `payment_rate_unit` above must be quoted per DAY — and since Connect still pays each approved visit on that entity (ace#2512), the per-day rate holds only with `max_daily` = 1 or a verification rule rejecting same-day repeats; name which. For a per-event unit, the grain needs a per-event key (e.g. "worker username + visit uuid").] | [read / derived / borrowed — see above] |
+| entity_state_taxonomy | [REQUIRED when the followed entity carries states the app must name (always for `archetype: longitudinal-visits`). The entity's phase/stage/status vocabulary, in the PARTNER's own words, one line: `<value>=<Label> (steps <a>-<b>); <value>=<Label> (steps <c>-<d>) [source: <the document that fixes this vocabulary, as named in inputs/>]`. Omit the `(steps …)` clause when the lifecycle numbers no activities; keep `[source: …]` whenever a partner document — not this PDD — is the authority. Prose in § Entity Lifecycle is NOT a handoff: it is exactly where this got lost on `spark-facilitator/20260820-0817`, and the Deliver app shipped four invented phase names for the partner's own published process (ace#1564). Leaving this row unfilled HALTS the build rather than licensing an invented vocabulary.] | [read / derived / borrowed — see above] |
+| duplicate_gps_rule | [ONLY when the PDD de-duplicates entities by GPS proximity. The WHOLE rule, not just the radius, one line: `radius_m=<n>; applies_when=both_accuracies_below_radius; fallback=identifiers`. Drop `applies_when` only when the GPS test runs whatever the readings' accuracy; drop `fallback` only when nothing else decides duplicates. **Do not emit a bare `duplicate_gps_radius_m` scalar** — it cannot say whether the radius is conditioned, so the condition is lost to every later reader, and `threshold-coherence-flag` then reads an accuracy-conditioned rule (coherent by construction) as an unconditioned radius under the tolerance (incoherent). ace#2373; classifier `lib/gps-dedup-coherence.ts`. Record the rule as the author wrote it — never raise or tie the radius to satisfy a coherence check.] | [read / derived / borrowed — see above] |
+| cap_rationale | [REQUIRED only when a cap cannot bind — i.e. `flw_count_min × total_cap_per_flw` exceeds `expected_reach_max`. Say why it is deliberately non-binding, or correct the numbers. Picking the value is a program decision; noticing the incoherence is not optional.] | [read / derived / borrowed — see above] |
+| connect_delivery_type | [REQUIRED. The Connect delivery-type **slug** this programme runs under, taken from `connect_list_delivery_types` on the PM org — never invented. Pick the type that describes the WORK (`nutrition`, `malaria`, `interview`, …); if none fits, say so in this row and raise it with the Connect team rather than settling for the nearest label. It is a design-time decision because `connect_update_program` CANNOT change it after create — the only correction is a replacement program. Undeclared, Phase 4 guesses: measured on `ai-demo-space` 2026-09-16, seven of eleven live turmeric programs run as `Interview` for a market survey.] | [read / derived / borrowed — see above] |
+| opportunity_country | [REQUIRED. The country the work happens in. ISO 3166-1 alpha-3 preferred (`IND`, `NGA`); a plain country name is accepted and normalized. Create-time-only on the program.] | [read / derived / borrowed — see above] |
+| llo_org_slug | [OPTIONAL — set it whenever the LLO is already known, which makes Phase 8's solicitation unnecessary and lets it be `skipped`. **The Connect SLUG, not the organisation's name.** It is visible only in the org's Connect URL: `https://connect.dimagi.com/a/stewari/opportunity/` → `stewari`. A display name is refused — `connect_send_llo_invite` rejected the PDD-recorded `stewari_nm_sandbox` with *"Object with slug=… does not exist"* and accepted `stewari` first try (turmeric-market-study/20260914-1742). Note `/a/<slug>/opportunity/` 404s for an org `ace@` cannot see, so a 404 means "no access", not "no org".] | [read / derived / borrowed — see above] |
+| llo_contact_email | [OPTIONAL, but REQUIRED whenever `llo_org_slug` is set — without it no outbound LLO contact can be automated, and the work-order round-trip cannot start.] | [read / derived / borrowed — see above] |
+| llo_contact_name | [OPTIONAL — the human's name, for `{{LLO_FIRST_NAME}}` substitution in outbound email.] | [read / derived / borrowed — see above] |
+| opportunity_currency | [REQUIRED, and it must be the LOCAL currency of `opportunity_country` — a Nigeria deployment is `NGN`, an India deployment is `INR`. Every payment figure in this PDD is denominated in it, and `connect_create_payment_unit`'s `amount` / `org_amount` are WHOLE-currency-unit integers, so the wrong currency misprices every payment rather than merely mislabelling it. **Never default to USD.** Machine-checked against the country by `idea-to-pdd-qa § launch_parameters_present` (`lib/program-locale.ts`); create-time-only on the program.] | [read / derived / borrowed — see above] |
 
 ## Budget
 - Estimated cost: [amount]

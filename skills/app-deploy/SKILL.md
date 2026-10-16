@@ -64,11 +64,23 @@ orchestrator from per-skill QA + eval verdicts. -->
 2.5. **XML-escape lint.** Before uploading, walk every form on the Learn
    and Deliver Nova apps and verify no field has unescaped XML
    metacharacters in `label`, `hint`, or `option` text. Specifically,
-   look for raw `<`, `>`, or `&` (not part of a valid `&amp;`/`&lt;`/
-   `&gt;`/`&apos;`/`&quot;` entity, and not part of a markdown-fenced
-   code block). XForm XML is the upload target; an unescaped `<` will
-   pass Nova's own `validate_app` ({"success":true}) but get rejected
-   by CCHQ's build with `Error on line N column M: not well-formed`.
+   look for raw `<` or `>` (not part of a valid `&lt;`/`&gt;` entity,
+   and not part of a markdown-fenced code block). XForm XML is the
+   upload target; an unescaped `<` will pass Nova's own `validate_app`
+   ({"success":true}) but get rejected by CCHQ's build with
+   `Error on line N column M: not well-formed`.
+
+   **`&` is NOT in scope — do not scan for it and never rewrite it.**
+   Nova entity-encodes `&` (and non-ASCII such as an en-dash, as
+   `&#x2013;`) at compile: the blueprint stores the bare `&`, the
+   compiled form XML carries `&amp;` (18 escaped / 0 bare across a
+   compiled `spark-facilitator/20260907-1120` Deliver CCZ; re-observed
+   on `spark-facilitator/20261004-1706` Learn; verified against a
+   released build in ace#2150). Rewriting a blueprint `&` to `&amp;`
+   therefore DOUBLE-escapes — the worker sees a literal `&amp;` — and
+   on a multilingual app the `edit_field` also demotes that unit's
+   translations to `out-of-date`, silently falling back to English
+   (ace#2207). A partner's published name ships verbatim, `&` included.
 
    Procedure:
 
@@ -84,13 +96,13 @@ orchestrator from per-skill QA + eval verdicts. -->
    2. For each field, scan `label`, `hint`, and option `label`s with the
       regex:
       ```
-      /(?:&(?!(amp|lt|gt|apos|quot|#\d+|#x[0-9a-f]+);))|<(?![/!?a-zA-Z])|(?<!\\)>(?!\s)/i
+      /<(?![/!?a-zA-Z])|(?<!\\)>(?!\s)/i
       ```
       (A simpler heuristic that catches the common cases: any literal
-      `<`, `>`, `&` that isn't part of a recognized XML entity.)
-   3. For each hit, fix via `edit_field` —
-      replace `<` with `&lt;`, `>` with `&gt;`, `&` (not in an entity)
-      with `&amp;`. The fixes are private-work edits
+      `<` or `>`. A literal `&` is never a hit — see above.)
+   3. For each hit, fix via `edit_field` — replace `<` with `&lt;` and
+      `>` with `&gt;` (or reword: "under 2kg" reads better than
+      `(<2kg)`). Never touch `&`. The fixes are private-work edits
       (voidcraft-labs/commcare-nova#693): one `begin_work({app_id,
       request_id})` per app, each `edit_field` with that `work_id` and a
       fresh `request_id` (no `app_id`), then `save_work({work_id,

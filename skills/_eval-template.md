@@ -251,6 +251,34 @@ from the edited draft, scored 8.4 `pass` for a document of 0 words.
 (`DOC_IMPORT_EMPTY`), but the verdict must still name the revision it
 graded. *Enforced:* `test/skills/eval-grades-published-revision.test.ts`.
 
+## Published-render gate (stock)
+
+Every eval whose producer publishes a Google Doc (`rendered: true` in
+`lib/artifact-manifest.ts`) runs one deterministic check on the PUBLISHED
+Doc before it grades a single dimension:
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-published-doc-render.ts" <published Doc URL> [--expect-images]
+```
+
+It reads the Doc's anonymous txt + html exports (what a reader outside ACE
+gets), and exits non-zero on raw markdown on the page (`##` headings, `**bold**`,
+pipe tables, fences, frontmatter, unresolved `![]()`), on a doc it cannot read
+anonymously, and, with `--expect-images` (for `illustrated` artifacts), on a
+render with zero images. **Non-zero exit ⇒ verdict `fail`.** Record the result in
+the verdict as `published_render: {ok, literal_markdown_hits, rendered_image_count}`.
+The detectors are the same ones the surface auditor uses
+(`lib/published-doc-render-check.ts`), so an eval and the auditor cannot disagree
+about whether a page renders.
+
+Why a gate and not a rubric sentence (ace#2213): on
+`poverty-graduation/20260905-1345` all five Phase 6 training evals passed at
+8.4–8.8 on documents that published as raw markdown, two of them showing 0 of
+157 screenshots, while the guides' own rubrics told the judge to count the
+published images. It counted citations in the markdown instead. *Enforced:*
+`test/skills/eval-checks-published-render.test.ts`.
+
 ## MCP Tools Used (stock)
 
 ```markdown

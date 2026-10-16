@@ -1030,6 +1030,102 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
   };
 }
 
+/**
+ * Every § Program Parameters row says where its value came from (ace#2364).
+ *
+ * Downstream phases read the table, not the prose, so a value ACE derived
+ * reached them stated exactly like one an author wrote. On
+ * poverty-graduation/20260908-0510 `assessment_items: 30` /
+ * `pre_assessment_items: 20` appeared in no input (the author: "My Learn annex
+ * has two parameters, languages and the pass mark. No item counts."), ACE's
+ * email then called them "your Annex's 30 and 20", and no decision row ever
+ * recorded where the numbers came from, so the author could not find it.
+ *
+ * Rules (binary, conservative):
+ *  1. The table has a `Provenance` column, and every row's cell is one of
+ *     `read: <ref>`, `derived: <ref>[, <ref>…]`, `borrowed: <source>`, each
+ *     with a non-empty reference.
+ *  2. Every identifier a `derived:` cell names resolves: to a `decisions.yaml`
+ *     row id (the choice a reviewer can challenge), or to another key of the
+ *     same table (a purely mechanical derivation, which needs no row of its
+ *     own). An unresolvable name is exactly the poverty-graduation hole: a
+ *     marker pointing at a decision that was never written.
+ *  3. When a `derived:` cell names a non-table identifier and `decisions.yaml`
+ *     was NOT supplied, the check fails as a QA-invocation gap. A gate that
+ *     skips on missing input reports "fine" for a run nobody checked.
+ *
+ * No § Program Parameters → pass here; `program_parameters_coherent` owns it.
+ */
+const PROVENANCE_RE = /^(read|derived|borrowed)\s*:\s*(\S.*)$/i;
+const IDENT_RE = /[a-z0-9]+(?:[-_][a-z0-9]+)+/g;
+
+function decisionIds(decisionsYaml: string): Set<string> {
+  const ids = new Set<string>();
+  for (const m of decisionsYaml.matchAll(/^\s*-?\s*id:\s*['"]?([A-Za-z0-9_.-]+)['"]?\s*$/gm)) ids.add(m[1]);
+  return ids;
+}
+
+export function checkProgramParametersProvenance(raw: string, ctx?: QACheckContext): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
+  if (body === null) return { pass: true, detail: 'no § Program Parameters — covered by program_parameters_coherent' };
+
+  const rows = body
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('|') && !/^\|[\s:|-]+\|?$/.test(l))
+    .map((l) => l.split('|').slice(1, -1).map((c) => c.replace(/`/g, '').trim()));
+  const header = rows.find((c) => /^key$/i.test(c[0] ?? ''));
+  const col = header ? header.findIndex((c) => /^provenance$/i.test(c)) : -1;
+  const hint =
+    'Give § Program Parameters a third `Provenance` column (`| Key | Value | Provenance |`) and fill it on EVERY row ' +
+    'with `read: <author document § ref>`, `derived: <decisions.yaml row id>` (or, for a purely mechanical value, ' +
+    'the table keys it is computed from) or `borrowed: <source about a different programme>`. A value ACE chose ' +
+    'needs a decisions.yaml row recording the choice: write the row, then name it. See templates/pdd-template.md ' +
+    '§ Program Parameters (ace#2364).';
+  if (col < 0) {
+    return { pass: false, detail: '§ Program Parameters has no Provenance column', auto_fix_hint: hint };
+  }
+
+  const dataRows = rows.filter((c) => c !== header && /^[a-z][a-z0-9_]*$/.test(c[0] ?? ''));
+  const keys = new Set(dataRows.map((c) => c[0]));
+  const ids = typeof ctx?.decisionsYaml === 'string' ? decisionIds(ctx.decisionsYaml) : null;
+  const problems: string[] = [];
+  let needsDecisions = false;
+  for (const c of dataRows) {
+    const key = c[0];
+    const cell = (c[col] ?? '').trim();
+    const m = cell.match(PROVENANCE_RE);
+    if (!m) {
+      problems.push(`${key}: provenance ${cell ? `"${cell}" is not read:/derived:/borrowed:` : 'is empty'}`);
+      continue;
+    }
+    if (m[1].toLowerCase() !== 'derived') continue;
+    const refs = [...m[2].toLowerCase().matchAll(IDENT_RE)].map((x) => x[0]);
+    if (refs.length === 0) {
+      problems.push(`${key}: derived: names no decision row or table key`);
+      continue;
+    }
+    for (const ref of refs) {
+      if (keys.has(ref)) continue;
+      if (ids === null) needsDecisions = true;
+      else if (!ids.has(ref)) problems.push(`${key}: derived: "${ref}" is not a decisions.yaml row id or a table key`);
+    }
+  }
+  if (problems.length > 0) {
+    return { pass: false, detail: problems.join('; '), auto_fix_hint: hint };
+  }
+  if (needsDecisions) {
+    return {
+      pass: false,
+      detail: 'a derived: provenance names a decision row, but decisions.yaml was not supplied, so it could not be resolved',
+      auto_fix_hint:
+        'do NOT regenerate the PDD for this failure; it is a QA-invocation gap. Re-run the QA with ' +
+        "`--decisions <local copy of the run's decisions.yaml>`.",
+    };
+  }
+  return { pass: true, detail: `${dataRows.length} rows carry provenance` };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'launch_parameters_present',
@@ -1087,6 +1183,13 @@ export const CHECKS: QACheck[] = [
     description:
       'Program Parameters table present and its numbers do not contradict each other',
     run: checkProgramParametersCoherent,
+  },
+  {
+    id: 'program_parameters_provenance',
+    type: 'static',
+    description:
+      'Every § Program Parameters row carries read:/derived:/borrowed: provenance, and each derived: names an existing decisions.yaml row (or table key)',
+    run: (pdd: string, ctx?: QACheckContext) => checkProgramParametersProvenance(pdd, ctx),
   },
   {
     id: 'payment_unit_matches_entity_grain',

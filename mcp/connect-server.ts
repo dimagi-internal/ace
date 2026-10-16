@@ -1323,6 +1323,7 @@ server.tool('commcare_validate_ccz',
     ccz_base64: z.string().optional().describe('Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
     mode: z.enum(['validate', 'play']).optional().describe('`validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate.'),
     entry_path: z.array(z.number().int().min(0)).optional().describe('`play` mode only. Menu positions AS DISPLAYED to navigate to a form (default `[0, 0]` = first root item → first form) — not HQ module indices: child modules nest inside their parent menu, so the two diverge (ace#2784). For nested menus give the position inside each submenu (`[0, 2, 0]`). The resolved suite command comes back as `command_id`; a path that lands on no command returns `skipped`/`entry-path-unresolved` naming what the menu lists. Invoke once per form to cover every form-init.'),
+    user_data: z.record(z.string()).optional().describe('`play` mode only. Custom user data (`#user/<key>`) for the synthetic restore user (ace#2989). Every `session/user/data/<key>` the CCZ reads is seeded with an empty string by default; entries here override or add. The CLI evaluates menu `relevant=` (`MenuLoader.menuIsRelevant`), so role-gated menus are only visible under that value: walk each role branch with its own call, `entry_path` counted as that role sees the menu. Echoed as `seeded_user_data`.'),
     timeout_ms: z.number().int().positive().optional().describe('Spawn timeout. validate default 60000ms; play default 30000ms.'),
   },
   async (args) =>
@@ -1388,6 +1389,7 @@ server.tool('commcare_validate_ccz',
             cczPath,
             jarPath,
             entryPath: args.entry_path,
+            userData: args.user_data,
             timeoutMs: args.timeout_ms,
           });
         }

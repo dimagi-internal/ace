@@ -45,6 +45,11 @@ residual to record — we know the Coach builds (Spark Coach 13972).
 
 1. **Clone.** `ocs_clone_chatbot({template_id: <Q&A experiment_id>, new_name: "ACE Coach - <opp> (<run-id>)"})`.
    Run-scoped name, as for the Q&A bot (ace#1017).
+   **No Phase 5 bot** (a standalone `/ace:demo`): clone the OCS golden template,
+   `$OCS_GOLDEN_TEMPLATE_ID` (the same source `ocs-agent-setup` clones). It carries
+   a shared FAQ collection that belongs to no programme, so build with
+   `--collections none` and render with `--knowledge-base no` unless the demo has a
+   collection of its own (ace#2779: a chlorine coach kept KMC/ECD FAQs this way).
 2. **Indicator measures.** Write `indicators_doc.measures` to a local JSON file.
    Only measures with `meta.flw_applicable: true` and a `direction` other than
    `none` become topics (`lib/coach-briefing.ts` `coachableIndicators`).
@@ -81,8 +86,9 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    opp (ace#3006, observed on `smallholder-seasonal/20261015-1402`).
 
    Splices `templates/ocs-coach/status_node.py` between the LLM and End nodes,
-   sets prompt + collection, and creates the `commcare_connect` channel. A clone
-   keeps its source's collections unless you pass some: `--collections none`
+   sets prompt + collection, and creates the `commcare_connect` channel.
+   `--collections` is required (the script refuses a run without it): a clone keeps
+   its source's collections unless told otherwise, and `--collections none`
    detaches them all (a coach cloned from another programme's coach must not search
    that programme's documents). If the
    channel step fails with *flag_commcare_connect*, the OCS team lacks that feature

@@ -44,7 +44,7 @@ describe('javaProbeWorks', () => {
         '#!/bin/sh\necho "Unable to locate a Java Runtime." 1>&2\nexit 1\n',
         { mode: 0o755 },
       );
-      expect(javaProbeWorks(stub)).toBe(false);
+      expect(javaProbeWorks(stub, 30_000)).toBe(false);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -60,7 +60,9 @@ describe('javaProbeWorks', () => {
         '#!/bin/sh\necho "openjdk version \\"17.0.19\\" 2026-04-21" 1>&2\nexit 0\n',
         { mode: 0o755 },
       );
-      expect(javaProbeWorks(fake)).toBe(true);
+      // Generous timeout: the default 4s spawn kill flaked this under
+      // full-suite load (ace#2926) — the probe logic is what's under test.
+      expect(javaProbeWorks(fake, 30_000)).toBe(true);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

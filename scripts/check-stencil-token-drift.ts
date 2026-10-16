@@ -18,6 +18,15 @@
  * itself is pure and unit-tested in `lib/stencil-token-drift.ts`; this file is
  * only the Slides round-trip around it.
  *
+ * ## Geometry and colour (dimagi-internal/ace#2204)
+ *
+ * The same read also compares every builder-owned box's bounds, text colour,
+ * font size and fill against `STENCIL_TEXT_BUILDERS` (`lib/stencil-geometry-drift.ts`).
+ * A merged geometry fix reaches no rendered deck until the template is
+ * reconciled. ace#1305 re-shipped for three weeks that way with every render
+ * check green. Geometry drift prints a WARN and does NOT change the exit code.
+ * `--repair` rebuilds those pages too.
+ *
  * ## Repair
  *
  * `--repair` reconciles each drifted stencil page to
@@ -53,6 +62,13 @@ import {
   formatStencilTokenDrift,
   type StencilPageText,
 } from '../lib/stencil-token-drift.js';
+import {
+  expectedObjects,
+  scanStencilGeometryDrift,
+  formatStencilGeometryDrift,
+  type LiveElement,
+  type StencilPageElements,
+} from '../lib/stencil-geometry-drift.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
@@ -132,7 +148,11 @@ function resolveKeyFile(cliKey: string | undefined): string {
 // Slides round-trip
 // ---------------------------------------------------------------------------
 
-const GET_FIELDS = 'slides(objectId,pageElements(objectId,shape(text(textElements(textRun(content))))))';
+// Size, transform, text style and fill are read for the geometry/colour scan
+// (ace#2204); the token scan needs only the text content.
+const GET_FIELDS =
+  'slides(objectId,pageElements(objectId,size,transform,image(contentUrl),' +
+  'shape(shapeType,text(textElements(textRun(content,style))),shapeProperties(shapeBackgroundFill))))';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -147,12 +167,18 @@ function shapeText(el: any): string | null {
 export function harvestStencilPages(
   pres: any,
   stencilPageIds: ReadonlySet<string>,
-): { pages: StencilPageText[]; textShapeIdsByPageId: Map<string, string[]> } {
+): {
+  pages: StencilPageText[];
+  textShapeIdsByPageId: Map<string, string[]>;
+  elementPages: StencilPageElements[];
+} {
   const pages: StencilPageText[] = [];
   const textShapeIdsByPageId = new Map<string, string[]>();
+  const elementPages: StencilPageElements[] = [];
   for (const slide of pres?.data?.slides ?? []) {
     const pageId: string | undefined = slide?.objectId ?? undefined;
     if (!pageId || !stencilPageIds.has(pageId)) continue;
+    elementPages.push({ pageId, elements: (slide.pageElements ?? []) as LiveElement[] });
     const texts: string[] = [];
     const ids: string[] = [];
     for (const el of slide.pageElements ?? []) {
@@ -164,7 +190,26 @@ export function harvestStencilPages(
     pages.push({ pageId, texts });
     textShapeIdsByPageId.set(pageId, ids);
   }
-  return { pages, textShapeIdsByPageId };
+  return { pages, textShapeIdsByPageId, elementPages };
+}
+
+/**
+ * The ids a repair must delete on one page: every text-bearing shape, plus any
+ * NON-text object the builder itself creates (the stats stencil's amber rules).
+ * Without the second half, re-layering the builder collides with a rule that
+ * is still on the page — the createShape fails on a duplicate objectId.
+ * Chrome is not builder-owned, so it still survives.
+ */
+export function repairDeleteIds(
+  stencil: StencilKey,
+  pageId: string,
+  textShapeIds: readonly string[],
+  liveElementIds: readonly string[],
+): string[] {
+  const owned = new Set(expectedObjects(STENCIL_TEXT_BUILDERS[stencil](pageId)).map((o) => o.objectId));
+  const out = [...textShapeIds];
+  for (const id of liveElementIds) if (owned.has(id) && !out.includes(id)) out.push(id);
+  return out;
 }
 
 /**
@@ -203,37 +248,54 @@ async function main(): Promise<void> {
   const stencilPageIds = new Set<string>(Object.values(STENCILS));
 
   const pres = await slides.presentations.get({ presentationId: cli.deck, fields: GET_FIELDS });
-  const { pages, textShapeIdsByPageId } = harvestStencilPages(pres, stencilPageIds);
-  let report = scanStencilTokenDrift(pages, STENCILS, STENCIL_PLACEHOLDERS);
+  const harvested = harvestStencilPages(pres, stencilPageIds);
+  let report = scanStencilTokenDrift(harvested.pages, STENCILS, STENCIL_PLACEHOLDERS);
+  // ace#2204 — geometry/colour drift is a WARN: it never changes the exit
+  // code, because an operator may hand-edit the template on purpose.
+  let geometry = scanStencilGeometryDrift(harvested.elementPages, STENCILS, STENCIL_TEXT_BUILDERS);
 
-  if (!cli.json) console.log(formatStencilTokenDrift(report));
+  if (!cli.json) {
+    console.log(formatStencilTokenDrift(report));
+    console.log(formatStencilGeometryDrift(geometry));
+  }
 
-  if (cli.repair && report.findings.length) {
+  const toRepair = new Map<string, StencilKey>();
+  for (const f of [...report.findings, ...geometry.findings]) toRepair.set(f.pageId, f.stencil as StencilKey);
+
+  if (cli.repair && toRepair.size) {
+    const liveIdsByPage = new Map<string, string[]>();
+    for (const p of harvested.elementPages) {
+      liveIdsByPage.set(p.pageId, p.elements.map((e) => e.objectId).filter((id): id is string => !!id));
+    }
     const requests: Record<string, unknown>[] = [];
-    for (const finding of report.findings) {
-      const stencil = finding.stencil as StencilKey;
+    for (const [pageId, stencil] of toRepair) {
       if (!STENCIL_TEXT_BUILDERS[stencil]) {
         throw new Error(`no text builder for stencil "${stencil}" — cannot repair`);
       }
-      requests.push(
-        ...repairRequests(stencil, finding.pageId, textShapeIdsByPageId.get(finding.pageId) ?? []),
+      const deleteIds = repairDeleteIds(
+        stencil,
+        pageId,
+        harvested.textShapeIdsByPageId.get(pageId) ?? [],
+        liveIdsByPage.get(pageId) ?? [],
       );
+      requests.push(...repairRequests(stencil, pageId, deleteIds));
     }
-    console.log(`\nrepairing ${report.findings.length} stencil page(s): ${requests.length} requests`);
+    console.log(`\nrepairing ${toRepair.size} stencil page(s): ${requests.length} requests`);
     await slides.presentations.batchUpdate({ presentationId: cli.deck, requestBody: { requests } });
 
     // Read back — the repair is not "the batch returned 200", it is "the page
     // no longer drifts". Same class as verifyLookupBind: prove the write.
-    const after = await slides.presentations.get({ presentationId: cli.deck, fields: GET_FIELDS });
-    report = scanStencilTokenDrift(
-      harvestStencilPages(after, stencilPageIds).pages,
-      STENCILS,
-      STENCIL_PLACEHOLDERS,
+    const after = harvestStencilPages(
+      await slides.presentations.get({ presentationId: cli.deck, fields: GET_FIELDS }),
+      stencilPageIds,
     );
+    report = scanStencilTokenDrift(after.pages, STENCILS, STENCIL_PLACEHOLDERS);
+    geometry = scanStencilGeometryDrift(after.elementPages, STENCILS, STENCIL_TEXT_BUILDERS);
     console.log(`\nafter repair: ${formatStencilTokenDrift(report)}`);
+    console.log(`after repair: ${formatStencilGeometryDrift(geometry)}`);
   }
 
-  if (cli.json) console.log(JSON.stringify(report, null, 2));
+  if (cli.json) console.log(JSON.stringify({ ...report, geometry }, null, 2));
   if (!report.ok) process.exit(1);
 }
 

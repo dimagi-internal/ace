@@ -594,6 +594,21 @@ export function specFromDeliverApp(appJson: unknown): DerivedDatasetSpec {
 }
 
 /**
+ * How many records carry a value for each named field (nested records resolved the
+ * same way `auditDataset` reads them). `demo-data-setup-qa` check 9 uses it to tell a
+ * spec addition that audits something from one whose gate field no record carries,
+ * which is declared but never fires (ace#2245).
+ */
+export function countFieldPresence(rows: Row[], fields: Iterable<string>): Record<string, number> {
+  const { readAll } = fieldReader(rows);
+  const out: Record<string, number> = {};
+  for (const f of new Set(fields)) {
+    out[f] = rows.filter((_, i) => readAll(i, f).some(present)).length;
+  }
+  return out;
+}
+
+/**
  * Merge hand-declared entries onto a derived spec as ADDITIONS.
  *
  * Never a replacement: the derived half is what the app actually declares, and

@@ -167,7 +167,10 @@ async function spawnAllocator(label: string, withListeners: boolean): Promise<St
       process.exit(1);
     });
   `;
-  const child = spawn('npx', ['--yes', 'tsx', '-e', code], {
+  // node + tsx's own cli.mjs, never `npx tsx` — the plugin cache's .bin/tsx
+  // is a dereferenced copy that cannot load its chunks (ace#2252).
+  const tsx = path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const child = spawn(process.execPath, [tsx, '-e', code], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   SUBPROCS.push({ pid: child.pid ?? -1, proc: child, label });

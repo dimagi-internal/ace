@@ -36,9 +36,9 @@ function* files(dir: string): Generator<string> {
   }
 }
 
-function scan(test: (line: string) => boolean): string[] {
+function scan(test: (line: string) => boolean, dirs: string[] = DIRS): string[] {
   const hits: string[] = [];
-  for (const dir of DIRS) {
+  for (const dir of dirs) {
     for (const f of files(dir)) {
       let text: string;
       try { text = readFileSync(f, 'utf8'); } catch { continue; }
@@ -78,5 +78,65 @@ describe('tsx is never resolved through the plugin cache .bin shim', () => {
       return true;
     }).filter((h) => h.startsWith('bin/'));
     expect(hits, `bin/ shells out via the broken shim.\n${REMEDY}\n${hits.join('\n')}`).toEqual([]);
+  });
+});
+
+// Code-level spawns (ace#2252, reopened 2026-10-13). The scan above reads lines
+// of shell and prose; a TypeScript `spawnSync('npx', ['tsx', …])` in scripts/
+// or lib/ is the same broken shim and was invisible to it —
+// scripts/audit-run-surface.ts's render probe failed on every installed box
+// and its fallback then manufactured eight false RENDER-LINK-NOT-SHOWN
+// findings. Whole-file regex so a call split across lines still matches.
+const CODE_DIRS = ['scripts', 'lib', 'mcp', 'bin'];
+const NPX_TSX_SPAWN =
+  /\b(?:spawn|spawnSync|execFile|execFileSync|fork)\(\s*['"`]npx['"`]\s*,\s*\[[^\]]*?['"`]tsx['"`]/gs;
+const NPX_TSX_EXEC = /\bexec(?:Sync)?\(\s*['"`]npx\s+(?:--?\S+\s+)*tsx\b/g;
+
+function codeHits(): string[] {
+  const hits: string[] = [];
+  for (const dir of CODE_DIRS) {
+    for (const f of files(dir)) {
+      if (!/\.(?:ts|mts|mjs|js|cjs)$/.test(f)) continue;
+      let text: string;
+      try { text = readFileSync(f, 'utf8'); } catch { continue; }
+      for (const re of [NPX_TSX_SPAWN, NPX_TSX_EXEC]) {
+        for (const m of text.matchAll(re)) {
+          const line = text.slice(0, m.index).split('\n').length;
+          hits.push(`${f}:${line}: ${m[0].replace(/\s+/g, ' ').slice(0, 160)}`);
+        }
+      }
+    }
+  }
+  return hits;
+}
+
+describe('no code spawns tsx through npx (scripts/, lib/, mcp/, bin/)', () => {
+  it('the patterns match the shapes that shipped (positive controls)', () => {
+    // Verbatim from the two call sites this test was written against.
+    expect("spawnSync('npx', ['tsx', script, pageUrl, JSON.stringify(labels)], {")
+      .toMatch(new RegExp(NPX_TSX_SPAWN.source, 's'));
+    expect("spawn('npx', ['--yes', 'tsx', '-e', code], {")
+      .toMatch(new RegExp(NPX_TSX_SPAWN.source, 's'));
+    expect("spawn(\n    'npx',\n    ['tsx', script],\n  )")
+      .toMatch(new RegExp(NPX_TSX_SPAWN.source, 's'));
+    expect("execSync('npx tsx scripts/x.ts')").toMatch(new RegExp(NPX_TSX_EXEC.source));
+    // Negative control: the remedy itself must not match.
+    expect("spawnSync(process.execPath, [tsx, script])")
+      .not.toMatch(new RegExp(NPX_TSX_SPAWN.source, 's'));
+  });
+
+  it('the walker sees the code dirs (guards against a vacuous pass)', () => {
+    const seen = scan((l) => l.includes('spawnSync('), CODE_DIRS);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  it('has no spawn*/exec*("npx", [... "tsx" ...]) call', () => {
+    const hits = codeHits();
+    expect(
+      hits,
+      'Broken in every installed plugin cache (ace#2252). Use\n' +
+        "  spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'), script, ...])\n" +
+        hits.join('\n'),
+    ).toEqual([]);
   });
 });

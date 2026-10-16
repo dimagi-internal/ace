@@ -87,6 +87,15 @@ training material step before Phase 7.
     Exit 0 = no drift. Exit 1 = drift, and the deck must not be
     rendered from this template until it is reconciled.
 
+    The same run prints a `stencil geometry drift:` block (ace#2204). It
+    lists builder-owned boxes whose position, size, text colour, font size
+    or fill differs from `lib/training-deck-stencil-geometry.ts`. That block
+    is a WARN and never changes the exit code. Record it in the verdict, and
+    tell the operator that `--repair` (below) makes a merged stencil fix
+    actually reach decks. Until then every render ships the template's old
+    geometry with every check green, which is how ace#1305 re-shipped for
+    three weeks.
+
     **This is the check step 9's `unmatchedReplacements` cannot make,
     and the reason is worth knowing.** The template and
     `STENCIL_PLACEHOLDERS` are two halves of one contract kept in

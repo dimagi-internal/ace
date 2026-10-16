@@ -81,3 +81,62 @@ describe('registration recipes probe optional screens instead of 7 s guards', ()
     });
   }
 });
+
+// ace#2821: the "skip email" confirmation differs by APK. 2.64.0 shows
+// "Skip email?" with NO (negative_button — a recorded ANTI-TARGET) / YES;
+// CommCare 2.66 shows "Protect your account" with SKIP (negative_button) /
+// ADD EMAIL. The recipe must probe for the 2.66 SKIP before falling back to
+// YES, and must never tap `negative_button` by id alone (that is NO on 2.64.0).
+describe('email-skip confirmation handles 2.64.0 YES and 2.66 SKIP (ace#2821)', () => {
+  const file = 'connect-register-from-otp.yaml';
+  const NEG = 'org.commcare.dalvik:id/negative_button';
+
+  /** The commands of the top-level runFlow that taps personalid_email_skip_button. */
+  function emailBlock(): Array<Record<string, any>> {
+    let found: Array<Record<string, any>> | null = null;
+    walk(steps(file), (m) => {
+      const rf = m.runFlow as Record<string, any> | undefined;
+      const cmds = rf?.commands as Array<Record<string, any>> | undefined;
+      if (!found && cmds?.[0]?.tapOn?.id === 'org.commcare.dalvik:id/personalid_email_skip_button') found = cmds;
+    });
+    expect(found, 'email-skip block not found').not.toBeNull();
+    return found!;
+  }
+
+  it('waits for either confirmation shape before probing', () => {
+    const wait = emailBlock().find((c) => c.extendedWaitUntil?.visible?.text);
+    expect(wait?.extendedWaitUntil.visible.text).toMatch(/YES/);
+    expect(wait?.extendedWaitUntil.visible.text).toMatch(/SKIP/);
+  });
+
+  it('probes the 2.66 SKIP, then taps SKIP or YES on the probe result — in that order', () => {
+    const cmds = emailBlock();
+    const probeIdx = cmds.findIndex(
+      (c) =>
+        c.runFlow?.optional === true &&
+        c.runFlow.commands[0]?.extendedWaitUntil?.visible?.id === NEG &&
+        c.runFlow.commands[0]?.extendedWaitUntil?.visible?.text === 'SKIP',
+    );
+    const skipIdx = cmds.findIndex((c) => c.runFlow?.commands?.some((x: any) => x.tapOn?.text === 'SKIP'));
+    const yesIdx = cmds.findIndex((c) => c.runFlow?.commands?.some((x: any) => x.tapOn?.text === 'YES'));
+    expect(probeIdx).toBeGreaterThan(-1);
+    expect(skipIdx).toBeGreaterThan(probeIdx);
+    expect(yesIdx).toBeGreaterThan(probeIdx);
+    // The two taps are gated on opposite values of the same probe flag.
+    const skipWhen = String(cmds[skipIdx].runFlow.when.true);
+    const yesWhen = String(cmds[yesIdx].runFlow.when.true);
+    const flag = skipWhen.match(/output\.(\w+)/)?.[1];
+    expect(flag).toBeTruthy();
+    expect(yesWhen).toContain(`!output.${flag}`);
+    expect(skipWhen).not.toContain('!');
+  });
+
+  it('never taps negative_button without text SKIP (it is NO on 2.64.0)', () => {
+    const bad: string[] = [];
+    walk(steps(file), (m) => {
+      const t = m.tapOn as Record<string, unknown> | undefined;
+      if (t?.id === NEG && t.text !== 'SKIP') bad.push(JSON.stringify(t));
+    });
+    expect(bad).toEqual([]);
+  });
+});

@@ -2244,6 +2244,65 @@ describe('probeRecipeSanity — failure class: unguarded-option-tap-below-long-l
     expect(unguardedOf(guarded)).toBeUndefined();
   });
 
+  // ace#2186 — a scroll to the QUESTION LABEL is not a guard for its option.
+  // Live: poverty-graduation/20260905-1345 (MILK, question 3 of 4) and
+  // smallholder-seasonal/20261012-1549 ("dry-season cropping cycle") both
+  // scrolled to the label, which stopped flush at the pane bottom with every
+  // option still below the fold, and the scoped tap died selector-not-found.
+  // Both legs passed once a second scroll targeted the OPTION itself.
+  it('flags a tap whose only preceding scroll targets the question LABEL, not the option (ace#2186)', () => {
+    const body = [
+      '- scrollUntilVisible:',
+      '    element:',
+      `      text: ${CALLS_ANCHOR}`,
+      '    direction: DOWN',
+      '    visibilityPercentage: 30',
+      '    centerElement: true',
+      '- tapOn:',
+      '    text: "Yes, the contact agrees"',
+      '    below:',
+      `      text: ${CALLS_ANCHOR}`,
+    ].join('\n');
+    const f = unguardedOf(body);
+    expect(f, 'a label scroll leaves the options free to sit below the fold').toBeDefined();
+    expect(f!.value).toBe('Yes, the contact agrees');
+  });
+
+  it('passes an option-anchored scroll scoped below the question label (ace#2186)', () => {
+    const body = [
+      '- scrollUntilVisible:',
+      '    element:',
+      `      text: ${CALLS_ANCHOR}`,
+      '    direction: DOWN',
+      '    visibilityPercentage: 30',
+      '    centerElement: false',
+      '- scrollUntilVisible:',
+      '    element:',
+      '      text: "Yes, the contact agrees"',
+      '      below:',
+      `        text: ${CALLS_ANCHOR}`,
+      '    direction: DOWN',
+      '    visibilityPercentage: 100',
+      '    centerElement: false',
+      '- tapOn:',
+      '    text: "Yes, the contact agrees"',
+      '    below:',
+      `      text: ${CALLS_ANCHOR}`,
+    ].join('\n');
+    expect(unguardedOf(body)).toBeUndefined();
+  });
+
+  it('remediation teaches the option scroll the check accepts, not the label scroll it rejects (ace#2186)', () => {
+    const body = ['- tapOn:', '    text: "Yes, the contact agrees"', '    below:', `      text: ${CALLS_ANCHOR}`].join('\n');
+    const f = unguardedOf(body)!;
+    // Following the remediation literally must produce a recipe that passes.
+    expect(f.remediation).toMatch(/scroll to the OPTION/);
+    expect(f.remediation).toMatch(/below/);
+    expect(f.remediation).toMatch(/visibilityPercentage: 100/);
+    expect(f.remediation).not.toMatch(/BY POSITION/);
+    expect(f.remediation).not.toMatch(/for the same question label before it/);
+  });
+
   it('declines to attribute an option text that is ambiguous across groups (ace#1548 rule)', () => {
     // Both groups now offer a bare "No"; with no anchor there is no evidence
     // which screen the tap is on, so the check must not guess.

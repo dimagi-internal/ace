@@ -58,7 +58,9 @@ export type PlainLanguageIssueKind =
   | 'skill_or_tool_name'
   // ── decision-row extras (profile 'decision'; see below) ──
   | 'opaque_id'
-  | 'phase_reference';
+  | 'phase_reference'
+  | 'pipeline_vocabulary'
+  | 'undefined_abbreviation';
 
 export interface PlainLanguageIssue {
   kind: PlainLanguageIssueKind;
@@ -139,14 +141,49 @@ const DECISION_EXTRA_RULES: Rule[] = [
     re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\b/gi,
   },
   { kind: 'phase_reference', re: /\bPhase\s+\d+\b/gi },
+  // ACE's build pipeline in its own words (ace#3016). On
+  // noora-health/20261015-1129 reviewer-visible rows read "Nova review on both
+  // apps", "Unapproved values for operator review", "ACE-authored" text and
+  // "the Learn fail message"; the outsider review capped jargon at 4 and this
+  // gate passed all of them. `Nova` is ACE's app builder; "operator review" is
+  // ACE's internal approval step; "ACE-authored" names the pipeline, not the
+  // programme. Learn/Deliver count only CAPITALISED and only as a build
+  // qualifier ("Learn fail message", "Deliver app form", "Learn module") — the
+  // ordinary verbs "learn" / "deliver" never match.
+  {
+    kind: 'pipeline_vocabulary',
+    re: /\bNova\b|\b[Oo]perator review\b|\bACE-authored\b|\b(?:Learn|Deliver)\s+(?:app\s+)?(?:fail message|form|module)s?\b/g,
+  },
 ];
+
+// Domain abbreviations an outside partner cannot be assumed to know. Each is
+// flagged unless the same text spells it out (the expansion, any case) — so
+// "Local Government Area (LGA)" passes and a bare "LGA" does not. Kept small
+// on purpose: CHW / LLO / FLW are the programme's own vocabulary and stay legal.
+const UNDEFINED_ABBREVIATIONS: Array<[string, RegExp]> = [
+  ['LGA', /local government area/i],
+  ['ToT', /training of trainers/i],
+  ['SBCC', /social and behaviou?r change/i],
+];
+
+function undefinedAbbreviations(text: string): PlainLanguageIssue[] {
+  const out: PlainLanguageIssue[] = [];
+  for (const [abbr, expansion] of UNDEFINED_ABBREVIATIONS) {
+    if (expansion.test(text)) continue;
+    for (const m of text.matchAll(new RegExp(`\\b${abbr}s?\\b`, 'g'))) {
+      out.push({ kind: 'undefined_abbreviation', token: m[0] });
+    }
+  }
+  return out;
+}
 
 /**
  * `description` — the original PDD-description rules, unchanged.
  * `outsider`   — those plus the extra shapes above, for any field a named
  *                outside owner reads (the open-questions ledger first).
- * `decision`   — the base rules plus record ids and "Phase N", for
- *                reviewer-visible decision-row text (`plainLanguageFindings`).
+ * `decision`   — the base rules plus record ids, "Phase N", ACE pipeline
+ *                vocabulary and undefined abbreviations, for reviewer-visible
+ *                decision-row text (`plainLanguageFindings`).
  */
 export type PlainLanguageProfile = 'description' | 'outsider' | 'decision';
 
@@ -170,6 +207,7 @@ export function auditOutsiderText(
   for (const { kind, re } of PROFILE_RULES[profile]) {
     for (const m of text.matchAll(re)) out.push({ kind, token: m[0] });
   }
+  if (profile === 'decision') out.push(...undefinedAbbreviations(text));
   return out;
 }
 
@@ -197,6 +235,8 @@ const KIND_LABEL: Record<PlainLanguageIssueKind, string> = {
   skill_or_tool_name: 'skill or tool name',
   opaque_id: 'platform record id',
   phase_reference: 'pipeline stage number',
+  pipeline_vocabulary: 'ACE pipeline term',
+  undefined_abbreviation: 'undefined abbreviation',
 };
 
 export function plainLanguageKindLabel(kind: PlainLanguageIssueKind): string {

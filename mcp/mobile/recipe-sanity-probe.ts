@@ -380,7 +380,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       failures.push({
         class: 'unguarded-option-tap-below-long-label',
         detail: `recipe ${recipe.name} taps option "${unguarded.matcher}" at line ${unguarded.line} with no preceding scrollUntilVisible — it shares the Nova group "${unguarded.groupId}" (a CommCare field-list, so ONE screen) with a ${unguarded.labelChars}-character label, which pushes the options below the fold`,
-        remediation: `guard the tap with a scrollUntilVisible for the same question label before it, per skills/app-test-cases § group-field-list walk item 2 — and set centerElement BY POSITION: false for every question in the group except the last, true ONLY for the last (ace#1814; uniformly true overshoots question 2, uniformly false strands the last question's options below the fold). An unnecessary guard is a runtime no-op, so applying it is always safe; a missing one is selector-not-found on a live device`,
+        remediation: `scroll to the OPTION, scoped below the question label, before the tap — per skills/app-test-cases § group-field-list walk item 2: a scrollUntilVisible whose element is the option text with \`below:\` the question label, visibilityPercentage: 100, centerElement: false, then the tapOn with the SAME below: anchor (ace#2186). A scroll to the question label alone is NOT a guard: the label can stop flush at the pane bottom with every option still below the fold (MILK, question 3 of 4 on poverty-graduation/20260905-1345), and no centerElement choice fixes that. Do not stack an option-centring scroll (centerElement: true) on a below:-anchored tap either: on a long option list centring the option evicts its question label off the top and the anchor resolves to nothing`,
         recipe: recipe.name,
         parameter: 'unguarded-option-tap',
         value: unguarded.matcher,
@@ -1593,6 +1593,13 @@ function collectGroupScreens(apps: NovaAppSlice[]): GroupScreen[] {
  * select, and only when NO scroll targeting that option appears earlier.
  * A guarded scroll that is unnecessary is a no-op at runtime, so the
  * remediation is always safe to apply.
+ *
+ * Only a scroll whose matchers reach the OPTION counts as its guard; a scroll
+ * to the question label does not (ace#2186). The label can land flush at the
+ * pane bottom with every option still below the fold — live on
+ * poverty-graduation/20260905-1345 (MILK, question 3 of 4) and
+ * smallholder-seasonal/20261012-1549 — and both legs passed once each tap was
+ * preceded by a scroll to the option itself, scoped `below:` its label.
  *
  * Attribution follows the ace#1548 evidence rules (ace#2648). A tap counts
  * against a risky group only when (a) its OWN `text:` matches one of that

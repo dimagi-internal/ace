@@ -90,6 +90,70 @@ describe('controls — each rule passes the spec once its finding is fixed', () 
   });
 });
 
+// ace#2747. canopy's ddd-spec-qa requires a `role: overview` scene on any spec of
+// ≥4 scenes, and its renderer absorbs that scene into the intro title card. On
+// spark-facilitator/20261004-1706 (Phase 7 attempt 3) the judge pass, shown the
+// overview as scene 1, scored escalation 2 — "Scene 1 is a roadmap with no data"
+// — and the gate blocked a spec canopy accepts. The overview is the title, not a
+// body scene.
+describe('a role: overview scene is canopy\'s intro card, not a body scene (ace#2747)', () => {
+  const OVERVIEW = {
+    id: 'programme-review-overview',
+    role: 'overview',
+    persona: SPEC.scenes![0].persona,
+    title: 'How the programme review works',
+    url: SPEC.scenes![0].url,
+    concept_claim: 'The review grades the programme against the 80% and 75% targets, then drills to partners and facilitators.',
+    narrative: 'This is a quick overview of how we review the programme: first the headline, then partners, then facilitators.',
+    actions: [],
+  };
+  const withOverview = (): PrecheckSpec => {
+    const s = copy(SPEC);
+    s.scenes = [copy(OVERVIEW), ...s.scenes!];
+    delete s.scenes[1].url; // the first body scene on the overview's surface omits its url, as authored
+    return s;
+  };
+
+  it('finds the same defects, named by their spec positions', () => {
+    const r = checkArcPrecheck(withOverview(), REALIZED);
+    expect(r.judged).toBe(6);
+    expect(r.findings.find((x) => x.kind === 'same-surface-component')?.scenes).toEqual([5, 6]);
+    expect(r.findings.find((x) => x.kind === 'side-branch-scene')?.scenes).toEqual([6]);
+    expect(r.findings.find((x) => x.kind === 'finale-restates-opening')?.scenes).toEqual([2, 7]);
+  });
+
+  it('never compares the finale with the overview: restating its roadmap is not restating an opening fact', () => {
+    const s = withOverview();
+    s.scenes![6].concept_claim = 'The report grades the programme against the 80% and 75% targets.';
+    s.scenes![1].concept_claim = 'The headline tiles show meeting regularity at 66% for one partner.';
+    expect(checkArcPrecheck(s, REALIZED).findings.some((x) => x.kind === 'finale-restates-opening' && x.blocking)).toBe(false);
+  });
+
+  it('keeps the overview out of the judge prompt and tells the judge it is the title card', () => {
+    const p = buildArcPrecheckPrompt(withOverview(), checkArcPrecheck(withOverview(), REALIZED), REALIZED);
+    expect(p).not.toMatch(/## Scene 1: /);
+    expect(p).not.toMatch(/quick overview of how we review/);
+    expect(p).toMatch(/## Scene 2: /);
+    expect(p).toMatch(/Scene 1 \(role: overview\) is not listed below: the renderer absorbs the overview into the narrated intro title card/);
+    expect(p).toMatch(/# Scenes \(6\)/);
+    // the first body scene inherits the overview's surface
+    expect(p).toMatch(/## Scene 2: [^\n]*\npersona: [^\n]*surface: (?!\(unset\))/);
+  });
+
+  it('a recorded-style spec has no title card, so its overview stays a scene', () => {
+    const s = { ...withOverview(), style: 'recorded' };
+    expect(checkArcPrecheck(s, REALIZED).judged).toBe(7);
+    expect(buildArcPrecheckPrompt(s, checkArcPrecheck(s, REALIZED), REALIZED)).toMatch(/## Scene 1: /);
+  });
+
+  it('demo-narrative authors the overview before 3c, so the gate judges the spec canopy renders', () => {
+    const skill = readFileSync(join(__dirname, '../../skills/demo-narrative/SKILL.md'), 'utf8');
+    const step3 = skill.slice(skill.indexOf('\n3. '), skill.indexOf('\n3b. '));
+    expect(step3).toMatch(/role: overview/);
+    expect(step3).toMatch(/ace#2747/);
+  });
+});
+
 describe('units', () => {
   it('normalises facts and components', () => {
     expect(extractFacts('80.0% vs 80% and 5th of 5')).toEqual(['80%', '5 of 5']);

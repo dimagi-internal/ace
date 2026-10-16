@@ -127,6 +127,13 @@ export const PALETTE_REQUIRED_SCREENSHOT_ENV: Record<string, readonly string[]> 
   // the same value and re-create the #1651 overwrite. Required at the call
   // site is the only shape that works.
   'deliver-form-walk.yaml': ['WALK_LABEL'],
+  // ace#2182 — the same fixed-names-plus-suffix shape. A multi-module Learn
+  // walk calls a re-entry palette once per module boundary (18x on
+  // poverty-graduation/20260905-1345) and a two-leg Deliver smoke reaches
+  // case-select once per followup leg, so a fixed name kept 1 frame of 18.
+  'learn-suite-reentry.yaml': ['REENTRY_LABEL'],
+  'learn-suite-reentry-from-module.yaml': ['REENTRY_LABEL'],
+  'deliver-case-select.yaml': ['CASE_SELECT_LABEL'],
 };
 
 /**
@@ -136,6 +143,8 @@ export const PALETTE_REQUIRED_SCREENSHOT_ENV: Record<string, readonly string[]> 
  */
 const SCREENSHOT_ENV_EXAMPLE: Record<string, string> = {
   WALK_LABEL: '"-<leg>"    # e.g. "-register" / "-followup"; a lone leg still binds one',
+  REENTRY_LABEL: '"-<module>"    # e.g. "-m2"; distinct per module boundary',
+  CASE_SELECT_LABEL: '"-<leg>"    # e.g. "${WALK_LABEL}" when nested in deliver-form-walk',
 };
 
 /**
@@ -168,6 +177,13 @@ const SCREENSHOT_ENV_EXAMPLE: Record<string, string> = {
  */
 export const PALETTE_INVOCATION_DISCRIMINATOR: Record<string, string> = {
   'deliver-form-walk.yaml': 'WALK_LABEL',
+  // ace#2182: registering only deliver-form-walk fixed one instance, not the
+  // shape. `static-recipe-invariants` now fails on any palette that captures a
+  // fixed-name frame without being registered here or declared
+  // single-invocation.
+  'learn-suite-reentry.yaml': 'REENTRY_LABEL',
+  'learn-suite-reentry-from-module.yaml': 'REENTRY_LABEL',
+  'deliver-case-select.yaml': 'CASE_SELECT_LABEL',
 };
 
 /**

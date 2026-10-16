@@ -9,6 +9,7 @@ import {
   renderCoachPrompt,
   CLAIMS_KNOWLEDGE_BASE,
   renderIndicatorCards,
+  parseCoachCollections,
   type RegistryMeasure,
 } from '../../lib/coach-briefing.js';
 
@@ -70,6 +71,47 @@ describe('renderIndicatorCards', () => {
     expect(md).toContain('Say a red figure as "well below the goal of 80%"; an amber one as "a little below the goal of 80%".');
     expect(md).toMatch(/Repeat counts[\s\S]*REVIEW FLAG with no target/);
     expect(md).toMatch(/Women attending[\s\S]*No target is set/);
+  });
+});
+
+describe('renderIndicatorCards: review flags and units (#2778)', () => {
+  const card = (meta: NonNullable<RegistryMeasure['meta']>) =>
+    renderIndicatorCards(coachableIndicators([{ name: 'm', meta: { flw_applicable: true, ...meta } }]));
+
+  it('words a banded review flag with no target as a review level, never a goal', () => {
+    // Chlorine demo, registry 6583 v2: CL_X1.
+    const md = card({ indicator: 'CL_X1', label: 'Off-site visits', unit: '%', category: 'Data quality', direction: 'lower', bands: [10, 25] });
+    expect(md).not.toMatch(/aims for|goal of/);
+    expect(md).toContain('Say a red figure as "well above the review level (10%)"; an amber one as "a little above the review level".');
+    expect(md).toContain('Never call the review level a goal or a target.');
+    // Amber range written low-to-high for a `lower` indicator.
+    expect(md).toContain('Green at or below 10%; amber between 10% and 25%; red above 25%.');
+  });
+
+  it('says a LOW figure prompts the question on a higher-is-better review flag', () => {
+    // Noora Health, registry 9684 v2: NH_Q2 "Call consent".
+    const md = card({ indicator: 'NH_Q2', label: 'Call consent', unit: '%', category: 'Data quality', direction: 'higher' });
+    expect(md).toContain('Higher is better.');
+    expect(md).toContain('a low figure is a reason to ask');
+    expect(md).not.toContain('a high figure');
+  });
+
+  it('puts a space before a non-% unit', () => {
+    const md = card({ indicator: 'NH_M2', label: 'Caregivers', unit: 'caregivers', direction: 'higher', bands: [6, 5], target: 6 });
+    expect(md).toContain('Target 6 caregivers. Green at or above 6 caregivers; amber between 5 caregivers and 6 caregivers; red below 5 caregivers.');
+    expect(md).not.toMatch(/\dcaregivers/);
+  });
+});
+
+describe('parseCoachCollections (#2779)', () => {
+  it('refuses an omitted or empty --collections instead of keeping the clone source\'s', () => {
+    expect(() => parseCoachCollections(undefined)).toThrow(/required/);
+    expect(() => parseCoachCollections('')).toThrow(/required/);
+  });
+  it('reads ids, and `none` as detach-all', () => {
+    expect(parseCoachCollections('605, 606')).toEqual([605, 606]);
+    expect(parseCoachCollections('none')).toEqual([]);
+    expect(() => parseCoachCollections('abc')).toThrow(/expected collection ids/);
   });
 });
 
@@ -153,6 +195,23 @@ describe('the coach prompt template', () => {
       expect(out).not.toMatch(/<!--\/?(no-)?kb-->/);
       expect(out).not.toMatch(/\n{3,}/);
     }
+  });
+
+  it('never reads "a educator": the worker noun takes no article (#2778)', () => {
+    expect(template).not.toMatch(/\ba \{\{WORKER_NAME\}\}/);
+  });
+
+  it('ends coaching for good after an escalation or close (#3052)', () => {
+    // Kaduna Graduation Coach (OCS 14314), safety persona: after escalating a disclosure
+    // of violence and closing, the worker said "Okay. Thank you." and the coach went
+    // straight back to home-visit coaching.
+    const after = template.slice(template.indexOf('## After the close'));
+    expect(template).toMatch(/^## After the close$/m);
+    expect(after).toMatch(/Never return to the\s+briefing's topics/);
+    expect(after).toMatch(/never raise anything new/);
+    expect(after).toMatch(/emit no new markers/);
+    // It also promised "this goes only to the programme team, not to neighbours".
+    expect(template).toMatch(/Never promise who will or will not learn of what the worker told you/);
   });
 
   it('uses exactly two OCS prompt variables, both from Labs session data', () => {

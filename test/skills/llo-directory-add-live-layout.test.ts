@@ -82,9 +82,15 @@ describe('llo-directory-add reads the layout live', () => {
   it('writes to an exact row with RAW input, never append', () => {
     const script = read(SCRIPT);
     expect(script).toContain("'sheets', 'update'");
-    expect(script).toContain("'--input', 'RAW'");
+    // Data is RAW; USER_ENTERED only for a copied formula cell (ace#2957). Behaviour: test/scripts/llo-directory-apply.test.ts.
+    expect(read(LIB)).toContain("input: 'RAW'");
     expect(script).not.toMatch(/sheets', 'append|sheets_append/);
     expect(skill).toMatch(/never `append`/);
+  });
+
+  it('the skill writes through `apply`, never by running printed shell strings (ace#2956)', () => {
+    expect(skill).toContain('scripts/llo-directory.ts" apply');
+    expect(read(SCRIPT)).not.toMatch(/\.join\(' '\)/);
   });
 
   it('reads both rows back and tells the requester the import is what reaches labs', () => {

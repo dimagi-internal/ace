@@ -61,6 +61,10 @@ import {
   type ArchetypeCheckRow,
 } from './decisions-archetype-consistency.js';
 import { buildOcsPublicChatUrl, isLegacyOcsStartUrl, isOcsPublicLinkUrl } from './ocs-public-chat-url.js';
+import { literalMarkdownHits } from './published-doc-render-check.js';
+
+// Re-exported: callers and tests have long imported these from here.
+export { codeSpanLedParagraphs } from './published-doc-render-check.js';
 
 // ── Finding model ──────────────────────────────────────────────────
 
@@ -253,9 +257,9 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
   stage: { kind: 'scalar', keys: ['label', 'pending_sections'] },
   // What the run itself says is still unproven and needs a human — a list of
   // STRINGS read from `run_notes.carried_residuals_needing_a_human`
-  // (ace-web#744 / #763). `null` when the run carried nothing. Registered so
-  // the section stops reading as unaudited; the check that a carried residual
-  // actually REACHES the page is ace#2346, still open.
+  // (ace-web#744 / #763). `null` when the run carried nothing. The check that
+  // a carried residual actually REACHES the page is `auditCarriedParity`
+  // (ace#2346).
   carried_residuals: { kind: 'list', keys: [] },
   feedback: {
     kind: 'list',
@@ -1504,6 +1508,77 @@ export function auditBuildStatusParity(payload: unknown, phases: unknown): Findi
   ];
 }
 
+/**
+ * Did the run CARRY something unfinished, and does the page SAY so? (ace#2346)
+ *
+ * ace-web publishes both halves (ace-web#744 / #763): run_state
+ * `blocker_dispositions` entries for Phase 3 reach the page as
+ * `build.carried_blockers`, and `run_notes.carried_residuals_needing_a_human`
+ * reaches it as `carried_residuals`. Making the data available did not make
+ * OMITTING it detectable, and the original incident was exactly an omission:
+ * `bednet-check-2-visit/20260828-0629` carried "PAYMENT GATE UNPROVEN
+ * END-TO-END" through phases 1-8 and its summary page rendered identically to
+ * a clean run.
+ *
+ * A presence comparison, never a text match. A run that carried nothing gets
+ * no finding: the negative case is the one that keeps this check trusted.
+ *
+ * Blockers are compared only for `phase: commcare-setup`, the one phase
+ * ace-web's `_read_build` publishes; a disposition on another phase has no
+ * page field to be absent from yet.
+ */
+export function auditCarriedParity(payload: unknown, runState: unknown): Finding[] {
+  const out: Finding[] = [];
+
+  const rawResiduals = getPath(runState, 'run_notes.carried_residuals_needing_a_human');
+  const residuals = Array.isArray(rawResiduals)
+    ? rawResiduals.filter((r) => typeof r === 'string' && r.trim() !== '')
+    : [];
+  const pageResiduals = getPath(payload, 'carried_residuals');
+  if (residuals.length > 0 && !(Array.isArray(pageResiduals) && pageResiduals.length > 0)) {
+    out.push({
+      code: 'CARRIED-RESIDUAL-HIDDEN',
+      severity: 'misleading',
+      where: 'carried_residuals',
+      detail:
+        `the run carried ${residuals.length} residual(s) it says still need a human ` +
+        '(`run_notes.carried_residuals_needing_a_human`), and the page carries no `carried_residuals`, ' +
+        'so a partial run reads as a finished one',
+      fix:
+        'surface `run_notes.carried_residuals_needing_a_human` through ace-web `_read_carried_residuals` ' +
+        '(and render it), then re-audit',
+      defect: '(ace#2346 / ace-web#744) a run carrying an unproven payment gate rendered like a clean run',
+      summary: 'The page leaves out problems the run itself says still need a person to look at.',
+      action: 'Get the carried residuals shown on the run page before sharing it.',
+    });
+  }
+
+  const dispositions = getPath(runState, 'blocker_dispositions');
+  const phase3Blockers = dispositions && typeof dispositions === 'object' && !Array.isArray(dispositions)
+    ? Object.entries(dispositions as Record<string, unknown>)
+        .filter(([, e]) => String(getPath(e, 'phase') ?? '').trim() === 'commcare-setup')
+        .map(([id]) => id)
+    : [];
+  const pageBlockers = getPath(payload, 'build.carried_blockers');
+  if (phase3Blockers.length > 0 && !(Array.isArray(pageBlockers) && pageBlockers.length > 0)) {
+    out.push({
+      code: 'CARRIED-BLOCKER-HIDDEN',
+      severity: 'misleading',
+      where: 'build.carried_blockers',
+      detail:
+        `the run waved through Phase 3 blocker(s) ${phase3Blockers.map((b) => `\`${b}\``).join(', ')} ` +
+        '(`blocker_dispositions`), and the page carries no `build.carried_blockers`, so the apps ' +
+        'render as if every gate had passed',
+      fix:
+        'surface `blocker_dispositions` through ace-web `_read_build` as `build.carried_blockers`, then re-audit',
+      defect: '(ace#2346 / ace-web#744) a carried blocker the page never admitted',
+      summary: 'The page leaves out app-build checks the run accepted as failing.',
+      action: 'Get the carried blockers shown on the run page before sharing it.',
+    });
+  }
+  return out;
+}
+
 /** `gaps` as the memo block carries it: the non-blank strings, trimmed. */
 function memoGaps(memo: unknown): string[] {
   const raw = getPath(memo, 'gaps');
@@ -1842,6 +1917,7 @@ export function auditCompleteness(payload: unknown, runState: unknown | null): F
   out.push(...auditWalkthroughParity(payload, phases));
   out.push(...auditSyntheticLabelling(payload, phases));
   out.push(...auditBuildStatusParity(payload, phases));
+  out.push(...auditCarriedParity(payload, runState));
   const onPage = new Set(
     collectUrls(payload, 'https://labs.connect.dimagi.com/ace/')
       .map((u) => canonicalDocUrl(u.url)),
@@ -1933,103 +2009,6 @@ export function resolveDocSource(
   return undefined;
 }
 
-/**
- * Markers that a Google Doc is showing the reader raw markdown rather than
- * rendered prose (defect 11: documents rendered as literal `##`, `**`, and YAML
- * frontmatter because they were uploaded as `text/plain`).
- *
- * Deliberately anchored to line starts / paired delimiters so prose that
- * happens to contain an asterisk doesn't trip it.
- */
-const ATX_PATTERN = { re: /^#{1,6}[^\S\n]+\S[^\n]*$/m, what: 'ATX headings (`## ...`)' } as const;
-const LITERAL_MARKDOWN_PATTERNS: readonly { re: RegExp; what: string }[] = [
-  // NOTE the `[^\S\n]` instead of `\s`. With `\s` and the `m` flag, `\s+`
-  // happily eats the NEWLINE, so a lone `#` — which is what a Google Docs table
-  // column literally named "#" exports as — matched against the first character
-  // of the NEXT line. Measured on spark-facilitator's PDD, 2026-08-14: a clean,
-  // properly-converted document was reported as raw markdown. A false positive
-  // here is not harmless; it is the same class of bug as a false negative, and
-  // it trains the reader to ignore the auditor.
-  // ATX is also cross-checked against the HTML export when one is supplied: the
-  // txt export drops code-span backticks, so `` `## Archive` is closed history``
-  // arrives as a heading-shaped line (`hasUnexcusedAtxHeading`, ace#2499).
-  ATX_PATTERN,
-  { re: /\*\*[^*\n]{2,}\*\*/, what: 'bold markers (`**...**`)' },
-  { re: /^---[^\S\n]*$[\s\S]{0,400}?^---[^\S\n]*$/m, what: 'YAML frontmatter fence' },
-  { re: /^[^\S\n]*\|[^\n]+\|[^\S\n]*$/m, what: 'pipe tables' },
-  { re: /!\[[^\]]*\]\([^)]*\)/, what: 'unresolved image references (`![alt](...)`)' },
-  { re: /^[^\S\n]*```/m, what: 'code fences' },
-];
-
-const ATX_LINE = /^#{1,6}[^\S\n]+\S/;
-
-/** Decode the handful of entities Google's HTML export emits in body text. */
-function decodeHtmlText(s: string): string {
-  return s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
-    .replace(/&mdash;/g, '\u2014')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&sect;/g, '\u00a7')
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-const normaliseLine = (s: string): string => s.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-
-/**
- * The plain text of every paragraph in a Google Docs HTML export that OPENS
- * with a monospace run starting `#` — i.e. a paragraph like
- * `` `## Archive` is closed history… `` whose txt-export line will begin
- * `## Archive …` with the backticks gone (dimagi-internal/ace#2499).
- *
- * Monospace is read from the export's own `<style>` block (`.c3{…font-family:
- * "Roboto Mono"}` is what Drive emits for a converted code span), never from a
- * guessed class name. Pure; regex-level, which is enough for Google's flat,
- * machine-generated export.
- */
-export function codeSpanLedParagraphs(html: string): string[] {
-  const mono = new Set<string>();
-  for (const m of html.matchAll(/\.([A-Za-z0-9_-]+)\{([^}]*)\}/g)) {
-    const family = /font-family:\s*([^;]+)/i.exec(m[2]);
-    if (family && /mono|courier|consolas|menlo|source code/i.test(family[1])) mono.add(m[1]);
-  }
-  if (!mono.size) return [];
-
-  const out: string[] = [];
-  for (const m of html.matchAll(/<(p|li|h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/g)) {
-    const first = /^\s*<span\b[^>]*class="([^"]*)"[^>]*>([^<]*)<\/span>/.exec(m[2]);
-    if (!first) continue;
-    if (!first[1].split(/\s+/).some((c) => mono.has(c))) continue;
-    if (!decodeHtmlText(first[2]).trimStart().startsWith('#')) continue;
-    out.push(normaliseLine(decodeHtmlText(m[2].replace(/<[^>]*>/g, ''))));
-  }
-  return out;
-}
-
-/**
- * Does the txt export carry an ATX heading line the HTML export does not
- * explain as a code-span-led paragraph? Each code-span paragraph excuses ONE
- * matching txt line, so a literal `## …` line that merely shares its text is
- * still caught. With no HTML the answer is the raw pattern — the safe direction.
- */
-function hasUnexcusedAtxHeading(text: string, html: string | null | undefined): boolean {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => ATX_LINE.test(l));
-  if (!lines.length) return false;
-  if (!html) return true;
-  const excuses = new Map<string, number>();
-  for (const p of codeSpanLedParagraphs(html)) excuses.set(p, (excuses.get(p) ?? 0) + 1);
-  for (const line of lines) {
-    const key = normaliseLine(line);
-    const n = excuses.get(key) ?? 0;
-    if (n === 0) return true;
-    excuses.set(key, n - 1);
-  }
-  return false;
-}
 
 export interface DocProbe {
   /** Payload label, e.g. `training.docs[1].url`. */
@@ -2103,9 +2082,7 @@ export function auditDocFidelity(probes: DocProbe[]): Finding[] {
       });
       continue;
     }
-    const hits = LITERAL_MARKDOWN_PATTERNS.filter((p) =>
-      p === ATX_PATTERN ? hasUnexcusedAtxHeading(d.text!, d.html) : p.re.test(d.text!),
-    ).map((p) => p.what);
+    const hits = literalMarkdownHits(d.text, d.html);
     if (hits.length) {
       out.push({
         code: 'DOC-LITERAL-MARKDOWN',
@@ -2293,7 +2270,7 @@ export function stripMarkdownSyntax(md: string): string {
     // carrying at least one pipe. The class is `[ \t]`, NOT `\s` — with `\s`
     // and the `m` flag the quantifier eats the NEWLINE and swallows whatever
     // follows, which is the same footgun already recorded on
-    // LITERAL_MARKDOWN_PATTERNS above.
+    // LITERAL_MARKDOWN_PATTERNS (lib/published-doc-render-check.ts).
     .replace(/^[ \t]*\|[-:| \t]*$/gm, '')
     // Remaining cell delimiters. A space, not '', so `a|b` stays two words.
     .replace(/\|/g, ' ')
@@ -2388,11 +2365,32 @@ export interface CommitAffordanceObservation {
 export function visiblePhaseLabels(payload: unknown): string[] {
   const rows = (payload as { decisions?: { rows?: unknown } } | null)?.decisions?.rows;
   if (!Array.isArray(rows)) return [];
-  const labels = rows.map((r) => {
-    const row = (r ?? {}) as { stage_label?: unknown; phase_label?: unknown };
-    return String(row.stage_label || row.phase_label || '');
-  });
+  const labels = rows
+    .map((r) => (r ?? {}) as {
+      stage_label?: unknown; phase_label?: unknown;
+      audience?: unknown; review_ask?: unknown; superseded_by?: unknown;
+    })
+    .filter(drawnInGroupedList)
+    .map((row) => String(row.stage_label || row.phase_label || ''));
   return [...new Set(labels.filter(Boolean))];
+}
+
+/**
+ * Whether the outsider page draws this row in the stage-grouped "everything
+ * else ACE decided" list by DEFAULT — the only list that carries stage
+ * headings (ace#2886). Rows outside it are shown elsewhere or hidden on purpose:
+ * `review_ask: recommended-confirmation` rows go in the flat "Confirm before
+ * launch" list (no headings), `audience: internal` rows sit behind
+ * "Show N internal", and a `superseded_by` row is history, never live. A stage
+ * whose rows are ALL of those kinds gets no heading by design, so expecting one
+ * reported RENDER-PROVENANCE-HIDDEN on a page whose grouping was visible
+ * (smallholder-seasonal/20261012-1549: 'QA and training' = 1 confirm + 3 internal).
+ */
+function drawnInGroupedList(row: { audience?: unknown; review_ask?: unknown; superseded_by?: unknown }): boolean {
+  if (row.audience === 'internal') return false;
+  if (row.review_ask === 'recommended-confirmation') return false;
+  if (row.superseded_by) return false;
+  return true;
 }
 
 /**
