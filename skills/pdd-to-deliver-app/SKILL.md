@@ -1971,6 +1971,43 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     answer. `app-release-qa § Step 4.8` diffs the released form against the
     instrument file and blocks on it.
 
+4k′. **Partner-instrument field provenance (ace#2197) — runs ACE-DIRECT,
+    beside 4k.** When the PDD builds a form out of a partner's SHIPPED
+    instrument that sits in `inputs/` (a partner CCZ / XForm named by
+    `inputs-manifest.yaml` — `[FIXED]` or not), every field identifier the PDD
+    names must say where it came from. On `spark-facilitator/20260907-1120`
+    § 5.3 screen 8 listed `male_leader_attendence`, `female_leader_attendence`
+    (verbatim from Spark's v1392 `forms-4.xml`, typo and all) beside
+    `partner_staff_attendance`, which exists nowhere in that app — and the
+    invented name read as the partner's own field in the build, the Work Order
+    and the training materials. Resolve the instrument exactly as 4k step 2
+    does (manifest only, never a composed path), unzip it, and run:
+
+    ```ts
+    import {
+      checkInstrumentFieldProvenance,
+      declaredNetNewIdentifiers,
+    } from '../../lib/instrument-field-provenance';
+    const prov = checkInstrumentFieldProvenance({
+      fieldSpec,                                   // the PDD's field-spec table rows for this form
+      instrumentForms,                             // the partner form XML(s) the PDD cites
+      declaredNetNew: declaredNetNewIdentifiers(pddMarkdown), // its reused-vs-net-new split
+    });
+    ```
+
+    Every identifier comes back `reused`, `net-new`, or
+    `claimed-reused-but-absent` (absent from the instrument, yet listed beside a
+    reused field or on a line that says "reused"/"verbatim", and not declared
+    NET-NEW). Only the third is a finding, and it is **not** yours to resolve by
+    guessing: build the field under the PDD's name, record it as NET-NEW in
+    `## Build notes`, and write one decision row per finding (`evidence_basis:
+    conflicting`, `review_ask: recommended-confirmation`) quoting
+    `prov.findings[i].message` — the PDD must either name the instrument's real
+    field or declare the identifier NET-NEW in its split. No partner instrument
+    in `inputs/` → skip and say so in `## Build notes`. *Enforced:*
+    `test/lib/instrument-field-provenance.test.ts` (the real v1392 form and the
+    run's own PDD).
+
 4l. **Entity state-taxonomy fidelity (ace#1564) — runs ACE-DIRECT.** When the
     followed entity carries states the app must NAME, those names are the
     partner's own process vocabulary and ACE only transcribes them. Step 3
