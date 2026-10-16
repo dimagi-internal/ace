@@ -70,14 +70,17 @@ export const JAVA_CANDIDATE_PATHS: readonly string[] = [
  * AND emits the wrong banner; a real JRE exits 0 AND emits the
  * version banner. Either alone leaves a false-positive class.
  *
- * Bounded by a 4-second timeout so a wedged JVM doesn't hang the
- * resolver. JDK 17+ cold-start is <2s on every machine we've measured.
+ * Bounded by a 4-second timeout (default) so a wedged JVM doesn't hang
+ * the resolver. JDK 17+ cold-start is <2s on every machine we've measured.
+ * `timeoutMs` is a parameter so a test's fake binary can run under
+ * full-suite load without the 4s kill turning a pass into a flake
+ * (ace#2926); production callers keep the default.
  */
-export function javaProbeWorks(binary: string): boolean {
+export function javaProbeWorks(binary: string, timeoutMs = 4_000): boolean {
   try {
     const res = spawnSync(binary, ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 4_000,
+      timeout: timeoutMs,
       encoding: 'utf8',
     });
     if (res.error || res.status !== 0) return false;

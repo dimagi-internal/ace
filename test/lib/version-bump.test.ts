@@ -303,7 +303,11 @@ describe('scripts/version-bump.sh', () => {
   it('reads claims off OPEN PRs through gh, not just the env seam (ace#1914)', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
     // A remote must exist — no remote means no GitHub, and the scan short-circuits.
-    execSync('git remote add origin https://github.com/fake/repo.git', { cwd: fixtureDir });
+    // A LOCAL nonexistent path, never a network URL: the script's best-effort
+    // `git fetch origin main` would otherwise make a real network round-trip,
+    // which flaked under full-suite load (ace#2926). Only the remote's
+    // existence matters here — the gh stub supplies the slug.
+    execSync(`git remote add origin ${path.join(fixtureDir, 'no-such-remote.git')}`, { cwd: fixtureDir });
     execSync('git checkout -q -b mine', { cwd: fixtureDir });
     const binDir = stubGh(fixtureDir, [
       { branch: 'other', oid: 'oid-other', version: '0.10.20' },
@@ -324,7 +328,11 @@ describe('scripts/version-bump.sh', () => {
     // "bumped past v0.13.1152, already claimed by an open PR" to 0.13.1153 —
     // then would have gone to 1154, 1155, … on each further rebase.
     fixtureDir = makeFixtureRepo('0.10.14');
-    execSync('git remote add origin https://github.com/fake/repo.git', { cwd: fixtureDir });
+    // A LOCAL nonexistent path, never a network URL: the script's best-effort
+    // `git fetch origin main` would otherwise make a real network round-trip,
+    // which flaked under full-suite load (ace#2926). Only the remote's
+    // existence matters here — the gh stub supplies the slug.
+    execSync(`git remote add origin ${path.join(fixtureDir, 'no-such-remote.git')}`, { cwd: fixtureDir });
     execSync('git checkout -q -b mine', { cwd: fixtureDir });
     const binDir = stubGh(fixtureDir, [
       { branch: 'mine', oid: 'oid-mine', version: '0.10.99' },
