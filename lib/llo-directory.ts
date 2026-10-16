@@ -320,3 +320,129 @@ export function diffReadBack(written: string[], readBack: unknown[][]): { column
   });
   return out;
 }
+
+// --- Formula columns (dimagi-internal/ace#2957) -------------------------------
+//
+// Some columns of the hand-maintained sheet are FORMULAS, not data — on
+// Organizations, the contact-email column is a TEXTJOIN(FILTER(Contacts!…)) over
+// the Contacts tab. A RAW write of a value there replaces the formula with a
+// frozen snapshot that never picks up a later contact. Which columns are
+// formulas is the sheet's own fact, so it is read, never listed here: the
+// precedent row (the last filled row) read with `--render FORMULA`.
+
+/** 0-based column → formula, for every cell of a `--render FORMULA` row read that holds one. */
+export function formulaColumns(precedentFormulaRow: unknown[]): Map<number, string> {
+  const out = new Map<number, string>();
+  (precedentFormulaRow ?? []).forEach((cell, i) => {
+    if (typeof cell === 'string' && cell.startsWith('=')) out.set(i, cell);
+  });
+  return out;
+}
+
+/**
+ * A formula copied from `fromRow` to `toRow` the way Sheets copies one: every
+ * RELATIVE row reference shifts by the same offset. Absolute rows (`A$2`),
+ * whole-column ranges (`E:E`), quoted strings and quoted sheet names are left
+ * alone, and a function name such as `LOG10(` is not a cell reference.
+ */
+export function rowFormula(formula: string, fromRow: number, toRow: number): string {
+  const delta = toRow - fromRow;
+  const ref = /(^|[^A-Za-z0-9_.$])(\$?[A-Za-z]{1,3})(\$?)(\d+)(?![A-Za-z0-9_(])/g;
+  const shift = (code: string) =>
+    code.replace(ref, (all, pre: string, col: string, abs: string, row: string) => {
+      if (abs) return all;
+      const shifted = Number(row) + delta;
+      if (shifted < 1) throw new DirectoryContractError(`Copying ${formula} to row ${toRow} moves ${col}${row} above row 1.`);
+      return `${pre}${col}${shifted}`;
+    });
+  // Quoted segments ("…" strings, '…' sheet names, a doubled quote escapes) pass through; code shifts.
+  let out = '';
+  let i = 0;
+  while (i < formula.length) {
+    const q = formula[i];
+    if (q === '"' || q === "'") {
+      let j = i + 1;
+      while (j < formula.length && !(formula[j] === q && formula[j + 1] !== q)) j += formula[j] === q ? 2 : 1;
+      out += formula.slice(i, j + 1);
+      i = j + 1;
+    } else {
+      let j = i;
+      while (j < formula.length && formula[j] !== '"' && formula[j] !== "'") j++;
+      out += shift(formula.slice(i, j));
+      i = j;
+    }
+  }
+  return out;
+}
+
+export interface RowWrite {
+  range: string;
+  /** RAW for data (a `+234 …` phone must not parse as a formula); USER_ENTERED only for a copied formula. */
+  input: 'RAW' | 'USER_ENTERED';
+  values: string[][];
+}
+
+/**
+ * The exact-range writes for one new row: one RAW write across the header width
+ * (formula cells left blank), then one USER_ENTERED single-cell write per formula
+ * column, carrying the precedent row's formula moved to the target row. Refuses a
+ * drafted value in a formula column rather than overwrite the formula.
+ */
+export function planRowWrites(args: {
+  tab: string;
+  headerRow: string[];
+  row: string[];
+  targetRow: number;
+  precedentRow: number;
+  formulas: Map<number, string>;
+}): RowWrite[] {
+  const { tab, headerRow, row, targetRow, precedentRow, formulas } = args;
+  const inRow = [...formulas.keys()].filter((i) => i < headerRow.length).sort((a, b) => a - b);
+  const clash = inRow.filter((i) => (row[i] ?? '').trim() !== '');
+  if (clash.length) {
+    throw new DirectoryContractError(
+      `On the '${tab}' tab, ${clash.map((i) => JSON.stringify(headerRow[i])).join(', ')} holds a formula ` +
+        `(row ${precedentRow}). Leave it out of the drafted row; the formula is copied in.`,
+    );
+  }
+  const quoted = `'${tab.replace(/'/g, "''")}'`;
+  const writes: RowWrite[] = [{ range: rowRange(tab, headerRow, targetRow), input: 'RAW', values: [row] }];
+  for (const i of inRow) {
+    const cell = `${columnLetter(i)}${targetRow}`;
+    writes.push({
+      range: `${quoted}!${cell}:${cell}`,
+      input: 'USER_ENTERED',
+      values: [[rowFormula(formulas.get(i)!, precedentRow, targetRow)]],
+    });
+  }
+  return writes;
+}
+
+/** The precedent's formulas, moved to `targetRow` — what each formula cell of the new row must read back as. */
+export function expectedFormulas(formulas: Map<number, string>, precedentRow: number, targetRow: number): Map<number, string> {
+  return new Map([...formulas].map(([i, f]) => [i, rowFormula(f, precedentRow, targetRow)]));
+}
+
+/**
+ * `diffReadBack` for a row with formula columns: data cells compare against the
+ * formatted read, formula cells against the `--render FORMULA` read (a formula's
+ * computed value belongs to the tab it reads, not to what was written).
+ */
+export function diffRowReadBack(
+  written: string[],
+  formattedRead: unknown[][],
+  expected: Map<number, string>,
+  formulaRead: unknown[][],
+): { column: string; wrote: string; read: string }[] {
+  const cells = (read: unknown[][]) => (read[0] ?? []).map((c) => (c === undefined || c === null ? '' : String(c)));
+  const formatted = cells(formattedRead);
+  const formulas = cells(formulaRead);
+  const out: { column: string; wrote: string; read: string }[] = [];
+  written.forEach((value, i) => {
+    const formula = expected.get(i);
+    const wrote = formula ?? value;
+    const read = (formula === undefined ? formatted[i] : formulas[i]) ?? '';
+    if (wrote !== read) out.push({ column: columnLetter(i), wrote, read });
+  });
+  return out;
+}
