@@ -430,9 +430,13 @@ screenshot-blocked run cannot lose it.
 
     **Then close the `needs_shows` loop.** A frame the binder newly placed
     may carry no `shows:`, and `verify_caption_backing` fails a cited opp frame
-    nobody described. Open each frame `report.needs_shows` names, write its
-    `shows:` line into the capture manifest (app-screenshot-capture § Step
-    5.6), and if the frame does NOT show what its slide says, re-run with
+    nobody described. Open each frame `report.needs_shows` names and write
+    its `shows:` line into the run's shows addendum,
+    `6-qa-and-training/app-screenshot-capture_shows-addendum.yaml`
+    (`shows: [{step, file_id, shows}]`). Do not write it into the capture
+    manifest, which is the producer's artifact. Then pass the addendum to
+    `verify_caption_backing` as `showsAddendumFileIds` (ace#2902). If the
+    frame does NOT show what its slide says, re-run with
     `--reject <step>` — the slide then merges rather than shipping a wrong
     picture.
 

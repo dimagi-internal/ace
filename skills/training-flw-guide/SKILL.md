@@ -273,6 +273,31 @@ from PDD's Evidence Model.>
    script's output. Full contract: `skills/_training-template.md § Illustrated
    guides — render, THEN embed` (dimagi-internal/ace#1418).
 
+7c. **Close the no-shows loop: run `verify_caption_backing`, then open what
+   nobody opened.** `app-screenshot-capture` describes only a subset of the
+   frames it uploads (its § Step 5.6 minimum). A step-by-step guide cites more
+   than that subset, and every cited frame with no `shows:` line is a
+   `no-shows` BLOCKER (`skills/_training-template.md`). Measured on
+   `turmeric-market-study-ghana/20261012-1749`: 90 frames uploaded, 5
+   described, 16 cited, 15 `no-shows` (ace#2902).
+
+   1. Run `verify_caption_backing({publishedFileId: <docId>, manifestFileId:
+      <app-screenshot-capture_manifest.yaml>, poolFileIds: [<common pool>],
+      showsAddendumFileIds: [<the addendum below, if it exists>]})`.
+   2. For each `no-shows` finding, download and LOOK at the frame. Write one
+      line saying what it actually shows into
+      `6-qa-and-training/app-screenshot-capture_shows-addendum.yaml`, using
+      `shows: [{step, file_id, shows}]`. **Never write into the capture
+      manifest.** It is the producer's artifact, and a session write
+      classifier rightly refuses a consumer overwriting it. The addendum is
+      the consumer's write path, and the gate reads it.
+   3. If a frame does NOT show what your caption says (on the turmeric run,
+      4 of 21 reads contradicted the step name), fix the caption or drop the
+      image. Do not describe the frame to fit the caption.
+   4. Re-run step 1 with `showsAddendumFileIds`. Repeat until `findings` is
+      empty, and read `addendum_unmatched`: an entry there backed nothing,
+      usually because of a typo in the step name.
+
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Coverage:** every Learn module + every Deliver form referenced
      by name

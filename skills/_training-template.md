@@ -225,8 +225,19 @@ verify_caption_backing({
   publishedFileId: <the rendered Doc / deck spec you just wrote>,
   manifestFileId:  <6-qa-and-training/app-screenshot-capture_manifest.yaml>,
   poolFileIds:     [<shared _common frames + template artwork>],
+  showsAddendumFileIds: [<6-qa-and-training/app-screenshot-capture_shows-addendum.yaml, if any>],
 })
 ```
+
+**Close the `no-shows` loop yourself, in the addendum (ace#2902).** The
+capture producer may describe only a subset of its frames, so an
+`illustrated: true` producer that cites more than that subset must open each
+`no-shows` frame, write what it actually shows into the run's shows addendum
+(`shows: [{step, file_id, shows}]`), and re-run with `showsAddendumFileIds`.
+It never writes into the capture manifest, which is the producer's artifact.
+An addendum line fills only a MISSING `shows:`: it cannot make an alias
+distinct or an unknown id known, and an entry matching no frame comes back in
+`addendum_unmatched`.
 
 It reads the PUBLISHED artifact, extracts every Drive fileId a reader can see,
 and fails on `no-shows` (cited but nobody recorded what it shows),

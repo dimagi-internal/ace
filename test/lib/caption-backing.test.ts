@@ -362,3 +362,83 @@ describe('a deck spec cites what its SLIDES place, not its inventory (ace#2238)'
     expect(r.findings.map((f) => f.reason)).toEqual(['no-shows']);
   });
 });
+
+/**
+ * ace#2902: `app-screenshot-capture` may describe only a subset of its frames,
+ * and a consumer that opens the rest must not overwrite the producer's
+ * manifest. The consumer's `shows:` lines live in a sibling addendum, and the
+ * gate has to read it or an every-caption-verified guide stays red.
+ */
+describe('shows addenda close the no-shows loop (ace#2902)', () => {
+  const A = '1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const B = '1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+  const D = '1DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD';
+  const Z = '1ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
+  const manifest = {
+    captures: [
+      { step: 'learn-home', file_id: A, shows: 'Learn home, three module tiles' },
+      { step: 'm3-finished', file_id: B },
+      { step: 'm3-alias', file_id: D, duplicate_of: 'm3-finished' },
+    ],
+  };
+  const guide = `${link(A)} then ${link(B)}`;
+
+  it('without an addendum the undescribed frame is no-shows', () => {
+    const r = classifyCaptionBacking({ published: guide, manifest });
+    expect(r.ok).toBe(false);
+    expect(r.findings).toEqual([{ file_id: B, step: 'm3-finished', reason: 'no-shows' }]);
+  });
+
+  it('an addendum entry by step backs it (positive)', () => {
+    const addendum = yaml.load('shows:\n  - step: m3-finished\n    shows: "single-tile module menu"\n');
+    const r = classifyCaptionBacking({ published: guide, manifest, showsAddenda: [addendum] });
+    expect(r.ok).toBe(true);
+    expect(r.backed).toBe(2);
+    expect(r.backed_by_addendum).toBe(1);
+  });
+
+  it('an addendum entry by file_id, in map form, backs it too', () => {
+    const r = classifyCaptionBacking({ published: guide, manifest, showsAddenda: [{ shows: { [B]: 'menu' } }] });
+    expect(r.ok).toBe(true);
+  });
+
+  it('an empty shows line, or one for another frame, does not back it (negative)', () => {
+    const r = classifyCaptionBacking({
+      published: guide,
+      manifest,
+      showsAddenda: [{ shows: [{ step: 'm3-finished', shows: '   ' }, { step: 'learn-home', shows: 'x' }] }],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.reason)).toEqual(['no-shows']);
+  });
+
+  it('an addendum cannot launder an alias or an unknown id', () => {
+    const r = classifyCaptionBacking({
+      published: `${link(D)} ${link(Z)}`,
+      manifest,
+      showsAddenda: [{ shows: [{ file_id: D, shows: 'menu' }, { file_id: Z, shows: 'menu' }] }],
+    });
+    expect(r.findings.map((f) => f.reason).sort()).toEqual(['duplicate-cited', 'unknown-id']);
+    expect(r.addendum_unmatched).toEqual([{ step: undefined, file_id: Z }]);
+  });
+
+  it('an entry naming no manifest frame is reported, not silently dropped (unknown-id entry)', () => {
+    const r = classifyCaptionBacking({
+      published: guide,
+      manifest,
+      showsAddenda: [{ shows: [{ step: 'm3-finishd', shows: 'typo' }] }],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.addendum_unmatched).toEqual([{ step: 'm3-finishd', file_id: undefined }]);
+  });
+
+  it('a manifest shows wins over an addendum line', () => {
+    const r = classifyCaptionBacking({
+      published: link(A),
+      manifest,
+      showsAddenda: [{ shows: [{ file_id: A, shows: 'other' }] }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.backed_by_addendum).toBe(0);
+  });
+});

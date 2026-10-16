@@ -101,6 +101,22 @@ describe('illustrated artifacts must embed their screenshots', () => {
     ).toEqual([]);
   });
 
+  it('every illustrated producer closes the no-shows loop through the shows addendum (ace#2902)', () => {
+    // An illustrated artifact cites more frames than app-screenshot-capture is
+    // obliged to describe, and verify_caption_backing blocks on every cited
+    // frame with no `shows:`. Only training-deck-generate was told how to
+    // close that loop; the two guides were bound by the gate with no remedy.
+    const offenders: string[] = [];
+    for (const a of illustrated) {
+      const doc = producerDoc(a.producedBy);
+      if (!doc) continue;
+      for (const marker of ['verify_caption_backing', 'showsAddendumFileIds', 'shows-addendum']) {
+        if (!doc.text.includes(marker)) offenders.push(`${doc.file}: never mentions ${marker}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ') || undefined).toEqual([]);
+  });
+
   it('no producer of an illustrated artifact treats a screenshot LINK as the finished state', () => {
     // The 2026-08-13 regression in one line: a producer was told to emit
     // `[alt](https://drive.google.com/file/d/<id>/view)` and stop. The link
