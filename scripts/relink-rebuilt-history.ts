@@ -10,7 +10,10 @@
  * down to), copied from `workflow_history_runs(generated_only: false)` before
  * and after the rebuild. Prints the old→new map as JSON. With --in/--out,
  * rewrites that file (URL params and run_id fields; --bare also rewrites prose
- * ids) and exits 1 if any old id is still present in the output.
+ * ids) and exits 1 if any old id is still in a RUN-ID position in the output
+ * (`run_id` / `source_run` param or field, `run_ids` list) — `leftovers`.
+ * Old ids elsewhere (prose, or a program/opportunity/workflow id that shares
+ * labs' one id sequence) are printed as `mentions` and do not fail (ace#3012).
  */
 import fs from 'node:fs';
 import { buildRunIdMap, relinkText, type HistoryListing } from '../lib/history-relink';
@@ -42,5 +45,5 @@ if (!input) {
 }
 const r = relinkText(fs.readFileSync(input, 'utf8'), map, { bare: process.argv.includes('--bare') });
 fs.writeFileSync(need('out'), r.text);
-console.log(JSON.stringify({ map: mapObj, file: input, replaced: r.replaced, leftovers: r.leftovers }));
+console.log(JSON.stringify({ map: mapObj, file: input, replaced: r.replaced, leftovers: r.leftovers, mentions: r.mentions }));
 process.exit(r.leftovers.length ? 1 : 0);

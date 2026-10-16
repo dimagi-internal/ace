@@ -69,10 +69,13 @@ describe('relinkText', () => {
     const yaml = 'programme_report:\n  run_id: 7254\nnote: latest saved run 7254, history 7249..7254\n';
     const r = relinkText(yaml, map);
     expect(r.text).toContain('run_id: 7317');
-    expect(r.leftovers).toEqual([7254, 7249]);
+    // Prose ids are not run-id positions: surfaced as mentions, never as leftovers (ace#3012).
+    expect(r.leftovers).toEqual([]);
+    expect(r.mentions).toEqual([7254, 7249]);
     const bare = relinkText(yaml, map, { bare: true });
     expect(bare.text).toBe('programme_report:\n  run_id: 7317\nnote: latest saved run 7317, history 7312..7317\n');
     expect(bare.leftovers).toEqual([]);
+    expect(bare.mentions).toEqual([]);
   });
 
   it('does not touch a longer number or a decimal that contains an old id', () => {
@@ -102,6 +105,51 @@ describe('relinkText', () => {
     const r = relinkText('run 7254, (7254) and 7249..7254 then 7254 → 7258.\n"7254"', map, { bare: true });
     expect(r.text).toBe('run 7317, (7317) and 7312..7317 then 7317 → 7321.\n"7317"');
     expect(r.leftovers).toEqual([]);
+  });
+});
+
+// ace#3012: smallholder-seasonal/20261015-1402. Labs mints run ids, workflow
+// ids and labs-only opportunity/program ids from ONE sequence, so the first
+// history's run ids (10068..10222, step 2) cover every even number in that
+// range — including the program (10142) and opportunity (10144, 10146) ids in
+// realized.json's URLs. The rewrite left those alone; the leftovers scan did
+// not, and the script exited 1 on a correctly relinked file.
+describe('relinkText: ids shared across labs\' one id sequence (ace#3012)', () => {
+  const oldIds: number[] = [];
+  for (let id = 10068; id <= 10222; id += 2) oldIds.push(id);
+  const map = new Map(oldIds.map((id, i) => [id, 20000 + i]));
+  const realized = JSON.stringify({
+    primary_par_url: 'https://labs.connect.dimagi.com/labs/workflow/10140/run/?run_id=10222&program_id=10142',
+    worker_review_url:
+      'https://labs.connect.dimagi.com/labs/workflow/10150/run/?run_id=10230&program_id=10142&flw=10144%3A%3Aw1&source_run=10222',
+    opp_report_a_url: 'https://labs.connect.dimagi.com/labs/workflow/10152/run/?run_id=10220&opportunity_id=10144',
+    opp_report_b_url: 'https://labs.connect.dimagi.com/labs/workflow/10154/run/?run_id=10218&opportunity_id=10146',
+    program_id: 10142,
+    opportunity_ids: [10142, 10144, 10146],
+  });
+
+  it('reports no leftovers when the only remaining old ids are program/opportunity ids', () => {
+    const r = relinkText(realized, map);
+    expect(r.leftovers).toEqual([]);
+    expect(r.text).toContain(`run_id=${map.get(10222)}&program_id=10142`);
+    expect(r.text).toContain(`source_run=${map.get(10222)}`);
+    expect(r.text).toContain(`run_id=${map.get(10220)}&opportunity_id=10144`);
+    expect(r.text).toContain(`run_id=${map.get(10218)}&opportunity_id=10146`);
+    expect(r.text).toContain('"program_id":10142');
+    expect(r.text).toContain('"opportunity_ids":[10142,10144,10146]');
+    // 10230 is outside the old range: not rebuilt, untouched.
+    expect(r.text).toContain('run_id=10230');
+    expect(r.replaced).toBe(4);
+  });
+
+  it('still reports a genuine stale run id in a run-id position the text rewrite does not reach', () => {
+    // relinkText rewrites `?run_id=`/`&source_run=` params and `run_id:` fields;
+    // a `run_ids` list or a `source_run:` field in text is a run-id position it
+    // leaves alone, so an old id there is a real dead link and must fail loud.
+    const stale = realized.replace('"program_id":10142', '"run_ids":[10200,10202],"source_run": 10198,"program_id":10142');
+    const r = relinkText(stale, map);
+    expect(r.leftovers.sort()).toEqual([10198, 10200, 10202]);
+    expect(r.text).toContain('"program_id":10142');
   });
 });
 

@@ -270,7 +270,10 @@ and rewrite every place the run names an old id: `realized.json`,
 `products.synthetic.workflows.*.run_url` (`update_yaml_file`, `merge: deep`),
 the Phase 7 summaries, `why_brief.yaml` and the narrative spec (Docs:
 `replaceAllText`), in every workspace the run was cloned into. `--in` exits 1
-while any old id is left. Then re-publish the benchmark (next paragraph — it reuses
+while any old id is left in a run-id position (`run_id`/`source_run` param or
+field, `run_ids` list) — `leftovers`. Old ids elsewhere print as `mentions` and
+do not fail: labs mints run, workflow and program/opportunity ids from one
+sequence, so `program_id=10142` can equal an old run id (ace#3012). Then re-publish the benchmark (next paragraph — it reuses
 the same before/after listings, and must name the NEW run ids) and re-capture the
 dashboard previews (`output-preview-capture`): the frames on file show the old
 definitions. Worked example:
