@@ -1084,6 +1084,16 @@ export function newAppIdFromCopyRedirect(
   return id;
 }
 
+/**
+ * Drop HQ's own `commcare_*` system keys (commcare_profile, commcare_project,
+ * commcare_location_id(s), commcare_primary_case_sharing_id, ...) from a
+ * user_data dict before PUTting it back. HQ manages them itself and refuses
+ * an echoed `commcare_profile: ""` with a 500 (ace#3035).
+ */
+export function stripHqSystemUserData(userData: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(userData).filter(([k]) => !k.startsWith('commcare_')));
+}
+
 export class CommCareBackend {
   constructor(private opts: CommCareBackendOptions) {}
 
@@ -1891,20 +1901,37 @@ export class CommCareBackend {
   }
 
   /**
-   * Set a single user_data field on a mobile worker. Implemented as GET
-   * → mutate user_data → PUT (v0_5 CommCareUserResource has PUT but not
-   * PATCH). To clear a field, pass value=null.
+   * Set a single user_data field on a mobile worker via PUT
+   * /a/<domain>/api/v0.5/user/<id>/ (v0_5 CommCareUserResource has PUT but
+   * not PATCH). To clear a field, pass value=null.
+   *
+   * SET sends ONLY `{user_data: {[field_slug]: value}}`. HQ merges a partial
+   * user_data and keeps every other key, and it 500s when the whole dict is
+   * echoed back, because a Connect-provisioned worker carries
+   * `commcare_profile: ""` (ace#3035, live probe on connect-ace-prod
+   * 2026-10-16: full echo -> 500, echo minus commcare_profile -> 200,
+   * minimal partial -> 200 with every other key still present on GET).
+   *
+   * CLEAR still has to send the dict without the key (a partial PUT cannot
+   * express a removal), so it GETs, strips HQ's `commcare_*` system keys
+   * (`stripHqSystemUserData`) and drops the field. Whether HQ's merge lets
+   * that removal land is NOT verified live, which is exactly why both paths
+   * re-GET and throw unless the field reads back as intended.
    */
   async updateUserField(args: UpdateUserFieldArgs): Promise<{ user_id: string; field_slug: string; value: string | null }> {
     return this.runWithSessionRetry(async (request) => {
-      const { user } = await this.getUser({ domain: args.domain, user_id: args.user_id });
       const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/user/${encodeURIComponent(args.user_id)}/`;
-      const next = { ...(user.user_data ?? {}) };
-      if (args.value === null) delete next[args.field_slug];
-      else next[args.field_slug] = args.value;
+      let userData: Record<string, unknown>;
+      if (args.value === null) {
+        const { user } = await this.getUser({ domain: args.domain, user_id: args.user_id });
+        userData = stripHqSystemUserData(user.user_data ?? {});
+        delete userData[args.field_slug];
+      } else {
+        userData = { [args.field_slug]: args.value };
+      }
       const res = await request.fetch(`${this.opts.baseUrl}${path}`, {
         method: 'PUT',
-        data: JSON.stringify({ user_data: next }),
+        data: JSON.stringify({ user_data: userData }),
         headers: {
           'Content-Type': 'application/json',
           Authorization: this.apiKeyAuthHeader('commcare_update_user_field'),
@@ -1914,6 +1941,16 @@ export class CommCareBackend {
       if (res.status() !== 200 && res.status() !== 202 && res.status() !== 204) {
         throw new Error(
           `commcare_update_user_field PUT ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      const { user: after } = await this.getUser({ domain: args.domain, user_id: args.user_id });
+      const got = (after.user_data ?? {})[args.field_slug];
+      const cleared = got === undefined || got === null || got === '';
+      if (args.value === null ? !cleared : got !== args.value) {
+        throw new Error(
+          `commcare_update_user_field: read-back disagrees: wanted ${args.field_slug}=${args.value === null ? '(cleared)' : JSON.stringify(args.value)}, ` +
+            `HQ reports ${got === undefined ? '(absent)' : JSON.stringify(got)}. The PUT returned ${res.status()}.` +
+            (args.value === null ? ' HQ may merge user_data on PUT, so a removal by omission may not land (ace#3035).' : ''),
         );
       }
       return { user_id: args.user_id, field_slug: args.field_slug, value: args.value };
