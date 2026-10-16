@@ -11,7 +11,8 @@ import { spawnSync } from 'node:child_process';
 import { AvdBackend, defaultShell, pinAdbServerPort } from './backends/avd.js';
 import { LeaseBackend, type LeaseDiagnostics } from './backends/lease.js';
 import { TestWorkerCheckout, type HeldWorker, type TestWorkerStatus } from '../../lib/test-worker-lease.js';
-import { workerRecipeEnv } from '../../lib/test-worker-pool.js';
+import { MASK, workerRecipeEnv } from '../../lib/test-worker-pool.js';
+import type { SlotDataReport } from '../../lib/test-worker-slots.js';
 import { MaestroBackend, collectScreenshotsFromDir } from './backends/maestro.js';
 import {
   AvdBootError,
@@ -102,6 +103,11 @@ export type MobileDiagnostics = (
    * (`unlocked-fallback`, with the warning naming the publish step).
    */
   test_workers?: TestWorkerStatus | null;
+  /**
+   * Which pool slots lack data or required keys on canopy-web (ace#2955),
+   * from the MASKED slot list — never a secret value. Null with no PAT.
+   */
+  test_worker_slots?: SlotDataReport | null;
 };
 
 /** What `mobile_checkout_test_workers` / `mobile_release_test_workers` report. */
@@ -2127,7 +2133,9 @@ export class MobileClient {
       );
     }
     const reg = await this.registerTestUser({ avdName: args.avdName, ...user });
-    return { ...reg, test_worker: this.testWorkerReport() };
+    // A tool result is a transcript: the backup code never goes back out in it
+    // (ace#2955). The caller supplied it, or it is the slot's, on canopy-web.
+    return { ...reg, ...(reg.backupCode !== undefined ? { backupCode: MASK } : {}), test_worker: this.testWorkerReport() };
   }
   listAvds(): Promise<string[]> {
     if (this.useLease) return this.requireLease().listAvds();
@@ -2201,10 +2209,13 @@ export class MobileClient {
     // The pool lock's state rides on every diagnose, so the unlocked rollout
     // fallback can never persist without showing up here (ace#2955).
     const test_workers = this.workers?.status() ?? null;
+    const slotsP = this.workers ? this.workers.slotDataReport() : Promise.resolve(null);
     if (this.useLease) {
-      return { backend: 'lease', ...(await this.requireLease().diagnose()), test_workers };
+      const [d, test_worker_slots] = await Promise.all([this.requireLease().diagnose(), slotsP]);
+      return { backend: 'lease', ...d, test_workers, test_worker_slots };
     }
-    return { ...(await this.avd.diagnose()), test_workers };
+    const [d, test_worker_slots] = await Promise.all([this.avd.diagnose(), slotsP]);
+    return { ...d, test_workers, test_worker_slots };
   }
 
   /**

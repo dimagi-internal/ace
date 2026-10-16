@@ -52,7 +52,33 @@ export const LEASE_ROUTES = {
   agentCapabilities: { method: 'GET', path: '/api/agents/{slug}/capabilities' },
 } as const satisfies Record<string, LeaseRoute>;
 
-export type LeaseRouteName = keyof typeof LEASE_ROUTES;
+/**
+ * Per-slot data on a `kind: pool` capability (ace#2955): the test-worker
+ * pool's credentials live on canopy-web, one record per slot, `{public,
+ * secret}`. The slot list is MASKED (public values + secret KEY names, never
+ * a secret value); the PUT is a per-key upsert (null deletes a key) allowed
+ * for the agent's own login or a workspace admin, and answers masked. The
+ * holder of a ready lease gets its slot's full data on the lease itself
+ * (`LeaseOut.slot_data`). Kept apart from LEASE_ROUTES while canopy-web
+ * ships them: `SLOT_ROUTES_PENDING_FIXTURE` names the ones the vendored
+ * openapi fixture does not have yet, and lease-contract.test.ts pins every
+ * other one exactly like LEASE_ROUTES.
+ */
+export const SLOT_ROUTES = {
+  slotList: { method: 'GET', path: '/api/agents/{slug}/capabilities/{name}/slots' },
+  slotPut: { method: 'PUT', path: '/api/agents/{slug}/capabilities/{name}/slots/{slot}' },
+  slotDelete: { method: 'DELETE', path: '/api/agents/{slug}/capabilities/{name}/slots/{slot}' },
+} as const satisfies Record<string, LeaseRoute>;
+
+/**
+ * Slot routes coded against canopy-web's in-flight contract, not yet in
+ * test/fixtures/canopy-web-capability-routes.json. Regenerate the fixture
+ * once canopy-web deploys them, then empty this list — the test fails if a
+ * route listed here has since appeared in the fixture (so it cannot linger).
+ */
+export const SLOT_ROUTES_PENDING_FIXTURE: readonly (keyof typeof SLOT_ROUTES)[] = ['slotList', 'slotPut', 'slotDelete'];
+
+export type LeaseRouteName = keyof typeof LEASE_ROUTES | keyof typeof SLOT_ROUTES;
 
 /** Fill a route template; every placeholder must be supplied. */
 export function routePath(
@@ -60,7 +86,7 @@ export function routePath(
   params: Record<string, string> = {},
   query: Record<string, string | undefined> = {},
 ): string {
-  const route: LeaseRoute = LEASE_ROUTES[name];
+  const route: LeaseRoute = (LEASE_ROUTES as Record<string, LeaseRoute>)[name] ?? (SLOT_ROUTES as Record<string, LeaseRoute>)[name];
   const p = route.path.replace(/\{(\w+)\}/g, (_, k: string) => {
     const v = params[k];
     if (v === undefined || v === '') throw new Error(`routePath(${name}): missing {${k}}`);
@@ -198,6 +224,13 @@ export interface LeaseOut {
    */
   out_prefix?: string | null;
   params?: Record<string, unknown> | null;
+  /**
+   * A ready pool lease's slot data, served only to the user who acquired it:
+   * `{public: {...}, secret: {...}}`, or null when the slot has none
+   * (ace#2955). Holds SECRETS — never log or echo it; mask with
+   * `maskSecretsDeep` (lib/test-worker-pool.ts).
+   */
+  slot_data?: { public?: Record<string, unknown> | null; secret?: Record<string, unknown> | null } | null;
 }
 
 /**

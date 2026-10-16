@@ -241,19 +241,13 @@ ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
 # ── Connect test-worker pool (ace#2955) ──────────────────────────────
-# The ACE_E2E_* worker above is pool slot worker-1. The rest of the pool is one
-# JSON object keyed by slot, from the 1Password item connect-test-workers
-# (field pool-json):
-#   {"worker-2": {"phone": "+7426…", "phoneLocal": "426…", "pin": "…",
-#                 "backupCode": "…", "name": "ACE Test 2"}, …}
-# Each device session checks one worker out through canopy-web's `test-worker`
-# capability (infra/capabilities/test-worker/capability.yaml), so two sessions
-# never share one. COMMENTED OUT until that item exists: `op inject` is
-# all-or-nothing, so a ref to a missing item would break /ace:setup for
-# everyone, and a literal reference cannot sit in a comment either (op inject
-# scans comments). When the item exists, add the uncommented line exactly as
-# skills/test-worker-pool § Add a worker step 3 spells it: key ACE_E2E_WORKERS,
-# vault AGENT_VAULT, item connect-test-workers, field pool-json.
+# The ACE_E2E_* worker above is pool slot worker-1's identity and the rollout
+# fallback's (pool capability not live → one session runs UNLOCKED as it). It
+# is NOT where pool workers' credentials come from: every slot's phone,
+# phoneLocal, countryCode, name, PIN and backup code live on canopy-web as
+# per-slot data on ACE's `test-worker` capability, and a lease hands its
+# holder its slot's data. Store a slot with scripts/test-worker-set.ts;
+# skills/test-worker-pool/SKILL.md. Nothing for the pool belongs in this file.
 
 # ── Per-run demo test user (ace#1289) — DEFAULT OFF, AND STAYS OFF. ──
 #

@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CLI, CLI_BIN, LEASE_ROUTES, cliArgv, routePath } from '../../../../mcp/mobile/backends/lease-contract.js';
+import { CLI, CLI_BIN, LEASE_ROUTES, SLOT_ROUTES, SLOT_ROUTES_PENDING_FIXTURE, cliArgv, routePath } from '../../../../mcp/mobile/backends/lease-contract.js';
 import { dumpCliContract } from '../../../../lib/ace-mobile-cli-contract.js';
 
 const root = path.resolve(__dirname, '../../../..');
@@ -37,6 +37,25 @@ describe('lease-contract.ts ↔ canopy-web capability routes', () => {
     for (const q of (route as { query: readonly string[] }).query) expect(served, `?${q}`).toContain(q);
   });
 
+  // ace#2955: the pool's per-slot data routes. canopy-web is building them in
+  // parallel; until the fixture is regenerated they are named as pending, and
+  // a pending one that has since appeared must leave the list.
+  it.each(Object.entries(SLOT_ROUTES))('slot route %s exists on canopy-web, or is named pending', (name, route) => {
+    const key = `${route.method} ${route.path}`;
+    const pending = (SLOT_ROUTES_PENDING_FIXTURE as readonly string[]).includes(name);
+    if (pending) {
+      expect(routes.routes[key], `${key} is in the fixture now — drop "${name}" from SLOT_ROUTES_PENDING_FIXTURE`).toBeUndefined();
+    } else {
+      expect(routes.routes[key], `canopy-web has no ${key} (fixture source: ${routes.source})`).toBeDefined();
+    }
+  });
+
+  it('routePath fills slot routes', () => {
+    expect(routePath('slotPut', { slug: 'ace', name: 'test-worker', slot: 'worker-2' })).toBe(
+      '/api/agents/ace/capabilities/test-worker/slots/worker-2',
+    );
+  });
+
   it('routePath refuses a query param outside the contract', () => {
     expect(() => routePath('get', { lease_id: 'x' }, { prefix: 'a' })).toThrow(/not in the contract/);
     expect(routePath('artifacts', { lease_id: 'L 1' }, { prefix: 'run/' })).toBe('/api/capabilities/leases/L%201/artifacts?prefix=run%2F');
@@ -49,6 +68,9 @@ describe('lease-contract.ts ↔ canopy-web capability routes', () => {
       'lib/capability-lease-probe.ts',
       'lib/test-worker-lease.ts',
       'lib/test-worker-pool-probe.ts',
+      'lib/test-worker-slots.ts',
+      'scripts/test-worker-set.ts',
+      'scripts/test-worker-add.ts',
       'scripts/doctor-capability-lease.ts',
     ]) {
       const src = fs.readFileSync(path.join(root, f), 'utf8');

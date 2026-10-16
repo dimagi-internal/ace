@@ -1199,16 +1199,27 @@ describe('MobileClient.diagnose (dual-mode, #961)', () => {
     // 5037 (the MCP allocates its own, typically 5039) read as a dead
     // emulator with nothing in-session to contradict it.
     const avd = { diagnose: vi.fn().mockResolvedValue({ backend: 'local', adb_server_port: 5039 }) };
-    const client = new MobileClient({ avd: avd as any, maestro: {} as any, lease: fakeLease() });
-    expect(client.useLease).toBe(false);
-
-    const d = await client.diagnose();
+    // No canopy-web PAT: the default pool checkout must not reach the real
+    // canopy-web for its slot-data report from a unit test.
+    const savedEnvFile = process.env.ACE_ENV_FILE;
+    process.env.ACE_ENV_FILE = '/nonexistent/ace-test.env';
+    let d;
+    try {
+      const client = new MobileClient({ avd: avd as any, maestro: {} as any, lease: fakeLease() });
+      expect(client.useLease).toBe(false);
+      d = await client.diagnose();
+    } finally {
+      if (savedEnvFile === undefined) delete process.env.ACE_ENV_FILE;
+      else process.env.ACE_ENV_FILE = savedEnvFile;
+    }
     expect(avd.diagnose).toHaveBeenCalledTimes(1);
-    // Plus the test-worker lock state, which rides on every diagnose (ace#2955).
+    // Plus the test-worker lock state, which rides on every diagnose (ace#2955),
+    // and the slot-data report (null without a PAT).
     expect(d).toEqual({
       backend: 'local',
       adb_server_port: 5039,
       test_workers: { capability: 'test-worker', mode: null, held: [], warning: null },
+      test_worker_slots: null,
     });
   });
 
