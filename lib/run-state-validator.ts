@@ -133,6 +133,53 @@ function pushWarning(
 }
 
 /**
+ * A verdict is a WORD, not a sentence (dimagi-internal/ace#3057).
+ *
+ * ace-web reads `verdict` as an exact token: `apps/opps/summary.py`
+ * `_CLEAN_PHASE_VERDICTS = {"pass", "passed", "clean", "ok", "done", ""}` is
+ * an exact-membership check, and anything outside it falls through
+ * `_verdict_caveat` to "Finished without a clean pass (ACE recorded …)". So
+ * `verdict: "pass: chatbot 14303 published v2 …"` (Phase 5 of
+ * kaduna-graduation/20261015-1411) told an outsider a passing phase had not
+ * passed, and quoted ACE-internal ids at them. The same exactness hides a
+ * failing step written as `fail: …` from ace-web's `_FAILING_VERDICTS` check.
+ *
+ * Matches a leading verdict word followed by a separator (`:` `;` em/en dash,
+ * a spaced hyphen) or whitespace, then more text. A hyphen joined WITHOUT
+ * spaces is deliberately not a separator: `passed-with-deferred-evals`,
+ * `proceed-with-warn` and `partial-producer-deferred` are single tokens.
+ */
+const VERDICT_WITH_PROSE =
+  /^([A-Za-z][A-Za-z0-9_-]*?)(?:\s*[:;—–]\s*|\s+-\s+|\s+)(\S[\s\S]*)$/;
+
+export function splitProseVerdict(
+  verdict: string,
+): { word: string; detail: string } | null {
+  const m = VERDICT_WITH_PROSE.exec(verdict.trim());
+  if (!m) return null;
+  return { word: m[1], detail: m[2].trim() };
+}
+
+function warnProseVerdict(
+  warnings: ValidationIssue[],
+  path: string,
+  verdict: unknown,
+): void {
+  if (typeof verdict !== 'string') return;
+  const split = splitProseVerdict(verdict);
+  if (!split) return;
+  pushWarning(
+    warnings,
+    `${path}.verdict`,
+    `verdict carries prose after its verdict word — write \`verdict: ${split.word}\` and move the rest ` +
+      'to `verdict_detail`. ace-web matches the verdict word exactly, so a prose verdict renders on the ' +
+      'public run summary as "Finished without a clean pass" (ace#3057)',
+    `verdict: ${split.word}  +  verdict_detail: <prose>`,
+    verdict,
+  );
+}
+
+/**
  * Cross-field consistency inside ONE phase block — the class no existing fence
  * could see (ace#2113).
  *
@@ -378,6 +425,7 @@ function validatePhaseBlock(
       block.verdict,
     );
   }
+  warnProseVerdict(warnings, path, block.verdict);
   if (
     block.summary_artifact !== undefined &&
     typeof block.summary_artifact !== 'string'
@@ -518,6 +566,7 @@ function validateStepBlock(
       block.verdict,
     );
   }
+  warnProseVerdict(warnings, path, block.verdict);
   if (block.artifact !== undefined && typeof block.artifact !== 'string') {
     pushError(
       errors,

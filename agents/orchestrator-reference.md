@@ -765,6 +765,9 @@ phases:
                                             # terminal-phase synonym for `pass`
                                             # a `partial` phase names the gap here,
                                             # e.g. partial-producer-deferred
+                                            # ONE word, never `pass: <prose>` — ace-web matches it
+                                            # exactly; prose goes in `verdict_detail` (ace#3057)
+    verdict_detail: <prose>                 # optional: the human-readable why behind `verdict`
     summary_artifact: <Drive fileId>        # required if the phase produces a summary doc
     steps:
       <skill-name>:
