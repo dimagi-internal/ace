@@ -619,6 +619,16 @@ a select, record it as a decision row naming the `entity_id` you shipped.
 - **Trigger:** the PDD's success metrics reference visit-time, a time/cost
   model, or per-section duration.
 - **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness`.
+- **Origin of the `format-date` rule:** ace#2935. ace#995's fix left the
+  first timestamp as a bare `now()`; on `tekzal/20261013-2314` that field
+  evaluated to `2026-10-15` with no time, and two openings of the form
+  minutes apart produced the identical key
+  `ace@dimagi-ai.com | 2026-10-15 | no` — up to a daily cap's worth of
+  surveys payable as one. Nova's authoring guide names the cause (*"An
+  unbound hidden field has text semantics; ordinary text conversion of
+  now() can keep only its calendar date"*); `format-date(now(),
+  '%Y-%m-%d %H:%M:%S')` read back from the saved app gave
+  `2026-10-15 05:30:25` and `05:30:28` on successive openings.
 - **Origin of the dependency rule:** ace#995. A bare `now()` **references no
   node**, and JavaRosa evaluates a calculate at form-init and thereafter only
   when a node it references changes — so every bare `now()` in a form resolves
@@ -640,9 +650,19 @@ a select, record it as a decision row naming the `entity_id` you shipped.
 > and they are all equal. Any duration derived from two of them is always zero,
 > which silently disables every control that reads it. So every timestamp after
 > the first MUST depend on the last answer of the part before it:
-> `<part>_start_time = if(<last answer of previous part> = '', '', now())`.
-> Only the very first timestamp (`visit_start_time`) may be a bare `now()` —
-> form-init IS its intended meaning. Before emitting a duration-derived
+> `<part>_start_time = if(<last answer of previous part> = '', '',
+> format-date(now(), '%Y-%m-%d %H:%M:%S'))`.
+> Only the very first timestamp (`visit_start_time`) may skip that
+> dependency — form-init IS its intended meaning — and it is still written
+> `format-date(now(), '%Y-%m-%d %H:%M:%S')`, NEVER a bare `now()`.
+> LOAD-BEARING — a bare `now()` in a hidden field RENDERS DATE-ONLY. An
+> unbound hidden field has text semantics, and ordinary text conversion of
+> `now()` keeps only the calendar date: the time is gone. A timestamp that
+> reads `2026-10-15` cannot carry a duration, and any `entity_id` / key
+> built from it collapses to ONE key per worker per day, so Connect pays a
+> day's submissions as one. `format-date(..., '%Y-%m-%d %H:%M:%S')` keeps the
+> time and still references no answer node, so the first timestamp is still
+> evaluated once at form-init. Before emitting a duration-derived
 > verification threshold (a duration floor, a per-part cap), trace it back to
 > its two timestamps and confirm both can actually vary; if they can't, the
 > threshold is decorative and belongs in your build report as an open item,
@@ -1247,8 +1267,10 @@ brief (see the DO NOT BRIEF THIS bullet above)**:**
 
 - **App:** Deliver
 - **Trigger:** any image / photo capture question.
-- **Enforced by:** applied post-build by `app-hq-settings` (`commcare_get_form_source`
-  → inject `acquire` → `commcare_patch_xform`), then verified by the `app-release-qa`
+- **Enforced by:** ensured post-build by `app-hq-settings` (`commcare_get_form_source`
+  → verify `acquire`, patching it in via `commcare_patch_xform` only if missing —
+  Nova's compiler was observed emitting `appearance="acquire"` on every image
+  `<upload>` on `tekzal/20261013-2314`, ace#2953), then verified by the `app-release-qa`
   camera-only check (dimagi-internal/ace#867) — a released Deliver image `<upload>`
   lacking `appearance` containing `acquire` halts with `[BLOCKER]
   camera-only-appearance-missing`.
@@ -1265,9 +1287,14 @@ brief (see the DO NOT BRIEF THIS bullet above)**:**
   Verified by `app-release-qa`'s #867 check on the released CCZ; clears the
   camera-only residual. Best-effort on this initial rollout (a failure leaves the
   residual open + is caught by `app-release-qa`, never halts Phase 3); end-to-end
-  live validation lands on the first post-install runs. Nova still can't set this at
-  build time (the image-field blueprint has no appearance key) — hence the post-build
-  patch.
+  live validation lands on the first post-install runs. The image-field blueprint
+  still has no appearance key, but **Nova's compiler now emits `appearance="acquire"`
+  at `upload_app_to_hq` time**: on `tekzal/20261013-2314` all five Deliver image
+  `<upload>`s arrived in the HQ draft already carrying it, before any patch, and the
+  step recorded `already-acquire` with no `commcare_patch_xform` call (ace#2953;
+  observed on one app — whether Nova emits it unconditionally is not yet
+  established). So the step *verifies* and patches only what is missing; it and the
+  `app-release-qa` gate stay, because they fail closed if Nova ever stops.
 - **DO NOT BRIEF THIS (dimagi-internal/ace#1640).** This component is applied entirely
   HQ-side, post-build, so the Brief paragraph below MUST NOT be emitted into a
   `/nova:autobuild` brief by `pdd-to-deliver-app`. Confirmed against Nova's live
@@ -2418,6 +2445,8 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-10-16 | **`section-timestamps`: the first timestamp is `format-date(now(), '%Y-%m-%d %H:%M:%S')`, never a bare `now()` (ace#2935).** ace#995 left `visit_start_time` as a bare `now()` because form-init is its meaning — true of when it evaluates, false of what it renders: an unbound hidden field has text semantics and keeps only the calendar date. On `tekzal/20261013-2314` two openings minutes apart gave the identical key `ace@dimagi-ai.com \| 2026-10-15 \| no`, so a whole day's surveys would pay as one. `format-date` keeps the time and still references no node. `pdd-to-deliver-app § entity_id`'s `concat` example now uses a time-bearing component and states the per-day grain of a date-only one. *Enforced:* `test/skills/no-bare-now-timestamp.test.ts`. | ACE team |
+| 2026-10-16 | **`live-photo-capture`: "applies" → "ensures" (ace#2953).** Nova's compiler was observed emitting `appearance="acquire"` on every Deliver image `<upload>` (`tekzal/20261013-2314`), so `app-hq-settings` Step 3 verifies and patches only if missing. Step and `app-release-qa` gate unchanged — they fail closed if Nova stops. | ACE team |
 | 2026-10-08 | **New component `case-choice-attendance` (voidcraft-labs/commcare-nova#728).** Nova PR #730 added a third choice source, `kind: 'cases'`, so a group's members can be ONE checklist. `group-payment-test/20261007-1700` had shipped one yes/no screen per member because only inline and table sources existed. The recipe was built and verified live on a throwaway app: choices scoped to the selected group's open members, and after tick-three-untick-one the roster keeps all three with the unticked member at `attended = 'no'`. The brief forbids the design ACE itself proposed in #728, a repeat driven by the checklist, because repeats keep rows after deselection. *Enforced:* `lib/case-choice-attendance.ts` + `test/scripts/nova-case-choices-probe.test.ts`; live tripwire `scripts/probe-nova-case-choices.ts`. | ACE team |
 | 2026-09-28 | **Tool shapes move to Nova private work (`voidcraft-labs/commcare-nova#693`).** New § Nova's authoring contract: mutations take `work_id` + `request_id` (never `app_id`) and land only on a `save_work` answering `saved: true`; wording and expressions are plain strings (`{{id}}` / `#form/<path>`), the `{parts}` shapes are retired; the plugin-v2 architect owns its own begin/save/app-test. Lookup-tool, language-layer recipe (identity objects, string values, save before the gate) and ace#1119 read-back (bare ids are now REFUSED; assert the `#form/` text) updated. `no-starter-module` re-framed as a regression guard — new apps are unseeded. | ACE team |
 | 2026-09-27 | **New component `repeat-count-source` (ace#2517).** Nova compiles a root `count_bound` repeat's count as a one-shot `xforms-ready` snapshot — documented Nova semantics, not a compiler slip — and its validator accepts a count read from a same-form question, which is therefore always blank at snapshot time. `spark-facilitator/20260926-1413` shipped 5 of 5 count-bound repeats that way; every one rendered zero rows and a Phase 6 device walk was the first thing to notice. The brief now forbids the shape and routes "worker states N, then fills N rows" to a `user_controlled` repeat whose count is derived, not asked. *Enforced:* `lib/repeat-count-audit.ts` + `test/lib/repeat-count-audit.test.ts` (the released Participant Feedback form as the positive fixture), halting in `app-release-qa` as `dead-repeat-count`. | ACE |

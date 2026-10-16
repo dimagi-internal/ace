@@ -281,7 +281,9 @@ describe('pdd-to-deliver-app entity_id guidance (ace#1232)', () => {
     );
     // The only correct construction: an explicit concat() the author writes,
     // with the separator quoted INSIDE it.
-    expect(source).toMatch(/concat\(#user\/username, ' - ', #form\/visit_date\)/);
+    // (The component was #form/visit_date until ace#2935 — a date-only
+    // component keys per worker per day, so the example now uses a timestamp.)
+    expect(source).toMatch(/concat\(#user\/username, ' - ', #form\/\w+\)/);
   });
 
   it('sanctions a #case/ read in a calculate for a followup entity_id — and no preload shape', () => {
