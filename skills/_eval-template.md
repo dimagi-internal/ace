@@ -183,6 +183,35 @@ gate:
   disposition: approve | reject | iterate
 ```
 
+### Suite verdict from score (the default mapping)
+
+`verdict` is a FUNCTION of `overall_score`, `gate.threshold` and the
+dimension scores — never the grader's free choice. Apply this ordered
+cascade to the post-cap `overall_score`; **first match wins**:
+
+1. **`fail`** — any `BLOCKER` fired (see § Auto-surfaced severity rules:
+   a dimension ≤ 3, `overall_score` < `gate.threshold`, or a hard-deduction
+   rule), **or** any dimension ≤ 3.
+2. **`pass`** — `overall_score` ≥ `gate.threshold` **and** no dimension
+   < 7.
+3. **`warn`** — otherwise: the score cleared the threshold but at least one
+   dimension is < 7 (name each in `auto_surfaced` as a `WARN`).
+
+`incomplete` stays reserved for "nothing was graded" (the QA partner
+failed or the artifact was unreadable). A rubric MAY state its own
+mapping (e.g. `run-surface-audit-eval § Verdict mapping`), but it must
+be stated there; silence means this one. So `warn` never means "below
+threshold" — that is `fail` — and a `warn` above the threshold always
+names a sub-7 dimension. That is exactly the case `lib/release-readiness.ts`
+reports as "cleared the score band but a dimension is still below 7",
+and it still blocks a release, which requires `verdict: pass`.
+
+Why written down: on `spark-facilitator/20261001-2208`,
+`training-llo-guide-eval` wrote `overall_score: 7.6`, `verdict: warn`,
+`gate.threshold: 7.5`, `disposition: approve` — a self-contradiction no
+rule forbade, because no score → verdict band was defined anywhere, and an
+independent re-grade had to assume one (ace#2612).
+
 ## Auto-surfaced severity rules
 
 Every eval emits auto-surfaced concerns into its verdict YAML's
