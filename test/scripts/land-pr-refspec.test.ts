@@ -371,7 +371,14 @@ describe('land-pr.sh push target', () => {
       const stub = path.join(root, 'stub');
       fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
 
-      runLandPr(work, stub, 3_000);
+      // Let the script run to its OWN exit (one zero-second poll) instead of
+      // killing it on a wall-clock budget — a 3s kill raced the arm under
+      // full-suite load (ace#2926). Still BLOCKED after the poll ⇒ exit 3.
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '1',
+      });
+      expect(r.signal, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBeNull();
 
       const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
       expect(log).toMatch(/--auto/);
