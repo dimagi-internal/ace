@@ -79,8 +79,24 @@ export interface RelinkOptions {
 export interface RelinkResult {
   text: string;
   replaced: number;
-  /** Old ids still standing alone anywhere in the output (see RelinkOptions.bare). Should be empty. */
+  /**
+   * Old ids still sitting in a RUN-ID POSITION in the output: a `run_id` /
+   * `source_run` URL param or field (anchored or not), or an element of a
+   * `run_ids` list. Should be empty; non-empty means a dead link.
+   *
+   * Only run-id positions count (ace#3012): labs mints run ids, workflow ids
+   * and labs-only program/opportunity ids from ONE sequence, so an old run id
+   * can equal a `program_id=` / `opportunity_id=` / `workflow/<id>/` in the
+   * same file, and counting every standalone occurrence reported a correctly
+   * relinked realized.json as broken.
+   */
   leftovers: number[];
+  /**
+   * Old ids standing alone OUTSIDE a run-id position (prose, other ids that
+   * share labs' sequence). Informational only — they may be run ids in prose
+   * (rewrite with `bare` once you have checked) or unrelated ids.
+   */
+  mentions: number[];
 }
 
 /**
@@ -101,7 +117,7 @@ function idPattern(map: RunIdMap): string {
  * (`"run_id": N`). With `bare`, every standalone occurrence.
  */
 export function relinkText(text: string, map: RunIdMap, opts: RelinkOptions = {}): RelinkResult {
-  if (map.size === 0) return { text, replaced: 0, leftovers: [] };
+  if (map.size === 0) return { text, replaced: 0, leftovers: [], mentions: [] };
   const ids = idPattern(map);
   let replaced = 0;
   const swap = (id: string): string => {
@@ -120,10 +136,21 @@ export function relinkText(text: string, map: RunIdMap, opts: RelinkOptions = {}
       (_m, id: string) => swap(id),
     );
   }
-  const leftovers = [
-    ...new Set((out.match(new RegExp(`${STANDALONE_BEFORE}(${ids})${STANDALONE_AFTER}`, 'g')) ?? []).map(Number)),
+  const leftovers = new Set<number>();
+  // Run-id positions: `run_id` / `source_run` as a URL param or a YAML/JSON
+  // field, whether or not the rewrite above could anchor it.
+  const positional = new RegExp(`(?<![\\w])(?:run_id|source_run)"?\\s*[=:]\\s*"?(${ids})(?!\\d)`, 'g');
+  for (const m of out.matchAll(positional)) leftovers.add(Number(m[1]));
+  // Elements of a `run_ids` list: inline `[a, b]` (YAML flow or JSON) or a YAML block list.
+  const runIdsList = /(?<![\w])run_ids"?\s*:\s*(\[[^\]]*\]|(?:\s*\n\s*-\s*"?\d+"?)+)/g;
+  const standaloneId = new RegExp(`${STANDALONE_BEFORE}(${ids})${STANDALONE_AFTER}`, 'g');
+  for (const m of out.matchAll(runIdsList)) {
+    for (const x of m[1].matchAll(standaloneId)) leftovers.add(Number(x[1]));
+  }
+  const mentions = [
+    ...new Set((out.match(standaloneId) ?? []).map(Number).filter((n) => !leftovers.has(n))),
   ];
-  return { text: out, replaced, leftovers };
+  return { text: out, replaced, leftovers: [...leftovers], mentions };
 }
 
 /**
