@@ -262,8 +262,35 @@ export interface LabsItemInfo {
   id: string;
   type: 'workflow' | 'pipeline' | 'synthetic' | 'solicitation' | 'fund' | 'review' | 'response';
   name?: string;
+  /** Workflow / registry / cohort `description` — where a RENDERED object carries its sweep handle. */
+  description?: string;
+  /** Synthetic opportunity `notes` — where its sweep handle lives (ace#2733). */
+  notes?: string;
   /** If the item references a Connect opportunity, capture it for cross-check. */
   opportunityId?: string;
+}
+
+/**
+ * ACE's sweep handle on a Phase 7 labs object: `(synthetic, ace <opp>/<run-id>)`
+ * (`demo-data-setup` § C7). Captures the opp and run id.
+ */
+export const SWEEP_HANDLE = /\(synthetic, ace ([a-z0-9][a-z0-9-]*)\/(\d{8}-\d{4})\b[^)]*\)/;
+
+/**
+ * Which field of a labs item carries ACE's sweep handle, or null. A RENDERED
+ * object (programme report, opp report, synthetic opportunity) carries it in
+ * `description` / `notes`, never its name — the name is the page title, and a
+ * run id there was judged a trust defect and once put a real organisation's
+ * name on an illustrative page (ace#2733). So a sweep must look in all three.
+ */
+export function sweepHandleField(
+  item: Pick<LabsItemInfo, 'name' | 'description' | 'notes'>,
+): { field: 'name' | 'description' | 'notes'; opp: string; runId: string } | null {
+  for (const field of ['name', 'description', 'notes'] as const) {
+    const m = SWEEP_HANDLE.exec(item[field] ?? '');
+    if (m) return { field, opp: m[1], runId: m[2] };
+  }
+  return null;
 }
 
 /**
@@ -282,6 +309,12 @@ export function scoreLabsItem(item: LabsItemInfo, liveSet: LiveSet): ScoreResult
 
   if (item.name && (CRISPR_PREFIX.test(item.name) || ACE_NAME_PREFIX.test(item.name))) {
     signals.push('name has ACE/CRISPR prefix');
+    return { confidence: 'high', signals };
+  }
+
+  const handle = sweepHandleField(item);
+  if (handle) {
+    signals.push(`${handle.field} carries ACE sweep handle for ${handle.opp}/${handle.runId}`);
     return { confidence: 'high', signals };
   }
 
