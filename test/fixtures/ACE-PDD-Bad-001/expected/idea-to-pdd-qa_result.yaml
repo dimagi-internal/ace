@@ -7,7 +7,7 @@
 skill: idea-to-pdd-qa
 verdict: fail
 
-# Seven checks should fail; one should pass.
+# Eight checks should fail; one should pass.
 expected_failures:
   # The adversarial fixture's Program Parameters table carries a payment band
   # and caps but none of the launch parameters Phase 4 needs — no LLO pay per
@@ -36,6 +36,11 @@ expected_failures:
   # no cap_rationale acknowledging it.
   - check: program_parameters_coherent
     detail_contains: Program Parameters incoherent
+
+  # Its table is the pre-ace#2364 two-column shape: no row says whether its
+  # value was read from an author document, derived by ACE, or borrowed.
+  - check: program_parameters_provenance
+    detail_contains: no Provenance column
 
 # This check passes — there are no [a]/[b] markers and no Reviewer Comments
 # section, so it correctly returns pass with detail "no reviewer comments

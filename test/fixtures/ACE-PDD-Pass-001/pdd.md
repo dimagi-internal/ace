@@ -70,27 +70,27 @@ None pre-named — fixture only.
 
 ## Program Parameters
 
-| Key | Value |
-|---|---|
-| learn_passing_score | 100 |
-| assessment_items | 6 |
-| payment_rate_min | 1.00 |
-| payment_rate_max | 2.50 |
-| daily_cap_per_flw | 5 |
-| total_cap_per_flw | 30 |
-| flw_count_min | 2 |
-| expected_reach_max | 30 |
-| cap_rationale | Deliberately non-binding: the per-FLW cap is a fraud ceiling, not a throughput target, and is sized for the largest cohort the program might later run. |
-| entity_id_grain | worker username + follow-up visit date |
-| llo_payment_per_visit | 0.50 |
-| campaign_target_visits | 30 |
-| total_budget_usd | 90 |
-| opportunity_start_date | 2026-06-01 |
-| opportunity_end_date | 2026-06-30 |
-| verification_flags | photo_required, gps_within_radius |
-| connect_delivery_type | nutrition |
-| opportunity_country | KEN |
-| opportunity_currency | KES |
+| Key | Value | Provenance |
+|---|---|---|
+| learn_passing_score | 100 | read: Learn App Specification |
+| assessment_items | 6 | read: Learn App Specification |
+| payment_rate_min | 1.00 | read: Budget |
+| payment_rate_max | 2.50 | read: Budget |
+| daily_cap_per_flw | 5 | read: FLW Requirements |
+| total_cap_per_flw | 30 | read: FLW Requirements |
+| flw_count_min | 2 | read: FLW Requirements |
+| expected_reach_max | 30 | read: Target Population |
+| cap_rationale | Deliberately non-binding: the per-FLW cap is a fraud ceiling, not a throughput target, and is sized for the largest cohort the program might later run. | derived: total_cap_per_flw, flw_count_min, expected_reach_max |
+| entity_id_grain | worker username + follow-up visit date | read: Deliver App Specification |
+| llo_payment_per_visit | 0.50 | read: Budget |
+| campaign_target_visits | 30 | read: Target Population |
+| total_budget_usd | 90 | derived: campaign_target_visits, payment_rate_max, llo_payment_per_visit |
+| opportunity_start_date | 2026-06-01 | read: Timeline |
+| opportunity_end_date | 2026-06-30 | read: Timeline |
+| verification_flags | photo_required, gps_within_radius | read: Evidence Model |
+| connect_delivery_type | nutrition | read: Intervention Design |
+| opportunity_country | KEN | read: Target Population |
+| opportunity_currency | KES | read: Target Population |
 
 ## Stress Test Results
 

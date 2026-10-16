@@ -570,7 +570,7 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
    - **Success Metrics** — how to measure if the intervention worked
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
-   - **Program Parameters** — the typed handoff table. A `| Key | Value |` table
+   - **Program Parameters** — the typed handoff table. A `| Key | Value | Provenance |` table
      of every decision THIS document makes that a LATER phase must apply
      verbatim and that cannot be applied in the artifact this phase produces:
      `learn_passing_score`, `assessment_items`, `payment_rate_min` /
@@ -598,6 +598,33 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
      Step 7.5 writes the SAME values again as the `program_parameters` block in
      `run_state.yaml`; author this table first and transcribe it there, so the
      body and the state block cannot diverge.
+
+     **Every row carries a third `Provenance` cell (ace#2364)** — the table is
+     what later phases read, so a value ACE worked out must not look like one
+     an author wrote. Exactly one of:
+     - `read: <document § ref>` — an author document for THIS programme
+       states it. Only a `read` value may be attributed to the author — in an
+       email, the Work Order, a solicitation or an eval.
+     - `derived: <decision-id>` — ACE chose it. **Write the `decisions.yaml`
+       row first, then name it**: a number a reviewer could challenge (an
+       assessment item count, a cohort size, a cap sized from an estimate, a
+       `[PROPOSED]` rate) must be findable as a decision, or the reviewer
+       cannot tell where it came from. A purely mechanical value computed from
+       other rows of this table names those keys instead
+       (`derived: daily_cap_per_flw, flw_count_max`) and needs no row of its
+       own — that is the scope line: every row carries provenance, and only a
+       derived or borrowed value a reviewer could challenge gets a decision
+       row.
+     - `borrowed: <source>` — taken from reference material about a
+       DIFFERENT programme (a model-comparison column, another rollout).
+       Never mark it `read`, and never call it anchored. When it drives a live
+       value, record a decision row so it reaches a reviewer as a question.
+
+     Canonical failure: poverty-graduation/20260908-0510, where
+     `assessment_items: 30` / `pre_assessment_items: 20` appeared in no input,
+     sat in the table exactly like author values, and were then called "your
+     Annex's 30 and 20" in ACE's email. *Enforced:* `idea-to-pdd-qa §
+     program_parameters_provenance`.
 
 4a. **Spec for deployability, not just topic presence.** `[ai-iteration: 2026-05-29]` The downstream
     build skills faithfully transcribe the PDD, and the app evals now
@@ -1337,7 +1364,8 @@ Background and worked examples live in `docs/examples/pdd-stress-test-observatio
 
    **Mode behaviour** — in `auto` / autonomous mode there is nobody to approve,
    so the rule adapts rather than deadlocking: write the proposed value into
-   § Program Parameters marked `[PROPOSED]`, record a matching `decisions.yaml`
+   § Program Parameters marked `[PROPOSED]` with provenance
+   `derived: <that row's id>`, record the matching `decisions.yaml`
    row with `evidence_basis: inferred` plus reasoning, and flag it
    **unapproved** in the phase summary so the Phase 1→3 pause point surfaces
    it. A proposal on the record is auditable; a silent default is not. In
@@ -1709,7 +1737,33 @@ downstream phase builds on the PDD.
 
 When in doubt between `stated` and `inferred`, prefer `inferred` — and if
 *any* source pulls against the default, it is `conflicting`, not
-`inferred`. Do not omit `conflict_signals` on a `conflicting` row, and do
+`inferred`.
+
+**Whose sources disagree decides the basis (ace#2266).** `conflicting` means
+the AUTHOR's material disagrees with itself; it is the row a reviewer is asked
+to look at. Classify by the owners of the competing signals:
+
+| Competing signals | `evidence_basis` | `conflict_owner` | Surfaced to the author? |
+|---|---|---|---|
+| Author document vs author document — **including the programme source vs its own instrument** | `conflicting` | `author` | Yes, with both signals |
+| An ACE default or skill rule vs a `[FIXED]` author instruction | `stated` — cite the instruction; note the losing ACE default in `reasoning` | — | No. The PDD governs; a losing ACE default is a skill defect to file, not a review item |
+| ACE artifact vs ACE artifact (two skill docs, a Phase 3 memo vs Phase 4 config) | not a Phase 1 row; if one must be recorded, `conflicting` with `conflict_owner: ace` | `ace` | No. If it hides a real author question, raise THAT question on its own row |
+
+Canonical under-flagged case, bednet-check-2-visit/20260907-1126:
+`inputs/idea.md § Program intent` says FLWs distribute the nets, while the
+visit-1 instrument has **no handover step** and records the net date as
+*"today or earlier"*. The instrument is the stronger evidence and the
+resolution (nets are distributed separately) was right — but the row shipped
+`stated`, so nobody reviewing the Work Order could see that `"a separate
+distribution activity"` was resolving a contradiction (and that *"today or
+earlier"* permits a same-day handover). Source vs instrument is the author's
+own contradiction: `conflicting`, `conflict_owner: author`, both readings in
+`conflict_signals`, and why the instrument won in `reasoning`. The
+over-flagged mirror, poverty-graduation/20260908-0510: 9 of 66 rows were
+`conflicting`, but only 3 were author-vs-author; `cs-payment-unit-shape` (an
+ACE skill rule vs the PDD's [FIXED] §12.2) should have been `stated`.
+*Enforced at the write boundary:* `conflict_owner` is refused on any
+non-`conflicting` row (`lib/decisions-schema.ts`). Do not omit `conflict_signals` on a `conflicting` row, and do
 not attach them to a non-conflicting one; both are rejected at the write
 boundary.
 
@@ -2009,3 +2063,5 @@ When `--dry-run` is active:
 | 2026-09-11 | **Step 1 reads the comment threads on the INPUT documents, not only on the prior run's PDD (ace#2372).** Until now `drive_list_comments` had exactly one caller, and it read the prior run's PDD. On a componentized programme the component PDDs in `inputs/` are the design, and their author reviews them in place, so her threads were invisible to every build. Measured: 8 unresolved threads on the `poverty-graduation` Targeting PDD, none ever read. The same inbox-not-store treatment now applies to every Google Doc / Sheet / Slides input. Four differences are decided explicitly in the skill. (1) **Reply, never resolve**: the thread belongs to the author, resolving stays for ACE's own PDD, and ACE never edits an input document. (2) **Already incorporated**: a thread whose substance is in the document's body gets an `accepted-edit` disposition citing the section, not a duplicate requirement. (3) **Idempotent**: input documents persist across runs, so the Drive comment id goes in the item `anchor` and a thread is captured once. (4) **The target id**: `drive_list_comments` does not follow shortcuts (the shortcut id returns `File not found`), so the call uses `resolved_target_id`, which `agents/ace-orchestrator.md` step 5c now records in the frozen manifest. *Enforced:* `test/skills/idea-to-pdd-input-doc-comments.test.ts`. | ACE team |
 | 2026-09-06 | **Step 6b: the `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** Step 6b named `drive_create_file` with `mimeType: 'text/markdown'` and warned against the renderer for destroying the bytes — but `drive_create_file` ALWAYS creates a Google Doc, has no `mimeType`, and the key was dropped by the MCP schema. The instruction reached the exact outcome it forbade, through the atom it named as safe. Measured on `poverty-graduation/20260905-0924`: two calls, one local file, both files `application/vnd.google-apps.document`; 57,178 bytes sent, 58,470 read back, every markdown marker gone — so DOC-FIDELITY compared one Doc against another built by the same importer. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01. `drive_create_file` now REFUSES a `mimeType` and names the right call. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`. | ACE team |
 | 2026-09-26 | **The `entity_id` lever no longer promises that a repeat collapses to one payment (ace#2512).** With the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeat key to `pending`, auto-approves it and pays it again (`processor.py` `clean_form_submission`; `CompletedWork.payment_accrued` "Includes duplicates"). The lever now says the key GROUPS visits, names the two Connect-side stops (payment-unit caps; a computed `payable_slot` field + `form_field_rules` row), and requires non-payable record kinds to live on a form with no `deliver_unit` marker, since every visit on the paid unit counts toward `max_daily` / `max_total`. Found on `spark-facilitator/20260926-1413` by both the PDD and Work Order evals. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts`. | ACE team |
+| 2026-10-16 | **§ Program Parameters rows carry provenance (ace#2364).** A third `Provenance` cell on every row: `read: <doc § ref>`, `derived: <decision-id>` (or the table keys a mechanical value is computed from) or `borrowed: <source about a different programme>`. A value ACE chose must name the decision row recording it, and only `read` values may be attributed to the author. Scope default: every row carries provenance; only derived/borrowed values a reviewer could challenge get a decision row. Reproducer: poverty-graduation/20260908-0510 (assessment counts 30/20 with no source and no decision row, attributed to the author by email). *Enforced:* `idea-to-pdd-qa § program_parameters_provenance`. | ACE team |
+| 2026-10-16 | **`evidence_basis` is classified by WHOSE sources disagree (ace#2266).** Author-vs-author (including source vs instrument) → `conflicting`, `conflict_owner: author`; an ACE default losing to a `[FIXED]` author instruction → `stated` with the losing default noted; ACE-vs-ACE → `conflict_owner: ace`, never put to the author. New optional `conflict_owner` field in `lib/decisions-schema.ts`, refused on non-`conflicting` rows. Reproducers: bednet-check-2-visit/20260907-1126 (source vs instrument recorded `stated`) and poverty-graduation/20260908-0510 (6 of 9 `conflicting` rows were not the author's). | ACE team |
