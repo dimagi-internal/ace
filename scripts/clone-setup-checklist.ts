@@ -5,8 +5,12 @@
  * `lib/clone-setup-checklist.ts`; this script only does I/O.
  *
  *   npx tsx scripts/clone-setup-checklist.ts [print] --workspace <ws> \
- *       [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
- *     Print the checklist to send the operator, verbatim (markdown).
+ *       --hq-domain <slug> [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
+ *     Print the checklist to send the operator, verbatim (markdown). It asks
+ *     only for what ace@ cannot do (ace#3014): HQ demo mode, and Program
+ *     manager on the program org's edit page. ACE creates the HQ space
+ *     first (`commcare_create_domain`, hr_name `connect-ace-<ws>`) and passes
+ *     the slug HQ returned as --hq-domain, which is therefore required.
  *
  *   npx tsx scripts/clone-setup-checklist.ts create-orgs --workspace <ws> [--pm-org <slug>] [--nm-org <slug>]
  *     ACE creates the two Connect orgs itself (ace@ holds all_org_profile_edit_access
@@ -24,11 +28,14 @@
  *
  *   npx tsx scripts/clone-setup-checklist.ts accept-invites --hq-domain <slug> \
  *       [--pm-org <slug>] [--nm-org <slug>] [--days 30]
- *     ACE joins the spaces the operator invited it to, by itself: finds each
- *     invitation in ace@'s mailbox (gog, identity from config/agent.json),
- *     accepts it with ACE's own HQ / Connect session, then runs the live
- *     checks. A missing invitation is reported, never guessed around; an
- *     already-accepted one is fine (the read-back is the authority).
+ *     Then runs the live checks. Normally there is nothing to accept: ACE
+ *     created the HQ space and both orgs, so it is already their Admin and the
+ *     script looks for no invitation. Only for a space or org someone else
+ *     created and invited ace@ to (one passed by flag) does it find the
+ *     invitation in ace@'s mailbox (gog, identity from config/agent.json) and
+ *     accept it with ACE's own HQ / Connect session. A missing invitation is
+ *     reported, never guessed around; an already-accepted one is fine (the
+ *     read-back is the authority).
  *
  * Auth is reused, never reimplemented: HQ and Connect both go through the
  * Connect `PlaywrightSession` (its OAuth-via-HQ flow leaves valid HQ cookies in
@@ -160,7 +167,7 @@ async function acceptHq(request: APIRequestContext, domain: string, days: number
     `from:commcarehq-noreply-production@dimagi.com subject:"to join CommCareHQ" newer_than:${days}d`,
     (t) => extractHqInviteUrl(t, domain),
   );
-  if (!url) return { system: 'hq', slug: domain, status: 'no-invitation', detail: `no HQ invitation for ${domain} in the last ${days} days (checklist item 1c)` };
+  if (!url) return { system: 'hq', slug: domain, status: 'no-invitation', detail: `no HQ invitation for ${domain} in the last ${days} days, and ace@ is not its Admin — did ACE create it (commcare_create_domain)?` };
   // UserInvitationView: GET renders the accept page; an authenticated POST by
   // the invited user accepts. An already-accepted invitation redirects to login,
   // which is fine — the my_role read-back decides.
@@ -231,7 +238,14 @@ async function main(): Promise<void> {
       let accepted: AcceptResult[] = [];
       if (cmd === 'accept-invites') {
         const days = Number(arg('days') ?? 30);
-        if (s.hqDomain) accepted.push(await acceptHq(request, s.hqDomain, days));
+        // A space ACE created (commcare_create_domain, the normal path since
+        // ace#3014) has no invitation: ace@ is its Admin already. Look for one
+        // only when the my_role read-back says ace@ is not.
+        const hqNeedsInvite = async (d: string) => {
+          const r = await request.get(hqMyRoleUrl(d), { maxRedirects: 0 });
+          return !classifyHqMyRole(r.status(), await r.text()).ok;
+        };
+        if (s.hqDomain && (await hqNeedsInvite(s.hqDomain))) accepted.push(await acceptHq(request, s.hqDomain, days));
         // Connect orgs are ACE's own since #1580 (create-orgs): there is no invitation
         // to accept for them. One the operator created by hand and invited ace@ to
         // (an explicit --pm-org/--nm-org) is still accepted here.

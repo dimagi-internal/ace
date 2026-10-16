@@ -1,10 +1,12 @@
 /**
- * The operator setup checklist that opens every clone (Jon, 2026-10-02):
- * "have me create the HQ space and turn on demo mode, and then have me manually
- * create a PM and NM org for you to use, and give me clear URLs to click".
+ * The operator setup checklist that opens every clone (Jon, 2026-10-02).
  * Amended 2026-10-07 (dimagi/commcare-connect#1580): ACE creates both Connect
- * orgs itself, named <workspace>-pm-test / <workspace>-nm-test; the operator only
- * ticks the two staff-only settings (Program manager, Is test) in Django admin.
+ * orgs itself, named <workspace>-pm-test / <workspace>-nm-test.
+ * Amended 2026-10-15 (ace#3014, Jon): ACE creates the HQ space too and is its
+ * Admin; the checklist asks only for HQ demo mode and Program manager on the
+ * program org, toggled on that org's own edit page, never Django admin. The
+ * edit page has no Is test toggle (owner, live 2026-10-15), so there is no
+ * Is test item at all.
  * The text goes to a human verbatim, so the tests pin every URL, the slug
  * substitution, and the absence of ACE-internal vocabulary.
  */
@@ -45,30 +47,44 @@ describe('renderCloneSetupChecklist', () => {
   it('carries every URL with all slugs substituted', () => {
     const t = renderCloneSetupChecklist(ALL);
     for (const url of [
-      'https://www.commcarehq.org/register/domain/',
       hqEnterpriseFlipUrl('connect-ace-spark'),
       'https://www.commcarehq.org/a/connect-ace-spark/settings/project/internal_subscription_management/',
-      'https://www.commcarehq.org/a/connect-ace-spark/settings/users/web/invite/',
-      'https://connect.dimagi.com/admin/organization/organization/?q=spark-pm-test',
-      'https://connect.dimagi.com/admin/organization/organization/?q=spark-nm-test',
+      'https://connect.dimagi.com/a/spark-pm-test/organization/',
     ]) expect(t).toContain(url);
+    // The holding org needs nothing from the operator.
+    expect(t).not.toContain('https://connect.dimagi.com/a/spark-nm-test/organization/');
     // ACE creates the orgs: the operator is never sent to create one or to add ace@.
     expect(t).not.toContain('/register/organization/');
     expect(t).not.toMatch(/Add Member/);
     expect(t).not.toMatch(/<[a-z-]+>/); // no placeholder left
-    expect(t).toContain('ace@dimagi-ai.com');
     expect(t).toContain('**Test or Demo Project**');
     expect(t).toContain('**Program manager**');
-    expect(t.match(/\*\*Is test\*\*/g)).toHaveLength(2);
+    // The org edit page has no Is test toggle (owner, live 2026-10-15): never ask for it.
+    expect(t).not.toMatch(/Is test/i);
     expect(t).toContain('**Then reply "done".**');
   });
 
-  it('keeps the HQ space and orgs in the order the operator decided: HQ, demo mode, then the two orgs', () => {
+  it('asks only for what ace@ cannot do: never to create the HQ space, invite ace@, or open Django admin (ace#3014)', () => {
+    for (const t of [
+      renderCloneSetupChecklist(ALL),
+      renderCloneSetupChecklist({ workspace: 'spark', hqDomain: 'connect-ace-spark' }),
+      renderCloneSetupChecklist({ ...ALL, skipConnect: true }),
+    ]) {
+      expect(t).not.toContain('/admin/organization');
+      expect(t).not.toContain('/admin/');
+      expect(t).not.toContain('register/domain');
+      expect(t).not.toContain('/settings/users/web/invite/');
+      expect(t).not.toMatch(/Invite ACE/i);
+      expect(t).not.toMatch(/\bCreate it\b/);
+      expect(t).not.toMatch(/Send me its slug/);
+      expect(t).toContain('ACE has already created the HQ project space');
+    }
+  });
+
+  it('keeps the order: HQ demo mode, then the program org', () => {
     const t = renderCloneSetupChecklist(ALL);
     const at = (s: string) => t.indexOf(s);
-    expect(at('/register/domain/')).toBeLessThan(at('internal_subscription_management'));
-    expect(at('internal_subscription_management')).toBeLessThan(at('?q=spark-pm-test'));
-    expect(at('?q=spark-pm-test')).toBeLessThan(at('?q=spark-nm-test'));
+    expect(at('internal_subscription_management')).toBeLessThan(at('/a/spark-pm-test/organization/'));
   });
 
   it('never asks for a Connect slug — ACE names the orgs', () => {
@@ -78,12 +94,9 @@ describe('renderCloneSetupChecklist', () => {
     expect(t).toContain('**Then reply "done".**');
   });
 
-  it('suggests connect-ace-<workspace> for an unknown HQ space and asks for its slug', () => {
-    const t = renderCloneSetupChecklist({ workspace: 'spark' });
-    expect(t).toContain('Project Name `connect-ace-spark`');
-    expect(t).toContain('https://www.commcarehq.org/a/<hq-space>/settings/project/internal_subscription_management/');
-    expect(t).toContain('https://www.commcarehq.org/a/<hq-space>/settings/users/web/invite/');
-    expect(t).toContain('the HQ project space slug');
+  it('refuses to print without the HQ space: ACE creates it first and passes the returned slug', () => {
+    expect(() => renderCloneSetupChecklist({ workspace: 'spark' })).toThrow(/commcare_create_domain, hr_name connect-ace-spark/);
+    expect(suggestedHqDomain('spark')).toBe('connect-ace-spark');
     expect(suggestedHqDomain('a-very-long-workspace-name')).toHaveLength(25);
     expect(suggestedHqDomain('a-very-long-workspace-name')).not.toMatch(/-$/);
   });
@@ -91,11 +104,11 @@ describe('renderCloneSetupChecklist', () => {
   it('drops the Connect items when the clone keeps the shared Connect orgs', () => {
     const t = renderCloneSetupChecklist({ workspace: 'spark', hqDomain: 'connect-ace-spark', skipConnect: true });
     expect(t).not.toContain('connect.dimagi.com');
-    expect(t).toContain('/settings/users/web/invite/');
+    expect(t).toContain('internal_subscription_management');
   });
 
   it('speaks to the operator, not in ACE-internal vocabulary', () => {
-    for (const t of [renderCloneSetupChecklist(ALL), renderCloneSetupChecklist({ workspace: 'spark' })]) {
+    for (const t of [renderCloneSetupChecklist(ALL), renderCloneSetupChecklist({ workspace: 'spark', hqDomain: 'connect-ace-spark', skipConnect: true })]) {
       for (const bad of [/tenancy/i, /run_state/, /\bphase\b/i, /\b4[ab]\b/, /\batoms?\b/i, /kept-shared/, /keep-shared/, /holding_org/, /pm_org|nm_org/, /\bPM\b/, /\bNM\b/, /\bMCP\b/, /\bPAT\b/, /CommCare Connect/, /Step \d/]) {
         expect(t, String(bad)).not.toMatch(bad);
       }

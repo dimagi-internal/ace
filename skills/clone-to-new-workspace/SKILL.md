@@ -32,28 +32,33 @@ Spec: ace-web `docs/specs/2026-09-28-clone-and-release-design.md` § E.
 - **Redirect the source's links.** That is an explicit, opt-in item of the
   release plan (`--forward-source`), and validation refuses it for a source in
   another workspace (every clone's case) unless the operator overrides it.
-- **Create the HQ project space, turn on its demo mode, or flip the two
-  staff-only Connect org settings.** The operator does those, from one checklist
-  ACE prints at the start (Step 0.6) — operator decision, Jon 2026-10-02: *"When
-  we are doing a clone, have me create the HQ space and turn on demo mode, and
-  then have me manually create a PM and NM org for you to use, and give me clear
-  URLs to click to do all of this efficiently."* Demo mode ("Test or Demo
-  Project") is superuser-only, so a human is always on the path; doing it up
-  front, in one sitting, replaces a clone that stalled midway on each item in
-  turn. ACE no longer calls `commcare_create_domain` here.
-  **The Connect orgs themselves are ACE's since 2026-10-07** (Step 0.6b):
-  ace@ holds `all_org_profile_edit_access` (dimagi/commcare-connect#1580), so
-  ACE creates `<to>-pm-test` and `<to>-nm-test` and is their Admin. That
-  permission cannot set **Program manager** (`OrganizationChangeForm` drops the
-  field without staff `ORG_MANAGEMENT_SETTINGS_ACCESS` — absent on ace-pm-org's
-  home for ace@, live 2026-10-07) and nothing outside Django admin sets **Is
-  test** (`AdminOrganizationForm`), so those two ticks stay on the checklist,
-  one Django admin page per org.
+- **Turn on the HQ space's demo mode, or flip the two staff-only Connect org
+  settings.** The operator does those, from one checklist ACE prints at the
+  start (Step 0.6). Demo mode ("Test or Demo Project") is superuser-only, so a
+  human is always on the path; doing it up front, in one sitting, replaces a
+  clone that stalled midway on each item in turn. **The checklist asks only for
+  what ace@ cannot do** (owner, 2026-10-15, ace#3014: *"for 1, you should create
+  it and make yourself admin, you just tell me to fix the subscription after
+  you've created it (that's how this should work in general). for 2, you
+  shouldn't be telling me to go through django admin, there is a proper edit
+  page I just need to toggle for you"*). So **ACE creates the HQ space itself**
+  (Step 0.6a, `commcare_create_domain`; the creator is its Admin, so there is no
+  invitation), and **ACE creates the Connect orgs itself** (Step 0.6b; ace@
+  holds `all_org_profile_edit_access`, dimagi/commcare-connect#1580) and is
+  their Admin. ace@'s view of an org's edit page omits **Program manager**
+  (`OrganizationChangeForm` drops staff-only fields without
+  `ORG_MANAGEMENT_SETTINGS_ACCESS`, live 2026-10-07), so the operator toggles
+  it on the program org's edit page,
+  `https://connect.dimagi.com/a/<org>/organization/` — never Django admin.
+  **There is no "Is test" item**: that edit page has no Is test toggle (owner,
+  live, 2026-10-15), the clone of `dimagi-team/noora-health/20261015-1129` went
+  on without it, and no read-back in 0.7 ever needed it. Do not send the
+  operator to Django admin for it.
 - **Create an OCS team.** The bot is reviewed by its public link (4d).
 
-What stays ACE's job: the target workspace, its Drive root and its default
-tenancy (Step 0), accepting the operator's invitations to ace@ and verifying
-every checklist item (Step 0.7), and every rebuild (Step 4).
+What stays ACE's job: the target workspace, its Drive root, the HQ space, the
+two Connect orgs and its default tenancy (Step 0), verifying every checklist
+item (Step 0.7), and every rebuild (Step 4).
 
 ## Inputs
 
@@ -62,9 +67,9 @@ every checklist item (Step 0.7), and every rebuild (Step 4).
 - `--to <workspace>` — target workspace. Its **default tenancy** (ace-web
   Workspace Settings / `PATCH /api/workspaces/<slug>` `default_tenancy`) says
   where the rebuilt assets go.
-- `--hq-domain <slug>` — the HQ project space the operator created (checklist
-  item 1). Unknown on a first call: the checklist then suggests
-  `connect-ace-<to>` (HQ caps names at 25 chars) and asks for the slug.
+- `--hq-domain <slug>` — the HQ project space. Normally omitted: ACE creates
+  `connect-ace-<to>` (HQ caps names at 25 chars) in Step 0.6a and uses the slug
+  HQ returns. Pass it only to reuse a space that already exists.
 - `--pm-org <slug>` / `--nm-org <slug>` — the two Connect orgs: the one that
   runs the program, and the one that holds the opportunity. **Default:
   `<to>-pm-test` / `<to>-nm-test`** (naming convention, Jon 2026-10-07), which
@@ -86,9 +91,9 @@ owner must be an **owner of both** workspaces.
 
 ## Step 0 — Target workspace, operator setup, verified tenancy
 
-The workspace is ACE's to create (0.1–0.4), and so are the two Connect orgs
-(0.6b). The HQ space and the two staff-only org settings are the operator's
-(0.6); ACE accepts its HQ invitation, verifies every item (0.7), and only then
+The workspace is ACE's to create (0.1–0.4), and so are the HQ space (0.6a)
+and the two Connect orgs (0.6b). Only HQ demo mode and the two staff-only org
+settings are the operator's (0.6); ACE verifies every item (0.7), and only then
 writes them into the workspace's default tenancy (0.8).
 Skip any part that already holds.
 
@@ -124,25 +129,40 @@ Skip any part that already holds.
    (`GET …/api/w/<from>/opps/<opp>/tenancy`): that is the shared tenancy, which
    Step 1.3 refuses (the Connect pair excepted under `--keep-shared connect`).
 6. **Operator setup checklist — print it and stop.** Unless every slug is
-   known AND 0.7 passes for it, print the checklist **verbatim** — the script
-   is the single source of its URLs; never paraphrase or re-derive them:
+   known AND 0.7 passes for it, run 0.6a and 0.6b first (so the space and the
+   orgs exist when the operator opens their pages), then print the checklist
+   **verbatim** — the script is the single source of its URLs; never
+   paraphrase or re-derive them:
 
    ```bash
    npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-setup-checklist.ts" print --workspace <to> \
-     [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
+     --hq-domain <hq> [--pm-org <slug>] [--nm-org <slug>] [--skip-connect]
    ```
 
-   (`--skip-connect` only with `--keep-shared connect`.) It is one message, in
-   the operator's order: (1) create the HQ space at
-   `https://www.commcarehq.org/register/domain/`, turn on demo mode (Test or
-   Demo Project, superuser), invite `ace@dimagi-ai.com` as Admin; (2) on each
-   org's Connect Django admin page
-   (`/admin/organization/organization/?q=<org>`), tick **Program manager** on
-   `<to>-pm-test` and **Is test** on both — each with its exact URL. **Run 0.6b
-   first** so the orgs exist when the operator opens those pages. Send it to
-   the operator (in a turn: the reply on the thread that asked for the clone)
-   and **stop**: no ace-web copy, no rebuild. The operator replies with the HQ
-   slug (when it was unknown) and "done"; rerun with it as a flag.
+   (`--skip-connect` only with `--keep-shared connect`; `--hq-domain` is
+   required — it is the slug 0.6a recorded.) It is one message asking only for
+   what ace@ cannot do: (1) turn on demo mode (Subscription Type → Test or Demo
+   Project, HQ superuser) at
+   `https://www.commcarehq.org/a/<hq>/settings/project/internal_subscription_management/`;
+   (2) on the program org's Connect edit page,
+   `https://connect.dimagi.com/a/<to>-pm-test/organization/`, toggle **Program
+   manager** — with its exact URL. Nothing for `<to>-nm-test`. It never asks the operator to create the space, invite ace@, or open
+   Django admin. Send it to the operator (in a turn: the reply on the thread
+   that asked for the clone) and **stop**: no ace-web copy, no rebuild. The
+   operator replies "done"; rerun with the same flags.
+
+   **6a. Create the HQ space (ACE, no human).** Skip when `--hq-domain` (or the
+   tenancy from 0.5) names a space whose `my_role` read-back already says
+   ace@ is Admin (`clone-setup-checklist.ts verify --live --workspace <to> --hq-domain <hq>` →
+   `hq-admin` ok). Otherwise:
+   `commcare_create_domain({hr_name: "connect-ace-<to>"})` — at most 25
+   characters, cut and with no trailing hyphen
+   (`suggestedHqDomain` in `lib/clone-setup-checklist.ts`). **Record the
+   returned `domain`** and use it as `<hq>` from here on; HQ derives the slug
+   from the name, so never assume they match. ace@ is the creator, so it is the
+   space's Admin with no invitation. **Stop** on "already taken" — that name is
+   someone else's space; report it and never adopt it. Every create is
+   permanent, so never create probe or throwaway spaces.
 
    **6b. Create the two Connect orgs (ACE, no human).** Skip with `--keep-shared
    connect`.
@@ -162,36 +182,37 @@ Skip any part that already holds.
    report it; do not proceed under the suffixed slug). Connect has no org
    delete yet (#1580 defers it), so every create is permanent — never create
    probe or throwaway orgs.
-7. **Accept ACE's invitations, then verify.**
+7. **Accept any invitations, then verify.**
 
    ```bash
    npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-setup-checklist.ts" accept-invites --workspace <to> \
      --hq-domain <hq> --pm-org <pm> --nm-org <nm>      # or --skip-connect
    ```
 
-   **ace@ joins by itself.** HQ and Connect invitations both need the invitee
-   to accept, and ace@ can: the script finds each invitation in ace@'s mailbox
-   (gog, identity from `config/agent.json`; HQ: *"Invitation from … to join
-   CommCareHQ"*, link `/a/<hq>/settings/users/join/<uuid>/`; Connect: *"… has
-   invited you to join … on Connect"*, link
-   `/a/<org>/organization/invite/<token>/`) and accepts it with ACE's own
-   session (HQ: an authenticated POST by the invited user; Connect: an
-   authenticated GET). `no-invitation` means the operator has not sent it yet
-   (item 1c); `already-used` is fine — the read-backs decide. The Connect orgs
-   ACE created itself need no invitation; the script only looks for one when
-   ace@ is not already their Admin (orgs passed by flag that someone else made). It then
+   **Normally there is nothing to accept.** ACE created the HQ space (0.6a)
+   and both orgs (0.6b), so it is already their Admin, and the script looks
+   for an invitation only when the read-back says ace@ is NOT (a space or org
+   passed by flag that someone else made). For those, ace@ joins by itself:
+   the script finds the invitation in ace@'s mailbox (gog, identity from
+   `config/agent.json`; HQ: *"Invitation from … to join CommCareHQ"*, link
+   `/a/<hq>/settings/users/join/<uuid>/`; Connect: *"… has invited you to join
+   … on Connect"*, link `/a/<org>/organization/invite/<token>/`) and accepts it
+   with ACE's own session (HQ: an authenticated POST by the invited user;
+   Connect: an authenticated GET). `no-invitation` means nobody invited ace@ to
+   a space it did not create; `already-used` is fine — the read-backs decide,
+   never the presence of an invitation. It then
    runs the session read-backs: HQ `/a/<hq>/settings/users/my_role/` →
    `is_domain_admin: true` (the space exists and ace@ is Admin; 404 = no such
    space); Connect `/a/<org>/organization/member_table` → 200 for each org
    (ace@ is Admin — admin-gated; NOT the org home, which since #1580 answers 200
    for every org ace@ can profile-edit, i.e. all of them) and
    `/a/<pm>/program/init/` → 200 (Program manager on; 404 really means off).
-   **Is test cannot be read back by ace@** (it is only on the Django admin
-   page); report it as the operator's tick, not as verified. Then the MCP read-backs:
+   There is no Is test check: the operator cannot set it on the edit page and
+   nothing downstream needs it (ace#3014). Then the MCP read-backs:
    - `commcare_get_subscription(domain: <hq>)` → `is_paid_edition: true`
-     (demo mode on — item 1b);
+     (demo mode on — item 1a);
    - `commcare_list_apps(domain: <hq>)` → 200 (`HQ_API_NOT_IN_PLAN` = still on
-     Free — item 1b);
+     Free — item 1a);
    - `connect_list_programs(organization_slug: <pm>)` and
      `connect_list_opportunities(organization_slug: <nm>)` succeed.
 
@@ -348,8 +369,8 @@ reviewer to a workspace they cannot open.
 
 ### 4a. HQ
 
-1. **The space is the operator's** (Step 0.6, item 1) — ACE does not create
-   it. Re-read it here, because 3b and 4b depend on it:
+1. **ACE created the space in Step 0.6a; its demo mode is the operator's**
+   (checklist item 1a). Re-read it here, because 3b and 4b depend on it:
    `commcare_get_subscription(domain: <hq_domain>)` must read
    `is_paid_edition: true` (Test or Demo Project puts it on Enterprise, not
    invoiced — sanctioned by accounts, Gillian Javetski, 2026-10-02), and
@@ -357,7 +378,7 @@ reviewer to a workspace they cannot open.
    `clone.hq.plan: {edition, is_paid_edition}` and `clone.hq.api: enabled`
    from the reads, never from the operator's "done". Either read failing means
    Step 0.7 was skipped or the space changed: **stop** and send the operator
-   checklist item 1b — the demo-mode step, verbatim: `npx tsx
+   checklist item 1a — the demo-mode step, verbatim: `npx tsx
    "$CLAUDE_PLUGIN_ROOT/scripts/release-readiness.ts" hq-flip-steps --domain
    <hq_domain>`. Mechanism and what NOT to do instead:
    `playbook/integrations/commcare-api.md § New project spaces`. On a space
