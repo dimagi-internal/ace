@@ -125,6 +125,13 @@ describe('assessFrame', () => {
   it('a loading screen is near-empty', () => {
     expect(d('learn-install')).toContain('near-empty');
   });
+  it('a module tap\'s before/intermediate frames are navigation; its after frame is the lesson (ace#3001)', () => {
+    expect(assessFrame({ step: 'learn-tap-module-before-1. The program and your role' })).toContain('navigation');
+    expect(assessFrame({ step: 'learn-tap-module-intermediate-1. The program and your role' })).toContain('navigation');
+    expect(assessFrame({ step: 'learn-tap-module-after-1. The program and your role' })).toEqual([]);
+    // An `after` frame that DOES land on a list is still caught by its shows line.
+    expect(assessFrame({ step: 'learn-tap-module-after-X', shows: 'Module X form list with a single tile' })).toContain('navigation');
+  });
   it('a lesson\'s "finished" landing is navigation (its shows says "No lesson content")', () => {
     expect(d('journey-learn-m2-register-finished')).toContain('navigation');
     expect(d('journey-learn-m3-record-finished')).toContain('navigation');
@@ -194,8 +201,40 @@ describe('bindDeckFrames on the real deck', () => {
     );
   });
 
-  it('merges the six Learn modules no frame can illustrate into one slide over the Learn home grid', () => {
-    const merged = byId(BOUND, 'learn-other-sections') as { layout: string; image: string; body: string; notes: string };
+  it('binds each Learn module slide to the screen its module tap lands on (ace#3001)', () => {
+    // `learn-tap-module-after-<label>` is the lesson's first content screen —
+    // committed frame `frames/learn-tap-module-after-Recording a meeting.png`
+    // reads "When to fill in a record". Before ace#3001 every one of these was
+    // classed navigation and the six slides were merged away.
+    for (const [id, label] of [
+      ['learn-your-role-in-this-pilot', 'Your role in this pilot'],
+      ['learn-registering-yourself-and-your-community', 'Registering yourself and your community'],
+      ['learn-recording-a-meeting', 'Recording a meeting'],
+      ['learn-counting-attendance-and-participation', 'Counting attendance and participation'],
+      ['learn-steps-and-savings', 'Steps and savings'],
+      ['learn-how-payment-works', 'How payment works'],
+    ]) {
+      expect(aliasOf(id), id).toBe(`@learn-tap-module-after-${label}`);
+    }
+    // The form-list frame the spec shipped on slide 17 is still replaced.
+    expect(report.actions).toContainEqual(
+      expect.objectContaining({
+        kind: 'replaced',
+        slide: 'learn-registering-yourself-and-your-community',
+        from: 'journey-learn-m2-register-finished',
+        because: ['navigation'],
+      }),
+    );
+    expect(byId(BOUND, 'learn-other-sections')).toBeUndefined();
+    // This deck numbers its module frames 0-based (`m0`..`m7`); those keep binding.
+    expect(aliasOf('learn-before-you-start')).toBe('@journey-learn-m0-q1-answered');
+    expect(aliasOf('learn-final-assessment')).toBe('@journey-learn-m7-q12-last-item-result');
+  });
+
+  it('merges the Learn modules no frame can illustrate into one slide over the Learn home grid', () => {
+    const afters = new Set(POOL.filter((f) => f.step.startsWith('learn-tap-module-after-')).map((f) => f.step));
+    const { spec } = bindDeckFrames(SPEC, { pool: POOL, stats: STATS, reject: afters });
+    const merged = byId(spec, 'learn-other-sections') as { layout: string; image: string; body: string; notes: string };
     expect(merged.layout).toBe('walkthrough');
     expect(merged.image).toBe('@learn-launch-suite-root');
     for (const label of ['Your role in this pilot', 'Registering yourself and your community', 'How payment works']) {
@@ -204,11 +243,11 @@ describe('bindDeckFrames on the real deck', () => {
     // Nothing the six slides said is lost — it moves to the speaker notes.
     expect(merged.notes).toContain('Speakers can never be more than attendees.');
     for (const id of ['learn-your-role-in-this-pilot', 'learn-recording-a-meeting', 'learn-registering-yourself-and-your-community']) {
-      expect(byId(BOUND, id)).toBeUndefined();
+      expect(byId(spec, id)).toBeUndefined();
     }
     // The siblings that DO have frames keep them.
-    expect(aliasOf('learn-before-you-start')).toBe('@journey-learn-m0-q1-answered');
-    expect(aliasOf('learn-final-assessment')).toBe('@journey-learn-m7-q12-last-item-result');
+    expect((byId(spec, 'learn-before-you-start') as { image?: string }).image).toBe('@journey-learn-m0-q1-answered');
+    expect((byId(spec, 'learn-final-assessment') as { image?: string }).image).toBe('@journey-learn-m7-q12-last-item-result');
   });
 
   it('folds a screen slide with no frame of its screen into its neighbour\'s notes', () => {
@@ -237,8 +276,16 @@ describe('bindDeckFrames on the real deck', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('asks for a `shows:` on the one newly placed frame nobody described', () => {
-    expect(report.needs_shows).toEqual(['learn-launch-home-tiles']);
+  it('asks for a `shows:` on every newly placed frame nobody described', () => {
+    expect(report.needs_shows).toEqual([
+      'learn-launch-home-tiles',
+      'learn-tap-module-after-Your role in this pilot',
+      'learn-tap-module-after-Registering yourself and your community',
+      'learn-tap-module-after-Recording a meeting',
+      'learn-tap-module-after-Counting attendance and participation',
+      'learn-tap-module-after-Steps and savings',
+      'learn-tap-module-after-How payment works',
+    ]);
   });
 
   it('round-trips as a valid spec, formatting budgets included', () => {
@@ -255,5 +302,52 @@ describe('bindDeckFrames on the real deck', () => {
     const { spec } = bindDeckFrames(SPEC, { pool: POOL, stats: STATS, reject: new Set(['learn-launch-home-tiles']) });
     expect((byId(spec, 'install-learn') as { image?: string } | undefined)?.image).not.toBe('@learn-launch-home-tiles');
     expect(checkDeckScreenBacking(spec, { pool: POOL, stats: STATS }).pass).toBe(true);
+  });
+});
+
+describe('a Learn-module slide binds a frame from the journey-learn recipe (ace#3001)', () => {
+  // Real step names from smallholder-seasonal/20261015-1402's capture manifest:
+  // the recipe numbers module frames 1-based and zero-padded (`m01`..`m12`),
+  // and the module tap writes before / intermediate / after frames.
+  const L1 = '1. The program and your role';
+  const L2 = '2. Planning the season';
+  const manifest = {
+    captures: [
+      { step: `learn-tap-module-before-${L1}`, file_id: 'SMALLHOLDER_FRAME_0000001' },
+      { step: `learn-tap-module-intermediate-${L1}`, file_id: 'SMALLHOLDER_FRAME_0000002' },
+      { step: `learn-tap-module-after-${L1}`, file_id: 'SMALLHOLDER_FRAME_0000003' },
+      { step: 'journey-learn-m01-finished', file_id: 'SMALLHOLDER_FRAME_0000004' },
+      { step: `learn-tap-module-before-${L2}`, file_id: 'SMALLHOLDER_FRAME_0000005' },
+      { step: 'journey-learn-m02-q1-answered', file_id: 'SMALLHOLDER_FRAME_0000006' },
+      { step: 'journey-learn-m02-finished', file_id: 'SMALLHOLDER_FRAME_0000007' },
+    ],
+  };
+  const pool = buildFramePool({ specManifest: { common: {}, opp: {} }, sources: [{ run_id: '20261015-1402', manifest }] });
+  const learnSlide = (id: string, title: string) => ({ id, layout: 'content' as const, title, body: 'What this lesson covers.' });
+  const spec = {
+    ...SPEC,
+    manifest: { common: {}, opp: {} },
+    modules: [
+      {
+        id: 'your-opportunity',
+        title: 'Your Opportunity',
+        slides: [{ id: 'learn-divider', layout: 'section', title: 'Learn' }, learnSlide('learn-m1', L1), learnSlide('learn-m2', L2)],
+      },
+    ],
+  } as unknown as TrainingDeckSpec;
+  const { spec: bound } = bindDeckFrames(spec, { pool });
+  const image = (id: string) => (byId(bound, id) as { image?: string } | undefined)?.image;
+
+  it("a slide titled with the exact module label gets the lesson's first content screen", () => {
+    expect(image('learn-m1')).toBe(`@learn-tap-module-after-${L1}`);
+  });
+
+  it('module 2 owns the `m02` frames — 1-based, zero-padded', () => {
+    expect(image('learn-m2')).toBe('@journey-learn-m02-q1-answered');
+  });
+
+  it('no module slide is merged away', () => {
+    expect(byId(bound, 'learn-other-sections')).toBeUndefined();
+    expect(checkDeckScreenBacking(bound, { pool }).pass).toBe(true);
   });
 });

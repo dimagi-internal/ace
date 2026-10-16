@@ -256,9 +256,17 @@ export type FrameDefect = 'near-empty' | 'keyboard' | 'navigation';
  * nothing about registering"). The `m1/m3/m4/m5/m6` `-finished` frames are the
  * same one-tile list (committed fixture
  * `frames/journey-learn-m3-record-finished.png`).
+ *
+ * `learn-tap-module-after-<label>` is NOT navigation (ace#3001): it is the
+ * screen the module tap lands on, the lesson's first content screen. Evidence:
+ * the committed spark frame `frames/learn-tap-module-after-Recording a
+ * meeting.png` ("When to fill in a record"), and smallholder-seasonal/
+ * 20261015-1402, whose `shows:` lines for modules 1, 2 and 8 describe lesson
+ * content. `before` / `intermediate` are the module and form lists. An `after`
+ * frame that does land on a list is still caught by `NAVIGATION_SHOWS`.
  */
 const NAVIGATION_STEP =
-  /(^learn-tap-module-|-finished$|-submitted$|-module-list|-form-list|-form-row-|^deliver-form-walk-module-)/;
+  /(^learn-tap-module-(?:before|intermediate)-|-finished$|-submitted$|-module-list|-form-list|-form-row-|^deliver-form-walk-module-)/;
 const NAVIGATION_SHOWS = /\b(form list|module list|single tile|one-row form list|no lesson content)\b/i;
 const NEAR_EMPTY_SHOWS = /\b(loading|downloading|blank screen|spinner)\b/i;
 const KEYBOARD_SHOWS = /\bkeyboard (is )?(open|up|showing|visible|covers)\b/i;
@@ -300,7 +308,7 @@ export function slideSections(spec: Pick<TrainingDeckSpec, 'modules'>): Map<Slid
 /**
  * Learn module labels in APP order, read off the capture recipe's own step
  * names (`learn-tap-module-{before,after,intermediate}-<label>`). The k-th
- * label owns the `journey-learn-m<k>-*` frames. Pass `explicit` (the Learn app
+ * label owns the `journey-learn-m<k + base>-*` frames (`learnModuleBase`). Pass `explicit` (the Learn app
  * summary's list) when you have it; it wins.
  */
 export function learnModuleLabels(pool: readonly PoolFrame[], explicit?: readonly string[]): string[] {
@@ -311,6 +319,25 @@ export function learnModuleLabels(pool: readonly PoolFrame[], explicit?: readonl
     if (m && !out.includes(m[1])) out.push(m[1]);
   }
   return out;
+}
+
+/**
+ * Module number of a `journey-learn-m<N>-*` step, or null. Recipes name these
+ * two ways (ace#3001): spark-facilitator/20260925-1536 wrote 0-based unpadded
+ * `m0`..`m7`; the journey-learn recipe on smallholder-seasonal/20261015-1402
+ * wrote 1-based zero-padded `m01`..`m12`. `parseInt` absorbs the padding.
+ */
+const learnModuleNumber = (step: string): number | null => {
+  const m = /^journey-learn-m(\d+)-/.exec(step);
+  return m ? parseInt(m[1], 10) : null;
+};
+
+/**
+ * The number the FIRST label's frames carry: 0 when any frame is `m0`/`m00`,
+ * else 1. Label k (0-based) owns `journey-learn-m<k + base>-*`.
+ */
+export function learnModuleBase(pool: readonly PoolFrame[]): 0 | 1 {
+  return pool.some((f) => learnModuleNumber(f.step) === 0) ? 0 : 1;
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -503,6 +530,7 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
   const needsShows = new Set<string>();
   const idx = poolIndex(opts.pool);
   const labels = learnModuleLabels(opts.pool, opts.learnModuleLabels);
+  const moduleBase = learnModuleBase(opts.pool);
   const reject = opts.reject ?? new Set<string>();
   const defectsOf = (f: PoolFrame) => assessFrame(f, opts.stats?.get(f.file_id));
 
@@ -568,7 +596,7 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
       const label = labels[k];
       const mine = opts.pool
         .filter((f) => f.surface === 'learn')
-        .filter((f) => f.step.startsWith(`journey-learn-m${k}-`) || f.step.endsWith(label))
+        .filter((f) => learnModuleNumber(f.step) === k + moduleBase || f.step.endsWith(label))
         .filter((f) => !cited.has(f.file_id) && usable(f, kind));
       mine.sort(rank(defectsOf));
       return mine[0] ? { f: mine[0], score: 1 } : undefined;
