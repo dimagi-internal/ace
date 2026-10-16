@@ -59,9 +59,14 @@
  *                          against linting against a partial stylesheet.
  *   --json <path>          Write the full machine-readable report here.
  *
+ * It also runs a static count-plural lint (ace#2248, `lib/render-count-plurals.ts`):
+ * `n + " were committee meetings"` renders "1 were committee meetings" on a
+ * funder-facing panel. Branch on the singular before upload.
+ *
  * Exit codes:
- *   0  every utility resolves
- *   1  at least one utility does not resolve  (do NOT upload)
+ *   0  every utility resolves and every count phrase carries its singular
+ *   1  a utility does not resolve, or a count is concatenated onto a
+ *      hard-coded plural  (do NOT upload)
  *   2  could not resolve a stylesheet, or a usage error
  *
  * Exit 2 is deliberately distinct from exit 1: a stylesheet that failed to
@@ -77,6 +82,8 @@ import {
   extractStylesheetHrefs,
   renderResolutionReport,
 } from '../lib/tailwind-utility-resolution.js';
+
+import { checkCountPlurals, renderCountPluralReport } from '../lib/render-count-plurals.js';
 
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
@@ -210,6 +217,12 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // ace#2248 — static, needs no stylesheet, so it runs (and is reported) even
+  // when the stylesheet below cannot be loaded.
+  const plurals = checkCountPlurals(source);
+  console.log(renderCountPluralReport(plurals.findings));
+  console.log('');
+
   let css: string;
   let sources: string[];
   try {
@@ -254,7 +267,7 @@ async function main(): Promise<void> {
     console.log(`\nwrote ${args.jsonOut}`);
   }
 
-  process.exit(report.missing.length > 0 ? 1 : 0);
+  process.exit(report.missing.length > 0 || !plurals.pass ? 1 : 0);
 }
 
 main().catch((err) => {

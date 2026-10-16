@@ -333,9 +333,11 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/release-run-shares-only.test.ts': { issues: ['ace#2620'] },
   'test/skills/app-media-coverage-per-app-paths.test.ts': { issues: ['ace#2142'], observed: 'smallholder-seasonal/20261014-0859' },
   'test/skills/clone-labs-release-agree.test.ts': { issues: ['ace#3020'], observed: 'noora-health/20261015-1129' },
+  'test/skills/share-run-access-claims.test.ts': { issues: ['ace#2525'], observed: 'spark-facilitator/20260926-1413' },
   'test/skills/solicitation-review-award-gate.test.ts': { issues: ['ace#2631'], observed: 'spark-facilitator/20261001-2208' },
   'test/skills/work-order-period-of-performance-producer.test.ts': { issues: ['ace#1781', 'ace#1092'], observed: 'hh-poverty-targeting/20260828-0702' },
   'test/skills/work-order-template-token-contract.test.ts': { issues: ['ace#1521', 'ace#1004', 'ace#1371', 'ace#819'] },
+  'test/skills/reply-all-thread-id.test.ts': { issues: ['ace#2391'], observed: 'poverty-graduation/20260915-1518' },
   'test/skills/worker-facing-no-widget-url.test.ts': { issues: ['ace#1669', 'ace#1303', 'ace#1026'], observed: 'hh-poverty-targeting/20260824-1404' },
 };
 

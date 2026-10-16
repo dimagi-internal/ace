@@ -15,7 +15,11 @@ record thread_id into the run's comms-log so inbound triage can route the reply
 
 Usage:
   bin/ace-email --to "a@x,b@y" [--cc "c@z"] --subject "Re: ..." \\
-      --body-file body.txt [--reply-to-message-id <id>] [--reply-all] [--dry-run]
+      --body-file body.txt [--reply-to-message-id <id>] [--dry-run]
+
+  # Replying to everyone on a thread — pass the THREAD id, never --reply-to-message-id
+  # (a thread id is its first message's id, so that pair replies to the thread HEAD — ace#2391):
+  bin/ace-email --reply-all --thread-id <thread-id> --subject "Re: ..." --body-file body.txt
 
   # When the subject comes from INBOUND mail, pass it as a FILE, never inline:
   bin/ace-email --to "a@x" --subject-file subj.txt --body-file body.txt
