@@ -1,0 +1,42 @@
+{
+  "_provenance": "Verbatim mcp__nova__get_module + mcp__nova__get_form fields, read 2026-10-16 from saved Nova Learn app 56057841-95cd-4e72-8e51-06368faf010c (kaduna-graduation/20261015-1411). Two of the 14 learn_module modules (one per role) plus the certification module; each form's `connect` block merged in from get_form, `fields` arrays dropped. ace#3036.",
+  "modules": [
+    {
+      "uuid": "86ee32c5-e290-4194-b67f-99b86b467bb0",
+      "name": "FLW 1. The programme and your role",
+      "parent_module_uuid": null,
+      "display_condition": "(user('kgrad_role') = 'FLW')",
+      "forms": [
+        {
+          "uuid": "56601ecf-3bf5-48e4-bb6f-2fd744cd69db",
+          "id": "flw_1_the_programme_and_your_role",
+          "name": "FLW 1. The programme and your role",
+          "connect": { "learn_module": { "id": "f1_role", "name": "FLW 1. The programme and your role", "time_estimate": 1 } }
+        }
+      ]
+    },
+    {
+      "uuid": "3bb19b04-f7c1-47de-afcb-bb202d3c10d7",
+      "name": "Enumerator 1. Your role",
+      "parent_module_uuid": null,
+      "display_condition": "(user('kgrad_role') = 'enumerator')",
+      "forms": [
+        {
+          "uuid": "03ebfb32-be2b-4010-ae7d-b5fedb895f80",
+          "id": "enumerator_1_your_role",
+          "name": "Enumerator 1. Your role",
+          "connect": { "learn_module": { "id": "e1_role", "name": "Enumerator 1. Your role", "time_estimate": 1 } }
+        }
+      ]
+    },
+    {
+      "uuid": "a7e3fc98-211a-4e98-91c2-b93abf55747d",
+      "name": "Certification assessment",
+      "parent_module_uuid": null,
+      "display_condition": "any((user('kgrad_role') = 'FLW'), (user('kgrad_role') = 'enumerator'))",
+      "forms": [
+        { "uuid": "e819a19a-b692-409b-aca9-854819164f9c", "name": "Certification assessment" }
+      ]
+    }
+  ]
+}

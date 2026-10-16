@@ -74,17 +74,17 @@ None pre-named — fixture only.
 |---|---|---|
 | learn_passing_score | 100 | read: Learn App Specification |
 | assessment_items | 6 | read: Learn App Specification |
-| payment_rate_min | 1.00 | read: Budget |
-| payment_rate_max | 2.50 | read: Budget |
+| payment_rate_min | 100 | read: Budget |
+| payment_rate_max | 250 | read: Budget |
 | daily_cap_per_flw | 5 | read: FLW Requirements |
 | total_cap_per_flw | 30 | read: FLW Requirements |
 | flw_count_min | 2 | read: FLW Requirements |
 | expected_reach_max | 30 | read: Target Population |
 | cap_rationale | Deliberately non-binding: the per-FLW cap is a fraud ceiling, not a throughput target, and is sized for the largest cohort the program might later run. | derived: total_cap_per_flw, flw_count_min, expected_reach_max |
 | entity_id_grain | worker username + follow-up visit date | read: Deliver App Specification |
-| llo_payment_per_visit | 0.50 | read: Budget |
+| llo_payment_per_visit | 50 | read: Budget |
 | campaign_target_visits | 30 | read: Target Population |
-| total_budget_usd | 90 | derived: campaign_target_visits, payment_rate_max, llo_payment_per_visit |
+| total_budget_usd | 4500 | derived: campaign_target_visits, payment_rate_max, llo_payment_per_visit |
 | opportunity_start_date | 2026-06-01 | read: Timeline |
 | opportunity_end_date | 2026-06-30 | read: Timeline |
 | verification_flags | photo_required, gps_within_radius | read: Evidence Model |

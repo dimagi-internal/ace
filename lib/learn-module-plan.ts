@@ -61,7 +61,9 @@ export interface LearnModule {
 export type LearnGapCode =
   | 'framework-component-without-pdd'
   | 'referenced-component-absent'
-  | 'inventory-unavailable';
+  | 'inventory-unavailable'
+  /** A hidden module still counts toward Connect Learn completion (ace#3036). */
+  | 'hidden-modules-block-learn-completion';
 
 export interface LearnGap {
   code: LearnGapCode;
@@ -164,6 +166,22 @@ export function planLearnModules(input: LearnPlanInput): LearnModulePlan {
 
   const hidden = modules.filter((m) => !m.shown);
   if (hidden.length > 0) {
+    // Built-but-hidden is legitimate for the APP and fatal for Connect: Learn
+    // completion is completed / EVERY learn module in the app, and Learn is
+    // complete only at 100% — a hidden module still counts, so no worker of this
+    // model can complete Learn while it carries a learn-module marker
+    // (config/platform-constraints.yaml `learn-completion-counts-every-module`;
+    // dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:398-406;
+    // ace#3036, 9/14 = 64.3% on kaduna-graduation/20261015-1411).
+    gaps.push({
+      code: 'hidden-modules-block-learn-completion',
+      components: hidden.map((m) => m.component_id),
+      detail:
+        `${hidden.length} built-but-hidden module(s) (${hidden.map((m) => m.component_id).join(', ')}) would ` +
+        'still count toward Connect Learn completion, so no worker of this model could finish Learn. Either ' +
+        'leave their forms WITHOUT a connect learn-module marker, or build this model its own Learn app ' +
+        'holding only its active components.',
+    });
     notes.push(
       `Built but hidden for this model: ${hidden.map((m) => m.component_id).join(', ')} — ` +
       'present in the app, gated off, and excluded from the question bank.',

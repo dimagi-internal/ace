@@ -119,7 +119,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        every worker must be able to reach it.
     2. **How the programme restructures its training is the owner's
        decision, not this skill's.** The ways out are: one opportunity
-       (and Learn app) per role; every role completes every module; or
+       per role, **each with its own Learn app AND its own Deliver app** —
+       Connect allows only ONE active opportunity per Learn or Deliver app
+       id (activating a second raises `app_reused`, and every submission is
+       routed by app id — read in source, ace#3036: `dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:375-385`,
+       `…/form_receiver/processor.py:616-643`), so "one opportunity per
+       role" on shared apps is not an option; every role completes every module; or
        `learn_module` markers only on a shared core, with role-specific
        teaching in unmarked forms. Do not pick one as the answer. Record
        the choice as a decision row (§ Decisions Log), id
@@ -156,6 +161,11 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     *Enforced:* `pdd-to-learn-app-eval § 5b learn_module_display_gating`
     (blueprint, hard deduction) and `app-release-qa § Step 4`
     `learn-module-display-gated` (released CCZ, `lib/learn-module-display-gating.ts`).
+    The same helper reads the Nova blueprint BEFORE deploy —
+    `checkLearnModuleDisplayGatingFromBlueprint({modules})`, each `get_module`
+    with its forms' `get_form` `connect` block merged in — so a gate is caught
+    at build time, not after release. And the PDD-level rule fires on day 1:
+    `idea-to-pdd-qa § platform_constraints` (`learn_module_visibility`).
     A single-role PDD skips this step.
 
 3. **Compose a Nova brief** — a single natural-language description that

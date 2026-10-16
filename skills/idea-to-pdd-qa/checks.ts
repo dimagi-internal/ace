@@ -20,6 +20,10 @@ import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
 import { ARCHETYPES } from '../../lib/decisions-archetype-consistency';
 import { checkProgramLocale } from '../../lib/program-locale';
 import {
+  checkPlatformConstraints as evaluatePlatformConstraints,
+  describeFinding,
+} from '../../lib/platform-constraints';
+import {
   auditPddDescription,
   describePlainLanguageIssues,
 } from '../../lib/pdd-description-plain-language';
@@ -971,7 +975,7 @@ export function checkLaunchParametersPresent(raw: string): QACheckResult {
         'the apps from them and Phase 4 passes them straight to `connect_create_opportunity` / ' +
         '`connect_create_payment_unit` / `connect_set_verification_flags`, so a missing value is either ' +
         'invented mid-run or silently defaulted. If a figure is not settled, WRITE THE PROPOSAL — ' +
-        '`| llo_payment_per_visit | 1.50 [PROPOSED] |` is a valid row and is what auto mode should emit, with a ' +
+        '`| llo_payment_per_visit | 150 [PROPOSED] |` is a valid row and is what auto mode should emit, with a ' +
         'matching decisions.yaml row carrying `evidence_basis: inferred`. Leaving the row out is the only ' +
         'wrong answer. Accepted aliases: ' +
         missing.map((m) => m.keys.join(' | ')).join(' ;; '),
@@ -1126,6 +1130,64 @@ export function checkProgramParametersProvenance(raw: string, ctx?: QACheckConte
   return { pass: true, detail: `${dataRows.length} rows carry provenance` };
 }
 
+/**
+ * The PDD's § Program Parameters as a key → value map (empty when the section
+ * is absent). Exported for `scripts/platform-constraints.ts`, which turns the
+ * same findings into decision rows.
+ */
+export function programParametersFromPdd(raw: string): Map<string, string> {
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
+  return body === null ? new Map() : parseProgramParameters(body);
+}
+
+/**
+ * Check: the PDD does not contradict how Connect BEHAVES
+ * (config/platform-constraints.yaml, lib/platform-constraints.ts).
+ *
+ * ace#3036: kaduna-graduation/20261015-1411's PDD role-gated its Learn modules
+ * and parked "does Connect count every module?" (its Flag F3) for a device
+ * walk. Connect's source answered it — completion is completed / ALL modules,
+ * and only 100% completes — but the walk came three phases later. Every rule is
+ * a cited source fact, evaluated over the parsed parameter table in well under
+ * a millisecond, so it runs here, before `idea-to-pdd-eval`.
+ *
+ * Binary like every QA check: a `blocker` finding fails it; `warn` findings
+ * pass and are listed in `detail`. Either way each finding becomes a
+ * `kind: platform-behaviour` decision row (`scripts/platform-constraints.ts
+ * --rows`) carrying the rule's remedy options.
+ */
+export function checkPlatformConstraints(raw: string): QACheckResult {
+  const params = programParametersFromPdd(raw);
+  if (params.size === 0) return { pass: true, detail: 'no § Program Parameters — covered by program_parameters_coherent' };
+  const findings = evaluatePlatformConstraints(params, extractArchetype(raw));
+  const blockers = findings.filter((f) => f.severity === 'blocker');
+  const warns = findings.filter((f) => f.severity === 'warn');
+  const rowsHint =
+    'Turn every finding into its decision row with `scripts/platform-constraints.ts --pdd <file> --rows` and ' +
+    'append them via `decisions_append_rows` (ids `platform-<rule>`; each is `kind: platform-behaviour`, ' +
+    '`resolved_by: source` with the Connect citation, options = the remedy options).';
+  if (blockers.length > 0) {
+    return {
+      pass: false,
+      detail:
+        `${blockers.length} Connect platform constraint(s) contradicted: ` +
+        blockers.map(describeFinding).join(' | ') +
+        (warns.length ? ` (+${warns.length} warn: ${warns.map((w) => w.rule.id).join(', ')})` : ''),
+      auto_fix_hint:
+        blockers.map((b) => `${b.rule.id}: ${b.rule.remedy.trim()}`).join(' ;; ') +
+        ' ;; Pick the remedy in § Program Parameters (do not leave the contradiction for a device walk — the ' +
+        'behaviour is already read from Connect source) and record the choice. ' + rowsHint,
+    };
+  }
+  return {
+    pass: true,
+    detail:
+      findings.length === 0
+        ? 'no Connect platform constraint contradicted'
+        : `no blocker; ${warns.length} platform behaviour(s) to confirm: ${warns.map(describeFinding).join(' | ')} — ${rowsHint}`,
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'launch_parameters_present',
@@ -1133,6 +1195,13 @@ export const CHECKS: QACheck[] = [
     description:
       'Every Phase 3 / Phase 4 launch parameter is declared in § Program Parameters',
     run: checkLaunchParametersPresent,
+  },
+  {
+    id: 'platform_constraints',
+    type: 'static',
+    description:
+      'The PDD does not contradict a cited Connect platform behaviour (config/platform-constraints.yaml)',
+    run: checkPlatformConstraints,
   },
   {
     id: 'pdd_is_native_google_doc',

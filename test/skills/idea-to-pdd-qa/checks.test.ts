@@ -298,6 +298,9 @@ describe('CHECKS array', () => {
       // First deliberately: a PDD missing its launch parameters cannot be
       // built or launched from, so that failure frames every other row.
       'launch_parameters_present',
+      // Second: a PDD that contradicts how Connect behaves (ace#3036) has to be
+      // restructured, which can change what every later check reads.
+      'platform_constraints',
       'pdd_is_native_google_doc',
       'pdd_description_plain_language',
       'all_required_sections_present',
@@ -640,6 +643,6 @@ describe('Drive markdown-export escaping (#1617)', () => {
         return `${c.id}=${r.pass}`;
       });
     expect(score(exported)).toEqual(score(numbered));
-    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(10);
+    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(11);
   });
 });

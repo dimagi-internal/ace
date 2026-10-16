@@ -1,0 +1,417 @@
+# Connect platform constraints — the day-1 check (idea-to-pdd-qa § platform_constraints).
+#
+# WHY THIS FILE EXISTS. Each rule below is a fact about how Connect behaves that a
+# PDD can contradict on day 1, and that ACE otherwise discovered on a device walk
+# days later. kaduna-graduation/20261015-1411 is the canonical case (ace#3036): its
+# PDD role-gated 14 Learn modules (9 FLW, 5 enumerator) and flagged "does Connect
+# count every module?" as F3, "answered by the first device walk". The answer was
+# in Connect's source all along (rule learn-completion-counts-every-module), and
+# the walk that found it came after Phases 2-5 had built on the wrong shape.
+#
+# CONTRACT. Every rule:
+#   id        — kebab-case; the decision row generated from a finding is
+#               `platform-<id>` (lib/platform-constraints.ts).
+#   source    — `dimagi/commcare-connect@<sha>:<path>:<line[-line]>` — ONE OR MORE
+#               citations, verified by reading that source at that sha. A rule that
+#               cannot be cited does not ship here (it belongs in an issue).
+#               Re-verify when bumping the sha; test/lib/platform-constraints.test.ts
+#               pins the format.
+#   fact      — the platform behaviour, one plain sentence (becomes `reasoning`).
+#   when      — predicate over the PDD's § Program Parameters, plus the derived
+#               facts computed in lib/platform-constraints.ts `deriveFacts` (named
+#               there; never re-derived in prose). Grammar:
+#                 {all: [...]} | {any: [...]} | {not: <pred>}
+#                 {fact: <name>, op: eq|ne|in|nin|gt|gte|lt|lte|truthy|falsy|present|absent, value?: ...}
+#   severity  — blocker: the PDD as written cannot work on Connect → the QA check
+#               FAILS (QA is binary). warn: workable but a reviewer must choose →
+#               the check passes and the finding becomes a decision row.
+#   question / plain / options / recommended — the decision row the finding
+#               becomes (options = remedy options; recommended = the safe default,
+#               must be one of options). Plain-language fields follow
+#               docs/decisions-contract.md § Plain-language gate.
+#   remedy    — what the PDD author changes (becomes the QA auto_fix_hint).
+#
+# Speed is the point (Jon, 2026-10-16: "good as long as it is fast"): this is a
+# pure table lookup over one parsed table — milliseconds, no LLM, no network.
+
+connect_sha: c7409bd35
+rules:
+  - id: learn-completion-counts-every-module
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:398-406
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:192-202
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/app_xml.py:43-45
+    fact: >-
+      Connect computes a worker's Learn progress as completed modules divided by
+      EVERY learn module in the Learn app, and Learn is complete only at exactly
+      100%. Modules come from every form in the app, so a module hidden from a
+      worker by a display condition still counts against her.
+    when:
+      any:
+        - {fact: learn_modules_hidden_from_some_workers, op: truthy}
+    question: How should Learn be structured so every worker can complete it?
+    plain_question: How should training be set up so every worker can finish it?
+    plain: >-
+      Every worker must be able to open every training module, because the
+      platform only unlocks the work app when a worker has finished all of them.
+    options:
+      - Every worker sees every module
+      - Separate opportunity and apps per role
+      - Marked modules only on a shared core
+    recommended: Every worker sees every module
+    remedy: >-
+      Set `learn_module_visibility | all-workers` and drop any role or component
+      gating of Learn modules from § Learn App Specification. If roles genuinely
+      need different training, either (a) give each role its own opportunity WITH
+      its own Learn and Deliver apps (set `opportunity_structure | per-role` and
+      `learn_app_count` / `deliver_app_count` to the role count — see rule
+      one-active-opportunity-per-app), or (b) put the Connect learn-module markers
+      only on a shared core every worker completes and teach role content in
+      unmarked forms. Record the choice as decision row
+      `platform-learn-completion-counts-every-module`.
+
+  - id: learn-module-visibility-undeclared-multi-role
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:398-406
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:192-202
+    fact: >-
+      With more than one worker role in one opportunity, Learn completion still
+      counts every module for every worker, so the PDD must say how modules are
+      shown before any app is built.
+    when:
+      all:
+        - {fact: worker_role_count, op: gt, value: 1}
+        - {fact: learn_module_visibility, op: absent}
+        - {fact: opportunity_structure, op: ne, value: per-role}
+    question: Which Learn modules does each worker role see?
+    plain_question: Which training modules does each kind of worker see?
+    plain: >-
+      With more than one kind of worker, the design must say which training
+      modules each one sees, because every worker has to finish all of them.
+    options:
+      - Every worker sees every module
+      - Separate opportunity and apps per role
+      - Marked modules only on a shared core
+    recommended: Every worker sees every module
+    remedy: >-
+      Declare `learn_module_visibility | all-workers` in § Program Parameters
+      (or the alternative the programme chose — `opportunity_structure |
+      per-role` with one Learn and one Deliver app per role) — the PDD names more than one
+      worker role (`worker_roles`, `role_property` or a second-role count) but
+      does not say how Learn modules are shown, and Connect counts every module
+      for every worker (rule learn-completion-counts-every-module).
+
+  - id: one-active-opportunity-per-app
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:375-385
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:616-643
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/program/api/serializers.py:156-157
+    fact: >-
+      A Learn or Deliver app can belong to only one active opportunity: Connect
+      refuses to activate an opportunity whose apps another active opportunity
+      uses, and routes every form submission by app id to the single active
+      opportunity holding it. The Learn and Deliver app must also differ.
+    when:
+      all:
+        - {fact: opportunity_structure, op: eq, value: per-role}
+        - any:
+            - {fact: learn_apps_short_of_roles, op: truthy}
+            - {fact: deliver_apps_short_of_roles, op: truthy}
+    question: How many Learn and Deliver apps does a one-opportunity-per-role design need?
+    plain_question: Does each kind of worker get its own training and work apps?
+    plain: >-
+      Each kind of worker gets its own opportunity, so each needs its own
+      training app and its own work app; one app cannot serve two live
+      opportunities.
+    options:
+      - One Learn and one Deliver app per role
+      - One opportunity for all roles
+    recommended: One Learn and one Deliver app per role
+    remedy: >-
+      With `opportunity_structure | per-role`, set `learn_app_count` and
+      `deliver_app_count` to the number of worker roles (one Learn AND one Deliver
+      app per opportunity), or return to a single opportunity with
+      `learn_module_visibility | all-workers`.
+
+  - id: payment-amounts-whole-units
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:679-680
+    fact: >-
+      A payment unit's worker amount and organisation amount are whole numbers of
+      the opportunity's currency; Connect stores no fractional amounts.
+    when:
+      any:
+        - {fact: payment_amounts_fractional, op: truthy}
+    question: Payment amounts must be whole currency units — which rounding?
+    plain_question: Should the payment amounts be rounded up or down to whole units?
+    plain: >-
+      Payments must be whole amounts of the local currency, so the proposed
+      amounts are rounded to whole units.
+    options:
+      - Round to whole currency units
+      - Re-quote in a smaller currency
+    recommended: Round to whole currency units
+    remedy: >-
+      Quote `payment_rate_min` / `payment_rate_max` / `flw_payment_per_visit` /
+      `llo_payment_per_visit` as whole numbers of `opportunity_currency` (Connect's
+      `amount` and `org_amount` are integers), and re-derive `total_budget`.
+
+  - id: daily-cap-at-least-one
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:685
+    fact: >-
+      A payment unit's daily limit is either absent (no daily limit) or at least
+      one; zero is not a valid daily limit.
+    when:
+      all:
+        - {fact: daily_cap_per_flw, op: present}
+        - {fact: daily_cap_per_flw, op: lt, value: 1}
+    question: What is the daily limit per worker?
+    plain_question: How many paid visits may one worker make in a day?
+    plain: >-
+      A daily limit is either at least one visit or no limit at all.
+    options:
+      - No daily limit
+      - At least one per day
+    recommended: At least one per day
+    remedy: >-
+      Set `daily_cap_per_flw` to 1 or more, or remove the row for no daily limit.
+
+  - id: daily-cap-per-payment-unit
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:456-462
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:590
+    fact: >-
+      Connect's daily limit counts one worker's visits for one deliver unit on the
+      calendar day the form was started, against that unit's own limit; there is
+      no limit across payment units, so a worker's real daily ceiling is the sum
+      of every unit's limit.
+    when:
+      all:
+        - {fact: daily_cap_per_flw, op: present}
+        - {fact: payment_unit_count, op: gt, value: 1}
+    question: Is the daily cap meant per payment unit or per worker?
+    plain_question: Is the daily limit meant for each kind of paid visit, or for the worker's whole day?
+    plain: >-
+      The daily limit applies to each kind of paid visit separately, so a worker
+      can reach every limit on the same day.
+    options:
+      - Per payment unit
+      - Per worker across units
+    recommended: Per payment unit
+    remedy: >-
+      State in § Program Parameters that `daily_cap_per_flw` is per payment unit;
+      if the programme needs a per-worker daily ceiling across units, say so —
+      Connect cannot hold it, so it must be enforced in the app or by review.
+
+  - id: optional-only-payment-unit-never-completes
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:945-969
+    fact: >-
+      A payment unit is completed by the required deliver units it holds; a unit
+      holding only optional deliver units counts zero completions and never pays.
+      Where optional units sit beside required ones, each completion also needs
+      at least one optional unit.
+    when:
+      any:
+        - {fact: optional_only_payment_units, op: truthy}
+    question: Which deliver unit makes this payment unit payable?
+    plain_question: Which form makes this kind of paid visit count as done?
+    plain: >-
+      Every paid visit needs at least one required form; a paid visit made only
+      of optional forms is never counted as done.
+    options:
+      - Mark one deliver unit required
+      - Drop the payment unit
+    recommended: Mark one deliver unit required
+    remedy: >-
+      In `deliver_unit_map`, give every payment unit at least one required (no
+      trailing `?`) deliver unit.
+
+  - id: optional-deliver-units-are-any-of
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:965-969
+    fact: >-
+      Where a payment unit mixes required and optional deliver units, Connect
+      counts a completion only when the required ones AND at least one optional
+      one are done.
+    when:
+      any:
+        - {fact: mixed_optional_payment_units, op: truthy}
+    question: Is at least one optional form meant to be needed for payment?
+    plain_question: Must a worker submit at least one of the optional forms to be paid?
+    plain: >-
+      Where a paid visit has optional forms, the worker is paid only once she
+      has also submitted at least one of them.
+    options:
+      - At least one optional form needed
+      - Optional forms never needed
+    recommended: At least one optional form needed
+    remedy: >-
+      If the optional forms must never gate payment, move them out of the
+      payment unit (no deliver-unit marker) rather than marking them optional.
+
+  - id: deliver-unit-needs-payment-unit
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:428-433
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/tasks.py:79-98
+    fact: >-
+      Every deliver-unit marker in the Deliver app becomes a deliver unit, and a
+      submission of a deliver unit with no payment unit is refused outright.
+    when:
+      any:
+        - {fact: unpaid_deliver_forms_present, op: truthy}
+    question: How are unpaid Deliver forms kept from carrying a deliver-unit marker?
+    plain_question: How are forms that are not paid kept separate from paid ones?
+    plain: >-
+      Forms that are not paid carry no payment marker, so the platform does not
+      refuse them.
+    options:
+      - No deliver-unit marker on unpaid forms
+      - Attach as optional to a paid unit
+    recommended: No deliver-unit marker on unpaid forms
+    remedy: >-
+      For each form in `unpaid_deliver_forms`, state that it carries no Connect
+      deliver-unit marker (or attach it as an optional unit of a paid payment unit
+      — rule optional-deliver-units-are-any-of then applies).
+
+  - id: repeat-visit-same-entity-is-duplicate
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:462
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:500-501
+    fact: >-
+      Connect marks a second visit by the same worker to the same entity id for
+      the same deliver unit as a duplicate, so a programme that revisits the same
+      person needs the entity id to change per visit, per period or per round.
+    when:
+      all:
+        - {fact: archetype, op: eq, value: longitudinal-visits}
+        - {fact: entity_id_grain, op: present}
+        - {fact: entity_grain_has_repeat_key, op: falsy}
+    question: What makes each repeat visit's entity id unique?
+    plain_question: How does each repeat visit to the same person count as a new paid visit?
+    plain: >-
+      Each repeat visit to the same person uses a different visit key, such as
+      the month or the visit number, so the platform does not mark it a
+      duplicate.
+    options:
+      - Add a period or visit number to the key
+      - One paid visit per entity
+    recommended: Add a period or visit number to the key
+    remedy: >-
+      Add a per-visit, per-period or per-round component to `entity_id_grain`
+      (e.g. "participant id + scheduled month"), or state that only the first
+      visit per entity is paid.
+
+  - id: visits-before-start-are-trial
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:483-485
+    fact: >-
+      A visit submitted before the opportunity's (or its payment unit's) start
+      date is recorded as a trial: it is never paid and never counts toward a
+      limit.
+    when:
+      any:
+        - {fact: paid_work_before_start, op: truthy}
+    question: How is paid work before the opportunity start date handled?
+    plain_question: What happens to paid work done before the programme's start date?
+    plain: >-
+      Work done before the start date is treated as practice and is not paid, so
+      the start date is set before any paid work begins.
+    options:
+      - Move the start date earlier
+      - Treat early work as unpaid practice
+    recommended: Move the start date earlier
+    remedy: >-
+      Set `opportunity_start_date` (and any `payment_unit_start_date`) on or before
+      the first paid activity, or state that work before it is unpaid practice.
+
+  - id: budget-funds-claims-in-order
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:1187-1227
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:222-261
+    fact: >-
+      When a worker claims the opportunity, Connect reserves her full visit limit
+      per payment unit, priced at worker plus organisation pay, out of the
+      remaining budget; once the budget is reserved, later workers get fewer or no
+      paid visits.
+    when:
+      any:
+        - {fact: budget_short_of_cohort, op: truthy}
+    question: Does the budget cover every worker's full limit?
+    plain_question: Is the budget large enough for every worker to reach her full limit?
+    plain: >-
+      The budget is reserved worker by worker as they join, so it is sized to
+      cover every planned worker at her full limit.
+    options:
+      - Raise the budget to cover the cohort
+      - Accept fewer funded workers
+    recommended: Raise the budget to cover the cohort
+    remedy: >-
+      Set `total_budget` to at least (worker count x total cap x (worker pay + LLO
+      pay)), or `campaign_target_visits` x (worker pay + LLO pay), or lower the
+      caps / cohort.
+
+  - id: passing-score-is-per-app
+    severity: blocker
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:42
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:222-234
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/program/api/serializers.py:224-233
+    fact: >-
+      The pass mark is stored once on the Learn app, not per opportunity or per
+      role, and is set only when Connect first sees that app: every assessment in
+      the app is judged against that one number.
+    when:
+      any:
+        - {fact: passing_score_varies, op: truthy}
+    question: One pass mark for the Learn app — which one?
+    plain_question: What single pass mark should the training use?
+    plain: >-
+      The training has one pass mark for everyone, so a different mark for each
+      kind of worker needs a separate training app.
+    options:
+      - One pass mark for every worker
+      - Separate Learn app per pass mark
+    recommended: One pass mark for every worker
+    remedy: >-
+      Give `learn_passing_score` a single 0-100 number. A different pass mark per
+      role needs a separate Learn app (and so a separate opportunity — rule
+      one-active-opportunity-per-app).
+
+  - id: learn-modules-never-deleted
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/tasks.py:79-98
+    fact: >-
+      Connect only adds or updates Learn modules when it re-reads the app; a
+      module removed from the app later stays in Connect and keeps counting
+      toward Learn completion.
+    when:
+      any:
+        - {fact: learn_app_reused, op: truthy}
+        - {fact: learn_modules_change_after_launch, op: truthy}
+    question: How is the Learn app kept from inheriting retired modules?
+    plain_question: How do we avoid old training modules still counting after they are removed?
+    plain: >-
+      A training module removed after launch still counts on the platform, so a
+      changed training set goes into a new training app.
+    options:
+      - New Learn app for a changed module set
+      - Keep every module ever shipped
+    recommended: New Learn app for a changed module set
+    remedy: >-
+      Build a fresh Learn app (`learn_app_source | new`) whenever the module set
+      shrinks or an app from an earlier opportunity would be reused.

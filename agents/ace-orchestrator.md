@@ -2034,6 +2034,12 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   live partner rows with no `plain` warn
                   (lib/build-phase-decisions.ts; ace#2384). Absent on
                   every other phase.
+                — for phase=design ALSO returns `platform_behaviour`
+                  {ok, rows, failures[], warnings[], summary, unreadable?}:
+                  every live `kind: platform-behaviour` decision row must be
+                  `resolved_by: source|api` with a `resolution_citation`
+                  before Phase 3 builds on it (lib/platform-behaviour-
+                  decisions.ts; ace#3036). Absent on every other phase.
              4. verify_phase_products(fileId=<run_state.yaml>, phase=<phase>)
                 — returns {phase, status, ok, mode, issues[]}. Covers the
                   THIRD half of the gate: the typed `products.<block>` handoff
@@ -2097,6 +2103,8 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
              - classify='ok' AND verify.ok=true AND products.ok=true
                AND run_state.valid=true AND verify.decisions.ok is not
                false (the block is absent outside commcare/connect)
+               AND verify.platform_behaviour.ok is not false (absent
+               outside design)
                  → RE-READ run_state.yaml from Drive, then check
                    operator_stop_after_phase (§ Ad-hoc stop-after-phase
                    instructions). The re-read is required, not an
@@ -2124,6 +2132,20 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
                    unreadable=true → re-run the fence once, then
                    [BLOCKER]. decisions.warnings[] (fewer rows than memo
                    entries) never gate — name them in the phase line.
+             - verify.platform_behaviour.ok=false (design phase: a
+               platform-behaviour question — "does Connect count hidden
+               Learn modules?" — is unanswered or answered only by a
+               future device walk; failures[] names each row id)
+                 → do NOT re-dispatch idea-to-pdd and do NOT start Phase 3.
+                   Answer each row from Connect/HQ source (cite
+                   `<owner>/<repo>@<sha>:<path>:<line>`) or ONE read-only API
+                   probe, per agents/idea-to-design.md § Platform-behaviour
+                   questions, and append a superseding row (`supersedes:
+                   <id>`) carrying `resolved_by` + `resolution_citation`. If
+                   the answer contradicts the PDD, re-run idea-to-pdd-qa —
+                   `platform_constraints` will fail and route the fix. Re-run
+                   the fence once; still false → [BLOCKER] quoting
+                   platform_behaviour.summary.
              - run_state.valid=false → do NOT re-dispatch the phase. No phase
                agent owns the run-level record, so a retry cannot fix it and
                would re-run the phase for nothing. Patch the named paths

@@ -30,7 +30,10 @@ describe('role-gated learn_module rule (ace#3036)', () => {
     expect(step).toMatch(/review_ask: required-before/);
     expect(step).toMatch(/needed_by: go-live/);
     // the three owner options are named, and none is picked as the answer
-    expect(step).toMatch(/one opportunity\s+\(and Learn app\) per role/);
+    // per-role opportunities need their OWN Learn and Deliver apps: Connect
+    // allows one active opportunity per app id (config/platform-constraints.yaml).
+    expect(step).toMatch(/one opportunity\s+per role, \*\*each with its own Learn app AND its own Deliver app\*\*/);
+    expect(step).toMatch(/ONE active opportunity per Learn or Deliver app/);
     expect(step).toMatch(/every role completes every module/);
     expect(step).toMatch(/shared core/);
     expect(step).toMatch(/Do not pick one as the answer/);
