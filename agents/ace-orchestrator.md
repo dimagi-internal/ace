@@ -377,6 +377,26 @@ normally; it answers about a different account's apps. A resolvability check
 is structurally blind to that. So, for a `pending`/`in_progress`
 `commcare-setup`, run one addressed check:
 
+- **First, on a resume, reconcile the ids from the declared artifacts
+  (ace#2412).** An interrupted Phase 3 can leave built apps with
+  `products: null` (`poverty-graduation/20260915-1518`: two `complete` Nova
+  apps, nothing in run_state), and "no ids recorded" must not be read as
+  "built nothing" — that reading re-dispatches the build and mints a second
+  pair. Fetch ONLY the files the helper names, then reconcile:
+
+  ```bash
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/recover-product-ids.ts" commcare-setup --list
+  # drive_read_file each listed path that exists (raw markdown) to a local file, then:
+  node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/recover-product-ids.ts" commcare-setup \
+    --run-state <local run_state.yaml> --artifact <run-path>=<local-file> [--artifact …]
+  ```
+
+  Exit 0 → `update_yaml_file({merge: 'deep'})` the printed `patch` into
+  `phases.commcare-setup.products` (skip when empty), then continue to the
+  bullets below with the recovered ids. Exit 1 (`halt`) → a declared source
+  exists but cannot answer or contradicts run_state: stop and surface the
+  `problems[]` verbatim — never guess an id from anything else in the folder,
+  and never re-dispatch the build over it. Exit 2 is UNABLE, not a pass.
 - If the run records
   `phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id` → call
   Nova `list_apps` and assert **both ids are in the result**.

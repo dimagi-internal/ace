@@ -721,7 +721,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['connect-opp-setup', 'llo-uat', 'llo-launch'],
     phase: 'commcare',
     required: true,
-    description: 'App deployment details: IDs, URLs, build status',
+    description: 'App deployment details: IDs, URLs, build status. Required frontmatter: `hq_domain`, `learn_app_id`, `deliver_app_id` (HQ app ids), `learn_nova_app_id`, `deliver_nova_app_id`. lib/products-id-recovery.ts rebuilds `products.apps.*.hq_app_id` from the two HQ ids on a resume (ace#2412).',
   },
   {
     path: '3-commcare/app-test-cases.yaml',
