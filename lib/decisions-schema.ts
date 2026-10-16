@@ -112,6 +112,14 @@ export const REVIEW_FIELDS = [
   "revisit_when",
 ] as const;
 
+/**
+ * `conflict_owner` values — whose sources disagree on a `conflicting` row
+ * (ace#2266). `author`: the author's own material (incl. source vs
+ * instrument); `ace`: ACE-internal artifacts or rules, never the author's to
+ * settle.
+ */
+export const CONFLICT_OWNERS = ["author", "ace"] as const;
+
 /** `review_ask` values. `required-before` is the only one that gates anything. */
 export const REVIEW_ASKS = ["recommended-confirmation", "required-before"] as const;
 export type ReviewAskKind = (typeof REVIEW_ASKS)[number];
@@ -305,6 +313,18 @@ export const DecisionRowSchema = z
         "The competing source readings this decision had to resolve — one entry per signal, each ideally citing where it came from " +
           "(e.g. 'Exploration App § Visit structure: one instrument' / 'Exploration App § Open-Q4: households visited twice'). " +
           "Required (>= 2 entries) when `evidence_basis: conflicting`; omit otherwise. Put the resolution rationale in `reasoning`.",
+      ),
+    conflict_owner: z
+      .enum(CONFLICT_OWNERS)
+      .optional()
+      .describe(
+        "Whose sources disagree, on a `conflicting` row (ace#2266). `author`: two pieces of the author's own material " +
+          "disagree — including the programme source vs its instrument (idea.md says FLWs distribute nets; the visit " +
+          "instrument records the net date as 'today or earlier') — so the author settles it. `ace`: two ACE artifacts or " +
+          "skill rules disagree; never put to the author as needing their eye, and if it hides an author question, raise " +
+          "that question on its own row. An ACE default losing to a [FIXED] author instruction is NOT a conflict — it is " +
+          "`stated`, with the losing default noted in `reasoning`. Only valid when `evidence_basis: conflicting`; " +
+          "optional (an absent owner reads as `author`).",
       ),
     params: z
       .record(z.unknown())
@@ -764,6 +784,15 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
           "`conflict_signals` is only valid when `evidence_basis: conflicting`. " +
           "For a 'stated' or 'inferred' default, omit it (put any nuance in `reasoning`).",
         path: ["conflict_signals"],
+      });
+    }
+    if (row.conflict_owner !== undefined && row.evidence_basis !== "conflicting") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`conflict_owner` is only valid when `evidence_basis: conflicting`. An ACE default that lost to a " +
+          "[FIXED] author instruction is `stated`, not a conflict — note the losing default in `reasoning` (ace#2266).",
+        path: ["conflict_owner"],
       });
     }
   },

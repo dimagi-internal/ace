@@ -908,3 +908,49 @@ describe("provenance + resolution owner (v5)", () => {
     expect(effectiveValue(parsed)).toBe("GPS on every outcome");
   });
 });
+
+// ace#2266 — whose sources disagree. bednet-check-2-visit/20260907-1126: idea.md
+// says FLWs distribute nets while the visit instrument records the net date as
+// "today or earlier" (no handover step). That is the AUTHOR's contradiction —
+// source vs instrument — and must be `conflicting` with `conflict_owner:
+// author`, not `stated`. An ACE default that lost to a [FIXED] author
+// instruction is `stated`, never a conflict.
+describe("conflict_owner (ace#2266)", () => {
+  const bednet = {
+    id: "who-distributes-nets",
+    phase: "1-design",
+    skill: "idea-to-pdd",
+    question: "Do FLWs hand over the bednet during visit 1?",
+    "ai-default": "No — the net is distributed separately",
+    options: ["No — the net is distributed separately", "Yes — FLW hands it over"],
+    source: "inputs/idea.md § Program intent; visit-1 instrument",
+    status: "ai-default" as const,
+    value_set_by: "ace" as const,
+    plain: "Workers check a net that was already handed out; they do not hand it over themselves.",
+    evidence_basis: "conflicting" as const,
+    conflict_signals: [
+      "inputs/idea.md § Program intent: FLWs distribute the nets",
+      "visit-1 instrument: no handover step; bednet date recorded as 'today or earlier'",
+    ],
+  };
+
+  it("strict: accepts conflict_owner=author on the bednet source-vs-instrument row", () => {
+    expect(() => DecisionRowStrictSchema.parse({ ...bednet, conflict_owner: "author" })).not.toThrow();
+  });
+
+  it("strict: accepts conflict_owner=ace, and an absent owner (legacy reads as author)", () => {
+    expect(() => DecisionRowStrictSchema.parse({ ...bednet, conflict_owner: "ace" })).not.toThrow();
+    expect(() => DecisionRowStrictSchema.parse(bednet)).not.toThrow();
+  });
+
+  it("rejects an out-of-enum owner", () => {
+    expect(() => DecisionRowSchema.parse({ ...bednet, conflict_owner: "partner" })).toThrow();
+  });
+
+  it("strict: rejects conflict_owner on a stated row — an ACE default losing to a [FIXED] instruction is not a conflict", () => {
+    const { conflict_signals: _c, ...rest } = bednet;
+    expect(() =>
+      DecisionRowStrictSchema.parse({ ...rest, evidence_basis: "stated", conflict_owner: "author" }),
+    ).toThrow(/conflict_owner.*only valid when.*conflicting/);
+  });
+});

@@ -1737,7 +1737,33 @@ downstream phase builds on the PDD.
 
 When in doubt between `stated` and `inferred`, prefer `inferred` — and if
 *any* source pulls against the default, it is `conflicting`, not
-`inferred`. Do not omit `conflict_signals` on a `conflicting` row, and do
+`inferred`.
+
+**Whose sources disagree decides the basis (ace#2266).** `conflicting` means
+the AUTHOR's material disagrees with itself; it is the row a reviewer is asked
+to look at. Classify by the owners of the competing signals:
+
+| Competing signals | `evidence_basis` | `conflict_owner` | Surfaced to the author? |
+|---|---|---|---|
+| Author document vs author document — **including the programme source vs its own instrument** | `conflicting` | `author` | Yes, with both signals |
+| An ACE default or skill rule vs a `[FIXED]` author instruction | `stated` — cite the instruction; note the losing ACE default in `reasoning` | — | No. The PDD governs; a losing ACE default is a skill defect to file, not a review item |
+| ACE artifact vs ACE artifact (two skill docs, a Phase 3 memo vs Phase 4 config) | not a Phase 1 row; if one must be recorded, `conflicting` with `conflict_owner: ace` | `ace` | No. If it hides a real author question, raise THAT question on its own row |
+
+Canonical under-flagged case, bednet-check-2-visit/20260907-1126:
+`inputs/idea.md § Program intent` says FLWs distribute the nets, while the
+visit-1 instrument has **no handover step** and records the net date as
+*"today or earlier"*. The instrument is the stronger evidence and the
+resolution (nets are distributed separately) was right — but the row shipped
+`stated`, so nobody reviewing the Work Order could see that `"a separate
+distribution activity"` was resolving a contradiction (and that *"today or
+earlier"* permits a same-day handover). Source vs instrument is the author's
+own contradiction: `conflicting`, `conflict_owner: author`, both readings in
+`conflict_signals`, and why the instrument won in `reasoning`. The
+over-flagged mirror, poverty-graduation/20260908-0510: 9 of 66 rows were
+`conflicting`, but only 3 were author-vs-author; `cs-payment-unit-shape` (an
+ACE skill rule vs the PDD's [FIXED] §12.2) should have been `stated`.
+*Enforced at the write boundary:* `conflict_owner` is refused on any
+non-`conflicting` row (`lib/decisions-schema.ts`). Do not omit `conflict_signals` on a `conflicting` row, and do
 not attach them to a non-conflicting one; both are rejected at the write
 boundary.
 
@@ -2038,3 +2064,4 @@ When `--dry-run` is active:
 | 2026-09-06 | **Step 6b: the `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** Step 6b named `drive_create_file` with `mimeType: 'text/markdown'` and warned against the renderer for destroying the bytes — but `drive_create_file` ALWAYS creates a Google Doc, has no `mimeType`, and the key was dropped by the MCP schema. The instruction reached the exact outcome it forbade, through the atom it named as safe. Measured on `poverty-graduation/20260905-0924`: two calls, one local file, both files `application/vnd.google-apps.document`; 57,178 bytes sent, 58,470 read back, every markdown marker gone — so DOC-FIDELITY compared one Doc against another built by the same importer. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01. `drive_create_file` now REFUSES a `mimeType` and names the right call. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`. | ACE team |
 | 2026-09-26 | **The `entity_id` lever no longer promises that a repeat collapses to one payment (ace#2512).** With the `duplicate` flag off — always, on ACE opportunities — Connect resets a repeat key to `pending`, auto-approves it and pays it again (`processor.py` `clean_form_submission`; `CompletedWork.payment_accrued` "Includes duplicates"). The lever now says the key GROUPS visits, names the two Connect-side stops (payment-unit caps; a computed `payable_slot` field + `form_field_rules` row), and requires non-payable record kinds to live on a form with no `deliver_unit` marker, since every visit on the paid unit counts toward `max_daily` / `max_total`. Found on `spark-facilitator/20260926-1413` by both the PDD and Work Order evals. *Enforced:* `test/skills/repeat-entity-id-payment.test.ts`. | ACE team |
 | 2026-10-16 | **§ Program Parameters rows carry provenance (ace#2364).** A third `Provenance` cell on every row: `read: <doc § ref>`, `derived: <decision-id>` (or the table keys a mechanical value is computed from) or `borrowed: <source about a different programme>`. A value ACE chose must name the decision row recording it, and only `read` values may be attributed to the author. Scope default: every row carries provenance; only derived/borrowed values a reviewer could challenge get a decision row. Reproducer: poverty-graduation/20260908-0510 (assessment counts 30/20 with no source and no decision row, attributed to the author by email). *Enforced:* `idea-to-pdd-qa § program_parameters_provenance`. | ACE team |
+| 2026-10-16 | **`evidence_basis` is classified by WHOSE sources disagree (ace#2266).** Author-vs-author (including source vs instrument) → `conflicting`, `conflict_owner: author`; an ACE default losing to a `[FIXED]` author instruction → `stated` with the losing default noted; ACE-vs-ACE → `conflict_owner: ace`, never put to the author. New optional `conflict_owner` field in `lib/decisions-schema.ts`, refused on non-`conflicting` rows. Reproducers: bednet-check-2-visit/20260907-1126 (source vs instrument recorded `stated`) and poverty-graduation/20260908-0510 (6 of 9 `conflicting` rows were not the author's). | ACE team |
