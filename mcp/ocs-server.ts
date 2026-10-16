@@ -538,6 +538,13 @@ server.tool(
 );
 
 server.tool(
+  'ocs_set_chatbot_description',
+  'Set a chatbot\'s description — the line OCS shows under the chatbot\'s name on its public-link page (ace#3045; clones otherwise inherit the golden template\'s "Created after LLM provider was added."). Set it BEFORE ocs_publish_chatbot_version: the public page shows the PUBLISHED version\'s description. Round-trips OCS\'s whole-form settings save, resending every other field unchanged, then re-reads the form and throws if the description did not land or any other field moved. Refuses on a chatbot with a voice provider (its synthetic_voice is client-rendered and would be cleared).',
+  { experiment_id: z.number().int(), description: z.string().min(1).max(500) },
+  async (args) => result(await composite.setChatbotDescription(args)),
+);
+
+server.tool(
   'ocs_ensure_public_link',
   'Ensure the chatbot has an ENABLED "Public link" channel and return its URL (https://<ocs>/c/<widget_token>/) — the anonymous chat page to hand reviewers, LLOs and FLWs. This REPLACES the legacy /a/<team>/chatbots/<public_id>/start/ page, which OCS is removing (dimagi/open-chat-studio#4209, #4792). The page serves the PUBLISHED version only, so call it AFTER ocs_publish_chatbot_version. Idempotent: OCS allows one public link per chatbot, so an existing one is returned (created: false). The enabled state is read back from the channel edit-dialog; a disabled or unreadable channel throws PublicLinkChannelError. welcome_message is shown above the composer before the visitor types (one message; newlines split it into several); starter_questions become tap-to-send buttons. Both only apply when the channel is CREATED.',
   {

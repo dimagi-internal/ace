@@ -1223,7 +1223,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 ## ace-ocs
 
-Source: `mcp/ocs-server.ts` — 38 atoms
+Source: `mcp/ocs-server.ts` — 39 atoms
 
 ### `ocs_clone_chatbot`
 
@@ -1403,6 +1403,15 @@ Fetch the public_id and embed_key needed to render the OCS widget, plus public_u
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `experiment_id` | `z.number` | **required** | _—_ |
+
+### `ocs_set_chatbot_description`
+
+Set a chatbot's description — the line OCS shows under the chatbot's name on its public-link page (ace#3045; clones otherwise inherit the golden template's "Created after LLM provider was added."). Set it BEFORE ocs_publish_chatbot_version: the public page shows the PUBLISHED version's description. Round-trips OCS's whole-form settings save, resending every other field unchanged, then re-reads the form and throws if the description did not land or any other field moved. Refuses on a chatbot with a voice provider (its synthetic_voice is client-rendered and would be cleared).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `experiment_id` | `z.number` | **required** | _—_ |
+| `description` | `z.string` | **required** | _—_ |
 
 ### `ocs_ensure_public_link`
 

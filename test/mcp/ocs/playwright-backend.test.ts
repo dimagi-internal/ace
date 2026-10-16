@@ -10,6 +10,7 @@ import {
   extractEmbeddedWidgetChannelId,
   extractChannelButtons,
   extractPublicLink,
+  parseChatbotSettingsForm,
   extractExperimentIdFromLocation,
   parseChatbotTable,
   assertCollectionPromptInvariant,
@@ -1665,5 +1666,98 @@ describe('public link channel', () => {
     await expect(makeBackend(request).ensurePublicLink({ experiment_id: 14296 })).rejects.toThrow(
       /no public-link copy chip/,
     );
+  });
+});
+
+// ── Chatbot description (ace#3045) ───────────────────────────────────
+//
+// The public-link page prints the published version's description under the
+// chatbot's name; clones inherited the golden template's "Created after LLM
+// provider was added." OCS saves the settings form whole, so every other field
+// must be resent unchanged. Fixture: the live form of connect-ace bot 14296.
+describe('chatbot description', () => {
+  const FORM = fs.readFileSync(path.join(__dirname, 'fixtures', 'chatbot-settings-form.html'), 'utf-8');
+  const SETTINGS = '/a/dimagi/chatbots/14296/settings/save-all/';
+  const page = (html: string) => ({ ok: true, status: 200, text: async () => html, json: async () => ({}) });
+  const withDescription = (d: string) =>
+    FORM.replace(/(name="description"[^>]*>)[^]*?(<\/textarea>)/, `$1\n${d}$2`);
+
+  it('reads every field the live form submits, as a browser would', () => {
+    expect(parseChatbotSettingsForm(FORM)).toEqual({
+      name: 'ACE - smallholder-seasonal (20261015-1402)',
+      description: 'Created after LLM provider was added.',
+      voice_provider: '',
+      synthetic_voice: '',
+      voice_response_behaviour: 'reciprocal',
+      echo_transcript: 'on',
+      trace_provider: '',
+      trace_sample_rate: '',
+      debug_mode_enabled: undefined,
+      conversational_consent_enabled: undefined,
+      consent_form: '',
+      seed_message: '',
+      file_uploads_enabled: undefined,
+    });
+  });
+
+  it('changes only the description, resending every other field, then reads it back', async () => {
+    const posts: Array<Record<string, string>> = [];
+    let current = FORM;
+    const request: RequestFn = async (method, url, body) => {
+      if (url !== SETTINGS) throw new Error(`unexpected ${method} ${url}`);
+      if (method === 'POST') {
+        posts.push(body as Record<string, string>);
+        current = withDescription((body as Record<string, string>).description);
+      }
+      return page(current);
+    };
+    const out = await makeBackend(request).setChatbotDescription({
+      experiment_id: 14296,
+      description: 'Support assistant for the smallholder seasonal programme.',
+    });
+    expect(out.description).toBe('Support assistant for the smallholder seasonal programme.');
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toEqual({
+      csrfmiddlewaretoken: 'csrf-xyz',
+      name: 'ACE - smallholder-seasonal (20261015-1402)',
+      description: 'Support assistant for the smallholder seasonal programme.',
+      voice_provider: '',
+      synthetic_voice: '',
+      voice_response_behaviour: 'reciprocal',
+      echo_transcript: 'on', // a checked box omitted from POST would be saved as False
+      trace_provider: '',
+      trace_sample_rate: '',
+      consent_form: '',
+      seed_message: '',
+    });
+  });
+
+  it('throws when the save did not land (the form re-rendered with the old value)', async () => {
+    const request: RequestFn = async () => page(FORM);
+    await expect(
+      makeBackend(request).setChatbotDescription({ experiment_id: 14296, description: 'new' }),
+    ).rejects.toThrow(/read-back .* does not match/);
+  });
+
+  it('throws when another field moved', async () => {
+    let posted = false;
+    const request: RequestFn = async (method) => {
+      if (method === 'POST') posted = true;
+      return page(posted ? withDescription('new').replace(' checked>', '>') : FORM);
+    };
+    await expect(
+      makeBackend(request).setChatbotDescription({ experiment_id: 14296, description: 'new' }),
+    ).rejects.toThrow(/other fields changed: \[echo_transcript\]/);
+  });
+
+  it('refuses a chatbot with a voice provider rather than clearing its client-rendered voice', async () => {
+    const voiced = FORM.replace('<option value="" selected>', '<option value="7" selected>');
+    const request: RequestFn = async (method) => {
+      if (method === 'POST') throw new Error('must not POST');
+      return page(voiced);
+    };
+    await expect(
+      makeBackend(request).setChatbotDescription({ experiment_id: 14296, description: 'new' }),
+    ).rejects.toThrow(/voice provider/);
   });
 });

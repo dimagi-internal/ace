@@ -205,6 +205,13 @@ export interface OcsClient {
   }>;
 
   /**
+   * Set the chatbot's description, which OCS prints under its name on the
+   * public-link page (ace#3045). Set it before publishing: the page shows the
+   * published version's. Read back; refuses on a bot with a voice provider.
+   */
+  setChatbotDescription(args: { experiment_id: number; description: string }): Promise<{ description: string }>;
+
+  /**
    * `public_url` is the chatbot's public-link page (`/c/<token>/`), or null when it
    * has no public-link channel yet — see `ensurePublicLink`.
    */

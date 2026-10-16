@@ -69,6 +69,45 @@ export function extractPipelineId(html: string): number | undefined {
 }
 
 /**
+ * The values a browser would submit for OCS's chatbot settings form
+ * (`ChatbotSettingsForm`, GET/POST `/a/<team>/chatbots/<eid>/settings/save-all/`).
+ *
+ * That view is a whole-form ModelForm save: every field it does not receive is
+ * written as empty/False. So a one-field change has to resend the rest exactly
+ * as they stand, which this reads from the form OCS renders:
+ * text/number inputs by `value`, checkboxes as `on` only when `checked`, selects
+ * by their `selected` option, textareas by their body. HTML entities are decoded.
+ */
+export function parseChatbotSettingsForm(html: string): Record<string, string | undefined> {
+  const decode = (v: string) =>
+    v.replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const out: Record<string, string | undefined> = {};
+  for (const m of html.matchAll(/<input\b[^>]*>/g)) {
+    const attrs = parseTagAttributes(m[0]);
+    const name = attrs.get('name');
+    if (typeof name !== 'string' || name === 'csrfmiddlewaretoken') continue;
+    const type = String(attrs.get('type') ?? 'text').toLowerCase();
+    if (type === 'submit' || type === 'button') continue;
+    if (type === 'checkbox') out[name] = attrs.has('checked') ? 'on' : undefined;
+    else out[name] = decode(typeof attrs.get('value') === 'string' ? (attrs.get('value') as string) : '');
+  }
+  for (const m of html.matchAll(/<textarea\b([^>]*)>([^]*?)<\/textarea>/g)) {
+    const name = parseTagAttributes(`<textarea${m[1]}>`).get('name');
+    if (typeof name === 'string') out[name] = decode(m[2]).replace(/^\r?\n/, '');
+  }
+  for (const m of html.matchAll(/<select\b([^>]*)>([^]*?)<\/select>/g)) {
+    const name = parseTagAttributes(`<select${m[1]}>`).get('name');
+    if (typeof name !== 'string') continue;
+    const selected = [...m[2].matchAll(/<option\b[^>]*>/g)]
+      .map((o) => parseTagAttributes(o[0]))
+      .find((a) => a.has('selected') && !a.has(':selected'));
+    const v = selected?.get('value');
+    out[name] = typeof v === 'string' ? decode(v) : '';
+  }
+  return out;
+}
+
+/**
  * Every channel button on the chatbot home page, as `{id, platform}`.
  * Matches templates/chatbots/components/channel_buttons.html, one button per channel:
  *   hx-get="/channels/<team>/chatbots/<eid>/channels/<channel_id>/edit-dialog/"
@@ -590,6 +629,66 @@ export class PlaywrightBackend {
     if (args.mcp_tools !== undefined) patch.mcp_tools = args.mcp_tools;
     const pipelineId = await this.pipelineIdFor(args.experiment_id);
     await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
+  }
+
+  /**
+   * Set a chatbot's description — the line OCS prints under the chatbot's name
+   * on its public-link page (ace#3045). Clones inherit the golden template's,
+   * which is not written for visitors.
+   *
+   * OCS has no REST write for it; the settings form saves every field at once
+   * (`chatbots_settings` -> `ChatbotSettingsForm(data=request.POST).save()`), so
+   * this reads the form, changes only `description`, resends the rest, and then
+   * re-reads the form to prove that nothing else moved. One field is refused
+   * rather than guessed: `synthetic_voice` is filled in by Alpine on the client
+   * (its server-rendered select has no selected option), so on a chatbot with a
+   * voice provider a resend would clear the voice. ACE bots carry none.
+   *
+   * The public page shows the PUBLISHED version's description, so set this
+   * before publishing.
+   */
+  async setChatbotDescription(args: { experiment_id: number; description: string }): Promise<{ description: string }> {
+    const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/settings/save-all/`;
+    const readForm = async (): Promise<Record<string, string | undefined>> => {
+      const res = await this.opts.request('GET', path);
+      assertNotSignInPage(res, path);
+      if (!res.ok || !res.text) throw await httpErrorFor(res, path);
+      const form = parseChatbotSettingsForm(await res.text());
+      if (!('name' in form) || !('description' in form)) {
+        throw new OcsError(
+          `setChatbotDescription: the settings form for experiment ${args.experiment_id} has no name/description ` +
+            'field — template drift on templates/chatbots/settings_content.html?',
+        );
+      }
+      return form;
+    };
+
+    const before = await readForm();
+    if (before.voice_provider) {
+      throw new OcsError(
+        `setChatbotDescription: experiment ${args.experiment_id} has a voice provider, and the settings form ` +
+          'fills synthetic_voice in on the client, so resending it would clear the voice. Set the description in the OCS UI.',
+      );
+    }
+    const body: Record<string, string> = { csrfmiddlewaretoken: this.opts.csrfToken };
+    for (const [k, v] of Object.entries({ ...before, description: args.description })) {
+      if (v !== undefined) body[k] = v;
+    }
+    const res = await this.opts.request('POST', path, body, { followRedirects: false, formEncoded: true });
+    if (!res.ok) throw await httpErrorFor(res, path);
+
+    const after = await readForm();
+    const moved = Object.keys({ ...before, ...after }).filter(
+      (k) => k !== 'description' && (before[k] ?? '') !== (after[k] ?? ''),
+    );
+    if ((after.description ?? '').trim() !== args.description.trim() || moved.length > 0) {
+      throw new OcsError(
+        `setChatbotDescription: read-back of experiment ${args.experiment_id} does not match. ` +
+          `description=${JSON.stringify(after.description)}; other fields changed: [${moved.join(', ')}]. ` +
+          'The settings form likely rejected the POST (it re-renders with errors) or gained a field this parser misses.',
+      );
+    }
+    return { description: after.description ?? '' };
   }
 
   async setSourceMaterial(args: { experiment_id: number; source_material_id: number | null }) {
