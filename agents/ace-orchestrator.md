@@ -41,6 +41,7 @@ prose, this list owns the scannable "what the rule says."
 
 - **Don't fake background tasks.** `ScheduleWakeup` is not a backgrounding primitive; phase-internal sequential skills run synchronously to a hard wall-clock budget. Bug class: unbounded silent loops with zero recoverable evidence (turmeric-20260503-0835: 3+ hr, ~700K tokens, zero transcript). See [reference § Long-Running Skills — No Fake Background Tasks](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
 - **Background scheduling is for opp-recurring jobs only.** `timeline-monitor`, `flw-data-review`, `ocs-chatbot-{qa,eval} --monitor`. Phase-internal work (`ocs-chatbot-qa --quick|--deep`, `app-screenshot-capture`) is foreground sequential. See [reference § Long-Running Skills](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
+- **Waiting on children — wait on the completion notification, never on a sleep.** A dispatched `Agent` (or a `run_in_background` command) reports back by notification, and that notification resumes the session that is waiting — the orchestrator AND a phase subagent (kaduna Phase 3: a 43-min wait on the Nova architect, no timer, no poll). So end the turn with one status line and let it arrive. Never bridge the wait with a foreground sleep past the 5-min prompt cache: noora Phase 7 slept 540–595 s seven times on the DDD loop and re-wrote a 450–720k context on every wake; canopy's `sleep_cap_guard` now refuses any foreground wait over 270 s. A phase whose own products are done does not stay alive for a long child at all — it hands off (Phase 7 → `ddd_handoff`). Bug class: cold-cache wakes that re-cache the whole context and slow every turn after. See [reference § Waiting on children](orchestrator-reference.md#waiting-on-children).
 - **Polling for upstream state changes is bounded.** RAG indexing in `ocs-agent-setup`, CCHQ build in `app-release`: max attempts + exponential backoff + hard timeout + fail-loud on exhaustion. Bug class: phantom "background task IDs" the orchestrator can't verify. See [reference § When polling IS appropriate](orchestrator-reference.md#when-polling-is-appropriate).
 - **Don't dispatch two `Agent` calls in one message.** Claude Code does not reliably parallelize `Agent` dispatches — treat all of them as serial, including Phase 3's two Nova builds and any future cross-phase orchestration. Bug class: silently-dropped second dispatch. See [reference § Per-phase batching, env, and Agent-serial rules](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
 - **Do batch independent tool calls.** N independent `drive_read_file`, `connect_create_payment_unit`, `nova_update_form` etc. in a single assistant message. Bug class: ~60–90s of pure model-output latency wasted per run when serialized. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
@@ -1880,7 +1881,32 @@ normal. Name the missing asks at the Phase 1→2 pause. Do NOT widen
 
 ### Phase 7: Synthetic Data and Workflows
 
-**Dispatch:** `Agent(synthetic-data-and-workflows)`.
+**Dispatch:** three dispatches, the DDD loop owned HERE, not nested in the phase.
+
+1. `Agent(synthetic-data-and-workflows)` with the context line
+   `ddd: orchestrator-owned` under `## Your task`. It builds the phase's products
+   (Steps 0 → 3.1), writes `products.synthetic.ddd_handoff`, and returns with
+   `status: in_progress`.
+2. **Before the silent-retry rule, ask `phase7DddStep(block)`** (`lib/ddd-handoff.ts`)
+   — an `in_progress` Phase 7 carrying a hand-off is WAITING ON THE LOOP, not a
+   silent failure, and re-dispatching the build half regenerates its data.
+   - `dispatch-ddd` → read the prompt file (`drive_read_file(prompt_file_id)`) and
+     dispatch `Agent(canopy:ddd)` with it verbatim (`--resume <resume_run_id>` is
+     already in it when Step 3.1 found a run to adopt; `CANOPY_DDD_RUNS_DIR` =
+     `runs_dir`). **Then wait on its completion notification — end your turn with
+     one status line; no sleep, no poll loop** (§ Anti-patterns → Waiting on
+     children). When it
+     returns, read `<runs_dir>/<ddd run id>/run_state.yaml` `terminal_status` and
+     write `products.synthetic.ddd_run_id` + `ddd_terminal_status` (deep merge)
+     BEFORE step 3, so a session that dies now resumes at finalize instead of
+     starting a second loop.
+   - `finalize` → step 3. `malformed` → re-dispatch step 1 once (it rewrites the
+     hand-off), then surface. `build` → the ordinary retry rules.
+3. `Agent(synthetic-data-and-workflows)` with `mode: finalize` — Steps 3.9 → 4.5
+   from the loop's ending; it flips `status: done`. The boundary fence runs after
+   THIS dispatch, not after step 1.
+
+On a resume, `phase7DddStep` on the loaded block says which of the three to run.
 
 **Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`.
 
@@ -1890,7 +1916,7 @@ normal. Name the missing asks at the Phase 1→2 pause. Do NOT widen
 
 **Gate:** **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
-**Notes:** **Depth constraint — Phase 7 is a subagent, and the chain below it is the deepest ACE has.** Its Step 3 dispatches `Agent(canopy:ddd)`, which fans out per-scene judges and specialist fixers of its own. As a subagent the chain computes to depth 4 inside a budget of 5 (`lib/agent-depth.ts`), which buys the heaviest remaining phase its own context window. It had been a procedure doc while the budget could not carry that; the budget, not the form, was the constraint. When `spark-facilitator/20260813-2126` ran it as a subagent, the nested dispatch was unreachable under the Claude Code of the time, so only a single render+judge pass executed — no loop, no convergence rule, no stopping rule — and a human halted it after four hand-driven iterations. That cause was an insufficient depth budget, now pinned at 5. The graph stays machine-checked so it cannot outgrow that budget — `test/lib/agent-depth.test.ts`. Same reasoning as Phase 3.
+**Notes:** **Under `/ace:run` the DDD loop is dispatched from here (above), one level shallower than when the phase runs it itself** — the phase keeps its own `Agent(canopy:ddd)` for every other dispatcher. **Depth constraint — Phase 7 is a subagent, and the chain below it is the deepest ACE has.** On that fallback path its Step 3 dispatches `Agent(canopy:ddd)`, which fans out per-scene judges and specialist fixers of its own. As a subagent the chain computes to depth 4 inside a budget of 5 (`lib/agent-depth.ts`), which buys the heaviest remaining phase its own context window. It had been a procedure doc while the budget could not carry that; the budget, not the form, was the constraint. When `spark-facilitator/20260813-2126` ran it as a subagent, the nested dispatch was unreachable under the Claude Code of the time, so only a single render+judge pass executed — no loop, no convergence rule, no stopping rule — and a human halted it after four hand-driven iterations. That cause was an insufficient depth budget, now pinned at 5. The graph stays machine-checked so it cannot outgrow that budget — `test/lib/agent-depth.test.ts`. Same reasoning as Phase 3.
 
 **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 

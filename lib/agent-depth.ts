@@ -72,6 +72,11 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
       'solicitation-management',
       'execution-manager',
       'closeout',
+      // Phase 7's DDD loop: the phase hands the prepared dispatch back
+      // (products.synthetic.ddd_handoff) and the orchestrator runs it, so no
+      // phase agent stays alive — sleep-polling — across an hours-long loop
+      // (lib/ddd-handoff.ts).
+      'canopy:ddd',
     ],
     why:
       'Inline because `review` mode pauses at every phase checkpoint with ' +

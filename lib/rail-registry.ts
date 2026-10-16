@@ -262,6 +262,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/no-hardcoded-connect-org.test.ts': { issues: [], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/no-completed-work-import-ui.test.ts': { issues: ['ace#2613'], observed: 'spark-facilitator/20261004-1706' },
   'test/skills/no-per-location-cap.test.ts': { issues: [], observed: 'turmeric-market-study/20260916-1650' },
+  'test/skills/nova-app-test-economy.test.ts': { issues: [], observed: 'kaduna-graduation/20261015-1411' }, // upstream ask voidcraft-labs/nova-plugin#71 — two digits, below ISSUE's 3-digit floor
   'test/skills/nova-contracts.test.ts': { issues: [], unknown: 'no issue or run id in the file; predates the convention (added 2026-04, the oldest rail here)' },
   'test/skills/nova-uuid-addressing.test.ts': { issues: ['ace#1132', 'ace#1151'] },
   'test/skills/ocs-deep-suite-contract.test.ts': { issues: ['ace#1956'] },

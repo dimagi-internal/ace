@@ -38,6 +38,12 @@ convergence rule and no stopping rule — the failure behind
 before a human called a halt. The cause there was an insufficient depth budget,
 now pinned at 5.
 
+**Under `/ace:run` you do not wait on that loop — the orchestrator does.** You
+build the dispatch and hand it off (Step 3, `ddd_handoff`); the orchestrator runs
+`Agent(canopy:ddd)` and re-dispatches you with `mode: finalize` once it has ended.
+The loop is hours long, and a phase agent kept alive across it burns its whole
+context on every wake (`lib/ddd-handoff.ts` has the measurement).
+
 You run the synthetic-data + demo phase between training (Phase 6) and solicitation
 (Phase 8). By phase start, Phases 1–5 have produced an approved PDD, deployed
 CommCare apps, a configured Connect opportunity, a quality-gated OCS chatbot, and
@@ -345,15 +351,52 @@ session's run (iteration 2, `score_history: [2.0, 2.0]`, 18 findings, three
 verdicts) sat under the ORIGINATING worktree's root and had to be hand-copied
 across. ace#2287.
 
-### Step 3: Render + converge — canopy DDD
+### Step 3: Render + converge — canopy DDD (hand off; never sleep on it)
 
-**Dispatch `Agent(canopy:ddd)`** — the full converge → video → upload loop. This is
+**Who runs the loop depends on who dispatched you — read your dispatch prompt.**
+
+- **`/ace:run` — the prompt carries `ddd: orchestrator-owned`. Hand off and
+  return.** Build the dispatch described below exactly as if you were sending it,
+  but do not call `Agent(canopy:ddd)`. Instead:
+  1. Upload the complete prompt as `7-synthetic/ddd-dispatch-prompt.md`
+     (`drive_upload_binary`, `mimeType: text/markdown` — never `drive_create_file`,
+     whose Doc export mangles the newlines the prompt depends on).
+  2. Write `products.synthetic.ddd_handoff` with `update_yaml_file({merge: 'deep'})`
+     and keep `status: in_progress`:
+     `{prompt_file_id, runs_dir: $CANOPY_DDD_RUNS_DIR, narrative_slug,
+     resume_run_id: <Step 3.1's run id, or null>, workspace: $WS, prepared_at}`.
+     The shape is `lib/ddd-handoff.ts` (`handoffProblem` rejects a half-written one).
+  3. Return. Your summary says `DDD hand-off ready: <narrative_slug>` and lists
+     what Steps 0–3.1 produced. The orchestrator dispatches the loop, waits on its
+     completion notification, records `ddd_run_id` + `ddd_terminal_status`, and
+     dispatches you again with `mode: finalize`.
+- **`mode: finalize`.** Do NOT redo Steps 0–3.1 — their products are in
+  `run_state.yaml` and regenerating them would invalidate the render the loop
+  just judged. Read `products.synthetic.ddd_handoff` + `ddd_run_id` +
+  `ddd_terminal_status`, export `CANOPY_DDD_RUNS_DIR` from the hand-off's
+  `runs_dir`, run `bin/ace-canopy-web --workspace "$WS" verify narrative <slug>`,
+  then Steps 3.9 → 4.5 against `<runs_dir>/<ddd_run_id>/`. Step 4 flips
+  `status: done`.
+- **Any other dispatcher (no `ddd: orchestrator-owned` line).** Dispatch
+  `Agent(canopy:ddd)` yourself, then **wait on its completion notification: end
+  your turn with one line** (`Waiting on the DDD loop.`). A subagent with a child
+  in flight is resumed by that child's notification — measured on
+  `kaduna-graduation/20261015-1411` Phase 3, a 43-minute wait on the Nova
+  architect with no timer and no poll. **Never sleep-poll the loop.** The prompt
+  cache expires after 5 idle minutes; `noora-health/20261015-1129` slept
+  540–595 s seven times here and re-wrote its whole context on every wake.
+  canopy's `sleep_cap_guard` refuses a foreground wait over 270 s for that reason.
+  If you must look at progress, one read of the DDD `run_state.yaml` per wake,
+  never a sleep.
+
+**What the dispatch carries** — the full converge → video → upload loop. This is
 the default and the only path that terminates on its own. Pass the run id, the
 unified spec, and the why-brief. **Pin who writes and where** (ace#2805): set `WS` to
 the opp's `opp.yaml` `canopy_web.workspace`, else `config/canopy-web.json`
 `ddd_workspace`; run `"$ACE_ROOT/bin/ace-canopy-web" --workspace "$WS" check`; put the
 wrapper and `$WS` in the dispatch prompt and require every canopy-web write to run as
-`bin/ace-canopy-web --workspace "$WS" -- <command>`; after it returns,
+`bin/ace-canopy-web --workspace "$WS" -- <command>`; after it returns (in
+`mode: finalize`, when the orchestrator ran it),
 `verify narrative <slug>` before the phase summary names any canopy-web URL.
 Contract: `playbook/integrations/canopy-web.md`. **On a resume, pass `--resume <run_id>` explicitly
 and say so** — an unqualified dispatch is what starts a fresh run.

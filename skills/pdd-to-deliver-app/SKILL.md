@@ -784,6 +784,29 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
      trigger doesn't fire.
 
+   - **App-test economy (always).** Insert this paragraph **verbatim** into
+     the brief, in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Keep app-test output small — every app-test result stays in
+     > your context for the rest of the build. Batch each journey into as
+     > few `continue_app_test` calls as possible: up to 8 `actions` per
+     > call, each with an `expect` (screen / form / submitted) so a journey
+     > that behaves costs one call and a wrong turn stops at the first
+     > miss. Do not re-observe a screen you have already seen; to re-read
+     > evidence, use `read_app_test` with a small `limit` (and `inspect`
+     > only the step you need), not a fresh journey. Test each distinct
+     > journey once per saved revision, then re-test only the journeys a
+     > later edit touched. Do not call `get_form` on a form you just
+     > authored to confirm it — the save result already says what was saved.
+
+     Why: Nova has no compact/delta result mode (`continue_app_test` and
+     `get_form` take no size control — voidcraft-labs/nova-plugin#71), and
+     each `continue_app_test` result measured 35–108 KB, ~30 per build. On
+     `kaduna-graduation/20261015-1411` the Deliver architect's context reached
+     ~944k and hit the 250-turn cap before reporting. Batching cuts the call
+     count, which is the half ACE can control. When #71 ships a compact
+     mode, add it to this paragraph (`skills/nova-capability-adoption`).
+
 4. **Invoke `/nova:autobuild "<brief>"`.** Capture from the response:
    - `app_id` — durable Nova handle, written to the summary as
      `nova_app_id`. Since nova plugin v2 the architect builds in private
