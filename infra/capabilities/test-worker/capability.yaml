@@ -21,8 +21,8 @@
 # slots that lack data. Adding or retiring a worker:
 # skills/test-worker-pool/SKILL.md.
 #
-# worker-1..4 are +74260000101..104, all four signed up in PersonalID
-# (2026-10-15). worker-1 is also the legacy ACE_E2E_* worker the rollout
+# worker-1..10 are +74260000101..110, all signed up in PersonalID
+# (1-4 on 2026-10-15, 5-10 on 2026-10-16; owner asked for a pool of 10). worker-1 is also the legacy ACE_E2E_* worker the rollout
 # fallback uses while this capability is not live.
 #
 # Client: lib/test-worker-lease.ts (checkout/heartbeat/release) via
@@ -31,5 +31,5 @@ version: 1
 name: test-worker
 kind: pool
 description: Connect test workers, one device session each.
-slots: [worker-1, worker-2, worker-3, worker-4]
+slots: [worker-1, worker-2, worker-3, worker-4, worker-5, worker-6, worker-7, worker-8, worker-9, worker-10]
 limits: {max_lease_s: 14400, idle_release_s: 900}
