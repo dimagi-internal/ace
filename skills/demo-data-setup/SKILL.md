@@ -1464,9 +1464,10 @@ demote it. C6 re-checks the spread against what labs graded.
 
 **C1. Create the synthetic programme.** One labs-only opportunity per partner:
 the first `synthetic_create_labs_only({label, gdrive_folder_id: 'pending-generate',
-org_name, program_name, allowed_domains: ['@dimagi.com', '@dimagi-ai.com']})`
+org_name, program_name, allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com']})`
 leaves `program_id` unset, which makes its own id the program id; every later
-partner passes `program_id: <that id>`. Include ACE's own domain in
+partner passes `program_id: <that id>`. `@dimagi-associate.com` is Dimagi (owner, 2026-10-16:
+associate designers review these dashboards). Include ACE's own domain in
 `allowed_domains` or the ACE identity cannot read what it just created. Write each
 `{label, opportunity_id}` to `products.synthetic.cascade.partners` and
 `program_id` immediately (ace#2412).
