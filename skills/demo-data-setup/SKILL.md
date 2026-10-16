@@ -850,7 +850,8 @@ front half (how the labs-only opp + its data come to exist) differs.
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-render-code-utilities.ts" <render-code-path> --substitute
-   # exit 0 = every utility resolves · exit 1 = MISSING, do NOT upload
+   # exit 0 = every utility resolves · exit 1 = MISSING utility or a count on a
+   #   hard-coded plural (ace#2248), do NOT upload
    # exit 2 = could not read the stylesheet — fix that first; do NOT proceed
    ```
 
@@ -878,6 +879,13 @@ front half (how the labs-only opp + its data come to exist) differs.
      string — never reason from a resolving sibling.
    - **Leave every PRESENT utility alone.** Swapping a working class for
      another working class is unforced churn.
+   - **A count concatenated onto a phrase carries its singular form (ace#2248).**
+     Never `t.committee + " were committee meetings"` — at a count of 1 that
+     renders "1 were committee meetings" on a funder-facing panel, and 1 is the
+     likeliest value a per-cause count takes. Write
+     `t.committee + (t.committee === 1 ? " was a committee meeting" : " were committee meetings")`.
+     The same script lints this statically (count + `" were|are|have …"`, or a
+     `.length`/count-named value + `" <plural noun>"`) and exits 1 on a hit.
 
    Root cause tracked upstream as connect-labs#1294 (reject a non-resolving
    utility at labs' `render_code` write boundary). This gate earns its keep
