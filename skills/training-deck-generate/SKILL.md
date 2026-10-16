@@ -72,6 +72,25 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
      `connect-signin-splash`, `claim-opp-detail`, `commcare-welcome`).
      These cover the Connect platform onboarding flow and are shared
      across all opportunities.
+
+     **Preflight the common pool first (ace#3060):**
+
+     ```bash
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/doctor-common-screenshot-pool.ts" --format=json
+     ```
+
+     Exit 0 means the pinned APK's pool is usable. Exit 1 means it
+     is missing or incomplete; the JSON `summary` names which. Exit 2 means the
+     check could not run, and that is not a pass. On exit 1 or 2:
+     - add `severity: FAIL` `[COMMON-POOL-MISSING] <summary>` to the verdict's
+       `auto_surfaced`, and cap the verdict at `warn` (never `pass`);
+     - **do not read another version's pool.** Older screens captioned as the
+       current app are the false-promise class `lib/screenshot-pool-distinctness.ts`
+       exists to stop. Load only the aliases the probe lists as `live`, and let
+       every other common alias fall through to the template/placeholder path;
+     - do not halt. The opp-specific content is still worth shipping. The fix is
+       `common-screenshot-capture`, which runs outside the run.
    - Per-opp aliases from
      `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`.
      Format: each entry has `alias:`, `journey_id:`, `step_name:`,

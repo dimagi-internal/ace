@@ -3157,6 +3157,16 @@ run_line_probe scripts/doctor-test-worker-pool.ts --format=lines
 emit_line_probe test_worker_pool \
   "re-install the plugin (/ace:update) or run \`npm ci\`; then re-run /ace:doctor"
 
+# 8d. common_screenshot_pool — Drive ACE/_common/connect-screenshots/<pinned
+# APK>/ must exist with every capturable alias live (ace#3060). The pool is not
+# in git, so nothing else notices when an APK upgrade skips it: 2.64.0 ran six
+# weeks with no pool while decks and FLW guides quietly lost their platform
+# screens. WARN, not FAIL — runs still work, training artifacts degrade.
+# Read-only. Logic: lib/common-screenshot-pool.ts.
+run_line_probe scripts/doctor-common-screenshot-pool.ts --format=lines
+emit_line_probe common_screenshot_pool \
+  "re-install the plugin (/ace:update) or run \`npm ci\`; then re-run /ace:doctor"
+
 # mobile_infra (added 0.13.128): single-line gate that summarizes mobile
 # readiness so an operator scanning [Auth liveness] sees the gating
 # signal without having to read the verbose [Mobile] block. The detail

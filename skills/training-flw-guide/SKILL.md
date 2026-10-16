@@ -126,11 +126,29 @@ from PDD's Evidence Model.>
 
 1. **Read inputs.** Drive paths in the table above.
 
-2. **Resolve the common-screenshots set.** Read the latest manifest
-   under `ACE/_common/connect-screenshots/`. Pick the version directory
-   matching the live Connect APK version (from `run_state.yaml`'s
-   deployment summary or `ACE_CONNECT_APK_VERSION`); if none matches
-   exactly, use the most recent and emit an INFO note in the verdict.
+2. **Resolve the common-screenshots set.** Read
+   `ACE/_common/connect-screenshots/<v>/manifest.yaml`, where `<v>` is the
+   pinned Connect APK version (`ACE_CONNECT_APK_VERSION`, else the code
+   default).
+
+   **Preflight the common pool first (ace#3060):**
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/doctor-common-screenshot-pool.ts" --format=json
+   ```
+
+   Exit 0 means the pinned APK's pool is usable. Exit 1 means it
+   is missing or incomplete; the JSON `summary` names which. Exit 2 means the
+   check could not run, and that is not a pass. On exit 1 or 2:
+   - add `severity: FAIL` `[COMMON-POOL-MISSING] <summary>` to the verdict's
+     `auto_surfaced`, and cap the verdict at `warn` (never `pass`);
+   - **do not read another version's pool.** Older screens captioned as the
+     current app are the false-promise class `lib/screenshot-pool-distinctness.ts`
+     exists to stop. Load only the aliases the probe lists as `live`, and let
+     every other common alias fall through to the template/placeholder path;
+   - do not halt. The opp-specific content is still worth shipping. The fix is
+     `common-screenshot-capture`, which runs outside the run.
 
 3. **Build the screenshot resolution map.** Two pools merged into one
    `{ alias → drive_file_id }`:
