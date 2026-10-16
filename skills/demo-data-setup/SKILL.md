@@ -86,7 +86,9 @@ front half (how the labs-only opp + its data come to exist) differs.
         expression: "<verbatim>"   # with a known resolution and a non-empty detail
         resolution: spec-addition  # spec-addition | direct-measured-assertion | spec-correction | out-of-scope-form
         detail: "<the measured count, e.g. 0 of 167 violate>"
-    additions:                     # hand-declared, merged via mergeDatasetSpecs
+    additions:                     # hand-declared, merged via mergeDatasetSpecs; check 9 rebuilds
+      conditional_fields: []       # the merged spec from these, so list EVERY addition (ace#2245)
+      integer_fields: []
       whole_currency_fields: []
       cross_field_rules: []
       unique_pairs: []

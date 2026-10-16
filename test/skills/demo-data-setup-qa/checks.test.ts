@@ -423,6 +423,7 @@ describe('checkInteractiveRunsLive (#1162)', () => {
  */
 import { checkDatasetObeysPddConstraints } from '../../../skills/demo-data-setup-qa/checks';
 import type { ConstraintReport } from '../../../lib/dataset-constraints';
+import { countFieldPresence } from '../../../lib/dataset-constraints';
 
 const CLEAN_REPORT: ConstraintReport = { ok: true, total: 276, violations: [] };
 const DERIVED = { unparsed: [], questionsSeen: 4, gatesParsed: 2 };
@@ -451,8 +452,11 @@ describe('checkDatasetObeysPddConstraints — evidenced unparsed_resolutions (ac
     { field: 'male_participants', expression: '. >= 0 and . <= /data/who_came/male_attendance', resolution: 'spec-addition', detail: 'crossFieldRules[male_participants <= male_attendance]; 0 of 167 violate.' },
   ];
 
+  // The addition OK_RES[1]'s detail names, as mergeDatasetSpecs would carry it (ace#2245).
+  const MERGED = { crossFieldRules: [{ lhs: 'male_participants', op: '<=' as const, rhs: 'male_attendance' }] };
+
   it('passes when EVERY raw unparsed gate carries a matching, evidenced resolution, and echoes them', () => {
-    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: OK_RES });
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: OK_RES, mergedSpec: MERGED });
     expect(r.pass).toBe(true);
     expect(r.detail).toMatch(/2 unparsed gate\(s\) resolved/);
     expect(r.detail).toMatch(/gps_far_note: direct-measured-assertion/);
@@ -475,6 +479,81 @@ describe('checkDatasetObeysPddConstraints — evidenced unparsed_resolutions (ac
   it('CONTROL: a resolution for a different expression on the same field does not match', () => {
     const wrong = [OK_RES[0], { ...OK_RES[1], expression: '. <= 999' }];
     expect(checkDatasetObeysPddConstraints({ derivation: DERIV, report: CLEAN_REPORT, unparsedResolutions: wrong }).pass).toBe(false);
+  });
+});
+
+// ace#2245: a spec-addition resolution was an author assertion nothing checked. Modelled on
+// spark-facilitator/20260907-1120 (labs opp 10057, 182 records), as the issue describes it: four
+// numeric-range GPS gates the derivation could not read, resolved as equality against fixture-only
+// accuracy bands. `gps_accuracy_band` is generated (the gate fires on 37 and 7 records);
+// `enrol_gps_accuracy_band` is in 0 of 182 records, so its two gates never fire. The expressions'
+// exact text is reconstructed from the issue's description; the run's verbatim list is not in the repo.
+describe('checkDatasetObeysPddConstraints — spec-addition is checked against the merged spec (ace#2245)', () => {
+  const REPORT182: ConstraintReport = { ok: true, total: 182, violations: [] };
+  const gate = (field: string, src: string, lo: number, hi?: number) => ({
+    kind: 'relevant' as const,
+    field,
+    path: `/data/location/${field}`,
+    expression: hi === undefined ? `/data/location/${src} > ${lo}` : `/data/location/${src} > ${lo} and /data/location/${src} <= ${hi}`,
+    reason: 'not of the form',
+  });
+  const UNPARSED = [
+    gate('gps_marginal_note', 'gps_accuracy_m', 20, 50),
+    gate('gps_poor_note', 'gps_accuracy_m', 50),
+    gate('enrol_gps_marginal_note', 'enrol_gps_accuracy_m', 20, 50),
+    gate('enrol_gps_poor_note', 'enrol_gps_accuracy_m', 50),
+  ];
+  const DERIV = { unparsed: UNPARSED, questionsSeen: 107, gatesParsed: 39 };
+  const RES = UNPARSED.map((u) => ({ field: u.field, expression: u.expression, resolution: 'spec-addition', detail: 'conditionalFields equality on the accuracy band; 0 off-branch' }));
+  const band = (field: string, gateField: string, equals: string) => ({ field, requiredWhen: { field: gateField, equals } });
+  const MERGED = {
+    conditionalFields: [
+      band('gps_marginal_note', 'gps_accuracy_band', 'marginal'),
+      band('gps_poor_note', 'gps_accuracy_band', 'poor'),
+      band('enrol_gps_marginal_note', 'enrol_gps_accuracy_band', 'marginal'),
+      band('enrol_gps_poor_note', 'enrol_gps_accuracy_band', 'poor'),
+    ],
+  };
+  const PRESENCE = { gps_accuracy_band: 182, enrol_gps_accuracy_band: 0 };
+
+  it('CONTROL: the same spec-addition resolutions with NO merged spec clear nothing', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: REPORT182, unparsedResolutions: RES });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/4 spec-addition resolution\(s\) name a gate the merged spec carries no rule for/);
+    expect(r.detail).toMatch(/no mergedSpec supplied/);
+    expect(r.auto_fix_hint).toMatch(/mergeDatasetSpecs/);
+  });
+
+  it('passes when the merged spec carries each addition, and REPORTS the two that never fire', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: REPORT182, unparsedResolutions: RES, mergedSpec: MERGED, fieldPresence: PRESENCE });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/declared but never firing/);
+    expect(r.detail).toMatch(/enrol_gps_marginal_note \(gate field enrol_gps_accuracy_band carried by 0 of 182 records\)/);
+    expect(r.detail).toMatch(/enrol_gps_poor_note \(gate field/);
+    expect(r.detail).not.toMatch(/[^_]gps_marginal_note \(gate field/);
+  });
+
+  it('CONTROL: an addition missing from the merged spec fails, naming that gate only', () => {
+    const partial = { conditionalFields: MERGED.conditionalFields.slice(0, 3) };
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: REPORT182, unparsedResolutions: RES, mergedSpec: partial, fieldPresence: PRESENCE });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/1 spec-addition resolution\(s\)[^;]*enrol_gps_poor_note \[relevant\]/);
+  });
+
+  it('CONTROL: a derived entry that still lists the expression in unparsedGates is not an addition', () => {
+    const stillUnparsed = {
+      conditionalFields: [
+        ...MERGED.conditionalFields.slice(0, 3),
+        { field: 'enrol_gps_poor_note', requiredWhen: { field: 'consent', equals: 'yes' }, unparsedGates: [UNPARSED[3].expression] },
+      ],
+    };
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIV, report: REPORT182, unparsedResolutions: RES, mergedSpec: stillUnparsed });
+    expect(r.pass).toBe(false);
+  });
+
+  it('countFieldPresence counts records carrying a value, nested or not', () => {
+    const rows = [{ gps_accuracy_band: 'good' }, { form: { gps_accuracy_band: 'poor' } }, { gps_accuracy_band: '' }, {}];
+    expect(countFieldPresence(rows, ['gps_accuracy_band', 'enrol_gps_accuracy_band'])).toEqual({ gps_accuracy_band: 2, enrol_gps_accuracy_band: 0 });
   });
 });
 
