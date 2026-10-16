@@ -835,6 +835,14 @@ server.tool('connect_add_org_member',
   async (args) => runAtom(async () => (await client()).addOrgMember(args))
 );
 
+server.tool('connect_list_org_members',
+  'READ-ONLY. List a Connect workspace\'s (organization\'s) members and its pending invites, exactly as `connect_add_org_member` / `connect_remove_org_member` read them before and after their POSTs: GET `/a/<org>/organization/member_table?page_size=100` and GET `/a/<org>/organization/pending_invites_table?page_size=100`. It NEVER posts, so it cannot create an invite or make Connect send an email. Use THIS for any verification or read-back ("is X a viewer of org Y?"); `connect_add_org_member` invites and emails anyone absent (ace#2986). Returns `{organization_slug, members: [{email, role, id}], pending_invites: [{email, role, id, invited_on, expires_on}]}`; `role` is the role Connect STORED, lowercased (`admin` | `member` | `viewer`). A person is a member only once they accept, so someone invited but not yet accepted appears in `pending_invites`, not `members`. Match emails case-insensitively. Both tables are admin-only upstream, so the ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`; a non-200 read raises an error instead of returning empty lists. One page of up to 100 rows per table.',
+  {
+    organization_slug: z.string().describe('Workspace (organization) slug, e.g. "ace-nm-org".'),
+  },
+  async (args) => runAtom(async () => (await client()).listOrgMembers(args))
+);
+
 server.tool('connect_remove_org_member',
   'Take a person out of a Connect workspace (organization) by email — the inverse of `connect_add_org_member`. Removes a MEMBERSHIP (POST `/a/<org>/organization/member/remove` with its membership id) or, if they never accepted, REVOKES their PENDING INVITE (POST `/a/<org>/organization/invite/<id>/revoke`). Reads both the member and pending-invite tables before and after, so the outcome is observed: `status` is `"removed"`, `"invite-revoked"`, or `"not-present"` (in neither table; nothing posted), with the `role` the row carried. Raises a typed validation error if the person is still present afterwards. Connect refuses to remove the caller, so this cannot remove ace@ itself. The ACE session user MUST be an admin of `organization_slug`. Used to revoke the interim shared-org grants recorded in `released.shared_grants` by `/ace:release --allow-shared connect`.',
   {

@@ -468,6 +468,33 @@ export interface ConnectClient {
   }>;
 
   /**
+   * READ-ONLY: a Connect workspace's (organization's) member table and its
+   * pending-invite table, the same two GETs `addOrgMember` / `removeOrgMember`
+   * read before and after their POSTs —
+   * `/a/<org>/organization/member_table?page_size=100` and
+   * `/a/<org>/organization/pending_invites_table?page_size=100` — and nothing
+   * else. Never POSTs, so it can never create an invite or send an email.
+   * This is the verification read: "is X a viewer of org Y?" must not go
+   * through `addOrgMember`, which invites (and Connect emails) anyone absent
+   * (ace#2986). Both views are `@org_admin_required`-guarded upstream, so
+   * the session user must be an admin of `organization_slug`; a non-200 read
+   * throws rather than reading as "no members".
+   */
+  listOrgMembers(args: { organization_slug: string }): Promise<{
+    organization_slug: string;
+    /** One row per accepted membership; `role` is the stored role (lowercased). */
+    members: Array<{ email: string; role: string | null; id: string | null }>;
+    /** One row per invite not yet accepted, with its dates as rendered. */
+    pending_invites: Array<{
+      email: string;
+      role: string | null;
+      id: string | null;
+      invited_on: string | null;
+      expires_on: string | null;
+    }>;
+  }>;
+
+  /**
    * Take a person OUT of a Connect workspace (organization): the inverse of
    * `addOrgMember`, used to revoke the interim shared-org grants `/ace:release
    * --allow-shared connect` records. Handles both states an `addOrgMember`

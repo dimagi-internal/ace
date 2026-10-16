@@ -82,8 +82,8 @@ drive_list_folder(<6-qa-and-training folder id>)
 
 If you are preparing the page **for named people**, also get the membership
 read-backs (`scripts/grant-review-access.ts --dry-run` for HQ + OCS;
-`connect_add_org_member`'s pre-read of `/organization/member_table` for
-Connect) and write them as `{"hq": {"a@b.c": true}, "ocs": {...}, "connect": {...}}`.
+`connect_list_org_members({ organization_slug })` for Connect — read-only;
+never `connect_add_org_member`, which invites and emails anyone absent, ace#2986) and write them as `{"hq": {"a@b.c": true}, "ocs": {...}, "connect": {...}}`.
 
 ### 2. Run the audit
 
