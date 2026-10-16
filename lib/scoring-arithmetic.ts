@@ -141,6 +141,58 @@ function ungradedRollup(binds: Bind[], itemScores: string[]): Bind | undefined {
   return best;
 }
 
+/**
+ * The branches of a rollup that is a top-level `if(pred, A, B)` — a
+ * role-partitioned score, where each worker answers only her own bank and the
+ * rollup picks the bank by role (kaduna-graduation/20261015-1411: two 10-item
+ * banks, each `* 100 div 10`, over a 20-item form; dimagi-internal/ace#2990).
+ * A nested `if` in either branch is flattened, so three or more banks work
+ * too. Returns `undefined` when the rollup is not a top-level `if`, which
+ * keeps the whole-form denominator check for everything else. The split is
+ * balanced over `()` and `[]` and ignores commas inside quoted literals, so a
+ * predicate carrying a `casedb` lookup does not break it.
+ */
+function ifBranches(calc: string): string[] | undefined {
+  const args = topLevelIfArgs(calc);
+  if (!args) return undefined;
+  return args.slice(1).flatMap((b) => ifBranches(b) ?? [b]);
+}
+
+function topLevelIfArgs(calc: string): string[] | undefined {
+  const s = calc.trim();
+  const head = /^if\s*\(/.exec(s);
+  if (!head) return undefined;
+  const args: string[] = [];
+  let depth = 1;
+  let quote: string | null = null;
+  let start = head[0].length;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') {
+      depth--;
+      if (depth === 0) {
+        // The `if(...)` must be the WHOLE expression — `if(...) + x` is not a
+        // partition, and its branches do not each carry the full score.
+        if (s.slice(i + 1).trim() !== '') return undefined;
+        args.push(s.slice(start, i));
+        return args.length === 3 ? args : undefined;
+      }
+    } else if (c === ',' && depth === 1) {
+      args.push(s.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return undefined;
+}
+
+const PERCENT_DENOM = /\*\s*100\s+div\s+(\d+)/;
+
 export function checkScoringArithmetic(xml: string): ScoringReport {
   const doc = parse(xml);
   const binds = scoringBinds(doc);
@@ -226,7 +278,31 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
   // `* 100 div N` is the percentage form Connect's 0-100 passing_score needs.
   // A raw-sum rollup is a different (documented) shape and is not second-guessed
   // here — `_app-component-library § assessment-gate` owns that choice.
-  const denom = /\*\s*100\s+div\s+(\d+)/.exec(rollup.calculate);
+  //
+  // A role-partitioned `if(pred, A, B)` rollup is judged per branch: each
+  // branch's denominator must equal the item terms THAT branch sums, since a
+  // worker only ever answers one bank (ace#2990). The term checks above still
+  // run over the union, so together the branches must cover every item.
+  const branches = ifBranches(rollup.calculate);
+  if (branches) {
+    branches.forEach((branch, i) => {
+      const d = PERCENT_DENOM.exec(branch);
+      if (!d) return;
+      const terms = new Set(
+        [...branch.matchAll(SCORE_REF)].map((m) => m[0]).filter((r) => ITEM_SCORE.test(r)),
+      ).size;
+      if (terms > 0 && Number(d[1]) !== terms) {
+        findings.push({
+          kind: 'denominator-mismatch',
+          detail:
+            `${rollup.nodeset} branch ${i + 1} of its if() divides by ${d[1]} but sums ${terms} scored ` +
+            `item(s) — every worker on that branch scores wrong by a factor of ${terms}/${d[1]}`,
+        });
+      }
+    });
+    return { ...checked(findings.length === 0, findings), itemScores };
+  }
+  const denom = PERCENT_DENOM.exec(rollup.calculate);
   if (denom && Number(denom[1]) !== items.length) {
     findings.push({
       kind: 'denominator-mismatch',
