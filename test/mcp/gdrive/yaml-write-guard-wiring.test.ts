@@ -53,7 +53,8 @@ describe('every Drive write path reaches the YAML parse guard (ace#2866)', () =>
   it('drive_update_file reads the file NAME from the metadata call it already makes', () => {
     // If this reverts to `fields: 'mimeType'`, the update path has no name to
     // key the guards on and the sniff-gated hole reopens.
-    expect(src).toMatch(/drive\.files\.get\(\{ fileId, fields: 'name, mimeType', supportsAllDrives: true \}\)/);
+    // (`parents` rides along for the grade's artifact_sha256 stamp, ace#3092.)
+    expect(src).toMatch(/drive\.files\.get\(\{ fileId, fields: 'name, mimeType(?:, parents)?', supportsAllDrives: true \}\)/);
   });
 
   it('no longer gates the update-path guards behind a content sniff', () => {

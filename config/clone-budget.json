@@ -1,8 +1,9 @@
 {
   "_comment": "Wall-clock budget for scripts/clone-run.ts, in seconds. A stage that RAN over its budget, or the whole run over total_seconds, is recorded as clone.budget_breaches and the script exits non-zero (4). Keep in step with DEFAULT_CLONE_BUDGET in lib/clone-run.ts; this file wins.",
-  "total_seconds": 900,
+  "_tuning": "ace_web is 600 s (and total 1200 s, the same +5 min) from ESTIMATES, not measurements: ace-web#913 puts ~850 files at pool 8 at 6-8 min end to end (~4.3 min pooled copying + serial folder creation + the id-rewrite pass); the earlier 300 s would breach on every real clone, and a budget that fires every run is noise. Once TWO real clones have run, tune ace_web and total_seconds from their recorded per-stage `seconds` (clone-run report / clone.<stage>.seconds on the target run_state) to roughly the slower run plus ~25%, and update DEFAULT_CLONE_BUDGET with it.",
+  "total_seconds": 1200,
   "stages": {
-    "ace_web": 300,
+    "ace_web": 600,
     "summary_url": 30,
     "drive_ids": 180,
     "hq": 240,

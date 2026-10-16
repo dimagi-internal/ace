@@ -994,11 +994,43 @@ export interface ReadinessAgentWork {
   regrade: Array<{ skill: string; finding: string; detail: string }>;
   /** Preview frames to look at: one per phase that has previews, plus every frame written today. */
   look: string[];
+  /**
+   * Step 6's link repair for a CLONED run (`run_state.clone.from` set): the one
+   * command that applies the clone-asset-rewrite plan AND records each pure
+   * id/URL rewrite in the content ledger. Applying the plan by hand (MCP atoms)
+   * leaves no ledger entry, so every gate on a repaired file read stale and
+   * asked for a re-grade (ace#3092). Absent for a run that is not a clone.
+   */
+  repair?: string;
+}
+
+/** The run being validated; `root` is the plugin root the printed command resolves scripts from. */
+export interface ReadinessTarget { workspace: string; opp: string; run: string; root?: string }
+
+/**
+ * `scripts/clone-run.ts --readiness-repair` for a cloned run, or null. The
+ * source workspace comes from `clone.from` (what clone-run recorded); the run
+ * keeps its opp/run id across the copy.
+ */
+export function readinessRepairCommand(runState: unknown, target: ReadinessTarget): string | null {
+  const from = (runState as { clone?: { from?: { workspace?: unknown } } } | null)?.clone?.from;
+  const src = typeof from?.workspace === 'string' ? from.workspace : null;
+  if (!src || src === target.workspace) return null;
+  const script = target.root
+    ? `node "${target.root}/node_modules/tsx/dist/cli.mjs" "${target.root}/scripts/clone-run.ts"`
+    : 'npx tsx scripts/clone-run.ts';
+  return `${script} --from ${src} --to ${target.workspace} ${target.opp}/${target.run} --readiness-repair`;
 }
 
 const REGRADE_FINDING = /^(qa-stale|qa-missing|qa-malformed|eval-stale|eval-missing|eval-unreadable):/;
 
-export function readinessAgentWork(files: readonly RunFile[], runState: unknown, catalog: GateCatalog, now: string): ReadinessAgentWork {
+export function readinessAgentWork(
+  files: readonly RunFile[],
+  runState: unknown,
+  catalog: GateCatalog,
+  now: string,
+  target?: ReadinessTarget,
+): ReadinessAgentWork {
   const regrade = assessGates(files, runState, catalog)
     .filter((f) => REGRADE_FINDING.test(f.id))
     // Every one of these ids is `<kind>:<gate skill>` (e.g. `eval-stale:build-memo-eval`).
@@ -1014,7 +1046,8 @@ export function readinessAgentWork(files: readonly RunFile[], runState: unknown,
     if (f.modifiedTime.slice(0, 10) === today) look.add(f.path);
   }
   for (const f of byPhase.values()) look.add(f.path);
-  return { regrade, look: [...look].sort() };
+  const repair = target ? readinessRepairCommand(runState, target) : null;
+  return { regrade, look: [...look].sort(), ...(repair ? { repair } : {}) };
 }
 
 /** The release plan's problems (lib/release-plan.ts) as findings. */

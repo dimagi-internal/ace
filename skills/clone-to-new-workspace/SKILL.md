@@ -233,7 +233,7 @@ Skip any part that already holds.
    already names a different HQ space or org, stop and report both. Read it
    back and print it.
 
-## Steps 1–4 — run the clone script (one command, ≤ 15 minutes, budgeted)
+## Steps 1–4 — run the clone script (one command, ≤ 20 minutes, budgeted)
 
 Everything after Step 0 is ONE deterministic, idempotent, resumable script
 (ace#3021). Do not drive these steps by hand, and do not dispatch the Phase 4
@@ -255,9 +255,11 @@ budget (`budget_breaches[]`), **3** when it finished with stages not done
 
 **The budget is the release path's speed guard** (`config/clone-budget.json`,
 defaults in `lib/clone-run.ts` `DEFAULT_CLONE_BUDGET`): per stage that RAN —
-ace_web 5 min, summary_url 30 s, drive ids 3 min, hq 4 min,
+ace_web 10 min, summary_url 30 s, drive ids 3 min, hq 4 min,
 release_summary 1 min, connect 3 min, labs 6 min, ocs 10 s,
-asset_refs 4 min, readme 1 min — and **15 min for the whole run**. Each
+asset_refs 4 min, readme 1 min — and **20 min for the whole run**. (ace_web
+and the total are estimates — ace-web#913's 6–8 min for ~850 files — to be
+tuned from the first two real clones' `seconds`, ace#3092.) Each
 stage's `seconds` is in the report; a stage or the run over its budget is
 recorded as `clone.budget_breaches` on the target run_state and exits 4. A
 breach is a defect to report (and file, with the stage's `seconds`), not a
@@ -319,7 +321,8 @@ What it does, stage by stage — the rules each one keeps:
    there the stage stops WITHOUT retrying, and the next run looks before it
    does anything. Only after checking by hand: `--retry-ambiguous hq.learn`
    (or `hq.deliver`, `connect.program`, `connect.application`,
-   `connect.opportunity`, `connect.payment_units`). Then **3b**: mints the
+   `connect.opportunity`, `connect.payment_units`, and the Labs copy's
+   `labs.registry`, `labs.programme_report`, `labs.cohort`). Then **3b**: mints the
    opportunity's key **restricted to this space** (`ace-clone-<hq>`, stored
    owner-only, only `hq-key:` travels; skipped under `--keep-shared connect`;
    never rotated once the clone's opportunity uses it). Rewrites

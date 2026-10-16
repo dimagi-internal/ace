@@ -29,6 +29,7 @@ import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 import { qaResultWriteRefusal, verdictWriteRefusal, yamlParseWriteRefusal } from '../lib/qa-result-write-guard.js';
+import { GATE_FILE, googleRunTreeReader, stampGateArtifactSha } from '../lib/gate-artifact-hash.js';
 import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch, updateFileMediaMimeType } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
@@ -989,7 +990,7 @@ server.tool(
       // part's type, so a fixed text/plain turned text/markdown and text/yaml
       // files into text/plain (ace#2215, ace#2606).
       const typeMeta = await withTransientRetry(() =>
-        drive.files.get({ fileId, fields: 'name, mimeType', supportsAllDrives: true }),
+        drive.files.get({ fileId, fields: 'name, mimeType, parents', supportsAllDrives: true }),
       );
       // The name-keyed write guards run here rather than at the top of the
       // handler because this read is UNCONDITIONAL and already paid for — the
@@ -1005,10 +1006,14 @@ server.tool(
         verdictWriteRefusal(fname, newContent) ??
         yamlParseWriteRefusal(fname, newContent);
       if (writeRefusal) return error(writeRefusal);
+      // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
+      const body = GATE_FILE.test(fname)
+        ? (await stampGateArtifactSha(fname, newContent, ((typeMeta.data as any).parents ?? [])[0], googleRunTreeReader(drive))).text
+        : newContent;
       const mediaType = updateFileMediaMimeType((typeMeta.data as any).mimeType);
       const resp = await withTransientRetry(() => drive.files.update({
         fileId,
-        media: { mimeType: mediaType, body: newContent },
+        media: { mimeType: mediaType, body },
         fields: 'id, name, mimeType, modifiedTime, version',
         supportsAllDrives: true,
       }));
@@ -1075,7 +1080,11 @@ server.tool(
         verdictWriteRefusal(fileName, resolved) ??
         yamlParseWriteRefusal(fileName, resolved);
       if (qaRefusal) return error(qaRefusal);
-      const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate, expectAbsent }, drive);
+      // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
+      const body = GATE_FILE.test(fileName)
+        ? (await stampGateArtifactSha(fileName, resolved, parentFolderId, googleRunTreeReader(drive))).text
+        : resolved;
+      const r = await handleCreateFile({ name: fileName, content: body, parentFolderId, findOrCreate, expectAbsent }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -1181,6 +1190,11 @@ server.tool(
         verdictWriteRefusal(fileName, uploadedText) ??
         yamlParseWriteRefusal(fileName, uploadedText);
       if (qaRefusal) return error(qaRefusal);
+      // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
+      if (GATE_FILE.test(fileName)) {
+        const s = await stampGateArtifactSha(fileName, uploadedText, parentFolderId, googleRunTreeReader(drive));
+        if (s.stamped) buf = Buffer.from(s.text, 'utf8');
+      }
       return result(
         await handleUploadBinary(
           { name: fileName, buffer: buf, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate },

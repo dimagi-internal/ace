@@ -5,6 +5,8 @@
  *   npx tsx scripts/clone-run.ts --from <ws> --to <ws> <opp>/<run-id>
  *       [--only <stage,…>] [--redo <stage,…>] [--retry-ambiguous <step,…>]
  *       [--keep-shared connect] [--plan] [--copy-timeout-min 40]
+ *   npx tsx scripts/clone-run.ts --from <ws> --to <ws> <opp>/<run-id> --readiness-repair
+ *       (validate-release-readiness step 6: asset_refs only, ledgered, no clone stamps)
  *
  * Replaces the agent-driven Steps 2–4 of `skills/clone-to-new-workspace`
  * (which re-dispatched the whole Phase 4 agent and took hours). Step 0 — the
@@ -29,7 +31,7 @@
  * own Connect objects) — nothing is re-derived (`connectBuildSpec`).
  *
  * Budget: config/clone-budget.json caps each stage that ran and the whole run
- * (ace_web 5 min, connect 3 min, total 15 min, …); a breach is recorded as
+ * (ace_web 10 min, connect 3 min, total 20 min, …); a breach is recorded as
  * `clone.budget_breaches` and exits 4.
  *
  * Exit 0 = every stage final, within budget; 4 = every stage final but over
@@ -119,7 +121,7 @@ function die(msg: string, code = 2): never {
 }
 const log = (msg: string) => process.stderr.write(`[clone-run ${new Date().toISOString().slice(11, 19)}] ${msg}\n`);
 
-const BOOLEAN_FLAGS = new Set(['--plan']);
+const BOOLEAN_FLAGS = new Set(['--plan', '--readiness-repair']);
 const positional: string[] = [];
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
@@ -133,8 +135,22 @@ if (!target || !/^[^/]+\/\d{8}-\d{4}$/.test(target) || !TO || !FROM) {
   die('usage: clone-run.ts --from <ws> --to <ws> <opp>/<run-id> [--only s,…] [--redo s,…] [--retry-ambiguous step,…] [--keep-shared connect] [--plan]');
 }
 const [OPP, RUN] = target.split('/');
-const ONLY = list('only');
-const REDO = list('redo');
+/**
+ * `--readiness-repair` — `validate-release-readiness` step 6's link repair
+ * (ace#3092 item 2). It is the asset_refs stage again — the same
+ * clone-asset-rewrite plan, applied through `rewriteRecorded`, so a repair
+ * that is a pure id/URL rewrite lands in `release-readiness_content-ledger.yaml`
+ * and never makes a gate stale (one that is NOT pure is not recorded and its
+ * gates read stale, as before). Unlike `--redo asset_refs` it leaves the
+ * clone's bookkeeping alone: no `clone.asset_refs.at`, no `completed_at`, no
+ * `budget_breaches`. That matters — `cloneWriteCutoff` reads those stamps to
+ * tell clone-native re-authored files from copies (ace#2730), and moving them
+ * forward would let a later plan overwrite native work with source content.
+ */
+const READINESS_REPAIR = has('readiness-repair');
+if (READINESS_REPAIR && (list('only').length || list('redo').length || has('plan'))) die('--readiness-repair runs asset_refs alone; drop --only/--redo/--plan');
+const ONLY = READINESS_REPAIR ? ['asset_refs'] : list('only');
+const REDO = READINESS_REPAIR ? ['asset_refs'] : list('redo');
 for (const s of [...ONLY, ...REDO]) if (!isStage(s)) die(`unknown stage "${s}"`);
 const RETRY_AMBIGUOUS = new Set(list('retry-ambiguous'));
 const KEEP_SHARED_CONNECT = flag('keep-shared') === 'connect';
@@ -230,6 +246,8 @@ async function writeText(fileId: string, text: string, mimeType: string): Promis
 
 let ledger: ContentLedger | null = null;
 let ledgerDirty = false;
+/** Run paths rewritten but NOT recorded (not a pure rewrite, or unreadable): their gates read stale. */
+const unrecorded: string[] = [];
 
 async function loadLedger(ctx: Ctx): Promise<ContentLedger> {
   if (ledger) return ledger;
@@ -275,7 +293,10 @@ async function rewriteRecorded(ctx: Ctx, path: string | undefined, fileId: strin
     log(`ledger: could not read ${path ?? fileId} before its rewrite (${(e as Error).message}) — not recorded`);
   }
   await write();
-  if (!before || !path) return;
+  if (!before || !path) {
+    if (path) unrecorded.push(path);
+    return;
+  }
   try {
     const m = await fileMeta(fileId);
     const l = await loadLedger(ctx);
@@ -284,9 +305,11 @@ async function rewriteRecorded(ctx: Ctx, path: string | undefined, fileId: strin
       ledger = next;
       ledgerDirty = true;
     } else {
+      unrecorded.push(path);
       log(`ledger: ${path} changed by more than the id map — not recorded (readiness judges it by timestamp)`);
     }
   } catch (e) {
+    unrecorded.push(path);
     log(`ledger: could not read ${path} after its rewrite (${(e as Error).message}) — not recorded`);
   }
 }
@@ -882,6 +905,7 @@ async function stageLabs(ctx: Ctx): Promise<StageRecord> {
     ? {
         call: labsCall,
         log,
+        retryAmbiguous: RETRY_AMBIGUOUS,
         save: (state) => saveStage('labs', { status: 'in-progress', copy: state }),
         workspace: async (programId, llos) => {
           const r = runScript('labs-workspace-setup.ts', ['--program-id', String(programId), ...llos.flatMap((l) => ['--llo', l])]);
@@ -924,6 +948,9 @@ async function stageLabs(ctx: Ctx): Promise<StageRecord> {
   return { ...record, prose_rewritten: prose.map((p) => p.path), prose_bare_ids: prose.filter((p) => p.bare.length) };
 }
 
+/** Who the ledger says made the rewrite: the clone, or a readiness repair. */
+const ASSET_REFS_BY = READINESS_REPAIR ? 'validate-release-readiness:repair' : 'clone-run:asset_refs';
+
 async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-assets-'));
   const args = ['--source', ctx.src.run, '--target', ctx.tgt!.run, '--out', dir, '--to', TO!];
@@ -936,10 +963,10 @@ async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   let applied = 0;
   for (const f of plan.files ?? []) {
     if (f.action === 'update') {
-      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
+      await rewriteRecorded(ctx, f.path, f.fileId, ASSET_REFS_BY, () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
     } else if (f.action === 'render') {
       // A styled Doc is re-imported from markdown, never written back as text (ace#2606).
-      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', async () => {
+      await rewriteRecorded(ctx, f.path, f.fileId, ASSET_REFS_BY, async () => {
         await guardDrive('drive_update_file', { fileId: f.fileId });
         await drive.files.update({ fileId: f.fileId, media: { mimeType: 'text/markdown', body: fs.readFileSync(f.localFilePath, 'utf8') }, fields: 'id', supportsAllDrives: true });
         if (f.reembed_screenshots) {
@@ -966,7 +993,7 @@ async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   if (r.code !== 0 || (rb?.changes ?? 1) !== 0) {
     return { status: 'not-done', applied, reason: `read-back: ${rb?.changes ?? '?'} change(s) still pending, exit ${r.code} (frames_foreign: ${(rb?.frames_foreign ?? []).length})`, left_on_source: left };
   }
-  return { status: 'done', files: applied, left_on_source: left, frames_repointed: Object.keys(plan.frames?.repointed ?? {}).length };
+  return { status: 'done', files: applied, left_on_source: left, frames_repointed: Object.keys(plan.frames?.repointed ?? {}).length, unrecorded: [...unrecorded] };
 }
 
 /** update_yaml_file `deep`: objects merge recursively, arrays and scalars replace. */
@@ -1092,7 +1119,7 @@ async function main(): Promise<number> {
       await saveStage('ace_web', rec, (rs) => { rs.clone.from = { workspace: FROM, opp: OPP, run: RUN }; });
       continue;
     }
-    if (targetRunStateId) {
+    if (targetRunStateId && !READINESS_REPAIR) {
       await saveStage(p.stage, rec, (rs) => { rs.clone.from = rs.clone.from ?? { workspace: FROM, opp: OPP, run: RUN }; });
     }
     if (p.stage === 'ace_web' && rec.status !== 'done') break;
@@ -1102,7 +1129,7 @@ async function main(): Promise<number> {
     report.products_check = productsPointAtTarget(final, tenancy, { keepSharedConnect: KEEP_SHARED_CONNECT });
     const notDone = planStages(final.clone).filter((p) => p.action === 'run').map((p) => p.stage);
     report.not_done = notDone;
-    if (!notDone.length) await mutateTargetRunState((rs) => { rs.clone.completed_at = new Date().toISOString(); });
+    if (!notDone.length && !READINESS_REPAIR) await mutateTargetRunState((rs) => { rs.clone.completed_at = new Date().toISOString(); });
   }
   report.results = results;
   report.ocs_public_url = source.ocs_public_url;
@@ -1113,6 +1140,13 @@ async function main(): Promise<number> {
   // defect to look at, not a cost to absorb silently.
   const breaches = budgetBreaches(results, report.seconds as number, loadBudget());
   report.budget_breaches = breaches;
+  if (READINESS_REPAIR) {
+    // A repair is not a clone: its time is not the clone's budget, and it
+    // writes none of the clone's stamps (see READINESS_REPAIR).
+    report.readiness_repair = results.asset_refs;
+    console.log(JSON.stringify(report, null, 2));
+    return results.asset_refs?.status === 'done' ? 0 : 3;
+  }
   if (targetRunStateId) {
     await mutateTargetRunState((rs) => {
       rs.clone = rs.clone ?? {};
