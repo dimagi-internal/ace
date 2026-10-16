@@ -154,22 +154,24 @@ describe('checkWorkerFacingSupportChannel (#1303)', () => {
  * Case A is THE regression test: it is the case that shipped.
  */
 describe('worker-facing OCS host is unconditional and path-agnostic (#1850)', () => {
-  it('A. flags a real per-opp URL on its own line under a heading', () => {
-    // The most natural way to write a support link in markdown: the addressing
-    // word ("Support") is on the HEADING line, the URL is alone on its own.
-    const md = `## Support\n\n${REAL_PER_OPP_URL}\n`;
+  // A and B originally asserted that REAL_PER_OPP_URL (a `/start/` URL) is
+  // flagged. ace#3002 showed that URL resolves to a live chat page, so it is
+  // now allowed (see the ace#3002 block below). The ace#1850 regression (the
+  // host rule must fire on a PATH-bearing URL on its own line) is kept on a
+  // per-opp URL that is NOT the public start route.
+  const NON_START_PER_OPP_URL =
+    'https://www.openchatstudio.com/a/connect-ace/chatbots/075abf86-b9bb-476f-8b9e-eed1d1f24785/';
+
+  it('A. flags a path-bearing non-start OCS URL on its own line under a heading', () => {
+    const md = `## Support\n\n${NON_START_PER_OPP_URL}\n`;
     const report = checkWorkerFacingSupportChannel(md);
     expect(report.ok).toBe(false);
     expect(report.findings.map((f) => f.kind)).toContain('unresolvable-ocs-host');
     expect(report.findings[0].line).toBe(3);
   });
 
-  it('B. flags a real per-opp URL on a reader-addressed line', () => {
-    // Previously caught, but by the WRONG rule: the host rule could not fire, so
-    // this only tripped `bare-uuid` via the UUID embedded in the path. It is now
-    // correctly attributed to the host rule, which is the real violation — the
-    // UUID rule no longer needs to overlap it.
-    const md = `Ask the support bot: ${REAL_PER_OPP_URL}\n`;
+  it('B. attributes a non-start OCS URL on a reader-addressed line to the host rule', () => {
+    const md = `Ask the support bot: ${NON_START_PER_OPP_URL}\n`;
     const report = checkWorkerFacingSupportChannel(md);
     expect(report.ok).toBe(false);
     expect(report.findings.map((f) => f.kind)).toEqual(['unresolvable-ocs-host']);
@@ -201,5 +203,71 @@ describe('worker-facing OCS host is unconditional and path-agnostic (#1850)', ()
     const report = checkWorkerFacingSupportChannel(md);
     expect(report.findings).toEqual([]);
     expect(report.ok).toBe(true);
+  });
+});
+
+/**
+ * dimagi-internal/ace#3002: the public, team-scoped start URL is a REACHABLE
+ * destination. Live probe 2026-10-15 (cookie jar, as any browser has):
+ *
+ *   $ curl -s -L -c jar -b jar -o /dev/null -w "%{http_code} %{url_effective}\n" \
+ *       https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/
+ *   200 https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-.../s/b1e94604-.../chat/
+ *
+ * The guard used to flag it as an unreachable pointer, pushing producers to
+ * drop a working channel. Positive AND negative controls below: the start URL
+ * passes, while every near-miss and every other credential on the same line
+ * still fires.
+ */
+describe('public /start/ URL is a reachable channel (#3002)', () => {
+  const START_URL =
+    'https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/';
+
+  it('passes the public start URL on a reader-addressed line', () => {
+    const report = checkWorkerFacingSupportChannel(`Ask the support assistant: ${START_URL}\n`);
+    expect(report.findings).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  it('passes the public start URL alone under a heading, and the real shipped one', () => {
+    expect(checkWorkerFacingSupportChannel(`## Support\n\n${START_URL}\n`).ok).toBe(true);
+    expect(checkWorkerFacingSupportChannel(`## Support\n\n${REAL_PER_OPP_URL}\n`).ok).toBe(true);
+  });
+
+  it('passes it as a schemeless markdown link', () => {
+    const md =
+      'Use the [support chat](openchatstudio.com/a/connect-ace/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/).\n';
+    expect(checkWorkerFacingSupportChannel(md).ok).toBe(true);
+  });
+
+  it('still flags a bare host on the same line as an allowed start URL', () => {
+    const md = `Chat: ${START_URL} or visit https://www.openchatstudio.com\n`;
+    const report = checkWorkerFacingSupportChannel(md);
+    expect(report.findings.map((f) => f.kind)).toEqual(['unresolvable-ocs-host']);
+  });
+
+  it('still flags a separate bare UUID on the same line as an allowed start URL', () => {
+    const md = `Chat: ${START_URL} and enter id ${UUID}\n`;
+    const report = checkWorkerFacingSupportChannel(md);
+    expect(report.findings.map((f) => f.kind)).toEqual(['bare-uuid']);
+  });
+
+  it('still flags the embed path and a team-less start path', () => {
+    const embed = checkWorkerFacingSupportChannel(
+      'Ask here: https://www.openchatstudio.com/chatbots/embed/2b97652f-71cd-4da3-a745-15c5df7a3916/\n',
+    );
+    expect(embed.findings.map((f) => f.kind)).toEqual(['known-404-embed-path']);
+    const noTeam = checkWorkerFacingSupportChannel(
+      'Ask here: https://www.openchatstudio.com/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/\n',
+    );
+    expect(noTeam.findings.map((f) => f.kind)).toEqual(['unresolvable-ocs-host']);
+  });
+
+  it('report text no longer claims there is no standalone chat page', () => {
+    const report = checkWorkerFacingSupportChannel('Ask at https://www.openchatstudio.com\n');
+    const text = formatSupportChannelReport(report);
+    expect(text).not.toMatch(/no standalone chat page/);
+    expect(text).toMatch(/\/start\//);
+    expect(text).toMatch(/ace#2992/);
   });
 });
