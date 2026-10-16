@@ -262,6 +262,32 @@ export function checkPlannedWorkerRates(plan: CascadeStoryPlan, entityCountIndic
   };
 }
 
+// ── Visit-row sample scope (ace#2973) ──────────────────────────────────────
+
+/**
+ * What the `--visits` input actually covers, stated in words for the check detail.
+ *
+ * `pipeline_preview` caps `sample_size` at 200, and a home-scoped cascade visits
+ * pipeline only resolves under its home opp — fanning it out with `opportunity_ids`
+ * merges the home opp's rows first, so the 200-row sample is (measured on
+ * noora-health/20261015-1129, pipeline 9685) all the home partner. Checks 24 and 26
+ * therefore judge a SAMPLE, and the detail must say which, never read as "every
+ * partner". Returns `null` when nothing was supplied.
+ */
+export function visitSampleScope(previews: unknown[]): string | null {
+  const responses = previews.filter((p) => p && typeof p === 'object' && Array.isArray((p as { rows?: unknown }).rows)) as Array<{
+    rows: Array<Record<string, unknown>>;
+    row_count_before_sample?: number;
+  }>;
+  if (responses.length === 0) return null;
+  const rows = responses.flatMap((r) => r.rows);
+  const before = responses.reduce((n, r) => n + (typeof r.row_count_before_sample === 'number' ? r.row_count_before_sample : r.rows.length), 0);
+  const opps = [...new Set(rows.map((r) => r.opportunity_id).filter((o) => o !== undefined && o !== null).map(String))];
+  const partners = opps.length ? `opp${opps.length > 1 ? 's' : ''} ${opps.join(', ')}` : 'untagged rows';
+  const full = rows.length >= before;
+  return `visit rows judged: ${rows.length} of ${before} (${partners})${full ? '' : " — a SAMPLE, not every partner's visits (pipeline_preview caps at 200; ace#2973)"}`;
+}
+
 // ── 3. Constant displayed columns ─────────────────────────────────────────
 
 export interface ConstantColumnFinding {
@@ -282,8 +308,15 @@ function constantValue(values: unknown[]): { constant: boolean; value: unknown }
 /**
  * Every column a table shows varies across its rows.
  *
- *  - worker table: each scorecard indicator, plus the entity-count column
- *    (`rows.length`, labelled with the entity's plural — Spark's "Communities");
+ *  - worker table: each scorecard indicator. The entity-count column
+ *    (`rows.length`, labelled with the entity's plural — Spark's "Communities")
+ *    is NOT judged: since connect-labs #2262 (2026-10-06) the indicator report
+ *    render drops that column whenever every row of a table has the same count
+ *    and states it once in the title or drill caption ("Educators · 1 facility
+ *    each" — `indicator_report_render.js` `sameN`). A constant count is
+ *    therefore never on screen, and a varying one is not constant, so the
+ *    column cannot fail this check. A uniform count is NOTED in the detail
+ *    (ace#2972: noora-health/20261015-1129 failed on a column that was not drawn);
  *  - case table: `display.case_fields`;
  *  - visit table: `display.visit_fields` + `display.visit_flags`, when visit rows are supplied.
  *
@@ -299,12 +332,14 @@ export function checkConstantDisplayedColumns(
   const workers = snapshot?.byFLW ?? [];
   const display = snapshot?.display ?? {};
   const entityLabel = display.entity?.plural ? display.entity.plural[0].toUpperCase() + display.entity.plural.slice(1) : 'Entities';
-  const workerCols: Array<{ name: string; get: (w: SnapshotWorkerRow) => unknown }> = [
-    { name: `${entityLabel} (entity count)`, get: (w) => (Array.isArray(w.rows) ? w.rows.length : undefined) },
-    ...Object.entries(display.indicators ?? {})
-      .filter(([, m]) => m?.scorecard)
-      .map(([id, m]) => ({ name: `${id} "${m?.label ?? id}"`, get: (w: SnapshotWorkerRow) => w.ind?.[id]?.value ?? undefined })),
-  ];
+  const workerCols: Array<{ name: string; get: (w: SnapshotWorkerRow) => unknown }> = Object.entries(display.indicators ?? {})
+    .filter(([, m]) => m?.scorecard)
+    .map(([id, m]) => ({ name: `${id} "${m?.label ?? id}"`, get: (w: SnapshotWorkerRow) => w.ind?.[id]?.value ?? undefined }));
+  // The render collapses a uniform entity count into the table title (ace#2972) — note it, never fail it.
+  const entityCount = constantValue(workers.map((w) => (Array.isArray(w.rows) ? w.rows.length : undefined)));
+  const collapsedText = entityCount.constant
+    ? ` (${entityLabel} column not drawn: every worker has ${fmt(entityCount.value)}, shown once in the title as "… each")`
+    : '';
   for (const col of workerCols) {
     const all = constantValue(workers.map(col.get));
     if (all.constant) {
@@ -331,9 +366,10 @@ export function checkConstantDisplayedColumns(
   }
   const failing = findings.filter((f) => f.scope === 'programme');
   const reported = findings.filter((f) => f.scope !== 'programme');
-  const reportedText = reported.length
-    ? ` (reported, constant within one partner's table: ${reported.map((f) => `${f.column}=${f.value} in ${f.scope}`).join('; ')})`
-    : '';
+  const reportedText =
+    (reported.length
+      ? ` (reported, constant within one partner's table: ${reported.map((f) => `${f.column}=${f.value} in ${f.scope}`).join('; ')})`
+      : '') + collapsedText;
   if (workers.length === 0 && cases.length === 0) {
     return { pass: false, findings, detail: 'no worker or case rows in the saved run — columns were not judged', auto_fix_hint: 'pass the programme report\'s workflow_history_runs(include_snapshot) response' };
   }
@@ -346,8 +382,7 @@ export function checkConstantDisplayedColumns(
     detail: `constant on every row: ${failing.map((f) => `${f.table} ${f.column} = ${f.value}`).join('; ')}${reportedText}`,
     auto_fix_hint:
       'a column the same on every row is width a viewer reads for nothing: vary it in the data (the pool) or stop ' +
-      'showing it (registry display `scorecard: false` / drop the case field; the entity-count column follows the ' +
-      'roster — give workers more than one entity or hide it in the run-owned template\'s render code) (ace#2735)',
+      'showing it (registry display `scorecard: false` / drop the case field) (ace#2735)',
   };
 }
 

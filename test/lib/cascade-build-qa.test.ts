@@ -11,6 +11,7 @@ import {
   entityCountRateIndicators,
   isFlagRaised,
   latestSnapshotFromHistoryRuns,
+  visitSampleScope,
   type CascadeSnapshot,
 } from '../../lib/cascade-build-qa';
 import { checkCascadeStoryPlan, type CascadeStoryPlan } from '../../lib/cascade-story';
@@ -119,25 +120,41 @@ describe('2. worker-level rates are not binary (ace#2735: "can only be 0% or 100
 });
 
 describe('3. displayed columns vary (ace#2735: "two all-constant columns (Communities = 1, Repeat counts = 0.0%)")', () => {
-  it('fails Spark on the entity-count column, and reports Repeat counts constant inside whole partners', () => {
+  it('reports Repeat counts constant inside whole partners', () => {
     const r = checkConstantDisplayedColumns(SNAP, VISITS);
-    expect(r.pass).toBe(false);
-    expect(r.detail).toMatch(/worker Communities \(entity count\) = 1/);
     const perPartner = r.findings.filter((f) => f.scope !== 'programme' && f.column.startsWith('SF_D1'));
     expect(perPartner.map((f) => f.scope)).toContain('Kuunika Outreach Network (example)');
   });
 
-  it('passes once the roster varies', () => {
+  // ace#2972: labs #2262 (2026-10-06) moved a uniform entity count out of the table into its
+  // title ("Educators · 1 facility each", indicator_report_render.js `sameN`), so the column a
+  // one-entity-per-worker PDD makes constant is never drawn. noora-health/20261015-1129 failed
+  // check 26 on it with no legal fix.
+  it('never fails the entity-count column: a uniform count is collapsed into the title, and noted', () => {
+    const r = checkConstantDisplayedColumns(SNAP, VISITS);
+    expect(r.findings.some((f) => /entity count|Communities/.test(f.column))).toBe(false);
+    expect(r.detail).not.toMatch(/constant on every row: worker Communities/);
+    expect(r.detail).toMatch(/Communities column not drawn: every worker has 1/);
+    const three = copy(SNAP);
+    three.byFLW!.forEach((w) => (w.rows = [1, 2, 3]));
+    expect(checkConstantDisplayedColumns(three, VISITS).findings.some((f) => /Communities/.test(f.column))).toBe(false);
+  });
+
+  it('a varying roster is not noted as collapsed', () => {
     const s = copy(SNAP);
     s.byFLW!.forEach((w, i) => (w.rows = i % 2 ? [1, 2] : [1]));
-    expect(checkConstantDisplayedColumns(s, VISITS).pass).toBe(true);
+    const r = checkConstantDisplayedColumns(s, VISITS);
+    expect(r.pass).toBe(true);
+    expect(r.detail).not.toMatch(/not drawn/);
   });
 
   it('fails a case field that is the same on every case', () => {
     const s = copy(SNAP);
     for (const c of s.cases!) c.step_number = 7;
     s.byFLW!.forEach((w, i) => (w.rows = i % 2 ? [1, 2] : [1]));
-    expect(checkConstantDisplayedColumns(s).detail).toMatch(/case step_number "FCAP step" = 7/);
+    const r = checkConstantDisplayedColumns(s);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/case step_number "FCAP step" = 7/);
   });
 });
 
@@ -197,7 +214,10 @@ describe('wired into demo-data-setup-qa (ace-run provider)', () => {
     for (const id of ids) expect(checksForProvider('ace-run')).toContain(id);
     const out = cascadeBuildOutcomes(PLAN, SNAP, VISITS);
     expect(Object.keys(out).sort()).toEqual([...ids].sort());
-    expect(Object.values(out).every((r) => r.pass === false)).toBe(true);
+    // Spark's only programme-wide constant column was its entity count, which the render now
+    // collapses into the title (ace#2972) — so check 26 passes on it; the other three still fail.
+    expect(out.cascade_displayed_columns_vary.pass).toBe(true);
+    expect(Object.entries(out).filter(([id]) => id !== 'cascade_displayed_columns_vary').every(([, r]) => r.pass === false)).toBe(true);
   });
 
   it('skills/demo-data-setup names the checks at § C3 and § C6', () => {
@@ -207,5 +227,38 @@ describe('wired into demo-data-setup-qa (ace-run provider)', () => {
     expect(c3).toMatch(/review_routing/);
     expect(c3).toMatch(/checkPlannedWorkerRates/);
     expect(c6).toMatch(/cascadeBuildOutcomes/);
+  });
+});
+
+// ace#2973: pipeline_preview caps sample_size at 200 and, for a home-scoped visits pipeline,
+// returns only the home partner (noora-health/20261015-1129, pipeline 9685: 200 rows, all opp
+// 10137, row_count_before_sample 1270). The checks may judge a sample; they may not read as all.
+describe('visit sample scope is stated, never implied (ace#2973)', () => {
+  const homeOnly = { row_count_before_sample: 1270, rows: Array.from({ length: 200 }, () => ({ opportunity_id: 10137 })) };
+
+  it('names a capped home-partner sample as a sample', () => {
+    const scope = visitSampleScope([homeOnly])!;
+    expect(scope).toMatch(/200 of 1270 \(opp 10137\)/);
+    expect(scope).toMatch(/a SAMPLE, not every partner/);
+  });
+
+  it('a complete read is not called a sample; no input is null', () => {
+    expect(visitSampleScope([{ row_count_before_sample: 2, rows: [{ opportunity_id: 1 }, { opportunity_id: 2 }] }])).toBe('visit rows judged: 2 of 2 (opps 1, 2)');
+    expect(visitSampleScope([])).toBeNull();
+  });
+
+  it('cascadeBuildOutcomes appends the scope to the visit-reading checks only', () => {
+    const scope = visitSampleScope([homeOnly]);
+    const out = cascadeBuildOutcomes(PLAN, SNAP, VISITS, scope);
+    expect(out.cascade_review_routing_follows_pdd.detail).toContain(scope!);
+    expect(out.cascade_displayed_columns_vary.detail).toContain(scope!);
+    expect(out.cascade_worker_rates_not_binary.detail).not.toContain('visit rows judged');
+    expect(out.cascade_drill_levels_branch.detail).not.toContain('visit rows judged');
+  });
+
+  it('the skill contracts no longer demand sample_size ≥ row_count_before_sample', () => {
+    for (const f of ['../../skills/demo-data-setup/SKILL.md', '../../skills/demo-data-setup-qa/SKILL.md']) {
+      expect(readFileSync(join(__dirname, f), 'utf8')).not.toMatch(/`sample_size`\s*≥\s*`row_count_before_sample`/);
+    }
   });
 });

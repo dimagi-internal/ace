@@ -1255,16 +1255,19 @@ export function cascadeBuildOutcomes(
   plan: CascadeStoryPlan | null | undefined,
   snapshot: CascadeSnapshot | null | undefined,
   visitRows: Array<Record<string, unknown>>,
+  /** `visitSampleScope(<the preview responses>)` — appended to checks 24 and 26 so a sample never reads as every partner (ace#2973). */
+  visitScope: string | null = null,
 ): Record<
   'cascade_review_routing_follows_pdd' | 'cascade_worker_rates_not_binary' | 'cascade_displayed_columns_vary' | 'cascade_drill_levels_branch',
   QACheckResult
 > {
   const visitFlags = (snapshot?.display?.visit_flags ?? []).map((f) => f.column);
   const columns = checkConstantDisplayedColumns(snapshot, visitRows);
+  const scoped = (r: QACheckResult): QACheckResult => (visitScope ? { ...r, detail: `${r.detail}; ${visitScope}` } : r);
   return {
-    cascade_review_routing_follows_pdd: checkReviewRouting(visitRows, visitFlags, plan?.review_routing ?? []),
+    cascade_review_routing_follows_pdd: scoped(checkReviewRouting(visitRows, visitFlags, plan?.review_routing ?? [])),
     cascade_worker_rates_not_binary: checkWorkerRateDenominators(snapshot),
-    cascade_displayed_columns_vary: { pass: columns.pass, detail: columns.detail, ...(columns.auto_fix_hint ? { auto_fix_hint: columns.auto_fix_hint } : {}) },
+    cascade_displayed_columns_vary: scoped({ pass: columns.pass, detail: columns.detail, ...(columns.auto_fix_hint ? { auto_fix_hint: columns.auto_fix_hint } : {}) }),
     cascade_drill_levels_branch: checkDrillLevels(snapshot, plan?.single_child_levels ?? []),
   };
 }
