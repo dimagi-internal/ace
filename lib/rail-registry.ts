@@ -211,6 +211,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/connect-terminology.test.ts': { issues: [], unknown: 'no issue or run id in the file; CLAUDE.md cites this rail as the enforcement of the terminology rule but names no incident either' },
   'test/skills/credential-hygiene-vs-widget-url.test.ts': { issues: ['ace#1680', 'ace#1021'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/date-field-two-sided-bounds.test.ts': { issues: ['ace#1788'], observed: 'bednet-check-2-visit/20260828-0629' },
+  'test/skills/date-picker-refusal-settle.test.ts': { issues: ['ace#2693', 'ace#2518'], observed: 'spark-facilitator/20261004-1706' },
   'test/skills/decisions-example-currency.test.ts': { issues: ['ace#1485'] },
   'test/skills/decisions-vocabulary-drift.test.ts': { issues: ['ace#1994'], observed: 'poverty-graduation/20260905-0924' },
   'test/skills/deliver-gate-duration-floor.test.ts': { issues: ['ace#1667', 'ace#1066'], observed: 'hh-poverty-targeting/20260824-1404' },

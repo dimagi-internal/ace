@@ -1503,6 +1503,42 @@ Never emit the ace#1081 relational tap for 2.64.0 — `recipe-lint`'s
 `date-picker-next-cell-tap-noop` rule rejects it at `mobile_validate_recipe`
 and at dispatch.
 
+**Flinging AFTER a constraint refusal: settle first, then guard a retry
+(ace#2693).** When the recipe deliberately trips the date constraint first
+(tap next/FINISH → `assertVisible` the refusal) and only then flings, the
+fling issued straight after the refusal was a **silent no-op** — Maestro
+`COMPLETED`, day still `05`, banner still up, FINISH refused again. The same
+swipe a minute later on the same open form moved `05 → 06`. Insert a settle
+before the fling and one refusal-guarded retry after it:
+
+```yaml
+- assertVisible:
+    text: ".*<refusal message, verbatim from the form's constraint>.*"
+- waitForAnimationToEnd:
+    timeout: 3000            # let the refusal's scroll/banner animation finish
+# ...the dayStepFlingYaml() swipe...
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:                   # one retry, only if the refusal is still up
+    when:
+      visible:
+        text: ".*<same refusal message>.*"
+    commands:
+      # ...the same dayStepFlingYaml() swipe...
+      - waitForAnimationToEnd:
+          timeout: 2000
+```
+
+Evidence (spark-facilitator/20261004-1706, `reschedule_date` `. > today()`,
+2.64.0, 1080x2400): no-op dispatch `1791201121968-7qzewb`; passing dispatch
+`1791202061636-24lmor` with this exact shape — the first fling moved `05 →
+06` and the guarded retry was SKIPPED. The mechanism (the refusal's
+animation absorbing the gesture) is a hypothesis from one observation each
+way, which is why the retry stays: it costs nothing when the first fling
+lands. `dayStepFlingYaml()`'s emitted swipe is unchanged — this is
+composition around it, not a different gesture. On a recipe that does NOT
+trip the refusal first, no settle is needed.
+
 Residuals (not yet observed on-device): the derivation for a picker at a
 different screen position, more than one fling in a row, and month/year
 rollover. A constraint with a far-future floor still needs live calibration
