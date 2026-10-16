@@ -5,7 +5,8 @@ import * as path from 'node:path';
 /**
  * The Nova brief must keep app-test output small: Nova has no compact/delta
  * result mode (voidcraft-labs/nova-plugin#71), each continue_app_test result
- * measured 35–108 KB (~30 per build), and the kaduna Deliver architect reached
+ * measured 35–108 KB (~30 per build), and the kaduna-graduation/20261015-1411
+ * Deliver architect reached
  * ~944k context and its 250-turn cap. Batching is the half ACE controls.
  */
 const REPO = path.resolve(__dirname, '..', '..');
