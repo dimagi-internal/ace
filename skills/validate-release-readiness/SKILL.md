@@ -280,8 +280,11 @@ were given — the SAME `$FLAGS` on every command below and later on
    anonymously on `<workspace>/<opp>/<run-id>` and fix, in the run's OWN
    documents and run_state, everything an outsider would trip on that ACE can
    fix: links on the summary that point into the SOURCE workspace or a shared
-   tenant (`scripts/clone-asset-refs.ts` plan → apply, as in
-   `clone-to-new-workspace` Step 4e), anything marked misleading, missing
+   tenant (`scripts/clone-asset-rewrite.ts` plan → read `plan.json` → apply, as in
+   `clone-to-new-workspace` Step 4e — never apply a file listed in
+   `plan.clone_native`: it was re-authored in the clone after the copy, and the
+   plan would overwrite it with the source's content, ace#2730; fix such a file's
+   remaining source refs by hand), anything marked misleading, missing
    previews (step 4). What cannot be fixed here stays a blocker, with its owner.
    **Sharing is never a repair** — a private document becomes a plan action
    (step 8), never a `drive_set_anyone_with_link` call here. After any repair,
@@ -388,6 +391,7 @@ prints why and the release stops — it never adapts.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-16 | Step 6: never apply a `plan.clone_native` file — the asset-rewrite plan would overwrite clone-native re-authored work (a re-grade on the clone's own builds) with the source's content; the plan now lists such files instead of planning them (spark/spark-facilitator/20261004-1706, ace#2730). Fixed the script name (`scripts/clone-asset-rewrite.ts`). | ACE team |
 | 2026-10-01 | First version: READY / NOT READY over every gate's evidence. | ACE team |
 | 2026-10-05 | `--cc` (ace#2706, operator decision "All 8 get the email"): Dimagi staff copied on every release email, granted nothing; on the plan and every `email` action, in the plan hash, compared exactly by the gate; any non-Dimagi cc refused. `--from-thread` now splits participants with `$RC thread-recipients` (partner domains → reviewers, Dimagi staff → cc, the rest shown as excluded). | ACE team |
 | 2026-10-05 | `--from-thread` makes the thread's Dimagi staff **reviewers** (viewer: ace-web workspace invite, the partner grants, their own email), not cc (ace#2720, operator correction: "we want dimagi people to be invited into the workspace if they are on the project"). `--cc` stays, as an explicit opt-in only — `thread-recipients` no longer derives it. | ACE team |

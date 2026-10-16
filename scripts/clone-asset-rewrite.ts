@@ -8,6 +8,7 @@
  *   npx tsx scripts/clone-asset-rewrite.ts \
  *     --source <source-run-folder-id> --target <target-run-folder-id> \
  *     --out <local-dir> [--to <workspace>] [--keep-phase-folder 8-solicitation-management]
+ *     [--overwrite-native <run-path>]...
  *
  * Read-only on Drive. Writes, under --out:
  *   - one rewritten file per changed Drive file (`<fileId>.<ext>`),
@@ -17,6 +18,14 @@
  * (`drive_update_file(fileId, localFilePath)` per file, `update_yaml_file`
  * for run_state), so the Drive tenancy guard sees every write. Re-run after
  * applying: `changes: 0` is the read-back.
+ *
+ * A file RE-AUTHORED in the clone after the clone was made (modified after the
+ * latest `clone.<stage>.at`, with no provenance note — e.g. a re-grade on the
+ * clone's own builds) is never planned: it is listed in `plan.clone_native`
+ * and, when it still names source assets, in `left_on_source` as
+ * `clone-native` (ace#2730). `--overwrite-native <path>` plans it anyway. A
+ * styled Doc renders from its `.source.md` companion only while the companion
+ * is as new as the Doc; otherwise from the Doc's own export.
  *
  * Released build ids/versions are read from each run's
  * `3-commcare/app-release_summary.md` frontmatter (app-release's contracted
@@ -47,8 +56,12 @@ import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { normalizeDriveExport } from '../lib/drive-export.js';
 import {
   buildAssetMap,
+  cloneWriteCutoff,
   docTextFromExport,
   findSourceRefs,
+  isCloneNative,
+  pickRenderSource,
+  stripProvenanceNote,
   processCloneFile,
   rewriteRunState,
   runAssetsFromRunState,
@@ -70,7 +83,7 @@ loadPluginEnv(import.meta.url);
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const GOOGLE_DOC = 'application/vnd.google-apps.document';
 
-interface Entry { id: string; name: string; mimeType: string; path: string; parent: string }
+interface Entry { id: string; name: string; mimeType: string; path: string; parent: string; modifiedTime?: string }
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -103,7 +116,7 @@ async function walk(drive: any, folderId: string, prefix = '', folders: Folders 
   do {
     const r = await drive.files.list({
       q: `'${folderId}' in parents and trashed=false`,
-      fields: 'nextPageToken, files(id,name,mimeType)',
+      fields: 'nextPageToken, files(id,name,mimeType,modifiedTime)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
       pageSize: 1000,
@@ -112,7 +125,7 @@ async function walk(drive: any, folderId: string, prefix = '', folders: Folders 
     for (const f of r.data.files ?? []) {
       const p = prefix ? `${prefix}/${f.name}` : f.name;
       if (f.mimeType === FOLDER_MIME) out.push(...(await walk(drive, f.id, p, folders)));
-      else out.push({ id: f.id, name: f.name, mimeType: f.mimeType, path: p, parent: folderId });
+      else out.push({ id: f.id, name: f.name, mimeType: f.mimeType, path: p, parent: folderId, modifiedTime: f.modifiedTime });
     }
     pageToken = r.data.nextPageToken ?? undefined;
   } while (pageToken);
@@ -146,7 +159,7 @@ async function main(): Promise<number> {
   const target = arg('target');
   const outDir = arg('out');
   if (!source || !target || !outDir) {
-    console.error('usage: clone-asset-rewrite.ts --source <run-folder-id> --target <run-folder-id> --out <dir> [--to <ws>] [--keep-phase-folder <name>]...');
+    console.error('usage: clone-asset-rewrite.ts --source <run-folder-id> --target <run-folder-id> --out <dir> [--to <ws>] [--keep-phase-folder <name>]... [--overwrite-native <run-path>]...');
     return 2;
   }
   const key = keyPath();
@@ -189,13 +202,25 @@ async function main(): Promise<number> {
   const keepPhases = (keepFolders.length ? keepFolders : ['8-solicitation-management']).map((f) => f.replace(/^\d+-/, ''));
 
   fs.mkdirSync(outDir, { recursive: true });
-  const plan: any = { label, pairs: map.pairs, versions: map.versions, files: [], left_on_source: [], run_state: null };
+  // A file re-authored in the clone after the clone was made is never planned
+  // (ace#2730): rewriting it from source content would revert clone-native work.
+  const cutoff = cloneWriteCutoff(dstRs?.clone);
+  const overwriteNative = new Set(args('overwrite-native'));
+  const plan: any = { label, pairs: map.pairs, versions: map.versions, files: [], left_on_source: [], clone_native: [], clone_write_cutoff: cutoff, run_state: null };
+  const byPath = new Map(targetFiles.map((f) => [f.path, f]));
   // Pass 1: plain-text processing of every text file.
   const texts = new Map<string, string>(); // path -> current text (rewritten when changed)
   const pending: Array<{ f: Entry; r: ReturnType<typeof processCloneFile> }> = [];
   for (const f of targetFiles) {
     if (!isText(f) || f.path === 'run_state.yaml') continue;
     const text = await readText(drive, f);
+    if (!PREVIEWS_INDEX_PATH.test(f.path) && !overwriteNative.has(f.path) && isCloneNative({ modifiedTime: f.modifiedTime, text }, cutoff)) {
+      texts.set(f.path, text);
+      const refs = findSourceRefs(stripProvenanceNote(text), map);
+      plan.clone_native.push({ path: f.path, modifiedTime: f.modifiedTime, refs });
+      if (refs.length) plan.left_on_source.push({ path: f.path, kind: 'clone-native', refs });
+      continue;
+    }
     // Any Doc, styled or plain, prints an HTML comment as text (ace-web showed
     // "<!-- clone-provenance -->" on a plain-text app summary).
     const r = processCloneFile(f.path, text, map, label, { ...opts, rich: f.mimeType === GOOGLE_DOC });
@@ -273,7 +298,10 @@ async function main(): Promise<number> {
     const r = { ...r0, text: fr.text, changed: r0.changed || fr.replacements > 0 || embedsStale || linksStale || idx.removed.length > 0 };
     if (r.changed && f.mimeType === GOOGLE_DOC && (embedsStale || linksStale || (await isStyledDoc(docs, f.id)))) {
       const sibling = f.path.replace(/\.md$/i, '.source.md');
-      let md = sibling !== f.path ? texts.get(sibling) : undefined;
+      // The companion only while it is as new as the Doc — a Doc edited after it
+      // (clone-native) renders from its own export (ace#2730).
+      const sib = sibling !== f.path ? byPath.get(sibling) : undefined;
+      let md = sib && pickRenderSource(f.modifiedTime, sib.modifiedTime) === 'source-md' ? texts.get(sibling) : undefined;
       if (md === undefined) {
         const ex = await drive.files.export({ fileId: f.id, mimeType: 'text/markdown' }, { responseType: 'text' });
         md = normalizeDriveExport(String(ex.data));
@@ -322,6 +350,7 @@ async function main(): Promise<number> {
     files: plan.files.map((f: any) => `${f.action}/${f.kind} ${f.path} (${f.replacements})`),
     run_state: plan.run_state?.changed ?? [],
     left_on_source: plan.left_on_source.map((x: any) => x.path),
+    clone_native: plan.clone_native.map((x: any) => `${x.path} (modified ${x.modifiedTime}, after ${cutoff})`),
     frames_repointed: Object.keys(frames.ids).length,
     opp_list_frames_removed: (plan.opp_list_frames_removed ?? []).map((x: any) => `${x.path}: ${x.frames.join(', ')}`),
     frames_foreign: frames.foreign.map((c) => `${c.id} (${c.path ?? 'outside both runs'}; cited in ${c.where})`),

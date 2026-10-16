@@ -360,7 +360,15 @@ What it does, stage by stage — the rules each one keeps:
     re-runs the rewrite: `changes: 0` and exit 0, else not-done (exit 3 =
     `frames.foreign`: a cited image with no counterpart in the target run;
     re-capture it). Left on the source on purpose and reported: the decisions
-    log, eval/QA records (note only), and Phase 8's solicitation.
+    log, eval/QA records (note only), and Phase 8's solicitation. **A file
+    re-authored in the clone after it was made** (modified after the latest
+    `clone.<stage>.at`, no provenance note — e.g. a re-grade on the clone's own
+    builds) is never planned: it is listed in `plan.clone_native` (and as
+    `clone-native` in `left_on_source` if it still names source assets), because
+    rewriting it from source content reverts clone-native work. A styled Doc
+    renders from its `.source.md` only while that companion is as new as the
+    Doc. `--overwrite-native <path>` plans one anyway — only after reading it
+    (ace#2730).
 12. **`readme`** — the run README re-rendered from the rewritten run_state.
 
 Then the report's `products_check` must be empty (every rewritten product

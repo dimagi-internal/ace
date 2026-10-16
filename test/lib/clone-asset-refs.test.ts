@@ -4,6 +4,9 @@ import {
   aceWebRunFromRunState,
   buildAssetMap,
   classifyClonePath,
+  cloneWriteCutoff,
+  isCloneNative,
+  pickRenderSource,
   docTextFromExport,
   findSourceRefs,
   processCloneFile,
@@ -445,5 +448,57 @@ describe("the source run's ace-web page URLs (ace#3032)", () => {
 
   it('skips a comms-log by its stem, extension or not (ace#3027)', () => {
     expect(classifyClonePath('10-closeout/run-closeout_comms-log.md')).toBe('skip');
+  });
+});
+
+describe('clone-native files are never planned (ace#2730)', () => {
+  // spark/spark-facilitator/20261004-1706, 2026-10-06: after the clone, the
+  // eval verdict was re-graded on the CLONE's own builds and the release summary
+  // re-recorded from them; the plan proposed overwriting both with source content.
+  const clone = {
+    from: { workspace: 'dimagi-team', opp: 'spark-facilitator', run: '20261004-1706' },
+    ace_web: { status: 'done', at: '2026-10-04T18:01:00.000Z' },
+    hq: { status: 'done', at: '2026-10-04T18:20:00.000Z' },
+    asset_refs: { status: 'done', at: '2026-10-04T18:40:00.000Z' },
+    completed_at: '2026-10-04T18:41:00.000Z',
+  };
+  const regrade =
+    "# Independent re-grade on the CLONE's own live builds (2026-10-05)\n" +
+    "# This replaces the earlier grade, which was produced on the source run's builds.\n" +
+    'verdict: pass\nnote: "commcare_download_ccz(81eab9f6804b4c2ea5e67cbecdd6601c) for connect-ace-prod"\n';
+
+  it('takes the latest clone stage write as the cutoff', () => {
+    expect(cloneWriteCutoff(clone)).toBe('2026-10-04T18:41:00.000Z');
+    expect(cloneWriteCutoff({ from: clone.from })).toBeNull();
+    expect(cloneWriteCutoff(undefined)).toBeNull();
+  });
+
+  it('flags a re-grade written after the clone with no provenance note', () => {
+    const cutoff = cloneWriteCutoff(clone);
+    expect(isCloneNative({ modifiedTime: '2026-10-05T09:12:00.000Z', text: regrade }, cutoff)).toBe(true);
+    // processCloneFile alone would stamp it "produced on the SOURCE run's assets" — the defect.
+    expect(processCloneFile('3-commcare/app-release-eval_verdict.yaml', regrade, map, LABEL).kind).toBe('note');
+  });
+
+  it('does not flag a copy, a pipeline write, or a file this rewrite already wrote', () => {
+    const cutoff = cloneWriteCutoff(clone);
+    // Written during the pipeline (before its last stage record).
+    expect(isCloneNative({ modifiedTime: '2026-10-04T18:30:00.000Z', text: regrade }, cutoff)).toBe(false);
+    // Within the grace after the last stage record.
+    expect(isCloneNative({ modifiedTime: '2026-10-04T18:42:00.000Z', text: regrade }, cutoff)).toBe(false);
+    // Rewritten by an applied plan (carries the note) — a read-back must still see it.
+    const applied = processCloneFile('3-commcare/app-release-eval_verdict.yaml', regrade, map, LABEL).text;
+    expect(isCloneNative({ modifiedTime: '2026-10-05T09:12:00.000Z', text: applied }, cutoff)).toBe(false);
+    // No clone timestamps (legacy) or no modified time: old behaviour.
+    expect(isCloneNative({ modifiedTime: '2026-10-05T09:12:00.000Z', text: regrade }, null)).toBe(false);
+    expect(isCloneNative({ text: regrade }, cutoff)).toBe(false);
+  });
+
+  it('renders a diverged styled Doc from its own export, not the stale .source.md', () => {
+    // app-release_summary.md (Doc) re-recorded 2026-10-05; its .source.md is the source's copy.
+    expect(pickRenderSource('2026-10-05T09:00:00.000Z', '2026-10-04T18:01:00.000Z')).toBe('doc-export');
+    expect(pickRenderSource('2026-10-04T18:01:30.000Z', '2026-10-04T18:01:00.000Z')).toBe('source-md');
+    expect(pickRenderSource('2026-10-05T09:00:00.000Z', null)).toBe('doc-export');
+    expect(pickRenderSource(null, '2026-10-04T18:01:00.000Z')).toBe('source-md');
   });
 });
