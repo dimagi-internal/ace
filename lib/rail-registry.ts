@@ -254,6 +254,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/kb-instrument-contamination.test.ts': { issues: ['ace#1018'] },
   'test/skills/large-artifact-localfilepath.test.ts': { issues: ['ace#1918', 'ace#1780', 'ace#1907', 'ace#2055'] },
   'test/skills/learn-module-role-gating-rule.test.ts': { issues: ['ace#3036'], observed: 'kaduna-graduation/20261015-1411' },
+  'test/skills/idea-to-pdd-qa/platform-constraints.test.ts': { issues: ['ace#3036'], observed: 'kaduna-graduation/20261015-1411' },
   'test/skills/learn-suite-reentry-guarded.test.ts': { issues: ['ace#1633', 'ace#1071', 'ace#897'], observed: 'bednet-check-2-visit/20260825-1310' },
   'test/skills/llo-directory-add-live-layout.test.ts': { issues: ['ace#2920'] },
   'test/skills/llo-guide-word-band.test.ts': { issues: ['ace#2311'], observed: 'bednet-check-2-visit/20260908-1544' },
