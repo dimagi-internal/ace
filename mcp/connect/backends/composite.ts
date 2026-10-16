@@ -105,6 +105,8 @@ export class CompositeBackend implements ConnectClient {
     this.opts.playwright.addOrgMember(a);
   removeOrgMember = (a: Parameters<ConnectClient['removeOrgMember']>[0]) =>
     this.opts.playwright.removeOrgMember(a);
+  listOrgMembers = (a: Parameters<ConnectClient['listOrgMembers']>[0]) =>
+    this.opts.playwright.listOrgMembers(a);
 
   // ── Playwright (HTML-driven — reads, edits, verification flags, invoices) ──
   listPrograms = (a: Parameters<ConnectClient['listPrograms']>[0]) => this.opts.playwright.listPrograms(a);

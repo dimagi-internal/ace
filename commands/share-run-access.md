@@ -1,7 +1,7 @@
 ---
 description: Grant a set of people (e.g. everyone on a project thread) the access they need to review an ACE run — ace-web workbench, labs dashboards, Connect opportunity, HQ apps, OCS. Approval-gated per invite.
 argument-hint: "<opp-slug> <run-id> <email1,email2,...> [--surfaces ace-web,connect,hq,ocs] [--workspace dimagi-team]"
-allowed-tools: [Bash, Read, AskUserQuestion, Skill, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-connect__connect_add_org_member, mcp__plugin_ace_ace-gdrive__drive_set_anyone_with_link]
+allowed-tools: [Bash, Read, AskUserQuestion, Skill, mcp__plugin_ace_ace-gdrive__resolve_opp_path, mcp__plugin_ace_ace-gdrive__drive_read_file, mcp__plugin_ace_ace-connect__connect_list_org_members, mcp__plugin_ace_ace-connect__connect_add_org_member, mcp__plugin_ace_ace-gdrive__drive_set_anyone_with_link]
 ---
 
 # /ace:share-run-access — let a thread review a run

@@ -1490,6 +1490,38 @@ export class PlaywrightBackend implements ConnectClient {
   // ── Organization membership ───────────────────────────────────────
 
   /**
+   * The GET/parse half shared by addOrgMember, removeOrgMember and
+   * listOrgMembers: the member table, then the pending-invite table, in that
+   * order. GETs only. `page_size=100` is Connect's max page size
+   * (PAGE_SIZE_OPTIONS = [20,30,50,100]); pending invites sort by
+   * -date_modified, so a fresh invite is on page 1. A failed read fails LOUD —
+   * never read as "absent", because absence is what drives the add/remove
+   * branches (and would make a verification read report "not a member").
+   */
+  private readOrgTables = async (organization_slug: string) => {
+    const readTable = async <R>(path: string, parse: (html: string) => R[]): Promise<R[]> => {
+      const res = await this.request.get(path);
+      if (res.status() !== 200) throw await httpErrorFor(res, path);
+      return parse(await res.text());
+    };
+    const members = await readTable(
+      `/a/${organization_slug}/organization/member_table?page_size=100`,
+      parseOrgMemberTable,
+    );
+    const pending_invites = await readTable(
+      `/a/${organization_slug}/organization/pending_invites_table?page_size=100`,
+      parsePendingInviteTable,
+    );
+    return { members, pending_invites };
+  };
+
+  /** Read-only member + pending-invite tables — contract on `ConnectClient.listOrgMembers` (ace#2986). */
+  listOrgMembers: ConnectClient['listOrgMembers'] = async ({ organization_slug }) => ({
+    organization_slug,
+    ...(await this.readOrgTables(organization_slug)),
+  });
+
+  /**
    * Invite a human user to a Connect workspace (organization) by email.
    * Full contract + the two clean_email rules are documented on
    * `ConnectClient.addOrgMember`. Endpoint probed against commcare-connect
@@ -1510,23 +1542,12 @@ export class PlaywrightBackend implements ConnectClient {
    */
   addOrgMember: ConnectClient['addOrgMember'] = async ({ organization_slug, email, role }) => {
     const wantRole = role ?? 'member';
-    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
-    // Pending invites sort by -date_modified, so a fresh invite is on page 1.
-    const pendingPath = `/a/${organization_slug}/organization/pending_invites_table?page_size=100`;
-
-    const readTable = async <R>(path: string, parse: (html: string) => R[]): Promise<R[]> => {
-      const res = await this.request.get(path);
-      // A failed read must fail LOUD — never be read as "absent" (absence is
-      // what drives the rejection branch below).
-      if (res.status() !== 200) throw await httpErrorFor(res, path);
-      return parse(await res.text());
-    };
     const findRow = <R extends OrgMemberRow>(rows: R[]): R | null =>
       rows.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
-    const readBoth = async () => ({
-      member: findRow(await readTable(tablePath, parseOrgMemberTable)),
-      pending: findRow(await readTable(pendingPath, parsePendingInviteTable)),
-    });
+    const readBoth = async () => {
+      const t = await this.readOrgTables(organization_slug);
+      return { member: findRow(t.members), pending: findRow(t.pending_invites) };
+    };
 
     // 0. PRE-read both tables. Connect's OrganizationInviteForm.clean_email
     //    REJECTS existing members (and addresses in the reinvite cooldown), so
@@ -1669,19 +1690,12 @@ export class PlaywrightBackend implements ConnectClient {
    * Neither echoes the outcome reliably, so both tables are read after.
    */
   removeOrgMember: ConnectClient['removeOrgMember'] = async ({ organization_slug, email }) => {
-    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
-    const pendingPath = `/a/${organization_slug}/organization/pending_invites_table?page_size=100`;
-    const readTable = async <R>(path: string, parse: (html: string) => R[]): Promise<R[]> => {
-      const res = await this.request.get(path);
-      if (res.status() !== 200) throw await httpErrorFor(res, path);
-      return parse(await res.text());
-    };
     const findRow = <R extends OrgMemberRow>(rows: R[]): R | null =>
       rows.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
-    const readBoth = async () => ({
-      member: findRow(await readTable(tablePath, parseOrgMemberTable)),
-      pending: findRow(await readTable(pendingPath, parsePendingInviteTable)),
-    });
+    const readBoth = async () => {
+      const t = await this.readOrgTables(organization_slug);
+      return { member: findRow(t.members), pending: findRow(t.pending_invites) };
+    };
 
     const pre = await readBoth();
     if (!pre.member && !pre.pending) {

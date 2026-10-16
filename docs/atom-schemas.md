@@ -485,7 +485,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 68 atoms
+Source: `mcp/connect-server.ts` — 69 atoms
 
 ### `connect_list_programs`
 
@@ -734,6 +734,14 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 | `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "my-pm-org". |
 | `email` | `z.string` | **required** | Email to invite. A Connect account is not required first — Connect creates a pending invite and the invitee signs up from its link. |
 | `role` | `z.enum` | optional | Role to request for the invite. Default "member". Not applied if the person is already a member (or a pending invite is inside Connect's reinvite cooldown) — see `role_unchanged` in the result. |
+
+### `connect_list_org_members`
+
+READ-ONLY. List a Connect workspace's (organization's) members and its pending invites, exactly as `connect_add_org_member` / `connect_remove_org_member` read them before and after their POSTs: GET `/a/<org>/organization/member_table?page_size=100` and GET `/a/<org>/organization/pending_invites_table?page_size=100`. It NEVER posts, so it cannot create an invite or make Connect send an email. Use THIS for any verification or read-back ("is X a viewer of org Y?"); `connect_add_org_member` invites and emails anyone absent (ace#2986). Returns `{organization_slug, members: [{email, role, id}], pending_invites: [{email, role, id, invited_on, expires_on}]}`; `role` is the role Connect STORED, lowercased (`admin` | `member` | `viewer`). A person is a member only once they accept, so someone invited but not yet accepted appears in `pending_invites`, not `members`. Match emails case-insensitively. Both tables are admin-only upstream, so the ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`; a non-200 read raises an error instead of returning empty lists. One page of up to 100 rows per table.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "ace-nm-org". |
 
 ### `connect_remove_org_member`
 

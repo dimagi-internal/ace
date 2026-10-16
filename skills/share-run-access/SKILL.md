@@ -196,7 +196,13 @@ grants membership and tells the person the one sign-in they must do themselves.
      1Password, set as `ACE_WEB_PAT_TOKEN`.) The invitee then signs in once and accepts the pending
      invite. Read back `GET /api/workspaces/<workspace>/members` to confirm (pending until they accept).
 
-   - **Connect opportunity.** `connect_add_org_member({ organization_slug: <holding org from step 1>, email, role: "viewer" })`.
+   - **Connect opportunity.** **Read first, read-only:** `connect_list_org_members({ organization_slug: <holding org from step 1> })`
+     — the member + pending-invite tables, GETs only (ace#2986). Someone already in `members`
+     (or in `pending_invites`) needs no call; report them from that read. Only a person absent
+     from both gets the grant, after the step 5 approval:
+     `connect_add_org_member({ organization_slug: <holding org from step 1>, email, role: "viewer" })`.
+     **Never use `connect_add_org_member` as a check** — for an absent person it creates an invite
+     and Connect emails them. Any later "is X still a viewer?" verification is `connect_list_org_members`.
      The holding org, not the program org: a viewer there gets VIEW on exactly the org's own
      opportunities, where a PM-org viewer would see every program the PM org runs. (Upstream
      `org_opportunity_access` grants the holding org ADMIN on the opp, capped by the member's own
@@ -244,7 +250,7 @@ grants membership and tells the person the one sign-in they must do themselves.
 
 5. **Approval gate (procedural).** Sending invites is outbound. Present the full per-person /
    per-surface plan and get the human's yes before firing any invite or `connect_add_org_member`.
-   Read-backs and doc-sharing (own artifacts) run freely.
+   Read-backs (including `connect_list_org_members`) and doc-sharing (own artifacts) run freely.
 
 6. **Report — binary per surface, no soft states.** Per person: domain class, then per surface
    exactly one of:

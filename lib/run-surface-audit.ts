@@ -2597,7 +2597,7 @@ export const READBACK_HINT: Readonly<Record<MemberSurface, string>> = {
   hq: 'npx tsx scripts/grant-review-access.ts --dry-run (HQ role read-back)',
   ocs: 'npx tsx scripts/grant-review-access.ts --dry-run (OCS group read-back)',
   connect:
-    "connect_add_org_member's pre-read of /organization/member_table (lib/connect-member-table.ts)",
+    'connect_list_org_members({organization_slug}) (read-only member + pending-invite tables; never connect_add_org_member, which invites an absent person — ace#2986)',
 };
 
 /** Which read-back path can answer for this URL, or null if it isn't gated. */
