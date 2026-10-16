@@ -71,8 +71,10 @@ reads any mapping there with a `file_id` as an output.
      as `bin/ace-bind`).
    - Resolve the run folder with `resolve_opp_path`. Read `run_state.yaml` to a
      local file (`drive_read_file` `writeToPath`, default `text/plain` export) and,
-     when the scope includes `ocs-setup`, `2-scenarios/pdd-to-test-prompts.md`
-     the same way.
+     when the scope includes `ocs-setup` OR `synthetic-data-and-workflows` (any
+     `auth: ocs` gap — the Phase 7 `ocs_coach` is shot as its public chat and
+     needs a real question too, ace#2887), `2-scenarios/pdd-to-test-prompts.md`
+     the same way, and pass it as `--test-prompts`.
    - Scratch dir: `<scratchpad>/output-preview-capture/<run_id>-<captured_phase>/`.
 
 2. **Capture.** One Bash call; the script restores every session itself
