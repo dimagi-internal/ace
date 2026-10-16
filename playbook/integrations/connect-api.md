@@ -71,7 +71,7 @@ endpoints accept the Django `sessionid` cookie + CSRF token DRF's
 | Atom | Backend | Used by |
 |---|---|---|
 | `connect_send_llo_invite` | REST `POST /api/programs/<id>/applications/` | `llo-onboarding` |
-| `connect_accept_program_application` | REST `POST .../accept/` | `llo-onboarding` (ACE-driven dogfood only) |
+| `connect_accept_program_application` | REST `POST .../accept/` | `connect-opp-setup` (Phase 4, ACE's NM org), `llo-onboarding` (once the partner reads `APPLIED`) — gated, ace#2954 |
 | `connect_send_flw_invite` | REST `POST /api/opportunities/<id>/invite_users/` | `connect-opp-setup` Step 7 / `llo-launch` |
 | `connect_list_invites` | Playwright | `llo-onboarding` (status check) |
 

@@ -12,7 +12,7 @@
  */
 import { config as dotenvConfig } from 'dotenv';
 import { assertAceOwnedHqDomain } from '../lib/destructive-guards.js';
-import { assertAcceptingForSelf, resolveControlledApplicationOrg } from '../lib/connect-orgs.js';
+import { assertProgramApplicationAcceptable } from '../lib/connect-orgs.js';
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-connect', import.meta.url);
@@ -733,27 +733,28 @@ server.tool('connect_accept_program_application',
     program_id: z.string(),
     application_id: z.string().describe('ProgramApplication UUID returned by `connect_send_llo_invite`.'),
   },
-  // AUTHORITY GATE (ace#2954). Accepting an invitation is the INVITED org's
-  // action. Connect's API does not enforce that — ProgramApplicationAcceptView
-  // only checks the caller is an admin of the PROGRAMME's org, and it accepts
-  // straight from INVITED — so ACE can skip the partner entirely, and once did:
-  // on tekzal/20261013-2314 it enrolled a real partner in Ghana with no consent,
-  // two minutes after inviting them. There is NO undo (the view has no
-  // transition out of ACCEPTED), so this resolves whose application it is and
-  // FAILS CLOSED when it cannot tell.
+  // ACCEPT GATE (ace#2954, operator rule 2026-10-16). ProgramApplicationAcceptView
+  // only checks the caller is an admin of the PROGRAMME's org and accepts
+  // straight from INVITED, so ACE can skip a partner entirely — and once did:
+  // on tekzal/20261013-2314 it enrolled a real partner two minutes after
+  // inviting them, with no undo (no transition out of ACCEPTED).
   //
-  // Ownership is resolved ONLY among the orgs ACE controls (environment), each
-  // read on its OWN programme page — Connect scopes that page to invitations
-  // addressed to the org (ace#3009). It used to ask `listInvites` at the PM
-  // org, a blind read that returned [] for live invites, so every accept —
-  // ACE's own NM org included — failed closed. No caller argument names the
-  // subject org, so a partner's application can never be "found".
+  // The gate allows exactly two cases and refuses the rest, failing closed:
+  //   - the application is an ACE-controlled org's (internal testing — ACE's
+  //     own NM org never "applies", so it is accepted from INVITED), found on
+  //     that org's OWN programme page (ace#3009); or
+  //   - the partner has already acted: a row on the PM page reads APPLIED.
+  // A non-controlled org still at INVITED is refused. Residual: the status
+  // half asks whether SOME application is APPLIED, not this specific one (the
+  // PM page offers no UUID join) — sound for one partner per programme.
   async (args) => runAtom(async () => {
     const c = await client();
-    const owner = await resolveControlledApplicationOrg(args, process.env, async (org) =>
-      (await c.listReceivedInvitations({ organization_slug: org })).invitations,
-    );
-    assertAcceptingForSelf(owner, process.env);
+    await assertProgramApplicationAcceptable(args, process.env, {
+      listReceived: async (org) =>
+        (await c.listReceivedInvitations({ organization_slug: org })).invitations,
+      listProgramApplications: async () =>
+        (await c.listInvites({ organization_slug: args.organization_slug, program_id: args.program_id })).invites,
+    });
     return c.acceptProgramApplication(args);
   })
 );

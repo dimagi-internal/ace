@@ -9,7 +9,15 @@ import {
   CONTROLLED_ORGS_ENV,
   parseReceivedInvitations,
   resolveControlledApplicationOrg,
+  assertProgramApplicationAcceptable,
+  PartnerHasNotAppliedError,
+  ApplicationAcceptUnverifiableError,
 } from '../../lib/connect-orgs.js';
+import {
+  parseInvitesList,
+  parseProgramApplicationCounters,
+  sliceProgramCard,
+} from '../../mcp/connect/backends/html-scrape.js';
 
 /**
  * ace#2954 — ACE accepted a Connect programme invitation ON BEHALF OF tekzal, a
@@ -89,36 +97,170 @@ describe('assertAcceptingForSelf', () => {
   });
 });
 
-describe('both backends carry the gate (ace#2954)', () => {
+describe('the gate is wired, and the impersonation path is gone (ace#2954, ace#3011)', () => {
   const root = path.resolve(__dirname, '../..');
   const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 
-  it('the REST/atom path gates before calling acceptProgramApplication', () => {
+  it('the atom runs the combined gate BEFORE calling acceptProgramApplication', () => {
     const src = read('mcp/connect-server.ts');
     const i = src.indexOf("server.tool('connect_accept_program_application'");
     expect(i).toBeGreaterThan(-1);
     const handler = src.slice(i, src.indexOf("server.tool('connect_list_invites'", i));
-    expect(handler).toContain('assertAcceptingForSelf');
-    // ace#3009: ownership must come from the controlled orgs' own pages, not
-    // from the blind listInvites read.
-    expect(handler).toContain('resolveControlledApplicationOrg');
-    expect(handler).not.toContain('listInvites(');
-    // The gate must precede the mutation, not follow it.
-    expect(handler.indexOf('assertAcceptingForSelf'))
+    expect(handler).toContain('assertProgramApplicationAcceptable');
+    // Both halves are fed: the controlled orgs' own pages (ace#3009) and the
+    // PM page's corrected status read.
+    expect(handler).toContain('listReceivedInvitations');
+    expect(handler).toContain('listInvites(');
+    expect(handler.indexOf('assertProgramApplicationAcceptable'))
       .toBeLessThan(handler.indexOf('acceptProgramApplication(args)'));
   });
 
-  it('the Playwright fallback refuses instead of POSTing at the partner url', () => {
+  it('the Playwright backend no longer POSTs at the invited org’s own url', () => {
     const src = read('mcp/connect/backends/playwright.ts');
     const i = src.indexOf('acceptProgramApplication: ConnectClient');
     expect(i).toBeGreaterThan(-1);
-    const body = src.slice(i, i + 3200);
-    expect(body).toContain('assertAcceptingForSelf');
-    expect(body).toContain('resolveControlledApplicationOrg');
-    expect(body.slice(0, body.indexOf('/program/${args.program_id}/application/'))).not.toContain('listInvites(');
-    // This backend builds `/a/<llo>/.../accept/` — the invited org's OWN url.
-    // The gate must come before that request is built.
-    expect(body.indexOf('assertAcceptingForSelf')).toBeLessThan(body.indexOf('/program/${args.program_id}/application/'));
+    const body = src.slice(i, i + 1200);
+    expect(body).toMatch(/throw new ConnectError/);
+    expect(body).not.toContain('/application/${args.application_id}/accept/');
+    expect(body).not.toContain('this.request');
+  });
+});
+
+/**
+ * #3017 — `parseInvitesList` searched for `<tr data-invite-id=…>` rows that do
+ * not exist on the live PM page, so `connect_list_invites` returned [] for
+ * every programme (ace#2884). The fixture is a faithful trim of the live page
+ * captured 2026-10-15 (only the ~1.2 MB org `<option>` dropdown removed).
+ */
+const FIXTURE = fs.readFileSync(
+  path.resolve(__dirname, '../fixtures/connect-html/pm-program-list-applications.html'),
+  'utf8',
+);
+const NEW_PROG = '9b186f39-912a-4d3b-88d2-d868f74e9f15'; // partner applied, PM has not accepted
+const OLD_PROG = '024bbe5d-fb26-4414-9839-16ec5622627d'; // fully accepted
+
+describe('parseInvitesList — live PM programme markup', () => {
+  it('reads the APPLIED row that the old scraper could not see', () => {
+    const rows = parseInvitesList(FIXTURE, NEW_PROG);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].organization).toBe('Tekzal');
+    expect(rows[0].status).toBe('applied');
+    // The live rows carry an INTEGER application id on the accept control.
+    expect(rows[0].id).toBe('488');
+  });
+
+  it('reads an already-accepted row', () => {
+    const rows = parseInvitesList(FIXTURE, OLD_PROG);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].organization).toBe('Tekzal');
+    expect(rows[0].status).toBe('accepted');
+  });
+
+  it('REGRESSION: the pre-fix regex matched nothing on this page', () => {
+    expect(/data-(?:invite|membership)-id=/.test(FIXTURE)).toBe(false);
+    expect(parseInvitesList(FIXTURE, NEW_PROG).length).toBeGreaterThan(0);
+  });
+
+  it('returns [] for a programme with no card on the page', () => {
+    expect(parseInvitesList(FIXTURE, '00000000-0000-0000-0000-000000000000')).toEqual([]);
+  });
+});
+
+describe('parseProgramApplicationCounters / sliceProgramCard — card attribution', () => {
+  it('attributes each card its OWN funnel counters', () => {
+    expect(parseProgramApplicationCounters(FIXTURE, NEW_PROG)).toEqual({ invited: 1, applied: 1, accepted: 0 });
+    expect(parseProgramApplicationCounters(FIXTURE, OLD_PROG)).toEqual({ invited: 1, applied: 1, accepted: 1 });
+  });
+
+  it('OFF-BY-ONE GUARD: the reissued card must not inherit its neighbour’s "accepted"', () => {
+    // Cards run from their OWN invite form forward to the next card's. Slicing
+    // the other way attributes each card's rows to its neighbour.
+    expect(parseProgramApplicationCounters(FIXTURE, NEW_PROG).accepted).toBe(0);
+    expect(parseInvitesList(FIXTURE, NEW_PROG)[0].status).not.toBe('accepted');
+    expect(sliceProgramCard(FIXTURE, NEW_PROG)).toContain(`/program/${NEW_PROG}/invite`);
+    expect(sliceProgramCard(FIXTURE, NEW_PROG)).not.toContain(`/program/${OLD_PROG}/invite`);
+  });
+});
+
+/**
+ * The operator's rule (2026-10-16): the accept serves internal testing AND
+ * real partners, and refuses only a non-controlled org still at INVITED.
+ */
+describe('assertProgramApplicationAcceptable — the combined gate', () => {
+  const env = { ACE_CONNECT_PM_ORG: 'ace-pm-org', ACE_CONNECT_NM_ORG: 'ace-nm-org' };
+  const PROG = 'b628a35f-be8f-469f-83ab-1b14bf469976';
+  const APP = 'da8c184e-735c-4fb5-aa2b-5a2567558a45';
+  const applyBtn = (org: string) => `<button hx-post="/a/${org}/program/${PROG}/application/${APP}/apply/">Apply</button>`;
+  const args = { program_id: PROG, application_id: APP };
+
+  it('ALLOWS a controlled org at INVITED — internal testing, ACE has no apply step', async () => {
+    let pmRead = false;
+    const out = await assertProgramApplicationAcceptable(args, env, {
+      listReceived: async (o) => parseReceivedInvitations(o === 'ace-nm-org' ? applyBtn(o) : '', o),
+      listProgramApplications: async () => {
+        pmRead = true;
+        return [{ organization: 'ACE NM Org', status: 'invited' }];
+      },
+    });
+    expect(out).toEqual({ basis: 'ace-controlled-org', organization: 'ace-nm-org' });
+    expect(pmRead).toBe(false);
+  });
+
+  it('ALLOWS a non-controlled org at APPLIED — the PM’s legitimate final step', async () => {
+    const out = await assertProgramApplicationAcceptable(args, env, {
+      listReceived: async () => [],
+      listProgramApplications: async () => parseInvitesList(FIXTURE, NEW_PROG),
+    });
+    expect(out).toEqual({ basis: 'partner-applied', organization: 'Tekzal' });
+  });
+
+  it('REFUSES a non-controlled org still at INVITED — the tekzal/20261013-2314 case', async () => {
+    const p = assertProgramApplicationAcceptable(args, env, {
+      listReceived: async (o) => parseReceivedInvitations(applyBtn('tekzal'), o),
+      listProgramApplications: async () => [{ organization: 'Tekzal', status: 'invited' }],
+    });
+    await expect(p).rejects.toThrow(PartnerHasNotAppliedError);
+    await expect(p).rejects.toThrow(/Tekzal=invited/);
+    // The person reading this is mid-run: it must name the remedy.
+    await expect(p).rejects.toThrow(/wait for the partner to accept the invitation in Connect/);
+  });
+
+  it('REFUSES an already-accepted programme (nothing is APPLIED)', async () => {
+    await expect(
+      assertProgramApplicationAcceptable(args, env, {
+        listReceived: async () => [],
+        listProgramApplications: async () => parseInvitesList(FIXTURE, OLD_PROG),
+      }),
+    ).rejects.toThrow(PartnerHasNotAppliedError);
+  });
+
+  it('FAILS CLOSED when nothing is readable', async () => {
+    const p = assertProgramApplicationAcceptable(args, env, {
+      listReceived: async (o) => {
+        throw new Error(`HTTP 403 at /a/${o}/program/`);
+      },
+      listProgramApplications: async () => {
+        throw new Error('HTTP 500 at /a/ace-pm-org/program/');
+      },
+    });
+    await expect(p).rejects.toThrow(ApplicationAcceptUnverifiableError);
+    await expect(p).rejects.toThrow(/HTTP 500/);
+    await expect(
+      assertProgramApplicationAcceptable(args, env, {
+        listReceived: async () => [],
+        listProgramApplications: async () => [],
+      }),
+    ).rejects.toThrow(ApplicationAcceptUnverifiableError);
+  });
+
+  it('a run-scoped override naming the partner does not make it controlled', async () => {
+    const overridden: Record<string, string> = { ...env, run_connect_orgs: 'tekzal' };
+    await expect(
+      assertProgramApplicationAcceptable(args, overridden, {
+        listReceived: async (o) => parseReceivedInvitations(applyBtn('tekzal'), o),
+        listProgramApplications: async () => [{ organization: 'Tekzal', status: 'invited' }],
+      }),
+    ).rejects.toThrow(PartnerHasNotAppliedError);
   });
 });
 

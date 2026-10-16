@@ -1061,67 +1061,25 @@ describe('PlaywrightBackend.sendLloInvite', () => {
 // ─── acceptProgramApplication ──────────────────────────────────────────────
 
 describe('PlaywrightBackend.acceptProgramApplication', () => {
-  const APP = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-  const PROG = '11111111-2222-3333-4444-555555555555';
-  // The INVITED org's own programme page (nm_home.html): the Apply button's
-  // hx-post carries the application id under that org's slug (ace#3009).
-  const nmHome = (org: string) =>
-    `<button hx-post="/a/${org}/program/${PROG}/application/${APP}/apply/" class="button">Apply to Program</button>`;
-  const pmHome = '<div class="card_title">Programs</div>';
-
-  it("resolves the owning org from the CONTROLLED org's own programme page, then POSTs to /a/<llo>/program/.../accept/", async () => {
+  it('REFUSES outright and sends nothing — retired (ace#2954, ace#3011)', async () => {
+    // It used to POST at `/a/<llo>/program/.../accept/` — the invited org's own
+    // url, performing their action — and that url has no `accept` action
+    // upstream, so it reported 'accepted' for a write that never happened.
+    // Even for a controlled org it must not fire.
     vi.stubEnv('ACE_CONNECT_PM_ORG', 'ace-pm-org');
     vi.stubEnv('ACE_CONNECT_NM_ORG', 'llo-org');
     const captured: CapturedRequest[] = [];
-    const request = makeRequestContext(
-      [
-        // controlled orgs are read in sorted order: ace-pm-org, then llo-org
-        { status: 200, body: pmHome },
-        { status: 200, body: nmHome('llo-org') },
-        // seed CSRF — GET /a/<llo_org>/opportunity/
-        { status: 200, body: csrfInput },
-        // POST /a/<llo>/program/<id>/application/<app>/accept/
-        { status: 302, body: '' },
-      ],
-      captured,
-    );
-    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
-    const out = await backend.acceptProgramApplication({
-      organization_slug: 'ace-pm-org',
-      program_id: PROG,
-      application_id: APP,
-    });
-    expect(out.status).toBe('accepted');
-    expect(out.organization).toBe('llo-org');
-    expect(captured.slice(0, 2).map((c) => c.url)).toEqual(['/a/ace-pm-org/program/', '/a/llo-org/program/']);
-    const acceptPost = captured.find((c) => c.method === 'POST' && c.url.includes('/accept/'))!;
-    expect(acceptPost.url).toBe(`/a/llo-org/program/${PROG}/application/${APP}/accept/`);
-    vi.unstubAllEnvs();
-  });
-
-  it('REFUSES to accept for an org ACE does not control, and never touches the partner url (ace#2954)', async () => {
-    // The partner's application is not on any controlled org's page, so it is
-    // never "found" — and the partner's own page is never even read.
-    vi.stubEnv('ACE_CONNECT_PM_ORG', 'ace-pm-org');
-    vi.stubEnv('ACE_CONNECT_NM_ORG', 'ace-nm-org');
-    const captured: CapturedRequest[] = [];
-    const request = makeRequestContext(
-      [
-        { status: 200, body: pmHome }, // /a/ace-nm-org/program/ (nothing addressed to it)
-        { status: 200, body: pmHome }, // /a/ace-pm-org/program/
-      ],
-      captured,
-    );
+    const request = makeRequestContext([{ status: 200, body: '<table></table>' }], captured);
     const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
     await expect(
       backend.acceptProgramApplication({
         organization_slug: 'ace-pm-org',
-        program_id: PROG,
-        application_id: APP,
+        program_id: '11111111-2222-3333-4444-555555555555',
+        application_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       }),
-    ).rejects.toThrow(/could not show that the application belongs/);
-    expect(captured.map((c) => c.url).sort()).toEqual(['/a/ace-nm-org/program/', '/a/ace-pm-org/program/']);
-    expect(captured.some((c) => c.method === 'POST')).toBe(false);
+    ).rejects.toThrow(/not available on the Playwright backend/);
+    // Nothing is sent at all — not the accept POST, not a page read, not the CSRF seed GET.
+    expect(captured.length).toBe(0);
     vi.unstubAllEnvs();
   });
 });

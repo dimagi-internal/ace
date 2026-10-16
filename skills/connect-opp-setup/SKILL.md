@@ -131,9 +131,9 @@ alone makes the artifact land outside `4-connect` and fail
 
    2. Run the round-trip **unconditionally** — attempt the transition and
       treat the conflict as the skip (CLAUDE.md § Conventions). Do NOT try
-      to read the application state first: no list-program-applications
-      atom exists, and `connect_list_invites` is a BLIND read returning
-      `[]` even for an accepted invite.
+      to read the application state first. (`connect_list_invites` now
+      reads the PM page's real rows — org display name + status, integer
+      ids, no UUID — since #3017; it is a status read, not the trigger.)
 
       ```
       mcp__plugin_ace_ace-connect__connect_send_llo_invite({
@@ -152,7 +152,8 @@ alone makes the artifact land outside `4-connect` and fail
 
       **Capture `program_application_id` from the invite POST** and write
       it to `products.connect.program_application_id` (Step 10). It is not
-      recoverable later: `connect_list_invites` is blind.
+      recoverable later: `connect_list_invites` shows only the integer
+      row id, never the UUID.
 
       The accept is Connect's automation shortcut: its REST view
       (`ProgramApplicationAcceptView`) authorises the caller as an admin of
@@ -161,17 +162,21 @@ alone makes the artifact land outside `4-connect` and fail
       `68b0a689-7326-4c13-a21e-ef492db3a738` → `invited`, accept →
       `accepted`, then the NM-held create succeeded.
 
-      **The accept is authority-gated (ace#2954, ace#3009) and takes no extra
-      argument.** The atom refuses unless the application is listed on the
-      OWN programme page (`/a/<org>/program/`) of an org ACE controls
-      (`ACE_CONNECT_PM_ORG` / `ACE_CONNECT_NM_ORG` /
-      `ACE_CONNECT_CONTROLLED_ORGS`, environment only). Connect renders the
-      application id there only for the invited org and only while it is
-      `INVITED`. So in `pm-nm` mode the NM org's application resolves; a
-      partner's never does. A refusal (`ActingForAnotherOrgError`) means the
-      application belongs to an uncontrolled org, is no longer `INVITED`, or
-      is the PM org's own application (`self-managed` — the PM view lists no
-      application ids). Do not work around it; record it and halt.
+      **The accept is gated (ace#2954, ace#3009, operator rule 2026-10-16)
+      and takes no extra argument.** It allows exactly two cases:
+      (a) the application is listed on the OWN programme page
+      (`/a/<org>/program/`) of an org ACE controls (`ACE_CONNECT_PM_ORG` /
+      `ACE_CONNECT_NM_ORG` / `ACE_CONNECT_CONTROLLED_ORGS`, environment
+      only) — internal testing: ACE's own NM org never "applies", so the PM
+      accepts it from `INVITED`; or (b) the partner has already accepted
+      their invitation, i.e. a row on the PM programme page reads `APPLIED`
+      — the PM's accept is then the legitimate final step. It refuses a
+      non-controlled org still at `INVITED` (`PartnerHasNotAppliedError` —
+      the tekzal/20261013-2314 incident) and fails closed when neither can
+      be read (`ApplicationAcceptUnverifiableError`). In Phase 4 only (a)
+      applies. A refusal here is unexpected — it usually means the PM org's
+      own application (`self-managed`; the PM view lists no application
+      ids). Do not work around it; record it and halt.
 
       **Do not paraphrase these signatures — the parameter names above are
       the atoms' real ones, per `docs/atom-schemas.md`.** Every name in this
