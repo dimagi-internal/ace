@@ -21,6 +21,7 @@ This wrapper makes both explicit and checks them before anything is written:
 
   bin/ace-canopy-web --workspace <ws> verify narrative <slug>
   bin/ace-canopy-web --workspace <ws> verify walkthrough <id>
+  bin/ace-canopy-web --workspace <ws> verify storyboard <slug>
       Read the write back SCOPED to <ws> (/api/w/<ws>/…). Exit 0 only on HTTP 200.
       Never report where something lives without this. Prints the workspace-addressed
       `url` to cite (https://canopy.dimagi.com/w/<ws>/…).
@@ -112,21 +113,29 @@ def preflight(ws: str, pat: str) -> str:
 
 def main(argv: list[str]) -> None:
     if len(argv) < 2 or argv[0] != "--workspace" or not argv[1].strip():
-        die("usage: ace-canopy-web --workspace <ws> (-- <command...> | verify narrative|walkthrough <id> | check)")
+        die("usage: ace-canopy-web --workspace <ws> (-- <command...> | verify narrative|walkthrough|storyboard <id> | check)")
     ws, rest = argv[1].strip(), argv[2:]
     pat = ace_pat()
 
     if rest[:1] == ["verify"]:
-        if len(rest) != 3 or rest[1] not in ("narrative", "walkthrough"):
-            die("usage: ace-canopy-web --workspace <ws> verify narrative <slug> | verify walkthrough <id>")
+        if len(rest) != 3 or rest[1] not in ("narrative", "walkthrough", "storyboard"):
+            die("usage: ace-canopy-web --workspace <ws> verify narrative <slug> | verify walkthrough <id> | verify storyboard <slug>")
         kind, ident = rest[1], rest[2]
-        path = f"/api/w/{ws}/ddd/narratives/{ident}/" if kind == "narrative" else f"/api/w/{ws}/walkthroughs/{ident}/"
+        path = {
+            "narrative": f"/api/w/{ws}/ddd/narratives/{ident}/",
+            "walkthrough": f"/api/w/{ws}/walkthroughs/{ident}/",
+            "storyboard": f"/api/w/{ws}/storyboards/{ident}/",
+        }[kind]
         status, _ = api_get(path, pat)
         if status != 200:
             die(f"{kind} {ident!r} is NOT readable in workspace {ws!r} (HTTP {status}). "
                 "It may have landed in another workspace — do not report it as being here.", 1)
         # The URL to cite is the workspace-addressed one, never a flat /walkthrough/… (canopy-web#1337).
-        url = f"{SITE}/w/{ws}/ddd/{ident}" if kind == "narrative" else f"{SITE}/w/{ws}/walkthrough/{ident}"
+        url = {
+            "narrative": f"{SITE}/w/{ws}/ddd/{ident}",
+            "walkthrough": f"{SITE}/w/{ws}/walkthrough/{ident}",
+            "storyboard": f"{SITE}/w/{ws}/storyboard/{ident}",
+        }[kind]
         print(json.dumps({"ok": True, "workspace": ws, kind: ident, "url": url}))
         return
 

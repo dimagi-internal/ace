@@ -1,0 +1,38 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
+
+// canopy-web accepts decisions[] rows and retired the brief lists (dimagi-internal/canopy-web#1516).
+describe("demo sets publish decision rows and read feedback rounds", () => {
+  const demo = read("skills/demo-narrative/SKILL.md");
+  const iterate = read("skills/narrative-iteration-review/SKILL.md");
+
+  it("demo-narrative publishes the set with decisions[], through ace-canopy-web", () => {
+    expect(demo).toMatch(/scripts\.ddd\.demo_set publish/);
+    expect(demo).toMatch(/bin\/ace-canopy-web --workspace <ws> --/);
+    expect(demo).toMatch(/decisions\[\]/);
+  });
+
+  it("demo-narrative verifies the board before citing its link", () => {
+    expect(demo).toMatch(/bin\/ace-canopy-web --workspace <ws> verify storyboard <slug>/);
+  });
+
+  it("demo-narrative no longer tells the publisher to send brief.assumptions", () => {
+    expect(demo).not.toMatch(/brief\.(assumptions|divergences|open_questions)/);
+  });
+
+  it("both skills define ACE_ROOT and CANOPY_RT before using them", () => {
+    for (const body of [demo, iterate]) {
+      expect(body).toMatch(/^\s*ACE_ROOT="\$\{CLAUDE_PLUGIN_ROOT:-/m);
+      expect(body).toMatch(/^\s*CANOPY_RT="\$\(bash /m);
+    }
+    expect(demo).toMatch(/"\$ACE_ROOT\/bin\/ace-canopy-web" --workspace <ws> -- uv run python -m scripts\.ddd\.demo_set publish/);
+  });
+
+  it("narrative-iteration-review reads feedback rounds as well as review responses", () => {
+    expect(iterate).toMatch(/ddd-feedback-round/);
+    expect(iterate).toMatch(/scripts\.ddd\.feedback_round/);
+    expect(iterate).toMatch(/Feedback-Ref: storyboard:<slug>\/round-<n>\/<note id>/);
+  });
+});
