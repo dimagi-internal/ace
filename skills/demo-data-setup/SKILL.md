@@ -1632,8 +1632,10 @@ handed-down run (`workflow_history_runs(..., generated_only: false)`) is its
 a regenerated pool) replaces every period's run with a new id** — record the
 listings before and after and relink every artifact per
 `semantic-registry-author` § After a registry edit (`scripts/relink-rebuilt-history.ts`,
-ace#2700); otherwise realized.json and every summary link point at runs that
-no longer exist.
+ace#2700) — for run_state.yaml that is `--run-state` over the WHOLE Phase 7
+products block, `source.dashboards[].par_url` included, never a hand list of
+fields (ace#2739); otherwise realized.json, the dashboard links and every
+summary link point at runs that no longer exist.
 
 **C6. Verify the story LANDED — against the saved runs, not the manifest.**
 `workflow_history_runs({definition_id, program_id, generated_only: false,

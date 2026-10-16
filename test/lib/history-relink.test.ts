@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRunIdMap, relinkText, relinkValue, type HistoryListing } from '../../lib/history-relink';
+import { buildRunIdMap, relinkRunStateProducts, relinkText, relinkValue, type HistoryListing } from '../../lib/history-relink';
 
 // The real rebuild on spark-facilitator/20261004-1706 (ace#2700): registry 7185
 // v2 -> v3, programme report 7187 runs replaced, hand-downs to opp reports
@@ -170,5 +170,56 @@ describe('relinkValue', () => {
     expect(out.opp_reports[0].opportunity_id).toBe(10099);
     expect(out.history.run_ids).toEqual([7312, 7317]);
     expect(out.worker_review.run_id).toBe(7191);
+  });
+});
+
+describe('relinkRunStateProducts (ace#2739)', () => {
+  // spark-facilitator/20261004-1706, 2026-10-06: the hand-listed relink targets
+  // left source.dashboards[].par_url on pre-rebuild ids, and output-preview-capture
+  // then failed all seven synthetic.source.dashboards.N gaps.
+  const runState = {
+    phases: {
+      'connect-setup': { products: { connect: { opportunity: { run_id: 7254 } } } },
+      'synthetic-data-and-workflows': {
+        status: 'done',
+        products: {
+          synthetic: {
+            cascade: {
+              programme_report: { workflow_id: 7187, run_id: 7254 },
+              opp_reports: [{ workflow_id: 7196, run_id: 7258 }],
+              history: { run_ids: [7249, 7254] },
+            },
+            source: {
+              dashboards: [
+                { title: 'Programme report', par_url: 'https://labs/x/labs/workflow/7187/run/?run_id=7254&program_id=10100' },
+                { title: 'Partner C', par_url: 'https://labs/x/labs/workflow/7196/run/?run_id=7258&opportunity_id=10100' },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+
+  it('rewrites every run id in the products block, source.dashboards[].par_url included', () => {
+    const r = relinkRunStateProducts(runState, buildRunIdMap(before, after));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const syn = (r.patch.phases['synthetic-data-and-workflows'].products as any).synthetic;
+    expect(syn.source.dashboards.map((d: { par_url: string }) => d.par_url)).toEqual([
+      'https://labs/x/labs/workflow/7187/run/?run_id=7317&program_id=10100',
+      'https://labs/x/labs/workflow/7196/run/?run_id=7321&opportunity_id=10100',
+    ]);
+    expect(syn.cascade.programme_report.run_id).toBe(7317);
+    expect(syn.cascade.opp_reports[0].run_id).toBe(7321);
+    expect(syn.cascade.history.run_ids).toEqual([7312, 7317]);
+    expect(r.leftovers).toEqual([]);
+    expect(r.changed).toBe(true);
+    // Only the Phase 7 products block is in the patch; other phases are untouched.
+    expect(Object.keys(r.patch.phases)).toEqual(['synthetic-data-and-workflows']);
+    expect(Object.keys(r.patch.phases['synthetic-data-and-workflows'])).toEqual(['products']);
+  });
+
+  it('refuses a run_state with no Phase 7 products block', () => {
+    expect(() => relinkRunStateProducts({ phases: {} }, buildRunIdMap(before, after))).toThrow(/no phases.synthetic-data-and-workflows.products/);
   });
 });
