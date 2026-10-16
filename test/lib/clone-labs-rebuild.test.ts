@@ -8,6 +8,7 @@ import {
   labsIdsIn,
   labsRebuildSource,
   missingWorkspaceLlos,
+  remapLabsText,
   remapSyntheticProducts,
 } from '../../lib/clone-labs-rebuild';
 
@@ -100,5 +101,30 @@ describe('missingWorkspaceLlos', () => {
   it('names the Connect orgs the rebuilt workspace does not list as LLOs', () => {
     expect(missingWorkspaceLlos({ workspace: { llos: ['noora-health-nm-test'] } }, ['noora-health-nm-test', 'noora-health-pm-test', null])).toEqual(['noora-health-pm-test']);
     expect(missingWorkspaceLlos({ workspace: { llos: ['A', 'b'] } }, ['a', 'B'])).toEqual([]);
+  });
+});
+
+describe('remapLabsText (ace#3038)', () => {
+  const map = { 9686: 10383, 9806: 10390, 10137: 10147, 10138: 10148 };
+  it('rewrites Labs URL params in copied prose and never a bare number', () => {
+    const md = [
+      'Programme report: https://labs.connect.dimagi.com/labs/workflow/9686/run/?run_id=9806&program_id=10137',
+      'Partner opp 10138 had 2026 visits; see opportunity_id=10138.',
+    ].join('\n');
+    const r = remapLabsText(md, map);
+    expect(r.text).toContain('workflow/10383/run/?run_id=10390&program_id=10147');
+    expect(r.text).toContain('opportunity_id=10148');
+    expect(r.text).toContain('Partner opp 10138 had 2026 visits');
+    expect(r.changes).toBe(4);
+    expect(r.bare).toEqual([10138]);
+  });
+  it('leaves an unmapped id untouched (the re-scan catches it)', () => {
+    const r = remapLabsText('https://labs.connect.dimagi.com/labs/workflow/9686/run/?run_id=7777', { 9686: 10383 });
+    expect(r).toMatchObject({ text: 'https://labs.connect.dimagi.com/labs/workflow/10383/run/?run_id=7777', changes: 1 });
+    expect(remapLabsText('x', {}).changes).toBe(0);
+  });
+  it('is idempotent once rewritten', () => {
+    const once = remapLabsText('run_id=9806&program_id=10137', map).text;
+    expect(remapLabsText(once, map)).toMatchObject({ text: once, changes: 0, bare: [] });
   });
 });
