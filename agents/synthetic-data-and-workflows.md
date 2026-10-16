@@ -116,6 +116,22 @@ Its § Process (ace-run) C0–C7 runs, in order:
    PDD — the followed entity as the model, one indicator per PDD success metric /
    payment rule / review signal with its PDD section, targets only where the PDD
    states them, the PDD's own nouns, `llo_map` over the partners.
+
+   **Registry gate — before ANY data is generated.** The order is fixed:
+   `semantic-registry-author` → `semantic-registry-author-qa` →
+   `semantic-registry-author-eval` (verdict written to
+   `7-synthetic/semantic-registry-author-eval_verdict.yaml`) → **gate** → C3 story
+   and data generation → C4–C5 dashboards. The gate is code, not this sentence:
+   `scripts/run-labs-synthetic-generate.ts` refuses to send a manifest (exit 3)
+   unless `--registry-eval-verdict <local copy of that verdict file>` passes
+   `checkRegistryEvalGate` (`lib/registry-eval-gate.ts`: present, this skill's,
+   graded, not `fail` — `warn` proceeds). A `fail` means fix the registry
+   (`semantic_registry_update`), re-run QA and the eval, then generate. Why: on
+   all three 2026-10-15 runs (`noora-health/20261015-1129`,
+   `kaduna-graduation/20261015-1411`, `smallholder-seasonal/20261015-1402`) the
+   registry eval ran AFTER data and dashboards, so any finding meant rebuilding
+   the cascade — the story signals, manifests, report trio and history are all
+   authored against the registry's indicator ids.
 3. **C3** — `7-synthetic/cascade-story.yaml` (four authored signals: lagging
    partner, standout worker, data-quality problem, trend; a display roster
    naming every worker and community; headline indicators that differ across

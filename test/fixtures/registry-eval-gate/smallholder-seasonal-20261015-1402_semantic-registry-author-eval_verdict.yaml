@@ -1,0 +1,91 @@
+# Verbatim drive_read_file of ACE/smallholder-seasonal/runs/20261015-1402/7-synthetic/semantic-registry-author-eval_verdict.yaml
+# (Drive 1fsS5l-QesVWX0enO-t7bBtaLwrSaxWSX rev 7), captured 2026-10-16 for lib/registry-eval-gate.ts. Only these two comment lines added.
+skill: semantic-registry-author-eval
+target: smallholder-seasonal/20261015-1402
+mode: shallow
+ran_at: "2026-10-16T04:50:00Z"
+capture_path: 7-synthetic/semantic-registry-author_registry.json
+schema_version: 2
+archetype: longitudinal-visits
+provisional_rubric: true
+graded_registry: {registry_id: 10047, version: 4, program_id: 10142, pipeline_id: 10048, pipeline_version: 3, source: "live semantic_registry_explain (v4) + live pipeline_get + local registry.json/layer1.json"}
+graded_summary: {file: 7-synthetic/semantic-registry-author_summary.md, drive_id: 1I8ehEEe9IsAMNC7NeQQfL6qNRv6qz_3a, graded_revision: "3", note: "Drive copy byte-identical to local"}
+regrade_history:
+  - {registry_version: 2, overall_score: 5.1, verdict: fail}
+  - {registry_version: 3, overall_score: 6.6, verdict: fail}
+live_state_verified: true
+
+overall_score: 7.5
+overall_score_pre_cap: 7.475
+verdict: warn
+
+dimensions:
+  pdd_fidelity: { score: 7.0, weight: 0.30 }
+  definition_correctness: { score: 8.0, weight: 0.25 }
+  coverage_honesty: { score: 8.0, weight: 0.20 }
+  domain_expert_fitness: { score: 6.5, weight: 0.15 }
+  legibility: { score: 8.0, weight: 0.10 }
+
+checks:
+  - name: semantic_registry_explain
+    status: checked
+    reason: "SS_GRAD and SS_EXIT read live at v4 (stale `means` fixed); SS_PHONE (v3) and SS_HOT (v2) unchanged since their live reads"
+  - name: pipeline_get
+    status: checked
+    reason: "Layer-1 pipeline 10048 v3 carries outcome_reassess"
+  - name: producer-summary
+    status: checked
+    reason: "Read from Drive (revision 3) and checked each 'Not computable' reason against the CCZ, keyexempt.json and journey.jsx"
+  - name: ccz-cross-read
+    status: checked
+    reason: "Round forms carry placeholder hh_q*/w_q* questions; the ledger and attendance live in the group-session repeat (key-exempt); journey.jsx has the 'Member savings' tab and the 'Visited within 7 days' tile"
+
+per_item:
+  - ref: entity_key
+    score: 9.0
+    verdict: pass
+    note: "participant_case_id = the followed woman (PDD §4). No hard deduction."
+  - ref: SS_GRAD
+    score: 8.5
+    verdict: pass
+    note: "Counts graduation at endline or reassessment; property `means` now matches."
+  - ref: SS_EXIT
+    score: 8.0
+    verdict: pass
+    note: "Counts exits from the home visit, the grant follow-up, and not graduated at reassessment; `means` now matches."
+  - ref: SS_PHONE
+    score: 8.0
+    verdict: pass
+    note: "Words match the chain (every phone visit is a review flag; paid only in insecure areas)."
+  - ref: SS_KG
+    score: 6.5
+    verdict: warn
+    note: "Cumulative wording and missing-unit and sales-value disclosures are present. Residual: unit sizes are hard-coded from the PLACEHOLDER '*_all' lookup rows, so any change to that table needs a registry edit."
+  - ref: SS_HOT
+    score: 7.0
+    verdict: pass
+    note: "The denominator is visited harvest cycles, not all harvest-cycle records (PDD measurement method), so cycles never visited are invisible and the 85% target reads greener than the PDD's measure. Not disclosed."
+  - ref: SS_ACC
+    score: 6.5
+    verdict: warn
+    note: "'Before the first transfer' is dropped (disclosed), yet the PROPOSED 90% target is applied to the looser measure without saying it is a proxy target."
+  - ref: coverage_vs_pdd_s11
+    score: 8.0
+    verdict: pass
+    note: "All 11 §11 rows are now either an indicator or listed under 'Not computable from visit data' with a reason I verified: primary index and women's agency (placeholder round questions), savings and training completion (group-session roster, key-exempt), home-visit timeliness (trigger date at the session; shown on the journey dashboard), and the 3 HQ rows (decision rows). Harvest sales value is listed too. No invented targets. Short of 10 because 2 rows labelled 'not computable' (savings, home-visit timeliness) ARE computed on the journey dashboard, so they are routed elsewhere rather than impossible; the wording should say 'computed on the journey dashboard, not in this registry'."
+
+auto_surfaced:
+  - severity: WARN
+    message: "domain_expert_fitness 6.5: the graduation model's core management signals (member savings, session attendance, home-visit timeliness) live only on the custom journey dashboard, so they get no partner or field-worker benchmarking, bands or history in the indicator reports, and the headline set leads with an onboarding figure (accounts confirmed)."
+  - severity: WARN
+    message: "SS_ACC applies the PROPOSED 90% target to a measure without the 'before the first transfer' timing; SS_HOT divides by visited cycles only (not disclosed). Both make the targeted headlines read greener than the PDD's own measures."
+  - severity: WARN
+    message: "SS_KG unit sizes are hard-coded from a PLACEHOLDER lookup table; they will drift silently when the table is filled in."
+  - severity: INFO
+    message: "The summary's title still says 'registry 10047 v3'; it is now v4. Cosmetic."
+  - severity: INFO
+    message: "Re-grade trajectory 5.1 (v2) -> 6.6 (v3) -> 7.5 (v4). Every v2 finding on SS_GRAD, SS_EXIT, SS_PHONE, SS_KG wording, stale `means` and coverage disclosure is verified fixed. Inflation guard not bound."
+
+gate:
+  threshold: 7.0
+  disposition: approve

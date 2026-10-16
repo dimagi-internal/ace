@@ -22,6 +22,9 @@ import { join, resolve } from 'node:path';
 // would reintroduce the exact defect while every other test stayed green.
 //
 const SCRIPT = resolve(__dirname, '../../scripts/run-labs-synthetic-generate.ts');
+// The byte-identity tests below are about the payload, not the registry gate
+// (covered at the end of this file), so they pass the explicit skip.
+const SKIP = ['--registry-gate-skip', 'test fixture: no semantic registry'];
 
 function dryRun(manifest: string, oppId = '10065'): string {
   const dir = mkdtempSync(join(tmpdir(), 'labs-manifest-'));
@@ -29,7 +32,7 @@ function dryRun(manifest: string, oppId = '10065'): string {
   writeFileSync(file, manifest);
   const out = execFileSync(
     'npx',
-    ['tsx', SCRIPT, file, '--opportunity-id', oppId, '--dry-run'],
+    ['tsx', SCRIPT, file, '--opportunity-id', oppId, '--dry-run', ...SKIP],
     { encoding: 'utf8', cwd: resolve(__dirname, '../..') },
   );
   return out;
@@ -78,7 +81,7 @@ describe('scripts/run-labs-synthetic-generate.ts', () => {
     writeFileSync(file, 'cohort: {}\n');
     const out = execFileSync(
       'npx',
-      ['tsx', SCRIPT, file, '--opportunity-id', '1', '--dry-run'],
+      ['tsx', SCRIPT, file, '--opportunity-id', '1', '--dry-run', ...SKIP],
       { encoding: 'utf8', cwd: resolve(__dirname, '../..'), env: { ...process.env, LABS_MCP_TOKEN: '' } },
     );
     expect(() => JSON.parse(out)).not.toThrow();
@@ -89,7 +92,7 @@ describe('scripts/run-labs-synthetic-generate.ts', () => {
     const file = join(dir, 'm.yaml');
     writeFileSync(file, 'cohort: {}\n');
     expect(() =>
-      execFileSync('npx', ['tsx', SCRIPT, file, '--opportunity-id', 'not-a-number', '--dry-run'], {
+      execFileSync('npx', ['tsx', SCRIPT, file, '--opportunity-id', 'not-a-number', '--dry-run', ...SKIP], {
         encoding: 'utf8',
         cwd: resolve(__dirname, '../..'),
         stdio: 'pipe',
@@ -109,5 +112,85 @@ describe('scripts/run-labs-synthetic-generate.ts', () => {
       .join('\n');
     expect(code).not.toMatch(/yaml\.(parse|load|safeLoad|stringify|dump)/);
     expect(code).toMatch(/readFileSync\(file, 'utf8'\)/);
+  });
+});
+
+// ── The registry gate (lib/registry-eval-gate.ts) ────────────────────────────
+// All three 2026-10-15 runs graded the registry AFTER generating against it.
+// The script is the chokepoint, so it refuses without a passing verdict or an
+// explicit, reasoned skip — and refuses BEFORE building or sending anything.
+describe('scripts/run-labs-synthetic-generate.ts — registry gate', () => {
+  function run(extra: string[]): { status: number; stdout: string; stderr: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'labs-gate-'));
+    const file = join(dir, 'm.yaml');
+    writeFileSync(file, 'cohort: {}\n');
+    try {
+      const stdout = execFileSync('npx', ['tsx', SCRIPT, file, '--opportunity-id', '7', '--dry-run', ...extra], {
+        encoding: 'utf8',
+        cwd: resolve(__dirname, '../..'),
+        stdio: 'pipe',
+      });
+      return { status: 0, stdout, stderr: '' };
+    } catch (e) {
+      const err = e as { status: number; stdout: string; stderr: string };
+      return { status: err.status, stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? '') };
+    }
+  }
+  function verdictFile(disposition: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'labs-gate-v-'));
+    const f = join(dir, 'semantic-registry-author-eval_verdict.yaml');
+    writeFileSync(
+      f,
+      [
+        'skill: semantic-registry-author-eval',
+        'target: 6369',
+        'ran_at: 2026-10-16T10:00:00Z',
+        'capture_path: 7-synthetic/semantic-registry-author_registry.json',
+        'overall_score: 8',
+        `verdict: ${disposition}`,
+        'dimensions:',
+        '  pdd_fidelity: {score: 8, weight: 1.0}',
+        '',
+      ].join('\n'),
+    );
+    return f;
+  }
+
+  it('refuses with neither flag (exit 3), sending nothing', () => {
+    const r = run([]);
+    expect(r.status).toBe(3);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(/--registry-eval-verdict/);
+  });
+
+  it('refuses a missing verdict file', () => {
+    const r = run(['--registry-eval-verdict', join(tmpdir(), 'does-not-exist-registry-verdict.yaml')]);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/run semantic-registry-author-eval first/);
+  });
+
+  it('refuses a failing verdict', () => {
+    const r = run(['--registry-eval-verdict', verdictFile('fail')]);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/BLOCKED/);
+  });
+
+  it('proceeds on a pass or warn verdict', () => {
+    for (const d of ['pass', 'warn']) {
+      const r = run(['--registry-eval-verdict', verdictFile(d)]);
+      expect(r.status).toBe(0);
+      expect(JSON.parse(r.stdout).params.name).toBe('synthetic_generate_from_manifest');
+    }
+  });
+
+  it('a skip needs a real reason', () => {
+    expect(run(['--registry-gate-skip', '']).status).toBe(1);
+    expect(run(['--registry-gate-skip', 'denovo provider: no semantic registry is authored']).status).toBe(0);
+  });
+
+  it('refuses both flags at once', () => {
+    expect(
+      run(['--registry-eval-verdict', verdictFile('pass'), '--registry-gate-skip', 'denovo provider here']).status,
+    ).toBe(1);
   });
 });
