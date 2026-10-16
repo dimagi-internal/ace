@@ -348,6 +348,13 @@ it mid-visit, 44 links is close to useless. Enforced by
 4. Write to Drive.
 4b. **Illustrated artifacts only:** run the embed step above and confirm it
    exits 0 with a non-zero anonymous image count.
+4c. **Published-render gate (before any self-eval or `-eval`):** run
+   `scripts/check-published-doc-render.ts <published Doc URL>` (add
+   `--expect-images` for an illustrated artifact) — see
+   `skills/_eval-template.md § Published-render gate (stock)`. Non-zero exit
+   means the reader gets raw markdown or no pictures: republish via
+   `drive_create_doc_from_markdown` (and re-embed) and re-run it before handing
+   off. The paired `-eval` runs the same check and fails on it (ace#2213).
 5. Self-evaluate via LLM-as-Judge — write
    `<artifact>_verdict.yaml` using the verdict shape from
    `skills/_eval-template.md § Verdict YAML contract`.

@@ -44,6 +44,8 @@ calibration TBD until 3+ shipped LLO guides produce ground truth (see
 ## Process
 
 1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
+1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL> --expect-images` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213). `--expect-images` because this artifact is `illustrated`: a guide that renders zero images fails here.
+
 2. Build an operational-coverage checklist from the PDD: morning
    check-in cadence, daily-cap enforcement, payment-approval workflow,
    escalation triggers (rejected visits, FLW absence, anomaly alerts),

@@ -230,6 +230,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/entity-state-taxonomy-component.test.ts': { issues: ['ace#1564'] },
   'test/skills/eval-calibration-anchors.test.ts': { issues: ['ace#1212'] },
   'test/skills/eval-gate-artifact-ownership.test.ts': { issues: ['ace#1010', 'ace#1439', 'ace#1567'] },
+  'test/skills/eval-checks-published-render.test.ts': { issues: ['ace#2213'], observed: 'poverty-graduation/20260905-1345' },
   'test/skills/eval-grades-published-revision.test.ts': { issues: ['ace#2592'], observed: 'spark-facilitator/20261001-2208' },
   'test/skills/eval-rubric-dimension-integrity.test.ts': { issues: ['ace#1559'] },
   'test/skills/eval-verdict-filename-prose.test.ts': { issues: ['ace#1815', 'ace#712', 'ace#619', 'ace#786'] },

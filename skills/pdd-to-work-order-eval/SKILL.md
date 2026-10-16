@@ -90,6 +90,8 @@ Grading bands: 0 strikes = `pass`; 1–3 strikes = `partial`; 4+ strikes = `fail
 
 1. **Check the gating signal.** Read `pdd-to-work-order-qa_result.yaml`. If `verdict: incomplete`, emit `pdd-to-work-order-eval_verdict.yaml` with `verdict: incomplete` and return. If `verdict: fail`, proceed (QA's failures are auto-fixable; eval still grades the substantive concerns of the latest draft).
 
+1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213).
+
 2. **Read the artifacts.** Work order body, PDD body, decisions.yaml. Parallel `drive_read_file` block.
 
 3. **Grade each dimension.** For each of the seven dimensions:
