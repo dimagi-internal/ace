@@ -74,7 +74,7 @@ import {
   summarizeBatchReplacementCoverage,
   type ReplacementCoverage,
 } from '../lib/replacement-coverage.js';
-import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
+import { assertDimagiOwnerRecipient, assertRevocablePermission, DestructiveGuardError } from '../lib/destructive-guards.js';
 import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
 import { extractSheetHyperlinks } from '../lib/sheets-hyperlinks.js';
 import { createIdentityGate, installIdentityGate, DRIVE_REFUSAL_HINT } from '../lib/agent-identity-gate.js';
@@ -1445,6 +1445,230 @@ server.tool(
   async ({ fileId, email, role, sendNotificationEmail }) => {
     try {
       return result(await handleShareWithPerson({ fileId, email, role, sendNotificationEmail }, drive));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11f. List who can access a Drive file / 11g. Revoke a grant
+/**
+ * `drive_list_permissions` + `drive_revoke_access` (ace#2918).
+ *
+ * Until these, the server could GRANT (`permissions.create`, four call sites)
+ * but never list or withdraw: an anyone-with-link grant was a one-way door. On
+ * `tekzal/20261013-2314` a superseded Work Order that linked a Dimagi-internal
+ * PDD was shared anyone-with-link; the only available move was rename +
+ * trash, which leaves the grant intact and the file restorable for 30 days.
+ * Without a list, nothing could assert a document is NOT exposed either.
+ *
+ * Revocation is destructive, so it carries the ace#1112 rails:
+ * - containment — the file must be on ACE's own Shared Drive, the same check
+ *   (`resolveAceDriveId`) `drive_set_anyone_with_link` uses before publishing;
+ * - `assertRevocablePermission` — never owner/organizer, never ACE's own
+ *   access, never an inherited permission;
+ * - a selector that matches NOTHING is a typed refusal
+ *   (`no_matching_permission`), not a silent success — "revoke access for X"
+ *   that quietly did nothing is the failure this atom exists to end;
+ * - read-back: the permissions are listed again after the delete and the call
+ *   throws `revoke_not_confirmed` if a removed id is still present.
+ *
+ * A shortcut id is REFUSED for revoke rather than followed: the tenancy guard
+ * checks the id it is handed, and following a shortcut that sits in the opp
+ * folder to a target outside it would mutate a file the guard never saw.
+ */
+const PERMISSION_FIELDS =
+  'nextPageToken, permissions(id, type, role, emailAddress, domain, displayName, deleted, allowFileDiscovery, permissionDetails(inherited, inheritedFrom, permissionType, role))';
+
+export interface PermissionSummary {
+  id: string;
+  type: string;
+  role: string;
+  email: string | null;
+  domain: string | null;
+  display_name: string | null;
+  inherited: boolean;
+  inherited_from: string | null;
+}
+
+function summarizePermission(p: any): PermissionSummary {
+  const details: any[] = p.permissionDetails ?? [];
+  const inherited = details.length > 0 && details.every((d) => d?.inherited);
+  return {
+    id: p.id,
+    type: p.type,
+    role: p.role,
+    email: p.emailAddress ?? null,
+    domain: p.domain ?? null,
+    display_name: p.displayName ?? null,
+    inherited,
+    inherited_from: inherited ? details.find((d) => d?.inheritedFrom)?.inheritedFrom ?? null : null,
+  };
+}
+
+async function listAllPermissions(fileId: string, driveClient: typeof drive): Promise<any[]> {
+  const out: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const resp: any = await driveClient.permissions.list({
+      fileId,
+      supportsAllDrives: true,
+      fields: PERMISSION_FIELDS,
+      pageSize: 100,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    out.push(...(resp.data.permissions ?? []));
+    pageToken = resp.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
+
+export async function handleListPermissions(
+  args: { fileId: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  file_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
+  anyone_with_link: boolean;
+  total: number;
+  permissions: PermissionSummary[];
+}> {
+  const resolved = await resolveShortcutTarget(args.fileId, driveClient, opts);
+  const perms = (await listAllPermissions(resolved.fileId, driveClient)).map(summarizePermission);
+  return {
+    file_id: resolved.fileId,
+    requested_file_id: resolved.requestedFileId,
+    shortcut_resolved: resolved.wasShortcut,
+    anyone_with_link: perms.some((p) => p.type === 'anyone'),
+    total: perms.length,
+    permissions: perms,
+  };
+}
+
+server.tool(
+  'drive_list_permissions',
+  "List who can access a Drive file — every permission (`permissions.list`, all pages, Shared Drives included). Read-only. Returns `{file_id, requested_file_id, shortcut_resolved, anyone_with_link, total, permissions: [{id, type, role, email, domain, display_name, inherited, inherited_from}]}`. `anyone_with_link: true` means the file is exposed to anyone holding the URL. `inherited` permissions come from a parent folder or the Shared Drive's membership. Use it to answer \"who can see this?\", to check that a document is NOT exposed before it is referenced from something partner-facing, and to find the `id` that `drive_revoke_access` takes. A Drive shortcut id is resolved to its target (a shortcut's own permissions are not what anyone means by \"who can see this doc\").",
+  {
+    fileId: z.string().min(1).describe('The Drive file ID. A shortcut id is resolved to its target.'),
+  },
+  async ({ fileId }) => {
+    try {
+      return result(await handleListPermissions({ fileId }, drive));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+export type RevokeSelector =
+  | { permissionId: string }
+  | { type: 'anyone' }
+  | { type: 'user' | 'group'; email: string }
+  | { type: 'domain'; domain: string };
+
+export async function handleRevokeAccess(
+  args: { fileId: string; permissionId?: string; type?: 'anyone' | 'user' | 'group' | 'domain'; email?: string; domain?: string },
+  driveClient: typeof drive = drive,
+): Promise<{ file_id: string; removed: PermissionSummary[]; remaining: PermissionSummary[]; anyone_with_link: boolean }> {
+  const { fileId, permissionId, type, email, domain } = args;
+  if (!permissionId === !type) {
+    throw new Error('invalid_selector: pass exactly one of `permissionId` or `type` (with `email` for user/group, `domain` for domain).');
+  }
+  if ((type === 'user' || type === 'group') && !email) {
+    throw new Error(`invalid_selector: type '${type}' needs \`email\`.`);
+  }
+  if (type === 'domain' && !domain) throw new Error("invalid_selector: type 'domain' needs `domain`.");
+
+  const meta = await driveClient.files.get({
+    fileId,
+    fields: 'id, name, mimeType, driveId',
+    supportsAllDrives: true,
+  });
+  if (meta.data.mimeType === DRIVE_SHORTCUT_MIME) {
+    throw new Error(
+      `shortcut_not_revocable: ${fileId} is a Drive shortcut. Revoke on the file it points at ` +
+        `(drive_list_permissions resolves it and returns that id as \`file_id\`).`,
+    );
+  }
+  const fileDriveId = meta.data.driveId ?? null;
+  const expected = await resolveAceDriveId(driveClient);
+  if (!fileDriveId || (expected && fileDriveId !== expected)) {
+    throw new DestructiveGuardError(
+      `Refusing to revoke access on ${fileId} ("${meta.data.name ?? '?'}"): it is not on ACE's ` +
+        `Shared Drive${fileDriveId ? ` (it is on ${fileDriveId})` : ''}, so it is not an ACE artifact (ace#1112).`,
+    );
+  }
+
+  const before = await listAllPermissions(fileId, driveClient);
+  const norm = (s?: string | null) => (s ?? '').trim().toLowerCase();
+  const matches = before.filter((p) => {
+    if (permissionId) return p.id === permissionId;
+    if (p.type !== type) return false;
+    if (type === 'user' || type === 'group') return norm(p.emailAddress) === norm(email);
+    if (type === 'domain') return norm(p.domain) === norm(domain);
+    return true; // anyone
+  });
+  if (matches.length === 0) {
+    const what = permissionId ? `permission ${permissionId}` : `${type}${email ? `:${email}` : domain ? `:${domain}` : ''}`;
+    const present = before.map((p) => `${p.type}:${p.emailAddress ?? p.domain ?? p.id}(${p.role})`).join(', ') || 'none';
+    throw new Error(
+      `no_matching_permission: ${fileId} has no ${what} grant to revoke. Present: ${present}. ` +
+        `Nothing was changed.`,
+    );
+  }
+
+  // ACE's own identity, so the rail can refuse a self-lockout. Only needed
+  // when a matched grant names a person.
+  let selfEmail: string | null = null;
+  if (matches.some((p) => p.emailAddress)) {
+    try {
+      const about: any = await driveClient.about.get({ fields: 'user(emailAddress)' });
+      selfEmail = about.data.user?.emailAddress ?? null;
+    } catch {
+      selfEmail = null;
+    }
+  }
+  // Check EVERY match before deleting ANY, so a refusal changes nothing.
+  for (const p of matches) assertRevocablePermission(p, selfEmail);
+
+  for (const p of matches) {
+    await driveClient.permissions.delete({ fileId, permissionId: p.id, supportsAllDrives: true });
+  }
+
+  const after = await listAllPermissions(fileId, driveClient);
+  const stillThere = matches.filter((m) => after.some((a) => a.id === m.id));
+  if (stillThere.length > 0) {
+    throw new Error(
+      `revoke_not_confirmed: ${stillThere.map((p) => p.id).join(', ')} still present on ${fileId} after delete.`,
+    );
+  }
+  const remaining = after.map(summarizePermission);
+  return {
+    file_id: fileId,
+    removed: matches.map(summarizePermission),
+    remaining,
+    anyone_with_link: remaining.some((p) => p.type === 'anyone'),
+  };
+}
+
+server.tool(
+  'drive_revoke_access',
+  "Withdraw a Drive grant — the inverse of `drive_set_anyone_with_link` / `drive_share_with_person` (`permissions.delete`). Select the grant by `permissionId` (from `drive_list_permissions`), or by `type`: `anyone` removes the anyone-with-link grant, `user`/`group` + `email` removes that person's or group's access, `domain` + `domain` removes a domain grant. Returns `{file_id, removed, remaining, anyone_with_link}` after READING BACK the permissions — a grant still present after the delete is an error (`revoke_not_confirmed`), not a success.\n\nRails (ace#1112 shape): the file must be on ACE's own Shared Drive; owner / organizer / fileOrganizer, ACE's own access, and inherited permissions (revoke those on the folder named in the refusal) are refused; a selector that matches no grant is a typed refusal (`no_matching_permission`) listing what IS present — nothing is changed. A shortcut id is refused (`shortcut_not_revocable`): pass the target's id, which `drive_list_permissions` returns as `file_id`. Revoking removes access immediately and does not notify anyone.",
+  {
+    fileId: z.string().min(1).describe('The Drive file ID (not a shortcut). Must be on ACE\'s Shared Drive.'),
+    permissionId: z.string().min(1).optional().describe('The permission id to remove, from drive_list_permissions. Pass this OR `type`.'),
+    type: z
+      .enum(['anyone', 'user', 'group', 'domain'])
+      .optional()
+      .describe("Select the grant by kind instead of id. 'anyone' = the anyone-with-link grant; 'user'/'group' need `email`; 'domain' needs `domain`."),
+    email: z.string().min(3).optional().describe("The grantee's email, for type 'user' or 'group'. Matched case-insensitively."),
+    domain: z.string().min(1).optional().describe("The domain, for type 'domain'."),
+  },
+  async ({ fileId, permissionId, type, email, domain }) => {
+    try {
+      return result(await handleRevokeAccess({ fileId, permissionId, type, email, domain }, drive));
     } catch (e: any) {
       return error(e.message);
     }

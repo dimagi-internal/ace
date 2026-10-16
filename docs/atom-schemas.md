@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 50 atoms
+Source: `mcp/google-drive-server.ts` — 52 atoms
 
 ### `sheets_list_tabs`
 
@@ -238,6 +238,26 @@ Share a Drive file with a NAMED person (`type: user`) at `role: writer` (default
 | `email` | `z.string` | **required** | The grantee's email address (Google account). Internal or external — external partner collaborators are the whole point of this atom. |
 | `role` | `z.enum` | optional | Permission role. Default 'writer' — the co-creation grant, which lets the person edit the document. Use 'commenter' for read-and-react, 'reader' for view-only. |
 | `sendNotificationEmail` | `z.boolean` | optional | Whether Drive should email the grantee that the file was shared. **Defaults to false.** ACE never silently emails an external party as a side effect of a permission change — outbound email goes through bin/ace-email, which is hook-gated. Pass true ONLY when a human has explicitly approved a Drive-sent notification. |
+
+### `drive_list_permissions`
+
+List who can access a Drive file — every permission (`permissions.list`, all pages, Shared Drives included). Read-only. Returns `{file_id, requested_file_id, shortcut_resolved, anyone_with_link, total, permissions: [{id, type, role, email, domain, display_name, inherited, inherited_from}]}`. `anyone_with_link: true` means the file is exposed to anyone holding the URL. `inherited` permissions come from a parent folder or the Shared Drive's membership. Use it to answer "who can see this?", to check that a document is NOT exposed before it is referenced from something partner-facing, and to find the `id` that `drive_revoke_access` takes. A Drive shortcut id is resolved to its target (a shortcut's own permissions are not what anyone means by "who can see this doc").
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Drive file ID. A shortcut id is resolved to its target. |
+
+### `drive_revoke_access`
+
+Withdraw a Drive grant — the inverse of `drive_set_anyone_with_link` / `drive_share_with_person` (`permissions.delete`). Select the grant by `permissionId` (from `drive_list_permissions`), or by `type`: `anyone` removes the anyone-with-link grant, `user`/`group` + `email` removes that person's or group's access, `domain` + `domain` removes a domain grant. Returns `{file_id, removed, remaining, anyone_with_link}` after READING BACK the permissions — a grant still present after the delete is an error (`revoke_not_confirmed`), not a success. Rails (ace#1112 shape): the file must be on ACE's own Shared Drive; owner / organizer / fileOrganizer, ACE's own access, and inherited permissions (revoke those on the folder named in the refusal) are refused; a selector that matches no grant is a typed refusal (`no_matching_permission`) listing what IS present — nothing is changed. A shortcut id is refused (`shortcut_not_revocable`): pass the target's id, which `drive_list_permissions` returns as `file_id`. Revoking removes access immediately and does not notify anyone.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Drive file ID (not a shortcut). Must be on ACE's Shared Drive. |
+| `permissionId` | `z.string` | optional | The permission id to remove, from drive_list_permissions. Pass this OR `type`. |
+| `type` | `z.enum` | optional | Select the grant by kind instead of id. 'anyone' = the anyone-with-link grant; 'user'/'group' need `email`; 'domain' needs `domain`. |
+| `email` | `z.string` | optional | The grantee's email, for type 'user' or 'group'. Matched case-insensitively. |
+| `domain` | `z.string` | optional | The domain, for type 'domain'. |
 
 ### `drive_create_folder`
 
