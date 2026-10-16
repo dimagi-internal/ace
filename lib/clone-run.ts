@@ -25,8 +25,9 @@
  *  - `checkTenantWrite` — the tenancy guard's semantics for the writes the
  *    script makes outside MCP (where hooks/tenancy_guard.py cannot see them);
  *  - the products / release-summary / summary-url rewrites;
- *  - `rebuildLabs` — the Labs stage (ace#3020 is redesigning it; until that
- *    lands this reports `not-done: awaiting ace#3020`).
+ *  - `rebuildLabs` — the Labs stage: a COPY into the clone's own labs
+ *    program (§ 4c, ace#3020), blocked on connect-labs#2571 — until that
+ *    lands it reports `not-done: labs atom gap` and never regenerates.
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -755,16 +756,27 @@ export interface LabsRebuildContext {
 }
 
 /**
- * Labs stage. ace#3020 is redesigning it: rebuild the run's reports in the new
- * program from templates and copy the synthetic data, then widen each
- * synthetic opp's allowlist through the release plan. Until that lands this
- * is an explicit `not-done`, never a silent skip — the old "Labs stays
- * Dimagi-only" was the defect #3020 reports.
+ * Labs stage (`clone-to-new-workspace` § 4c, ace#3020). The design: COPY the
+ * source's Phase 7 records into labs-only opps in ONE new program
+ * (`synthetic_clone_to_labs_only`), copy its registry and instantiate the same
+ * report templates there with the source configuration, then make the program
+ * a labs workspace whose LLOs are the clone's Connect orgs — no allowlist is
+ * ever widened, and nothing is regenerated (owner, 2026-10-16).
+ *
+ * BLOCKED: the deployed `synthetic_clone_to_labs_only` takes no `program_id`
+ * (connect-labs#2571), so the copies cannot share one program, and no read
+ * atom returns a synthetic opp's fixture folder for `synthetic_create_labs_only`
+ * to point at. So this is an explicit `not-done` naming that gap — never a
+ * silent skip (the old "Labs stays Dimagi-only" was #3020's defect) and never a
+ * regeneration standing in for the copy.
  */
 export async function rebuildLabs(ctx: LabsRebuildContext): Promise<StageRecord> {
   const synthetic = obj(obj(obj(obj(ctx.sourceRunState).phases)['synthetic-data-and-workflows']).products).synthetic;
   if (!Object.keys(obj(synthetic)).length) {
     return { status: 'done', reason: 'source run has no Phase 7 synthetic products — nothing to rebuild' };
   }
-  return { status: 'not-done', reason: 'awaiting ace#3020 (Labs rebuild from templates + synthetic data copy)' };
+  return {
+    status: 'not-done',
+    reason: 'labs atom gap: synthetic_clone_to_labs_only has no program_id, so the records cannot be copied into one new program (connect-labs#2571); never regenerated instead — clone-to-new-workspace § 4c',
+  };
 }

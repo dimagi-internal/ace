@@ -28,6 +28,7 @@
 import { createHash } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
 import type { Memberships } from './run-surface-audit.js';
+import { missingWorkspaceLlos } from './clone-labs-rebuild.js';
 
 export const RELEASE_PLAN_SCHEMA_VERSION = 1 as const;
 export const ACCEPT_LINK_TOKEN = '{{ACCEPT_LINK}}';
@@ -350,7 +351,7 @@ interface CloneBlock {
   from?: { workspace?: string; opp?: string; run?: string };
   hq?: { status?: string };
   connect?: { status?: string };
-  labs?: { status?: string };
+  labs?: { status?: string; workspace?: { llos?: string[] } };
 }
 
 function cloneBlock(runState: unknown): CloneBlock {
@@ -370,6 +371,13 @@ export interface Grants {
  * == done`); a grant on a shared tenant opens every ACE run. Connect has one
  * escape hatch, `--allow-shared connect`, recorded as shared. Dimagi staff are
  * not outside reviewers. OCS is never an account — always the public link.
+ *
+ * Labs (ace#3020) is rebuilt by `clone-to-new-workspace` § 4c in a NEW labs
+ * program whose organisation is a labs workspace with the clone's own Connect
+ * orgs as its LLOs, so a reviewer opens it THROUGH their Connect org
+ * membership: labs is granted exactly when the rebuild is done AND the clone's
+ * own Connect orgs were rebuilt. There is no labs call and no allowlist is
+ * ever widened.
  */
 export function grantsFor(email: string, runState: unknown, allowSharedConnect: boolean): Grants {
   const c = cloneBlock(runState);
@@ -378,7 +386,7 @@ export function grantsFor(email: string, runState: unknown, allowSharedConnect: 
   return {
     hq: staff || done(c.hq),
     connect: staff || done(c.connect) ? 'own' : allowSharedConnect ? 'shared' : false,
-    labs: staff || done(c.labs),
+    labs: staff || (done(c.labs) && done(c.connect)),
   };
 }
 
@@ -442,6 +450,12 @@ export function summaryUrl(input: Pick<PlanInput, 'workspace' | 'opp' | 'runId' 
 /** The run's members-only workbench page — where an existing ace-web member signs in. */
 export function workbenchUrl(input: Pick<PlanInput, 'workspace' | 'opp' | 'runId' | 'aceWebBase'>): string {
   return `${input.aceWebBase.replace(/\/+$/, '')}/w/${input.workspace}/opps/${input.opp}/runs/${input.runId}`;
+}
+
+/** The run has Phase 7 labs dashboards to open at all. */
+function runHasLabs(runState: unknown): boolean {
+  const syn = (runState as { phases?: Record<string, { products?: { synthetic?: Record<string, unknown> } }> } | null)?.phases?.['synthetic-data-and-workflows']?.products?.synthetic;
+  return !!syn && Object.keys(syn).length > 0;
 }
 
 function chatUrl(runState: unknown): string | null {
@@ -515,7 +529,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
         actions.push({ id: `connect:${r.email}:${pm}`, system: 'connect', kind: 'connect_org_member', email: r.email, target: pm, role: 'viewer', shared: g.connect === 'shared' });
       }
     } else notGranted.push({ email: r.email, system: 'connect', reason: 'shared tenant — the Connect orgs hold every ACE opportunity' });
-    if (!g.labs) notGranted.push({ email: r.email, system: 'labs', reason: 'shared tenant — the labs scope was not rebuilt for this run' });
+    if (!g.labs) notGranted.push({ email: r.email, system: 'labs', reason: "not rebuilt — the labs dashboards were not rebuilt in this run's own program (clone-to-new-workspace § 4c)" });
     notGranted.push({ email: r.email, system: 'ocs', reason: 'no account — the support chatbot is reviewed through its public chat link' });
   }
   if (input.tenancy && reviewers.some((r) => granted.get(r.email)?.hq) && !hqDomain) {
@@ -523,6 +537,21 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
   }
   if (input.tenancy && reviewers.some((r) => granted.get(r.email)?.connect) && !holding) {
     problems.push(problem('plan-tenancy-missing:connect_holding_org', 'blocker', 'the tenancy records no connect_holding_org, so the Connect invite has no workspace', 'record the opp tenancy in ace-web (clone-to-new-workspace)', "This run's Connect workspace is not recorded.", 'Record the Connect workspace for this opportunity, then validate again.'));
+  }
+
+  // 2b. Labs rides on the Connect grant (ace#3020): the rebuilt program's labs
+  //     workspace must list every Connect org the reviewers are added to as an
+  //     LLO, or the Connect grant opens Connect and not the dashboards.
+  const cloneLabs = cloneBlock(runState).labs;
+  if (cloneLabs?.status === 'done' && reviewers.some((r) => granted.get(r.email)?.labs && !isDimagiStaff(r.email))) {
+    const missing = missingWorkspaceLlos(cloneLabs, [holding, pm]);
+    if (missing.length) {
+      problems.push(problem('plan-labs-workspace-llo-missing', 'blocker',
+        `the rebuilt labs workspace does not list ${missing.join(', ')} as an LLO (clone.labs.workspace.llos), so a reviewer added to that Connect org could not open the labs dashboards`,
+        "add the org as an LLO on the rebuilt program's labs workspace settings page (clone-to-new-workspace § 4c step 6) and record it in clone.labs.workspace.llos",
+        "The reviewers' Connect access would not open this run's labs dashboards.",
+        'Link this run\'s Connect workspace to its labs dashboards, then validate again.'));
+    }
   }
 
   // 3. Drive — every document the review page links to must open for the reviewer.
@@ -609,7 +638,7 @@ export function buildReleasePlan(input: PlanInput): { plan: ReleasePlan; problem
   const emails: PlannedEmail[] = [];
   for (const r of reviewers) {
     const mine = actions.filter((a) => a.email === r.email);
-    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, cc, summary, workbench, existingMember: existingMember.has(r.email), chat, actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
+    const e = reviewerEmail({ opp, runId, workspace, reviewer: r, cc, summary, workbench, existingMember: existingMember.has(r.email), chat, labs: !!granted.get(r.email)?.labs && runHasLabs(runState), actions: mine, notGranted: notGranted.filter((n) => n.email === r.email) });
     emails.push(e);
     actions.push({ id: `email:${r.email}`, system: 'email', kind: 'email', email: r.email, target: r.email, subject: e.subject, cc: [...cc] });
   }
@@ -650,6 +679,8 @@ function reviewerEmail(x: {
   workbench: string;
   existingMember: boolean;
   chat: string | null;
+  /** The reviewer can open the run's rebuilt labs dashboards (ace#3020). */
+  labs: boolean;
   actions: ReadonlyArray<Omit<ReleaseAction, 'step'>>;
   notGranted: readonly NotGranted[];
 }): PlannedEmail {
@@ -668,6 +699,7 @@ function reviewerEmail(x: {
   lines.push('- the review page and every document it links to');
   if (hq) lines.push(`- the apps in the CommCare HQ project space ${hq.target} (CommCare HQ sends its own invitation)`);
   for (const c of connect) lines.push(`- the Connect workspace ${c.target}, as a viewer (Connect sends its own invitation)`);
+  if (x.labs) lines.push('- the labs dashboards linked from the review page, through your Connect workspace access (sign in to Connect Labs with "Log in with CommCare HQ")');
   if (connect.length) {
     lines.push('');
     lines.push('Important for Connect: sign in to Connect with "Log in with CommCare HQ" BEFORE you accept the Connect invitation. Accepting first creates a password account that stops the CommCare HQ sign-in from working.');
@@ -676,7 +708,11 @@ function reviewerEmail(x: {
   if (cannot.length) {
     lines.push('');
     lines.push('What you cannot open, and why:');
-    for (const n of cannot) lines.push(`- ${n.system === 'hq' ? 'the CommCare HQ project space' : n.system === 'connect' ? 'the Connect workspace' : 'the labs dashboards'}: it is shared with other programmes, so it is not opened to outside reviewers`);
+    for (const n of cannot) {
+      lines.push(n.system === 'labs'
+        ? "- the labs dashboards: they have not been rebuilt in this programme's own space, so they are not opened to outside reviewers"
+        : `- ${n.system === 'hq' ? 'the CommCare HQ project space' : 'the Connect workspace'}: it is shared with other programmes, so it is not opened to outside reviewers`);
+    }
   }
   lines.push('');
   lines.push('Thank you,');
@@ -772,7 +808,7 @@ export function renderPlan(plan: ReleasePlan): string {
     out.push(
       `| ${r.email} (${r.role}) | ${hq ? `invite ${hq.target} as ${hq.role}` : `NOT GRANTED — ${ng('hq')?.reason ?? 'no grant'}`} | ${
         cn.length ? cn.map((c) => `${c.target} as ${c.role}${c.shared ? ' (SHARED — revoke later)' : ''}`).join('; ') : `NOT GRANTED — ${ng('connect')?.reason ?? 'no grant'}`
-      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (domain already allowed)'} | public link (no account) | ${aceWebCell} |`,
+      } | ${ng('labs') ? `NOT GRANTED — ${ng('labs')!.reason}` : 'no call (via the Connect grant: the rebuilt labs workspace lists those orgs as LLOs)'} | public link (no account) | ${aceWebCell} |`,
     );
   }
   const drive = plan.actions.filter((x) => x.kind === 'drive_share');

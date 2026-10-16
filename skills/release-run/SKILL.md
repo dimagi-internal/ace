@@ -136,8 +136,11 @@ with its evidence: stop there, record what was done (Step 4), and report — do
 not retry with different arguments, and do not continue past a failed grant to
 that reviewer's email.
 
-Nothing outside this table is called. Labs needs no call (the clone already
-allowed the reviewer's domain); OCS is the public chat link in the email.
+Nothing outside this table is called. Labs needs no call: the clone REBUILT
+the dashboards in the run's own labs program and linked its labs workspace to
+the clone's Connect orgs (`clone-to-new-workspace` § 4c, ace#3020), so the
+`connect_org_member` grant above IS the Labs grant. OCS is the public chat link
+in the email.
 
 ## Step 4 — Record (the only run writes: the release record and the send log)
 
@@ -199,3 +202,4 @@ hash executed.
 | 2026-10-07 | Step 4 also logs every sent email to `release-run_comms-log.md` at the run root (date, thread_id, message_id, to, cc, gist — never the body), so `inbox-triage` §b.1 routes reviewer replies by `thread_id`. A release has no phase folder, so the run root is its home; the shares-only ratchet allows exactly this write (ace#2780). | ACE team |
 | 2026-10-08 | Every release `ace_web_invite` carries role `editor` (`RELEASE_ACE_WEB_ROLE`), regardless of the reviewer's `:viewer`/`:editor`; Connect org role unchanged (`viewer`). Owner directive (Jonathan): "everyone ace invites in as part of a release should be editor". Existing READY verdicts need re-validation (the plan hash changes). | ACE team |
 | 2026-10-08 | Existing ace-web members (ace#2770): a reviewer the plan records as already a member gets no invite and the existing-member email (`email-body --already-member <role>`, no accept link); a member below editor is raised by the new `ace_web_role` action (`PATCH …/members/<user_id>`); an `ace_web_invite` answering 409 "already a <editor/admin/owner>" is a satisfied `already-member` grant, and that reviewer is sent the existing-member email instead of being left NOT DONE (live repro: `/ace:release spark/spark-facilitator/20261004-1706`, step 27). | ACE team |
+| 2026-10-16 | Labs makes no call (ace#3020): `clone-to-new-workspace` § 4c copies the dashboards into the run's own labs program, whose labs workspace lists the clone's Connect orgs as LLOs, so the `connect_org_member` grant is the Labs grant. The old text claiming the clone had widened a domain allowlist was wrong and is gone. | ACE team |

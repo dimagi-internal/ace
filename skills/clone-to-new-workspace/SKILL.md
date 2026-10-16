@@ -13,7 +13,7 @@ disable-model-invocation: false
 `/ace:clone-to-new-workspace <opp>/<run-id> --to <workspace> [--from <workspace>] [--hq-domain <slug>] [--pm-org <slug>] [--nm-org <slug>] [--co-owner <email>] [--keep-shared connect]`
 
 While ACE iterates, every run is built in shared tenants (one HQ project space,
-one Connect org pair, one OCS team, Dimagi-only Labs). Granting an outsider
+one Connect org pair, one OCS team, one set of Dimagi-only Labs programs). Granting an outsider
 access there exposes every run. This skill makes a copy of one run whose assets
 live ONLY in the target workspace's areas — the end state the partner would have
 if they had built and configured it themselves.
@@ -338,12 +338,12 @@ What it does, stage by stage — the rules each one keeps:
    ask): records `clone.connect: kept-shared`; the copied products keep naming
    the source program/opportunity in the shared orgs (which read the SOURCE HQ
    apps) and `release` needs `--allow-shared connect` — report that loudly.
-9. **`labs`** (§ 4c) — `rebuildLabs` in `lib/clone-run.ts`. ace#3020 is
-   redesigning it (rebuild the run's reports in the new program from
-   templates, copy the synthetic data, share them with the reviewers); until it
-   lands the stage records `not-done: awaiting ace#3020`, and the old
-   "Labs stays Dimagi-only" skip is no longer final. Do NOT call
-   `synthetic_set_allowed_domains` by hand (it REPLACES the list, ace#2713).
+9. **`labs`** (§ 4c below) — `rebuildLabs` in `lib/clone-run.ts`. Labs is
+   REBUILT as a COPY in the clone's own labs program (ace#3020), never widened
+   in place. The copy is blocked on a labs atom gap (connect-labs#2571), so the
+   stage records `not-done: labs atom gap …` and never regenerates data
+   instead. Do NOT call `synthetic_set_allowed_domains` by hand (it REPLACES the
+   list, ace#2713).
 10. **`ocs`** (§ 4d) — kept on ACE's team; reviewers use its `public_url`
     (no OCS accounts — team-wide permissions). Recorded `kept`.
 11. **`asset_refs`** (§ 4e) — `scripts/clone-asset-rewrite.ts` over the copied
@@ -365,6 +365,139 @@ final. On exit 3, read each `not_done` stage's `reason`: a setup item goes to
 the operator (quoted from the Step 0 checklist), a refused ambiguous create
 waits a few minutes and reruns, anything else is a defect to file.
 
+### 4c. Labs — rebuild Phase 7 in the clone's own labs program (a COPY)
+
+Owner (Jonathan, 2026-10-16, ace#3020): *"Shouldn't the process be that we
+create the report in the new prorgam and the synthetic data in the new program
+by using the templatized reports and just copying the synthetic data?"* So Labs
+is rebuilt the way HQ (4a) and Connect (4b) are, and the rebuild is a **copy**:
+the same educators, partners, class records and findings, the same report
+definitions, the same indicator registry — in a NEW program. The source run's
+synthetic opps are NEVER opened to a partner: do not call
+`synthetic_set_allowed_domains` on them (the tenancy guard refuses a partner
+domain anyway, `config/tenancy-targets.json`, and the call REPLACES the list,
+ace#2713).
+
+**Never regenerate.** Not `synthetic_generate_from_manifest` on the saved
+`7-synthetic/manifest_<xx>.yaml`, not `synthetic_clone_opp` /
+`synthetic_clone_profile` / `synthetic_clone_generate` (those MEASURE a real
+opp and generate new records), not a re-authored story. A copy that cannot be
+made with a copying atom is `NOT DONE` naming the gap — never a regeneration
+standing in for it.
+
+Run it after the script's `connect` stage: the program's labs workspace is
+linked to the Connect orgs that stage rebuilt. `$CL` is `npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-labs-rebuild.ts"`.
+
+1. **What to copy.** `$CL inspect --run-state <source run_state.yaml>` → the
+   partners (label + source opp id), program, registry and what Phase 7 built
+   (programme report, opp reports, weekly history, benchmarks). It refuses a
+   run with no `cascade.partners`: a run without Phase 7 Labs has nothing to
+   copy, and the script's `labs` stage already records `done` with that reason.
+2. **The records: one labs-only copy per partner, all in ONE new program.**
+   `synthetic_clone_to_labs_only({source_opportunity_id: <partner>, label:
+   <partner label>, org_name: "<partners org name> (ace <to>/<opp>/<run-id>)",
+   program_name: <source program name>, program_id: <new program>,
+   allowed_domains: ['@dimagi.com', '@dimagi-ai.com']})` — the first partner
+   WITHOUT `program_id` (its own id becomes the new program id), every later
+   one with it (`program_id` is the parameter the gap below is about). It serves the source's own fixture folder (the records
+   themselves, as-is) and keeps their generated-data mark. The org name MUST be
+   new and carry the TARGET workspace: step 6 refuses an organisation that
+   holds any other program. Read back each copy's counts against
+   `products.synthetic.source.record_counts` (`synthetic_local_records_count`
+   / the programme report's partner rows); a mismatch is `NOT DONE`.
+   **Gap, 2026-10-16:** the deployed `synthetic_clone_to_labs_only` takes no
+   `program_id` (connect-labs `mcp/tools/synthetic.py`; its
+   `register_labs_only_opp` already accepts one), so partners 2..N would each
+   become their own program and no programme report could span them; and no
+   read atom returns a synthetic opp's fixture folder, so
+   `synthetic_create_labs_only(gdrive_folder_id, program_id)` cannot stand in.
+   Until that lands (connect-labs#2571), create NOTHING here — one copied
+   partner is not the programme and would be an orphan to sweep: check the
+   live schema (`ToolSearch` → `synthetic_clone_to_labs_only` lists
+   `program_id`, or it does not), and without it record `clone.labs: {status:
+   not-done, reason: "labs atom gap: synthetic_clone_to_labs_only has no
+   program_id — connect-labs#2571"}`. The release then grants no Labs.
+3. **The registry, copied.** `semantic_registry_get(<source registry>)` →
+   save its `properties_doc`, `indicators_doc`, `deployment` as JSON; build
+   the id map so far (`{<source opp>: <new opp>, …, <source program>: <new
+   program>}` as `map.json`) and retarget it (`deployment.llo_map` is keyed by
+   opp id):
+   ```bash
+   $CL remap-json --in registry.json --id-map map.json --out registry.new.json
+   ```
+   `semantic_registry_validate` → `semantic_registry_create({...registry.new.json,
+   name: "<source registry name> (ace <to>/<opp>/<run-id>)", program_id: <new
+   program>, is_shared: false})`. Add `<source registry>: <new registry>` to
+   `map.json`.
+4. **The reports, from their templates, configuration copied.** For each
+   source report (`cascade.programme_report`, its companion `worker_review`,
+   each `opp_reports[]`): `workflow_get` the source definition and keep its
+   template key and `config`. Then instantiate the SAME template in the new
+   program with that config: `workflow_create_from_template({template_key:
+   'indicator_programme_report', program_id: <new program>, opportunity_ids:
+   [new opps], registry_source: {registry_id: <new registry>}, config:
+   <source config, minus scope keys that name source ids>})` (it also makes the
+   companion worker review); the visits pipeline gets the source pipeline's
+   schema (`pipeline_get` → `pipeline_update_schema`); the cohort on the new
+   labs org (`labs_context({search: '<to>/<opp>/<run-id>'})` for its slug) and
+   `benchmarks_create_opp_reports({cohort_id, template_key:
+   'indicator_opp_report', source_workflow_id: <new programme report>,
+   source_program_id: <new program>})`. Then the saved history over the
+   SOURCE's `history` window (same weeks, same count) with
+   `workflow_rebuild_history` and the benchmark publishes (`demo-data-setup`
+   § C5) — these COMPUTE the saved runs from the copied records; they generate
+   no data. Never `workflow_clone(linked: true)`: a linked twin reads the
+   source's pipelines in the source's scope, so a reviewer without source
+   access sees nothing.
+5. **Verify the findings carried over.** `demo-data-setup` § C6
+   (`verifyCascadeStoryLanded` against the source's `7-synthetic/cascade-story.yaml`):
+   every signal the source verified lands here, from the same records. A miss
+   is `NOT DONE` — a defect in the copy, never re-described.
+6. **Let the clone's Connect orgs in — the labs workspace.** A labs workspace
+   replaces the email-domain rule with roles: every MEMBER of a Connect org
+   listed as one of its LLOs is a Network Manager (connect-labs
+   `labs/workspaces.py`; `lib/labs-workspace.ts` has the citations). List the
+   clone's own orgs, so a reviewer `release` adds to them as a viewer opens the
+   dashboards through that grant:
+   ```bash
+   npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/labs-workspace-setup.ts" --program-id <new program> \
+     --llo <tenancy.connect_holding_org> --llo <tenancy.connect_pm_org>
+   ```
+   It turns workspace roles on, adds each LLO, and reads the settings page back;
+   exit 0 only when the page lists both. Needs `/ace:labs-login`'s session
+   (there is no MCP atom for workspace roles — connect-labs#2572). With `--keep-shared connect` skip this step: the shared orgs hold
+   every ACE opportunity, so listing them would open these dashboards to every
+   member of ACE's own orgs — record `clone.labs.workspace: {llos: []}`, and
+   the release then does not grant Labs.
+7. **Rewrite the target run's products.** Complete `map.json` with every
+   source id the block references (workflows, runs, pipeline, cohort,
+   benchmark publications), then:
+   ```bash
+   $CL remap --run-state <source run_state.yaml> --id-map map.json --out synthetic.json
+   ```
+   Exit 1 names each source id still referenced — map it, never ship a block
+   that sends a reviewer to the SOURCE dashboards. Write the result as
+   `phases.synthetic-data-and-workflows.products.synthetic` with
+   `update_yaml_file(localFilePath, merge: "deep")` (arrays are replaced
+   wholesale, so the whole block goes in one file). The DDD narrative and
+   walkthrough entries keep pointing at the source's render — say so in Step 6;
+   `products.ocs_coach` is not rebuilt (stage `ocs`).
+8. **Read back, then record.** `labs_context({search: '<to>/<opp>/<run-id>'})`
+   lists every new opp under the new program (ACE sees what it built), the
+   workspace script's JSON lists both LLOs, and the programme report URL in the
+   rewritten block opens. Only then record `clone.labs: {status: done,
+   program_id, org_slug, opportunity_ids: [...], registry_id,
+   programme_report: {workflow_id, run_id}, workspace: {llos: [<orgs>]},
+   from: {program_id, opportunity_ids}, id_map_ref}`. Anything short of that is
+   `NOT DONE` with its step. (The run summary still tags these dashboards
+   `admin only` until ace-web#910 reads `clone.labs` — say so to the operator.)
+
+`validate-release-readiness` grants Labs only on `clone.labs.status: done`
+with `clone.connect.status: done`, and blocks when
+`clone.labs.workspace.llos` lacks one of the Connect orgs it grants
+(`plan-labs-workspace-llo-missing`). Release makes NO Labs call: the reviewer's
+Connect org membership is the Labs grant.
+
 ## Step 5 — Validate the clone's release readiness (report, do not block)
 
 Run `Skill(validate-release-readiness)` on `<to>/<opp>/<run-id>` — the CLONE,
@@ -382,7 +515,7 @@ From the script's JSON report (re-read the TARGET run_state's `clone:` block
 rather than trusting memory): one line per stage — `done` with the ids / URLs
 it read back (HQ apps + builds and the space's edition; Connect program,
 opportunity and holding org), `kept` / `kept-shared`, or `NOT DONE` + its
-`reason` (Labs reads `not-done: awaiting ace#3020` until that lands); the
+`reason` (Labs reads `not-done: labs atom gap … connect-labs#2571` until that lands — § 4c); the
 Drive-link read-back (`source_ids_remaining`, expected 0 outside comms-logs);
 § 4e's rewrite (files changed, and every place left on the source on purpose —
 e.g. the Phase 8 solicitation); `products_check` (expected empty); the run's

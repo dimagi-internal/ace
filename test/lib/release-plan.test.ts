@@ -27,7 +27,8 @@ const clone = {
     from: { workspace: 'dimagi-team', opp: 'spark-facilitator', run: 'r0' },
     hq: { status: 'done' },
     connect: { status: 'done' },
-    labs: { status: 'done' },
+    // ace#3020: rebuilt in the clone's own labs program, its workspace linked to the clone's Connect orgs
+    labs: { status: 'done', workspace: { llos: ['spark-nm', 'spark-pm'] } },
   },
   phases: { 'ocs-setup': { products: { ocs_chatbot: { public_url: 'https://www.openchatstudio.com/a/t/chat/x/' } } } },
 };
@@ -445,5 +446,45 @@ describe('the two email variants (ace#2770)', () => {
     expect(parseAlreadyMember('jjackson@dimagi.com is already a owner of this workspace')).toBe('owner');
     expect(parseAlreadyMember('x@y.org is already an admin of this workspace')).toBe('admin');
     expect(parseAlreadyMember('Admin or owner required')).toBeNull();
+  });
+});
+
+// ace#3020 — a released run's Labs dashboards are shared with its reviewers by
+// REBUILDING them in the clone's own labs program (clone-to-new-workspace § 4c),
+// whose labs workspace lists the clone's Connect orgs as LLOs. The reviewer
+// opens them through the Connect grant: no labs call, no allowlist widened.
+describe('labs rides on the rebuilt program + the Connect grant (ace#3020)', () => {
+  const withLabs = (labs: Record<string, unknown>) => ({
+    ...clone,
+    clone: { ...clone.clone, labs },
+    phases: { ...clone.phases, 'synthetic-data-and-workflows': { products: { synthetic: { labs_opp_id: 10200 } } } },
+  });
+  const reviewers = parseReviewers('edith@noorahealth.org');
+
+  it('granted with no labs action when the rebuild is done and its workspace lists both Connect orgs', () => {
+    const { plan, problems } = buildReleasePlan({ ...base, reviewers, runState: withLabs({ status: 'done', workspace: { llos: ['spark-nm', 'spark-pm'] } }) });
+    expect(problems.filter((p) => p.severity === 'blocker')).toEqual([]);
+    expect(plan.not_granted.filter((n) => n.system === 'labs')).toEqual([]);
+    expect(plan.actions.some((a) => (a.system as string) === 'labs')).toBe(false);
+    expect(renderPlan(plan)).toContain('no call (via the Connect grant');
+    expect(plan.emails[0].body).toContain('the labs dashboards linked from the review page, through your Connect workspace access');
+  });
+
+  it('a workspace missing one of the Connect orgs is a blocker', () => {
+    const { problems } = buildReleasePlan({ ...base, reviewers, runState: withLabs({ status: 'done', workspace: { llos: ['spark-nm'] } }) });
+    expect(problems.find((p) => p.id === 'plan-labs-workspace-llo-missing')?.detail).toContain('spark-pm');
+  });
+
+  it('not rebuilt (the old "skipped, Dimagi-only" clone) → not granted, and the email says why', () => {
+    const { plan } = buildReleasePlan({ ...base, reviewers, runState: withLabs({ status: 'skipped', reason: 'Labs stays Dimagi-only' }) });
+    expect(plan.not_granted.find((n) => n.system === 'labs')?.reason).toMatch(/not rebuilt/);
+    expect(plan.emails[0].body).toContain("the labs dashboards: they have not been rebuilt in this programme's own space");
+    expect(plan.emails[0].body).not.toContain('through your Connect workspace access');
+  });
+
+  it('grantsFor: labs needs BOTH the labs rebuild and the Connect rebuild', () => {
+    expect(grantsFor('edith@noorahealth.org', withLabs({ status: 'done' }), false).labs).toBe(true);
+    const noConnect = { ...withLabs({ status: 'done' }), clone: { ...clone.clone, connect: { status: 'skipped' }, labs: { status: 'done' } } };
+    expect(grantsFor('edith@noorahealth.org', noConnect, true).labs).toBe(false);
   });
 });
