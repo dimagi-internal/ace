@@ -496,18 +496,68 @@ export function renderBodyText(body: string): { text: string; links: BodyLink[] 
   return { text, links };
 }
 
+/** A run of consecutive paragraphs inside rendered body text: UTF-16 offsets. */
+export interface BodyRange {
+  start: number;
+  end: number;
+}
+
+const BULLET_LINE = /^- /;
+
+/**
+ * `renderBodyText`, plus real list bullets for a body's `- ` lines.
+ *
+ * Why (dimagi-internal/ace#3005, smallholder-seasonal/20261015-1402): the
+ * body went into `{{BODY}}` verbatim and nothing emitted
+ * `createParagraphBullets`, so every `- ` line projected as a typed dash with
+ * no hanging indent and wrapped lines restarted at the left margin (7 slides
+ * at legibility 3/5). The dash is stripped here and each run of consecutive
+ * dash lines is returned as one range; the renderer turns each range into a
+ * native bullet list. A body with no `- ` line comes back byte-identical.
+ */
+export function renderBulletedBodyText(body: string): {
+  text: string;
+  links: BodyLink[];
+  bullets: BodyRange[];
+} {
+  const lines = body.split('\n');
+  const isBullet = lines.map((l) => BULLET_LINE.test(l));
+  const stripped = lines.map((l, i) => (isBullet[i] ? l.replace(BULLET_LINE, '') : l)).join('\n');
+  const { text, links } = renderBodyText(stripped);
+  // Link labels never contain a newline (MD_LINK and BARE_URL exclude it), so
+  // the rendered text has the same lines in the same order as `lines`.
+  const bullets: BodyRange[] = [];
+  let offset = 0;
+  let run: BodyRange | null = null;
+  text.split('\n').forEach((line, i) => {
+    const end = offset + line.length;
+    if (isBullet[i]) {
+      if (run) run.end = end;
+      else run = { start: offset, end };
+    } else if (run) {
+      bullets.push(run);
+      run = null;
+    }
+    offset = end + 1;
+  });
+  if (run) bullets.push(run);
+  return { text, links, bullets };
+}
+
 /**
  * The exact string a layout writes into its `{{BODY}}` frame, or null for a
  * layout with no single body frame. ONE function, used by the renderer and by
  * the fit lint, so what is measured is what is drawn.
  */
-export function renderedBody(slide: SlideSpec_v2): { text: string; links: BodyLink[] } | null {
+export function renderedBody(
+  slide: SlideSpec_v2,
+): { text: string; links: BodyLink[]; bullets?: BodyRange[] } | null {
   switch (slide.layout) {
     case 'content':
     case 'walkthrough':
     case 'exercise':
     case 'closing':
-      return renderBodyText(slide.body);
+      return renderBulletedBodyText(slide.body);
     case 'agenda':
       // Bullet markers (•) for visual hierarchy (v5.3). The trailing
       // "  —  duration" was dropped 2026-09-09: the LLO sets session timing.
@@ -1105,6 +1155,15 @@ function bodyRequests(
       },
     });
   }
+  for (const run of body.bullets ?? []) {
+    reqs.push({
+      createParagraphBullets: {
+        objectId: bodyObjectId(pageId),
+        textRange: { type: 'FIXED_RANGE', startIndex: run.start, endIndex: run.end },
+        bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+      },
+    });
+  }
 }
 
 function buildLayoutRequests(
@@ -1343,10 +1402,11 @@ export function buildSlidesRequestsV2(
         );
       }
 
-      // Duplicate the stencil slide. When the body carries a link, also name
-      // the copy of its body frame so the link can be styled onto it.
+      // Duplicate the stencil slide. When the body carries a link or a bullet
+      // run, also name the copy of its body frame so it can be styled.
       const objectIds: Record<string, string> = { [stencilId]: newSlideId };
-      if ((renderedBody(slide)?.links.length ?? 0) > 0) {
+      const rendered = renderedBody(slide);
+      if ((rendered?.links.length ?? 0) > 0 || (rendered?.bullets?.length ?? 0) > 0) {
         objectIds[bodyObjectId(stencilId)] = bodyObjectId(newSlideId);
       }
       requests.push({

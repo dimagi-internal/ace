@@ -535,6 +535,47 @@ describe('buildSlidesRequestsV2', () => {
     );
     expect(bodyRepl).toBeTruthy();
     expect((bodyRepl as any).replaceAllText.replaceText).toBe('Important information here.');
+    // A body with no `- ` line gets no bullets and no named body copy.
+    expect(reqs.some((r: any) => r.createParagraphBullets)).toBe(false);
+    const dup = reqs.find((r: any) => r.duplicateObject) as any;
+    expect(Object.keys(dup.duplicateObject.objectIds)).toEqual([STENCILS.content]);
+  });
+
+  // ace#3005: `- ` lines rendered as literal typed dashes with no hanging
+  // indent, because nothing ever emitted createParagraphBullets.
+  it('turns a run of `- ` body lines into one native bullet list', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: content
+        title: Key Points
+        body: "Before you start:\\n- Charge the phone\\n- Bring the register\\nThen begin."
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const bodyRepl = reqs.find(
+      (r: any) => r.replaceAllText?.containsText.text === '{{BODY}}',
+    ) as any;
+    const text = bodyRepl.replaceAllText.replaceText as string;
+    expect(text).toBe('Before you start:\nCharge the phone\nBring the register\nThen begin.');
+    expect(text).not.toMatch(/^- /m);
+
+    const bullets = reqs.filter((r: any) => r.createParagraphBullets) as any[];
+    expect(bullets).toHaveLength(1);
+    const b = bullets[0].createParagraphBullets;
+    expect(b.objectId).toBe('ace_slide_1_body');
+    expect(b.bulletPreset).toBe('BULLET_DISC_CIRCLE_SQUARE');
+    expect(b.textRange.type).toBe('FIXED_RANGE');
+    expect(text.slice(b.textRange.startIndex, b.textRange.endIndex)).toBe(
+      'Charge the phone\nBring the register',
+    );
+
+    // The bullets target the body copy, so the duplicate must name it, and
+    // the bullet request must come after the text lands.
+    const dup = reqs.find((r: any) => r.duplicateObject) as any;
+    expect(dup.duplicateObject.objectIds[`${STENCILS.content}_body`]).toBe('ace_slide_1_body');
+    expect(reqs.indexOf(bullets[0])).toBeGreaterThan(reqs.indexOf(bodyRepl));
   });
 
   it('emits createImage for walkthrough with correct Drive URL', () => {
