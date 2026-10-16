@@ -81,33 +81,52 @@ function stripPddRefs(text: string): string {
     .trim();
 }
 
+/** A figure with its unit: `80%`, but `6 caregivers` (#2778 glued them as `6caregivers`). */
+function withUnit(n: number, unit: string): string {
+  return !unit || unit === '%' ? `${n}${unit}` : `${n} ${unit}`;
+}
+
 export function renderIndicatorCards(cards: IndicatorCard[]): string {
   return cards
     .map((c) => {
       const better = c.direction === 'higher' ? 'Higher is better.' : 'Lower is better.';
       const lines = [`### ${c.label} — key \`${c.key}\``, `- Means: ${c.plain}`, `- ${better}`];
+      // A review flag with bands but no target has a REVIEW LEVEL, not a goal: calling
+      // it "the level the programme aims for" told the coach to say the opposite of the
+      // line above it (#2778).
+      const reviewLevel = c.reviewFlag && c.target === undefined;
       if (c.reviewFlag) {
+        // Direction-aware: for a `higher` flag it is a LOW figure that prompts the question.
+        const worrying = c.direction === 'higher' ? 'a low figure' : 'a high figure';
         lines.push(
-          '- This is a REVIEW FLAG with no target: a high figure is a reason to ask what happened, ' +
+          `- This is a REVIEW FLAG${c.target === undefined ? ' with no target' : ''}: ${worrying} is a reason to ask what happened, ` +
             'never evidence of a mistake. Say it that way.',
         );
       }
       if (c.bands && c.bands.length >= 2) {
         const [green, amber] = c.bands;
-        const target = c.target !== undefined ? `Target ${c.target}${c.unit}. ` : '';
+        const u = (n: number) => withUnit(n, c.unit);
+        const target = c.target !== undefined ? `Target ${u(c.target)}. ` : '';
         const [ok, worse] = c.direction === 'higher' ? ['at or above', 'below'] : ['at or below', 'above'];
+        // Amber range low-to-high in both directions ("between 25% and 10%" read backwards).
+        const [lo, hi] = green <= amber ? [green, amber] : [amber, green];
         lines.push(
-          `- ${target}Green ${ok} ${green}${c.unit}; amber between ${amber}${c.unit} and ${green}${c.unit}; ` +
-            `red ${worse} ${amber}${c.unit}.`,
+          `- ${target}Green ${ok} ${u(green)}; amber between ${u(lo)} and ${u(hi)}; ` +
+            `red ${worse} ${u(amber)}.`,
         );
         // The words to use, so a red figure is never softened to "a bit under" (the
         // live Spark Coach did exactly that twice on 2026-10-06).
         const goal = c.target ?? green;
-        const [redWords, amberWords] =
-          c.direction === 'higher'
-            ? [`well below the goal of ${goal}${c.unit}`, `a little below the goal of ${goal}${c.unit}`]
-            : [`well above the level the programme aims for (${goal}${c.unit})`, `a little above the level the programme aims for`];
-        lines.push(`- Say a red figure as "${redWords}"; an amber one as "${amberWords}".`);
+        const side = c.direction === 'higher' ? 'below' : 'above';
+        const [redWords, amberWords] = reviewLevel
+          ? [`well ${side} the review level (${u(green)})`, `a little ${side} the review level`]
+          : c.direction === 'higher'
+            ? [`well below the goal of ${u(goal)}`, `a little below the goal of ${u(goal)}`]
+            : [`well above the level the programme aims for (${u(goal)})`, `a little above the level the programme aims for`];
+        lines.push(
+          `- Say a red figure as "${redWords}"; an amber one as "${amberWords}".` +
+            (reviewLevel ? ' Never call the review level a goal or a target.' : ''),
+        );
       } else if (!c.reviewFlag) {
         lines.push('- No target is set for this one: explore it with the worker, do not call it good or bad.');
       }
@@ -116,6 +135,28 @@ export function renderIndicatorCards(cards: IndicatorCard[]): string {
       return lines.join('\n');
     })
     .join('\n\n');
+}
+
+/**
+ * `ocs-coach-build.ts --collections`: a comma list of collection ids, or `none` to
+ * detach every collection. There is no default — a clone keeps its source's
+ * collections when the pipeline is not told otherwise, and an omitted flag used to
+ * do exactly that while logging `collections []` (#2779: a chlorine coach cloned
+ * from the golden template kept KMC/ECD FAQs).
+ */
+export function parseCoachCollections(arg: string | undefined): number[] {
+  if (arg === undefined || arg.trim() === '') {
+    throw new Error(
+      '--collections is required: pass the opp collection id(s), or `none` to detach every ' +
+        "collection (a clone otherwise keeps its source's collections).",
+    );
+  }
+  if (arg.trim() === 'none') return [];
+  const ids = arg.split(',').map((s) => s.trim()).filter(Boolean).map(Number);
+  if (!ids.length || ids.some((n) => !Number.isInteger(n) || n <= 0)) {
+    throw new Error(`--collections ${JSON.stringify(arg)}: expected collection ids or \`none\``);
+  }
+  return ids;
 }
 
 export interface BriefingTopic {

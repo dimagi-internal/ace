@@ -17,8 +17,9 @@
  *
  * The bot name must be unique per OCS team, so scope it to the run (ace#3006).
  *
- * `--collections none` detaches every collection (a clone keeps its source's
- * otherwise — a KMC coach cloned from the chlorine coach must not search chlorine docs).
+ * `--collections` is required: collection ids, or `none` to detach every collection
+ * (a clone keeps its source's otherwise — a KMC coach cloned from the chlorine coach
+ * must not search chlorine docs, #2779).
  *
  * Does NOT publish: run `ocs_publish_chatbot_version` after reviewing.
  */
@@ -31,7 +32,7 @@ import { PlaywrightBackend } from '../mcp/ocs/backends/playwright.js';
 import { extractPipelineErrors } from '../mcp/ocs/backends/pipeline-patch.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { makeProductionRequest } from '../lib/ocs-script-request.js';
-import { CLAIMS_KNOWLEDGE_BASE } from '../lib/coach-briefing.js';
+import { CLAIMS_KNOWLEDGE_BASE, parseCoachCollections } from '../lib/coach-briefing.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -52,13 +53,9 @@ const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 const teamSlugOrNone = values.team ?? process.env.OCS_TEAM_SLUG;
 if (!teamSlugOrNone) throw new Error('no --team and OCS_TEAM_SLUG is unset');
 const teamSlug: string = teamSlugOrNone;
-const detachCollections = values.collections === 'none';
-const collections = detachCollections
-  ? []
-  : (values.collections ?? '')
-      .split(',')
-      .filter(Boolean)
-      .map(Number);
+// Required: ids, or `none` to detach (an omitted flag silently kept the clone source's, #2779).
+const collections = parseCoachCollections(values.collections);
+const detachCollections = collections.length === 0;
 const prompt = readFileSync(values.prompt, 'utf8');
 if (detachCollections && CLAIMS_KNOWLEDGE_BASE.test(prompt)) {
   throw new Error(
@@ -134,7 +131,7 @@ async function main() {
     await backend.setChatbotPipeline({
       experiment_id: experimentId,
       prompt,
-      ...(collections.length || detachCollections ? { collection_index_ids: collections } : {}),
+      collection_index_ids: collections,
     });
     console.log(`prompt set (${prompt.length} chars); collections ${JSON.stringify(collections)}`);
 
