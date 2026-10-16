@@ -151,6 +151,102 @@ export function checkLearnModuleDisplayGating(input: {
   return checked(!findings.some((f) => f.severity === 'blocker'), findings);
 }
 
+// ── Pre-deploy: the same check over the Nova blueprint ─────────────────────
+//
+// The CCZ check above can only run after deploy + release — on kaduna that was
+// Phase 3 Step 2.8, after the whole build chain. The gating is already visible
+// in the Nova blueprint the build writes, so the same verdict is available
+// BEFORE `app-deploy`. Wire format, read live from Nova 2026-10-16 on the kaduna
+// Learn app (56057841-95cd-4e72-8e51-06368faf010c):
+//
+//   get_module → { uuid, name, parent_module_uuid: null,
+//                  display_condition: "(user('kgrad_role') = 'FLW')", forms: [{uuid, …}] }
+//   get_form   → { form: { uuid, connect: { learn_module: { id: 'f1_role', … } }, … } }
+//
+// A FORM display condition is `display_condition` on the form (the
+// update_form / update_module input spells it `displayCondition`; both are
+// read). `user('<prop>')` / `#user/<prop>` is the user-property (role) form.
+
+export interface NovaBlueprintForm {
+  uuid?: string;
+  id?: string;
+  name?: string;
+  display_condition?: string | null;
+  displayCondition?: string | null;
+  connect?: { learn_module?: { id?: string } | null } | null;
+}
+
+export interface NovaBlueprintModule {
+  uuid?: string;
+  name?: string;
+  display_condition?: string | null;
+  displayCondition?: string | null;
+  parent_module_uuid?: string | null;
+  forms: NovaBlueprintForm[];
+}
+
+const NOVA_USER_PROP = /\buser\s*\(\s*['"]|#user\/|session\/user\/data\//;
+
+function condition(x: { display_condition?: string | null; displayCondition?: string | null }): string | null {
+  const c = x.display_condition ?? x.displayCondition ?? null;
+  return typeof c === 'string' && c.trim() ? c.trim() : null;
+}
+
+/**
+ * The blueprint-input sibling of {@link checkLearnModuleDisplayGating}: same
+ * finding shape and severities, read from Nova modules (each with its forms'
+ * `connect` block, i.e. `get_module` merged with `get_form`) instead of a
+ * released suite.xml, so it can gate before deploy. `commandId` carries the
+ * form uuid (there is no suite command yet). `unable` when no form carries a
+ * learn-module marker — a check that located nothing is not a pass.
+ */
+export function checkLearnModuleDisplayGatingFromBlueprint(input: {
+  modules: NovaBlueprintModule[];
+}): CheckOutcome<DisplayGateFinding> {
+  const modules = input.modules ?? [];
+  const byUuid = new Map(modules.filter((m) => m.uuid).map((m) => [m.uuid as string, m]));
+  const findings: DisplayGateFinding[] = [];
+  let marked = 0;
+  for (const mod of modules) {
+    for (const form of mod.forms ?? []) {
+      const slug = form.connect?.learn_module?.id;
+      if (!slug) continue;
+      marked++;
+      const formId = form.uuid ?? form.id ?? slug;
+      const gatedAt: DisplayGateFinding['gatedAt'] = [];
+      const fc = condition(form);
+      if (fc) gatedAt.push({ element: 'command', id: formId, relevant: fc });
+      const seen = new Set<string>();
+      let cur: NovaBlueprintModule | undefined = mod;
+      while (cur && !seen.has(cur.uuid ?? cur.name ?? '')) {
+        seen.add(cur.uuid ?? cur.name ?? '');
+        const mc = condition(cur);
+        if (mc) gatedAt.push({ element: 'menu', id: cur.uuid ?? cur.name ?? '?', relevant: mc });
+        cur = cur.parent_module_uuid ? byUuid.get(cur.parent_module_uuid) : undefined;
+      }
+      if (!gatedAt.length) continue;
+      const userProp = gatedAt.some((g) => NOVA_USER_PROP.test(g.relevant));
+      findings.push({
+        slug,
+        commandId: formId,
+        gatedAt,
+        gateClass: userProp ? 'user-property' : 'other-condition',
+        severity: userProp ? 'blocker' : 'warn',
+        message: userProp
+          ? `learn_module ${slug} (form ${formId}) is display-gated on a user property in the Nova blueprint. ` +
+            `Connect counts every learn_module toward Learn completion, so a worker who cannot see this form can ` +
+            `never reach 100% and Deliver never unlocks (ace#3036: 9/14 = 64.3% after an FLW passed).`
+          : `learn_module ${slug} (form ${formId}) has a display condition in the Nova blueprint; confirm every ` +
+            `worker can reach it, because Connect counts every learn_module toward Learn completion (ace#3036).`,
+      });
+    }
+  }
+  if (marked === 0) {
+    return unable('no form in the blueprint carries connect.learn_module — merge get_form into each get_module form');
+  }
+  return checked(!findings.some((f) => f.severity === 'blocker'), findings);
+}
+
 export function formatLearnModuleDisplayGating(outcome: CheckOutcome<DisplayGateFinding>): string {
   if (outcome.status === 'unable') return `learn-module display gating: UNABLE TO CHECK — ${outcome.reason}`;
   if (!outcome.findings.length) return 'learn-module display gating: every learn_module form is ungated';

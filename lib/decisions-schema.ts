@@ -132,6 +132,51 @@ export type NeededBy = (typeof NEEDED_BY)[number];
 export const ANSWER_CHANNEL_RE = /^(review|call|solicitation:[A-Za-z0-9][A-Za-z0-9_.-]*)$/;
 
 /** The solicitation question id an `answer_channel` names, or null. */
+/** `kind` values. Only `platform-behaviour` exists today; absent = an ordinary decision. */
+export const DECISION_KINDS = ["platform-behaviour"] as const;
+
+/** `resolved_by` values for a platform-behaviour row. */
+export const PLATFORM_RESOLVED_BY = ["source", "api", "device"] as const;
+
+/**
+ * A source citation: `<owner>/<repo>@<sha>:<path>:<line>[-<line>]`, e.g.
+ * `dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:398-406`.
+ * The sha pins WHICH source was read — platform behaviour changes, and an
+ * unpinned "models.py says so" cannot be re-checked once it has.
+ */
+export const SOURCE_CITATION_RE = /[\w.-]+\/[\w.-]+@[0-9a-f]{7,40}:[^\s:;]+:\d+(?:-\d+)?/;
+
+/**
+ * Pairing + format rules for `resolved_by` / `resolution_citation`, shared by
+ * the row schema and the Phase 1 fence (`lib/platform-behaviour-decisions.ts`).
+ * Deliberately does NOT require `resolved_by` on a `kind: platform-behaviour`
+ * row: an unresolved one must stay READABLE so the fence can name it.
+ */
+export function platformResolutionIssues(row: {
+  resolved_by?: string;
+  resolution_citation?: string;
+}): Array<{ path: "resolved_by" | "resolution_citation"; message: string }> {
+  const out: Array<{ path: "resolved_by" | "resolution_citation"; message: string }> = [];
+  if (row.resolved_by !== undefined && row.resolution_citation === undefined) {
+    out.push({
+      path: "resolution_citation",
+      message: "`resolved_by` requires `resolution_citation` — the evidence the platform question was answered from",
+    });
+  }
+  if (row.resolved_by === undefined && row.resolution_citation !== undefined) {
+    out.push({ path: "resolved_by", message: "`resolution_citation` is only valid with `resolved_by`" });
+  }
+  if (row.resolved_by === "source" && row.resolution_citation !== undefined && !SOURCE_CITATION_RE.test(row.resolution_citation)) {
+    out.push({
+      path: "resolution_citation",
+      message:
+        "`resolved_by: source` needs a pinned citation `<owner>/<repo>@<sha>:<path>:<line>` " +
+        "(e.g. dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:398-406)",
+    });
+  }
+  return out;
+}
+
 export function solicitationQuestionId(channel: string | undefined): string | null {
   const m = /^solicitation:(.+)$/.exec(channel ?? "");
   return m ? m[1] : null;
@@ -487,8 +532,35 @@ export const DecisionRowSchema = z
           "to review feedback and left unstamped renders as UNROUTED in the ledger, which is the intended " +
           "loud failure. Note the ledger is a DERIVED view: this field is the only write-side obligation.",
       ),
+    // ── platform-behaviour rows (ace#3036 follow-up) ─────────────────────
+    kind: z
+      .enum(DECISION_KINDS)
+      .optional()
+      .describe(
+        "`platform-behaviour`: the row answers (or depends on) a question about how Connect / CommCare HQ " +
+          "BEHAVES — e.g. 'does Connect count hidden Learn modules?'. Such a row must carry `resolved_by` + " +
+          "`resolution_citation` before Phase 3 starts (verify_phase_artifacts(phase=design) `platform_behaviour`). " +
+          "Absent = an ordinary design decision.",
+      ),
+    resolved_by: z
+      .enum(PLATFORM_RESOLVED_BY)
+      .optional()
+      .describe(
+        "How the platform question was answered. `source`: read in Connect/HQ source — `resolution_citation` must " +
+          "name `<owner>/<repo>@<sha>:<path>:<line>`. `api`: a cheap read-only API probe — the citation names the " +
+          "call and what it returned. `device`: only when the behaviour genuinely needs a device; it does not clear " +
+          "the Phase 1 fence on its own (the row must also carry a `review_ask`). Requires `resolution_citation`.",
+      ),
+    resolution_citation: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("The evidence behind `resolved_by` (see there). Only valid with `resolved_by`."),
   })
   .superRefine((row, ctx) => {
+    for (const issue of platformResolutionIssues(row)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] });
+    }
     if (row.status === "overridden" && row.override === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

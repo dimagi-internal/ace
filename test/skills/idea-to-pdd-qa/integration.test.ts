@@ -26,7 +26,7 @@ interface ExpectedQA {
 }
 
 describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
-  test('passes all 13 idea-to-pdd-qa checks', async () => {
+  test('passes all 14 idea-to-pdd-qa checks', async () => {
     const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
@@ -39,8 +39,8 @@ describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
       context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
     expectQAPass(result);
-    expect(result.stats.checks_run).toBe(13);
-    expect(result.stats.checks_passed).toBe(13);
+    expect(result.stats.checks_run).toBe(14);
+    expect(result.stats.checks_passed).toBe(14);
     expect(result.skill).toBe('idea-to-pdd-qa');
   });
 });

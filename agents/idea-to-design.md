@@ -83,12 +83,46 @@ Invoke the `idea-to-pdd` skill.
 
 ### Step 1.4: Idea-to-PDD QA (structural pass/fail)
 
-Invoke the `idea-to-pdd-qa` skill — runs 13 static structural checks against the produced PDD. **Read that skill's own checks table for the list; do not work from an enumeration here.** Five of them shape the PDD's content and are easy to miss: `launch_parameters_present` (every Phase 3 / Phase 4 launch parameter — FLW *and* LLO pay per visit, daily target, per-FLW cap, campaign target, budget, opportunity dates, verification flags — must be a row in `## Program Parameters`; `[PROPOSED]` values are accepted, omission is not), `program_parameters_coherent` (a `## Program Parameters` table must exist and its numbers must not contradict each other), `payment_unit_matches_entity_grain` (a rate unit FINER than `entity_id_grain` is rejected — ace#1420), `entity_state_taxonomy_declared_for_longitudinal` (a `longitudinal-visits` PDD needs a parseable `entity_state_taxonomy` row, or Phase 3 HALTs — ace#1783), and `pdd_description_plain_language` (`products.pdd.description` opens the public run-summary page, so it must carry no field names, code values, `=`/AND expressions or run ids).
+Invoke the `idea-to-pdd-qa` skill — runs 14 static structural checks against the produced PDD. **Read that skill's own checks table for the list; do not work from an enumeration here.** Six of them shape the PDD's content and are easy to miss: `platform_constraints` (the PDD must not contradict a cited Connect behaviour — `config/platform-constraints.yaml`; e.g. role-gated Learn modules, since Connect counts every module; see Step 1.45 below), `launch_parameters_present` (every Phase 3 / Phase 4 launch parameter — FLW *and* LLO pay per visit, daily target, per-FLW cap, campaign target, budget, opportunity dates, verification flags — must be a row in `## Program Parameters`; `[PROPOSED]` values are accepted, omission is not), `program_parameters_coherent` (a `## Program Parameters` table must exist and its numbers must not contradict each other), `payment_unit_matches_entity_grain` (a rate unit FINER than `entity_id_grain` is rejected — ace#1420), `entity_state_taxonomy_declared_for_longitudinal` (a `longitudinal-visits` PDD needs a parseable `entity_state_taxonomy` row, or Phase 3 HALTs — ace#1783), and `pdd_description_plain_language` (`products.pdd.description` opens the public run-summary page, so it must carry no field names, code values, `=`/AND expressions or run ids).
 
 - Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-qa_result.yaml`
 - **QA gates eval:** if `verdict: fail`, dispatch the producer with each `failures[].auto_fix_hint`, then re-run QA. Keep looping while the producer is making progress (the new attempt's `failures[].check` set is different from the previous attempt's). Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures, and surface the unresolved failures + per-attempt trace to the operator. NEVER silently proceed to eval when QA failed.
 - **QA passing means the PDD is gradable, NOT that it's good** — eval (Step 1.5) grades quality.
+
+### Step 1.45: Platform-behaviour questions — answer them from source, not a device
+
+Any question the design raises about how Connect or CommCare HQ BEHAVES
+("does Connect count a hidden Learn module?", "is a second visit to the same
+household a duplicate?", "can two opportunities share a Learn app?") is a
+decision row tagged `kind: platform-behaviour`, and it must be ANSWERED before
+Phase 3 builds on it — `verify_phase_artifacts(phase='design')` fails the
+boundary on any live one without `resolved_by: source|api` and a
+`resolution_citation` (`lib/platform-behaviour-decisions.ts`).
+
+1. **Check the table first.** `npx tsx "$ACE_ROOT/scripts/platform-constraints.ts" --pdd <pdd.md> --rows`
+   prints the findings of every cited rule in `config/platform-constraints.yaml`
+   as ready decision rows (already `resolved_by: source`) — append them with
+   `decisions_append_rows`. A `blocker` finding is also what failed
+   `idea-to-pdd-qa § platform_constraints`; its options are the remedies.
+2. **Not in the table? Read the source.** Connect is `dimagi/commcare-connect`
+   (form processing: `commcare_connect/form_receiver/processor.py`; models and
+   limits: `commcare_connect/opportunity/models.py`); HQ is `dimagi/commcare-hq`.
+   Use `gh api` / a local checkout at a pinned sha and cite
+   `<owner>/<repo>@<sha>:<path>:<line>` with `resolved_by: source`.
+3. **Or one cheap read-only API probe** (`connect_get_opportunity`,
+   `connect_get_learn_progress`, `connect_list_deliver_units`, …) — cite the call
+   and what it returned, `resolved_by: api`.
+4. **A device walk only when the behaviour genuinely lives on the device** (a
+   CommCare app UI rendering, a sync on a phone). Then the row stays an open ask
+   (`review_ask` + `resolved_by: device`, citation naming the walk that settles
+   it); it never stands in for a source read. Why: kaduna-graduation/20261015-1411
+   parked exactly such a question (its Flag F3) for "the first device walk";
+   Connect's source answered it in eight lines, but the walk came in Phase 6,
+   after Phases 3-5 had built a Learn app no worker could complete (ace#3036).
+5. When you learn a new cited platform fact, add it to
+   `config/platform-constraints.yaml` (a data change; the test pins citations)
+   so the next run gets it for free.
 
 ### Step 1.5: Idea-to-PDD eval (independent quality re-grade)
 Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd-eval` skill.

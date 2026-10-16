@@ -48,6 +48,10 @@ import {
   verifyBuildPhaseDecisions,
 } from '../lib/build-phase-decisions.js';
 import {
+  unreadablePlatformBehaviour,
+  verifyPlatformBehaviourDecisions,
+} from '../lib/platform-behaviour-decisions.js';
+import {
   terminalPhaseWritesIn,
   phaseModeFromMerged,
   formatIncompleteTerminalWriteBack,
@@ -4646,7 +4650,7 @@ async function refreshRunReadme(
 
 server.tool(
   'verify_phase_artifacts',
-  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. **Build phases (`commcare`, `connect`) also return `decisions: {ok, decision_phase, producers[], failures[], warnings[], summary, unreadable?}`** — the check that every build producer that ran (its summary is in Drive: pdd-to-learn-app, pdd-to-deliver-app, connect-opp-setup) wrote at least one live `decisions.yaml` row under its own `skill` tag (dimagi-internal/ace#2384), plus a warning for live partner rows with no `plain` (schema v6 — the decisions log is the review artifact; the build memo is retired). `decisions.ok:false` FAILS the boundary independently of `ok`, and it is deliberately not a `missing[]` entry: heal it by appending the producer's rows, never by re-dispatching the producer (that would rebuild the app). Absent on every other phase. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/build-phase-decisions.ts::verifyBuildPhaseDecisions` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.",
+  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. **Build phases (`commcare`, `connect`) also return `decisions: {ok, decision_phase, producers[], failures[], warnings[], summary, unreadable?}`** — the check that every build producer that ran (its summary is in Drive: pdd-to-learn-app, pdd-to-deliver-app, connect-opp-setup) wrote at least one live `decisions.yaml` row under its own `skill` tag (dimagi-internal/ace#2384), plus a warning for live partner rows with no `plain` (schema v6 — the decisions log is the review artifact; the build memo is retired). `decisions.ok:false` FAILS the boundary independently of `ok`, and it is deliberately not a `missing[]` entry: heal it by appending the producer's rows, never by re-dispatching the producer (that would rebuild the app). Absent on every other phase. **The design phase (`design`) also returns `platform_behaviour: {ok, rows, failures[], warnings[], summary, unreadable?}`** — every live `decisions.yaml` row tagged `kind: platform-behaviour` must carry `resolved_by: source|api` + a `resolution_citation` (source = pinned `<owner>/<repo>@<sha>:<path>:<line>`) before Phase 3 builds on it; `resolved_by: device` passes only as an open ask (`review_ask`) and warns (ace#3036: kaduna parked \"does Connect count every Learn module?\" for a device walk that came three phases later). `platform_behaviour.ok:false` FAILS the boundary; heal by answering from Connect/HQ source or a read-only API probe and appending a superseding row, never by re-running idea-to-pdd. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/build-phase-decisions.ts::verifyBuildPhaseDecisions` + `lib/platform-behaviour-decisions.ts::verifyPlatformBehaviourDecisions` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.",
   {
     runFolderId: z.string().describe("The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/)."),
     phase: z
@@ -4695,12 +4699,32 @@ server.tool(
           decisions = unreadableBuildPhaseDecisions(phase as Phase, e?.message ?? String(e));
         }
       }
+      // Design phase: platform-behaviour questions must be answered from
+      // source / an API probe before Phase 3 builds on them (ace#3036). Its own
+      // block, like `decisions`: heal by appending a resolved row, never by
+      // re-dispatching idea-to-pdd. A read failure fails — it passed nothing.
+      let platform_behaviour: unknown;
+      if (phase === 'design') {
+        try {
+          platform_behaviour = await verifyPlatformBehaviourDecisions(
+            {
+              ...adapter,
+              async readText(fileId: string) {
+                return (await handleReadFile({ fileId }, drive)).content;
+              },
+            },
+            runFolderId,
+          );
+        } catch (e: any) {
+          platform_behaviour = unreadablePlatformBehaviour(e?.message ?? String(e));
+        }
+      }
       // Structural README refresh — see `refreshRunReadme`. Never gates the
       // verdict; surfaced in the payload so a silent failure is still visible.
       const readme = parsedRunState
         ? await refreshRunReadme(runFolderId, parsedRunState)
         : { readme_refreshed: false, readme_note: 'run_state.yaml unreadable — README left as-is' };
-      return result({ ...report, ...(decisions ? { decisions } : {}), ...readme });
+      return result({ ...report, ...(decisions ? { decisions } : {}), ...(platform_behaviour ? { platform_behaviour } : {}), ...readme });
     } catch (e: any) {
       return error(e.message);
     }

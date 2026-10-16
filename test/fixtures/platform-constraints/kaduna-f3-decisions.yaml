@@ -1,0 +1,33 @@
+# The real Phase 1 row for kaduna's Flag F3, copied verbatim from
+# kaduna-graduation/20261015-1411 decisions.yaml (Drive revision 65, lines
+# 107-126, read 2026-10-16) as it stood at the END OF PHASE 1 — i.e. without
+# the `superseded_by` the Phase 6 device walk later stamped on it. ONE field is
+# added: `kind: platform-behaviour`, the tag the idea-to-design guidance now
+# requires on such a question. Under the new fence this row FAILS: it is a
+# platform question answered "first device walk answers it" (ace#3036).
+schema_version: 6
+opportunity: kaduna-graduation
+run_id: 20261015-1411
+generated_at: "2026-10-15T20:24:57.270Z"
+decisions:
+  - id: learn-completion-across-roles
+    phase: 1-design
+    skill: idea-to-pdd
+    kind: platform-behaviour
+    question: Does Connect require every Learn module in the app, including the other role's modules, to be completed before Deliver opens?
+    ai-default: Assume only the passed test is required
+    options:
+      - Assume only the passed test is required
+      - All modules required
+    reasoning: Not observed either way. The recorded Connect walk completed all modules and the assessment; no role-split Learn app has been walked. First device walk answers it.
+    source: Design section 8; docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md (modules AND final assessment walked; role-split never observed)
+    status: ai-default
+    value_set_by: ace
+    evidence_basis: inferred
+    review_ask: recommended-confirmation
+    confirm_reason: If every module must be completed, a mentor would have to finish the enumerator's modules too, and the training would need to be restructured.
+    plain: The build assumes a worker's work opens once she passes her role's test, without finishing the other role's training modules; this has not yet been checked on a phone.
+    plain_question: Does a worker have to finish every training module, including the other role's, before her work opens?
+    owner: dimagi
+    needed_by: go-live
+    answer_channel: review

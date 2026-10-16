@@ -71,6 +71,23 @@ another run), `status` (`ai-default` / `overridden` / `human-decided` /
 **Live rows** are those without `superseded_by`. Every consumer reads live rows
 only.
 
+### Added 2026-10-16 — platform-behaviour rows (ace#3036)
+
+| Field | Meaning |
+|---|---|
+| `kind` | `platform-behaviour` when the row answers a question about how Connect / CommCare HQ behaves. Absent = an ordinary design decision. |
+| `resolved_by` | `source` (read in Connect/HQ source), `api` (one read-only API probe) or `device` (only when the behaviour lives on the device). |
+| `resolution_citation` | The evidence. For `source`: `<owner>/<repo>@<sha>:<path>:<line>`, pinned (`SOURCE_CITATION_RE`). |
+
+A live `kind: platform-behaviour` row without `resolved_by: source|api` and a
+citation fails `verify_phase_artifacts(phase='design')` (`platform_behaviour`
+block, `lib/platform-behaviour-decisions.ts`), so Phase 3 never builds on an
+unanswered platform question; `device` passes only as an open ask (with
+`review_ask`). Rows from `config/platform-constraints.yaml` (`platform-<rule>`)
+are born resolved. Why: kaduna-graduation/20261015-1411 parked "does Connect
+count every Learn module?" for a device walk three phases later; the source
+answered it.
+
 ## Plain-language gate
 
 Every **reviewer-visible** row — live (no `superseded_by`) and not `audience:
