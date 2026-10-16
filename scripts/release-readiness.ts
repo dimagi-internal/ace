@@ -94,7 +94,7 @@ import { chromium } from 'playwright';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
-import { authForUrl, screenPage, withLabsProgramContext, type PreviewAuth } from '../lib/preview-capture.js';
+import { authForUrl, CHAT_INPUT_SELECTOR, screenPage, withLabsProgramContext, type PreviewAuth } from '../lib/preview-capture.js';
 import {
   assessApps,
   INVENTORY_TEXT_WANTED,
@@ -333,7 +333,7 @@ async function links(): Promise<void> {
         let screen = screenPage({ status: res?.status() ?? 0, finalUrl: page.url(), title: await page.title().catch(() => ''), text });
         // A fresh public chat is short by nature (a greeting); what proves it works is a chat box.
         if (/public chat/.test(p.label)) {
-          const hasInput = (await page.locator('input[name=message], textarea[name=message]').count()) > 0;
+          const hasInput = await page.locator(CHAT_INPUT_SELECTOR).first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
           screen = hasInput ? { ok: true } : { ok: false, reason: 'blank', detail: 'no chat input on the public chat page' };
         }
         probe = { ...p, session: p.auth, ok: screen.ok, status: res?.status() ?? 0, final_url: page.url(), detail: screen.ok ? 'loads' : `${screen.reason}: ${screen.detail}` };
