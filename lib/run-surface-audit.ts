@@ -2388,11 +2388,32 @@ export interface CommitAffordanceObservation {
 export function visiblePhaseLabels(payload: unknown): string[] {
   const rows = (payload as { decisions?: { rows?: unknown } } | null)?.decisions?.rows;
   if (!Array.isArray(rows)) return [];
-  const labels = rows.map((r) => {
-    const row = (r ?? {}) as { stage_label?: unknown; phase_label?: unknown };
-    return String(row.stage_label || row.phase_label || '');
-  });
+  const labels = rows
+    .map((r) => (r ?? {}) as {
+      stage_label?: unknown; phase_label?: unknown;
+      audience?: unknown; review_ask?: unknown; superseded_by?: unknown;
+    })
+    .filter(drawnInGroupedList)
+    .map((row) => String(row.stage_label || row.phase_label || ''));
   return [...new Set(labels.filter(Boolean))];
+}
+
+/**
+ * Whether the outsider page draws this row in the stage-grouped "everything
+ * else ACE decided" list by DEFAULT — the only list that carries stage
+ * headings (ace#2886). Rows outside it are shown elsewhere or hidden on purpose:
+ * `review_ask: recommended-confirmation` rows go in the flat "Confirm before
+ * launch" list (no headings), `audience: internal` rows sit behind
+ * "Show N internal", and a `superseded_by` row is history, never live. A stage
+ * whose rows are ALL of those kinds gets no heading by design, so expecting one
+ * reported RENDER-PROVENANCE-HIDDEN on a page whose grouping was visible
+ * (smallholder-seasonal/20261012-1549: 'QA and training' = 1 confirm + 3 internal).
+ */
+function drawnInGroupedList(row: { audience?: unknown; review_ask?: unknown; superseded_by?: unknown }): boolean {
+  if (row.audience === 'internal') return false;
+  if (row.review_ask === 'recommended-confirmation') return false;
+  if (row.superseded_by) return false;
+  return true;
 }
 
 /**
