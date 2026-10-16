@@ -72,7 +72,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   ocs: {
     file: 'mcp/ocs-server.ts',
-    expectedCount: 37, // +2: ocs_list_collection_files + ocs_remove_collection_file (per-file removal; unblocks ocs-knowledge-refresh Step 0)
+    expectedCount: 38, // +1: ocs_ensure_public_link (the Public link channel replaces the legacy /start/ page — OCS #4792)
     allowedPrefixes: ['ocs_'],
     capabilityMap: OCS_MAP,
     capabilityPrefix: 'ocs_',

@@ -15,6 +15,7 @@ import {
   HttpError,
   OcsError,
   PipelineShapeError,
+  PublicLinkChannelError,
   WidgetChannelDisabledError,
   WidgetChannelStateUnreadableError,
 } from '../errors.js';
@@ -68,22 +69,53 @@ export function extractPipelineId(html: string): number | undefined {
 }
 
 /**
+ * Every channel button on the chatbot home page, as `{id, platform}`.
+ * Matches templates/chatbots/components/channel_buttons.html, one button per channel:
+ *   hx-get="/channels/<team>/chatbots/<eid>/channels/<channel_id>/edit-dialog/"
+ *   ... <i class="fa-brands fa-<platform>"></i>
+ *
+ * Each button's platform is read from ITS OWN slice of the HTML (up to the next
+ * button's hx-get). The previous single lazy regex ran from the first hx-get to
+ * the first `fa-embedded_widget` anywhere after it, so once a chatbot carried a
+ * second channel rendered before the widget — a public link does exactly that,
+ * observed live on connect-ace bot 14296 (2026-10-16) — it returned the OTHER
+ * channel's id, and getChatbotEmbedInfo then read the wrong edit-dialog.
+ */
+export function extractChannelButtons(
+  html: string,
+  experimentId: number,
+): Array<{ id: number; platform: string }> {
+  const hits = [
+    ...html.matchAll(new RegExp(`hx-get="[^"]*chatbots/${experimentId}/channels/(\\d+)/edit-dialog/"`, 'g')),
+  ];
+  const out: Array<{ id: number; platform: string }> = [];
+  hits.forEach((m, k) => {
+    const end = k + 1 < hits.length ? hits[k + 1].index! : html.length;
+    const platform = html.slice(m.index!, end).match(/fa-brands fa-([a-z_]+)/)?.[1];
+    if (platform) out.push({ id: Number(m[1]), platform });
+  });
+  return out;
+}
+
+/**
  * Extract the EMBEDDED_WIDGET channel id from the chatbot home page HTML.
- * Matches the hx-get URL on the channel button in templates/chatbots/components/channel_buttons.html:
- *   hx-get="/a/<team>/chatbots/<eid>/channels/<channel_id>/edit-dialog/"
- * Only returns the id if the surrounding button's i tag is the embedded_widget icon.
+ * Only returns an id whose own button carries the embedded_widget icon.
  */
 export function extractEmbeddedWidgetChannelId(html: string, experimentId: number): number | undefined {
-  // Each channel button has: hx-get="...channels/<id>/edit-dialog/" and i.fa-brands.fa-embedded_widget
-  // We look for channel edit-dialog URLs and then cross-reference which one is embedded_widget.
-  const rowRegex = new RegExp(
-    `hx-get="[^"]*chatbots/${experimentId}/channels/(\\d+)/edit-dialog/"[^]*?fa-(embedded_widget)`,
-    'g'
-  );
-  for (const m of html.matchAll(rowRegex)) {
-    return Number(m[1]);
-  }
-  return undefined;
+  return extractChannelButtons(html, experimentId).find((c) => c.platform === 'embedded_widget')?.id;
+}
+
+/**
+ * Extract the public-link channel and its shareable URL from the chatbot home page HTML.
+ * channel_buttons.html renders a "Copy link" chip for a `public` channel with a token
+ * (`generic/copy_chip.html`, show_value=0):
+ *   <input id="public-link-<channel_id>" type="hidden" value="https://<ocs>/c/<widget_token>/"/>
+ * The value is `ExperimentChannel.public_url` (apps/channels/models.py), so it is OCS's own
+ * absolute URL, not one ACE assembles.
+ */
+export function extractPublicLink(html: string): { channel_id: number; public_url: string } | undefined {
+  const m = html.match(/id="public-link-(\d+)"[^>]*value="([^"]+)"/);
+  return m ? { channel_id: Number(m[1]), public_url: m[2] } : undefined;
 }
 
 /**
@@ -1270,6 +1302,83 @@ export class PlaywrightBackend {
     throw new WidgetChannelStateUnreadableError(experimentId, channelId, readback.detail);
   }
 
+  /**
+   * Make sure the chatbot has an ENABLED public-link channel and return its URL.
+   *
+   * The public link (`https://<ocs>/c/<widget_token>/`, platform `public`) is OCS's
+   * supported anonymous chat page. The legacy `/a/<team>/chatbots/<public_id>/start/`
+   * page ACE used to hand out is being removed (dimagi/open-chat-studio#4209; OCS
+   * pointed ACE here in dimagi/open-chat-studio#4792). Unlike `/start/`, the page
+   * serves only the PUBLISHED version — an unpublished bot shows "This chatbot is
+   * not published yet." — so call this after `ocs_publish_chatbot_version`.
+   *
+   * OCS allows one public link per chatbot (`for_dropdown` drops a used platform),
+   * so an existing channel is returned, not duplicated. That read is the very state
+   * the caller needs (the URL), not a stand-in flag. Either way the channel's
+   * `enabled` checkbox is read back from its edit-dialog: a disabled channel serves
+   * a banner, not a chat, and the create POST's status proves nothing (ace#1492).
+   *
+   * Contract verified live 2026-10-16 on connect-ace bot 14296: POST
+   * create-dialog/public/ with `enabled=on` + `welcome_messages` -> 200, channel
+   * 2241 enabled, and the anonymous /c/<token>/ page returned 200 with the
+   * kiosk widget.
+   */
+  async ensurePublicLink(args: {
+    experiment_id: number;
+    welcome_message?: string;
+    starter_questions?: string[];
+  }): Promise<{ public_url: string; channel_id: number; created: boolean }> {
+    const eid = args.experiment_id;
+    const readHome = async (): Promise<string> => {
+      const homePath = `/a/${this.opts.teamSlug}/chatbots/${eid}/`;
+      const res = await this.opts.request('GET', homePath);
+      assertNotSignInPage(res, homePath);
+      if (!res.ok || !res.text) throw await httpErrorFor(res, homePath);
+      return res.text();
+    };
+
+    let link = extractPublicLink(await readHome());
+    let created = false;
+    if (!link) {
+      const path = `/channels/${this.opts.teamSlug}/chatbots/${eid}/channels/create-dialog/public/`;
+      const res = await this.opts.request(
+        'POST',
+        path,
+        {
+          name: `Public link (${eid})`,
+          platform: 'public',
+          // Django checkbox: omitting it means False, not "use the model default" (ace#1492).
+          enabled: 'on',
+          welcome_messages: args.welcome_message ?? '',
+          starter_questions: (args.starter_questions ?? []).join('\n'),
+          csrfmiddlewaretoken: this.opts.csrfToken,
+        },
+        { followRedirects: false, formEncoded: true },
+      );
+      if (!res.ok && res.status !== 302) throw await httpErrorFor(res, path);
+      created = true;
+      link = extractPublicLink(await readHome());
+      if (!link) {
+        throw new PublicLinkChannelError(
+          eid,
+          'the create POST reported success, but the chatbot home page shows no public-link copy chip.',
+        );
+      }
+    }
+
+    const dialogPath = `/channels/${this.opts.teamSlug}/chatbots/${eid}/channels/${link.channel_id}/edit-dialog/`;
+    const dialogRes = await this.opts.request('GET', dialogPath);
+    if (!dialogRes.ok || !dialogRes.text) throw await httpErrorFor(dialogRes, dialogPath);
+    const readback = classifyChannelEnabled(await dialogRes.text());
+    if (readback.verdict === 'disabled') {
+      throw new PublicLinkChannelError(eid, `channel ${link.channel_id} is DISABLED, so visitors get a banner, not a chat.`);
+    }
+    if (readback.verdict === 'unreadable') {
+      throw new PublicLinkChannelError(eid, `could not read channel ${link.channel_id}'s enabled state: ${readback.detail}`);
+    }
+    return { public_url: link.public_url, channel_id: link.channel_id, created };
+  }
+
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
     // Pre-flight: round-trip the pipeline through /pipelines/data/ to surface
     // any node-level validation errors BEFORE hitting /versions/create.
@@ -1664,7 +1773,9 @@ export class PlaywrightBackend {
       );
     }
 
-    return { public_id: publicId, embed_key: embedKey };
+    // The public link, when the chatbot has one (ocs_ensure_public_link creates it).
+    // Read from the same home page, so it costs no extra request.
+    return { public_id: publicId, embed_key: embedKey, public_url: extractPublicLink(homeHtml)?.public_url ?? null };
   }
 
   /**

@@ -8,6 +8,8 @@ import {
   extractPublicId,
   extractPipelineId,
   extractEmbeddedWidgetChannelId,
+  extractChannelButtons,
+  extractPublicLink,
   extractExperimentIdFromLocation,
   parseChatbotTable,
   assertCollectionPromptInvariant,
@@ -15,6 +17,7 @@ import {
 } from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
 import {
+  PublicLinkChannelError,
   VersionBadgeUnreadableError,
   WidgetChannelDisabledError,
   WidgetChannelStateUnreadableError,
@@ -1559,5 +1562,108 @@ describe('PlaywrightBackend.deleteCollection', () => {
     });
     const backend = makeBackend(request);
     await expect(backend.deleteCollection({ collection_id: 999 })).rejects.toThrow(/404/);
+  });
+});
+
+// ── Public link channel (dimagi/open-chat-studio#4792) ───────────────
+//
+// OCS is removing the legacy /a/<team>/chatbots/<public_id>/start/ page
+// (#4209) and pointed ACE at the per-chatbot "Public link" channel. The
+// fixture is the live home page of connect-ace bot 14296 after ACE created
+// one, so these tests read what OCS actually renders.
+describe('public link channel', () => {
+  const LIVE_HOME = fs.readFileSync(
+    path.join(__dirname, 'fixtures', 'chatbot-home-public-link.html'),
+    'utf-8',
+  );
+  const LIVE_URL = 'https://www.openchatstudio.com/c/LMWhMNSsxfzJJEoxXJwce8R3ixYZW-Q6/';
+
+  it('reads each channel button from its own slice of the page', () => {
+    expect(extractChannelButtons(LIVE_HOME, 14296)).toEqual([
+      { id: 2241, platform: 'public' },
+      { id: 2236, platform: 'embedded_widget' },
+    ]);
+  });
+
+  it('finds the WIDGET channel even when a public link renders before it', () => {
+    // The old lazy regex returned 2241 here: it ran from the first button's
+    // hx-get to the widget icon on the SECOND button.
+    expect(extractEmbeddedWidgetChannelId(LIVE_HOME, 14296)).toBe(2236);
+  });
+
+  it("scrapes OCS's own public_url from the copy chip", () => {
+    expect(extractPublicLink(LIVE_HOME)).toEqual({ channel_id: 2241, public_url: LIVE_URL });
+    expect(extractPublicLink(HOME_HTML_WITH_WIDGET)).toBeUndefined();
+  });
+
+  const HOME_PATH = '/a/dimagi/chatbots/14296/';
+  const CREATE_PATH = '/channels/dimagi/chatbots/14296/channels/create-dialog/public/';
+  const DIALOG_PATH = '/channels/dimagi/chatbots/14296/channels/2241/edit-dialog/';
+  const page = (html: string) => ({ ok: true, status: 200, text: async () => html, json: async () => ({}) });
+
+  it('returns an existing public link without creating another, after checking it is enabled', async () => {
+    const calls: string[] = [];
+    const request: RequestFn = async (method, url) => {
+      calls.push(`${method} ${url}`);
+      if (method === 'GET' && url === HOME_PATH) return page(LIVE_HOME);
+      if (method === 'GET' && url === DIALOG_PATH) return page(CHANNEL_DIALOG_ENABLED);
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const out = await makeBackend(request).ensurePublicLink({ experiment_id: 14296 });
+    expect(out).toEqual({ public_url: LIVE_URL, channel_id: 2241, created: false });
+    expect(calls).toEqual([`GET ${HOME_PATH}`, `GET ${DIALOG_PATH}`]);
+  });
+
+  it('creates the channel enabled, with the welcome message, then reads the URL back', async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    let homeReads = 0;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'GET' && url === HOME_PATH) {
+        homeReads += 1;
+        return page(homeReads === 1 ? HOME_HTML_WITH_WIDGET : LIVE_HOME);
+      }
+      if (method === 'POST' && url === CREATE_PATH) {
+        posts.push(body as Record<string, unknown>);
+        return page('<div>ok</div>');
+      }
+      if (method === 'GET' && url === DIALOG_PATH) return page(CHANNEL_DIALOG_ENABLED);
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const out = await makeBackend(request).ensurePublicLink({
+      experiment_id: 14296,
+      welcome_message: 'Hi! Ask me about the program.',
+      starter_questions: ['How do I start?', 'Who do I call?'],
+    });
+    expect(out).toEqual({ public_url: LIVE_URL, channel_id: 2241, created: true });
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({
+      platform: 'public',
+      enabled: 'on',
+      welcome_messages: 'Hi! Ask me about the program.',
+      starter_questions: 'How do I start?\nWho do I call?',
+      csrfmiddlewaretoken: 'csrf-xyz',
+    });
+  });
+
+  it('refuses a public link whose channel is disabled', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === HOME_PATH) return page(LIVE_HOME);
+      if (method === 'GET' && url === DIALOG_PATH) return page(CHANNEL_DIALOG_DISABLED);
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    await expect(makeBackend(request).ensurePublicLink({ experiment_id: 14296 })).rejects.toBeInstanceOf(
+      PublicLinkChannelError,
+    );
+  });
+
+  it('refuses when the create POST succeeds but no link appears', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === HOME_PATH) return page(HOME_HTML_WITH_WIDGET);
+      if (method === 'POST' && url === CREATE_PATH) return page('<div>ok</div>');
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    await expect(makeBackend(request).ensurePublicLink({ experiment_id: 14296 })).rejects.toThrow(
+      /no public-link copy chip/,
+    );
   });
 });

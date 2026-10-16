@@ -76,8 +76,10 @@ describe('ocs-widget-handoff-eval: credential_hygiene vs widget_url_resolves', (
   const denied = denyList(hygieneRow);
 
   it('the mandated widget URL actually interpolates values (guards the fixture)', () => {
-    expect(placeholders).toContain('team_slug');
-    expect(placeholders).toContain('public_id');
+    // Since 2026-10-16 the mandated URL is the public link, `/c/<link_token>/`
+    // (OCS #4792); the token is that channel's embed key, printed into the
+    // page OCS serves, so it must be named public-by-construction too.
+    expect(placeholders).toContain('link_token');
   });
 
   it('the hygiene guard still denies real cross-opportunity credentials', () => {

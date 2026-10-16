@@ -114,6 +114,15 @@ const PUBLIC_START_URL_RE =
   /(?:https?:\/\/)?(?:www\.)?openchatstudio\.com\/a\/[\w-]+\/chatbots\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/start\/?/gi;
 
 /**
+ * The bot's PUBLIC LINK — `openchatstudio.com/c/<token>/`, OCS's supported
+ * anonymous chat page and the one new runs record (dimagi/open-chat-studio#4792;
+ * the `/start/` page above is being removed, #4209). Equally reachable, so it is
+ * stripped the same way. The token is 32 URL-safe characters; requiring 16+
+ * keeps a bare `/c/` or a stub flagged.
+ */
+const PUBLIC_LINK_URL_RE = /(?:https?:\/\/)?(?:www\.)?openchatstudio\.com\/c\/[A-Za-z0-9_-]{16,}\/?/gi;
+
+/**
  * An in-app GRIEVANCE route the worker is told to use — which ACE-built apps
  * do not have (dimagi-internal/ace#2106).
  *
@@ -204,7 +213,7 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
 
     // ace#3002: the public start URL is a reachable destination — strip it so
     // only what remains on the line is judged.
-    const rest = text.replace(PUBLIC_START_URL_RE, ' ');
+    const rest = text.replace(PUBLIC_START_URL_RE, ' ').replace(PUBLIC_LINK_URL_RE, ' ');
 
     // Unconditional: NOT gated on `addressed` (ace#1850).
     const host = OCS_HOST_RE.exec(rest);
@@ -231,14 +240,16 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
 
 export function formatSupportChannelReport(report: SupportChannelReport): string {
   if (report.ok) {
-    return 'support-channel: reachable — no OCS embed credentials presented to the worker (the public /start/ URL is allowed)';
+    return 'support-channel: reachable — no OCS embed credentials presented to the worker (the bot\'s public link is allowed)';
   }
   return [
     `support-channel: ${report.findings.length} unreachable pointer(s) in a WORKER-FACING artifact —`,
     'a bare OCS host or a 36-character chatbot id is not a destination a field worker can open',
     'or transcribe mid-visit, and the `/chatbots/embed/<public_id>/` path is a dead route (OCS',
-    '#3540). The ONLY OCS link a worker may be given is the public start URL',
-    '`/a/<team>/chatbots/<public_id>/start/` (ace#3002); do not quote its greeting (ace#2992).',
+    '#3540). The ONLY OCS link a worker may be given is the bot\'s public link',
+    '`openchatstudio.com/c/<token>/` (`public_url` in run_state; the legacy',
+    '`/a/<team>/chatbots/<public_id>/start/` page is still tolerated but is being removed, OCS #4209,',
+    'and greets with a blank name, ace#2992).',
     'An in-app grievance menu is the same failure without an error page: ACE-built apps carry',
     'only the modules and forms the PDD specifies, so the worker finds nothing and stops',
     'escalating (ace#2106).',

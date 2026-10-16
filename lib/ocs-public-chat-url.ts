@@ -1,6 +1,33 @@
 /**
  * The anonymous chat URL for a published OCS chatbot.
  *
+ * ## The CURRENT route is the public link — `/c/<token>/` (2026-10-16)
+ *
+ * OCS is removing the legacy public chat page this file was written for
+ * (dimagi/open-chat-studio#4209, "Remove public web chat"). When ACE reported a
+ * bug on it (dimagi/open-chat-studio#4792, the blank greeting of ace#2992), OCS
+ * answered that the page is being deprecated and pointed at the per-chatbot
+ * **Public link** channel instead
+ * (https://docs.openchatstudio.com/how-to/deploy_public_link_channel/).
+ *
+ * That link is `https://<ocs>/c/<widget_token>/` — NOT team-scoped, and NOT
+ * something ACE can build: the token is minted by OCS when the channel is
+ * created (`PublicChannelForm.clean`, `secrets.token_urlsafe(24)`). So ACE does
+ * not assemble it; `ocs_ensure_public_link` creates the channel and returns the
+ * URL OCS itself renders. Two differences from the legacy page matter:
+ *   - it serves the PUBLISHED version only (an unpublished bot shows "This
+ *     chatbot is not published yet."), so it is created after publishing;
+ *   - it shows the chatbot's name above the chat and greets with the channel's
+ *     own welcome message, so the blank-greeting bug does not apply.
+ * Verified live 2026-10-16, connect-ace bot 14296: anonymous GET of its
+ * `/c/<token>/` → 200, kiosk widget, chatbot name rendered.
+ *
+ * `buildOcsPublicChatUrl` below is kept ONLY to describe runs recorded before
+ * this change. Do not hand a new reader a `/start/` URL: it stops working when
+ * OCS deletes the page, and nothing on ACE's side would notice.
+ *
+ * ## The legacy route (history)
+ *
  * Why this is code (dimagi-internal/ace#1021): ACE concluded that no such URL
  * exists and wrote two skills against that conclusion — `ocs-agent-setup`
  * stated "there's no standalone embed page, only the corner widget", and
@@ -87,6 +114,36 @@ export interface PublicChatUrlParts {
 
 export const OCS_DEFAULT_BASE_URL = 'https://www.openchatstudio.com';
 
+/**
+ * An OCS public-link page: `https://<host>/c/<token>/`. The token is
+ * `secrets.token_urlsafe(24)` — 32 URL-safe characters — so anything much
+ * shorter is not one.
+ */
+export const OCS_PUBLIC_LINK_PATH_RE = /^\/c\/[A-Za-z0-9_-]{16,}\/?$/;
+
+/** Is this OCS's current anonymous chat page (a public-link channel), as opposed to the console or the legacy `/start/` page? */
+export function isOcsPublicLinkUrl(url: string): boolean {
+  try {
+    return OCS_PUBLIC_LINK_PATH_RE.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Is this the LEGACY `/a/<team>/chatbots/<public_id>/start/` page that OCS is removing (#4209)? */
+export function isLegacyOcsStartUrl(url: string): boolean {
+  try {
+    return /^\/a\/[^/]+\/chatbots\/[^/]+\/start\/?$/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * LEGACY. Builds the `/start/` page OCS is removing (dimagi/open-chat-studio#4209).
+ * Use only to describe a run recorded before 2026-10-16; new runs record the
+ * public-link URL `ocs_ensure_public_link` returns.
+ */
 export function buildOcsPublicChatUrl(parts: PublicChatUrlParts): string {
   const { baseUrl = OCS_DEFAULT_BASE_URL, teamSlug, publicId } = parts;
   if (!teamSlug) throw new Error('buildOcsPublicChatUrl: teamSlug is required');

@@ -104,11 +104,14 @@ per-opportunity widget field to embed the widget into (CCC-301), and a
 36-character UUID cannot be transcribed mid-visit. Inventing a plausible-looking
 `/chat/<id>` URL is worse than saying nothing.
 
-**The one OCS link that IS a destination** (ace#3002): the bot's public start
-URL, `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/`
-(read it from `run_state.yaml`
-`phases.ocs-setup.products.ocs_chatbot.public_url`, built by
-`lib/ocs-public-chat-url.ts`). It opens a live chat page — probed 2026-10-15
+**The one OCS link that IS a destination** (ace#3002): the bot's public link,
+`https://www.openchatstudio.com/c/<token>/` — read it from `run_state.yaml`
+`phases.ocs-setup.products.ocs_chatbot.public_url`, never build it (OCS mints
+the token). Runs recorded before 2026-10-16 carry the legacy
+`https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/` page
+there instead; OCS is removing it (dimagi/open-chat-studio#4209), so prefer a
+re-run's public link over printing a `/start/` URL in anything that outlives the
+week. What follows describes that legacy page. It opens a live chat page — probed 2026-10-15
 with a cookie jar: `302 → /s/<session>/chat/`, `200` (a cookieless probe reads
 404 on a working bot, the ace#1021 / ace#2140 trap). An earlier version of this
 section said OCS had "no standalone chat page"; that is no longer true. You MAY

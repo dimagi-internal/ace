@@ -60,7 +60,7 @@ import {
   checkArchetypeConsistency,
   type ArchetypeCheckRow,
 } from './decisions-archetype-consistency.js';
-import { buildOcsPublicChatUrl } from './ocs-public-chat-url.js';
+import { buildOcsPublicChatUrl, isLegacyOcsStartUrl, isOcsPublicLinkUrl } from './ocs-public-chat-url.js';
 
 // ── Finding model ──────────────────────────────────────────────────
 
@@ -1689,13 +1689,13 @@ export function derivePublicChatUrl(assistant: unknown): string | null {
   }
 }
 
-/** Does this URL point at OCS's anonymous `start/` route rather than the console? */
+/**
+ * Does this URL point at an anonymous OCS chat page rather than the console?
+ * The public link (`/c/<token>/`) is the current one; the legacy `start/` page
+ * still counts while OCS serves it (it is being removed, OCS #4209).
+ */
 function isPublicChatUrl(url: string): boolean {
-  try {
-    return /\/chatbots\/[^/]+\/start\/?$/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
+  return isOcsPublicLinkUrl(url) || isLegacyOcsStartUrl(url);
 }
 
 /**

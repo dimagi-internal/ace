@@ -271,3 +271,32 @@ describe('public /start/ URL is a reachable channel (#3002)', () => {
     expect(text).toMatch(/ace#2992/);
   });
 });
+
+/**
+ * The bot's PUBLIC LINK — OCS's supported anonymous page, which new runs record
+ * as `public_url` (dimagi/open-chat-studio#4792; the `/start/` page is being
+ * removed, #4209). The URL below is the live one ACE created on connect-ace bot
+ * 14296 on 2026-10-16 and fetched anonymously (200, kiosk widget).
+ */
+describe('public link URL is a reachable channel (OCS #4792)', () => {
+  const LINK = 'https://www.openchatstudio.com/c/LMWhMNSsxfzJJEoxXJwce8R3ixYZW-Q6/';
+
+  it('passes the public link on a reader-addressed line and schemeless in markdown', () => {
+    expect(checkWorkerFacingSupportChannel(`Ask the support assistant: ${LINK}\n`).findings).toEqual([]);
+    expect(
+      checkWorkerFacingSupportChannel('Use the [support chat](openchatstudio.com/c/LMWhMNSsxfzJJEoxXJwce8R3ixYZW-Q6/).\n').ok,
+    ).toBe(true);
+  });
+
+  it('still flags a bare host beside it, and a stub /c/ path', () => {
+    expect(
+      checkWorkerFacingSupportChannel(`Chat: ${LINK} or visit https://www.openchatstudio.com\n`).findings.map((f) => f.kind),
+    ).toEqual(['unresolvable-ocs-host']);
+    expect(checkWorkerFacingSupportChannel('Ask here: https://www.openchatstudio.com/c/abc/\n').ok).toBe(false);
+  });
+
+  it('the report names the public link as the link to give a worker', () => {
+    const text = formatSupportChannelReport(checkWorkerFacingSupportChannel('Ask at https://www.openchatstudio.com\n'));
+    expect(text).toMatch(/openchatstudio\.com\/c\/<token>\//);
+  });
+});

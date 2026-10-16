@@ -379,10 +379,12 @@ const OcsProducts = z
          * simply never written into typed state, so the readers downstream —
          * ace-web's summary serializer among them — had nothing to render.
          *
-         * Built with `buildOcsPublicChatUrl`, never hand-assembled: the route
-         * is team-scoped and the two ways to get it wrong (the retired
-         * `/chatbots/embed/<id>/` path, and probing `/chatbots/<id>/` at the
-         * root) both look like a dead bot rather than a bad URL.
+         * Since 2026-10-16 this is the chatbot's PUBLIC LINK,
+         * `https://<ocs>/c/<token>/`, exactly as `ocs_ensure_public_link`
+         * returns it — OCS mints the token, so it is never assembled. Runs
+         * recorded before then carry the legacy team-scoped
+         * `/a/<team>/chatbots/<public_id>/start/` page, which OCS is removing
+         * (dimagi/open-chat-studio#4209, #4792).
          */
         public_url: z.string().url().optional(),
         experiment_id: z.union([z.string(), z.number()]).optional(),

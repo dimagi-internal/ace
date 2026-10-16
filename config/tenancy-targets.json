@@ -44,7 +44,7 @@
     },
     {
       "name": "ocs-team-writes",
-      "tool_pattern": "(?:^|__)ocs_(?:clone_chatbot|create_chatbot|link_action_to_node|add_custom_action|add_chatbot_event|add_pipeline_node|set_chatbot_system_prompt|set_chatbot_pipeline|create_collection|upload_collection_files|attach_knowledge|set_chatbot_tools|set_source_material|publish_chatbot_version|delete_chatbot|delete_pipeline|delete_collection|remove_collection_file|add_team_member|trigger_bot_message|update_participant_data)$",
+      "tool_pattern": "(?:^|__)ocs_(?:clone_chatbot|create_chatbot|link_action_to_node|add_custom_action|add_chatbot_event|add_pipeline_node|set_chatbot_system_prompt|set_chatbot_pipeline|create_collection|upload_collection_files|attach_knowledge|set_chatbot_tools|set_source_material|publish_chatbot_version|ensure_public_link|delete_chatbot|delete_pipeline|delete_collection|remove_collection_file|add_team_member|trigger_bot_message|update_participant_data)$",
       "server_env": {"OCS_TEAM_SLUG": ["ocs_team"]}
     }
   ]
