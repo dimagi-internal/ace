@@ -701,3 +701,74 @@ describe('validateRunState — YAML 1.1-ambiguous unquoted scalars (ace#2296)', 
     expect(ambiguityWarnings(validateRunState(YAML.parse(bare)))).toEqual([]);
   });
 });
+
+// ace#3057: a verdict is a WORD. ace-web matches it exactly
+// (`_CLEAN_PHASE_VERDICTS`), so `pass: <prose>` rendered a passing phase as
+// "Finished without a clean pass" on the public run summary.
+describe('prose verdicts (ace#3057)', () => {
+  // Verbatim from kaduna-graduation/20261015-1411 phases.ocs-setup.verdict.
+  const KADUNA =
+    'pass: chatbot 14303 published v2 and reachable by public link; quick gate 3/3 (8.89/10, raw 2.67/3); widget-handoff eval 9.33/10';
+
+  const proseWarnings = (r: ReturnType<typeof validateRunState>) =>
+    r.warnings.filter((w) => /verdict_detail/.test(w.message));
+
+  const phase = (verdict: string, stepVerdict?: string): Record<string, any> => ({
+    phases: {
+      'ocs-setup': {
+        status: 'done',
+        completed_at: '2026-10-15T18:00:00Z',
+        verdict,
+        ...(stepVerdict !== undefined
+          ? {
+              steps: {
+                'ocs-chatbot-eval': {
+                  status: 'done',
+                  verdict: stepVerdict,
+                  artifact: '5-ocs/x.yaml',
+                  file_id: 'f1',
+                },
+              },
+            }
+          : {}),
+      },
+    },
+  });
+
+  it('positive control: the kaduna phase verdict warns and names verdict_detail', () => {
+    const r = validateRunState(phase(KADUNA));
+    expect(r.valid).toBe(true); // a warning, not an error
+    const w = proseWarnings(r);
+    expect(w).toHaveLength(1);
+    expect(w[0].path).toBe('phases.ocs-setup.verdict');
+    expect(w[0].message).toContain('`verdict: pass`');
+    expect(w[0].actual).toBe(KADUNA);
+  });
+
+  it('warns on other separators and on a step verdict', () => {
+    for (const v of ['ok; all good', 'done — shipped', 'proceed - with notes', 'pass 3/3 checks']) {
+      expect(proseWarnings(validateRunState(phase(v)))).toHaveLength(1);
+    }
+    const w = proseWarnings(validateRunState(phase('pass', 'fail: 2 of 5 dims below floor')));
+    expect(w).toHaveLength(1);
+    expect(w[0].path).toBe('phases.ocs-setup.steps.ocs-chatbot-eval.verdict');
+    expect(w[0].message).toContain('`verdict: fail`');
+  });
+
+  it('negative control: the run-side repair (word + verdict_detail) and compound tokens are silent', () => {
+    const repaired = phase('pass');
+    repaired.phases['ocs-setup'].verdict_detail = KADUNA.replace(/^pass:\s*/, '');
+    expect(proseWarnings(validateRunState(repaired))).toEqual([]);
+    for (const v of [
+      'pass',
+      'proceed-with-warn',
+      'passed-with-deferred-evals',
+      'partial-producer-deferred',
+      'halt-at-phase-5',
+      'closed',
+      '',
+    ]) {
+      expect(proseWarnings(validateRunState(phase(v)))).toEqual([]);
+    }
+  });
+});
