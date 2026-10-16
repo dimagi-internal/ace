@@ -50,29 +50,35 @@ Common questions from LLOs and FLWs.
 ## <Vendor / Subject> interaction
 
 **[FLW] Q: <question 1>**
+
 <answer — 2-4 sentences, authoritative, action-oriented>
 
 **[FLW] Q: <question 2>**
+
 <answer>
 
 ## App / Device
 
 **[FLW] Q: The app crashed mid-form. Did I lose my data?**
+
 <answer pulled from CommCare's actual draft-save behavior + PDD's
 escalation guidance>
 
 ## Payment & Verification
 
 **[LLO] Q: Why was FLW Asha's submission flagged?**
+
 <answer pulled from `connect.verification_flags` rules — explain
 which rule triggered, what to do>
 
 **[LLO] Q: When does payment hit the FLW account?**
+
 <answer from connect Programs payment cadence>
 
 ## Logistics
 
 **[LLO] Q: <opp-specific operational question>**
+
 <answer>
 ```
 
@@ -82,6 +88,11 @@ which rule triggered, what to do>
   hard-to-scan.
 - **Bold the question, plain the answer.** Markdown `**Q:**` makes
   scanning fast.
+- **A blank line between the bold question and its answer is required.**
+  Two adjacent markdown lines are one paragraph (a soft line break), so
+  without it `drive_create_doc_from_markdown` publishes each answer as a
+  continuation of its question's paragraph and the Doc merges Q and A
+  (ace#2998).
 - **Tag each Q with `[LLO]` or `[FLW]`** at the start. Lets readers
   jump to their role's questions.
 - **Authoritative, not hedging.** "Yes, you can resubmit." not "You
@@ -346,3 +357,4 @@ the composed markdown before writing and rewrite any finding.
 - 2026-08-26: **Persist the composed markdown as `training-faq.source.md` (ace#1687 half 2).** `drive_create_doc_from_markdown` consumes its input, so after step 8 the markdown existed nowhere and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only check comparing PUBLISHED against WRITTEN — could only ever report UNVERIFIED, leaving a blocking gate permanently unresolvable. Step 8 now writes the same string a second time as a plain `text/markdown` file. (That entry originally named `drive_create_file`, which cannot do it — superseded by the 2026-09-06 entry below; ace#1991.) Declared `sourcePersisted` in `lib/artifact-manifest.ts`; *enforced:* `test/lib/source-persisted-artifacts.test.ts`.
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.
 - 2026-09-07: **Dropped the in-app GRM/grievance escalation route from the worker-facing support line (ace#2106).** The shared contract in `skills/_training-template.md` asserted "the app's own in-app grievance route (the **GRM menu**), which the PDD already designates as the complaint channel" as settled fact. Both halves are false: `templates/pdd-template.md` and both shipped example PDDs grep ZERO for `grievance|GRM|complaint` (there is no PDD section that would designate one), and the released Deliver CCZ of `hh-poverty-targeting` (HQ `ce668763ad6c4b48ac5f4cd4502f3f8c`, `connect-ace-prod`) greps zero across `suite.xml`, `modules-0/forms-0.xml` and both `app_strings.txt` — its whole menu is one module and one form. A worker sent to a menu that is not there stops escalating rather than falling back. The support line is now the coordinator name + phone fill-in the LLO completes at onboarding; an in-app route may be named only when this run's own CCZ grep or ui-dump shows one. *Enforced:* `test/skills/in-app-control-existence-claims.test.ts` (corpus ratchet, `.md` + `.ts`) + `unverified-in-app-control` in `lib/support-channel-guard.ts`.
+- 2026-10-15: **Blank line between each bold question and its answer (ace#2998).** The § Format template put each answer on the line directly under its `**[..] Q: ...**` line; markdown joins adjacent lines into one paragraph, so the published Doc of `smallholder-seasonal/20261015-1402` ran every answer into its question until a blank line was added and the Doc republished. The template now has the blank line and § Format rules requires it. *Enforced:* `test/skills/training-faq-template-blank-line.test.ts`.
