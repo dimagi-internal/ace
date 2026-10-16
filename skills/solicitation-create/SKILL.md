@@ -253,7 +253,7 @@ contract.
    | `application_deadline` | string `YYYY-MM-DD` | `(now() + (response_window_days || 14)).strftime('%Y-%m-%d')`. **NOT** `response_window_days` (the int) — that's not a labs field. **NOT** `deadline` (legacy ACE name). Just the date string. |
    | `expected_start_date` | string `YYYY-MM-DD` | **Anchored to the deadline, not to the Phase 4 opp row.** Must be strictly AFTER `application_deadline`: `application_deadline + a contracting allowance` (≥ 7 days; ~2 weeks is the ACE default — it has to cover response review, award, and contracting). Use the Phase 4 opp `start_date` (or a PDD `## Timeline` start) ONLY when that date already satisfies `> application_deadline`; otherwise derive it from the deadline and record the derivation in the draft + a `decisions.yaml` row. **NOT** `anticipated_start`. |
    | `expected_end_date` | string `YYYY-MM-DD` | **`expected_start_date` + the PDD's POST-AWARD duration — NOT its whole `## Timeline` total.** The row above puts `expected_start_date` *after* the solicitation window, so adding the full total re-spends time the start date has already consumed. Compute the addend as **the sum of the `## Timeline` rows describing work performed AFTER award** — equivalently, the total less every row that has already ended by `expected_start_date`. Two rules for deciding, in order: (1) **solicitation-open row(s) are ALWAYS subtracted** — they end at `application_deadline` by construction. *If the timeline has none* — its first row is post-award work such as onboarding or recruitment — subtract **nothing** here, and carry that same reading into Step 7a's span ceiling, whose subtrahend is conditional on it (ace#2231). (2) An **award / contracting row is subtracted only where it is purely contractual**; where it also carries LLO delivery work (onboarding, worker registration, Learn setup), **keep it** — that work happens after award and the contracting allowance does not perform it. Where the PDD states only a total with no per-row breakdown, subtract the solicitation window actually used (`application_deadline − publish date`). Take the top of a band (`## Timeline` "~9–11 weeks" → 11 weeks, then subtract). Must be strictly after `expected_start_date`, and Step 7a bounds the span. **Record the subtraction** — which rows were dropped, which were kept and why, and the resulting week count — in `solicitation-create_draft.md` and in the `response-deadline` `decisions.yaml` row. Use the Phase 4 opp `end_date` only when the Phase 4 dates were adopted wholesale under the rule above. **NOT** `anticipated_end`. |
-   | `estimated_scale` | string | Human-readable summary of expected reach, e.g. "30–50 verified HH visits per LLO; 2–3 LLOs total (90–150 HH end-to-end)". Sourced from PDD `## Target Population` → `Expected reach`. **NOT** `sample_target`. |
+   | `estimated_scale` | string | Human-readable summary of expected reach, e.g. "30–50 verified HH visits per LLO; 2–3 LLOs total (90–150 HH end-to-end)". Sourced from PDD `## Target Population` → `Expected reach`. **NOT** `sample_target`. **At most 200 characters — enforce it HERE, at composition time** (ace#3049): the labs column is `CharField(max_length=200)` (`connect_labs/solicitations/local_models.py:188`) but the MCP schema declares no `maxLength`, so an over-long value passes validation and fails in Postgres as a raw `DataError: value too long for type character varying(200)` traceback (the noora-health draft's value was 234 characters). Tighten the summary; never truncate mid-word and never move the overflow into another field. |
    | `contact_email` | string (**optional** — omit entirely when not derivable) | Point-of-contact shown on the published solicitation (candidate questions + responses land here). **Source it ONLY from the PDD** — set it when the PDD explicitly names a point-of-contact / program email (e.g. a `## Solicitation` contact line or a clearly-stated coordinating email). **If the PDD does not make the contact email obvious, OMIT the `contact_email` field entirely** — do not send it, do not fall back to any env var or the shared ACE bot inbox. `contact_email` is optional in the labs `create_solicitation` schema (verified via live `tools/list`: `required` is just `title`/`description`/`solicitation_type`), so a solicitation with no contact email publishes cleanly and simply renders without a contact line. Emit a one-line `[INFO]` when omitting (`no PDD-derived contact email; publishing without a contact line`) — NOT a `[WARN]`, since a missing contact on a public listing is expected, not a defect. **Never** invent an email or reuse a bot inbox as a stand-in: a wrong contact on a public listing routes real candidate questions to a mailbox nobody reads. (Supersedes the old `${ACE_SOLICITATION_CONTACT_EMAIL}` → `${ACE_GMAIL_ACCOUNT}` fallback; the env var was removed because the shared bot inbox was never a real point of contact. The hard-`[BLOCKER]`-on-unset was already removed in jjackson/ace#636.) |
    | `evaluation_criteria` | array of `{id, name, weight, description, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. The deployed schema requires `id`, `name`, `weight` (verified via live `tools/list`); the ACE convention adds `description`, `scoring_guide`, and `linked_questions` as content-quality requirements. `id` is kebab-case (e.g. `field-ops-realism`), unique within the rubric — derive `slugify(name)` if you're tempted to elide it; explicit ids are required because duplicate-named criteria would otherwise silently collide. Weights sum to 100 (integers). |
    | `questions` | array of `{id, text, type, framing, required, options}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. The deployed schema requires `id`, `text`, `type` (verified via live `tools/list`); `framing` is an optional structured key that ACE always populates because it's the rubric anchor `solicitation-review` consumes when scoring responses. `id` is kebab-case (e.g. `field-ops-realism`). `type` is one of `"textarea"` (default — use it for any prose answer), `"text"` (a single-line input; the right choice for a short factual answer like an org name, a headcount or a date), `"multiple_choice"`, or `"number"`. Verified against the live `tools/list` 2026-08-29: the enum is exactly `[multiple_choice, number, text, textarea]` (ace#1834 — `text` had been omitted here). Empty `framing` is a `[BLOCKER]` — the review path can't score responses against a missing anchor. |
@@ -736,6 +736,60 @@ contract.
       shadow programs on first opportunity sync). Surface the Connect
       program name and the list of labs programs the caller can see.
 
+5a. **Make the PM org the call's owner — register it as a labs organisation
+   first (ace#3049).** Since connect-labs#2567 (merged 2026-10-16) a
+   solicitation must be **owned by a labs organisation (`LabsOrg`) the caller
+   is a member of**. `program_id` alone no longer names an owner: it resolves
+   only to a programme with a running organisation or to "an organisation labs
+   knows", and ACE's per-run Connect PM orgs are neither until they are
+   registered. Measured on `noora-health/noora-health/20261015-1129`
+   (2026-10-16, JSON-RPC `tools/call create_solicitation`), every form of the
+   call without a registered org was refused:
+
+   - `org_slug: noora-health-pm-test` → `org_slug: no organisation 'noora-health-pm-test' in labs`
+   - `organization_id: "397"` → `no organisation '397' in labs`
+   - `program_id: "355"` only → `program 355 has no running organisation and no organisation labs knows, so it cannot own this call. Name the owning organisation with org_slug.`
+
+   What worked, and what this step does **unconditionally** (it is idempotent
+   — the upsert is keyed by slug and binds by Connect id, so re-running it on
+   an already-registered org is a no-op, not a duplicate):
+
+   1. **The owner is the program's PM org** — the org Step 5 resolved the
+      program under (the `/a/<org>/program/<id>/` segment of
+      `opp.yaml.connect.program.url`, else the run's
+      `products.connect.pm_org_slug`, else the configured `connect_orgs.pm_org`).
+      Never the holding (NM) org and never the partner LLO: the call is the PM
+      org's.
+   2. **Read its Connect integer org id from the same `labs_context()` reply**
+      Step 5 used (the organization entry's `id`). Do not guess it from a slug.
+   3. **Register it:**
+
+      ```
+      mcp__connect-labs__supply_chain_org_upsert({
+        data: {
+          slug: <pm org slug>,
+          name: <the org's display name from labs_context>,
+          connect_organization_id: <Connect org integer id>,
+          connect_organization_slug: <pm org slug>,
+        },
+      })
+      ```
+
+      On the noora-health repro this returned labs org **349** with
+      `is_linked: true`. Binding by `connect_organization_id` is what makes
+      membership flow from Connect (`supply_chain/runner.is_member`), so the
+      caller — a member of the PM org on Connect — is a member of the LabsOrg
+      with no further grant.
+   4. **Pass `org_slug: <pm org slug>` AND `program_id: <Connect program
+      integer id>` on the Step 6 call.** `org_slug` names the owner;
+      `program_id` still links the call to its programme. With both, the same
+      repro published as labs solicitation **1000001**.
+
+   Branch on the call result, not on a read-back: if the upsert errors, halt
+   with a `[BLOCKER]` naming the org slug and the error verbatim — publishing
+   without a registered owner is refused by labs anyway, and guessing a
+   different `org_slug` would file the call under the wrong organisation.
+
 6. **Publish.** Call `mcp__connect-labs__create_solicitation` with the
    flat-fields shape from § Step 2 (every solicitation field as a
    top-level property — no `data: {...}` envelope). Labs validates the
@@ -779,6 +833,7 @@ contract.
 
    ```
    mcp__connect-labs__create_solicitation(
+     org_slug: <pm org slug registered in step 5a>,  # REQUIRED in practice since connect-labs#2567 — the owning LabsOrg
      program_id: <resolved labs_program_id as string>,
      title: ...,
      solicitation_type: 'eoi',                  # lowercase
@@ -787,7 +842,7 @@ contract.
      application_deadline: 'YYYY-MM-DD',        # date string, NOT response_window_days
      expected_start_date: 'YYYY-MM-DD',
      expected_end_date: 'YYYY-MM-DD',
-     estimated_scale: 'human-readable string',
+     estimated_scale: 'human-readable string',  # <= 200 chars (labs CharField(max_length=200))
      contact_email: ...,                        # OPTIONAL — include ONLY if the PDD names a contact; else OMIT this line entirely (no env fallback, no bot inbox)
      evaluation_criteria: [
        {id, name, weight, description, scoring_guide, linked_questions: [qid, ...]},
@@ -981,7 +1036,11 @@ contract.
      the #1858 error this ceiling was added to catch, and
      `templates/pdd-template.md § Timeline` asks a PDD to state where
      its clock starts precisely because both shapes are legal.
-   - `estimated_scale` is non-empty.
+   - `estimated_scale` is non-empty and **at most 200 characters** — check
+     this on the composed payload BEFORE the Step 6 publish too, not only on
+     the round-trip: the MCP schema has no `maxLength`, so an over-long value
+     is accepted by validation and dies in Postgres as a raw `DataError`
+     traceback (ace#3049).
    - `contact_email`: assert only **if you sent one** — when sent, it matches; when omitted (no PDD-derived contact), assert it is absent/empty on the round-trip (an omitted optional field is correct, not a miss).
    - `len(questions)` matches sent; every question has `id`, `text`, `type`, `framing` (non-empty), plus `required` if sent.
    - `len(evaluation_criteria)` matches sent; every criterion has `id`, `name`, `weight`, `scoring_guide`, `linked_questions` (non-empty); `sum(weights) == 100`.
@@ -1058,6 +1117,7 @@ contract.
          solicitation:
            solicitation_id: <returned>
            labs_program_id: <integer resolved in step 5>
+           owner_org_slug: <pm org slug registered in step 5a>
            public_url: <returned>
            manage_url: <returned>
            type: <EOI|RFP>
@@ -1098,6 +1158,15 @@ contract.
 - **`create_solicitation` returns 4xx**: preserve `draft.md`, halt,
   surface the error verbatim. Do not retry — most 4xx is a payload
   schema mismatch or the program_id is wrong.
+- **`create_solicitation` refuses with `no organisation '<x>' in labs` or
+  `... cannot own this call. Name the owning organisation with org_slug.`**:
+  Step 5a was skipped or registered a different slug. Run the
+  `supply_chain_org_upsert` of Step 5a for the PM org and retry with that
+  `org_slug` (ace#3049). Do not switch to `organization_id` — it resolves
+  through the same registry and is refused the same way.
+- **`create_solicitation` fails with `DataError: value too long for type
+  character varying(200)`**: `estimated_scale` is over 200 characters.
+  Shorten it in the payload and re-publish; nothing was written.
 - **`generate_criteria` returns degenerate output** (empty list, single
   criterion): write what was returned, mark `evaluation_criteria` as
   `needs-review` in `published.md`, still publish. Criteria are editable
@@ -1127,7 +1196,10 @@ contract.
 ## MCP Tools Used
 
 - `connect-labs`: `labs_context` (resolve Connect program name → labs
-  integer program_id, when not cached), `create_solicitation`,
+  integer program_id, when not cached; also the PM org's Connect integer
+  id for step 5a), `supply_chain_org_upsert` (register the PM org as the
+  owning LabsOrg — step 5a, ace#3049), `create_solicitation` (with
+  `org_slug`),
   `get_solicitation` (round-trip verification — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`,
   `drive_update_file`, `update_yaml_file` (write
@@ -1177,6 +1249,7 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **connect-labs#2567 contract: the call needs a registered owning org, and `estimated_scale` is capped at 200 chars (dimagi-internal/ace#3049).** connect-labs#2567 (merged 2026-10-16) moved solicitations into the labs DB and made every call owned by a labs organisation (`LabsOrg`) the caller belongs to. ACE's per-run Connect PM orgs are not LabsOrgs, so on `noora-health/noora-health/20261015-1129` all three forms were refused (`org_slug` → `no organisation 'noora-health-pm-test' in labs`; `organization_id: "397"` → `no organisation '397' in labs`; `program_id: "355"` alone → `... cannot own this call. Name the owning organisation with org_slug.`). New § Step 5a registers the PM org unconditionally with `supply_chain_org_upsert` (bound by `connect_organization_id`, so membership flows from Connect; labs org 349, `is_linked: true`), and Step 6 passes `org_slug` + `program_id` — which published labs solicitation **1000001**. `estimated_scale` is `CharField(max_length=200)` upstream with no schema `maxLength`, so a 234-char value surfaced as a raw Postgres `DataError`; the cap now lives in the § Step 2 field table, the pre-publish check and the Step 7a round-trip. `owner_org_slug` is recorded in the products block. The same upstream PR removed the ConnectProd `/export/labs_record/` forward, so the CloudFront ~8 KB body block of ace#2993 is gone (a 26,689-byte payload published unchanged); this skill never carried a shortened-payload fallback for it, so there was nothing to retire here. | ACE team |
 | 2026-09-08 | **§ Step 3 required every criterion to link a question but never required the linked criterion to be able to SCORE it, so a required question could contribute nothing (dimagi-internal/ace#2305).** The shape block asked for non-empty `linked_questions` and non-empty `scoring_guide` and stopped there — both are satisfied by a link that points at a criterion whose prose never mentions the question's subject. That failure is silent by construction: counts reconcile, every `linked_questions` entry resolves, weights sum to 100, and `solicitation-review` then scores responses against a `scoring_guide` with nothing in it about the thing that was asked. Measured on `spark-facilitator/20260908-2215` (labs solicitation **19363**): a required `language-capacity` question — Chichewa/Tumbuka fluency by role, plus native-speaker capacity to review app content the design itself records as machine-authored and unreviewed — was linked to `facilitation-track-record`, whose description and scoring_guide contained no occurrence of *language*, *fluency*, *translation*, *Chichewa* or *Tumbuka*; no criterion in the rubric mentioned language at all. 8 of 9 questions had a lexical anchor, that one had none. Caught by `solicitation-create-eval` *after* publication (verdict still `pass` at 9.16, but it drove the sole `criteria_alignment` deduction) and repaired in place with `update_solicitation` — safe because the record had zero responses. § Step 3 now requires a per-question scoreability walk before publishing, and names the two link failures to check: linked-to-nothing, and linked-to-a-criterion-that-never-mentions-the-subject. | ACE team |
 | 2026-09-08 | **§ Step 6 documented how to send the JSON-RPC request and stopped one unwrap into the REPLY, so the record could not be found on a publish that had already succeeded (dimagi-internal/ace#2302).** The route itself was added hours earlier (ace#2261) and its response guidance ended at "take the line beginning `data: ` and JSON-parse the remainder" — which yields `{content, isError, structuredContent}`, not the solicitation. The record is **four** levels down, and the middle two are unguessable: `result["content"][0]["text"]` is a JSON string that parses to *another* `[{type, text}]` list, whose `[0]["text"]` parses to the record. An agent following the doc literally calls `.keys()` or `["id"]` on the first parse and raises `AttributeError`/`KeyError` **after** the external write landed (HTTP 200, record created) — the worst moment to be unsure whether a call worked. There is a one-liner the doc never mentioned: `result.structuredContent` holds the decoded record directly, on both `create_solicitation` and `get_solicitation`. Measured on `spark-facilitator/20260908-2215` (labs solicitation **19363**, program 210): 3 calls burned on the unwrap depth during the Step 7a round-trip. Same class as the `Accept`-header/406 fix in the entry below — request shape fixed, response shape still under-documented — and it now bites every Phase 8 above ~20 KB, which this skill measures as the normal case (33–50 KB). Step 6 gains the envelope note; Step 7a points at it for the read-back. | ACE team |
 | 2026-09-08 | **Step 6 routed a >40 KB payload through the model's context while §§ 4/8 of the same skill mandated `localFilePath` for the SAME bytes (dimagi-internal/ace#2261).** The draft, the published doc and the publish body are one payload — §§ 4 and 8 say so ("reuse the step-4 scratch file") and measure it at 49,531 / 51,920 chars — but only two of the three consumers were routed off disk. The third, the publish itself, was pinned to `mcp__connect-labs__create_solicitation`, whose arguments are inline-only; the labs schema has no file-handle param (verified against the live `tools/list`) and it is a labs-side tool, so it cannot be fixed atom-side. The JSON-RPC route that solves it was already acknowledged — once, as an unexplained "fallback", in Step 7a rather than Step 6 — so nothing told an agent it was allowed or that a large payload was the case for it. Measured on `bednet-check-2-visit/20260907-1126` (labs solicitation **19201**, program 231): 33,557-byte payload published via `curl --data-binary @rpc.json`, HTTP 200, Step 7a round-trip green on every assertion. Step 4 now composes `payload.json` BEFORE the publish; Step 6 documents the JSON-RPC route for bodies above ~20 KB and names the `InputValidationError` failure mode a large generated argument object invites. Also fixed the § Step 6 `tools/list` curl, which **406s as printed** — it omits `Accept: application/json, text/event-stream`, and its reply is SSE rather than plain JSON. Both cost a round of rediscovery on the same run. | ACE team |

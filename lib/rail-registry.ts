@@ -292,6 +292,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/shipping-version-race.test.ts': { issues: ['ace#1593', 'ace#1595', 'ace#1596', 'ace#1584', 'ace#1597', 'ace#1598', 'ace#1588', 'ace#1601'] },
   'test/skills/skill-atom-field-claims.test.ts': { issues: ['ace#1550'] },
   'test/skills/solicitation-end-date-addend.test.ts': { issues: ['ace#1858'], observed: 'bednet-check-2-visit/20260828-0629' },
+  'test/skills/solicitation-labs-owner.test.ts': { issues: ['ace#3049'], observed: 'noora-health/20261015-1129' },
   'test/skills/solicitation-zero-responses-doctrine.test.ts': { issues: ['ace#2171'] },
   'test/skills/nova-private-work.test.ts': { issues: ['ace#2526', 'voidcraft-labs/commcare-nova#693'], note: 'observed live 2026-09-28 against a throwaway Nova app, not a run' },
   'test/skills/starter-module-removal.test.ts': { issues: ['ace#1787'], observed: 'bednet-check-2-visit/20260828-0629' },

@@ -84,7 +84,8 @@ a **full Claude Code restart** is needed for it to take effect.
 
 | Atom | Used by |
 |---|---|
-| `create_solicitation` | `solicitation-create` |
+| `create_solicitation` | `solicitation-create` (pass `org_slug` — since connect-labs#2567 the call must be owned by a registered labs org the caller belongs to; ace#3049) |
+| `supply_chain_org_upsert` | `solicitation-create` Step 5a (registers the run's Connect PM org as the owning labs org, bound by `connect_organization_id`) |
 | `get_solicitation` | `solicitation-create` (reuse-detection), `solicitation-monitor` |
 | `update_solicitation` | `solicitation-create` (re-publish path), `solicitation-review` |
 | `list_solicitations` | `solicitation-create` (program-scoped reuse check) |

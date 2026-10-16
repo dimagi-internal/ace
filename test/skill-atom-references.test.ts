@@ -79,6 +79,8 @@ const ATOM_PREFIXES = [
  * issue or fix the skill.
  */
 const ALLOWLIST = new Set([
+  // labs `supply_chain_org_upsert` data field binding a LabsOrg to its Connect org (solicitation-create Step 5a, ace#3049) — a field, not an atom.
+  'connect_organization_id',
   // HQ user-data key Nova's forms read for the worker's primary case-sharing place — a field, not an atom.
   'commcare_primary_case_sharing_id',
   // Per-opp tenancy field names (ace-web apps/opps/tenancy.py), read by clone-to-new-workspace.
