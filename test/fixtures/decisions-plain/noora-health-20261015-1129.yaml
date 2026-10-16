@@ -1,0 +1,28 @@
+# Reviewer-visible decision text from dimagi-team/noora-health/20261015-1129
+# (ace#3016). run-surface-audit-eval capped jargon_and_insider_language at 4 on
+# these; the decisions plain-language gate passed every one. The issue quoted
+# each string truncated at 60 characters and the rows were rewritten by hand on
+# 2026-10-16, so each `text` below is the VERBATIM 60-char `prefix` completed
+# with the terms the issue lists for it. Consumed by
+# test/lib/decisions-plain-language-gate.test.ts.
+positive:
+  - prefix: "Nova review on both apps (hau, Latin script)."
+    text: "Nova review on both apps (hau, Latin script)."
+    kind: pipeline_vocabulary
+  - prefix: "How should this be handled: Hausa text in both apps (includi"
+    text: "How should this be handled: Hausa text in both apps (including the Learn fail message) is ACE-authored and has not been checked by a Hausa speaker."
+    kind: pipeline_vocabulary
+  - prefix: "How should this be handled: Unapproved values for operator r"
+    text: "How should this be handled: Unapproved values for operator review are held until someone approves them."
+    kind: pipeline_vocabulary
+  - prefix: "a lookup table of facility id, name, LGA and location must r"
+    text: "a lookup table of facility id, name, LGA and location must reach us before launch."
+    kind: undefined_abbreviation
+# Plain sentences that must stay clean: ordinary "learn" / "deliver", a
+# defined abbreviation, and the programme's own acronyms.
+negative:
+  - "Workers learn the counselling steps before they deliver the first session."
+  - "Each worker must learn the module content and deliver it to mothers in the ward."
+  - "A lookup table of facility id, name, Local Government Area (LGA) and location must reach us before launch."
+  - "The CHW records each visit; the LLO reviews a sample every week."
+  - "Hausa text in both apps has been checked by a native speaker."

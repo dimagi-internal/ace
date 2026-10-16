@@ -10,6 +10,7 @@
 // The fixture rows are verbatim from that run's decisions.yaml.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 
 import { parseDecisionsYaml, DecisionRowStrictSchema, type DecisionsLog, type DecisionRow } from '../../lib/decisions-schema';
 import { auditDecisionsPlainLanguage, enrichDecisionsLog } from '../../lib/decisions-enrich';
@@ -179,5 +180,50 @@ describe('derived text is generated clean', () => {
   it('check_at drops record ids and stage asides from a Spot-check sentence', () => {
     expect(spotCheckPlaceFromReasoning('Why. Spot-check: Connect › opportunity ad6c2d40 › payment units.')).toBe('Connect › opportunity › payment units');
     expect(spotCheckPlaceFromReasoning('Why. Spot-check: training LLO guide (Phase 6).')).toBe('training LLO guide');
+  });
+});
+
+// ace#3016 — ACE pipeline vocabulary and undefined abbreviations.
+describe('pipeline vocabulary in decision text (noora-health/20261015-1129)', () => {
+  type Pos = { prefix: string; text: string; kind: string };
+  const NOORA = parseYaml(readFileSync('test/fixtures/decisions-plain/noora-health-20261015-1129.yaml', 'utf8')) as {
+    positive: Pos[];
+    negative: string[];
+  };
+  const kinds = (t: string) => auditOutsiderText(t, 'decision').map((i) => i.kind);
+  const toks = (t: string) => auditOutsiderText(t, 'decision').map((i) => i.token);
+
+  it.each(NOORA.positive.map((p) => [p.text.slice(0, 40), p] as const))('flags "%s…"', (_l, p) => {
+    expect(kinds(p.text)).toContain(p.kind);
+    expect(plainLanguageFindings(p.text)).not.toEqual([]);
+  });
+
+  it('the verbatim 60-char prefixes already fire where they carry the term', () => {
+    expect(toks(NOORA.positive[0].prefix)).toContain('Nova');
+    expect(toks(NOORA.positive[3].prefix)).toContain('LGA');
+  });
+
+  it('names each pipeline term', () => {
+    expect(toks(NOORA.positive[1].text)).toEqual(expect.arrayContaining(['Learn fail message', 'ACE-authored']));
+    expect(toks(NOORA.positive[2].text)).toEqual(['operator review']);
+    expect(toks('Check the Deliver app form and each Learn module.')).toEqual(['Deliver app form', 'Learn module']);
+  });
+
+  it.each(NOORA.negative)('passes plain prose: %s', (t) => {
+    expect(plainLanguageFindings(t)).toEqual([]);
+  });
+
+  it('the spark rows that read plainly still pass', () => {
+    expect(kinds(byId('payment-rate').plain!)).toEqual([]);
+    expect(kinds(byId('deliver-latitude-payable-slot-key-component').check_at!)).toEqual([]);
+  });
+
+  it('leaves the PDD description profile alone', () => {
+    expect(auditPddDescription(NOORA.positive[0].text)).toEqual([]);
+  });
+
+  it('the strict write boundary refuses a plain line carrying pipeline vocabulary', () => {
+    const r = byId('payment-rate');
+    expect(() => DecisionRowStrictSchema.parse({ ...r, plain: NOORA.positive[0].text })).toThrow(/`plain` must read for a programme partner/);
   });
 });

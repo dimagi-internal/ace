@@ -86,7 +86,11 @@ internal) — must:
    snake_case identifier, an `=` / `==` / `!=` / `>=` / `<=` expression,
    upper-case `AND`/`OR`/`NOT`, a run id (`20261001-2208`), a platform record
    id (`ad6c2d40`, a UUID), an issue number (`#2512`, `ace#2419`), "Phase N", a
-   code span, or ACE jargon (PDD, CCZ, `§`, skill names, repo paths).
+   code span, ACE jargon (PDD, CCZ, `§`, skill names, repo paths), ACE
+   pipeline vocabulary ("Nova", "operator review", "ACE-authored", capitalised
+   Learn/Deliver as a build qualifier — "the Learn fail message", "Deliver
+   form"; ace#3016), or an abbreviation an outsider cannot know (`LGA`) unless
+   the same text spells it out ("Local Government Area (LGA)").
    **Quoting does not exempt identifier shapes** — `"meeting_conducted = yes"`
    is what reached the spark-facilitator/20261001-2208 public page.
 
