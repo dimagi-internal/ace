@@ -29,7 +29,7 @@ acts in`).
 | Phase 4 | `4-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
 | Phase 8 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 3 | `3-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
-| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read ONLY for their verification rules — Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview |
+| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read for their verification rules and their payment terms — Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview; Step 6's payment-unit set comes from each component's payment terms (§ Archetypes › Componentized programmes, ace#2163) |
 | Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Step 8a's rule rows: the CCZ-side enforcement a rule relies on when Connect cannot carry it |
 
 ## Phase folder anchor
@@ -1615,7 +1615,9 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
 - **Payment:** **one** payment unit for the whole arc — not one per
   phase. The sequence is expressed in `entity_id`, not in the number of
   payment units. (Contrast `multi-stage`, which really does take one PU
-  per stage.)
+  per stage.) On a **componentized** programme the per-component PDD
+  payment terms set the PU count instead — see § Componentized programmes
+  below; this rule then governs only `entity_id` shape.
 - **`entity_id` is the load-bearing field for this archetype.** It must
   carry entity + sequence position, per the PDD's
   `payment-unit-entity-id` decision — e.g.
@@ -1664,6 +1666,52 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
 - Configure verification + payment for **Stage 1 only**. Subsequent
   stages get their own opportunities (or their own payment-unit calls
   on the same opportunity, depending on the PDD's stage-overlap pattern).
+
+### Componentized programmes (`products.mode: componentized`) — any archetype
+
+`mode` is a second axis, orthogonal to `archetype:`. When
+`run_state.phases.idea-to-design.products.mode` is `componentized`, the
+programme was authored as separately-designed components, and **each
+component PDD declares its own payment terms** — so payability is
+heterogeneous by construction (ace#2163, observed on
+`poverty-graduation/20260905-1345` and `poverty-graduation/20260908-0510`).
+The archetype rules above still apply, but only to what they actually
+govern:
+
+- **The archetype rule governs `entity_id` SHAPE only — never the payment-
+  unit COUNT.** `longitudinal-visits`' "one payment unit for the whole arc"
+  is a rule about where the *sequence* is expressed (in `entity_id`, not in
+  a PU per phase). It is not a PU budget, which is why it composes with a
+  componentized programme instead of conflicting with it. Keep every
+  `entity_id` requirement of the declared archetype (entity + sequence
+  position, the three failure modes above).
+- **Per-component PDD payment terms set the payment-unit count.** Read every
+  component PDD (`products.components[].pdd_file_id`, plus the overview's
+  Downstream Phase Guide where it addresses Phase 4) and build one payment
+  unit per component the terms make payable, each with that component's own
+  deliver unit(s), `amount`, `max_total` and `max_daily`. A component its PDD
+  declares not separately payable (e.g. enrolment) gets **no** unit. Never
+  put two independently-payable components' deliver units in one PU's
+  `required_deliver_units`: that field requires ALL listed units before
+  payment triggers, so one PU over a targeting survey and an asset delivery
+  withholds the survey payment until the asset lands months later — a
+  payment model that cannot pay as designed.
+- **A payability that depends on an undeclared deployment choice is a
+  deployment parameter, not a silent pick.** Example: a consumption-support
+  component paid for in-person distribution but not for remote transfer,
+  with the transfer method undeclared. Do not choose a reading here. Write
+  one decision row (the open question — `review_ask:
+  recommended-confirmation`, `owner: partner`, the method named as the
+  parameter in `plain_question`, both readings in `options`) and make the
+  Deliver app (Phase 3), this skill's payment units and Phase 5's knowledge
+  base carry the SAME working reading — the one the Phase 3 Deliver app
+  already built, read from `3-commcare/pdd-to-deliver-app_summary.md` — and
+  cite that row. Three phases answering it three ways (paid DU in the app,
+  no PU on Connect, "unpaid" in the bot) is the failure this rule exists to
+  prevent.
+- **Record the precedence.** Write a decisions row (`cs-payment-unit-shape`
+  or similar) naming the archetype, the per-component PU set, and each
+  component left unpaid with the PDD clause that makes it so.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file`
