@@ -1562,6 +1562,43 @@ those, poll the upstream service's status endpoint directly with a
 timeout, fail loud on exhaustion. Do not invent a "background task ID"
 that the orchestrator can't actually verify is alive.
 
+**Each poll step stays at or under 270 s** — see § Waiting on children for why.
+
+### Waiting on children
+
+A child you dispatched — `Agent(...)`, or a `run_in_background` command — reports
+back with a completion notification, and **that notification resumes whoever is
+waiting on it: the top-level orchestrator, and a phase subagent too.** Measured on
+`kaduna-graduation/20261015-1411` Phase 3: after its tick timer ran out, the phase
+ended its turn with *"Waiting on the Deliver architect."*, sat 43 minutes with no
+timer and no poll, and was resumed by the architect's notification. So the wait
+is: end the turn with one status line. Nothing else.
+
+**Never bridge a wait with a foreground sleep longer than the prompt cache.** The
+cache expires after 5 idle minutes; a wake after that re-writes the session's
+whole context before it can do anything. `noora-health/20261015-1129` Phase 7
+waited on the DDD loop with `perl -e 'select(undef,undef,undef,540..595)'` seven
+times (then 300 s and 420 s on a preview child) — each wake a 450–720k
+re-cache, and slower for it; kaduna Phase 3 ran a `Monitor` of `sleep 290` ticks
+to stay alive when it did not need to. canopy's `hooks/sleep_cap_guard.py`
+(canopy#952) now refuses any foreground wait whose sleeps total more than
+270 s — `sleep`, perl/python sleeps, loops counted by iteration — and names
+these three patterns:
+
+1. **The notification** (above) — the default for any child you dispatched.
+2. **`gh pr checks <n> --watch` as a `run_in_background` command** — for a PR
+   (`skills/shipping`).
+3. **A bounded poll in steps of ≤ 270 s** — only for upstream state that sends no
+   notification (§ When polling IS appropriate), and in a one-shot runner turn,
+   where canopy's `one_shot_turn_guard` refuses background work.
+
+**And a phase whose own products are done should not stay alive for a long child
+at all.** Phase 7's products are finished before the DDD loop starts; only the
+post-render steps depend on it. So under `/ace:run` the phase hands the prepared
+dispatch back (`products.synthetic.ddd_handoff`), the orchestrator runs
+`Agent(canopy:ddd)` and waits on its notification, then re-dispatches the phase
+with `mode: finalize` (`lib/ddd-handoff.ts`, `agents/ace-orchestrator.md § Phase 7`).
+
 ### Skill Invocation Discipline
 
 When a procedure step says "Invoke X" or "Dispatch X", that means

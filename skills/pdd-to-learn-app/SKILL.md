@@ -567,6 +567,15 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose
      trigger doesn't fire.
 
+   - **App-test economy (always).** Insert the `REQUIRED:` app-test economy
+     paragraph from `skills/pdd-to-deliver-app/SKILL.md` Step 3 **verbatim**
+     into the brief, in its own paragraph (batch ≤ 8 `actions` per
+     `continue_app_test` with `expect`; no re-observing; paged
+     `read_app_test` for evidence; re-test only touched journeys; no
+     confirm-`get_form` after a save). Same reason: app-test results are
+     35–108 KB each with no compact mode (voidcraft-labs/nova-plugin#71),
+     and they accumulate in the architect's context for the whole build.
+
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the
    response:

@@ -16,14 +16,14 @@ context. A `subagent` is dispatched via `Agent(...)` and descends one level.
 
 | Node | Form | Dispatches | Invoked how |
 |------|------|-----------|-------------|
-| `ace-orchestrator` | inline | the 10 phase nodes | `/ace:run` reads it and executes inline |
+| `ace-orchestrator` | inline | the 10 phase nodes + `canopy:ddd` (Phase 7's loop, via `ddd_handoff`) | `/ace:run` reads it and executes inline |
 | `idea-to-design` (P1) | subagent | — | `Agent(idea-to-design)` |
 | `scenarios-and-acceptance` (P2) | subagent | — | `Agent(scenarios-and-acceptance)` |
 | `commcare-setup` (P3) | subagent | `nova:nova-architect-autonomous` via `/nova:autobuild` | `Agent(commcare-setup)` |
 | `connect-setup` (P4) | subagent | — | `Agent(connect-setup)` |
 | `ocs-setup` (P5) | subagent | — | `Agent(ocs-setup)` |
 | `qa-and-training` (P6) | subagent | — | `Agent(qa-and-training)` |
-| `synthetic-data-and-workflows` (P7) | subagent | `canopy:ddd` | `Agent(synthetic-data-and-workflows)` |
+| `synthetic-data-and-workflows` (P7) | subagent | `canopy:ddd` (only outside `/ace:run`; there it hands off — `lib/ddd-handoff.ts`) | `Agent(synthetic-data-and-workflows)` |
 | `solicitation-management` (P8) | subagent | — | `Agent(solicitation-management)` |
 | `execution-manager` (P9) | subagent | — | `Agent(execution-manager)` |
 | `closeout` (P10) | subagent | — | `Agent(closeout)` |

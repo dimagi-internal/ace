@@ -510,6 +510,18 @@ dispatches the way it parallelizes regular tool calls, and Nova's
 `/nova:autobuild` cannot be parallelized in this environment today.
 Dispatch Learn, await its result, then dispatch Deliver.
 
+**"Await" means the completion notification — no timer, no tick loop, no
+sleep.** After the dispatch, do whatever independent work you have, then end
+your turn with one line (`Waiting on the Deliver architect.`); the architect's
+notification resumes you. On `kaduna-graduation/20261015-1411` this phase kept
+itself alive with a background `sleep 1200` plus a `Monitor` of `sleep 290`
+ticks — needless, since the same run then waited 43 minutes on the Deliver
+architect with neither and was resumed on time. A foreground sleep over 270 s
+is refused by canopy's `sleep_cap_guard` (each wake past the 5-minute prompt
+cache re-writes your whole context). Polling Nova's `list_apps` while you wait
+also burns its rate limit (that run hit *"Too many requests"*). Full rule:
+`agents/orchestrator-reference.md § Waiting on children`.
+
 The two builds are otherwise independent — Learn reads the PDD's
 learning objectives (or the sentinel spec for focus-group), Deliver
 reads the visit / session-attestation spec, neither depends on the
