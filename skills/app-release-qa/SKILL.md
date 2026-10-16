@@ -953,6 +953,17 @@ in `report.findings` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the l
 nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
 (replace the retry text with a pointer to the module content).
 
+**`report.info` is `[INFO]`, never a BLOCKER** (ace#2208). It holds hits the
+check cannot stand behind as a leak: an answer token of ≤ 4 letters (`No.`,
+Tumbuka `Yayi.` — also an ordinary clause-final negator in Bantu-language
+layers), or any hit on a form with Connect learn markers but no `<assessment>`
+block (`report.gating === 'non-gating'`, a baseline/pre-test Connect never
+scores, ace#1131). Record each in the verdict so a reviewer can read it; a
+genuine restatement in a pre-test still teaches the answer the gate later
+asks, so say so when the text plainly restates one. Matching is per item (a
+label is compared only with the answers of the items its own score depends
+on) and on Unicode word boundaries.
+
 **`report.blind` is a `[BLOCKER]` too — a blind check is not a clean one.** It
 lists fail-branch labels whose text could not be resolved and answer literals
 with nothing to match against; `report.ok` is false whenever it is non-empty,
