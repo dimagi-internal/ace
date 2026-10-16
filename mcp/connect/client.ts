@@ -1,4 +1,5 @@
 import type { FlwInviteRow } from '../../lib/connect-flw-invites.js';
+import type { ReceivedInvitation } from '../../lib/connect-orgs.js';
 import type {
   Program,
   ProgramListRow,
@@ -323,6 +324,14 @@ export interface ConnectClient {
     application_id: string;             // ProgramApplication UUID returned by sendLloInvite
   }): Promise<ProgramApplication>;
   listInvites(args: { organization_slug: string; program_id: string }): Promise<{ invites: Invite[] }>;
+  /**
+   * Invitations addressed TO `organization_slug`, read from that org's OWN
+   * programme page (`/a/<org>/program/`), which Connect scopes to
+   * applications whose organization is that org. Only INVITED rows carry an
+   * application id there. This is the non-blind read the accept authority
+   * gate resolves ownership from (ace#3009) — unlike `listInvites`.
+   */
+  listReceivedInvitations(args: { organization_slug: string }): Promise<{ invitations: ReceivedInvitation[] }>;
 
   /**
    * Invite one or more FLWs (by phone) to an opportunity. Server validates

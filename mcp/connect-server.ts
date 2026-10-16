@@ -12,7 +12,7 @@
  */
 import { config as dotenvConfig } from 'dotenv';
 import { assertAceOwnedHqDomain } from '../lib/destructive-guards.js';
-import { assertAcceptingForSelf } from '../lib/connect-orgs.js';
+import { assertAcceptingForSelf, resolveControlledApplicationOrg } from '../lib/connect-orgs.js';
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-connect', import.meta.url);
@@ -741,14 +741,19 @@ server.tool('connect_accept_program_application',
   // two minutes after inviting them. There is NO undo (the view has no
   // transition out of ACCEPTED), so this resolves whose application it is and
   // FAILS CLOSED when it cannot tell.
+  //
+  // Ownership is resolved ONLY among the orgs ACE controls (environment), each
+  // read on its OWN programme page — Connect scopes that page to invitations
+  // addressed to the org (ace#3009). It used to ask `listInvites` at the PM
+  // org, a blind read that returned [] for live invites, so every accept —
+  // ACE's own NM org included — failed closed. No caller argument names the
+  // subject org, so a partner's application can never be "found".
   async (args) => runAtom(async () => {
     const c = await client();
-    const { invites } = await c.listInvites({
-      organization_slug: args.organization_slug,
-      program_id: args.program_id,
-    });
-    const app = invites.find((i) => i.id === args.application_id);
-    assertAcceptingForSelf(app?.organization, process.env);
+    const owner = await resolveControlledApplicationOrg(args, process.env, async (org) =>
+      (await c.listReceivedInvitations({ organization_slug: org })).invitations,
+    );
+    assertAcceptingForSelf(owner, process.env);
     return c.acceptProgramApplication(args);
   })
 );

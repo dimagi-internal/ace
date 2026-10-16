@@ -161,6 +161,18 @@ alone makes the artifact land outside `4-connect` and fail
       `68b0a689-7326-4c13-a21e-ef492db3a738` → `invited`, accept →
       `accepted`, then the NM-held create succeeded.
 
+      **The accept is authority-gated (ace#2954, ace#3009) and takes no extra
+      argument.** The atom refuses unless the application is listed on the
+      OWN programme page (`/a/<org>/program/`) of an org ACE controls
+      (`ACE_CONNECT_PM_ORG` / `ACE_CONNECT_NM_ORG` /
+      `ACE_CONNECT_CONTROLLED_ORGS`, environment only). Connect renders the
+      application id there only for the invited org and only while it is
+      `INVITED`. So in `pm-nm` mode the NM org's application resolves; a
+      partner's never does. A refusal (`ActingForAnotherOrgError`) means the
+      application belongs to an uncontrolled org, is no longer `INVITED`, or
+      is the PM org's own application (`self-managed` — the PM view lists no
+      application ids). Do not work around it; record it and halt.
+
       **Do not paraphrase these signatures — the parameter names above are
       the atoms' real ones, per `docs/atom-schemas.md`.** Every name in this
       block was wrong until ace#1800 (`connect_send_llo_invite` takes

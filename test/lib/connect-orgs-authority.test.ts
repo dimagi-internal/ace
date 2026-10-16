@@ -7,6 +7,8 @@ import {
   ActingForAnotherOrgError,
   LEGACY_DEFAULT_PM_ORG,
   CONTROLLED_ORGS_ENV,
+  parseReceivedInvitations,
+  resolveControlledApplicationOrg,
 } from '../../lib/connect-orgs.js';
 
 /**
@@ -95,8 +97,12 @@ describe('both backends carry the gate (ace#2954)', () => {
     const src = read('mcp/connect-server.ts');
     const i = src.indexOf("server.tool('connect_accept_program_application'");
     expect(i).toBeGreaterThan(-1);
-    const handler = src.slice(i, i + 1800);
+    const handler = src.slice(i, src.indexOf("server.tool('connect_list_invites'", i));
     expect(handler).toContain('assertAcceptingForSelf');
+    // ace#3009: ownership must come from the controlled orgs' own pages, not
+    // from the blind listInvites read.
+    expect(handler).toContain('resolveControlledApplicationOrg');
+    expect(handler).not.toContain('listInvites(');
     // The gate must precede the mutation, not follow it.
     expect(handler.indexOf('assertAcceptingForSelf'))
       .toBeLessThan(handler.indexOf('acceptProgramApplication(args)'));
@@ -106,11 +112,108 @@ describe('both backends carry the gate (ace#2954)', () => {
     const src = read('mcp/connect/backends/playwright.ts');
     const i = src.indexOf('acceptProgramApplication: ConnectClient');
     expect(i).toBeGreaterThan(-1);
-    const body = src.slice(i, i + 2600);
+    const body = src.slice(i, i + 3200);
     expect(body).toContain('assertAcceptingForSelf');
+    expect(body).toContain('resolveControlledApplicationOrg');
+    expect(body.slice(0, body.indexOf('/program/${args.program_id}/application/'))).not.toContain('listInvites(');
     // This backend builds `/a/<llo>/.../accept/` — the invited org's OWN url.
     // The gate must come before that request is built.
     expect(body.indexOf('assertAcceptingForSelf')).toBeLessThan(body.indexOf('/program/${args.program_id}/application/'));
+  });
+});
+
+/**
+ * ace#3009 — #2954's gate resolved the subject org via connect_list_invites,
+ * a BLIND read that returns [] even for a live invite, so it failed closed on
+ * EVERY accept, ACE's own NM org included (kaduna-graduation/20261015-1411:
+ * program b628a35f…, application da8c184e… for ace-nm-org, status invited;
+ * list_invites returned [] at both orgs). The resolver now reads each
+ * CONTROLLED org's own programme page, which Connect scopes to invitations
+ * addressed to that org.
+ */
+describe('resolveControlledApplicationOrg (ace#3009)', () => {
+  const env = { ACE_CONNECT_PM_ORG: 'ace-pm-org', ACE_CONNECT_NM_ORG: 'ace-nm-org' };
+  const PROG = 'b628a35f-be8f-469f-83ab-1b14bf469976';
+  const APP = 'da8c184e-735c-4fb5-aa2b-5a2567558a45';
+  // Shape of the live nm_home.html Apply button, observed 2026-10-16.
+  const nmHome = (org: string, app = APP) =>
+    `<button hx-post="/a/${org}/program/${PROG}/application/${app}/apply/" hx-swap="outerHTML" hx-target="body"
+      class="button button-sm primary-dark">Apply to Program</button>`;
+  const pmHome = '<p class="card_title">Some programme</p>';
+
+  it('the blind list read cannot resolve the live repro — the old gate always refused', () => {
+    // What #2954 did: look the application up in listInvites' output, which
+    // was [] live, so the org was always undefined and the gate refused.
+    const blindInvites: Array<{ id: string; organization: string }> = [];
+    const old = blindInvites.find((i) => i.id === APP)?.organization;
+    expect(() => assertAcceptingForSelf(old, env)).toThrow(ActingForAnotherOrgError);
+  });
+
+  it('resolves the live repro to ace-nm-org from its own programme page', async () => {
+    const pages: Record<string, string> = { 'ace-pm-org': pmHome, 'ace-nm-org': nmHome('ace-nm-org') };
+    const org = await resolveControlledApplicationOrg(
+      { program_id: PROG, application_id: APP },
+      env,
+      async (o) => parseReceivedInvitations(pages[o] ?? '', o),
+    );
+    expect(org).toBe('ace-nm-org');
+  });
+
+  it('never reads an uncontrolled org, so a partner application is refused (ace#2954 stays closed)', async () => {
+    const read: string[] = [];
+    await expect(
+      resolveControlledApplicationOrg({ program_id: PROG, application_id: APP }, env, async (o) => {
+        read.push(o);
+        // Even if a page showed the partner's application, the url's org
+        // segment is the partner's, not the page's, so it does not count.
+        return parseReceivedInvitations(nmHome('tekzal'), o);
+      }),
+    ).rejects.toThrow(ActingForAnotherOrgError);
+    expect([...read].sort()).toEqual(['ace-nm-org', 'ace-pm-org']);
+  });
+
+  it('a run-scoped override cannot add an org to the search', async () => {
+    const read: string[] = [];
+    const overridden: Record<string, string> = { ...env, run_connect_orgs: 'tekzal' };
+    await expect(
+      resolveControlledApplicationOrg({ program_id: PROG, application_id: APP }, overridden, async (o) => {
+        read.push(o);
+        return [];
+      }),
+    ).rejects.toThrow(ActingForAnotherOrgError);
+    expect(read).not.toContain('tekzal');
+  });
+
+  it('a different application on a controlled page does not match', async () => {
+    const other = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+    await expect(
+      resolveControlledApplicationOrg({ program_id: PROG, application_id: APP }, env, async (o) =>
+        parseReceivedInvitations(nmHome(o, other), o),
+      ),
+    ).rejects.toThrow(ActingForAnotherOrgError);
+  });
+
+  it('FAILS CLOSED when every read errors, and names the failures', async () => {
+    await expect(
+      resolveControlledApplicationOrg({ program_id: PROG, application_id: APP }, env, async (o) => {
+        throw new Error(`HTTP 403 at /a/${o}/program/`);
+      }),
+    ).rejects.toThrow(/HTTP 403 at \/a\/ace-nm-org\/program\//);
+  });
+});
+
+describe('parseReceivedInvitations', () => {
+  it("keeps only apply urls under the page's own org slug", () => {
+    const html =
+      '<a hx-post="/a/ace-nm-org/program/b628a35f-be8f-469f-83ab-1b14bf469976/application/da8c184e-735c-4fb5-aa2b-5a2567558a45/apply/">' +
+      '<a hx-post="/a/tekzal/program/b628a35f-be8f-469f-83ab-1b14bf469976/application/11111111-1111-1111-1111-111111111111/apply/">';
+    expect(parseReceivedInvitations(html, 'ace-nm-org')).toEqual([
+      {
+        organization: 'ace-nm-org',
+        program_id: 'b628a35f-be8f-469f-83ab-1b14bf469976',
+        application_id: 'da8c184e-735c-4fb5-aa2b-5a2567558a45',
+      },
+    ]);
   });
 });
 
