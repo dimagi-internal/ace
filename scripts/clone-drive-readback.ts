@@ -47,6 +47,7 @@ import {
   type CopiedText,
   type SourceFile,
 } from '../lib/clone-readback.js';
+import { CONTENT_LEDGER_NAME } from '../lib/release-readiness.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -130,7 +131,9 @@ async function main(): Promise<number> {
   ];
   const copies: Array<CopiedText & { entry: Entry; doc?: any }> = [];
   for (const f of targetTree) {
-    if (f.folder || !isIdBearingCopy(f.path, f.mimeType)) continue;
+    // The readiness content ledger NAMES source ids by design (its id map) —
+    // it is the record of the rewrite, not a copy that still points back.
+    if (f.folder || !isIdBearingCopy(f.path, f.mimeType) || f.path === CONTENT_LEDGER_NAME) continue;
     if (f.mimeType === GOOGLE_DOC) {
       const doc = (await docs.documents.get({ documentId: f.id })).data;
       const { text, links } = docTextAndLinks(doc);
@@ -176,7 +179,10 @@ async function main(): Promise<number> {
         files.push({ action: 'update', fileId: c.entry.id, path: c.path, mimeType: c.mimeType, replacements: rw.replacements, localFilePath: local });
       }
     }
-    const plan = { ids: Object.keys(map.ids).length, ambiguous: map.ambiguous, unmatched: map.unmatched, files };
+    // `id_map`: the substitutions this repair makes — clone-run records them in
+    // the readiness content ledger, so the rewrite does not make every eval of
+    // the clone read stale (lib/release-readiness.ts `recordMappedRewrite`).
+    const plan = { ids: Object.keys(map.ids).length, ambiguous: map.ambiguous, unmatched: map.unmatched, files, id_map: map.ids };
     fs.writeFileSync(path.resolve(planDir, 'plan.json'), JSON.stringify(plan, null, 2));
     report.plan = { path: path.resolve(planDir, 'plan.json'), files: files.length, ambiguous: map.ambiguous.length };
   }

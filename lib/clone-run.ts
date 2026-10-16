@@ -746,6 +746,59 @@ export function productsPointAtTarget(
   return problems;
 }
 
+// ── The id/URL map a rewrite stage applied (content ledger) ─────────
+
+export interface AppliedPair {
+  from: string;
+  to: string;
+  kind?: string;
+}
+
+const HEX_ID_RE = /^[0-9a-f-]{16,}$/i;
+
+/**
+ * Every substitution `clone-asset-rewrite.ts`'s plan can make, as flat pairs
+ * for the readiness content ledger (lib/release-readiness.ts): the asset pairs
+ * (HQ space, app/build ids, Connect program/opportunity/org), each long hex
+ * id's 8-char prefix (how prose abbreviates them — the rewrite matches those
+ * too, lib/clone-asset-refs.ts `idPatterns`), the released versions, and the
+ * re-pointed frames (old Drive id → live one). A pair the ledger lacks makes a
+ * rewritten file read as changed — the safe direction — so this errs toward
+ * completeness, never toward pairs the rewrite does not make.
+ */
+export function rewritePairsFromAssetPlan(plan: unknown): AppliedPair[] {
+  const p = obj(plan);
+  const out: AppliedPair[] = [];
+  for (const raw of Array.isArray(p.pairs) ? p.pairs : []) {
+    const x = obj(raw);
+    const from = s(x.from);
+    const to = s(x.to);
+    if (!from || !to || from === to) continue;
+    out.push({ from, to, kind: s(x.kind) ?? 'asset' });
+    if (HEX_ID_RE.test(from) && from.length > 8 && x.kind !== 'opportunity_int') {
+      out.push({ from: from.slice(0, 8), to: to.slice(0, 8), kind: `${s(x.kind) ?? 'asset'}_prefix` });
+    }
+  }
+  for (const v of Object.values(obj(p.versions))) {
+    const from = s(obj(v).from);
+    const to = s(obj(v).to);
+    if (from && to && from !== to) out.push({ from, to, kind: 'version' });
+  }
+  for (const [from, to] of Object.entries(obj(obj(p.frames).repointed))) {
+    if (typeof to === 'string' && to && from !== to) out.push({ from, to, kind: 'frame' });
+  }
+  return out;
+}
+
+/** `clone-drive-readback.ts --plan`'s source → copy Drive ids, as pairs. */
+export function rewritePairsFromDriveIdPlan(plan: unknown): AppliedPair[] {
+  const pairs = obj(plan).pairs;
+  if (Array.isArray(pairs)) {
+    return pairs.map((x) => ({ from: String(obj(x).from ?? ''), to: String(obj(x).to ?? ''), kind: 'drive_id' })).filter((x) => x.from && x.to && x.from !== x.to);
+  }
+  return Object.entries(obj(obj(plan).id_map)).flatMap(([from, to]) => (typeof to === 'string' && to && to !== from ? [{ from, to, kind: 'drive_id' }] : []));
+}
+
 // ── Labs (ace#3020) ──────────────────────────────────────────────────
 
 export interface LabsRebuildContext {

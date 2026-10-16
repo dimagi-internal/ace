@@ -116,6 +116,7 @@ import {
   RELEASE_VERDICT_NAME,
   assessPlan,
   parseWaivers,
+  stalenessTextWanted,
   type LinkProbe,
   type ReleaseFinding,
   type ReleaseVerdict,
@@ -226,9 +227,30 @@ async function aceWebMembershipFor(ws: string): Promise<AceWebMembership | null>
 }
 
 async function inventory(): Promise<void> {
+  const files = await readInventory(need('run-folder'));
+  fs.writeFileSync(need('out'), JSON.stringify(files, null, 1));
+  process.stdout.write(JSON.stringify({ files: files.length, with_text: files.filter((f) => f.text).length }) + '\n');
+}
+
+/**
+ * Every file's path + modifiedTime, the text of the files the verdict reads,
+ * and — second pass — the text of the files whose CONTENT must overrule their
+ * timestamp (`stalenessTextWanted`: touched since a recorded pure rewrite, or
+ * graded with `artifact_sha256`). The second pass is empty on a run with no
+ * content ledger, so a normal inventory costs what it always did.
+ */
+async function readInventory(runFolderId: string): Promise<RunFile[]> {
   const auth = new google.auth.GoogleAuth({ keyFile: keyFile(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
   const drive = google.drive({ version: 'v3', auth });
   const files: RunFile[] = [];
+  const ids = new Map<string, { id: string; mimeType?: string }>();
+  const readText = async (id: string, mimeType: string | undefined): Promise<string> => {
+    const res =
+      mimeType === 'application/vnd.google-apps.document'
+        ? await drive.files.export({ fileId: id, mimeType: 'text/plain' }, { responseType: 'text' })
+        : await drive.files.get({ fileId: id, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+    return String(res.data).replace(/^﻿/, '');
+  };
   async function walk(folder: string, prefix: string): Promise<void> {
     let pageToken: string | undefined;
     do {
@@ -247,13 +269,10 @@ async function inventory(): Promise<void> {
           continue;
         }
         const rf: RunFile = { path: p, modifiedTime: f.modifiedTime ?? '', mimeType: f.mimeType ?? undefined };
+        ids.set(p, { id: f.id as string, mimeType: f.mimeType ?? undefined });
         if (TEXT_WANTED.test(p)) {
           try {
-            const res =
-              f.mimeType === 'application/vnd.google-apps.document'
-                ? await drive.files.export({ fileId: f.id as string, mimeType: 'text/plain' }, { responseType: 'text' })
-                : await drive.files.get({ fileId: f.id as string, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
-            rf.text = String(res.data).replace(/^﻿/, '');
+            rf.text = await readText(f.id as string, f.mimeType ?? undefined);
           } catch (e) {
             process.stderr.write(`inventory: could not read ${p}: ${(e as Error).message}\n`);
           }
@@ -263,9 +282,18 @@ async function inventory(): Promise<void> {
       pageToken = r.data.nextPageToken ?? undefined;
     } while (pageToken);
   }
-  await walk(need('run-folder'), '');
-  fs.writeFileSync(need('out'), JSON.stringify(files, null, 1));
-  process.stdout.write(JSON.stringify({ files: files.length, with_text: files.filter((f) => f.text).length }) + '\n');
+  await walk(runFolderId, '');
+  for (const p of stalenessTextWanted(files)) {
+    const meta = ids.get(p);
+    const rf = files.find((f) => f.path === p);
+    if (!meta || !rf || /^(image|video|audio)\//.test(meta.mimeType ?? '')) continue;
+    try {
+      rf.text = await readText(meta.id, meta.mimeType);
+    } catch (e) {
+      process.stderr.write(`inventory: could not read ${p} for its content check: ${(e as Error).message}\n`);
+    }
+  }
+  return files;
 }
 
 interface Product {

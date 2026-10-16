@@ -54,6 +54,7 @@ import {
   runAssetsFromRunState,
 } from '../lib/clone-asset-refs.js';
 import { APP_RELEASE_SUMMARY } from '../lib/app-release-record.js';
+import { CONTENT_LEDGER_NAME } from '../lib/release-readiness.js';
 import { PREVIEWS_INDEX_PATH, withoutOtherOpportunityFrames } from '../lib/output-previews.js';
 import { docTextAndLinks, rewriteDriveIds } from '../lib/clone-readback.js';
 import {
@@ -120,6 +121,9 @@ async function walk(drive: any, folderId: string, prefix = '', folders: Folders 
 }
 
 function isText(f: Entry): boolean {
+  // The readiness content ledger names source assets by design (it records
+  // the map this rewrite applied) — rewriting it would erase the record.
+  if (f.path === CONTENT_LEDGER_NAME) return false;
   return f.mimeType === GOOGLE_DOC || /^text\/|json|yaml|xml/.test(f.mimeType);
 }
 

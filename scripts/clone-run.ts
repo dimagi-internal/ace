@@ -61,8 +61,11 @@ import {
   planStages,
   productsPointAtTarget,
   rebuildLabs,
+  rewritePairsFromAssetPlan,
+  rewritePairsFromDriveIdPlan,
   rewriteReleaseSummary,
   summaryUrl,
+  type AppliedPair,
   type Binding,
   type CloneBlock,
   type ClonedApp,
@@ -70,6 +73,14 @@ import {
   type Stage,
   type StageRecord,
 } from '../lib/clone-run.js';
+import {
+  CONTENT_LEDGER_NAME,
+  emptyContentLedger,
+  extendIdMap,
+  parseContentLedger,
+  recordMappedRewrite,
+  type ContentLedger,
+} from '../lib/release-readiness.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -195,6 +206,88 @@ async function writeText(fileId: string, text: string, mimeType: string): Promis
     media: { mimeType: mimeType === GOOGLE_DOC ? 'text/plain' : mimeType, body: text },
     fields: 'id', supportsAllDrives: true,
   });
+}
+
+// ── Readiness content ledger ─────────────────────────────────────────
+//
+// drive_ids and asset_refs rewrite copied files ONLY by substituting ids and
+// URLs, but each write bumps the file's modifiedTime past the eval graded on
+// it — and validate-release-readiness used to read every such eval as stale
+// (re-grades, waivers, extra passes). Each pure rewrite is recorded here
+// (lib/release-readiness.ts `recordMappedRewrite`, which re-checks purity on
+// the before/after text and records nothing otherwise), so readiness dates the
+// file to the content it rewrote.
+
+let ledger: ContentLedger | null = null;
+let ledgerDirty = false;
+
+async function loadLedger(ctx: Ctx): Promise<ContentLedger> {
+  if (ledger) return ledger;
+  const run = `${TO}/${OPP}/${RUN}`;
+  const f = await child(ctx.tgt!.run, CONTENT_LEDGER_NAME, false);
+  const parsed = f ? parseContentLedger(await readText(f.id, f.mimeType)) : null;
+  // A ledger the ace-web copy carried in from the source belongs to the source.
+  ledger = parsed && parsed.run === run ? parsed : emptyContentLedger(run);
+  return ledger;
+}
+
+async function saveLedger(ctx: Ctx): Promise<void> {
+  if (!ledger || !ledgerDirty) return;
+  const body = YAML.stringify(ledger, { lineWidth: 0 });
+  const f = await child(ctx.tgt!.run, CONTENT_LEDGER_NAME, false);
+  if (f) {
+    await guardDrive('drive_update_file', { fileId: f.id });
+    await drive.files.update({ fileId: f.id, media: { mimeType: 'text/yaml', body }, fields: 'id', supportsAllDrives: true });
+  } else {
+    await guardDrive('drive_create_file', { parentFolderId: ctx.tgt!.run });
+    await drive.files.create({ requestBody: { name: CONTENT_LEDGER_NAME, mimeType: 'text/yaml', parents: [ctx.tgt!.run] }, media: { mimeType: 'text/yaml', body }, fields: 'id', supportsAllDrives: true });
+  }
+  ledgerDirty = false;
+}
+
+async function fileMeta(fileId: string): Promise<{ modifiedTime: string; mimeType: string }> {
+  const r = await drive.files.get({ fileId, fields: 'modifiedTime,mimeType', supportsAllDrives: true });
+  return { modifiedTime: String(r.data.modifiedTime ?? ''), mimeType: String(r.data.mimeType ?? '') };
+}
+
+/**
+ * Wrap one rewrite of a run file: read it before, write, read it after, and
+ * record the pair of states in the ledger when the change is a pure mapped
+ * rewrite. Recording is best-effort — a failed read only means readiness falls
+ * back to the timestamp rule for that file, never that the write is lost.
+ */
+async function rewriteRecorded(ctx: Ctx, path: string | undefined, fileId: string, by: string, write: () => Promise<void>): Promise<void> {
+  let before: { modifiedTime: string; text: string } | null = null;
+  try {
+    const m = await fileMeta(fileId);
+    before = { modifiedTime: m.modifiedTime, text: await readText(fileId, m.mimeType) };
+  } catch (e) {
+    log(`ledger: could not read ${path ?? fileId} before its rewrite (${(e as Error).message}) — not recorded`);
+  }
+  await write();
+  if (!before || !path) return;
+  try {
+    const m = await fileMeta(fileId);
+    const l = await loadLedger(ctx);
+    const next = recordMappedRewrite(l, path, before, { modifiedTime: m.modifiedTime, text: await readText(fileId, m.mimeType) }, by);
+    if (next !== l) {
+      ledger = next;
+      ledgerDirty = true;
+    } else {
+      log(`ledger: ${path} changed by more than the id map — not recorded (readiness judges it by timestamp)`);
+    }
+  } catch (e) {
+    log(`ledger: could not read ${path} after its rewrite (${(e as Error).message}) — not recorded`);
+  }
+}
+
+async function extendLedgerMap(ctx: Ctx, pairs: AppliedPair[]): Promise<void> {
+  const l = await loadLedger(ctx);
+  const next = extendIdMap(l.id_map, pairs);
+  if (next.length !== l.id_map.length) {
+    ledger = { ...l, id_map: next };
+    ledgerDirty = true;
+  }
 }
 
 // ── Run folders + run_state ──────────────────────────────────────────
@@ -329,14 +422,18 @@ async function stageDriveIds(ctx: Ctx): Promise<StageRecord> {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-readback-'));
     r = runScript('clone-drive-readback.ts', [...base, '--plan', dir]);
     const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'));
+    await extendLedgerMap(ctx, rewritePairsFromDriveIdPlan(plan));
     for (const f of plan.files ?? []) {
       if (f.action === 'update') {
-        await writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType);
+        await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:drive_ids', () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
       } else if (f.action === 'docs') {
-        await guardDrive('docs_batch_update', { documentId: f.fileId });
-        await docsApi.documents.batchUpdate({ documentId: f.fileId, requestBody: { requests: JSON.parse(fs.readFileSync(f.requestsPath, 'utf8')) } });
+        await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:drive_ids', async () => {
+          await guardDrive('docs_batch_update', { documentId: f.fileId });
+          await docsApi.documents.batchUpdate({ documentId: f.fileId, requestBody: { requests: JSON.parse(fs.readFileSync(f.requestsPath, 'utf8')) } });
+        });
       }
     }
+    await saveLedger(ctx);
     log(`drive_ids: applied ${plan.files?.length ?? 0} rewrite(s)`);
     r = runScript('clone-drive-readback.ts', base);
   }
@@ -731,25 +828,31 @@ async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   let r = runScript('clone-asset-rewrite.ts', args);
   if (r.code === 2) return { status: 'not-done', reason: `clone-asset-rewrite failed: ${r.stderr.slice(-300)}` };
   const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'));
+  // The map this stage applies, recorded BEFORE the writes so each one is
+  // checked against it (asset_refs writes the id/URL map it applied).
+  await extendLedgerMap(ctx, rewritePairsFromAssetPlan(plan));
   let applied = 0;
   for (const f of plan.files ?? []) {
     if (f.action === 'update') {
-      await writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType);
+      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
     } else if (f.action === 'render') {
       // A styled Doc is re-imported from markdown, never written back as text (ace#2606).
-      await guardDrive('drive_update_file', { fileId: f.fileId });
-      await drive.files.update({ fileId: f.fileId, media: { mimeType: 'text/markdown', body: fs.readFileSync(f.localFilePath, 'utf8') }, fields: 'id', supportsAllDrives: true });
-      if (f.reembed_screenshots) {
-        const folders = (plan.frames?.preview_folders ?? []).flatMap((p: any) => ['--screenshots', p.id]);
-        if (folders.length) {
-          await guardDrive('docs_batch_update', { documentId: f.fileId });
-          const e = runScript('embed-doc-screenshots.ts', [f.fileId, ...folders]);
-          if (e.code !== 0) log(`embed-doc-screenshots ${f.path}: exit ${e.code} ${e.stderr.slice(-200)}`);
+      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', async () => {
+        await guardDrive('drive_update_file', { fileId: f.fileId });
+        await drive.files.update({ fileId: f.fileId, media: { mimeType: 'text/markdown', body: fs.readFileSync(f.localFilePath, 'utf8') }, fields: 'id', supportsAllDrives: true });
+        if (f.reembed_screenshots) {
+          const folders = (plan.frames?.preview_folders ?? []).flatMap((p: any) => ['--screenshots', p.id]);
+          if (folders.length) {
+            await guardDrive('docs_batch_update', { documentId: f.fileId });
+            const e = runScript('embed-doc-screenshots.ts', [f.fileId, ...folders]);
+            if (e.code !== 0) log(`embed-doc-screenshots ${f.path}: exit ${e.code} ${e.stderr.slice(-200)}`);
+          }
         }
-      }
+      });
     }
     applied++;
   }
+  await saveLedger(ctx);
   if (plan.run_state) {
     const patch = JSON.parse(fs.readFileSync(plan.run_state.localFilePath, 'utf8'));
     await mutateTargetRunState((rs) => deepMergeInto(rs, patch));
