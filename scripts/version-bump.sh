@@ -260,7 +260,8 @@ BASE="$(_max_version "$LOCAL_VERSION" "$ORIGIN_VERSION")"
 # Best-effort by construction: no `gh`, no network, no permission, a malformed
 # answer — any of those and we fall through to exactly the pre-ace#1914
 # behaviour. This must never be able to FAIL a bump; it can only ever raise the
-# floor.
+# floor. But it must SAY when it fell through (ace#3095): a GraphQL rate limit
+# once made the scan return nothing silently, and 8 open PRs took 0.13.1959.
 _claim_is_sane() {
   # A claim only counts if it is plausibly the same release line as BASE and
   # within a small distance of it. Without this one typo'd 0.99.0 on some open
@@ -275,14 +276,54 @@ _claim_is_sane() {
   [ $((c3 - b3)) -le 500 ]
 }
 
+# Owner/name from the origin URL, with no network call. `gh repo view` is
+# GraphQL, so under the secondary rate limit it printed nothing and the scan
+# returned zero claims (ace#3095) — it is kept only as a fallback for a remote
+# whose URL this cannot parse.
+_origin_slug() {
+  local url
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  case "$url" in
+    https://github.com/*|http://github.com/*) url="${url#*://github.com/}" ;;
+    git@github.com:*)                          url="${url#git@github.com:}" ;;
+    ssh://git@github.com/*)                    url="${url#ssh://git@github.com/}" ;;
+    *) url="" ;;
+  esac
+  url="${url%/}"; url="${url%.git}"
+  case "$url" in
+    */*/*|"") ;;                       # not owner/name — fall through to gh
+    */*) echo "$url"; return 0 ;;
+  esac
+  gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true
+}
+
+# Loud, on stderr (stdout is the claim list). Fails OPEN on purpose — the
+# contract above is that this can never fail a bump, and `clean-install`'s
+# uniqueness check is the backstop — but never SILENTLY: a scan that could not
+# run is not a scan that found no claims (ace#3095: 8 PRs on 0.13.1959).
+_claim_scan_failed() {
+  echo "version-bump: claim scan FAILED ($1) — version may collide with an open PR" >&2
+}
+
 _scan_open_pr_claims() {
   # No remote -> no GitHub -> no claims. Checked first so a fixture or an
   # offline clone never pays for a `gh` round-trip that can only fail.
   git remote get-url origin >/dev/null 2>&1 || return 0
-  command -v gh >/dev/null 2>&1 || return 0
+  if ! command -v gh >/dev/null 2>&1; then
+    _claim_scan_failed "gh not on PATH"
+    return 1
+  fi
   local slug
-  slug="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
-  [ -n "$slug" ] || return 0
+  slug="$(_origin_slug)"
+  if [ -z "$slug" ]; then
+    # A github.com origin always parses, so an empty slug here means a
+    # non-GitHub origin (a fixture's local bare remote) that gh could not map
+    # either: no GitHub, no claims — same as no remote.
+    case "$(git remote get-url origin 2>/dev/null)" in
+      *github.com*) _claim_scan_failed "could not resolve owner/repo for origin"; return 1 ;;
+      *) return 0 ;;
+    esac
+  fi
   # OUR OWN open PR is not a competitor, and counting it inflates the bump by one
   # on every recovery. Observed 2026-09-04 shipping ace#1776: origin/main was
   # 0.13.1151 and PR #1938's own head already read 0.13.1152, so
@@ -292,12 +333,19 @@ _scan_open_pr_claims() {
   # branch we are standing on.
   local self_branch
   self_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  local rows
-  rows="$(gh pr list --repo "$slug" --state open --limit 50 \
-            --json headRefName,headRefOid \
-            -q '.[] | "\(.headRefName)\t\(.headRefOid)"' 2>/dev/null || true)"
+  # REST, not `gh pr list`: GraphQL has its own (secondary) rate limit, which a
+  # burst of parallel shippers trips — exactly when claims matter most.
+  local rows err
+  err="$(mktemp "${TMPDIR:-/tmp}/version-bump-scan.XXXXXX")"
+  if ! rows="$(gh api --paginate "repos/$slug/pulls?state=open&per_page=100" \
+                 --jq '.[] | "\(.head.ref)\t\(.head.sha)"' 2>"$err")"; then
+    _claim_scan_failed "listing open PRs: $(head -c 200 "$err" | tr '\n' ' ')"
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
   [ -n "$rows" ] || return 0
-  local name oid v
+  local name oid v unread=0
   while IFS="$(printf '\t')" read -r name oid; do
     [ -n "$oid" ] || continue
     if [ -n "$self_branch" ] && [ "$name" = "$self_branch" ]; then
@@ -305,8 +353,12 @@ _scan_open_pr_claims() {
     fi
     v="$(gh api "repos/$slug/contents/VERSION?ref=$oid" \
            -H "Accept: application/vnd.github.raw" 2>/dev/null | tr -d '[:space:]' || true)"
-    [ -n "$v" ] && echo "$v"
+    if [ -n "$v" ]; then echo "$v"; else unread=$((unread + 1)); fi
   done <<<"$rows"
+  if [ "$unread" -gt 0 ]; then
+    _claim_scan_failed "could not read VERSION on $unread open PR head(s)"
+    return 1
+  fi
 }
 
 CLAIMS_RAW=""
@@ -317,7 +369,9 @@ CLAIMS_SOURCE="none"
 if [ "$CI_MODE" = "0" ]; then
   case "${ACE_VERSION_CLAIMS-}" in
     none) CLAIMS_SOURCE="disabled" ;;
-    "")   CLAIMS_RAW="$(_scan_open_pr_claims || true)"; CLAIMS_SOURCE="open-prs" ;;
+    "")   CLAIMS_SOURCE="open-prs"
+          # A partial scan still contributes what it read; only the label changes.
+          CLAIMS_RAW="$(_scan_open_pr_claims)" || CLAIMS_SOURCE="open-prs, scan FAILED" ;;
     *)    CLAIMS_RAW="${ACE_VERSION_CLAIMS}"; CLAIMS_SOURCE="ACE_VERSION_CLAIMS" ;;
   esac
 fi
@@ -344,6 +398,8 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "  local=v$LOCAL_VERSION  origin/main=v$ORIGIN_DISPLAY"
   if [ -n "$CLAIMED_MAX" ]; then
     echo "  highest version claimed by an open PR=v$CLAIMED_MAX (source: $CLAIMS_SOURCE)"
+  elif [ "$CLAIMS_SOURCE" = "open-prs, scan FAILED" ]; then
+    echo "  open-PR claim scan FAILED — this number may already be claimed"
   fi
   echo "$NEXT"
   exit 0

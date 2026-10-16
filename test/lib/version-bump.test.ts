@@ -13,7 +13,7 @@
 // copied in, then drive it via execFileSync.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -250,26 +250,44 @@ describe('scripts/version-bump.sh', () => {
     expect(out.trim().split('\n').pop()).toBe('0.10.21');
   });
 
-  // The two tests below drive the LIVE scan path (`gh pr list` -> each head's
+  // The tests below drive the LIVE scan path (REST open-PR list -> each head's
   // VERSION) rather than the ACE_VERSION_CLAIMS seam, via a stub `gh` on PATH.
   // The seam tests prove the arithmetic; these prove the thing that actually
   // runs in a real ship.
+  //
+  // `gh pr list` (GraphQL) ALWAYS fails in this stub with GitHub's
+  // secondary-rate-limit message: the scan must not depend on it (ace#3095 —
+  // under that limit the old scan returned zero claims silently, and 8 open PRs
+  // took the same 0.13.1959). `gh repo view` (also GraphQL) answers by default,
+  // as the slug fallback for an origin URL that is not github.com.
+  const RATE_LIMIT =
+    'GraphQL: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.';
 
-  function stubGh(dir: string, rows: Array<{ branch: string; oid: string; version: string }>): string {
+  function stubGh(
+    dir: string,
+    rows: Array<{ branch: string; oid: string; version: string }>,
+    opts: { graphqlRateLimited?: boolean; restListFails?: boolean } = {},
+  ): string {
     const binDir = path.join(dir, 'stub-bin');
     fs.mkdirSync(binDir, { recursive: true });
     const list = rows.map((r) => `${r.branch}\\t${r.oid}`).join('\\n');
     const cases = rows
-      .map((r) => `    *${r.oid}*) echo "${r.version}"; exit 0;;`)
+      .map((r) => `    *contents/VERSION*${r.oid}*) echo "${r.version}"; exit 0;;`)
       .join('\n');
+    const pullsCase = opts.restListFails
+      ? `    *repos/fake/repo/pulls*) echo "HTTP 403: API rate limit exceeded" >&2; exit 1;;`
+      : `    *repos/fake/repo/pulls*state=open*) printf '${list}\\n'; exit 0;;`;
     fs.writeFileSync(
       path.join(binDir, 'gh'),
       [
         '#!/usr/bin/env bash',
-        'if [ "$1" = "repo" ] && [ "$2" = "view" ]; then echo "fake/repo"; exit 0; fi',
-        `if [ "$1" = "pr" ] && [ "$2" = "list" ]; then printf '${list}\\n'; exit 0; fi`,
+        opts.graphqlRateLimited
+          ? `if [ "$1" = "repo" ]; then echo "${RATE_LIMIT}" >&2; exit 1; fi`
+          : 'if [ "$1" = "repo" ] && [ "$2" = "view" ]; then echo "fake/repo"; exit 0; fi',
+        `if [ "$1" = "pr" ]; then echo "${RATE_LIMIT}" >&2; exit 1; fi`,
         'if [ "$1" = "api" ]; then',
         '  case "$*" in',
+        pullsCase,
         cases,
         '  esac',
         '  exit 1',
@@ -325,6 +343,60 @@ describe('scripts/version-bump.sh', () => {
     expect(out, 'the reported claim must be the OTHER PR, not ours').toMatch(
       /claimed by an open PR=v0\.10\.20/,
     );
+  });
+
+  // ace#3095. An ssh:// github origin lets the slug come from the URL with no
+  // `gh repo view`; GIT_SSH_COMMAND=false makes the script's best-effort
+  // `git fetch` fail instantly instead of touching the network.
+  function runScan(binDir: string) {
+    return spawnSync('./scripts/version-bump.sh', ['--dry-run'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        ACE_VERSION_CLAIMS: '',
+        GIT_SSH_COMMAND: 'false',
+      },
+    });
+  }
+
+  it('still finds claims over REST while every GraphQL call is rate-limited (ace#3095)', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    execSync('git remote add origin ssh://git@github.com/fake/repo.git', { cwd: fixtureDir });
+    execSync('git checkout -q -b mine', { cwd: fixtureDir });
+    const binDir = stubGh(
+      fixtureDir,
+      [{ branch: 'other', oid: 'oid-other', version: '0.10.20' }],
+      { graphqlRateLimited: true },
+    );
+    const r = runScan(binDir);
+    expect(r.status, r.stderr).toBe(0);
+    expect(
+      r.stdout.trim().split('\n').pop(),
+      'GraphQL rate-limited must not mean "no claims": the old scan bumped to\n' +
+        'origin/main+1 here, the number the open PR already held.',
+    ).toBe('0.10.21');
+    expect(r.stderr).not.toMatch(/claim scan FAILED/);
+  });
+
+  it('says so LOUDLY when the REST scan itself fails, never a silent origin/main+1 (ace#3095)', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    execSync('git remote add origin git@github.com:fake/repo.git', { cwd: fixtureDir });
+    execSync('git checkout -q -b mine', { cwd: fixtureDir });
+    const binDir = stubGh(
+      fixtureDir,
+      [{ branch: 'other', oid: 'oid-other', version: '0.10.20' }],
+      { graphqlRateLimited: true, restListFails: true },
+    );
+    const r = runScan(binDir);
+    // Fails OPEN — the scan may never fail a bump; clean-install's uniqueness
+    // check is the backstop — but the operator is told the floor is unverified.
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim().split('\n').pop()).toBe('0.10.15');
+    expect(r.stderr).toMatch(/claim scan FAILED \(listing open PRs: HTTP 403: API rate limit exceeded/);
+    expect(r.stderr).toMatch(/version may collide/);
+    expect(r.stdout).toMatch(/open-PR claim scan FAILED/);
   });
 
   it('--dry-run prints next version but does not mutate any file', () => {
