@@ -142,7 +142,7 @@
  * spec before handing off to the DDD loop.
  */
 
-import { checkLabsReportFrameTargets } from './labs-report-frame.js';
+import { checkLabsReportFrameTargets, type SurfaceFraming } from './labs-report-frame.js';
 
 export interface SceneAction {
   kind: string;
@@ -188,8 +188,10 @@ export type SceneFindingKind =
   | 'unknown-cardinality'
   /** ace#2316 — the below-programme-scale escape was taken and its promise broken. */
   | 'escaped-payoff-unhonoured'
-  /** ace#2885 — a labs report target that does not enter the /labs/sandbox/render/ iframe. */
-  | 'labs-report-target-outside-frame';
+  /** ace#2885 — a capture saw the report in the /labs/sandbox/render/ iframe, and the target does not enter it. */
+  | 'labs-report-target-outside-frame'
+  /** ace#2885 — a capture saw the report on the top page, and the target enters a frame that is not there. */
+  | 'labs-report-target-in-absent-frame';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -237,7 +239,17 @@ function targetText(t: string | undefined): string {
   return (t ?? '').replace(ANY_RECORDER_PREFIX, '').trim();
 }
 
-export function checkSceneActions(scenes: DddScene[]): SceneReport {
+export interface SceneActionsOptions {
+  /**
+   * ace#2885: what a capture saw each scene's labs report draw, keyed by 1-based
+   * scene index (`framingFromCaptures` over `scripts/capture-scene-text.ts`
+   * output). Without it, the frame-target check stays silent: a URL cannot say
+   * whether labs framed the report.
+   */
+  framing?: ReadonlyMap<number, SurfaceFraming>;
+}
+
+export function checkSceneActions(scenes: DddScene[], opts: SceneActionsOptions = {}): SceneReport {
   const findings: SceneFinding[] = [];
 
   for (const s of scenes ?? []) {
@@ -306,9 +318,10 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
     }
   }
 
-  // ace#2885: a labs report's body is in the sandbox iframe, and the recorder
-  // resolves targets on the top page. One helper owns the frame selector.
-  findings.push(...checkLabsReportFrameTargets(scenes ?? []));
+  // ace#2885: labs may draw a report's body in the sandbox iframe, and the
+  // recorder resolves targets on the top page. Whether it does is observed per
+  // scene by a capture, never read off the URL. One helper owns the selector.
+  findings.push(...checkLabsReportFrameTargets(scenes ?? [], opts.framing));
 
   return { ok: findings.length === 0, findings };
 }

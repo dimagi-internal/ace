@@ -127,24 +127,34 @@ paraphrase the schema here — read the model / schema and validate.
    Opportunities render as "Opportunity <id>" (labs residual) — narrate the
    partner, not the opportunity id.
 
-   **Every target on these reports enters the sandbox frame (ace#2885).** Labs
-   draws a report's body in an iframe at `/labs/sandbox/render/`
-   (dimagi-internal/connect-labs#2449 / #2466 / #2470). Outside it the top page
-   holds only the breadcrumb and "Opportunities: N selected". canopy's recorder
-   resolves a target on the TOP page, so `css:tr:has-text(…)`, `role:tab:Benchmarks`
-   and `css:h1:has-text(…)` all miss: on `smallholder-seasonal/20261012-1549`
-   scene 1's `wait_for` failed the first render. Write every target, then pass
-   it through `inLabsReportFrame` (`lib/labs-report-frame.ts`). It prefixes
-   `iframe[src*="/labs/sandbox/render/"] >> internal:control=enter-frame >> `
-   and turns `role:` / `text:` / `testid:` / `aria:` into the selector engine
-   canopy's `get_by_*` call would use, so `role:tab:Benchmarks` becomes
-   `css:<frame> >> internal:role=tab[name="Benchmarks"s]`. Do not write the
-   prefix by hand: the helper holds it in one place. Step 3b's
-   `checkSceneActions` flags any report target left outside the frame
-   (`labs-report-target-outside-frame`), with the rewritten target in the
-   finding. A report built before the labs rollout may still draw unframed. If
-   `scripts/capture-scene-text.ts` (step 3b) logs "labs surface with NO sandbox
-   frame" for a surface, keep that surface's targets unframed and record why.
+   **A report target enters the sandbox frame only when that report HAS one
+   (ace#2885).** Labs can draw a report's body in an iframe at
+   `/labs/sandbox/render/` (dimagi-internal/connect-labs#2449 / #2466 / #2470),
+   leaving the top page only the breadcrumb and "Opportunities: N selected".
+   canopy's recorder resolves a target on the TOP page, so on a framed report
+   `css:tr:has-text(…)` and `role:tab:Benchmarks` miss (on
+   `smallholder-seasonal/20261012-1549` scene 1's `wait_for` failed the first
+   render). But labs does not frame every report. On 2026-10-16
+   (`smallholder-seasonal/20261015-1402`) the indicator programme report, the
+   worker review and the opp reports drew on the top page with no iframe, so a
+   framed target misses there instead. The URL cannot tell the two apart, and no
+   one selector covers both: Playwright refuses a frame locator inside
+   `locator.or()`. **So observe first:** run `scripts/capture-scene-text.ts`
+   (step 3b) over the draft spec. Its `scene_<N>_page_text.json` records every
+   child frame. Then, per surface: if the capture saw the sandbox frame, pass
+   each target through `inLabsReportFrame` (`lib/labs-report-frame.ts`), which
+   prefixes `iframe[src*="/labs/sandbox/render/"] >> internal:control=enter-frame >> `
+   and turns `role:` / `text:` / `testid:` / `aria:` into the engine canopy's
+   `get_by_*` would use (`role:tab:Benchmarks` becomes
+   `css:<frame> >> internal:role=tab[name="Benchmarks"s]`). If it logged "labs
+   surface with NO sandbox frame", write the target plainly, or undo a framed
+   one with `outOfLabsReportFrame`. Do not write the prefix by hand: the helper
+   holds it in one place. Step 3b's `narration-claims.ts --screen-text` checks
+   every report target against the shape the capture saw, in both directions
+   (`labs-report-target-outside-frame` / `labs-report-target-in-absent-frame`),
+   with the rewritten target in the finding. `checkSceneActions` runs the same
+   check when you pass it `{ framing: framingFromCaptures(captures) }`; without
+   an observation it stays silent rather than guess.
 
 3. **Author the `UnifiedSpec`** (`<demo-slug>.yaml`):
    - `base_url: https://labs.connect.dimagi.com`; no `auth` block (labs cookies
@@ -391,12 +401,17 @@ paraphrase the schema here — read the model / schema and validate.
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
 
-   - **`labs-report-target-outside-frame`** — a target on a labs report that
-    does not enter the `/labs/sandbox/render/` iframe, so the recorder looks
-    for it on the top page and misses (ace#2885). Replace it with the rewritten
-    target the finding prints (`inLabsReportFrame`, step 2c). Leave it only if
-    it names the outer page (the breadcrumb, the scope picker), or if the
-    capture shows that surface draws no sandbox frame.
+   - **`labs-report-target-outside-frame`** — the capture saw this labs report
+    drawn in the `/labs/sandbox/render/` iframe, and the target does not enter
+    it, so the recorder looks for it on the top page and misses (ace#2885).
+    Replace it with the rewritten target the finding prints
+    (`inLabsReportFrame`, step 2c). Leave it only if it names the outer page
+    (the breadcrumb, the scope picker).
+   - **`labs-report-target-in-absent-frame`** — the capture saw this labs
+    report drawn on the top page with no sandbox frame, and the target enters
+    one, so it misses. Replace it with the printed rewrite
+    (`outOfLabsReportFrame`). Both checks need a frame-recording capture
+    (`frame_texts`); with none they report nothing.
 
   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
    A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
@@ -690,6 +705,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **The labs sandbox frame is conditional, observed per scene, never read off the URL (ace#2885 reopened).** On `smallholder-seasonal/20261015-1402` the indicator programme report (workflow 10049), the worker review (10051) and the opp reports drew on the top page with no `/labs/sandbox/render/` iframe, and the URL-only check flagged all 14 targets of the spec. Following its rewrite would have made every one miss. `checkLabsReportFrameTargets` now takes the framing a capture observed (`framingFromCaptures` over `capture-scene-text.ts` output), flags in both directions (`labs-report-target-outside-frame` / the new `labs-report-target-in-absent-frame`, fixed with `outOfLabsReportFrame`), and says nothing for an unobserved scene. `narration-claims.ts --screen-text` runs it against its captures. `screen-text-outer-page-only` now fires only when a top-page-only capture is MISSING figures, because the capture of an unframed report holds them. | ACE team |
 | 2026-10-13 | **Labs report targets enter the sandbox iframe, and figures are checked against the frame's text (ace#2885).** Labs now draws report bodies in `/labs/sandbox/render/` (dimagi-internal/connect-labs#2449, #2466, #2470). The recorder resolves targets on the top page, so `smallholder-seasonal/20261012-1549` scene 1's `wait_for` missed. Its captured text was the breadcrumb only, so every narrated figure had to be checked by hand. Step 2c now passes every report target through `inLabsReportFrame` (`lib/labs-report-frame.ts`, the one place the frame prefix lives), and `checkSceneActions` flags `labs-report-target-outside-frame`. Step 3b adds `scripts/capture-scene-text.ts`, a read-only capture that enters the frame, and `narration-claims.ts --screen-text`, which flags `figure-not-on-screen` and refuses a top-page-only capture (`screen-text-outer-page-only`). The Spark worked example (`test/fixtures/demo-arc/spark-facilitator-20261004-1706-spec.json`) carries the framed targets. | ACE team |
 | 2026-10-06 | **Step 3c — a pre-render arc check over the spec's text (ace#2735).** `scripts/demo-arc-precheck.ts` / `lib/demo-arc-precheck.ts`: blocks consecutive scenes on the same surface + component and a finale claim that only restates scene 1's; reports a restated opening fact and a side-branch scene; then ONE text-only judge pass with a rubric mirroring `ddd-arc-eval`, gated by `gateArcPrecheckVerdict`. Never replaces the post-render arc judge. On `spark-facilitator/20261004-1706` it finds all three things that run's arc judge found after render, while `checkSceneVariety` and `checkArcLadder` both pass it (`test/lib/demo-arc-precheck.test.ts`). | ACE team |
 | 2026-10-06 | **Narrated figures must be on the end frame, never hover-only (ace#2727).** Step 3b runs `checkNarratedFiguresOnScreen` (`lib/narration-on-screen.ts`; CLI `scripts/narration-claims.ts --check`): every narrated percentage / "N of M" / money / date is anchored by a `features[].verify` or a `wait_for`, and a hover/tooltip anchor flags `hover-only-figure`. Step 2c's "never claim a figure the saved run does not show" checked the data, not the frame, so `spark-facilitator/20261004-1706` narrated *"100% as of 12 Jul"* from a tooltip. Step 2c also names workers/communities by the story plan's display roster, not codes. | ACE team |

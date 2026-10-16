@@ -263,21 +263,25 @@ export function checkNarratedFiguresAgainstScreenText(
     const cap = byIndex.get(i + 1);
     if (!figures.length || !cap) return;
     const name = sceneName(scene, i);
-    if (cap.frame_texts === undefined && isLabsReportSurface(surface)) {
+    const onScreen = norm(combineFrameTexts(cap.page_text, cap.frame_texts ?? []));
+    const missing = figures.filter((fig) => !onScreen.includes(norm(fig)));
+    // ace#2885: labs frames some reports and not others. A top-page-only capture
+    // of an UNFRAMED report holds the figures, so it is judged like any other.
+    // Only when figures are missing can it not tell "not printed" from "printed
+    // in a frame this capture never entered".
+    if (missing.length && cap.frame_texts === undefined && isLabsReportSurface(surface)) {
       findings.push({
         kind: 'screen-text-outer-page-only',
         scene: name,
-        figure: figures.join(', '),
+        figure: missing.join(', '),
         detail:
-          'This capture read only the top page. Labs draws the report in the /labs/sandbox/render/ iframe, so ' +
-          'none of its figures can be checked from this text (canopy\'s recorder writes the top page\'s ' +
-          'document.body.innerText). Re-capture with scripts/capture-scene-text.ts, which enters the frame.',
+          'This capture read only the top page, and it does not print these figures. Labs may draw the report in ' +
+          'the /labs/sandbox/render/ iframe, which canopy\'s recorder (top-page document.body.innerText) never ' +
+          'enters. Re-capture with scripts/capture-scene-text.ts, which records every frame.',
       });
       return;
     }
-    const onScreen = norm(combineFrameTexts(cap.page_text, cap.frame_texts ?? []));
-    for (const fig of figures) {
-      if (onScreen.includes(norm(fig))) continue;
+    for (const fig of missing) {
       findings.push({
         kind: 'figure-not-on-screen',
         scene: name,

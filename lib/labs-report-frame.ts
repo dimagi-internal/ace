@@ -1,6 +1,7 @@
 /**
- * Labs draws a report's body inside a sandboxed iframe, so every scene target
- * ACE authors against a labs report has to enter that frame (ace#2885).
+ * Labs MAY draw a report's body inside a sandboxed iframe. When it does, every
+ * scene target ACE authors against that report has to enter the frame; when it
+ * does not, no target may (ace#2885).
  *
  * ## What changed upstream
  *
@@ -33,6 +34,28 @@
  *
  * Every ACE helper that writes or reads a labs report target goes through this
  * module, so the frame selector lives in exactly one place.
+ *
+ * ## The frame is CONDITIONAL: decide per page from what a capture observed
+ *
+ * Labs does not frame every report. On 2026-10-16 (smallholder-seasonal/
+ * 20261015-1402, Phase 7) the indicator programme report (workflow 10049), the
+ * worker review (10051) and the opp reports drew their body on the TOP page.
+ * A Playwright probe of the run page listed no `/labs/sandbox/render/` iframe
+ * (`{"iframes":[],"topPageHasReportText":true}`, ace#2885 reopen comment), and
+ * the owner's note (2026-10-13) is that the sandbox is still being evaluated
+ * per report. A URL therefore cannot say which shape a page has. Deciding from
+ * the URL alone flagged all 14 targets of that run's spec, and following the
+ * rewrite would have made every one MISS.
+ *
+ * No single selector covers both shapes. Playwright refuses a frame locator
+ * inside `locator.or()` / `internal:or=` ("Frame locators are not allowed
+ * inside composite locators", checked in headless chromium on playwright
+ * 1.59.1), and canopy's recorder cannot branch on the page. So a target is
+ * written for the shape the page HAS, and the shape comes from
+ * `scripts/capture-scene-text.ts`, which records every child frame
+ * ({@link framingFromCaptures}). {@link checkLabsReportFrameTargets} flags in
+ * both directions against that observation, and says nothing for a scene whose
+ * shape nobody observed.
  *
  * Pure: no I/O.
  */
@@ -121,7 +144,19 @@ export function inLabsReportFrame(target: string): string {
 }
 
 /**
- * Is a scene's surface a labs report, whose body is drawn in the sandbox frame?
+ * The inverse of {@link inLabsReportFrame}: the same target on a report that
+ * draws its body on the top page. A target that does not enter the frame is
+ * returned unchanged. The result stays a `css:` target, because the inner
+ * selector may be an `internal:` engine string that only `page.locator()` reads.
+ */
+export function outOfLabsReportFrame(target: string): string {
+  const framed = `css:${LABS_SANDBOX_FRAME_PREFIX}`;
+  return target.startsWith(framed) ? `css:${target.slice(framed.length)}` : target;
+}
+
+/**
+ * Is a scene's surface a labs report, whose body labs MAY draw in the sandbox
+ * frame? It says nothing about whether it does (see the module note).
  * A `${…}` realized var counts: in a `demo-narrative` spec every one names a
  * labs dashboard (`base_url` is labs, and each var is a `*_par_url` /
  * `*_review_url` from `realized.json`). So does a resolved labs workflow run or
@@ -144,42 +179,93 @@ export interface FramedScene {
 }
 
 export interface FrameTargetFinding {
-  kind: 'labs-report-target-outside-frame';
+  kind: 'labs-report-target-outside-frame' | 'labs-report-target-in-absent-frame';
   scene: string;
   detail: string;
 }
 
+/** What a capture saw a scene's page draw: the report in the sandbox frame, or on the top page. */
+export type SurfaceFraming = 'framed' | 'unframed';
+
+/** A capture of one scene, as `scene_<N>_page_text.json` records it (N 1-based). */
+export interface FramingCapture {
+  scene_index: number;
+  /** Every child frame. Absent on canopy's own capture, which reads the top page only. */
+  frame_texts?: readonly FrameText[];
+}
+
 /**
- * Flag every action target on a labs report surface that does not enter the
- * sandbox frame. A scene with no `url` is on the previous scene's page
- * (`demo-narrative` § Step 3's first-scene-only `url` rule).
+ * Each captured scene's framing, keyed by 1-based scene index. Only a capture
+ * that recorded its child frames (`frame_texts`, as `capture-scene-text.ts`
+ * writes) can answer. canopy's top-page-only capture is left out, because it
+ * cannot tell "no frame" from "did not look".
+ */
+export function framingFromCaptures(captures: readonly FramingCapture[]): Map<number, SurfaceFraming> {
+  const out = new Map<number, SurfaceFraming>();
+  for (const c of captures) {
+    if (c.frame_texts === undefined) continue;
+    out.set(c.scene_index, c.frame_texts.some((f) => isSandboxFrameUrl(f.url)) ? 'framed' : 'unframed');
+  }
+  return out;
+}
+
+/**
+ * Flag every action target on a labs report surface whose shape does not match
+ * what the capture observed for that scene. `framing` is keyed by 1-based scene
+ * index, from {@link framingFromCaptures}. A scene with no `url` is on the
+ * previous scene's page (`demo-narrative` § Step 3's first-scene-only `url` rule).
+ *
+ *  - Observed `framed`: a target that does not enter the frame misses
+ *    (`labs-report-target-outside-frame`; the fix is {@link inLabsReportFrame}).
+ *  - Observed `unframed`: a target that enters the frame misses, because there
+ *    is no frame (`labs-report-target-in-absent-frame`; the fix is
+ *    {@link outOfLabsReportFrame}).
+ *  - Not observed: no finding. The URL cannot say which shape labs serves, so
+ *    a guess here is wrong whenever labs flips a report (ace#2885, reopened
+ *    2026-10-16).
  *
  * This FLAGS rather than rejects, like every check in `ddd-scene-actions`. The
  * outer labs page still draws the breadcrumb and the scope picker, and a target
  * aimed at those is right as written. The finding carries the rewritten target,
  * so resolving it is one paste.
  */
-export function checkLabsReportFrameTargets(scenes: readonly FramedScene[]): FrameTargetFinding[] {
+export function checkLabsReportFrameTargets(
+  scenes: readonly FramedScene[],
+  framing: ReadonlyMap<number, SurfaceFraming> = new Map(),
+): FrameTargetFinding[] {
   const findings: FrameTargetFinding[] = [];
   let surface: string | null | undefined = null;
-  for (const s of scenes ?? []) {
+  (scenes ?? []).forEach((s, i) => {
     if (s.url) surface = s.url;
-    if (!isLabsReportSurface(surface)) continue;
+    const shape = framing.get(i + 1);
+    if (!shape || !isLabsReportSurface(surface)) return;
     const name = s.title ?? '(untitled)';
     for (const a of [...(s.actions ?? []), ...(s.restore ?? [])]) {
-      if (!a.target || !TARGETED_KINDS.has(a.kind) || isInLabsReportFrame(a.target)) continue;
+      if (!a.target || !TARGETED_KINDS.has(a.kind)) continue;
       if (a.kind === 'wait_for' && /^\d+$/.test(a.target.trim())) continue; // an all-digits wait_for is a pause
-      findings.push({
-        kind: 'labs-report-target-outside-frame',
-        scene: name,
-        detail:
-          `${a.kind} "${a.target}" is on a labs report, whose body labs draws in the ${LABS_SANDBOX_RENDER_PATH} ` +
-          'iframe. The recorder resolves targets on the TOP page, so this misses (ace#2885). Write it as ' +
-          `"${inLabsReportFrame(a.target)}" (inLabsReportFrame in lib/labs-report-frame.ts). Leave it only if it ` +
-          'names the outer page (the breadcrumb or the scope picker).',
-      });
+      const inside = isInLabsReportFrame(a.target);
+      if (shape === 'framed' && !inside) {
+        findings.push({
+          kind: 'labs-report-target-outside-frame',
+          scene: name,
+          detail:
+            `${a.kind} "${a.target}" is on a labs report that the capture saw drawn in the ${LABS_SANDBOX_RENDER_PATH} ` +
+            'iframe. The recorder resolves targets on the TOP page, so this misses (ace#2885). Write it as ' +
+            `"${inLabsReportFrame(a.target)}" (inLabsReportFrame in lib/labs-report-frame.ts). Leave it only if it ` +
+            'names the outer page (the breadcrumb or the scope picker).',
+        });
+      } else if (shape === 'unframed' && inside) {
+        findings.push({
+          kind: 'labs-report-target-in-absent-frame',
+          scene: name,
+          detail:
+            `${a.kind} "${a.target}" enters the ${LABS_SANDBOX_RENDER_PATH} iframe, but the capture saw this report ` +
+            'drawn on the top page with no sandbox frame, so the target misses (ace#2885). Write it as ' +
+            `"${outOfLabsReportFrame(a.target)}" (outOfLabsReportFrame in lib/labs-report-frame.ts).`,
+        });
+      }
     }
-  }
+  });
   return findings;
 }
 
