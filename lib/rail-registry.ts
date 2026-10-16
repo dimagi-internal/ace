@@ -304,6 +304,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/selector-map-heal.test.ts': { issues: ['ace#1256', 'ace#1571', 'ace#811', 'ace#893'], note: 'multi-section file; provenance sits above the second describe' },
   'test/skills/shipping-version-race.test.ts': { issues: ['ace#1593', 'ace#1595', 'ace#1596', 'ace#1584', 'ace#1597', 'ace#1598', 'ace#1588', 'ace#1601'] },
   'test/skills/skill-atom-field-claims.test.ts': { issues: ['ace#1550'] },
+  'test/skills/skill-names-its-dispatcher.test.ts': { issues: ['ace#2851'], observed: 'turmeric-market-study-ghana/20261012-1749' },
   'test/skills/solicitation-end-date-addend.test.ts': { issues: ['ace#1858'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/solicitation-labs-owner.test.ts': { issues: ['ace#3049'], observed: 'noora-health/20261015-1129' },
   'test/skills/solicitation-zero-responses-doctrine.test.ts': { issues: ['ace#2171'] },

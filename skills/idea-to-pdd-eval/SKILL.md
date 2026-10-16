@@ -48,7 +48,7 @@ filename rule.
    When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), all inputs below are already loaded by the
    parent — do NOT re-issue `drive_read_file`. See
-   `agents/design-review.md` § Performance conventions: the parent
+   `agents/idea-to-design.md` § Performance conventions: the parent
    subagent reads the source material in Step 1 and the PDD lands in
    context via Step 1's producer call; both are then trusted across
    all downstream steps. Re-reading wastes ~5–10s per file. Only
