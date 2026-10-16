@@ -33,7 +33,9 @@
 //     would render as a bogus product.
 //   * One writer per output folder, and a re-capture REPLACES — the writer trashes
 //     the folder's previous contents before writing (skill prose; Drive I/O is
-//     not this module's business).
+//     not this module's business) — EXCEPT a file another artifact cites by id,
+//     which is evidence and is kept: `planPreviewFolderClear` in
+//     `lib/preview-capture.ts` (ace#3044).
 //
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
