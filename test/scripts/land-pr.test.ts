@@ -47,7 +47,8 @@ describe('scripts/land-pr.sh', () => {
   // "OPEN CLEAN" is unactionable; "OPEN CLEAN auto-merge=false" names the cause
   // outright — which is how ace#2004 was diagnosed in the first place.
   it('names auto-merge state when it gives up, so the cause is actionable', () => {
-    expect(CODE).toMatch(/gave up after[\s\S]*autoMergeRequest/);
+    // Read over REST since ace#3106: `.auto_merge != null` → `auto-merge=`.
+    expect(CODE).toMatch(/gave up after[^\n]*auto-merge=\$\{ga/);
   });
 
   //
@@ -257,7 +258,10 @@ describe('scripts/land-pr.sh', () => {
     // makes it a read-back is that the arm's own result is CAPTURED, so the
     // control flow below can branch on it.
     const afterArm = CODE.slice(arm);
-    expect(afterArm).toMatch(/armed="\$\(gh pr view[\s\S]{0,240}autoMergeRequest/);
+    // ace#3106 moved the read to REST (`auto_armed` → `.auto_merge != null`).
+    expect(afterArm).toMatch(/armed="\$\(auto_armed\)"/);
+    expect(CODE).toMatch(/auto_armed\(\)[^\n]*pr_field 2/);
+    expect(CODE).toMatch(/\.auto_merge != null/);
   });
 
   it('never claims a bare unconditional "auto-merge armed" success', () => {

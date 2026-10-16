@@ -211,14 +211,58 @@ REBASE_MAX="${ACE_LAND_PR_REBASE_MAX:-$MAX}"
 # sibling, and the script is routinely run from a worktree it was copied into.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-state() { gh pr view "$PR" -R "$REPO" --json state --jq .state 2>/dev/null; }
-mergeability() { gh pr view "$PR" -R "$REPO" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null; }
-head_ref() { gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>/dev/null; }
-head_oid() { gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null; }
+## Every polled read is REST (ace#3106)
+#
+# `gh pr view` is GraphQL, and so was every read this script made — state,
+# mergeability, head ref/sha, the arm read-back, the give-up line, plus the
+# queue read on EVERY poll. On 2026-10-16 about 20 concurrent shippers each
+# polling every 20s tripped GitHub's GraphQL secondary rate limit, which is
+# what made #3095's claim scan fail open. REST is metered separately from
+# GraphQL, so the PR itself is read with ONE `gh api repos/<repo>/pulls/<n>`
+# call that prints five tokens:
+#
+#   <MERGED|OPEN|CLOSED> <mergeable_state> <auto-armed> <head.ref> <head.sha>
+#
+# REST's `mergeable_state` is lowercase (`clean`, `dirty`, `blocked`, …) and is
+# computed LAZILY: the first read after a push is routinely `unknown`.
+# `mergeability` uppercases it to the GraphQL vocabulary the rest of the
+# script branches on, and re-reads an `unknown` a few times before trusting
+# it. A value that stays `UNKNOWN` matches neither DIRTY nor BLOCKED, so it
+# falls on the safe side — arm and poll, never rebase.
+#
+# The ONE GraphQL read left is the merge queue (no REST field carries it).
+# It runs once per attempt, and inside a poll loop only every
+# QUEUE_POLL_EVERY-th poll — and not at all while that attempt's read said
+# the repo has no queue, because a PR cannot enter a queue that does not exist.
+UNKNOWN_RETRIES="${ACE_LAND_PR_UNKNOWN_RETRIES:-3}"
+UNKNOWN_SLEEP="${ACE_LAND_PR_UNKNOWN_SLEEP:-3}"
+QUEUE_POLL_EVERY="${ACE_LAND_PR_QUEUE_POLL_EVERY:-3}"
 
-# Merge-queue state, in ONE GraphQL read — `gh pr view --json` exposes no
-# queue-shaped field, so this cannot fold into the helpers above. Prints four
-# space-separated tokens: <queue-enabled> <queued> <entry-state> <position>.
+pr_rest() {
+  gh api "repos/$REPO/pulls/$PR" \
+    --jq '(if .merged then "MERGED" elif .state == "closed" then "CLOSED" else "OPEN" end) + " " + (.mergeable_state // "unknown") + " " + (.auto_merge != null | tostring) + " " + .head.ref + " " + .head.sha' \
+    2>/dev/null
+}
+pr_field() { local a; read -r -a a <<<"$(pr_rest)" || true; echo "${a[$1]:-}"; }
+state() { pr_field 0; }
+mergeability() {
+  local v i=0
+  v="$(pr_field 1 | tr '[:lower:]' '[:upper:]')"
+  while [ "${v:-UNKNOWN}" = "UNKNOWN" ] && [ "$i" -lt "$UNKNOWN_RETRIES" ]; do
+    sleep "$UNKNOWN_SLEEP"
+    v="$(pr_field 1 | tr '[:lower:]' '[:upper:]')"
+    i=$((i + 1))
+  done
+  echo "${v:-UNKNOWN}"
+}
+auto_armed() { local v; v="$(pr_field 2)"; echo "${v:-unknown}"; }
+head_ref() { pr_field 3; }
+head_oid() { pr_field 4; }
+
+# Merge-queue state, in ONE GraphQL read — no REST endpoint and no
+# `gh pr view --json` field carries it, so this cannot fold into the helpers
+# above. Prints four space-separated tokens:
+# <queue-enabled> <queued> <entry-state> <position>.
 #
 # Prints NOTHING on a failed read, and the caller then proceeds exactly as it
 # did before this existed (unqueued). That is the deliberate default: pre-queue
@@ -241,6 +285,12 @@ is_queued() {
   [ "${queued:-false}" = "true" ]
 }
 
+# Is a queue read due on poll $1? Never while this attempt's top-of-loop read
+# said the repo has no queue; otherwise every QUEUE_POLL_EVERY-th poll (ace#3106).
+queue_check_due() {
+  [ "$qenabled" = "true" ] && [ $(( $1 % QUEUE_POLL_EVERY )) -eq 0 ]
+}
+
 # Why this PR is BLOCKED, and whether we may rebase it (ace#2175). Sets
 # cls_action / cls_cause / cls_failing / cls_pending / cls_detail.
 #
@@ -257,7 +307,10 @@ is_queued() {
 classify_blocked() {
   cls_action=""; cls_cause=""; cls_failing=""; cls_pending=""; cls_detail=""
   local out line
-  out="$(npx tsx "$SCRIPT_DIR/land-pr-classify.ts" --pr "$PR" --repo "$REPO" 2>/dev/null)"
+  # Hand over what this attempt already read over REST, so the classifier
+  # does not re-read it (and never through GraphQL — ace#3106).
+  out="$(npx tsx "$SCRIPT_DIR/land-pr-classify.ts" --pr "$PR" --repo "$REPO" \
+           --merge-state "${m:-}" --head-sha "${oid:-}" 2>/dev/null)"
   while IFS= read -r line; do
     case "$line" in
       action=*)  cls_action="${line#action=}" ;;
@@ -364,11 +417,13 @@ while [ "$attempt" -lt "$MAX" ]; do
       exit 5
     fi
     echo "  in the merge queue (entry=$qstate position=$qpos) — waiting; this attempt is not consumed"
-    for _ in $(seq 1 "$POLLS_PER_ATTEMPT"); do
+    for qpoll in $(seq 1 "$POLLS_PER_ATTEMPT"); do
       s="$(state)"
       [ "$s" = "MERGED" ] && { echo "merged from the queue"; exit 0; }
       [ "$s" = "CLOSED" ] && { echo "CLOSED without merging"; exit 1; }
-      is_queued || { echo "  ejected from the queue — re-reading at the top"; break; }
+      if queue_check_due "$qpoll" && ! is_queued; then
+        echo "  ejected from the queue — re-reading at the top"; break
+      fi
       sleep "$POLL_SECONDS"
     done
     continue                    # deliberately does NOT increment `attempt`
@@ -449,12 +504,10 @@ while [ "$attempt" -lt "$MAX" ]; do
   # retry turns out to be what consistently lands it, that is the evidence
   # ace#2448 currently lacks, and the flag question can be settled on data.
   gh pr merge "$PR" -R "$REPO" --auto --merge >/dev/null 2>&1 || true
-  armed="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest \
-             --jq '.autoMergeRequest != null' 2>/dev/null || echo unknown)"
+  armed="$(auto_armed)"                       # REST `.auto_merge != null` (ace#3106)
   if [ "$armed" != "true" ]; then
     gh pr merge "$PR" -R "$REPO" --auto >/dev/null 2>&1 || true
-    armed="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest \
-               --jq '.autoMergeRequest != null' 2>/dev/null || echo unknown)"
+    armed="$(auto_armed)"
     # Written as an `if` rather than `[ … ] && echo`: this script runs under
     # `set -uo pipefail` today, so a false test is harmless — but a later `-e`
     # would turn that idiom into an exit, and stranding every ship is too big a
@@ -472,15 +525,18 @@ while [ "$attempt" -lt "$MAX" ]; do
   # a wait that prints nothing is indistinguishable from a hang, and the reader
   # kills it rather than letting it work. `mergeability` was already read here,
   # so saying what it returned costs nothing.
+  #
+  # ONE REST read per poll supplies both state and mergeability (ace#3106). An
+  # `unknown` mergeable_state is not retried here — the next poll re-reads it.
   for poll in $(seq 1 "$POLLS_PER_ATTEMPT"); do
-    s="$(state)"
+    read -r s mm _ <<<"$(pr_rest)" || true
+    mm="$(printf '%s' "${mm:-unknown}" | tr '[:lower:]' '[:upper:]')"
     [ "$s" = "MERGED" ] && { echo "attempt $attempt: MERGED"; exit 0; }
     [ "$s" = "CLOSED" ] && { echo "attempt $attempt: CLOSED without merging"; exit 1; }
-    if is_queued; then                         # entered the queue — stop polling
+    if queue_check_due "$poll" && is_queued; then   # entered the queue — stop polling
       echo "  poll $poll/$POLLS_PER_ATTEMPT: entered the merge queue — re-reading at the top"
       break                                    # blind and re-read at the top
     fi
-    mm="$(mergeability)"
     echo "  poll $poll/$POLLS_PER_ATTEMPT: state=$s mergeable=$mm"
     [ "$mm" = "DIRTY" ] && break                # collided again — next attempt
     sleep "$POLL_SECONDS"
@@ -492,7 +548,9 @@ done
 # auto-merge=false" names the cause (ace#2004), and "queue=true queued=false"
 # says the PR never reached the queue at all — a different problem with a
 # different fix from one that is queued and merely slow.
-echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus,autoMergeRequest --jq '.state+" "+.mergeStateStatus+" auto-merge="+(.autoMergeRequest != null | tostring)') queue=$qenabled queued=$queued entry=$qstate pos=$qpos"
+read -r gs gm ga _ <<<"$(pr_rest)" || true
+gm="$(printf '%s' "${gm:-unknown}" | tr '[:lower:]' '[:upper:]')"
+echo "gave up after $MAX attempts: ${gs:-?} $gm auto-merge=${ga:-unknown} queue=$qenabled queued=$queued entry=$qstate pos=$qpos"
 # ...and WHAT was blocking it. "OPEN BLOCKED auto-merge=true" was the whole
 # report for the ten minutes of ace#2175; "cause=checks-failed failing=unit-tests"
 # is a next step. `rebases=` says whether the recovery ever ran at all.

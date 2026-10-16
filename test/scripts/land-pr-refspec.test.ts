@@ -175,21 +175,32 @@ d="$GH_STUB_DIR"
 #   <isMergeQueueEnabled> <isInMergeQueue> <entry.state> <entry.position>
 # An EMPTY file models a failed/unavailable read, which the script must treat
 # as "unqueued" so pre-queue behaviour is bit-for-bit what it was.
+#
+# A \`graphql_ratelimited\` file models GitHub's GraphQL secondary rate limit
+# (2026-10-16, ace#3106): every GraphQL call fails the way gh reports it.
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   echo "$*" >> "$d/graphql.log"
+  if [ -f "$d/graphql_ratelimited" ]; then
+    echo "GraphQL: API rate limit exceeded for user (secondary rate limit)" >&2
+    exit 1
+  fi
   cat "$d/queue" 2>/dev/null
   exit 0
 fi
-if [ "$2" = "view" ]; then
-  f=""; prev=""
-  for a in "$@"; do [ "$prev" = "--json" ] && f="$a"; prev="$a"; done
-  case "$f" in
-    state) cat "$d/state" ;;
-    mergeStateStatus) cat "$d/mergeable" ;;
-    headRefName) cat "$d/headRefName" ;;
-    headRefOid) cat "$d/headRefOid" ;;
-  esac
+# The PR read, over REST (ace#3106). The script's --jq template prints five
+# tokens: <MERGED|OPEN|CLOSED> <mergeable_state> <auto-armed> <head.ref> <head.sha>.
+# REST's mergeable_state is LOWERCASE; the files hold the GraphQL spelling.
+if [ "$1" = "api" ] && case "$2" in repos/*/pulls/*) true ;; *) false ;; esac; then
+  echo "$*" >> "$d/rest.log"
+  s="$(cat "$d/state")"
+  armed=false; [ -f "$d/armed" ] && armed=true
+  echo "$s $(tr '[:upper:]' '[:lower:]' < "$d/mergeable") $armed $(cat "$d/headRefName") $(cat "$d/headRefOid")"
   exit 0
+fi
+# Any GraphQL-backed \`gh pr view\` is a regression of ace#3106: log it.
+if [ "$2" = "view" ]; then
+  echo "$*" >> "$d/prview.log"
+  exit 1
 fi
 if [ "$2" = "merge" ]; then
   echo "$*" >> "$d/merge.log"
@@ -254,6 +265,8 @@ function runLandPr(
       PATH: `${stub}:${process.env.PATH}`,
       GH_STUB_DIR: stub,
       ACE_REPO: 'dimagi-internal/ace',
+      // A stub never answers `unknown`, but if one ever did, do not sleep on it.
+      ACE_LAND_PR_UNKNOWN_SLEEP: '0',
       ...extraEnv,
     },
     timeout: timeoutMs,
@@ -634,8 +647,8 @@ describe('land-pr.sh push target', () => {
       fs.writeFileSync(
         path.join(stub, 'gh'),
         fs.readFileSync(path.join(stub, 'gh'), 'utf-8').replace(
-          '    state) cat "$d/state" ;;',
-          '    state) cat "$d/state"; echo MERGED > "$d/state" ;;',
+          '  s="$(cat "$d/state")"\n',
+          '  s="$(cat "$d/state")"; echo MERGED > "$d/state"\n',
         ),
         { mode: 0o755 },
       );
@@ -713,6 +726,89 @@ describe('land-pr.sh push target', () => {
       expect(r.status).toBe(2);
       expect(r.stdout).toMatch(/refusing to land/);
       expect(r.stdout).not.toMatch(/STILL IN THE MERGE QUEUE/);
+    });
+  });
+
+  //
+  // ace#3106 — ~20 concurrent shippers polling every 20s through `gh pr view`
+  // (GraphQL) tripped GitHub's GraphQL secondary rate limit on 2026-10-16. The
+  // PR is now read over REST, and the one GraphQL read left (the merge queue)
+  // runs once per attempt, never per poll while the repo has no queue.
+  //
+  describe('REST polling (ace#3106)', () => {
+    it('lands a CLEAN PR while GraphQL is rate-limited', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'CLEAN\n');
+      fs.writeFileSync(path.join(stub, 'graphql_ratelimited'), '');
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(r.stdout).toMatch(/MERGED/);
+      expect(r.stdout).toMatch(/auto-merge armed=true/);
+      expect(fs.readFileSync(path.join(stub, 'rest.log'), 'utf-8')).toMatch(/pulls\/1967/);
+    });
+
+    it('never reads the PR through `gh pr view`', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '4',
+      });
+      expect(fs.existsSync(path.join(stub, 'prview.log'))).toBe(false);
+    });
+
+    it('makes ONE GraphQL queue read per attempt, not one per poll, when there is no queue', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+
+      const r = runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '6',
+      });
+
+      expect(r.stdout).toMatch(/poll 6\/6: state=OPEN mergeable=BLOCKED/);
+      const gql = fs.readFileSync(path.join(stub, 'graphql.log'), 'utf-8').trim().split('\n');
+      expect(gql).toHaveLength(1);
+    });
+
+    it('with a queue enabled, polls it only every Nth poll', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      fs.writeFileSync(path.join(stub, 'queue'), 'true false - -\n');
+
+      runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '6',
+        ACE_LAND_PR_QUEUE_POLL_EVERY: '3',
+      });
+
+      // 1 top-of-attempt read + polls 3 and 6.
+      const gql = fs.readFileSync(path.join(stub, 'graphql.log'), 'utf-8').trim().split('\n');
+      expect(gql).toHaveLength(3);
+    });
+
+    it('hands the classifier the REST merge state and head sha', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+      fs.writeFileSync(
+        path.join(stub, 'npx'),
+        '#!/usr/bin/env bash\necho "$*" >> "$GH_STUB_DIR/npx.log"\ncat "$GH_STUB_DIR/classify"\n',
+        { mode: 0o755 },
+      );
+      runLandPr(work, stub, SPAWN_TIMEOUT_MS, {
+        ACE_LAND_PR_POLL_SECONDS: '0',
+        ACE_LAND_PR_POLLS: '1',
+      });
+      const call = fs.readFileSync(path.join(stub, 'npx.log'), 'utf-8');
+      expect(call).toContain('--merge-state BLOCKED');
+      expect(call).toContain(`--head-sha ${remoteSha(PR_BRANCH)}`);
     });
   });
 
