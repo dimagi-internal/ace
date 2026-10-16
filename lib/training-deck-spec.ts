@@ -349,6 +349,54 @@ export const FORMATTING_BUDGETS = {
   statsItems: 3,
 } as const;
 
+/**
+ * Sibling `stats[].big` values that drop the unit their siblings carry
+ * (ace#2205).
+ *
+ * On `poverty-graduation/20260905-1345` slide 6 the row read `USD 3 / USD 3 /
+ * 0`: same font, size and colour, and the bare `0` still read as a footnote
+ * beside two headline numbers, because it is one glyph of ink beside five. The
+ * stencil cannot fix it (it already caps every column with an identical rule);
+ * only the spec knows that `0` means `USD 0`.
+ *
+ * Flags a value that is ONLY a number when at least one sibling is a number
+ * wrapped in a unit (`USD 3`, `3 USD`, `$3`, `25%`, `10/day`). Siblings with
+ * DIFFERENT units are legitimate (`USD 3` beside `300 visits`) and are not
+ * flagged. The suggestion borrows the first unit-carrying sibling's affixes.
+ */
+const STAT_NUMBER = /^(.*?)(-?\d[\d.,]*)(.*)$/;
+
+export interface StatsUnitMismatch {
+  index: number;
+  big: string;
+  siblings: string[];
+  suggestion: string;
+}
+
+export function statsUnitMismatches(stats: ReadonlyArray<{ big?: unknown }>): StatsUnitMismatch[] {
+  const parsed = stats.map((st) => {
+    const big = typeof st?.big === 'string' ? st.big.trim() : '';
+    const m = big.match(STAT_NUMBER);
+    if (!m) return { big, numeric: false, bare: false, prefix: '', suffix: '' };
+    const [, prefix, , suffix] = m;
+    return { big, numeric: true, bare: !prefix.trim() && !suffix.trim(), prefix, suffix };
+  });
+  const withUnit = parsed.filter((p) => p.numeric && !p.bare);
+  if (!withUnit.length) return [];
+  const model = withUnit[0];
+  const out: StatsUnitMismatch[] = [];
+  parsed.forEach((p, index) => {
+    if (!p.numeric || !p.bare) return;
+    out.push({
+      index,
+      big: p.big,
+      siblings: withUnit.map((w) => w.big),
+      suggestion: `${model.prefix}${p.big}${model.suffix}`,
+    });
+  });
+  return out;
+}
+
 export interface FormattingFinding {
   slideId: string;
   layout: string;
@@ -423,6 +471,19 @@ export function lintDeckFormatting(spec: TrainingDeckSpec): FormattingFinding[] 
 
       if (layout === 'stats' && Array.isArray(s.stats) && s.stats.length > FORMATTING_BUDGETS.statsItems) {
         add(id, layout, 'statsItems', `${s.stats.length} stats (the stencil draws ${FORMATTING_BUDGETS.statsItems})`, 'error');
+      }
+
+      if (layout === 'stats' && Array.isArray(s.stats)) {
+        for (const u of statsUnitMismatches(s.stats as Array<{ big?: unknown }>)) {
+          add(
+            id,
+            layout,
+            'statsUnits',
+            `stats[${u.index}].big is a bare "${u.big}" beside siblings that carry a unit ` +
+              `(${u.siblings.map((x) => `"${x}"`).join(', ')}) — write "${u.suggestion}"`,
+            'warn',
+          );
+        }
       }
     }
   }

@@ -349,6 +349,27 @@ response time.
    contract: `skills/_training-template.md § Illustrated guides — render, THEN
    embed` (dimagi-internal/ace#1418).
 
+7c. **Close the no-shows loop: run `verify_caption_backing`, then open what
+   nobody opened.** `app-screenshot-capture` describes only a subset of the
+   frames it uploads (its § Step 5.6 minimum), and every cited frame with no
+   `shows:` line is a `no-shows` BLOCKER (`skills/_training-template.md`,
+   ace#2902).
+
+   1. Run `verify_caption_backing({publishedFileId: <docId>, manifestFileId:
+      <app-screenshot-capture_manifest.yaml>, poolFileIds: [<common pool>],
+      showsAddendumFileIds: [<the addendum below, if it exists>]})`.
+   2. For each `no-shows` finding, download and LOOK at the frame. Write one
+      line saying what it actually shows into
+      `6-qa-and-training/app-screenshot-capture_shows-addendum.yaml`, using
+      `shows: [{step, file_id, shows}]`. Append to the file if the FLW guide
+      already started it. **Never write into the capture manifest.** It is
+      the producer's artifact, and the addendum is the consumer's write path,
+      which the gate reads.
+   3. If a frame does NOT show what your caption says, fix the caption or
+      drop the image. Do not describe the frame to fit the caption.
+   4. Re-run step 1 with `showsAddendumFileIds`. Repeat until `findings` is
+      empty, and read `addendum_unmatched`: an entry there backed nothing.
+
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Hard-number fidelity:** every payment / cap / GPS-fence number
      matches `run_state.yaml`

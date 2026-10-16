@@ -40,7 +40,7 @@ import yaml from 'js-yaml';
 import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
-import { parseTrainingSpec, type TrainingDeckSpec } from '../lib/training-deck-spec.js';
+import { lintDeckFormatting, parseTrainingSpec, type TrainingDeckSpec } from '../lib/training-deck-spec.js';
 import { decodePng, measureFrame, type FrameStats, type Raster } from '../lib/frame-pixels.js';
 import { belowTitleCropTop, cropRasterTop, encodePng, oppTitleExposure } from '../lib/opp-title-frames.js';
 import {
@@ -218,6 +218,10 @@ async function main(): Promise<number> {
   fs.writeFileSync(out, yaml.dump(bound, { lineWidth: -1, noRefs: true }));
   // Round-trip: what we wrote must still be a valid spec.
   parseTrainingSpec(fs.readFileSync(out, 'utf8'));
+  // `parseTrainingSpec` enforces only the `error` half of the formatting lint;
+  // the `warn` half (e.g. `statsUnits`, ace#2205) needs a reader, and this
+  // report is the one training-deck-generate already reads.
+  const formattingWarnings = lintDeckFormatting(bound).filter((f) => f.severity === 'warn');
   fs.writeFileSync(
     reportPath,
     JSON.stringify(
@@ -225,6 +229,7 @@ async function main(): Promise<number> {
         run: runId, lineage, pool_frames: pool.length, measured: stats.size, ...report,
         crops: report.crops.map((c) => ({ ...c, local_file: cropFiles[c.alias] })),
         gate,
+        formatting_warnings: formattingWarnings,
       },
       null,
       2,
@@ -236,6 +241,7 @@ async function main(): Promise<number> {
       `actions: ${report.actions.length}; needs_shows: ${report.needs_shows.join(', ') || 'none'}\n` +
       `crops to upload: ${report.crops.map((c) => cropFiles[c.alias] ?? c.alias).join(', ') || 'none'}\n` +
       `run-id title still visible on: ${report.opp_title_visible.join(', ') || 'none'}\n` +
+      `formatting warnings: ${formattingWarnings.map((f) => `${f.slideId} ${f.rule}`).join(', ') || 'none'}\n` +
       `gate: ${gate.pass ? 'PASS' : 'FAIL — ' + gate.detail}\n`,
   );
   return gate.pass ? 0 : 1;
