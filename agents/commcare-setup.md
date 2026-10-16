@@ -376,46 +376,36 @@ It must match JSON Schema draft 2020-12
 ```
 
 while `get_hq_connection`, `get_app`, `get_module` and `create_form` stayed
-callable from L0 the whole time. A handful of Nova's schemas are rejected at
-**bind** time; the same tools answer fine over JSON-RPC.
+callable from L0 the whole time. A handful of Nova's schemas were rejected at
+**bind** time; the same tools answered fine over JSON-RPC.
 
-**The discriminator is schema SIZE, not nesting depth** — measured 2026-09-17
-by loading tools one at a time into isolated throwaway dispatches, recording
-each result to disk before attempting the next (a bind fault kills the process,
-so the surviving file is the evidence):
+**That specific fault is FIXED upstream — this is history, not a live
+constraint.** `voidcraft-labs/commcare-nova#627` closed COMPLETED 2026-09-20
+(fix: Nova PR #638). Root cause, per Nova's maintainer: **one text rule — a
+regex `pattern` on the link column's label** that stricter clients could not
+read, so they refused the whole tool. The affected tools were `create_module`,
+`update_module`, `configure_case_list`, `add_case_list_columns` and
+`update_case_list_column`; `add_automations` and `update_automation` were
+**never** affected. Nova now checks every served schema the way a client
+receives it. Since then the architect has dispatched and built cleanly
+(nova-plugin v2 validation 2026-09-28 on this issue; `tekzal/20261013-2314`),
+and on 2026-10-16 the live `tools/list` carried `configure_case_list` at
+16,552 B and `add_automations` at 17,612 B (both above the old "cliff") and
+both bind — the size theory is refuted directly.
 
-| tool | depth | bytes | binds? |
-|---|---|---|---|
-| `generate_schema` | 14 | 4,193 | **yes** |
-| `add_fields` | 15 | 6,571 | **yes** |
-| `create_form` | 15 | 9,422 | **yes** |
-| `configure_case_list` | **12** | 16,257 | **NO** — 400, `req_011Cf8b9ra6sJ3bEwrqL4Kbh` |
-| `create_module` | 20 | 16,004 | **NO** — 400, `req_011Cf8b6Evu4BTrpdFxaLEh4` |
+**Three wrong theories, recorded so they are not re-derived.** ACE's own
+diagnosis (ace#2408, 2026-09-17) concluded the discriminator was schema
+**SIZE** (a cliff between 9,422 B and 16,004 B), after first trying nesting
+**depth** and the `$schema` **dialect** (98 of 120 tools declared draft-07).
+All three were correlations: the size table matched because the link-column
+rule happened to live in the largest schemas, and it wrongly predicted the two
+automation tools. The general lesson — a bind 400 names a tool index, not a
+property; a validator's opinion is not the API's; and the property that
+correlates best across a tool surface is not necessarily the one at fault.
 
-`configure_case_list` is the case that settles it: it is **shallower** than two
-tools that bind and it still fails, so depth cannot be the rule. It is also
-*larger* than `create_module`, which is what makes it a clean natural
-experiment rather than one more confounded data point.
-
-Across all 120 tools the sizes fall either side of a cliff with **nothing in
-between** — the largest that binds is 9,422 B and the smallest that fails is
-16,004 B. So the threshold sits somewhere in `(9,422, 16,004]` and the affected
-set is exactly four tools:
-
-    add_automations (17,792)  update_automation (17,752)
-    configure_case_list (16,257)  create_module (16,004)
-
-Two of those are confirmed by a 400 with a request id; the other two are
-inferred from size alone, and that inference is the weak part of this claim —
-re-measure before relying on it.
-
-**A refuted theory, recorded so it is not re-derived:** the failure is NOT
-caused by the 98 Nova tools declaring `"$schema":
-"http://json-schema.org/draft-07/schema#"`. That correlates well (98 of 120
-tools) and is wrong — `get_languages` and `get_entry_points` both declare
-draft-07 and both bind fine. Validating against a 2020-12 metaschema *will*
-tell you those schemas are invalid; that is the validator's opinion, not the
-API's.
+**The probe, the no-retry rule and the JSON-RPC fallback below stay** as
+defensive nets: a future schema regression of this class looks exactly the
+same, and they cost ~10 seconds when nothing is wrong.
 
 So probe the architect itself:
 
