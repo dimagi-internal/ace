@@ -1,0 +1,92 @@
+run_date: 2026-10-16
+repo: dimagi-internal/ace
+scope_contract: triage-plus-quick-wins
+code_ref: 4e3a35f6
+open_total: 122
+triaged: 33
+carried_forward: 0
+truncated: true
+clusters:
+  - name: commcare-cli
+    members: [2988, 2989]
+    one_fix: "lib/commcare-cli-validate.ts play path: bounded buffers + user_data seeding"
+  - name: doctor
+    members: [2931, 2929, 2905]
+    one_fix: "doctor probe hygiene (independent fixes)"
+  - name: llo-directory
+    members: [2956, 2957]
+    one_fix: "scripts/llo-directory.ts apply subcommand with formula-aware writes"
+  - name: connect-accept
+    members: [3011]
+    one_fix: "rebase PR #3017 (retires the Playwright accept path)"
+tier_counts: { blocks-e2e: 7, harness: 24, polish: 2 }
+prs:
+  - number: 3028
+    disposition: unblock
+    checks: { clean-install: pass, check-version: pass, static-checks: pass }
+    blocker: "version-file conflicts only"
+    mechanical: true
+    refs_issues: [2955]
+    action: null
+    outcome: null
+  - number: 3017
+    disposition: needs-work
+    checks: { codeql: pass }
+    blocker: "real conflicts with #3010's competing ownership-based accept gate"
+    mechanical: false
+    refs_issues: [2954, 3011]
+    action: null
+    outcome: null
+  - number: 2796
+    disposition: blocked
+    checks: {}
+    blocker: "fork PR, no CI, no VERSION bump; needs live validation on >1 OCS bot"
+    mechanical: false
+    refs_issues: [2791]
+    action: null
+    outcome: null
+verdicts:
+  - {number: 2984, disposition: implement, blocking: blocks-e2e, confidence: high, effort: S, cluster: null, evidence_paths: [lib/option-register.ts, test/lib/option-register.test.ts, skills/pdd-to-deliver-app/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2988, disposition: implement, blocking: blocks-e2e, confidence: high, effort: M, cluster: commcare-cli, evidence_paths: [lib/commcare-cli-validate.ts], source: fresh, action: null, outcome: null}
+  - {number: 2989, disposition: implement, blocking: blocks-e2e, confidence: high, effort: M, cluster: commcare-cli, evidence_paths: [lib/commcare-cli-validate.ts, skills/app-release-qa/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 3033, disposition: implement, blocking: blocks-e2e, confidence: medium, effort: M, cluster: null, evidence_paths: [lib/test-worker-lease.ts, mcp/mobile/backends/lease-contract.ts, mcp/mobile/client.ts, infra/capabilities/test-worker/capability.yaml], source: fresh, action: null, outcome: null}
+  - {number: 2186, disposition: implement, blocking: blocks-e2e, confidence: high, effort: M, cluster: null, evidence_paths: [skills/app-test-cases/SKILL.md, mcp/mobile/recipe-sanity-probe.ts], source: fresh, action: null, outcome: null}
+  - {number: 2408, disposition: fix-and-unwind, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [agents/commcare-setup.md, lib/nova-rpc.ts], source: fresh, action: null, outcome: null}
+  - {number: 3011, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: connect-accept, awaiting_pr: 3017, evidence_paths: [mcp/connect/backends/playwright.ts, mcp/connect/backends/composite.ts], source: fresh, action: null, outcome: null}
+  - {number: 3060, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: null, evidence_paths: [skills/connect-apk-upgrade/SKILL.md, bin/ace-doctor, skills/training-flw-guide/SKILL.md, skills/training-deck-generate/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2931, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: doctor, evidence_paths: [bin/ace-doctor], source: fresh, action: null, outcome: null}
+  - {number: 2929, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: doctor, evidence_paths: [lib/avd-pool-report.ts, test/lib/avd-pool-report.test.ts], source: fresh, action: null, outcome: null}
+  - {number: 2905, disposition: implement, blocking: harness, confidence: medium, effort: S, cluster: doctor, evidence_paths: [bin/ace-doctor, bin/ace-setup], source: fresh, action: null, outcome: null}
+  - {number: 3059, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [lib/training-deck-frames.ts, test/lib/training-deck-frames.test.ts], source: fresh, action: null, outcome: null}
+  - {number: 2990, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [lib/scoring-arithmetic.ts, test/lib/scoring-arithmetic.test.ts], source: fresh, action: null, outcome: null}
+  - {number: 3052, disposition: implement, blocking: harness, confidence: medium, effort: S, cluster: null, evidence_paths: [templates/ocs-coach/coach-prompt.md, test/lib/coach-briefing.test.ts], source: fresh, action: null, outcome: null}
+  - {number: 2961, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [skills/inbox-triage/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2935, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [skills/_app-component-library.md, skills/pdd-to-deliver-app/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2957, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: llo-directory, evidence_paths: [skills/llo-directory-add/SKILL.md, scripts/llo-directory.ts, lib/llo-directory.ts], source: fresh, action: null, outcome: null}
+  - {number: 2956, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: llo-directory, evidence_paths: [scripts/llo-directory.ts, skills/llo-directory-add/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2926, disposition: implement, blocking: harness, confidence: medium, effort: S, cluster: null, evidence_paths: [test/scripts/land-pr-refspec.test.ts, lib/commcare-cli-validate.ts, test/lib/version-bump.test.ts], source: fresh, action: null, outcome: null}
+  - {number: 2923, disposition: implement, blocking: harness, confidence: medium, effort: S, cluster: null, evidence_paths: [skills/pdd-to-learn-app-eval/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2919, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: null, evidence_paths: [lib/connect-orgs.ts, lib/run-workspace.ts], source: fresh, action: null, outcome: null}
+  - {number: 2918, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: null, evidence_paths: [mcp/google-drive-server.ts, lib/drive-tenancy-guard.ts], source: fresh, action: null, outcome: null}
+  - {number: 2902, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: null, evidence_paths: [lib/caption-backing.ts, skills/training-flw-guide/SKILL.md, skills/training-llo-guide/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 3043, disposition: implement, blocking: harness, confidence: medium, effort: S, cluster: null, evidence_paths: [skills/app-case-sharing/SKILL.md, agents/commcare-setup.md], source: fresh, action: null, outcome: null}
+  - {number: 3016, disposition: implement, blocking: harness, confidence: high, effort: M, cluster: null, evidence_paths: [lib/pdd-description-plain-language.ts, lib/decision-review.ts], source: fresh, action: null, outcome: null}
+  - {number: 2894, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [mcp/mobile/recipes/static/form-submit.yaml, skills/app-test-cases/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2893, disposition: implement, blocking: harness, confidence: high, effort: S, cluster: null, evidence_paths: [lib/preview-capture.ts, scripts/output-preview-capture.ts], source: fresh, action: null, outcome: null}
+  - {number: 3053, disposition: investigate, blocking: harness, confidence: high, effort: n/a, cluster: null, evidence_paths: [skills/semantic-registry-author/SKILL.md, skills/ocs-coach-setup/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2925, disposition: blocked, blocking: harness, confidence: high, effort: n/a, cluster: null, unblocked_by: "one successful Claude_Docs read of a doc shared to ace@", evidence_paths: [skills/inbox-triage/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2953, disposition: implement, blocking: polish, confidence: medium, effort: S, cluster: null, evidence_paths: [skills/app-hq-settings/SKILL.md, skills/_app-component-library.md], source: fresh, action: null, outcome: null}
+  - {number: 2895, disposition: implement, blocking: polish, confidence: medium, effort: S, cluster: null, evidence_paths: [skills/app-media-coverage/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 3036, disposition: close, close_reason: completed, blocking: blocks-e2e, confidence: medium, effort: n/a, cluster: null, evidence_paths: [lib/learn-module-display-gating.ts, skills/pdd-to-learn-app/SKILL.md, skills/app-release-qa/SKILL.md], source: fresh, action: null, outcome: null}
+  - {number: 2704, disposition: close, close_reason: completed, blocking: blocks-e2e, confidence: high, effort: n/a, cluster: null, evidence_paths: [skills/app-deploy/SKILL.md, scripts/probe-hq-connect-flag.ts], source: fresh, action: null, outcome: null}
+outcome:
+  scope_contract_final: full-sweep
+  open_issues_after: 25
+  closed_cleanup_pass: [2794, 2321, 2319, 2153, 2190, 2200, 2411, 2423, 2433, 2448, 2206, 1776, 1914, 2482, 2552, 2501, 2384, 2330, 2339, 2363]
+  closed_direct: [3036, 2704, 1289]
+  trains: {"3109": 46, "3111": 26}
+  other_merged_prs: [3065, 3066, 3017, 3073, 3103, 3028]
+  filed: [3095, 3106, 3110]
+  needs_operator_decision: [3053, 2806, 2889, 2774, 2789, 2822, 2157, 2152, 2406, 2337]
+  blocked: [2925, 2785, 2292, 1305, 2018, 2392, 3060]
+  partial: [2083, 1924, 2213]
