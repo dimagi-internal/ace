@@ -303,8 +303,14 @@ export function checkScrollFraming(spec: LegibilitySpec | undefined): Legibility
             `the title, the disclosure and all four KPI cards off the top. Seven of seven scenes ` +
             `came back with a failed projector test and a wrong five-second read, and the run ` +
             `ended at concept 2.0 of 5. Replace it with a scroll_to action naming the element ` +
-            `this frame is about — canopy resolves it live and centres it, so it holds at any ` +
-            `page length. Write only kind and target on that action — canopy forbids extra keys on ` +
+            `this frame is about — canopy resolves it live and centres it, which holds when the ` +
+            `target's centred position is reachable. It is NOT reachable for a target in the first ` +
+            `or last viewport-height of a short page — the browser clamps the centring scroll back ` +
+            `to where the camera already was, the action reports ok, and the scene films the ` +
+            `previous frame (ace#2253, three of five scroll_to actions on ` +
+            `spark-facilitator/20260907-1120). For those targets use top or bottom, which this ` +
+            `check reports but does not block, or a pixel scroll measured against the live page ` +
+            `at record time. Write only kind and target on that action — canopy forbids extra keys on ` +
             `an action, so inventing a framing key makes the spec fail validation, which is what ` +
             `the retracted ace#1660 check told authors to do. If the header block and the whole ` +
             `table cannot co-exist in one ` +
