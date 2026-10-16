@@ -282,10 +282,20 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > Nova accepts it with no error and the app builds clean; the only
      > symptom is unpaid work (ace#1232, proven against a compiled CCZ).
      > **Any literal separator MUST be quoted inside a `concat(...)`:**
-     > `concat(#user/username, ' - ', #form/visit_date)` — or, better, use
-     > the hidden-`entity_key`-field shape below, which builds the
-     > `concat(...)` in the field's own `calculate` and points `entity_id`
-     > at that one field.
+     > `concat(#user/username, ' - ', #form/visit_start_time)` — or,
+     > better, use the hidden-`entity_key`-field shape below, which builds
+     > the `concat(...)` in the field's own `calculate` and points
+     > `entity_id` at that one field.
+     >
+     > **Mind the grain of every component.** A date-only component
+     > (`#form/visit_date = today()`) makes the key **per worker per day** —
+     > a day's submissions pay as ONE. That is only right when the PDD's
+     > paid unit IS one per worker per day. For a per-submission key, use a
+     > time-bearing timestamp written `format-date(now(), '%Y-%m-%d
+     > %H:%M:%S')` — **never a bare `now()`**, which in a hidden field
+     > renders date-only and collapses to the same per-day key with no
+     > error anywhere (ace#2935; `_app-component-library.md §
+     > section-timestamps`).
      >
      > Example for a malaria RDT outlet visit whose dedup key is
      > (outlet, brand, batch): `entity_key` =
@@ -2323,6 +2333,23 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    nova_app_url: https://commcare.app/build/<id-returned-by-autobuild>
    archetype: <atomic-visit | longitudinal-visits | focus-group | multi-stage>
    delivery_unit: <one-line description matching the PDD>
+   # Addressing map — Nova is uuid-addressed (2026-07-31, ace#1132).
+   # COPIED VERBATIM from the get_app response § 4a step 2 already read
+   # (the `[uuid …]` printed on each module/form/field) — NEVER typed
+   # from a pattern, re-derived, or reconstructed from memory (ace#2144).
+   # app-deploy Step 2.5 and app-connect-coverage address off this block
+   # instead of calling get_app, so a wrong uuid here is trusted.
+   nova_uuids:
+     modules:
+       - name: <module name>
+         uuid: <moduleUuid>
+         forms:
+           - name: <form name>
+             uuid: <formUuid>
+             # Only the fields later steps address directly (entity_key,
+             # payable marker, image uploads). Not every field.
+             fields:
+               entity_key: <fieldUuid>
    option_source_gaps: []   # Step 4f — one entry per PDD-declared select
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
@@ -2377,6 +2404,20 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      mismatches: 0          # anything above 0 means Step 4k halted
    ---
    ```
+
+   **`nova_uuids` is read back, not trusted.** Its module/form uuids come
+   from the `get_app` response § 4a step 2 already read — a fresh
+   `get_app({app_id})` if a later step added a module or form — copied
+   character for character, never written from a pattern. On
+   `spark-facilitator/20260906-2233` the Deliver map recorded
+   `11110000-0000-4000-8000-000000000001` for a module the app holds as
+   `11111111-0000-4000-8000-000000000001` (all four module/form uuids
+   truncated the same way, field uuids correct), and `app-deploy`'s lint
+   then failed `get_form` with "No module with UUID … is in this app"
+   (ace#2144). After writing the summary, call
+   `get_form({app_id, moduleUuid, formUuid})` on one pair from the block;
+   if it does not resolve, rewrite the block from a fresh `get_app` before
+   moving on.
 
    **Every latitude taken and every ambiguity hit is a decision row — the
    run's review artifact.** Append them with ONE `decisions_append_rows` call
@@ -2755,6 +2796,8 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 7 writes a `nova_uuids` block, copied from § 4a step 2's `get_app` and read back (ace#2144).** `app-deploy` Step 2.5 and `app-connect-coverage` both read the Deliver summary's `nova_uuids:` instead of calling `get_app`, but Step 7 never specified one (Learn's Step 7 did). On `spark-facilitator/20260906-2233` the map that was written had all four module/form uuids pattern-truncated (`11110000-…` for `11111111-…`) and the lint's `get_form` failed. The block is now part of the required frontmatter, sourced verbatim from the `get_app` response, with a one-pair `get_form` read-back after the write. *Enforced:* `test/skills/deliver-summary-nova-uuids.test.ts`. | ACE team |
+| 2026-10-16 | **§ entity_id: a date-only key component is a per-worker-per-day grain (ace#2935).** The quoted-separator example used `#form/visit_date`, which keys per worker per day; it now uses a time-bearing timestamp and says so, and names the bare-`now()` trap (a hidden field renders it date-only). | ACE team |
 | 2026-10-16 | **Step 4f: a lookup's value column must be whitespace-free (ace#2984).** On `kaduna-graduation/20261015-1411` `kgrad_services` had no code-shaped column, three selects saved the display `name` (`"Placeholder: services directory entry 1 …"`), every ACE gate passed (the values were unique), and Nova's `upload_app_to_hq` preflight refused the Deliver app: *"Saved values can't contain whitespace."* Same class as ace#2143, Nova's second rule. `verifyLookupBind` (and so `auditLookupBinds`) now returns `whitespace-values`; authored tables carry a slug `code` column as the saved value. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-10-12 | **Step 4k prefers the publisher's file over a derived `inputs[]` extraction (ace#2852).** `resolveInstrumentSource` returned the `inputs[]` match before it looked at manifest-recorded subfolders, even when that match classed `derived` — so on `smallholder-seasonal/20261012-1549` the strict path resolved `INSTRUMENT — Nigeria 2018 PPI (… extracted verbatim).md` while the publisher's `nigeria-ppi-2020-scorecard-and-lookup-table.xlsx` sat in the recorded subfolder `official-nigeria-2018-ppi (povertyindex.org)`. The ace#1648 order (inputs[] first) predates the ace#2110 classifier, which disclosed a derived source but never re-ordered the search. Step 2 now walks the subfolders when the `inputs[]` match is derived; the helper resolves a single published subfolder file over it (naming the passed-over entry in its memo), halts on more than one, and keeps the derived entry with its caveat only when nothing published exists. *Enforced:* `test/lib/instrument-constants.test.ts` (real layout and ids from that run). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every `[ACE]` latitude, `[FIXED]` ambiguity, stated exemption and not-computable metric this skill used to tabulate under the summary's `## Build memo` is now a decision row only (`plain`, `check_at`/`correct_looks_like`, `review_ask` + `confirm_reason` for open questions), the non-decision check records move to the summary's `## Build notes`, and the Phase 3 boundary fails a written summary with zero rows under `skill: pdd-to-deliver-app`. Contract: docs/decisions-contract.md. | ACE team |

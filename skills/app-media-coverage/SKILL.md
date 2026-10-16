@@ -26,7 +26,7 @@ form XML after the fact.
 |---|---|---|
 | Phase 3 Step 1 | `3-commcare/pdd-to-learn-app_summary.md`, `pdd-to-deliver-app_summary.md` | `nova_app_id` per app |
 | Opp inputs | `ACE/<opp>/inputs/media/` (optional) | supplied assets + guidance |
-| Phase 1 | `pdd.md` | Application Context, domain, worker profile |
+| Phase 1 | `pdd.md` | Application Context, domain, worker profile; § Program Parameters `opportunity_country` + `opportunity_currency` (the locale every generated image must match — Step 6) |
 | Operator (optional) | `3-commcare/app-media-coverage_app-context.md` | overrides the derived context |
 | Operator (optional) | `3-commcare/app-media-coverage_plan-<app>.yaml` | hand-edited plan wins |
 
@@ -197,6 +197,23 @@ Input JSON is `{applicationContext, formText, imageDirectives, upscale:false}`.
 The directive should be specific about subject, action, environment, lighting,
 and any modesty or representation cues the Application Context or the guidance
 carries. Serial execution; ~30–60s each.
+
+**Every directive carries the programme's locale (ace#2895).** Read
+`opportunity_country` and `opportunity_currency` from the PDD's § Program
+Parameters — NOT from `run_state.yaml`'s Connect opportunity block, which
+Phase 4 writes and which does not exist yet while this Phase 3 skill runs. The
+rule: **any currency, banknote or denomination, worker ID badge, card,
+document, signage or other printed identifier the image depicts must belong to
+that country and that currency — or the image depicts none.** State it in the
+directive in plain words (e.g. *"Set in Ghana. Any money, scratchcard, badge or
+document shown is Ghanaian and in GHS; otherwise show no legible currency,
+denomination, ID number or national document."*). When the depicted object is
+only a reference (a card used for colour and size), prefer the neutral framing:
+no legible denomination or ID at all. If the PDD carries neither field, write
+the neutral form and add a `[WARN] media-locale-unknown` build note — never
+guess a country. Origin: `turmeric-market-study-ghana/20261012-1749`, a Ghana
+(`GHS`) programme, shipped a guidance photo of a Ugandan `UGX 1000` MTN card
+and a badge reading `FLW-UG045`.
 
 ### 7. Prepare and upload every asset
 
@@ -374,6 +391,7 @@ with status and the counts above.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Generated imagery is pinned to the programme's locale (ace#2895).** Step 6's directive had no country constraint, so a Ghana (`GHS`) programme (`turmeric-market-study-ghana/20261012-1749`) shipped a guidance photo of a Ugandan `UGX 1000` MTN card and a `FLW-UG045` badge — the one image a new worker studies to learn the procedure. Every directive now carries `opportunity_country` / `opportunity_currency` read from the PDD § Program Parameters (not Phase 4's run_state block, which does not exist yet): depicted currency, badges, documents and identifiers match that country, or the image depicts none. *Enforced:* `test/skills/media-locale-constraint.test.ts`. | ACE team |
 | 2026-09-28 | **Attaches are private-work edits, saved in two checkpoints (voidcraft-labs/commcare-nova#693).** Every attach tool now takes `work_id` + `request_id` (no `app_id`) and stages until `save_work`. Step 8 opens one work, saves field/option/module-tile/logo media as checkpoint 1, then stages the form tiles alone; step 9 reads the CANDIDATE with `get_form({work_id})` to catch the #625 icon defect before saving checkpoint 2, and the final read-back uses `app_id` (saved state). Uploads stay immediate Project-library writes. | ACE team |
 | 2026-09-16 | **Form-tile icons are guarded, not trusted (ace#2413).** Step 4(b) promised built-in menu icons were free and side-effect-free; that holds for module tiles but not form tiles — `set_menu_media` accepts a form-tile slug from its own published enum and every subsequent `get_form` on the app then fails `invalid_input` "Choose one valid value at icon" (`voidcraft-labs/commcare-nova#625`, reproduced live on both apps of `poverty-graduation/20260915-1518`). That took out `app-deploy`'s XML-escape lint, `app-test-cases`, `app-release-qa` and both `pdd-to-*-app-eval` skills four steps later, surfacing as "Nova broke" in a skill that never touched media. Step 8 now sends module and form tiles as separate batches so a form-tile problem cannot cost the module tiles; step 9 does a `get_form` read-back straight after the form-tile batch and, on that rejection, re-sends the batch with `icon: null`, records `form_tiles: reverted-upstream-defect`, and continues rather than halting. *Enforced:* `test/skills/media-form-tile-revert-guard.test.ts`. | ACE team |
 | 2026-08-27 | Initial version, replacing `app-multimedia-coverage`. Nova shipped a first-class media channel (`voidcraft-labs/nova-plugin#8`, closed 2026-06-03) — asset library, per-slot field media, option media, menu icons, app logo — and `compile_app`/`upload_app_to_hq` carry it to HQ. Verified live end-to-end 2026-08-27: attached image reached the released CCZ at `commcare/<sha256>.png` with matching `<value form="image">` itext, and built-in icon slugs materialised as real bundled assets. That retires the whole post-release XML-patch pipeline, its orphan-pruning ordering hazard, and its loss-on-every-rebuild. Adds two capabilities the old skill had no way to reach: supplied files from `inputs/media/` with free-form operator guidance, and picture-choice select options. Upload goes through a server-side proxy script because base64 through a tool call costs ~1 token/char. | ACE team |
