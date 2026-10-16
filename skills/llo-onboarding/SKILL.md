@@ -210,6 +210,13 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
        so LLOs can chat with the ACE support bot directly. Also mention the
        email fallback (`$ACE_GMAIL_ACCOUNT`)
      - Contact info for escalation
+     - **The partner's opportunity link.** The Phase 6 drafts
+       (`training-onboarding-email`, `training-llo-guide`) carry the verbatim
+       placeholder `[PLACEHOLDER — your organisation's Connect opportunity link, sent when your opportunity is set up]`
+       because the partner's opportunity did not exist yet. Replace every
+       occurrence with the `opportunity_url` step 2b created. Never link the
+       Phase 4 opportunity (`phases.connect-setup.products.connect.opportunity.url`) —
+       it is held by ACE's own Connect org and the LLO cannot open it (ace#3000).
 
 5. **Send the email** via the `email-communicator` skill (or draft for
    review) — and pass the run-page override, because this send is a
