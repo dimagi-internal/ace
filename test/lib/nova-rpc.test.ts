@@ -138,8 +138,10 @@ describe('novaCall', () => {
   });
 
   it('reaches a tool whose schema the Messages API will not bind (ace#2408)', async () => {
-    // create_module is the canonical case: depth-20 inputSchema, rejected at
-    // bind time, perfectly callable over JSON-RPC.
+    // create_module is the canonical case: rejected at bind time on
+    // 2026-09-15 (a link-column regex `pattern`, fixed upstream in
+    // voidcraft-labs/commcare-nova#627, closed COMPLETED 2026-09-20), yet
+    // perfectly callable over JSON-RPC throughout.
     const fetchImpl = vi.fn(async () => jsonResponse({ result: { content: [{ text: '{"ok":true}' }] } }));
     await expect(
       novaCall('create_module', {}, { apiKey: 'k', fetchImpl: fetchImpl as never }),

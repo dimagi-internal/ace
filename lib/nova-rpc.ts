@@ -10,14 +10,18 @@
 //
 //   1. **A tool schema the Messages API refuses to bind.** On
 //      `poverty-graduation/20260915-1518` every agent whose tool array
-//      contained one of Nova's deeper schemas died before its first tool call
+//      contained one of a handful of Nova's schemas died before its first call
 //      with `400 tools.N.custom.input_schema: JSON schema is invalid. It must
 //      match JSON Schema draft 2020-12`. That killed
 //      `nova:nova-architect-autonomous` outright — and with it every documented
 //      Phase 3 build path — while `get_hq_connection`, `get_app`, `get_module`
 //      and `create_form` stayed callable from the caller's own session. The
-//      fault is in binding, not in Nova: the same tools answer fine over
-//      JSON-RPC. See dimagi-internal/ace#2408.
+//      fault was in binding, not in Nova's tools: the same tools answered fine
+//      over JSON-RPC. See dimagi-internal/ace#2408. That instance is FIXED
+//      upstream (`voidcraft-labs/commcare-nova#627`, closed COMPLETED
+//      2026-09-20): the cause was one regex `pattern` on the case-list link
+//      column's label, not schema size or depth as ACE first concluded. This
+//      path stays as the fallback for the next bind regression of that class.
 //
 //   2. **An argument too expensive to pass through a model.**
 //      `upload_media_asset` takes inline base64, which tokenizes at ~1 token
@@ -122,8 +126,8 @@ export async function novaRpc(
 
 /**
  * Call a Nova tool by name. This is the entry point callers want: it reaches
- * every tool Nova serves, including the deep schemas the Messages API will not
- * bind (ace#2408).
+ * every tool Nova serves, including any whose schema the Messages API refuses
+ * to bind (ace#2408).
  */
 export async function novaCall(
   name: string,
