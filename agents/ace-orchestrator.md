@@ -106,6 +106,15 @@ the full `/ace:doctor` prints, and tell the operator to Cmd-Q + reopen, then
 resume. (Rationale + jjackson/ace#582: see orchestrator-reference.md
 § Pre-flight rationale.)
 
+**`playwright_launch` is a `warn`-only block — surface it, don't halt on it.**
+It launches and closes headless chromium locally (no network). A `warn` means
+every Playwright-backed `ace-connect` / `ace-ocs` atom (e.g.
+`commcare_create_domain`, the Connect/OCS session logins) will fail at launch on
+this machine: tell the operator its `remediation` (`npx playwright install
+chromium` for `browser_missing`, `sudo npx playwright install-deps chromium` for
+`system_deps_missing`) before Phase 3. It never reports `fail`, so a machine that
+does not use those atoms is not stopped (ace#2905).
+
 **`connect_orgs` — which Connect orgs this instance acts in; pass it into
 every Connect-acting dispatch.** Preflight also emits a `connect_orgs:` block
 (`status`, `pm_org`, `nm_org`, `source`), resolved by `lib/connect-orgs.ts` from

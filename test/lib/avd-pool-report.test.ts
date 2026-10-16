@@ -126,7 +126,7 @@ describe('classifyAvdPool — the exact state measured on the affected host', ()
 
 describe('classifyAvdPool — edges', () => {
   it('warns hardest when nothing at all is eligible', () => {
-    const r = classifyAvdPool([deprovisioned('a'), unproven('b')], OPTS);
+    const r = classifyAvdPool([deprovisioned('a'), unproven('b')], { listed: true, requested: 'b' });
     expect(r.verdict).toBe('warn');
     expect(r.eligibleCount).toBe(0);
     expect(r.reason).toMatch(/NO AVD on this host/);
@@ -134,6 +134,81 @@ describe('classifyAvdPool — edges', () => {
     // The requested AVD needs no marker, so a lone dispatch still runs (ace#2642).
     expect(r.reason).toMatch(/single Phase 6 still runs on the requested AVD/);
     expect(r.reason).not.toMatch(/every Phase 6 dispatch fails/);
+  });
+
+  /**
+   * ace#2929 — the 0-eligible line said "a single Phase 6 still runs on the
+   * requested AVD" unconditionally, two lines above a detail saying that AVD
+   * was "held by live pid 62829". Measured 2026-10-15: every marker under an
+   * older selector-map SHA, ACE_Pixel_API_34 held by a live peer session.
+   * selectAvd then finds the requested AVD not free, no free proven fallback,
+   * and throws AvdPoolExhaustedError on the FIRST dispatch.
+   */
+  describe('when the requested AVD is held (ace#2929)', () => {
+    function heldDrifted(name: string, pid: number): AvdPoolFacts {
+      return { ...driftedMarker(name), holders: [holder(pid)] };
+    }
+    const measured = classifyAvdPool(
+      [
+        heldDrifted('ACE_Pixel_API_34', 62829),
+        driftedMarker('ACE_Pixel_API_34_b'),
+        unproven('Galaxy_Nexus_API_33'),
+        unproven('connect-deck'),
+      ],
+      OPTS,
+    );
+
+    it('0 eligible + requested held: says the NEXT dispatch fails, names the holder', () => {
+      expect(measured.verdict).toBe('warn');
+      expect(measured.eligibleCount).toBe(0);
+      expect(measured.reason).not.toMatch(/single Phase 6 still runs/);
+      expect(measured.reason).toMatch(/NEXT Phase 6 dispatch fails at AvdPoolExhaustedError/);
+      expect(measured.reason).toMatch(/ACE_Pixel_API_34 is held by live pid 62829/);
+    });
+
+    it('tells the operator to request a free member by name', () => {
+      expect(measured.reason).toMatch(/ACE_AVD_NAME=ACE_Pixel_API_34_b/);
+      expect(measured.reason).toContain('free: ACE_Pixel_API_34_b, Galaxy_Nexus_API_33, connect-deck');
+      expect(measured.remediation).toMatch(/ACE_AVD_NAME=ACE_Pixel_API_34_b/);
+      expect(measured.remediation).toContain('/ace:mobile-bootstrap --pool');
+    });
+
+    it('control: same pool with the requested AVD FREE keeps the single-run clause', () => {
+      const r = classifyAvdPool(
+        [driftedMarker('ACE_Pixel_API_34'), driftedMarker('ACE_Pixel_API_34_b')],
+        OPTS,
+      );
+      expect(r.reason).toMatch(/single Phase 6 still runs on the requested AVD/);
+      expect(r.reason).not.toMatch(/NEXT Phase 6 dispatch fails/);
+    });
+
+    it('1 eligible = the requested one, held: the next dispatch fails too', () => {
+      const r = classifyAvdPool(
+        [eligible('ACE_Pixel_API_34', [holder(62829)]), unproven('ACE_Pixel_API_34_b')],
+        OPTS,
+      );
+      expect(r.eligibleCount).toBe(1);
+      expect(r.reason).toMatch(/NEXT Phase 6 dispatch fails at AvdPoolExhaustedError/);
+      expect(r.reason).toMatch(/held by live pid 62829/);
+      expect(r.reason).toMatch(/ACE_AVD_NAME=ACE_Pixel_API_34_b/);
+    });
+
+    it('1 eligible ≠ requested and free: the fallback runs, so no fail claim', () => {
+      const r = classifyAvdPool(
+        [heldDrifted('ACE_Pixel_API_34', 62829), eligible('ACE_Pixel_API_34_b')],
+        OPTS,
+      );
+      expect(r.verdict).toBe('warn');
+      expect(r.reason).not.toMatch(/NEXT Phase 6 dispatch fails/);
+      expect(r.reason).toMatch(/fallback branch can never execute/);
+    });
+
+    it('nothing unheld to request: says so instead of inventing a member', () => {
+      const r = classifyAvdPool([heldDrifted('ACE_Pixel_API_34', 62829)], OPTS);
+      expect(r.reason).toMatch(/NEXT Phase 6 dispatch fails/);
+      expect(r.reason).toMatch(/No unheld AVD exists.*pid 62829/);
+      expect(r.reason).not.toMatch(/ACE_AVD_NAME=/);
+    });
   });
 
   it('an empty host warns rather than passing vacuously', () => {

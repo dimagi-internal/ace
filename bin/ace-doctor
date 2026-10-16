@@ -32,6 +32,83 @@ curl_auth() {
   _auth_hdr="$1"; shift
   printf '%s\n' "$_auth_hdr" | curl -H @- "$@"
 }
+
+# ── One status-code capture for every HTTP probe (ace#2931) ────────────
+#
+# `curl -w '%{http_code}'` already prints 000 on a connection failure (DNS,
+# refused, timeout) AND exits non-zero. So the once-common
+#   X="$(curl ... -w '%{http_code}' ... || echo "000")"
+# lands BOTH strings in the substitution and yields "000000" — a status that
+# cannot exist, misses every `000)` arm, and falls through to a catch-all that
+# prints it back as fact. Seven of eight probes carried it; one 2026-10-15
+# run reported `connect_orgs ... HTTP 000000` for an org that answered 200
+# three times out of three, and it was carried into a run as a Phase 4
+# blocker. A failed connect_auth probe also silently SKIPPED connect_orgs,
+# which gates on an exact "301"/"302".
+#
+# probe_http runs its arguments (curl or curl_auth) and prints exactly one
+# three-digit status: the real one, or 000 for anything else (curl missing,
+# "000000", empty). Every `%{http_code}` capture in this file goes through it;
+# test/scripts/doctor-probe-http.test.ts fails CI on one that does not.
+#
+# Usage: X="$(probe_http curl -sS -o /dev/null -w '%{http_code}' ... <url>)"
+probe_http() {
+  _ph_code="$("$@" 2>/dev/null)"
+  case "$_ph_code" in
+    [1-5][0-9][0-9]) printf '%s' "$_ph_code" ;;
+    *) printf '000' ;;
+  esac
+}
+
+# ── Can Playwright actually LAUNCH chromium here? (ace#2905) ───────────
+#
+# The old playwright_chromium probe only asked whether the executable EXISTS,
+# and --preflight asked nothing at all. On runner cloud-ec2-2 (2026-10-14)
+# preflight said `status: ok` while every Playwright-backed ace-connect/ace-ocs
+# atom died at launch — first "Executable doesn't exist", then, after the
+# browser was installed, "error while loading shared libraries:
+# libatk-1.0.so.0". A file can exist and still not run; only a launch tells.
+#
+# Local, not a network probe — it does not count against ace#1516's one-live-
+# probe bar. Self-timed at 25s inside node (macOS has no `timeout`).
+#
+# pw_launch_classify <launch-output> → "status|class|remediation"
+#   Pure: the test feeds it stubbed output for each failure string.
+pw_launch_classify() {
+  case "$1" in
+    *LAUNCH_OK*) printf 'pass|ok|' ;;
+    *"Cannot find module"*|*"Cannot find package"*)
+      printf 'warn|module_missing|cd "%s" && npm ci' "$ROOT" ;;
+    *"shared libraries"*|*"missing dependencies"*)
+      printf 'warn|system_deps_missing|cd "%s" && sudo npx playwright install-deps chromium' "$ROOT" ;;
+    *"Executable doesn"*|*ENOENT*)
+      printf 'warn|browser_missing|cd "%s" && npx playwright install chromium' "$ROOT" ;;
+    *LAUNCH_TIMEOUT*)
+      printf 'warn|timeout|chromium did not launch within 25s — retry; if it persists run: cd "%s" && npx playwright install --with-deps chromium' "$ROOT" ;;
+    *)
+      printf 'warn|launch_failed|cd "%s" && npx playwright install --with-deps chromium' "$ROOT" ;;
+  esac
+}
+
+# pw_launch_probe → PW_LAUNCH_STATUS / _CLASS / _DETAIL / _REMEDIATION
+pw_launch_probe() {
+  _pw_out="$(cd "$ROOT" 2>/dev/null && node -e "
+    const t = setTimeout(() => { console.log('LAUNCH_TIMEOUT'); process.exit(2); }, 25000);
+    let pw;
+    try { pw = require('playwright'); } catch (e) { console.log('LAUNCH_ERR ' + e.message); process.exit(1); }
+    pw.chromium.launch({ headless: true, timeout: 20000 })
+      .then((b) => b.close())
+      .then(() => { clearTimeout(t); console.log('LAUNCH_OK'); })
+      .catch((e) => { clearTimeout(t); console.log('LAUNCH_ERR ' + e.message); process.exit(1); });
+  " 2>&1)"
+  _pw_cls="$(pw_launch_classify "$_pw_out")"
+  PW_LAUNCH_STATUS="${_pw_cls%%|*}"
+  _pw_rest="${_pw_cls#*|}"
+  PW_LAUNCH_CLASS="${_pw_rest%%|*}"
+  PW_LAUNCH_REMEDIATION="${_pw_rest#*|}"
+  # One line, YAML-safe: no quotes/backslashes, capped.
+  PW_LAUNCH_DETAIL="$(printf '%s' "$_pw_out" | grep -v '^[[:space:]]*$' | grep -m1 -E 'LAUNCH_|error|Error' | tr -d '"\\' | cut -c1-200)"
+}
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Registry lookup + data-dir naming shared with bin/ace-setup (any ace@<marketplace>).
 . "$SELF_DIR/bin/_ace-plugin-paths.sh"
@@ -613,6 +690,20 @@ if [ "$PREFLIGHT" = "1" ]; then
   remediation: \"lib/connect-orgs.ts could not be evaluated (tsx missing?) — run /ace:setup to install deps\""
   fi
 
+  # playwright_launch — does chromium actually START here? (ace#2905). Local
+  # launch-and-close, not a network probe. Graded `warn`, never `fail`: the
+  # orchestrator halts only on `fail`, and a machine that never touches a
+  # Playwright-backed atom must not be stopped by it. But a `warn` here means
+  # every Playwright-backed ace-connect / ace-ocs atom (commcare_create_domain,
+  # the Connect/OCS session logins) will die at launch — surface the
+  # remediation before Phase 3.
+  pw_launch_probe
+  PF_PW_YAML="playwright_launch:
+  status: ${PW_LAUNCH_STATUS}
+  class: ${PW_LAUNCH_CLASS}
+  detail: \"${PW_LAUNCH_DETAIL}\"
+  remediation: \"${PW_LAUNCH_REMEDIATION//\"/\\\"}\""
+
   # Build the YAML body. Missing public values render as empty strings; the
   # orchestrator can decide how to react (some are required, some optional).
   cat <<EOF
@@ -669,6 +760,7 @@ ${PF_NOVA_HDR_YAML}
 ${PF_STATIC_HDR_YAML}
 ${PF_NOVA_SCOPES_YAML}
 ${PF_OCS_GEN_YAML}
+${PF_PW_YAML}
 EOF
 
   # Handoff from a session that halted knowing it would be restarted (ace#1093).
@@ -972,7 +1064,14 @@ if [ -d "$ROOT/node_modules/playwright" ]; then
   PW_EXISTS="$(printf '%s' "$PW_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.exists?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
   PW_PATH="$(printf '%s' "$PW_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.path||''); } catch { console.log(''); }" 2>/dev/null)"
   if [ "$PW_EXISTS" = "1" ]; then
-    pass "playwright_chromium: $PW_PATH"
+    # Existing is not running: missing system libs pass an exists-check and
+    # still kill every launch (ace#2905). Launch it.
+    pw_launch_probe
+    if [ "$PW_LAUNCH_STATUS" = "pass" ]; then
+      pass "playwright_chromium: $PW_PATH (launches)"
+    else
+      warn "playwright_chromium: present at $PW_PATH but does not launch ($PW_LAUNCH_CLASS: ${PW_LAUNCH_DETAIL:-no output})" "$PW_LAUNCH_REMEDIATION"
+    fi
   elif [ -n "$PW_PATH" ]; then
     warn "playwright_chromium: expected at $PW_PATH but not present" "cd \"$ROOT\" && npx playwright install chromium"
   else
@@ -1561,7 +1660,7 @@ if [ -n "$ENV_FILE" ]; then
         } catch(_) {}
       " 2>/dev/null)"
       if [ -n "$SC_COOKIES" ]; then
-        SC_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -b "$SC_COOKIES" "$OCS_BASE/a/$OCS_TEAM/documents/collections/$SHARED_COLL" 2>/dev/null)"
+        SC_STATUS="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -b "$SC_COOKIES" "$OCS_BASE/a/$OCS_TEAM/documents/collections/$SHARED_COLL")"
         case "$SC_STATUS" in
           200)
             pass "ocs_shared_collection_team: collection $SHARED_COLL exists on team $OCS_TEAM"
@@ -1814,14 +1913,14 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       PROBE_CSRF="$(printf '%s' "$CONNECT_PROBE_HEADERS" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(d.csrf||''); } catch(_) {}")"
       # POST empty body. Healthy: 400 (DRF "this field is required"). Bug: 403 + CSRF.
       PROBE_TMP="$(mktemp -t ace-doctor-connect-probe.XXXXXX 2>/dev/null || mktemp)"
-      PROBE_STATUS="$(curl -sS -o "$PROBE_TMP" -w '%{http_code}' --max-time 5 \
+      PROBE_STATUS="$(probe_http curl -sS -o "$PROBE_TMP" -w '%{http_code}' --max-time 5 \
         -X POST \
         -H "Cookie: $PROBE_COOKIE" \
         -H "X-CSRFToken: $PROBE_CSRF" \
         -H "Referer: $CONNECT_BASE/" \
         -H "Content-Type: application/json" \
         -d '{}' \
-        "$CONNECT_BASE/api/programs/" 2>/dev/null || echo "000")"
+        "$CONNECT_BASE/api/programs/")"
       PROBE_BODY="$(head -c 200 "$PROBE_TMP" 2>/dev/null)"
       rm -f "$PROBE_TMP" 2>/dev/null
       case "$PROBE_STATUS" in
@@ -1868,13 +1967,13 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
     pass "connect_labs_env: LABS_MCP_TOKEN present"
     # Probe 1: PAT validity. POST an initialize frame; expect 200 (or any 2xx).
     # 401 means PAT bad/revoked; timeout means labs is down.
-    LABS_REACH_CODE="$(curl_auth "Authorization: Bearer $LABS_TOKEN" \
+    LABS_REACH_CODE="$(probe_http curl_auth "Authorization: Bearer $LABS_TOKEN" \
       -sS -o /dev/null -w '%{http_code}' --max-time 5 \
       -X POST \
       -H "Content-Type: application/json" \
       -H "Accept: application/json, text/event-stream" \
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
-      "$LABS_URL" 2>/dev/null || echo "000")"
+      "$LABS_URL")"
     case "$LABS_REACH_CODE" in
       2*)
         pass "connect_labs_mcp_reachable: $LABS_URL (HTTP $LABS_REACH_CODE)"
@@ -1966,21 +2065,16 @@ if command -v curl >/dev/null 2>&1; then
       "googleapis:https://www.googleapis.com/"; do
     name="${entry%%:*}"
     url="${entry#*:}"
-    # curl's `-w '%{http_code}'` already prints 000 on connection failure
-    # (DNS, refused, timeout) — the trailing `|| echo "000"` is redundant
-    # AND harmful: when curl exits non-zero, both the -w "000" and the
-    # echo "000" land in the substitution, producing "000000" which
-    # falls through the case match below. The empty-fallback only fires
-    # if curl is missing entirely.
+    # Status capture goes through probe_http (see its header): never a
+    # trailing `|| echo "000"`, which yields the impossible "000000".
     #
     # Retries: 1 retry × 1s delay catches transient network blips
     # (Wi-Fi reconnect, DNS hiccup, VPN renegotiation) that one-shot
     # curls from bash hit but persistent MCP subprocess connections
     # don't. Bounded at 2 attempts × ~3s ≈ 7s per host.
-    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 \
+    status="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 3 \
       --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
-      "$url" 2>/dev/null)"
-    [ -z "$status" ] && status="000"
+      "$url")"
     case "$status" in
       000)
         warn "net_$name: cannot reach $url (timeout/DNS/connection refused)" "check VPN/proxy; if you're on a corp network, ask IT to allow $url"
@@ -2054,8 +2148,9 @@ if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ]; then
       } catch(_) {}
     " 2>/dev/null)"
     if [ -n "$OCS_COOKIES" ]; then
-      OCS_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
-        -b "$OCS_COOKIES" "$OCS_BASE/a/$OCS_TEAM/chatbots/" 2>/dev/null || echo "000")"
+      OCS_AUTH_STATUS="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+        --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
+        -b "$OCS_COOKIES" "$OCS_BASE/a/$OCS_TEAM/chatbots/")"
       case "$OCS_AUTH_STATUS" in
         200)
           pass "ocs_auth: ace-ocs authed against team $OCS_TEAM (GET /a/$OCS_TEAM/chatbots/ → 200)"
@@ -2120,8 +2215,9 @@ if [ -n "$CONNECT_BASE" ] && [ -f "$CONNECT_SESS" ]; then
     } catch(_) {}
   " 2>/dev/null)"
   if [ -n "$CONNECT_AUTH_COOKIES" ]; then
-    CONNECT_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
-      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/accounts/login/" 2>/dev/null || echo "000")"
+    CONNECT_AUTH_STATUS="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+      --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
+      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/accounts/login/")"
     case "$CONNECT_AUTH_STATUS" in
       301|302)
         pass "connect_auth: ace-connect authed (GET /accounts/login/ → $CONNECT_AUTH_STATUS, bounced away)"
@@ -2178,8 +2274,9 @@ if [ "$CO_STATUS" = "ok" ]; then
   if [ -n "$CO_NM" ]; then CO_MODE="Phase 4 PM→NM: opportunity held by nm_org"; else CO_MODE="Phase 4 self-managed"; fi
   CO_DESC="pm_org=$CO_PM ($CO_PM_SRC) nm_org=${CO_NM:-unset} ($CO_MODE; nm_org not live-checked)"
   if [ -n "$CONNECT_BASE" ] && [ -n "${CONNECT_AUTH_COOKIES:-}" ] && [ "${CONNECT_AUTH_STATUS:-}" = "302" -o "${CONNECT_AUTH_STATUS:-}" = "301" ]; then
-    CO_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --max-redirs 0 \
-      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/a/$CO_PM/program/" 2>/dev/null || echo "000")"
+    CO_HTTP="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --max-redirs 0 \
+      --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
+      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/a/$CO_PM/program/")"
     case "$CO_HTTP" in
       200) pass "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → 200 (org resolves, ace@ can read its programs)" ;;
       404) warn "connect_orgs: $CO_DESC — GET /a/$CO_PM/program/ → 404 (the PM org does not resolve for ace@)" "check the slug in ACE_CONNECT_PM_ORG (the /a/<org>/ path segment) and that ace@dimagi-ai.com is a member of that org" ;;
@@ -2213,8 +2310,9 @@ if [ -f "$CONNECT_SESS" ]; then
     } catch(_) {}
   " 2>/dev/null)"
   if [ -n "$CCHQ_AUTH_COOKIES" ]; then
-    CCHQ_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
-      -b "$CCHQ_AUTH_COOKIES" "$CCHQ_BASE/accounts/login/" 2>/dev/null || echo "000")"
+    CCHQ_AUTH_STATUS="$(probe_http curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+      --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
+      -b "$CCHQ_AUTH_COOKIES" "$CCHQ_BASE/accounts/login/")"
     case "$CCHQ_AUTH_STATUS" in
       301|302)
         pass "cchq_auth: CCHQ session authed (GET $CCHQ_BASE/accounts/login/ → $CCHQ_AUTH_STATUS)"
@@ -2246,10 +2344,8 @@ fi
 # 200 = key valid, 401 = invalid/revoked, anything else = transport
 # issue (covered by net_cchq probe above).
 if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
-  # See net_reachability comment above for the curl `|| echo "000"`
-  # double-fallback bug — same pattern, same fix. Pre-this-fix, a
-  # connection failure here produced HTTP_PROBE_CODE="000000" which
-  # fell through to the catch-all WARN.
+  # Captured through probe_http — see its header for the `|| echo "000"`
+  # double-fallback bug ("000000") it exists to make impossible.
   #
   # Endpoint switched 0.13.129: was GET /api/v0.5/application/?limit=1,
   # now GET /api/v0.5/user/?limit=1. Live timing on a fresh probe:
@@ -2272,10 +2368,9 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
   # doctor wall-clock. cchq_auth + net_commcarehq above already cover
   # basic CCHQ reachability — if THIS probe still trips 000 while those
   # passed, the diagnosis is server-side endpoint slowness, not network.
-  HQ_API_PROBE_CODE="$(curl_auth "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
+  HQ_API_PROBE_CODE="$(probe_http curl_auth "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
 -sS -o /dev/null -w '%{http_code}' --max-time 3 \
-    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1" 2>/dev/null)"
-  [ -z "$HQ_API_PROBE_CODE" ] && HQ_API_PROBE_CODE="000"
+    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1")"
   case "$HQ_API_PROBE_CODE" in
     2*)
       pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE)"
@@ -2470,14 +2565,14 @@ fi
 # Worst case ~18s before WARN. Source: select-session feedback that
 # nova_auth WARNed while the live MCP subprocess was healthy.
 if [ -n "$NOVA_KEY_VAL" ]; then
-  NOVA_REACH_CODE="$(curl_auth "Authorization: Bearer $NOVA_KEY_VAL" \
+  NOVA_REACH_CODE="$(probe_http curl_auth "Authorization: Bearer $NOVA_KEY_VAL" \
 -sS -o /dev/null -w '%{http_code}' --max-time 5 \
     --retry 2 --retry-delay 1 --retry-all-errors --retry-connrefused \
     -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
-    "https://mcp.commcare.app/mcp" 2>/dev/null || echo "000")"
+    "https://mcp.commcare.app/mcp")"
   case "$NOVA_REACH_CODE" in
     2*)
       pass "nova_auth: ace-nova authed (POST initialize → HTTP $NOVA_REACH_CODE)"
