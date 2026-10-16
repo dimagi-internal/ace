@@ -59,6 +59,7 @@ import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { google } from '../lib/google-shim.js';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { collectDriveInputRefs, type DriveInputsReader } from '../lib/upstream-asks-drive.js';
 import {
@@ -70,6 +71,8 @@ import {
   type IssueStatus,
   type UpstreamRef,
 } from '../lib/upstream-asks.js';
+
+loadPluginEnv(import.meta.url);
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
