@@ -46,9 +46,9 @@ The check-in cadence is operator-judgment, not automated.
 | Alias | Source | Recipe | Verified live |
 |-------|--------|--------|---------------|
 | `commcare-welcome` | Live | `04-personal-id.yaml` (fresh-install state, no GO TO CONNECT MENU button) | ✓ 2026-05-24 |
-| `connect-home` | Live | `00-connect-home.yaml` | ✓ 2026-05-24 |
+| `connect-home` | **Composited** (base: `00-connect-home.yaml`) | Step 5.4 | ✓ 2.64.0, 2026-10-16 |
 | `sync-button` | **QUARANTINED** | `03-sync-button.yaml` — defective, see below | ✗ byte-identical to `connect-home` (ace#1832) |
-| `claim-opp` | Live | `01-claim-opp.yaml` (requires OPP_NAME) | ✓ 2026-05-24 |
+| `claim-opp` | **Composited** (base: `01-claim-opp.yaml`, requires OPP_NAME) | Step 5.4 | ✓ 2.64.0, 2026-10-16 |
 | `learn-install` | Live | `02-learn-install.yaml` | ✓ 2026-05-24 |
 | `personal-id-start` | Live | `04-personal-id.yaml` (nav-drawer Sign In/Register) | ✓ 2026-05-24 |
 | `personal-id-phone` | Live | `04-personal-id.yaml` | ✓ 2026-05-24 |
@@ -342,6 +342,41 @@ For each alias in the Coverage table marked **Fixture**:
    `placeholder: true` and `note: "Awaiting manual capture"` — the
    manifest still records the gap so the deck-render skill emits a
    visible placeholder slot instead of failing silently.
+
+### Step 5.4: Composite the opp-bearing frames (ace#3060)
+
+`connect-home` and `claim-opp` always show some real program: the test
+worker's invites are real ACE runs. A frame showing one program's name cannot
+go on every program's deck (the 2026-05-26 audit). So publish them
+**composited**: the real capture from Step 4, with only the opp-specific
+strings replaced. Illustration only. `collectCaptureEntries` refuses a
+composited frame in any evidence manifest.
+
+1. Pull the font the device renders with:
+   `adb -s <serial> pull /system/fonts/Roboto-Regular.ttf <dir>/` (CommCare
+   bundles no fonts).
+2. Write or update `templates/training-deck/_common/composites/connect-<version>.yaml`.
+   Pin the base capture's sha256 and the font's sha256; every text element in
+   the capture's UI dump must be a `keep` rule (generic chrome) or a `replace`
+   rule. Measure `font_px`/`line_px` from the original, and make each replacement
+   fill as many lines as the original did (the compositor never moves pixels).
+3. Render each frame:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/composite-pool-frame.ts" \
+     --spec "$ACE_ROOT/templates/training-deck/_common/composites/connect-<version>.yaml" \
+     --frame connect-home --base <capture.png> --dump <capture.xml> \
+     --font <dir>/Roboto-Regular.ttf --out <poolDir>/connect-home.png
+   ```
+
+   It refuses on a base or font hash mismatch, or on any uncovered text element.
+   An APK that adds a string therefore fails here rather than leaking it.
+4. **Look at every output beside its base.** The checks make it generic; only
+   eyes make it look right.
+5. Upload the base captures to `<version>/_base/` (not shared; they show real
+   run names). Write the manifest entry as `source: composited` with
+   `composited_from` from the script's `.provenance.json`.
 
 ### Step 5.5: Pool distinctness gate (ace#1832)
 

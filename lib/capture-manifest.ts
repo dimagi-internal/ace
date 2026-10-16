@@ -41,6 +41,8 @@
 // because the next misspelling is one nobody has thought of yet.
 //
 
+import { isComposited } from './screenshot-composite.js';
+
 export interface CaptureEntry {
   step: string;
   file_id?: string;
@@ -139,6 +141,16 @@ export function collectCaptureEntries(
 
   const push = (raw: RawCaptureEntry | undefined, aliasFallback?: string) => {
     if (!raw || typeof raw !== 'object') return;
+    // A composited frame is an illustration, never evidence of what the app did
+    // (lib/screenshot-composite.ts, ace#3060). It belongs only in the common
+    // training pool; in a capture manifest it would let a judge or caption fence
+    // grade pixels no device produced.
+    if (isComposited(raw)) {
+      throw new Error(
+        `capture manifest entry ${String(raw.step ?? raw.step_name ?? '?')} is source: composited — ` +
+          'composited frames are training illustrations and may not appear in an evidence manifest',
+      );
+    }
     const step =
       typeof raw.step === 'string'
         ? raw.step
