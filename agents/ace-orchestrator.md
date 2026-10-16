@@ -1415,11 +1415,31 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `pending` phase → `in_progress`.
 
      **Structural precondition check (before dispatching each `pending`
-     phase).** Confirm the phase's required input artifacts (per
-     `lib/artifact-manifest.ts` `artifactsConsumedBy`) are present — produced
-     by a `done`/`seeded` phase or an earlier `pending` phase in this run. If a
-     required input is missing AND its producer is `skipped` (or absent), halt
-     loud — a seeded run was shaped wrong:
+     phase).** Confirm the phase's required input artifacts are present —
+     produced by a `done`/`seeded` phase or an earlier `pending` phase in this
+     run. The input list is the union of what the phase's skills consume
+     (agent frontmatter `skills` / `recurring_skills` / `manual_skills` + each
+     `eval_skill`), restricted to required artifacts an EARLIER phase produces —
+     `lib/phase-inputs.ts`. Do **not** call `artifactsConsumedBy(<phase>)`:
+     `consumedBy` holds SKILL names, so a phase-keyed lookup returns `[]` and
+     the fence passes vacuously (ace#2134). Run:
+
+     ```bash
+     # present.json: run-folder paths that exist (verify_phase_artifacts found
+     # lists / drive_list_folder); statuses.json: {"<phase>": "<status>"} from
+     # run_state phases.*.status
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/phase-inputs.ts" <phase> \
+       [--mode=<phases.<phase>.mode>] \
+       --present=present.json --statuses=statuses.json
+     ```
+
+     Exit 0 = every input present (or its producer still `pending` — it runs
+     first). Exit 1 lists each missing input with `producerStatus` and
+     `remedy`. Exit 2 is **UNABLE TO CHECK** (unknown phase, or the agent's
+     frontmatter yielded no skills) — that is NOT a pass; halt and fix the
+     lookup rather than dispatching. If a required input is missing AND its
+     producer is `skipped` (or absent) — `remedy: reshape` — halt loud, a
+     seeded run was shaped wrong:
 
      > resume `<opp>/<run-id>`: phase <N> needs `<artifact>` produced by phase
      > <M>, which is `skipped`/absent in this run's run_state. The run was
