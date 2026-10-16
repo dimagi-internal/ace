@@ -510,7 +510,7 @@ describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
     const yaml = [
       ...head,
       '- runFlow:',
-      '    file: learn-suite-reentry.yaml',
+      '    file: learn-launch.yaml',
       '- runFlow:',
       '    file: deliver-sync.yaml',
       '',

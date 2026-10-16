@@ -793,7 +793,7 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
     const learnless = mod.slides.filter((s) => frameless.has(s) && kinds.get(s) === 'learn-module');
     if (learnless.length === 0) continue;
     const grid = opts.pool
-      .filter((f) => /^learn-launch-suite-root$|^learn-suite-reentry-from-module-suite-root$/.test(f.step))
+      .filter((f) => /^learn-launch-suite-root$|^learn-suite-reentry-from-module-suite-root(-[a-z0-9-]+)?$/.test(f.step))
       .find((f) => !cited.has(f.file_id) && usable(f, null));
     const listed = learnless.map((s) => `- ${s.title}`).join('\n');
     const notes = [

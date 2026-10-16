@@ -1868,7 +1868,7 @@ describe('deliver-case-select.yaml scrolls the unbounded case list (ace#2226)', 
       (s) =>
         s &&
         typeof s === 'object' &&
-        (s as Record<string, unknown>).takeScreenshot === 'deliver-case-select-list',
+        (s as Record<string, unknown>).takeScreenshot === 'deliver-case-select-list${CASE_SELECT_LABEL}',
     );
     const scrollIdx = steps.findIndex(
       (s) => s && typeof s === 'object' && 'scrollUntilVisible' in (s as object),
@@ -3090,5 +3090,77 @@ describe('deliver-form-walk reaches a followup form in a MIXED module (ace#2797)
     const pre = dropLevel25(steps);
     expect(pre.length).toBe(steps.length - 1);
     expect(() => walk(pre, MIXED_APP, mixedFollowup)).toThrow(/timed out waiting/);
+  });
+});
+
+describe('every fixed-name capturing palette is discriminated or single-invocation (ace#2182)', () => {
+  // ace#1651 registered ONE palette (deliver-form-walk) in
+  // PALETTE_INVOCATION_DISCRIMINATOR; the learn-suite-reentry pair and
+  // deliver-case-select kept fixed names and an 18-invocation Learn walk kept
+  // 1 frame of 18. This closes the SHAPE: a palette that captures a frame whose
+  // name has no `${...}` interpolation must either be registered (so the lint
+  // forces a distinct per-call suffix) or be declared here as invoked at most
+  // once per journey recipe, with the reason. A new palette fails until it
+  // picks one.
+  const SINGLE_INVOCATION: Record<string, string> = {
+    'connect-login.yaml': 'session sign-in, once at the top of a journey',
+    'connect-claim-opp.yaml': 'claims the opp once per journey',
+    'connect-resume-opp.yaml': 'opp-list -> Resume, once at the top of the Deliver journey',
+    'learn-launch.yaml': 'the FIRST suite entry; between-module re-entry is learn-suite-reentry*',
+    'deliver-launch.yaml': 'certificate -> Deliver home, once per Deliver journey',
+    'deliver-sync.yaml': 'MANDATORY LAST step of a Deliver journey (app-test-cases)',
+    'connect-messaging-open.yaml': 'opens the messaging channel once per messaging journey',
+    'connect-messaging-reply.yaml': 'one reply per messaging journey',
+    'connect-messaging-await.yaml': 'one await per messaging journey',
+  };
+
+  const files = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
+
+  /** Every takeScreenshot name in a palette, comment lines excluded. */
+  function shots(yaml: string): string[] {
+    return yaml
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('#'))
+      .map((l) => l.match(/takeScreenshot:\s*"?([^"\s#]+)"?/)?.[1])
+      .filter((n): n is string => !!n);
+  }
+
+  it('no unregistered, undeclared palette captures a fixed-name frame', () => {
+    const offenders = files.filter(
+      (f) =>
+        shots(readFileSync(`${STATIC_DIR}${f}`, 'utf8')).some((n) => !n.includes('${')) &&
+        !PALETTE_INVOCATION_DISCRIMINATOR[f] &&
+        !SINGLE_INVOCATION[f],
+    );
+    expect(
+      offenders,
+      'palette(s) capture fixed-name frames but are neither registered in PALETTE_INVOCATION_DISCRIMINATOR ' +
+        '(mcp/mobile/recipe-lint.ts) nor declared SINGLE_INVOCATION here — a repeat invocation would silently overwrite frames',
+    ).toEqual([]);
+  });
+
+  it('every registered palette suffixes EVERY capture with its discriminator', () => {
+    for (const [f, key] of Object.entries(PALETTE_INVOCATION_DISCRIMINATOR)) {
+      const names = shots(readFileSync(`${STATIC_DIR}${f}`, 'utf8'));
+      expect(names.length, `${f} captures nothing`).toBeGreaterThan(0);
+      for (const n of names) expect(n, `${f}: capture lacks \${${key}}`).toContain(`\${${key}}`);
+    }
+  });
+
+  it('the declared single-invocation ledger has no stale entries', () => {
+    for (const f of Object.keys(SINGLE_INVOCATION)) {
+      expect(files, `${f} no longer exists — drop it from SINGLE_INVOCATION`).toContain(f);
+      expect(PALETTE_INVOCATION_DISCRIMINATOR[f], `${f} is registered — drop it from SINGLE_INVOCATION`).toBeUndefined();
+    }
+  });
+
+  it('deliver-form-walk threads its WALK_LABEL into BOTH nested case-select calls, distinctly', () => {
+    const raw = readFileSync(`${STATIC_DIR}deliver-form-walk.yaml`, 'utf8');
+    const labels = [
+      ...raw.matchAll(/file: deliver-case-select\.yaml\s*\n\s*env:\s*\n\s*CASE_SELECT_LABEL:\s*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(labels.length).toBe(2);
+    for (const l of labels) expect(l).toContain('${WALK_LABEL}');
+    expect(new Set(labels).size).toBe(2);
   });
 });
