@@ -142,6 +142,8 @@ describe('bound session', () => {
     const SET = 'mcp__plugin_ace_connect-labs__synthetic_set_allowed_domains';
     expect(guard(SET, { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@dimagi.com'] }).code).toBe(0);
     expect(guard(LABS, { allowed_domains: ['dimagi.com'] }).code).toBe(0);
+    // Dimagi associates are Dimagi (owner, 2026-10-16).
+    expect(guard(SET, { opportunity_id: 10097, allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com'] }).code).toBe(0);
     const r = guard(SET, { opportunity_id: 10097, allowed_domains: ['@dimagi-ai.com', '@sparkmicrogrants.org'] });
     expect(r.code).toBe(2);
     expect(r.stderr).toContain('@sparkmicrogrants.org');
