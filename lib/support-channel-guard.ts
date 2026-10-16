@@ -5,12 +5,26 @@
 // Why this exists: dimagi-internal/ace#1303. Every Phase 6 worker-facing
 // artifact on spark-facilitator/20260813-2126 told the CBF to get help at
 // `https://www.openchatstudio.com` plus a 36-character chatbot UUID. Those are
-// **embed credentials**, not a destination — the same run's
-// `ocs-setup_widget-handoff.md` records `/chatbots/embed/<public_id>/`
-// live-probing 404, because OCS serves the bot only as an embedded corner
-// widget with no standalone chat page, and Connect has no per-opportunity
-// widget field to embed it into (CCC-301). So Phase 5 correctly produces
-// credentials and Phase 6 has nothing to turn them into.
+// **embed credentials**, not a destination: a host with no path opens nothing,
+// a UUID cannot be transcribed mid-visit, and the `/chatbots/embed/<public_id>/`
+// path is a dead route (the embed flow was deleted upstream, OCS #3540).
+//
+// What IS a destination (ace#3002, superseding this header's original "OCS
+// serves the bot only as an embedded corner widget with no standalone chat
+// page" premise): the bot's public, team-scoped start URL
+// `/a/<team>/chatbots/<public_id>/start/` (built by `lib/ocs-public-chat-url.ts`).
+// It creates a session and 302s to `/s/<session>/chat/`, a live chat page.
+// Live probe 2026-10-15, bot 2b97652f-… on `connect-ace`, with a cookie jar
+// as any browser has:
+//
+//   $ curl -s -L -c jar -b jar -o /dev/null -w "%{http_code} %{url_effective}\n" \
+//       https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/
+//   200 https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-…/s/b1e94604-…/chat/
+//
+// (A cookieless probe reads 404 on a working bot — the ace#1021 / ace#2140
+// trap.) So that one URL shape is NOT flagged. Everything else stays flagged.
+// Producers must still not quote the page's greeting: it currently renders a
+// blank topic, "ask me anything you want about ." (ace#2992).
 //
 // Two independent `-eval` skills flagged it on two artifacts in the same run
 // without coordination, and a third producer (`training-flw-guide`) reasoned
@@ -79,10 +93,25 @@ const EMBED_404_RE = /openchatstudio\.com\/chatbots\/embed\/[0-9a-f-]{36}/i;
  * violation. The scheme is optional because a schemeless `openchatstudio.com/...`
  * is the same disclosure.
  *
+ * Since ace#3002 the one exception is the full public start URL
+ * (`PUBLIC_START_URL_RE`), which is stripped from the line before this rule
+ * runs: it resolves to a live chat page, so it is a destination, not a
+ * credential. Any other host/path form is still the violation.
+ *
  * `ADDRESSED_TO_READER` is retained for `bare-uuid` ONLY, where the ace#1026
  * precision concern is real — see that rule below.
  */
 const OCS_HOST_RE = /(?:https?:\/\/)?(?:www\.)?openchatstudio\.com(?:\/\S*)?/i;
+
+/**
+ * The bot's public, team-scoped start URL — a REACHABLE chat page (ace#3002).
+ * Removed from the line before the host and UUID rules run, so neither the host
+ * nor the `public_id` inside it is reported; any OTHER OCS host/path or UUID on
+ * the same line is still caught. Requires the full shape (team slug, UUID,
+ * trailing `/start/`) so a near-miss like `/chatbots/<uuid>/` stays flagged.
+ */
+const PUBLIC_START_URL_RE =
+  /(?:https?:\/\/)?(?:www\.)?openchatstudio\.com\/a\/[\w-]+\/chatbots\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/start\/?/gi;
 
 /**
  * An in-app GRIEVANCE route the worker is told to use — which ACE-built apps
@@ -173,14 +202,18 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
       return; // one finding per line is enough to send the author back to it
     }
 
+    // ace#3002: the public start URL is a reachable destination — strip it so
+    // only what remains on the line is judged.
+    const rest = text.replace(PUBLIC_START_URL_RE, ' ');
+
     // Unconditional: NOT gated on `addressed` (ace#1850).
-    const host = OCS_HOST_RE.exec(text);
+    const host = OCS_HOST_RE.exec(rest);
     if (host) {
       findings.push({ kind: 'unresolvable-ocs-host', line, match: host[0], text: text.trim() });
       return;
     }
 
-    const uuid = UUID_RE.exec(text);
+    const uuid = UUID_RE.exec(rest);
     if (uuid && addressed) {
       findings.push({ kind: 'bare-uuid', line, match: uuid[0], text: text.trim() });
       return;
@@ -198,19 +231,21 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
 
 export function formatSupportChannelReport(report: SupportChannelReport): string {
   if (report.ok) {
-    return 'support-channel: reachable — no OCS embed credentials presented to the worker';
+    return 'support-channel: reachable — no OCS embed credentials presented to the worker (the public /start/ URL is allowed)';
   }
   return [
     `support-channel: ${report.findings.length} unreachable pointer(s) in a WORKER-FACING artifact —`,
-    'OCS serves the bot only as an embedded corner widget (no standalone chat page; the',
-    '`/chatbots/embed/<public_id>/` path live-probes 404), and Connect has no per-opportunity',
-    'widget field to embed it into (CCC-301). A host + UUID is not a destination a field worker',
-    'can open, and a 36-character id cannot be transcribed mid-visit. An in-app grievance menu',
-    'is the same failure without an error page: ACE-built apps carry only the modules and forms',
-    'the PDD specifies, so the worker finds nothing and stops escalating (ace#2106).',
+    'a bare OCS host or a 36-character chatbot id is not a destination a field worker can open',
+    'or transcribe mid-visit, and the `/chatbots/embed/<public_id>/` path is a dead route (OCS',
+    '#3540). The ONLY OCS link a worker may be given is the public start URL',
+    '`/a/<team>/chatbots/<public_id>/start/` (ace#3002); do not quote its greeting (ace#2992).',
+    'An in-app grievance menu is the same failure without an error page: ACE-built apps carry',
+    'only the modules and forms the PDD specifies, so the worker finds nothing and stops',
+    'escalating (ace#2106).',
     ...report.findings.map((f) => `  line ${f.line} [${f.kind}]: ${f.match}\n    ${f.text}`),
     'Fix: name a HUMAN channel — the LLO coordinator / Partner Trainer — as a labelled',
-    'fill-in the LLO completes at onboarding (name + phone). Name an IN-APP route only if',
+    'fill-in the LLO completes at onboarding (name + phone), optionally plus the public start',
+    'URL from run_state. Name an IN-APP route only if',
     "this run's own evidence shows one (a commcare_download_ccz grep of app_strings.txt, or",
     'a Phase 6 ui-dump); otherwise omit it. Embed credentials belong ONLY in the LLO-facing',
     'artifacts, whose recipient is the person doing the embedding (dimagi-internal/ace#1303).',

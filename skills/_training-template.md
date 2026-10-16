@@ -96,14 +96,25 @@ semantics drive different rules — do not try to share.)
    this refuses a claim that an external control *exists* without one.
    *Enforced:* `test/skills/in-app-control-existence-claims.test.ts`.
 
-**Never print OCS credentials in a worker-facing artifact** — not the
-`openchatstudio.com` host, not the chatbot `public_id`, not the `embed_key`.
-Those are *embed credentials*, not a destination: OCS serves the bot only as an
-embedded corner widget, `/chatbots/embed/<public_id>/` live-probes **404**, and
-Connect has no per-opportunity widget field to embed it into (CCC-301). A
-36-character UUID also cannot be transcribed mid-visit. Phase 5 correctly
-produces credentials; Phase 6 has nothing worker-reachable to turn them into,
-and inventing a plausible-looking `/chat/<id>` URL is worse than saying so.
+**Never print OCS credentials in a worker-facing artifact** — not the bare
+`openchatstudio.com` host, not the chatbot `public_id` on its own, not the
+`embed_key`. Those are *embed credentials*, not a destination:
+`/chatbots/embed/<public_id>/` is a dead route (OCS #3540), Connect has no
+per-opportunity widget field to embed the widget into (CCC-301), and a
+36-character UUID cannot be transcribed mid-visit. Inventing a plausible-looking
+`/chat/<id>` URL is worse than saying nothing.
+
+**The one OCS link that IS a destination** (ace#3002): the bot's public start
+URL, `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/`
+(read it from `run_state.yaml`
+`phases.ocs-setup.products.ocs_chatbot.public_url`, built by
+`lib/ocs-public-chat-url.ts`). It opens a live chat page — probed 2026-10-15
+with a cookie jar: `302 → /s/<session>/chat/`, `200` (a cookieless probe reads
+404 on a working bot, the ace#1021 / ace#2140 trap). An earlier version of this
+section said OCS had "no standalone chat page"; that is no longer true. You MAY
+give it as a link, in addition to the coordinator floor and never instead of
+it. **Do not quote the page's greeting**: it currently opens "ask me anything
+you want about ." with a blank topic (ace#2992).
 
 Credentials ARE correct in the **LLO-facing** artifacts (`training-llo-guide`,
 `training-onboarding-email`) — their recipient is the person doing the

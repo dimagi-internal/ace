@@ -245,7 +245,11 @@ support line names a HUMAN (LLO coordinator / Partner Trainer) as a labelled
 fill-in — never the `openchatstudio.com` host, the chatbot `public_id`, or the
 `embed_key`, and never an in-app control (a grievance menu, a "Report a
 problem" option) unless this run's own evidence shows one exists (ace#2106). Those are embed credentials, not a destination a CBF can open
-(the embed path live-probes 404; Connect has no per-opp widget field, CCC-301).
+(the embed path is a dead route; Connect has no per-opp widget field, CCC-301).
+The one OCS link allowed is the bot's public start URL
+(`phases.ocs-setup.products.ocs_chatbot.public_url`, `/a/<team>/chatbots/<public_id>/start/`),
+which opens a live chat page (ace#3002) — in addition to the coordinator, never
+instead; do not quote its greeting (blank topic, ace#2992).
 Run `checkWorkerFacingSupportChannel` from `lib/support-channel-guard.ts` over
 the composed markdown before writing and rewrite any finding.
 
