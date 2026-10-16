@@ -276,8 +276,12 @@ appId: org.commcare.dalvik
       visible:
         id: "${SELECTOR:case-list-container}"
     commands:
+      # CASE_SELECT_LABEL threads this leg's ${WALK_LABEL} into the nested
+      # palette so a two-leg smoke keeps BOTH legs' case-list frames (ace#2182).
       - runFlow:
           file: deliver-case-select.yaml
+          env:
+            CASE_SELECT_LABEL: "${WALK_LABEL}"
       - waitForAnimationToEnd:
           timeout: 5000
 
@@ -389,8 +393,13 @@ appId: org.commcare.dalvik
       visible:
         id: "${SELECTOR:case-list-container}"
     commands:
+      # Distinct from the Level-1.5 handoff's label: the two guards are
+      # mutually exclusive on a walk, but the lint cannot see that, and a
+      # distinct value costs nothing (ace#2182).
       - runFlow:
           file: deliver-case-select.yaml
+          env:
+            CASE_SELECT_LABEL: "${WALK_LABEL}-mixed"
       - waitForAnimationToEnd:
           timeout: 5000
 

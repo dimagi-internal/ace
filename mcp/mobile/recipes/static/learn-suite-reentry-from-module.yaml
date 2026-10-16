@@ -40,6 +40,18 @@
 # suite entirely on an app that lands at the root. Unifying the two needs a
 # live `post_submit: module` app to calibrate against; until someone has one on
 # a device, do NOT merge them (ace#1071).
+#
+# ${REENTRY_LABEL} — REQUIRED AT EVERY CALL SITE (ace#2182). A per-INVOCATION
+# suffix on this palette's otherwise-fixed capture names, the same shape as
+# `deliver-form-walk.yaml`'s ${WALK_LABEL}. A multi-module Learn walk calls
+# this palette once per module boundary (18 times on
+# poverty-graduation/20260905-1345); with a fixed name every call OVERWRITES
+# the last and one frame survives. Bind a distinct `[a-z0-9-]` slug with its
+# leading separator, e.g. `REENTRY_LABEL: "-m2"`. No `env:` default here: a
+# subflow's `env:` OVERRIDES the caller's (ace#1033), and an unbound var
+# renders as the literal `undefined` (ace#1668) — the lint's
+# `runFlow-unbound-screenshot-name` rule rejects an unbound call site, and
+# `repeat-palette-invocation-without-discriminator` rejects a repeated value.
 appId: org.commcare.dalvik
 ---
 - back
@@ -49,4 +61,4 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:learn-suite-menu}"
     timeout: 15000
-- takeScreenshot: "learn-suite-reentry-from-module-suite-root"
+- takeScreenshot: "learn-suite-reentry-from-module-suite-root${REENTRY_LABEL}"

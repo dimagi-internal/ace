@@ -960,6 +960,8 @@ Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 # before the next module (see § Suite re-entry between modules).
 - runFlow:
     file: learn-suite-reentry.yaml
+    env:
+      REENTRY_LABEL: "-m1"        # distinct per module boundary (ace#2182)
 ```
 
 ```yaml
@@ -985,6 +987,8 @@ Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
     commands:
       - runFlow:
           file: learn-suite-reentry-from-module.yaml
+          env:
+            REENTRY_LABEL: "-m1"  # distinct per module boundary (ace#2182)
 ```
 
 Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
@@ -1149,6 +1153,8 @@ the root:
     commands:
       - runFlow:
           file: learn-suite-reentry-from-module.yaml
+          env:
+            REENTRY_LABEL: "-m<N>"  # distinct per call site — e.g. the module index (ace#2182)
 ```
 
 Guard on the row you WANT (`notVisible` the next module row ⇒ we are not at

@@ -53,6 +53,8 @@ const JOURNEY_LEARN = `appId: org.commcare.dalvik
       SCREENSHOT_NAME: "journey-learn-m0-orientation-finished"
 - runFlow:
     file: learn-suite-reentry.yaml
+    env:
+      REENTRY_LABEL: "-m1"
 - runFlow:
     file: learn-tap-module.yaml
     env:
@@ -97,7 +99,8 @@ describe('recipe-splitter — nested subflow screenshots (ace#1570)', () => {
     expect(names).toContain('journey-learn-submitted');
     // Palettes with hard-coded names contribute those too.
     expect(names).toContain('learn-launch-suite-root');
-    expect(names).toContain('learn-suite-reentry-suite-root');
+    // ...and a registered discriminator (ace#2182) is expanded from the caller's env.
+    expect(names).toContain('learn-suite-reentry-suite-root-m1');
     expect(new Set(names).size).toBe(names.length);
   });
 
@@ -229,7 +232,8 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
     'connect-resume-opp.yaml': { trailing: 'connect-resume-opp-landed' },
     'content-form-finish-to-suite.yaml': { trailing: '${SCREENSHOT_NAME}' },
     'content-form-finish.yaml': { trailing: '${SCREENSHOT_NAME}' },
-    'deliver-case-select.yaml': { trailing: 'deliver-case-select-selected' },
+    // ace#2182: per-invocation discriminators, same shape as WALK_LABEL below.
+    'deliver-case-select.yaml': { trailing: 'deliver-case-select-selected${CASE_SELECT_LABEL}' },
     // ace#1651: the fixed captures carry a per-invocation `${WALK_LABEL}`
     // discriminator, so the trailing NAME TEMPLATE (which is what the splitter
     // records) now includes it. Unbound it expands to the empty string, so the
@@ -251,9 +255,9 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
     },
     'learn-launch.yaml': { trailing: 'learn-launch-suite-root' },
     'learn-suite-reentry-from-module.yaml': {
-      trailing: 'learn-suite-reentry-from-module-suite-root',
+      trailing: 'learn-suite-reentry-from-module-suite-root${REENTRY_LABEL}',
     },
-    'learn-suite-reentry.yaml': { trailing: 'learn-suite-reentry-suite-root' },
+    'learn-suite-reentry.yaml': { trailing: 'learn-suite-reentry-suite-root${REENTRY_LABEL}' },
     // No leading entry: learn-tap-module opens with an `extendedWaitUntil`,
     // so the surface at a parent boundary need not yet be the one its
     // screenshot captures. Conservative by design — see SCREEN_NEUTRAL_STEPS.

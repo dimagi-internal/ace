@@ -48,13 +48,25 @@
 # (`screen_suite_menu_list`) OR the GRID container (`grid_menu_grid`).
 # Prose below that names `screen_suite_menu_list` describes the original
 # list-mode incident; the anchor itself must stay display-mode-agnostic.
+#
+# ${REENTRY_LABEL} — REQUIRED AT EVERY CALL SITE (ace#2182). A per-INVOCATION
+# suffix on this palette's otherwise-fixed capture names, the same shape as
+# `deliver-form-walk.yaml`'s ${WALK_LABEL}. A multi-module Learn walk calls
+# this palette once per module boundary (18 times on
+# poverty-graduation/20260905-1345); with a fixed name every call OVERWRITES
+# the last and one frame survives. Bind a distinct `[a-z0-9-]` slug with its
+# leading separator, e.g. `REENTRY_LABEL: "-m2"`. No `env:` default here: a
+# subflow's `env:` OVERRIDES the caller's (ace#1033), and an unbound var
+# renders as the literal `undefined` (ace#1668) — the lint's
+# `runFlow-unbound-screenshot-name` rule rejects an unbound call site, and
+# `repeat-palette-invocation-without-discriminator` rejects a repeated value.
 appId: org.commcare.dalvik
 ---
 - extendedWaitUntil:
     visible:
       ${SELECTOR:learn-home-start-tile}
     timeout: 30000
-- takeScreenshot: "learn-suite-reentry-home-tiles"
+- takeScreenshot: "learn-suite-reentry-home-tiles${REENTRY_LABEL}"
 
 # Tap the green Start tile. Maestro walks up from the `card_text`
 # TextView to the clickable `card` RelativeLayout.
@@ -67,4 +79,4 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:learn-suite-menu}"
     timeout: 15000
-- takeScreenshot: "learn-suite-reentry-suite-root"
+- takeScreenshot: "learn-suite-reentry-suite-root${REENTRY_LABEL}"

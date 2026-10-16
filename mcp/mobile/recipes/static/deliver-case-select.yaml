@@ -119,6 +119,19 @@
 # This is also why `static-recipe-invariants.test.ts` forbids a positional
 # `entity_view_text` tap outright, rather than merely requiring it be guarded
 # the way the `row_txt` fallback is.
+#
+# ${CASE_SELECT_LABEL} — REQUIRED AT EVERY CALL SITE (ace#2182). A
+# per-INVOCATION suffix on this palette's otherwise-fixed capture names, the
+# same shape as `deliver-form-walk.yaml`'s ${WALK_LABEL}. A two-leg Deliver
+# smoke reaches this palette once per followup leg (via
+# `deliver-form-walk.yaml`, which passes its own ${WALK_LABEL} through); with
+# fixed names the second leg OVERWRITES the first leg's case-list frames. Bind
+# a distinct `[a-z0-9-]` slug with its leading separator, e.g.
+# `CASE_SELECT_LABEL: "-register"`. No `env:` default here: a subflow's `env:`
+# OVERRIDES the caller's (ace#1033), and an unbound var renders as the literal
+# `undefined` (ace#1668) — the lint's `runFlow-unbound-screenshot-name` rule
+# rejects an unbound call site, and
+# `repeat-palette-invocation-without-discriminator` rejects a repeated value.
 appId: org.commcare.dalvik
 ---
 - extendedWaitUntil:
@@ -129,7 +142,7 @@ appId: org.commcare.dalvik
 # RENDERED, which is the evidence that diagnosed ace#2226 (six prior-run rows
 # filling the viewport). The post-selection state is covered by
 # `deliver-case-select-selected` below.
-- takeScreenshot: "deliver-case-select-list"
+- takeScreenshot: "deliver-case-select-list${CASE_SELECT_LABEL}"
 
 # Bring the target case into the viewport (ace#2226). See § THE CASE LIST IS
 # UNBOUNDED in the header for the budget's device provenance.
@@ -181,7 +194,7 @@ appId: org.commcare.dalvik
       visible:
         id: "${SELECTOR:case-list-detail-continue}"
     commands:
-      - takeScreenshot: "deliver-case-select-detail"
+      - takeScreenshot: "deliver-case-select-detail${CASE_SELECT_LABEL}"
       - tapOn:
           id: "${SELECTOR:case-list-detail-continue}"
       - waitForAnimationToEnd:
@@ -200,4 +213,4 @@ appId: org.commcare.dalvik
     notVisible:
       id: "${SELECTOR:case-list-container}"
     timeout: 20000
-- takeScreenshot: "deliver-case-select-selected"
+- takeScreenshot: "deliver-case-select-selected${CASE_SELECT_LABEL}"
