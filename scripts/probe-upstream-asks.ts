@@ -37,10 +37,16 @@
  *
  * Usage:
  *   npx tsx scripts/probe-upstream-asks.ts [--json] [--all] [--no-comments]
+ *                                          [--drive | --drive-all-opps]
  *
- *   --json         machine-readable output
- *   --all          list every tracked reference, not only the stale ones
- *   --no-comments  skip the heuristic corrected-but-open tier entirely
+ *   --json            machine-readable output
+ *   --all             list every tracked reference, not only the stale ones
+ *   --no-comments     skip the heuristic corrected-but-open tier entirely
+ *   --drive           ALSO scan Drive `ACE/<opp>/inputs/` of every fixture opp
+ *                     (one carrying `iterate-state.yaml`) — opt-in, needs the
+ *                     GWS service-account key and ACE_DRIVE_ROOT_FOLDER_ID
+ *                     (ace#1924; rules in lib/upstream-asks-drive.ts)
+ *   --drive-all-opps  as --drive, over every opp folder, not only fixtures
  *
  * Requires an authenticated `gh`. Exit codes: 0 nothing stale (advisory
  * findings included), 1 usage/tool error, 2 CLOSED-but-cited-as-live citations
@@ -48,9 +54,13 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+import { google } from '../lib/google-shim.js';
+import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
+import { collectDriveInputRefs, type DriveInputsReader } from '../lib/upstream-asks-drive.js';
 import {
   extractRefs,
   findCorrectedOpenAsks,
@@ -103,6 +113,78 @@ function collectRefs(): UpstreamRef[] {
     refs.push(...extractRefs(relative(REPO, f), content));
   }
   return refs;
+}
+
+const FOLDER = 'application/vnd.google-apps.folder';
+const GDOC = 'application/vnd.google-apps.document';
+
+/**
+ * The real Drive reader behind `--drive`. Same key/env resolution as
+ * `scripts/check-deep-qa-freshness.ts`. Everything that decides WHAT is
+ * scanned lives in `lib/upstream-asks-drive.ts`, where it is unit-tested.
+ */
+function driveReader(): DriveInputsReader {
+  const dataDir = resolvePluginDataDir(import.meta.url);
+  const home = join(process.env.HOME || '', '.claude', 'plugins', 'data', 'ace-ace');
+  for (const env of [dataDir && join(dataDir, '.env'), join(home, '.env'), join(REPO, '.env')]) {
+    if (env && existsSync(env)) dotenv.config({ path: env, override: false });
+  }
+  const keyFile = [
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    dataDir && join(dataDir, 'gws-sa-key.json'),
+    join(home, 'gws-sa-key.json'),
+    join(REPO, '.gws-sa-key.json'),
+  ].find((p): p is string => !!p && existsSync(p));
+  if (!keyFile) die('--drive needs the GWS service-account key (run /ace:setup).');
+  const root = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
+  if (!root) die('--drive needs ACE_DRIVE_ROOT_FOLDER_ID in the installed .env.');
+
+  const drive = google.drive({
+    version: 'v3',
+    auth: new google.auth.GoogleAuth({ keyFile, scopes: ['https://www.googleapis.com/auth/drive.readonly'] }),
+  });
+  const list = async (parent: string) =>
+    (
+      await drive.files.list({
+        q: `'${parent}' in parents and trashed = false`,
+        fields: 'files(id, name, mimeType)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        pageSize: 1000,
+      })
+    ).data.files ?? [];
+  const oppFolders = new Map<string, string>();
+
+  return {
+    async listOpps() {
+      const out = [];
+      for (const f of await list(root)) {
+        if (f.mimeType !== FOLDER || !f.name || !f.id) continue;
+        oppFolders.set(f.name, f.id);
+        const fixture = (await list(f.id)).some((c) => c.name === 'iterate-state.yaml');
+        out.push({ opp: f.name, fixture });
+      }
+      return out;
+    },
+    async readInputs(opp) {
+      const oppId = oppFolders.get(opp);
+      if (!oppId) return [];
+      const inputs = (await list(oppId)).find((c) => c.name === 'inputs' && c.mimeType === FOLDER);
+      if (!inputs?.id) return [];
+      const docs = [];
+      for (const f of await list(inputs.id)) {
+        if (!f.id || !f.name || f.mimeType === FOLDER) continue;
+        const res =
+          f.mimeType === GDOC
+            ? await drive.files.export({ fileId: f.id, mimeType: 'text/plain' }, { responseType: 'text' })
+            : f.mimeType?.startsWith('text/') || /\.(md|txt|ya?ml)$/i.test(f.name)
+              ? await drive.files.get({ fileId: f.id, alt: 'media', supportsAllDrives: true }, { responseType: 'text' })
+              : null;
+        if (res) docs.push({ name: f.name, text: String(res.data) });
+      }
+      return docs;
+    },
+  };
 }
 
 /** One `gh issue view` per slug. Unreachable issues resolve to UNKNOWN. */
@@ -165,7 +247,9 @@ function fetchComments(slug: string): IssueComment[] {
 
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) {
-  process.stderr.write('usage: probe-upstream-asks.ts [--json] [--all] [--no-comments]\n');
+  process.stderr.write(
+    'usage: probe-upstream-asks.ts [--json] [--all] [--no-comments] [--drive | --drive-all-opps]\n',
+  );
   process.exit(0);
 }
 
@@ -176,6 +260,17 @@ try {
 }
 
 const refs = collectRefs();
+if (argv.includes('--drive') || argv.includes('--drive-all-opps')) {
+  const scan = await collectDriveInputRefs(driveReader(), { allOpps: argv.includes('--drive-all-opps') });
+  process.stderr.write(
+    `Drive pass: scanned inputs/ of ${scan.scanned.length} opp(s)` +
+      `${scan.scanned.length ? ` (${scan.scanned.join(', ')})` : ''}, ${scan.refs.length} citation(s)\n`,
+  );
+  // A read failure must not look like "nothing stale" — name it, and fail the run.
+  for (const e of scan.errors) process.stderr.write(`Drive pass: ${e}\n`);
+  if (scan.errors.length) die(`Drive pass incomplete (${scan.errors.length} error(s)) — not a clean result.`);
+  refs.push(...scan.refs);
+}
 const slugs = uniqueSlugs(refs);
 if (slugs.length === 0) {
   process.stdout.write('No upstream issue references found.\n');
