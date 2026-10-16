@@ -403,12 +403,16 @@ required; the slug is `slugify_uniquely(name)`; ace@ becomes Admin; a reused
 name re-renders the form with "An organization with this name already
 exists."). Connect has no org delete yet, so never create probe orgs.
 
-What ace@ still CANNOT do, live 2026-10-07: tick **Program manager** (the
-`program_manager` field is dropped from `OrganizationChangeForm` without
-`ORG_MANAGEMENT_SETTINGS_ACCESS` — absent from ace-pm-org's home for ace@) or
-set **Is test** (only `AdminOrganizationForm` has it). Both sit on the Django
-admin page `https://connect.dimagi.com/admin/organization/organization/?q=<org>`
-(staff login), which the operator checklist links —
+What ace@ still CANNOT do, live 2026-10-07: toggle **Program manager** —
+ace@'s view of the org edit page omits it (staff-only fields are dropped from
+`OrganizationChangeForm` without `ORG_MANAGEMENT_SETTINGS_ACCESS`). Staff
+toggle it on that same edit page, `https://connect.dimagi.com/a/<org>/organization/`
+— **never send an operator to Django admin for this** (owner, 2026-10-15,
+ace#3014: *"you shouldn't be telling me to go through django admin, there is a
+proper edit page I just need to toggle for you"*). That edit page has **no Is
+test toggle** (owner, live, 2026-10-15), and a clone needs none: the
+noora-health clone went on without it and every read-back passed. So the org
+`is_test` flag is not on the checklist at all. The operator checklist links it —
 `scripts/clone-setup-checklist.ts print` is the single source of those URLs.
 
 **Read-backs changed with #1580.** `/a/<org>/organization/` now answers 200 for

@@ -30,9 +30,9 @@ the CommCare HQ API directly. This covers the `flw-data-review` skill's data nee
 
 ## New project spaces — set them to "Test or Demo Project"
 
-Every new HQ project space — a partner's space for `clone-to-new-workspace`
-(created by the operator, below), or one ACE creates with
-`commcare_create_domain` (the interview master/downstream pair) — starts
+Every new HQ project space — a partner's space for `clone-to-new-workspace`,
+or the interview master/downstream pair; ACE creates each with
+`commcare_create_domain` — starts
 on **CommCare Free Edition**, where the REST API is closed (every `/api/` call
 answers 401 *"Your current subscription does not have access to this
 feature"*; ace#2552). Web views still work (app copy, build, release, a
@@ -42,19 +42,18 @@ space-restricted HQ key, linked spaces and data forwarding do not.
 **The fix is one setting on the space itself** (Gillian Javetski, accounts —
 2026-10-02; operator decision, Jon 2026-10-02):
 
-1. Create the space. **For a clone, the operator does this** (operator
-   decision, Jon 2026-10-02), together with steps 2 and the ace@ invite, from
-   one checklist whose URLs come from a single source:
-   `npx tsx scripts/clone-setup-checklist.ts print --workspace <ws> [--hq-domain <slug>]`
-   (`lib/clone-setup-checklist.ts`: create at
-   `https://www.commcarehq.org/register/domain/`, demo mode, invite
-   `ace@dimagi-ai.com` as Admin at `/a/<space>/settings/users/web/invite/`).
-   ace@ then joins by itself — `clone-setup-checklist.ts accept-invites` finds
-   the HQ invitation in ace@'s mailbox, accepts it with ACE's HQ session
-   (`/a/<space>/settings/users/join/<uuid>/`), and reads
-   `/a/<space>/settings/users/my_role/` back (`is_domain_admin: true`). Use
-   that script rather than copying a URL from here. Elsewhere, ACE creates the
-   space with `commcare_create_domain`.
+1. **ACE creates the space** with `commcare_create_domain` (`hr_name` at most
+   25 characters; record the returned `domain`, since HQ derives the slug).
+   The creator is the space's Admin, so no invitation is needed; read
+   `/a/<space>/settings/users/my_role/` back (`is_domain_admin: true`). Never
+   ask an operator to create a space or invite ace@ to it (owner, 2026-10-15,
+   ace#3014: *"you should create it and make yourself admin, you just tell me
+   to fix the subscription after you've created it (that's how this should
+   work in general)"*). For a clone, step 2 is then the only HQ item on the
+   operator checklist, whose URLs come from a single source:
+   `npx tsx scripts/clone-setup-checklist.ts print --workspace <ws> --hq-domain <slug>`
+   (`lib/clone-setup-checklist.ts`). Use that script rather than copying a URL
+   from here.
 2. A Dimagi HQ superuser opens
    **`https://www.commcarehq.org/a/<space>/settings/project/internal_subscription_management/`**,
    chooses **Subscription Type → Test or Demo Project**, and presses **Update**.

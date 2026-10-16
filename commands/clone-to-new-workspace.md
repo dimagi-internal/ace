@@ -31,8 +31,10 @@ that workspace's tenancy. The source run is untouched; nobody is invited.
 ## Process
 
 Invoke the `clone-to-new-workspace` skill with the parsed arguments and follow
-it exactly: workspace → **operator setup checklist** (printed verbatim by
-`scripts/clone-setup-checklist.ts`; stop until the operator replies with the
-slugs) → ACE accepts its own invitations and verifies every item → default
+it exactly: workspace → ACE creates the HQ space and both Connect orgs →
+**operator setup checklist** (printed verbatim by
+`scripts/clone-setup-checklist.ts`: only HQ demo mode and the two settings on
+each Connect org's edit page; stop until the operator replies "done") → ACE
+verifies every item → default
 tenancy → preflight → ace-web copy → `bin/ace-bind` to the NEW opp → rebuild
 per system (Connect rebuilt in the partner's orgs by default) → report.
