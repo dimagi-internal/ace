@@ -7,7 +7,24 @@ import { ChatbotTableShapeError, ExperimentIdEnrichmentError,
 export interface CompositeOptions {
   rest: RestBackend;
   playwright: PlaywrightBackend;
+  /**
+   * How long the post-publish API read-back polls for the NEW default
+   * version (ace#1828). OCS creates the version asynchronously after the
+   * publish POST's 302, so one immediate read returns the pre-publish
+   * default. Injectable so tests need not wait in real time.
+   */
+  publishReadback?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  };
 }
+
+const DEFAULT_PUBLISH_READBACK_INTERVAL_MS = 1_000;
+const DEFAULT_PUBLISH_READBACK_TIMEOUT_MS = 20_000;
+
+/** The pre-publish published default: `known` false means the read failed. */
+type PrePublishDefault = { known: false } | { known: true; version?: number };
 
 /**
  * CompositeBackend implements OcsClient by delegating each capability to either
@@ -70,10 +87,28 @@ export class CompositeBackend implements OcsClient {
    *
    * #823's invariant is preserved, not weakened: never invent a version
    * number. With neither source able to answer, this still throws.
+   *
+   * **The read-back races the publish (ace#1828, recurrence).** OCS creates
+   * the version asynchronously after the POST's 302, so a single immediate
+   * API read returned the PRE-publish default — labelled `api`, the
+   * authoritative label. Six live repros, e.g. experiment 14296: the publish
+   * returned `{version_number: 1, source: 'api'}` while
+   * `ocs_inspect_chatbot(version: 'default')` straight afterwards showed v2
+   * carrying this publish's description. So the default is read BEFORE the
+   * publish too, and the post-publish read polls until it has moved past it.
+   * A read that never moves is not returned as `api`: it falls through to the
+   * existing badge path / throw below.
    */
   publishChatbotVersion = async (
     a: Parameters<OcsClient['publishChatbotVersion']>[0],
   ): Promise<{ version_number: number; task_id: string; source: 'api' | 'home-page-badge' }> => {
+    // Best-effort: the published default BEFORE this publish, so the
+    // post-publish read can tell the new version from the old one.
+    const prePublicId = await this.publicIdForExperimentSilently(a.experiment_id);
+    const before: PrePublishDefault = prePublicId
+      ? await this.defaultVersionReadSilently(prePublicId)
+      : { known: false };
+
     let scraped: { version_number: number; task_id: string; public_id?: string } | undefined;
     let badgeFailure: VersionBadgeUnreadableError | undefined;
 
@@ -90,18 +125,61 @@ export class CompositeBackend implements OcsClient {
     const publicId =
       scraped?.public_id ??
       badgeFailure?.publicId ??
+      prePublicId ??
       (await this.publicIdForExperimentSilently(a.experiment_id));
 
-    const published = publicId ? await this.publishedVersionSilently(publicId) : undefined;
+    const published = publicId
+      ? await this.pollPublishedVersion(publicId, before, a.description)
+      : undefined;
     if (published !== undefined) {
       return { version_number: published, task_id: 'none', source: 'api' };
     }
 
-    // API unreachable, or it named no default version. Never fall through to
-    // the working counter — that is the ace#891 off-by-one.
+    // API unreachable, it named no default version, or it never moved past
+    // the pre-publish default within the poll window. Never fall through to
+    // the working counter — that is the ace#891 off-by-one — and never label
+    // the stale pre-publish default `api` (ace#1828).
     if (badgeFailure) throw badgeFailure;
     return { version_number: scraped!.version_number, task_id: scraped!.task_id, source: 'home-page-badge' };
   };
+
+  /**
+   * Poll the API until the published default is THIS publish's version.
+   *
+   * Accepts a default when:
+   *  - the pre-publish default is known and the new one is strictly greater;
+   *  - the pre-publish read succeeded and there was no default yet (any
+   *    default that appears is this publish's);
+   *  - the pre-publish read failed, and the default row carries the posted
+   *    `version_description` — or carries no description field at all, the
+   *    one case with nothing better to compare (the pre-fix behaviour).
+   *
+   * Returns undefined when the window closes without an acceptable default.
+   */
+  private async pollPublishedVersion(
+    publicId: string,
+    before: PrePublishDefault,
+    description: string,
+  ): Promise<number | undefined> {
+    const cfg = this.opts.publishReadback ?? {};
+    const intervalMs = cfg.intervalMs ?? DEFAULT_PUBLISH_READBACK_INTERVAL_MS;
+    const timeoutMs = cfg.timeoutMs ?? DEFAULT_PUBLISH_READBACK_TIMEOUT_MS;
+    const sleep = cfg.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    let waited = 0;
+
+    for (;;) {
+      const read = await this.defaultVersionReadSilently(publicId);
+      if (read.known && read.version !== undefined) {
+        const moved = before.known
+          ? before.version === undefined || read.version > before.version
+          : read.description === undefined || read.description === description;
+        if (moved) return read.version;
+      }
+      if (waited + intervalMs > timeoutMs) return undefined;
+      await sleep(intervalMs);
+      waited += intervalMs;
+    }
+  }
 
   /**
    * Best-effort "which version is PUBLISHED right now" from the API.
@@ -111,12 +189,15 @@ export class CompositeBackend implements OcsClient {
    * 3), so reading it here would write an off-by-one into `run_state.yaml`.
    * The published version is the one flagged as default.
    */
-  private async publishedVersionSilently(publicId: string): Promise<number | undefined> {
+  private async defaultVersionReadSilently(
+    publicId: string,
+  ): Promise<{ known: false } | { known: true; version?: number; description?: string }> {
     try {
       const chatbot = await this.opts.rest.getChatbot({ public_id: publicId });
-      return chatbot.versions?.find((v) => v.is_default_version)?.version_number;
+      const def = chatbot.versions?.find((v) => v.is_default_version);
+      return { known: true, version: def?.version_number, description: def?.version_description };
     } catch {
-      return undefined;
+      return { known: false };
     }
   }
 
