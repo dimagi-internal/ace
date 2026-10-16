@@ -81,6 +81,57 @@ describe('resolveRunWorkspace — default workspace', () => {
     expect(r.warnings[0]).toMatch(/hq_domain=somewhere-else/);
   });
 
+  // ace#2919 — measured on turmeric-market-study-ghana 2026-10-13: .env set
+  // neither org key, the tenancy said ace-pm-org / ace-nm-org, and Phase 4
+  // completed in the legacy default org with no warning (create-time only,
+  // unrepairable).
+  const NO_ORGS = { ...ENV, ACE_CONNECT_PM_ORG: undefined, ACE_CONNECT_NM_ORG: undefined };
+  const SHARED_TENANCY: TenancyResponse = {
+    tenancy: { hq_domain: 'connect-ace-prod', connect_pm_org: 'ace-pm-org', connect_holding_org: 'ace-nm-org', ocs_team: 'connect-ace' },
+    drive_root_folder_id: 'ace-root',
+    source: 'opp',
+  };
+
+  it('fills unset org keys from the tenancy instead of the legacy default (ace#2919)', () => {
+    const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: NO_ORGS, response: SHARED_TENANCY });
+    expect(r.connect_orgs).toEqual({
+      pm_org: 'ace-pm-org',
+      nm_org: 'ace-nm-org',
+      source: { pm_org: 'tenancy', nm_org: 'tenancy' },
+    });
+    expect(phase4Orgs(r.connect_orgs)).toMatchObject({ mode: 'pm-nm', holding_org: 'ace-nm-org' });
+    expect(r.warnings.join('\n')).toMatch(/ACE_CONNECT_NM_ORG is unset; nm_org=ace-nm-org comes from ace-web/);
+    const y = parseYaml(renderRunWorkspaceYaml(r));
+    expect(y.run_workspace.connect_orgs.source).toEqual({ pm_org: 'tenancy', nm_org: 'tenancy' });
+  });
+
+  it('nm_org unset in .env vs a tenancy holding org resolves to the tenancy, not self-managed', () => {
+    const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_CONNECT_NM_ORG: undefined }, response: SHARED_TENANCY });
+    expect(r.connect_orgs.nm_org).toBe('ace-nm-org');
+    expect(r.connect_orgs.source).toEqual({ pm_org: 'env', nm_org: 'tenancy' });
+  });
+
+  it('an explicit .env org that contradicts the tenancy halts with CONNECT_ORG_CONFLICT', () => {
+    const e = err(() =>
+      resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_CONNECT_PM_ORG: 'some-other-org' }, response: SHARED_TENANCY }),
+    );
+    expect(e.code).toBe('CONNECT_ORG_CONFLICT');
+    expect(e.fields).toEqual(['ACE_CONNECT_PM_ORG']);
+    expect(e.message).toMatch(/some-other-org.*ace-pm-org/);
+  });
+
+  it('with no tenancy to compare, an unset PM key still uses the legacy default — and says so', () => {
+    const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: NO_ORGS, responseError: new Error('ECONNREFUSED') });
+    expect(r.connect_orgs.source).toEqual({ pm_org: 'legacy-default', nm_org: 'unset' });
+    expect(r.warnings.join('\n')).toMatch(/falls back to the legacy default/);
+  });
+
+  it('matching .env and tenancy orgs are unchanged and warning-free', () => {
+    const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: ENV, response: SHARED_TENANCY });
+    expect(r.connect_orgs).toEqual({ pm_org: 'ace-pm-org', nm_org: 'ace-nm-org', source: { pm_org: 'env', nm_org: 'env' } });
+    expect(r.warnings).toEqual([]);
+  });
+
   it('errors when no workspace is given and none is configured', () => {
     const e = err(() => resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_WEB_WORKSPACE: '' } }));
     expect(e.code).toBe('NO_DEFAULT_WORKSPACE');
