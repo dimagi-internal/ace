@@ -102,6 +102,11 @@ describe('connect_list_opportunities — Step 4a Σ must not cost 80 KB (ace#179
     expect(src).toMatch(/summarizeOpportunitiesByProgram\(/);
   });
 
+  it('threads program_created_this_invocation into the summary (ace#2083)', () => {
+    expect(keys).toContain('program_created_this_invocation');
+    expect(src).toMatch(/programCreatedThisInvocation: program_created_this_invocation === true/);
+  });
+
   it('summarize_by_program IMPLIES hydrate — Σ’s two inputs are dashboard-read', () => {
     // Summarizing an unhydrated listing would sum a column that is not there
     // and report 0 as a fact.

@@ -389,12 +389,13 @@ server.tool('connect_list_opportunities',
     hydrate: z.boolean().optional().describe('Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. On a mature org the hydrated array overflows the tool-result cap (measured `ai-demo-space` 2026-09-01: 71 rows = 81,175 chars) — pair it with `summarize_by_program` or `write_to_path` (ace#1799).'),
     summarize_by_program: z.string().optional().describe('Program NAME. Implies `hydrate`. Returns `{listing, summary}` and NO `opportunities` array — the whole of connect-program-setup Step 4a\'s computation done server-side: Σ(`total_budget`) over the rows definitively inside that program, plus `sigma_known` with verbatim `sigma_unknown_reasons`, the matched/excluded/unreadable split, and `dashboard_read_counts`. A few hundred characters instead of ~80 KB, and the ace#1637 ok / setup_incomplete / no_cards split becomes a first-class field (with `setup_incomplete_rows` naming the permanently-unreadable subset) rather than something each agent re-derives (differently). Pass `duplicate_program_name: true` when the Step 2 program list shows the org has more than one program by this name — Step 4a\'s fourth UNKNOWN condition, which no opportunity read surface can observe.'),
     duplicate_program_name: z.boolean().optional().describe('`summarize_by_program` only. Set when the Step 2 `connect_list_programs` result shows two or more programs sharing this name; the scoping is by NAME, so that makes Σ UNKNOWN.'),
+    program_created_this_invocation: z.boolean().optional().describe('`summarize_by_program` only — the create-path narrowing (ace#2083). Pass `true` ONLY when this invocation created the program (connect-program-setup Step 4, never the reuse path) and no opportunity has been created against it since: every row in the org then predates it, so unreadable rows (incl. `setup_incomplete`) are ruled OUT of it instead of making Σ unknown. Honoured only when the listing agrees (`matched_rows == 0`); a readable row naming the program contradicts it and Σ stays unknown with a reason. Returns `unreadable_rows_ruled_out`.'),
     write_to_path: z.string().optional().describe('If set, write the full opportunity list to this absolute local path and return `opportunities_written_to` INSTEAD of `opportunities` — keeps the whole payload out of the model context regardless of org size. **The file contains a JSON OBJECT, `{"opportunities": [...]}`, not a bare array** — parse it and read `.opportunities` (ace#2212). The `listing` completeness block (and `summary`, if requested) is still returned inline. Same PURPOSE as `commcare_download_ccz`\'s `write_to_path` (keep the payload out of context), but not the same FORMAT — that one writes raw CCZ bytes. Missing parent directories are created.'),
   },
   async (args) => runAtom(async () => {
     const {
       organization_slug, program_id, name, hydrate,
-      summarize_by_program, duplicate_program_name, write_to_path,
+      summarize_by_program, duplicate_program_name, program_created_this_invocation, write_to_path,
     } = args;
     // The Σ needs `total_budget` + `program_name`, both dashboard-read per
     // row — so summarizing without hydrating would sum a column that is not
@@ -412,6 +413,7 @@ server.tool('connect_list_opportunities',
           listingComplete: res.listing.complete === true,
           listingTruncatedReason: res.listing.truncated_reason,
           duplicateProgramName: duplicate_program_name === true,
+          programCreatedThisInvocation: program_created_this_invocation === true,
         });
     if (write_to_path) {
       const dest = prepareWritePath(write_to_path);

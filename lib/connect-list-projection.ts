@@ -123,6 +123,17 @@ export interface OpportunityProgramSummary {
   setup_incomplete_rows: number;
   /** Matched rows carrying no `total_budget`; each makes Σ unknown. */
   rows_missing_total_budget: number;
+  /**
+   * True iff the unreadable rows were RULED OUT of this program rather than
+   * counted against it — the create-path narrowing (ace#2083). Only set when
+   * the caller states the program was created in this invocation with no
+   * opportunity created against it since (so every row in the org predates
+   * it and none can belong to it) AND the listing agrees: `matched_rows` is 0
+   * and no matched row lacks a budget. When true the unreadable rows do not
+   * make Σ unknown; `unreadable_rows` / `setup_incomplete_rows` still report
+   * them.
+   */
+  unreadable_rows_ruled_out: boolean;
   /** The ace#1637 split, first-class rather than re-derived per agent. */
   dashboard_read_counts: Record<string, number>;
   /** Total rows the walk returned, before any classification. */
@@ -158,9 +169,22 @@ export function summarizeOpportunitiesByProgram(
     listingComplete: boolean;
     listingTruncatedReason?: string;
     duplicateProgramName?: boolean;
+    /**
+     * The create-path narrowing (ace#2083). Pass true ONLY when this
+     * invocation created the program (`connect-program-setup` Step 4, not
+     * the reuse path) and no opportunity has been created against it since.
+     * Then the program is newer than every row the walk returned, so an
+     * unreadable row — whose program could not be read — cannot be in it.
+     * The listing must agree (`matched_rows == 0`); if a readable row already
+     * names the program the claim is contradicted and Σ stays unknown.
+     */
+    programCreatedThisInvocation?: boolean;
   },
 ): OpportunityProgramSummary {
-  const { programName, listingComplete, listingTruncatedReason, duplicateProgramName } = args;
+  const {
+    programName, listingComplete, listingTruncatedReason, duplicateProgramName,
+    programCreatedThisInvocation,
+  } = args;
   const dashboard_read_counts: Record<string, number> = {};
   const matched_opportunity_ids: string[] = [];
   let sigma = 0;
@@ -197,7 +221,25 @@ export function summarizeOpportunitiesByProgram(
         (listingTruncatedReason ? ` — ${listingTruncatedReason}` : ''),
     );
   }
-  if (unreadable_rows > 0) {
+  // ace#2083: on the create path a program minted moments ago, before any
+  // opportunity was created against it, cannot contain a row the walk could
+  // not read — every such row predates it. Measured on
+  // poverty-graduation/20260905-1345: matched_rows 0, 11 setup_incomplete
+  // rows, and the ceiling raised 126,000 → 176,400 for a program whose
+  // consumption was provably 0.
+  const unreadable_rows_ruled_out =
+    programCreatedThisInvocation === true &&
+    unreadable_rows > 0 &&
+    matched_opportunity_ids.length === 0 &&
+    rows_missing_total_budget === 0;
+  if (programCreatedThisInvocation === true && unreadable_rows > 0 && !unreadable_rows_ruled_out) {
+    sigma_unknown_reasons.push(
+      `program_created_this_invocation contradicted: the caller says the program was created in ` +
+        `this invocation, but ${matched_opportunity_ids.length} readable row(s) already name it, ` +
+        `so the unreadable rows cannot be ruled out (ace#2083)`,
+    );
+  }
+  if (unreadable_rows > 0 && !unreadable_rows_ruled_out) {
     sigma_unknown_reasons.push(
       `unreadable_rows: ${unreadable_rows} row(s) had dashboard_read other than 'ok', so their ` +
         `program_name and total_budget were never read and they can be neither assigned to nor ` +
@@ -234,6 +276,7 @@ export function summarizeOpportunitiesByProgram(
     unreadable_rows,
     setup_incomplete_rows,
     rows_missing_total_budget,
+    unreadable_rows_ruled_out,
     dashboard_read_counts,
     total_rows: opportunities.length,
   };
