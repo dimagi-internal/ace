@@ -43,8 +43,15 @@ describe('ocs-agent-setup produces the public chat URL (ace#1839)', () => {
     expect(block).toMatch(/^\s*admin_url:/m);
   });
 
-  it('tells the author to build it with the helper rather than by hand', () => {
-    expect(skill).toMatch(/buildOcsPublicChatUrl/);
+  it('records the public LINK from ocs_ensure_public_link, not a built /start/ URL (OCS #4792)', () => {
+    // OCS is removing the legacy /start/ page (#4209) and pointed ACE at the
+    // per-chatbot Public link channel. Its token is minted by OCS, so the only
+    // correct source is the atom's return value.
+    expect(skill).toMatch(/ocs_ensure_public_link/);
+    const start = skill.indexOf('ocs_chatbot:');
+    const block = skill.slice(start, start + 800);
+    expect(block).toMatch(/public_url:.*\/c\/<token>\//);
+    expect(block).not.toMatch(/public_url:.*\/start\//);
   });
 
   it('the phase-products schema TYPE-CHECKS public_url, rather than merely tolerating it', () => {

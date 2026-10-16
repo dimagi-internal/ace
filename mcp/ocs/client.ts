@@ -204,9 +204,26 @@ export interface OcsClient {
     readback: string[];
   }>;
 
+  /**
+   * `public_url` is the chatbot's public-link page (`/c/<token>/`), or null when it
+   * has no public-link channel yet — see `ensurePublicLink`.
+   */
   getChatbotEmbedInfo(args: {
     experiment_id: number;
-  }): Promise<{ public_id: string; embed_key: string }>;
+  }): Promise<{ public_id: string; embed_key: string; public_url: string | null }>;
+
+  /**
+   * Ensure the chatbot has an ENABLED public-link channel and return its URL —
+   * OCS's supported anonymous chat page (`https://<ocs>/c/<widget_token>/`). It
+   * replaces the legacy `/a/<team>/chatbots/<public_id>/start/` page, which OCS
+   * is removing (dimagi/open-chat-studio#4209, #4792). Serves the PUBLISHED
+   * version only, so call it after publishing. Idempotent: one link per chatbot.
+   */
+  ensurePublicLink(args: {
+    experiment_id: number;
+    welcome_message?: string;
+    starter_questions?: string[];
+  }): Promise<{ public_url: string; channel_id: number; created: boolean }>;
 
   /**
    * Delete an experiment (chatbot) by integer id. Sets `is_archived=True` on

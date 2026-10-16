@@ -318,3 +318,24 @@ export class WidgetChannelStateUnreadableError extends OcsError {
     );
   }
 }
+
+/**
+ * `ocs_ensure_public_link` could not end with an ENABLED public-link channel
+ * whose URL it read back from the chatbot home page. The public link
+ * (`https://<ocs>/c/<widget_token>/`, OCS platform `public`) is the supported
+ * anonymous chat page; the legacy `/a/<team>/chatbots/<public_id>/start/` page
+ * is being removed upstream (dimagi/open-chat-studio#4209, and
+ * dimagi/open-chat-studio#4792 where OCS pointed ACE at the public link).
+ * Thrown rather than returning a URL ACE cannot prove works.
+ */
+export class PublicLinkChannelError extends OcsError {
+  constructor(public experimentId: number, detail: string) {
+    super(
+      `Public link channel on experiment ${experimentId}: ${detail} ` +
+        'Open the chatbot in OCS, check its "Public link" channel exists and is Enabled, ' +
+        'then re-run ocs_ensure_public_link. Template drift is the other suspect: the URL is ' +
+        'scraped from the `<input id="public-link-<channel_id>">` copy chip that ' +
+        'templates/chatbots/components/channel_buttons.html renders.',
+    );
+  }
+}

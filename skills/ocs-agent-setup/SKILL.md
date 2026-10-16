@@ -12,7 +12,8 @@ Run end-to-end against the OCS MCP server (`mcp/ocs-server.ts`). Uses these
 atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
 `ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`, `ocs_set_chatbot_tools`,
-`ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
+`ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`,
+`ocs_ensure_public_link`.
 
 Runs in Phase 5 as Step 1 under the `ocs-setup` agent. The agent handles
 quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
@@ -1133,9 +1134,18 @@ round-trip gate in Step 11.5 below.
      comes back `home-page-badge`, the API read failed and the number is a
      scrape that may be stale — corroborate before writing it in Step 11.
 
-10. **Retrieve embed credentials:**
+10. **Retrieve embed credentials and create the public link:**
     - `ocs_get_chatbot_embed_info({ experiment_id })`
     - Capture `{public_id, embed_key}`
+    - `ocs_ensure_public_link({ experiment_id, welcome_message: "Hi! I'm the
+      support assistant for <program name from the PDD>. Ask me anything about
+      the program or how to do the work in the app." })` → capture
+      `public_url` (`https://www.openchatstudio.com/c/<token>/`). This is the
+      chatbot's **Public link** channel — OCS's supported anonymous chat page,
+      and the link every reader is handed (Step 12). It must run AFTER Step 9:
+      the page serves the PUBLISHED version only, and an unpublished bot shows
+      "This chatbot is not published yet." Idempotent — OCS allows one public
+      link per chatbot, so a re-run returns the existing link (`created: false`).
 
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs), optional `last_reindexed_at` + refreshed `version_number` (written by `ocs-knowledge-refresh` in Phase 6; ABSENCE on a run whose Phase 6 completed means the chatbot never received the training docs)
@@ -1228,7 +1238,18 @@ round-trip gate in Step 11.5 below.
     named `ACE <opp-name>` exists via `ocs_list_*` to catch the
     duplicate-collection symptom.) This is the structural backstop that
     `classify_phase_writeback` cannot provide — it validates shape, not
-    whether the IDs are real. Only on a clean round-trip proceed to Step 12.
+    whether the IDs are real.
+
+    **Then open the public link the way a reader will — anonymously.**
+    `curl -s <public_url>` (no cookies needed: unlike the legacy `/start/`
+    page, the public-link page never creates a session itself) must return
+    **200** and must NOT contain `This chatbot is not published yet.` or
+    `This chatbot is temporarily unavailable.` — those are the two banners
+    OCS serves instead of the chat (`apps/chatbots/views/public_link.py`
+    `_page_state`). A banner means the link Step 12 would record does not
+    chat; fail the phase rather than write it.
+
+    Only on a clean round-trip proceed to Step 12.
 
 12. **Write `products.ocs_chatbot` to `run_state.yaml`** so downstream
     readers (ace-web summary, llo-onboarding, Connect handoff) can read
@@ -1245,7 +1266,7 @@ round-trip gate in Step 11.5 below.
             embed_key: <from Step 10>
             team_slug: <OCS team slug — typically "connect-ace">
             admin_url: https://www.openchatstudio.com/a/<team_slug>/chatbots/<experiment_id>/
-            public_url: https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/
+            public_url: <from Step 10 — https://www.openchatstudio.com/c/<token>/>
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
@@ -1257,54 +1278,52 @@ round-trip gate in Step 11.5 below.
     access).
 
     **`public_url` is REQUIRED, and it goes in the block above — not
-    only in the handoff markdown.** Build it with
-    `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts`; never
-    hand-assemble it (the two ways to get the route wrong are below,
-    and both look like a dead bot rather than a bad URL):
+    only in the handoff markdown.** It is exactly the URL
+    `ocs_ensure_public_link` returned in Step 10 — the chatbot's **Public
+    link** channel, `https://www.openchatstudio.com/c/<token>/`. Never
+    assemble it: OCS mints the token when the channel is created, so there
+    is nothing to build it from.
 
-    ```
-    https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/
-    ```
+    It is what makes an ACE per-opp chatbot reachable by anyone you send
+    the link to, with no OCS account. The page shows the chatbot's name
+    above the chat and greets with the channel's welcome message.
 
-    This is a real anonymous surface and it works — verified live
-    2026-08-14 against `connect-ace`, and again 2026-09-06 on
-    `hh-poverty-targeting/20260828-0702` (`200`, an 11,755-byte live
-    chat page). It is what makes an ACE per-opp chatbot reachable by
-    anyone you send the link to, with no OCS account.
+    **Do NOT record the legacy `/a/<team_slug>/chatbots/<public_id>/start/`
+    page any more** (built by `buildOcsPublicChatUrl`). OCS is removing it
+    (dimagi/open-chat-studio#4209, "Remove public web chat"), and told ACE
+    so when ACE reported its blank greeting (dimagi/open-chat-studio#4792,
+    from ace#2992): *"The legacy public chat page is in the process of being
+    deprecated and removed … You should instead create a 'Public Link'
+    channel for the chatbot."* A `/start/` URL handed to an LLO or a
+    reviewer keeps working only until that removal ships, and nothing on
+    ACE's side would notice the day it stops. Runs recorded before
+    2026-10-16 still carry it; `ocs_ensure_public_link` on such a bot
+    creates its public link.
 
     Until ace#1839 the typed block carried `admin_url` ALONE, while this
     paragraph said "also emit" without saying where. So every downstream
     reader that wanted "the chatbot link" got the console — which
-    answers `200 -> /accounts/login/?next=…` for an outsider — and
-    ace-web's run-summary page ended up offering an anonymous reviewer
-    an admin-only link under a heading inviting them to ask questions.
-    The prose was right and the contract was silent; the contract is
-    what gets read. The route is TEAM-SCOPED (`apps/chatbots/urls.py:80`,
-    mounted under `config/urls.py:88`'s `a/<slug:team_slug>/`), which is
-    why probing `/chatbots/<public_id>/…` at the root 404s.
+    answers `200 -> /accounts/login/?next=…` for an outsider. The contract
+    is what gets read, so the URL lives in the block.
 
-    Two things to know before you probe it (ace#1021):
+    Two things to know about the public link:
 
-    - **Carry cookies through the redirect.** `start_session_public`
-      CREATES a session and 302s to `/s/<session_id>/chat/`, which is
-      wrapped in `@verify_session_access_cookie` — a cookieless `curl`
-      reads **404 on a perfectly working bot**. Use `curl -L -c jar -b
-      jar` or a browser context.
-    - **Publishing does NOT turn this URL on.** `start_session_public`
-      resolves `resolve_published_or_working`, so an unpublished bot
-      serves its working version here rather than 404ing. Publishing
-      decides WHICH version answers, not whether the URL is live.
-    - **The team's WEB channel must be enabled** — the one real gate,
-      and the one live failure mode. `start_session_public` calls
-      `_disabled_web_channel_response` before rendering the consent
-      form (OCS #4230); if the team's `platform=WEB`
-      `ExperimentChannel` has `enabled=False`, the URL returns the
-      **503 maintenance page**, not a 404. It is a team-wide admin
-      kill-switch, so flipping it takes down **every ACE per-opp chat
-      URL at once** — `connect-ace` has such a channel
-      (`connect-ace-web-channel`). If a handoff URL that used to work
-      starts serving a maintenance page, check this before suspecting
-      the bot (ace#1812).
+    - **It serves the PUBLISHED version only.** Unlike the legacy page
+      (which fell back to the working version), an unpublished bot shows a
+      "not published yet" banner. Hence Step 10 runs after Step 9.
+    - **The channel's `enabled` toggle is its kill-switch.** A disabled
+      public-link channel serves "This chatbot is temporarily unavailable."
+      and ends any open conversation. `ocs_ensure_public_link` reads the
+      toggle back and refuses a disabled channel. **Regenerating** the link
+      in the OCS UI revokes the old URL immediately — never regenerate a
+      link that has already been sent to anyone.
+
+    The legacy `/start/` page had a different, team-wide gate, still worth
+    knowing while old runs carry it: **the team's WEB channel must be
+    enabled.** `start_session_public` calls `_disabled_web_channel_response`
+    (OCS #4230); a disabled `platform=WEB` channel (`connect-ace-web-channel`)
+    serves the **503 maintenance page** for every `/start/` URL on the team
+    at once (ace#1812).
 
     The old `/chatbots/embed/<public_id>/` path is genuinely gone — a
     410 stub since OCS #3540 (2026-08-03) — so do not emit it.
@@ -1317,7 +1336,8 @@ happen in subsequent steps of the `ocs-setup` agent, not in this skill.
 - **OCS MCP (`ace-ocs`):** `ocs_list_chatbots`, `ocs_clone_chatbot`,
   `ocs_create_collection`, `ocs_upload_collection_files`,
   `ocs_wait_for_collection_indexing`, `ocs_set_chatbot_pipeline`,
-  `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
+  `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`,
+  `ocs_ensure_public_link`.
 - **Google Drive MCP (`ace-gdrive`):** `drive_read_file`,
   `drive_list_folder`, `drive_create_file`.
 

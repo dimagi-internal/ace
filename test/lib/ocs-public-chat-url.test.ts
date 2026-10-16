@@ -42,6 +42,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildOcsPublicChatUrl } from '../../lib/ocs-public-chat-url.js';
+import { isLegacyOcsStartUrl, isOcsPublicLinkUrl } from '../../lib/ocs-public-chat-url.js';
 
 describe('buildOcsPublicChatUrl (#1021)', () => {
   it('builds the team-scoped public start route', () => {
@@ -91,5 +92,20 @@ describe('the skills no longer say the surface does not exist (#1021)', () => {
     const src = await read('skills/ocs-widget-handoff-eval/SKILL.md');
     expect(src).toMatch(/start\//);
     expect(src, 'a cookieless probe reads 404 on a working bot').toMatch(/cookie/i);
+  });
+});
+
+describe('public link vs legacy start page (OCS #4792 / #4209)', () => {
+  const LINK = 'https://www.openchatstudio.com/c/LMWhMNSsxfzJJEoxXJwce8R3ixYZW-Q6/';
+  const START = 'https://www.openchatstudio.com/a/connect-ace/chatbots/2b97652f-71cd-4da3-a745-15c5df7a3916/start/';
+  it('recognises the public link, and only it', () => {
+    expect(isOcsPublicLinkUrl(LINK)).toBe(true);
+    expect(isOcsPublicLinkUrl(START)).toBe(false);
+    expect(isOcsPublicLinkUrl('https://www.openchatstudio.com/c/abc/')).toBe(false);
+    expect(isOcsPublicLinkUrl('https://www.openchatstudio.com/a/connect-ace/chatbots/14296/')).toBe(false);
+  });
+  it('recognises the legacy start page, and only it', () => {
+    expect(isLegacyOcsStartUrl(START)).toBe(true);
+    expect(isLegacyOcsStartUrl(LINK)).toBe(false);
   });
 });

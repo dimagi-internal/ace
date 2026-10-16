@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 export type Capability =
-  // Authoring (20)
+  // Authoring
   | 'clone_chatbot'
   | 'create_chatbot'
   | 'set_chatbot_system_prompt'
@@ -23,6 +23,7 @@ export type Capability =
   | 'set_source_material'
   | 'publish_chatbot_version'
   | 'get_chatbot_embed_info'
+  | 'ensure_public_link'
   | 'delete_chatbot'
   | 'get_chatbot_pipeline_id'
   | 'delete_pipeline'
@@ -64,6 +65,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   set_source_material:          { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/' },
   publish_chatbot_version:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/versions/' },
   get_chatbot_embed_info:       { backend: 'HYBRID',     restTarget: 'GET /api/experiments/{id}/embed/' },
+  ensure_public_link:           { backend: 'PLAYWRIGHT', restTarget: 'POST /channels/{team}/chatbots/{id}/channels/create-dialog/public/ (no REST equivalent — CSRF-protected PublicChannelForm)' },
   delete_chatbot:               { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/experiments/{id}/ (not yet shipped)' },
   get_chatbot_pipeline_id:      { backend: 'PLAYWRIGHT', restTarget: 'GET /api/experiments/{id}/ (pipeline_id field not yet exposed in REST schema)' },
   delete_pipeline:              { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/pipelines/{id}/ (not yet shipped)' },

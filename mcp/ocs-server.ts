@@ -532,9 +532,20 @@ server.tool(
 
 server.tool(
   'ocs_get_chatbot_embed_info',
-  'Fetch the public_id and embed_key needed to render the OCS widget.',
+  'Fetch the public_id and embed_key needed to render the OCS widget, plus public_url: the chatbot\'s public-link page (https://<ocs>/c/<token>/), or null when it has no public-link channel yet (create one with ocs_ensure_public_link).',
   { experiment_id: z.number() },
   async (args) => result(await composite.getChatbotEmbedInfo(args)),
+);
+
+server.tool(
+  'ocs_ensure_public_link',
+  'Ensure the chatbot has an ENABLED "Public link" channel and return its URL (https://<ocs>/c/<widget_token>/) — the anonymous chat page to hand reviewers, LLOs and FLWs. This REPLACES the legacy /a/<team>/chatbots/<public_id>/start/ page, which OCS is removing (dimagi/open-chat-studio#4209, #4792). The page serves the PUBLISHED version only, so call it AFTER ocs_publish_chatbot_version. Idempotent: OCS allows one public link per chatbot, so an existing one is returned (created: false). The enabled state is read back from the channel edit-dialog; a disabled or unreadable channel throws PublicLinkChannelError. welcome_message is shown above the composer before the visitor types (one message; newlines split it into several); starter_questions become tap-to-send buttons. Both only apply when the channel is CREATED.',
+  {
+    experiment_id: z.number().int(),
+    welcome_message: z.string().optional().describe('Greeting shown before the visitor types. Applied only when the channel is created.'),
+    starter_questions: z.array(z.string().max(500)).optional().describe('Tap-to-send first questions. Applied only when the channel is created.'),
+  },
+  async (args) => result(await composite.ensurePublicLink(args)),
 );
 
 server.tool(
