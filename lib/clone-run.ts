@@ -26,14 +26,17 @@
  *    script makes outside MCP (where hooks/tenancy_guard.py cannot see them);
  *  - the products / release-summary / summary-url rewrites;
  *  - `rebuildLabs` — the Labs stage: a COPY into the clone's own labs
- *    program (§ 4c, ace#3020). The copy is agent-run (MCP atoms, not this
- *    script), so the stage reports `not-done: run § 4c` until the agent
- *    records `clone.labs.status: done`; it never regenerates.
+ *    program (§ 4c, ace#3020), scripted over the labs MCP's HTTP endpoint
+ *    (injected `LabsCall`), resumable step by step; it never regenerates.
+ *    Only workspace roles have no MCP atom (connect-labs#2572) — that step
+ *    rides `scripts/labs-workspace-setup.ts` and alone can be left not-done;
+ *  - `STAGE_BUDGETS` / `budgetBreaches` — the per-stage wall-clock guard.
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { parseAppReleaseSummary, releasedBuild } from './app-release-record.js';
 import { connectCountryName } from './program-locale.js';
+import { labsIdsIn, labsRebuildSource, remapSyntheticProducts } from './clone-labs-rebuild.js';
 
 // ── Stages ────────────────────────────────────────────────────────────
 
@@ -70,6 +73,92 @@ const FINAL: Record<Stage, readonly string[]> = {
   asset_refs: ['done'],
   readme: ['done'],
 };
+
+/**
+ * Who executes each stage. Every one is the script: a stage handed back to an
+ * agent ("agent-run") is how a 10-minute copy became hours (the Phase 4
+ * re-dispatch, ace#3021; the Labs § 4c hand-off, ace#3020). The release path
+ * is meant to stay fast — `test/lib/clone-run.test.ts` fails while any stage
+ * says otherwise.
+ */
+export const STAGE_EXECUTOR: Record<Stage, 'script' | 'agent-run'> = {
+  ace_web: 'script',
+  summary_url: 'script',
+  drive_ids: 'script',
+  hq: 'script',
+  release_summary: 'script',
+  connect: 'script',
+  labs: 'script',
+  ocs: 'script',
+  asset_refs: 'script',
+  readme: 'script',
+};
+
+// ── Wall-clock budget (config/clone-budget.json) ─────────────────────
+
+export interface CloneBudget {
+  total_seconds: number;
+  stages: Partial<Record<Stage, number>>;
+}
+
+/**
+ * The defaults, mirrored by config/clone-budget.json (the file wins). Set from
+ * what each stage costs when it works — ace-web's copy with its 8-way pool
+ * (ace-web#864: ~850 files ≈ 4–5 min), Connect's ~20 calls, the scripted Labs
+ * copy — so a breach means something got slow, not that the budget was tight.
+ */
+export const DEFAULT_CLONE_BUDGET: CloneBudget = {
+  total_seconds: 15 * 60,
+  stages: {
+    ace_web: 5 * 60,
+    summary_url: 30,
+    drive_ids: 3 * 60,
+    hq: 4 * 60,
+    release_summary: 60,
+    connect: 3 * 60,
+    labs: 6 * 60,
+    ocs: 10,
+    asset_refs: 4 * 60,
+    readme: 60,
+  },
+};
+
+export function parseCloneBudget(raw: unknown): CloneBudget {
+  const r = obj(raw);
+  const stages: Partial<Record<Stage, number>> = { ...DEFAULT_CLONE_BUDGET.stages };
+  for (const [k, v] of Object.entries(obj(r.stages))) {
+    if (!isStage(k)) throw new Error(`clone-budget: unknown stage "${k}"`);
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`clone-budget: stages.${k} must be a positive number of seconds`);
+    stages[k] = n;
+  }
+  const total = r.total_seconds === undefined ? DEFAULT_CLONE_BUDGET.total_seconds : Number(r.total_seconds);
+  if (!Number.isFinite(total) || total <= 0) throw new Error('clone-budget: total_seconds must be a positive number');
+  return { total_seconds: total, stages };
+}
+
+export interface BudgetBreach {
+  stage: Stage | 'total';
+  seconds: number;
+  budget_seconds: number;
+}
+
+/**
+ * Stages (that RAN this invocation — a skipped stage costs nothing) over their
+ * budget, plus the whole run over `total_seconds`. A breach is recorded and
+ * makes the script exit non-zero: a slow release is a defect to look at, not a
+ * cost to absorb silently.
+ */
+export function budgetBreaches(results: Record<string, Record<string, unknown> | undefined>, totalSeconds: number, budget: CloneBudget): BudgetBreach[] {
+  const out: BudgetBreach[] = [];
+  for (const stage of STAGES) {
+    const sec = Number(results[stage]?.seconds);
+    const cap = budget.stages[stage];
+    if (Number.isFinite(sec) && cap !== undefined && sec > cap) out.push({ stage, seconds: sec, budget_seconds: cap });
+  }
+  if (totalSeconds > budget.total_seconds) out.push({ stage: 'total', seconds: totalSeconds, budget_seconds: budget.total_seconds });
+  return out;
+}
 
 export interface StageRecord {
   status?: string;
@@ -809,29 +898,529 @@ export interface LabsRebuildContext {
   tenancy: Record<string, string | null | undefined>;
 }
 
+/** One labs MCP tool call: resolves to the tool's JSON result, throws on a tool error. */
+export type LabsCall = (tool: string, args: Record<string, unknown>) => Promise<any>;
+
+/** What the copy has done so far — persisted as `clone.labs.copy`, so a rerun resumes. */
+export interface LabsCopyState {
+  /** source labs id → copy id, for every id the products block names (one integer space). */
+  id_map: Record<string, number>;
+  steps: Record<string, unknown>;
+}
+
+export interface LabsCopyDeps {
+  call: LabsCall;
+  /** Persist progress after every step (and every partner). */
+  save: (state: LabsCopyState) => Promise<void>;
+  /**
+   * § 4c step 6, workspace roles: there is no labs MCP atom for them
+   * (connect-labs#2572), so this is `scripts/labs-workspace-setup.ts` over the
+   * `/ace:labs-login` session. `ok: false` leaves ONLY this step not done.
+   */
+  workspace: (programId: number, llos: string[]) => Promise<{ ok: boolean; llos: string[]; detail: string }>;
+  sleep?: (ms: number) => Promise<void>;
+  log?: (msg: string) => void;
+}
+
+export interface LabsRebuildContext {
+  source: CloneSource;
+  sourceRunState: unknown;
+  targetRunState: unknown;
+  to: string;
+  tenancy: Record<string, string | null | undefined>;
+  /** `<opp>/<run-id>` of the clone (names the new org and registry, and the labs_context search). */
+  opp?: string;
+  run?: string;
+  keepSharedConnect?: boolean;
+  /** Without deps the stage can only say what it would do (unit tests of the plan, `--plan`). */
+  deps?: LabsCopyDeps;
+}
+
+export class LabsCopyStepError extends Error {
+  constructor(public step: string, message: string) {
+    super(`labs ${step}: ${message}`);
+    this.name = 'LabsCopyStepError';
+  }
+}
+
+const int = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/** The `products.synthetic` block of a run_state. */
+export function syntheticProducts(runState: unknown): Record<string, unknown> {
+  return obj(obj(obj(obj(obj(runState).phases)['synthetic-data-and-workflows']).products).synthetic);
+}
+
+/** Every page of `workflow_history_runs` (it pages at 10 — the first page alone silently graded 10 of 16 periods). */
+export async function allHistoryRuns(call: LabsCall, args: Record<string, unknown>): Promise<Array<Record<string, any>>> {
+  const out: Array<Record<string, any>> = [];
+  let start: number | null = 0;
+  for (let guard = 0; start !== null && guard < 200; guard++) {
+    const r = obj(await call('workflow_history_runs', { ...args, generated_only: false, start_at: start, limit: 100 }));
+    out.push(...(arr(r.runs) as Array<Record<string, any>>));
+    start = r.done === false && r.next_start_at !== null && r.next_start_at !== undefined ? Number(r.next_start_at) : null;
+  }
+  return out;
+}
+
+/** Pair two run listings by `period_end`; returns the map and the source periods with no counterpart. */
+export function mapRunsByPeriod(source: Array<Record<string, any>>, target: Array<Record<string, any>>): { map: Record<string, number>; missing: string[] } {
+  const byEnd = new Map<string, number>();
+  for (const r of target) {
+    const id = int(r.run_id ?? r.id);
+    if (id && r.period_end) byEnd.set(String(r.period_end).slice(0, 10), id);
+  }
+  const map: Record<string, number> = {};
+  const missing: string[] = [];
+  for (const r of source) {
+    const id = int(r.run_id ?? r.id);
+    const end = r.period_end ? String(r.period_end).slice(0, 10) : '';
+    if (!id || !end) continue;
+    const t = byEnd.get(end);
+    if (t) map[String(id)] = t;
+    else missing.push(end);
+  }
+  return { map, missing: [...new Set(missing)].sort() };
+}
+
 /**
- * Labs stage (`clone-to-new-workspace` § 4c, ace#3020). The design: COPY the
- * source's Phase 7 records into labs-only opps in ONE new program
- * (`synthetic_clone_to_labs_only`), copy its registry and instantiate the same
- * report templates there with the source configuration, then make the program
- * a labs workspace whose LLOs are the clone's Connect orgs — no allowlist is
- * ever widened, and nothing is regenerated (owner, 2026-10-16).
+ * The source definition's config minus every key whose value names a source
+ * labs id (companion links, scope keys): those are the SOURCE's wiring, and
+ * the template re-creates its own in the new program.
+ */
+export function portableConfig(config: unknown, sourceIds: ReadonlySet<number>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj(config))) {
+    const named = numbersIn(v);
+    if ([...named].some((id) => sourceIds.has(id))) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** Every integer that could be a labs id in a value (numbers, and digit runs in strings). */
+function numbersIn(v: unknown): Set<number> {
+  const ids = new Set<number>();
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) n.forEach(walk);
+    else if (n && typeof n === 'object') Object.values(n as Record<string, unknown>).forEach(walk);
+    else if (typeof n === 'number' && Number.isInteger(n) && n >= 1000) ids.add(n);
+    else if (typeof n === 'string') for (const m of n.matchAll(/(\d{4,})/g)) ids.add(Number(m[1]));
+  };
+  walk(v);
+  return ids;
+}
+
+/** Indicator values of one saved run's snapshot, `{programInd, byLLO}` reduced to numbers — what a copy must reproduce. */
+export function gradedFigures(run: Record<string, any>): Record<string, number | null> {
+  const snap = obj(obj(obj(obj(run.data).snapshot).state).snapshot);
+  const out: Record<string, number | null> = {};
+  const num = (c: unknown) => (typeof obj(c).value === 'number' && Number.isFinite(obj(c).value as number) ? (obj(c).value as number) : null);
+  for (const [k, c] of Object.entries(obj(snap.programInd))) out[`program.${k}`] = num(c);
+  for (const row of arr(snap.byLLO)) {
+    const r = obj(row);
+    for (const [k, c] of Object.entries(obj(r.ind))) out[`llo.${String(r.llo)}.${k}`] = num(c);
+  }
+  return out;
+}
+
+/** Periods whose figures differ between the source's saved runs and the copy's (a copy reproduces every one). */
+export function figureMismatches(source: Array<Record<string, any>>, target: Array<Record<string, any>>): string[] {
+  const byEnd = new Map(target.map((r) => [String(r.period_end ?? '').slice(0, 10), gradedFigures(r)]));
+  const out: string[] = [];
+  for (const r of source) {
+    const end = String(r.period_end ?? '').slice(0, 10);
+    const want = gradedFigures(r);
+    const got = byEnd.get(end);
+    if (!got) {
+      out.push(`${end}: no saved run in the copy`);
+      continue;
+    }
+    for (const [k, v] of Object.entries(want)) {
+      const g = got[k];
+      if (v === null && (g === null || g === undefined)) continue;
+      if (v === null || g === null || g === undefined || Math.abs(v - g) > 1e-9) out.push(`${end} ${k}: source ${v}, copy ${g ?? 'missing'}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * Labs stage (`clone-to-new-workspace` § 4c, ace#3020) — SCRIPTED. It COPIES
+ * the source's Phase 7 Labs build into ONE new labs program, never widening an
+ * allowlist and never regenerating (owner, 2026-10-16):
  *
- * The copy is possible (connect-labs#2574 shipped `program_id` on
- * `synthetic_clone_to_labs_only`) but is made through labs MCP atoms, which
- * this script cannot call. So the stage records an explicit `not-done`
- * pointing the agent at § 4c — never a silent skip (the old "Labs stays
- * Dimagi-only" was #3020's defect), never a false "atom gap" (ace#3038), and
- * never a regeneration standing in for the copy. Once the agent records
- * `clone.labs.status: done`, the planner treats the stage as final.
+ *   records    `synthetic_clone_to_labs_only` per partner — the first WITHOUT
+ *              `program_id` (its opp id becomes the program id), later ones
+ *              with it (connect-labs#2574); counts read back against the source;
+ *   registry   `semantic_registry_get` → ids retargeted → `semantic_registry_create`;
+ *   report     the programme report from the SAME template with the source
+ *              config (`workflow_create_from_template`; makes the worker-review
+ *              companion), its visits pipeline given the source's schema;
+ *   cohort     the new labs org's cohort, its members, and the opp reports
+ *              (`benchmarks_create_opp_reports`, sharing the report's pipelines);
+ *   history    `workflow_rebuild_history` over the SOURCE's window (same weeks)
+ *              — computed from the copied records, no data generated;
+ *   benchmarks one publish per saved run, oldest first, the last one last;
+ *   verify     every period's graded figures equal the source's (a copy is
+ *              checked AS a copy — stronger than re-reading the story);
+ *   workspace  the new program as a labs workspace whose LLOs are the clone's
+ *              Connect orgs (the one step with no MCP atom, connect-labs#2572);
+ *   products   `remapSyntheticProducts` — refuses to leave a source id behind.
+ *
+ * Every step is recorded in `clone.labs.copy` and skipped on a rerun; a step
+ * that fails leaves the stage `not-done` naming THAT step, so the next run (or
+ * the operator, for the workspace session) resumes there. Without `deps` (no
+ * labs token) the stage reports what is missing, never pretends.
  */
 export async function rebuildLabs(ctx: LabsRebuildContext): Promise<StageRecord> {
-  const synthetic = obj(obj(obj(obj(ctx.sourceRunState).phases)['synthetic-data-and-workflows']).products).synthetic;
-  if (!Object.keys(obj(synthetic)).length) {
+  const synthetic = syntheticProducts(ctx.sourceRunState);
+  if (!Object.keys(synthetic).length) {
     return { status: 'done', reason: 'source run has no Phase 7 synthetic products — nothing to rebuild' };
   }
-  return {
-    status: 'not-done',
-    reason: 'labs copy is agent-run: do clone-to-new-workspace § 4c by hand (synthetic_clone_to_labs_only, first partner without program_id, later partners with it), then record clone.labs.status: done — never regenerated instead',
+  let src: ReturnType<typeof labsRebuildSource>;
+  try {
+    src = labsRebuildSource(ctx.sourceRunState);
+  } catch (e) {
+    // Phase 7 built SOMETHING, in a shape the copy does not know: never a silent
+    // skip (#3020's defect) — say so; the shape gets scripted, not guessed at.
+    return { status: 'not-done', step: 'source-shape', reason: `the source's Phase 7 products are not an ace-run cascade the scripted copy knows (${(e as Error).message}) — file it; never regenerate instead` };
+  }
+  if (!ctx.deps) {
+    return { status: 'not-done', step: 'labs-token', reason: 'no labs MCP access (LABS_MCP_TOKEN — /ace:labs-token-mint): the scripted copy cannot run' };
+  }
+  const prior = obj(obj(obj(obj(ctx.targetRunState).clone).labs).copy);
+  const state: LabsCopyState = {
+    id_map: { ...(obj(prior.id_map) as Record<string, number>) },
+    steps: { ...obj(prior.steps) },
   };
+  try {
+    return await copyLabs(ctx, src, synthetic, state, ctx.deps);
+  } catch (e) {
+    const step = e instanceof LabsCopyStepError ? e.step : 'unknown';
+    await ctx.deps.save(state).catch(() => {});
+    return { status: 'not-done', step, reason: `${(e as Error).message}`.slice(0, 600), copy: state };
+  }
+}
+
+async function copyLabs(
+  ctx: LabsRebuildContext,
+  src: ReturnType<typeof labsRebuildSource>,
+  synthetic: Record<string, unknown>,
+  state: LabsCopyState,
+  deps: LabsCopyDeps,
+): Promise<StageRecord> {
+  const { call, save } = deps;
+  const log = deps.log ?? (() => {});
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const tag = `ace ${ctx.to}/${ctx.opp ?? ctx.source.opp}/${ctx.run ?? ctx.source.run_id}`;
+  const cascade = obj(synthetic.cascade);
+  const map = state.id_map;
+  const steps = state.steps as Record<string, any>;
+  const put = (from: unknown, to: unknown) => {
+    const f = int(from);
+    const t = int(to);
+    if (f && t) map[String(f)] = t;
+  };
+  const step = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    if (steps[name]?.done) return steps[name] as T;
+    try {
+      const out = (await fn()) as T & Record<string, unknown>;
+      steps[name] = { ...(out as object), done: true };
+      await save(state);
+      log(`labs ${name}: done`);
+      return steps[name] as T;
+    } catch (e) {
+      if (e instanceof LabsCopyStepError) throw e;
+      throw new LabsCopyStepError(name, (e as Error).message);
+    }
+  };
+
+  const programName = s(cascade.program_name) ?? s(synthetic.program_name) ?? `${ctx.source.opp} programme`;
+  const orgName = `${programName} partners (${tag})`;
+
+  // 1. The records: one labs-only copy per partner, all in ONE new program.
+  const records = await step('records', async () => {
+    const copies = obj(steps.records_partial) as Record<string, number>;
+    let programId = int(steps.program_id);
+    for (const p of src.partners) {
+      const key = String(p.source_opportunity_id);
+      if (!copies[key]) {
+        const r = obj(await call('synthetic_clone_to_labs_only', {
+          source_opportunity_id: p.source_opportunity_id,
+          label: p.label,
+          org_name: orgName,
+          program_name: programName,
+          ...(programId ? { program_id: programId } : {}),
+          allowed_domains: ['@dimagi.com', '@dimagi-ai.com'],
+        }));
+        const id = int(r.opportunity_id);
+        if (!id) throw new Error(`synthetic_clone_to_labs_only(${key}) returned no opportunity_id`);
+        copies[key] = id;
+        programId ??= int(r.program_id) ?? id;
+        steps.records_partial = copies;
+        steps.program_id = programId;
+        await save(state);
+      }
+      const [a, b] = await Promise.all([
+        call('synthetic_local_records_count', { opportunity_id: p.source_opportunity_id }),
+        call('synthetic_local_records_count', { opportunity_id: copies[key] }),
+      ]);
+      if (Number(obj(a).total ?? -1) !== Number(obj(b).total ?? -2)) {
+        throw new Error(`partner ${p.label}: copy holds ${obj(b).total} records, source ${obj(a).total} — NOT a copy`);
+      }
+    }
+    return { opportunities: copies, program_id: programId };
+  });
+  const newProgram = int(records.program_id)!;
+  put(src.program_id, newProgram);
+  for (const [f, t] of Object.entries(obj(records.opportunities))) put(f, t);
+  const newOpps = src.partners.map((p) => map[String(p.source_opportunity_id)]);
+  const sourceIds = new Set<number>([src.program_id, ...src.partners.map((p) => p.source_opportunity_id)]);
+
+  // 2. The registry, copied and retargeted.
+  if (src.registry_id) {
+    const reg = await step('registry', async () => {
+      const regProgram = int(obj(cascade.registry).program_id) ?? src.program_id;
+      const got = obj(await call('semantic_registry_get', { registry_id: src.registry_id, program_id: regProgram }));
+      const docs = remapSyntheticProducts({ properties_doc: got.properties_doc, indicators_doc: got.indicators_doc, deployment: got.deployment }, map).products as Record<string, unknown>;
+      const made = obj(await call('semantic_registry_create', {
+        name: `${s(got.name) ?? 'registry'} (${tag})`,
+        description: s(got.description) ?? '',
+        program_id: newProgram,
+        is_shared: false,
+        properties_doc: docs.properties_doc,
+        indicators_doc: docs.indicators_doc,
+        deployment: docs.deployment ?? {},
+      }));
+      const id = int(made.id ?? made.registry_id);
+      if (!id) throw new Error('semantic_registry_create returned no id');
+      return { registry_id: id };
+    });
+    put(src.registry_id, reg.registry_id);
+    sourceIds.add(src.registry_id);
+  }
+
+  // 3. The programme report, from the same template, with the source configuration.
+  const pr = obj(cascade.programme_report);
+  const srcPr = int(pr.workflow_id);
+  if (!srcPr) throw new LabsCopyStepError('programme_report', 'the source records no cascade.programme_report.workflow_id');
+  const report = await step('programme_report', async () => {
+    const def = obj(await call('workflow_get', { workflow_id: srcPr, program_id: src.program_id, include_render_code: false }));
+    const key = s(def.template_type);
+    if (!key) throw new Error(`source workflow ${srcPr} has no template_type — cannot instantiate the same template`);
+    const made = obj(await call('workflow_create_from_template', {
+      template_key: key,
+      program_id: newProgram,
+      opportunity_ids: newOpps,
+      ...(map[String(src.registry_id)] ? { registry_source: { registry_id: map[String(src.registry_id)] } } : {}),
+      ...(s(def.name) ? { name: s(def.name)! } : {}),
+      config: portableConfig(def.config, new Set([...sourceIds, srcPr, ...labsIdsIn(synthetic)])),
+    }));
+    const id = int(made.workflow_id);
+    if (!id) throw new Error('workflow_create_from_template returned no workflow_id');
+    const companion = obj(obj(made.companions).worker_review);
+    return {
+      workflow_id: id,
+      pipeline_id: int(made.pipeline_id),
+      worker_review: { workflow_id: int(companion.workflow_id), run_id: int(companion.run_id) },
+      source_pipeline_sources: arr(def.pipeline_sources),
+    };
+  });
+  put(srcPr, report.workflow_id);
+  const srcWr = obj(cascade.worker_review);
+  put(srcWr.workflow_id, obj(report.worker_review).workflow_id);
+  put(srcWr.run_id, obj(report.worker_review).run_id);
+  put(obj(obj(synthetic.workflows).worker_review).workflow_id, obj(report.worker_review).workflow_id);
+
+  // 3b. The visits pipeline carries the source's schema (the template's has Connect's base columns only).
+  const srcPipe = int(cascade.visits_pipeline_id) ?? int(obj(arr(report.source_pipeline_sources).map(obj).find((p) => p.alias === 'visits')).pipeline_id);
+  if (srcPipe) {
+    const pipe = await step('pipeline', async () => {
+      const def = obj(await call('workflow_get', { workflow_id: report.workflow_id, program_id: newProgram, include_render_code: false }));
+      const srcAlias = s(obj(arr(report.source_pipeline_sources).map(obj).find((p) => int(p.pipeline_id) === srcPipe)).alias) ?? 'visits';
+      const tgt = int(obj(arr(def.pipeline_sources).map(obj).find((p) => p.alias === srcAlias)).pipeline_id) ?? int(report.pipeline_id);
+      if (!tgt) throw new Error(`the new report has no "${srcAlias}" pipeline`);
+      const want = obj(await call('pipeline_get', { pipeline_id: srcPipe, program_id: src.program_id }));
+      const have = obj(await call('pipeline_get', { pipeline_id: tgt, program_id: newProgram }));
+      if (JSON.stringify(want.schema) !== JSON.stringify(have.schema)) {
+        await call('pipeline_update_schema', { pipeline_id: tgt, program_id: newProgram, schema: want.schema, expected_version: have.version });
+      }
+      return { pipeline_id: tgt };
+    });
+    put(srcPipe, pipe.pipeline_id);
+  }
+
+  // 4. Cohort + opp reports (before history, so hand-down has somewhere to go).
+  const srcCohort = int(cascade.cohort_id);
+  if (srcCohort) {
+    const cohort = await step('cohort', async () => {
+      const lc = obj(await call('labs_context', { search: tag.replace(/^ace /, '') }));
+      const org = arr(lc.organizations).map(obj).find((o) => o.name === orgName);
+      const slug = s(org?.slug);
+      if (!slug) throw new Error(`labs_context finds no organisation named "${orgName}" — read the slug, never derive it (ace#2522)`);
+      const c = obj(await call('benchmarks_cohort_create', { name: `${programName} (${tag})`, organization_id: slug, min_peers: 2, min_denominator: 1, require_complete_series: false }));
+      const cid = int(c.id ?? c.cohort_id);
+      if (!cid) throw new Error('benchmarks_cohort_create returned no id');
+      await call('benchmarks_cohort_add_opportunities', { cohort_id: cid, opportunity_ids: newOpps });
+      const srcOppReport = int(obj(arr(cascade.opp_reports)[0]).workflow_id);
+      const oppTemplate = srcOppReport
+        ? s(obj(await call('workflow_get', { workflow_id: srcOppReport, opportunity_id: int(obj(arr(cascade.opp_reports)[0]).opportunity_id), include_render_code: false })).template_type)
+        : null;
+      const made = obj(await call('benchmarks_create_opp_reports', {
+        cohort_id: cid,
+        template_key: oppTemplate ?? 'indicator_opp_report',
+        source_workflow_id: report.workflow_id,
+        source_program_id: newProgram,
+      }));
+      const reports: Record<string, number> = {};
+      for (const x of [...arr(made.created), ...arr(made.skipped)].map(obj)) {
+        const o = int(x.opportunity_id);
+        const w = int(x.workflow_id);
+        if (o && w) reports[String(o)] = w;
+      }
+      return { cohort_id: cid, org_slug: slug, opp_reports: reports };
+    });
+    put(srcCohort, cohort.cohort_id);
+    put(obj(cascade.benchmark_publications).cohort_id, cohort.cohort_id);
+    for (const r of arr(cascade.opp_reports).map(obj)) {
+      const newOpp = map[String(int(r.opportunity_id))];
+      put(r.workflow_id, obj(cohort.opp_reports)[String(newOpp)]);
+    }
+  }
+
+  // 5. Saved history over the SOURCE's window — computed from the copied records.
+  const srcHistory = await allHistoryRuns(call, { definition_id: srcPr, program_id: src.program_id });
+  if (srcHistory.length) {
+    await step('history', async () => {
+      const starts = srcHistory.map((r) => String(r.period_start ?? r.period_end ?? '').slice(0, 10)).filter(Boolean).sort();
+      const ends = srcHistory.map((r) => String(r.period_end ?? '').slice(0, 10)).filter(Boolean).sort();
+      const end = ends[ends.length - 1];
+      let start: string | null = starts[0];
+      for (let guard = 0; start && guard < 40; guard++) {
+        let r = obj(await call('workflow_rebuild_history', { definition_id: report.workflow_id, program_id: newProgram, cadence: 'weekly', start, end, limit: 13 }));
+        r = obj(await followJob(call, r, sleep));
+        start = r.done === false ? s(r.next_start) : null;
+      }
+      return { start: starts[0], end };
+    });
+    const tgtHistory = await allHistoryRuns(call, { definition_id: report.workflow_id, program_id: newProgram });
+    const runs = mapRunsByPeriod(srcHistory, tgtHistory);
+    if (runs.missing.length) throw new LabsCopyStepError('history', `the copy has no saved run for ${runs.missing.join(', ')}`);
+    Object.assign(map, runs.map);
+
+    // The opp reports' handed-down runs (queued by the rebuild — give them a moment).
+    for (const r of arr(cascade.opp_reports).map(obj)) {
+      const srcW = int(r.workflow_id);
+      const srcO = int(r.opportunity_id);
+      const tgtW = srcW ? map[String(srcW)] : undefined;
+      if (!srcW || !srcO || !tgtW) continue;
+      const tgtO = map[String(srcO)];
+      const want = await allHistoryRuns(call, { definition_id: srcW, opportunity_id: srcO });
+      let got = mapRunsByPeriod(want, []);
+      for (let i = 0; i < 10; i++) {
+        got = mapRunsByPeriod(want, await allHistoryRuns(call, { definition_id: tgtW, opportunity_id: tgtO }));
+        if (!got.missing.length) break;
+        await sleep(30_000);
+      }
+      if (got.missing.length) throw new LabsCopyStepError('hand_down', `opp report ${tgtW} has no handed-down run for ${got.missing.join(', ')}`);
+      Object.assign(map, got.map);
+    }
+
+    // 6. Benchmarks: one publish per saved run, oldest first; the latest last.
+    const pubs = obj(cascade.benchmark_publications);
+    const cohortId = map[String(srcCohort ?? 0)];
+    if (cohortId && (int(pubs.first) || int(pubs.last))) {
+      const pub = await step('benchmarks', async () => {
+        const ordered = [...tgtHistory].filter((r) => int(r.run_id ?? r.id)).sort((a, b) => String(a.period_end).localeCompare(String(b.period_end)));
+        const done = obj(steps.benchmarks_partial) as Record<string, number>;
+        let retried = false;
+        for (const r of ordered) {
+          const runId = int(r.run_id ?? r.id)!;
+          if (done[String(runId)]) continue;
+          done[String(runId)] = await publishWithRetry(call, { cohort_id: cohortId, workflow_id: report.workflow_id, run_id: runId, program_id: newProgram }, sleep, () => { retried = true; });
+          steps.benchmarks_partial = done;
+          await save(state);
+        }
+        const last = ordered[ordered.length - 1];
+        // A transient failure mid-sequence published out of order: the tab shows the
+        // most recently PUBLISHED as-of, so the latest period goes last again.
+        if (retried && last) done[String(int(last.run_id ?? last.id))] = await publishWithRetry(call, { cohort_id: cohortId, workflow_id: report.workflow_id, run_id: int(last.run_id ?? last.id)!, program_id: newProgram }, sleep, () => {});
+        const ids = ordered.map((r) => done[String(int(r.run_id ?? r.id))]).filter(Boolean);
+        return { first: ids[0], last: ids[ids.length - 1], count: ids.length };
+      });
+      put(pubs.first, pub.first);
+      put(pubs.last, pub.last);
+    }
+
+    // 7. A copy is verified AS a copy: every period's graded figures equal the source's.
+    await step('verify', async () => {
+      const a = await allHistoryRuns(call, { definition_id: srcPr, program_id: src.program_id, include_snapshot: true });
+      const b = await allHistoryRuns(call, { definition_id: report.workflow_id, program_id: newProgram, include_snapshot: true });
+      const bad = figureMismatches(a, b);
+      if (bad.length) throw new Error(`the copy's figures differ from the source's (${bad.length}): ${bad.slice(0, 5).join('; ')}`);
+      return { periods: a.length };
+    });
+  }
+
+  // 8. Workspace roles — the one step with no MCP atom (connect-labs#2572).
+  const llos = ctx.keepSharedConnect ? [] : [ctx.tenancy.connect_holding_org, ctx.tenancy.connect_pm_org].filter((x): x is string => !!x);
+  const ws = await step('workspace', async () => {
+    if (!llos.length) return { llos: [] as string[] };
+    const r = await deps.workspace(newProgram, [...new Set(llos)]);
+    if (!r.ok) throw new Error(`workspace roles not set (${r.detail}) — needs the /ace:labs-login session; there is no labs MCP atom for workspace roles (connect-labs#2572). Run scripts/labs-workspace-setup.ts --program-id ${newProgram} ${llos.map((l) => `--llo ${l}`).join(' ')} and rerun`);
+    return { llos: r.llos };
+  });
+
+  // 9. Rewrite the products; refuse to leave a source id behind.
+  const remapped = remapSyntheticProducts(synthetic, Object.fromEntries(Object.entries(map).map(([k, v]) => [Number(k), v])));
+  if (remapped.leftover.length) {
+    throw new LabsCopyStepError('products', `source ids still referenced after the copy: ${remapped.leftover.join(', ')} — each needs a counterpart in clone.labs.copy.id_map`);
+  }
+  const prRun = map[String(int(pr.run_id) ?? 0)] ?? null;
+  return {
+    status: 'done',
+    program_id: newProgram,
+    org_slug: s(obj(steps.cohort).org_slug),
+    opportunity_ids: newOpps,
+    registry_id: map[String(src.registry_id ?? 0)] ?? null,
+    programme_report: { workflow_id: report.workflow_id, run_id: prRun },
+    workspace: { llos: arr(ws.llos) },
+    from: { program_id: src.program_id, opportunity_ids: src.partners.map((p) => p.source_opportunity_id) },
+    copy: state,
+    synthetic: remapped.products,
+  };
+}
+
+/** A long-running labs tool answers with a job reply; follow it with `job_status` to its result. */
+export async function followJob(call: LabsCall, reply: unknown, sleep: (ms: number) => Promise<void>, maxPolls = 240): Promise<unknown> {
+  let r = obj(reply);
+  if (!r.job_id || r.poll_with !== 'job_status') return reply;
+  for (let i = 0; i < maxPolls; i++) {
+    await sleep(5_000);
+    const st = obj(await call('job_status', { job_id: r.job_id }));
+    if (st.state === 'succeeded') return st.result ?? {};
+    if (st.state === 'failed' || st.state === 'cancelled') throw new Error(`job ${String(r.job_id)} ${String(st.state)}: ${String(st.error ?? st.status ?? '')}`);
+    r = { ...r, ...st };
+  }
+  throw new Error(`job ${String(r.job_id)} still running after ${maxPolls} polls — rerun to resume`);
+}
+
+/** `benchmarks_publish` with up to 3 attempts on a transient (gateway / non-JSON) failure. */
+async function publishWithRetry(call: LabsCall, args: Record<string, unknown>, sleep: (ms: number) => Promise<void>, onRetry: () => void): Promise<number> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = obj(await call('benchmarks_publish', args));
+      const id = int(r.publication_id);
+      if (!id) throw new Error('benchmarks_publish returned no publication_id');
+      return id;
+    } catch (e) {
+      if (attempt >= 3 || !isAmbiguousError(e) && !/non-JSON|Unexpected token|<html/i.test(String((e as Error).message))) throw e;
+      onRetry();
+      await sleep(10_000 * attempt);
+    }
+  }
 }

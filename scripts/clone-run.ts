@@ -28,7 +28,12 @@
  * run_state (+ the PDD numbers it recorded, + read-only reads of the source's
  * own Connect objects) — nothing is re-derived (`connectBuildSpec`).
  *
- * Exit 0 = every stage final; 3 = finished with stages not done (listed);
+ * Budget: config/clone-budget.json caps each stage that ran and the whole run
+ * (ace_web 5 min, connect 3 min, total 15 min, …); a breach is recorded as
+ * `clone.budget_breaches` and exits 4.
+ *
+ * Exit 0 = every stage final, within budget; 4 = every stage final but over
+ * budget (`budget_breaches`); 3 = finished with stages not done (listed);
  * 2 = usage / configuration / precondition error.
  */
 
@@ -65,14 +70,19 @@ import {
   rewritePairsFromDriveIdPlan,
   rewriteReleaseSummary,
   summaryUrl,
+  budgetBreaches,
+  parseCloneBudget,
   type AppliedPair,
   type Binding,
+  type LabsCopyDeps,
+  type LabsCopyState,
   type CloneBlock,
   type ClonedApp,
   type CreateRecord,
   type Stage,
   type StageRecord,
 } from '../lib/clone-run.js';
+import { remapLabsText } from '../lib/clone-labs-rebuild.js';
 import {
   CONTENT_LEDGER_NAME,
   emptyContentLedger,
@@ -387,16 +397,27 @@ async function stageAceWeb(ctx: Ctx): Promise<StageRecord> {
       if (![200, 201, 202, 409, 504].includes(r.status)) return { status: 'not-done', reason: `ace-web clone POST returned ${r.status}: ${JSON.stringify(r.json).slice(0, 200)}` };
     }
     const deadline = Date.now() + COPY_TIMEOUT_MS;
+    // ace-web#864: a re-POST over a failed copy RESUMES it (keeps the partial
+    // target, skips what was copied), so one transient Drive error costs one
+    // re-POST, not the whole copy again. Twice per invocation at most.
+    let resumes = 0;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 15_000));
       ({ done, latest } = await doneRec());
       if (done) break;
+      if (latest?.status === 'error' && resumes < 2) {
+        resumes++;
+        const r = await aceWeb('POST', `/api/w/${FROM}/opps/${OPP}/runs/${RUN}/clone`, { to_workspace: TO });
+        log(`ace-web copy error (${String(latest.error).slice(0, 160)}) — resuming (re-POST ${resumes}) → ${r.status}`);
+        continue;
+      }
       if (latest?.status === 'error') return { status: 'not-done', reason: `ace-web copy error: ${latest.error}` };
       log(`ace-web copy ${latest?.status ?? '?'}: ${latest?.files_copied ?? 0} files`);
     }
     if (!done) return { status: 'not-done', reason: 'ace-web copy still running at the timeout — rerun to resume' };
   }
-  return { status: 'done', clone_id: done.id, files_copied: done.files_copied };
+  // `files_resumed` (ace-web#864): files a re-POST adopted from the failed attempt instead of re-copying.
+  return { status: 'done', clone_id: done.id, files_copied: done.files_copied, files_resumed: done.files_resumed ?? 0 };
 }
 
 async function stageSummaryUrl(): Promise<StageRecord> {
@@ -822,6 +843,87 @@ async function stageConnect(ctx: Ctx): Promise<StageRecord> {
   };
 }
 
+// ── Labs (§ 4c, scripted) ────────────────────────────────────────────
+
+const LABS_MCP_URL = process.env.LABS_MCP_URL ?? 'https://labs.connect.dimagi.com/mcp/';
+
+/** One labs MCP `tools/call` over HTTP JSON-RPC — the same endpoint the MCP atoms use. */
+async function labsCall(tool: string, args: Record<string, unknown>): Promise<any> {
+  const token = process.env.LABS_MCP_TOKEN;
+  if (!token) throw new Error('LABS_MCP_TOKEN is not set (/ace:labs-token-mint)');
+  const res = await fetch(LABS_MCP_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } }),
+  });
+  const body = await res.text();
+  if (!res.ok) throw new Error(`${tool}: labs HTTP ${res.status}: ${body.slice(0, 200)}`);
+  const rpc = parseLabsRpc(body);
+  if (rpc.error) throw new Error(`${tool}: ${JSON.stringify(rpc.error).slice(0, 300)}`);
+  const text = rpc.result?.content?.[0]?.text ?? '';
+  if (rpc.result?.isError) throw new Error(`${tool}: ${String(text).slice(0, 400)}`);
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`${tool}: non-JSON result: ${String(text).slice(0, 200)}`);
+  }
+}
+
+function parseLabsRpc(body: string): any {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{')) return JSON.parse(trimmed);
+  const data = trimmed.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim());
+  if (!data.length) throw new Error(`unrecognised labs response: ${trimmed.slice(0, 200)}`);
+  return JSON.parse(data[data.length - 1]);
+}
+
+async function stageLabs(ctx: Ctx): Promise<StageRecord> {
+  const deps: LabsCopyDeps | undefined = process.env.LABS_MCP_TOKEN
+    ? {
+        call: labsCall,
+        log,
+        save: (state) => saveStage('labs', { status: 'in-progress', copy: state }),
+        workspace: async (programId, llos) => {
+          const r = runScript('labs-workspace-setup.ts', ['--program-id', String(programId), ...llos.flatMap((l) => ['--llo', l])]);
+          const out = lastJson(r.stdout);
+          return { ok: r.code === 0, llos: Array.isArray(out?.llos) ? out.llos : [], detail: r.code === 0 ? 'listed' : (r.stderr || r.stdout).trim().slice(-300) };
+        },
+      }
+    : undefined;
+  const rec = await rebuildLabs({
+    source: ctx.source, sourceRunState: ctx.sourceRunState, targetRunState: await readTargetRunState(),
+    to: TO!, opp: OPP, run: RUN, tenancy: ctx.tenancy, keepSharedConnect: KEEP_SHARED_CONNECT, deps,
+  });
+  const { synthetic, ...record } = rec as StageRecord & { synthetic?: unknown };
+  if (record.status !== 'done' || !synthetic) return record;
+  // The target's products name the copy — and so does its copied prose (ace#3038).
+  await mutateTargetRunState((rs) => {
+    rs.phases ??= {};
+    rs.phases['synthetic-data-and-workflows'] ??= {};
+    rs.phases['synthetic-data-and-workflows'].products ??= {};
+    rs.phases['synthetic-data-and-workflows'].products.synthetic = synthetic;
+  });
+  const idMap = Object.fromEntries(Object.entries((record.copy as LabsCopyState).id_map).map(([k, v]) => [Number(k), v]));
+  await extendLedgerMap(ctx, Object.entries(idMap).map(([from, to]) => ({ from: String(from), to: String(to), kind: 'labs_id' })));
+  const phase7 = await child(ctx.tgt!.run, '7-synthetic', true);
+  const prose: Array<{ path: string; bare: number[] }> = [];
+  if (phase7) {
+    const r = await drive.files.list({ q: `'${phase7.id}' in parents and trashed=false`, fields: 'files(id,name,mimeType)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 200 });
+    for (const f of r.data.files ?? []) {
+      if (!/\.(md|ya?ml|json|txt)$/i.test(f.name) && f.mimeType !== GOOGLE_DOC) continue;
+      if (/-qa_result|-eval_verdict/.test(f.name)) continue; // grades judged the source; left as they are
+      const text = await readText(f.id, f.mimeType);
+      const rw = remapLabsText(text, idMap);
+      if (!rw.changes) continue;
+      const mime = f.mimeType === GOOGLE_DOC ? GOOGLE_DOC : f.mimeType;
+      await rewriteRecorded(ctx, `7-synthetic/${f.name}`, f.id, 'clone-run:labs', () => writeText(f.id, rw.text, mime));
+      prose.push({ path: `7-synthetic/${f.name}`, bare: rw.bare });
+    }
+  }
+  await saveLedger(ctx);
+  return { ...record, prose_rewritten: prose.map((p) => p.path), prose_bare_ids: prose.filter((p) => p.bare.length) };
+}
+
 async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-assets-'));
   const args = ['--source', ctx.src.run, '--target', ctx.tgt!.run, '--out', dir, '--to', TO!];
@@ -889,6 +991,11 @@ async function stageReadme(ctx: Ctx): Promise<StageRecord> {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
+
+function loadBudget() {
+  const p = path.join(ROOT, 'config', 'clone-budget.json');
+  return parseCloneBudget(fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {});
+}
 
 async function bindSession(tenancy: Record<string, unknown>, driveRoot: string): Promise<void> {
   const sessionBind = readBinding();
@@ -964,7 +1071,7 @@ async function main(): Promise<number> {
         case 'hq': rec = await stageHq(ctx); break;
         case 'release_summary': rec = await stageReleaseSummary(ctx); break;
         case 'connect': rec = await stageConnect(ctx); break;
-        case 'labs': rec = await rebuildLabs({ source, sourceRunState, targetRunState: await readTargetRunState(), to: TO!, tenancy }); break;
+        case 'labs': rec = await stageLabs(ctx); break;
         case 'ocs': rec = { status: 'kept', reason: 'public-link', public_url: source.ocs_public_url }; break;
         case 'asset_refs': rec = await stageAssetRefs(ctx); break;
         case 'readme': rec = await stageReadme(ctx); break;
@@ -1001,10 +1108,23 @@ async function main(): Promise<number> {
   report.ocs_public_url = source.ocs_public_url;
   report.summary_url = summaryUrl(ACE_WEB, TO!, OPP, RUN);
   report.seconds = Math.round((Date.now() - t0) / 1000);
+  // The guard (config/clone-budget.json): a stage or the run over budget is
+  // recorded on the clone and fails the invocation — a slow release path is a
+  // defect to look at, not a cost to absorb silently.
+  const breaches = budgetBreaches(results, report.seconds as number, loadBudget());
+  report.budget_breaches = breaches;
+  if (targetRunStateId) {
+    await mutateTargetRunState((rs) => {
+      rs.clone = rs.clone ?? {};
+      rs.clone.budget_breaches = breaches.length ? breaches.map((b) => ({ ...b, at: new Date().toISOString() })) : [];
+    }).catch((e) => log(`could not record budget_breaches: ${(e as Error).message}`));
+  }
+  for (const b of breaches) log(`OVER BUDGET: ${b.stage} took ${b.seconds}s (budget ${b.budget_seconds}s)`);
   console.log(JSON.stringify(report, null, 2));
   const { session } = backends ? await backends : { session: null };
   await session?.close?.().catch(() => {});
-  return (report.not_done as string[] | undefined)?.length || (report.products_check as string[] | undefined)?.length ? 3 : 0;
+  if ((report.not_done as string[] | undefined)?.length || (report.products_check as string[] | undefined)?.length) return 3;
+  return breaches.length ? 4 : 0;
 }
 
 main().then(

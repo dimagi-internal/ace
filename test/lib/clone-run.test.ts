@@ -30,7 +30,18 @@ import {
   rebuildLabs,
   rewriteReleaseSummary,
   summaryUrl,
+  STAGE_EXECUTOR,
+  DEFAULT_CLONE_BUDGET,
+  allHistoryRuns,
+  budgetBreaches,
+  followJob,
+  mapRunsByPeriod,
+  parseCloneBudget,
+  portableConfig,
+  rewritePairsFromAssetPlan,
+  rewritePairsFromDriveIdPlan,
   type CreateRecord,
+  type LabsCopyState,
 } from '../../lib/clone-run.js';
 
 const FIX = path.resolve(__dirname, '../fixtures/clone-run');
@@ -364,10 +375,269 @@ describe('rewrites', () => {
   });
 });
 
-describe('rebuildLabs (ace#3020)', () => {
-  it('is an explicit not-done pointing at § 4c — never a silent skip, never a false atom-gap claim (ace#3038)', async () => {
-    const r = await rebuildLabs({ source: cloneSourceFromRunState(source, null), sourceRunState: source, targetRunState: partial, to: 'noora-health', tenancy: TENANCY });
-    expect(r).toEqual({ status: 'not-done', reason: expect.stringMatching(/§ 4c.*program_id.*clone\.labs\.status: done.*never regenerated/) });
-    expect(r.reason).not.toMatch(/atom gap|2571/);
+describe('no default stage is handed to an agent (the release path stays fast)', () => {
+  // A stage handed back to an agent is how a 10-minute copy became hours
+  // (Phase 4 re-dispatch, ace#3021; the Labs § 4c hand-off, ace#3020). This
+  // fails while any stage is anything but the script.
+  it('every stage is executed by the script', () => {
+    const agentRun = STAGES.filter((s) => STAGE_EXECUTOR[s] !== 'script');
+    expect(agentRun).toEqual([]);
+  });
+  it('the Labs stage never reports "agent-run" / "by hand" for an ace-run cascade', async () => {
+    const labs = fakeLabs();
+    const r = await rebuildLabs(labsCtx(labs));
+    expect(JSON.stringify(r)).not.toMatch(/agent-run|by hand/);
+    const noDeps = await rebuildLabs({ ...labsCtx(labs), deps: undefined });
+    expect(noDeps).toMatchObject({ status: 'not-done', step: 'labs-token' });
+    expect(JSON.stringify(noDeps)).not.toMatch(/agent-run|by hand/);
+  });
+});
+
+// ── The scripted Labs copy, against an in-memory labs ────────────────
+
+// The products.synthetic shape of noora-health/20261015-1129 (trimmed; see test/lib/clone-labs-rebuild.test.ts).
+const SYN = {
+  provider: 'ace-run',
+  labs_opp_id: 10137,
+  cascade: {
+    program_id: 10137,
+    program_name: 'Noora Care Companion',
+    partners: [
+      { label: 'Kulawa Newborn Trust (example)', opportunity_id: 10137 },
+      { label: "Tallafi Mothers' Network (example)", opportunity_id: 10138 },
+    ],
+    registry: { registry_id: 9684, program_id: 10137, version: 2 },
+    programme_report: { workflow_id: 9686, run_id: 9806, url: 'https://labs.connect.dimagi.com/labs/workflow/9686/run/?run_id=9806&program_id=10137' },
+    worker_review: { workflow_id: 9688, run_id: 9690 },
+    cohort_id: 13,
+    visits_pipeline_id: 9685,
+    opp_reports: [
+      { partner: 'Kulawa', opportunity_id: 10137, workflow_id: 9691, run_id: 9808, url: 'https://labs.connect.dimagi.com/labs/workflow/9691/run/?run_id=9808&opportunity_id=10137' },
+      { partner: 'Tallafi', opportunity_id: 10138, workflow_id: 9693, run_id: 9809, url: 'https://labs.connect.dimagi.com/labs/workflow/9693/run/?run_id=9809&opportunity_id=10138' },
+    ],
+    history: { run_ids: [9701, 9806] },
+    benchmark_publications: { cohort_id: 13, first: 274, last: 289 },
+  },
+  workflows: {
+    worker_review: { workflow_id: 9688, run_url: 'https://labs.connect.dimagi.com/labs/workflow/9688/run/?run_id=9690&program_id=10137&flw=10138%3A%3Aedu_ta05&source_run=9806' },
+  },
+  source: { labs_synthetic_opp_id: 10137, record_counts: { user_visits: { '10137': 645, '10138': 625 }, total_visits: 1270 } },
+};
+const WEEKS = [
+  { period_start: '2026-09-28', period_end: '2026-10-04' },
+  { period_start: '2026-10-05', period_end: '2026-10-11' },
+];
+const snap = (v: number) => ({ snapshot: { state: { snapshot: { programInd: { coverage: { value: v } }, byLLO: [{ llo: 'Kulawa', ind: { coverage: { value: v + 0.1 } } }] } } } });
+
+/** A minimal labs: the source cascade exists; every write mints ids from 20000 up. */
+function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?: boolean } = {}) {
+  let next = 20000;
+  const id = () => next++;
+  const calls: Array<{ tool: string; args: any }> = [];
+  const failed = new Set<string>();
+  const runs = new Map<number, Array<{ run_id: number; period_start: string; period_end: string; data?: unknown; status: string }>>();
+  runs.set(9686, [{ run_id: 9701, ...WEEKS[0], data: snap(0.5), status: 'completed' }, { run_id: 9806, ...WEEKS[1], data: snap(0.6), status: 'completed' }]);
+  runs.set(9691, [{ run_id: 9807, ...WEEKS[0], status: 'completed' }, { run_id: 9808, ...WEEKS[1], status: 'completed' }]);
+  runs.set(9693, [{ run_id: 9805, ...WEEKS[0], status: 'completed' }, { run_id: 9809, ...WEEKS[1], status: 'completed' }]);
+  const counts: Record<number, number> = { 10137: 645, 10138: 625 };
+  const oppReports: number[] = [];
+  let programReport = 0;
+  const call = async (tool: string, args: any): Promise<any> => {
+    calls.push({ tool, args });
+    if (opts.failOnce === tool && !failed.has(tool)) {
+      failed.add(tool);
+      throw new Error(`${tool}: labs HTTP 502: Bad Gateway`);
+    }
+    switch (tool) {
+      case 'synthetic_clone_to_labs_only': {
+        const o = id();
+        counts[o] = counts[args.source_opportunity_id];
+        return { opportunity_id: o, program_id: args.program_id ?? o, label: args.label };
+      }
+      case 'synthetic_local_records_count':
+        return { opportunity_id: args.opportunity_id, total: counts[args.opportunity_id] ?? 0 };
+      case 'semantic_registry_get':
+        return { id: 9684, name: 'Noora registry', properties_doc: { properties: [] }, indicators_doc: { measures: [] }, deployment: { llo_map: { '10137': 'Kulawa', '10138': 'Tallafi' } } };
+      case 'semantic_registry_create':
+        return { id: id() };
+      case 'workflow_get':
+        if (args.workflow_id === 9686) return { id: 9686, name: 'Programme report', template_type: 'indicator_programme_report', config: { showFilters: true, worker_review: { workflow_id: 9688 } }, pipeline_sources: [{ pipeline_id: 9685, alias: 'visits' }] };
+        if (args.workflow_id === 9691) return { id: 9691, template_type: 'indicator_opp_report', config: {} };
+        return { id: args.workflow_id, template_type: 'indicator_programme_report', config: {}, pipeline_sources: [{ pipeline_id: programReport + 1, alias: 'visits' }] };
+      case 'workflow_create_from_template': {
+        programReport = id();
+        const pipe = id();
+        const wr = id();
+        const wrRun = id();
+        return { workflow_id: programReport, pipeline_id: pipe, companions: { worker_review: { workflow_id: wr, run_id: wrRun } } };
+      }
+      case 'pipeline_get':
+        return args.pipeline_id === 9685 ? { id: 9685, schema: { fields: ['a', 'b'] }, version: 3 } : { id: args.pipeline_id, schema: { fields: ['a'] }, version: 1 };
+      case 'pipeline_update_schema':
+        return { ok: true };
+      case 'labs_context':
+        return { organizations: [{ slug: 'labs-synthetic-noora-care-companion-partners--ace-noora-health-x', name: `Noora Care Companion partners (ace noora-health/noora-health/20261015-1129)` }] };
+      case 'benchmarks_cohort_create':
+        return { id: 40 };
+      case 'benchmarks_cohort_add_opportunities':
+        return { ok: true };
+      case 'benchmarks_create_opp_reports': {
+        const created = calls.filter((c) => c.tool === 'synthetic_clone_to_labs_only').map((c, i) => {
+          const w = id();
+          oppReports.push(w);
+          return { opportunity_id: 20000 + i, workflow_id: w };
+        });
+        return { created, skipped: [], shared: true };
+      }
+      case 'workflow_rebuild_history': {
+        const made = WEEKS.map((w, i) => ({ run_id: id(), ...w, data: snap(opts.figureDrift && i === 1 ? 0.61 : [0.5, 0.6][i]), status: 'completed' }));
+        runs.set(args.definition_id, made);
+        for (const w of oppReports) runs.set(w, WEEKS.map((wk) => ({ run_id: id(), ...wk, status: 'completed' })));
+        return { job_id: 'j1', poll_with: 'job_status', state: 'running' };
+      }
+      case 'job_status':
+        return { job_id: args.job_id, state: 'succeeded', result: { done: true, next_start: null } };
+      case 'workflow_history_runs': {
+        const all = runs.get(args.definition_id) ?? [];
+        const start = args.start_at ?? 0;
+        const page = all.slice(start, start + 1); // page of ONE: the copy must follow the cursor
+        return { runs: page.map((r) => (args.include_snapshot ? r : { ...r, data: undefined })), done: start + 1 >= all.length, next_start_at: start + 1 >= all.length ? null : start + 1 };
+      }
+      case 'benchmarks_publish':
+        return { publication_id: id(), cohort_id: args.cohort_id, as_of: 'x' };
+      default:
+        throw new Error(`fake labs: unexpected ${tool}`);
+    }
+  };
+  return { call, calls, workspaceOk: opts.workspaceOk ?? true };
+}
+
+function labsCtx(labs: ReturnType<typeof fakeLabs>, saved: { state?: LabsCopyState } = {}) {
+  const sourceRunState = { ...source, phases: { ...source.phases, 'synthetic-data-and-workflows': { products: { synthetic: SYN } } } };
+  return {
+    source: cloneSourceFromRunState(sourceRunState, null),
+    sourceRunState,
+    targetRunState: saved.state ? { clone: { labs: { copy: saved.state } } } : partial,
+    to: 'noora-health', opp: 'noora-health', run: '20261015-1129',
+    tenancy: TENANCY,
+    deps: {
+      call: labs.call,
+      sleep: async () => {},
+      save: async (s: LabsCopyState) => { saved.state = JSON.parse(JSON.stringify(s)); },
+      workspace: async (_p: number, llos: string[]) => (labs.workspaceOk ? { ok: true, llos, detail: 'listed' } : { ok: false, llos: [], detail: 'no labs session (~/.ace/labs-session.json)' }),
+    },
+  };
+}
+
+describe('rebuildLabs — the scripted § 4c copy (ace#3020)', () => {
+  it('copies records, registry, report, cohort, history, benchmarks; verifies; leaves no source id behind', async () => {
+    const labs = fakeLabs();
+    const r = await rebuildLabs(labsCtx(labs));
+    expect(r.status).toBe('done');
+    const clones = labs.calls.filter((c) => c.tool === 'synthetic_clone_to_labs_only');
+    // The first partner WITHOUT program_id (its id becomes the program), later ones WITH it.
+    expect(clones[0].args.program_id).toBeUndefined();
+    expect(clones[1].args.program_id).toBe(clones[0] && 20000);
+    expect(clones.every((c) => c.args.allowed_domains.join() === '@dimagi.com,@dimagi-ai.com')).toBe(true);
+    // Never a regeneration.
+    expect(labs.calls.some((c) => /generate|clone_opp|clone_profile|set_allowed_domains/.test(c.tool))).toBe(false);
+    // The source config's companion link (a source id) is not copied onto the new report.
+    const create = labs.calls.find((c) => c.tool === 'workflow_create_from_template')!.args;
+    expect(create).toMatchObject({ template_key: 'indicator_programme_report', program_id: 20000, opportunity_ids: [20000, 20001], config: { showFilters: true } });
+    expect(create.config.worker_review).toBeUndefined();
+    // The visits pipeline gets the source schema, at the version read.
+    expect(labs.calls.find((c) => c.tool === 'pipeline_update_schema')!.args).toMatchObject({ schema: { fields: ['a', 'b'] }, expected_version: 1 });
+    // Publishes: one per saved run, oldest first.
+    const pubs = labs.calls.filter((c) => c.tool === 'benchmarks_publish').map((c) => c.args.run_id);
+    expect(pubs).toHaveLength(2);
+    expect(pubs[0]).toBeLessThan(pubs[1]);
+    // Products remapped: the programme report link names the copy.
+    const syn = (r as any).synthetic;
+    expect(JSON.stringify(syn)).not.toMatch(/\b(10137|10138|9686|9806|9684)\b/);
+    expect(r).toMatchObject({ program_id: 20000, opportunity_ids: [20000, 20001], workspace: { llos: expect.arrayContaining([TENANCY.connect_holding_org]) } });
+  });
+
+  it('a failure mid-copy resumes at that step — no partner is copied twice', async () => {
+    const labs = fakeLabs({ failOnce: 'semantic_registry_create' });
+    const saved: { state?: LabsCopyState } = {};
+    const first = await rebuildLabs(labsCtx(labs, saved));
+    expect(first).toMatchObject({ status: 'not-done', step: 'registry' });
+    const second = await rebuildLabs(labsCtx(labs, saved));
+    expect(second.status).toBe('done');
+    expect(labs.calls.filter((c) => c.tool === 'synthetic_clone_to_labs_only')).toHaveLength(2);
+  });
+
+  it('only the workspace-roles step (no MCP atom, connect-labs#2572) is left when the labs session is missing', async () => {
+    const labs = fakeLabs({ workspaceOk: false });
+    const r = await rebuildLabs(labsCtx(labs));
+    expect(r).toMatchObject({ status: 'not-done', step: 'workspace' });
+    expect(String(r.reason)).toMatch(/labs-workspace-setup\.ts --program-id 20000/);
+    const steps = (r as any).copy.steps;
+    for (const s of ['records', 'registry', 'programme_report', 'pipeline', 'cohort', 'history', 'benchmarks', 'verify']) expect(steps[s]?.done).toBe(true);
+  });
+
+  it('a copy whose figures differ from the source is NOT done', async () => {
+    const r = await rebuildLabs(labsCtx(fakeLabs({ figureDrift: true })));
+    expect(r).toMatchObject({ status: 'not-done', step: 'verify' });
+    expect(String(r.reason)).toMatch(/2026-10-11 program\.coverage: source 0\.6, copy 0\.61/);
+  });
+});
+
+describe('labs copy helpers', () => {
+  it('mapRunsByPeriod pairs by period_end and names the missing weeks', () => {
+    expect(mapRunsByPeriod([{ run_id: 1, period_end: '2026-10-04' }, { run_id: 2, period_end: '2026-10-11' }], [{ run_id: 9, period_end: '2026-10-04T00:00:00' }])).toEqual({ map: { '1': 9 }, missing: ['2026-10-11'] });
+  });
+  it('portableConfig drops keys that name source ids', () => {
+    expect(portableConfig({ a: 1, link: { workflow_id: 9688 }, url: 'x?run_id=9806' }, new Set([9688, 9806]))).toEqual({ a: 1 });
+  });
+  it('followJob polls job_status to the result', async () => {
+    const call = vi.fn().mockResolvedValueOnce({ state: 'running' }).mockResolvedValueOnce({ state: 'succeeded', result: { done: true } });
+    await expect(followJob(call, { job_id: 'j', poll_with: 'job_status' }, async () => {})).resolves.toEqual({ done: true });
+    await expect(followJob(call, { done: true }, async () => {})).resolves.toEqual({ done: true });
+  });
+  it('allHistoryRuns follows the cursor to done', async () => {
+    const pages = [{ runs: [{ run_id: 1 }], done: false, next_start_at: 1 }, { runs: [{ run_id: 2 }], done: true, next_start_at: null }];
+    const call = vi.fn().mockImplementation(async () => pages.shift());
+    expect((await allHistoryRuns(call, { definition_id: 1 })).map((r) => r.run_id)).toEqual([1, 2]);
+  });
+});
+
+describe('the wall-clock budget (config/clone-budget.json)', () => {
+  const file = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../config/clone-budget.json'), 'utf8'));
+  it('the shipped file covers every stage and matches the code defaults', () => {
+    const b = parseCloneBudget(file);
+    expect(Object.keys(file.stages).sort()).toEqual([...STAGES].sort());
+    expect(b).toEqual(DEFAULT_CLONE_BUDGET);
+    expect(b.stages.ace_web).toBe(300);
+    expect(b.stages.connect).toBe(180);
+    expect(b.total_seconds).toBe(900);
+  });
+  it('a stage or the run over budget is a breach; a skipped stage costs nothing', () => {
+    const b = parseCloneBudget(file);
+    expect(budgetBreaches({ ace_web: { seconds: 301 }, connect: { seconds: 100 }, hq: { status: 'done' } }, 400, b)).toEqual([{ stage: 'ace_web', seconds: 301, budget_seconds: 300 }]);
+    expect(budgetBreaches({}, 901, b)).toEqual([{ stage: 'total', seconds: 901, budget_seconds: 900 }]);
+    expect(budgetBreaches({ connect: { seconds: 180 } }, 900, b)).toEqual([]);
+  });
+  it('refuses an unknown stage or a non-positive budget', () => {
+    expect(() => parseCloneBudget({ stages: { nope: 1 } })).toThrow(/unknown stage/);
+    expect(() => parseCloneBudget({ stages: { hq: 0 } })).toThrow(/positive/);
+  });
+});
+
+describe('the id/URL map asset_refs applied (readiness content ledger)', () => {
+  it('asset pairs, 8-char prefixes, versions and re-pointed frames', () => {
+    const pairs = rewritePairsFromAssetPlan({
+      pairs: [{ kind: 'app', from: 'aaaaaaaa1111bbbb2222', to: 'cccccccc3333dddd4444' }, { kind: 'hq_domain', from: 'connect-ace-prod', to: 'connect-ace-noora' }],
+      versions: { learn: { from: '12', to: '3' } },
+      frames: { repointed: { oldFrameId: 'newFrameId' } },
+    });
+    expect(pairs).toEqual([
+      { from: 'aaaaaaaa1111bbbb2222', to: 'cccccccc3333dddd4444', kind: 'app' },
+      { from: 'aaaaaaaa', to: 'cccccccc', kind: 'app_prefix' },
+      { from: 'connect-ace-prod', to: 'connect-ace-noora', kind: 'hq_domain' },
+      { from: '12', to: '3', kind: 'version' },
+      { from: 'oldFrameId', to: 'newFrameId', kind: 'frame' },
+    ]);
+    expect(rewritePairsFromDriveIdPlan({ id_map: { s1: 'c1', same: 'same' } })).toEqual([{ from: 's1', to: 'c1', kind: 'drive_id' }]);
   });
 });

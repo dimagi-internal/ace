@@ -1,0 +1,16 @@
+{
+  "_comment": "Wall-clock budget for scripts/clone-run.ts, in seconds. A stage that RAN over its budget, or the whole run over total_seconds, is recorded as clone.budget_breaches and the script exits non-zero (4). Keep in step with DEFAULT_CLONE_BUDGET in lib/clone-run.ts; this file wins.",
+  "total_seconds": 900,
+  "stages": {
+    "ace_web": 300,
+    "summary_url": 30,
+    "drive_ids": 180,
+    "hq": 240,
+    "release_summary": 60,
+    "connect": 180,
+    "labs": 360,
+    "ocs": 10,
+    "asset_refs": 240,
+    "readme": 60
+  }
+}
