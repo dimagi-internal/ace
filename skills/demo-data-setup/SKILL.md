@@ -1247,8 +1247,13 @@ front half (how the labs-only opp + its data come to exist) differs.
 
      ```bash
      ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-labs-synthetic-generate.ts" <manifest.yaml> --opportunity-id <labs-opp-id>
+     node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-labs-synthetic-generate.ts" <manifest.yaml> --opportunity-id <labs-opp-id> --registry-gate-skip "<provider>: no semantic registry is authored"
      ```
+
+     The script requires one registry-gate flag: `--registry-eval-verdict <file>`
+     on the `ace-run` provider (§ C2/C3), or `--registry-gate-skip "<reason>"`
+     here, where no registry exists. Record the skip line it prints in the step
+     summary.
 
      Then publish the same file as the artifact (`drive_create_file` a
      placeholder, then `drive_update_file({localFilePath})` — which uploads the
@@ -1478,8 +1483,14 @@ associate designers review these dashboards). Include ACE's own domain in
 
 **C2. Registry.** Invoke `semantic-registry-author` with the partners and
 program id; it validates, runs `semantic-registry-author-qa`, and creates the
-record. Do not generate data against a registry that has not passed QA — the
-story signals are authored against its indicator ids.
+record. Then run `semantic-registry-author-eval` — BEFORE C3. Do not generate
+data against a registry that has not passed QA AND been graded — the story
+signals, manifests and report trio are authored against its indicator ids, so a
+finding after generation rebuilds the cascade (all three 2026-10-15 runs graded
+it last). *Enforced:* C3 generates through `scripts/run-labs-synthetic-generate.ts
+--registry-eval-verdict <local copy of 7-synthetic/semantic-registry-author-eval_verdict.yaml>`,
+which exits 3 when the verdict is missing, ungraded or `fail`
+(`lib/registry-eval-gate.ts`).
 
 **C3. Author the story, then the data.** Write `7-synthetic/cascade-story.yaml`
 (`lib/cascade-story.ts` `CascadeStoryPlan`): partners (realistic `(example)`
@@ -1525,7 +1536,9 @@ output):
   child (Spark: one community per facilitator), cited. Any other level with one
   child everywhere fails at § C6.
 
-Then generate one manifest per partner with `synthetic_generate_from_manifest`,
+Then generate one manifest per partner with `synthetic_generate_from_manifest` —
+sent through `scripts/run-labs-synthetic-generate.ts <manifest> --opportunity-id <partner opp>
+--registry-eval-verdict <local verdict copy>` (the registry gate, § C2) —
 using **mirror mode with an AUTHORED transplant pool**
 (`beneficiary_cohorts[0].longitudinal: {mode: mirror, jitter_frac: 0,
 transplant_pool}`): one series per followed entity with `owner` = its worker, and

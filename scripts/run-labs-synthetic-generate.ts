@@ -38,8 +38,25 @@
  * and ace#1957), or from the shell env when explicitly exported.
  *
  * Usage:
- *   npx tsx scripts/run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id>
- *   npx tsx scripts/run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> --dry-run
+ *   npx tsx scripts/run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> \
+ *       --registry-eval-verdict <local copy of 7-synthetic/semantic-registry-author-eval_verdict.yaml>
+ *   npx tsx scripts/run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> \
+ *       --registry-gate-skip "<why this dataset has no semantic registry>"
+ *   … either form plus --dry-run
+ *
+ * ## The registry gate (one of the two flags is REQUIRED)
+ *
+ * The ace-run provider authors a semantic registry and builds the whole cascade
+ * against its indicator ids, so generating before `semantic-registry-author-eval`
+ * has graded it means regenerating everything for any eval finding — which is
+ * what happened on all three 2026-10-15 runs (noora-health, kaduna-graduation,
+ * smallholder-seasonal: the eval ran after data and dashboards). This script is
+ * the chokepoint every manifest passes through, so it refuses to send unless
+ * `--registry-eval-verdict` names a verdict that passes `checkRegistryEvalGate`
+ * (lib/registry-eval-gate.ts: present, this skill's, graded, not `fail`), or
+ * `--registry-gate-skip "<reason>"` says why there is no registry to grade
+ * (denovo / clone providers). The skip is echoed to stderr so the caller records
+ * it; it is never implied by omission. Exit 3 = gate blocked.
  *
  * `--dry-run` builds and prints the exact JSON-RPC request without sending it,
  * and without needing a token. Generation is a real mutation against a labs
@@ -47,11 +64,12 @@
  *
  * Output (stdout): the tool's own JSON result, one line.
  * Exit codes: 0 generated (or dry-run printed), 1 usage/IO/auth error,
- *             2 labs rejected the manifest.
+ *             2 labs rejected the manifest, 3 registry gate blocked.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
+import { checkRegistryEvalGate, describeRegistryEvalGate } from '../lib/registry-eval-gate.js';
 
 // Before the first process.env read below — a Bash-invoked script inherits
 // none of ACE's secrets (ace#1957).
@@ -98,12 +116,39 @@ export function buildRequest(opportunityId: number, manifestYaml: string): strin
 
 async function main() {
   const argv = process.argv.slice(2);
-  const file = argv.find((a) => !a.startsWith('--'));
   const oppIdx = argv.indexOf('--opportunity-id');
   const dryRun = argv.includes('--dry-run');
+  const verdictIdx = argv.indexOf('--registry-eval-verdict');
+  const skipIdx = argv.indexOf('--registry-gate-skip');
+  // Indices holding a flag's VALUE, so a value is never mistaken for the manifest.
+  const valueIdx = new Set([oppIdx, verdictIdx, skipIdx].filter((i) => i !== -1).map((i) => i + 1));
+  const file = argv.find((a, i) => !a.startsWith('--') && !valueIdx.has(i));
 
-  if (!file) die('usage: run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> [--dry-run]');
+  if (!file) die('usage: run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> (--registry-eval-verdict <file> | --registry-gate-skip "<reason>") [--dry-run]');
   if (!existsSync(file)) die(`no such file: ${file}`);
+
+  // The registry gate — before anything is built or sent (see header).
+  if (verdictIdx !== -1 && skipIdx !== -1) die('pass --registry-eval-verdict OR --registry-gate-skip, not both');
+  if (verdictIdx !== -1) {
+    const vFile = argv[verdictIdx + 1];
+    if (!vFile || vFile.startsWith('--')) die('--registry-eval-verdict <file> needs a path');
+    const outcome = checkRegistryEvalGate(existsSync(vFile) ? readFileSync(vFile, 'utf8') : null);
+    process.stderr.write(`${describeRegistryEvalGate(outcome)}\n`);
+    if (outcome.status !== 'checked' || !outcome.ok) process.exit(3);
+  } else if (skipIdx !== -1) {
+    const reason = (argv[skipIdx + 1] ?? '').trim();
+    if (!reason || reason.startsWith('--') || reason.length < 8) {
+      die('--registry-gate-skip needs a reason (e.g. "denovo provider: no semantic registry is authored")');
+    }
+    process.stderr.write(`registry gate: SKIPPED — ${reason} (record this in the step's summary)\n`);
+  } else {
+    process.stderr.write(
+      'run-labs-synthetic-generate: registry gate — pass --registry-eval-verdict <local copy of ' +
+        '7-synthetic/semantic-registry-author-eval_verdict.yaml> (ace-run provider), or ' +
+        '--registry-gate-skip "<reason>" when this dataset has no semantic registry (denovo/clone)\n',
+    );
+    process.exit(3);
+  }
   if (oppIdx === -1 || !argv[oppIdx + 1]) die('--opportunity-id <id> is required');
 
   const opportunityId = Number(argv[oppIdx + 1]);
