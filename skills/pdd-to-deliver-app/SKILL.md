@@ -1413,6 +1413,20 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        sweeps every lookup-powered choice list in the app, so the only ACE-side
        check that cannot be bypassed is one with the same scope.
 
+       **One call does all of sub-steps 1–3:** `scripts/nova-app-lint.ts --app
+       <nova_app_id> --type deliver` (invocation in `agents/commcare-setup.md §
+       Step 1.4`) reads every bound table once, server-side, and runs
+       `auditLookupBinds` over every lookup-backed select — plus the two value
+       rules added since: **whitespace in the saved value** (`whitespace-values`,
+       ace#2984 — Nova's preflight refuses "Saved values can't contain
+       whitespace"; give an authored table a slug-shaped code column distinct
+       from its display `name` and bind the value to that) and **blank values /
+       labels and wiped rows** (`blank-values`, `blank-labels`,
+       `lookup-wiped-rows` — ace#2978: `edit_lookup_rows` `update` REPLACES the
+       row, so always send every cell). HALT on any `lookup-binds` blocker it
+       prints. The manual sub-steps below are what it does, kept for when the
+       script cannot run.
+
        1. Collect every field in the built app whose options source reads back
           `kind: 'lookup'`, whoever created it — walk the `get_form` responses
           already fetched in Step 4a and read each one's `optionsSource`. For
@@ -2321,6 +2335,18 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      `## Build notes` say why — and was the reason "no instrument is `[FIXED]`"? An
      unresolvable `[FIXED]` source is a HALT, not a skip (ace#1648).
 
+6b. **Exit gate — `nova-app-lint` must exit 0 before you return.** Run
+   `scripts/nova-app-lint.ts --app <nova_app_id> --type deliver` (invocation
+   in `agents/commcare-setup.md § Step 1.4`) on the SAVED app. It checks in
+   code the standing instructions this skill briefs (app name, the
+   `section`/`module` terminology rule including bound lookup rows, lookup
+   binds, case-list labels vs form labels, casedb preloads, Connect-marker
+   floor, starter module). Fix every `[BLOCKER]` it names, save, re-run; do
+   not edit for a `[WARN]` — record it in `## Build notes`. Quote its first
+   line (`… PASS|WARN — N blocker(s) …`) in `## Build notes`. Phase 3 will
+   not dispatch the eval while it fails, so returning with blockers only
+   moves the same fix later.
+
 7. **Write the summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
    frontmatter:
@@ -2799,6 +2825,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-10-16 | **Step 7 writes a `nova_uuids` block, copied from § 4a step 2's `get_app` and read back (ace#2144).** `app-deploy` Step 2.5 and `app-connect-coverage` both read the Deliver summary's `nova_uuids:` instead of calling `get_app`, but Step 7 never specified one (Learn's Step 7 did). On `spark-facilitator/20260906-2233` the map that was written had all four module/form uuids pattern-truncated (`11110000-…` for `11111111-…`) and the lint's `get_form` failed. The block is now part of the required frontmatter, sourced verbatim from the `get_app` response, with a one-pair `get_form` read-back after the write. *Enforced:* `test/skills/deliver-summary-nova-uuids.test.ts`. | ACE team |
 | 2026-10-16 | **§ entity_id: a date-only key component is a per-worker-per-day grain (ace#2935).** The quoted-separator example used `#form/visit_date`, which keys per worker per day; it now uses a time-bearing timestamp and says so, and names the bare-`now()` trap (a hidden field renders it date-only). | ACE team |
 | 2026-10-16 | **Step 4f: a lookup's value column must be whitespace-free (ace#2984).** On `kaduna-graduation/20261015-1411` `kgrad_services` had no code-shaped column, three selects saved the display `name` (`"Placeholder: services directory entry 1 …"`), every ACE gate passed (the values were unique), and Nova's `upload_app_to_hq` preflight refused the Deliver app: *"Saved values can't contain whitespace."* Same class as ace#2143, Nova's second rule. `verifyLookupBind` (and so `auditLookupBinds`) now returns `whitespace-values`; authored tables carry a slug `code` column as the saved value. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
+| 2026-10-16 | **Exit gate `nova-app-lint` (Step 6b); Step 4f step 8 runs through it.** The standing instructions this skill briefs are now checked in code right after the build (`scripts/nova-app-lint.ts`, `lib/nova-app-lint.ts`) instead of only by the eval: on `smallholder-seasonal/20261015-1402` the Deliver eval took three passes (~42 min) to clear "module" in 7 bound lookup rows (ace#2976) and a partial `edit_lookup_rows` update that wiped 8 rows (ace#2978); on `kaduna-graduation/20261015-1411` whitespace in a bound value column was first refused by Nova's upload preflight (ace#2984) and case-list labels drifting from form labels were first caught at `app-release-qa` Step 2.8. `verifyLookupBind` gains `whitespace-values`, `blank-values` and `blank-labels`. *Enforced:* `test/lib/nova-app-lint.test.ts` (real blueprints), `test/lib/option-register.test.ts`, `test/agents/phase3-lint-gate.test.ts`. | ACE team |
 | 2026-10-12 | **Step 4k prefers the publisher's file over a derived `inputs[]` extraction (ace#2852).** `resolveInstrumentSource` returned the `inputs[]` match before it looked at manifest-recorded subfolders, even when that match classed `derived` — so on `smallholder-seasonal/20261012-1549` the strict path resolved `INSTRUMENT — Nigeria 2018 PPI (… extracted verbatim).md` while the publisher's `nigeria-ppi-2020-scorecard-and-lookup-table.xlsx` sat in the recorded subfolder `official-nigeria-2018-ppi (povertyindex.org)`. The ace#1648 order (inputs[] first) predates the ace#2110 classifier, which disclosed a derived source but never re-ordered the search. Step 2 now walks the subfolders when the `inputs[]` match is derived; the helper resolves a single published subfolder file over it (naming the passed-over entry in its memo), halts on more than one, and keeps the derived entry with its caveat only when nothing published exists. *Enforced:* `test/lib/instrument-constants.test.ts` (real layout and ids from that run). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every `[ACE]` latitude, `[FIXED]` ambiguity, stated exemption and not-computable metric this skill used to tabulate under the summary's `## Build memo` is now a decision row only (`plain`, `check_at`/`correct_looks_like`, `review_ask` + `confirm_reason` for open questions), the non-decision check records move to the summary's `## Build notes`, and the Phase 3 boundary fails a written summary with zero rows under `skill: pdd-to-deliver-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **New Step 4o — every PDD § Success Metrics term is SUBMITTED on the paid form (ace#2590).** On `spark-facilitator/20261001-2208` the Community Meeting Record read `#community/number_of_households` inside a validate and never submitted it, so PDD §8.2 S1 (households represented ÷ enrolled households) was not computable in Connect and Phase 7 listed it under "Not computable from visit data" — the run completed and a partner-owned indicator silently vanished. 4h covered taught-vs-collectable; nothing covered measured-vs-submitted. 4o resolves each metric term to a paid-form field, a case property, or an `external` source with a reason, runs `checkMetricTermsSubmitted` (`lib/metric-terms-submitted.ts`) over the paid form, mirrors any case-held term as a hidden `calculate`, and names every term still unsubmitted as not computable in the summary (`metric_terms` frontmatter + build memo). *Enforced:* `test/lib/metric-terms-submitted.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

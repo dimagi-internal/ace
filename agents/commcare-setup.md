@@ -641,9 +641,12 @@ so nothing from it had saved.
 - Output:
   - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
   - From `pdd-to-learn-app` AND `pdd-to-deliver-app`: **one `decisions.yaml` row per `[ACE]` latitude, `[FIXED]` ambiguity and (Learn) framework gap, each with `plain`** (the decisions log is the review artifact — the build memo is retired), appended via `decisions_append_rows` with `phase: 3-commcare` and the producer's own `skill` tag — derived from the SAME entry list the memo table renders (each skill's `§ Decisions Log`). This is REQUIRED, not catalogue-optional: the Phase 3 boundary fails a producer whose memo lists any latitude or ambiguity and whose skill wrote zero rows (`verify_phase_artifacts(phase='commcare').decisions`, `lib/build-phase-decisions.ts`; ace#2384 — `poverty-graduation/20260908-0510` shipped 66 rows, 0 from the app build). `pdd-to-deliver-app` may additionally append catalogue rows (`deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy`) when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`.
-- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
-  `pdd-to-learn-app-eval` after the Learn build and
-  `pdd-to-deliver-app-eval` after the Deliver build. Each writes
+- **LLM-as-Judge:** NOT here any more — the evals run at **Step 1.6**, after
+  the deterministic lint gate (Step 1.4) and Connect-marker coverage
+  (Step 1.5) have both run, and only once the lint gate is open. Unless
+  `--no-evals` was passed, Step 1.6 dispatches
+  `pdd-to-learn-app-eval` for the Learn build and
+  `pdd-to-deliver-app-eval` for the Deliver build. Each writes
   `runs/<run-id>/3-commcare/pdd-to-learn-app-eval_verdict.yaml` and
   `runs/<run-id>/3-commcare/pdd-to-deliver-app-eval_verdict.yaml`
   respectively. A `verdict: fail` here does not halt Phase 3 on its
@@ -653,8 +656,70 @@ so nothing from it had saved.
   pause-time summary from those at runtime (gate-briefs removed in
   0.13.116 — see `agents/orchestrator-reference.md § Pause Points`).
 
+### Step 1.4: Deterministic lint gate (`nova-app-lint`) — after EVERY build and EVERY repair edit
+
+Run once per app, right after its build returns (and after Step 1's
+turn-0 check confirms the app is saved):
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-lint.ts" \
+  --app <nova_app_id> --type learn|deliver --out "<scratch>/nova-app-lint_<app>.json"
+```
+
+(`--work <work_id>` lints unsaved private work instead of the saved app;
+`--allow-preload <field_id,…>` declares a preload the brief consciously
+wants; `--declared-modules "A|B"` adds the undeclared-module check.)
+
+One call reads `get_app`, every `get_module`, every `get_form` and every
+BOUND lookup table (paged to the end) server-side — none of the blueprint
+enters your context — and checks, in code: the app-name rule, the Connect
+type, the Deliver `section`/`module` terminology rule (including bound
+lookup rows, ace#2976), every lookup bind (`auditLookupBinds`: duplicates,
+whitespace in the saved value ace#2984, blank values/labels, wiped rows
+ace#2978), case-list id-mapping labels vs the form's own labels (the drift
+`app-release-qa` used to catch at Step 2.8), markdown-eaten choice labels,
+visible questions preloaded from the case (ace#2006), Learn module display
+gating (ace#3036) and post-submit navigation, the structural Connect-marker
+floor, and the starter module. Exit `0` = gate OPEN (`pass` or `warn`),
+`2` = blockers, `3` = a rule could not run (NOT a pass).
+
+**The gate.** No LLM eval (`pdd-to-*-app-eval`) is dispatched for an app
+until its lint exits 0. On exit 2, fix the named blockers (in Nova private
+work, `save_work` → `saved: true`) and re-run the lint — that loop is
+seconds per pass, where an eval-found blocker cost a ~15-minute grade per
+round (smallholder-seasonal/20261015-1402: three Deliver eval passes, ~42
+min, to clear a banned word in 7 lookup rows the lint names directly). On
+exit 3, read the `UNABLE` line — it is a transport or partial-read problem;
+re-run, never treat it as pass.
+
+**Repair policy (applies to lint AND eval findings):**
+
+1. **Never run a repair round on a warn.** Only a blocker (lint `fail` /
+   eval `fail`) justifies editing the app. A `warn` is recorded and carried
+   into the decisions log. (`kaduna-graduation/20261015-1411` spent a full
+   Learn repair round on a warn to move 8.09 → 8.22.) `repairWarranted()` in
+   `lib/nova-app-lint.ts` is the rule.
+2. **Re-lint after every repair edit,** before anything else.
+3. **If the repair touched only lint-covered surfaces** (app/module/form
+   names, labels, hints, validation messages, choice labels, lookup rows,
+   options sources, case-list columns, connect blocks, display conditions,
+   post-submit, preloads — `LINT_COVERED_SURFACES`) **and every eval
+   blocker it addressed was one the lint also reports, re-lint instead of
+   re-running the LLM eval.** The eval's other dimensions did not change, so
+   its previous verdict stands with the lint result attached. Any other
+   surface (new or removed fields, logic, teaching content) changes what the
+   eval judges → re-run the eval. `evalRerunNeeded()` is the rule.
+
+Record each run as `phases.commcare-setup.steps.nova-app-lint-<app>`
+(`status`, `verdict`, `blockers`, `warns`) in `run_state.yaml`. The script
+is the authority; the Step 2.8 `app-release-qa` CCZ checks stay as the
+backstop on the compiled artifact.
+
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
-Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
+Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver),
+**before any eval and after the Step 1.4 lint**; it edits forms, so
+**re-run the Step 1.4 lint after it** (exit 0 required) before Step 1.6.
 - Input: `nova_app_id` from each app summary; PDD for context
 - Output: `3-commcare/app-connect-coverage_{learn,deliver}.md`
   reporting before/after state per form. The Nova app on Firestore is
@@ -689,6 +754,18 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
     `<learn:deliver>` / `<learn:module>` element counts. Log the
     coverage skip into `run_state.yaml`, write a stub coverage
     report, and proceed to Step 2.
+
+### Step 1.6: LLM evals (only once the lint gate is open)
+
+Unless `--no-evals`, dispatch `pdd-to-learn-app-eval` and
+`pdd-to-deliver-app-eval` — **only for an app whose Step 1.4 lint, re-run
+after Step 1.5, exited 0.** Each eval re-runs the lint itself and takes its
+standing-instruction gates (`naming_convention`, `terminology`,
+`single_gating_assessment`, `learn_module_display_gating`,
+`form_navigation`) from it instead of re-deriving them, so the judge spends
+its time on the dimensions that need judgment. Apply the Step 1.4 repair
+policy to their findings: no repair on a `warn`; after a repair, re-lint,
+and re-run the eval only when `evalRerunNeeded()` says so.
 
 ### Step 1.7: Media coverage (images on the apps)
 Invoke the `app-media-coverage` skill **once per app** (Learn, Deliver), or
@@ -916,6 +993,15 @@ AVD-free structural check on the just-released Learn + Deliver CCZs:
 download each via `commcare_download_ccz`, parse the zip + suite.xml +
 form XMLs, and verify form counts + Connect-marker presence match the
 Nova blueprint. Halts loud on mismatch.
+
+**It is the BACKSTOP, not the first line.** Everything Step 1.4's lint can
+see in the blueprint (case-list label drift, display gating, casedb
+preloads, assessment cardinality) is caught there, before deploy, settings
+and release. A Step 2.8 blocker of a lint-covered class therefore means the
+lint missed it — file it against `lib/nova-app-lint.ts` with the CCZ
+evidence, so the next run catches it at build time instead of paying the
+deploy → settings → release redo chain again (kaduna-graduation/20261015-1411,
+case-list labels).
 
 **Position rationale.** Prior versions of this file tried to put
 `app-screenshot-capture` (a full AVD smoke walk) at the end of Phase

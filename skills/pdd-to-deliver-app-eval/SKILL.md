@@ -171,18 +171,32 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    suite verdict `fail`, exactly like a dimension ≤3. Both are readable
    straight from the Nova blueprint (confirmed applied by the 2026-06-25 build).
 
+   **Run the deterministic lint FIRST and take these gates from it — do not
+   re-derive them by reading.** One call:
+   `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-lint.ts" --app <nova_app_id> --type deliver`
+   (`$ACE_ROOT` resolved as in `agents/commcare-setup.md § Step 1.4`). Every
+   lint `[BLOCKER]` is a § 5b `[BLOCKER]` here, quoted with its rule and
+   location; exit 3 (a rule could not run) makes this eval `incomplete`,
+   never `pass`. Phase 3 does not dispatch this eval until the lint exits 0,
+   so on the normal path these gates arrive already clean. The rules moved
+   into code because as rubric prose they were applied when the judge
+   remembered them and cost a full eval pass each time (smallholder-seasonal
+   /20261015-1402: three passes, ~42 min, for one banned word in 7 lookup
+   rows).
+
    - **`naming_convention`** — the app's display name MUST contain the words
-     "Deliver app". Read the name via `get_app`. Absent → `[BLOCKER]` → `fail`.
+     "Deliver app". Lint rule `app-name`. Absent → `[BLOCKER]` → `fail`.
    - **`terminology`** — the words "section" and "module" MUST NOT appear in
-     any USER-FACING string (form names, module/menu names, question labels,
-     hints, choice labels). Scan names + labels via
-     `get_form({app_id, moduleUuid, formUuid})`. API structural keys — uuids,
-     `moduleUuid`/`formUuid`, "Module 0" — are metadata, never rendered;
-     ignore those. Lookup-table rows are user-facing too whenever a select is
-     bound to the table (`optionsSource`) or a one-option list displays its
-     text — those strings never appear in `get_form`, so also scan every bound
-     table's rows via `get_lookup_table_rows` (ace#2976).
+     any USER-FACING string: form names, module/menu names, question labels,
+     hints, help, validation messages, inline choice labels, case-list headers
+     and labels, and the displayed column of every BOUND lookup table
+     (ace#2976). Lint rule `terminology`; `{{…}}` references and API keys
+     (uuids, "Module 0") are not displayed text and are ignored there.
      Any user-facing occurrence → `[BLOCKER]` → `fail`.
+   - The lint's `lookup-binds`, `case-list-label-fidelity` and
+     `casedb-prefill` blockers are build defects too — quote them under the
+     dimension they hit (`capture_fitness` / `case_persistence` / `connectify_wiring`) rather than
+     re-checking them.
 
    **Addressing note (ace#1132).** Nova is uuid-addressed since 2026-07-31 —
    no tool accepts `moduleIndex` / `formIndex` / `fieldId`. Get the uuids
@@ -647,6 +661,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **§ 5b `naming_convention` / `terminology` come from `nova-app-lint`, run first.** The rules moved into code (`lib/nova-app-lint.ts`) — as rubric prose they cost a full eval pass each time they fired (smallholder-seasonal/20261015-1402: three passes, ~42 min, for one banned word in 7 lookup rows). Lint blockers are quoted as § 5b blockers; lint exit 3 makes the eval `incomplete`. Phase 3 dispatches this eval only after the lint exits 0. | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every criterion that read the build's disclosures, justifications and check blocks from the summary's memo section now reads the producer's live decision rows (`phase: 3-commcare`, `skill: pdd-to-deliver-app`), the summary's frontmatter blocks and its `## Build notes`; the grading itself is unchanged. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-17 | **`threshold_coherence` gains the capped-index pair, and stops re-deriving it by hand (ace#2148).** This criterion caught the defect — a per-step cap of 3 shipped binding at 4 on `spark-facilitator/20260906-2233`, 28 payable events against a declared 21 — by a judge tracing the arithmetic manually, which is not a gate anyone can rely on twice. The clamp constant and the declared cap are a threshold pair, and they are deliberately DIFFERENT numbers: a `casedb` read is the state before this submission, so the correct clamp is `cap - 1` under a pre-increment counter and `cap` under one that already counts it. The criterion now calls `checkPayableCapArithmetic()` rather than comparing the two, and quotes `report.indices` as the trace. | ACE team |
 | 2026-09-11 | **`threshold_coherence` stops reading the dedup pair as two scalars (ace#2373).** The #984 criterion declared any radius at or below the worst accepted accuracy incoherent, so the Targeting PDD v1.1 §6 [FIXED] rule — a 15 m radius applied only where both readings beat 15 m, identifiers otherwise — read 15 ≤ 50 → `[WARN]` at best and, with no memo entry, `[BLOCKER]` on a design that is coherent by construction. The pair is now classified with `lib/gps-dedup-coherence.ts`: an accuracy-conditioned radius is `coherent`; only an unconditioned radius at or below the tolerance is `incoherent`; a bare `duplicate_gps_radius_m` scalar is `unclear` and sends the judge to the PDD's own sentence rather than being read as unconditioned. New `[BLOCKER]`: a build that moved a `[FIXED]` or author-attributed threshold to resolve a conflict it noticed — the brief used to invite exactly that by quoting #984's "raise or tie". Paired with `_app-component-library.md § threshold-coherence-flag`. *Enforced:* `test/lib/gps-dedup-coherence.test.ts` + `test/skills/threshold-coherence-conditioned-radius.test.ts`. Feedback-Ref: 20260911-sophie-feintuch/q1-dedup. | ACE team |
