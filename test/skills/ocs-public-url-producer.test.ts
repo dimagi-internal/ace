@@ -91,3 +91,16 @@ describe('ocs-agent-setup produces the public chat URL (ace#1839)', () => {
     ).toBe('https://www.openchatstudio.com/a/connect-ace/chatbots/2c8d5f93-8e4f-4fde-9bf8-650909255c30/start/');
   });
 });
+
+describe('ocs-agent-setup gives the public link a description (ace#3045)', () => {
+  const skill = readFileSync(SKILL, 'utf8');
+  it('sets the description after cloning and BEFORE publishing', () => {
+    // The public-link page prints the PUBLISHED version's description; a clone
+    // inherits the golden template's "Created after LLM provider was added."
+    const set = skill.indexOf('ocs_set_chatbot_description({');
+    const publish = skill.indexOf('9. **Publish a version:**');
+    const clone = skill.indexOf('3. **Clone the golden template:**');
+    expect(set).toBeGreaterThan(clone);
+    expect(set).toBeLessThan(publish);
+  });
+});

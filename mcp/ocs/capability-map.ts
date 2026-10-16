@@ -24,6 +24,7 @@ export type Capability =
   | 'publish_chatbot_version'
   | 'get_chatbot_embed_info'
   | 'ensure_public_link'
+  | 'set_chatbot_description'
   | 'delete_chatbot'
   | 'get_chatbot_pipeline_id'
   | 'delete_pipeline'
@@ -65,6 +66,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   set_source_material:          { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/' },
   publish_chatbot_version:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/versions/' },
   get_chatbot_embed_info:       { backend: 'HYBRID',     restTarget: 'GET /api/experiments/{id}/embed/' },
+  set_chatbot_description:      { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{team}/chatbots/{id}/settings/save-all/ (no REST equivalent — whole-form ChatbotSettingsForm save)' },
   ensure_public_link:           { backend: 'PLAYWRIGHT', restTarget: 'POST /channels/{team}/chatbots/{id}/channels/create-dialog/public/ (no REST equivalent — CSRF-protected PublicChannelForm)' },
   delete_chatbot:               { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/experiments/{id}/ (not yet shipped)' },
   get_chatbot_pipeline_id:      { backend: 'PLAYWRIGHT', restTarget: 'GET /api/experiments/{id}/ (pipeline_id field not yet exposed in REST schema)' },

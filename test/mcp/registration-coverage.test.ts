@@ -72,7 +72,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   ocs: {
     file: 'mcp/ocs-server.ts',
-    expectedCount: 38, // +1: ocs_ensure_public_link (the Public link channel replaces the legacy /start/ page — OCS #4792)
+    expectedCount: 39, // +1: ocs_set_chatbot_description (ace#3045); +1 before: ocs_ensure_public_link (the Public link channel replaces the legacy /start/ page — OCS #4792)
     allowedPrefixes: ['ocs_'],
     capabilityMap: OCS_MAP,
     capabilityPrefix: 'ocs_',

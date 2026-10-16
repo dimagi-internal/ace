@@ -1,0 +1,394 @@
+<!-- The settings form of connect-ace chatbot 14296 (a golden-template clone), verbatim from
+     GET /a/connect-ace/chatbots/14296/settings/save-all/ on 2026-10-16 (ace#3045). -->
+<form id="settings-form" x-data="{
+                                     type: '',
+                                     voiceProvider: null,
+                                     synthetic_voice: null,
+                                     synthetic_voice_options: [],
+                                     init() {
+                                     const voiceProviderTypes = JSON.parse(document.getElementById('voice-provider-types').textContent);
+                                     const voiceOptions = JSON.parse(document.getElementById('voice-options').textContent);
+                                     this.$watch('voiceProvider', () => {
+                                     const providerType = voiceProviderTypes[this.voiceProvider];
+                                     this.synthetic_voice_options = voiceOptions.filter(option => {
+                                     const match = option.type === providerType &&
+                                     (!option.provider_id || option.provider_id == this.voiceProvider);
+                                     return match;
+                                     });
+                                     });
+                                     }
+                                     }">
+  
+  
+  <div class="mb-6" id="name-section">
+    <h4 class="text-md font-bold mb-2">Name</h4>
+    <div class="p-4 bg-base-200 rounded-md" id="name-edit">
+      
+        <div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_name">
+    <div>
+      Name
+      
+    </div>
+  </label>
+  <input class="input w-full " type="text" name="name" value="ACE - smallholder-seasonal (20261015-1402)" maxlength="128" required id="id_name">
+  
+</div>
+
+      
+    </div>
+  </div>
+  <div class="mb-6" id="description-section">
+    <h4 class="text-md font-bold mb-2">Description</h4>
+    <div class="p-4 bg-base-200 rounded-md" id="description-edit">
+      
+        <div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_description">
+    <div>
+      Description
+      
+    </div>
+  </label>
+  <textarea class="textarea textarea-bordered w-full " name="description" cols="40" rows="2" id="id_description">Created after LLM provider was added.</textarea>
+  
+</div>
+
+      
+    </div>
+  </div>
+
+  <div class="mb-6" id="voice-section">
+    <h4 class="text-md font-bold mb-2">Speech</h4>
+    <div class="p-4 bg-base-200 rounded-md">
+      <div class="grid grid-cols-2 gap-4">
+        
+          <div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_voice_provider">
+    <div>
+      Speech Provider
+      
+    </div>
+  </label>
+  <select class="select w-full " name="voice_provider" x-model.fill="voiceProvider" id="id_voice_provider">
+    <option value="" selected>---------</option>
+
+</select>
+  
+</div>
+<div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_synthetic_voice">
+    <div>
+      Synthetic voice
+      
+    </div>
+  </label>
+  <select x-model="synthetic_voice" class="select w-full " name="synthetic_voice" id="id_synthetic_voice">
+  <option value selected>---------</option>
+  <template x-for="(option, index) in synthetic_voice_options" :key="index">
+    <option :value="option.value" x-text="option.text" :selected="option.value == synthetic_voice"></option>
+  </template>
+</select>
+  
+</div>
+<div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_voice_response_behaviour">
+    <div>
+      Response Provider
+      
+        <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>This tells the bot when to reply with voice messages</p>
+    </div>
+  </div>
+</div>
+</small>
+      
+    </div>
+  </label>
+  <select class="select w-full " name="voice_response_behaviour" aria-describedby="id_voice_response_behaviour_helptext" id="id_voice_response_behaviour">
+    <option value="always">Always</option>
+
+    <option value="reciprocal" selected>Reciprocal</option>
+
+    <option value="never">Never</option>
+
+</select>
+  
+</div>
+<div class="fieldset" 
+>
+  <div class="form-check">
+    <label class="label font-bold cursor-pointer">
+      <div>
+        Echo transcript
+        
+          <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>Whether or not the bot should tell the user what it heard when the user sends voice messages</p>
+    </div>
+  </div>
+</div>
+</small>
+        
+      </div>
+      <input class="checkbox " type="checkbox" name="echo_transcript" aria-describedby="id_echo_transcript_helptext" id="id_echo_transcript" checked>
+    </label>
+  </div>
+  
+</div>
+
+        
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-6" id="tracing-section">
+    <h4 class="text-md font-bold mb-2">Tracing</h4>
+    <div class="p-4 bg-base-200 rounded-md">
+      
+        <div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_trace_provider">
+    <div>
+      Trace provider
+      
+    </div>
+  </label>
+  <select class="select w-full " name="trace_provider" id="id_trace_provider">
+    <option value="" selected>---------</option>
+
+</select>
+  
+</div>
+<div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_trace_sample_rate">
+    <div>
+      Trace sample rate
+      
+        <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>Overrides the trace provider's sample rate for this chatbot. Leave blank to use the provider's own setting.</p>
+    </div>
+  </div>
+</div>
+</small>
+      
+    </div>
+  </label>
+  <input class="input w-full " type="number" name="trace_sample_rate" step="any" aria-describedby="id_trace_sample_rate_helptext" id="id_trace_sample_rate">
+  
+</div>
+<div class="fieldset" 
+>
+  <div class="form-check">
+    <label class="label font-bold cursor-pointer">
+      <div>
+        Debug mode enabled
+        
+          <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>Enabling this tags each AI message in the web UI with the bot responsible for generating it. This is applicable only for router bots.</p>
+    </div>
+  </div>
+</div>
+</small>
+        
+      </div>
+      <input class="checkbox " type="checkbox" name="debug_mode_enabled" aria-describedby="id_debug_mode_enabled_helptext" id="id_debug_mode_enabled">
+    </label>
+  </div>
+  
+</div>
+
+      
+    </div>
+  </div>
+
+  <div class="mb-6" id="consent-section">
+    <h4 class="text-md font-bold mb-2">Consent</h4>
+    <div class="p-4 bg-base-200 rounded-md">
+      
+        <div class="fieldset" 
+>
+  <div class="form-check">
+    <label class="label font-bold cursor-pointer">
+      <div>
+        Conversational consent enabled
+        
+          <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>If enabled, the consent form will be sent at the start of a conversation for external channels. Note: This requires the experiment to have a seed message.</p>
+    </div>
+  </div>
+</div>
+</small>
+        
+      </div>
+      <input class="checkbox " type="checkbox" name="conversational_consent_enabled" aria-describedby="id_conversational_consent_enabled_helptext" id="id_conversational_consent_enabled">
+    </label>
+  </div>
+  
+</div>
+<div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_consent_form">
+    <div>
+      Consent form
+      
+        <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>Consent form content to show to users before participation in experiments.</p>
+    </div>
+  </div>
+</div>
+</small>
+      
+    </div>
+  </label>
+  <select class="select w-full " name="consent_form" aria-describedby="id_consent_form_helptext" id="id_consent_form">
+    <option value="" selected>---------</option>
+
+    <option value="725">Default Consent</option>
+
+</select>
+  
+</div>
+
+      
+    </div>
+  </div>
+
+  <div class="mb-6" id="seed-message-section">
+    <h4 class="text-md font-bold mb-2">Seed Message</h4>
+    <div class="p-4 bg-base-200 rounded-md" id="seed_message-edit">
+      
+        <div class="fieldset w-full" 
+>
+  <label class="label font-bold" for="id_seed_message">
+    <div>
+      Seed message
+      
+    </div>
+  </label>
+  <textarea class="textarea textarea-bordered w-full " name="seed_message" cols="40" rows="2" id="id_seed_message"></textarea>
+  
+</div>
+
+      
+    </div>
+  </div>
+
+  <div class="mb-6" id="webchat-section">
+    <h4 class="text-md font-bold mb-2">Web Chat Features</h4>
+    <div class="p-4 bg-base-200 rounded-md">
+      
+        <div class="fieldset" 
+>
+  <div class="form-check">
+    <label class="label font-bold cursor-pointer">
+      <div>
+        File uploads enabled
+        
+          <small class="form-text text-muted">
+
+<div class="dropdown dropdown-right dropdown-hover">
+  <button
+    type="button"
+    class="btn btn-circle btn-ghost btn-xs text-info"
+    aria-label="More information">
+    <i class="text-xs fa-regular fa-circle-question" aria-hidden="true"></i>
+  </button>
+  <div
+    tabindex="0"
+    class="card card-sm dropdown-content bg-slate-300 dark:bg-slate-700 rounded-box z-1 w-64 shadow-sm">
+    <div tabindex="0" class="card-body font-medium text-wrap">
+      <p>Enables file attachments in the web chat interface.</p>
+    </div>
+  </div>
+</div>
+</small>
+        
+      </div>
+      <input class="checkbox " type="checkbox" name="file_uploads_enabled" aria-describedby="id_file_uploads_enabled_helptext" id="id_file_uploads_enabled">
+    </label>
+  </div>
+  
+</div>
+
+      
+    </div>
+  </div>
+
+  </form>

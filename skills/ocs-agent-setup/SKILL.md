@@ -13,7 +13,7 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
 `ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`, `ocs_set_chatbot_tools`,
 `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`,
-`ocs_ensure_public_link`.
+`ocs_ensure_public_link`, `ocs_set_chatbot_description`.
 
 Runs in Phase 5 as Step 1 under the `ocs-setup` agent. The agent handles
 quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
@@ -175,6 +175,14 @@ round-trip gate in Step 11.5 below.
    - `ocs_clone_chatbot({ template_id: $OCS_GOLDEN_TEMPLATE_ID, new_name: "ACE - <opp-name> (<run-id>)" })`
      — run-scoped name, matching the Step 2 filter exactly (ace#1017).
    - Capture `{experiment_id, public_id, pipeline_id}`
+   - `ocs_set_chatbot_description({ experiment_id, description: "Support
+     assistant for <program name from the PDD>. Ask about the program or how
+     to do the work in the app." })`. OCS prints this line under the chatbot's
+     name on its public link (Step 10), and a clone otherwise inherits the
+     golden template's "Created after LLM provider was added." (ace#3045). It
+     must land before Step 9: the public page shows the PUBLISHED version's
+     description. The atom reads the settings form back and throws if the
+     description did not land or any other setting moved.
 
 3.5. **Post-clone liveness gate (mandatory — runs BEFORE the collection
     build, dimagi-internal/ace#1492).** A freshly cloned chatbot is not
@@ -1337,7 +1345,7 @@ happen in subsequent steps of the `ocs-setup` agent, not in this skill.
   `ocs_create_collection`, `ocs_upload_collection_files`,
   `ocs_wait_for_collection_indexing`, `ocs_set_chatbot_pipeline`,
   `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`,
-  `ocs_ensure_public_link`.
+  `ocs_ensure_public_link`, `ocs_set_chatbot_description`.
 - **Google Drive MCP (`ace-gdrive`):** `drive_read_file`,
   `drive_list_folder`, `drive_create_file`.
 
