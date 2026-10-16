@@ -12,10 +12,13 @@ import {
   LABS_SANDBOX_FRAME_PREFIX,
   checkLabsReportFrameTargets,
   combineFrameTexts,
+  framingFromCaptures,
   inLabsReportFrame,
   isInLabsReportFrame,
   isLabsReportSurface,
+  outOfLabsReportFrame,
   recorderTargetToSelector,
+  type SurfaceFraming,
 } from '../../lib/labs-report-frame';
 import { checkSceneActions, type DddScene } from '../../lib/ddd-scene-actions';
 import { checkNarratedFiguresAgainstScreenText, type NarratedScene } from '../../lib/narration-on-screen';
@@ -59,30 +62,104 @@ describe('isLabsReportSurface', () => {
   });
 });
 
-describe('checkLabsReportFrameTargets', () => {
-  it('flags the unprefixed scene-1 gate that missed on smallholder-seasonal/20261012-1549, with the fix in the detail', () => {
-    const f = checkLabsReportFrameTargets([
-      { title: 'programme', url: '${programme_par_url}', actions: [{ kind: 'wait_for', target: 'css:tr:has-text("Chitipa")' }] },
+// Every scene observed with one shape.
+const all = (n: number, shape: SurfaceFraming) => new Map(Array.from({ length: n }, (_, i) => [i + 1, shape] as const));
+
+// The 2026-10-16 probe of workflow 10049 run 10369 (smallholder-seasonal/20261015-1402):
+// {"iframes":[],"topPageHasReportText":true,"frames":[<the run page>, <the canopy chat-widget embed>]}; the embed's host is stubbed here.
+const UNFRAMED_10049 = [{ url: 'https://chat-widget.example/embed/chat?app=connect-labs', text: 'chat' }];
+
+describe('outOfLabsReportFrame', () => {
+  it('undoes inLabsReportFrame for every recorder prefix, and leaves an unframed target alone', () => {
+    for (const t of ['css:tr:has-text("Kuunika")', 'role:tab:Benchmarks', 'text:From the programme report', 'testid:kpi-row']) {
+      const out = outOfLabsReportFrame(inLabsReportFrame(t));
+      expect(isInLabsReportFrame(out)).toBe(false);
+      expect(out).toBe(`css:${recorderTargetToSelector(t)}`);
+      expect(inLabsReportFrame(out)).toBe(inLabsReportFrame(t));
+    }
+    expect(outOfLabsReportFrame('role:tab:Benchmarks')).toBe('role:tab:Benchmarks');
+  });
+});
+
+describe('framingFromCaptures', () => {
+  it('reads framed from a sandbox frame, unframed from its absence, and nothing from a top-page-only capture', () => {
+    const m = framingFromCaptures([
+      { scene_index: 1, frame_texts: [{ url: 'https://labs.connect.dimagi.com/labs/sandbox/render/?run_id=7705', text: 'x' }] },
+      { scene_index: 2, frame_texts: UNFRAMED_10049 },
+      { scene_index: 3, frame_texts: [] },
+      { scene_index: 4 },
     ]);
+    expect([...m.entries()]).toEqual([
+      [1, 'framed'],
+      [2, 'unframed'],
+      [3, 'unframed'],
+    ]);
+  });
+});
+
+describe('checkLabsReportFrameTargets', () => {
+  it('iframe PRESENT: flags the unprefixed scene-1 gate that missed on smallholder-seasonal/20261012-1549, with the fix', () => {
+    const f = checkLabsReportFrameTargets(
+      [{ title: 'programme', url: '${programme_par_url}', actions: [{ kind: 'wait_for', target: 'css:tr:has-text("Chitipa")' }] }],
+      all(1, 'framed'),
+    );
     expect(f).toHaveLength(1);
     expect(f[0].kind).toBe('labs-report-target-outside-frame');
     expect(f[0].detail).toContain(`css:${FRAME}tr:has-text("Chitipa")`);
   });
 
+  it('iframe ABSENT: accepts the unprefixed target and flags a framed one, with the unframed fix', () => {
+    const scenes = (target: string) => [{ title: 'programme', url: '${programme_par_url}', actions: [{ kind: 'wait_for', target }] }];
+    expect(checkLabsReportFrameTargets(scenes('css:tr:has-text("Chitipa")'), all(1, 'unframed'))).toEqual([]);
+    const f = checkLabsReportFrameTargets(scenes(inLabsReportFrame('css:tr:has-text("Chitipa")')), all(1, 'unframed'));
+    expect(f).toHaveLength(1);
+    expect(f[0].kind).toBe('labs-report-target-in-absent-frame');
+    expect(f[0].detail).toContain('"css:tr:has-text("Chitipa")"');
+  });
+
+  it('UNOBSERVED: says nothing either way, because the URL cannot tell (the 2026-10-16 misfire)', () => {
+    const s = [
+      { title: 'a', url: 'https://labs.connect.dimagi.com/labs/workflow/10049/run/?run_id=10369&program_id=10142', actions: [{ kind: 'click', target: 'role:tab:Benchmarks' }] },
+      { title: 'b', actions: [{ kind: 'click', target: inLabsReportFrame('role:tab:Benchmarks') }] },
+    ];
+    expect(checkLabsReportFrameTargets(s)).toEqual([]);
+    expect(checkSceneActions(s).findings.filter((x) => x.kind.startsWith('labs-report-target'))).toEqual([]);
+  });
+
+  it('decides per scene: one framed report and one unframed in the same spec', () => {
+    const f = checkLabsReportFrameTargets(
+      [
+        { title: 'framed', url: '${programme_par_url}', actions: [{ kind: 'click', target: 'role:tab:Benchmarks' }] },
+        { title: 'unframed', url: '${worker_review_url}', actions: [{ kind: 'click', target: 'role:tab:Benchmarks' }] },
+      ],
+      new Map<number, SurfaceFraming>([
+        [1, 'framed'],
+        [2, 'unframed'],
+      ]),
+    );
+    expect(f.map((x) => [x.scene, x.kind])).toEqual([['framed', 'labs-report-target-outside-frame']]);
+  });
+
   it('follow-on scenes inherit the surface; goto, hold and pause waits are not element targets', () => {
-    const f = checkLabsReportFrameTargets([
-      { title: 'a', url: '${programme_par_url}', actions: [{ kind: 'wait_for', target: '1500' }, { kind: 'hold' }] },
-      { title: 'b', actions: [{ kind: 'click', target: 'role:tab:Benchmarks' }, { kind: 'goto', target: 'https://x' }] },
-    ]);
+    const f = checkLabsReportFrameTargets(
+      [
+        { title: 'a', url: '${programme_par_url}', actions: [{ kind: 'wait_for', target: '1500' }, { kind: 'hold' }] },
+        { title: 'b', actions: [{ kind: 'click', target: 'role:tab:Benchmarks' }, { kind: 'goto', target: 'https://x' }] },
+      ],
+      all(2, 'framed'),
+    );
     expect(f.map((x) => x.scene)).toEqual(['b']);
   });
 
   it('accepts a framed target and ignores scenes before any url', () => {
     expect(
-      checkLabsReportFrameTargets([
-        { title: 'pre', actions: [{ kind: 'click', target: 'css:#x' }] },
-        { title: 'in', url: '${programme_par_url}', actions: [{ kind: 'click', target: inLabsReportFrame('css:#x') }] },
-      ]),
+      checkLabsReportFrameTargets(
+        [
+          { title: 'pre', actions: [{ kind: 'click', target: 'css:#x' }] },
+          { title: 'in', url: '${programme_par_url}', actions: [{ kind: 'click', target: inLabsReportFrame('css:#x') }] },
+        ],
+        all(2, 'framed'),
+      ),
     ).toEqual([]);
   });
 });
@@ -99,23 +176,39 @@ describe('the Spark worked example (fixture)', () => {
       : t;
   const ORIGINAL = SPEC.scenes.map((s) => ({ ...s, actions: (s.actions ?? []).map((a) => ({ ...a, target: strip(a.target) })) }));
   const TARGETED = ORIGINAL.flatMap((s) => s.actions).filter((a) => a.target).length;
+  const FRAMED = all(SPEC.scenes.length, 'framed');
+  const UNFRAMED = all(SPEC.scenes.length, 'unframed');
 
-  it('authors every report target inside the sandbox frame', () => {
-    expect(checkLabsReportFrameTargets(SPEC.scenes)).toEqual([]);
-    const r = checkSceneActions(SPEC.scenes);
+  it('iframe present: every report target enters the sandbox frame', () => {
+    expect(checkLabsReportFrameTargets(SPEC.scenes, FRAMED)).toEqual([]);
+    const r = checkSceneActions(SPEC.scenes, { framing: FRAMED });
     expect(r.findings.filter((f) => f.kind === 'labs-report-target-outside-frame')).toEqual([]);
   });
 
-  it('the 2026-10-04 original, before the frame, is flagged on every element target', () => {
+  it('iframe present: the 2026-10-04 original is flagged on every element target', () => {
     expect(TARGETED).toBeGreaterThan(20);
-    expect(checkLabsReportFrameTargets(ORIGINAL)).toHaveLength(TARGETED);
-    const r = checkSceneActions(ORIGINAL);
+    expect(checkLabsReportFrameTargets(ORIGINAL, FRAMED)).toHaveLength(TARGETED);
+    const r = checkSceneActions(ORIGINAL, { framing: FRAMED });
     expect(r.findings.filter((f) => f.kind === 'labs-report-target-outside-frame')).toHaveLength(TARGETED);
+  });
+
+  it('iframe absent: the original passes and the framed fixture is flagged on every element target', () => {
+    expect(checkLabsReportFrameTargets(ORIGINAL, UNFRAMED)).toEqual([]);
+    const f = checkLabsReportFrameTargets(SPEC.scenes, UNFRAMED);
+    expect(f).toHaveLength(TARGETED);
+    expect(new Set(f.map((x) => x.kind))).toEqual(new Set(['labs-report-target-in-absent-frame']));
+    const r = checkSceneActions(SPEC.scenes, { framing: UNFRAMED });
+    expect(r.findings.filter((x) => x.kind === 'labs-report-target-in-absent-frame')).toHaveLength(TARGETED);
   });
 
   it('rewriting the original through inLabsReportFrame reproduces the fixture exactly', () => {
     const rewritten = ORIGINAL.map((s) => ({ ...s, actions: s.actions.map((a) => ({ ...a, target: a.target && inLabsReportFrame(a.target) })) }));
     expect(rewritten).toEqual(SPEC.scenes.map((s) => ({ ...s, actions: s.actions ?? [] })));
+  });
+
+  it('rewriting the fixture through outOfLabsReportFrame clears every absent-frame finding', () => {
+    const out = SPEC.scenes.map((s) => ({ ...s, actions: (s.actions ?? []).map((a) => ({ ...a, target: a.target && outOfLabsReportFrame(a.target) })) }));
+    expect(checkLabsReportFrameTargets(out, UNFRAMED)).toEqual([]);
   });
 });
 
@@ -159,6 +252,23 @@ describe('checkNarratedFiguresAgainstScreenText', () => {
     expect(r.findings).toEqual([]);
   });
 
+  it('iframe absent: a top-page-only capture that prints the figures passes', () => {
+    const top = `Opportunities: 5 selected\n${CAPTURE.frame_texts[0].text}`;
+    expect(checkNarratedFiguresAgainstScreenText(scenes, [{ scene_index: 1, page_text: top }])).toEqual({ ok: true, findings: [] });
+    expect(checkNarratedFiguresAgainstScreenText(scenes, [{ scene_index: 1, page_text: top, frame_texts: UNFRAMED_10049 }])).toEqual({
+      ok: true,
+      findings: [],
+    });
+  });
+
+  it('iframe absent: a frame-recording capture flags a missing figure plainly, not as outer-page-only', () => {
+    const r = checkNarratedFiguresAgainstScreenText(scenes, [{ scene_index: 1, page_text: 'Meeting regularity 86.5%', frame_texts: [] }]);
+    expect(r.findings.map((f) => [f.kind, f.figure])).toEqual([
+      ['figure-not-on-screen', '80.0%'],
+      ['figure-not-on-screen', '65.0%'],
+    ]);
+  });
+
   it('flags a narrated figure the frame does not print', () => {
     const wrong: NarratedScene[] = [{ ...scenes[0], narrative: 'Meeting regularity sits at 91.2%.' }];
     const r = checkNarratedFiguresAgainstScreenText(wrong, [
@@ -185,6 +295,30 @@ describe('scripts/narration-claims.ts --screen-text', () => {
     });
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout).findings.map((f: { kind: string }) => f.kind)).toEqual(['screen-text-outer-page-only']);
+  });
+
+  it('checks report targets against the shape each capture saw', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-2885-'));
+    const spec = join(dir, 'spec.yaml');
+    const framedTarget = inLabsReportFrame('role:tab:Benchmarks');
+    writeFileSync(
+      spec,
+      `scenes:\n  - title: framed\n    url: \${programme_par_url}\n    narrative: The tabs.\n    actions:\n      - kind: click\n        target: 'role:tab:Benchmarks'\n` +
+        `  - title: unframed\n    url: \${worker_review_url}\n    narrative: The tabs.\n    actions:\n      - kind: click\n        target: ${JSON.stringify(framedTarget)}\n` +
+        `  - title: unobserved\n    url: \${opp_review_url}\n    narrative: The tabs.\n    actions:\n      - kind: click\n        target: 'role:tab:Benchmarks'\n`,
+    );
+    const sandbox = [{ url: 'https://labs.connect.dimagi.com/labs/sandbox/render/?run_id=1', text: 'Benchmarks' }];
+    writeFileSync(join(dir, 'scene_1_page_text.json'), JSON.stringify({ scene_index: 1, page_text: '', frame_texts: sandbox }));
+    writeFileSync(join(dir, 'scene_2_page_text.json'), JSON.stringify({ scene_index: 2, page_text: 'Benchmarks', frame_texts: UNFRAMED_10049 }));
+    const r = spawnSync(process.execPath, [join(ROOT, 'node_modules/tsx/dist/cli.mjs'), join(ROOT, 'scripts/narration-claims.ts'), '--spec', spec, '--check', '--screen-text', dir], {
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(0);
+    const kinds = JSON.parse(r.stdout).findings.map((f: { kind: string; scene: string }) => [f.scene, f.kind]);
+    expect(kinds).toEqual([
+      ['framed', 'labs-report-target-outside-frame'],
+      ['unframed', 'labs-report-target-in-absent-frame'],
+    ]);
   });
 });
 

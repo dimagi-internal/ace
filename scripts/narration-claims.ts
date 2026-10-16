@@ -10,7 +10,11 @@
  *   # <dir> holds scene_<N>_page_text.json (directly or under snapshots/): the output
  *   # of scripts/capture-scene-text.ts, which enters the labs sandbox iframe.
  *   # canopy's own run dir also works, but its capture reads the top page only,
- *   # so a labs report scene reports `screen-text-outer-page-only`.
+ *   # so a labs report scene whose figures are missing reports
+ *   # `screen-text-outer-page-only`. With a frame-recording capture this also
+ *   # checks every labs report target against the shape the capture SAW
+ *   # (framed or not): `labs-report-target-outside-frame` /
+ *   # `labs-report-target-in-absent-frame`.
  *   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/narration-claims.ts" \
  *     --spec <unified_spec.yaml> --check --screen-text <dir>
  *
@@ -33,6 +37,7 @@ import {
   type NarratedScene,
   type SceneScreenText,
 } from '../lib/narration-on-screen.js';
+import { checkLabsReportFrameTargets, framingFromCaptures } from '../lib/labs-report-frame.js';
 
 const argv = process.argv.slice(2);
 let specPath: string | undefined;
@@ -81,8 +86,12 @@ if (mode === 'check') {
   if (!screenDir) {
     process.stdout.write(JSON.stringify(spec, null, 2) + '\n');
   } else {
-    const screen = checkNarratedFiguresAgainstScreenText(scenes, readCaptures(screenDir));
-    const findings = [...spec.findings, ...screen.findings];
+    const captures = readCaptures(screenDir);
+    const screen = checkNarratedFiguresAgainstScreenText(scenes, captures);
+    // ace#2885: the captures are the only witness of whether labs framed each
+    // report, so the frame-target check runs here, keyed on what they saw.
+    const frame = checkLabsReportFrameTargets(scenes, framingFromCaptures(captures));
+    const findings = [...spec.findings, ...screen.findings, ...frame];
     process.stdout.write(JSON.stringify({ ok: findings.length === 0, findings }, null, 2) + '\n');
   }
 } else process.stdout.write(renderClaimsLedger(narrationClaimsBySurface(scenes)) + '\n');
