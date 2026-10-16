@@ -650,6 +650,17 @@ export interface CommCareCliPlayResult {
   skip_reason?: CommCareCliPlaySkipReason;
   /** Case types seeded into the restore for this run (echo, for the verdict). */
   seeded_case_types?: string[];
+  /**
+   * Property-carrying seeds derived from case-list predicates (ace#2286).
+   * Absent when no list filters on a literal-equality conjunction.
+   */
+  seeded_case_properties?: CaseSeedSpec[];
+  /**
+   * Set with `skip_reason: 'empty-case-list'`: the case-list predicates on
+   * the walked command (or the whole suite, if the command is unknown) that
+   * no seed satisfies, each with the reason it was not seeded (ace#2286).
+   */
+  unseeded_case_predicates?: UnseededCasePredicate[];
   /** Item-list fixture tags seeded (empty) into the restore (ace#2860). */
   seeded_fixture_tags?: string[];
   /** Custom user data the restore carried (ace#2989). */
@@ -714,6 +725,13 @@ export interface BuildPlayRestoreOptions {
    * `session/user/data/<key>` the CCZ references.
    */
   userData?: Record<string, string>;
+  /**
+   * Cases to seed WITH properties (ace#2286), one open case each, after the
+   * bare `caseTypes` seeds. Derived from suite.xml case-list predicates by
+   * `extractCaseSeedPlanFromSuite`; only conjunctions of literal equalities
+   * ever produce one.
+   */
+  caseSeeds?: CaseSeedSpec[];
   /** Override the restore user's uuid (also the seeded cases' owner). */
   userId?: string;
 }
@@ -739,11 +757,22 @@ export interface BuildPlayRestoreOptions {
  * `fcap_community` case it reaches `Form Start: Press Return to proceed`,
  * which the CLI emits only after form-init completes.
  *
- * The seeded case carries the case-2.0 minimum only — `case_type`,
- * `case_name`, `owner_id`. We deliberately do not invent case *properties*:
- * a case list whose detail columns reference missing properties renders them
- * blank, which is harmless, whereas fabricating property values would be
- * guessing at data the app owns.
+ * The bare seed carries the case-2.0 minimum only — `case_type`,
+ * `case_name`, `owner_id`. We do not invent case *properties* for it: a case
+ * list whose detail columns reference missing properties renders them blank,
+ * which is harmless, whereas fabricating property values would be guessing at
+ * data the app owns.
+ *
+ * **Why property seeds exist (dimagi-internal/ace#2286).** A case list whose
+ * datum nodeset FILTERS on properties excludes the bare seed, so the list was
+ * empty and play skipped the form — on `longitudinal-visits` that is always
+ * the PAYABLE followup (bednet-check-2-visit/20260908-1544:
+ * `[consent_given = 'yes' and household_state = 'registered_awaiting_followup']`).
+ * Those values are not guessed: suite.xml states them as the condition for a
+ * row to appear, so a case carrying exactly them is the one case the app
+ * itself says belongs in that list. Only conjunctions of `<prop> = '<literal>'`
+ * qualify (`extractCaseSeedPlanFromSuite`); any other predicate seeds nothing
+ * and stays a named, legible skip.
  *
  * **Why fixture seeding exists (dimagi-internal/ace#2860).** A form that
  * declares `<instance src="jr://fixture/item-list:<tag>"/>` (a select bound
@@ -770,18 +799,26 @@ export interface BuildPlayRestoreOptions {
  */
 export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string {
   const userId = opts.userId ?? PLAY_USER_UUID;
-  const caseTypes = opts.caseTypes ?? [];
-  const cases = caseTypes
-    .map(
-      (caseType, i) => `  <case case_id="ace-play-seed-${i}" user_id="${userId}" date_modified="${PLAY_RESTORE_DATE}" xmlns="http://commcarehq.org/case/transaction/v2">
+  const seeds: CaseSeedSpec[] = [
+    ...(opts.caseTypes ?? []).map((caseType) => ({ caseType, properties: {} })),
+    ...(opts.caseSeeds ?? []),
+  ];
+  const cases = seeds
+    .map((seed, i) => {
+      const props = Object.entries(seed.properties).filter(([k]) => isXmlNameSafe(k));
+      const update =
+        props.length === 0
+          ? ''
+          : `    <update>\n${props.map(([k, v]) => `      <${k}>${xmlEscape(v)}</${k}>\n`).join('')}    </update>\n`;
+      return `  <case case_id="ace-play-seed-${i}" user_id="${userId}" date_modified="${PLAY_RESTORE_DATE}" xmlns="http://commcarehq.org/case/transaction/v2">
     <create>
-      <case_type>${caseType}</case_type>
+      <case_type>${seed.caseType}</case_type>
       <case_name>ACE play seed ${i}</case_name>
       <owner_id>${userId}</owner_id>
     </create>
-  </case>
-`,
-    )
+${update}  </case>
+`;
+    })
     .join('');
   const fixtures = (opts.fixtureTags ?? [])
     .filter(isXmlNameSafe)
@@ -839,6 +876,149 @@ export function extractCaseTypesFromSuite(suiteXml: string): string[] {
     if (t) out.add(t);
   }
   return Array.from(out);
+}
+
+/** One case to seed: its type plus the properties a case list filters on. */
+export interface CaseSeedSpec {
+  caseType: string;
+  properties: Record<string, string>;
+}
+
+/** A case-list predicate no seed satisfies, and why (ace#2286). */
+export interface UnseededCasePredicate {
+  datum_id: string;
+  case_type: string;
+  /** The predicate body as suite.xml spells it (entity-decoded). */
+  predicate: string;
+  reason: string;
+}
+
+export interface CaseSeedPlan {
+  /** Property-carrying seeds, one per distinct (type, properties) a list requires. */
+  seeds: CaseSeedSpec[];
+  /** Predicates no seed satisfies; a list behind one renders empty → skipped. */
+  unseeded: UnseededCasePredicate[];
+}
+
+const CASEDB_CASE_PREFIX = /^\s*instance\(\s*['"]casedb['"]\s*\)\s*\/\s*casedb\s*\/\s*case\s*/;
+const CASE_TYPE_PREDICATE = /^@case_type\s*=\s*(?:'([^']*)'|"([^"]*)")$/;
+const OPEN_STATUS_PREDICATE = /^@status\s*=\s*(?:'open'|"open")$/;
+const LITERAL_EQ_CONJUNCT = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(?:'([^']*)'|"([^"]*)")$/;
+
+/**
+ * The `[...]` predicate bodies directly after `case` in a casedb nodeset, in
+ * order. Bracket- and quote-aware, so `index/*[not(@relationship='x')]=…`
+ * stays one predicate. `undefined` when the nodeset is not a casedb case read.
+ */
+function casedbPredicates(nodeset: string): string[] | undefined {
+  const head = nodeset.match(CASEDB_CASE_PREFIX);
+  if (!head) return undefined;
+  const out: string[] = [];
+  let i = head[0].length;
+  while (i < nodeset.length && nodeset[i] === '[') {
+    let depth = 0;
+    let quote: string | undefined;
+    let j = i;
+    for (; j < nodeset.length; j++) {
+      const c = nodeset[j];
+      if (quote) {
+        if (c === quote) quote = undefined;
+      } else if (c === "'" || c === '"') quote = c;
+      else if (c === '[') depth++;
+      else if (c === ']' && --depth === 0) break;
+    }
+    if (j >= nodeset.length) break; // unbalanced: keep what parsed
+    out.push(nodeset.slice(i + 1, j).trim());
+    i = j + 1;
+    while (i < nodeset.length && /\s/.test(nodeset[i])) i++;
+  }
+  return out;
+}
+
+/** Split on top-level `and` (outside quotes, parens and brackets). */
+function splitTopLevelAnd(expr: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | undefined;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) {
+      if (c === quote) quote = undefined;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && /\s/.test(c)) {
+      const m = /^\s+and\s+/.exec(expr.slice(i));
+      if (m) {
+        parts.push(expr.slice(start, i).trim());
+        start = i + m[0].length;
+        i = start - 1;
+      }
+    }
+  }
+  parts.push(expr.slice(start).trim());
+  return parts;
+}
+
+/**
+ * What a seed must carry for each property-filtered case list to render a row
+ * (ace#2286). For every `<datum nodeset="instance('casedb')/casedb/case[…]">`:
+ * `@case_type` names the type, `@status = 'open'` already holds for every
+ * seed, and each remaining predicate must be a conjunction of
+ * `<prop> = '<literal>'` equalities — those become the seed's properties.
+ * Anything else (`or`, `not()`, `!=`, a comparison, `selected()`, a date
+ * function, an `index/…` parent join, a contradiction) is reported in
+ * `unseeded` verbatim and its datum gets NO seed: a guessed value would be
+ * worse than a legible skip. Accepts a whole suite or one `<entry>`.
+ */
+export function extractCaseSeedPlanFromSuite(suiteXml: string): CaseSeedPlan {
+  const seeds = new Map<string, CaseSeedSpec>();
+  const unseeded: UnseededCasePredicate[] = [];
+  if (!suiteXml) return { seeds: [], unseeded };
+  // Quote-aware: a raw `>` inside an attribute must not end the tag.
+  for (const tag of suiteXml.matchAll(/<datum\b(?:[^>"']|"[^"]*"|'[^']*')*>/g)) {
+    const raw = tag[0].match(/\bnodeset\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    if (!raw) continue;
+    const preds = casedbPredicates(decodeXmlAttr(raw[1] ?? raw[2]));
+    if (!preds) continue;
+    const typeMatch = preds.map((p) => p.match(CASE_TYPE_PREDICATE)).find((m) => m);
+    const caseType = typeMatch ? (typeMatch[1] ?? typeMatch[2]) : undefined;
+    if (!caseType) continue;
+    const datumId = tag[0].match(/\bid\s*=\s*"([^"]+)"/)?.[1] ?? '';
+    const properties: Record<string, string> = {};
+    const bad: UnseededCasePredicate[] = [];
+    for (const pred of preds) {
+      if (CASE_TYPE_PREDICATE.test(pred) || OPEN_STATUS_PREDICATE.test(pred)) continue;
+      let reason: string | undefined;
+      for (const conjunct of splitTopLevelAnd(pred)) {
+        const m = conjunct.match(LITERAL_EQ_CONJUNCT);
+        if (!m) {
+          reason = `\`${conjunct}\` is not a <prop> = '<literal>' equality; only conjunctions of literal equalities are seeded`;
+          break;
+        }
+        const value = m[2] ?? m[3];
+        if (m[1] in properties && properties[m[1]] !== value) {
+          reason = `\`${m[1]}\` must equal both '${properties[m[1]]}' and '${value}'`;
+          break;
+        }
+        properties[m[1]] = value;
+      }
+      if (reason) bad.push({ datum_id: datumId, case_type: caseType, predicate: pred, reason });
+    }
+    if (bad.length > 0) {
+      unseeded.push(...bad);
+      continue;
+    }
+    if (Object.keys(properties).length === 0) continue;
+    const sorted = Object.fromEntries(
+      Object.entries(properties).sort(([a], [b]) => a.localeCompare(b)),
+    );
+    seeds.set(JSON.stringify([caseType, sorted]), { caseType, properties: sorted });
+  }
+  return { seeds: Array.from(seeds.values()), unseeded };
 }
 
 function xmlEscape(v: string): string {
@@ -1357,6 +1537,11 @@ export async function commcareCliPlayCcz(
   // suite.xml drives BOTH the case seed and the menu walk (ace#1088).
   const suiteXml = readCczSuiteXml(opts.cczPath);
   const seededCaseTypes = opts.seedCaseTypes ?? extractCaseTypesFromSuite(suiteXml);
+  // A property-filtered case list hides the bare seed; seed what the filter
+  // states, when it is a conjunction of literal equalities (ace#2286).
+  const seededCaseProperties = extractCaseSeedPlanFromSuite(suiteXml).seeds.filter((s) =>
+    seededCaseTypes.includes(s.caseType),
+  );
   // Lookup tables the forms read must resolve at form-init (ace#2860).
   const seededFixtureTags = opts.seedFixtureTags ?? readCczItemListFixtureTags(opts.cczPath);
   // Those roots are EMPTY, so a read of a row column cannot resolve (ace#2941).
@@ -1412,6 +1597,7 @@ export async function commcareCliPlayCcz(
       restorePath,
       buildPlayRestoreXml({
         caseTypes: seededCaseTypes,
+        caseSeeds: seededCaseProperties,
         fixtureTags: seededFixtureTags,
         userData: seededUserData,
       }),
@@ -1455,8 +1641,7 @@ export async function commcareCliPlayCcz(
         clearTimeout(timer);
         cap.dispose();
         const exitCode = code === null ? -1 : code;
-        resolve({
-          ...parsePlayOutput({
+        const parsed = parsePlayOutput({
             exitCode,
             stdout: cap.stdout.toString(),
             stderr: cap.stderr.toString(),
@@ -1469,8 +1654,23 @@ export async function commcareCliPlayCcz(
             ...(opts.restorePath
               ? {}
               : { emptySeededFixtureInstanceIds }),
-          }),
+        });
+        // An empty list behind a predicate we could not seed: name it, so the
+        // skip says WHICH filter kept the form out of reach (ace#2286).
+        const unseeded =
+          parsed.skip_reason === 'empty-case-list'
+            ? extractCaseSeedPlanFromSuite(
+                (nav.commandId ? findEntryForCommand(suiteXml, nav.commandId) : undefined) ??
+                  suiteXml,
+              ).unseeded
+            : [];
+        resolve({
+          ...parsed,
+          ...(unseeded.length > 0 ? { unseeded_case_predicates: unseeded } : {}),
           seeded_case_types: seededCaseTypes,
+          ...(!opts.restorePath && seededCaseProperties.length > 0
+            ? { seeded_case_properties: seededCaseProperties }
+            : {}),
           seeded_fixture_tags: seededFixtureTags,
           ...(navUserData ? { seeded_user_data: navUserData } : {}),
           ...(nav.commandId ? { command_id: nav.commandId } : {}),

@@ -174,3 +174,53 @@ describe('land-pr-classify --fixture', () => {
     expect(d.cause).toBe('not-blocked');
   });
 });
+
+/**
+ * ace#3106 — the LIVE path reads over REST only. ~20 concurrent shippers
+ * polling through `gh pr view` exhausted GitHub's GraphQL secondary rate limit
+ * on 2026-10-16; the classifier was GraphQL too (`statusCheckRollup`,
+ * `gh pr list`). A `gh` stub that FAILS every GraphQL-backed call proves the
+ * check runs and commit statuses still arrive, through `commits/<sha>/check-runs`
+ * and `commits/<sha>/status`, in REST's lowercase vocabulary.
+ */
+describe('land-pr-classify live path over REST (ace#3106)', () => {
+  it('reads failing checks via REST while every GraphQL call fails', () => {
+    const stub = path.join(work, 'bin');
+    fs.mkdirSync(stub);
+    fs.writeFileSync(
+      path.join(stub, 'gh'),
+      `#!/usr/bin/env bash
+echo "$*" >> "${work}/gh.log"
+case "$1 $2" in
+  "api graphql"|"pr view"|"pr list") echo "GraphQL: API rate limit exceeded" >&2; exit 1 ;;
+esac
+case "$2" in
+  */check-runs*) echo '[{"name":"unit-tests","status":"completed","conclusion":"failure"},{"name":"clean-install","status":"in_progress","conclusion":null}]' ;;
+  */status) echo '[{"context":"lint","state":"success"}]' ;;
+  *) echo '[]' ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    // `work` is not a git repo, so the VERSION read fails → verdict unknown;
+    // what this case pins is the CHECKS, which come only from REST.
+    const r = spawnSync(
+      'npx',
+      ['tsx', SCRIPT, '--pr', '7', '--repo', 'o/r', '--merge-state', 'BLOCKED', '--head-sha', 'abc123'],
+      {
+        cwd: work,
+        encoding: 'utf-8',
+        timeout: 60_000,
+        env: { ...process.env, PATH: `${stub}:${process.env.PATH}` },
+      },
+    );
+    expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+    expect(r.stdout).toMatch(/^failing=unit-tests$/m);
+    expect(r.stdout).toMatch(/^pending=clean-install$/m);
+    expect(r.stdout).toMatch(/^action=wait$/m);
+    const log = fs.readFileSync(path.join(work, 'gh.log'), 'utf-8');
+    expect(log).toContain('api repos/o/r/commits/abc123/check-runs');
+    expect(log).toContain('api repos/o/r/commits/abc123/status');
+    expect(log).not.toMatch(/^(api graphql|pr view|pr list)/m);
+  });
+});

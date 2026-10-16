@@ -1258,6 +1258,8 @@ reproducer, see reference.md § Runtime install validation.
                  | 'cli-fixture-unseeded' | 'cli-user-data-unseeded',
      nav_unresolved?: <why entry_path landed on no command>,
      seeded_case_types?: [...],
+     seeded_case_properties?: [{caseType, properties: {prop: literal}}],  // from case-list filters (ace#2286)
+     unseeded_case_predicates?: [{datum_id, case_type, predicate, reason}], // with empty-case-list only (ace#2286)
      seeded_fixture_tags?: [...],     // item-list lookup tables seeded empty (ace#2860)
      seeded_user_data?: {key: value}, // custom user data in the restore (ace#2989)
      killed_reason?: 'restart-loop' | 'output-ceiling',  // helper killed a runaway JVM (ace#2988)
@@ -1282,7 +1284,7 @@ reproducer, see reference.md § Runtime install validation.
    - **`validate verdict: 'fail'`** → halt with `[BLOCKER]` `cli-validate-parser-error` naming `parser_message` + `failed_resource`. Don't bother running `play` — `validate` already proved the CCZ is structurally broken.
    - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message` (see § Failure modes for the bednet class + fix).
    - **`play verdict: 'skipped'`** → **do NOT halt**, and **never record it as a pass**: form-init was not observed, so the form is UNEVALUATED. Record `cli_validate.play: {verdict: skipped, skip_reason, command_id, seeded_case_types}` so the coverage gap is legible. The reasons are:
-     - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (the seed carries `case_type` / `case_name` / `owner_id` and no other properties).
+     - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, plus (ace#2286) one case per case list that filters on a conjunction of `<prop> = '<literal>'` equalities, carrying exactly those properties (echoed as `seeded_case_properties`). So this now only fires when a case-list filter is something else — `or`, `not()`, `!=`, a comparison, `selected()`, a date function, an `index/…` parent join. `unseeded_case_predicates` names each such predicate verbatim with its reason; copy it into the verdict.
      - `cli-case-index-unsupported` → `[INFO]` (ace#2784). Form entry WAS reached, but form-init ran a casedb index query (`case[index/parent = …]`, e.g. a `join()` over a group's member cases, or a `case-choice-attendance` checklist's `casedb` itemset and roster — `voidcraft-labs/commcare-nova#728`), and the CLI's in-memory sandbox has no `CaseIndexTable` (`"this.caseIndexTable" is null`). A device has one, so this is the harness's limit, not a defect. Observed on both group-payment-test session forms.
      - `cli-fixture-unseeded` → `[INFO]` (ace#2860). Form-init asked the synthetic restore for a fixture it does not carry (`FixtureInitializationException: Unable to find lookup table`). `play` seeds an empty `item-list:<tag>` fixture root for every `jr://fixture/item-list:<tag>` the CCZ's XML declares (echoed as `seeded_fixture_tags`), so this fires for a fixture kind that seed does not cover — and (ace#2941) when a binding or case-list column reads a ROW column of an empty-seeded table (`Logic references instance(<id>)/… which is not a valid question or value`, every unresolved ref an item-list instance; `unresolved_xpath` names the read). Do not reclassify such a `fail` by hand; the gate does it. A device receives the table on sync, so this is the harness's limit. Before ace#2860 the restore seeded no fixtures and every lookup-backed form graded `fail` → `cli-form-init-error` on a clean build. To check the device side, confirm the table exists on HQ with `commcare_get_lookup_table`.
      - `cli-user-data-unseeded` → `[INFO]` (ace#2989). Something read custom user data (`instance(commcaresession)/session/user/data/<key>`) the restore does not carry — typically a menu `relevant=` thrown from `MenuLoader.menuIsRelevant` while the root menu renders, before any form opens. `play` seeds every key the CCZ's XML names (echoed as `seeded_user_data`), so this fires for a key the scan cannot see. Fires only when EVERY unresolved ref is user data (or an empty-seeded fixture); a real XPath defect in the same stream still fails. HQ sends custom user data on sync, so this is the harness's limit; confirm the field exists on HQ with `commcare_list_user_fields`.
@@ -1310,8 +1312,14 @@ reproducer, see reference.md § Runtime install validation.
 
    **What seeding does not cover** — say so rather than implying the gate
    is now complete:
-   - Case lists whose `<filter>` keys on a case **property**. The seed
-     carries no properties, so such a list is still empty → `skipped`.
+   - Case lists that filter on a case **property** with anything other
+     than a conjunction of literal equalities. `[consent_given = 'yes' and
+     household_state = 'registered_awaiting_followup']` (the
+     `longitudinal-visits` payable list, bednet-check-2-visit/20260908-1544)
+     IS seeded — suite.xml states the values a row needs, so they are not
+     guessed (ace#2286). `or`, `not()`, `!=`, comparisons, `selected()`,
+     dates and `index/…` joins are not: such a list is still empty →
+     `skipped`, and `unseeded_case_predicates` names the predicate.
    - Case **search** / registry entries (`<query>` screens) and any datum
      screen other than a plain entity list.
    - Form-init that queries casedb by **index** (parent/child) →
