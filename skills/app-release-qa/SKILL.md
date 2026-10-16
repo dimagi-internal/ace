@@ -1225,6 +1225,15 @@ reproducer, see reference.md § Runtime install validation.
    all results, then branch on the worst verdict. (Each call is its own
    short-lived JVM; serial execution just adds ~8s/module of dead wall time.)
 
+   **Role-gated apps (`#user/<field>`, ace#2989).** `play` seeds every
+   `session/user/data/<key>` the CCZ reads with an empty string, so a
+   `relevant=` on it evaluates instead of throwing. A menu shown only for
+   `#user/role = 'FLW'` is therefore hidden by default: pass
+   `user_data: {role: 'FLW'}` (and one call per other role value) to walk
+   that branch, counting `entry_path` as THAT role sees the menu. Read the
+   role values off the `relevant=` attributes in suite.xml. Check
+   `command_id` against the form you meant.
+
 3. **Response shape (both modes):**
 
    ```
@@ -1234,10 +1243,12 @@ reproducer, see reference.md § Runtime install validation.
      command_id?: 'm3-f0',            // the suite command entry_path resolved to
      skip_reason?: 'empty-case-list' | 'form-entry-not-reached'
                  | 'cli-case-index-unsupported' | 'entry-path-unresolved'
-                 | 'cli-fixture-unseeded',
+                 | 'cli-fixture-unseeded' | 'cli-user-data-unseeded',
      nav_unresolved?: <why entry_path landed on no command>,
      seeded_case_types?: [...],
      seeded_fixture_tags?: [...],     // item-list lookup tables seeded empty (ace#2860)
+     seeded_user_data?: {key: value}, // custom user data in the restore (ace#2989)
+     killed_reason?: 'restart-loop' | 'output-ceiling',  // helper killed a runaway JVM (ace#2988)
      failing_binding?: '/data/du_bednet_visit/deliver',
      unresolved_xpath?: 'instance(commcaresession)/session/data/case_id',
      // both modes:
@@ -1262,6 +1273,7 @@ reproducer, see reference.md § Runtime install validation.
      - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (the seed carries `case_type` / `case_name` / `owner_id` and no other properties).
      - `cli-case-index-unsupported` → `[INFO]` (ace#2784). Form entry WAS reached, but form-init ran a casedb index query (`case[index/parent = …]`, e.g. a `join()` over a group's member cases, or a `case-choice-attendance` checklist's `casedb` itemset and roster — `voidcraft-labs/commcare-nova#728`), and the CLI's in-memory sandbox has no `CaseIndexTable` (`"this.caseIndexTable" is null`). A device has one, so this is the harness's limit, not a defect. Observed on both group-payment-test session forms.
      - `cli-fixture-unseeded` → `[INFO]` (ace#2860). Form-init asked the synthetic restore for a fixture it does not carry (`FixtureInitializationException: Unable to find lookup table`). `play` seeds an empty `item-list:<tag>` fixture root for every `jr://fixture/item-list:<tag>` the CCZ's XML declares (echoed as `seeded_fixture_tags`), so this fires for a fixture kind that seed does not cover — and (ace#2941) when a binding or case-list column reads a ROW column of an empty-seeded table (`Logic references instance(<id>)/… which is not a valid question or value`, every unresolved ref an item-list instance; `unresolved_xpath` names the read). Do not reclassify such a `fail` by hand; the gate does it. A device receives the table on sync, so this is the harness's limit. Before ace#2860 the restore seeded no fixtures and every lookup-backed form graded `fail` → `cli-form-init-error` on a clean build. To check the device side, confirm the table exists on HQ with `commcare_get_lookup_table`.
+     - `cli-user-data-unseeded` → `[INFO]` (ace#2989). Something read custom user data (`instance(commcaresession)/session/user/data/<key>`) the restore does not carry — typically a menu `relevant=` thrown from `MenuLoader.menuIsRelevant` while the root menu renders, before any form opens. `play` seeds every key the CCZ's XML names (echoed as `seeded_user_data`), so this fires for a key the scan cannot see. Fires only when EVERY unresolved ref is user data (or an empty-seeded fixture); a real XPath defect in the same stream still fails. HQ sends custom user data on sync, so this is the harness's limit; confirm the field exists on HQ with `commcare_list_user_fields`.
      - `form-entry-not-reached` → `[WARN]`. The walk ended without the CLI printing `Starting form entry` / `Form Start:`. This means the walk is wrong for this app shape (a datum screen it did not answer), so name `entry_path` + `command_id` and file it. Before ace#2784 this case was graded `pass`.
      - `entry-path-unresolved` → `[WARN]`. Your `entry_path` lands on no command, and the CLI was not run. `nav_unresolved` lists what that menu actually shows, so re-issue with the display position.
 
@@ -1293,9 +1305,12 @@ reproducer, see reference.md § Runtime install validation.
    - Form-init that queries casedb by **index** (parent/child) →
      `skipped`/`cli-case-index-unsupported`. The CLI has no case index
      table. That form's init is not exercised by this gate at all.
-   - `relevant=` conditions on menus/commands are not evaluated. An app
-     that hides a menu item that way shifts the display positions the
-     walk assumes; `command_id` is how you catch that.
+   - `relevant=` conditions on menus/commands ARE evaluated by the CLI
+     (`MenuLoader.menuIsRelevant`, ace#2989), so a hidden item shifts every
+     later display position. The walk mirrors that only for a `relevant=`
+     reading custom user data and string literals (`#user/role = 'FLW'`,
+     `and`/`or`); any other relevance is assumed true, and `command_id` is
+     how you catch a walk that landed elsewhere.
    - The child-menu listing (parent's forms first, then its child menus)
      and the descent into a child menu were observed live on
      group-payment-test (`0 / 2` lists `Register group / Add member /
