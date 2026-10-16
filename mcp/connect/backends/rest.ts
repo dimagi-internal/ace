@@ -461,6 +461,7 @@ export class RestBackend implements ConnectClient {
   listDeliverUnits = stub('listDeliverUnits') as ConnectClient['listDeliverUnits'];
   listPaymentUnits = stub('listPaymentUnits') as ConnectClient['listPaymentUnits'];
   listInvites = stub('listInvites') as ConnectClient['listInvites'];
+  listReceivedInvitations = stub('listReceivedInvitations') as ConnectClient['listReceivedInvitations'];
   listInvoices = stub('listInvoices') as ConnectClient['listInvoices'];
   getInvoice = stub('getInvoice') as ConnectClient['getInvoice'];
   getLearnProgress = stub('getLearnProgress') as ConnectClient['getLearnProgress'];

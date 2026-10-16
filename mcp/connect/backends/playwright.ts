@@ -19,7 +19,11 @@ import {
   VerificationDurationNotPersistedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
-import { assertAcceptingForSelf } from '../../../lib/connect-orgs.js';
+import {
+  assertAcceptingForSelf,
+  parseReceivedInvitations,
+  resolveControlledApplicationOrg,
+} from '../../../lib/connect-orgs.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, parsePendingInviteTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
@@ -1469,6 +1473,20 @@ export class PlaywrightBackend implements ConnectClient {
     return { invites: parseInvitesList(await listRes.text(), program_id) };
   };
 
+  /**
+   * Invitations addressed TO this org, from its OWN programme page. Connect's
+   * `network_manager_home` lists only programmes with an application whose
+   * organization is this org, and renders the application id (in the Apply
+   * url) for INVITED rows. Non-blind, unlike `listInvites` — see
+   * `parseReceivedInvitations` and ace#3009.
+   */
+  listReceivedInvitations: ConnectClient['listReceivedInvitations'] = async ({ organization_slug }) => {
+    const path = `/a/${organization_slug}/program/`;
+    const res = await this.request.get(path);
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    return { invitations: parseReceivedInvitations(await res.text(), organization_slug) };
+  };
+
   // ── Organization membership ───────────────────────────────────────
 
   /**
@@ -2635,27 +2653,19 @@ export class PlaywrightBackend implements ConnectClient {
    * org, the POST will return 403 — which is the correct failure mode.
    */
   acceptProgramApplication: ConnectClient['acceptProgramApplication'] = async (args) => {
-    // 1. Look up the application to find the LLO org slug
-    const { invites } = await this.listInvites({
-      organization_slug: args.organization_slug,
-      program_id: args.program_id,
-    });
-    const app = invites.find((i) => i.id === args.application_id);
-    if (!app) {
-      throw new ConnectError(
-        `acceptProgramApplication: application ${args.application_id} not found under program ${args.program_id} for org ${args.organization_slug}. ` +
-          'List invites first to verify the application_id is correct.',
-      );
-    }
-    const lloSlug = app.organization;
-
-    // AUTHORITY GATE (ace#2954). This path POSTs at the LLO's OWN url with the
-    // LLO's page as Referer — i.e. it performs the invited organisation's
-    // action for them. "If the caller can supply the LLO org slug we POST it"
-    // is not an authorisation model. Refuse unless ACE actually controls that
-    // org; the REST path carries the same gate, so neither backend can be used
-    // to act as a third party. The accept is irreversible: Connect's
+    // AUTHORITY GATE (ace#2954, resolved non-blind since ace#3009). This path
+    // POSTs at the LLO's OWN url with the LLO's page as Referer — i.e. it
+    // performs the invited organisation's action for them. The owning org is
+    // resolved ONLY among orgs ACE controls (environment), each read on its
+    // own programme page, which Connect scopes to invitations addressed to
+    // it. A partner's application is therefore never found and nothing is
+    // requested at the partner's url. (It used to resolve via `listInvites`,
+    // which is blind and returned [] for live invites, so every accept
+    // failed closed — ace#3009.) The accept is irreversible: Connect's
     // ProgramApplicationAcceptView has no transition out of ACCEPTED.
+    const lloSlug = await resolveControlledApplicationOrg(args, process.env, async (org) =>
+      (await this.listReceivedInvitations({ organization_slug: org })).invitations,
+    );
     assertAcceptingForSelf(lloSlug, process.env);
 
     const path = `/a/${lloSlug}/program/${args.program_id}/application/${args.application_id}/accept/`;

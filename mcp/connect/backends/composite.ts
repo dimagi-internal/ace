@@ -120,6 +120,8 @@ export class CompositeBackend implements ConnectClient {
   listDeliverUnits = (a: Parameters<ConnectClient['listDeliverUnits']>[0]) => this.opts.playwright.listDeliverUnits(a);
   listPaymentUnits = (a: Parameters<ConnectClient['listPaymentUnits']>[0]) => this.opts.playwright.listPaymentUnits(a);
   listInvites = (a: Parameters<ConnectClient['listInvites']>[0]) => this.opts.playwright.listInvites(a);
+  listReceivedInvitations = (a: Parameters<ConnectClient['listReceivedInvitations']>[0]) =>
+    this.opts.playwright.listReceivedInvitations(a);
   listInvoices = (a: Parameters<ConnectClient['listInvoices']>[0]) => this.opts.playwright.listInvoices(a);
   getInvoice = (a: Parameters<ConnectClient['getInvoice']>[0]) => this.opts.playwright.getInvoice(a);
   getLearnProgress = (a: Parameters<ConnectClient['getLearnProgress']>[0]) => this.opts.playwright.getLearnProgress(a);

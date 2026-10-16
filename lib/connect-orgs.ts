@@ -139,12 +139,19 @@ export class ActingForAnotherOrgError extends Error {
   constructor(
     readonly org: string | null,
     readonly controlled: string[],
+    detail?: string,
   ) {
     super(
       org === null
-        ? 'Refusing to accept a program application: ACE could not determine WHICH organisation ' +
-          'the application belongs to, and accepting is that organisation\'s action to take. ' +
-          'Resolve the application first (connect_list_invites), or wait for the partner to accept.'
+        ? 'Refusing to accept a program application: ACE could not show that the application belongs ' +
+          `to an organisation it controls (controlled orgs: ${controlled.length ? controlled.join(', ') : 'none configured'}), ` +
+          'and accepting is the invited organisation\'s action to take. ACE looks for the application on each ' +
+          'controlled org\'s OWN programme page (/a/<org>/program/), where Connect lists only the invitations ' +
+          'addressed to that org, and only while they are still INVITED. Not found there means it belongs to an ' +
+          'org ACE does not control (wait for the partner to accept), it is no longer INVITED, or the application ' +
+          'is the programme org\'s own (self-managed — that page renders the PM view, which lists no application ids).' +
+          (detail ? ` ${detail}` : '') +
+          ' See dimagi-internal/ace#2954, #3009.'
         : `Refusing to accept the program application for organisation ${JSON.stringify(org)}: ` +
           `ACE does not control it (controlled orgs: ${controlled.length ? controlled.join(', ') : 'none configured'}). ` +
           'Accepting an invitation is the INVITED organisation\'s action, not the programme owner\'s. ' +
@@ -206,6 +213,101 @@ export function assertAcceptingForSelf(
   if (org === null || !controlled.includes(org)) {
     throw new ActingForAnotherOrgError(org, controlled);
   }
+}
+
+/** An invitation as the INVITED org's own programme page lists it. */
+export interface ReceivedInvitation {
+  organization: string;
+  program_id: string;
+  application_id: string;
+}
+
+const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+
+/**
+ * Parse the invitations an org's OWN programme page (`GET /a/<org>/program/`)
+ * lists as addressed to it.
+ *
+ * Source of truth (dimagi/commcare-connect): for an org that is not a
+ * programme manager, `program_home` renders `network_manager_home`, whose
+ * queryset is `Program.objects.filter(programapplication__organization=org)`
+ * annotated with that application's `program_application_id`. `nm_home.html`
+ * renders, for each `status == 'invited'` row viewed by an org admin, an Apply
+ * button whose `hx-post` is
+ * `{% url "program:apply_or_decline_application" request.org.slug program.program_id program.application_program_application_id "apply" %}`
+ * i.e. `/a/<org>/program/<program_id>/application/<application_id>/apply/`.
+ *
+ * So an application id appearing in THAT url on THAT org's page is Connect's
+ * own statement that the application belongs to the org. Only URLs whose org
+ * segment equals `orgSlug` are returned — a link naming another org proves
+ * nothing about this one.
+ *
+ * Observed live 2026-10-16 (ace#3009): `/a/ace-nm-org/program/` rendered
+ * `/a/ace-nm-org/program/b628a35f-be8f-469f-83ab-1b14bf469976/application/da8c184e-735c-4fb5-aa2b-5a2567558a45/apply/`
+ * while `connect_list_invites` returned `[]` at both orgs.
+ */
+export function parseReceivedInvitations(html: string, orgSlug: string): ReceivedInvitation[] {
+  const re = new RegExp(`/a/([A-Za-z0-9_-]+)/program/(${UUID})/application/(${UUID})/apply/`, 'g');
+  const out: ReceivedInvitation[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(re)) {
+    if (m[1] !== orgSlug) continue;
+    const key = `${m[2]}/${m[3]}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ organization: orgSlug, program_id: m[2].toLowerCase(), application_id: m[3].toLowerCase() });
+  }
+  return out;
+}
+
+/**
+ * Resolve WHICH ACE-controlled org a programme application belongs to — or
+ * refuse (ace#3009, keeping ace#2954's property).
+ *
+ * #2954's gate asked `connect_list_invites` (the PM org's page) whose
+ * application it was. That read is blind — it returns `[]` even for a live
+ * invite — so the gate failed closed on EVERY accept, ACE's own NM org
+ * included. This asks the authoritative side instead: each org ACE controls
+ * (environment only, `aceControlledOrgs`) is read on its OWN programme page,
+ * which Connect scopes to invitations addressed to that org (see
+ * `parseReceivedInvitations`). The application is accepted only if it is
+ * found there.
+ *
+ * The safety property holds by construction: only controlled orgs are ever
+ * looked at, so a partner's application can never be "found", and no caller
+ * argument names the subject org. Any read failure counts as not-found
+ * (fails closed). Returns the owning org slug.
+ */
+export async function resolveControlledApplicationOrg(
+  args: { program_id: string; application_id: string },
+  env: Record<string, string | undefined>,
+  listReceived: (org: string) => Promise<ReceivedInvitation[]>,
+): Promise<string> {
+  const controlled = aceControlledOrgs(env);
+  const programId = args.program_id.trim().toLowerCase();
+  const appId = args.application_id.trim().toLowerCase();
+  const errors: string[] = [];
+  for (const org of controlled) {
+    let rows: ReceivedInvitation[];
+    try {
+      rows = await listReceived(org);
+    } catch (e) {
+      errors.push(`${org}: ${(e as Error).message}`);
+      continue;
+    }
+    const hit = rows.find(
+      (r) => r.organization === org && r.program_id === programId && r.application_id === appId,
+    );
+    if (hit) {
+      assertAcceptingForSelf(hit.organization, env);
+      return hit.organization;
+    }
+  }
+  throw new ActingForAnotherOrgError(
+    null,
+    controlled,
+    errors.length ? `Reads that failed (counted as not found): ${errors.join('; ')}.` : undefined,
+  );
 }
 
 export function connectOrgsFromTenancy(tenancy: {
