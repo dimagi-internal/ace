@@ -590,6 +590,31 @@ export function findDuplicateLookupValues(
     .map(([value, count]) => ({ value, count }));
 }
 
+/**
+ * Pure. Which values in `valueColumnId` contain whitespace (ace#2984).
+ *
+ * Nova's `upload_app_to_hq` preflight has a SECOND rule beside uniqueness:
+ * a saved value cannot contain a space or a line break — *"Saved values can't
+ * contain whitespace. Tidy those rows or choose another value column."* A
+ * table whose only text column is a display name (`"Placeholder: services
+ * directory entry 1 …"`) therefore binds, reads back, passes uniqueness, and is
+ * refused at upload after the whole build. Any `\s` counts, leading/trailing
+ * included — Nova does not trim. Returns the offending values in row order
+ * (a repeated offender is listed once per row: each row needs tidying).
+ */
+export function findWhitespaceLookupValues(
+  rows: readonly LookupTableRow[],
+  valueColumnId: string,
+): string[] {
+  const out: string[] = [];
+  for (const row of rows) {
+    const cell = (row?.cells ?? []).find((c) => c?.columnId === valueColumnId);
+    const value = cell?.value ?? '';
+    if (/\s/.test(value)) out.push(value);
+  }
+  return out;
+}
+
 export interface BindVerification {
   /**
    * True only when the read-back proves the requested lookup source is live
@@ -617,7 +642,8 @@ export interface BindVerification {
     | 'no-rows-read-back'
     | 'partial-rows-read-back'
     | 'empty-table'
-    | 'duplicate-values';
+    | 'duplicate-values'
+    | 'whitespace-values';
   /** Human-readable, quoted into the decision rows. */
   message: string;
 }
@@ -753,13 +779,33 @@ export function verifyLookupBind(input: {
     };
   }
 
+  const spaced = findWhitespaceLookupValues(rows.rows, requested.valueColumnId);
+  if (spaced.length > 0) {
+    const shown = spaced
+      .slice(0, 3)
+      .map((v) => JSON.stringify(v))
+      .join(', ');
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'whitespace-values',
+      message:
+        `field is bound to lookup table "${requested.tableId}" through value column ` +
+        `"${requested.valueColumnId}", but ${spaced.length} of ${rows.rows.length} row(s) carry ` +
+        `spaces or line breaks there (${shown}${spaced.length > 3 ? ', …' : ''}) — Nova's upload ` +
+        'preflight refuses the whole app for this ("…contain spaces or line breaks there. Saved ' +
+        'values can\'t contain whitespace. Tidy those rows or choose another value column."); ' +
+        'save a slug-shaped code column (e.g. `code`), not the display name (ace#2984)',
+    };
+  }
+
   return {
     verified: true,
     bindLanded: true,
     code: 'ok',
     message:
       `field is bound to lookup table "${requested.tableId}" on the declared value/label columns, ` +
-      `over ${rows.rows.length} rows with unique values in "${requested.valueColumnId}"`,
+      `over ${rows.rows.length} rows with unique, whitespace-free values in "${requested.valueColumnId}"`,
   };
 }
 

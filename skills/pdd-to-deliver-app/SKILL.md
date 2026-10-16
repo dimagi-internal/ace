@@ -1325,6 +1325,20 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           `complete: true`; a partial read is `verified: false`, because a
           duplicate on an unread page is invisible.
 
+          **The value column must also be whitespace-free (ace#2984).** Nova's
+          preflight has a second rule: *"…contain spaces or line breaks there.
+          Saved values can't contain whitespace. Tidy those rows or choose
+          another value column."* So a table ACE (or the architect) authors
+          needs a **slug-shaped value column** — e.g. `code` with
+          `svc_entry_1` — distinct from the display `name` it uses as the
+          label; never bind the display name as the saved value. On
+          `kaduna-graduation/20261015-1411` `kgrad_services` had only
+          `area, service_type, name, location, contact`, three selects saved
+          `name` (`"Placeholder: services directory entry 1 …"`), and the whole
+          Deliver app was refused at upload. `verifyLookupBind` returns
+          `whitespace-values` for this; the repair is to add the code column
+          and rebind `valueColumnId` to it, not to strip the labels.
+
           **Repairing a duplicate is not just renaming the rows.** A shared
           `other` row usually exists once per partition *because* the select is
           filtered — one shared row would be excluded from every partition —
@@ -1403,7 +1417,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           `ok: false`**, quoting `describeLookupBindAudit(audit)`.
 
        The failures it names are all invisible to every other gate ACE runs:
-       `duplicate-values` (the upload preflight refuses the app),
+       `duplicate-values` and `whitespace-values` (the upload preflight
+       refuses the app),
        `empty-table` and `not-a-lookup-source` (the select renders EMPTY on the
        device), `no-rows-read-back` / `partial-rows-read-back` (the check did
        not actually run — not a pass). Fixing one here costs a row edit; the
@@ -2740,6 +2755,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 4f: a lookup's value column must be whitespace-free (ace#2984).** On `kaduna-graduation/20261015-1411` `kgrad_services` had no code-shaped column, three selects saved the display `name` (`"Placeholder: services directory entry 1 …"`), every ACE gate passed (the values were unique), and Nova's `upload_app_to_hq` preflight refused the Deliver app: *"Saved values can't contain whitespace."* Same class as ace#2143, Nova's second rule. `verifyLookupBind` (and so `auditLookupBinds`) now returns `whitespace-values`; authored tables carry a slug `code` column as the saved value. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-10-12 | **Step 4k prefers the publisher's file over a derived `inputs[]` extraction (ace#2852).** `resolveInstrumentSource` returned the `inputs[]` match before it looked at manifest-recorded subfolders, even when that match classed `derived` — so on `smallholder-seasonal/20261012-1549` the strict path resolved `INSTRUMENT — Nigeria 2018 PPI (… extracted verbatim).md` while the publisher's `nigeria-ppi-2020-scorecard-and-lookup-table.xlsx` sat in the recorded subfolder `official-nigeria-2018-ppi (povertyindex.org)`. The ace#1648 order (inputs[] first) predates the ace#2110 classifier, which disclosed a derived source but never re-ordered the search. Step 2 now walks the subfolders when the `inputs[]` match is derived; the helper resolves a single published subfolder file over it (naming the passed-over entry in its memo), halts on more than one, and keeps the derived entry with its caveat only when nothing published exists. *Enforced:* `test/lib/instrument-constants.test.ts` (real layout and ids from that run). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every `[ACE]` latitude, `[FIXED]` ambiguity, stated exemption and not-computable metric this skill used to tabulate under the summary's `## Build memo` is now a decision row only (`plain`, `check_at`/`correct_looks_like`, `review_ask` + `confirm_reason` for open questions), the non-decision check records move to the summary's `## Build notes`, and the Phase 3 boundary fails a written summary with zero rows under `skill: pdd-to-deliver-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **New Step 4o — every PDD § Success Metrics term is SUBMITTED on the paid form (ace#2590).** On `spark-facilitator/20261001-2208` the Community Meeting Record read `#community/number_of_households` inside a validate and never submitted it, so PDD §8.2 S1 (households represented ÷ enrolled households) was not computable in Connect and Phase 7 listed it under "Not computable from visit data" — the run completed and a partner-owned indicator silently vanished. 4h covered taught-vs-collectable; nothing covered measured-vs-submitted. 4o resolves each metric term to a paid-form field, a case property, or an `external` source with a reason, runs `checkMetricTermsSubmitted` (`lib/metric-terms-submitted.ts`) over the paid form, mirrors any case-held term as a hidden `calculate`, and names every term still unsubmitted as not computable in the summary (`metric_terms` frontmatter + build memo). *Enforced:* `test/lib/metric-terms-submitted.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

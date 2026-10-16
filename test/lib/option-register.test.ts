@@ -11,6 +11,7 @@ import {
   auditLookupBinds,
   describeLookupBindAudit,
   findDuplicateLookupValues,
+  findWhitespaceLookupValues,
   verifyLookupBind,
   type BuiltOptionSource,
   type RegisterRow,
@@ -418,6 +419,51 @@ describe('verifyLookupBind', () => {
     expect(v.verified).toBe(false);
     expect(v.code).toBe('duplicate-values');
     expect(v.message).toContain('(blank) ×2');
+  });
+
+  /**
+   * ace#2984 — the reproducer, from `kaduna-graduation/20261015-1411`.
+   * `kgrad_services` had columns `area, service_type, name, location, contact`
+   * and no code-shaped column, so three selects saved `name`. Both rows are
+   * unique, so the ace#2143 check passed — and Nova's `upload_app_to_hq`
+   * preflight refused the whole Deliver app:
+   *
+   *   "A lookup-powered choice list uses Name for its saved values, but 2
+   *    row(s) in kgrad_services contain spaces or line breaks there. Saved
+   *    values can't contain whitespace."
+   *
+   * Before this test `verifyLookupBind` returned `verified: true` here.
+   */
+  it('refuses a bind whose value column carries whitespace (the ace#2984 repro)', () => {
+    const rows = {
+      complete: true,
+      rows: [1, 2].map((n) => ({
+        cells: [
+          { columnId: 'c-area', value: 'Kaduna' },
+          {
+            columnId: 'c-val',
+            value: `Placeholder: services directory entry ${n} (LLO and Dimagi to supply)`,
+          },
+          { columnId: 'c-lab', value: `Placeholder: services directory entry ${n} (LLO and Dimagi to supply)` },
+        ],
+      })),
+    };
+    const v = verifyLookupBind({ requested, readBack: boundReadBack, rows });
+    expect(v.verified).toBe(false);
+    expect(v.code).toBe('whitespace-values');
+    expect(v.bindLanded).toBe(true);
+    expect(v.message).toContain('2 of 2 row(s)');
+    expect(v.message).toContain("Saved values can't contain whitespace");
+  });
+
+  it('catches any whitespace — interior, leading, trailing, line breaks, tabs — and passes slugs', () => {
+    expect(
+      findWhitespaceLookupValues(rowsOf('ok_slug', 'two words', ' lead', 'trail ', 'a\nb', 'a\tb', 'svc-01').rows, 'c-val'),
+    ).toEqual(['two words', ' lead', 'trail ', 'a\nb', 'a\tb']);
+    // Positive control: the run remedy — a slug `code` column — verifies.
+    const v = verifyLookupBind({ requested, readBack: boundReadBack, rows: rowsOf('svc_entry_1', 'svc_entry_2') });
+    expect(v.verified).toBe(true);
+    expect(v.code).toBe('ok');
   });
 
   /**
