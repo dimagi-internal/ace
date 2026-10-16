@@ -137,7 +137,14 @@ and has no result at all.
    `opportunity_ids` the merged sample is the home partner's rows first. So preview it under the home
    opp at `sample_size: 200` and pass that; the script appends `visit rows judged: <n> of <N> (opps …)`
    to checks 24 and 26 (`visitSampleScope`) so the verdict never reads as every partner's visits.
-   Full per-partner coverage needs a labs-side preview path (see ace#2973).
+   **To judge every partner, build the full rows from the generator's fixtures (ace#2742):** read each
+   partner's `user_visits.json` from its labs fixture folder, map every record through the visits
+   pipeline's schema paths (`pipeline_get` → `schema.fields[].path`), cross-check that mapping against
+   the 200-row home preview (every field of every previewed row must match its fixture row — any
+   mismatch means the mapping is wrong and the full rows are not evidence), and pass the mapped rows
+   as `--visits` (`{row_count_before_sample: <N>, rows: [...]}` with `row_count_before_sample` = the
+   row count, so the scope reads as complete). Measured on `spark-facilitator/20261004-1706`: 1,594
+   rows across five partners, 1,400 field comparisons against the preview, 0 mismatches.
    `--registry` is the registry as it stands — `7-synthetic/semantic-registry-author_registry.json`, or
    the `semantic_registry_get` response once it has been edited — check 28 fails without it.
    It computes 1, 2, 22, 23, 21 and 24–28 itself, merges your outcomes, **fails every
