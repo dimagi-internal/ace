@@ -11,6 +11,8 @@ import {
   auditLookupBinds,
   describeLookupBindAudit,
   findDuplicateLookupValues,
+  findBlankLookupLabels,
+  findPartiallyBlankRows,
   findWhitespaceLookupValues,
   verifyLookupBind,
   type BuiltOptionSource,
@@ -620,5 +622,65 @@ describe('verifyLookupBind', () => {
       expect(audit.ok).toBe(false);
       expect(audit.failures[0].code).toBe('no-rows-read-back');
     });
+  });
+});
+
+/**
+ * ace#2984 + ace#2978 — Nova's upload preflight's SECOND value rule, and the
+ * wiped-row shape a partial `edit_lookup_rows` update leaves.
+ */
+describe('lookup value hygiene (ace#2984, ace#2978)', () => {
+  const req = { tableId: 't', valueColumnId: 'v', labelColumnId: 'l' };
+  const bound = { kind: 'lookup', ...req };
+  const row = (v: string, l: string) => ({ cells: [{ columnId: 'v', value: v }, { columnId: 'l', value: l }] });
+
+  // kgrad_services on kaduna-graduation/20261015-1411, verbatim from the issue.
+  const KGRAD_SERVICES = [
+    row('Placeholder: services directory entry 1 (LLO and Dimagi to supply)', 'Placeholder: services directory entry 1 (LLO and Dimagi to supply)'),
+    row('Placeholder: services directory entry 2 (LLO and Dimagi to supply)', 'Placeholder: services directory entry 2 (LLO and Dimagi to supply)'),
+  ];
+
+  it('whitespace in the saved value is refused, quoting Nova', () => {
+    expect(findWhitespaceLookupValues(KGRAD_SERVICES, 'v')).toHaveLength(2);
+    const v = verifyLookupBind({ requested: req, readBack: bound, rows: { rows: KGRAD_SERVICES, complete: true } });
+    expect(v.verified).toBe(false);
+    expect(v.bindLanded).toBe(true);
+    expect(v.code).toBe('whitespace-values');
+    expect(v.message).toContain("Saved values can't contain whitespace");
+  });
+
+  it('line breaks count; spaces in the LABEL are fine', () => {
+    expect(findWhitespaceLookupValues([row('a\nb', 'x')], 'v')).toEqual(['a\nb']);
+    const v = verifyLookupBind({ requested: req, readBack: bound, rows: { rows: [row('svc_1', 'Health post one'), row('svc_2', 'Clinic two')], complete: true } });
+    expect(v.code).toBe('ok');
+  });
+
+  it('a blank label renders an empty choice', () => {
+    expect(findBlankLookupLabels([row('a', ''), row('b', ' ')], 'l')).toBe(2);
+    const v = verifyLookupBind({ requested: req, readBack: bound, rows: { rows: [row('a', 'A'), row('b', '')], complete: true } });
+    expect(v.code).toBe('blank-labels');
+  });
+
+  it('one blank value is not a duplicate but is still refused', () => {
+    const v = verifyLookupBind({ requested: req, readBack: bound, rows: { rows: [row('a', 'A'), row('', 'B')], complete: true } });
+    expect(v.code).toBe('blank-values');
+  });
+
+  it('wiped rows: at most half the median filled cells, against columns most rows fill', () => {
+    const cols = ['a', 'b', 'c', 'd'];
+    const full = (id: string) => ({ id, cells: cols.map((c) => ({ columnId: c, value: `${id}-${c}` })) });
+    const wiped = (id: string) => ({ id, cells: [{ columnId: 'b', value: 'title only' }] });
+    const rows = [full('r1'), full('r2'), wiped('r3'), full('r4'), wiped('r5')];
+    const out = findPartiallyBlankRows(rows, cols);
+    expect(out.map((r) => r.rowId)).toEqual(['r3', 'r5']);
+    expect(out[0].blankColumns).toEqual(['a', 'c', 'd']);
+  });
+
+  it('a sparse-by-design column does not read as a wipe', () => {
+    const cols = ['a', 'b', 'c', 'note'];
+    const r = (id: string, note: string) => ({ id, cells: [
+      { columnId: 'a', value: id }, { columnId: 'b', value: 'x' }, { columnId: 'c', value: 'y' }, { columnId: 'note', value: note },
+    ] });
+    expect(findPartiallyBlankRows([r('1', ''), r('2', 'n'), r('3', ''), r('4', '')], cols)).toEqual([]);
   });
 });

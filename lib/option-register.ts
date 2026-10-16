@@ -615,6 +615,64 @@ export function findWhitespaceLookupValues(
   return out;
 }
 
+/** Pure. How many rows have a blank (absent or whitespace-only) cell in `columnId`. */
+export function findBlankLookupLabels(rows: readonly LookupTableRow[], columnId: string): number {
+  let n = 0;
+  for (const row of rows) {
+    const cell = (row?.cells ?? []).find((c) => c?.columnId === columnId);
+    if (!String(cell?.value ?? '').trim()) n += 1;
+  }
+  return n;
+}
+
+/** A row that looks wiped by a partial `edit_lookup_rows` update. */
+export interface PartiallyBlankRow {
+  /** 0-based position in the read-back. */
+  index: number;
+  rowId?: string;
+  /** Column ids blank on this row but filled on most rows. */
+  blankColumns: string[];
+}
+
+/**
+ * Pure. Rows that look WIPED — the signature of ace#2978.
+ *
+ * Nova's `edit_lookup_rows` `update` REPLACES the row: "An omitted cell is
+ * missing; an empty string is a value". On `smallholder-seasonal/20261015-1402`
+ * a one-cell `title` fix was sent to 8 curriculum rows (+1 consent row) and
+ * cleared every other cell in them; the Deliver eval failed at 7.88 and the
+ * census form could not submit until the rows were rewritten.
+ *
+ * Several rows can be wiped at once (8 of 32 there), so "the one odd row out"
+ * is the wrong test. The signature is a row carrying at most HALF the cells a
+ * typical row of the same table carries (median, which a minority of wiped rows
+ * cannot drag down), in a table whose typical row has >= 3 filled cells. A
+ * column that is sparse by design (notes, an optional parent) leaves a row one
+ * or two cells short of the median, not half of it.
+ */
+export function findPartiallyBlankRows(
+  rows: readonly LookupTableRow[],
+  columnIds: readonly string[],
+): PartiallyBlankRow[] {
+  if (rows.length < 3 || columnIds.length === 0) return [];
+  const filled = (row: LookupTableRow, col: string) =>
+    !!String((row?.cells ?? []).find((c) => c?.columnId === col)?.value ?? '').trim();
+  const counts = rows.map((r) => columnIds.filter((col) => filled(r, col)).length);
+  const sorted = [...counts].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median < 3) return [];
+  const fillCount = new Map(columnIds.map((col) => [col, rows.filter((r) => filled(r, col)).length]));
+  const out: PartiallyBlankRow[] = [];
+  rows.forEach((row, index) => {
+    if (counts[index] > Math.floor(median / 2)) return;
+    const blankColumns = columnIds.filter(
+      (col) => !filled(row, col) && (fillCount.get(col) ?? 0) * 2 > rows.length,
+    );
+    if (blankColumns.length > 0) out.push({ index, rowId: (row as { id?: string })?.id, blankColumns });
+  });
+  return out;
+}
+
 export interface BindVerification {
   /**
    * True only when the read-back proves the requested lookup source is live
@@ -643,7 +701,9 @@ export interface BindVerification {
     | 'partial-rows-read-back'
     | 'empty-table'
     | 'duplicate-values'
-    | 'whitespace-values';
+    | 'whitespace-values'
+    | 'blank-values'
+    | 'blank-labels';
   /** Human-readable, quoted into the decision rows. */
   message: string;
 }
@@ -796,6 +856,36 @@ export function verifyLookupBind(input: {
         'preflight refuses the whole app for this ("…contain spaces or line breaks there. Saved ' +
         'values can\'t contain whitespace. Tidy those rows or choose another value column."); ' +
         'save a slug-shaped code column (e.g. `code`), not the display name (ace#2984)',
+    };
+  }
+
+  // A single blank value is not a duplicate, but it is an option that saves
+  // nothing — and the shape a wiped row (ace#2978) takes in the value column.
+  const valueless = findBlankLookupLabels(rows.rows, requested.valueColumnId);
+  if (valueless > 0) {
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'blank-values',
+      message:
+        `field is bound to lookup table "${requested.tableId}" through value column ` +
+        `"${requested.valueColumnId}", but ${valueless} row(s) have a BLANK value — choosing one ` +
+        'saves nothing. Usually a wiped row: edit_lookup_rows `update` replaces the whole row and ' +
+        'clears every omitted cell (ace#2978). Rewrite the full rows',
+    };
+  }
+
+  const unlabelled = findBlankLookupLabels(rows.rows, requested.labelColumnId);
+  if (unlabelled > 0) {
+    return {
+      verified: false,
+      bindLanded: true,
+      code: 'blank-labels',
+      message:
+        `field is bound to lookup table "${requested.tableId}" through label column ` +
+        `"${requested.labelColumnId}", but ${unlabelled} row(s) have a BLANK label — the worker sees ` +
+        'an empty choice. The usual cause is an edit_lookup_rows `update` that sent only some cells: ' +
+        'Nova replaces the whole row and clears every omitted cell (ace#2978). Rewrite the full rows',
     };
   }
 

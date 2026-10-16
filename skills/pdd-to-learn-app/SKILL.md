@@ -1036,7 +1036,16 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
-6. **Self-evaluate (LLM-as-Judge):**
+6. **Exit gate — `nova-app-lint` must exit 0, then self-evaluate.** Run
+   `scripts/nova-app-lint.ts --app <nova_app_id> --type learn` (invocation in
+   `agents/commcare-setup.md § Step 1.4`) on the SAVED app. It checks in code
+   the app name, post-submit navigation, the Connect-marker floor (≥1
+   `learn_module`, each with name + time_estimate; EXACTLY one
+   `assessment` with a `user_score`), learn-module display gating (ace#3036 —
+   any role-gated `learn_module` form blocks: Connect counts every module, so
+   no single role can complete), casedb preloads and the starter module. Fix
+   every `[BLOCKER]`, save, re-run; never edit for a `[WARN]` (record it in
+   `## Build notes`). Quote its first line in `## Build notes`. Then:
    - Does the app structure match the PDD Learn spec?
    - Are all required Connectify fields configured (Learn Module,
      Assessment Score, passing score)?
@@ -1175,7 +1184,10 @@ When invoked with a `repairs[]` list:
    `"if(#form/q1 = 'c', 1, 0)"`.
 4. **Update the summary's `## Build notes` per-item table** (Step 7a) for
    every item you touched, and record which `repairs[]` entries you applied.
-5. **One round.** Return after applying the list; the orchestrator re-runs the
+5. **One round, then re-lint.** Run `scripts/nova-app-lint.ts --type learn`
+   on the saved app (exit 0 required) before returning. A `repairs[]` list is
+   only dispatched for a `fail` — never for a `warn` (`agents/commcare-setup.md
+   § Step 1.4` repair policy). Return after applying the list; the orchestrator re-runs the
    eval once. Do not iterate against the score — roughly 500K subagent tokens
    were spent across two prior authoring cycles looping against a number that
    could not move (ace#1014, ace#1206).
@@ -1431,6 +1443,7 @@ write semantics` (top-level `decisions:`, not `rows:`).
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 6 opens with the `nova-app-lint` exit gate; a repair round re-lints and never runs on a warn.** App name, post-submit navigation, the Connect-marker floor (exactly one assessment), learn-module display gating (ace#3036) and preloads are checked in code on the saved app before return — the kaduna Learn blueprint (`56057841-…`) lints FAIL with 14 display-gating blockers, the defect the eval passed. *Enforced:* `test/lib/nova-app-lint.test.ts`. | ACE team |
 | 2026-10-16 | **Step 2a: never role-gate a `connect.learn_module` form when one opportunity carries more than one worker role (ace#3036).** Connect computes Learn completion over every `learn_module`; `kaduna-graduation/20261015-1411` gated 9 modules to FLWs and 5 to enumerators, so an FLW who passed read 9/14 = 64.3%, `learn_complete: false`, Deliver locked, under a pass label promising the work app opens. The build now keeps every marked module visible to every worker, puts the restructuring choice to the owner as `learn-gap-multi-role-learn-completion` (`required-before`, `needed_by: go-live`), and the pass label may not promise the work app opens unless every marked module is reachable. *Enforced:* `pdd-to-learn-app-eval § 5b learn_module_display_gating`, `app-release-qa` `learn-module-display-gated` (`lib/learn-module-display-gating.ts`), `test/skills/learn-module-role-gating-rule.test.ts`. | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 7a no longer writes `3-commcare/pdd-to-learn-app_build-memo.md`: `[ACE]` latitudes, `[FIXED]` ambiguities and every framework gap (`learn-gap-<slug>`, with `review_ask` + `confirm_reason` when only the design owner can close it) are decision rows only, and the language layer, repairs applied and assessment self-check move to a `## Build notes` section of the summary; the Phase 3 boundary now fails a summary with zero rows under `skill: pdd-to-learn-app`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-28 | **ACE-direct edits move to Nova private work (`voidcraft-labs/commcare-nova#693`).** Nova's 2026-09-27 deploy removed `create_app` and made every mutation staged: `work_id` + `request_id`, no `app_id`, nothing lands until `save_work`, and a refused save answers `saved: false` as data. §§ 4b / 4c / 4e and § Repair mode now open work, stage, save (requiring `saved: true`) and read back with `app_id` after the save; Step 4 treats an architect report naming unsaved work as an unfinished build; `no-starter-module` is re-framed as a regression guard (new apps are unseeded). Contract: `playbook/integrations/nova-integration.md § The private-work authoring contract`. | ACE team |

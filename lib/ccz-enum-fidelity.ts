@@ -458,7 +458,7 @@ function splitTopLevelArgs(inner: string): string[] | null {
  * a green comparison, which is strictly worse than the coverage hole ace#2188
  * reports.
  */
-function enumerateCalculateLiterals(expr: string): { values: string[] } | { reason: string } {
+export function enumerateCalculateLiterals(expr: string): { values: string[] } | { reason: string } {
   const e = expr.trim();
   const literal = /^'([^']*)'$/.exec(e) ?? /^"([^"]*)"$/.exec(e);
   if (literal) return { values: [literal[1]] };
