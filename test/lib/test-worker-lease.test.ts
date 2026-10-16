@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TestWorkerCheckout, type TestWorkerCheckoutOpts } from '../../lib/test-worker-lease.js';
 import { MobileError } from '../../mcp/mobile/errors.js';
-import { FakeCanopyPool, poolEnv } from '../fixtures/fake-canopy-pool.js';
+import { FakeCanopyPool, legacyEnv, slotDataFor } from '../fixtures/fake-canopy-pool.js';
 
 function make(pool: FakeCanopyPool, opts: TestWorkerCheckoutOpts = {}) {
   let clock = 0;
@@ -13,7 +13,7 @@ function make(pool: FakeCanopyPool, opts: TestWorkerCheckoutOpts = {}) {
     baseUrl: 'https://canopy.test',
     token: 'pat',
     fetchImpl: pool.fetch,
-    env: poolEnv(),
+    env: legacyEnv(),
     pollIntervalMs: 1_000,
     waitMs: 60_000,
     now: () => clock,
@@ -39,13 +39,16 @@ async function rejection(p: Promise<unknown>): Promise<MobileError> {
 }
 
 describe('TestWorkerCheckout — the lock', () => {
-  it('checks out one free worker and maps the slot to its credentials', async () => {
+  it('checks out one free worker and takes its credentials from the lease slot_data', async () => {
     const pool = new FakeCanopyPool();
     const { co } = make(pool);
     const held = await co.ensure(1);
     expect(held).toHaveLength(1);
     expect(held[0]).toMatchObject({ slot: 'worker-1', mode: 'locked', leaseId: 'L1' });
-    expect(held[0].worker.phone).toBe('+74260000201');
+    // From canopy-web's slot data — not the legacy ACE_E2E_* worker in env.
+    const d = slotDataFor('worker-1');
+    expect(held[0].worker).toEqual({ slot: 'worker-1', ...d.public, ...d.secret });
+    expect(held[0].worker.pin).not.toBe(legacyEnv().ACE_E2E_PIN);
     expect(co.mode).toBe('locked');
     expect(pool.calls[0]).toBe('POST /api/capabilities/leases');
   });
@@ -112,13 +115,81 @@ describe('TestWorkerCheckout — the lock', () => {
     expect(co.heldWorkers()).toEqual([]);
   });
 
-  it('a slot with no local credentials fails loud and releases it', async () => {
+  it('a slot with no data on canopy-web fails TEST_WORKER_NO_CREDENTIALS and releases the lease', async () => {
     const pool = new FakeCanopyPool(['worker-9']);
+    pool.slotData.delete('worker-9');
     const { co } = make(pool);
     const e = await rejection(co.ensure(1));
     expect(e.code).toBe('TEST_WORKER_NO_CREDENTIALS');
     expect(e.message).toContain('worker-9');
+    expect(e.remediation).toContain('scripts/test-worker-set.ts --slot worker-9');
     expect(pool.leases.get('L1')!.status).toBe('released');
+    expect(co.heldWorkers()).toEqual([]);
+  });
+
+  it('a slot missing a required key names the slot and the keys, and releases', async () => {
+    const pool = new FakeCanopyPool(['worker-2']);
+    delete (pool.slotData.get('worker-2')!.secret as Record<string, string>).backupCode;
+    const { co } = make(pool);
+    const e = await rejection(co.ensure(1));
+    expect(e.code).toBe('TEST_WORKER_NO_CREDENTIALS');
+    expect(e.message).toMatch(/worker-2.*secret\.backupCode/);
+    expect(pool.heldSlots()).toEqual([]);
+  });
+
+  it('a multi-checkout where one slot lacks data keeps none of the slots it took', async () => {
+    const pool = new FakeCanopyPool(['worker-1', 'worker-2', 'worker-3']);
+    pool.slotData.get('worker-3')!.public = {};
+    const { co } = make(pool);
+    expect((await rejection(co.ensure(3))).code).toBe('TEST_WORKER_NO_CREDENTIALS');
+    expect(pool.heldSlots()).toEqual([]);
+  });
+
+  it('an acquire answer without slot_data is completed by the holder GET', async () => {
+    const pool = new FakeCanopyPool(['worker-2']);
+    pool.slotDataOnAcquire = false;
+    const { co } = make(pool);
+    const held = await co.ensure(1);
+    expect(held[0].worker.backupCode).toBe(slotDataFor('worker-2').secret.backupCode);
+    expect(pool.calls).toEqual(['POST /api/capabilities/leases', 'GET /api/capabilities/leases/L1']);
+  });
+
+  it('secrets never reach a log line, a warning, an error, or the status report', async () => {
+    const pool = new FakeCanopyPool(['worker-1', 'worker-2']);
+    const bad = pool.slotData.get('worker-2')!;
+    bad.public.phoneLocal = '4260000999'; // invalid → throws after the secrets are in hand
+    const secrets = [...pool.slotData.values()].flatMap((d) => Object.values(d.secret));
+    const out: string[] = [];
+    const w = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown) => {
+      out.push(String(chunk));
+      return true;
+    }) as never);
+    try {
+      const { co, warn } = make(pool);
+      await co.ensure(1);
+      out.push(JSON.stringify(co.status()));
+      const e = await rejection(co.ensure(2));
+      out.push(e.message, e.remediation ?? '', JSON.stringify(e.diagnostics ?? {}));
+      out.push(...warn.mock.calls.map((c) => String(c[0])));
+      out.push((await co.slotDataReport())!.summary);
+    } finally {
+      w.mockRestore();
+    }
+    const all = out.join('\n');
+    expect(all).toContain('worker-1'); // the capture did see output
+    for (const sec of secrets) expect(all).not.toContain(sec);
+  });
+
+  it('slotDataReport reads the MASKED list and names slots that lack data', async () => {
+    const pool = new FakeCanopyPool(['worker-1', 'worker-2', 'worker-3']);
+    pool.slotData.delete('worker-2');
+    delete (pool.slotData.get('worker-3')!.secret as Record<string, string>).pin;
+    const { co } = make(pool);
+    const r = (await co.slotDataReport())!;
+    expect(r.ok).toBe(false);
+    expect(r.summary).toContain('worker-2: no data');
+    expect(r.summary).toContain('worker-3: lacks secret.pin');
+    expect(pool.calls).toEqual(['GET /api/agents/ace/capabilities/test-worker/slots']);
   });
 
   it('release DELETEs the leases and frees the slots', async () => {
@@ -198,7 +269,11 @@ describe('TestWorkerCheckout — rollout fallback (capability not live)', () => 
   it('no canopy-web PAT falls back without any HTTP', async () => {
     const pool = new FakeCanopyPool();
     const { co, warn } = make(pool, { token: null });
-    expect((await co.ensure(1))[0].slot).toBe('worker-1');
+    const held = await co.ensure(1);
+    expect(held[0].slot).toBe('worker-1');
+    // The fallback is the legacy ACE_E2E_* worker, exactly as before the pool.
+    expect(held[0].worker).toMatchObject({ phone: '+74260000101', pin: '1234', backupCode: 'LEGACYBACKUP0001' });
+    expect(await co.slotDataReport()).toBeNull();
     expect(pool.calls).toEqual([]);
     expect(warn.mock.calls[0][0]).toMatch(/no canopy-web PAT/);
   });
@@ -222,7 +297,7 @@ describe('TestWorkerCheckout — rollout fallback (capability not live)', () => 
       baseUrl: 'https://canopy.test',
       token: 'pat',
       fetchImpl,
-      env: poolEnv(),
+      env: legacyEnv(),
       backgroundHeartbeat: false,
       retry: { retries: 0, sleepImpl: async () => {} },
     });

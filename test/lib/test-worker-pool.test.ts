@@ -1,27 +1,24 @@
-// ace#2955 — the test-worker pool's credential half and the add-worker arithmetic.
+// ace#2955 — a pool worker's credentials come from its slot's data on
+// canopy-web (owner directive 2026-10-15), never from env; plus the masking
+// every report goes through, and the add-worker arithmetic.
 import { describe, it, expect } from 'vitest';
 import {
   LEGACY_SLOT,
-  POOL_ENV,
+  MASK,
   TestWorkerPoolError,
-  loadTestWorkerPool,
+  legacyTestWorker,
+  maskSecretsDeep,
+  maskSlotData,
+  maskWorker,
+  missingSlotKeys,
   nextSlotName,
   nextWorkerPhone,
-  parsePoolJson,
   planTestWorkerAdd,
-  resolveTestWorker,
+  redactSecrets,
+  workerFromSlotData,
   workerRecipeEnv,
 } from '../../lib/test-worker-pool.js';
-import { poolEnv } from '../fixtures/fake-canopy-pool.js';
-
-const LEGACY = {
-  ACE_E2E_PHONE: '+74260000100',
-  ACE_E2E_PHONE_LOCAL: '4260000100',
-  ACE_E2E_COUNTRY_CODE: '+7',
-  ACE_E2E_PIN: '1234',
-  ACE_E2E_BACKUP_CODE: '123456789012',
-  ACE_E2E_NAME: 'ACE Test',
-};
+import { legacyEnv, slotDataFor } from '../fixtures/fake-canopy-pool.js';
 
 function err(fn: () => unknown): TestWorkerPoolError {
   try {
@@ -32,103 +29,116 @@ function err(fn: () => unknown): TestWorkerPoolError {
   throw new Error('expected a throw');
 }
 
-describe('loadTestWorkerPool', () => {
-  it('a single-worker setup (legacy ACE_E2E_* only) is exactly worker-1', () => {
-    const pool = loadTestWorkerPool(LEGACY);
-    expect([...pool.keys()]).toEqual([LEGACY_SLOT]);
-    expect(pool.get(LEGACY_SLOT)).toEqual({
-      slot: 'worker-1',
-      phone: '+74260000100',
-      phoneLocal: '4260000100',
+describe('workerFromSlotData', () => {
+  it('maps complete slot data to a worker', () => {
+    const d = slotDataFor('worker-3');
+    expect(workerFromSlotData('worker-3', d)).toEqual({ slot: 'worker-3', ...d.public, ...d.secret });
+  });
+
+  it('no slot_data → TEST_WORKER_NO_CREDENTIALS naming the slot, every key, and the set command', () => {
+    const e = err(() => workerFromSlotData('worker-2', null));
+    expect(e.code).toBe('TEST_WORKER_NO_CREDENTIALS');
+    expect(e.message).toContain('worker-2');
+    expect(e.remediation).toContain('scripts/test-worker-set.ts --slot worker-2');
+    expect(e.diagnostics?.missing).toEqual(missingSlotKeys([], []));
+  });
+
+  it('a missing key is named — and there is NO fallback to the shared ACE_E2E_PIN / ACE_E2E_BACKUP_CODE', () => {
+    const d = slotDataFor('worker-2');
+    delete (d.secret as Record<string, string>).pin;
+    d.secret.backupCode = '  ';
+    const e = err(() => workerFromSlotData('worker-2', d));
+    expect(e.code).toBe('TEST_WORKER_NO_CREDENTIALS');
+    expect(e.message).toContain('secret.pin');
+    expect(e.message).toContain('secret.backupCode');
+  });
+
+  it('a missing public key is named too', () => {
+    const d = slotDataFor('worker-2');
+    delete (d.public as Record<string, string>).name;
+    expect(err(() => workerFromSlotData('worker-2', d)).message).toContain('public.name');
+  });
+
+  it('validates the phone as today: +7426, E.164, countryCode + phoneLocal === phone', () => {
+    const outside = slotDataFor('worker-2');
+    outside.public.phone = '+15550001234';
+    outside.public.phoneLocal = '5550001234';
+    outside.public.countryCode = '+1';
+    expect(err(() => workerFromSlotData('worker-2', outside)).code).toBe('TEST_WORKER_INVALID');
+    const mismatch = slotDataFor('worker-2');
+    mismatch.public.phoneLocal = '4260000299';
+    expect(err(() => workerFromSlotData('worker-2', mismatch)).message).toMatch(/does not equal phone/);
+  });
+
+  it('no thrown message or remediation ever contains a secret value', () => {
+    const d = slotDataFor('worker-4');
+    d.public.phoneLocal = '4260000999'; // invalid → throws after reading secrets
+    const e = err(() => workerFromSlotData('worker-4', d));
+    for (const text of [e.message, e.remediation ?? '', JSON.stringify(e.diagnostics)]) {
+      expect(text).not.toContain(d.secret.pin);
+      expect(text).not.toContain(d.secret.backupCode);
+    }
+  });
+});
+
+describe('legacyTestWorker (rollout fallback only)', () => {
+  it('is worker-1 from ACE_E2E_*', () => {
+    expect(legacyTestWorker(legacyEnv())).toEqual({
+      slot: LEGACY_SLOT,
+      phone: '+74260000101',
+      phoneLocal: '4260000101',
       countryCode: '+7',
       pin: '1234',
-      backupCode: '123456789012',
+      backupCode: 'LEGACYBACKUP0001',
       name: 'ACE Test',
     });
   });
 
-  it('an unresolved op:// pool ref reads as no pool, not as an error', () => {
-    const pool = loadTestWorkerPool({ ...LEGACY, [POOL_ENV]: 'op://Agent-Ace/connect-test-workers/pool-json' });
-    expect([...pool.keys()]).toEqual(['worker-1']);
+  it('null when unset or an unresolved op:// ref', () => {
+    expect(legacyTestWorker({})).toBeNull();
+    expect(legacyTestWorker({ ...legacyEnv(), ACE_E2E_PHONE: 'op://v/connect-test-user/phone' })).toBeNull();
   });
 
-  it('reads the JSON pool, sorted naturally, with pin/backup/countryCode falling back to the legacy worker', () => {
-    const env = {
-      ...LEGACY,
-      [POOL_ENV]: JSON.stringify({
-        'worker-10': { phone: '+74260000110', phoneLocal: '4260000110' },
-        'worker-2': { phone: '+74260000102', phone_local: '4260000102', name: 'Two', pin: '9999' },
-      }),
-    };
-    const pool = loadTestWorkerPool(env);
-    expect([...pool.keys()]).toEqual(['worker-1', 'worker-2', 'worker-10']);
-    expect(pool.get('worker-2')).toMatchObject({ pin: '9999', backupCode: '123456789012', countryCode: '+7', name: 'Two' });
-    expect(pool.get('worker-10')!.name).toBe('ACE Test 10');
+  it('names a missing field without echoing secrets', () => {
+    const e = err(() => legacyTestWorker({ ...legacyEnv(), ACE_E2E_PIN: '' }));
+    expect(e.message).toContain('ACE_E2E_PIN is missing');
+    expect(e.message).not.toContain('LEGACYBACKUP0001');
+  });
+});
+
+describe('masking', () => {
+  it('maskWorker / maskSlotData hide secret values, keep keys and public data', () => {
+    const d = slotDataFor('worker-2');
+    const w = workerFromSlotData('worker-2', d);
+    expect(maskWorker(w)).toEqual({ ...w, pin: MASK, backupCode: MASK });
+    expect(maskSlotData(d)).toEqual({ public: d.public, secret: { pin: MASK, backupCode: MASK } });
+    expect(maskSlotData(null)).toBeNull();
   });
 
-  it('a JSON worker-1 overrides the legacy vars', () => {
-    const env = { ...LEGACY, [POOL_ENV]: JSON.stringify({ 'worker-1': { phone: '+74260000555', phoneLocal: '4260000555' } }) };
-    expect(loadTestWorkerPool(env).get('worker-1')!.phone).toBe('+74260000555');
+  it('maskSecretsDeep masks anything under `secret` and any pin/backupCode key, at any depth', () => {
+    const d = slotDataFor('worker-2');
+    const out = JSON.stringify(maskSecretsDeep({ lease_id: 'L1', slot_data: d, nested: [{ backup_code: 'X1234' }], secret_keys: ['pin'] }));
+    expect(out).not.toContain(d.secret.pin);
+    expect(out).not.toContain(d.secret.backupCode);
+    expect(out).not.toContain('X1234');
+    expect(out).toContain(d.public.phone);
+    expect(out).toContain('"secret_keys":["pin"]');
   });
 
-  it('refuses a non-+7426 phone, naming the slot', () => {
-    const e = err(() =>
-      loadTestWorkerPool({ ...LEGACY, [POOL_ENV]: JSON.stringify({ 'worker-3': { phone: '+15550001234', phoneLocal: '5550001234' } }) }),
-    );
-    expect(e).toBeInstanceOf(TestWorkerPoolError);
-    expect(e.code).toBe('TEST_WORKER_INVALID');
-    expect(e.slot).toBe('worker-3');
-    expect(e.message).toMatch(/worker-3.*\+7426/);
+  it('redactSecrets replaces every occurrence', () => {
+    expect(redactSecrets('pin 9002 then 9002, code ABCDEF', ['9002', 'ABCDEF', '', null])).toBe('pin *** then ***, code ***');
   });
+});
 
-  it('refuses a phone that is not E.164-shaped, naming the slot', () => {
-    const e = err(() =>
-      loadTestWorkerPool({ ...LEGACY, [POOL_ENV]: JSON.stringify({ 'worker-2': { phone: '+7426-000', phoneLocal: '426-000' } }) }),
-    );
-    expect(e.code).toBe('TEST_WORKER_INVALID');
-    expect(e.message).toMatch(/worker-2.*E\.164/);
-  });
-
-  it('refuses countryCode + phoneLocal that does not spell the phone', () => {
-    const e = err(() =>
-      loadTestWorkerPool({ ...LEGACY, [POOL_ENV]: JSON.stringify({ 'worker-2': { phone: '+74260000102', phoneLocal: '4260000199' } }) }),
-    );
-    expect(e.slot).toBe('worker-2');
-    expect(e.message).toMatch(/does not equal phone/);
-  });
-
-  it('refuses two slots on one phone (that would defeat the lock)', () => {
-    const e = err(() =>
-      loadTestWorkerPool({ ...LEGACY, [POOL_ENV]: JSON.stringify({ 'worker-2': { phone: '+74260000100', phoneLocal: '4260000100' } }) }),
-    );
-    expect(e.code).toBe('TEST_WORKER_DUPLICATE_PHONE');
-  });
-
-  it('refuses malformed JSON and bad slot names', () => {
-    expect(err(() => parsePoolJson('{nope')).code).toBe('TEST_WORKER_POOL_MALFORMED');
-    expect(err(() => parsePoolJson('[1]')).code).toBe('TEST_WORKER_POOL_MALFORMED');
-    expect(err(() => parsePoolJson('{"alice": {}}')).code).toBe('TEST_WORKER_SLOT_NAME');
-  });
-
-  it('a missing pin with no legacy fallback fails loud', () => {
-    const e = err(() => loadTestWorkerPool({ [POOL_ENV]: JSON.stringify({ 'worker-2': { phone: '+74260000102', phoneLocal: '4260000102' } }) }));
-    expect(e.message).toMatch(/pin is missing/);
-  });
-
-  it('resolveTestWorker names an unknown slot and the slots it does have', () => {
-    const e = err(() => resolveTestWorker('worker-7', poolEnv()));
-    expect(e.code).toBe('TEST_WORKER_NO_CREDENTIALS');
-    expect(e.message).toMatch(/worker-7.*worker-1, worker-2, worker-3, worker-4/);
-  });
-
-  it('workerRecipeEnv gives recipes the keys static palettes use', () => {
-    const w = resolveTestWorker('worker-3', poolEnv());
-    expect(workerRecipeEnv(w)).toEqual({
-      PHONE: w.phone,
-      PHONE_LOCAL: w.phoneLocal,
+describe('workerRecipeEnv', () => {
+  it('gives recipes the keys static palettes use', () => {
+    const d = slotDataFor('worker-3');
+    expect(workerRecipeEnv(workerFromSlotData('worker-3', d))).toEqual({
+      PHONE: d.public.phone,
+      PHONE_LOCAL: d.public.phoneLocal,
       COUNTRY_CODE: '+7',
-      PIN: '1234',
-      BACKUP_CODE: '123456789012',
+      PIN: d.secret.pin,
+      BACKUP_CODE: d.secret.backupCode,
       NAME: 'ACE Test 3',
     });
   });

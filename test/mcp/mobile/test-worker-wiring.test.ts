@@ -3,17 +3,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MobileClient, withDeviceIdentity } from '../../../mcp/mobile/client.js';
 import { TestWorkerCheckout } from '../../../lib/test-worker-lease.js';
-import { FakeCanopyPool, poolEnv } from '../../fixtures/fake-canopy-pool.js';
+import { FakeCanopyPool, legacyEnv, slotDataFor } from '../../fixtures/fake-canopy-pool.js';
 import { derivePerRunTestUser } from '../../../lib/per-run-test-user.js';
-import { loadTestWorkerPool } from '../../../lib/test-worker-pool.js';
 
 const AVD = { name: 'AVD', serial: 'emulator-5554', status: 'booted' as const };
 const VALIDATED = 'NetworkAgentInfo{ Capabilities: INTERNET VALIDATED NOT_METERED }';
-const ENV = poolEnv();
-const POOL = loadTestWorkerPool(ENV);
+const ENV = legacyEnv();
+/** A slot's credentials as canopy-web's slot data holds them (what the lease hands over). */
 const creds = (slot: string) => {
-  const { slot: _s, ...w } = POOL.get(slot)!;
-  return w;
+  const d = slotDataFor(slot);
+  return { ...d.public, ...d.secret } as {
+    phone: string; phoneLocal: string; countryCode: string; name: string; pin: string; backupCode: string;
+  };
 };
 
 function makeClient(pool: FakeCanopyPool, opts: { lease?: boolean } = {}) {
@@ -104,7 +105,9 @@ describe('lease bootstrap', () => {
     pool.holdElsewhere('worker-1');
     const { client, leaseRegisterTestUser } = makeClient(pool, { lease: true });
     await (client as any).leaseBootstrapHeal(AVD, undefined);
-    expect(leaseRegisterTestUser.mock.calls[0][0]).toMatchObject({ phone: creds('worker-2').phone, pin: '1234' });
+    // The slot's own PIN from canopy-web — not the shared ACE_E2E_PIN.
+    expect(leaseRegisterTestUser.mock.calls[0][0]).toMatchObject({ phone: creds('worker-2').phone, pin: creds('worker-2').pin });
+    expect(creds('worker-2').pin).not.toBe(ENV.ACE_E2E_PIN);
   });
 
   it('override: no lock', async () => {
@@ -170,6 +173,30 @@ describe('multi-worker atoms', () => {
     await client.registerTestUserForAtom({ avdName: 'AVD', phone: '+74260000299', phoneLocal: '4260000299', countryCode: '+7', pin: '1', backupCode: '2' });
     expect(pool.calls).toEqual([]);
     expect(registerTestUser.mock.calls[0][0].phone).toBe('+74260000299');
+  });
+
+  it('the atom result never carries a backup code back out', async () => {
+    const pool = new FakeCanopyPool();
+    const { client, registerTestUser } = makeClient(pool);
+    registerTestUser.mockResolvedValue({ alreadyRegistered: false, phone: '+74260000201', backupCode: creds('worker-1').backupCode });
+    const r = await client.registerTestUserForAtom({ avdName: 'AVD' });
+    expect(r.backupCode).toBe('***');
+    expect(JSON.stringify(r)).not.toContain(creds('worker-1').backupCode);
+    expect(JSON.stringify(r)).not.toContain(creds('worker-1').pin);
+  });
+
+  it('mobile_diagnose reports declared slots lacking data, from the masked list, without secrets', async () => {
+    const pool = new FakeCanopyPool(['worker-1', 'worker-2']);
+    pool.slotData.delete('worker-2');
+    const { client, avd } = makeClient(pool);
+    avd.diagnose = vi.fn().mockResolvedValue({ backend: 'local' });
+    await client.checkoutTestWorkers(1);
+    const d = await client.diagnose();
+    expect(d.test_worker_slots).toMatchObject({ ok: false });
+    expect(d.test_worker_slots!.summary).toContain('worker-2: no data');
+    const text = JSON.stringify(d);
+    expect(text).not.toContain(creds('worker-1').pin);
+    expect(text).not.toContain(creds('worker-1').backupCode);
   });
 });
 

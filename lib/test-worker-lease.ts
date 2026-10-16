@@ -19,6 +19,15 @@
  *   release   DELETE /leases/{id}
  *   holders   GET  /leases?agent&capability&status=live (on exhaustion only)
  *
+ * The worker's credentials ride on the lease (owner directive 2026-10-15): a
+ * ready lease, read by the user who acquired it, carries `slot_data:
+ * {public: {phone, phoneLocal, countryCode, name}, secret: {pin,
+ * backupCode}}` for its slot. Missing `slot_data` or any required key fails
+ * TEST_WORKER_NO_CREDENTIALS naming the slot, the missing keys and the
+ * `scripts/test-worker-set.ts` command, and releases the lease. No pool slot
+ * ever falls back to the shared `ACE_E2E_PIN` / `ACE_E2E_BACKUP_CODE`. The
+ * slot data holds secrets: nothing here logs, throws or reports it unmasked.
+ *
  * Unlike the emulator lease, this one heartbeats in the BACKGROUND: the
  * worker must stay locked for as long as the device is signed in as it, which
  * includes the long LLM-heavy gaps between device ops. The timer is unref'd
@@ -27,14 +36,16 @@
  *
  * Rollout fallback: while the capability is not published or not granted
  * (canopy-web answers 422 / 403), or this machine has no canopy-web PAT, ONE
- * worker proceeds UNLOCKED as worker-1 — exactly today's behaviour — with a
+ * worker proceeds UNLOCKED as the legacy `ACE_E2E_*` worker (worker-1) —
+ * exactly the pre-pool behaviour — with a
  * loud warning naming ace#2955 and the publish step. A multi-worker checkout
  * never falls back: sharing a worker is the failure the pool exists to stop.
  * `/ace:doctor` (test_worker_pool) and `mobile_diagnose` keep the fallback
  * from persisting silently.
  */
 import { canopyApiBase, canopyToken } from './ace-canopy-pat.js';
-import { LEGACY_SLOT, loadTestWorkerPool, type TestWorker } from './test-worker-pool.js';
+import { LEGACY_SLOT, legacyTestWorker, maskSecretsDeep, workerFromSlotData, type TestWorker } from './test-worker-pool.js';
+import { fetchSlotDataReport, type SlotDataReport } from './test-worker-slots.js';
 import { MobileError } from '../mcp/mobile/errors.js';
 import { logInfo } from '../mcp/mobile/logging.js';
 import { brokerRequest, curlDeleteSync, type BrokerHttpConfig } from '../mcp/mobile/backends/broker-http.js';
@@ -73,7 +84,7 @@ export interface TestWorkerCheckoutOpts {
   /** ACE's canopy-web PAT; omitted → read from ACE's .env; null/'' → no PAT (fallback). */
   token?: string | null;
   fetchImpl?: typeof fetch;
-  /** Where worker credentials come from (default process.env). */
+  /** The legacy ACE_E2E_* worker for the rollout fallback, and CANOPY_TURN_ID (default process.env). */
   env?: NodeJS.ProcessEnv;
   /** Bound on waiting for queued slots. Default 10 min. */
   waitMs?: number;
@@ -168,6 +179,21 @@ export class TestWorkerCheckout {
   }
 
   /**
+   * Which slots lack data or required keys on canopy-web, from the MASKED
+   * slot list (never a secret value) — for mobile_diagnose. Null with no PAT
+   * (the rollout fallback reads ACE_E2E_* and needs no slot data). Never
+   * throws; one quick attempt, so a diagnose is never held up by it.
+   */
+  async slotDataReport(): Promise<SlotDataReport | null> {
+    if (!this.http) return null;
+    return fetchSlotDataReport({
+      ...this.http,
+      requestTimeoutMs: Math.min(this.http.requestTimeoutMs, 10_000),
+      retry: { ...this.http.retry, retries: 0 },
+    });
+  }
+
+  /**
    * Make this process hold at least `count` workers (the ones already held
    * count). Waits up to `waitMs` for queued slots; on timeout releases what
    * this call acquired and throws TEST_WORKER_POOL_EXHAUSTED naming the
@@ -209,9 +235,8 @@ export class TestWorkerCheckout {
         }
       }
       const ready = await this.waitAllReady(acquired);
-      const pool = loadTestWorkerPool(this.env);
       const fresh: HeldWorker[] = [];
-      for (const lease of ready) {
+      for (let lease of ready) {
         const slot = leaseSlot(lease);
         if (!slot) {
           throw new MobileError(
@@ -220,17 +245,14 @@ export class TestWorkerCheckout {
             'canopy-web predates the pool capability kind, or changed its contract — see lib/test-worker-lease.ts.',
           );
         }
-        const worker = pool.get(slot);
-        if (!worker) {
-          throw new MobileError(
-            'TEST_WORKER_NO_CREDENTIALS',
-            `canopy-web handed out ${slot}, but this machine has no credentials for it (have: ${[...pool.keys()].join(', ') || 'none'})`,
-            `The capability manifest and the 1Password pool item disagree. Add ${slot} to connect-test-workers ` +
-              '(field pool-json), run /ace:setup --force-env and restart Claude Code — or remove the slot from ' +
-              'infra/capabilities/test-worker/capability.yaml and republish. skills/test-worker-pool/SKILL.md.',
-            { slot },
-          );
+        // An acquire answer that predates the slot's assignment may omit the
+        // field; the holder's GET carries it.
+        if (lease.slot_data === undefined) {
+          lease = await this.call<LeaseOut>('GET', routePath('get', { lease_id: lease.lease_id }));
         }
+        // Throws TEST_WORKER_NO_CREDENTIALS (slot + missing keys + the set
+        // command) — the catch below releases every lease this call took.
+        const worker = workerFromSlotData(slot, lease.slot_data);
         fresh.push({ slot, worker, leaseId: lease.lease_id, mode: 'locked' });
       }
       this.held.push(...fresh);
@@ -251,7 +273,7 @@ export class TestWorkerCheckout {
     if (turnId) body.turn_id = turnId;
     const created = await this.call<LeaseOut>('POST', routePath('acquire'), body, { retry: false });
     if (!created?.lease_id) {
-      throw new MobileError('TEST_WORKER_BAD_RESPONSE', `acquire returned no lease_id: ${JSON.stringify(created)}`);
+      throw new MobileError('TEST_WORKER_BAD_RESPONSE', `acquire returned no lease_id: ${JSON.stringify(maskSecretsDeep(created))}`);
     }
     this.installExitHook();
     logInfo(
@@ -322,11 +344,11 @@ export class TestWorkerCheckout {
       );
     }
     if (this.held.length) return this.heldWorkers();
-    const worker = loadTestWorkerPool(this.env).get(LEGACY_SLOT);
+    const worker = legacyTestWorker(this.env);
     if (!worker) {
       throw new MobileError(
         'TEST_WORKER_NO_CREDENTIALS',
-        `no credentials for ${LEGACY_SLOT} (ACE_E2E_* or ACE_E2E_WORKERS) on this machine`,
+        `the pool lock is not live (${why}) and there is no legacy ACE_E2E_* worker on this machine to fall back to`,
         'Run /ace:setup --force-env, then restart Claude Code.',
         { slot: LEGACY_SLOT },
       );
