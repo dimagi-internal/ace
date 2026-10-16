@@ -48,6 +48,11 @@ function fakeFetch(
   }) as unknown as typeof fetch;
 }
 
+/** Step 1b answer from a COMMCARE_CONNECT-ON domain (verbatim HQ text, ace#3040). */
+const FLAG_ON = { status: 400, body: '{"error": "Profile with id ace-flag-probe-no-such-profile not found."}' };
+/** Step 1b answer from a flag-OFF domain (verbatim, ace-case-sharing-test 2026-10-16). */
+const FLAG_OFF = { status: 400, body: '{"error": "You don\'t have permission to use connect_username field"}' };
+
 const baseArgs = {
   hq_domain: 'connect-ace-prod',
   api_key: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
@@ -116,6 +121,7 @@ describe('preflightLearnAppUser — user-existence branch', () => {
   it('returns would_create when CCHQ user lookup is empty', async () => {
     const fetchImpl = fakeFetch([
       { status: 200, json: { meta: { total_count: 1 }, objects: [{ username: 'other-user' }] } }, // step 1: list/limit=1
+      FLAG_ON, // step 1b: COMMCARE_CONNECT flag
       { status: 200, json: { meta: { total_count: 0 }, objects: [] } }, // step 2: lookup
     ]);
     const out = await preflightLearnAppUser(
@@ -131,6 +137,7 @@ describe('preflightLearnAppUser — user-existence branch', () => {
     // "Compatible" = active + connect_username matches (or is empty).
     const fetchImpl = fakeFetch([
       { status: 200, json: { objects: [] } }, // step 1 passes
+      FLAG_ON,
       {
         status: 200,
         json: {
@@ -159,6 +166,7 @@ describe('preflightLearnAppUser — user-existence branch', () => {
     // re-linking — `create_hq_user_and_link` adds the link idempotently.
     const fetchImpl = fakeFetch([
       { status: 200, json: { objects: [] } },
+      FLAG_ON,
       {
         status: 200,
         json: {
@@ -179,6 +187,7 @@ describe('preflightLearnAppUser — user-existence branch', () => {
   it('returns conflict_existing_user when linked to a different connect_username', async () => {
     const fetchImpl = fakeFetch([
       { status: 200, json: { objects: [] } },
+      FLAG_ON,
       {
         status: 200,
         json: {
@@ -206,6 +215,7 @@ describe('preflightLearnAppUser — user-existence branch', () => {
   it('returns conflict_existing_user when the existing user is inactive', async () => {
     const fetchImpl = fakeFetch([
       { status: 200, json: { objects: [] } },
+      FLAG_ON,
       {
         status: 200,
         json: {
@@ -230,16 +240,18 @@ describe('preflightLearnAppUser — user-existence branch', () => {
   });
 
   it('skips the user-existence branch when connect_username is omitted', async () => {
-    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }]);
+    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }, FLAG_ON]);
     const out = await preflightLearnAppUser(baseArgs, fetchImpl);
     expect(out.ok).toBe(true);
     expect(out.action).toBe('skipped');
+    expect(out.connect_flag).toBe('on');
     expect(out.reason).toMatch(/No connect_username supplied/);
   });
 
   it('surfaces malformed JSON from the user-lookup step as cchq_error', async () => {
     const fetchImpl = fakeFetch([
       { status: 200, json: { objects: [] } },
+      FLAG_ON,
       { status: 200, body: 'not json at all' },
     ]);
     const out = await preflightLearnAppUser(
@@ -248,6 +260,50 @@ describe('preflightLearnAppUser — user-existence branch', () => {
     );
     expect(out.action).toBe('cchq_error');
     expect(out.reason).toMatch(/was not JSON/);
+  });
+});
+
+describe('preflightLearnAppUser — COMMCARE_CONNECT flag (ace#3040)', () => {
+  it('returns connect_flag_off when HQ refuses connect_username, before any user lookup', async () => {
+    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }, FLAG_OFF]);
+    const out = await preflightLearnAppUser(
+      { ...baseArgs, hq_domain: 'ace-case-sharing-test', connect_username: 'fresh-user' },
+      fetchImpl,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.action).toBe('connect_flag_off');
+    expect(out.connect_flag).toBe('off');
+    expect(out.reason).toMatch(/Failed to start learning/);
+    expect(out.reason).toContain('/hq/flags/edit/commcare_connect/');
+    expect(out.reason).toContain('ace-case-sharing-test');
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // no step-2 lookup after a flag-off verdict
+  });
+
+  it('the flag probe sends connect_username plus an impossible profile, as a POST to the user API', async () => {
+    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }, FLAG_ON]);
+    await preflightLearnAppUser(baseArgs, fetchImpl);
+    const calls = (fetchImpl as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls;
+    expect(String(calls[1][0])).toBe('https://www.commcarehq.org/a/connect-ace-prod/api/v0.5/user/');
+    expect(calls[1][1].method).toBe('POST');
+    const body = JSON.parse(String(calls[1][1].body));
+    expect(body.connect_username).toBeTruthy();
+    expect(body.user_data.commcare_profile).toBe('ace-flag-probe-no-such-profile');
+  });
+
+  it('fails loud if HQ ever CREATES the probe user (validation order changed)', async () => {
+    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }, { status: 201, body: '{"id":"x"}' }]);
+    const out = await preflightLearnAppUser(baseArgs, fetchImpl);
+    expect(out.ok).toBe(false);
+    expect(out.action).toBe('cchq_error');
+    expect(out.reason).toMatch(/CREATED a mobile worker/);
+  });
+
+  it('does not block on an unrecognised flag answer, but says so', async () => {
+    const fetchImpl = fakeFetch([{ status: 200, json: { objects: [] } }, { status: 400, body: '{"error":"something new"}' }]);
+    const out = await preflightLearnAppUser(baseArgs, fetchImpl);
+    expect(out.ok).toBe(true);
+    expect(out.connect_flag).toBe('unknown');
+    expect(out.reason).toMatch(/unrecognised/);
   });
 });
 
@@ -265,13 +321,13 @@ describe('preflightLearnAppUser — request shape', () => {
       { ...baseArgs, connect_username: 'user with spaces+symbols' },
       fetchSpy as unknown as typeof fetch,
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     const calls = fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>;
     const firstHeaders = calls[0][1].headers as Record<string, string>;
     expect(firstHeaders.Authorization).toBe(
       `ApiKey ${baseArgs.hq_username}:${baseArgs.api_key}`,
     );
-    const secondUrl = String(calls[1][0]);
+    const secondUrl = String(calls[2][0]);
     // The username must be URL-encoded (space → %20, + → %2B).
     expect(secondUrl).toContain('username=user%20with%20spaces%2Bsymbols');
   });
