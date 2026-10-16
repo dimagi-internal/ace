@@ -29,6 +29,8 @@ import {
   buildFramePool,
   checkDeckScreenBacking,
   forkParentRunId,
+  promisesScreen,
+  screenPromise,
   walkForkLineage,
   type FrameSource,
   type PoolFrame,
@@ -349,5 +351,42 @@ describe('a Learn-module slide binds a frame from the journey-learn recipe (ace#
   it('no module slide is merged away', () => {
     expect(byId(bound, 'learn-other-sections')).toBeUndefined();
     expect(checkDeckScreenBacking(bound, { pool }).pass).toBe(true);
+  });
+});
+
+describe('a screen promise is the on-the-phone sense of the word (ace#3059)', () => {
+  // `open`, `tap` and `screen` are also ordinary words. Each false positive
+  // here used to route a rules slide into the screen-backing gate.
+  it.each([
+    'Meet at the open stalls by the market.',
+    'Collect any open questions for the coordinator.',
+    'Screen the household for eligible children.',
+    'Screening takes about ten minutes.',
+    'Wash your hands at the water tap first.',
+    'Open by making clear this is not new work.',
+  ])('not a promise: %s', (s) => {
+    expect(promisesScreen(s)).toBe(false);
+  });
+
+  // The last five are verbatim from the spark-20260926-1800 fixture deck.
+  it.each([
+    'When the form opens, read the first question.',
+    'tap Next to continue.',
+    "Tap 'Sign Up'",
+    'Open the Learn app and complete the first lesson.',
+    'Search for "CommCare", tap Install, then tap Open. When CommCare opens you see its welcome screen.',
+    'Explain that the Learn app opens right after they tap Start on the opportunity in Connect.',
+    'The sections then appear on your screen as tiles.',
+    'Point to the screen: there is only a TAKE PICTURE button.',
+    'Add an optional note. The screen tells you whether this meeting counts.',
+  ])('a promise: %s', (s) => {
+    expect(promisesScreen(s)).toBe(true);
+  });
+
+  it('screenPromise leaves a rules slide that merely says "open stalls" alone', () => {
+    const slide = { id: 'x', layout: 'content', title: 'Where to meet', body: 'Meet at the open stalls near the water tap.' } as never;
+    expect(screenPromise(slide, 'deliver', [])).toBeNull();
+    const promising = { id: 'y', layout: 'content', title: 'Recording', body: 'Tap Start, then the form opens.' } as never;
+    expect(screenPromise(promising, 'deliver', [])).toBe('promise');
   });
 });

@@ -342,8 +342,30 @@ export function learnModuleBase(pool: readonly PoolFrame[]): 0 | 1 {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-/** Words that promise the reader a SCREEN. */
-const PROMISE = /\b(you (?:will |can )?see|screen|tap|appears?|shows? you|opens?)\b/i;
+/**
+ * Phrasings that promise the reader a SCREEN. `open`, `tap` and `screen` are
+ * each also an ordinary word ("open stalls", "a water tap", "screen the
+ * household"), so each is admitted only in its on-the-phone sense (ace#3059):
+ *
+ *   - `open` with an object ("Open the Learn app", "open CommCare") or an app
+ *     subject ("the form opens", "When CommCare opens") — never the adjective;
+ *   - `tap` with a target ("tap Next", "tap on the tile", "Tap 'Sign Up'") —
+ *     case-sensitive on the capital, since a button label is what follows;
+ *   - `screen` the noun, not the verb ("screen the household"); "screening"
+ *     never matches the word boundary.
+ */
+const PROMISES: readonly RegExp[] = [
+  /\b(?:you (?:will |can )?see|appears?|shows? you)\b/i,
+  /\bscreens?\b(?!\s+(?:the|each|every|all|a|an|for|them|him|her|their|your|children|child|households?|patients?|people|women|mothers|babies|members)\b)/i,
+  /\b[Tt]aps?\s+(?:(?:on|the|a|an|your|it|this|that|each|every|yes|no|next|back|start|save|submit|ok|done|finish)\b|["'‘“]?[A-Z0-9])/,
+  /\bopens?\s+(?:up\s+)?(?:the|a|an|your|it|this|that|commcare|connect)\b/i,
+  /\b(?:you|it|app|form|screen|menu|page|list|commcare|connect|section|module|tile|lesson)\s+(?:will\s+|then\s+|now\s+)?opens?\b/i,
+];
+
+/** Does this text promise the reader a screen? */
+export function promisesScreen(text: string): boolean {
+  return PROMISES.some((re) => re.test(text));
+}
 
 export type ScreenPromise = 'learn-module' | 'step' | 'promise';
 
@@ -361,7 +383,7 @@ export function screenPromise(
   if (section === 'learn' && labels.some((l) => norm(l) === norm(slide.title))) return 'learn-module';
   if (/^step\s*\d/i.test(slide.title.trim())) return 'step';
   const text = slideText(slide);
-  if (PROMISE.test(text)) return 'promise';
+  if (promisesScreen(text)) return 'promise';
   return null;
 }
 
@@ -401,7 +423,7 @@ function tokens(s: string): Set<string> {
 function promiseTokens(slide: SlideSpec_v2, kind: ScreenPromise | null): Set<string> {
   const text = slideText(slide);
   const sentences = text.split(/(?<=[.!?])\s+|\n+/);
-  const chosen = kind === 'promise' ? sentences.filter((s) => PROMISE.test(s)) : sentences;
+  const chosen = kind === 'promise' ? sentences.filter((s) => promisesScreen(s)) : sentences;
   return tokens(`${slide.title} ${chosen.join(' ')}`);
 }
 
