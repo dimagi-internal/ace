@@ -289,7 +289,11 @@ async function readYaml(file: string): Promise<unknown> {
 
 function runRenderProbe(pageUrl: string, labels: string[], gateCandidates: string[] = []): RenderReport {
   const script = path.join(HERE, 'audit-run-surface-render.ts');
-  const res = spawnSync('npx', ['tsx', script, pageUrl, JSON.stringify(labels), JSON.stringify(gateCandidates)], {
+  // node + tsx's own cli.mjs, never `npx tsx`: npx prefers the local
+  // node_modules/.bin/tsx, which the installed plugin cache ships as a
+  // dereferenced COPY that cannot find its chunks (ace#2252).
+  const tsx = path.join(HERE, '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const res = spawnSync(process.execPath, [tsx, script, pageUrl, JSON.stringify(labels), JSON.stringify(gateCandidates)], {
     encoding: 'utf8',
     timeout: 180_000,
     env: process.env,
