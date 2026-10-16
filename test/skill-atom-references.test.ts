@@ -136,6 +136,7 @@ const ALLOWLIST = new Set([
   'connect_labs',                  // the USER-SCOPE MCP server key in ~/.claude.json (ace#2159 static_header_drift). The plugin's own entry is `connect-labs`; this underscored form is a server name, not an atom.
   'ocs_shared_collection_team',    // bin/ace-doctor probe label (shared collection lives on OCS_TEAM_SLUG)
   'ocs_chatbot',                   // field key in run_state.yaml.phases.ocs-setup.products.ocs_chatbot
+  'ocs_coach',                     // field key in run_state.yaml.phases.synthetic-data-and-workflows.products.ocs_coach
   'connect_primary_phone_input',   // org.commcare.dalvik:id/connect_primary_phone_input AutoCompleteTextView
   'connect_int_id',                // run_state/opp.yaml field key: ConnectProd's integer opportunity/program id (the `int_id` on the create response). NOT an atom. (Renamed from labs_int_id — jjackson/ace#686.)
   'slides_create_presentation',    // playbook/integrations/slides-integration.md: documented as "does not exist as an MCP atom"
