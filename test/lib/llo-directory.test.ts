@@ -14,7 +14,12 @@ import {
   buildRow,
   columnLetter,
   diffReadBack,
+  diffRowReadBack,
+  expectedFormulas,
   findDuplicates,
+  formulaColumns,
+  planRowWrites,
+  rowFormula,
   fold,
   headerKey,
   lastFilledRow,
@@ -213,5 +218,66 @@ describe('diffReadBack', () => {
   it('names each cell that did not land', () => {
     expect(diffReadBack(['a', '+234 1'], [['a', '#ERROR!']])).toEqual([{ column: 'B', wrote: '+234 1', read: '#ERROR!' }]);
     expect(diffReadBack(['a'], [])).toEqual([{ column: 'A', wrote: 'a', read: '' }]);
+  });
+});
+
+// ace#2957: the live Organizations contact-email formula, as `--render FORMULA`
+// returned it for rows 84–97 on 2026-10-15 (issue body).
+const LIVE_L = (n: number) =>
+  `=IFERROR(TEXTJOIN("; ", TRUE, UNIQUE(FILTER(Contacts!E:E, Contacts!B:B=A${n}, Contacts!E:E<>"", NOT(ISNA(Contacts!E:E))))), "")`;
+
+describe('formula columns', () => {
+  it('formulaColumns finds only cells that hold a formula', () => {
+    expect([...formulaColumns(['Org', '', 'x=1', LIVE_L(241)])]).toEqual([[3, LIVE_L(241)]]);
+    expect(formulaColumns([]).size).toBe(0);
+  });
+
+  it('rowFormula moves the live formula from row 241 to 243', () => {
+    expect(rowFormula(LIVE_L(241), 241, 243)).toBe(LIVE_L(243));
+  });
+
+  it('rowFormula leaves absolute rows, whole columns, strings, sheet names and function names alone', () => {
+    expect(rowFormula('=A$2+B5', 5, 9)).toBe('=A$2+B9');
+    expect(rowFormula('=IF(A5="A5",LOG10(C5),\'Tab 5\'!D5)', 5, 6)).toBe('=IF(A6="A5",LOG10(C6),\'Tab 5\'!D6)');
+    expect(rowFormula('=SUM($A$1:$A4)', 4, 5)).toBe('=SUM($A$1:$A5)');
+    expect(rowFormula('="a""B2"""&B2', 2, 3)).toBe('="a""B2"""&B3');
+    expect(() => rowFormula('=A1', 3, 2)).toThrow(DirectoryContractError);
+  });
+
+  it('planRowWrites: RAW row with the formula cell blank, then the moved formula USER_ENTERED', () => {
+    const headerRow = ['Organization Name', 'Notes', 'Email addresses from Contacts sheet'];
+    const writes = planRowWrites({
+      tab: 'Organizations',
+      headerRow,
+      row: ['HHI', 'say "hi"', ''],
+      targetRow: 243,
+      precedentRow: 242,
+      formulas: new Map([[2, LIVE_L(242)]]),
+    });
+    expect(writes).toEqual([
+      { range: "'Organizations'!A243:C243", input: 'RAW', values: [['HHI', 'say "hi"', '']] },
+      { range: "'Organizations'!C243:C243", input: 'USER_ENTERED', values: [[LIVE_L(243)]] },
+    ]);
+  });
+
+  it('planRowWrites refuses a drafted value in a formula column', () => {
+    expect(() =>
+      planRowWrites({
+        tab: 'Organizations',
+        headerRow: ['Organization Name', 'Email addresses from Contacts sheet'],
+        row: ['HHI', 'sani@example.org'],
+        targetRow: 243,
+        precedentRow: 242,
+        formulas: new Map([[1, LIVE_L(242)]]),
+      }),
+    ).toThrow(/"Email addresses from Contacts sheet" holds a formula/);
+  });
+
+  it('diffRowReadBack compares data to the formatted read and formulas to the FORMULA read', () => {
+    const expected = expectedFormulas(new Map([[1, LIVE_L(242)]]), 242, 243);
+    expect(diffRowReadBack(['HHI', ''], [['HHI', 'sani@example.org']], expected, [['HHI', LIVE_L(243)]])).toEqual([]);
+    expect(diffRowReadBack(['HHI', ''], [['HHI', 'sani@example.org']], expected, [['HHI', 'sani@example.org']])).toEqual([
+      { column: 'B', wrote: LIVE_L(243), read: 'sani@example.org' },
+    ]);
   });
 });

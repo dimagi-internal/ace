@@ -103,8 +103,13 @@ because the sheet is hand-maintained.
   - HQ Source is the URL the evidence came from.
   - The town is what places the org on the labs network map (connect-labs
     `docs/marketplace-hq-sweep.md`), so a wrong one is worse than none.
-- **Email addresses from Contacts sheet**: the contact's email, matching the
-  Contacts row.
+- **Formula columns: leave them out.** Some columns are formulas, not data.
+  On Organizations, *"Email addresses from Contacts sheet"* is a
+  `TEXTJOIN(FILTER(Contacts!…))` over the Contacts tab. Never draft a value for
+  one: a literal freezes the cell, so a contact added later never shows up
+  (ace#2957). `plan` reads the precedent row with `--render FORMULA`, copies each
+  formula to the new row with its row number moved, and refuses a drafted value
+  in any formula column.
 - **Contacts row**:
   - `Organization Name` must equal the org row's **exactly**, because labs joins
     on it. `plan` refuses a mismatch.
@@ -133,9 +138,12 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.
   off-by-one came from mixing a 0-based count with 1-based sheet rows.
 - **Emptiness.** It reads each target row across the full header width and
   reports `target_row_empty`.
-- **Commands.** It prints `ready` and the exact `gog sheets update <id> "<Tab>!A<n>:<last><n>" --values-json … --input RAW`
-  commands. They are **exact-range writes**, never `append`. `RAW` matters: under
-  `USER_ENTERED` a value like `+234 …` is parsed as a formula.
+- **Writes.** It prints `ready` and `writes`, the exact-range writes as data
+  (`range`, `input`, `values`). They are **exact-range writes**, never `append`.
+  Each row is one `RAW` write across the header width. `RAW` matters: under
+  `USER_ENTERED` a value like `+234 …` is parsed as a formula. Then there is one
+  single-cell `USER_ENTERED` write per formula column, carrying the precedent
+  row's formula.
 
 If `ready` is false, don't write. Report why.
 
@@ -149,17 +157,33 @@ The directory is shared, hand-maintained state, so the write is
 - the duplicate-check result
 - the connect-labs sha the layout was read at
 
-On an explicit yes, run the two printed commands as they are. Inside a turn,
+On an explicit yes, write with `apply`, using the same two files:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" apply --org org.json --contact contact.json
+```
+
+`apply` re-runs the plan and refuses (exit 1, nothing written) unless it is
+still `ready`. It passes each write to gog as an argument array, with no shell,
+so a note containing `"` or `\` reaches the sheet verbatim. Then it runs
+`verify` on both rows itself. **Never extract the writes from `plan`'s JSON
+and run them through a shell.** That path broke on a quoted note and wrote
+nothing (ace#2956). If the plan changed between approval and `apply` (different
+target rows), show the operator the new plan before re-running. Inside a turn,
 review posture parks the plan (verbatim) on the thread's board task until the
 operator approves (`skills/inbox-triage` § parked drafts).
 
 ### 5. Read back both rows (before any claim)
 
+`apply` prints `verify`'s result. To re-check later:
+
 ```bash
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" verify --org org.json --org-row <n> --contact contact.json --contact-row <m>
 ```
 
-`verify` exits 0 only when both rows read back cell for cell as written. Nothing
+`verify` exits 0 only when both rows read back cell for cell as written. It
+compares each formula cell's `--render FORMULA` text with the precedent's
+formula, moved to that row. Nothing
 may say the rows exist until it passes. That includes the reply, the board card
 and the turn close-out. On a diff, report the diff. Don't re-write blind.
 
