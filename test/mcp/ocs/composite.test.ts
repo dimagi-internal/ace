@@ -2,11 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { CompositeBackend } from '../../../mcp/ocs/backends/composite.js';
 import { VersionBadgeUnreadableError } from '../../../mcp/ocs/errors.js';
 
+// The post-publish read-back polls (ace#1828). Tests poll instantly: 5 reads
+// at most, no real sleeping.
+const FAST = { publishReadback: { intervalMs: 1, timeoutMs: 4, sleep: async () => {} } };
+
 describe('CompositeBackend routing', () => {
   it('routes REST atoms to the REST backend', async () => {
     const rest = { listChatbots: vi.fn().mockResolvedValue({ chatbots: [], next_cursor: undefined }) };
     const pw = {};
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
     await c.listChatbots({});
     expect(rest.listChatbots).toHaveBeenCalled();
   });
@@ -14,7 +18,7 @@ describe('CompositeBackend routing', () => {
   it('routes PLAYWRIGHT atoms to the Playwright backend', async () => {
     const rest = {};
     const pw = { cloneChatbot: vi.fn().mockResolvedValue({ experiment_id: 1, public_id: 'u', pipeline_id: 2 }) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
     await c.cloneChatbot({ template_id: 1, new_name: 'x' });
     expect(pw.cloneChatbot).toHaveBeenCalled();
   });
@@ -22,7 +26,7 @@ describe('CompositeBackend routing', () => {
   it('routes HYBRID atoms to the Playwright backend by default', async () => {
     const rest = {};
     const pw = { getChatbotEmbedInfo: vi.fn().mockResolvedValue({ public_id: 'u', embed_key: 'e' }) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
     await c.getChatbotEmbedInfo({ experiment_id: 1 });
     expect(pw.getChatbotEmbedInfo).toHaveBeenCalled();
   });
@@ -30,7 +34,7 @@ describe('CompositeBackend routing', () => {
   it('getChatbotPipelineId calls playwright.pipelineIdFor and wraps the result', async () => {
     const rest = {};
     const pw = { pipelineIdFor: vi.fn().mockResolvedValue(5942) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
     const out = await c.getChatbotPipelineId({ experiment_id: 12167 });
     expect(pw.pipelineIdFor).toHaveBeenCalledWith(12167);
     expect(out).toEqual({ pipeline_id: 5942 });
@@ -64,9 +68,11 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
   it('returns the PUBLISHED version, not the working counter', async () => {
     const rest = { getChatbot: vi.fn().mockResolvedValue(chatbotPayload) };
     const pw = { publishChatbotVersion: vi.fn().mockRejectedValue(badgeFailure()) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
-    const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'x' });
+    // No pre-publish read is possible here (no listChatbots), so the default
+    // is accepted on a match of this publish's own description (ace#1828).
+    const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'Initial ACE version' });
 
     // 2, not 3. Returning 3 writes an off-by-one into run_state.yaml and later
     // breaks llo-launch's freshness equality check.
@@ -85,9 +91,9 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
         .fn()
         .mockResolvedValue({ version_number: 7, task_id: 'none', public_id: 'pub-uuid' }),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
-    const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'x' });
+    const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'Initial ACE version' });
 
     expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'api' });
     expect(rest.getChatbot).toHaveBeenCalledWith({ public_id: 'pub-uuid' });
@@ -98,7 +104,7 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
     // versions[] must rethrow rather than invent a number.
     const rest = { getChatbot: vi.fn().mockResolvedValue({ id: 'pub-uuid', name: 'b', versions: [] }) };
     const pw = { publishChatbotVersion: vi.fn().mockRejectedValue(badgeFailure()) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     await expect(
       c.publishChatbotVersion({ experiment_id: 99, description: 'x' }),
@@ -115,7 +121,7 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
       }),
     };
     const pw = { publishChatbotVersion: vi.fn().mockRejectedValue(badgeFailure()) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     await expect(
       c.publishChatbotVersion({ experiment_id: 99, description: 'x' }),
@@ -127,14 +133,22 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
       listChatbots: vi.fn().mockResolvedValue({
         chatbots: [{ id: 'found-uuid', name: 'ACE bot', experiment_id: 99 }],
       }),
-      getChatbot: vi.fn().mockResolvedValue({ ...chatbotPayload, id: 'found-uuid' }),
+      // Pre-publish read: v1 was the default; after the publish, v2 is.
+      getChatbot: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...chatbotPayload,
+          id: 'found-uuid',
+          versions: [{ version_number: 1, is_default_version: true }],
+        })
+        .mockResolvedValue({ ...chatbotPayload, id: 'found-uuid' }),
     };
     const pw = {
       publishChatbotVersion: vi
         .fn()
         .mockRejectedValue(new VersionBadgeUnreadableError(99, undefined, 'no public id')),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'x' });
 
@@ -145,7 +159,7 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
   it('rethrows any error that is not the badge failure', async () => {
     const rest = { getChatbot: vi.fn() };
     const pw = { publishChatbotVersion: vi.fn().mockRejectedValue(new Error('publish rejected')) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     await expect(
       c.publishChatbotVersion({ experiment_id: 99, description: 'x' }),
@@ -178,7 +192,7 @@ describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () 
         .fn()
         .mockResolvedValue(new Map([[restBot.name, 12804]])),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.getChatbot({ public_id: restBot.id });
 
@@ -194,7 +208,7 @@ describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () 
     const pw = {
       fetchExperimentIdsByName: vi.fn().mockRejectedValue(new Error('401 session expired')),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     await expect(c.getChatbot({ public_id: restBot.id })).rejects.toThrow(
       /experiment_id.*scrape failed.*ocs-login.*Do NOT clone/is,
@@ -206,7 +220,7 @@ describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () 
     // lives on a non-default team) — degraded null, not an error.
     const rest = { getChatbot: vi.fn().mockResolvedValue({ ...restBot }) };
     const pw = { fetchExperimentIdsByName: vi.fn().mockResolvedValue(new Map()) };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.getChatbot({ public_id: restBot.id });
 
@@ -225,7 +239,7 @@ describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () 
     const pw = {
       fetchExperimentIdsByName: vi.fn().mockRejectedValue(new Error('401 session expired')),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.listChatbots({});
 
@@ -260,6 +274,16 @@ describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828
     ],
   };
 
+  // The same bot one read earlier: v2 is still the default.
+  const beforePublish = {
+    ...afterPublish,
+    version_number: 3,
+    versions: [
+      { version_number: 1, is_default_version: false },
+      { version_number: 2, is_default_version: true, version_description: 'Initial ACE version' },
+    ],
+  };
+
   it('returns the API-authoritative published version, not the stale badge scrape', async () => {
     const rest = { getChatbot: vi.fn().mockResolvedValue(afterPublish) };
     const pw = {
@@ -269,9 +293,12 @@ describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828
         public_id: afterPublish.id,
       }),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
-    const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
+    const out = await c.publishChatbotVersion({
+      experiment_id: 13027,
+      description: 'Phase 6 knowledge refresh',
+    });
 
     expect(out.version_number).toBe(3);
     expect(out.source).toBe('api');
@@ -283,12 +310,12 @@ describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828
       listChatbots: vi.fn().mockResolvedValue({
         chatbots: [{ id: afterPublish.id, name: 'ACE bot', experiment_id: 13027 }],
       }),
-      getChatbot: vi.fn().mockResolvedValue(afterPublish),
+      getChatbot: vi.fn().mockResolvedValueOnce(beforePublish).mockResolvedValue(afterPublish),
     };
     const pw = {
       publishChatbotVersion: vi.fn().mockResolvedValue({ version_number: 2, task_id: 'none' }),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
 
@@ -307,7 +334,7 @@ describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828
         .fn()
         .mockResolvedValue({ version_number: 2, task_id: 'none', public_id: afterPublish.id }),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
 
@@ -329,11 +356,143 @@ describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828
         .fn()
         .mockResolvedValue({ version_number: 2, task_id: 'none', public_id: afterPublish.id }),
     };
-    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never, ...FAST });
 
     const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
 
     expect(out.version_number).toBe(2);
     expect(out.source).toBe('home-page-badge');
+  });
+});
+
+// The ace#1828 RECURRENCE: OCS creates the version asynchronously after the
+// publish POST's 302, so the single post-publish API read raced it and
+// returned the PRE-publish default labelled `api`. Six live repros; the
+// shape below is experiment 14296 (smallholder-seasonal/20261015-1402,
+// Phase 5): a fresh clone whose own v1 was default, publish returned
+// `{version_number: 1, source: 'api'}`, and `ocs_inspect_chatbot(version:
+// 'default')` straight afterwards showed v2 with this publish's description.
+describe('CompositeBackend.publishChatbotVersion — read-back races the async publish (#1828)', () => {
+  const publicId = '2b97652f-71cd-4da3-a745-15c5df7a3916';
+  const description = 'Initial ACE version for smallholder-seasonal (20261015-1402)';
+  const cloneDefault = {
+    id: publicId,
+    name: 'ACE bot',
+    version_number: 2,
+    versions: [{ version_number: 1, is_default_version: true }],
+  };
+  const published = {
+    id: publicId,
+    name: 'ACE bot',
+    version_number: 3,
+    versions: [
+      { version_number: 1, is_default_version: false },
+      { version_number: 2, is_default_version: true, version_description: description },
+    ],
+  };
+  const list = () =>
+    vi.fn().mockResolvedValue({ chatbots: [{ id: publicId, name: 'ACE bot', experiment_id: 14296 }] });
+  const pwBadge = (n: number) => ({
+    publishChatbotVersion: vi
+      .fn()
+      .mockResolvedValue({ version_number: n, task_id: 'none', public_id: publicId }),
+  });
+
+  it('polls past the pre-publish default and returns the NEW version as api', async () => {
+    // pre-publish read, then two post-publish reads that still see the old
+    // default (the race), then the new one.
+    const getChatbot = vi
+      .fn()
+      .mockResolvedValueOnce(cloneDefault)
+      .mockResolvedValueOnce(cloneDefault)
+      .mockResolvedValueOnce(cloneDefault)
+      .mockResolvedValue(published);
+    const sleep = vi.fn(async () => {});
+    const c = new CompositeBackend({
+      rest: { listChatbots: list(), getChatbot } as never,
+      playwright: pwBadge(1) as never,
+      publishReadback: { intervalMs: 1000, timeoutMs: 20_000, sleep },
+    });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 14296, description });
+
+    expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'api' });
+    expect(getChatbot).toHaveBeenCalledTimes(4);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(1000);
+  });
+
+  it('never labels the stale pre-publish default api when the poll times out', async () => {
+    // The API never catches up inside the window. Returning 1 as `api` is the
+    // defect; the existing fallback (the labelled badge) answers instead.
+    const getChatbot = vi.fn().mockResolvedValue(cloneDefault);
+    const sleep = vi.fn(async () => {});
+    const c = new CompositeBackend({
+      rest: { listChatbots: list(), getChatbot } as never,
+      playwright: pwBadge(1) as never,
+      publishReadback: { intervalMs: 1000, timeoutMs: 5000, sleep },
+    });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 14296, description });
+
+    expect(out.source).toBe('home-page-badge');
+    expect(sleep).toHaveBeenCalledTimes(5); // bounded: 5s window / 1s interval
+    expect(getChatbot).toHaveBeenCalledTimes(7); // 1 pre + 6 post
+  });
+
+  it('still throws the badge failure when the poll times out and the badge was unreadable (#823)', async () => {
+    const getChatbot = vi.fn().mockResolvedValue(cloneDefault);
+    const c = new CompositeBackend({
+      rest: { listChatbots: list(), getChatbot } as never,
+      playwright: {
+        publishChatbotVersion: vi
+          .fn()
+          .mockRejectedValue(new VersionBadgeUnreadableError(14296, publicId, 'badge unreadable')),
+      } as never,
+      ...FAST,
+    });
+
+    await expect(c.publishChatbotVersion({ experiment_id: 14296, description })).rejects.toThrow(
+      VersionBadgeUnreadableError,
+    );
+  });
+
+  it('accepts the first default when the bot had none before the publish', async () => {
+    const getChatbot = vi
+      .fn()
+      .mockResolvedValueOnce({ ...cloneDefault, versions: [] })
+      .mockResolvedValueOnce({ ...cloneDefault, versions: [] })
+      .mockResolvedValue({ ...published, versions: [{ version_number: 1, is_default_version: true }] });
+    const c = new CompositeBackend({
+      rest: { listChatbots: list(), getChatbot } as never,
+      playwright: pwBadge(1) as never,
+      ...FAST,
+    });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 14296, description });
+
+    expect(out).toEqual({ version_number: 1, task_id: 'none', source: 'api' });
+  });
+
+  it('without a pre-publish read, waits for the default carrying this publish\'s description', async () => {
+    // listChatbots fails, so the pre-publish default is unknown; the posted
+    // description is then the evidence the default row is this publish's.
+    const getChatbot = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...cloneDefault,
+        versions: [{ version_number: 1, is_default_version: true, version_description: 'clone' }],
+      })
+      .mockResolvedValue(published);
+    const c = new CompositeBackend({
+      rest: { listChatbots: vi.fn().mockRejectedValue(new Error('500')), getChatbot } as never,
+      playwright: pwBadge(1) as never,
+      ...FAST,
+    });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 14296, description });
+
+    expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'api' });
+    expect(getChatbot).toHaveBeenCalledTimes(2);
   });
 });
