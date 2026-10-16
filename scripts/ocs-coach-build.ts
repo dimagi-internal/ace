@@ -13,7 +13,9 @@
  *      (apps/channels/forms/commcare_connect.py: `commcare_connect_bot_name`).
  *
  *   npx tsx scripts/ocs-coach-build.ts --experiment <id> --prompt <file> \
- *     --collections 605 --connect-bot-name "Spark Coach" [--team connect-ace]
+ *     --collections 605 --connect-bot-name "Spark Coach (<run-id>)" [--team connect-ace]
+ *
+ * The bot name must be unique per OCS team, so scope it to the run (ace#3006).
  *
  * `--collections none` detaches every collection (a clone keeps its source's
  * otherwise — a KMC coach cloned from the chlorine coach must not search chlorine docs).
